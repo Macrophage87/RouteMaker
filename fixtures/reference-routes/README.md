@@ -5,10 +5,6 @@ Mass Ride modality and to assert the per-modality invariants in the Quality bar.
 These are the ground truth: a route the router produces for the same waypoints
 under the Mass Ride preset should look like these.
 
-Source is Strava route exports, so each file is a `<trk>` with roughly 50 metre
-point spacing and carries Strava's own elevation. On import they exceed the
-route-point threshold and are map-matched as tracks, which is the intended path.
-
 ## Measured properties
 
 | Route | Distance | Gain | Max grade | Turns | Revisits |
@@ -43,8 +39,20 @@ apart along the route.
 - **December carries a `Midpoint` waypoint**, the mid-ride stop, which is a rest
   control point in the route model.
 
-## Caveat
+## Anonymization
 
-Each file's metadata carries the author's name and Strava athlete link. If this
-repository becomes public and that is unwanted, strip the `<author>` element;
-nothing in the tests reads it.
+Author names and Strava route and athlete links have been stripped from every
+file, and the creator attribute is set to this project. Geometry, elevation, the
+route names, and the `Midpoint` waypoint are untouched, and the OpenStreetMap
+copyright element is preserved because attribution is required. Nothing in the
+tests reads any of the removed fields.
+
+The commit that first added these files still contains the original metadata.
+Removing it from history as well takes a rewrite of the two commits and a
+force-push, which has not been done.
+
+## Provenance
+
+Exported from Strava as route files, roughly 50 metre point spacing, carrying
+Strava's elevation values. On import they exceed the route-point threshold and
+are map-matched as tracks, which is the intended path.
