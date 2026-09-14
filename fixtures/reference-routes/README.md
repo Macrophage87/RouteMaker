@@ -47,9 +47,11 @@ route names, and the `Midpoint` waypoint are untouched, and the OpenStreetMap
 copyright element is preserved because attribution is required. Nothing in the
 tests reads any of the removed fields.
 
-The commit that first added these files still contains the original metadata.
-Removing it from history as well takes a rewrite of the two commits and a
-force-push, which has not been done.
+Git history was rewritten so the original metadata does not survive in any
+commit. Every blob in every commit has been scanned to confirm it. These routes
+are mass rides, whose ride purpose defaults to First Amendment assembly, which is
+the category the attribution rule in the plan protects; recreational routes are
+attributed normally.
 
 ## Provenance
 
