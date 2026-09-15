@@ -46,7 +46,8 @@ class Segment(models.Model):
 
     sinuosity = models.FloatField(null=True)
     is_trail_class = models.BooleanField(default=False)
-    is_unpaved = models.BooleanField(default=False)
+    # Nullable: absent `surface` is unknown, not paved.
+    is_unpaved = models.BooleanField(null=True)
     is_rough = models.BooleanField(default=False)
     lit = models.BooleanField(null=True)
 

@@ -43,7 +43,7 @@ jobs:
       - name: Install native dependencies
         # GDAL/PROJ for GeoDjango; Lua for the tag-transform remap, which is
         # tested in the language the tile build actually loads it in.
-        run: sudo apt-get update && sudo apt-get install -y binutils libproj-dev gdal-bin lua5.4
+        run: sudo apt-get update && sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev lua5.4
       - run: pip install -e . -r requirements-dev.txt
       - run: ruff check src tests
       - run: ruff format --check src tests

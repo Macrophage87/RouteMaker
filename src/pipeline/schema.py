@@ -29,7 +29,10 @@ CREATE TABLE {schema}.segment (
     volume_source   text,
     sinuosity       double precision,
     is_trail_class  boolean     NOT NULL DEFAULT false,
-    is_unpaved      boolean     NOT NULL DEFAULT false,
+    -- Nullable on purpose: absent `surface` is unknown, not paved. Untagged
+    -- rural gravel is common in Loudoun, and reading absence as paved
+    -- understates the unpaved share the rural ranking keys on.
+    is_unpaved      boolean,
     is_rough        boolean     NOT NULL DEFAULT false,
     lit             boolean,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
