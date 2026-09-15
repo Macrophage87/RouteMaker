@@ -238,3 +238,130 @@ def test_a_swap_does_not_take_the_application_schema_with_it(segment_schemas) ->
 
     assert User.objects.count() == 0, "the users table must still resolve after a swap"
     assert row_count("live") == 1
+
+
+def second_connection():
+    """A genuinely separate backend, for holding a conflicting lock.
+
+    Django's test connection is the one the swap runs on, so a lock taken
+    through it would be held by the same transaction and conflict with nothing.
+    """
+    import psycopg2
+
+    settings = connection.settings_dict
+    return psycopg2.connect(
+        host=settings["HOST"] or "127.0.0.1",
+        port=settings["PORT"] or 5432,
+        dbname=settings["NAME"],
+        user=settings["USER"],
+        password=settings["PASSWORD"],
+    )
+
+
+def test_the_swap_takes_a_lock_that_conflicts_with_an_ordinary_reader(segment_schemas) -> None:
+    """The lock the design depends on, asserted by contention rather than by
+    reading the source.
+
+    ACCESS SHARE - what a plain SELECT takes - conflicts with exactly one lock
+    mode, ACCESS EXCLUSIVE. So a reader holding it must be able to stop the swap,
+    and if it cannot, the swap is not taking the lock it claims to. Deleting the
+    LOCK TABLE line leaves the renames untouched here: ALTER SCHEMA locks the
+    schema object, not the table inside it.
+    """
+    import time
+
+    from pipeline.swap import SwapLockTimeout, swap_schemas
+
+    holder = second_connection()
+    try:
+        with holder.cursor() as cursor:
+            cursor.execute("BEGIN")
+            cursor.execute("LOCK TABLE live.segment IN ACCESS SHARE MODE")
+
+        # A backstop on the *test's* session, so that a swap which sets no
+        # lock_timeout of its own fails here rather than blocking until the
+        # reader lets go - which, since the reader is released in the finally
+        # below, would be never. It is three seconds against the swap's 200 ms,
+        # so it never fires while the mechanism works.
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '3s'")
+
+        try:
+            started = time.monotonic()
+            with pytest.raises(SwapLockTimeout):
+                swap_schemas(lock_timeout_ms=200, attempts=1, backoff_s=0.0)
+            assert time.monotonic() - started < 3.0
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("SET statement_timeout = 0")
+    finally:
+        holder.rollback()
+        holder.close()
+
+
+def test_a_reader_that_lets_go_costs_the_swap_an_attempt_rather_than_the_rebuild(
+    segment_schemas,
+) -> None:
+    """A slow reader is a retry, not a failed rebuild. Six hours of build work
+    must not be discarded because one request held a table for a second."""
+    import threading
+    import time
+
+    from pipeline.swap import swap_schemas
+
+    holder = second_connection()
+    released = threading.Event()
+
+    def hold_briefly() -> None:
+        with holder.cursor() as cursor:
+            cursor.execute("BEGIN")
+            cursor.execute("LOCK TABLE live.segment IN ACCESS SHARE MODE")
+        time.sleep(0.6)
+        holder.rollback()
+        released.set()
+
+    thread = threading.Thread(target=hold_briefly)
+    thread.start()
+    time.sleep(0.1)  # let the reader take its lock first
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '3s'")
+        result = swap_schemas(lock_timeout_ms=150, attempts=10, backoff_s=0.1)
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = 0")
+        thread.join()
+        holder.close()
+
+    assert released.is_set()
+    assert result.attempts > 1, "the contention cost nothing, so nothing was retried"
+
+
+def test_the_rollback_path_takes_the_same_lock(segment_schemas) -> None:
+    """Every argument for the lock applies to the rollback with more force, since
+    it runs when something is already wrong."""
+    import time
+
+    from pipeline.swap import rollback_swap, swap_schemas
+
+    swap_schemas()
+
+    holder = second_connection()
+    try:
+        with holder.cursor() as cursor:
+            cursor.execute("BEGIN")
+            cursor.execute("LOCK TABLE live.segment IN ACCESS SHARE MODE")
+
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '3s'")
+        try:
+            started = time.monotonic()
+            with pytest.raises(Exception, match="lock|timeout|LockNotAvailable"):
+                rollback_swap(lock_timeout_ms=200, attempts=1, backoff_s=0.0)
+            assert time.monotonic() - started < 3.0
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("SET statement_timeout = 0")
+    finally:
+        holder.rollback()
+        holder.close()

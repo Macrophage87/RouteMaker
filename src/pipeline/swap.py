@@ -148,7 +148,13 @@ def swap_schemas(
     return SwapResult(live=live, staging=staging, retired=retired, attempts=attempt)
 
 
-def rollback_swap(live: str = "live", staging: str = "staging") -> None:
+def rollback_swap(
+    live: str = "live",
+    staging: str = "staging",
+    lock_timeout_ms: int = DEFAULT_LOCK_TIMEOUT_MS,
+    attempts: int = DEFAULT_ATTEMPTS,
+    backoff_s: float = DEFAULT_BACKOFF_S,
+) -> None:
     """Undo a swap by putting the retired schema back.
 
     Pairs with repointing the settings table back to the previous tile extracts;
@@ -162,10 +168,10 @@ def rollback_swap(live: str = "live", staging: str = "staging") -> None:
             f"there is no {retired} schema to roll back to; a rollback ran already "
             "or no swap has happened"
         )
-    for attempt in range(1, DEFAULT_ATTEMPTS + 1):
+    for attempt in range(1, attempts + 1):
         try:
             with transaction.atomic(), connection.cursor() as cursor:
-                cursor.execute(f"SET LOCAL lock_timeout = '{DEFAULT_LOCK_TIMEOUT_MS}ms'")
+                cursor.execute(f"SET LOCAL lock_timeout = '{lock_timeout_ms}ms'")
                 # The same lock the forward path takes, and for the same reason:
                 # a bare rename serializes nothing, so readers would tear across
                 # the boundary. Every argument for it applies here with more
@@ -177,6 +183,6 @@ def rollback_swap(live: str = "live", staging: str = "staging") -> None:
         except Exception as error:  # noqa: BLE001
             # The emergency path needs the retry more than the forward one does,
             # not less: it runs when something is already wrong.
-            if not _is_lock_error(error) or attempt == DEFAULT_ATTEMPTS:
+            if not _is_lock_error(error) or attempt == attempts:
                 raise
-            time.sleep(DEFAULT_BACKOFF_S * attempt)
+            time.sleep(backoff_s * attempt)
