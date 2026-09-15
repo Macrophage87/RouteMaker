@@ -54,6 +54,12 @@ class DiscordStandingBackend:
             # Nobody writes the log, including an instance admin. A log whose
             # entries can be edited from the surface it audits is not a log.
             "auditlogentry",
+            # The table that decides which roles a person holds in which guild.
+            # A row here grants any role in any guild, so writing one is a
+            # broader grant than any mapping. It was reachable because the only
+            # thing refusing it was CachedMembershipAdmin's own hook - one
+            # override, on one class, with nothing behind it.
+            "cachedmembership",
         }
     )
     WRITE_ACTIONS = ("add_", "change_", "delete_")

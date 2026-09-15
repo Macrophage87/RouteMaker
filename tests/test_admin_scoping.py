@@ -449,3 +449,114 @@ class TestInstanceAdminSurvivesADegradedDeployment:
         assert instance_admin._admin_guild_ids == frozenset()
         assert instance_admin.is_staff, "the instance admin is not guild-derived"
         assert site.has_permission(Request(instance_admin))
+
+
+class TestTheAuthorizationTablesHaveMoreThanOneGate:
+    """Item 3 of the round-3 panel: the tables that decide who holds standing
+    were each protected by exactly one `has_*_permission` override, and mutating
+    that single method to `True` left the whole suite green. Two independent
+    layers answer for them now - the backend's permission rule and the
+    ModelAdmin's hook - and each is asserted on its own, so neither can be
+    removed silently.
+    """
+
+    WRITE_PERMS = ("core.add_{0}", "core.change_{0}", "core.delete_{0}")
+
+    @pytest.mark.parametrize(
+        "model", ["cachedmembership", "rolemapping", "configuredguild", "auditlogentry"]
+    )
+    def test_the_backend_refuses_a_guild_admin_every_write(self, guild_admin, model) -> None:
+        """Asserted against the backend directly, not through a ModelAdmin: this
+        is the layer that still answers if a hook is deleted."""
+        from core.auth_backend import DiscordStandingBackend
+
+        backend = DiscordStandingBackend()
+        for template in self.WRITE_PERMS:
+            assert not backend.has_perm(guild_admin, template.format(model))
+
+    @pytest.mark.parametrize(
+        "model", ["cachedmembership", "rolemapping", "configuredguild", "auditlogentry"]
+    )
+    def test_an_instance_admin_is_not_locked_out_by_that_rule(
+        self, instance_admin, model
+    ) -> None:
+        from core.auth_backend import DiscordStandingBackend
+
+        backend = DiscordStandingBackend()
+        assert backend.has_perm(instance_admin, self.WRITE_PERMS[0].format(model))
+
+    def test_a_guild_admin_cannot_add_or_delete_a_configured_guild(
+        self, signed_in, guild_admin, guild
+    ) -> None:
+        """The configured guild list is the deployment's admission control:
+        adding a row self-onboards a server."""
+        from django.urls import reverse
+
+        from core.models import ConfiguredGuild
+
+        client = signed_in(guild_admin)
+
+        added = client.post(
+            reverse("routemaker_admin:core_configuredguild_add"),
+            {"guild_id": "6001", "name": "Self Onboarded"},
+        )
+        deleted = client.post(
+            reverse("routemaker_admin:core_configuredguild_delete", args=[guild.pk]),
+            {"post": "yes"},
+        )
+
+        assert added.status_code == 403
+        assert deleted.status_code == 403
+        assert not ConfiguredGuild.objects.filter(guild_id=6001).exists()
+        assert ConfiguredGuild.objects.filter(pk=guild.pk).exists()
+
+
+class TestAnAllowedAdminWriteIsAlsoAudited:
+    """PLAN says admin writes go to the same audit log. `save_model` and
+    `delete_model` carried the calls and nothing asserted them, so both could be
+    deleted without a test noticing - leaving only refusals recorded.
+    """
+
+    def test_an_allowed_change_is_recorded(self, signed_in, instance_admin, guild) -> None:
+        """`guild_id` is read-only to everyone, so renaming is the write an
+        instance admin actually makes on this page."""
+        from django.urls import reverse
+
+        from core.models import AuditLogEntry, ConfiguredGuild
+
+        client = signed_in(instance_admin)
+        AuditLogEntry.objects.all().delete()
+
+        response = client.post(
+            reverse("routemaker_admin:core_configuredguild_change", args=[guild.pk]),
+            {"name": "Renamed Club", "notes": ""},
+        )
+
+        assert response.status_code in (200, 302)
+        assert ConfiguredGuild.objects.get(pk=guild.pk).name == "Renamed Club"
+        entry = AuditLogEntry.objects.get(outcome=AuditLogEntry.Outcome.ALLOWED)
+        assert entry.actor == instance_admin
+        assert entry.model == "configuredguild"
+        assert entry.action == "change"
+        assert entry.object_id == str(guild.pk)
+
+    def test_an_allowed_delete_is_recorded(self, signed_in, instance_admin, guild) -> None:
+        from django.urls import reverse
+
+        from core.models import AuditLogEntry, ConfiguredGuild
+
+        client = signed_in(instance_admin)
+        AuditLogEntry.objects.all().delete()
+        doomed = guild.pk
+
+        client.post(
+            reverse("routemaker_admin:core_configuredguild_delete", args=[doomed]),
+            {"post": "yes"},
+        )
+
+        assert not ConfiguredGuild.objects.filter(pk=doomed).exists()
+        entry = AuditLogEntry.objects.get(
+            outcome=AuditLogEntry.Outcome.ALLOWED, action="delete"
+        )
+        assert entry.model == "configuredguild"
+        assert entry.object_id == str(doomed)
