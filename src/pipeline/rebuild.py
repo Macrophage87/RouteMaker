@@ -20,14 +20,25 @@ logger = logging.getLogger(__name__)
 
 
 class Stage(Enum):
-    """Ordered. A failure is reported as the stage it stopped in."""
+    """Ordered. A failure is reported as the stage it stopped in.
+
+    The order is load-bearing in two places. Everything derived has to be
+    computed before the extract is written, because the tag transform reads it
+    at tile build time and a value computed afterwards reaches the graph in no
+    way at all - an earlier version classified stress after building tiles, so
+    the tiles carried none. And the reference data loads first, because the
+    stages after it produce a plausible, wrong map when it is absent rather than
+    failing.
+    """
 
     FETCH_EXTRACT = "fetch_extract"
-    INJECT_TAGS = "inject_tags"
-    INSERT_BORDER_NODES = "insert_border_nodes"
-    BUILD_TILES = "build_tiles"
+    LOAD_REFERENCE_DATA = "load_reference_data"
+    CONFLATE_VOLUME = "conflate_volume"
     CLASSIFY_STRESS = "classify_stress"
     TAG_JURISDICTIONS = "tag_jurisdictions"
+    INSERT_BORDER_NODES = "insert_border_nodes"
+    INJECT_TAGS = "inject_tags"
+    BUILD_TILES = "build_tiles"
     WRITE_SEGMENTS = "write_segments"
     VALIDATE = "validate"
     SWAP = "swap"
@@ -51,8 +62,20 @@ class RebuildReport:
         return self.failed_at is None and Stage.RECONCILE in self.completed
 
 
-def run_rebuild(handlers: dict[Stage, Callable[[], None]]) -> RebuildReport:
+class StageNotImplemented(RuntimeError):
+    """A stage has no handler and was not declared skipped."""
+
+
+def run_rebuild(
+    handlers: dict[Stage, Callable[[], None]],
+    skip: frozenset[Stage] = frozenset(),
+) -> RebuildReport:
     """Run each stage in order, stopping at the first failure.
+
+    A stage with no handler raises unless it is named in `skip`. Silently
+    continuing past a missing handler made an omitted stage indistinguishable
+    from a deliberate one: the report said the rebuild had run, and the segments
+    it produced simply had no jurisdiction on them.
 
     Stages before the swap are safe to abandon: they write only to staging and to
     a dated tile directory, so a failure leaves the live system untouched and the
@@ -61,9 +84,13 @@ def run_rebuild(handlers: dict[Stage, Callable[[], None]]) -> RebuildReport:
     """
     report = RebuildReport()
     for stage in Stage:
+        if stage in skip:
+            continue
         handler = handlers.get(stage)
         if handler is None:
-            continue
+            raise StageNotImplemented(
+                f"stage {stage.value} has no handler and was not declared skipped"
+            )
         try:
             handler()
         except Exception as error:  # noqa: BLE001 - wrapped and re-raised

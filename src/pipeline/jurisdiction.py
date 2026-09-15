@@ -13,6 +13,7 @@ not-legal-advice line.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from django.contrib.gis.geos import LineString
@@ -24,7 +25,18 @@ from .crossings import Crossing
 
 # Ways whose centreline *is* the boundary. Treated as District with both
 # authorities flagged, rather than flickering between them along their length.
-BOUNDARY_STREETS = frozenset({"Western Avenue", "Eastern Avenue", "Southern Avenue"})
+BOUNDARY_STREETS = frozenset({"western avenue", "eastern avenue", "southern avenue"})
+
+# OSM names these with a quadrant on the District side and without one on the
+# Maryland side, so an exact match fires on roughly half the length of each
+# street and not the other half - which is worse than not firing at all, because
+# the border inserter then fragments only part of the way and the crossing
+# report shows entries into Montgomery County for a ride that never left the
+# curb.
+_QUADRANT = re.compile(
+    r"\s+(?:north|south)?(?:east|west)$|\s+(?:nw|ne|sw|se|n|s|e|w)$",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -162,7 +174,11 @@ def _length_m(geometry: LineString) -> float:
 def is_boundary_street(name: str | None) -> bool:
     """Whether a way's centreline is itself the District line.
 
-    Not surfaced in UI copy as a legal statement; it decides how the way is
-    tagged, and the crossing list notes both authorities.
+    Normalised before matching: "Western Avenue Northwest" and "Western Avenue"
+    are the same street, and OSM carries both spellings along its length. Not
+    surfaced in UI copy as a legal statement; it decides how the way is tagged,
+    and the crossing list notes both authorities.
     """
-    return name in BOUNDARY_STREETS
+    if not name:
+        return False
+    return _QUADRANT.sub("", name.strip()).casefold() in BOUNDARY_STREETS

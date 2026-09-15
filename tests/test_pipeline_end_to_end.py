@@ -8,6 +8,7 @@ the real stages into a real staging schema.
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
 
@@ -56,6 +57,24 @@ def build_toy_extract(path: Path) -> None:
                 tags={"highway": "track", "surface": "gravel", "tracktype": "grade2"},
             )
         )
+        # A path e-bikes are barred from, and a bridge whose only bike provision
+        # is a sidewalk.
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=400,
+                nodes=[3, 4],
+                version=1,
+                tags={"highway": "path", "electric_bicycle": "no"},
+            )
+        )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=500,
+                nodes=[5, 6],
+                version=1,
+                tags={"highway": "trunk", "bridge": "yes", "name": "Sidepath Bridge"},
+            )
+        )
     finally:
         writer.close()
 
@@ -77,6 +96,14 @@ def states():
     Jurisdiction.objects.create(
         layer="police", name="Arlington", state="VA", geometry=box(-77.00, -76.90)
     )
+    # The state layer the border inserter resolves against. Querying every layer
+    # let a park polygon answer and made the result non-deterministic.
+    Jurisdiction.objects.create(
+        layer="state", name="District of Columbia", state="DC", geometry=box(-77.10, -77.00)
+    )
+    Jurisdiction.objects.create(
+        layer="state", name="Virginia", state="VA", geometry=box(-77.00, -76.90)
+    )
     yield
     Jurisdiction.objects.all().delete()
 
@@ -90,18 +117,47 @@ def workspace(segment_schemas):
         yield source, root
 
 
-def run_pipeline(source: Path, root: Path, *, grade: float = 0.08, log: str | None = None):
-    from pipeline.rebuild import run_rebuild
+def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=()) -> Path:
+    """The reference inputs the rebuild refuses to run without."""
+    directory = root / "reference"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "urban-areas.json").write_text(json.dumps(list(urban)))
+    (directory / "crossings.json").write_text(
+        json.dumps(
+            [
+                {"osm_way_id": way_id, "sidepath_only": True, "roadway_bicycle_legal": False}
+                for way_id in sidepath
+            ]
+        )
+    )
+    (directory / "volume.json").write_text(json.dumps(list(volume)))
+    return directory
+
+
+def run_pipeline(
+    source: Path,
+    root: Path,
+    *,
+    grade: float = 0.08,
+    log: str | None = None,
+    derived: str | None = "yes",
+    urban=(100, 200, 300, 400, 500),
+    sidepath=(),
+    volume=(),
+):
+    from pipeline.rebuild import Stage, run_rebuild
     from pipeline.run import RebuildContext, build_handlers
 
-    context = RebuildContext(source_pbf=source, work_dir=root / "work")
+    reference = write_reference_data(root, urban=urban, sidepath=sidepath, volume=volume)
+    context = RebuildContext(source_pbf=source, work_dir=root / "work", reference_dir=reference)
     default_log = "... Using LUA script: /conf/lua/graph.lua ..."
     handlers = build_handlers(
         context,
         run=lambda command: log if log is not None else default_log,
         sample_grade=lambda: grade,
+        sample_derived_tag=lambda: derived,
     )
-    report = run_rebuild(handlers)
+    report = run_rebuild(handlers, skip=frozenset({Stage.SWAP, Stage.RECONCILE}))
     return context, report
 
 
@@ -112,7 +168,7 @@ def test_a_full_rebuild_populates_the_staging_schema(workspace, states) -> None:
     assert report.completed, "stages must have run"
     with connection.cursor() as cursor:
         cursor.execute("SELECT count(*) FROM staging.segment")
-        assert cursor.fetchone()[0] == 3, "one segment per way"
+        assert cursor.fetchone()[0] == 5, "one segment per way"
         cursor.execute("SELECT osm_way_id, stress_tier FROM staging.segment ORDER BY osm_way_id")
         tiers = dict(cursor.fetchall())
 
@@ -219,3 +275,109 @@ def test_writers_refuse_to_target_the_live_schema() -> None:
 
     with pytest.raises(ValueError, match="never target the live schema"):
         write_segments("live", [])
+
+
+def test_a_rebuild_without_reference_data_refuses_to_run(workspace, states) -> None:
+    """Every one of these inputs had an empty default, so the rebuild ran to
+    completion and produced a plausible wrong map: the District graded against
+    rural speeds, no volume anywhere, the e-bike variant a copy of standard.
+    Nothing raised. Failing here is the point."""
+    from pipeline.rebuild import RebuildFailed, Stage, run_rebuild
+    from pipeline.run import RebuildContext, build_handlers
+
+    source, root = workspace
+    context = RebuildContext(
+        source_pbf=source, work_dir=root / "work", reference_dir=root / "absent"
+    )
+    handlers = build_handlers(
+        context, run=lambda c: "", sample_grade=lambda: 0.1, sample_derived_tag=lambda: "yes"
+    )
+    with pytest.raises(RebuildFailed) as caught:
+        run_rebuild(handlers, skip=frozenset({Stage.SWAP, Stage.RECONCILE}))
+    assert caught.value.stage is Stage.LOAD_REFERENCE_DATA
+
+
+def test_a_missing_handler_raises_rather_than_being_skipped() -> None:
+    """Silently continuing made an omitted stage indistinguishable from a
+    deliberate one: the report said the rebuild ran, and its segments simply had
+    no jurisdiction on them."""
+    from pipeline.rebuild import Stage, StageNotImplemented, run_rebuild
+
+    with pytest.raises(StageNotImplemented, match="fetch_extract"):
+        run_rebuild({}, skip=frozenset())
+    assert Stage.FETCH_EXTRACT
+
+
+def test_the_ebike_variant_is_not_a_copy_of_standard(workspace, states) -> None:
+    """inject()'s result was computed and discarded, so the e-bike extract was
+    byte-identical to standard and an e-bike route could run where e-bikes are
+    barred - the app asserting a legality it has no basis for."""
+    from pipeline.extract import read_ways
+    from pipeline.variants import Variant
+
+    source, root = workspace
+    context, _ = run_pipeline(source, root)
+
+    ebike = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.EBIKE))}
+    standard = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert ebike[400].get("bicycle") == "no", "an e-bike-barred way must be barred here"
+    assert standard[400].get("bicycle") != "no", "and not on the standard variant"
+
+
+def test_stress_reaches_the_extract_the_tiles_are_built_from(workspace, states) -> None:
+    """Classification ran after the tiles were built, so the tag transform read
+    a tier that did not exist yet and the graph carried no stress at all."""
+    from pipeline.extract import read_ways
+    from pipeline.variants import Variant
+
+    source, root = workspace
+    context, _ = run_pipeline(source, root)
+
+    tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert tags[100].get("rm:stress_tier"), "every way must carry its tier"
+    assert tags[200].get("rm:trail_class") == "yes"
+
+
+def test_a_sidepath_only_bridge_is_dropped_from_the_no_trail_variant(workspace, states) -> None:
+    """The id set was plumbed and never populated, and the lookup read a tag no
+    real way carries - so the router could hand a thousand-person field a bridge
+    sidewalk with no way off it mid-span."""
+    from pipeline.extract import read_ways
+    from pipeline.variants import Variant
+
+    source, root = workspace
+    context, _ = run_pipeline(source, root, sidepath=(500,))
+
+    no_trail = {w.osm_id for w in read_ways(context.variant_pbf(Variant.NO_TRAIL))}
+    standard = {w.osm_id for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert 500 in standard
+    assert 500 not in no_trail
+
+
+def test_volume_reaches_the_classifier(workspace, states) -> None:
+    """conflate() was called only from its own test, so aadt was None for every
+    way and the input the plan spends pages on never reached the map."""
+    source, root = workspace
+    volume = [
+        {
+            "id": "count-1",
+            "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+            "aadt": 900,
+            "source": "state",
+            "year": 2025,
+        }
+    ]
+    context, _ = run_pipeline(source, root, volume=volume)
+    assert context.aadt_by_way.get(100) == (900, "state")
+    assert context.stress_by_way[100].volume_source == "state"
+
+
+def test_a_transform_that_loads_but_does_nothing_fails_the_build(workspace, states) -> None:
+    """The log line proves a script was loaded; it does not prove the script did
+    anything. Only reading a known edge back proves the derived tags survived."""
+    from pipeline.rebuild import RebuildFailed
+
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, derived=None)
+    assert "produced nothing usable" in str(caught.value.cause)

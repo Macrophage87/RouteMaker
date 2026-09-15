@@ -26,10 +26,17 @@ def test_trail_class_ignores_the_bicycle_tag() -> None:
 
 def test_sidepath_bridges_count_as_trail_class() -> None:
     """Most Potomac and Anacostia crossings are bike-legal only by a sidepath;
-    missing them would leave the no-trail variant thinking they are roadways."""
-    tags = {"highway": "trunk", "_osm_id": "99"}
-    assert not is_trail_class(tags)
-    assert is_trail_class(tags, sidepath_bridge_ids=[99])
+    missing them would leave the no-trail variant thinking they are roadways.
+
+    The id is a parameter, not a tag. The earlier version read `_osm_id` from the
+    tag dict, which only this test ever set - a way read from a real PBF carries
+    OSM's own tags and nothing else, so the lookup could never match in the
+    pipeline while the test passed.
+    """
+    tags = {"highway": "trunk"}
+    assert not is_trail_class(tags, 99)
+    assert is_trail_class(tags, 99, frozenset({99}))
+    assert not is_trail_class(tags, 98, frozenset({99}))
 
 
 def test_ebike_bars_only_where_electric_bicycles_are_barred() -> None:

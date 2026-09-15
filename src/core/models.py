@@ -65,10 +65,13 @@ class Segment(models.Model):
 
 
 class AuthorityLayer(models.TextChoices):
+    """The authority layers a crossing can change."""
+
     """The three layers a crossing can change, which are genuinely different
     questions: who polices it, who owns the right of way, and who manages the
     land. The body that issues a permit is frequently not a police agency."""
 
+    STATE = "state", "State or district"
     POLICE = "police", "Police authority"
     RIGHT_OF_WAY = "row", "Right-of-way owner"
     MANAGER = "manager", "Park or trail manager"

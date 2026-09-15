@@ -101,8 +101,16 @@ PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane", "left", 
 
 RIDEABLE_SHOULDER_M = 1.2
 
-# Virginia's statutory default where a highway is not surface treated.
-UNPAVED_RURAL_DEFAULT_MPH = 35.0
+# An unsurveyed unpaved rural lane. Deliberately below the 35 mph boundary at
+# which mixed traffic becomes LTS4, rather than exactly on it: Virginia's
+# statutory default for a highway that is not surface treated is 35, and reading
+# it as exactly 35 put every gravel road in Loudoun at maximum stress. The roads
+# the rural references actually ride - Hibbs Bridge, Featherbed, Mountain Road -
+# are tagged `unclassified` or `tertiary` with `surface=gravel`, not as farm
+# tracks, so the `track` carve-out did not reach them. This club chooses gravel
+# because it carries less traffic, and an overlay that paints those roads as
+# arterials inverts the meaning of the map on a rural route.
+UNPAVED_RURAL_DEFAULT_MPH = 30.0
 
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000

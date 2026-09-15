@@ -24,7 +24,7 @@ def test_failure_names_its_stage() -> None:
 
     handlers = {Stage.FETCH_EXTRACT: lambda: None, Stage.BUILD_TILES: boom}
     with pytest.raises(RebuildFailed) as caught:
-        run_rebuild(handlers)
+        run_rebuild(handlers, skip=frozenset(set(Stage) - set(handlers)))
     assert caught.value.stage is Stage.BUILD_TILES
     assert "build_tiles" in str(caught.value)
 
@@ -42,8 +42,25 @@ def test_failure_stops_before_later_stages() -> None:
         Stage.RECONCILE: lambda: ran.append(Stage.RECONCILE),
     }
     with pytest.raises(RebuildFailed):
-        run_rebuild(handlers)
+        run_rebuild(handlers, skip=frozenset(set(Stage) - set(handlers)))
     assert ran == [], "no stage after a failure may run"
+
+
+def test_derived_values_are_computed_before_the_extract_is_written() -> None:
+    """The tag transform reads them at tile build time, so anything computed
+    afterwards reaches the graph in no way at all. An earlier order classified
+    stress after building tiles, and the tiles carried none."""
+    order = list(Stage)
+    for stage in (Stage.CONFLATE_VOLUME, Stage.CLASSIFY_STRESS, Stage.INSERT_BORDER_NODES):
+        assert order.index(stage) < order.index(Stage.INJECT_TAGS)
+    assert order.index(Stage.INJECT_TAGS) < order.index(Stage.BUILD_TILES)
+
+
+def test_reference_data_loads_before_anything_consumes_it() -> None:
+    """Every stage after it produces a plausible wrong map when its inputs are
+    empty, rather than failing."""
+    order = list(Stage)
+    assert order.index(Stage.LOAD_REFERENCE_DATA) == order.index(Stage.FETCH_EXTRACT) + 1
 
 
 def test_validation_precedes_the_swap() -> None:

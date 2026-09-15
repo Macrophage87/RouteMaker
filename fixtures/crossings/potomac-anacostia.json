@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Arlington Memorial Bridge",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": true,
+    "sidepath_only": false,
+    "police": "US Park Police",
+    "row_owner": "National Park Service",
+    "manager": "National Park Service",
+    "note": "Roadway is bike-legal end to end and one authority throughout; the midpoint heuristic must not split it."
+  },
+  {
+    "name": "Key Bridge",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": true,
+    "police": "MPD / Arlington County Police",
+    "row_owner": "DDOT / VDOT",
+    "manager": null,
+    "note": "Bike provision is a narrow sidewalk. Must be trail-class on the no-trail variant so a mass ride is never routed onto it."
+  },
+  {
+    "name": "Chain Bridge",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": true,
+    "police": "MPD / Fairfax County Police",
+    "row_owner": "DDOT / VDOT",
+    "manager": null,
+    "note": "Five-foot sidewalk with no way off mid-span."
+  },
+  {
+    "name": "14th Street Bridge (Mount Vernon Trail connection)",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": true,
+    "police": "US Park Police",
+    "row_owner": "National Park Service / VDOT",
+    "manager": "National Park Service",
+    "note": "Several parallel structures under different authorities; not one bridge and not one answer."
+  },
+  {
+    "name": "Woodrow Wilson Bridge path",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": true,
+    "police": "Alexandria PD / MDTA",
+    "row_owner": "MDTA",
+    "manager": null,
+    "note": "Separate structure from the roadway; the Jones Point sliver is the short-crossing case."
+  },
+  {
+    "name": "Sousa Bridge (Pennsylvania Avenue SE)",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": true,
+    "sidepath_only": false,
+    "police": "MPD",
+    "row_owner": "DDOT",
+    "manager": null,
+    "note": "Anacostia crossing usable by a mass ride."
+  },
+  {
+    "name": "11th Street Bridge",
+    "osm_way_id": 0,
+    "roadway_bicycle_legal": true,
+    "sidepath_only": false,
+    "police": "MPD",
+    "row_owner": "DDOT",
+    "manager": null,
+    "note": "Local span carries bikes; the freeway spans do not."
+  }
+]

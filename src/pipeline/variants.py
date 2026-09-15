@@ -35,7 +35,11 @@ class Variant(Enum):
     EBIKE = "ebike"
 
 
-def is_trail_class(tags: dict[str, str], sidepath_bridge_ids: frozenset[int] = frozenset()) -> bool:
+def is_trail_class(
+    tags: dict[str, str],
+    osm_id: int | None = None,
+    sidepath_bridge_ids: frozenset[int] = frozenset(),
+) -> bool:
     """Whether a way is trail class.
 
     Sidepath-only bridge ways count, because most Potomac and Anacostia
@@ -48,8 +52,11 @@ def is_trail_class(tags: dict[str, str], sidepath_bridge_ids: frozenset[int] = f
     """
     if tags.get("highway") in TRAIL_CLASS_HIGHWAY:
         return True
-    way_id = tags.get("_osm_id")
-    return way_id is not None and int(way_id) in sidepath_bridge_ids
+    # The id is a parameter rather than a tag. An earlier version read it from
+    # `tags["_osm_id"]`, which only a test ever set: a way read from a real PBF
+    # carries OSM's own tags and nothing else, so the sidepath lookup could never
+    # match and the test proved the function rather than the pipeline.
+    return osm_id is not None and osm_id in sidepath_bridge_ids
 
 
 def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
@@ -62,13 +69,18 @@ def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
     return frozenset(
         int(row["osm_way_id"])
         for row in rows
-        if row.get("sidepath_only") or row.get("roadway_bicycle_legal") is False
+        # Way id 0 means the crossing is recorded but not yet matched to the
+        # clipped extract. Skipped rather than matched against way 0, which
+        # exists and is not a bridge.
+        if int(row.get("osm_way_id") or 0) != 0
+        and (row.get("sidepath_only") or row.get("roadway_bicycle_legal") is False)
     )
 
 
 def inject(
     variant: Variant,
     tags: dict[str, str],
+    osm_id: int | None = None,
     sidepath_bridge_ids: frozenset[int] = frozenset(),
 ) -> dict[str, str] | None:
     """Return the tags this variant should build with, or None to drop the way.
@@ -81,7 +93,7 @@ def inject(
         return dict(tags)
 
     if variant is Variant.NO_TRAIL:
-        return None if is_trail_class(tags, sidepath_bridge_ids) else dict(tags)
+        return None if is_trail_class(tags, osm_id, sidepath_bridge_ids) else dict(tags)
 
     if variant is Variant.EBIKE:
         out = dict(tags)
