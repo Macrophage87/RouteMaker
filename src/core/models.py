@@ -360,6 +360,31 @@ class BanTombstone(models.Model):
         db_table = "ban_tombstone"
 
 
+class ScheduledRun(models.Model):
+    """One run of one periodic task, successful or not.
+
+    The alerts read this table rather than a log stream, because the failures
+    that matter most here are the ones that produce nothing to read: a rebuild
+    that stopped being scheduled and a backup that stopped being taken both emit
+    no error at all. An alert built on the absence of an error would stay silent
+    through exactly those, so what is watched is the absence of a recent success.
+    """
+
+    task = models.CharField(max_length=64)
+    started_at = models.DateTimeField()
+    finished_at = models.DateTimeField(null=True, blank=True)
+    succeeded = models.BooleanField(default=False)
+    detail = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "scheduled_run"
+        indexes = [models.Index(fields=["task", "-started_at"])]
+
+    def __str__(self) -> str:
+        state = "succeeded" if self.succeeded else ("running" if not self.finished_at else "failed")
+        return f"{self.task} {state} at {self.started_at:%Y-%m-%d %H:%M}"
+
+
 class Session(models.Model):
     """A session, carrying the user and the epoch it was issued under.
 

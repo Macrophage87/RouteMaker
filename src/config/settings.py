@@ -71,6 +71,16 @@ AUTHENTICATION_BACKENDS = ["core.auth_backend.DiscordStandingBackend"]
 # protects it - the disabled login, derived staff and per-object checks are.
 ADMIN_PATH = os.environ.get("DJANGO_ADMIN_PATH", "internal-8f3a/")
 
+# Everything with state in it lives on the separate data volume, so nothing
+# durable sits on the root volume and the code directory holds no data. The
+# scheduled tasks resolve their paths from here rather than from their own
+# environment lookups, so one variable moves all of them together.
+DATA_ROOT = Path(os.environ.get("DATA_ROOT", BASE_DIR / "data"))
+REBUILD_WORK_DIR = DATA_ROOT / "rebuild"
+REBUILD_SOURCE_PBF = DATA_ROOT / "extracts" / "source.osm.pbf"
+REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
+BACKUP_DIR = DATA_ROOT / "backups"
+
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 

@@ -10,3 +10,8 @@ ruff
 pyyaml
 osmium
 shapely
+
+# Used by the worker-schedule tests to derive each alert window from its cron
+# expression rather than restate it. A transitive dependency of procrastinate,
+# declared here because the suite imports it directly.
+croniter
