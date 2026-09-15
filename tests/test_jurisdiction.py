@@ -163,3 +163,94 @@ def test_crossing_lengths_sum_to_the_route_length(authorities) -> None:
         route_length = cursor.fetchone()[0]
     covered = sum(c.length_m for c in crossings)
     assert covered == pytest.approx(route_length, rel=0.02)
+
+
+def test_a_route_along_a_shared_boundary_reports_both_authorities(authorities) -> None:
+    """A boundary street's centreline *is* the line, so its vertices sit on the
+    shared edge of two polygons and both authorities apply along its length.
+
+    Until this was carried through, `Crossing.also_authority` was a documented
+    field with no producer: a ride on Eastern Avenue really does involve Prince
+    George's County, and the report called the whole thing DC.
+    """
+    from pipeline.jurisdiction import route_crossings
+
+    # Straight down the shared edge at -77.00, which both police polygons touch.
+    along_the_line = LineString((-77.00, 38.890), (-77.00, 38.910), srid=4326)
+    crossings = route_crossings(along_the_line, layer="police")
+
+    assert crossings, "a route on the line is still inside an authority"
+    shared = [c for c in crossings if c.also_authority]
+    assert shared, "both authorities apply along a boundary street"
+    named = {shared[0].authority, shared[0].also_authority}
+    assert named == {"MPD", "Arlington County Police"}
+
+
+def test_a_route_inside_one_authority_names_no_second(authorities) -> None:
+    """The field is for a street that runs along a boundary, not for every route
+    that ends near one."""
+    from pipeline.jurisdiction import route_crossings
+
+    inside = LineString((-77.04, 38.890), (-77.02, 38.910), srid=4326)
+    crossings = route_crossings(inside, layer="police")
+    assert crossings
+    assert all(crossing.also_authority is None for crossing in crossings)
+
+
+def test_clipping_a_neighbour_at_one_vertex_is_not_a_shared_run(authorities) -> None:
+    """A run is reported as shared only where it is shared along its whole
+    length; one vertex touching a neighbouring polygon at a corner is a route
+    crossing a boundary, not a street running along one."""
+    from pipeline.jurisdiction import route_crossings
+
+    # Mostly inside DC, touching the shared edge only at its final vertex.
+    grazing = LineString((-77.04, 38.900), (-77.00, 38.900), srid=4326)
+    crossings = route_crossings(grazing, layer="police")
+    dc_runs = [c for c in crossings if c.authority == "MPD"]
+    assert dc_runs
+    assert all(crossing.also_authority is None for crossing in dc_runs)
+
+
+def test_a_run_that_leaves_the_boundary_stops_being_shared(authorities) -> None:
+    """The case the first vertex alone cannot answer.
+
+    Reading the shared authority off the vertex that opens a run is not enough:
+    a route that starts on the line and turns away from it is on Eastern Avenue
+    for one vertex and inside the District for the rest, and reporting the whole
+    stretch as shared would put a county on a permit application that the ride
+    never entered.
+    """
+    from pipeline.jurisdiction import route_crossings
+
+    leaving = LineString((-77.00, 38.900), (-77.04, 38.900), srid=4326)
+    crossings = route_crossings(leaving, layer="police")
+    dc_runs = [c for c in crossings if c.authority == "MPD"]
+    assert dc_runs
+    assert all(crossing.also_authority is None for crossing in dc_runs)
+
+
+def test_a_long_boundary_stretch_between_two_inland_legs_is_still_reported(authorities) -> None:
+    """The discrimination the minimum makes, stated where it bites.
+
+    A momentary shared vertex at an ordinary crossing is a transition and is
+    folded into the leg it opens. A stretch that runs for blocks with a leg on
+    either side is a boundary street, and absorbing it would report a ride down
+    Eastern Avenue as DC end to end - which is the thing the field exists to
+    prevent.
+    """
+    from pipeline.jurisdiction import route_crossings
+
+    down_the_line = LineString(
+        (-77.02, 38.890),
+        (-77.00, 38.892),
+        (-77.00, 38.908),
+        (-77.02, 38.910),
+        srid=4326,
+    )
+    crossings = route_crossings(down_the_line, layer="police")
+    shared = [c for c in crossings if c.also_authority]
+    assert len(shared) == 1, [
+        (c.authority, c.also_authority, round(c.end_m - c.start_m)) for c in crossings
+    ]
+    assert shared[0].length_m > 1000, "the stretch along the line is most of the route"
+    assert {shared[0].authority, shared[0].also_authority} == {"MPD", "Arlington County Police"}

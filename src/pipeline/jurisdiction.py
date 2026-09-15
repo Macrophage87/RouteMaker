@@ -72,7 +72,27 @@ def assign_way(geometry: LineString) -> list[LayerAssignment]:
         ]
 
 
-def route_crossings(geometry: LineString, layer: str, step_m: float = 25.0) -> list[Crossing]:
+# How close a vertex must come to a second authority on the same layer before
+# both are taken to apply. A boundary street's centreline *is* the line, so its
+# vertices sit within centimetres of both polygons along the whole street, while
+# a route merely crossing a boundary is that close for one step. Measured on the
+# geography, so it is metres rather than degrees.
+SHARED_BOUNDARY_TOLERANCE_M = 2.0
+
+# How far a shared stretch has to run before it is reported as one. Every
+# ordinary boundary crossing has one vertex within the tolerance of both sides,
+# so without this every crossing grows a metre-long "both authorities" run in
+# front of it and an out-and-back through one county reports four entries instead
+# of two. A boundary street runs for blocks; a transition is a step or less.
+MIN_SHARED_RUN_M = 50.0
+
+
+def route_crossings(
+    geometry: LineString,
+    layer: str,
+    step_m: float = 25.0,
+    shared_tolerance_m: float = SHARED_BOUNDARY_TOLERANCE_M,
+) -> list[Crossing]:
     """Ordered stretches of the route inside each authority on one layer.
 
     Walked sequentially rather than derived by locating intersection pieces on
@@ -109,10 +129,11 @@ def route_crossings(geometry: LineString, layer: str, step_m: float = 25.0) -> l
                    j.is_federal_enclave
             FROM vertices v
             LEFT JOIN jurisdiction j
-              ON j.layer = %s AND ST_Intersects(j.geometry, v.point)
+              ON j.layer = %s
+             AND ST_DWithin(j.geometry::geography, v.point::geography, %s)
             ORDER BY v.idx, j.is_federal_enclave DESC NULLS LAST, j.name
             """,
-            [geometry.ewkb, step_m, layer],
+            [geometry.ewkb, step_m, layer, shared_tolerance_m],
         )
         rows = cursor.fetchall()
 
@@ -126,47 +147,95 @@ def route_crossings(geometry: LineString, layer: str, step_m: float = 25.0) -> l
     # authorities along a shared edge. Federal enclaves sort first, because where
     # one overlaps another polygon it is the enclave that changes the permit
     # question.
-    per_vertex: dict[int, tuple[float, float, str | None, bool]] = {}
+    # Every authority within the tolerance is kept, not just the winner, and the
+    # run boundary is drawn on that whole set rather than on the first of them.
+    #
+    # On a shared edge, which of two polygons a vertex is "in" flips with the
+    # floating-point accident of each coordinate, so keying runs on the winner
+    # alone turned a straight line down one boundary into five crossings that
+    # alternated between the two counties - the same fragmentation the border
+    # inserter's boundary-street carve-out exists to prevent, arriving by a
+    # different route. The *pair* is stable along that street even though the
+    # winner is not.
+    #
+    # This is also what gives `Crossing.also_authority` a producer at all. It was
+    # a documented field written by nothing, so a ride down Eastern Avenue -
+    # which really does involve Prince George's County - was reported as DC end
+    # to end.
+    per_vertex: dict[int, tuple[float, float, tuple[str, ...], bool]] = {}
     for idx, lon, lat, name, enclave in rows:
-        if idx not in per_vertex or (name is not None and per_vertex[idx][2] is None):
-            per_vertex[idx] = (lon, lat, name, bool(enclave))
+        existing = per_vertex.get(idx)
+        names = existing[2] if existing else ()
+        if name is not None and name not in names:
+            names = (*names, name)
+        per_vertex[idx] = (lon, lat, names, bool(enclave) or bool(existing and existing[3]))
 
     ordered = [per_vertex[idx] for idx in sorted(per_vertex)]
 
-    crossings: list[Crossing] = []
+    runs: list[list] = []  # [names, start_m, end_m, enclave]
     travelled = 0.0
-    run_start = 0.0
-    current: str | None = None
-    current_enclave = False
+    current: tuple[str, ...] = ()
 
-    for position, (lon, lat, name, enclave) in enumerate(ordered):
+    for position, (lon, lat, names, enclave) in enumerate(ordered):
         if position > 0:
             previous = ordered[position - 1]
             travelled += haversine(Point(previous[0], previous[1]), Point(lon, lat))
-        if name != current:
-            if current is not None:
-                crossings.append(
-                    Crossing(
-                        layer=layer,
-                        authority=current,
-                        start_m=run_start,
-                        end_m=travelled,
-                        is_federal_enclave=current_enclave,
-                    )
-                )
-            current, current_enclave, run_start = name, enclave, travelled
+        if names != current:
+            current = names
+            runs.append([names, travelled, travelled, enclave])
+        elif runs:
+            runs[-1][2] = travelled
+            runs[-1][3] = runs[-1][3] or enclave
+    if runs:
+        runs[-1][2] = travelled
 
-    if current is not None:
-        crossings.append(
-            Crossing(
-                layer=layer,
-                authority=current,
-                start_m=run_start,
-                end_m=travelled,
-                is_federal_enclave=current_enclave,
-            )
+    return [
+        Crossing(
+            layer=layer,
+            authority=names[0],
+            start_m=start,
+            end_m=end,
+            is_federal_enclave=enclave,
+            # Singular, because two is the case that occurs: a centreline lies
+            # between two polygons. Where a third somehow applies, the ordering
+            # is the query's, so which two are named is at least deterministic.
+            also_authority=names[1] if len(names) > 1 else None,
         )
-    return crossings
+        for names, start, end, enclave in _absorb_transitions(runs)
+        # A vertex in no polygon on this layer is a gap in coverage, not an
+        # authority called nothing.
+        if names
+    ]
+
+
+def _absorb_transitions(runs: list[list]) -> list[list]:
+    """Fold a momentary shared stretch into the neighbour it belongs to.
+
+    Every boundary crossing puts one vertex within the tolerance of both sides,
+    so without this each one grows a metre-long "both authorities" run in front
+    of it: an out-and-back through one county reports four entries rather than
+    two, and the jurisdiction mileage on a permit application is wrong in both
+    directions. A stretch that runs for blocks is a boundary street and stays.
+    """
+    kept: list[list] = []
+    for index, run in enumerate(runs):
+        names, start, end, _enclave = run
+        if len(names) > 1 and end - start < MIN_SHARED_RUN_M:
+            # Merge into whichever neighbour shares an authority with it, the
+            # following one first: a transition belongs to what the route is
+            # entering rather than to what it is leaving.
+            following = runs[index + 1] if index + 1 < len(runs) else None
+            if following is not None and set(following[0]) & set(names):
+                following[1] = start
+                continue
+            if kept and set(kept[-1][0]) & set(names):
+                kept[-1][2] = end
+                continue
+        if kept and kept[-1][0] == names:
+            kept[-1][2] = end
+            continue
+        kept.append(run)
+    return kept
 
 
 def _length_m(geometry: LineString) -> float:
