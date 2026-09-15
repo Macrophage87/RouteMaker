@@ -1,0 +1,43 @@
+{
+  "mjolnir": {
+    "tile_dir": "/data/valhalla",
+    "tile_extract": "/data/valhalla/tiles.tar",
+    "admin": "/data/valhalla/admin.sqlite",
+    "timezone": "/data/valhalla/tz_world.sqlite",
+    "graph_lua_name": "/conf/graph.lua",
+    "logging": { "type": "std_out", "color": false },
+    "additional_data": { "elevation": "/data/elevation" },
+    "hierarchy": true,
+    "shortcuts": true,
+    "concurrency": 4
+  },
+  "additional_data": { "elevation": "/data/elevation" },
+  "loki": {
+    "actions": ["route", "trace_route", "trace_attributes", "locate", "status"],
+    "service_defaults": { "radius": 0, "minimum_reachability": 50 },
+    "logging": { "type": "std_out", "color": false }
+  },
+  "thor": { "logging": { "type": "std_out", "color": false } },
+  "odin": { "logging": { "type": "std_out", "color": false } },
+  "service_limits": {
+    "bicycle": {
+      "max_distance": 500000.0,
+      "max_locations": 50,
+      "max_matrix_distance": 200000.0
+    },
+    "max_exclude_locations": 200,
+    "max_exclude_polygons_length": 50000,
+    "max_alternates": 3,
+    "trace": { "max_shape": 32000, "max_distance": 200000.0 }
+  },
+  "httpd": {
+    "service": {
+      "listen": "tcp://*:8002",
+      "loopback": "ipc:///tmp/loopback",
+      "interrupt": "ipc:///tmp/interrupt"
+    }
+  },
+  "loki_workers": 2,
+  "thor_workers": 4,
+  "odin_workers": 2
+}

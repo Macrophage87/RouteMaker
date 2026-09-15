@@ -7,3 +7,4 @@ defusedxml
 pytest
 pytest-django
 ruff
+pyyaml

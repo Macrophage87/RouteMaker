@@ -48,3 +48,5 @@ jobs:
       # smoke test: they are what stops a tuning change from silently redefining
       # what a mass ride is.
       - run: pytest -q
+      - name: Compose stack rules
+        run: python scripts/check_compose_limits.py

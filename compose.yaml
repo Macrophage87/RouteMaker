@@ -1,0 +1,168 @@
+# One stack on one host, per the plan's Deployment section.
+#
+# Two rules this file exists to enforce, both asserted in CI rather than trusted
+# to review:
+#
+# 1. Only Caddy publishes a port. Photon, Valhalla, the renderer and the bot are
+#    reachable only from inside this network; the bot in particular is the source
+#    of authorization truth and must never be addressable from outside.
+# 2. Every service declares both a memory and a CPU limit. The memory limits keep
+#    the peak inside host RAM including the duplicate Valhalla containers that
+#    exist during a swap; the CPU limit on the rebuild is what stops a six-hour
+#    build from saturating every core and destroying the latency target.
+#
+# Secrets are scoped per service rather than handed to every container by a
+# shared env_file, which would put the key-encryption key in Photon and Valhalla
+# and contradict the claim that one component alone holds the bot token.
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  caddy:
+    <<: *restart
+    image: caddy:2.8-alpine
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ${DATA_ROOT}/caddy:/data
+      - ${DATA_ROOT}/static:/srv/static:ro
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    deploy:
+      resources:
+        limits: { memory: 256M, cpus: "0.5" }
+
+  api:
+    <<: *restart
+    image: routemaker/api:${TAG}
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
+      PGPASSWORD: ${PGPASSWORD}
+    depends_on: [postgis]
+    deploy:
+      resources:
+        limits: { memory: 2G, cpus: "2" }
+
+  worker:
+    <<: *restart
+    image: routemaker/api:${TAG}
+    command: ["procrastinate", "--app=config.procrastinate.app", "worker"]
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
+      PGPASSWORD: ${PGPASSWORD}
+    depends_on: [postgis]
+    deploy:
+      resources:
+        limits: { memory: 2G, cpus: "2" }
+
+  migrate:
+    image: routemaker/api:${TAG}
+    command: ["./manage.py", "migrate", "--noinput"]
+    restart: "no"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      PGPASSWORD: ${PGPASSWORD}
+    depends_on: [postgis]
+    deploy:
+      resources:
+        limits: { memory: 256M, cpus: "1" }
+
+  postgis:
+    <<: *restart
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_DB: routemaker
+      POSTGRES_USER: routemaker
+      POSTGRES_PASSWORD: ${PGPASSWORD}
+    volumes: ["${DATA_ROOT}/postgres:/var/lib/postgresql/data"]
+    deploy:
+      resources:
+        limits: { memory: 4G, cpus: "4" }
+
+  photon:
+    <<: *restart
+    image: rtuszik/photon-docker:latest
+    volumes: ["${DATA_ROOT}/photon:/photon/photon_data"]
+    deploy:
+      resources:
+        limits: { memory: 3G, cpus: "2" }
+
+  # One process per tile variant. Worker counts are explicit because the layer 4
+  # candidate set is issued concurrently under a per-modality latency bound, and
+  # a single thor worker would serialise it.
+  valhalla-standard:
+    <<: *restart
+    image: ghcr.io/valhalla/valhalla:3.5.1
+    environment:
+      VALHALLA_CONFIG: /conf/valhalla-standard.json
+    volumes:
+      - ${DATA_ROOT}/tiles/standard:/data:ro
+      - ./valhalla:/conf:ro
+    deploy:
+      resources:
+        limits: { memory: 2G, cpus: "2" }
+
+  valhalla-no-trail:
+    <<: *restart
+    image: ghcr.io/valhalla/valhalla:3.5.1
+    environment:
+      VALHALLA_CONFIG: /conf/valhalla-no-trail.json
+    volumes:
+      - ${DATA_ROOT}/tiles/no-trail:/data:ro
+      - ./valhalla:/conf:ro
+    deploy:
+      resources:
+        limits: { memory: 2G, cpus: "2" }
+
+  valhalla-ebike:
+    <<: *restart
+    image: ghcr.io/valhalla/valhalla:3.5.1
+    environment:
+      VALHALLA_CONFIG: /conf/valhalla-ebike.json
+    volumes:
+      - ${DATA_ROOT}/tiles/ebike:/data:ro
+      - ./valhalla:/conf:ro
+    deploy:
+      resources:
+        limits: { memory: 2G, cpus: "2" }
+
+  renderer:
+    <<: *restart
+    image: routemaker/renderer:${TAG}
+    deploy:
+      resources:
+        limits: { memory: 1G, cpus: "1" }
+
+  # The only component that holds the bot token, and the source of authorization
+  # truth. Exposes its membership interface on the internal network behind a
+  # shared secret, read-only.
+  bot:
+    <<: *restart
+    image: routemaker/bot:${TAG}
+    environment:
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      BOT_INTERNAL_SECRET: ${BOT_INTERNAL_SECRET}
+      PGPASSWORD: ${PGPASSWORD}
+    depends_on: [postgis]
+    deploy:
+      resources:
+        limits: { memory: 512M, cpus: "1" }
+
+  # Exits before the validation containers start, so the build and the duplicate
+  # Valhalla processes are never resident together. Takes half the cores.
+  rebuild:
+    image: routemaker/pipeline:${TAG}
+    profiles: ["rebuild"]
+    restart: "no"
+    environment:
+      PGPASSWORD: ${PGPASSWORD}
+    volumes:
+      - ${DATA_ROOT}/tiles:/tiles
+      - ${DATA_ROOT}/extracts:/extracts
+    deploy:
+      resources:
+        limits: { memory: 8G, cpus: "4" }
