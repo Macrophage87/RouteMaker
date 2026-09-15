@@ -188,6 +188,7 @@ class User(AbstractBaseUser):
     is_deleted = models.BooleanField(default=False)
     # Deployment-level, held by no club. The only role that may cross guilds.
     is_instance_admin = models.BooleanField(default=False)
+    # Deliberately not a plain flag anyone may clear. See `check_last_instance_admin`.
 
     USERNAME_FIELD = "discord_user_id"
 
@@ -202,6 +203,24 @@ class User(AbstractBaseUser):
         # no code path anywhere can give an account a usable password.
         if self.has_usable_password():
             self.set_unusable_password()
+
+        # And the deployment must not be left with nobody who can administer it.
+        # Checked here rather than in the admin so every path reaches it: the
+        # admin, a management command, and the deletion flow all go through save.
+        if self.pk is not None:
+            previous = (
+                User.objects.filter(pk=self.pk)
+                .only("is_instance_admin", "is_banned", "is_deleted")
+                .first()
+            )
+            if previous is not None and previous.is_instance_admin:
+                losing_it = (
+                    not self.is_instance_admin
+                    or (self.is_banned and not previous.is_banned)
+                    or (self.is_deleted and not previous.is_deleted)
+                )
+                check_last_instance_admin(previous, removing=losing_it)
+
         return super().save(*args, **kwargs)
 
     @property
@@ -393,6 +412,47 @@ class BanTombstone(models.Model):
         db_table = "ban_tombstone"
 
 
+class AuditLogEntry(models.Model):
+    """One attempt at a privileged write, permitted or refused.
+
+    The visibility assertions the plan makes about the admin all end in "and the
+    attempt is audited" - a guild admin cannot edit a membership row, a role
+    mapping, or a route's owning guild, and the attempt is on the record. Without
+    a log those assertions have a half that cannot be implemented, so a refusal
+    was indistinguishable from nobody having tried.
+
+    Deliberately narrow, for the same reason the membership cache is: it records
+    who acted on what and whether it was allowed, not what the row contained.
+    Where a value matters - the guild snowflake every standing check matches
+    against - it is named in `detail` rather than the whole object being copied.
+    """
+
+    class Outcome(models.TextChoices):
+        ALLOWED = "allowed", "Allowed"
+        REFUSED = "refused", "Refused"
+
+    at = models.DateTimeField(auto_now_add=True)
+    actor = models.ForeignKey(
+        "User", on_delete=models.SET_NULL, null=True, related_name="audit_entries"
+    )
+    action = models.CharField(max_length=32)
+    model = models.CharField(max_length=64)
+    object_id = models.CharField(max_length=64, blank=True)
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    detail = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "audit_log"
+        indexes = [
+            models.Index(fields=["-at"]),
+            models.Index(fields=["actor", "-at"]),
+            models.Index(fields=["model", "-at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.actor_id} {self.outcome} {self.action} {self.model} {self.object_id}"
+
+
 class ScheduledRun(models.Model):
     """One run of one periodic task, successful or not.
 
@@ -441,3 +501,34 @@ class Session(models.Model):
     class Meta:
         db_table = "app_session"
         indexes = [models.Index(fields=["user"])]
+
+
+class LastInstanceAdmin(RuntimeError):
+    """The deployment would be left with nobody who can administer it."""
+
+
+def check_last_instance_admin(user: User, *, removing: bool) -> None:
+    """Refuse the change that would leave no instance admin at all.
+
+    There is no password login and no `createsuperuser` path on this deployment -
+    the model forces an unusable password and `is_superuser` has no setter - so
+    an instance admin who clears their own flag, or is banned or deleted, cannot
+    be restored through the application at all. The recovery is a hand-written
+    UPDATE against production by whoever has database access, which is a worse
+    position than the one this refusal creates.
+
+    Checked here rather than in the admin so that every path reaches it: the
+    admin, a management command, and the deletion flow all go through save().
+    """
+    if not removing or not user.is_instance_admin:
+        return
+    remaining = (
+        User.objects.filter(is_instance_admin=True, is_banned=False, is_deleted=False)
+        .exclude(pk=user.pk)
+        .exists()
+    )
+    if not remaining:
+        raise LastInstanceAdmin(
+            "refusing to remove the last instance admin; there is no login path that "
+            "could restore one, so appoint another first"
+        )

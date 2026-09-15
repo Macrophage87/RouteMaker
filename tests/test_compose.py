@@ -6,11 +6,8 @@ suite as everything else, rather than only on push.
 
 from __future__ import annotations
 
-import subprocess
-import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
@@ -22,27 +19,32 @@ def limits(name: str) -> dict:
     return SERVICES[name].get("deploy", {}).get("resources", {}).get("limits", {})
 
 
-@pytest.mark.parametrize("name", sorted(SERVICES))
-def test_every_service_has_a_memory_limit(name: str) -> None:
-    """A service with no memory limit can take PostGIS down with it."""
-    assert "memory" in limits(name), f"{name} has no memory limit"
+def test_every_service_declares_both_limits() -> None:
+    """A service with no memory limit can take PostGIS down with it, and a
+    six-hour rebuild with no CPU limit saturates every core and destroys the
+    preview latency target and the canary health check along with it.
+
+    One test reporting every offending service, rather than three parametrised
+    over thirteen services each. Twenty-six near-identical cases said nothing
+    that this does not, and a stack that lost limits on four services reported
+    four failures where one naming all four is what an operator needs.
+    """
+    missing = {
+        name: sorted({"memory", "cpus"} - set(limits(name)))
+        for name in sorted(SERVICES)
+        if not {"memory", "cpus"} <= set(limits(name))
+    }
+    assert not missing, f"services missing limits: {missing}"
 
 
-@pytest.mark.parametrize("name", sorted(SERVICES))
-def test_every_service_has_a_cpu_limit(name: str) -> None:
-    """A six-hour rebuild with no CPU limit saturates every core and destroys the
-    preview latency target and the canary health check along with it."""
-    assert "cpus" in limits(name), f"{name} has no CPU limit"
-
-
-@pytest.mark.parametrize("name", sorted(SERVICES))
-def test_only_the_edge_proxy_publishes_ports(name: str) -> None:
+def test_only_the_edge_proxy_publishes_ports() -> None:
     """Photon, Valhalla, the renderer and the bot are reachable only from inside.
     The bot is the source of authorization truth and must never be addressable
     from outside the host."""
-    if name == "caddy":
-        return
-    assert not SERVICES[name].get("ports"), f"{name} publishes a port"
+    published = sorted(
+        name for name, service in SERVICES.items() if name != "caddy" and service.get("ports")
+    )
+    assert not published, f"services publishing ports: {published}"
 
 
 def test_the_bot_alone_holds_the_bot_token() -> None:
@@ -76,12 +78,22 @@ def test_one_valhalla_process_per_tile_variant() -> None:
     assert variants == ["valhalla-ebike", "valhalla-no-trail", "valhalla-standard"]
 
 
-def test_limits_script_passes_on_the_committed_stack() -> None:
-    result = subprocess.run(
-        [sys.executable, "scripts/check_compose_limits.py"],
-        cwd=REPO,
-        capture_output=True,
-        text=True,
-        check=False,
+def test_the_swap_time_peak_fits_in_the_host() -> None:
+    """The one rule the script adds that this file does not: the sum of the
+    limits, including the duplicate Valhalla containers resident during a swap,
+    has to stay under host RAM.
+
+    Run in-process rather than as a subprocess. The script used to be shelled out
+    to here, which re-ran the two limit checks above a fourth time and reported
+    whatever it found as a single opaque return code.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_compose_limits", REPO / "scripts" / "check_compose_limits.py"
     )
-    assert result.returncode == 0, result.stderr
+    assert spec is not None and spec.loader is not None
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+
+    assert script.main() == 0

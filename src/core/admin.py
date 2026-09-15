@@ -26,7 +26,15 @@ from django.contrib.gis.admin import GISModelAdmin
 from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404
 
-from .models import BorderCrossing, CachedMembership, ConfiguredGuild, Jurisdiction, Override
+from .models import (
+    AuditLogEntry,
+    BorderCrossing,
+    CachedMembership,
+    ConfiguredGuild,
+    Jurisdiction,
+    Override,
+    RoleMapping,
+)
 
 
 class RouteMakerAdminSite(admin.AdminSite):
@@ -65,7 +73,72 @@ class RouteMakerAdminSite(admin.AdminSite):
 site = RouteMakerAdminSite(name="routemaker_admin")
 
 
-class GuildScopedAdmin(admin.ModelAdmin):
+def audit(request, action: str, model: str, object_id, outcome: str, detail: str = "") -> None:
+    """Record one attempt at a privileged write.
+
+    Every visibility assertion the plan makes about the admin ends in "and the
+    attempt is audited". Without this the refusals were real and the record of
+    them was not, so a refused edit and nobody having tried looked the same
+    afterwards.
+
+    Narrow on purpose, like the membership cache: who acted on what and whether
+    it was allowed, never a copy of the row.
+    """
+    actor = getattr(request, "user", None)
+    AuditLogEntry.objects.create(
+        actor=actor if getattr(actor, "pk", None) else None,
+        action=action,
+        model=model,
+        object_id=str(object_id or ""),
+        outcome=outcome,
+        detail=detail[:2000],
+    )
+
+
+class AuditedAdmin(admin.ModelAdmin):
+    """Records what was written, and what was refused.
+
+    The refusal half matters more. Django asks `has_*_permission` and, when the
+    answer is no, renders a 403 and calls nothing else - so the attempt leaves no
+    trace anywhere unless the check itself writes one.
+    """
+
+    def _audited_permission(self, request, action: str, obj, allowed: bool) -> bool:
+        if not allowed:
+            audit(
+                request,
+                action,
+                self.model._meta.model_name,
+                getattr(obj, "pk", None),
+                AuditLogEntry.Outcome.REFUSED,
+                detail=f"{type(self).__name__} refused {action}",
+            )
+        return allowed
+
+    def save_model(self, request, obj, form, change) -> None:
+        super().save_model(request, obj, form, change)
+        audit(
+            request,
+            "change" if change else "add",
+            self.model._meta.model_name,
+            obj.pk,
+            AuditLogEntry.Outcome.ALLOWED,
+            detail=", ".join(sorted(form.changed_data)) if form else "",
+        )
+
+    def delete_model(self, request, obj) -> None:
+        object_id = obj.pk
+        super().delete_model(request, obj)
+        audit(
+            request,
+            "delete",
+            self.model._meta.model_name,
+            object_id,
+            AuditLogEntry.Outcome.ALLOWED,
+        )
+
+
+class GuildScopedAdmin(AuditedAdmin):
     """Base class carrying the scoping rule, so no later surface has to remember it.
 
     A subclass that forgets to declare its scope field raises rather than
@@ -92,7 +165,7 @@ class GuildScopedAdmin(admin.ModelAdmin):
         return queryset.filter(**{f"{self.guild_scope_field}__in": guild_ids})
 
 
-class InstanceAdminOnly(admin.ModelAdmin):
+class InstanceAdminOnly(AuditedAdmin):
     """For deployment-wide content, where one club's admin must not act.
 
     Approving an override row changes routing for every guild, and a jurisdiction
@@ -104,13 +177,13 @@ class InstanceAdminOnly(admin.ModelAdmin):
         return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_add_permission(self, request) -> bool:
-        return self._is_instance_admin(request)
+        return self._audited_permission(request, "add", None, self._is_instance_admin(request))
 
     def has_change_permission(self, request, obj=None) -> bool:
-        return self._is_instance_admin(request)
+        return self._audited_permission(request, "change", obj, self._is_instance_admin(request))
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        return self._is_instance_admin(request)
+        return self._audited_permission(request, "delete", obj, self._is_instance_admin(request))
 
 
 @admin.register(Jurisdiction, site=site)
@@ -158,10 +231,12 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
     readonly_fields = ("guild_id", "state", "state_since", "standing_valid_until")
 
     def has_add_permission(self, request) -> bool:
-        return bool(getattr(request.user, "is_instance_admin", False))
+        allowed = bool(getattr(request.user, "is_instance_admin", False))
+        return self._audited_permission(request, "add", None, allowed)
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        return bool(getattr(request.user, "is_instance_admin", False))
+        allowed = bool(getattr(request.user, "is_instance_admin", False))
+        return self._audited_permission(request, "delete", obj, allowed)
 
 
 @admin.register(CachedMembership, site=site)
@@ -171,6 +246,71 @@ class CachedMembershipAdmin(GuildScopedAdmin):
 
     guild_scope_field = "guild__guild_id"
     list_display = ("discord_user_id", "guild", "last_confirmed", "pending")
+
+    def has_add_permission(self, request) -> bool:
+        return self._audited_permission(request, "add", None, False)
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._audited_permission(request, "change", obj, False)
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return self._audited_permission(request, "delete", obj, False)
+
+
+@admin.register(RoleMapping, site=site)
+class RoleMappingAdmin(GuildScopedAdmin):
+    """One Discord role to one application permission, within one guild.
+
+    The plan names this page in phase 1 and it was not registered at all, so the
+    only way to grant standing in a new guild was a hand-written INSERT. It is
+    also the surface the visibility assertions are about: a guild admin who could
+    edit another guild's mapping could grant themselves any permission there, and
+    one who could edit `guild` could move a mapping wholesale.
+
+    Instance-admin only for writes, because a mapping decides who holds guild
+    admin and a guild admin editing their own guild's mapping is the definition
+    of privilege escalation. A guild admin sees their own guild's rows and
+    nothing else.
+    """
+
+    guild_scope_field = "guild__guild_id"
+    list_display = ("guild", "role_id", "permission")
+    list_filter = ("permission",)
+    search_fields = ("role_id",)
+
+    def _is_instance_admin(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_add_permission(self, request) -> bool:
+        return self._audited_permission(request, "add", None, self._is_instance_admin(request))
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return self._audited_permission(request, "change", obj, self._is_instance_admin(request))
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return self._audited_permission(request, "delete", obj, self._is_instance_admin(request))
+
+
+@admin.register(AuditLogEntry, site=site)
+class AuditLogEntryAdmin(admin.ModelAdmin):
+    """Read-only, to everyone, including an instance admin.
+
+    A log whose entries can be edited or deleted from the surface it audits is
+    not a log. Instance-admin only to *read*, because it names who acted where
+    and that is the same sensitivity as the membership cache.
+    """
+
+    list_display = ("at", "actor", "action", "model", "object_id", "outcome")
+    list_filter = ("outcome", "action", "model")
+    search_fields = ("object_id", "detail")
+    readonly_fields = ("at", "actor", "action", "model", "object_id", "outcome", "detail")
+    ordering = ("-at",)
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_module_permission(self, request) -> bool:
+        return self.has_view_permission(request)
 
     def has_add_permission(self, request) -> bool:
         return False

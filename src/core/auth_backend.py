@@ -41,7 +41,20 @@ class DiscordStandingBackend:
     # editing guild_id is an unaudited remap of the snowflake that every standing
     # check matches against.
     INSTANCE_ADMIN_ONLY_MODELS = frozenset(
-        {"configuredguild", "jurisdiction", "override", "bantombstone", "user"}
+        {
+            "configuredguild",
+            "jurisdiction",
+            "override",
+            "bantombstone",
+            "user",
+            # A mapping decides who holds guild admin, so a guild admin editing
+            # their own guild's mapping is the definition of privilege
+            # escalation.
+            "rolemapping",
+            # Nobody writes the log, including an instance admin. A log whose
+            # entries can be edited from the surface it audits is not a log.
+            "auditlogentry",
+        }
     )
     WRITE_ACTIONS = ("add_", "change_", "delete_")
 

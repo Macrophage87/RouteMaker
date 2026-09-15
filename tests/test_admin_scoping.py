@@ -217,3 +217,181 @@ def test_an_instance_admin_sees_every_guild() -> None:
     attach_standing(admin_user)
     visible = ConfiguredGuildAdmin(ConfiguredGuild, site).get_queryset(Request(admin_user))
     assert visible.count() >= 2
+
+
+@pytest.fixture
+def guild(db):
+    from core.models import ConfiguredGuild
+
+    return ConfiguredGuild.objects.create(guild_id=5000, name="Test Club")
+
+
+@pytest.fixture
+def instance_admin(db):
+    return get_user_model().objects.create(discord_user_id=9001, is_instance_admin=True)
+
+
+@pytest.fixture
+def guild_admin(db, guild):
+    from core.auth_backend import attach_standing
+    from core.models import CachedMembership, RoleMapping
+
+    user = get_user_model().objects.create(discord_user_id=9002)
+    RoleMapping.objects.create(
+        guild=guild, role_id=7, permission=RoleMapping.Permission.GUILD_ADMIN
+    )
+    CachedMembership.objects.create(
+        discord_user_id=user.discord_user_id,
+        guild=guild,
+        role_ids=[7],
+        last_confirmed=timezone.now(),
+    )
+    attach_standing(user)
+    return user
+
+
+class TestTheAuditedHalfOfEveryVisibilityAssertion:
+    """Every assertion the plan makes about the admin ends in "and the attempt is
+    audited". Until the log existed the refusals were real and the record of them
+    was not: a refused edit and nobody having tried looked the same afterwards.
+    """
+
+    def test_a_refused_write_is_recorded(self, guild_admin) -> None:
+        from core.admin import RoleMappingAdmin, site
+        from core.models import AuditLogEntry, RoleMapping
+
+        request = Request(guild_admin)
+        assert not RoleMappingAdmin(RoleMapping, site).has_change_permission(request)
+
+        entry = AuditLogEntry.objects.get()
+        assert entry.actor == guild_admin
+        assert entry.outcome == AuditLogEntry.Outcome.REFUSED
+        assert entry.model == "rolemapping"
+        assert entry.action == "change"
+
+    def test_a_permitted_check_is_not_an_attempt(self, instance_admin) -> None:
+        from core.admin import RoleMappingAdmin, site
+        from core.models import AuditLogEntry, RoleMapping
+
+        assert RoleMappingAdmin(RoleMapping, site).has_change_permission(Request(instance_admin))
+        assert not AuditLogEntry.objects.filter(outcome=AuditLogEntry.Outcome.REFUSED).exists()
+
+    def test_a_guild_admin_cannot_reach_the_membership_table_or_the_mapping(
+        self, guild_admin
+    ) -> None:
+        """Editing the cached membership table grants any role in any guild;
+        editing a mapping decides who holds guild admin."""
+        from core.admin import CachedMembershipAdmin, RoleMappingAdmin, site
+        from core.models import AuditLogEntry, CachedMembership, RoleMapping
+
+        request = Request(guild_admin)
+        assert not CachedMembershipAdmin(CachedMembership, site).has_change_permission(request)
+        assert not RoleMappingAdmin(RoleMapping, site).has_add_permission(request)
+        assert not RoleMappingAdmin(RoleMapping, site).has_delete_permission(request)
+
+        refused = AuditLogEntry.objects.filter(outcome=AuditLogEntry.Outcome.REFUSED)
+        assert {entry.model for entry in refused} == {"cachedmembership", "rolemapping"}
+
+    def test_the_log_is_read_only_to_everyone_including_an_instance_admin(
+        self, instance_admin
+    ) -> None:
+        """A log whose entries can be edited or deleted from the surface it
+        audits is not a log."""
+        from core.admin import AuditLogEntryAdmin, site
+        from core.models import AuditLogEntry
+
+        request = Request(instance_admin)
+        page = AuditLogEntryAdmin(AuditLogEntry, site)
+
+        assert page.has_view_permission(request)
+        assert not page.has_add_permission(request)
+        assert not page.has_change_permission(request)
+        assert not page.has_delete_permission(request)
+
+    def test_a_guild_admin_cannot_read_the_log(self, guild_admin) -> None:
+        """It names who acted where, which is the same sensitivity as the
+        membership cache."""
+        from core.admin import AuditLogEntryAdmin, site
+        from core.models import AuditLogEntry
+
+        assert not AuditLogEntryAdmin(AuditLogEntry, site).has_view_permission(Request(guild_admin))
+
+    def test_a_guild_admin_sees_only_their_own_guilds_mappings(self, guild_admin, guild) -> None:
+        from core.admin import RoleMappingAdmin, site
+        from core.models import ConfiguredGuild, RoleMapping
+
+        other = ConfiguredGuild.objects.create(guild_id=6000, name="Another Club")
+        RoleMapping.objects.create(guild=other, role_id=9, permission=RoleMapping.Permission.MEMBER)
+
+        visible = RoleMappingAdmin(RoleMapping, site).get_queryset(Request(guild_admin))
+        assert {row.guild_id for row in visible} == {guild.id}
+
+
+class TestTheLastInstanceAdmin:
+    """There is no password login and no createsuperuser path on this
+    deployment, so an instance admin who clears their own flag cannot be restored
+    through the application at all. The recovery is a hand-written UPDATE against
+    production, which is a worse position than this refusal creates.
+    """
+
+    def test_removing_the_last_instance_admin_is_refused(self, instance_admin) -> None:
+        from core.models import LastInstanceAdmin
+
+        instance_admin.is_instance_admin = False
+        with pytest.raises(LastInstanceAdmin, match="appoint another first"):
+            instance_admin.save()
+
+    def test_banning_or_deleting_the_last_instance_admin_is_refused(self, instance_admin) -> None:
+        """A ban takes the admin away as effectively as clearing the flag does,
+        which is the whole point of deriving is_staff rather than storing it."""
+        from core.models import LastInstanceAdmin
+
+        instance_admin.is_banned = True
+        with pytest.raises(LastInstanceAdmin):
+            instance_admin.save()
+
+        instance_admin.is_banned = False
+        instance_admin.is_deleted = True
+        with pytest.raises(LastInstanceAdmin):
+            instance_admin.save()
+
+    def test_removing_one_of_two_is_allowed(self, instance_admin) -> None:
+        User = get_user_model()
+        User.objects.create(discord_user_id=98765, is_instance_admin=True)
+        instance_admin.is_instance_admin = False
+        instance_admin.save()
+        assert User.objects.filter(is_instance_admin=True).count() == 1
+
+    def test_a_banned_admin_does_not_count_as_the_remaining_one(self, instance_admin) -> None:
+        """Otherwise the last usable admin can be removed as long as an unusable
+        one exists, which is the same failure with an extra step."""
+        from core.models import LastInstanceAdmin
+
+        get_user_model().objects.create(
+            discord_user_id=98766, is_instance_admin=True, is_banned=True
+        )
+        instance_admin.is_instance_admin = False
+        with pytest.raises(LastInstanceAdmin):
+            instance_admin.save()
+
+
+class TestInstanceAdminSurvivesADegradedDeployment:
+    def test_the_admin_holds_when_every_guild_is_degraded_and_the_bot_is_down(
+        self, instance_admin, guild
+    ) -> None:
+        """The case the degraded window exists to be survivable: the bot is down,
+        every guild's standing has lapsed, and somebody still has to be able to
+        reach the admin and mark a guild revoked."""
+        from datetime import timedelta
+
+        from core.admin import site
+        from core.auth_backend import attach_standing
+
+        guild.state = "degraded"
+        guild.standing_valid_until = timezone.now() - timedelta(days=30)
+        guild.save()
+
+        attach_standing(instance_admin)
+        assert instance_admin._admin_guild_ids == frozenset()
+        assert instance_admin.is_staff, "the instance admin is not guild-derived"
+        assert site.has_permission(Request(instance_admin))
