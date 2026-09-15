@@ -70,6 +70,33 @@ function M.bounded_surface(current, proposed)
   return current
 end
 
+-- Values that leave a way open to the public on a bicycle. Anything else - and
+-- anything this table does not recognise, such as permit, military,
+-- agricultural or forestry - counts as a restriction rather than being assumed
+-- permissive, because the failure direction that matters here is claiming
+-- access the tags do not grant.
+M.OPEN_ACCESS = {
+  yes = true, designated = true, permissive = true, destination = true,
+}
+
+--- Is this way closed to the public on a bicycle?
+--
+-- An explicit bicycle tag settles it either way: `bicycle=yes` on an
+-- `access=no` service road is a way bicycles may use, and `bicycle=no` bars one
+-- the general access tag would have allowed. Only with no bicycle tag at all
+-- does the general `access` value decide.
+function M.access_is_restricted(tags)
+  local bike = tags.bicycle
+  if bike ~= nil then
+    return not M.OPEN_ACCESS[bike]
+  end
+  local access = tags.access
+  if access == nil then
+    return false
+  end
+  return not M.OPEN_ACCESS[access]
+end
+
 --- Remap one way's tags. Returns a table of *changes* only.
 function M.remap_way(tags, derived)
   derived = derived or {}
@@ -83,7 +110,19 @@ function M.remap_way(tags, derived)
   -- DC's sidewalk mapping is extensive, and it would put every preset on the
   -- pavement. Those ways already land on a cycleway or path use class and get
   -- upstream's accommodation factor, so the write gains nothing there anyway.
-  if derived.stress_tier == 1 and not tags.cycleway and not derived.is_trail_class then
+  -- Never on a way the public may not ride. `classify` grades stress, not
+  -- access, so a gated service road or a private farm track with no traffic on
+  -- it scores LTS1 - and writing cycleway=track there makes upstream derive bike
+  -- access for a way Valhalla had dropped as closed. Verified against real
+  -- tiles: access=no alone is absent from the built graph, access=no plus
+  -- cycleway=track is present and routable. That is the graph asserting a legal
+  -- claim in the widening direction, with no override row and no review, which
+  -- is the one thing the override table exists to be the only path for.
+  if derived.stress_tier == 1
+    and not tags.cycleway
+    and not derived.is_trail_class
+    and not M.access_is_restricted(tags)
+  then
     out.cycleway = "track"
   end
 

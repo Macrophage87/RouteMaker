@@ -130,5 +130,44 @@ check("the remap reaches a way through remap_way",
   M.remap_way({ bicycle = "no", ["bicycle:forward:conditional"] = "yes @ (Su)" },
               {})["bicycle:forward"] == "yes")
 
+-- The LTS1 remap may not grant access the tags do not grant.
+--
+-- classify() grades stress, not access, so a gated service road or a private
+-- farm track - empty of traffic precisely because nobody may drive on it -
+-- scores LTS1. Writing cycleway=track there makes upstream derive bicycle
+-- access for it. Confirmed against real tiles: a way tagged access=no is absent
+-- from the built graph, and the same way with cycleway=track added is present
+-- and routable. The graph would be asserting a legal claim in the widening
+-- direction, with no override row and no review.
+local function lts1_cycleway(tags)
+  return M.remap_way(tags, { stress_tier = 1 }).cycleway
+end
+
+check("a private farm track is not given a cycleway",
+  lts1_cycleway({ highway = "track", access = "no" }) == nil)
+
+check("a gated service road is not given a cycleway",
+  lts1_cycleway({ highway = "service", access = "private" }) == nil)
+
+check("a customers-only way is not given a cycleway",
+  lts1_cycleway({ highway = "service", access = "customers" }) == nil)
+
+check("an access value we do not recognise is treated as a restriction",
+  lts1_cycleway({ highway = "track", access = "permit" }) == nil)
+
+check("bicycle=no bars the remap even where general access is open",
+  lts1_cycleway({ highway = "residential", bicycle = "no" }) == nil)
+
+-- The guard is about access, not about being cautious: it must not cost the
+-- remap the ways it exists for.
+check("an explicit bicycle=yes overrides a restrictive access tag",
+  lts1_cycleway({ highway = "service", access = "no", bicycle = "yes" }) == "track")
+
+check("access=destination is not a restriction",
+  lts1_cycleway({ highway = "residential", access = "destination" }) == "track")
+
+check("an ordinary quiet street is still remapped",
+  lts1_cycleway({ highway = "residential" }) == "track")
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
