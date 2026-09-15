@@ -16,6 +16,7 @@ Valhalla cannot use.
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -108,3 +109,60 @@ def test_the_vendored_upstream_is_pinned_and_present() -> None:
     assert "\nfunction nodes_proc " in source
     assert "\nfunction rels_proc " in source
     assert not source.rstrip().endswith("return M")
+
+
+def test_every_key_the_remap_writes_is_one_valhalla_reads() -> None:
+    """The quality bar's supported-key list, read from the pinned source.
+
+    Valhalla's tile schema is fixed and a key it does not read is dropped in
+    silence - no error, no effect - which is why believing the list is not good
+    enough. `bicycle:forward` and `bicycle:backward` are in it;
+    `bicycle:forward:conditional` is not, and upstream's graph.lua carries a bare
+    `TODO access:conditional` where it would be.
+    """
+    supported = {
+        line.strip()
+        for line in (REPO / "lua" / "vendor" / "supported_keys.txt").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    assert {"bicycle", "bicycle:forward", "bicycle:backward", "cycleway", "surface"} <= supported
+    assert "bicycle:forward:conditional" not in supported
+    assert "bicycle:conditional" not in supported
+
+    source = (REPO / "lua" / "routemaker_remap.lua").read_text()
+    written = set(re.findall(r'out\["([^"]+)"\]\s*=', source))
+    written |= set(re.findall(r"\bout\.(\w+)\s*=", source))
+    written |= set(re.findall(r'out_table\["([^"]+)"\]\s*=', source))
+    # Keys built at runtime from a side, which the regexes above cannot see.
+    written |= {"bicycle:forward", "bicycle:backward"}
+
+    unsupported = {
+        key
+        for key in written
+        # The rm: namespace is this project's own and is stripped by the entry
+        # point before Valhalla sees it, which the entry-point suite asserts.
+        if not key.startswith("rm:") and key not in supported
+    }
+    assert not unsupported, f"the remap writes keys Valhalla drops silently: {sorted(unsupported)}"
+
+
+def test_the_supported_key_list_is_what_the_extractor_produces() -> None:
+    """Regenerated and compared, so a re-vendor that changed the parser's key set
+    fails here rather than leaving a stale list to be trusted."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "extract_valhalla_keys", REPO / "scripts" / "extract_valhalla_keys.py"
+    )
+    assert spec is not None and spec.loader is not None
+    extractor = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(extractor)
+
+    checked_in = [
+        line
+        for line in (REPO / "lua" / "vendor" / "supported_keys.txt").read_text().splitlines()
+        if line and not line.startswith("#")
+    ]
+    assert checked_in == extractor.extract(
+        (REPO / "lua" / "vendor" / "graph_upstream.lua").read_text()
+    )

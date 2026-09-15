@@ -73,5 +73,62 @@ check("a mapping that denied access would be caught",
 check("bridge legality sets bicycle access",
   M.remap_way({ highway = "trunk" }, { bridge_bicycle_legal = false }).bicycle == "no")
 
+-- Directional conditional access, for the parkway reversal. Valhalla reads
+-- bicycle:forward and bicycle:backward and reads no *:conditional key at all -
+-- its own graph.lua carries a bare "TODO access:conditional" - so a road signed
+-- against bicycles except at certain hours reaches the graph as simply barred,
+-- in both directions, at every hour of the week.
+
+local function only(t, key) return t[key] end
+
+check("a conditional grant opens the direction it applies to",
+  only(M.remap_conditional_access(
+    { bicycle = "no", ["bicycle:forward:conditional"] = "yes @ (Sa,Su)" }), "bicycle:forward")
+    == "yes")
+
+check("and leaves the other direction alone",
+  only(M.remap_conditional_access(
+    { bicycle = "no", ["bicycle:forward:conditional"] = "yes @ (Sa,Su)" }), "bicycle:backward")
+    == nil)
+
+check("an undirected conditional applies to both directions",
+  only(M.remap_conditional_access(
+    { bicycle = "no", ["bicycle:conditional"] = "designated @ (Sa,Su 07:00-19:00)" }),
+    "bicycle:backward") == "designated")
+
+-- A static graph cannot represent time, so a time-limited restriction must not
+-- be written as a permanent one. An unroutable edge is also the answer that
+-- tells the rider nothing: the route goes another way and nothing can say why.
+check("a conditional restriction never denies access the base tags allow",
+  only(M.remap_conditional_access(
+    { bicycle = "yes", ["bicycle:backward:conditional"] = "no @ (Mo-Fr 16:00-19:00)" }),
+    "bicycle:backward") == nil)
+
+check("nor does one on an otherwise untagged way",
+  only(M.remap_conditional_access(
+    { ["bicycle:conditional"] = "no @ (Mo-Fr 07:00-09:30)" }), "bicycle:forward") == nil)
+
+check("the condition is kept whether or not it changed the graph",
+  only(M.remap_conditional_access(
+    { ["bicycle:conditional"] = "no @ (Mo-Fr 07:00-09:30)" }), "rm:access_conditional_forward")
+    == "no @ (Mo-Fr 07:00-09:30)")
+
+check("a way with no conditional tag is untouched",
+  next(M.remap_conditional_access({ highway = "residential" })) == nil)
+
+-- The separator is not parsed: conditions carry ; and , inside them.
+local multi = M.parse_conditional("no @ (Mo-Fr 07:00-09:00); yes @ (Sa,Su 10:00-16:00)")
+check("both rules of a multi-rule conditional are read", #multi == 2)
+check("a condition containing a comma survives intact",
+  multi[2].condition == "Sa,Su 10:00-16:00")
+check("a bare value with no condition reads as itself",
+  M.parse_conditional("no")[1].value == "no")
+check("an unparseable value yields no rules",
+  #M.parse_conditional("@@@ (") == 0)
+
+check("the remap reaches a way through remap_way",
+  M.remap_way({ bicycle = "no", ["bicycle:forward:conditional"] = "yes @ (Su)" },
+              {})["bicycle:forward"] == "yes")
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

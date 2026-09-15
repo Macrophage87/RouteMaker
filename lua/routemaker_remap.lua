@@ -101,6 +101,101 @@ function M.remap_way(tags, derived)
     out.lit = derived.lit and "yes" or "no"
   end
 
+  for key, value in pairs(M.remap_conditional_access(tags)) do
+    out[key] = value
+  end
+
+  return out
+end
+
+-- Directional conditional access, for the parkway reversal.
+--
+-- Valhalla reads `bicycle:forward` and `bicycle:backward` - both are in the
+-- checked-in supported-key list - and does not read any `*:conditional` key at
+-- all. Its own graph.lua carries a bare `-- TODO access:conditional`. So a road
+-- signed against bicycles except at certain hours arrives in the graph as simply
+-- barred, in both directions, at every hour of the week.
+--
+-- The static resolution is the *least* restrictive value across the base tag and
+-- the conditional branches, never the most. A tile build cannot represent time,
+-- so the choice is between a way that is routable when it is legal and a way
+-- that is unroutable when it is legal too. An unroutable edge also tells the
+-- rider nothing: the route simply goes another way and no part of the interface
+-- can say why. Reporting *when* the restriction applies is phase 3's, which is
+-- why the condition text is preserved rather than discarded here.
+--
+-- This never denies access the base tags allow. Tightening on a conditional is
+-- the one direction that would make the graph assert a legal claim, which is
+-- the thing this project does not do.
+M.ACCESS_RANK = {
+  no = 1, private = 2, customers = 3, destination = 4,
+  permissive = 5, designated = 6, yes = 6,
+}
+
+--- Parse an OSM conditional value into a list of { value, condition } entries.
+--
+-- The separator is not parsed. Conditions carry `;` and `,` inside them, so the
+-- rules are matched as `value @ (condition)` wherever they appear, which is
+-- exact for every shape the wiki documents and cannot be tripped by a separator
+-- inside a condition.
+function M.parse_conditional(value)
+  local out = {}
+  if not value then return out end
+  for branch, condition in value:gmatch("([%a_]+)%s*@%s*%(([^)]*)%)") do
+    out[#out + 1] = { value = branch, condition = condition }
+  end
+  if #out == 0 and value:match("^%s*[%a_]+%s*$") then
+    -- A bare value with no condition is not conditional at all, but it appears
+    -- in the wild on these keys and reads as unconditional.
+    out[#out + 1] = { value = value:match("^%s*([%a_]+)%s*$"), condition = nil }
+  end
+  return out
+end
+
+--- A conditional value that is less restrictive than the base, or nil.
+--
+-- An absent base tag counts as fully permissive, not as unknown. Valhalla's own
+-- defaults already allow a bicycle on an untagged road, so there is nothing to
+-- open and a time-limited restriction must not be written as a permanent one:
+-- that is the tightening this remap does not do.
+function M.least_restrictive(base, conditional_value)
+  local branches = M.parse_conditional(conditional_value)
+  if #branches == 0 then return nil end
+
+  local best, best_rank = nil, M.ACCESS_RANK[base] or M.ACCESS_RANK.yes
+  for _, branch in ipairs(branches) do
+    local rank = M.ACCESS_RANK[branch.value]
+    if rank and rank > best_rank then
+      best, best_rank = branch.value, rank
+    end
+  end
+  return best
+end
+
+--- Resolve conditional access onto the directional keys Valhalla reads.
+function M.remap_conditional_access(tags)
+  local out = {}
+  -- The undirected conditional applies to both directions unless a directional
+  -- one is present for that direction, which is the wiki's own precedence.
+  local both = tags["bicycle:conditional"]
+
+  for _, side in ipairs({ "forward", "backward" }) do
+    local key = "bicycle:" .. side
+    local conditional = tags[key .. ":conditional"] or both
+    if conditional then
+      -- Recorded whenever one applies, whether or not it changes the graph, so
+      -- phase 3 can report when the restriction is in force. Namespaced, so the
+      -- entry point strips it before Valhalla sees it.
+      out["rm:access_conditional_" .. side] = conditional
+
+      local base = tags[key] or tags.bicycle
+      local resolved = M.least_restrictive(base, conditional)
+      if resolved and resolved ~= base then
+        out[key] = resolved
+      end
+    end
+  end
+
   return out
 end
 
