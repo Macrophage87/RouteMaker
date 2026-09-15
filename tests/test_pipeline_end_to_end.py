@@ -17,6 +17,8 @@ import pytest
 from django.contrib.gis.geos import MultiPolygon, Polygon
 from django.db import connection
 
+from pipeline.borders import SyntheticNodeIds
+
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
@@ -189,11 +191,11 @@ def test_the_border_node_reaches_the_crossings_table(workspace, states) -> None:
     assert len(crossings) == 1
     assert {crossings[0].state_a, crossings[0].state_b} == {"DC", "VA"}
     assert crossings[0].osm_way_id == 100
-    assert crossings[0].node_id < 0, "synthetic ids come from the reserved range"
+    assert SyntheticNodeIds.is_synthetic(crossings[0].node_id)
 
 
 def test_the_written_extract_carries_the_border_node_in_the_way(workspace, states) -> None:
-    """Round-tripped through a real PBF: a negative node id has to survive the
+    """Round-tripped through a real PBF: a minted node id has to survive the
     write, which nothing verified before."""
     from pipeline.extract import read_ways
     from pipeline.variants import Variant
@@ -202,8 +204,41 @@ def test_the_written_extract_carries_the_border_node_in_the_way(workspace, state
     context, _ = run_pipeline(source, root)
 
     ways = {w.osm_id: w for w in read_ways(context.variant_pbf(Variant.STANDARD))}
-    assert any(node_id < 0 for node_id in ways[100].node_ids)
+    assert any(SyntheticNodeIds.is_synthetic(node_id) for node_id in ways[100].node_ids)
     assert 200 in ways, "the standard variant keeps trails"
+
+
+def test_the_written_extract_keeps_its_node_block_sorted(workspace, states) -> None:
+    """valhalla_build_tiles rejects an unsorted file outright.
+
+    It reads node ids as unsigned and requires ascending order, so it aborts with
+    "Detected unsorted input data" before writing a tile. The first version
+    minted negative ids - which arrive as values near 2**64 - and wrote them
+    ahead of the source nodes, so every tile build would have failed on the first
+    block. Neither half was checked: the assertions were that the id was negative
+    and that it came back out of the file again.
+    """
+    from pipeline.variants import Variant
+
+    source, root = workspace
+    context, _ = run_pipeline(source, root)
+
+    class Order(osmium.SimpleHandler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.node_ids: list[int] = []
+
+        def node(self, n) -> None:  # noqa: N802
+            self.node_ids.append(n.id)
+
+    for variant in Variant:
+        order = Order()
+        order.apply_file(str(context.variant_pbf(variant)))
+        assert order.node_ids == sorted(order.node_ids), f"{variant.value} node block is unsorted"
+        minted = [i for i in order.node_ids if SyntheticNodeIds.is_synthetic(i)]
+        source_ids = [i for i in order.node_ids if not SyntheticNodeIds.is_synthetic(i)]
+        assert minted, f"{variant.value} carries no minted node"
+        assert min(minted) > max(source_ids), "minted nodes must append, not interleave"
 
 
 def test_the_no_trail_variant_drops_the_trail(workspace, states) -> None:

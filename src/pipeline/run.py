@@ -240,7 +240,7 @@ def build_handlers(
         for way in context.ways:
             nodes = list(
                 borders.find_state_crossings(
-                    way.osm_id, way.coordinates, state_at, allocator, way_name=way.name
+                    way.osm_id, way.located_points(), state_at, allocator, way_name=way.name
                 )
             )
             if nodes:

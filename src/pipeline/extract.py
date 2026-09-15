@@ -23,16 +23,39 @@ DERIVED_PREFIX = "rm:"
 
 @dataclass
 class Way:
-    """One way, with its tags and the coordinates of its nodes."""
+    """One way, with its tags and the coordinates of its nodes.
+
+    `coordinates` is not parallel to `node_ids`. A clipped extract carries no
+    location for nodes that fall outside it, so those nodes have no coordinate
+    and the two lists differ in length on exactly the ways at the edge of the
+    clip. `located` records which node each coordinate came from, so anything
+    that needs to point back at the node list has an index that is right rather
+    than one that happens to line up in the middle of the region.
+    """
 
     osm_id: int
     tags: dict[str, str]
     node_ids: list[int]
     coordinates: list[tuple[float, float]] = field(default_factory=list)
+    # Index into node_ids for each entry in coordinates, in the same order.
+    located: list[int] = field(default_factory=list)
 
     @property
     def name(self) -> str | None:
         return self.tags.get("name")
+
+    def located_points(self) -> list[tuple[int, float, float]]:
+        """(node-list index, lon, lat) for every node whose location is known."""
+        if len(self.located) != len(self.coordinates):
+            raise ValueError(
+                f"way {self.osm_id} has {len(self.coordinates)} coordinates but "
+                f"{len(self.located)} node indices; they are built together and "
+                "must stay in step"
+            )
+        return [
+            (index, lon, lat)
+            for index, (lon, lat) in zip(self.located, self.coordinates, strict=True)
+        ]
 
 
 class WayCollector(osmium.SimpleHandler):
@@ -81,9 +104,13 @@ def read_ways(path: str | Path, keep: Callable[[dict[str, str]], bool] | None = 
     locator.apply_file(str(path))
 
     for way in collector.ways:
-        way.coordinates = [
-            locator.locations[node_id] for node_id in way.node_ids if node_id in locator.locations
+        located = [
+            (index, locator.locations[node_id])
+            for index, node_id in enumerate(way.node_ids)
+            if node_id in locator.locations
         ]
+        way.located = [index for index, _ in located]
+        way.coordinates = [point for _, point in located]
     return collector.ways
 
 
@@ -112,20 +139,54 @@ def write_extract(
     Way ids are never minted or altered here, which is what keeps the segment
     key, the trace join and anchor reconciliation pointing at the same things
     across rebuilds. Only tags and node lists change.
+
+    The minted nodes are written after every source node and before the first
+    way, which is the only position that produces a file valhalla_build_tiles
+    will read. An OSM file is ordered nodes, then ways, then relations, and
+    within a block by ascending id; the parser rejects anything else outright
+    with "Detected unsorted input data" rather than sorting it. Writing them up
+    front, as the first version did, put ids above every source id at the head of
+    the node block.
     """
     drop_ways = drop_ways or set()
     writer = osmium.SimpleWriter(str(destination))
     try:
-        for node_id, lon, lat, tags in new_nodes:
-            writer.add_node(
-                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags=tags, version=1)
-            )
 
         class Copier(osmium.SimpleHandler):
+            def __init__(self) -> None:
+                super().__init__()
+                self.flushed = False
+                self.highest_source_node_id = 0
+
+            def flush_new_nodes(self) -> None:
+                """Append the minted nodes to the end of the node block."""
+                if self.flushed:
+                    return
+                self.flushed = True
+                for node_id, lon, lat, tags in sorted(new_nodes):
+                    if node_id <= self.highest_source_node_id:
+                        # Appending only keeps the block sorted while the
+                        # reserved range stays above every id OSM has issued. If
+                        # that ever stops being true the extract is silently
+                        # unsorted, and the tile build fails a stage later with a
+                        # message that says nothing about node ids.
+                        raise ValueError(
+                            f"minted node {node_id} is not above the highest source node id "
+                            f"{self.highest_source_node_id}; the reserved range has been "
+                            "overtaken and borders.SYNTHETIC_NODE_ID_FLOOR needs raising"
+                        )
+                    writer.add_node(
+                        osmium.osm.mutable.Node(
+                            id=node_id, location=(lon, lat), tags=tags, version=1
+                        )
+                    )
+
             def node(self, n) -> None:  # noqa: N802
+                self.highest_source_node_id = max(self.highest_source_node_id, n.id)
                 writer.add_node(n)
 
             def way(self, w) -> None:  # noqa: N802
+                self.flush_new_nodes()
                 if w.id in drop_ways:
                     return
                 tags = {tag.k: tag.v for tag in w.tags}
@@ -136,9 +197,14 @@ def write_extract(
                 )
 
             def relation(self, r) -> None:  # noqa: N802
+                self.flush_new_nodes()
                 writer.add_relation(r)
 
-        Copier().apply_file(str(source))
+        copier = Copier()
+        copier.apply_file(str(source))
+        # An extract with no ways and no relations never reaches either flush
+        # point. Unreachable for a real region and cheap to be right about.
+        copier.flush_new_nodes()
     finally:
         writer.close()
 
