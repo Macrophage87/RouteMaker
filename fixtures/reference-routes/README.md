@@ -19,7 +19,41 @@ changes above 40 degrees between consecutive segments over 5 metres. A revisit
 is any pair of points within 25 metres of each other but more than 400 metres
 apart along the route.
 
-## What they establish
+## Trail routes (Trailmaxxing)
+
+| Route | Distance | Gain | Max grade | Turns/mi | Shape | Jurisdictions |
+|---|---|---|---|---|---|---|
+| Bethesda Loop | 31.63 mi | 701 ft | 12.2% | 2.9 | loop | DC, MD |
+| Brookside Gardens | 14.65 mi | 746 ft | 12.2% | 2.9 | point-to-point | DC, MD |
+| Annapolis and BWI | 75.73 mi | 2333 ft | 11.8% | 2.3 | point-to-point | DC, MD |
+
+Supplied with the note that some roadway sections are unavoidable, which is the
+point: a trail route is not trails only, it is trails plus the connectors
+between them.
+
+## What the two sets establish together
+
+The presets differ on almost every axis except turn density, which is worth
+knowing because turn count alone does not separate a trail route from a road one.
+
+| | Mass Ride | Trailmaxxing |
+|---|---|---|
+| Distance | 5 to 7 mi | 15 to 76 mi |
+| Gain | 63 to 164 ft | 701 to 2333 ft |
+| Max grade | 4.4 to 6.3% | 11.8 to 12.2% |
+| Turns per mile | 2 to 4 | 2.3 to 2.9 |
+| Jurisdictions | District only | crosses into Maryland |
+
+- **Grade tolerance is per-modality, not global.** Trail routes hit 12%, roughly
+  double what a mass ride ever sees. A single cap would either reject these or
+  be useless for mass rides.
+- **Trail routes cross the District line as a matter of course.** Every one of
+  the three does. This is why the state-crossing penalty defaults off for every
+  modality except Mass Ride; were it on, none of these routes could be produced.
+- **Point spacing is 40 to 54 metres** across both sets, so every fixture
+  arrives as a track and is map-matched, the intended import path.
+
+## What the mass rides establish
 
 - **Distance sits between 5 and 7.5 miles.** Shorter than a club ride, because
   the constraint is how long a thousand people take to clear an intersection,
