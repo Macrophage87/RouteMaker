@@ -54,7 +54,11 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       PGPASSWORD: ${PGPASSWORD}
-    depends_on: [postgis]
+    depends_on:
+      postgis:
+        condition: service_started
+      procrastinate-schema:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits: { memory: 2G, cpus: "2" }
@@ -67,6 +71,25 @@ services:
       DJANGO_SETTINGS_MODULE: config.settings
       PGPASSWORD: ${PGPASSWORD}
     depends_on: [postgis]
+    deploy:
+      resources:
+        limits: { memory: 256M, cpus: "1" }
+
+  # Procrastinate's tables are not Django migrations, so `manage.py migrate`
+  # does not create them and nothing else did either: the worker started, found
+  # no `procrastinate_jobs`, and died. Its own command is idempotent, so this
+  # runs to completion on every `up` and the worker waits for it.
+  procrastinate-schema:
+    image: routemaker/api:${TAG}
+    command: ["procrastinate", "--app=config.procrastinate.app", "schema", "--apply"]
+    restart: "no"
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      PGPASSWORD: ${PGPASSWORD}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits: { memory: 256M, cpus: "1" }

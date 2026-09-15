@@ -97,3 +97,28 @@ def test_the_swap_time_peak_fits_in_the_host() -> None:
     spec.loader.exec_module(script)
 
     assert script.main() == 0
+
+
+def test_the_worker_waits_for_a_schema_that_something_applies() -> None:
+    """Procrastinate's tables are not Django migrations, so `manage.py migrate`
+    does not create them. Nothing else did either: the worker came up, found no
+    `procrastinate_jobs`, and died - every scheduled job in the deployment
+    silently never ran.
+    """
+    services = COMPOSE["services"]
+
+    schema = services["procrastinate-schema"]
+    assert schema["command"][:1] == ["procrastinate"]
+    assert "schema" in schema["command"] and "--apply" in schema["command"]
+    assert schema["restart"] == "no", "a schema apply is a one-shot, not a service"
+
+    # It must run after the database exists, and the worker must not start
+    # before it has finished.
+    assert (
+        schema["depends_on"]["migrate"]["condition"] == "service_completed_successfully"
+    )
+    worker_deps = services["worker"]["depends_on"]
+    assert (
+        worker_deps["procrastinate-schema"]["condition"]
+        == "service_completed_successfully"
+    )

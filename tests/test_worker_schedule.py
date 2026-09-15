@@ -10,7 +10,9 @@ passed for a scheduling test.
 
 from __future__ import annotations
 
+import os
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from django.utils import timezone
@@ -190,3 +192,68 @@ def test_rebuild_is_scheduled_off_peak() -> None:
     minute, hour, _dom, _month, _dow = WEEKLY_REBUILD_CRON.split()
     assert minute == "0"
     assert 6 <= int(hour) <= 10, "08:00 UTC is early morning locally"
+
+
+# --- The worker process, as the worker actually starts ------------------------
+#
+# Everything above reaches the tasks through an already-configured Django: the
+# conftest calls django.setup() before importing anything, so a task invoked
+# from inside pytest finds the app registry ready. The worker does not start
+# that way. It reaches this module by import alone - `procrastinate
+# --app=config.procrastinate.app worker` - and every task body imports a Django
+# model, so each one raised AppRegistryNotReady the moment the worker picked it
+# up. The tasks were registered, scheduled, and completely unable to run, and
+# no test asserting registration could have told the difference.
+#
+# These run in a subprocess for that reason. A test that imports the module
+# in-process is testing the conftest.
+
+WORKER_IMPORT = "import config.procrastinate as p"
+
+
+def _worker_process(code: str):
+    """Run `code` the way the worker runs: a bare interpreter, no django.setup()."""
+    import subprocess
+    import sys
+
+    repo = Path(__file__).resolve().parents[1]
+    return subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        cwd=repo,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(repo / "src"),
+            "DJANGO_SETTINGS_MODULE": "config.settings",
+        },
+    )
+
+
+def test_importing_the_app_configures_django() -> None:
+    """The one thing the worker does before touching a task."""
+    result = _worker_process(
+        f"{WORKER_IMPORT}\n"
+        "from django.apps import apps\n"
+        "assert apps.ready, 'the worker would raise AppRegistryNotReady on every task'\n"
+        "print('READY')"
+    )
+    assert "READY" in result.stdout, result.stderr[-2000:]
+
+
+def test_a_task_body_can_reach_a_django_model_in_that_process() -> None:
+    """Registration is not startability.
+
+    Every task body imports a Django model, and it is the import and the model
+    metadata - not any query - that AppRegistryNotReady refuses. So this asserts
+    exactly that much, and deliberately opens no connection: a worker's first
+    failure was at import, long before it reached the database.
+    """
+    result = _worker_process(
+        f"{WORKER_IMPORT}\n"
+        "from core.models import CachedMembership\n"
+        "assert CachedMembership._meta.db_table\n"
+        "print('REACHED')"
+    )
+    assert "REACHED" in result.stdout, result.stderr[-2000:]

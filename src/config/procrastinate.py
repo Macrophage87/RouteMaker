@@ -14,7 +14,23 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+import django
+from django.apps import apps as django_apps
 from procrastinate import App, PsycopgConnector
+
+# The worker process reaches this module by import - `procrastinate
+# --app=config.procrastinate.app worker` - and nothing else in it starts Django.
+# Every task body below imports a Django model, so without this each one raised
+# AppRegistryNotReady the moment the worker picked it up: the tasks were
+# registered, scheduled and completely unable to run.
+#
+# It did not show up in testing because the test suite's conftest calls
+# django.setup() before importing anything, so a task invoked from inside pytest
+# found the registry ready and passed. Only a process that starts the way the
+# worker starts can tell.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+if not django_apps.ready:
+    django.setup()
 
 app = App(
     connector=PsycopgConnector(
