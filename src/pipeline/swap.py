@@ -6,13 +6,28 @@ window is a live segment table describing the older graph rather than a graph
 nobody is serving. Reconciliation tolerates that direction; it does not tolerate
 the other.
 
-The rename itself is three steps, not one: `live` has to move out of the way
-before `staging` can take the name. It takes an ACCESS EXCLUSIVE lock, so it
-runs under a `lock_timeout` with bounded retry rather than queueing behind an
-in-flight read and then blocking every later one. Persistent connections cache
-query plans against the renamed relations, so the pool is flushed immediately
-after the commit; without that the first post-swap request on each connection
-fails with a stale relation.
+The rename is three steps, not one: `live` has to move out of the way before
+`staging` can take the name.
+
+Two things an earlier draft of this module got wrong, both corrected here and in
+the plan after being tested against a live server rather than reasoned about.
+
+`ALTER SCHEMA ... RENAME` does *not* take a lock on the tables inside the
+schema; it updates one `pg_namespace` row and commits against open readers. The
+statement that actually blocks is `DROP SCHEMA ... CASCADE` on the retired
+schema, which does take ACCESS EXCLUSIVE on its tables. That is what the
+`lock_timeout` and the bounded retry are for.
+
+And because a bare rename serializes nothing, a single READ COMMITTED request
+could read `live.segment` twice in one transaction and see old rows then new
+rows. So the swap takes an explicit ACCESS EXCLUSIVE on the live table inside
+its transaction: in-flight readers finish before the rename commits, later ones
+queue for the moment it takes. That is the lock the design assumed it was
+getting for free.
+
+The plan's claim that persistent connections would serve stale query plans after
+the rename was also wrong - PostgreSQL's plancache invalidates correctly - so
+nothing here closes connections to work around it.
 """
 
 from __future__ import annotations
@@ -23,7 +38,24 @@ from dataclasses import dataclass
 
 from django.db import connection, transaction
 
+from .schema import create_segment_schema, schema_exists
+
 logger = logging.getLogger(__name__)
+
+# PostgreSQL SQLSTATEs for lock contention. Classified by code rather than by
+# matching "lock" in the message: that substring also appears in Django's
+# "end of the 'atomic' block" error, and the message text is locale-dependent,
+# so a non-English server would never have matched a genuine timeout.
+LOCK_SQLSTATES = frozenset({"55P03", "40P01"})
+
+
+def _is_lock_error(error: BaseException) -> bool:
+    for candidate in (error, error.__cause__, error.__context__):
+        sqlstate = getattr(candidate, "sqlstate", None) or getattr(candidate, "pgcode", None)
+        if sqlstate in LOCK_SQLSTATES:
+            return True
+    return False
+
 
 DEFAULT_LOCK_TIMEOUT_MS = 3_000
 DEFAULT_ATTEMPTS = 5
@@ -31,7 +63,15 @@ DEFAULT_BACKOFF_S = 2.0
 
 
 class SwapLockTimeout(RuntimeError):
-    """The rename could not take its lock within the allowed attempts."""
+    """The swap could not take its lock within the allowed attempts."""
+
+
+class SwapRollbackUnavailable(RuntimeError):
+    """There is no retired schema to roll back to."""
+
+
+class SwapInsideTransaction(RuntimeError):
+    """The swap was called from inside an enclosing transaction."""
 
 
 @dataclass(frozen=True)
@@ -58,8 +98,19 @@ def swap_schemas(
     Callers repoint the Valhalla upstreams before calling this; see the module
     docstring for why that order and not the reverse.
     """
+    if connection.in_atomic_block:
+        # A schema swap inside someone else's transaction is not something to do
+        # quietly: it would commit or roll back with work it knows nothing about.
+        raise SwapInsideTransaction("swap_schemas must not run inside an enclosing transaction")
+
     retired = _retired_name(live)
     last_error: Exception | None = None
+
+    # A fresh deployment has staging but no live yet, and the rename of a
+    # non-existent schema is not a lock error, so the first rebuild would have
+    # raised and never completed.
+    if not schema_exists(live):
+        create_segment_schema(live)
 
     for attempt in range(1, attempts + 1):
         try:
@@ -68,25 +119,30 @@ def swap_schemas(
                     # Scoped to this transaction, so a slow reader costs this
                     # swap an attempt rather than blocking every later query.
                     cursor.execute(f"SET LOCAL lock_timeout = '{lock_timeout_ms}ms'")
+                    # The rename alone serializes nothing, so readers could tear
+                    # across the boundary. This is the lock that stops them.
+                    cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS EXCLUSIVE MODE")
                     cursor.execute(f"DROP SCHEMA IF EXISTS {retired} CASCADE")
                     cursor.execute(f"ALTER SCHEMA {live} RENAME TO {retired}")
                     cursor.execute(f"ALTER SCHEMA {staging} RENAME TO {live}")
             break
         except Exception as error:  # noqa: BLE001 - re-raised below if terminal
             last_error = error
-            if "lock" not in str(error).lower() or attempt == attempts:
-                if attempt == attempts:
-                    raise SwapLockTimeout(
-                        f"could not acquire the rename lock in {attempts} attempts"
-                    ) from error
+            if not _is_lock_error(error):
+                # Anything that is not lock contention is raised as itself. The
+                # earlier version relabelled every terminal failure as a lock
+                # timeout, so an operator reading the alert for a missing schema
+                # or a full disk was told the swap could not get a lock.
                 raise
+            if attempt == attempts:
+                raise SwapLockTimeout(
+                    f"could not take the swap lock in {attempts} attempts"
+                ) from error
             logger.warning("swap attempt %d could not take its lock, retrying", attempt)
             time.sleep(backoff_s * attempt)
     else:  # pragma: no cover - the loop always breaks or raises
         raise SwapLockTimeout("rename exhausted its attempts") from last_error
 
-    # Persistent connections hold plans against the relations just renamed.
-    connection.close()
     return SwapResult(live=live, staging=staging, retired=retired, attempts=attempt)
 
 
@@ -97,8 +153,21 @@ def rollback_swap(live: str = "live", staging: str = "staging") -> None:
     this half only restores the database.
     """
     retired = _retired_name(live)
-    with transaction.atomic(), connection.cursor() as cursor:
-        cursor.execute(f"SET LOCAL lock_timeout = '{DEFAULT_LOCK_TIMEOUT_MS}ms'")
-        cursor.execute(f"ALTER SCHEMA {live} RENAME TO {staging}")
-        cursor.execute(f"ALTER SCHEMA {retired} RENAME TO {live}")
-    connection.close()
+    if not schema_exists(retired):
+        raise SwapRollbackUnavailable(
+            f"there is no {retired} schema to roll back to; a rollback ran already "
+            "or no swap has happened"
+        )
+    for attempt in range(1, DEFAULT_ATTEMPTS + 1):
+        try:
+            with transaction.atomic(), connection.cursor() as cursor:
+                cursor.execute(f"SET LOCAL lock_timeout = '{DEFAULT_LOCK_TIMEOUT_MS}ms'")
+                cursor.execute(f"ALTER SCHEMA {live} RENAME TO {staging}")
+                cursor.execute(f"ALTER SCHEMA {retired} RENAME TO {live}")
+            return
+        except Exception as error:  # noqa: BLE001
+            # The emergency path needs the retry more than the forward one does,
+            # not less: it runs when something is already wrong.
+            if not _is_lock_error(error) or attempt == DEFAULT_ATTEMPTS:
+                raise
+            time.sleep(DEFAULT_BACKOFF_S * attempt)

@@ -102,6 +102,7 @@ services:
     volumes:
       - ${DATA_ROOT}/tiles/standard:/data:ro
       - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
     deploy:
       resources:
         limits: { memory: 2G, cpus: "2" }
@@ -114,6 +115,7 @@ services:
     volumes:
       - ${DATA_ROOT}/tiles/no-trail:/data:ro
       - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
     deploy:
       resources:
         limits: { memory: 2G, cpus: "2" }
@@ -126,6 +128,7 @@ services:
     volumes:
       - ${DATA_ROOT}/tiles/ebike:/data:ro
       - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
     deploy:
       resources:
         limits: { memory: 2G, cpus: "2" }

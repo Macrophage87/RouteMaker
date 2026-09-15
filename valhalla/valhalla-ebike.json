@@ -4,7 +4,7 @@
     "tile_extract": "/data/valhalla/tiles.tar",
     "admin": "/data/valhalla/admin.sqlite",
     "timezone": "/data/valhalla/tz_world.sqlite",
-    "graph_lua_name": "/conf/graph.lua",
+    "graph_lua_name": "/conf/lua/graph.lua",
     "logging": {
       "type": "std_out",
       "color": false

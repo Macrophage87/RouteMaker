@@ -73,14 +73,77 @@ def test_rename_is_three_steps_not_one(segment_schemas) -> None:
 
 
 def test_lock_timeout_is_scoped_to_the_swap_transaction(segment_schemas) -> None:
-    """SET LOCAL must not leak: a swap that left lock_timeout set on a pooled
-    connection would arm a timeout on every later query that connection served."""
+    """SET LOCAL must not leak onto the connection: a swap that left it armed
+    would put a timeout on every later query that connection served.
+
+    Asserted on the same session the swap used. An earlier version of this test
+    ran after the swap closed its connection, so it read a fresh session's
+    default and could not fail - changing SET LOCAL to SET left it green.
+    """
     from pipeline.swap import swap_schemas
 
+    with connection.cursor() as cursor:
+        cursor.execute("SET lock_timeout = '7s'")
     swap_schemas()
     with connection.cursor() as cursor:
         cursor.execute("SHOW lock_timeout")
-        assert cursor.fetchone()[0] in ("0", "0ms")
+        assert cursor.fetchone()[0] == "7s", "the swap overwrote the session setting"
+
+
+def test_a_non_lock_failure_is_raised_as_itself(segment_schemas) -> None:
+    """Relabelling every terminal error as a lock timeout told an operator
+    reading the alert for a missing schema that the swap could not get a lock."""
+    import pytest as _pytest
+    from django.db.utils import ProgrammingError
+
+    from pipeline.schema import drop_segment_schema
+    from pipeline.swap import SwapLockTimeout, swap_schemas
+
+    drop_segment_schema("staging")
+    with _pytest.raises(ProgrammingError):
+        swap_schemas(attempts=1)
+    # And specifically not the lock error.
+    drop_segment_schema("staging")
+    try:
+        swap_schemas(attempts=2, backoff_s=0)
+    except SwapLockTimeout:  # pragma: no cover - the failure this guards against
+        raise AssertionError("a missing schema was reported as lock contention") from None
+    except ProgrammingError:
+        pass
+
+
+def test_rollback_without_a_retired_schema_is_refused_clearly(segment_schemas) -> None:
+    import pytest as _pytest
+
+    from pipeline.swap import SwapRollbackUnavailable, rollback_swap
+
+    with _pytest.raises(SwapRollbackUnavailable):
+        rollback_swap()
+
+
+def test_swap_refuses_to_run_inside_a_transaction(segment_schemas) -> None:
+    """Closing or committing a connection mid-transaction would silently discard
+    the caller's work; the earlier version did exactly that."""
+    import pytest as _pytest
+    from django.db import transaction
+
+    from pipeline.swap import SwapInsideTransaction, swap_schemas
+
+    with _pytest.raises(SwapInsideTransaction), transaction.atomic():
+        swap_schemas()
+
+
+def test_first_swap_on_a_fresh_deployment_succeeds(segment_schemas) -> None:
+    """With staging present and live absent, the rename raised and no fresh
+    deployment could ever complete its first rebuild."""
+    from pipeline.schema import drop_segment_schema, schema_exists
+    from pipeline.swap import swap_schemas
+
+    drop_segment_schema("live")
+    assert not schema_exists("live")
+    insert_segment("staging", 222)
+    swap_schemas()
+    assert row_count("live") == 1
 
 
 def test_no_foreign_key_points_into_the_swapped_schema(segment_schemas) -> None:

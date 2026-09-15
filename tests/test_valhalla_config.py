@@ -71,3 +71,37 @@ def test_worker_counts_are_explicit(config: dict) -> None:
     assert config["thor_workers"] >= 2
     assert config["loki_workers"] >= 1
     assert config["odin_workers"] >= 1
+
+
+def test_graph_lua_name_points_at_a_file_this_repository_ships(config: dict) -> None:
+    """The configs previously named /conf/graph.lua, which existed nowhere: not in
+    the repository, not in any mount. Valhalla would have fallen back to its
+    compiled-in transform and dropped every derived tag without reporting an
+    error. The earlier test checked only the key's position in the config tree,
+    so it passed against a path pointing at empty space.
+    """
+    import re
+
+    repo = Path(__file__).resolve().parents[1]
+    configured = config["mjolnir"]["graph_lua_name"]
+
+    mounts = {}
+    for line in (repo / "compose.yaml").read_text().splitlines():
+        match = re.search(r"- \./([\w/.-]+):(/[\w/.-]+):ro", line.strip())
+        if match:
+            mounts[match.group(2)] = match.group(1)
+
+    for container_dir, host_dir in sorted(mounts.items(), key=lambda kv: -len(kv[0])):
+        if configured.startswith(container_dir + "/"):
+            on_disk = repo / host_dir / configured[len(container_dir) + 1 :]
+            assert on_disk.is_file(), f"{configured} resolves to {on_disk}, which is absent"
+            return
+    raise AssertionError(f"{configured} is not covered by any compose mount")
+
+
+def test_the_entry_point_refuses_to_run_without_the_vendored_upstream() -> None:
+    """Silent fallback is the failure mode this whole guard exists for, so the
+    entry point must fail loudly rather than quietly transform nothing."""
+    source = (Path(__file__).resolve().parents[1] / "lua" / "graph.lua").read_text()
+    assert "error(" in source
+    assert "way_function" in source and "node_function" in source
