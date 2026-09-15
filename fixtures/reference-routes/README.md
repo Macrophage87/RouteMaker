@@ -56,19 +56,46 @@ name cannot. Classify by pace and posture, never by title or headcount.
 and once by ten. The no-revisit check therefore belongs to Mass Ride alone,
 where it is grounded, and applying it to a group ride would reject real routes.
 
-## What the three sets establish together
+## Rural group rides
+
+| Route | Distance | Gain | ft/mi | Max grade | Turns/mi | Shape | Points |
+|---|---|---|---|---|---|---|---|
+| VPRD TNL | 24.32 mi | 2219 ft | 91 | 15.0% | 1.1 | loop | 1000 |
+| Loudoun 30 CCW | 30.12 mi | 2360 ft | 78 | 4.7% | 0.9 | loop | 7538 |
+| Two Bridges CW | 30.11 mi | 2232 ft | 74 | 19.0% | 1.0 | loop | 919 |
+
+Northern Loudoun County, and group rides rather than a separate gravel category.
+The owner notes they favour gravel because rural gravel carries less traffic,
+which is the important point: unpaved is being chosen as a proxy for low stress,
+not for the surface itself.
+
+**Turn density finally separates something, and it is not the preset.** At 0.9 to
+1.1 turns per mile these are a third as busy as the same club's city rides at 2.4
+to 3.3. What that measure distinguishes is rural from urban, so it can inform a
+route's character but must never be used to infer a modality.
+
+**They are loops.** Every one, where the city group rides were mostly
+point-to-point, because a rural ride starts and finishes at the same parking lot.
+
+**Grade tolerance is far higher than the city rides suggested**, reaching 19%,
+and gain runs 74 to 91 feet per mile against a fraction of that in the city.
+
+One file carries 7538 points at 6 metre spacing, dense enough to be worth a
+check against the map-matching shape limit even though it stays under it.
+
+## What the four sets establish together
 
 The presets differ on almost every axis except turn density, which is worth
 knowing because turn count alone does not separate a trail route from a road one.
 
-| | Mass Ride | Group Ride | Trailmaxxing |
-|---|---|---|---|
-| Distance | 5 to 7 mi | 12 to 35 mi | 15 to 76 mi |
-| Gain | 63 to 164 ft | 347 to 985 ft | 701 to 2333 ft |
-| Max grade | 4.4 to 6.3% | 8.6 to 13.0% | 11.8 to 12.2% |
-| Turns per mile | 2 to 4 | 2.4 to 3.3 | 2.3 to 2.9 |
-| May revisit its line | no | yes | yes |
-| Jurisdictions | District only | District, in these | crosses into Maryland |
+| | Mass Ride | Group Ride, city | Group Ride, rural | Trailmaxxing |
+|---|---|---|---|---|
+| Distance | 5 to 7 mi | 12 to 35 mi | 24 to 30 mi | 15 to 76 mi |
+| Gain | 63 to 164 ft | 347 to 985 ft | 2219 to 2360 ft | 701 to 2333 ft |
+| Max grade | 4.4 to 6.3% | 8.6 to 13.0% | 4.7 to 19.0% | 11.8 to 12.2% |
+| Turns per mile | 2 to 4 | 2.4 to 3.3 | 0.9 to 1.1 | 2.3 to 2.9 |
+| Shape | point-to-point | mostly point-to-point | loop | either |
+| May revisit its line | no | yes | yes | yes |
 
 - **Grade tolerance is per-modality, not global.** Trail routes hit 12%, roughly
   double what a mass ride ever sees. A single cap would either reject these or
