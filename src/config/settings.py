@@ -38,6 +38,10 @@ MIDDLEWARE = [
     # reads revokes nothing, so without this ban, suspension, deletion and
     # sign-out-everywhere all leave the person signed in.
     "core.middleware.SessionEpochMiddleware",
+    # Outside the admin's own `transaction.atomic()`, which is the point: a
+    # refusal audited inside it is rolled back by the PermissionDenied that
+    # caused it.
+    "core.middleware.AuditFlushMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]

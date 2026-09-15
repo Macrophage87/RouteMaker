@@ -55,3 +55,35 @@ def segment_schemas():
     yield live, staging
     for name in names:
         drop_segment_schema(name)
+
+
+@pytest.fixture
+def signed_in(client):
+    """Sign a user in the way the application does, and hand back the client.
+
+    `force_login` alone is not enough here: the epoch middleware rejects any
+    authenticated request whose session has no `Session` row of ours, so a
+    `force_login`-ed admin request is logged straight back out and answers 302.
+    That is why reaching for a hand-rolled request object was so tempting, and
+    hand-rolled request objects are how several rules came to be asserted
+    against something that was not the admin.
+
+    Anything testing the admin as a person uses it should drive real requests
+    through this.
+    """
+    from django.utils import timezone
+
+    from core.models import Session
+
+    def _sign_in(user):
+        client.force_login(user, backend="core.auth_backend.DiscordStandingBackend")
+        Session.objects.create(
+            session_key=client.session.session_key,
+            user=user,
+            issued_epoch=user.session_epoch,
+            created_at=timezone.now(),
+            last_seen_at=timezone.now(),
+        )
+        return client
+
+    return _sign_in

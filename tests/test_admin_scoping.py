@@ -256,18 +256,55 @@ class TestTheAuditedHalfOfEveryVisibilityAssertion:
     was not: a refused edit and nobody having tried looked the same afterwards.
     """
 
-    def test_a_refused_write_is_recorded(self, guild_admin) -> None:
-        from core.admin import RoleMappingAdmin, site
+    def test_a_refused_write_is_recorded(self, signed_in, guild_admin, guild) -> None:
+        """Driven as a real POST, because the rule is about what survives.
+
+        Django runs the permission check inside `transaction.atomic()` and then
+        raises PermissionDenied, so a refusal recorded by the check is rolled
+        back by the refusal itself. Asking the hook directly - with a request
+        object that never went through a transaction - reported success for a
+        log that was in fact empty after every refused write.
+        """
+        from django.urls import reverse
+
         from core.models import AuditLogEntry, RoleMapping
 
-        request = Request(guild_admin)
-        assert not RoleMappingAdmin(RoleMapping, site).has_change_permission(request)
+        client = signed_in(guild_admin)
+        AuditLogEntry.objects.all().delete()
 
+        response = client.post(
+            reverse("routemaker_admin:core_rolemapping_add"),
+            {
+                "guild": guild.pk,
+                "role_id": "7",
+                "permission": RoleMapping.Permission.INSTANCE_ADMIN,
+            },
+        )
+
+        assert response.status_code == 403
         entry = AuditLogEntry.objects.get()
         assert entry.actor == guild_admin
         assert entry.outcome == AuditLogEntry.Outcome.REFUSED
         assert entry.model == "rolemapping"
-        assert entry.action == "change"
+        assert not RoleMapping.objects.filter(
+            permission=RoleMapping.Permission.INSTANCE_ADMIN
+        ).exists()
+
+    def test_reading_a_page_is_not_an_attempt_to_write_one(
+        self, signed_in, guild_admin
+    ) -> None:
+        """Rendering the index asks every model whether this person may add,
+        change and delete. Logging those made reading a read-only page look like
+        twenty-eight attempts to write, and buried the refusals that matter."""
+        from django.urls import reverse
+
+        from core.models import AuditLogEntry
+
+        client = signed_in(guild_admin)
+        AuditLogEntry.objects.all().delete()
+
+        assert client.get(reverse("routemaker_admin:index")).status_code == 200
+        assert AuditLogEntry.objects.count() == 0
 
     def test_a_permitted_check_is_not_an_attempt(self, instance_admin) -> None:
         from core.admin import RoleMappingAdmin, site
@@ -277,17 +314,34 @@ class TestTheAuditedHalfOfEveryVisibilityAssertion:
         assert not AuditLogEntry.objects.filter(outcome=AuditLogEntry.Outcome.REFUSED).exists()
 
     def test_a_guild_admin_cannot_reach_the_membership_table_or_the_mapping(
-        self, guild_admin
+        self, signed_in, guild_admin, guild
     ) -> None:
         """Editing the cached membership table grants any role in any guild;
         editing a mapping decides who holds guild admin."""
-        from core.admin import CachedMembershipAdmin, RoleMappingAdmin, site
         from core.models import AuditLogEntry, CachedMembership, RoleMapping
 
-        request = Request(guild_admin)
-        assert not CachedMembershipAdmin(CachedMembership, site).has_change_permission(request)
-        assert not RoleMappingAdmin(RoleMapping, site).has_add_permission(request)
-        assert not RoleMappingAdmin(RoleMapping, site).has_delete_permission(request)
+        from django.urls import reverse
+
+        client = signed_in(guild_admin)
+        AuditLogEntry.objects.all().delete()
+
+        membership = client.post(
+            reverse("routemaker_admin:core_cachedmembership_add"),
+            {"discord_user_id": "1", "guild": guild.pk, "role_ids": "[]"},
+        )
+        mapping = client.post(
+            reverse("routemaker_admin:core_rolemapping_add"),
+            {
+                "guild": guild.pk,
+                "role_id": "9",
+                "permission": RoleMapping.Permission.GUILD_ADMIN,
+            },
+        )
+
+        assert membership.status_code == 403
+        assert mapping.status_code == 403
+        assert not CachedMembership.objects.filter(discord_user_id=1).exists()
+        assert not RoleMapping.objects.filter(role_id=9).exists()
 
         refused = AuditLogEntry.objects.filter(outcome=AuditLogEntry.Outcome.REFUSED)
         assert {entry.model for entry in refused} == {"cachedmembership", "rolemapping"}

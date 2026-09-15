@@ -95,6 +95,51 @@ def audit(request, action: str, model: str, object_id, outcome: str, detail: str
     )
 
 
+# A refusal is recorded by the very check that causes Django to raise
+# PermissionDenied, and the admin runs that check inside `transaction.atomic()`.
+# Writing the row there means the rollback that follows takes the record of the
+# refusal with it, so the log ends up holding every harmless permission probe on
+# a read-only page and none of the refused writes it exists for. These are
+# buffered on the request instead and written by AuditFlushMiddleware once the
+# response is out and that transaction is over.
+PENDING_AUDIT_ATTR = "_routemaker_pending_audit"
+
+# A permission probe on a safe method is not an attempt at anything. Rendering
+# the admin index asks every registered model whether this person may add,
+# change and delete; logging those made the read of a page indistinguishable
+# from twenty-eight attempts to write one.
+WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
+
+
+def defer_audit(request, action, model, object_id, outcome, detail="") -> None:
+    """Queue an audit row to be written after the response, outside the atomic block."""
+    pending = getattr(request, PENDING_AUDIT_ATTR, None)
+    if pending is None:
+        pending = []
+        setattr(request, PENDING_AUDIT_ATTR, pending)
+    actor = getattr(request, "user", None)
+    pending.append(
+        {
+            "actor": actor if getattr(actor, "pk", None) else None,
+            "action": action,
+            "model": model,
+            "object_id": str(object_id or ""),
+            "outcome": outcome,
+            "detail": detail[:2000],
+        }
+    )
+
+
+def flush_deferred_audit(request) -> int:
+    """Write the buffered rows. Returns how many, so a test can assert on it."""
+    pending = getattr(request, PENDING_AUDIT_ATTR, None) or []
+    if not pending:
+        return 0
+    AuditLogEntry.objects.bulk_create([AuditLogEntry(**row) for row in pending])
+    setattr(request, PENDING_AUDIT_ATTR, [])
+    return len(pending)
+
+
 class AuditedAdmin(admin.ModelAdmin):
     """Records what was written, and what was refused.
 
@@ -104,8 +149,8 @@ class AuditedAdmin(admin.ModelAdmin):
     """
 
     def _audited_permission(self, request, action: str, obj, allowed: bool) -> bool:
-        if not allowed:
-            audit(
+        if not allowed and getattr(request, "method", "") in WRITE_METHODS:
+            defer_audit(
                 request,
                 action,
                 self.model._meta.model_name,

@@ -38,3 +38,28 @@ class SessionEpochMiddleware:
                 row.save(update_fields=["last_seen_at"])
                 attach_standing(user)
         return self.get_response(request)
+
+
+class AuditFlushMiddleware:
+    """Writes the refusal rows the admin buffered during the request.
+
+    Django checks `has_*_permission` inside `transaction.atomic()` and, on a no,
+    raises PermissionDenied - which rolls back anything that check wrote. A
+    refusal recorded there is therefore erased by the very refusal it records,
+    and the log fills up with the permission probes from read-only pages instead.
+
+    This runs after the response has been produced, so the admin's transaction
+    has already ended one way or the other and the row survives independently of
+    it. It must stay outside any request-wrapping transaction for that reason.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        from .admin import flush_deferred_audit
+
+        try:
+            return self.get_response(request)
+        finally:
+            flush_deferred_audit(request)
