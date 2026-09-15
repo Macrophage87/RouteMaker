@@ -1,0 +1,9 @@
+# Pinned loosely here and exactly in the image build; see Operations in the plan.
+django>=5.0
+django-ninja
+psycopg2-binary
+procrastinate
+defusedxml
+pytest
+pytest-django
+ruff
