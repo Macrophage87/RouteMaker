@@ -29,6 +29,12 @@ class Stage(Enum):
     the tiles carried none. And the reference data loads first, because the
     stages after it produce a plausible, wrong map when it is absent rather than
     failing.
+
+    Overrides sit where they do because the three kinds correct three different
+    things and each has to land after the stage it corrects and before the stage
+    that consumes it: access tags before the extract is written, a stress tier
+    after classification, an authority after assignment. One position satisfies
+    all three, which is why it is one stage rather than three.
     """
 
     FETCH_EXTRACT = "fetch_extract"
@@ -36,6 +42,7 @@ class Stage(Enum):
     CONFLATE_VOLUME = "conflate_volume"
     CLASSIFY_STRESS = "classify_stress"
     TAG_JURISDICTIONS = "tag_jurisdictions"
+    APPLY_OVERRIDES = "apply_overrides"
     INSERT_BORDER_NODES = "insert_border_nodes"
     INJECT_TAGS = "inject_tags"
     BUILD_TILES = "build_tiles"

@@ -30,7 +30,7 @@ from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
 
-from . import borders, conflation, extract, variants, writers
+from . import borders, conflation, extract, overrides, variants, writers
 from .rebuild import Stage
 
 logger = logging.getLogger(__name__)
@@ -122,6 +122,7 @@ class RebuildContext:
     aadt_by_way: dict[int, tuple[int, str]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
+    override_report: overrides.OverrideReport | None = None
     rows: list[dict] = field(default_factory=list)
     build_log: str = ""
 
@@ -183,11 +184,13 @@ def build_handlers(
     sample_grade: Callable[[], float] | None = None,
     sample_derived_tag: Callable[[], str | None] | None = None,
     state_at: Callable[[float, float], str | None] | None = None,
+    load_overrides: Callable[[], list[overrides.Override]] | None = None,
 ) -> dict[Stage, Callable[[], None]]:
     """The real handler set, with the external dependencies injected so the
     wiring is testable without Valhalla."""
     run = run or _run_command
     state_at = state_at or _state_at
+    load_overrides = load_overrides or overrides.load_approved
 
     def fetch_extract() -> None:
         if not context.source_pbf.exists():
@@ -247,6 +250,31 @@ def build_handlers(
                 "_jurisdictions",
                 ",".join(sorted({a.authority for a in assignments})),
             )
+
+    def apply_overrides() -> None:
+        """The audited corrections, applied where each kind belongs.
+
+        Until this stage existed the override table was one the admin could edit
+        and no stage ever read: a row could be written, reviewed and approved,
+        and the graph was built exactly as if it were not there.
+        """
+        rows = load_overrides()
+        access, access_missing = overrides.apply_access(context.ways, rows)
+        stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
+        jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+
+        missing = tuple(sorted({*access_missing, *stress_missing, *jurisdiction_missing}))
+        if missing:
+            # An approved correction that reaches nothing is a correction that is
+            # not in force, which is worth an operator's attention rather than a
+            # silent no-op.
+            logger.warning("approved overrides matched no way in the extract: %s", missing)
+        context.override_report = overrides.OverrideReport(
+            access=access,
+            stress=stress,
+            jurisdiction=jurisdiction,
+            unmatched_way_ids=missing,
+        )
 
     def insert_border_nodes() -> None:
         allocator = borders.SyntheticNodeIds()
@@ -379,6 +407,7 @@ def build_handlers(
         Stage.CONFLATE_VOLUME: conflate_volume,
         Stage.CLASSIFY_STRESS: classify_stress,
         Stage.TAG_JURISDICTIONS: tag_jurisdictions,
+        Stage.APPLY_OVERRIDES: apply_overrides,
         Stage.INSERT_BORDER_NODES: insert_border_nodes,
         Stage.INJECT_TAGS: inject_tags,
         Stage.BUILD_TILES: build_tiles,
