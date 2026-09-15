@@ -47,9 +47,10 @@ covered by a fixture. All five stay inside the District.
 Two of these matter more than their numbers.
 
 **Critical Mass is a group ride here, not a mass ride.** Three of the five carry
-that name, and by headcount alone the classification would be arguable. Under
-the roadway-takeover definition it is not, and the definition does the work that
-the name cannot. Do not classify by title or by rider count.
+that name. These are rides of roughly twenty people moving at a brisk riding
+pace, travelling with traffic rather than taking the roadway at parade pace, and
+that is what places them here. The roadway-takeover definition does the work the
+name cannot. Classify by pace and posture, never by title or headcount.
 
 **Group rides revisit their own line.** Two of the five do, once by five points
 and once by ten. The no-revisit check therefore belongs to Mass Ride alone,
