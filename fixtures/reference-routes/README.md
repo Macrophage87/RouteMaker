@@ -105,8 +105,9 @@ knowing because turn count alone does not separate a trail route from a road one
   modality, Mass Ride included; were it on, none of these would be reproduced. A crossing penalty is additive
   and capped, so it never makes a route unroutable; it makes a different route
   win, which is what the reproduction invariant tests.
-- **Point spacing is 40 to 54 metres** across both sets, so every fixture
-  arrives as a track and is map-matched, the intended import path.
+- **Point spacing runs 6 to 54 metres** across the four sets, so every fixture
+  exceeds the route-point threshold, arrives as a track, and is map-matched,
+  which is the intended import path.
 
 ## What the mass rides establish
 
