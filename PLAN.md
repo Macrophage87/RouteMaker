@@ -329,6 +329,7 @@ Events with dates, pacing, and RSVPs are out of scope.
 
 ## Working conventions
 
+- **Every phase ends with a review panel.** Owner instruction. When a phase's deliverables are complete, dispatch a panel of independent reviewers across the disciplines that phase touched, and revise until every one of them accepts. A phase is not finished when its code is written and its tests pass; it is finished when the panel accepts it. The panel reviews the code and the tests against this plan, not the plan alone, so a finding is either a defect to fix or a place where the plan was wrong and must be corrected with the reason recorded. Blocking findings are fixed before the phase closes; lesser findings are batched, reconciled where reviewers disagree, and applied before the next phase starts. Reviewer findings carry no authority of their own: one that contradicts an owner decision is rejected on the record rather than quietly adopted, which has already happened more than once.
 - Ask before choosing between materially different approaches. Do not ask about routine implementation choices.
 - Keep any Valhalla fork as a patch set with a documented rebase procedure.
 - Document every external data source with its license, URL, and refresh procedure, and re-verify partner API terms before implementing each integration.
