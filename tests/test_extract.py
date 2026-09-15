@@ -123,3 +123,51 @@ def test_a_minted_id_below_the_source_ids_is_refused(tmp_path) -> None:
             new_nodes=[(499, -77.005, 38.9, {})],
             way_node_ids={},
         )
+
+
+def test_the_segment_ordinal_is_a_function_of_position_and_nothing_else(tmp_path) -> None:
+    """The segment key is (way id, ordinal), so an ordinal that moved would
+    renumber segments week to week and orphan every anchor attached to them -
+    comments, issues, closures, cue overrides, reviewer penalties.
+
+    Stated by splitting the same way at two different widths and by clipping it:
+    the ordinal of a piece depends on where it starts along the way, not on how
+    many pieces there are or on what else the extract contains.
+    """
+    from pipeline.extract import Way, iter_segments
+
+    coordinates = [(-77.0 + i * 0.001, 38.9) for i in range(10)]
+    way = Way(osm_id=1, tags={"highway": "residential"}, node_ids=list(range(10)))
+    way.coordinates = coordinates
+    way.located = list(range(10))
+
+    pieces = list(iter_segments(way, max_points=4))
+    assert [ordinal for ordinal, _ in pieces] == [0, 1, 2]
+    # Each piece starts where the previous one ended, so the geometry is covered
+    # once and the ordinals are contiguous from zero.
+    assert pieces[0][1][0] == coordinates[0]
+    assert pieces[1][1][0] == pieces[0][1][-1]
+    assert pieces[2][1][0] == pieces[1][1][-1]
+    assert pieces[-1][1][-1] == coordinates[-1]
+
+
+def test_the_ordinal_does_not_depend_on_the_rest_of_the_extract(tmp_path) -> None:
+    """The same way, read from a file with more in it, numbers identically."""
+    from pipeline.extract import iter_segments, read_ways
+
+    lonely = tmp_path / "one.osm.pbf"
+    crowded = tmp_path / "many.osm.pbf"
+    target = [(1, [1, 2, 3])]
+    nodes = [(1, -77.0, 38.9), (2, -77.001, 38.9), (3, -77.002, 38.9)]
+    write_pbf(lonely, nodes=nodes, ways=target)
+    write_pbf(
+        crowded,
+        nodes=[*nodes, (4, -76.9, 38.8), (5, -76.901, 38.8)],
+        ways=[(50, [4, 5]), *target, (200, [4, 5])],
+    )
+
+    def ordinals(path):
+        way = next(w for w in read_ways(path) if w.osm_id == 1)
+        return [ordinal for ordinal, _ in iter_segments(way, max_points=2)]
+
+    assert ordinals(lonely) == ordinals(crowded) == [0, 1]

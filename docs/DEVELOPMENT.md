@@ -70,3 +70,22 @@ version, checked in so the entry-point contract can be tested against the real
 file. Refresh it with `scripts/vendor_valhalla_lua.sh`; do not edit it.
 
 Setting `CI=1` turns the suite's missing-interpreter skips into failures.
+
+## Running the suite twice at once
+
+The database name and the swapped schema names both come from the environment,
+and both have to be set together. The suite creates and drops `live`, `staging`
+and `live_old`, so a second run against the same database drops the first one's
+tables mid-test — and the failures that follow read as code defects rather than
+as contention.
+
+```sh
+PGDATABASE=routemaker_b \
+ROUTEMAKER_LIVE_SCHEMA=live_b \
+ROUTEMAKER_STAGING_SCHEMA=staging_b \
+  .venv/bin/python -m pytest
+```
+
+Most of `tests/test_schema_swap.py` still writes `live` and `staging` as
+literals, so a renamed run fails there loudly rather than corrupting anything.
+That is the safe direction, not full isolation.

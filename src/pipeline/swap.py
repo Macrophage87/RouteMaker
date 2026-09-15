@@ -82,13 +82,25 @@ class SwapResult:
     attempts: int
 
 
+def _live() -> str:
+    from django.conf import settings
+
+    return settings.SEGMENT_SCHEMA_LIVE
+
+
+def _staging() -> str:
+    from django.conf import settings
+
+    return settings.SEGMENT_SCHEMA_STAGING
+
+
 def _retired_name(live: str) -> str:
     return f"{live}_old"
 
 
 def swap_schemas(
-    live: str = "live",
-    staging: str = "staging",
+    live: str | None = None,
+    staging: str | None = None,
     lock_timeout_ms: int = DEFAULT_LOCK_TIMEOUT_MS,
     attempts: int = DEFAULT_ATTEMPTS,
     backoff_s: float = DEFAULT_BACKOFF_S,
@@ -103,6 +115,8 @@ def swap_schemas(
         # quietly: it would commit or roll back with work it knows nothing about.
         raise SwapInsideTransaction("swap_schemas must not run inside an enclosing transaction")
 
+    live = live or _live()
+    staging = staging or _staging()
     validate_schema_name(live)
     validate_schema_name(staging)
     retired = _retired_name(live)
@@ -149,8 +163,8 @@ def swap_schemas(
 
 
 def rollback_swap(
-    live: str = "live",
-    staging: str = "staging",
+    live: str | None = None,
+    staging: str | None = None,
     lock_timeout_ms: int = DEFAULT_LOCK_TIMEOUT_MS,
     attempts: int = DEFAULT_ATTEMPTS,
     backoff_s: float = DEFAULT_BACKOFF_S,
@@ -160,6 +174,8 @@ def rollback_swap(
     Pairs with repointing the settings table back to the previous tile extracts;
     this half only restores the database.
     """
+    live = live or _live()
+    staging = staging or _staging()
     validate_schema_name(live)
     validate_schema_name(staging)
     retired = _retired_name(live)

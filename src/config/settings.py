@@ -98,8 +98,16 @@ ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
 # The live/staging schema pair the weekly rebuild swaps between.
-SEGMENT_SCHEMA_LIVE = "live"
-SEGMENT_SCHEMA_STAGING = "staging"
+#
+# Read from the environment so two runs on one host cannot corrupt each other.
+# The database name is already an environment variable; the schema names were
+# not, so a second test run reached into the first one's `live` and `staging`,
+# dropped them mid-test, and left failures that read as code defects - a stale
+# database whose next run errors with "relation django_content_type does not
+# exist" is not obviously a concurrency problem to whoever hits it.
+SEGMENT_SCHEMA_LIVE = os.environ.get("ROUTEMAKER_LIVE_SCHEMA", "live")
+SEGMENT_SCHEMA_STAGING = os.environ.get("ROUTEMAKER_STAGING_SCHEMA", "staging")
+SEGMENT_SCHEMA_RETIRED = f"{SEGMENT_SCHEMA_LIVE}_old"
 
 # The search path has to name both. `live` carries the rebuilt segment tables,
 # which are unmanaged and owned by the pipeline; `public` carries everything

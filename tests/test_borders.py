@@ -153,3 +153,34 @@ def test_border_node_denies_no_access() -> None:
     assert node.tags == {"barrier": "border_control"}
     assert "bicycle" not in node.tags
     assert "access" not in node.tags
+
+
+def test_a_boundary_street_yields_no_border_nodes_at_all() -> None:
+    """The carve-out, asserted by its effect rather than in isolation.
+
+    Western, Eastern and Southern Avenue *are* the District line: the OSM
+    centreline and the boundary polygon weave across each other, so a naive pass
+    mints a string of border nodes along one street. Valhalla breaks an edge at
+    every barrier node, so the way fragments into dozens of stubs - inflating the
+    maneuver list, corrupting the way-id trace join, and reporting twenty entries
+    into Maryland for a ride that never left the curb.
+
+    `is_boundary_street` was tested on its own; its effect here was not, so
+    deleting the guard left the suite green.
+    """
+    weaving = points((-76.99, 38.9), (-77.01, 38.9), (-76.99, 38.9), (-77.01, 38.9), (-76.99, 38.9))
+    unnamed = list(find_state_crossings(42, weaving, state_at, SyntheticNodeIds()))
+    assert len(unnamed) == 4, "the same geometry, unnamed, does mint a node per weave"
+
+    for name in ("Western Avenue", "Eastern Avenue Northwest", "southern avenue SE"):
+        nodes = list(find_state_crossings(42, weaving, state_at, SyntheticNodeIds(), way_name=name))
+        assert nodes == [], name
+
+
+def test_an_ordinary_street_is_not_carved_out() -> None:
+    """The guard keys on the street, not on the shape of the geometry."""
+    weaving = points((-76.99, 38.9), (-77.01, 38.9), (-76.99, 38.9))
+    nodes = list(
+        find_state_crossings(42, weaving, state_at, SyntheticNodeIds(), way_name="Nebraska Avenue")
+    )
+    assert len(nodes) == 2

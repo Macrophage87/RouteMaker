@@ -8,6 +8,8 @@ a page that can be framed is a real leak rather than a lint.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from django.conf import settings
 
@@ -49,3 +51,29 @@ def test_the_search_path_names_both_schemas() -> None:
 
 def test_the_admin_is_not_at_the_default_path() -> None:
     assert not settings.ADMIN_PATH.startswith("admin")
+
+
+def test_the_swapped_schema_names_come_from_the_environment() -> None:
+    """The database name was already an environment variable and the schema names
+    were not, so two runs on one host reached into each other's `live` and
+    `staging` and dropped them mid-test."""
+    import importlib
+    import os
+
+    from django.conf import settings
+
+    assert settings.SEGMENT_SCHEMA_RETIRED == f"{settings.SEGMENT_SCHEMA_LIVE}_old"
+
+    module = importlib.import_module("config.settings")
+    source = Path(module.__file__).read_text()
+    assert 'os.environ.get("ROUTEMAKER_LIVE_SCHEMA"' in source
+    assert 'os.environ.get("ROUTEMAKER_STAGING_SCHEMA"' in source
+    assert os.environ.get("ROUTEMAKER_LIVE_SCHEMA") in (None, settings.SEGMENT_SCHEMA_LIVE)
+
+
+def test_the_search_path_still_names_public_first_whatever_the_live_schema_is() -> None:
+    """The ordering is the data-loss guard and must not depend on the name."""
+    from django.conf import settings
+
+    assert settings.SEARCH_PATH.split(",")[0] == "public"
+    assert settings.SEGMENT_SCHEMA_LIVE in settings.SEARCH_PATH.split(",")
