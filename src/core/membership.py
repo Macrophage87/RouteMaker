@@ -82,6 +82,28 @@ def should_purge(row: Membership, has_ever_signed_in: bool, now: datetime) -> bo
     return now - row.last_confirmed >= PURGE_NEVER_SIGNED_IN_AFTER
 
 
+def account_may_be_cached(discord_user_id: int) -> bool:
+    """False for an account that is deleted, or tombstoned against return.
+
+    Checked against both, because they are different erasures: `is_deleted` is
+    the person's own request, and a tombstone outlives the user row entirely -
+    it is what a ban leaves behind once the account itself is gone, and a
+    tombstoned id has no User row to consult.
+    """
+    from django.conf import settings
+
+    from .models import BanTombstone, User
+    from .revocation import tombstone
+
+    if User.objects.filter(
+        discord_user_id=discord_user_id, is_deleted=True
+    ).exists():
+        return False
+    return not BanTombstone.objects.filter(
+        tombstone=tombstone(discord_user_id, settings.TOMBSTONE_KEY)
+    ).exists()
+
+
 def record_event(event: GatewayEvent, now: datetime | None = None):
     """Apply a gateway event to the cached row for one person in one guild.
 
@@ -103,6 +125,18 @@ def record_event(event: GatewayEvent, now: datetime | None = None):
     now = now or timezone.now()
     guild = ConfiguredGuild.objects.filter(guild_id=event.guild_id).first()
     if guild is None:
+        return None
+
+    # Someone who asked to be forgotten, or who is barred from returning, is not
+    # re-cached by the next event the gateway happens to deliver. Without this
+    # the erasure lasted until the person's server next changed one of their
+    # roles, which is not erasure: `attach_standing` refused them standing, so
+    # nothing visibly broke, while the row naming which guild they are in and
+    # which roles they hold - the sensitive part, for this deployment - came
+    # straight back. Any row that already exists goes with it, because the event
+    # is also the moment we learn the row is there.
+    if not account_may_be_cached(event.user_id):
+        CachedMembership.objects.filter(discord_user_id=event.user_id).delete()
         return None
 
     row = CachedMembership.objects.filter(discord_user_id=event.user_id, guild=guild).first()
@@ -189,7 +223,41 @@ def sweep_memberships(now: datetime | None = None) -> tuple[int, int]:
     departed, _ = CachedMembership.objects.filter(
         removed_at__isnull=False, removed_at__lt=now - MAX_ROW_AGE
     ).delete()
+
+    # The backstop half of the erasure rule. `record_event` refuses to re-cache
+    # an erased account, but a row written before the deletion is not removed by
+    # any of the clauses above: the never-signed-in purge skips anyone with a
+    # `last_login`, and a deleted person who had signed in has one. Without this
+    # their roster row simply stayed.
+    erased, _ = CachedMembership.objects.filter(
+        discord_user_id__in=erased_discord_user_ids()
+    ).delete()
+    purged += erased
+
     return purged, departed
+
+
+def erased_discord_user_ids() -> set[int]:
+    """Discord ids that must hold no cached membership row: deleted, or tombstoned."""
+    from django.conf import settings
+
+    from .models import BanTombstone, CachedMembership, User
+    from .revocation import tombstone
+
+    deleted = set(
+        User.objects.filter(is_deleted=True).values_list("discord_user_id", flat=True)
+    )
+    # A tombstone is a one-way hash, so it cannot be turned back into an id;
+    # the cached ids are hashed and matched the same way instead.
+    tombstones = set(BanTombstone.objects.values_list("tombstone", flat=True))
+    if tombstones:
+        cached = CachedMembership.objects.values_list("discord_user_id", flat=True).distinct()
+        deleted |= {
+            user_id
+            for user_id in cached
+            if tombstone(user_id, settings.TOMBSTONE_KEY) in tombstones
+        }
+    return deleted
 
 
 def sweep_priority(rows: list[tuple[Membership, bool]]) -> list[Membership]:

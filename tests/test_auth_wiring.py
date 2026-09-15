@@ -213,7 +213,11 @@ class TestAttachStandingBranches:
         attach_standing(user, now)
         assert user.is_staff
 
-    def test_a_deleted_user_is_not_re_cached(self, guild) -> None:
+    def test_a_deleted_user_is_refused_standing(self, guild) -> None:
+        """Named for what it asserts. It previously carried the name of the
+        caching rule below while testing only the resolver, so the rule it
+        appeared to cover - that the row does not come back - was asserted
+        nowhere, and the row did come back."""
         from core.auth_backend import attach_standing
         from core.models import RoleMapping
 

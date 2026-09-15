@@ -291,3 +291,94 @@ def test_the_sweep_drops_departed_rows_once_they_grant_nothing(guild, member) ->
     purged, departed = sweep_memberships(now)
     assert (purged, departed) == (0, 1), "a fresh removal is inside the window"
     assert list(CachedMembership.objects.values_list("discord_user_id", flat=True)) == [2]
+
+
+class TestAnErasedAccountIsNotBroughtBackByTheGateway:
+    """A deletion that the next gateway event undoes is not a deletion.
+
+    `attach_standing` refused these accounts standing, so nothing visibly broke
+    and the defect was invisible: what came back was the row naming which guild
+    the person is in and which roles they hold - for a deployment whose threat
+    model includes who organizes with whom, precisely the sensitive part.
+    """
+
+    @pytest.fixture
+    def guild(self, db):
+        from core.models import ConfiguredGuild
+
+        return ConfiguredGuild.objects.create(guild_id=1000, name="Club")
+
+    def _event(self, user_id, kind="add"):
+        from core.membership import GatewayEvent
+
+        return GatewayEvent(
+            kind=kind, guild_id=1000, user_id=user_id, role_ids=frozenset({5})
+        )
+
+    def test_a_deleted_account_is_not_re_cached(self, guild) -> None:
+        from core.membership import record_event
+        from core.models import CachedMembership, User
+
+        User.objects.create(discord_user_id=77, is_deleted=True)
+
+        assert record_event(self._event(77)) is None
+        assert not CachedMembership.objects.filter(discord_user_id=77).exists()
+
+    def test_a_tombstoned_account_is_not_re_cached(self, guild) -> None:
+        """A tombstone outlives the user row, so there is no User to consult."""
+        from django.conf import settings
+
+        from core.membership import record_event
+        from core.models import BanTombstone, CachedMembership
+        from core.revocation import tombstone
+
+        BanTombstone.objects.create(tombstone=tombstone(88, settings.TOMBSTONE_KEY))
+
+        assert record_event(self._event(88)) is None
+        assert not CachedMembership.objects.filter(discord_user_id=88).exists()
+
+    def test_an_event_removes_a_row_written_before_the_deletion(self, guild) -> None:
+        """The event is also the moment we learn the row is there."""
+        from django.utils import timezone
+
+        from core.membership import record_event
+        from core.models import CachedMembership, User
+
+        User.objects.create(discord_user_id=79, is_deleted=True)
+        CachedMembership.objects.create(
+            discord_user_id=79, guild=guild, role_ids=[5], last_confirmed=timezone.now()
+        )
+
+        record_event(self._event(79, kind="update"))
+
+        assert not CachedMembership.objects.filter(discord_user_id=79).exists()
+
+    def test_the_sweep_removes_rows_for_an_erased_account(self, guild) -> None:
+        """The backstop half. The never-signed-in purge skips anyone with a
+        `last_login`, and a deleted person who had signed in has one, so no
+        existing clause reached these rows."""
+        from django.utils import timezone
+
+        from core.membership import sweep_memberships
+        from core.models import CachedMembership, User
+
+        User.objects.create(
+            discord_user_id=99, is_deleted=True, last_login=timezone.now()
+        )
+        CachedMembership.objects.create(
+            discord_user_id=99, guild=guild, role_ids=[5], last_confirmed=timezone.now()
+        )
+
+        sweep_memberships()
+
+        assert not CachedMembership.objects.filter(discord_user_id=99).exists()
+
+    def test_an_ordinary_member_is_still_cached(self, guild) -> None:
+        """The guard is about erasure, not about refusing to cache."""
+        from core.membership import record_event
+        from core.models import CachedMembership, User
+
+        User.objects.create(discord_user_id=101)
+
+        assert record_event(self._event(101)) is not None
+        assert CachedMembership.objects.filter(discord_user_id=101).exists()
