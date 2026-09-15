@@ -20,6 +20,10 @@ DJANGO_SETTINGS_MODULE = "config.settings"
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+# Migrations are generated. Reformatting them makes the file diverge from what
+# makemigrations would write next time, which turns a regeneration into a
+# spurious diff and hides a real schema change inside it.
+extend-exclude = ["*/migrations/*"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
