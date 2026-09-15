@@ -97,8 +97,18 @@ services:
   valhalla-standard:
     <<: *restart
     image: ghcr.io/valhalla/valhalla:3.5.1
-    environment:
-      VALHALLA_CONFIG: /conf/valhalla-standard.json
+    # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
+    # not a service image - so it inherits the base image's shell and exits
+    # immediately. With `restart: unless-stopped` that is a container that
+    # restarts forever while answering nothing, which is what an env var named
+    # VALHALLA_CONFIG bought: the image reads no such variable.
+    #
+    # The second argument is the worker count per stage. valhalla_service takes
+    # it from argv and otherwise uses hardware_concurrency, which on this host
+    # would start one worker per core of the whole machine inside a two-core
+    # limit. It is not a configuration key; the loki_workers, thor_workers and
+    # odin_workers keys the configs used to carry are read by nothing.
+    command: ["valhalla_service", "/conf/valhalla-standard.json", "2"]
     volumes:
       - ${DATA_ROOT}/tiles/standard:/data:ro
       - ./valhalla:/conf:ro
@@ -110,8 +120,18 @@ services:
   valhalla-no-trail:
     <<: *restart
     image: ghcr.io/valhalla/valhalla:3.5.1
-    environment:
-      VALHALLA_CONFIG: /conf/valhalla-no-trail.json
+    # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
+    # not a service image - so it inherits the base image's shell and exits
+    # immediately. With `restart: unless-stopped` that is a container that
+    # restarts forever while answering nothing, which is what an env var named
+    # VALHALLA_CONFIG bought: the image reads no such variable.
+    #
+    # The second argument is the worker count per stage. valhalla_service takes
+    # it from argv and otherwise uses hardware_concurrency, which on this host
+    # would start one worker per core of the whole machine inside a two-core
+    # limit. It is not a configuration key; the loki_workers, thor_workers and
+    # odin_workers keys the configs used to carry are read by nothing.
+    command: ["valhalla_service", "/conf/valhalla-no-trail.json", "2"]
     volumes:
       - ${DATA_ROOT}/tiles/no-trail:/data:ro
       - ./valhalla:/conf:ro
@@ -123,8 +143,18 @@ services:
   valhalla-ebike:
     <<: *restart
     image: ghcr.io/valhalla/valhalla:3.5.1
-    environment:
-      VALHALLA_CONFIG: /conf/valhalla-ebike.json
+    # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
+    # not a service image - so it inherits the base image's shell and exits
+    # immediately. With `restart: unless-stopped` that is a container that
+    # restarts forever while answering nothing, which is what an env var named
+    # VALHALLA_CONFIG bought: the image reads no such variable.
+    #
+    # The second argument is the worker count per stage. valhalla_service takes
+    # it from argv and otherwise uses hardware_concurrency, which on this host
+    # would start one worker per core of the whole machine inside a two-core
+    # limit. It is not a configuration key; the loki_workers, thor_workers and
+    # odin_workers keys the configs used to carry are read by nothing.
+    command: ["valhalla_service", "/conf/valhalla-ebike.json", "2"]
     volumes:
       - ${DATA_ROOT}/tiles/ebike:/data:ro
       - ./valhalla:/conf:ro

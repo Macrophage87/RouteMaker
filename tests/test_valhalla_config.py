@@ -65,12 +65,37 @@ def test_trace_actions_are_enabled(config: dict) -> None:
     assert "trace_route" in actions
 
 
-def test_worker_counts_are_explicit(config: dict) -> None:
-    """A single thor worker serialises the candidate set, which the latency bound
-    assumes is issued concurrently."""
-    assert config["thor_workers"] >= 2
-    assert config["loki_workers"] >= 1
-    assert config["odin_workers"] >= 1
+def test_worker_counts_come_from_the_command_line_not_the_config(config: dict) -> None:
+    """These configs used to carry loki_workers, thor_workers and odin_workers,
+    and this test used to assert them.
+
+    valhalla_service reads no such keys. Its worker count is argv[2], falling
+    back to std::thread::hardware_concurrency() - which inside a two-core limit
+    would start one worker per core of the whole host. The setting that actually
+    decides this is the compose command, so that is what is asserted.
+    """
+    import re
+
+    for key in ("loki_workers", "thor_workers", "odin_workers"):
+        assert key not in config, f"{key} is read by nothing and invites the old assumption"
+
+    compose = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text()
+    commands = re.findall(r'command: \["valhalla_service", "([^"]+)", "(\d+)"\]', compose)
+    assert len(commands) == 3, "each variant needs a command; the image has no CMD of its own"
+    for config_path, workers in commands:
+        assert config_path.startswith("/conf/valhalla-")
+        assert int(workers) >= 2, "a single worker serialises the candidate set"
+
+
+def test_every_variant_service_is_given_a_command() -> None:
+    """The upstream image declares neither ENTRYPOINT nor CMD. Without a command
+    the container runs the base image's shell, exits, and - with restart:
+    unless-stopped - restarts forever while answering nothing."""
+    compose = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text()
+    # Comments are dropped first: the file explains this by naming the variable.
+    settings = "\n".join(line for line in compose.splitlines() if not line.lstrip().startswith("#"))
+    assert "VALHALLA_CONFIG" not in settings, "the image reads no such variable"
+    assert settings.count('"valhalla_service"') == 3
 
 
 def test_graph_lua_name_points_at_a_file_this_repository_ships(config: dict) -> None:
@@ -147,3 +172,75 @@ def test_the_entry_point_refuses_an_upstream_without_the_expected_globals() -> N
     source = (Path(__file__).resolve().parents[1] / "lua" / "graph.lua").read_text()
     assert 'type(up_ways) ~= "function"' in source
     assert "did not define the *_proc globals" in source
+
+
+def test_the_configs_are_what_the_generator_produces() -> None:
+    """Generated from upstream's pinned defaults, not hand-written.
+
+    The hand-written versions carried 35 keys against upstream's 180, and
+    valhalla_service reads several of the missing ones with no default -
+    httpd.service.loopback, httpd.service.timeout_seconds, and the three worker
+    proxies among them - so every service would have thrown on startup. The
+    earlier tests here asserted the handful of keys someone had thought of,
+    which is why a config that could not start a service passed them all.
+
+    Regenerating and comparing means an upgrade is a re-vendor and a diff, and a
+    hand edit fails here rather than diverging quietly.
+    """
+    import importlib.util
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "build_valhalla_configs", repo / "scripts" / "build_valhalla_configs.py"
+    )
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    for path in CONFIGS:
+        variant = path.stem.removeprefix("valhalla-")
+        assert path.read_text() == builder.render(builder.build(variant)), (
+            f"{path.name} is not what scripts/build_valhalla_configs.py produces; "
+            "edit the overrides in the script and re-run it"
+        )
+
+
+def test_the_config_covers_every_key_upstream_defines() -> None:
+    """Upstream's own default set is the definition of complete.
+
+    Valhalla reads many keys with no default and throws one at a time, so a
+    missing key is a restart loop with a property_tree exception rather than a
+    message about configuration.
+    """
+    import importlib.util
+
+    repo = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location(
+        "build_valhalla_configs", repo / "scripts" / "build_valhalla_configs.py"
+    )
+    assert spec is not None and spec.loader is not None
+    builder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(builder)
+
+    def leaves(node: dict, path: str = "") -> set[str]:
+        found = set()
+        for key, value in node.items():
+            here = f"{path}.{key}" if path else key
+            found |= leaves(value, here) if isinstance(value, dict) else {here}
+        return found
+
+    upstream = leaves(builder.load_upstream_defaults())
+    assert len(upstream) > 150, "the vendored generator produced almost nothing"
+    for path in CONFIGS:
+        missing = upstream - leaves(json.loads(path.read_text()))
+        assert not missing, f"{path.name} is missing {sorted(missing)}"
+
+
+def test_the_vendored_generator_is_pinned_to_the_image_tag() -> None:
+    """A config generated from one version and served by another is how a key
+    silently stops being read."""
+    repo = Path(__file__).resolve().parents[1]
+    pinned = (repo / "valhalla" / "vendor" / "VERSION").read_text().strip()
+    compose = (repo / "compose.yaml").read_text()
+    assert f"ghcr.io/valhalla/valhalla:{pinned}" in compose
+    assert (repo / "lua" / "vendor" / "VERSION").read_text().strip() == pinned
