@@ -111,6 +111,11 @@ class TestDerivedStaff:
         user = User.objects.create(discord_user_id=6)
         member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
         guild.state = "revoked"
+        # Left over from a spell in degraded state, which is how a real row gets
+        # here: revocation does not clear the column. Without the revoked check
+        # running first, a guild that was degraded before it was ejected keeps
+        # granting standing until that expiry passes.
+        guild.standing_valid_until = timezone.now() + timedelta(hours=1)
         guild.save()
         attach_standing(user)
         assert not user.is_staff

@@ -13,6 +13,8 @@ from __future__ import annotations
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.gis.db import models
 
+from . import standing
+
 
 class StressTier(models.IntegerChoices):
     """Furth LTS. One scale everywhere, never an imported agency score."""
@@ -294,6 +296,22 @@ class ConfiguredGuild(models.Model):
     def __str__(self) -> str:
         return self.name or str(self.guild_id)
 
+    def standing(self) -> standing.GuildStanding:
+        """This row as the resolver's value object.
+
+        The mapping lives here so there is one of it. The permission path used to
+        reimplement `grants_standing` inline - revoked, then degraded, then the
+        clamp against the stated maximum - which meant the rule the test suite
+        exercised and the rule the admin enforced were two pieces of code that
+        happened to agree.
+        """
+        return standing.GuildStanding(
+            guild_id=self.guild_id,
+            state=standing.GuildState[self.state.upper()],
+            state_since=self.state_since,
+            standing_valid_until=self.standing_valid_until,
+        )
+
 
 class RoleMapping(models.Model):
     """One Discord role to one application permission, within one guild."""
@@ -341,6 +359,21 @@ class CachedMembership(models.Model):
             )
         ]
         indexes = [models.Index(fields=["discord_user_id"])]
+
+    def as_membership(self, guild_snowflake: int) -> standing.Membership:
+        """This row as the resolver's value object.
+
+        Takes the snowflake rather than reading it through the foreign key, so a
+        caller that has already loaded the guilds does not issue a query per row.
+        """
+        return standing.Membership(
+            guild_id=guild_snowflake,
+            role_ids=frozenset(int(role) for role in self.role_ids),
+            last_confirmed=self.last_confirmed,
+            pending=self.pending,
+            timed_out_until=self.timed_out_until,
+            removed_at=self.removed_at,
+        )
 
 
 class BanTombstone(models.Model):

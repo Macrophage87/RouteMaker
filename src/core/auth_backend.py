@@ -13,12 +13,9 @@ per request rather than once per check.
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 from django.utils import timezone
 
 from .models import CachedMembership, ConfiguredGuild, RoleMapping, User
-from .standing import MAX_ROW_AGE, MAX_STALE_GRANT
 
 
 class DiscordStandingBackend:
@@ -90,16 +87,16 @@ def attach_standing(user: User, now=None) -> None:
         user._member_guild_ids = frozenset()
         return
 
-    usable_guilds = {}
-    for guild in ConfiguredGuild.objects.all():
-        if guild.state == "revoked":
-            continue
-        if guild.state == "degraded":
-            ceiling = guild.state_since + MAX_STALE_GRANT
-            expiry = guild.standing_valid_until
-            if expiry is None or now >= min(expiry, ceiling):
-                continue
-        usable_guilds[guild.id] = guild.guild_id
+    # Both predicates come from `standing`, which is the module the authorization
+    # tests exercise. They used to be reimplemented here - revoked, then
+    # degraded, then the clamp; pending, then timeout, then row age - so the rule
+    # under test and the rule the admin enforced were two pieces of code that
+    # happened to agree, and nothing would have reported it when they stopped.
+    usable_guilds = {
+        guild.id: guild.guild_id
+        for guild in ConfiguredGuild.objects.all()
+        if guild.standing().grants_standing(now)
+    }
 
     rows = CachedMembership.objects.filter(
         discord_user_id=user.discord_user_id, guild_id__in=usable_guilds
@@ -111,14 +108,10 @@ def attach_standing(user: User, now=None) -> None:
 
     admin, reviewer, member = set(), set(), set()
     for row in rows:
-        if row.pending or row.removed_at is not None:
-            continue
-        if row.timed_out_until is not None and now < row.timed_out_until:
-            continue
-        if now - row.last_confirmed > MAX_ROW_AGE:
+        guild_snowflake = usable_guilds[row.guild_id]
+        if not row.as_membership(guild_snowflake).is_usable(now):
             continue
 
-        guild_snowflake = usable_guilds[row.guild_id]
         member.add(guild_snowflake)
         for role_id in row.role_ids:
             permission = mappings.get(row.guild_id, {}).get(int(role_id))
@@ -144,4 +137,4 @@ def session_is_current(user: User, issued_epoch: int, created_at, last_seen_at, 
     return now - last_seen_at < IDLE_SESSION_LIFETIME
 
 
-__all__ = ["DiscordStandingBackend", "attach_standing", "session_is_current", "timedelta"]
+__all__ = ["DiscordStandingBackend", "attach_standing", "session_is_current"]
