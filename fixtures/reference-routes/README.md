@@ -118,7 +118,12 @@ knowing because turn count alone does not separate a trail route from a road one
   around 6%. A grade cap near 6% matches practice; anything lower would reject
   these real routes.
 - **Turn density is 2.3 to 4.7 per mile**, low for a city grid, consistent with
-  keeping a long field together. The 2026-07 ride is the top of that range at 28
+  keeping a long field together.
+- **Planning pace is 5 to 9 mph, defaulting to 6.** Above the band a random
+  slowdown propagates backward through a dense field as a shock wave; below it
+  riders fall under balance speed. Six is what these rides plan to, with a
+  deliberately slow front; a ride that actually rolls at eight is inside the
+  band. Only a value outside 5 to 9 warns. The 2026-07 ride is the top of that range at 28
   turns over 6.00 miles, so an invariant drawn at 5 per mile would have almost no
   headroom and the plan uses 6.
 - **Turn counts here are geometric**, per the definition below, and are not the
@@ -127,8 +132,14 @@ knowing because turn count alone does not separate a trail route from a road one
   two must compute both sides the same way.
 - **No route revisits its own line.** Zero across all four, which is the
   empirical basis for the self-crossing and doubling-back check.
-- **All four stay inside the District**, which is a property of these four
-  routes rather than a constraint on the preset. They are 5 to 7 mile rides
+- **All four stay inside the District**, and so does the owner's experience:
+  these are DC Bike Party rides, and mass rides elsewhere run under a different
+  permitting posture with pace, field size, and marshalling practice that the
+  organizers who run them know first-hand. Reference routes from Maryland and
+  Virginia mass ride organizers are a standing request. Until they arrive, the
+  Mass Ride preset is tuned on District geometry and the plan says so rather
+  than implying the defaults transfer. Staying inside the District is in any
+  case a property of these four routes rather than a constraint on the preset. They are 5 to 7 mile rides
   starting and finishing near 17th and Church, so they had no reason to leave.
   Memorial Bridge into Arlington and the Anacostia crossings into Prince
   George's are ordinary mass-ride moves here. The state-crossing penalty is off
