@@ -11,7 +11,6 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from core.standing import (
-    DELIBERATE_REMOVAL_GRACE,
     MAX_ROW_AGE,
     GuildStanding,
     GuildState,
@@ -101,14 +100,16 @@ class TestGuildStateAndRowAge:
         assert resolve(viewer, route(), inside, NOW) is Level.MEMBER
         assert resolve(viewer, route(), expired, NOW) is Level.NONE
 
-    def test_deliberate_removal_bites_in_minutes(self) -> None:
-        """A removal must take effect while rows confirmed ten minutes ago still
-        look fresh, which row age alone cannot express."""
+    def test_removal_ends_standing_immediately(self) -> None:
+        """Not after a grace period. The earlier version gave a kicked member a
+        fifteen-minute window, which is long enough to script the club's whole
+        route index. The grace belongs to the guild, whose ejection of the bot is
+        a different event with a different reason behind it."""
         removed = Membership(
             GUILD,
             frozenset(),
             NOW - timedelta(minutes=5),
-            removed_at=NOW - DELIBERATE_REMOVAL_GRACE - timedelta(minutes=1),
+            removed_at=NOW - timedelta(seconds=1),
         )
         viewer = Viewer(user_id=2, memberships=(removed,))
         assert resolve(viewer, route(), active(), NOW) is Level.NONE
@@ -163,11 +164,13 @@ class TestMarshalDetail:
             Viewer(), route(visibility=Visibility.PUBLIC), active(), NOW
         )
 
-    def test_served_to_a_member_on_a_private_route(self) -> None:
-        """The tier-based version suppressed it here, which is also backwards."""
-        member = Viewer(user_id=2, memberships=(fresh(),))
-        r = route(visibility=Visibility.PRIVATE)
-        assert can_see_marshal_detail(member, r, active(), NOW)
+    def test_served_to_a_collaborator_on_a_private_route(self) -> None:
+        """The tier-based version suppressed it here, which is also backwards. A
+        named collaborator is a per-route grant, so it holds at every tier - a
+        bare club member is not admitted to a private route at all."""
+        collaborator = Viewer(user_id=2, memberships=(fresh(),))
+        r = route(visibility=Visibility.PRIVATE, collaborator_ids=frozenset({2}))
+        assert can_see_marshal_detail(collaborator, r, active(), NOW)
 
     def test_served_to_the_owner_of_a_public_route(self) -> None:
         owner = Viewer(user_id=1, memberships=(fresh(),))
@@ -197,16 +200,109 @@ class TestGuests:
 
 
 class TestTiersAreCumulative:
+    """Cumulative runs upward: a viewer admitted at tier N is admitted at every
+    tier above it. It does not mean a club member is admitted everywhere, which
+    is what the earlier version of this class asserted - and, because it passed,
+    what kept a genuine read bypass in place."""
+
     @pytest.mark.parametrize(
         ("lower", "higher"),
         [
-            (Visibility.PRIVATE, Visibility.REVIEWERS),
-            (Visibility.REVIEWERS, Visibility.SERVER),
             (Visibility.SERVER, Visibility.LINK),
             (Visibility.LINK, Visibility.PUBLIC),
         ],
     )
-    def test_each_tier_admits_everyone_the_one_below_admits(self, lower, higher) -> None:
+    def test_admission_carries_upward(self, lower, higher) -> None:
         member = Viewer(user_id=2, memberships=(fresh(),))
         assert can_read(member, route(visibility=lower), active(), NOW)
         assert can_read(member, route(visibility=higher), active(), NOW)
+
+    @pytest.mark.parametrize("tier", [Visibility.PRIVATE, Visibility.REVIEWERS])
+    def test_club_membership_does_not_admit_below_server(self, tier) -> None:
+        """Belonging to a club does not admit you to a route its owner has not
+        shared with the club. An unpermitted ride kept private until ride day was
+        readable by every one of several thousand Discord members, marshal posts
+        included."""
+        member = Viewer(user_id=2, memberships=(fresh(),))
+        assert resolve(member, route(visibility=tier), active(), NOW) is Level.NONE
+        assert not can_read(member, route(visibility=tier), active(), NOW)
+
+    def test_per_route_grants_hold_at_every_tier(self) -> None:
+        collaborator = Viewer(user_id=2, memberships=(fresh(),))
+        r = route(visibility=Visibility.PRIVATE, collaborator_ids=frozenset({2}))
+        assert can_read(collaborator, r, active(), NOW)
+
+
+class TestLinkTokens:
+    def test_a_token_grants_reading_and_never_a_level(self) -> None:
+        """Honouring the token as a level let a signed-in stranger reach GUEST on
+        a route whose owner had switched guest comments off - and a public
+        route's token URL sits alongside its slug URL, so it is no secret."""
+        stranger = Viewer(user_id=7)
+        r = route(visibility=Visibility.PUBLIC, guest_comments_enabled=False)
+        assert resolve(stranger, r, active(), NOW, has_link_token=True) is Level.NONE
+
+    def test_a_token_does_not_confer_commenting_at_the_link_tier(self) -> None:
+        stranger = Viewer(user_id=7)
+        r = route(visibility=Visibility.LINK)
+        assert resolve(stranger, r, active(), NOW, has_link_token=True) is Level.NONE
+        assert can_read(stranger, r, active(), NOW, has_link_token=True)
+
+    def test_link_requires_login_closes_the_anonymous_surface(self) -> None:
+        """The lockdown a club reaches for when a route has leaked and the ride
+        is imminent."""
+        r = route(visibility=Visibility.LINK, link_requires_login=True)
+        assert not can_read(Viewer(), r, active(), NOW, has_link_token=True)
+        assert can_read(Viewer(user_id=7), r, active(), NOW, has_link_token=True)
+
+
+class TestOrthogonalGrants:
+    def test_a_view_only_collaborator_cannot_edit(self) -> None:
+        """The edit flag is an audited owner grant, not a consequence of being
+        named on the route."""
+        from core.standing import can_edit
+
+        viewer = Viewer(user_id=2)
+        assert not can_edit(viewer, route(collaborator_ids=frozenset({2})))
+        assert can_edit(viewer, route(editor_ids=frozenset({2})))
+
+    def test_a_collaborator_is_not_automatically_a_reviewer(self) -> None:
+        """COLLABORATOR sorts above REVIEWER in the lattice, so a level
+        comparison would make every collaborator a reviewer and render the
+        owner's audited review grant unenforceable."""
+        from core.standing import can_review
+
+        viewer = Viewer(user_id=2)
+        r = route(collaborator_ids=frozenset({2}))
+        assert not can_review(viewer, r, Level.COLLABORATOR)
+        assert can_review(viewer, route(reviewer_ids=frozenset({2})), Level.COLLABORATOR)
+
+
+class TestSanctionedMembers:
+    def test_a_timed_out_member_does_not_fall_through_to_guest(self) -> None:
+        """A timeout that leaves someone commenting on the club's public routes
+        is not a timeout."""
+        viewer = Viewer(user_id=2, memberships=(fresh(timed_out_until=NOW + timedelta(hours=1)),))
+        assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.NONE
+
+    def test_a_removed_member_does_not_fall_through_to_guest(self) -> None:
+        viewer = Viewer(user_id=2, memberships=(fresh(removed_at=NOW),))
+        assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.NONE
+
+
+class TestStaleGrantCeiling:
+    def test_a_degraded_window_cannot_exceed_the_stated_maximum(self) -> None:
+        """The admin's audited reclassify action writes that column; a bug or a
+        hostile admin could otherwise write a window of any length at all."""
+        from core.standing import MAX_STALE_GRANT
+
+        overlong = {
+            GUILD: GuildStanding(
+                GUILD,
+                GuildState.DEGRADED,
+                NOW - MAX_STALE_GRANT - timedelta(hours=1),
+                NOW + timedelta(days=365),
+            )
+        }
+        viewer = Viewer(user_id=2, memberships=(fresh(),))
+        assert resolve(viewer, route(), overlong, NOW) is Level.NONE

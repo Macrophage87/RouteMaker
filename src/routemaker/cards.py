@@ -79,9 +79,17 @@ def build(
     them, and are dropped in the start-only style regardless, since that style
     exists precisely to publish a ride without publishing its route.
     """
-    points = set(PUBLIC_POINTS)
-    if request.viewer_has_operational_access and request.style is CardStyle.FULL_ROUTE:
-        points |= OPERATIONAL_POINTS
+    if request.style is CardStyle.START_ONLY:
+        # Start and nothing else. The style exists to post a meet-up without
+        # posting the route, and plotting the finish and the mid-ride stop gives
+        # away where several hundred people will be standing still and where they
+        # disperse - the two things a committee most wants held back, on an image
+        # that cannot be recalled once a chat platform has cached it.
+        points = {"start"}
+    else:
+        points = set(PUBLIC_POINTS)
+        if request.viewer_has_operational_access:
+            points |= OPERATIONAL_POINTS
 
     width, height = CARD_SIZES[request.size]
     return CardContent(

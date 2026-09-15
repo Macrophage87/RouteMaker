@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
+from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 from .tags import (
     cycleway_values,
     has_parking_lane,
@@ -43,21 +44,18 @@ class Stress(IntEnum):
     LTS4 = 4
 
 
-# Ways that carry no motor traffic at all. Trail-class ways are defined once,
-# here and in the tile build, by `highway` alone regardless of bicycle tag,
-# because DC-area trails are tagged inconsistently.
-TRAIL_CLASS = frozenset(
-    {"cycleway", "footway", "path", "pedestrian", "bridleway", "steps", "track"}
-)
-
-# Roads a bicycle may not use, or would not: classified separately rather than
-# given a stress tier, since an access question is not a comfort question.
-MOTOR_ONLY = frozenset({"motorway", "motorway_link", "trunk", "trunk_link"})
+# Re-exported from the shared module so there is one definition, not two.
+TRAIL_CLASS = TRAIL_CLASS_HIGHWAY
+MOTOR_ONLY = MOTOR_ONLY_HIGHWAY
 
 # Defaults applied when a tag is absent, each erring toward the higher-stress
 # reading. Recorded on the result so a tier derived from assumptions is
 # distinguishable from one derived from tags.
-DEFAULT_MAXSPEED_MPH = {
+# Split by context, not by highway class alone. The same `unclassified` tag
+# covers a 25 mph District side street and a 50 mph Loudoun through road with no
+# shoulder, and assuming the urban figure everywhere put Snickersville Turnpike
+# and Mountain Road at LTS1.
+DEFAULT_MAXSPEED_MPH_URBAN = {
     "residential": 25.0,
     "living_street": 15.0,
     "unclassified": 30.0,
@@ -69,12 +67,32 @@ DEFAULT_MAXSPEED_MPH = {
     "primary_link": 40.0,
     "service": 20.0,
 }
+
+# Statutory rural defaults where nothing is posted. Virginia 55, Maryland 50;
+# the higher of the two is taken where the jurisdiction is unknown, because the
+# rule is to err toward the higher-stress reading.
+DEFAULT_MAXSPEED_MPH_RURAL = {
+    "residential": 25.0,
+    "living_street": 15.0,
+    "unclassified": 50.0,
+    "tertiary": 50.0,
+    "tertiary_link": 50.0,
+    "secondary": 55.0,
+    "secondary_link": 55.0,
+    "primary": 55.0,
+    "primary_link": 55.0,
+    "service": 20.0,
+}
+DEFAULT_MAXSPEED_MPH = DEFAULT_MAXSPEED_MPH_URBAN
 DEFAULT_LANES_PER_DIRECTION = 1
 
 # Volume thresholds in vehicles per day, as a modifier on two-lane roads only.
 # Normalized to one definition before the classifier reads them: VDOT publishes
 # bidirectional counts, the District publishes AADT, and Maryland's is embedded
 # in a finished score.
+# A shoulder narrower than this is not somewhere a rider can sit.
+RIDEABLE_SHOULDER_M = 1.2
+
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000
 
@@ -167,9 +185,18 @@ def _bike_lane_tier(
 
 
 def classify(
-    tags: dict[str, str], aadt: int | None = None, aadt_source: str | None = None
+    tags: dict[str, str],
+    aadt: int | None = None,
+    aadt_source: str | None = None,
+    urban: bool = True,
 ) -> StressResult:
-    """Classify one way. `aadt` is bidirectional vehicles per day, already normalized."""
+    """Classify one way. `aadt` is bidirectional vehicles per day, already normalized.
+
+    `urban` selects which speed defaults apply where nothing is posted. It comes
+    from the coverage polygon's urban-area layer at preprocessing time; the
+    default is the conservative one for the District, where most of the
+    deployment's traffic is.
+    """
     highway = tags.get("highway", "")
     assumed: list[str] = []
 
@@ -181,7 +208,8 @@ def classify(
 
     speed_mph = parse_maxspeed_mph(tags.get("maxspeed"))
     if speed_mph is None:
-        speed_mph = DEFAULT_MAXSPEED_MPH.get(highway, 30.0)
+        table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
+        speed_mph = table.get(highway, 30.0 if urban else 50.0)
         assumed.append("maxspeed")
 
     lanes = lanes_per_direction(tags)
@@ -204,16 +232,30 @@ def classify(
         tier, rule = _bike_lane_tier(speed_mph, lanes, width, parking)
     else:
         tier, rule = _mixed_traffic_tier(speed_mph, lanes)
-        # A shoulder on a road without a bike lane is worth roughly one tier
-        # below 35 mph, and nothing at all above it, where the speed dominates.
-        if has_shoulder(tags) and speed_mph < 35 and tier > Stress.LTS1:
-            tier, rule = Stress(tier - 1), rule + ", shoulder present"
+        # Shoulder credit matters most at speed, not least: a 45 mph road with a
+        # wide paved shoulder is a different proposition from the same road with
+        # a rumble strip and a ditch, and on a rural group ride that is the most
+        # useful discrimination available. Gated on a width that can actually be
+        # ridden, since a six-inch shoulder is not a refuge; an untagged width is
+        # read as narrow.
+        if has_shoulder(tags) and tier > Stress.LTS1:
+            shoulder_width = parse_width_m(
+                tags.get("shoulder:width") or tags.get("shoulder:both:width")
+            )
+            if shoulder_width is None:
+                assumed.append("shoulder width")
+            if shoulder_width is not None and shoulder_width >= RIDEABLE_SHOULDER_M:
+                tier, rule = Stress(tier - 1), rule + ", rideable shoulder"
 
     # Volume, as a modifier on two-lane roads only, and never upward past the
     # tier speed already set.
     volume_source = aadt_source if aadt is not None else None
     if aadt is not None and lanes <= 1 and not cycleways:
-        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and speed_mph <= 30:
+        # Never improve a tier on the strength of a speed that was guessed.
+        # Erring toward the higher-stress reading has to mean exactly this, and
+        # without it an untagged rural road with a low count came out at LTS1.
+        speed_was_measured = "maxspeed" not in assumed
+        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and speed_mph <= 30 and speed_was_measured:
             tier, rule = Stress(tier - 1), rule + ", low volume"
         elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
             tier, rule = Stress(tier + 1), rule + ", high volume"
@@ -236,9 +278,15 @@ def is_rough(tags: dict[str, str]) -> bool:
     )
 
 
-def is_unpaved(tags: dict[str, str]) -> bool:
-    """Unpaved but not necessarily rough: the rural gravel case."""
+def is_unpaved(tags: dict[str, str]) -> bool | None:
+    """Unpaved but not necessarily rough: the rural gravel case.
+
+    Returns None when `surface` is absent rather than False. Untagged rural
+    gravel is common in Loudoun, and reading absence as paved understates the
+    unpaved share that the Gravel and rural Group Ride ranking keys on; the
+    caller decides what to do with an unknown.
+    """
     surface = tags.get("surface")
     if surface is None:
-        return False
+        return None
     return surface not in {"asphalt", "concrete", "paved", "paving_stones", "chipseal"}

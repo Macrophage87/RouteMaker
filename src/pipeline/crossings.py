@@ -33,6 +33,11 @@ class Crossing:
     end_m: float
     is_federal_enclave: bool = False
     contains_control_point: bool = False
+    # A boundary street's centreline is the line itself, so both authorities
+    # apply along its length. A ride on Eastern Avenue really does involve
+    # Prince George's County and an organizer needs to see that, rather than the
+    # report silently calling the whole thing DC.
+    also_authority: str | None = None
 
     @property
     def length_m(self) -> float:

@@ -35,20 +35,42 @@ class Variant(Enum):
     EBIKE = "ebike"
 
 
-def is_trail_class(tags: dict[str, str], sidepath_bridge_ids: Iterable[int] = ()) -> bool:
+def is_trail_class(tags: dict[str, str], sidepath_bridge_ids: frozenset[int] = frozenset()) -> bool:
     """Whether a way is trail class.
 
     Sidepath-only bridge ways count, because most Potomac and Anacostia
     crossings are bike-legal only by a sidepath, and a definition that missed
-    them would leave the no-trail variant thinking those crossings are roadways.
+    them would leave the no-trail variant thinking those crossings are roadways
+    and hand a mass ride the Key Bridge sidewalk.
+
+    The id set is taken pre-built rather than as an iterable, because building a
+    set per way turns a whole-extract pass into a quadratic one.
     """
     if tags.get("highway") in TRAIL_CLASS_HIGHWAY:
         return True
     way_id = tags.get("_osm_id")
-    return way_id is not None and int(way_id) in set(sidepath_bridge_ids)
+    return way_id is not None and int(way_id) in sidepath_bridge_ids
 
 
-def inject(variant: Variant, tags: dict[str, str]) -> dict[str, str] | None:
+def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
+    """The way ids of bridges that are bike-legal only by a sidepath.
+
+    Loaded once per rebuild from the checked-in crossings fixture, which records
+    roadway and sidepath legality per bridge. Without this threaded into the
+    build the fixture has no effect on the graph at all.
+    """
+    return frozenset(
+        int(row["osm_way_id"])
+        for row in rows
+        if row.get("sidepath_only") or row.get("roadway_bicycle_legal") is False
+    )
+
+
+def inject(
+    variant: Variant,
+    tags: dict[str, str],
+    sidepath_bridge_ids: frozenset[int] = frozenset(),
+) -> dict[str, str] | None:
     """Return the tags this variant should build with, or None to drop the way.
 
     Dropping rather than tagging inaccessible, because a way tagged bicycle=no
@@ -59,7 +81,7 @@ def inject(variant: Variant, tags: dict[str, str]) -> dict[str, str] | None:
         return dict(tags)
 
     if variant is Variant.NO_TRAIL:
-        return None if is_trail_class(tags) else dict(tags)
+        return None if is_trail_class(tags, sidepath_bridge_ids) else dict(tags)
 
     if variant is Variant.EBIKE:
         out = dict(tags)

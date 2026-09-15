@@ -100,8 +100,17 @@ def find_state_crossings(
     coordinates: Sequence[tuple[float, float]],
     state_at: Callable[[float, float], str | None],
     allocator: SyntheticNodeIds,
+    way_name: str | None = None,
 ) -> Iterator[BorderNode]:
     """Yield a border node wherever consecutive vertices sit in different states.
+
+    Boundary streets are skipped entirely. Western, Eastern and Southern Avenue
+    *are* the District line: the OSM centreline and the boundary polygon weave
+    across each other, so a naive pass mints a string of border nodes along one
+    street. Valhalla breaks an edge at every barrier node, so the way would
+    fragment into dozens of stubs, inflating the maneuver list, corrupting the
+    way-id trace join, and reporting twenty entries into Maryland for a ride that
+    never left the curb.
 
     The crossing point is approximated by bisection between the two vertices
     rather than by an exact polygon intersection, which keeps this independent of
@@ -109,6 +118,11 @@ def find_state_crossings(
     steps. A vertex in no known state - offshore, or outside the clip polygon -
     is not a crossing and is skipped rather than guessed at.
     """
+    from .jurisdiction import is_boundary_street
+
+    if is_boundary_street(way_name):
+        return
+
     for index, ((lon_a, lat_a), (lon_b, lat_b)) in enumerate(
         zip(coordinates, coordinates[1:], strict=False)
     ):

@@ -49,12 +49,22 @@ def apply_event(
     if event.kind == "remove":
         if current is None:
             return None
-        return replace(current, removed_at=now, last_confirmed=now)
+        # last_confirmed is deliberately untouched: stamping it here would extend
+        # the row's life against the staleness backstop, so the event that
+        # revokes the grant would also lengthen it.
+        return replace(current, removed_at=now)
+
+    if event.kind not in {"add", "update"}:
+        # Explicit rather than defaulted. An unrecognised kind previously fell
+        # through to the add branch and constructed a live membership row, which
+        # is the wrong failure direction for a cache whose rule is that absence
+        # of a row is absence of standing.
+        raise ValueError(f"unknown gateway event kind: {event.kind!r}")
 
     return Membership(
         guild_id=event.guild_id,
         role_ids=event.role_ids,
-        last_confirmed=now,
+        last_confirmed=event.received_at or now,
         pending=event.pending,
         timed_out_until=event.timed_out_until,
         removed_at=None,  # a re-add clears a prior removal
