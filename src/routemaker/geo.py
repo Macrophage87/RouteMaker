@@ -74,3 +74,53 @@ def cumulative_distances(points: Sequence[Point]) -> list[float]:
 def total_distance(points: Sequence[Point]) -> float:
     """Total along-route distance in metres."""
     return cumulative_distances(points)[-1] if len(points) > 1 else 0.0
+
+
+def project_onto_segment(point: Point, a: Point, b: Point) -> tuple[float, float]:
+    """Nearest point on segment a-b to `point`, as (distance_m, fraction).
+
+    `fraction` is where along the segment the nearest point falls, clamped to
+    [0, 1] so an endpoint answers for anything past the end.
+
+    Worked in a local equirectangular frame scaled by the latitude rather than on
+    the sphere. Over the tens of metres this is used for, the error is far below
+    the survey error of the lines being compared, and the alternative - a
+    great-circle cross-track formula - is both slower and wrong at a segment's
+    endpoints, where it measures to the extended great circle rather than to the
+    segment.
+    """
+    cos_lat = math.cos(math.radians((a.lat + b.lat) / 2.0))
+    ax, ay = a.lon * cos_lat, a.lat
+    bx, by = b.lon * cos_lat, b.lat
+    px, py = point.lon * cos_lat, point.lat
+
+    dx, dy = bx - ax, by - ay
+    if dx == 0.0 and dy == 0.0:
+        return haversine(point, a), 0.0
+
+    t = ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)
+    t = min(1.0, max(0.0, t))
+    nearest = Point(a.lon + (b.lon - a.lon) * t, a.lat + (b.lat - a.lat) * t)
+    return haversine(point, nearest), t
+
+
+def distance_to_line(point: Point, line: Sequence[Point]) -> tuple[float, float]:
+    """Nearest distance from `point` to a polyline, and how far along it that is.
+
+    Returns (distance_m, fraction of the line's length). Distance to the *line*
+    rather than to its nearest vertex: an agency survey line and an OSM way
+    describe the same road with entirely different vertices, so a vertex-to-vertex
+    measure reports a road as far from itself.
+    """
+    if len(line) < 2:
+        return (haversine(point, line[0]), 0.0) if line else (float("inf"), 0.0)
+
+    cumulative = cumulative_distances(line)
+    total = cumulative[-1]
+    best = (float("inf"), 0.0)
+    for index, (a, b) in enumerate(zip(line, line[1:], strict=False)):
+        distance, t = project_onto_segment(point, a, b)
+        if distance < best[0]:
+            along = cumulative[index] + (cumulative[index + 1] - cumulative[index]) * t
+            best = (distance, along / total if total else 0.0)
+    return best
