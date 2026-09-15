@@ -30,6 +30,20 @@ rename impossible.
 Test and CI databases therefore take segment DDL from the pipeline, not from
 `migrate`.
 
+## When the database stops
+
+In an ephemeral container the cluster does not survive an idle period: the
+process is killed uncleanly rather than shut down, so the next run finds a stale
+pid file. A test run that fails with "connection refused" rather than with
+something about the code usually means this. One command fixes it:
+
+```sh
+scripts/devdb.sh
+```
+
+It is idempotent, creates the role, database and PostGIS extension if they are
+absent, and waits for the socket before returning.
+
 ## Container notes
 
 Docker's daemon runs in this development container, but image layer pulls are
