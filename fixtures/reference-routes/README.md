@@ -41,8 +41,8 @@ between them.
 | Crit Mass Feb | 14.50 mi | 511 ft | 9.7% | 3.3 | point-to-point | 0 |
 | Purple Line | 35.25 mi | 985 ft | 13.0% | 3.3 | loop | 10 |
 
-City examples; the owner notes group rides can also be rural, which is not yet
-covered by a fixture below. All five stay inside the District.
+City examples; the rural set below covers the other setting. All five stay
+inside the District.
 
 Two of these matter more than their numbers.
 
