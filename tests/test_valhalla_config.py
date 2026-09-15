@@ -99,9 +99,40 @@ def test_graph_lua_name_points_at_a_file_this_repository_ships(config: dict) -> 
     raise AssertionError(f"{configured} is not covered by any compose mount")
 
 
-def test_the_entry_point_refuses_to_run_without_the_vendored_upstream() -> None:
-    """Silent fallback is the failure mode this whole guard exists for, so the
-    entry point must fail loudly rather than quietly transform nothing."""
+def test_the_entry_point_defines_the_globals_valhalla_actually_calls() -> None:
+    """LuaTagTransform checks for ways_proc, nodes_proc and rels_proc by name at
+    construction and throws if any is missing. An earlier version of this file
+    defined way_function and node_function - OSRM's entry points - so Valhalla
+    would have refused to load it, and the earlier version of this test asserted
+    those two names, pinning the bug in place.
+    """
+    import shutil
+    import subprocess
+
+    lua = shutil.which("lua5.4") or shutil.which("lua")
+    if lua is None:  # pragma: no cover - CI installs it
+        pytest.skip("no Lua interpreter available")
+
+    repo = Path(__file__).resolve().parents[1]
+    # Loading without the vendored upstream must fail loudly rather than quietly
+    # transform nothing, so the check runs against a stub upstream.
+    script = (
+        'package.path = "lua/?.lua;" .. package.path; '
+        'package.loaded["graph_upstream"] = {ways_proc=function() end, '
+        "nodes_proc=function() end, rels_proc=function() end}; "
+        'dofile("lua/graph.lua"); '
+        'assert(type(ways_proc) == "function", "ways_proc missing"); '
+        'assert(type(nodes_proc) == "function", "nodes_proc missing"); '
+        'assert(type(rels_proc) == "function", "rels_proc missing")'
+    )
+    result = subprocess.run(
+        [lua, "-e", script], cwd=repo, capture_output=True, text=True, check=False
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_entry_point_fails_loudly_without_the_vendored_upstream() -> None:
+    """Silent fallback is the failure mode this guard exists for."""
     source = (Path(__file__).resolve().parents[1] / "lua" / "graph.lua").read_text()
     assert "error(" in source
-    assert "way_function" in source and "node_function" in source
+    assert "vendor_valhalla_lua" in source

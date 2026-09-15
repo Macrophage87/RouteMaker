@@ -62,22 +62,39 @@ def tiles_covering(west: float, south: float, east: float, north: float) -> list
     ]
 
 
+# HGT is pixel-is-point: the samples sit *on* arc-second nodes, so the raster
+# extent is outset by half a pixel on every side. GDAL's reader computes the
+# origin as `swLon - 0.5/(N-1)`, giving a pixel size of exactly 1/3600 across
+# 3601 columns.
+HALF_PIXEL_DEG = 0.5 / 3600
+
+
 def gdalwarp_command(source: str, destination: str, tile: TileName) -> list[str]:
     """The resample that produces a correct HGT grid.
 
     Explicit extent and size rather than a trim: the source carries a six-pixel
     overlap per side, and removing it arithmetically lands on 3600 rather than
     the 3601 the format requires.
+
+    The extent is outset by half a pixel because HGT is pixel-is-point. Warping
+    to exactly one degree across 3601 columns gives a pixel size of 1/3601 and
+    puts every sample up to half an arc-second from its nominal node - about
+    15 m north-south and 12 m east-west here, with the error reversing sign
+    across the tile. GDAL writes that file anyway with only a corner-alignment
+    warning, so it is exactly the quiet failure this module exists to prevent:
+    on a 15 percent pitch a 12 m horizontal shift is nearly 2 m of elevation
+    error, against a 3 m gain hysteresis and a grade cap a mass ride is planned
+    around.
     """
     return [
         "gdalwarp",
         "-t_srs",
         "EPSG:4326",
         "-te",
-        str(tile.lon),
-        str(tile.lat),
-        str(tile.lon + 1),
-        str(tile.lat + 1),
+        f"{tile.lon - HALF_PIXEL_DEG:.10f}",
+        f"{tile.lat - HALF_PIXEL_DEG:.10f}",
+        f"{tile.lon + 1 + HALF_PIXEL_DEG:.10f}",
+        f"{tile.lat + 1 + HALF_PIXEL_DEG:.10f}",
         "-ts",
         str(HGT_1ARCSEC_SIDE),
         str(HGT_1ARCSEC_SIDE),

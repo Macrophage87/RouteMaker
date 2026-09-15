@@ -94,10 +94,18 @@ def has_parking_lane(tags: dict[str, str]) -> bool | None:
     Returns None when nothing in the tags speaks to it, since absence of a
     `parking:*` tag is not evidence that parking is absent.
     """
-    values = [v for k, v in tags.items() if k.startswith("parking:")]
+    # Only the schemes that actually describe a parking lane. `parking:condition:*`
+    # is not evidence that parking exists.
+    prefixes = ("parking:lane", "parking:left", "parking:right", "parking:both")
+    values = [v for k, v in tags.items() if k.startswith(prefixes)]
     if not values:
         return None
-    return any(v not in {"no", "none", "separate"} for v in values)
+    # `no_parking`, `no_stopping` and `no_standing` all say parking is absent.
+    # Reading them as present flipped the bike-lane width threshold from 1.7 m to
+    # 4.1 m and, worse, removed "parking" from the assumed list - so the result
+    # claimed the input was measured while reading it backwards.
+    absent = {"no", "none", "separate", "no_parking", "no_stopping", "no_standing"}
+    return any(v not in absent for v in values)
 
 
 def cycleway_values(tags: dict[str, str]) -> set[str]:

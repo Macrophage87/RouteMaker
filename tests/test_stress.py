@@ -39,14 +39,19 @@ class TestFacility:
         assert result.tier is Stress.LTS1
 
     def test_narrow_lane_beside_parking_is_worse_than_wide_lane(self) -> None:
-        """The door zone is the difference, which is why width is an input."""
+        """The door zone is the difference, which is why width is an input.
+
+        Measured from the cycleway's own width tags. Falling back to the roadway
+        `width` made a four-lane arterial lower stress the moment somebody
+        surveyed its carriageway.
+        """
         narrow = classify(
             {
                 "highway": "tertiary",
                 "maxspeed": "25 mph",
                 "cycleway": "lane",
                 "parking:right": "parallel",
-                "width": "3.0",
+                "cycleway:width": "1.2",
             }
         )
         wide = classify(
@@ -55,7 +60,7 @@ class TestFacility:
                 "maxspeed": "25 mph",
                 "cycleway": "lane",
                 "parking:right": "parallel",
-                "width": "5.0",
+                "cycleway:width": "5.0",
             }
         )
         assert narrow.tier > wide.tier
@@ -79,18 +84,27 @@ class TestConservativeDefaults:
         """Absence of a parking tag is not evidence that parking is absent, and the
         higher-stress reading is the one with the door zone in it."""
         untagged = classify(
-            {"highway": "tertiary", "maxspeed": "25 mph", "cycleway": "lane", "width": "2.0"}
+            {
+                "highway": "tertiary",
+                "maxspeed": "25 mph",
+                "cycleway": "lane",
+                "cycleway:width": "2.0",
+            }
         )
         no_parking = classify(
             {
                 "highway": "tertiary",
                 "maxspeed": "25 mph",
                 "cycleway": "lane",
-                "width": "2.0",
+                "cycleway:width": "2.0",
                 "parking:both": "no",
             }
         )
-        assert untagged.tier >= no_parking.tier
+        # Strictly greater, not >=. The earlier version used >=, which passes
+        # whether the default reads parking as present or absent: flipping the
+        # rule to its opposite left the whole suite green.
+        assert untagged.tier > no_parking.tier
+        assert (untagged.tier, no_parking.tier) == (Stress.LTS2, Stress.LTS1)
 
     def test_fully_tagged_way_assumes_nothing(self) -> None:
         result = classify(

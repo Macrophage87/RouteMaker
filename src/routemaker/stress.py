@@ -58,6 +58,7 @@ MOTOR_ONLY = MOTOR_ONLY_HIGHWAY
 DEFAULT_MAXSPEED_MPH_URBAN = {
     "residential": 25.0,
     "living_street": 15.0,
+    "track": 15.0,
     "unclassified": 30.0,
     "tertiary": 30.0,
     "tertiary_link": 30.0,
@@ -74,6 +75,10 @@ DEFAULT_MAXSPEED_MPH_URBAN = {
 DEFAULT_MAXSPEED_MPH_RURAL = {
     "residential": 25.0,
     "living_street": 15.0,
+    # A farm track is not a 50 mph road. Falling through to the rural default
+    # rated Loudoun gravel at maximum stress, which is the opposite of the
+    # position the rural references establish.
+    "track": 15.0,
     "unclassified": 50.0,
     "tertiary": 50.0,
     "tertiary_link": 50.0,
@@ -91,7 +96,13 @@ DEFAULT_LANES_PER_DIRECTION = 1
 # bidirectional counts, the District publishes AADT, and Maryland's is embedded
 # in a finished score.
 # A shoulder narrower than this is not somewhere a rider can sit.
+SEPARATED_CYCLEWAY = frozenset({"track", "separate", "opposite_track"})
+PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane", "left", "right"})
+
 RIDEABLE_SHOULDER_M = 1.2
+
+# Virginia's statutory default where a highway is not surface treated.
+UNPAVED_RURAL_DEFAULT_MPH = 35.0
 
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000
@@ -210,6 +221,11 @@ def classify(
     if speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
         speed_mph = table.get(highway, 30.0 if urban else 50.0)
+        if not urban and is_unpaved(tags):
+            # Virginia's statutory default on a highway that is not surface
+            # treated is 35, not 55, and an unpaved lane is not a through road
+            # whatever its classification says.
+            speed_mph = min(speed_mph, UNPAVED_RURAL_DEFAULT_MPH)
         assumed.append("maxspeed")
 
     lanes = lanes_per_direction(tags)
@@ -218,15 +234,27 @@ def classify(
         assumed.append("lanes")
 
     cycleways = cycleway_values(tags)
+    # A tag asserting the *absence* of a facility is not a facility. Testing the
+    # raw value set let `cycleway=no`, which is common here, skip the volume
+    # modifier the rural position depends on.
+    has_facility = bool(cycleways & (SEPARATED_CYCLEWAY | PAINTED_CYCLEWAY))
     parking = has_parking_lane(tags)
     if parking is None:
         assumed.append("parking")
 
     # Facility, in descending order of separation.
-    if cycleways & {"track", "separate", "opposite_track"}:
+    if cycleways & SEPARATED_CYCLEWAY:
         tier, rule = Stress.LTS1, "separated track alongside"
-    elif cycleways & {"lane", "opposite_lane", "buffered_lane", "left", "right"}:
-        width = parse_width_m(tags.get("cycleway:width") or tags.get("width"))
+    elif cycleways & PAINTED_CYCLEWAY:
+        # Only the cycleway's own width. Reading the roadway `width` tag made a
+        # four-lane arterial *lower* stress the moment someone surveyed its
+        # carriageway, which is backwards.
+        width = parse_width_m(
+            tags.get("cycleway:width")
+            or tags.get("cycleway:both:width")
+            or tags.get("cycleway:left:width")
+            or tags.get("cycleway:right:width")
+        )
         if width is None:
             assumed.append("cycleway width")
         tier, rule = _bike_lane_tier(speed_mph, lanes, width, parking)
@@ -250,12 +278,12 @@ def classify(
     # Volume, as a modifier on two-lane roads only, and never upward past the
     # tier speed already set.
     volume_source = aadt_source if aadt is not None else None
-    if aadt is not None and lanes <= 1 and not cycleways:
-        # Never improve a tier on the strength of a speed that was guessed.
-        # Erring toward the higher-stress reading has to mean exactly this, and
-        # without it an untagged rural road with a low count came out at LTS1.
-        speed_was_measured = "maxspeed" not in assumed
-        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and speed_mph <= 30 and speed_was_measured:
+    if aadt is not None and lanes <= 1 and not has_facility:
+        # A guessed speed may not be improved by a guess, but a measured count is
+        # evidence: the conservative rule is about missing evidence, not about
+        # refusing what is there. So a real AADT relieves an assumed speed, while
+        # an absent one leaves the assumption standing.
+        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and speed_mph <= 35:
             tier, rule = Stress(tier - 1), rule + ", low volume"
         elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
             tier, rule = Stress(tier + 1), rule + ", high volume"

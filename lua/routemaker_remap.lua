@@ -30,11 +30,18 @@ M.SURFACE_ORDER = {
 -- edge worse than this; avoid_bad_surfaces does not relax it.
 M.MIN_RIDABLE = { Road = 4, Hybrid = 5, Cross = 6, Mountain = 7 }
 
--- The strictest configured type. A reviewer penalty may never push a surface
--- past this, because doing so would remove the edge from the graph for that
--- preset and return "no route" instead of a penalised route, which inverts the
--- stated posture that the router degrades rather than fails.
-M.REVIEWER_PENALTY_FLOOR = M.MIN_RIDABLE.Road
+-- The strictest configured type's threshold. Used as a ceiling on roughness: a
+-- reviewer penalty may not push a surface past it.
+--
+-- The reason is narrower than an earlier comment here claimed. Valhalla's hard
+-- exclusion arms only when avoid_bad_surfaces is exactly 1.0; below that,
+-- surface is a cost multiplier and nothing is refused outright. So this cap is
+-- not usually the difference between a route and no route - it is what keeps a
+-- penalty from making an edge disproportionately expensive, and what keeps it
+-- safe for any preset that does arm the exclusion by setting the dial to its
+-- maximum.
+M.MAX_PENALISED_ROUGHNESS = M.MIN_RIDABLE.Road
+M.REVIEWER_PENALTY_FLOOR = M.MAX_PENALISED_ROUGHNESS  -- retained name, see above
 
 --- Cap a surface downgrade so it stays ridable under every configured type.
 --
@@ -61,7 +68,13 @@ function M.remap_way(tags, derived)
 
   -- Stress tier travels through the facility and comfort attributes the bicycle
   -- costing already reads, never through road class.
-  if derived.stress_tier == 1 and not tags.cycleway then
+  -- Never on a trail-class way. Upstream's transform derives bike access from
+  -- the cycleway tag, so writing cycleway=track onto a footway, a sidewalk or
+  -- steps that carry no explicit bicycle tag turns bicycle access *on* for them.
+  -- DC's sidewalk mapping is extensive, and it would put every preset on the
+  -- pavement. Those ways already land on a cycleway or path use class and get
+  -- upstream's accommodation factor, so the write gains nothing there anyway.
+  if derived.stress_tier == 1 and not tags.cycleway and not derived.is_trail_class then
     out.cycleway = "track"
   end
 
@@ -90,12 +103,31 @@ function M.remap_node(tags)
   -- furniture on trails here is overwhelmingly bollards and cycle barriers, for
   -- which Valhalla exposes no cost of its own. Mapping them onto the gate node
   -- type is what makes the Cargo preset's gate dial bite.
+  -- gate_cost applies only where the node is a gate *and* carries no access
+  -- tags: Valhalla multiplies the cost by (not tagged_access). Cycle barriers
+  -- and bollards on trails here very often carry bicycle=yes or access=yes, so
+  -- converting the barrier alone would leave the Cargo preset's dial inert on
+  -- exactly the nodes it exists for. The permissive access tags are cleared
+  -- with it; a restrictive one is left alone, since that is a real refusal.
+  local function clear_permissive_access(out_table)
+    for _, key in ipairs({ "access", "bicycle", "foot" }) do
+      if tags[key] == "yes" or tags[key] == "permissive" or tags[key] == "designated" then
+        out_table[key] = nil
+        out_table["_clear_" .. key] = "true"
+      end
+    end
+  end
+
   local barrier = tags.barrier
   if barrier == "cycle_barrier" then
     out.barrier = "gate"
+    clear_permissive_access(out)
   elseif barrier == "bollard" and tags.maxwidth then
     local width = tonumber((tags.maxwidth:gsub("[^%d%.]", "")))
-    if width and width < 1.5 then out.barrier = "gate" end
+    if width and width < 1.5 then
+      out.barrier = "gate"
+      clear_permissive_access(out)
+    end
   end
 
   return out
