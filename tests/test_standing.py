@@ -262,9 +262,27 @@ class TestOrthogonalGrants:
         named on the route."""
         from core.standing import can_edit
 
-        viewer = Viewer(user_id=2)
-        assert not can_edit(viewer, route(collaborator_ids=frozenset({2})))
-        assert can_edit(viewer, route(editor_ids=frozenset({2})))
+        viewer = Viewer(user_id=2, memberships=(fresh(),))
+        assert not can_edit(viewer, route(collaborator_ids=frozenset({2})), active(), NOW)
+        assert can_edit(viewer, route(editor_ids=frozenset({2})), active(), NOW)
+
+    def test_an_owner_removed_from_the_owning_guild_cannot_edit(self) -> None:
+        """Write access is the first thing to stop when standing goes, not the
+        last. The earlier signature took only the viewer and the route, so a
+        kicked owner kept saving new versions indefinitely."""
+        from core.standing import can_edit
+
+        removed = Viewer(user_id=1, memberships=(fresh(removed_at=NOW),))
+        current = Viewer(user_id=1, memberships=(fresh(),))
+        assert not can_edit(removed, route(owner_id=1), active(), NOW)
+        assert can_edit(current, route(owner_id=1), active(), NOW)
+
+    def test_an_owner_whose_guild_is_revoked_cannot_edit(self) -> None:
+        from core.standing import can_edit
+
+        revoked = {GUILD: GuildStanding(GUILD, GuildState.REVOKED, NOW)}
+        viewer = Viewer(user_id=1, memberships=(fresh(),))
+        assert not can_edit(viewer, route(owner_id=1), revoked, NOW)
 
     def test_a_collaborator_is_not_automatically_a_reviewer(self) -> None:
         """COLLABORATOR sorts above REVIEWER in the lattice, so a level
@@ -306,3 +324,57 @@ class TestStaleGrantCeiling:
         }
         viewer = Viewer(user_id=2, memberships=(fresh(),))
         assert resolve(viewer, route(), overlong, NOW) is Level.NONE
+
+
+class TestPropertiesTheMutationTestingFound:
+    """Three properties whose tests could be mutated away without failing.
+
+    Each of these was proven absent by a reviewer who changed the implementation
+    to violate the rule and watched the suite stay green.
+    """
+
+    def test_an_unlisted_route_is_unreadable_without_the_token(self) -> None:
+        """The defining property of the link tier. Removing the token check from
+        can_read - so any anonymous viewer reads any unlisted route - left the
+        whole suite passing, because every link test supplied a token."""
+        r = route(visibility=Visibility.LINK)
+        assert not can_read(Viewer(), r, active(), NOW)
+        assert not can_read(Viewer(user_id=7), r, active(), NOW)
+        assert can_read(Viewer(), r, active(), NOW, has_link_token=True)
+
+    def test_a_guild_admins_grant_dies_with_the_guild(self) -> None:
+        """Dropping the `& usable` intersection - so a guild admin keeps the
+        grant on a revoked guild, a stale row, after removal - left the suite
+        green, because the revoked-guild test only covered attach_standing."""
+        admin = Viewer(user_id=2, memberships=(fresh(),), admin_guild_ids=frozenset({GUILD}))
+        assert resolve(admin, route(), active(), NOW) is Level.GUILD_ADMIN
+
+        revoked = {GUILD: GuildStanding(GUILD, GuildState.REVOKED, NOW)}
+        assert resolve(admin, route(), revoked, NOW) is Level.NONE
+
+        kicked = Viewer(
+            user_id=2,
+            memberships=(fresh(removed_at=NOW),),
+            admin_guild_ids=frozenset({GUILD}),
+        )
+        assert resolve(kicked, route(), active(), NOW) is Level.NONE
+
+    def test_marshal_detail_is_withheld_at_every_tier_between(self) -> None:
+        """Keying it to the tier below public left the suite green, because the
+        tests covered only PUBLIC and PRIVATE. The rule is that token holders,
+        guests and anonymous viewers never receive it at any tier."""
+        stranger = Viewer(user_id=7)
+        for tier in Visibility:
+            r = route(visibility=tier)
+            assert not can_see_marshal_detail(stranger, r, active(), NOW, has_link_token=True)
+            assert not can_see_marshal_detail(Viewer(), r, active(), NOW, has_link_token=True)
+
+
+def test_the_tier_constants_track_the_visibility_enum() -> None:
+    """Pinned to the enum members rather than to bare integers. As plain ints
+    these could be edited to admit every club member to a private route while
+    still reading as plausible constants."""
+    from core.standing import MIN_TIER_FOR_GUILD_MEMBER, MIN_TIER_FOR_GUILD_REVIEWER
+
+    assert MIN_TIER_FOR_GUILD_MEMBER == Visibility.SERVER
+    assert MIN_TIER_FOR_GUILD_REVIEWER == Visibility.REVIEWERS

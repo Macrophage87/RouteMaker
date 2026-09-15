@@ -142,12 +142,26 @@ class OverrideAdmin(InstanceAdminOnly):
 
 @admin.register(ConfiguredGuild, site=site)
 class ConfiguredGuildAdmin(GuildScopedAdmin):
-    """A guild admin sees their own guild; an instance admin sees all of them."""
+    """A guild admin sees their own guild and can write almost nothing on it.
+
+    Scoping a queryset is not the same as gating a write, which is the gap an
+    earlier version left: adding a row here self-onboards a server and pushes an
+    arbitrary roster into the database, and editing `guild_id` is an unaudited
+    remap of the snowflake every standing check matches against - the action the
+    plan routes through a dedicated workflow with preconditions, confirmation and
+    notification. Deleting cascades away every role mapping and membership row.
+    """
 
     guild_scope_field = "guild_id"
     list_display = ("guild_id", "name", "state", "state_since")
     list_filter = ("state",)
-    readonly_fields = ("state", "state_since", "standing_valid_until")
+    readonly_fields = ("guild_id", "state", "state_since", "standing_valid_until")
+
+    def has_add_permission(self, request) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return bool(getattr(request.user, "is_instance_admin", False))
 
 
 @admin.register(CachedMembership, site=site)

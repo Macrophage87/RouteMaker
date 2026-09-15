@@ -38,19 +38,38 @@ class DiscordStandingBackend:
         attach_standing(user)
         return user
 
+    # Models only an instance admin may write. A guild admin may reach the admin
+    # and see their own guild's rows, but the configured guild list is the
+    # deployment's admission control: adding a row self-onboards a server, and
+    # editing guild_id is an unaudited remap of the snowflake that every standing
+    # check matches against.
+    INSTANCE_ADMIN_ONLY_MODELS = frozenset(
+        {"configuredguild", "jurisdiction", "override", "bantombstone", "user"}
+    )
+    WRITE_ACTIONS = ("add_", "change_", "delete_")
+
     def has_perm(self, user_obj, perm, obj=None) -> bool:
         """Answered from standing, never from permission rows.
 
-        Instance admin may act anywhere. A guild admin may act only within their
-        own guilds, and the per-object decision belongs to the admin class,
-        which knows what the object is; this grants the module-level access that
-        lets them reach the page at all.
+        The permission string is read rather than ignored. Returning True for
+        everything made every guild admin hold every permission on every model,
+        so the only thing between them and an editable model was whether that
+        particular ModelAdmin happened to override its hooks - and one did not.
         """
         if not getattr(user_obj, "is_active", False):
             return False
         if getattr(user_obj, "is_instance_admin", False):
             return True
-        return bool(getattr(user_obj, "_admin_guild_ids", ()))
+        if not getattr(user_obj, "_admin_guild_ids", ()):
+            return False
+
+        action, _, model = perm.partition(".")[2].partition("_") if "." in perm else ("", "", "")
+        codename = perm.split(".", 1)[-1]
+        if any(codename.startswith(prefix) for prefix in self.WRITE_ACTIONS):
+            target = codename.split("_", 1)[-1]
+            if target in self.INSTANCE_ADMIN_ONLY_MODELS:
+                return False
+        return True
 
     def has_module_perms(self, user_obj, app_label) -> bool:
         return self.has_perm(user_obj, f"{app_label}")

@@ -132,10 +132,16 @@ class Membership:
             return False
         return now - self.last_confirmed <= MAX_ROW_AGE
 
-    @property
-    def is_sanctioned(self) -> bool:
-        """Under an active moderation action, as distinct from simply absent."""
-        return self.removed_at is not None or self.timed_out_until is not None
+    def is_sanctioned(self, now: datetime) -> bool:
+        """Under an *active* moderation action, as distinct from simply absent.
+
+        A lapsed timeout is not a sanction: the plan says a timeout is restored
+        automatically at its end time, and reading the column's presence rather
+        than comparing it against now blocked the guest floor permanently.
+        """
+        if self.removed_at is not None:
+            return True
+        return self.timed_out_until is not None and now < self.timed_out_until
 
 
 @dataclass(frozen=True)
@@ -151,15 +157,14 @@ class Viewer:
     reviewer_guild_ids: frozenset[int] = frozenset()
     instance_admin_guild_ids: frozenset[int] = frozenset()
 
-    @property
-    def is_sanctioned_anywhere(self) -> bool:
+    def is_sanctioned_anywhere(self, now: datetime) -> bool:
         """Whether any guild has an active timeout or removal against them.
 
         A sanctioned member must not fall through to the guest tier and carry on
         commenting on that club's public routes; a timeout that does not stop
         someone posting is not a timeout.
         """
-        return any(m.is_sanctioned for m in self.memberships)
+        return any(m.is_sanctioned(now) for m in self.memberships)
 
     @property
     def is_authenticated(self) -> bool:
@@ -243,14 +248,12 @@ def resolve(
     # does not admit you to a route its owner has not shared with the club: the
     # tiers are cumulative upward, so server standing is admitted at server, link
     # and public, and nowhere below.
-    audience = viewer_audience = usable & route.all_audience_guilds
+    audience = usable & route.all_audience_guilds
     if audience and route.visibility >= MIN_TIER_FOR_GUILD_MEMBER:
         level = max(level, Level.MEMBER)
 
     # A reviewer in one club does not gain reviewer powers over another's routes.
-    if (viewer.reviewer_guild_ids & viewer_audience) and (
-        route.visibility >= MIN_TIER_FOR_GUILD_REVIEWER
-    ):
+    if (viewer.reviewer_guild_ids & audience) and (route.visibility >= MIN_TIER_FOR_GUILD_REVIEWER):
         level = max(level, Level.REVIEWER)
 
     # 5. The guest floor: a signed-in user belonging to no audience guild may
@@ -262,7 +265,7 @@ def resolve(
         and viewer.is_authenticated
         and route.visibility is Visibility.PUBLIC
         and route.guest_comments_enabled
-        and not viewer.is_sanctioned_anywhere
+        and not viewer.is_sanctioned_anywhere(now)
     ):
         level = Level.GUEST
 
@@ -298,16 +301,38 @@ def can_read(
     return False
 
 
-def can_edit(viewer: Viewer, route: Route) -> bool:
+def can_edit(
+    viewer: Viewer,
+    route: Route,
+    guilds: dict[int, GuildStanding],
+    now: datetime,
+) -> bool:
     """Whether this viewer may save a new version.
 
     Checked explicitly rather than by level comparison, because the owner's edit
     grant is orthogonal to the level lattice: a view-only collaborator sits at
     COLLABORATOR and must not thereby acquire save rights.
+
+    Guild standing is consulted too. An earlier version took only the viewer and
+    the route, so an owner kicked from the owning guild, timed out, or whose
+    guild went revoked kept saving new versions indefinitely - write access
+    surviving where the plan says it is the first thing to stop.
     """
     if viewer.is_banned or viewer.is_deleted or not viewer.is_authenticated:
         return False
-    return viewer.user_id == route.owner_id or viewer.user_id in route.editor_ids
+    if not (viewer.user_id == route.owner_id or viewer.user_id in route.editor_ids):
+        return False
+    if viewer.is_instance_admin:
+        return True
+
+    usable = frozenset(
+        m.guild_id
+        for m in viewer.memberships
+        if m.is_usable(now)
+        and (standing := guilds.get(m.guild_id)) is not None
+        and standing.grants_standing(now)
+    )
+    return route.owning_guild_id in usable
 
 
 def can_review(viewer: Viewer, route: Route, viewer_level: Level) -> bool:

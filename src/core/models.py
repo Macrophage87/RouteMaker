@@ -227,6 +227,42 @@ class User(AbstractBaseUser):
     def is_active(self) -> bool:
         return not (self.is_banned or self.is_deleted)
 
+    # Django resolves permissions through PermissionsMixin, which is also what
+    # brings the stored is_staff, the stored is_superuser and the group and
+    # permission tables - the whole credential class this model exists to avoid.
+    # So the three methods the admin calls are written out here and delegate to
+    # the configured backends, which answer from application standing.
+    #
+    # Without them the admin raises AttributeError on every request it admits.
+    # That matters beyond the crash: the obvious repair is to add
+    # PermissionsMixin, which would silently restore the stored flags and undo
+    # the reason this model is custom at all.
+
+    def has_perm(self, perm: str, obj=None) -> bool:
+        from django.contrib.auth import get_backends
+
+        if not self.is_active:
+            return False
+        return any(
+            backend.has_perm(self, perm, obj)
+            for backend in get_backends()
+            if hasattr(backend, "has_perm")
+        )
+
+    def has_perms(self, perm_list, obj=None) -> bool:
+        return all(self.has_perm(perm, obj) for perm in perm_list)
+
+    def has_module_perms(self, app_label: str) -> bool:
+        from django.contrib.auth import get_backends
+
+        if not self.is_active:
+            return False
+        return any(
+            backend.has_module_perms(self, app_label)
+            for backend in get_backends()
+            if hasattr(backend, "has_module_perms")
+        )
+
 
 class ConfiguredGuild(models.Model):
     """A Discord guild an instance admin has admitted to the deployment.
