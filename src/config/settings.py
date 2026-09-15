@@ -8,6 +8,7 @@ host, and proxy settings are asserted in CI rather than trusted to review.
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parents[2]
@@ -85,11 +86,19 @@ SEGMENT_SCHEMA_STAGING = "staging"
 # no schema on the path - and nothing catches it, because the database tests
 # reach the same tables through schema-qualified raw SQL.
 #
-# Set as a connection option rather than only on the role, so a checkout runs
-# correctly without a manual grant; the deploy also runs
-# `ALTER ROLE ... IN DATABASE ... SET search_path` so a psql session and any
-# tooling that bypasses Django land on the same path.
-SEARCH_PATH = f"{SEGMENT_SCHEMA_LIVE},public"
+# Set both as a connection option, so a checkout runs correctly without a manual
+# grant, and on the role by scripts/devdb.sh and the deploy, so a psql session or
+# any tooling that bypasses Django lands on the same path. The comment used to
+# claim the role grant happened and nothing performed it.
+# public FIRST. PostgreSQL creates an unqualified table in the first *existing*
+# schema on the path, and Django migrations are never schema-qualified. With
+# `live` first, a deploy onto a box that had already run one rebuild put every
+# application table - users, sessions, memberships, overrides, django_migrations -
+# inside the schema the weekly swap renames away, and the swap after that dropped
+# it with CASCADE. One deploy plus two rebuilds is unrecoverable data loss, and
+# it is invisible on a fresh checkout because `live` does not exist yet, so
+# migrations land in public and every test passes.
+SEARCH_PATH = f"public,{SEGMENT_SCHEMA_LIVE}"
 
 DATABASES = {
     "default": {
@@ -102,8 +111,12 @@ DATABASES = {
         "OPTIONS": {"options": f"-c search_path={SEARCH_PATH}"},
         # Persistent connections, which the latency budget assumes: at 0 Django
         # opens and closes one per request and pays a connect round-trip on the
-        # preview path.
-        "CONN_MAX_AGE": int(os.environ.get("DJANGO_CONN_MAX_AGE", "60")),
+        # preview path. Zero under test, because a connection surviving teardown
+        # leaves the test database "being accessed by other users" and the next
+        # run fails in a way that looks like a code failure.
+        "CONN_MAX_AGE": 0
+        if "pytest" in sys.modules
+        else int(os.environ.get("DJANGO_CONN_MAX_AGE", "60")),
     }
 }
 

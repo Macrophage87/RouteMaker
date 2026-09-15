@@ -13,7 +13,22 @@ make the rename impossible.
 
 from __future__ import annotations
 
+import re
+
 from django.db import connection
+
+# Schema names are interpolated into DDL, which no parameter placeholder can
+# carry. They come from settings today, so this is not exploitable - but it is
+# one config-from-environment change away from being so, in the one module that
+# runs DDL against production.
+_SCHEMA_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
+
+
+def validate_schema_name(schema: str) -> str:
+    if not _SCHEMA_NAME.match(schema):
+        raise ValueError(f"refusing to interpolate {schema!r} into DDL")
+    return schema
+
 
 SEGMENT_DDL = """
 CREATE SCHEMA IF NOT EXISTS {schema};
@@ -46,11 +61,13 @@ CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
 
 def create_segment_schema(schema: str) -> None:
     """Build an empty segment schema. Idempotent only at the schema level."""
+    validate_schema_name(schema)
     with connection.cursor() as cursor:
         cursor.execute(SEGMENT_DDL.format(schema=schema))
 
 
 def drop_segment_schema(schema: str) -> None:
+    validate_schema_name(schema)
     with connection.cursor() as cursor:
         cursor.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
 

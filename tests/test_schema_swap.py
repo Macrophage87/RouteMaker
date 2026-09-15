@@ -195,3 +195,46 @@ def test_the_search_path_also_covers_the_migrated_schema(segment_schemas) -> Non
     from core.models import Jurisdiction
 
     assert Jurisdiction.objects.count() >= 0  # resolves rather than raising
+
+
+def test_migrations_land_in_public_even_when_live_exists(segment_schemas) -> None:
+    """The search path must name public first.
+
+    PostgreSQL creates an unqualified table in the first *existing* schema on the
+    path, and Django migrations are never schema-qualified. With the live schema
+    first, a deploy onto a box that had run one rebuild put every application
+    table inside the schema the weekly swap renames away, and the swap after that
+    dropped it with CASCADE - one deploy plus two rebuilds, and the users,
+    sessions, memberships and django_migrations are gone.
+
+    It was invisible on a fresh checkout because the live schema does not exist
+    yet, so migrations landed in public and every test passed. This asserts the
+    ordering directly rather than asserting that reads resolve, which they did
+    either way.
+    """
+    from django.conf import settings
+
+    path = settings.DATABASES["default"]["OPTIONS"]["options"]
+    schemas = path.split("search_path=", 1)[1].split(",")
+    assert schemas[0].strip() == "public", "public must be first on the search path"
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT schemaname FROM pg_tables
+               WHERE tablename IN ('app_user', 'django_migrations', 'jurisdiction')"""
+        )
+        homes = {row[0] for row in cursor.fetchall()}
+    assert homes == {"public"}, f"application tables must live in public, found {homes}"
+
+
+def test_a_swap_does_not_take_the_application_schema_with_it(segment_schemas) -> None:
+    """The consequence the ordering prevents, asserted end to end."""
+    from pipeline.swap import swap_schemas
+
+    insert_segment("staging", 4242)
+    swap_schemas()
+
+    from core.models import User
+
+    assert User.objects.count() == 0, "the users table must still resolve after a swap"
+    assert row_count("live") == 1

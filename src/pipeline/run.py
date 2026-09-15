@@ -316,6 +316,17 @@ def build_handlers(
         context.build_log = "\n".join(logs)
 
     def write_segments() -> None:
+        # The staging schema is rebuilt from scratch every week. Nothing created
+        # it before, so the first rebuild on a real box failed on a missing
+        # relation and every later one inserted into a schema still holding last
+        # week's rows, which the segment key then rejected partway through. The
+        # end-to-end test could not see either, because its fixture handed it a
+        # freshly created empty staging.
+        from .schema import create_segment_schema, drop_segment_schema
+
+        drop_segment_schema(context.staging_schema)
+        create_segment_schema(context.staging_schema)
+
         reference = context.require_reference()
         rows: list[dict] = []
         for way in context.ways:

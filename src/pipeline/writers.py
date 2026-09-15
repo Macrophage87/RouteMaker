@@ -33,6 +33,9 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
     different claims, and the published derivative needs to know which segments
     a conditionally licensed source touched.
     """
+    from .schema import validate_schema_name
+
+    validate_schema_name(schema)
     if schema == "live":
         raise ValueError("writers never target the live schema; write to staging and swap")
 

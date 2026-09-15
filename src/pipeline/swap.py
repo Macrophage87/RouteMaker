@@ -38,7 +38,7 @@ from dataclasses import dataclass
 
 from django.db import connection, transaction
 
-from .schema import create_segment_schema, schema_exists
+from .schema import create_segment_schema, schema_exists, validate_schema_name
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +103,8 @@ def swap_schemas(
         # quietly: it would commit or roll back with work it knows nothing about.
         raise SwapInsideTransaction("swap_schemas must not run inside an enclosing transaction")
 
+    validate_schema_name(live)
+    validate_schema_name(staging)
     retired = _retired_name(live)
     last_error: Exception | None = None
 
@@ -152,6 +154,8 @@ def rollback_swap(live: str = "live", staging: str = "staging") -> None:
     Pairs with repointing the settings table back to the previous tile extracts;
     this half only restores the database.
     """
+    validate_schema_name(live)
+    validate_schema_name(staging)
     retired = _retired_name(live)
     if not schema_exists(retired):
         raise SwapRollbackUnavailable(
@@ -162,6 +166,11 @@ def rollback_swap(live: str = "live", staging: str = "staging") -> None:
         try:
             with transaction.atomic(), connection.cursor() as cursor:
                 cursor.execute(f"SET LOCAL lock_timeout = '{DEFAULT_LOCK_TIMEOUT_MS}ms'")
+                # The same lock the forward path takes, and for the same reason:
+                # a bare rename serializes nothing, so readers would tear across
+                # the boundary. Every argument for it applies here with more
+                # force, since a rollback runs when something is already wrong.
+                cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS EXCLUSIVE MODE")
                 cursor.execute(f"ALTER SCHEMA {live} RENAME TO {staging}")
                 cursor.execute(f"ALTER SCHEMA {retired} RENAME TO {live}")
             return

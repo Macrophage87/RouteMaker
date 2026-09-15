@@ -110,7 +110,7 @@ def route_crossings(geometry: LineString, layer: str, step_m: float = 25.0) -> l
             FROM vertices v
             LEFT JOIN jurisdiction j
               ON j.layer = %s AND ST_Intersects(j.geometry, v.point)
-            ORDER BY v.idx
+            ORDER BY v.idx, j.is_federal_enclave DESC NULLS LAST, j.name
             """,
             [geometry.ewkb, step_m, layer],
         )
@@ -120,8 +120,12 @@ def route_crossings(geometry: LineString, layer: str, step_m: float = 25.0) -> l
         return []
 
     # One vertex can sit in more than one polygon on the same layer where
-    # boundaries touch; take them in a stable order so a crossing does not
-    # flicker between two authorities along a shared edge.
+    # boundaries touch. The query orders them, so the first row per vertex is
+    # deterministic: without the ORDER BY, which row arrived first was whatever
+    # the plan produced, and two runs over the same route could name different
+    # authorities along a shared edge. Federal enclaves sort first, because where
+    # one overlaps another polygon it is the enclave that changes the permit
+    # question.
     per_vertex: dict[int, tuple[float, float, str | None, bool]] = {}
     for idx, lon, lat, name, enclave in rows:
         if idx not in per_vertex or (name is not None and per_vertex[idx][2] is None):

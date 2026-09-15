@@ -23,4 +23,15 @@ su postgres -c "psql -tAlc \"SELECT 1 FROM pg_database WHERE datname='routemaker
 PGPASSWORD=routemaker psql -h 127.0.0.1 -U routemaker -d routemaker \
   -qc "CREATE EXTENSION IF NOT EXISTS postgis" >/dev/null
 
+# On the role as well as per connection, so psql and any tooling that bypasses
+# Django resolve the same way. public first: an unqualified CREATE TABLE lands in
+# the first existing schema on the path, and the live schema is renamed away by
+# every weekly swap.
+su postgres -c "psql -qc \"ALTER ROLE routemaker IN DATABASE routemaker \
+  SET search_path = public, live\"" >/dev/null
+
+# A test database left behind by an interrupted run makes the next run fail in
+# ways that look like code failures.
+su postgres -c "dropdb --if-exists test_routemaker" >/dev/null 2>&1 || true
+
 echo "database up"
