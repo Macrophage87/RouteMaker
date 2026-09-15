@@ -42,7 +42,7 @@ between them.
 | Purple Line | 35.25 mi | 985 ft | 13.0% | 3.3 | loop | 10 |
 
 City examples; the owner notes group rides can also be rural, which is not yet
-covered by a fixture. All five stay inside the District.
+covered by a fixture below. All five stay inside the District.
 
 Two of these matter more than their numbers.
 
@@ -101,8 +101,8 @@ knowing because turn count alone does not separate a trail route from a road one
   double what a mass ride ever sees. A single cap would either reject these or
   be useless for mass rides.
 - **Trail routes cross the District line as a matter of course.** Every one of
-  the three does. This is why the state-crossing penalty defaults off for every
-  modality except Mass Ride; were it on, none of these routes could be produced.
+  the three does, which is why the state-crossing penalty defaults off for every
+  modality, Mass Ride included; were it on, none of these could be produced.
 - **Point spacing is 40 to 54 metres** across both sets, so every fixture
   arrives as a track and is map-matched, the intended import path.
 
@@ -118,8 +118,13 @@ knowing because turn count alone does not separate a trail route from a road one
   keeping a long field together.
 - **No route revisits its own line.** Zero across all four, which is the
   empirical basis for the self-crossing and doubling-back check.
-- **All four stay inside the District**, which is why Mass Ride defaults the
-  state-crossing penalty high.
+- **All four stay inside the District**, which is a property of these four
+  routes rather than a constraint on the preset. They are 5 to 7 mile rides
+  starting and finishing near 17th and Church, so they had no reason to leave.
+  Memorial Bridge into Arlington and the Anacostia crossings into Prince
+  George's are ordinary mass-ride moves here. The state-crossing penalty is off
+  by default for every modality including Mass Ride, and a crossing is reported
+  rather than avoided.
 - **They are point-to-point from a fixed start**, near 17th and Church NW, and
   finish in a different quadrant each time. December finishes about half a mile
   from the start, so near-loops happen but are not the rule.
