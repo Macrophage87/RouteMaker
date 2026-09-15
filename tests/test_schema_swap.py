@@ -174,3 +174,24 @@ def test_segment_table_is_not_created_by_migrate() -> None:
             "SELECT count(*) FROM pg_tables WHERE schemaname = 'public' AND tablename = 'segment'"
         )
         assert cursor.fetchone()[0] == 0
+
+
+def test_the_unmanaged_segment_model_is_readable_through_the_orm(segment_schemas) -> None:
+    """The search path has to name the live schema, or the unmanaged Segment
+    model resolves to a bare `segment` that exists nowhere on the path and is
+    unreadable in every environment. Nothing caught this before, because every
+    other database test reaches these tables through schema-qualified raw SQL.
+    """
+    from core.models import Segment
+
+    insert_segment("live", 4242)
+    assert Segment.objects.count() == 1
+    assert Segment.objects.first().osm_way_id == 4242
+
+
+def test_the_search_path_also_covers_the_migrated_schema(segment_schemas) -> None:
+    """The pipeline queries `jurisdiction` unqualified and it lives in public, so
+    a path naming only the live schema breaks the jurisdiction tagger instead."""
+    from core.models import Jurisdiction
+
+    assert Jurisdiction.objects.count() >= 0  # resolves rather than raising

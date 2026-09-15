@@ -34,6 +34,24 @@ MIDDLEWARE = [
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 
+# The live/staging schema pair the weekly rebuild swaps between.
+SEGMENT_SCHEMA_LIVE = "live"
+SEGMENT_SCHEMA_STAGING = "staging"
+
+# The search path has to name both. `live` carries the rebuilt segment tables,
+# which are unmanaged and owned by the pipeline; `public` carries everything
+# migrations own, including the jurisdiction table the pipeline queries
+# unqualified. Without this the unmanaged Segment model is unreadable through
+# the ORM in every environment - it resolves to a bare `segment` that exists in
+# no schema on the path - and nothing catches it, because the database tests
+# reach the same tables through schema-qualified raw SQL.
+#
+# Set as a connection option rather than only on the role, so a checkout runs
+# correctly without a manual grant; the deploy also runs
+# `ALTER ROLE ... IN DATABASE ... SET search_path` so a psql session and any
+# tooling that bypasses Django land on the same path.
+SEARCH_PATH = f"{SEGMENT_SCHEMA_LIVE},public"
+
 DATABASES = {
     "default": {
         "ENGINE": "django.contrib.gis.db.backends.postgis",
@@ -42,14 +60,13 @@ DATABASES = {
         "PASSWORD": os.environ.get("PGPASSWORD", "routemaker"),
         "HOST": os.environ.get("PGHOST", "127.0.0.1"),
         "PORT": os.environ.get("PGPORT", "5432"),
+        "OPTIONS": {"options": f"-c search_path={SEARCH_PATH}"},
+        # Persistent connections, which the latency budget assumes: at 0 Django
+        # opens and closes one per request and pays a connect round-trip on the
+        # preview path.
+        "CONN_MAX_AGE": int(os.environ.get("DJANGO_CONN_MAX_AGE", "60")),
     }
 }
-
-# The live/staging schema pair the weekly rebuild swaps between. Set on the role
-# rather than per connection, so a recycled persistent connection cannot land on
-# the wrong schema after a swap.
-SEGMENT_SCHEMA_LIVE = "live"
-SEGMENT_SCHEMA_STAGING = "staging"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True

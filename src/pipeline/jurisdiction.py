@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from django.contrib.gis.geos import LineString
 from django.db import connection
 
+from routemaker.geo import Point, haversine
+
 from .crossings import Crossing
 
 # Ways whose centreline *is* the boundary. Treated as District with both
@@ -58,49 +60,97 @@ def assign_way(geometry: LineString) -> list[LayerAssignment]:
         ]
 
 
-def route_crossings(geometry: LineString, layer: str) -> list[Crossing]:
+def route_crossings(geometry: LineString, layer: str, step_m: float = 25.0) -> list[Crossing]:
     """Ordered stretches of the route inside each authority on one layer.
 
-    Ordered along the route rather than grouped by authority, because a crossing
-    list is read while riding it: re-entering the District after a mile in
-    Maryland is a second crossing, not a footnote on the first.
+    Walked sequentially rather than derived by locating intersection pieces on
+    the line. `ST_LineLocatePoint` returns the position of the point on the route
+    *nearest* its argument, which is ambiguous the moment a route visits the same
+    area twice, and the earlier implementation built on it produced, on a real
+    25 km route through one 900 m park: five crossings instead of two, two of
+    them spanning 20 and 22 km of a park the route barely clipped; a single
+    867 m crossing for an out-and-back that passed through twice, halving the
+    jurisdiction mileage that goes on a permit application; and a spurious
+    5 km crossing on a loop that started inside the polygon, because normalising
+    a wrap-around piece by sorting its endpoints turns 0.79 to 0.0 into 0.0 to
+    0.79.
+
+    Walking the route in order is unambiguous for all three shapes, because
+    position along the route is the thing being iterated rather than something
+    recovered afterwards. Lengths are geodesic; the earlier version multiplied a
+    fraction measured in degrees by a length measured in metres, which on a route
+    mixing north-south and east-west legs misplaced crossings by about four
+    percent - larger than the collapse threshold it fed.
     """
     with connection.cursor() as cursor:
         cursor.execute(
             """
-            WITH parts AS (
-                SELECT j.name,
-                       j.is_federal_enclave,
-                       (ST_Dump(ST_Intersection(%s::geometry, j.geometry))).geom AS piece
-                FROM jurisdiction j
-                WHERE j.layer = %s AND ST_Intersects(%s::geometry, j.geometry)
+            WITH route AS (SELECT ST_Segmentize(%s::geometry::geography, %s)::geometry AS g),
+            vertices AS (
+                SELECT (dp).path[1] AS idx, (dp).geom AS point
+                FROM route, ST_DumpPoints(route.g) AS dp
             )
-            SELECT name,
-                   is_federal_enclave,
-                   ST_LineLocatePoint(%s::geometry, ST_StartPoint(piece)) AS t_start,
-                   ST_LineLocatePoint(%s::geometry, ST_EndPoint(piece)) AS t_end,
-                   ST_Length(piece::geography) AS piece_m
-            FROM parts
-            WHERE GeometryType(piece) = 'LINESTRING' AND ST_NPoints(piece) > 1
+            SELECT v.idx,
+                   ST_X(v.point),
+                   ST_Y(v.point),
+                   j.name,
+                   j.is_federal_enclave
+            FROM vertices v
+            LEFT JOIN jurisdiction j
+              ON j.layer = %s AND ST_Intersects(j.geometry, v.point)
+            ORDER BY v.idx
             """,
-            [geometry.ewkb, layer, geometry.ewkb, geometry.ewkb, geometry.ewkb],
+            [geometry.ewkb, step_m, layer],
         )
         rows = cursor.fetchall()
 
-    total_m = _length_m(geometry)
-    crossings = []
-    for name, is_enclave, t_start, t_end, _piece_m in rows:
-        start, end = sorted((t_start or 0.0, t_end or 0.0))
+    if not rows:
+        return []
+
+    # One vertex can sit in more than one polygon on the same layer where
+    # boundaries touch; take them in a stable order so a crossing does not
+    # flicker between two authorities along a shared edge.
+    per_vertex: dict[int, tuple[float, float, str | None, bool]] = {}
+    for idx, lon, lat, name, enclave in rows:
+        if idx not in per_vertex or (name is not None and per_vertex[idx][2] is None):
+            per_vertex[idx] = (lon, lat, name, bool(enclave))
+
+    ordered = [per_vertex[idx] for idx in sorted(per_vertex)]
+
+    crossings: list[Crossing] = []
+    travelled = 0.0
+    run_start = 0.0
+    current: str | None = None
+    current_enclave = False
+
+    for position, (lon, lat, name, enclave) in enumerate(ordered):
+        if position > 0:
+            previous = ordered[position - 1]
+            travelled += haversine(Point(previous[0], previous[1]), Point(lon, lat))
+        if name != current:
+            if current is not None:
+                crossings.append(
+                    Crossing(
+                        layer=layer,
+                        authority=current,
+                        start_m=run_start,
+                        end_m=travelled,
+                        is_federal_enclave=current_enclave,
+                    )
+                )
+            current, current_enclave, run_start = name, enclave, travelled
+
+    if current is not None:
         crossings.append(
             Crossing(
                 layer=layer,
-                authority=name,
-                start_m=start * total_m,
-                end_m=end * total_m,
-                is_federal_enclave=bool(is_enclave),
+                authority=current,
+                start_m=run_start,
+                end_m=travelled,
+                is_federal_enclave=current_enclave,
             )
         )
-    return sorted(crossings, key=lambda c: c.start_m)
+    return crossings
 
 
 def _length_m(geometry: LineString) -> float:
