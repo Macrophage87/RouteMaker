@@ -164,3 +164,299 @@ class TestSessionEpoch:
         assert middleware.index(
             "django.contrib.auth.middleware.AuthenticationMiddleware"
         ) < middleware.index("core.middleware.SessionEpochMiddleware")
+
+
+class TestAttachStandingBranches:
+    """The resolver Django actually calls.
+
+    Every branch below survived deletion against the whole suite. The
+    authorization module that *was* tested, `core.standing`, is reached from no
+    production path, so a role-mapping inversion that made every reviewer a guild
+    admin - and the ban, timeout and deletion checks - were invisible.
+    """
+
+    def test_a_timed_out_member_has_no_standing(self, guild) -> None:
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=20)
+        now = timezone.now()
+        member_of(
+            guild,
+            user,
+            permission=RoleMapping.Permission.GUILD_ADMIN,
+            timed_out_until=now + timedelta(hours=1),
+        )
+        attach_standing(user, now)
+        assert user._member_guild_ids == frozenset()
+        assert not user.is_staff
+
+    def test_standing_returns_when_the_timeout_expires(self, guild) -> None:
+        """Bounded by the clock, not by the column being cleared: Discord does not
+        send an event when a timeout lapses."""
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=21)
+        now = timezone.now()
+        member_of(
+            guild,
+            user,
+            permission=RoleMapping.Permission.GUILD_ADMIN,
+            timed_out_until=now - timedelta(minutes=1),
+        )
+        attach_standing(user, now)
+        assert user.is_staff
+
+    def test_a_deleted_user_is_not_re_cached(self, guild) -> None:
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=22, is_deleted=True)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        attach_standing(user)
+        assert user._member_guild_ids == frozenset()
+
+    def test_a_reviewer_is_a_reviewer_and_not_an_admin(self, guild) -> None:
+        """An inverted mapping here makes every reviewer a guild admin, which is
+        the difference between seeing a private route and editing the configured
+        guild list."""
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=23)
+        member_of(guild, user, permission=RoleMapping.Permission.REVIEWER)
+        attach_standing(user)
+        assert user._reviewer_guild_ids == frozenset({1000})
+        assert user._admin_guild_ids == frozenset()
+        assert not user.is_staff
+
+    def test_a_pending_member_has_no_standing(self, guild) -> None:
+        """Catches long-standing members who joined before a server's rules gate
+        existed, so the denial can say so rather than reading as a broken site."""
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=24)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN, pending=True)
+        attach_standing(user)
+        assert user._member_guild_ids == frozenset()
+
+    def test_an_unconfigured_guild_cannot_be_cached_at_all(self) -> None:
+        """A guild the bot is in but that is not configured is inert. That, rather
+        than the bot's Public Bot flag, is the admission control.
+
+        Here it is structural: a cached row hangs off a ConfiguredGuild row, so
+        there is no shape a membership in an unconfigured guild could take. The
+        behavioural half - that the gateway ignores such an event rather than
+        creating the guild - is in test_membership.
+        """
+        from core.models import CachedMembership
+
+        guild_field = CachedMembership._meta.get_field("guild")
+        assert guild_field.remote_field.model.__name__ == "ConfiguredGuild"
+        assert not guild_field.null, "a row with no configured guild must not exist"
+
+    def test_a_degraded_guild_honours_cached_standing_inside_the_window(self, guild) -> None:
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        now = timezone.now()
+        user = User.objects.create(discord_user_id=26)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        guild.state = "degraded"
+        guild.standing_valid_until = now + timedelta(hours=1)
+        guild.save()
+        attach_standing(user, now)
+        assert user.is_staff
+
+    def test_a_degraded_guild_lapses_to_nothing_after_the_window(self, guild) -> None:
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        now = timezone.now()
+        user = User.objects.create(discord_user_id=27)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        guild.state = "degraded"
+        guild.standing_valid_until = now - timedelta(minutes=1)
+        guild.save()
+        attach_standing(user, now)
+        assert not user.is_staff
+
+    def test_a_degraded_guild_is_clamped_to_the_stated_maximum(self, guild) -> None:
+        """A column is not trusted to carry a window of arbitrary length: a value
+        far in the future would make one lost guild permanent."""
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+        from core.standing import MAX_STALE_GRANT
+
+        now = timezone.now()
+        user = User.objects.create(discord_user_id=28)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        guild.state = "degraded"
+        guild.standing_valid_until = now + timedelta(days=3650)
+        guild.save()
+        ConfiguredGuildRow = type(guild)
+        ConfiguredGuildRow.objects.filter(pk=guild.pk).update(
+            state_since=now - MAX_STALE_GRANT - timedelta(minutes=1)
+        )
+        attach_standing(user, now)
+        assert not user.is_staff, "the ceiling runs from state_since, not from the column"
+
+
+class TestHasPerm:
+    def test_an_inactive_user_holds_no_permission(self, guild) -> None:
+        """is_active is what ban and deletion resolve through, so dropping it from
+        the conjunct hands a banned guild admin the admin back."""
+        from core.auth_backend import DiscordStandingBackend, attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=30)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        attach_standing(user)
+        assert DiscordStandingBackend().has_perm(user, "core.change_closure")
+
+        user.is_banned = True
+        attach_standing(user)
+        assert not user.is_active
+        assert not DiscordStandingBackend().has_perm(user, "core.change_closure")
+
+    def test_a_banned_instance_admin_holds_nothing(self) -> None:
+        """is_active is load-bearing here and nowhere else.
+
+        Everywhere else the empty standing sets would refuse on their own, so
+        dropping the conjunct changes nothing and a test built on a banned guild
+        admin passes either way. The instance-admin branch returns before it
+        consults standing at all, so without is_active a banned instance admin
+        keeps every permission on every model.
+        """
+        from core.auth_backend import DiscordStandingBackend, attach_standing
+
+        user = User.objects.create(discord_user_id=32, is_instance_admin=True)
+        attach_standing(user)
+        assert DiscordStandingBackend().has_perm(user, "core.change_configuredguild")
+
+        user.is_banned = True
+        attach_standing(user)
+        assert not DiscordStandingBackend().has_perm(user, "core.change_configuredguild")
+        assert not DiscordStandingBackend().has_module_perms(user, "core")
+
+    def test_a_guild_admin_cannot_write_the_instance_admin_models(self, guild) -> None:
+        """The configured guild list is the deployment's admission control:
+        adding a row self-onboards a server, and editing guild_id is an unaudited
+        remap of the snowflake every standing check matches against."""
+        from core.auth_backend import DiscordStandingBackend, attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=31)
+        member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
+        attach_standing(user)
+        backend = DiscordStandingBackend()
+        for model in ("configuredguild", "jurisdiction", "override", "bantombstone", "user"):
+            for action in ("add", "change", "delete"):
+                assert not backend.has_perm(user, f"core.{action}_{model}")
+        assert backend.has_perm(user, "core.view_configuredguild")
+
+
+class TestSessionEpochMiddleware:
+    """Driven through a real request. The module's own docstring says a value
+    nothing reads revokes nothing, and until these existed nothing read it: the
+    middleware could be replaced with a pass-through and the suite stayed green.
+    """
+
+    def signed_in(self, user, **row):
+        from django.contrib.sessions.backends.db import SessionStore
+
+        from core.models import Session
+
+        store = SessionStore()
+        store.create()
+        now = timezone.now()
+        row.setdefault("issued_epoch", user.session_epoch)
+        row.setdefault("created_at", now)
+        row.setdefault("last_seen_at", now)
+        Session.objects.create(session_key=store.session_key, user=user, **row)
+        return store
+
+    def request_for(self, user, store):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        request.session = store
+        request.user = user
+        return request
+
+    def run_middleware(self, request):
+        from core.middleware import SessionEpochMiddleware
+
+        return SessionEpochMiddleware(lambda r: "ok")(request)
+
+    def test_a_live_session_survives_and_its_clock_moves(self) -> None:
+        from core.models import Session
+
+        user = User.objects.create(discord_user_id=40)
+        store = self.signed_in(user, last_seen_at=timezone.now() - timedelta(hours=2))
+        request = self.request_for(user, store)
+
+        before = Session.objects.get(session_key=store.session_key).last_seen_at
+        assert self.run_middleware(request) == "ok"
+        after = Session.objects.get(session_key=store.session_key).last_seen_at
+        assert after > before, "the idle clock never moves, so every session expires"
+        assert hasattr(request.user, "_member_guild_ids"), "standing was never attached"
+
+    def test_a_stale_epoch_ends_the_session(self) -> None:
+        """Ban, suspension, deletion and sign-out-everywhere all land here."""
+        from core.models import Session
+
+        user = User.objects.create(discord_user_id=41)
+        store = self.signed_in(user)
+        user.session_epoch += 1
+        user.save(update_fields=["session_epoch"])
+
+        request = self.request_for(user, store)
+        self.run_middleware(request)
+        assert not Session.objects.filter(session_key=store.session_key).exists()
+        assert not request.user.is_authenticated
+
+    def test_a_session_past_the_absolute_lifetime_ends(self) -> None:
+        """Django implements idle expiry natively but not an absolute cap."""
+        from core.models import Session
+        from core.revocation import ABSOLUTE_SESSION_LIFETIME
+
+        user = User.objects.create(discord_user_id=42)
+        store = self.signed_in(
+            user, created_at=timezone.now() - ABSOLUTE_SESSION_LIFETIME - timedelta(minutes=1)
+        )
+        self.run_middleware(self.request_for(user, store))
+        assert not Session.objects.filter(session_key=store.session_key).exists()
+
+    def test_an_idle_session_ends(self) -> None:
+        from core.models import Session
+        from core.revocation import IDLE_SESSION_LIFETIME
+
+        user = User.objects.create(discord_user_id=43)
+        store = self.signed_in(
+            user, last_seen_at=timezone.now() - IDLE_SESSION_LIFETIME - timedelta(minutes=1)
+        )
+        self.run_middleware(self.request_for(user, store))
+        assert not Session.objects.filter(session_key=store.session_key).exists()
+
+    def test_a_session_with_no_row_is_refused(self) -> None:
+        """The row is the only thing carrying the epoch, so a session without one
+        cannot be checked and is not trusted."""
+        from django.contrib.sessions.backends.db import SessionStore
+
+        user = User.objects.create(discord_user_id=44)
+        store = SessionStore()
+        store.create()
+        request = self.request_for(user, store)
+        self.run_middleware(request)
+        assert not request.user.is_authenticated
+
+    def test_an_anonymous_request_passes_through(self) -> None:
+        from django.contrib.auth.models import AnonymousUser
+        from django.contrib.sessions.backends.db import SessionStore
+
+        store = SessionStore()
+        store.create()
+        assert self.run_middleware(self.request_for(AnonymousUser(), store)) == "ok"

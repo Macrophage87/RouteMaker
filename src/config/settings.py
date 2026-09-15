@@ -81,6 +81,19 @@ REBUILD_SOURCE_PBF = DATA_ROOT / "extracts" / "source.osm.pbf"
 REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
 BACKUP_DIR = DATA_ROOT / "backups"
 
+# Discord login, identify scope only. The client secret is used once per login to
+# exchange an authorization code and is never written anywhere; no per-user
+# Discord token is retained at all.
+DISCORD_CLIENT_ID = os.environ.get("DISCORD_CLIENT_ID", "")
+DISCORD_CLIENT_SECRET = os.environ.get("DISCORD_CLIENT_SECRET", "")
+DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://localhost:8000/auth/callback")
+
+# Keys a ban tombstone. A Discord id is a structured 64-bit value whose candidate
+# set any guild's member list resolves directly, so an unkeyed hash of one gives
+# no privacy against whoever holds a dump. This lives in SSM and never appears in
+# one. Encoded rather than stored as text so it is bytes at the point of use.
+TOMBSTONE_KEY = os.environ.get("TOMBSTONE_KEY", "insecure-development-tombstone-key").encode()
+
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 

@@ -396,8 +396,14 @@ class Session(models.Model):
     session_key = models.CharField(max_length=64, primary_key=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sessions")
     issued_epoch = models.IntegerField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    last_seen_at = models.DateTimeField(auto_now=True)
+    # Both timestamps are written explicitly rather than by auto_now_add and
+    # auto_now. Under auto_now the middleware's own assignment to last_seen_at
+    # was overwritten on save, so the field it updates was set by Django rather
+    # than by the request; and neither an aged session nor an idle one could be
+    # constructed through save() at all, which is why the absolute and idle
+    # expiry branches had no test.
+    created_at = models.DateTimeField()
+    last_seen_at = models.DateTimeField()
 
     class Meta:
         db_table = "app_session"
