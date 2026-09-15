@@ -27,6 +27,7 @@ from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, HttpResponseRedirect
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from .discord_oauth import LoginRequest, OAuthStateError, begin_login, scopes_are_minimal
@@ -34,6 +35,7 @@ from .models import BanTombstone, Session, User
 from .revocation import tombstone
 
 STATE_SESSION_KEY = "discord_login_request"
+DEFAULT_REDIRECT = "/"
 USER_URL = "https://discord.com/api/users/@me"
 TOKEN_URL = "https://discord.com/api/oauth2/token"
 
@@ -42,13 +44,31 @@ class LoginRefused(RuntimeError):
     """The login cannot proceed, for a reason the person may be told."""
 
 
+def safe_redirect_target(candidate, request) -> str:
+    """Reduce a `next=` to something that can only land on this deployment.
+
+    Checked on the way in *and* on the way out. Storing it in the session is not
+    a trust boundary: the session is attacker-influenced here, because a login
+    can be started with any `next=` before the person ever authenticates. So the
+    value is re-checked when it is finally used rather than trusted because it
+    came back out of the session we put it in.
+    """
+    if candidate and url_has_allowed_host_and_scheme(
+        url=candidate,
+        allowed_hosts={request.get_host(), *settings.ALLOWED_HOSTS},
+        require_https=request.is_secure(),
+    ):
+        return candidate
+    return DEFAULT_REDIRECT
+
+
 @require_http_methods(["GET"])
 def login_start(request):
     url, pending = begin_login(
         client_id=settings.DISCORD_CLIENT_ID,
         redirect_uri=settings.DISCORD_REDIRECT_URI,
         now=timezone.now(),
-        redirect_after=request.GET.get("next", "/"),
+        redirect_after=safe_redirect_target(request.GET.get("next"), request),
     )
     request.session[STATE_SESSION_KEY] = {
         "state": pending.state,
@@ -109,7 +129,7 @@ def login_callback(request, exchange=None):
     user.last_login = timezone.now()
     user.save(update_fields=["last_login"])
     issue_session(request, user)
-    return HttpResponseRedirect(pending.redirect_after)
+    return HttpResponseRedirect(safe_redirect_target(pending.redirect_after, request))
 
 
 @require_http_methods(["POST"])

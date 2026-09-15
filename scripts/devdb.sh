@@ -8,16 +8,22 @@
 # fails with "connection refused" rather than something about the code.
 set -eu
 
-pg_isready >/dev/null 2>&1 && { echo "database already up"; exit 0; }
-
-pg_ctlcluster 16 main start
-until pg_isready >/dev/null 2>&1; do sleep 1; done
+# Only the cluster start is conditional. Everything below is idempotent and runs
+# every time: a running server is not the same thing as a provisioned one, and a
+# container that has the cluster up but the role, database or extension missing
+# is exactly the state this script exists to repair.
+if pg_isready >/dev/null 2>&1; then
+  echo "cluster already running"
+else
+  pg_ctlcluster 16 main start
+  until pg_isready >/dev/null 2>&1; do sleep 1; done
+fi
 
 su postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='routemaker'\"" \
   | grep -q 1 || su postgres -c \
   "psql -c \"CREATE ROLE routemaker LOGIN PASSWORD 'routemaker' SUPERUSER\""
 
-su postgres -c "psql -tAlc \"SELECT 1 FROM pg_database WHERE datname='routemaker'\"" \
+su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='routemaker'\"" \
   | grep -q 1 || su postgres -c "createdb -O routemaker routemaker"
 
 PGPASSWORD=routemaker psql -h 127.0.0.1 -U routemaker -d routemaker \

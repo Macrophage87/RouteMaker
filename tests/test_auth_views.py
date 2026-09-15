@@ -165,3 +165,59 @@ def test_no_discord_token_is_persisted_anywhere(client, monkeypatch) -> None:
     assert populated == {"User": 1, "Session": 1}
     assert not User.objects.get(discord_user_id=782).has_usable_password()
     assert Session.objects.get().issued_epoch == User.objects.get(discord_user_id=782).session_epoch
+
+
+# --- `next=` may not leave this deployment -------------------------------------
+#
+# The login flow starts on the real host and, for someone who has already
+# approved the application, Discord's consent can be silent. So a `next=` that
+# survives to the final redirect is a phishing primitive that begins on the
+# genuine origin and passes a genuine consent. It is checked on the way in and
+# again on the way out.
+
+OFFSITE = [
+    "https://evil.example.com/phish",
+    "//evil.example.com/phish",
+    "https:/\\evil.example.com",
+    "javascript:alert(1)",
+]
+
+
+@pytest.mark.parametrize("hostile", OFFSITE)
+def test_an_offsite_next_is_not_stored_at_login_start(client, hostile) -> None:
+    client.get(reverse("login"), {"next": hostile})
+    assert client.session[STATE_SESSION_KEY]["redirect_after"] == "/"
+
+
+def test_a_local_next_is_kept(client) -> None:
+    client.get(reverse("login"), {"next": "/routes/42"})
+    assert client.session[STATE_SESSION_KEY]["redirect_after"] == "/routes/42"
+
+
+@pytest.mark.parametrize("hostile", OFFSITE)
+def test_an_offsite_next_cannot_reach_the_final_redirect(
+    client, monkeypatch, hostile
+) -> None:
+    """The session is not a trust boundary here: a login can be started with any
+    `next=` before anyone authenticates, so the stored value is re-checked when
+    it is used rather than trusted for having come out of our own session."""
+    _response, state = start_login(client)
+    poisoned = client.session
+    poisoned[STATE_SESSION_KEY] = {**poisoned[STATE_SESSION_KEY], "redirect_after": hostile}
+    poisoned.save()
+
+    response = callback(client, monkeypatch, state)
+
+    assert response.status_code == 302
+    assert response["Location"] == "/"
+
+
+def test_a_local_next_still_lands_after_the_callback(client, monkeypatch) -> None:
+    _response, state = start_login(client)
+    session = client.session
+    session[STATE_SESSION_KEY] = {**session[STATE_SESSION_KEY], "redirect_after": "/routes/42"}
+    session.save()
+
+    response = callback(client, monkeypatch, state)
+
+    assert response["Location"] == "/routes/42"
