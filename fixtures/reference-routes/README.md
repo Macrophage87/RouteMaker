@@ -102,7 +102,9 @@ knowing because turn count alone does not separate a trail route from a road one
   be useless for mass rides.
 - **Trail routes cross the District line as a matter of course.** Every one of
   the three does, which is why the state-crossing penalty defaults off for every
-  modality, Mass Ride included; were it on, none of these could be produced.
+  modality, Mass Ride included; were it on, none of these would be reproduced. A crossing penalty is additive
+  and capped, so it never makes a route unroutable; it makes a different route
+  win, which is what the reproduction invariant tests.
 - **Point spacing is 40 to 54 metres** across both sets, so every fixture
   arrives as a track and is map-matched, the intended import path.
 
@@ -114,8 +116,14 @@ knowing because turn count alone does not separate a trail route from a road one
 - **They are close to flat.** 63 to 164 feet of gain, with brief pitches to
   around 6%. A grade cap near 6% matches practice; anything lower would reject
   these real routes.
-- **Turn density is 2 to 4 per mile**, low for a city grid, consistent with
-  keeping a long field together.
+- **Turn density is 2.3 to 4.7 per mile**, low for a city grid, consistent with
+  keeping a long field together. The 2026-07 ride is the top of that range at 28
+  turns over 6.00 miles, so an invariant drawn at 5 per mile would have almost no
+  headroom and the plan uses 6.
+- **Turn counts here are geometric**, per the definition below, and are not the
+  same number as a routing engine's maneuver count, which suppresses maneuvers
+  where the road name continues and splits others. Any invariant comparing the
+  two must compute both sides the same way.
 - **No route revisits its own line.** Zero across all four, which is the
   empirical basis for the self-crossing and doubling-back check.
 - **All four stay inside the District**, which is a property of these four
@@ -148,5 +156,10 @@ attributed normally.
 ## Provenance
 
 Exported from Strava as route files, roughly 50 metre point spacing, carrying
-Strava's elevation values. On import they exceed the route-point threshold and
+Strava's elevation values. The application derives gain from 3DEP instead, so
+every gain figure in this README carries a systematic offset against what the
+application will report. This matters most for the mass rides, whose total gain
+of 19 to 50 metres is only a few multiples of the 3 metre hysteresis, so the
+absolute gain bounds are treated as approximate and the per-modality invariants
+are written with headroom rather than to these numbers exactly. On import they exceed the route-point threshold and
 are map-matched as tracks, which is the intended path.
