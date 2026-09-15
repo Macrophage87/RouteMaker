@@ -65,8 +65,13 @@ class ReferenceData:
     # Agency volume lines, already normalised to one AADT definition.
     volume_features: tuple[conflation.AgencyFeature, ...]
 
+    # Crossing names the fixture has an opinion about and the extract does not
+    # carry. Empty on a healthy rebuild; anything here means the sidepath rule is
+    # not biting on that bridge and an operator needs told which.
+    unmatched_crossings: tuple[str, ...]
+
     @classmethod
-    def load(cls, directory: Path) -> ReferenceData:
+    def load(cls, directory: Path, ways: Sequence[extract.Way] = ()) -> ReferenceData:
         urban = directory / "urban-areas.json"
         crossings = directory / "crossings.json"
         volume = directory / "volume.json"
@@ -88,10 +93,17 @@ class ReferenceData:
             )
             for row in json.loads(volume.read_text())
         )
+        bridge_ids, unmatched = variants.resolve_sidepath_bridge_ids(crossing_rows, ways)
+        if unmatched:
+            logger.warning(
+                "crossings not found in the extract, so the sidepath rule is inert on them: %s",
+                ", ".join(unmatched),
+            )
         return cls(
             urban_way_ids=frozenset(json.loads(urban.read_text())),
-            sidepath_bridge_ids=variants.load_sidepath_bridge_ids(crossing_rows),
+            sidepath_bridge_ids=bridge_ids,
             volume_features=features,
+            unmatched_crossings=tuple(unmatched),
         )
 
 
@@ -186,7 +198,9 @@ def build_handlers(
         context.ways_by_id = {way.osm_id: way for way in context.ways}
 
     def load_reference_data() -> None:
-        context.reference = ReferenceData.load(context.reference_dir)
+        # Given the ways, because the crossings fixture resolves by name against
+        # the extract. FETCH_EXTRACT runs first for exactly this reason.
+        context.reference = ReferenceData.load(context.reference_dir, context.ways)
 
     def conflate_volume() -> None:
         reference = context.require_reference()

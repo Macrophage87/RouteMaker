@@ -59,22 +59,76 @@ def is_trail_class(
     return osm_id is not None and osm_id in sidepath_bridge_ids
 
 
-def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
-    """The way ids of bridges that are bike-legal only by a sidepath.
+def is_sidepath_only(row: dict) -> bool:
+    """Whether a crossing row describes a bridge bike-legal only by a sidepath."""
+    return bool(row.get("sidepath_only") or row.get("roadway_bicycle_legal") is False)
 
-    Loaded once per rebuild from the checked-in crossings fixture, which records
-    roadway and sidepath legality per bridge. Without this threaded into the
-    build the fixture has no effect on the graph at all.
+
+def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
+    """The explicitly recorded way ids among the crossing rows.
+
+    Most rows carry no id. See `resolve_sidepath_bridge_ids` for why, and for the
+    path that actually populates the set.
     """
     return frozenset(
         int(row["osm_way_id"])
         for row in rows
-        # Way id 0 means the crossing is recorded but not yet matched to the
-        # clipped extract. Skipped rather than matched against way 0, which
-        # exists and is not a bridge.
-        if int(row.get("osm_way_id") or 0) != 0
-        and (row.get("sidepath_only") or row.get("roadway_bicycle_legal") is False)
+        # Way id 0 means no id has been recorded for this crossing. Skipped
+        # rather than matched against way 0, which exists and is not a bridge.
+        if int(row.get("osm_way_id") or 0) != 0 and is_sidepath_only(row)
     )
+
+
+def resolve_sidepath_bridge_ids(
+    rows: Iterable[dict], ways: Iterable
+) -> tuple[frozenset[int], list[str]]:
+    """Match the crossing rows against the extract, by name and then by id.
+
+    Returns the way ids and the names that matched nothing.
+
+    By name, because a way id is the wrong thing to check into a repository: OSM
+    ids change whenever a mapper splits a bridge into two ways or replaces it
+    after a rebuild, and a fixture full of stale ids fails the way this one did -
+    every row carried id 0, so the set was empty, so the no-trail variant treated
+    the Key Bridge sidewalk as a roadway and nothing reported it. A name is
+    community knowledge that ages at the pace of the bridge rather than the pace
+    of the map, which is also how the authority columns in this fixture work.
+
+    Restricted to ways tagged as bridges, so a street approaching a crossing and
+    named after it does not inherit the crossing's legality.
+
+    Unmatched names are returned rather than swallowed. A crossing this
+    deployment has an opinion about and cannot find in the extract is a thing an
+    operator needs told - it means either the clip moved or the name changed, and
+    either way the sidepath rule is not biting on that bridge.
+    """
+    wanted: dict[str, list[str]] = {}
+    explicit: set[int] = set()
+    for row in rows:
+        if not is_sidepath_only(row):
+            continue
+        if int(row.get("osm_way_id") or 0) != 0:
+            explicit.add(int(row["osm_way_id"]))
+            continue
+        names = row.get("osm_names") or ([row["name"]] if row.get("name") else [])
+        if names:
+            wanted[row["name"]] = [name.casefold() for name in names]
+
+    by_name = {name for names in wanted.values() for name in names}
+    matched_ids: set[int] = set()
+    seen: set[str] = set()
+    for way in ways:
+        if way.tags.get("bridge") in (None, "no"):
+            continue
+        name = (way.tags.get("name") or "").casefold()
+        if name and name in by_name:
+            matched_ids.add(way.osm_id)
+            seen.add(name)
+
+    unmatched = [
+        label for label, names in wanted.items() if not any(name in seen for name in names)
+    ]
+    return frozenset(matched_ids | explicit), sorted(unmatched)
 
 
 def inject(
