@@ -14,18 +14,43 @@ under the Mass Ride preset should look like these.
 | 2026-04 | 7.23 mi | 133 ft | 4.4% | 17 | 0 |
 | 2026-07 | 6.00 mi | 164 ft | 4.8% | 28 | 0 |
 
-Gain is computed with a 3 metre hysteresis threshold. Turns count bearing
-changes above 40 degrees between consecutive segments over 5 metres. A revisit
-is any pair of points within 25 metres of each other but more than 400 metres
-apart along the route.
+These definitions are implemented in `src/routemaker/measure.py` and asserted
+against these tables by `tests/test_reference_fixtures.py`, so the number a test
+checks and the number the application reports come from one place.
+
+Gain uses a 3 metre hysteresis, applied asymmetrically: a rise must exceed the
+threshold to count, while the reference tracks the running minimum with no
+threshold on the way down. A symmetric threshold loses the bottom of every dip
+and under-reports every route here by 5 to 25 percent.
+
+Turns count bearing changes above 40 degrees between consecutive segments of at
+least 5 metres. This definition is sampling-rate dependent and has a stated
+validity domain: at spacings below about 20 metres a turn taken over 15 metres
+splits into three sub-threshold steps and goes uncounted. Fourteen of the
+fifteen fixtures, sampled at 39 metres and above, reproduce their recorded
+counts exactly; `rural-group-loco-30`, sampled at 6.4 metres, reports 0.3 turns
+per mile against roughly 1.0 for its two sibling loops. The measurement flags
+that trace as unreliable rather than returning the wrong number. Decimating
+dense traces to the reliable range was tried and rejected: it fixes the one
+trace and loses real turns on four of the five mass rides.
+
+Max grade is the steepest rise over a run of at least 30 metres, the minimum run
+being what stops a one-metre elevation wobble between adjacent samples from
+reporting a 40 percent pitch. Treat this column as provisional: it is computed
+from the GPX elevation these files carry, while the application derives
+elevation from 3DEP, so the two will not agree exactly.
+
+A revisit is a place where the route comes back within 25 metres of its own line
+more than 400 metres apart along the route, counted as occurrences rather than
+as point pairs, so a stretch ridden twice is one revisit and not one per sample.
 
 ## Trail routes (Trailmaxxing)
 
 | Route | Distance | Gain | Max grade | Turns/mi | Shape | Jurisdictions |
 |---|---|---|---|---|---|---|
-| Bethesda Loop | 31.63 mi | 701 ft | 12.2% | 2.9 | loop | DC, MD |
-| Brookside Gardens | 14.65 mi | 746 ft | 12.2% | 2.9 | point-to-point | DC, MD |
-| Annapolis and BWI | 75.73 mi | 2333 ft | 11.8% | 2.3 | point-to-point | DC, MD |
+| Bethesda Loop | 31.63 mi | 701 ft | 11.8% | 2.9 | loop | DC, MD |
+| Brookside Gardens | 14.65 mi | 746 ft | 8.3% | 2.9 | point-to-point | DC, MD |
+| Annapolis and BWI | 75.73 mi | 2333 ft | 11.3% | 2.3 | point-to-point | DC, MD |
 
 Supplied with the note that some roadway sections are unavoidable, which is the
 point: a trail route is not trails only, it is trails plus the connectors
@@ -35,11 +60,11 @@ between them.
 
 | Route | Distance | Gain | Max grade | Turns/mi | Shape | Revisits |
 |---|---|---|---|---|---|---|
-| Blow off steam | 11.65 mi | 661 ft | 9.5% | 2.6 | point-to-point | 0 |
-| Crit Mass 2024-03 | 12.31 mi | 347 ft | 9.9% | 2.8 | point-to-point | 5 |
+| Blow off steam | 11.65 mi | 661 ft | 10.9% | 2.6 | point-to-point | 0 |
+| Crit Mass 2024-03 | 12.31 mi | 347 ft | 9.9% | 2.8 | point-to-point | 2 |
 | Crit Mass Jan | 13.77 mi | 604 ft | 8.6% | 2.4 | point-to-point | 0 |
-| Crit Mass Feb | 14.50 mi | 511 ft | 9.7% | 3.3 | point-to-point | 0 |
-| Purple Line | 35.25 mi | 985 ft | 13.0% | 3.3 | loop | 10 |
+| Crit Mass Feb | 14.50 mi | 511 ft | 8.5% | 3.2 | point-to-point | 0 |
+| Purple Line | 35.25 mi | 985 ft | 10.4% | 3.3 | loop | 2 |
 
 City examples; the rural set below covers the other setting. All five stay
 inside the District.
@@ -60,18 +85,22 @@ where it is grounded, and applying it to a group ride would reject real routes.
 
 | Route | Distance | Gain | ft/mi | Max grade | Turns/mi | Shape | Points |
 |---|---|---|---|---|---|---|---|
-| VPRD TNL | 24.32 mi | 2219 ft | 91 | 15.0% | 1.1 | loop | 1000 |
-| Loudoun 30 CCW | 30.12 mi | 2360 ft | 78 | 4.7% | 0.9 | loop | 7538 |
+| VPRD TNL | 24.32 mi | 2219 ft | 91 | 14.5% | 1.1 | loop | 1000 |
+| Loudoun 30 CCW | 30.12 mi | 2361 ft | 78 | 16.9% | n/a | loop | 7538 |
 | Two Bridges CW | 30.11 mi | 2232 ft | 74 | 19.0% | 1.0 | loop | 919 |
+
+Loudoun 30 CCW reports no turn density: at 6.4 metre sampling it falls outside
+the turn definition's validity domain, which the measurement flags rather than
+guessing. Its recorded 0.9 was measured before that limit was understood.
 
 Northern Loudoun County, and group rides rather than a separate gravel category.
 The owner notes they favour gravel because rural gravel carries less traffic,
 which is the important point: unpaved is being chosen as a proxy for low stress,
 not for the surface itself.
 
-**Turn density finally separates something, and it is not the preset.** At 0.9 to
-1.1 turns per mile these are a third as busy as the same club's city rides at 2.4
-to 3.3. What that measure distinguishes is rural from urban, so it can inform a
+**Turn density finally separates something, and it is not the preset.** At 1.0 to
+1.1 turns per mile the two measurable rural loops are a third as busy as the same
+club's city rides at 2.4 to 3.3. What that measure distinguishes is rural from urban, so it can inform a
 route's character but must never be used to infer a modality.
 
 **They are loops.** Every one, where the city group rides were mostly
@@ -90,14 +119,14 @@ knowing because turn count alone does not separate a trail route from a road one
 
 | | Mass Ride | Group Ride, city | Group Ride, rural | Trailmaxxing |
 |---|---|---|---|---|
-| Distance | 5 to 7 mi | 12 to 35 mi | 24 to 30 mi | 15 to 76 mi |
+| Distance | 5 to 7.5 mi | 12 to 35 mi | 24 to 30 mi | 15 to 76 mi |
 | Gain | 63 to 164 ft | 347 to 985 ft | 2219 to 2360 ft | 701 to 2333 ft |
-| Max grade | 4.4 to 6.3% | 8.6 to 13.0% | 4.7 to 19.0% | 11.8 to 12.2% |
-| Turns per mile | 2 to 4 | 2.4 to 3.3 | 0.9 to 1.1 | 2.3 to 2.9 |
+| Max grade | 4.4 to 6.3% | 8.5 to 10.9% | 14.5 to 19.0% | 8.3 to 11.8% |
+| Turns per mile | 2.3 to 4.7 | 2.4 to 3.3 | 1.0 to 1.1 | 2.3 to 2.9 |
 | Shape | point-to-point | mostly point-to-point | loop | either |
 | May revisit its line | no | yes | yes | yes |
 
-- **Grade tolerance is per-modality, not global.** Trail routes hit 12%, roughly
+- **Grade tolerance is per-modality, not global.** Trail routes hit 11.8%, roughly
   double what a mass ride ever sees. A single cap would either reject these or
   be useless for mass rides.
 - **Trail routes cross the District line as a matter of course.** Every one of
