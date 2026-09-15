@@ -19,6 +19,9 @@ ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
     "django.contrib.auth",
+    "django.contrib.sessions",
+    "django.contrib.messages",
+    "django.contrib.admin",
     "django.contrib.staticfiles",
     "django.contrib.gis",
     "core",
@@ -26,10 +29,46 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # After authentication, because it needs request.user: an epoch that nothing
+    # reads revokes nothing, so without this ban, suspension, deletion and
+    # sign-out-everywhere all leave the person signed in.
+    "core.middleware.SessionEpochMiddleware",
+    "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+TEMPLATES = [
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+        "OPTIONS": {
+            "context_processors": [
+                "django.contrib.auth.context_processors.auth",
+                "django.contrib.messages.context_processors.messages",
+                "django.template.context_processors.request",
+            ]
+        },
+    }
+]
+
+# The custom user carries no usable password, no stored is_staff and no stored
+# is_superuser. Django's default carries all three, and each is a credential or
+# grant class this threat model does not have.
+AUTH_USER_MODEL = "core.User"
+
+# No ModelBackend: there is no password to authenticate, and with no superuser
+# and no auth_permission rows its has_perm would answer false for everyone, so
+# the admin would render empty.
+AUTHENTICATION_BACKENDS = ["core.auth_backend.DiscordStandingBackend"]
+
+# The admin is reached only through a Discord session, under a path that is not
+# guessed at. That is obscurity rather than a control, and it is not what
+# protects it - the disabled login, derived staff and per-object checks are.
+ADMIN_PATH = os.environ.get("DJANGO_ADMIN_PATH", "internal-8f3a/")
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
