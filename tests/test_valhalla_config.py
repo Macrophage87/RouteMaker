@@ -99,36 +99,38 @@ def test_graph_lua_name_points_at_a_file_this_repository_ships(config: dict) -> 
     raise AssertionError(f"{configured} is not covered by any compose mount")
 
 
-def test_the_entry_point_defines_the_globals_valhalla_actually_calls() -> None:
-    """LuaTagTransform checks for ways_proc, nodes_proc and rels_proc by name at
-    construction and throws if any is missing. An earlier version of this file
-    defined way_function and node_function - OSRM's entry points - so Valhalla
-    would have refused to load it, and the earlier version of this test asserted
-    those two names, pinning the bug in place.
+def test_the_entry_point_delegates_to_a_vendored_upstream() -> None:
+    """The behavioural half of this lives in tests/test_lua_remap.py, which runs
+    lua/graph.lua under LuaJIT against the real vendored Valhalla transform.
+
+    This half pins the arrangement that makes that possible. The earlier test
+    here stubbed a module-shaped upstream into package.loaded and asserted the
+    three globals existed afterwards, which passed while the shipped wrapper held
+    `require`'s return value and called `upstream.ways_proc` on it. Upstream
+    defines globals and returns nothing, so that value is the boolean `true` and
+    every way of every tile build would have raised. A test that fabricates the
+    interface it is meant to pin cannot fail - the same shape as the round-1 test
+    that pinned OSRM's way_function.
     """
-    import shutil
-    import subprocess
-
-    lua = shutil.which("lua5.4") or shutil.which("lua")
-    if lua is None:  # pragma: no cover - CI installs it
-        pytest.skip("no Lua interpreter available")
-
     repo = Path(__file__).resolve().parents[1]
-    # Loading without the vendored upstream must fail loudly rather than quietly
-    # transform nothing, so the check runs against a stub upstream.
-    script = (
-        'package.path = "lua/?.lua;" .. package.path; '
-        'package.loaded["graph_upstream"] = {ways_proc=function() end, '
-        "nodes_proc=function() end, rels_proc=function() end}; "
-        'dofile("lua/graph.lua"); '
-        'assert(type(ways_proc) == "function", "ways_proc missing"); '
-        'assert(type(nodes_proc) == "function", "nodes_proc missing"); '
-        'assert(type(rels_proc) == "function", "rels_proc missing")'
+    # Comment lines are dropped first: the file documents the bug below by name,
+    # and a check that read the prose would fail on the explanation of the fix.
+    source = "\n".join(
+        line
+        for line in (repo / "lua" / "graph.lua").read_text().splitlines()
+        if not line.lstrip().startswith("--")
     )
-    result = subprocess.run(
-        [lua, "-e", script], cwd=repo, capture_output=True, text=True, check=False
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
+
+    assert "package.loaded" not in source, "the entry point must not fabricate an upstream"
+    # Captured from the globals the vendored chunk installs, not indexed off the
+    # require() return value, which is a boolean.
+    assert "local up_ways, up_nodes, up_rels = ways_proc, nodes_proc, rels_proc" in source
+    # The bug shape: binding require()'s return value and indexing it.
+    for proc in ("ways_proc", "nodes_proc", "rels_proc"):
+        assert f"upstream.{proc}" not in source
+    assert "local ok, upstream" not in source
+    for name in ("ways_proc", "nodes_proc", "rels_proc"):
+        assert f"function {name}(kv, nokeys)" in source
 
 
 def test_the_entry_point_fails_loudly_without_the_vendored_upstream() -> None:
@@ -136,3 +138,12 @@ def test_the_entry_point_fails_loudly_without_the_vendored_upstream() -> None:
     source = (Path(__file__).resolve().parents[1] / "lua" / "graph.lua").read_text()
     assert "error(" in source
     assert "vendor_valhalla_lua" in source
+
+
+def test_the_entry_point_refuses_an_upstream_without_the_expected_globals() -> None:
+    """A re-vendor that changed upstream's entry-point contract would otherwise
+    capture three nils and fall over one way into the build, by which point the
+    useful part of the message is long gone."""
+    source = (Path(__file__).resolve().parents[1] / "lua" / "graph.lua").read_text()
+    assert 'type(up_ways) ~= "function"' in source
+    assert "did not define the *_proc globals" in source

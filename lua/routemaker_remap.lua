@@ -20,6 +20,15 @@
 
 local M = {}
 
+-- A tag this remap wants *removed* rather than rewritten. Lua tables cannot
+-- carry a nil value, so a removal has to be signalled by a value the entry point
+-- recognises. An earlier version wrote a `_clear_<key>` marker key instead,
+-- which nothing consumed: the permissive access tag stayed, gate_cost stayed
+-- inert on exactly the nodes it exists for, and the marker itself leaked into
+-- Valhalla's tag table as a junk key. A unique table cannot collide with any
+-- real tag value.
+M.REMOVE = setmetatable({}, { __tostring = function() return "<remove>" end })
+
 -- Increasing roughness, matching Valhalla's surface enum ordering.
 M.SURFACE_ORDER = {
   paved_smooth = 1, paved = 2, paved_rough = 3, compacted = 4,
@@ -112,8 +121,7 @@ function M.remap_node(tags)
   local function clear_permissive_access(out_table)
     for _, key in ipairs({ "access", "bicycle", "foot" }) do
       if tags[key] == "yes" or tags[key] == "permissive" or tags[key] == "designated" then
-        out_table[key] = nil
-        out_table["_clear_" .. key] = "true"
+        out_table[key] = M.REMOVE
       end
     end
   end
@@ -141,7 +149,9 @@ function M.denies_bicycle_at_border(tags, remapped)
   if tags.barrier ~= "border_control" then return false end
   local merged = {}
   for k, v in pairs(tags) do merged[k] = v end
-  for k, v in pairs(remapped) do merged[k] = v end
+  for k, v in pairs(remapped) do
+    if v == M.REMOVE then merged[k] = nil else merged[k] = v end
+  end
   return merged.bicycle == "no" or merged.access == "no"
 end
 

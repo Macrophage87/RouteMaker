@@ -41,9 +41,14 @@ jobs:
         with:
           node-version: "22"
       - name: Install native dependencies
-        # GDAL/PROJ for GeoDjango; Lua for the tag-transform remap, which is
-        # tested in the language the tile build actually loads it in.
-        run: sudo apt-get update && sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev lua5.4
+        # GDAL/PROJ for GeoDjango. LuaJIT for the tag transform: Valhalla 3.5.1
+        # requires it (pkg_check_modules(LuaJIT REQUIRED)), and its graph.lua
+        # calls bit.bor, which stock Lua 5.2+ does not provide. Testing the
+        # transform under lua5.4 would be testing it under an interpreter
+        # Valhalla cannot use. GitHub Actions sets CI=true, which turns the
+        # suite's missing-interpreter skips into failures, so an image that lost
+        # LuaJIT cannot report green with the Lua suites unrun.
+        run: sudo apt-get update && sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4
       - run: pip install -e . -r requirements-dev.txt
       - run: ruff check src tests
       - run: ruff format --check src tests

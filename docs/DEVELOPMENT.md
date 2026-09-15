@@ -50,3 +50,23 @@ Docker's daemon runs in this development container, but image layer pulls are
 blocked by the egress proxy, so the Compose stack cannot be brought up here. It
 is written to be validated on the deployment host. The native database above is
 the loop to develop against in the meantime.
+
+## Lua
+
+The tag transform runs under LuaJIT, because Valhalla 3.5.1's build requires it
+(`pkg_check_modules(LuaJIT REQUIRED IMPORTED_TARGET luajit)`) and its own
+`graph.lua` calls `bit.bor`, which stock Lua 5.2 and later do not provide. Code
+under `lua/` therefore has to stay within Lua 5.1 syntax; `//`, the bitwise
+operators and `goto` parse under a developer's `lua5.4` and fail inside the
+container, where the failure shows up as Valhalla silently falling back to its
+compiled-in transform rather than as a crash.
+
+```sh
+apt-get install -y luajit lua5.4
+```
+
+`lua/vendor/graph_upstream.lua` is Valhalla's own transform at the pinned
+version, checked in so the entry-point contract can be tested against the real
+file. Refresh it with `scripts/vendor_valhalla_lua.sh`; do not edit it.
+
+Setting `CI=1` turns the suite's missing-interpreter skips into failures.

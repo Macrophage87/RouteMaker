@@ -46,6 +46,22 @@ check("narrow bollard becomes a gate",
 check("unrestricted bollard is left alone",
   M.remap_node({ barrier = "bollard" }).barrier == nil)
 
+-- Valhalla multiplies gate_cost by (not tagged_access), so a permissive access
+-- tag left in place makes the Cargo preset's gate dial inert on exactly the
+-- nodes it exists for. A Lua table cannot hold a nil, so the removal is
+-- signalled by a sentinel the entry point applies; an earlier version wrote a
+-- `_clear_<key>` marker that nothing consumed, and nothing noticed.
+check("a permissive access tag on a converted barrier is marked for removal",
+  M.remap_node({ barrier = "cycle_barrier", bicycle = "yes" }).bicycle == M.REMOVE)
+check("a restrictive access tag is left alone",
+  M.remap_node({ barrier = "cycle_barrier", bicycle = "no" }).bicycle == nil)
+check("the removal sentinel is not a string that could collide with a tag value",
+  type(M.REMOVE) == "table")
+check("a removal counts as a removal when checking border access",
+  not M.denies_bicycle_at_border(
+    { barrier = "border_control", bicycle = "yes" },
+    { bicycle = M.REMOVE }))
+
 -- The border node must stay passable.
 local border = { barrier = "border_control" }
 check("border control node denies no bicycle access",
