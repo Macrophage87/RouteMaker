@@ -31,18 +31,43 @@ Supplied with the note that some roadway sections are unavoidable, which is the
 point: a trail route is not trails only, it is trails plus the connectors
 between them.
 
-## What the two sets establish together
+## Group rides
+
+| Route | Distance | Gain | Max grade | Turns/mi | Shape | Revisits |
+|---|---|---|---|---|---|---|
+| Blow off steam | 11.65 mi | 661 ft | 9.5% | 2.6 | point-to-point | 0 |
+| Crit Mass 2024-03 | 12.31 mi | 347 ft | 9.9% | 2.8 | point-to-point | 5 |
+| Crit Mass Jan | 13.77 mi | 604 ft | 8.6% | 2.4 | point-to-point | 0 |
+| Crit Mass Feb | 14.50 mi | 511 ft | 9.7% | 3.3 | point-to-point | 0 |
+| Purple Line | 35.25 mi | 985 ft | 13.0% | 3.3 | loop | 10 |
+
+City examples; the owner notes group rides can also be rural, which is not yet
+covered by a fixture. All five stay inside the District.
+
+Two of these matter more than their numbers.
+
+**Critical Mass is a group ride here, not a mass ride.** Three of the five carry
+that name, and by headcount alone the classification would be arguable. Under
+the roadway-takeover definition it is not, and the definition does the work that
+the name cannot. Do not classify by title or by rider count.
+
+**Group rides revisit their own line.** Two of the five do, once by five points
+and once by ten. The no-revisit check therefore belongs to Mass Ride alone,
+where it is grounded, and applying it to a group ride would reject real routes.
+
+## What the three sets establish together
 
 The presets differ on almost every axis except turn density, which is worth
 knowing because turn count alone does not separate a trail route from a road one.
 
-| | Mass Ride | Trailmaxxing |
-|---|---|---|
-| Distance | 5 to 7 mi | 15 to 76 mi |
-| Gain | 63 to 164 ft | 701 to 2333 ft |
-| Max grade | 4.4 to 6.3% | 11.8 to 12.2% |
-| Turns per mile | 2 to 4 | 2.3 to 2.9 |
-| Jurisdictions | District only | crosses into Maryland |
+| | Mass Ride | Group Ride | Trailmaxxing |
+|---|---|---|---|
+| Distance | 5 to 7 mi | 12 to 35 mi | 15 to 76 mi |
+| Gain | 63 to 164 ft | 347 to 985 ft | 701 to 2333 ft |
+| Max grade | 4.4 to 6.3% | 8.6 to 13.0% | 11.8 to 12.2% |
+| Turns per mile | 2 to 4 | 2.4 to 3.3 | 2.3 to 2.9 |
+| May revisit its line | no | yes | yes |
+| Jurisdictions | District only | District, in these | crosses into Maryland |
 
 - **Grade tolerance is per-modality, not global.** Trail routes hit 12%, roughly
   double what a mass ride ever sees. A single cap would either reject these or
