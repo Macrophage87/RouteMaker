@@ -392,6 +392,72 @@ class TestTheAuditLogRecordsAttemptsAndNotProbes:
         assert (entry.model, entry.object_id) == ("rolemapping", str(mapping.pk))
         assert entry.actor.discord_user_id == 9001
 
+    def test_a_permitted_bulk_delete_is_audited_once_per_object(
+        self, as_instance_admin, guild, rows
+    ) -> None:
+        """The delete the log could not see at all.
+
+        `delete_model` is the single-object confirmation page; the changelist's
+        `delete_selected` never calls it, it calls `delete_queryset` once with
+        the whole queryset. Measured before this: two role mappings deleted in
+        bulk left zero rows in this log - two in `django_admin_log`, which is
+        not registered here and is not the log the plan means - and the same
+        held on the configured guild, jurisdiction and override pages. Doing
+        several at once is the cheap way to do them, which makes it the path
+        that most needs the record.
+        """
+        from core.models import AuditLogEntry, RoleMapping
+
+        first = rows["rolemapping"]
+        second = RoleMapping.objects.create(
+            guild=guild, role_id=12, permission=RoleMapping.Permission.REVIEWER
+        )
+
+        response = as_instance_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": [str(first.pk), str(second.pk)],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        assert response.status_code == 302
+        assert not RoleMapping.objects.filter(pk__in=[first.pk, second.pk]).exists()
+
+        deletions = AuditLogEntry.objects.filter(
+            model="rolemapping", action="delete", outcome=AuditLogEntry.Outcome.ALLOWED
+        )
+        assert {entry.object_id for entry in deletions} == {str(first.pk), str(second.pk)}
+        assert {entry.actor.discord_user_id for entry in deletions} == {9001}
+
+    def test_a_bulk_action_nobody_holds_is_refused_and_audited(self, as_guild_admin, rows) -> None:
+        """A guild admin may read the role mapping table and may write nothing
+        on it.
+
+        Django's answer to a bulk action they do not hold is to say nothing:
+        `get_actions` filters the list by permission, `changelist_view` calls
+        `response_action` only when what is left is non-empty, and an empty list
+        falls through to an ordinary render. Measured: 200, the message "No
+        action selected", and no audit row - against a plan that says of exactly
+        this attempt that it is "refused and audited".
+        """
+        response = as_guild_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": [str(rows["rolemapping"].pk)],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == ("rolemapping", "action")
+        assert entry.object_id == str(rows["rolemapping"].pk)
+        assert entry.actor.discord_user_id == 9002
+
     def test_a_permitted_delete_is_audited_as_allowed(self, as_instance_admin, rows) -> None:
         """`delete_model`'s audit call survived deletion too."""
         from core.models import AuditLogEntry, RoleMapping
@@ -713,6 +779,27 @@ class TestTheUserAdmin:
         instance_admin.refresh_from_db()
         assert instance_admin.is_instance_admin
 
+    def test_the_last_one_refusal_reaches_the_audit_log(
+        self, as_instance_admin, instance_admin
+    ) -> None:
+        """A refused policy write, recorded like every other one.
+
+        It was the one refusal path that wrote nothing: a 200 with a field
+        error and zero audit rows, which is indistinguishable from nobody having
+        tried. The error message is what makes the refusal readable and stays
+        exactly where it was; the row is what makes it a refusal on the record.
+        """
+
+        response = as_instance_admin.post(admin_url("core_user_change", instance_admin.pk), {})
+        assert response.status_code == 200
+        assert "appoint another first" in response.content.decode()
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == ("user", "change")
+        assert entry.object_id == str(instance_admin.pk)
+        assert entry.actor_id == instance_admin.pk
+        assert "last instance admin" in entry.detail
+
     def test_a_guild_admin_cannot_see_the_page_at_all(self, as_guild_admin) -> None:
         """It lists every account on the deployment, which is the membership
         cache's sensitivity."""
@@ -869,3 +956,429 @@ class TestInstanceAdminSurvivesADegradedDeployment:
         assert instance_admin._admin_guild_ids == frozenset()
         assert instance_admin.is_staff, "the instance admin is not guild-derived"
         assert site.has_permission(Request(instance_admin))
+
+
+@db
+class TestTheBootstrapInstanceAdmin:
+    """How a new deployment gets its first instance admin, which it could not.
+
+    `is_instance_admin` is a stored flag whose only surface is an admin page
+    only an instance admin may reach; there is no password login, no
+    `createsuperuser`, and `check_last_instance_admin` refuses to let the one
+    there is step down. On an empty database every signed-in account got a 404
+    at the admin and the only way in was a hand-written UPDATE against
+    production.
+
+    The plan: the environment holds one bootstrap Discord id, "and that value
+    grants standing only while the instance-admin list is empty. The first
+    successful admin action writes the bootstrap id into the list and
+    permanently disables the environment path, audited, after which anyone
+    holding `.env` read access holds nothing."
+    """
+
+    def bootstrap(self, monkeypatch, discord_user_id) -> None:
+        monkeypatch.setattr(
+            settings, "BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID", discord_user_id, raising=False
+        )
+
+    def test_the_bootstrap_id_reaches_the_admin_on_an_empty_list(self, client, monkeypatch) -> None:
+        from core.models import AuditLogEntry
+
+        User = get_user_model()
+        user = User.objects.create(discord_user_id=7777)
+        self.bootstrap(monkeypatch, 7777)
+        signed_in = sign_in(client, monkeypatch, user)
+
+        assert signed_in.get(f"/{settings.ADMIN_PATH}").status_code == 200
+
+        user.refresh_from_db()
+        assert user.is_instance_admin, "the first admin request writes the id into the list"
+
+        entry = AuditLogEntry.objects.get(action="bootstrap_instance_admin")
+        assert entry.outcome == AuditLogEntry.Outcome.ALLOWED
+        assert entry.actor_id == user.pk
+        assert (entry.model, entry.object_id) == ("user", str(user.pk))
+
+    def test_the_variable_grants_nothing_once_the_list_is_not_empty(
+        self, client, monkeypatch, instance_admin
+    ) -> None:
+        """The half that makes `.env` read access worth nothing on a running
+        deployment: the path is inert afterwards even though it still names
+        somebody."""
+        from core.models import AuditLogEntry
+
+        User = get_user_model()
+        hopeful = User.objects.create(discord_user_id=7778)
+        self.bootstrap(monkeypatch, 7778)
+        signed_in = sign_in(client, monkeypatch, hopeful)
+
+        assert signed_in.get(f"/{settings.ADMIN_PATH}").status_code == 404
+
+        hopeful.refresh_from_db()
+        assert not hopeful.is_instance_admin
+        assert not AuditLogEntry.objects.filter(action="bootstrap_instance_admin").exists()
+
+    def test_it_grants_nothing_to_anyone_else_even_on_an_empty_list(
+        self, client, monkeypatch
+    ) -> None:
+        User = get_user_model()
+        someone = User.objects.create(discord_user_id=7779)
+        self.bootstrap(monkeypatch, 7777)
+        signed_in = sign_in(client, monkeypatch, someone)
+
+        assert signed_in.get(f"/{settings.ADMIN_PATH}").status_code == 404
+        someone.refresh_from_db()
+        assert not someone.is_instance_admin
+
+    def test_an_unset_variable_grants_nothing(self, client, monkeypatch) -> None:
+        """The deployed state once bootstrapping is done, and the state of every
+        checkout."""
+        User = get_user_model()
+        someone = User.objects.create(discord_user_id=7780)
+        self.bootstrap(monkeypatch, None)
+        signed_in = sign_in(client, monkeypatch, someone)
+
+        assert signed_in.get(f"/{settings.ADMIN_PATH}").status_code == 404
+        someone.refresh_from_db()
+        assert not someone.is_instance_admin
+
+    def test_a_banned_bootstrap_holder_claims_nothing(self, monkeypatch) -> None:
+        """A ban ends every path, including this one. Asserted against the
+        claim itself, because a banned account cannot complete the login that
+        would drive it over HTTP."""
+        from core.models import claim_bootstrap_instance_admin
+
+        User = get_user_model()
+        banned = User.objects.create(discord_user_id=7781, is_banned=True)
+        self.bootstrap(monkeypatch, 7781)
+
+        assert claim_bootstrap_instance_admin(banned) is False
+        banned.refresh_from_db()
+        assert not banned.is_instance_admin
+
+    def test_the_claim_happens_once(self, monkeypatch) -> None:
+        """A second call is a no-op rather than a second audit row, which is
+        what "permanently disables the environment path" has to mean."""
+        from core.models import AuditLogEntry, claim_bootstrap_instance_admin
+
+        User = get_user_model()
+        user = User.objects.create(discord_user_id=7782)
+        self.bootstrap(monkeypatch, 7782)
+
+        assert claim_bootstrap_instance_admin(user) is True
+        assert claim_bootstrap_instance_admin(user) is False
+        assert AuditLogEntry.objects.filter(action="bootstrap_instance_admin").count() == 1
+
+
+@db
+class TestTheInstanceAdminRemovalWindow:
+    """ "Removing an instance admin other than yourself notifies every remaining
+    instance admin and the removed party and takes effect after a delay,
+    configurable and defaulting to an hour, during which any instance admin can
+    cancel it; without that, one admin could remove every peer down to
+    themselves in a single audited but unstoppable action."
+
+    Measured before this existed: three POSTs, one admin left, no delay and
+    nothing to cancel. The notification half has no channel in phase 1 - this
+    deployment has no Discord DM path and no email path - so it is an
+    outstanding gap rather than something these tests pretend about.
+    """
+
+    @pytest.fixture
+    def peer(self, db):
+        return get_user_model().objects.create(discord_user_id=9400, is_instance_admin=True)
+
+    def test_removing_another_admin_schedules_it_and_leaves_the_flag_set(
+        self, as_instance_admin, instance_admin, peer
+    ) -> None:
+        from core.models import AuditLogEntry, PendingInstanceAdminRemoval
+
+        response = as_instance_admin.post(admin_url("core_user_change", peer.pk), {})
+        assert response.status_code == 302
+
+        peer.refresh_from_db()
+        assert peer.is_instance_admin, (
+            "a delay that takes the powers away now and records the removal later "
+            "is a notification, not a delay"
+        )
+
+        pending = PendingInstanceAdminRemoval.objects.get(user=peer)
+        assert pending.requested_by_id == instance_admin.pk
+        assert pending.effective_at - timezone.now() > settings.INSTANCE_ADMIN_REMOVAL_DELAY / 2
+        assert pending.effective_at - timezone.now() <= settings.INSTANCE_ADMIN_REMOVAL_DELAY
+
+        entry = AuditLogEntry.objects.get(action="schedule_removal")
+        assert (entry.model, entry.object_id) == ("user", str(peer.pk))
+        assert entry.actor_id == instance_admin.pk
+
+    def test_the_delay_is_the_plans_hour_by_default(self) -> None:
+        """A configurable delay defaulting to something else is not this."""
+        from datetime import timedelta
+
+        assert settings.INSTANCE_ADMIN_REMOVAL_DELAY == timedelta(hours=1)
+
+    def test_standing_down_is_still_immediate(self, as_instance_admin, instance_admin, peer):
+        """The delay guards against being removed by somebody else; an admin
+        clearing their own flag has no peer to appeal to."""
+        from core.models import PendingInstanceAdminRemoval
+
+        response = as_instance_admin.post(admin_url("core_user_change", instance_admin.pk), {})
+        assert response.status_code == 302
+
+        instance_admin.refresh_from_db()
+        assert not instance_admin.is_instance_admin
+        assert not PendingInstanceAdminRemoval.objects.exists()
+
+    def test_any_instance_admin_can_cancel_it(self, as_instance_admin, instance_admin, peer):
+        from core.models import (
+            AuditLogEntry,
+            PendingInstanceAdminRemoval,
+            schedule_instance_admin_removal,
+        )
+
+        pending = schedule_instance_admin_removal(peer, actor=peer)
+
+        response = as_instance_admin.post(
+            admin_url("core_pendinginstanceadminremoval_changelist"),
+            {
+                "action": "cancel_removal",
+                "_selected_action": [str(pending.pk)],
+                "index": "0",
+            },
+        )
+        assert response.status_code == 302
+        assert not PendingInstanceAdminRemoval.objects.exists()
+
+        peer.refresh_from_db()
+        assert peer.is_instance_admin
+
+        entry = AuditLogEntry.objects.get(action="cancel_removal")
+        assert entry.actor_id == instance_admin.pk
+        assert entry.object_id == str(peer.pk)
+
+    def test_a_due_removal_is_applied_and_audited(self, instance_admin, peer) -> None:
+        from core.models import (
+            AuditLogEntry,
+            PendingInstanceAdminRemoval,
+            apply_due_instance_admin_removals,
+            schedule_instance_admin_removal,
+        )
+
+        pending = schedule_instance_admin_removal(peer, actor=instance_admin)
+
+        assert apply_due_instance_admin_removals() == 0, "not due yet"
+        peer.refresh_from_db()
+        assert peer.is_instance_admin
+
+        assert apply_due_instance_admin_removals(now=pending.effective_at) == 1
+        peer.refresh_from_db()
+        assert not peer.is_instance_admin
+        assert not PendingInstanceAdminRemoval.objects.exists()
+
+        entry = AuditLogEntry.objects.get(action="apply_removal")
+        assert entry.outcome == AuditLogEntry.Outcome.ALLOWED
+        assert entry.actor_id is None and entry.actor_user_id is None, "no request, no actor"
+        assert entry.object_id == str(peer.pk)
+
+    def test_the_last_instance_admin_is_still_refused_when_it_comes_due(
+        self, instance_admin, peer
+    ) -> None:
+        """The delay does not get to walk past the lockout guard.
+
+        Scheduled while there were two, applied after the other one stood down:
+        by then it is the removal of the last instance admin, and there is no
+        login path that could restore one.
+        """
+        from core.models import (
+            AuditLogEntry,
+            PendingInstanceAdminRemoval,
+            apply_due_instance_admin_removals,
+            schedule_instance_admin_removal,
+        )
+
+        pending = schedule_instance_admin_removal(peer, actor=instance_admin)
+        instance_admin.is_instance_admin = False
+        instance_admin.save()
+
+        assert apply_due_instance_admin_removals(now=pending.effective_at) == 0
+        peer.refresh_from_db()
+        assert peer.is_instance_admin
+        assert PendingInstanceAdminRemoval.objects.filter(user=peer).exists(), (
+            "left pending and visible, where an admin can cancel it or appoint a successor"
+        )
+        assert AuditLogEntry.objects.filter(
+            action="apply_removal", outcome=AuditLogEntry.Outcome.REFUSED
+        ).exists()
+
+    def test_scheduling_the_last_ones_removal_is_refused_outright(self, instance_admin) -> None:
+        from core.models import (
+            LastInstanceAdmin,
+            PendingInstanceAdminRemoval,
+            schedule_instance_admin_removal,
+        )
+
+        with pytest.raises(LastInstanceAdmin, match="appoint another first"):
+            schedule_instance_admin_removal(instance_admin, actor=instance_admin)
+        assert not PendingInstanceAdminRemoval.objects.exists()
+
+    def test_a_guild_admin_sees_no_pending_removals_page(self, as_guild_admin) -> None:
+        assert (
+            as_guild_admin.get(admin_url("core_pendinginstanceadminremoval_changelist")).status_code
+            == 403
+        )
+
+
+@db
+class TestTheAuditLogTellsADeletedActorFromNoActor:
+    """`AuditLogEntry.actor` is SET_NULL, so a worker's action and a deleted
+    person's action were the same row. The plan wants them told apart: "Audit
+    log rows keep the numeric actor id and display 'deleted user'".
+    """
+
+    def test_the_two_rows_differ(self, guild, other_guild, instance_admin) -> None:
+        from core.models import AuditLogEntry
+        from core.revocation import revoke_guild
+
+        User = get_user_model()
+        acting_admin = User.objects.create(discord_user_id=9500, is_instance_admin=True)
+        acting_admin_pk = acting_admin.pk
+
+        revoke_guild(guild, actor=None, reason="the degraded sweep")
+        revoke_guild(other_guild, actor=acting_admin, reason="by hand")
+        acting_admin.delete()
+
+        worker_row = AuditLogEntry.objects.get(action="revoke_now", object_id=str(guild.pk))
+        person_row = AuditLogEntry.objects.get(action="revoke_now", object_id=str(other_guild.pk))
+
+        assert (worker_row.actor_id, worker_row.actor_user_id) == (None, None)
+        assert (person_row.actor_id, person_row.actor_user_id) == (None, acting_admin_pk)
+        assert worker_row.actor_label() != person_row.actor_label()
+        assert person_row.actor_label() == f"deleted user {acting_admin_pk}"
+        assert worker_row.actor_label() == "no actor (worker)"
+
+    def test_a_live_actor_is_named_as_themselves(self, guild, instance_admin) -> None:
+        from core.models import AuditLogEntry
+        from core.revocation import revoke_guild
+
+        revoke_guild(guild, actor=instance_admin, reason="by hand")
+        row = AuditLogEntry.objects.get(action="revoke_now")
+        assert row.actor_user_id == instance_admin.pk
+        assert row.actor_label() == str(instance_admin)
+
+    def test_the_changelist_shows_the_deleted_actor(self, as_instance_admin, guild) -> None:
+        """Over HTTP, because the column has to reach the page an instance admin
+        actually reads."""
+        from core.revocation import revoke_guild
+
+        User = get_user_model()
+        doomed = User.objects.create(discord_user_id=9501, is_instance_admin=True)
+        doomed_pk = doomed.pk
+        revoke_guild(guild, actor=doomed, reason="by hand")
+        doomed.delete()
+
+        response = as_instance_admin.get(admin_url("core_auditlogentry_changelist"))
+        assert response.status_code == 200
+        assert f"deleted user {doomed_pk}" in response.content.decode()
+
+
+@db
+class TestTheInstanceAdminListIsVisibleToGuildAdmins:
+    """ "It is visible to the clubs it holds power over: the current instance
+    admins are listed to every guild admin."
+
+    They could see nothing of it. The only page naming instance admins is the
+    account table, which is every account on the deployment and carries the
+    membership cache's sensitivity, so it is instance-admin only and correctly
+    so. This is a separate surface with a separate permission.
+    """
+
+    def test_a_guild_admin_can_read_it(self, as_guild_admin, instance_admin) -> None:
+        response = as_guild_admin.get(admin_url("core_instanceadminlisting_changelist"))
+        assert response.status_code == 200
+        assert str(instance_admin.discord_user_id) in response.content.decode()
+
+    def test_it_lists_instance_admins_and_nobody_else(
+        self, as_guild_admin, guild_admin, instance_admin
+    ) -> None:
+        """The narrowing is the point: a page that answered with every account
+        would be the account table under another name.
+
+        Asserted against the changelist's own queryset rather than against the
+        rendered bytes, because the admin header greets the signed-in guild
+        admin by the same number the rows would carry.
+        """
+        response = as_guild_admin.get(admin_url("core_instanceadminlisting_changelist"))
+        listed = set(response.context["cl"].queryset.values_list("discord_user_id", flat=True))
+        assert listed == {instance_admin.discord_user_id}
+        assert guild_admin.discord_user_id not in listed
+
+    def test_the_account_table_itself_is_still_closed_to_them(
+        self, as_guild_admin, instance_admin
+    ) -> None:
+        """The other direction of the matrix, and the reason this is a proxy
+        model with its own permission rather than a filter on `UserAdmin`."""
+        assert as_guild_admin.get(admin_url("core_user_changelist")).status_code == 403
+        assert (
+            as_guild_admin.get(admin_url("core_user_change", instance_admin.pk)).status_code == 403
+        )
+
+    def test_a_guild_admin_cannot_open_one_of_the_rows(
+        self, as_guild_admin, instance_admin
+    ) -> None:
+        """The change form is served read-only to a viewer and would show the
+        rest of the account row, so the list is the list and nothing else."""
+        assert (
+            as_guild_admin.get(
+                admin_url("core_instanceadminlisting_change", instance_admin.pk)
+            ).status_code
+            == 403
+        )
+
+    def test_nobody_may_write_it(self, as_instance_admin, instance_admin) -> None:
+        for url, payload in (
+            (admin_url("core_instanceadminlisting_add"), {}),
+            (admin_url("core_instanceadminlisting_change", instance_admin.pk), {}),
+            (admin_url("core_instanceadminlisting_delete", instance_admin.pk), {"post": "yes"}),
+        ):
+            assert as_instance_admin.post(url, payload).status_code == 403
+
+    def test_a_plain_member_reaches_no_admin_at_all(
+        self, client, monkeypatch, instance_admin
+    ) -> None:
+        User = get_user_model()
+        sign_in(client, monkeypatch, User.objects.create(discord_user_id=9600))
+        assert client.get(admin_url("core_instanceadminlisting_changelist")).status_code == 404, (
+            "not staff, so no admin at all"
+        )
+
+
+@db
+class TestTheAdminLogoutEndsTheApplicationSession:
+    def test_the_session_row_goes_with_it(self, as_instance_admin) -> None:
+        """Django's admin logout flushes its own session and left this
+        deployment's `core.Session` row behind, so whether signing out left a
+        user id and two timestamps in the table depended on which of two
+        buttons was pressed."""
+        from core.models import Session
+
+        assert Session.objects.count() == 1
+        response = as_instance_admin.post(f"/{settings.ADMIN_PATH}logout/")
+        assert response.status_code in (200, 302)
+        assert not Session.objects.exists()
+
+
+@db
+class TestTheCrossingsPageBeforeTheFirstRebuild:
+    def test_it_renders_empty_with_a_message(self, as_instance_admin) -> None:
+        """`border_crossing` is unmanaged and lives in the schema the weekly
+        swap renames, so `migrate` does not create it and it does not exist
+        until a rebuild has run. Opening this changelist raised ProgrammingError
+        - an unhandled 500 on a read-only page, from the one state every new
+        deployment starts in."""
+        from django.db import connection
+
+        assert "border_crossing" not in connection.introspection.table_names()
+
+        response = as_instance_admin.get(admin_url("core_bordercrossing_changelist"))
+        assert response.status_code == 200
+        assert "does not exist" in response.content.decode()

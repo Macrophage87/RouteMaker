@@ -289,6 +289,37 @@ class TestMarkingGuildsDegraded:
         marked, _restored = mark_degraded_guilds(now=now)
         assert marked == 1
 
+    def test_a_failed_heartbeat_still_counts_as_the_bot_existing(self, guild) -> None:
+        """ "Any row counts, not only a successful one."
+
+        The gate answers a different question from the window: not "is the
+        gateway healthy" but "is there a bot on this deployment at all". A
+        heartbeat task that ran and failed is a bot that exists and is in
+        trouble, which is precisely the outage the degraded window is for -
+        while filtering the gate to successful rows would read the same
+        deployment as one that has never had a bot and leave every guild at full
+        standing through the outage.
+
+        Every other test here writes `succeeded=True`, so narrowing the gate to
+        successes changed nothing anybody could see.
+        """
+        from django.utils import timezone
+
+        from core.models import ScheduledRun
+        from core.revocation import GATEWAY_HEARTBEAT_TASK, gateway_has_ever_reported
+
+        assert not gateway_has_ever_reported()
+
+        now = timezone.now()
+        ScheduledRun.objects.create(
+            task=GATEWAY_HEARTBEAT_TASK,
+            started_at=now - timedelta(hours=3),
+            finished_at=now - timedelta(hours=3),
+            succeeded=False,
+            detail="the gateway connection dropped",
+        )
+        assert gateway_has_ever_reported()
+
 
 @db
 class TestRevokeNow:
@@ -479,6 +510,48 @@ class TestTheSessionSweep:
         self.row(guild_admin, key="banned")
         guild_admin.is_banned = True
         guild_admin.save(update_fields=["is_banned"])
+
+        assert sweep_sessions() == 1
+        assert not Session.objects.exists()
+
+    def test_a_flag_set_without_an_epoch_bump_still_sweeps(self, guild_admin) -> None:
+        """The `is_active` clause on its own.
+
+        `User.save()` bumps the epoch when a ban lands, so every other test here
+        bans through both clauses at once and either one could be deleted with
+        the suite green. A flag written by `.update()` - a hand-written UPDATE
+        against production, a fixture, a data migration - emits no signal and
+        goes through no save, so the epoch is untouched and this clause is the
+        only thing that drops the row. It is also the clause `session_is_current`
+        keeps for exactly the same case.
+        """
+        from core.models import Session, User
+        from core.revocation import sweep_sessions
+
+        self.row(guild_admin, key="updated-flag")
+        User.objects.filter(pk=guild_admin.pk).update(is_banned=True)
+        assert User.objects.get(pk=guild_admin.pk).session_epoch == guild_admin.session_epoch, (
+            "the point of this case is that nothing bumped the epoch"
+        )
+
+        assert sweep_sessions() == 1
+        assert not Session.objects.exists()
+
+    def test_an_epoch_bump_alone_still_sweeps(self, guild_admin) -> None:
+        """And the epoch clause on its own.
+
+        Sign-out-everywhere bumps the epoch and touches neither flag, so the
+        account stays perfectly active and the row is unacceptable only because
+        of the counter it was issued under. Deleting the epoch comparison left
+        every test in this class green, because they all banned as well.
+        """
+        from core.models import Session
+        from core.revocation import sweep_sessions
+
+        self.row(guild_admin, key="stale-epoch")
+        guild_admin.session_epoch += 1
+        guild_admin.save(update_fields=["session_epoch"])
+        assert guild_admin.is_active, "nothing about this account is banned or deleted"
 
         assert sweep_sessions() == 1
         assert not Session.objects.exists()
