@@ -29,8 +29,34 @@ IMPLICIT_MAXSPEED_MPH = {
 _SPEED = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(mph|km/h|kmh|kph)?\s*$", re.I)
 
 
+def maxspeed_is_unitless(value: str | None) -> bool:
+    """Whether a `maxspeed` value is a bare number with no unit.
+
+    Kept separate from the parse so the classifier can record the unit as an
+    assumption: the number was surveyed, the unit was not.
+    """
+    if not value or value in IMPLICIT_MAXSPEED_MPH:
+        return False
+    match = _SPEED.match(value)
+    return bool(match) and not match.group(2)
+
+
 def parse_maxspeed_mph(value: str | None) -> float | None:
-    """Posted speed in mph. Bare numbers are km/h per the OSM convention."""
+    """Posted speed in mph.
+
+    A bare number is read as **mph**, not as km/h. That is the opposite of the
+    OSM convention, and it is deliberate for this deployment. The coverage area
+    is a single US metro, where the number on the sign is in miles per hour and
+    `maxspeed=45` is a US mapper omitting the unit rather than a 45 km/h zone -
+    which does not exist here. Reading it as km/h turned 45 into 28 mph and
+    dropped a 45 mph arterial to LTS2, which is the lower-stress reading of an
+    ambiguous tag; the plan's rule for every ambiguous input is to err toward the
+    higher-stress reading. The unit is recorded as an assumption so a reviewer
+    can see which tier rested on it.
+
+    If the coverage area ever leaves the United States this has to change with
+    it, which is why it is one function and one comment rather than a constant.
+    """
     if not value:
         return None
     if value in IMPLICIT_MAXSPEED_MPH:
@@ -40,7 +66,7 @@ def parse_maxspeed_mph(value: str | None) -> float | None:
         return None
     number = float(match.group(1))
     unit = (match.group(2) or "").lower()
-    return number if unit == "mph" else number * MPH_PER_KMH
+    return number * MPH_PER_KMH if unit in {"km/h", "kmh", "kph"} else number
 
 
 def parse_int(value: str | None) -> int | None:
@@ -114,8 +140,33 @@ def cycleway_values(tags: dict[str, str]) -> set[str]:
     return {tags[k] for k in keys if tags.get(k)}
 
 
+SHOULDER_PRESENCE_KEYS = ("shoulder", "shoulder:both", "shoulder:left", "shoulder:right")
+
+# One width key per presence key, in the same order. The two lists disagreeing is
+# not cosmetic: a way tagged `shoulder:right=yes` + `shoulder:right:width=2.4`
+# read as a shoulder of unknown width, which is read as narrow, so a surveyed
+# eight-foot shoulder earned nothing.
+SHOULDER_WIDTH_KEYS = (
+    "shoulder:width",
+    "shoulder:both:width",
+    "shoulder:left:width",
+    "shoulder:right:width",
+)
+
+
 def has_shoulder(tags: dict[str, str]) -> bool | None:
-    for key in ("shoulder", "shoulder:both", "shoulder:left", "shoulder:right"):
+    for key in SHOULDER_PRESENCE_KEYS:
         if (value := tags.get(key)) is not None:
             return value not in {"no", "none"}
     return None
+
+
+def shoulder_width_m(tags: dict[str, str]) -> float | None:
+    """The narrowest surveyed shoulder width, or None if none is tagged.
+
+    The narrowest rather than the first: a way carrying both
+    `shoulder:left:width` and `shoulder:right:width` has a rider on whichever
+    side the route uses, and the tile build does not know which.
+    """
+    widths = [w for key in SHOULDER_WIDTH_KEYS if (w := parse_width_m(tags.get(key))) is not None]
+    return min(widths) if widths else None
