@@ -17,6 +17,15 @@ modifier on two-lane roads rather than a primary variable: what makes a road
 hostile to a bicycle is the speed differential of the traffic passing it, so a
 quiet two-lane road posted at 50 is high stress at almost any volume while a
 congested downtown grid posted at 25 is not.
+
+Two consequences of that ordering are easy to get backwards, so they are stated
+here as well as at the code that implements them. A painted bike lane and a
+rideable paved shoulder are the same provision and are scored on the same table,
+which is what keeps a shoulder from ever rating a road safer than a bike lane on
+it. And surface is last and nearly inert: it never sets a tier and a maintained
+gravel road moves nothing, because gravel here is a low-traffic choice rather
+than a hazard - it only floors LTS1, the tier that claims a child could ride it,
+against a surface that would shed one.
 """
 
 from __future__ import annotations
@@ -30,8 +39,10 @@ from .tags import (
     has_parking_lane,
     has_shoulder,
     lanes_per_direction,
+    maxspeed_is_unitless,
     parse_maxspeed_mph,
     parse_width_m,
+    shoulder_width_m,
 )
 
 
@@ -66,6 +77,13 @@ DEFAULT_MAXSPEED_MPH_URBAN = {
     "secondary_link": 35.0,
     "primary": 40.0,
     "primary_link": 40.0,
+    # US-1, US-50 and New York Avenue NE are `trunk` here and are routinely
+    # bicycle-legal, so they go through the ordinary path rather than being
+    # short-circuited to top tier - but they are the fastest surface roads in
+    # the region, so an untagged one may not be read as a 30 mph street. The
+    # figure is the conservative one for an urban trunk, above `primary`.
+    "trunk": 45.0,
+    "trunk_link": 45.0,
     "service": 20.0,
 }
 
@@ -86,6 +104,8 @@ DEFAULT_MAXSPEED_MPH_RURAL = {
     "secondary_link": 55.0,
     "primary": 55.0,
     "primary_link": 55.0,
+    "trunk": 55.0,
+    "trunk_link": 55.0,
     "service": 20.0,
 }
 DEFAULT_MAXSPEED_MPH = DEFAULT_MAXSPEED_MPH_URBAN
@@ -177,30 +197,40 @@ def _mixed_traffic_tier(speed_mph: float, lanes: int) -> tuple[Stress, str]:
 
 
 def _bike_lane_tier(
-    speed_mph: float, lanes: int, width_m: float | None, parking: bool | None
+    speed_mph: float,
+    lanes: int,
+    width_m: float | None,
+    parking: bool | None,
+    facility: str = "bike lane",
 ) -> tuple[Stress, str]:
-    """Furth bike-lane criteria. A narrow lane beside parking is a door zone."""
+    """Furth bike-lane criteria. A narrow lane beside parking is a door zone.
+
+    `facility` names the provision in the rule text. It exists because this one
+    table serves both a painted bike lane and a paved shoulder: Furth scores the
+    two identically, and giving a shoulder its own ladder is what inverted the
+    provision hierarchy (see `classify`).
+    """
     # Treat unknown parking as present and unknown width as narrow: both are the
     # higher-stress reading, and both are common in this region's tagging.
     beside_parking = parking is not False
     narrow = width_m is None or width_m < (4.1 if beside_parking else 1.7)
 
     if speed_mph >= 40:
-        return Stress.LTS4, "bike lane, 40 mph or above"
+        return Stress.LTS4, f"{facility}, 40 mph or above"
     if speed_mph >= 35:
-        return Stress.LTS3, "bike lane, 35 mph"
+        return Stress.LTS3, f"{facility}, 35 mph"
     if speed_mph >= 30 or lanes > 1:
         return (
-            (Stress.LTS3, "bike lane, narrow or multilane at 30 mph")
+            (Stress.LTS3, f"{facility}, narrow or multilane at 30 mph")
             if narrow
             else (
                 Stress.LTS2,
-                "bike lane, adequate width at 30 mph",
+                f"{facility}, adequate width at 30 mph",
             )
         )
     if narrow:
-        return Stress.LTS2, "bike lane, narrow at 25 mph or below"
-    return Stress.LTS1, "bike lane, adequate width at 25 mph or below"
+        return Stress.LTS2, f"{facility}, narrow at 25 mph or below"
+    return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
 
 
 def classify(
@@ -226,6 +256,10 @@ def classify(
         return StressResult(Stress.LTS4, f"motor-only classification ({highway})")
 
     speed_mph = parse_maxspeed_mph(tags.get("maxspeed"))
+    if speed_mph is not None and maxspeed_is_unitless(tags.get("maxspeed")):
+        # The number was surveyed; the unit was not. Read as mph, which is the
+        # higher-stress reading and the only one that exists on a US sign.
+        assumed.append("maxspeed unit")
     if speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
         speed_mph = table.get(highway, 30.0 if urban else 50.0)
@@ -268,20 +302,42 @@ def classify(
         tier, rule = _bike_lane_tier(speed_mph, lanes, width, parking)
     else:
         tier, rule = _mixed_traffic_tier(speed_mph, lanes)
-        # Shoulder credit matters most at speed, not least: a 45 mph road with a
-        # wide paved shoulder is a different proposition from the same road with
-        # a rumble strip and a ditch, and on a rural group ride that is the most
-        # useful discrimination available. Gated on a width that can actually be
-        # ridden, since a six-inch shoulder is not a refuge; an untagged width is
-        # read as narrow.
-        if has_shoulder(tags) and tier > Stress.LTS1:
-            shoulder_width = parse_width_m(
-                tags.get("shoulder:width") or tags.get("shoulder:both:width")
-            )
+        # A rideable paved shoulder is scored on the *bike-lane* table, not by
+        # subtracting a tier from mixed traffic.
+        #
+        # Furth treats a paved shoulder and a bike lane as the same provision -
+        # one table covers "bike lane or paved shoulder" - and the earlier
+        # one-tier credit ran down a ladder of its own with no ceiling, so it
+        # reached across the bike-lane table and inverted the provision
+        # hierarchy: an eight-foot shoulder on a 55 mph eight-lane arterial came
+        # out LTS3 while a painted lane on the same road came out LTS4. A
+        # shoulder is the weaker provision of the two, and `is_top_tier` is what
+        # Beginner's zero-top-tier-distance invariant and the road-exposure
+        # report key on, so the inversion routed Beginner onto Leesburg Pike and
+        # River Road and reported nothing.
+        #
+        # Scoring it on the one table is what makes the hierarchy hold by
+        # construction rather than by a floor bolted on beside it: the shoulder
+        # tier can never come out below the tier the same road would get with a
+        # painted lane of the same width, at any speed or lane count.
+        #
+        # Two conditions survive from the old credit. The width has to be one a
+        # rider can actually sit in, since a six-inch shoulder is not a refuge
+        # and an untagged width is read as narrow. And the result may not be
+        # *worse* than the same road with no shoulder at all, which is what the
+        # min below is for: at 20 mph the bike-lane table's door-zone rule
+        # outranks quiet mixed traffic, and that reading is about parked cars,
+        # which a shoulder does not have.
+        if has_shoulder(tags):
+            shoulder_width = shoulder_width_m(tags)
             if shoulder_width is None:
                 assumed.append("shoulder width")
-            if shoulder_width is not None and shoulder_width >= RIDEABLE_SHOULDER_M:
-                tier, rule = Stress(tier - 1), rule + ", rideable shoulder"
+            elif shoulder_width >= RIDEABLE_SHOULDER_M:
+                shoulder_tier, shoulder_rule = _bike_lane_tier(
+                    speed_mph, lanes, shoulder_width, parking, facility="paved shoulder"
+                )
+                if shoulder_tier < tier:
+                    tier, rule = shoulder_tier, shoulder_rule
 
     # Volume, as a modifier on two-lane roads only, and never upward past the
     # tier speed already set.
@@ -291,10 +347,48 @@ def classify(
         # evidence: the conservative rule is about missing evidence, not about
         # refusing what is there. So a real AADT relieves an assumed speed, while
         # an absent one leaves the assumption standing.
-        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and speed_mph <= 35:
+        #
+        # That is what the code now does. It previously gated the relief on
+        # `speed_mph <= 35` alone, reading whichever speed was in hand - and on a
+        # rural road with nothing posted that is the assumed 50, which can never
+        # be <= 35. So on exactly the roads the sentence was written for, a real
+        # VDOT count could only ever hurt: Snickersville Turnpike at AADT 900
+        # stayed LTS4, while the same road with a posted 35 came down to LTS3.
+        # Evidence that only moves one way is not evidence.
+        #
+        # The two gates are therefore different questions. A *posted* speed at or
+        # below 35 is a measured fact about the road, and the relief applies on
+        # top of it. An *assumed* speed is the class default standing in for the
+        # missing tag, and a count is better evidence about this particular road
+        # than the default is, so the relief applies there too. A posted speed
+        # above 35 is the one case where it does not: speed outranks volume, and
+        # a quiet two-lane road posted at 50 is hostile at almost any count.
+        speed_was_measured = "maxspeed" not in assumed
+        relief_applies = speed_mph <= 35 or not speed_was_measured
+        if aadt <= VOLUME_QUIET and tier > Stress.LTS1 and relief_applies:
             tier, rule = Stress(tier - 1), rule + ", low volume"
+        # The bump has no speed gate, deliberately and not by oversight. It moves
+        # in the conservative direction, so an assumed speed cannot be laundered
+        # by it, and Furth's mixed-traffic table carries a volume threshold in
+        # every speed band rather than only in the low ones.
         elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
             tier, rule = Stress(tier + 1), rule + ", high volume"
+
+    # A surface that sheds riders is not tolerable to a child, which is what
+    # LTS1 asserts, so it floors at LTS2. This is narrower than treating surface
+    # as stress, which the module deliberately does not do: maintained gravel
+    # still moves nothing, because it is a low-traffic choice rather than a
+    # hazard. What it closes is a grade5 dirt farm track classifying LTS1
+    # through the `track: 15.0` speed default - the exact reading `classes.py`
+    # keeps `track` out of TRAIL_CLASS to prevent, arrived at by another route,
+    # with `is_rough` computed beside it and touching nothing.
+    #
+    # Trail-class ways return above and are not floored: there the tier is a
+    # statement about separation from traffic, a dirt singletrack is what a
+    # Trailmaxxing rider came for, and the surface floor that belongs on it is
+    # Group Ride's ridability dial at layer 4.
+    if tier is Stress.LTS1 and is_rough(tags):
+        tier, rule = Stress.LTS2, rule + ", rough surface"
 
     return StressResult(tier, rule, tuple(assumed), volume_source)
 

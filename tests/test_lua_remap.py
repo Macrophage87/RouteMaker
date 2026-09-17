@@ -166,3 +166,90 @@ def test_the_supported_key_list_is_what_the_extractor_produces() -> None:
     assert checked_in == extractor.extract(
         (REPO / "lua" / "vendor" / "graph_upstream.lua").read_text()
     )
+
+
+def _lua_driver(source: str) -> subprocess.CompletedProcess:
+    """Run a snippet against the shipped entry point, as a separate process.
+
+    Stderr is the point of these: the build-log check greps a real
+    `valhalla_build_tiles` log, and what reaches that log is whatever the
+    transform wrote to the process's stderr.
+    """
+    interpreter = _require(LUAJIT, "LuaJIT")
+    return subprocess.run(
+        [interpreter, "-e", source],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "ROUTEMAKER_LUA_DIR": "lua"},
+    )
+
+
+def test_a_rule_violation_reaches_the_build_log_and_keeps_the_element() -> None:
+    """`error()` inside an entry point does not stop a tile build.
+
+    `LuaTagTransform::Transform` runs the entry point under lua_pcall and hands
+    back an empty tag map when it fails, so the element is stripped of every tag
+    and dropped while the build reports success - the opposite of what a guard
+    written as `error()` claims. A violation has to be visible in the log and
+    has to leave the element alone.
+    """
+    result = _lua_driver(
+        'dofile("lua/graph.lua")\n'
+        'local remap = require("routemaker_remap")\n'
+        'remap.remap_way = function() return { highway = "motorway" } end\n'
+        'local filter, out = ways_proc({ highway = "residential", name = "Ordinary" }, 2)\n'
+        'io.stdout:write(tostring(filter), " ", tostring(out.highway), " ",\n'
+        '  tostring(out.name), " ", tostring(out[remap.VIOLATION_TAG] ~= nil), "\\n")\n'
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.split() == ["0", "residential", "Ordinary", "true"]
+    assert "ROUTEMAKER-VIOLATION" in result.stderr, "nothing a build log could be searched for"
+
+
+def test_the_border_guard_does_not_delete_the_border_node() -> None:
+    """The guard exists so a state crossing stays passable. Written as `error()`
+    it deleted the crossing node instead, which is the one outcome its comment
+    ruled out."""
+    result = _lua_driver(
+        'dofile("lua/graph.lua")\n'
+        'local remap = require("routemaker_remap")\n'
+        'remap.remap_node = function() return { bicycle = "no" } end\n'
+        'local _, out = nodes_proc({ barrier = "border_control", name = "StateLine" }, 2)\n'
+        'io.stdout:write(tostring(out.name), " ", tostring(out.border_control), " ",\n'
+        '  tostring(out.bicycle), " ", tostring(out.access_mask), "\\n")\n'
+    )
+    assert result.returncode == 0, result.stderr
+    name, border, bicycle, mask = result.stdout.split()
+    assert name == "StateLine", "the node was blanked"
+    assert border == "true", "upstream no longer sees a border control node"
+    assert bicycle == "nil", "the denying change was applied rather than refused"
+    assert int(mask) // 4 % 2 == 1, "bicycle access at the border was removed"
+    assert "ROUTEMAKER-VIOLATION" in result.stderr
+
+
+def test_the_violation_sentinel_is_not_a_key_valhalla_reads() -> None:
+    """Deliberate: the sentinel marks an element for whoever is watching the
+    transform and must not be able to become a fact about the graph."""
+    source = (REPO / "lua" / "routemaker_remap.lua").read_text()
+    match = re.search(r'M\.VIOLATION_TAG = "([^"]+)"', source)
+    assert match, "the sentinel is no longer declared where the entry point and the tests read it"
+    sentinel = match.group(1)
+    supported = {
+        line.strip()
+        for line in (REPO / "lua" / "vendor" / "supported_keys.txt").read_text().splitlines()
+        if line.strip() and not line.startswith("#")
+    }
+    assert sentinel not in supported
+    assert not sentinel.startswith("rm:"), "it would be stripped before anything could see it"
+
+
+def test_neither_entry_point_guards_with_error() -> None:
+    """A transform-time `error()` is a silent delete. The two load-time ones are
+    a different thing: they run in LuaTagTransform's constructor, which does
+    throw, and are the loud case."""
+    source = (REPO / "lua" / "graph.lua").read_text()
+    entry_points = source[source.index("function ways_proc") :]
+    assert "error(" not in entry_points, "a guard inside an entry point deletes the element"
+    assert "record_violation" in entry_points

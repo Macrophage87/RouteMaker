@@ -78,15 +78,36 @@ local function strip_namespace(kv)
   end
 end
 
+-- Neither guard below calls error(), and that is the whole of their design.
+--
+-- `LuaTagTransform::Transform` runs each entry point under lua_pcall and, on
+-- failure, returns an *empty* tag map. A raised error therefore does not refuse
+-- an element or stop a build: it strips the element of every tag and drops it
+-- out of the graph, silently, while the build reports success. Both guards here
+-- were written as error() and both therefore did the opposite of what they say.
+-- The border guard is the clearest case - it exists so that a state crossing
+-- stays passable, and what it actually did was delete the crossing node.
+--
+-- So a violation refuses the *change*, keeps the element, says so on stderr
+-- under a prefix the build-log check greps for, and marks the element with a
+-- sentinel tag that Valhalla does not read and so cannot act on. The pipeline's
+-- validation stage asserts that no line under that prefix appears in the parse
+-- log; the Lua suites assert the same thing through remap.violations.
+
 -- A change whose value is the remap's REMOVE sentinel deletes the tag. Applied
 -- here rather than in the remap because a Lua table cannot hold a nil value, so
 -- "remove this key" cannot be expressed in the table the remap returns.
 local function apply(kv, changes)
   for key, value in pairs(changes) do
     if remap.FORBIDDEN_KEYS[key] then
-      error("RouteMaker: the remap attempted to write '" .. key .. "', which is never permitted")
-    end
-    if value == remap.REMOVE then
+      -- `highway` and `maxspeed` set hierarchy level, shortcut building, the
+      -- road-class factor, A* pruning and whether Odin emits a maneuver at all.
+      -- The write is dropped and the way keeps the class it arrived with.
+      remap.record_violation(
+        kv,
+        "the remap attempted to write '" .. key .. "', which is never permitted"
+      )
+    elseif value == remap.REMOVE then
       kv[key] = nil
     else
       kv[key] = value
@@ -103,12 +124,17 @@ end
 function nodes_proc(kv, nokeys)
   local changes = remap.remap_node(kv)
   -- Only this remap's own writes are checked. Upstream OSM carries genuinely
-  -- closed border crossings tagged access=no, and halting a whole tile build on
+  -- closed border crossings tagged access=no, and refusing a whole tile build on
   -- one of those would be a bug, not a guard.
+  --
+  -- The node keeps every tag it arrived with and none of the remap's changes:
+  -- upstream's own reading of a border-control node is the one this project
+  -- would rather have than a half-applied change set.
   if remap.denies_bicycle_at_border(kv, changes) and next(changes) ~= nil then
-    error("RouteMaker: the remap would deny bicycle access at a border-control node")
+    remap.record_violation(kv, "the remap would deny bicycle access at a border-control node")
+  else
+    apply(kv, changes)
   end
-  apply(kv, changes)
   strip_namespace(kv)
   return up_nodes(kv, nokeys)
 end
