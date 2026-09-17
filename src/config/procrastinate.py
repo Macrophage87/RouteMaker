@@ -35,6 +35,11 @@ from procrastinate.contrib.django import app
 WEEKLY_REBUILD_CRON = "0 8 * * 2"  # Tuesday 08:00 UTC, early morning local
 NIGHTLY_BACKUP_CRON = "0 7 * * *"
 MEMBERSHIP_SWEEP_CRON = "0 */6 * * *"
+# The degraded-guild mark is bounded by GATEWAY_ALERT_AFTER, five minutes, so it
+# runs on that cadence rather than with the six-hourly sweep. A guild marked an
+# hour late carries an hour of stale grants that the plan's one number - 72 hours
+# from the alert - does not allow for.
+DEGRADED_GUILD_SWEEP_CRON = "*/5 * * * *"
 
 # How long each may run before it is considered stuck. The rebuild's ceiling is
 # longer than its expected duration but shorter than the eight days after which
@@ -174,11 +179,73 @@ def membership_sweep(timestamp: int) -> None:
     quietly accumulate a roster of a guild's membership.
     """
     from core.membership import sweep_memberships
+    from core.revocation import sweep_sessions
     from core.runs import record, run_with_deadline
 
+    def sweep() -> tuple[int, int, int]:
+        # The session sweep rides here rather than on a cron of its own: it is
+        # the same shape of work (rows nothing will ever accept again, for
+        # people who may have asked to be forgotten), it is cheap, and a second
+        # schedule would be a second thing to notice had stopped. Inside the
+        # same deadline, so the budget covers the task rather than half of it.
+        purged, departed = sweep_memberships()
+        return purged, departed, sweep_sessions()
+
     with record("membership_sweep") as run:
-        purged, departed = run_with_deadline(sweep_memberships, SWEEP_TIMEOUT_S, "membership_sweep")
-        run.detail = f"purged {purged} never-signed-in rows, dropped {departed} departed rows"
+        purged, departed, sessions = run_with_deadline(sweep, SWEEP_TIMEOUT_S, "membership_sweep")
+        # "never-signed-in" was the whole of the purge once and is not any more:
+        # the count now also carries rows dropped for deleted and tombstoned
+        # accounts, which go on sight rather than after thirty days.
+        run.detail = (
+            f"purged {purged} forgotten and never-signed-in rows, "
+            f"dropped {departed} departed rows and {sessions} session rows"
+        )
+        run.save(update_fields=["detail"])
+
+
+@app.periodic(cron=DEGRADED_GUILD_SWEEP_CRON)
+@app.task(
+    name="degraded_guild_sweep",
+    queue="maintenance",
+    queueing_lock="degraded_guild_sweep",
+)
+def degraded_guild_sweep(timestamp: int) -> None:
+    """Mark guilds degraded while the gateway is silent, and restore them after.
+
+    Gated on the gateway having ever reported, and the gate is not a nicety.
+    `mark_degraded_guilds` reads the deployment-wide gateway clock from a
+    `ScheduledRun(task="gateway_heartbeat")` row and fails *closed* when there
+    is none: it marks every active guild degraded, and standing lapses 72 hours
+    later. That is the correct reading for a bot that has gone quiet, and it is
+    catastrophic here, because on this deployment nothing writes that heartbeat
+    at all - the bot is phase-1 work that has not been built (see the handoff's
+    "no bot" item). Ungated, the first tick after deploy would revoke the whole
+    deployment's standing on a schedule, for an outage that has not happened.
+
+    So the transition arms itself: until one heartbeat row exists this logs that
+    it is waiting for the gateway and touches nothing. The moment the bot writes
+    its first heartbeat the task is live, with no deploy step to remember.
+
+    Not retried. It is idempotent and runs every five minutes, so the next tick
+    is the retry - and a retry schedule would hold the queueing lock through
+    several ticks, which is the opposite of what a five-minute bound wants.
+    """
+    import logging
+
+    from core.revocation import gateway_has_ever_reported, mark_degraded_guilds
+    from core.runs import record
+
+    with record("degraded_guild_sweep") as run:
+        if not gateway_has_ever_reported():
+            logging.getLogger(__name__).info(
+                "no gateway heartbeat has ever been recorded, so the degraded mark is "
+                "held: this would otherwise degrade every guild on a deployment whose "
+                "bot has not been built yet"
+            )
+            run.detail = "waiting for the gateway: no heartbeat has ever been recorded"
+        else:
+            marked, restored = mark_degraded_guilds()
+            run.detail = f"marked {marked} guilds degraded, restored {restored} to active"
         run.save(update_fields=["detail"])
 
 

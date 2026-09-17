@@ -38,6 +38,7 @@ from rebuild_fixtures import (
 )
 
 from config.procrastinate import (
+    DEGRADED_GUILD_SWEEP_CRON,
     MEMBERSHIP_SWEEP_CRON,
     NIGHTLY_BACKUP_CRON,
     REBUILD_TIMEOUT_S,
@@ -70,6 +71,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "weekly_rebuild": WEEKLY_REBUILD_CRON,
         "nightly_backup": NIGHTLY_BACKUP_CRON,
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
+        "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
     }
 
 
@@ -82,7 +84,7 @@ def test_the_rebuild_cannot_run_twice_at_once() -> None:
 
 
 def test_the_maintenance_tasks_share_a_queue_away_from_the_rebuild() -> None:
-    for name in ("nightly_backup", "membership_sweep"):
+    for name in ("nightly_backup", "membership_sweep", "degraded_guild_sweep"):
         assert app.tasks[name].queue == "maintenance"
         assert app.tasks[name].queueing_lock == name
 
@@ -306,6 +308,144 @@ def test_a_sweep_past_its_budget_fails_the_job(monkeypatch) -> None:
         app.tasks["membership_sweep"].func(timestamp=0)
     assert time.monotonic() - started < 2
     assert not ScheduledRun.objects.get(task="membership_sweep").succeeded
+
+
+# --- The degraded-guild mark, and the sweep it rides beside ---------------------------
+
+
+@pytest.mark.django_db
+class TestTheDegradedGuildSweep:
+    """`mark_degraded_guilds` was the transition `should_mark_degraded` and
+    `degraded_window` were written for and never had - two correct predicates
+    called from nowhere, so `ConfiguredGuild.state` was written by nothing and
+    no guild could ever leave `active`.
+
+    Registering it is not enough, because it fails closed on silence. On a
+    deployment whose bot has not been built - which is this one - it would mark
+    every guild degraded on its first tick and lapse the deployment's standing
+    72 hours later, for an outage that never happened. So the gate is part of
+    the wiring and is tested with it.
+    """
+
+    def guild(self, guild_id: int = 900):
+        from core.models import ConfiguredGuild
+
+        return ConfiguredGuild.objects.create(guild_id=guild_id, name="Club")
+
+    def heartbeat(self, age: timedelta):
+        from core.models import ScheduledRun
+        from core.revocation import GATEWAY_HEARTBEAT_TASK
+
+        now = timezone.now()
+        return ScheduledRun.objects.create(
+            task=GATEWAY_HEARTBEAT_TASK,
+            started_at=now - age,
+            finished_at=now - age,
+            succeeded=True,
+        )
+
+    def run_task(self):
+        from core.models import ScheduledRun
+
+        app.tasks["degraded_guild_sweep"].func(timestamp=0)
+        return ScheduledRun.objects.filter(task="degraded_guild_sweep").latest("started_at")
+
+    def test_the_schedule_is_inside_the_bound_it_enforces(self) -> None:
+        """Derived from the cron rather than restated beside it: the mark is
+        bounded by GATEWAY_ALERT_AFTER, and a guild marked an hour late carries
+        an hour of stale grants the plan's single 72-hour number does not allow
+        for. The six-hourly sweep is not this schedule."""
+        from croniter import croniter
+
+        from core.revocation import GATEWAY_ALERT_AFTER
+
+        base = timezone.now()
+
+        def interval(cron: str) -> timedelta:
+            iterator = croniter(cron, base)
+            first = iterator.get_next(type(base))
+            return iterator.get_next(type(base)) - first
+
+        assert interval(DEGRADED_GUILD_SWEEP_CRON) <= GATEWAY_ALERT_AFTER
+        assert interval(DEGRADED_GUILD_SWEEP_CRON) < interval(MEMBERSHIP_SWEEP_CRON)
+
+    def test_no_guild_is_touched_until_the_gateway_has_ever_reported(self) -> None:
+        """Nothing writes the heartbeat on this deployment, so an ungated task
+        would revoke every guild's standing on a five-minute schedule."""
+        guild = self.guild()
+        run = self.run_task()
+
+        guild.refresh_from_db()
+        assert guild.state == "active", "a bot that was never built is not a bot that went silent"
+        assert guild.standing_valid_until is None
+        assert "waiting for the gateway" in run.detail
+
+    def test_a_gateway_silent_past_the_bound_marks_guilds_degraded(self) -> None:
+        """Once the heartbeat exists at all, silence is the outage the window
+        is for, and the window runs from the alert rather than from now."""
+        from core.revocation import DEGRADED_WINDOW, GATEWAY_ALERT_AFTER
+
+        guild = self.guild()
+        beat = self.heartbeat(timedelta(hours=2))
+        run = self.run_task()
+
+        guild.refresh_from_db()
+        assert guild.state == "degraded"
+        expected = beat.started_at + GATEWAY_ALERT_AFTER + DEGRADED_WINDOW
+        assert abs(guild.standing_valid_until - expected) < timedelta(seconds=1)
+        assert "marked 1 guilds degraded" in run.detail
+
+    def test_a_fresh_heartbeat_marks_nothing(self) -> None:
+        guild = self.guild()
+        self.heartbeat(timedelta(seconds=30))
+        run = self.run_task()
+
+        guild.refresh_from_db()
+        assert guild.state == "active"
+        assert "marked 0 guilds degraded" in run.detail
+
+    def test_it_is_not_retried_because_the_next_tick_is_the_retry(self) -> None:
+        """A retry schedule would hold the queueing lock across several ticks
+        of a five-minute bound, which is the opposite of what the bound wants."""
+        assert app.tasks["degraded_guild_sweep"].retry_strategy is None
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_membership_sweep_also_drops_dead_session_rows() -> None:
+    """`sweep_sessions` had no caller: rows for banned and deleted accounts,
+    and rows whose Django session had already gone, sat in the table naming who
+    was signed in and when for someone who asked to be forgotten. The middleware
+    only ever reaches a row when a request carries the matching cookie, so an
+    orphan is never looked at again and never deleted.
+
+    Also the detail string. "purged N never-signed-in rows" stopped being true
+    when the purge started counting rows dropped for deleted and tombstoned
+    accounts, which go on sight rather than after thirty days.
+
+    `transaction=True` because both sweeps run inside `run_with_deadline`, on
+    their own thread and their own connection, which is where the task's time
+    budget is enforced - a rolled-back test transaction is invisible to them.
+    """
+    from core.models import ScheduledRun, Session, User
+
+    now = timezone.now()
+    user = User.objects.create(discord_user_id=77)
+    # No Django session row was ever created for this key, so it is orphaned.
+    Session.objects.create(
+        session_key="orphan",
+        user=user,
+        issued_epoch=user.session_epoch,
+        created_at=now,
+        last_seen_at=now,
+    )
+
+    app.tasks["membership_sweep"].func(timestamp=0)
+
+    assert not Session.objects.filter(session_key="orphan").exists()
+    detail = ScheduledRun.objects.get(task="membership_sweep").detail
+    assert "1 session rows" in detail
+    assert "never-signed-in rows" not in detail.replace("forgotten and never-signed-in rows", "")
+    assert "forgotten and never-signed-in rows" in detail
 
 
 # --- The backup ------------------------------------------------------------------------
