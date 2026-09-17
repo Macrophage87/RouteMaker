@@ -176,7 +176,12 @@ def membership_sweep(timestamp: int) -> None:
 
     Revocation lands in seconds through the gateway; this catches a disconnect.
     It also drops rows for people who have never signed in, so the cache does not
-    quietly accumulate a roster of a guild's membership.
+    quietly accumulate a roster of a guild's membership, and rows for accounts
+    that have been deleted or ban-tombstoned, which go on sight.
+
+    The session sweep runs here too, for the same reason the membership purge
+    does: both hold rows naming who was signed in, or who organizes with whom,
+    for people who may have asked to be forgotten.
     """
     from core.membership import sweep_memberships
     from core.revocation import sweep_sessions
