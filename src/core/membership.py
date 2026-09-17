@@ -195,9 +195,11 @@ def sweep_memberships(now: datetime | None = None) -> tuple[int, int]:
     `attach_standing` refuses to read a row past the ceiling - so the row stays
     and simply grants nothing until the bot reconfirms it.
     """
+    from django.conf import settings
     from django.utils import timezone
 
-    from .models import CachedMembership, User
+    from .models import BanTombstone, CachedMembership, User
+    from .revocation import tombstone
     from .standing import MAX_ROW_AGE
 
     now = now or timezone.now()
@@ -208,16 +210,27 @@ def sweep_memberships(now: datetime | None = None) -> tuple[int, int]:
         )
     )
 
-    purged = 0
     # A deleted or ban-tombstoned account keeps its own `last_login`, so the
     # never-signed-in purge below steps straight over its rows and they stayed
     # forever. This is the sweep's half of the same rule `record_event` enforces
     # on the gateway: someone who asked to be forgotten is forgotten by both
     # paths, or by neither.
-    for row in CachedMembership.objects.all().iterator():
-        if is_forgotten(row.discord_user_id):
-            row.delete()
-            purged += 1
+    #
+    # Resolved in two queries and a pass of HMACs rather than two queries per
+    # row: this runs against every cached row every six hours, and the tombstone
+    # lookup cannot be a join because a tombstone is a keyed hash of the id.
+    cached_ids = set(CachedMembership.objects.values_list("discord_user_id", flat=True))
+    forgotten = set(
+        User.objects.filter(discord_user_id__in=cached_ids, is_deleted=True).values_list(
+            "discord_user_id", flat=True
+        )
+    )
+    if cached_ids - forgotten:
+        tombstones = set(BanTombstone.objects.values_list("tombstone", flat=True))
+        key = settings.TOMBSTONE_KEY
+        forgotten |= {i for i in cached_ids - forgotten if tombstone(i, key) in tombstones}
+
+    purged, _ = CachedMembership.objects.filter(discord_user_id__in=forgotten).delete()
 
     for row in CachedMembership.objects.exclude(discord_user_id__in=signed_in):
         if should_purge(

@@ -231,6 +231,12 @@ def bump_session_epoch(user, reason: str, actor=None) -> int:
     refuse the session on its next request, but a row nothing will ever accept
     again is a user id and a timestamp sitting in the table for up to ninety
     days.
+
+    Ban and deletion reach the counter through `User.save()` instead, so that
+    every path - the admin, a management command, the deletion flow - gets it
+    without remembering to. This is the *explicit* sign-out-everywhere, and the
+    account page it belongs on arrives with the rest of the account surface; it
+    is here now because the primitive is what ban and deletion are built on.
     """
     from .models import Session, User
 
@@ -272,16 +278,16 @@ def sweep_sessions(now=None) -> int:
         DjangoSession.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
     )
 
-    dropped = 0
-    for row in Session.objects.select_related("user").iterator():
-        expired = (
-            row.session_key not in live_keys
-            or now - row.created_at >= ABSOLUTE_SESSION_LIFETIME
-            or now - row.last_seen_at >= IDLE_SESSION_LIFETIME
-            or row.issued_epoch != row.user.session_epoch
-            or not row.user.is_active
-        )
-        if expired:
-            row.delete()
-            dropped += 1
+    doomed = [
+        row.session_key
+        for row in Session.objects.select_related("user")
+        if row.session_key not in live_keys
+        or now - row.created_at >= ABSOLUTE_SESSION_LIFETIME
+        or now - row.last_seen_at >= IDLE_SESSION_LIFETIME
+        or row.issued_epoch != row.user.session_epoch
+        or not row.user.is_active
+    ]
+    # Collected first and deleted in one statement, rather than deleted while the
+    # cursor that produced them is still open.
+    dropped, _ = Session.objects.filter(session_key__in=doomed).delete()
     return dropped
