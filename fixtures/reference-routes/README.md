@@ -66,8 +66,11 @@ between them.
 | Crit Mass Feb | 14.50 mi | 511 ft | 8.5% | 3.2 | point-to-point | 0 |
 | Purple Line | 35.25 mi | 985 ft | 10.4% | 3.3 | loop | 2 |
 
-City examples; the rural set below covers the other setting. All five stay
-inside the District.
+City examples; the rural set below covers the other setting. Four of the five
+stay inside the District. **Purple Line does not**: it is 51% in Maryland and
+crosses the District line twice (out and back), which the domain review caught
+and PLAN's "all five city group rides stay inside the District" claim does not
+survive - that claim needs the same correction wherever else it is repeated.
 
 Two of these matter more than their numbers.
 
@@ -88,6 +91,16 @@ where it is grounded, and applying it to a group ride would reject real routes.
 | VPRD TNL | 24.32 mi | 2219 ft | 91 | 14.5% | 1.1 | loop | 1000 |
 | Loudoun 30 CCW | 30.12 mi | 2361 ft | 78 | 16.9% | n/a | loop | 7538 |
 | Two Bridges CW | 30.11 mi | 2232 ft | 74 | 19.0% | 1.0 | loop | 919 |
+
+**This table lists three rows, but the rural set is two distinct loops, not
+three.** Loudoun 30 CCW and Two Bridges CW are the same loop ridden in opposite
+directions - their bounding boxes and start/end points coincide (39.11-39.22N,
+77.71-77.56W, starting and finishing within about 100 m of each other), and the
+CCW/CW labels say as much. Only VPRD TNL is a genuinely separate loop, covering
+different roads (39.07-39.12N, 77.70-77.56W). Treat "the rural set" as one loop
+ridden both ways plus one other loop, not as three independent routes -
+anywhere that counts fixtures by geography rather than by file should count
+two, not three.
 
 Loudoun 30 CCW reports no turn density: at 6.4 metre sampling it falls outside
 the turn definition's validity domain, which the measurement flags rather than
