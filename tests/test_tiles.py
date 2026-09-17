@@ -74,6 +74,9 @@ def test_promotion_replaces_current_atomically_and_keeps_the_previous(tmp_path) 
 
     assert tiles.demote(tmp_path, Variant.STANDARD) == "b1"
     assert os.readlink(tmp_path / "standard" / "current") == "b1"
+    assert not (tmp_path / "standard" / "previous").exists(), (
+        "after a rollback there is no build before the one served, and the settings row says so too"
+    )
 
 
 def test_a_build_without_an_extract_cannot_be_promoted(tmp_path) -> None:
@@ -200,3 +203,52 @@ def test_an_edge_with_no_grade_reads_as_zero_not_as_missing(tmp_path) -> None:
 
     assert tiles.sample_grade(run, tmp_path / "c.json", ((0, 0), (1, 1))) == 0.0
     assert tiles.sample_cycle_lane(run, tmp_path / "c.json", ((0, 0), (1, 1))) is None
+
+
+def test_the_links_a_promotion_found_are_what_restoring_puts_back(tmp_path) -> None:
+    """The undo of a promotion, which is not the same thing as a demotion.
+
+    `demote` puts `previous` back as `current`, and before a second rebuild has
+    ever run there is no `previous` at all - so undoing a first-ever promotion
+    that way did nothing and left `current` pointing at a build the rest of the
+    swap never completed. Restoring takes the links as they were found, and
+    "there was no link" is one of the states it has to be able to put back.
+    """
+    make_build(tmp_path, Variant.STANDARD, "b1")
+    make_build(tmp_path, Variant.STANDARD, "b2")
+
+    fresh = tiles.links(tmp_path, Variant.STANDARD)
+    assert (fresh.current, fresh.previous) == (None, None)
+
+    tiles.promote(tmp_path, Variant.STANDARD, "b1")
+    tiles.restore_links(tmp_path, Variant.STANDARD, fresh)
+    assert not (tmp_path / "standard" / "current").exists(), "nothing is served again"
+    assert not (tmp_path / "standard" / "previous").exists()
+
+    tiles.promote(tmp_path, Variant.STANDARD, "b1")
+    one_build = tiles.links(tmp_path, Variant.STANDARD)
+    assert (one_build.current, one_build.previous) == ("b1", None)
+
+    tiles.promote(tmp_path, Variant.STANDARD, "b2")
+    tiles.restore_links(tmp_path, Variant.STANDARD, one_build)
+    assert os.readlink(tmp_path / "standard" / "current") == "b1"
+    assert not (tmp_path / "standard" / "previous").exists(), "b1 was never anyone's previous"
+
+
+def test_a_build_refuses_to_write_into_a_build_directory_that_exists(tmp_path) -> None:
+    """Build ids are second-resolution. Two fires inside one second took the
+    same id, and the second build wrote its tiles into the directory the first
+    had already promoted - the graph being served - leaving `current` and
+    `previous` pointing at the same directory. The second build refuses instead,
+    before it has written anything.
+    """
+    written = tiles.write_build_config(REPO / "valhalla", tmp_path, Variant.EBIKE, "b1")
+    assert written.is_file()
+
+    with pytest.raises(tiles.BuildDirectoryExists, match="b1"):
+        tiles.write_build_config(REPO / "valhalla", tmp_path, Variant.EBIKE, "b1")
+
+    # A different variant of the same build is a different directory, and a
+    # different build id on the same variant is fine.
+    tiles.write_build_config(REPO / "valhalla", tmp_path, Variant.STANDARD, "b1")
+    tiles.write_build_config(REPO / "valhalla", tmp_path, Variant.EBIKE, "b2")

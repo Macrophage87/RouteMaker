@@ -640,6 +640,215 @@ def test_rollback_puts_the_previous_build_back_everywhere(workspace, states) -> 
     assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260910T080000Z"
 
 
+def refusing_swap(*args, **kwargs):
+    """`swap_schemas`, as it behaves when the rename cannot be made."""
+    from pipeline.swap import SwapLockTimeout
+
+    raise SwapLockTimeout("could not take the swap lock in 5 attempts")
+
+
+def test_a_settings_write_that_fails_partway_repoints_no_row_at_all(
+    workspace, states, monkeypatch
+) -> None:
+    """The repoint is one write per variant, and the third one failing used to
+    leave the first two naming a build that nothing else in the deployment had
+    promoted: no tile directory, no schema, and the rebuild's own error
+    retryable, so the half-repoint repeated on every attempt. The rows are
+    written in one transaction, and the undo has the before-state whether the
+    repoint finished or not.
+    """
+    from core.models import ValhallaUpstream
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+
+    real_save = ValhallaUpstream.save
+    saves = 0
+
+    def save_that_drops_on_the_third(self, *args, **kwargs):
+        nonlocal saves
+        saves += 1
+        if saves == 3:
+            raise RuntimeError("the connection dropped mid-repoint")
+        return real_save(self, *args, **kwargs)
+
+    monkeypatch.setattr(ValhallaUpstream, "save", save_that_drops_on_the_third)
+    build_toy_extract(source, changed=True)
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260917T080000Z")
+    assert caught.value.stage is Stage.SWAP
+    assert saves == 3, "the third variant's write is the one that failed"
+
+    rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
+    assert set(rows) == {"standard", "no-trail", "ebike"}
+    for variant, row in rows.items():
+        assert (row.build_id, row.previous_build_id) == ("20260910T080000Z", ""), variant
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260910T080000Z"
+        assert not (variant_dir / "previous").exists(), "the promotion was undone whole"
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5, "last week's graph is still served"
+
+
+def test_a_first_rebuild_whose_swap_fails_promotes_nothing(workspace, states, monkeypatch) -> None:
+    """The undo on a first-ever rebuild, where there is no build to go back to.
+
+    `demote` put `previous` back as `current`, and before the second rebuild
+    ever runs there is no `previous` - so the undo did nothing at all and left
+    `current` pointing at a build the schema swap never promoted, while the
+    settings rows had been reset. The undo has to remove what the promotion
+    created, not only move it back.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline import promotion
+
+    source, root = workspace
+    monkeypatch.setattr(promotion, "swap_schemas", refusing_swap)
+
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260917T080000Z")
+    assert caught.value.stage is Stage.SWAP
+
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert not (variant_dir / "current").exists(), f"{variant.value} is serving a failed build"
+        assert not (variant_dir / "current").is_symlink()
+        assert not (variant_dir / "previous").exists()
+        assert (variant_dir / "20260917T080000Z" / "tiles.tar").is_file(), "the build itself stays"
+    assert ValhallaUpstream.objects.count() == 0, "no row was there before, so none is left"
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 0, "the empty live schema was not promoted over"
+
+
+def test_an_undone_swap_leaves_the_row_naming_the_build_before_the_one_served(
+    workspace, states, monkeypatch
+) -> None:
+    """The undo restores the whole row, not the build id alone.
+
+    `restore_upstreams` wrote `previous_build_id=""` unconditionally, so after
+    two good swaps and one undone one the row no longer named the build before
+    the one it was serving - and that column is the only thing `rollback()`
+    reads. Asserted by rolling back afterwards, which is what the column is
+    for, and with the failed rebuild's staging schema still on the disk.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline import promotion
+    from pipeline.promotion import rollback
+    from pipeline.schema import schema_exists
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260903T080000Z")
+    build_toy_extract(source, changed=True)
+    run_pipeline(source, root, build_id="20260910T080000Z")
+
+    monkeypatch.setattr(promotion, "swap_schemas", refusing_swap)
+    with pytest.raises(RebuildFailed):
+        run_pipeline(source, root, build_id="20260917T080000Z")
+
+    for row in ValhallaUpstream.objects.all():
+        assert (row.build_id, row.previous_build_id) == (
+            "20260910T080000Z",
+            "20260903T080000Z",
+        ), row.variant
+        assert row.url == settings.VALHALLA_UPSTREAMS[row.variant]
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260910T080000Z"
+        assert os.readlink(variant_dir / "previous") == "20260903T080000Z"
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4
+    assert schema_exists(settings.SEGMENT_SCHEMA_STAGING), "the failed rebuild left its staging"
+
+    # And the operator's rollback, which reads exactly what the undo restored,
+    # works - over the staging schema the failed rebuild left behind, which the
+    # rename needs the name of.
+    rollback(root / "tiles")
+
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5, "the build before the one served is back"
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260903T080000Z"
+        assert not (variant_dir / "previous").exists(), "there is nothing before it any more"
+    row = ValhallaUpstream.objects.get(variant="ebike")
+    assert (row.build_id, row.previous_build_id) == ("20260903T080000Z", "")
+
+
+def test_rollback_after_the_first_ever_swap_is_refused(workspace, states) -> None:
+    """There is no previous build after the first rebuild, and the schema the
+    first swap retired is the empty one it created on its way past. Rolling
+    back to it promoted that empty schema over the served graph - five segments
+    to zero, every settings row blanked, the tiles left where they were - and
+    reported nothing at all.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline.promotion import RollbackUnavailable, rollback
+    from pipeline.schema import schema_exists
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260917T080000Z")
+
+    with pytest.raises(RollbackUnavailable) as caught:
+        rollback(root / "tiles")
+    assert "previous" in str(caught.value)
+
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5, "the served graph must be untouched"
+    assert schema_exists(settings.SEGMENT_SCHEMA_RETIRED), "and the schemas left as they were"
+    for variant in Variant:
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260917T080000Z"
+    row = ValhallaUpstream.objects.get(variant="standard")
+    assert (row.build_id, row.previous_build_id) == ("20260917T080000Z", "")
+
+
+def test_rollback_after_a_rebuild_that_failed_at_the_swap_is_refused(
+    workspace, states, monkeypatch
+) -> None:
+    """The undone swap left nothing to roll back to either, and the failed
+    rebuild's staging schema is still holding the name the rename needs. The
+    only gate was `schema_exists(retired)`, true forever after the first swap,
+    so this died on a raw ProgrammingError from the middle of the rename.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline import promotion
+    from pipeline.promotion import RollbackUnavailable, rollback
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+    monkeypatch.setattr(promotion, "swap_schemas", refusing_swap)
+    build_toy_extract(source, changed=True)
+    with pytest.raises(RebuildFailed):
+        run_pipeline(source, root, build_id="20260917T080000Z")
+
+    with pytest.raises(RollbackUnavailable):
+        rollback(root / "tiles")
+
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    for variant in Variant:
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+    assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260910T080000Z"
+
+
+def test_a_rebuild_cannot_build_into_a_build_id_already_on_disk(workspace, states) -> None:
+    """Build ids are second-resolution, and two fires inside one second wrote
+    the second build into the directory the first one had already promoted -
+    the graph being served - ending with `current` and `previous` both pointing
+    at it. The second build refuses before it writes anything.
+    """
+    from core.models import ValhallaUpstream
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260917T080000Z")
+
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260917T080000Z")
+    assert caught.value.stage is Stage.BUILD_TILES
+    assert "20260917T080000Z" in str(caught.value.cause)
+
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260917T080000Z"
+        assert not (variant_dir / "previous").exists(), "the served build is not its own previous"
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    assert ValhallaUpstream.objects.get(variant="standard").build_id == "20260917T080000Z"
+
+
 @pytest.fixture
 def renamed_schemas(monkeypatch):
     """A deployment whose schema names come from the environment."""
