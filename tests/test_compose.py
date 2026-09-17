@@ -198,6 +198,19 @@ def test_the_rebuild_queue_is_consumed_only_by_the_container_with_the_binaries()
     assert SERVICES["rebuild"]["restart"] == "unless-stopped", "a resident worker, not a one-shot"
 
 
+def test_the_maintenance_worker_has_more_than_one_slot() -> None:
+    """Every periodic task except the rebuild queues on the maintenance worker,
+    and Procrastinate drops a periodic tick whose predecessor is still running
+    rather than delaying it. With the default of one slot a nightly dump held
+    the queue, and the 5-minute degraded sweep and the 10-minute worker
+    heartbeat silently missed their ticks - the bound docs/OPERATIONS.md
+    describes could not be met by any change inside the tasks."""
+    assert "--concurrency=4" in SERVICES["worker"]["command"]
+    assert "--concurrency=1" in SERVICES["rebuild"]["command"], (
+        "the rebuild stays single-slot: two rebuilds at once would share a data volume"
+    )
+
+
 def test_the_rebuild_sees_the_whole_data_volume_at_the_path_its_settings_assume() -> None:
     volumes = SERVICES["rebuild"]["volumes"]
     assert "${DATA_ROOT}:/data" in volumes

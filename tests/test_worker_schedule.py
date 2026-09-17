@@ -586,6 +586,36 @@ def test_the_membership_sweep_also_drops_dead_session_rows() -> None:
     assert "forgotten and never-signed-in rows" in detail
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_membership_sweep_applies_due_instance_admin_removals() -> None:
+    """The delay PLAN.md:212 puts on removing a peer is only a delay if
+    something applies it once it has elapsed. `apply_due_instance_admin_removals`
+    was written as a plain callable for the sweep to call; this is the call.
+    A removal still inside its window is left alone, so the cancel the plan
+    promises is still possible after a sweep."""
+    from core.models import ScheduledRun, User, schedule_instance_admin_removal
+
+    now = timezone.now()
+    requester = User.objects.create(discord_user_id=91, is_instance_admin=True)
+    due = User.objects.create(discord_user_id=92, is_instance_admin=True)
+    early = User.objects.create(discord_user_id=93, is_instance_admin=True)
+    schedule_instance_admin_removal(
+        due, actor=requester, now=now - settings.INSTANCE_ADMIN_REMOVAL_DELAY - timedelta(seconds=1)
+    )
+    schedule_instance_admin_removal(early, actor=requester, now=now)
+
+    app.tasks["membership_sweep"].func(timestamp=0)
+
+    due.refresh_from_db()
+    early.refresh_from_db()
+    assert not due.is_instance_admin, "its delay had run out before the sweep"
+    assert early.is_instance_admin, "its delay had not, so it is still cancellable"
+    assert (
+        "applied 1 due instance-admin removals"
+        in ScheduledRun.objects.get(task="membership_sweep").detail
+    )
+
+
 # --- The backup ------------------------------------------------------------------------
 
 

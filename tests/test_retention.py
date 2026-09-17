@@ -214,3 +214,22 @@ def test_the_build_ids_already_on_disk_are_read_across_every_variant(tmp_path) -
     assert unique_build_id(datetime(2026, 9, 29, 8, 0, 0, tzinfo=UTC), taken_build_ids(tiles)) == (
         "20260929T080000Z-1"
     )
+
+
+def test_new_build_id_skips_a_directory_that_already_exists(settings, tmp_path) -> None:
+    """`run.new_build_id` is what the rebuild names its dated directory with,
+    and it is second-resolution. Two fires in one second used to name the same
+    directory; `write_build_config` now refuses the second, but a refused
+    rebuild is a failed rebuild, and disambiguating is not."""
+    from pipeline import run
+
+    settings.TILES_DIR = tmp_path
+    now = datetime(2026, 9, 17, 8, 0, 0, tzinfo=UTC)
+    first = run.new_build_id(now)
+    (tmp_path / "standard" / first).mkdir(parents=True)
+
+    second = run.new_build_id(now)
+
+    assert first == "20260917T080000Z"
+    assert second != first
+    assert second.startswith("20260917T080000Z")

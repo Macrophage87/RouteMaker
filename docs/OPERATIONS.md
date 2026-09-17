@@ -56,8 +56,8 @@ the worker dequeued and finished a job, not that its process is alive.
 
 ## The maintenance queue is one slot
 
-`compose.yaml` runs the maintenance worker as `./manage.py procrastinate worker
---queues=maintenance` with no `--concurrency`, and Procrastinate's default is 1.
+Procrastinate's default `--concurrency` is 1, and until wave 3 `compose.yaml`
+ran the maintenance worker with that default.
 Every periodic task except the rebuild queues there, so exactly one of them runs
 at a time and anything ticking under a long job is dropped rather than delayed.
 
@@ -85,8 +85,9 @@ Two things follow, and only the first is fixed in the code:
    ```
 
    (or `WORKER_CONCURRENCY: "4"` in its `environment:`, which Procrastinate reads
-   for the same option). Until it lands, expect a heartbeat gap for the duration
-   of any maintenance job that runs longer than ten minutes.
+   for the same option). `compose.yaml` carries it and `tests/test_compose.py`
+   pins it; a deployment that drops it should expect a heartbeat gap for the
+   duration of any maintenance job that runs longer than ten minutes.
 
 The rebuild has its own queue and its own worker for an unrelated reason: it
 needs the container with the Valhalla binaries and the data mounts, and a
@@ -147,7 +148,6 @@ rebuild would have dismantled its own rollback target, one attempt at a time.
 
 ## Deployment actions
 
-- Add the `--concurrency` line above to the maintenance worker.
 - Add a `check_operations` cron entry, or point an existing monitor at it.
 - The operations page is at `<DJANGO_ADMIN_PATH>core/scheduledrun/`; it is not
   linked from anywhere public and the admin path is not advertised.

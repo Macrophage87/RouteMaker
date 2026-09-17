@@ -62,7 +62,12 @@ services:
   worker:
     <<: *restart
     image: routemaker/api:${TAG}
-    command: ["./manage.py", "procrastinate", "worker", "--queues=maintenance"]
+    # Four slots, not the default one: every periodic task except the rebuild
+    # queues here, and Procrastinate drops a periodic tick whose predecessor is
+    # still running rather than delaying it. With one slot a nightly dump held
+    # the queue and the 5-minute degraded sweep and 10-minute worker heartbeat
+    # silently missed their ticks (docs/OPERATIONS.md, "The maintenance queue").
+    command: ["./manage.py", "procrastinate", "worker", "--queues=maintenance", "--concurrency=4"]
     environment:
       DJANGO_SETTINGS_MODULE: config.settings
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}

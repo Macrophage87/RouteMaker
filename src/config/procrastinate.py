@@ -291,26 +291,34 @@ def membership_sweep(timestamp: int) -> None:
     for people who may have asked to be forgotten.
     """
     from core.membership import sweep_memberships
+    from core.models import apply_due_instance_admin_removals
     from core.revocation import sweep_sessions
     from core.runs import record, run_with_deadline
 
-    def sweep() -> tuple[int, int, int]:
+    def sweep() -> tuple[int, int, int, int]:
         # The session sweep rides here rather than on a cron of its own: it is
         # the same shape of work (rows nothing will ever accept again, for
         # people who may have asked to be forgotten), it is cheap, and a second
         # schedule would be a second thing to notice had stopped. Inside the
         # same deadline, so the budget covers the task rather than half of it.
+        # Due instance-admin removals ride here for the same reason: the delay
+        # PLAN.md:212 puts on removing a peer is only a delay if something
+        # applies it once it has elapsed, and this is the sweep that is already
+        # watched for having stopped.
         purged, departed = sweep_memberships()
-        return purged, departed, sweep_sessions()
+        return purged, departed, sweep_sessions(), apply_due_instance_admin_removals()
 
     with record("membership_sweep") as run:
-        purged, departed, sessions = run_with_deadline(sweep, SWEEP_TIMEOUT_S, "membership_sweep")
+        purged, departed, sessions, removals = run_with_deadline(
+            sweep, SWEEP_TIMEOUT_S, "membership_sweep"
+        )
         # "never-signed-in" was the whole of the purge once and is not any more:
         # the count now also carries rows dropped for deleted and tombstoned
         # accounts, which go on sight rather than after thirty days.
         run.detail = (
             f"purged {purged} forgotten and never-signed-in rows, "
-            f"dropped {departed} departed rows and {sessions} session rows"
+            f"dropped {departed} departed rows and {sessions} session rows, "
+            f"applied {removals} due instance-admin removals"
         )
         run.save(update_fields=["detail"])
 

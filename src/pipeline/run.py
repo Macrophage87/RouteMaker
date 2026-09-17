@@ -41,6 +41,7 @@ from . import (
     overrides,
     promotion,
     reconcile,
+    retention,
     tiles,
     variants,
     writers,
@@ -124,8 +125,14 @@ def lit_value(tags: dict) -> bool | None:
 
 
 def new_build_id(now: datetime | None = None) -> str:
-    """The dated tile directory's name. UTC, second resolution, sortable."""
-    return (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
+    """The dated tile directory's name. UTC, second resolution, sortable, and
+    never one that is already taken under the tiles root: two fires in one
+    second would otherwise share a directory (`write_build_config` refuses the
+    second, but refusing is a failed rebuild and disambiguating is not).
+    """
+    return retention.unique_build_id(
+        now or datetime.now(UTC), retention.taken_build_ids(Path(_setting("TILES_DIR")))
+    )
 
 
 def _setting(name: str):
