@@ -151,3 +151,20 @@ rebuild would have dismantled its own rollback target, one attempt at a time.
 - Add a `check_operations` cron entry, or point an existing monitor at it.
 - The operations page is at `<DJANGO_ADMIN_PATH>core/scheduledrun/`; it is not
   linked from anywhere public and the admin path is not advertised.
+
+## Build ids
+
+`pipeline.run.new_build_id` is second-resolution, which is a directory name an
+operator can read and is enough for a weekly job right up until two builds land
+in the same second — a retry, a hand-fired rebuild, a test. The sub-second
+answer lives in `pipeline.retention.unique_build_id`, and wiring it in is one
+line in `new_build_id`:
+
+```python
+return retention.unique_build_id(
+    now or datetime.now(UTC), retention.taken_build_ids(_setting("TILES_DIR"))
+)
+```
+
+Until that lands, a collision is caught rather than silently merged:
+`tiles.write_build_config` refuses a build directory that already exists.

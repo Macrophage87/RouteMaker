@@ -77,6 +77,25 @@ def unique_build_id(now: datetime, existing: object = ()) -> str:
     raise RuntimeError(f"a thousand builds already carry the id {base}")
 
 
+def taken_build_ids(tiles_dir: Path | str) -> set[str]:
+    """Every build id that already has a directory under any variant.
+
+    What `unique_build_id` needs to be handed to mean anything. Across all
+    variants rather than one, because a build id names one rebuild and the same
+    id is the directory name under every variant it writes.
+    """
+    root = Path(tiles_dir)
+    if not root.is_dir():
+        return set()
+    return {
+        entry.name
+        for variant in root.iterdir()
+        if variant.is_dir() and not variant.is_symlink()
+        for entry in variant.iterdir()
+        if entry.is_dir() and not entry.is_symlink() and BUILD_ID.match(entry.name)
+    }
+
+
 def prune_builds(variant_root: Path | str, keep: int = KEEP_BUILDS) -> list[str]:
     """Remove all but the newest `keep` dated builds under one variant.
 

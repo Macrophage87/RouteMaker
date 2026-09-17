@@ -196,3 +196,21 @@ def test_a_thousand_collisions_is_an_error_rather_than_a_silent_reuse() -> None:
     taken = ["20260917T080000Z"] + [f"20260917T080000Z-{n}" for n in range(1, 1000)]
     with pytest.raises(RuntimeError, match="already carry"):
         unique_build_id(now, existing=taken)
+
+
+def test_the_build_ids_already_on_disk_are_read_across_every_variant(tmp_path) -> None:
+    """What `unique_build_id` has to be handed to mean anything. Across all
+    variants, because one build id is one rebuild and names a directory under
+    every variant that rebuild wrote."""
+    from pipeline.retention import taken_build_ids
+
+    tiles = tmp_path / "tiles"
+    variant_with_builds(tiles / "standard", current=BUILDS[4])
+    (tiles / "ebike" / "20260930T080000Z").mkdir(parents=True)
+    (tiles / "ebike" / "scratch").mkdir()
+
+    assert taken_build_ids(tiles) == set(BUILDS) | {"20260930T080000Z"}
+    assert taken_build_ids(tmp_path / "absent") == set()
+    assert unique_build_id(datetime(2026, 9, 29, 8, 0, 0, tzinfo=UTC), taken_build_ids(tiles)) == (
+        "20260929T080000Z-1"
+    )
