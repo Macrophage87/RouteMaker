@@ -231,6 +231,22 @@ class User(AbstractBaseUser):
                 )
                 check_last_instance_admin(previous, removing=losing_it)
 
+            # A ban or a deletion that leaves the person signed in is neither.
+            # The epoch was a column the middleware read and nothing anywhere
+            # incremented, so both actions took effect on paper and on no live
+            # session. Bumped here rather than at the call sites for the same
+            # reason the lockout guard is: the admin, a management command and
+            # the deletion flow all go through save(), and one of them would have
+            # been the one that forgot.
+            if previous is not None and (
+                (self.is_banned and not previous.is_banned)
+                or (self.is_deleted and not previous.is_deleted)
+            ):
+                self.session_epoch += 1
+                update_fields = kwargs.get("update_fields")
+                if update_fields is not None:
+                    kwargs["update_fields"] = {*update_fields, "session_epoch"}
+
         return super().save(*args, **kwargs)
 
     @property

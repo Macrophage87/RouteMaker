@@ -219,6 +219,34 @@ STATIC_URL = "static/"
 SESSION_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SAMESITE = "Lax"
+
+# Django's own session clock, set so that the application's two clocks are the
+# ones that bind.
+#
+# It was unset, which means 14 days, which is shorter than either figure the plan
+# names - "30 days idle, 90 days absolute" - so Django's cookie expired first and
+# both application clocks were unreachable. `IDLE_SESSION_LIFETIME` could have
+# been any value at all above a fortnight and no session would ever have lived
+# long enough to notice; the 90-day absolute cap, which the plan points out
+# Django does not implement and which `core.Session` exists to carry, could never
+# fire once.
+#
+# 90 days, matching ABSOLUTE_SESSION_LIFETIME rather than merely exceeding it, so
+# the cookie and the row agree on when a session dies of old age instead of one
+# of them quietly being the real rule. Asserted against that constant in
+# tests/test_settings_security.py rather than restated here as a number.
+SESSION_COOKIE_AGE = 90 * 24 * 60 * 60
+
+# And deliberately False, which is the setting that makes the absolute cap
+# absolute. Saving on every request re-issues the cookie with a fresh 90 days
+# each time, so a session in daily use would never reach its own expiry - a
+# rolling cap is not a cap. With this off the cookie expires 90 days after the
+# login that set it, which is exactly `created_at + ABSOLUTE_SESSION_LIFETIME`.
+#
+# Nothing is lost by it: the idle clock is `core.Session.last_seen_at`, which
+# SessionEpochMiddleware writes on every request already, so the idle rule is
+# enforced per request whatever Django's session store does.
+SESSION_SAVE_EVERY_REQUEST = False
 CSRF_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SAMESITE = "Lax"
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")

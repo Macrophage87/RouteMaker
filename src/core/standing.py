@@ -135,12 +135,21 @@ class Membership:
     def is_sanctioned(self, now: datetime) -> bool:
         """Under an *active* moderation action, as distinct from simply absent.
 
-        A lapsed timeout is not a sanction: the plan says a timeout is restored
+        Two things this deliberately does not treat as a sanction.
+
+        A lapsed timeout is not one: the plan says a timeout is restored
         automatically at its end time, and reading the column's presence rather
         than comparing it against now blocked the guest floor permanently.
+
+        And a removal is not one either. The plan is explicit - "Losing all
+        configured-guild membership downgrades a user to guest standing rather
+        than revoking their sessions" - so reading `removed_at` here cost a
+        person guest commenting everywhere for 72 hours because they left one
+        club, and made a voluntary departure from club A indistinguishable from
+        a ban. Removal still ends every guild-derived grant the instant it
+        lands; that is `is_usable`, and it is a different question from whether
+        the guest floor is still reachable on a public route.
         """
-        if self.removed_at is not None:
-            return True
         return self.timed_out_until is not None and now < self.timed_out_until
 
 
@@ -194,6 +203,25 @@ class Route:
         return self.audience_guild_ids | {self.owning_guild_id}
 
 
+def usable_guild_ids(
+    viewer: Viewer, guilds: dict[int, GuildStanding], now: datetime
+) -> frozenset[int]:
+    """The guilds whose standing this viewer actually still has.
+
+    One definition, called from every rule that needs it. It was written out
+    three times - in `resolve`, in `can_edit`, and not at all in `can_review`,
+    which is how a reviewer kept reviewing for a guild that had gone revoked.
+    Three copies of a rule are three rules that happen to agree until they stop.
+    """
+    return frozenset(
+        m.guild_id
+        for m in viewer.memberships
+        if m.is_usable(now)
+        and (standing := guilds.get(m.guild_id)) is not None
+        and standing.grants_standing(now)
+    )
+
+
 def resolve(
     viewer: Viewer,
     route: Route,
@@ -215,13 +243,7 @@ def resolve(
         return Level.NONE
 
     # 2. Guild state and membership row age, before any per-route consideration.
-    usable = frozenset(
-        m.guild_id
-        for m in viewer.memberships
-        if m.is_usable(now)
-        and (standing := guilds.get(m.guild_id)) is not None
-        and standing.grants_standing(now)
-    )
+    usable = usable_guild_ids(viewer, guilds, now)
 
     # Instance admin is a mapped Discord role like any other, so it is subject to
     # the same guild state and row age. A lapsed admin loses the admin along with
@@ -325,28 +347,57 @@ def can_edit(
     if viewer.is_instance_admin:
         return True
 
-    usable = frozenset(
-        m.guild_id
-        for m in viewer.memberships
-        if m.is_usable(now)
-        and (standing := guilds.get(m.guild_id)) is not None
-        and standing.grants_standing(now)
-    )
-    return route.owning_guild_id in usable
+    return route.owning_guild_id in usable_guild_ids(viewer, guilds, now)
 
 
-def can_review(viewer: Viewer, route: Route, viewer_level: Level) -> bool:
+def can_review(
+    viewer: Viewer,
+    route: Route,
+    guilds: dict[int, GuildStanding],
+    now: datetime,
+) -> bool:
     """Whether this viewer may record approve or request-changes.
 
-    Also explicit: COLLABORATOR sorts above REVIEWER in the lattice, so a level
-    comparison would make every collaborator a reviewer and render the owner's
-    audited review grant unenforceable.
+    Explicit rather than a level comparison, because the lattice cannot express
+    this on its own and gets it wrong in both directions.
+
+    Downward: COLLABORATOR (40) sorts above REVIEWER (30), so `>= REVIEWER` would
+    make every named collaborator a reviewer and render the owner's audited
+    review grant unenforceable.
+
+    Upward: `is Level.REVIEWER` - the guard that was here - denied review to a
+    guild reviewer who was *also* a named collaborator on the route, because
+    `resolve` collapses them to the higher COLLABORATOR and the identity test
+    then missed. Adding someone as a collaborator silently took away the reviewer
+    powers their role had granted them, which is the opposite of what naming
+    them was meant to do.
+
+    So reviewer standing is read from the viewer's own reviewer guilds, against
+    the route's audience and against the guilds that still grant anything at all.
+    The last of those is why this takes the guild standings rather than a
+    pre-computed level: the level cannot tell a collaborator-and-reviewer whose
+    guild has gone revoked from one whose guild is fine, since the collaborator
+    grant is per-route and survives both.
     """
     if viewer.is_banned or viewer.is_deleted or not viewer.is_authenticated:
         return False
+
+    # The owner's own audited per-route grant, which no guild state gates: it was
+    # made for this route by the person who owns it.
     if viewer.user_id in route.reviewer_ids:
         return True
-    return viewer_level is Level.REVIEWER or viewer_level >= Level.GUILD_ADMIN
+
+    level = resolve(viewer, route, guilds, now)
+    if level >= Level.GUILD_ADMIN:
+        return True
+    if level < Level.REVIEWER:
+        return False
+
+    usable = usable_guild_ids(viewer, guilds, now)
+    return (
+        bool(viewer.reviewer_guild_ids & usable & route.all_audience_guilds)
+        and route.visibility >= MIN_TIER_FOR_GUILD_REVIEWER
+    )
 
 
 def can_see_marshal_detail(

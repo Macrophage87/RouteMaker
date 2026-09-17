@@ -21,11 +21,20 @@ and sit in the nightly dump.
 
 from __future__ import annotations
 
-from django.contrib import admin
-from django.contrib.gis.admin import GISModelAdmin
-from django.core.exceptions import ImproperlyConfigured
-from django.http import Http404
+from functools import update_wrapper
 
+from django import forms
+from django.contrib import admin, messages
+from django.contrib.gis.admin import GISModelAdmin
+from django.core.exceptions import ImproperlyConfigured, PermissionDenied
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
+from django.http import Http404
+from django.utils import timezone
+from django.views.decorators.cache import never_cache
+from django.views.decorators.csrf import csrf_protect
+
+from .audit import record as record_audit
 from .models import (
     AuditLogEntry,
     BorderCrossing,
@@ -33,10 +42,14 @@ from .models import (
     ConfiguredGuild,
     DriftReport,
     Jurisdiction,
+    LastInstanceAdmin,
     Override,
     RoleMapping,
+    User,
     ValhallaUpstream,
+    check_last_instance_admin,
 )
+from .revocation import revoke_guild
 
 
 class RouteMakerAdminSite(admin.AdminSite):
@@ -60,6 +73,30 @@ class RouteMakerAdminSite(admin.AdminSite):
             and getattr(user, "is_staff", False)
         )
 
+    def admin_view(self, view, cacheable=False):
+        """Django's version redirects an unadmitted request to the login page.
+
+        That is a 302 naming the admin path, on a deployment whose whole posture
+        is that the path is not advertised - so `GET <path>/` answered "there is
+        an admin here, go and log in" while `login` itself answered 404 and the
+        docstring claimed the path did not confirm anything. Refusing with the
+        same 404 the rest of the site gives an unknown URL makes the two agree.
+
+        Everything else is Django's own wrapper: never_cache unless the view says
+        otherwise, csrf_protect unless it is exempt.
+        """
+
+        def inner(request, *args, **kwargs):
+            if not self.has_permission(request):
+                raise Http404
+            return view(request, *args, **kwargs)
+
+        if not cacheable:
+            inner = never_cache(inner)
+        if not getattr(view, "csrf_exempt", False):
+            inner = csrf_protect(inner)
+        return update_wrapper(inner, view)
+
     def login(self, request, extra_context=None):
         """There is no admin login form. Returning 404 rather than redirecting
         keeps the path from confirming that an admin exists here."""
@@ -76,46 +113,73 @@ site = RouteMakerAdminSite(name="routemaker_admin")
 
 
 def audit(request, action: str, model: str, object_id, outcome: str, detail: str = "") -> None:
-    """Record one attempt at a privileged write.
-
-    Every visibility assertion the plan makes about the admin ends in "and the
-    attempt is audited". Without this the refusals were real and the record of
-    them was not, so a refused edit and nobody having tried looked the same
-    afterwards.
-
-    Narrow on purpose, like the membership cache: who acted on what and whether
-    it was allowed, never a copy of the row.
-    """
+    """Record one attempt at a privileged write, with the request's actor."""
     actor = getattr(request, "user", None)
-    AuditLogEntry.objects.create(
-        actor=actor if getattr(actor, "pk", None) else None,
-        action=action,
-        model=model,
-        object_id=str(object_id or ""),
-        outcome=outcome,
-        detail=detail[:2000],
-    )
+    record_audit(actor, action, model, object_id, outcome, detail)
 
 
 class AuditedAdmin(admin.ModelAdmin):
     """Records what was written, and what was refused.
 
-    The refusal half matters more. Django asks `has_*_permission` and, when the
-    answer is no, renders a 403 and calls nothing else - so the attempt leaves no
-    trace anywhere unless the check itself writes one.
+    The refusal half is where this was wrong, and wrong in the direction that
+    makes a log worse than none.
+
+    Refusals used to be written from inside `has_add_permission` and its
+    siblings. Two things follow from that and both were measured. Django calls
+    those hooks several times per page while *rendering* - to decide whether to
+    draw an Add button, a delete link, an inline - so a read-only changelist GET
+    wrote about twenty rows, none of which was an attempt at anything. And
+    Django calls them from inside `transaction.atomic` in `changeform_view` and
+    `delete_view` and then raises `PermissionDenied`, which rolls the refusal
+    row back along with everything else: one row when the call was made outside a
+    transaction, zero inside. So the log flooded on navigation and recorded
+    nothing on the refusals it exists for.
+
+    Both halves have the same cause: a permission probe is not an attempt. What
+    is an attempt is a POST. So the hooks are plain predicates again, and the
+    write happens here - around the view, outside the atomic block, after
+    `PermissionDenied` has already unwound it. No second connection and no
+    `on_commit` (which would be discarded by the rollback); the row is simply
+    written where no transaction is holding it.
     """
 
-    def _audited_permission(self, request, action: str, obj, allowed: bool) -> bool:
-        if not allowed:
-            audit(
-                request,
-                action,
-                self.model._meta.model_name,
-                getattr(obj, "pk", None),
-                AuditLogEntry.Outcome.REFUSED,
-                detail=f"{type(self).__name__} refused {action}",
-            )
-        return allowed
+    def _audit_refusal(self, request, action: str, object_id=None) -> None:
+        record_audit(
+            getattr(request, "user", None),
+            action,
+            self.model._meta.model_name,
+            object_id,
+            AuditLogEntry.Outcome.REFUSED,
+            detail=f"{type(self).__name__} refused {action} over {request.method}",
+        )
+
+    def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
+        if request.method != "POST":
+            return super().changeform_view(request, object_id, form_url, extra_context)
+        try:
+            return super().changeform_view(request, object_id, form_url, extra_context)
+        except PermissionDenied:
+            self._audit_refusal(request, "change" if object_id else "add", object_id)
+            raise
+
+    def delete_view(self, request, object_id, extra_context=None):
+        if request.method != "POST":
+            return super().delete_view(request, object_id, extra_context)
+        try:
+            return super().delete_view(request, object_id, extra_context)
+        except PermissionDenied:
+            self._audit_refusal(request, "delete", object_id)
+            raise
+
+    def changelist_view(self, request, extra_context=None):
+        if request.method != "POST":
+            return super().changelist_view(request, extra_context)
+        try:
+            return super().changelist_view(request, extra_context)
+        except PermissionDenied:
+            selected = ",".join(request.POST.getlist("_selected_action"))
+            self._audit_refusal(request, "action", selected)
+            raise
 
     def save_model(self, request, obj, form, change) -> None:
         super().save_model(request, obj, form, change)
@@ -179,13 +243,13 @@ class InstanceAdminOnly(AuditedAdmin):
         return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_add_permission(self, request) -> bool:
-        return self._audited_permission(request, "add", None, self._is_instance_admin(request))
+        return self._is_instance_admin(request)
 
     def has_change_permission(self, request, obj=None) -> bool:
-        return self._audited_permission(request, "change", obj, self._is_instance_admin(request))
+        return self._is_instance_admin(request)
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        return self._audited_permission(request, "delete", obj, self._is_instance_admin(request))
+        return self._is_instance_admin(request)
 
 
 @admin.register(Jurisdiction, site=site)
@@ -232,13 +296,58 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
     list_filter = ("state",)
     readonly_fields = ("guild_id", "state", "state_since", "standing_valid_until")
 
+    actions = ("revoke_now",)
+
     def has_add_permission(self, request) -> bool:
-        allowed = bool(getattr(request.user, "is_instance_admin", False))
-        return self._audited_permission(request, "add", None, allowed)
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        """Every field on this form is read-only, so a change POST can only ever
+        be a no-op or an attempt at one of them. Instance admins keep the verb
+        because the form is how they read a guild; nobody else gets to post to
+        it at all."""
+        return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        allowed = bool(getattr(request.user, "is_instance_admin", False))
-        return self._audited_permission(request, "delete", obj, allowed)
+        return bool(getattr(request.user, "is_instance_admin", False))
+
+    def may_revoke(self, request, guild) -> bool:
+        """Who may collapse a guild's window at once.
+
+        "Either way an instance admin, or an admin of the affected guild, can
+        collapse the window at once with an audited revoke-now action." An admin
+        of the affected guild, and of no other: the changelist queryset already
+        scopes what they can select, and this is the second half of that, checked
+        per object so a hand-built POST cannot reach past it.
+        """
+        if getattr(request.user, "is_instance_admin", False):
+            return True
+        return guild.guild_id in getattr(request.user, "_admin_guild_ids", frozenset())
+
+    @admin.action(description="Revoke now - end this guild's standing immediately")
+    def revoke_now(self, request, queryset) -> None:
+        """The transition the degraded window has had no way into.
+
+        `should_mark_degraded` and `degraded_window` were correct, tested, and
+        called from nowhere; nothing wrote `ConfiguredGuild.state` at all, so a
+        guild could never be marked degraded or revoked and the plan's audited
+        revoke-now existed on no surface.
+        """
+        now = timezone.now()
+        revoked = 0
+        for guild in queryset:
+            if not self.may_revoke(request, guild):
+                self._audit_refusal(request, "revoke_now", guild.pk)
+                self.message_user(
+                    request,
+                    f"Refused: {guild} is not yours to revoke.",
+                    level=messages.ERROR,
+                )
+                continue
+            revoke_guild(guild, actor=request.user, now=now, reason="revoke-now from the admin")
+            revoked += 1
+        if revoked:
+            self.message_user(request, f"Revoked {revoked} guild(s).", level=messages.WARNING)
 
 
 @admin.register(CachedMembership, site=site)
@@ -250,13 +359,13 @@ class CachedMembershipAdmin(GuildScopedAdmin):
     list_display = ("discord_user_id", "guild", "last_confirmed", "pending")
 
     def has_add_permission(self, request) -> bool:
-        return self._audited_permission(request, "add", None, False)
+        return False
 
     def has_change_permission(self, request, obj=None) -> bool:
-        return self._audited_permission(request, "change", obj, False)
+        return False
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        return self._audited_permission(request, "delete", obj, False)
+        return False
 
 
 @admin.register(RoleMapping, site=site)
@@ -284,17 +393,17 @@ class RoleMappingAdmin(GuildScopedAdmin):
         return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_add_permission(self, request) -> bool:
-        return self._audited_permission(request, "add", None, self._is_instance_admin(request))
+        return self._is_instance_admin(request)
 
     def has_change_permission(self, request, obj=None) -> bool:
-        return self._audited_permission(request, "change", obj, self._is_instance_admin(request))
+        return self._is_instance_admin(request)
 
     def has_delete_permission(self, request, obj=None) -> bool:
-        return self._audited_permission(request, "delete", obj, self._is_instance_admin(request))
+        return self._is_instance_admin(request)
 
 
 @admin.register(AuditLogEntry, site=site)
-class AuditLogEntryAdmin(admin.ModelAdmin):
+class AuditLogEntryAdmin(AuditedAdmin):
     """Read-only, to everyone, including an instance admin.
 
     A log whose entries can be edited or deleted from the surface it audits is
@@ -312,6 +421,16 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
         return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_module_permission(self, request) -> bool:
+        """Belt and braces, and currently only braces.
+
+        Flipping this to True changes nothing observable and no test can catch
+        it: `AdminSite._build_app_dict` skips any model whose four model perms
+        are all False before it ever looks at the app list, and the four below
+        are. Recorded so the next person to find it surviving a mutation does not
+        spend the afternoon writing a test that cannot exist. It stays because it
+        is the correct answer to the question, and because it is what would hold
+        if one of the four below ever became True.
+        """
         return self.has_view_permission(request)
 
     def has_add_permission(self, request) -> bool:
@@ -325,7 +444,7 @@ class AuditLogEntryAdmin(admin.ModelAdmin):
 
 
 @admin.register(BorderCrossing, site=site)
-class BorderCrossingAdmin(GISModelAdmin):
+class BorderCrossingAdmin(AuditedAdmin, GISModelAdmin):
     """Derived state, displayed only. The pipeline owns these rows and a rebuild
     reassigns their ids; editing one by hand would be overwritten next Tuesday
     and would desynchronise the graph from the crossings table in the meantime."""
@@ -341,6 +460,102 @@ class BorderCrossingAdmin(GISModelAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
+
+
+class InstanceAdminFlagForm(forms.ModelForm):
+    """The one editable thing on an account, with the lockout guard in front.
+
+    `check_last_instance_admin` lives in `User.save()` so every path reaches it,
+    and it raises. Raising out of `save_model` would be a 500 on the change form:
+    correct refusal, unreadable delivery. Clearing it here turns the same rule
+    into the field error the person who tried to clear the box needs to read.
+    """
+
+    class Meta:
+        model = User
+        fields = ("is_instance_admin",)
+
+    def clean_is_instance_admin(self):
+        value = self.cleaned_data["is_instance_admin"]
+        if self.instance.pk and not value:
+            try:
+                # `self.instance` still carries the stored values here: the form
+                # writes cleaned data onto it later, in _post_clean.
+                check_last_instance_admin(self.instance, removing=True)
+            except LastInstanceAdmin as error:
+                raise forms.ValidationError(str(error)) from error
+        return value
+
+
+@admin.register(User, site=site)
+class UserAdmin(InstanceAdminOnly):
+    """Appointing instance admins, and nothing else.
+
+    Registered because without it a deployment had exactly one instance admin
+    forever: `is_instance_admin` is a stored flag with no surface that writes it,
+    there is no password login and no `createsuperuser`, and
+    `check_last_instance_admin` refuses to let the one there is step down. The
+    plan says instance admins "are then added and removed in the admin, audited",
+    and this is that page.
+
+    Deliberately narrow. Accounts are created by signing in, never here, so there
+    is no add. Deletion is the account-deletion flow - tombstone, cached rows,
+    route reassignment - and a row deleted from a change list is none of that, so
+    there is no delete either. Ban and suspension are moderation and arrive with
+    the rest of it; every other field is displayed and locked.
+
+    Instance-admin only to *read*, not just to write: this list is every account
+    on the deployment, which is the same sensitivity as the membership cache.
+    """
+
+    form = InstanceAdminFlagForm
+    list_display = ("discord_user_id", "is_instance_admin", "is_banned", "is_deleted", "last_login")
+    list_filter = ("is_instance_admin", "is_banned", "is_deleted")
+    search_fields = ("discord_user_id",)
+    readonly_fields = (
+        "discord_user_id",
+        "is_banned",
+        "is_deleted",
+        "session_epoch",
+        "created_at",
+        "last_login",
+    )
+    fields = ("discord_user_id", "is_instance_admin", "is_banned", "is_deleted", "last_login")
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._is_instance_admin(request)
+
+
+@receiver(pre_delete, sender=User, dispatch_uid="core.refuse_deleting_the_last_instance_admin")
+def _refuse_deleting_the_last_instance_admin(sender, instance, **kwargs) -> None:
+    """The half of the lockout guard `save()` cannot cover.
+
+    `check_last_instance_admin` is called from `User.save()`, so `.delete()` -
+    on an instance or on a queryset - walks straight past it and can empty the
+    instance-admin list from a management shell. `pre_delete` fires per object
+    for both, which closes that.
+
+    `.update()` is not closed and cannot be from here: it issues one UPDATE and
+    emits no signal at all. Closing it needs a manager on the model, which lives
+    in another owner's file; until then it is a stated limitation, and the two
+    paths that a person or a surface actually takes - the admin, which has no
+    delete, and `save()` - are both guarded.
+
+    Registered in this module because `django.contrib.admin` imports it on every
+    Django setup, so the guard is live for management commands and the worker as
+    well as for the admin.
+    """
+    if instance.is_instance_admin:
+        check_last_instance_admin(instance, removing=True)
 
 
 @admin.register(ValhallaUpstream, site=site)

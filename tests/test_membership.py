@@ -291,3 +291,120 @@ def test_the_sweep_drops_departed_rows_once_they_grant_nothing(guild, member) ->
     purged, departed = sweep_memberships(now)
     assert (purged, departed) == (0, 1), "a fresh removal is inside the window"
     assert list(CachedMembership.objects.values_list("discord_user_id", flat=True)) == [2]
+
+
+# A deleted account's rows, which the gateway put straight back.
+
+
+@pytest.fixture
+def deleted_member(db):
+    from core.models import User
+
+    return User.objects.create(discord_user_id=1, is_deleted=True, last_login=timezone.now())
+
+
+@pytest.mark.django_db
+def test_a_deleted_user_still_present_in_a_guild_is_not_re_cached(guild, deleted_member) -> None:
+    """The plan's named authorization test, asserting the rule it names.
+
+    Deletion "deletes the cached guild membership rows, which the hashed-id
+    tombstone then keeps the bot from recreating on the next gateway event or
+    sweep even though the person is still in the guild". `record_event` consulted
+    neither the tombstone nor `is_deleted`, so deleting the account and feeding
+    one event put the row straight back - for someone who asked to be forgotten,
+    in the data the plan identifies as the sensitive part of this deployment.
+
+    A test of this name existed and asserted something else: that
+    `attach_standing` grants a deleted user nothing. True, and a different rule -
+    it is about what a surviving row is worth, not about the row coming back.
+    """
+    from core.membership import record_event
+    from core.models import CachedMembership
+
+    now = timezone.now()
+    assert record_event(GatewayEvent("add", GUILD, 1, role_ids=frozenset({7})), now) is None
+    assert not CachedMembership.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_row_that_survived_an_earlier_event_goes_with_the_next_one(guild, deleted_member) -> None:
+    """Deletion happens after the rows exist, so refusing to write new ones is
+    only half of it."""
+    from core.membership import record_event
+    from core.models import CachedMembership
+
+    now = timezone.now()
+    CachedMembership.objects.create(
+        discord_user_id=1, guild=guild, role_ids=[7], last_confirmed=now
+    )
+    record_event(GatewayEvent("update", GUILD, 1, role_ids=frozenset({7, 8})), now)
+    assert not CachedMembership.objects.exists()
+
+
+@pytest.mark.django_db
+def test_a_tombstoned_id_is_not_cached_even_with_no_account_row(guild) -> None:
+    """Deletion keeps only the tombstone, so by the time the next gateway event
+    arrives there may be no account row left to consult at all. That is the case
+    the tombstone exists for and the one `is_deleted` alone cannot cover."""
+    from django.conf import settings
+
+    from core.membership import record_event
+    from core.models import BanTombstone, CachedMembership, User
+    from core.revocation import tombstone
+
+    BanTombstone.objects.create(tombstone=tombstone(1, settings.TOMBSTONE_KEY))
+    assert not User.objects.filter(discord_user_id=1).exists()
+
+    assert record_event(GatewayEvent("add", GUILD, 1, role_ids=frozenset({7}))) is None
+    assert not CachedMembership.objects.exists()
+
+
+@pytest.mark.django_db
+def test_the_sweep_removes_them_too(guild, deleted_member) -> None:
+    """The gateway is the mechanism and the sweep is the backstop, so both close
+    or neither does. The never-signed-in purge stepped straight over these rows,
+    because a deleted account keeps its own `last_login`.
+    """
+    from core.membership import sweep_memberships
+    from core.models import CachedMembership
+
+    now = timezone.now()
+    CachedMembership.objects.create(
+        discord_user_id=1, guild=guild, role_ids=[7], last_confirmed=now
+    )
+
+    purged, _departed = sweep_memberships(now)
+    assert purged == 1
+    assert not CachedMembership.objects.exists()
+
+
+@pytest.mark.django_db
+def test_the_sweep_removes_a_tombstoned_id_with_no_account_row(guild) -> None:
+    from django.conf import settings
+
+    from core.membership import sweep_memberships
+    from core.models import BanTombstone, CachedMembership, User
+    from core.revocation import tombstone
+
+    now = timezone.now()
+    User.objects.create(discord_user_id=2, last_login=now)
+    BanTombstone.objects.create(tombstone=tombstone(2, settings.TOMBSTONE_KEY))
+    CachedMembership.objects.create(discord_user_id=2, guild=guild, last_confirmed=now)
+
+    purged, _departed = sweep_memberships(now)
+    assert purged == 1
+    assert not CachedMembership.objects.exists()
+
+
+@pytest.mark.django_db
+def test_an_ordinary_member_is_left_alone_by_all_of_this(guild, member) -> None:
+    """The refusal has to be narrow: a rule that drops everybody's rows is not a
+    privacy fix, it is an outage."""
+    from core.membership import record_event, sweep_memberships
+    from core.models import CachedMembership, User
+
+    now = timezone.now()
+    User.objects.filter(pk=member.pk).update(last_login=now)
+    assert record_event(GatewayEvent("add", GUILD, 1, role_ids=frozenset({7})), now) is not None
+    assert sweep_memberships(now) == (0, 0)
+    assert CachedMembership.objects.count() == 1

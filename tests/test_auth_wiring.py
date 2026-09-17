@@ -162,6 +162,48 @@ class TestSessionEpoch:
         user.session_epoch = 2
         assert not session_is_current(user, 1, now - timedelta(days=1), now)
 
+    def test_a_banned_user_has_no_current_session_whatever_the_epoch(self) -> None:
+        """The epoch is bumped by ban and deletion now, so this is belt to those
+        braces - and it is the check that still bites when a flag was set by a
+        fixture, a migration or a hand-written UPDATE that bumped nothing."""
+        from core.auth_backend import session_is_current
+
+        user = User.objects.create(discord_user_id=10)
+        now = timezone.now()
+        assert session_is_current(user, user.session_epoch, now, now)
+
+        user.is_banned = True
+        assert not session_is_current(user, user.session_epoch, now, now)
+
+    def test_banning_a_user_bumps_the_epoch(self) -> None:
+        """It was a column the middleware read and nothing incremented, so ban,
+        suspension, deletion and sign-out-everywhere all left the person signed
+        in - the exact mechanism `revocation`'s docstring opens by describing."""
+        user = User.objects.create(discord_user_id=11)
+        before = user.session_epoch
+        user.is_banned = True
+        user.save(update_fields=["is_banned"])
+        user.refresh_from_db()
+        assert user.session_epoch == before + 1
+
+    def test_deleting_an_account_bumps_the_epoch(self) -> None:
+        user = User.objects.create(discord_user_id=12)
+        before = user.session_epoch
+        user.is_deleted = True
+        user.save()
+        user.refresh_from_db()
+        assert user.session_epoch == before + 1
+
+    def test_an_ordinary_save_does_not_bump_it(self) -> None:
+        """Otherwise every request that touched the row would sign the person
+        out, which is a revocation mechanism that revokes everything."""
+        user = User.objects.create(discord_user_id=13)
+        before = user.session_epoch
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+        user.refresh_from_db()
+        assert user.session_epoch == before
+
     def test_the_middleware_is_installed_after_authentication(self) -> None:
         """It needs request.user, so ordering is part of the mechanism."""
         middleware = settings.MIDDLEWARE
@@ -213,7 +255,11 @@ class TestAttachStandingBranches:
         attach_standing(user, now)
         assert user.is_staff
 
-    def test_a_deleted_user_is_not_re_cached(self, guild) -> None:
+    def test_a_deleted_user_gets_nothing_from_a_row_that_survived(self, guild) -> None:
+        """Renamed. This asserts that `attach_standing` grants a deleted user
+        nothing, which is true and is not the plan's test of that name - that one
+        is about the row coming back at all, and it lives in test_membership.py
+        where the gateway is."""
         from core.auth_backend import attach_standing
         from core.models import RoleMapping
 
@@ -221,6 +267,38 @@ class TestAttachStandingBranches:
         member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
         attach_standing(user)
         assert user._member_guild_ids == frozenset()
+
+    def test_a_role_mapped_to_instance_admin_does_not_confer_it(self, guild) -> None:
+        """Pinned, and pinned against the reviewer's suggestion rather than with
+        it, because the plan decides this and the plan is explicit.
+
+        Round 3 asked for `attach_standing` to interpret INSTANCE_ADMIN. PLAN's
+        instance-admin section says the role is "independent of every guild,
+        deriving from the instance-admin list alone and never from guild
+        membership, role mapping, the bot, or the membership cache, so the people
+        who can fix a broken bot can still sign in when every guild is degraded".
+        Honouring the mapping would make the deployment's one cross-guild role
+        lapse with a club's gateway connection, which is the failure that
+        sentence exists to rule out - and which
+        `TestInstanceAdminSurvivesADegradedDeployment` asserts does not happen.
+
+        The half of the finding that is real - that a fresh deployment had
+        exactly one instance admin forever - is fixed by registering the user
+        admin, which is what the plan prescribes: "instance admins are then added
+        and removed in the admin, audited".
+        """
+        from core.auth_backend import attach_standing
+        from core.models import RoleMapping
+
+        user = User.objects.create(discord_user_id=25)
+        member_of(guild, user, permission=RoleMapping.Permission.INSTANCE_ADMIN)
+        attach_standing(user)
+
+        assert not user.is_instance_admin
+        assert not user.is_staff
+        assert user._admin_guild_ids == frozenset()
+        assert user._reviewer_guild_ids == frozenset()
+        assert user._member_guild_ids == frozenset({1000}), "they are still a member"
 
     def test_a_reviewer_is_a_reviewer_and_not_an_admin(self, guild) -> None:
         """An inverted mapping here makes every reviewer a guild admin, which is
@@ -319,12 +397,12 @@ class TestHasPerm:
         user = User.objects.create(discord_user_id=30)
         member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
         attach_standing(user)
-        assert DiscordStandingBackend().has_perm(user, "core.change_closure")
+        assert DiscordStandingBackend().has_perm(user, "core.view_configuredguild")
 
         user.is_banned = True
         attach_standing(user)
         assert not user.is_active
-        assert not DiscordStandingBackend().has_perm(user, "core.change_closure")
+        assert not DiscordStandingBackend().has_perm(user, "core.view_configuredguild")
 
     def test_a_banned_instance_admin_holds_nothing(self) -> None:
         """is_active is load-bearing here and nowhere else.
@@ -346,21 +424,106 @@ class TestHasPerm:
         assert not DiscordStandingBackend().has_perm(user, "core.change_configuredguild")
         assert not DiscordStandingBackend().has_module_perms(user, "core")
 
-    def test_a_guild_admin_cannot_write_the_instance_admin_models(self, guild) -> None:
-        """The configured guild list is the deployment's admission control:
-        adding a row self-onboards a server, and editing guild_id is an unaudited
-        remap of the snowflake every standing check matches against."""
-        from core.auth_backend import DiscordStandingBackend, attach_standing
+    @pytest.fixture
+    def guild_admin(self, guild):
+        from core.auth_backend import attach_standing
         from core.models import RoleMapping
 
         user = User.objects.create(discord_user_id=31)
         member_of(guild, user, permission=RoleMapping.Permission.GUILD_ADMIN)
         attach_standing(user)
+        return user
+
+    def test_the_instance_admin_only_set_is_the_one_the_plan_names(self) -> None:
+        """Pinned flat, because the loop below is driven from this set and a loop
+        driven from a set cannot notice an entry leaving it. Deleting
+        "rolemapping" or "auditlogentry" left 431 tests passing; `cachedmembership`
+        - the table that grants any role in any guild - was never in it at all.
+        """
+        from core.auth_backend import DiscordStandingBackend
+
+        assert DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS == frozenset(
+            {
+                "configuredguild",
+                "jurisdiction",
+                "override",
+                "bantombstone",
+                "user",
+                "rolemapping",
+                "auditlogentry",
+                "cachedmembership",
+                "bordercrossing",
+            }
+        )
+
+    def test_a_guild_admin_cannot_write_any_of_them(self, guild_admin) -> None:
+        """The configured guild list is the deployment's admission control:
+        adding a row self-onboards a server, and editing guild_id is an unaudited
+        remap of the snowflake every standing check matches against."""
+        from core.auth_backend import DiscordStandingBackend
+
         backend = DiscordStandingBackend()
-        for model in ("configuredguild", "jurisdiction", "override", "bantombstone", "user"):
+        for model in sorted(DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS):
             for action in ("add", "change", "delete"):
-                assert not backend.has_perm(user, f"core.{action}_{model}")
-        assert backend.has_perm(user, "core.view_configuredguild")
+                perm = f"core.{action}_{model}"
+                assert not backend.has_perm(guild_admin, perm), perm
+        assert backend.has_perm(guild_admin, "core.view_configuredguild")
+
+    def test_permissions_are_an_allow_list_and_not_a_deny_list(self, guild_admin) -> None:
+        """The deny-list this replaced answered True for everything nobody had
+        thought to name, so a guild admin held `core.approve_override`,
+        `auth.add_permission` and `admin.delete_logentry` - and phase 4 brings
+        exactly those custom actions."""
+        from core.auth_backend import DiscordStandingBackend
+
+        backend = DiscordStandingBackend()
+        for perm in (
+            "core.approve_override",
+            "core.remap_configuredguild",
+            "core.change_route",
+            "auth.add_permission",
+            "auth.change_user",
+            "admin.delete_logentry",
+            "sessions.delete_session",
+            "core.invent_a_permission_in_phase_4",
+        ):
+            assert not backend.has_perm(guild_admin, perm), perm
+
+    def test_module_permission_is_not_held_for_every_app(self, guild_admin) -> None:
+        """It answered True for every app label, `admin` and `auth` included,
+        because neither starts with a write prefix."""
+        from core.auth_backend import DiscordStandingBackend
+
+        backend = DiscordStandingBackend()
+        assert backend.has_module_perms(guild_admin, "core")
+        for label in ("admin", "auth", "sessions", "contenttypes", "nonexistent"):
+            assert not backend.has_module_perms(guild_admin, label), label
+
+    def test_an_instance_admin_still_holds_everything(self) -> None:
+        from core.auth_backend import DiscordStandingBackend, attach_standing
+
+        user = User.objects.create(discord_user_id=33, is_instance_admin=True)
+        attach_standing(user)
+        backend = DiscordStandingBackend()
+        assert backend.has_perm(user, "core.change_configuredguild")
+        assert backend.has_module_perms(user, "core")
+
+    def test_the_allow_list_may_not_name_a_write_on_a_standing_table(self) -> None:
+        """The two constants are kept from drifting apart by a check that runs at
+        import, not by whoever reviews the next diff."""
+        from django.core.exceptions import ImproperlyConfigured
+
+        from core.auth_backend import DiscordStandingBackend, check_guild_admin_allow_list
+
+        check_guild_admin_allow_list(
+            DiscordStandingBackend.GUILD_ADMIN_PERMISSIONS,
+            DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS,
+        )
+        with pytest.raises(ImproperlyConfigured, match="privilege escalation"):
+            check_guild_admin_allow_list(
+                frozenset({"core.change_rolemapping"}),
+                DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS,
+            )
 
 
 class TestSessionEpochMiddleware:
