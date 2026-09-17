@@ -38,12 +38,16 @@ from rebuild_fixtures import (
 )
 
 from config.procrastinate import (
+    BACKUP_KEEP,
+    BACKUP_TIMEOUT_S,
     DEGRADED_GUILD_SWEEP_CRON,
     MEMBERSHIP_SWEEP_CRON,
     NIGHTLY_BACKUP_CRON,
     REBUILD_TIMEOUT_S,
     SWEEP_TIMEOUT_S,
     WEEKLY_REBUILD_CRON,
+    WORKER_HEARTBEAT_CRON,
+    BackupTimedOut,
     RebuildAbandoned,
     app,
     verify_dump_listing,
@@ -72,6 +76,7 @@ def test_each_cron_constant_has_a_task_behind_it() -> None:
         "nightly_backup": NIGHTLY_BACKUP_CRON,
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
         "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
+        "worker_heartbeat": WORKER_HEARTBEAT_CRON,
     }
 
 
@@ -84,7 +89,7 @@ def test_the_rebuild_cannot_run_twice_at_once() -> None:
 
 
 def test_the_maintenance_tasks_share_a_queue_away_from_the_rebuild() -> None:
-    for name in ("nightly_backup", "membership_sweep", "degraded_guild_sweep"):
+    for name in ("nightly_backup", "membership_sweep", "degraded_guild_sweep", "worker_heartbeat"):
         assert app.tasks[name].queue == "maintenance"
         assert app.tasks[name].queueing_lock == name
 
@@ -209,6 +214,89 @@ def test_a_rebuild_abandoned_for_a_terminal_cause_is_not_retried() -> None:
     assert strategy.get_retry_decision(exception=abandoned, job=job(0)) is None
 
 
+@pytest.mark.django_db(transaction=True)
+def test_the_rebuild_prunes_the_build_directories_it_has_retired(rebuild_environment) -> None:
+    """One dated tile set per week, kept forever, on the volume whose disk gate
+    refuses a rebuild that cannot fit two of them. Nothing removed them, so the
+    gate's own remedy - "grow the volume" - was the only one left. The two
+    newest survive, which is what the plan sizes the volume for, and the
+    promotion symlinks are what decide the rest."""
+    from core.models import ScheduledRun
+
+    root, _binaries = rebuild_environment
+    stale = ["20260901T080000Z", "20260908T080000Z", "20260915T080000Z"]
+    for variant in ("standard", "no-trail", "ebike"):
+        for build in stale:
+            (root / "tiles" / variant / build / "tiles").mkdir(parents=True)
+
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    for variant in ("standard", "no-trail", "ebike"):
+        variant_dir = root / "tiles" / variant
+        remaining = sorted(entry.name for entry in variant_dir.iterdir() if not entry.is_symlink())
+        assert remaining[0] == stale[-1], f"{variant}: the newest retired build is kept"
+        assert len(remaining) == 2, f"{variant}: two full sets, no more"
+        assert os.readlink(variant_dir / "current") == remaining[-1]
+    assert (
+        "pruned 6 old build directories" in ScheduledRun.objects.get(task="weekly_rebuild").detail
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("kind", ["binary_killed", "no_budget_left"])
+def test_a_rebuild_killed_by_its_own_deadline_is_abandoned_rather_than_retried(
+    rebuild_environment, monkeypatch, kind
+) -> None:
+    """A rebuild that ran out of its own budget will not finish faster next time.
+
+    Both shapes of that failure arrive from inside a stage rather than from the
+    boundary check the task catches by name: `subprocess.TimeoutExpired` when a
+    binary is killed at the deadline, `RebuildTimedOut` when the next one is
+    started with nothing left. Neither was terminal, so both were retried five
+    times - and a retry runs the whole rebuild again including SWAP, whose
+    `DROP SCHEMA live_old` is what a rollback would have put back. The first
+    timed-out rebuild would have destroyed its own rollback target, four more
+    times, at six hours a go.
+    """
+    from core.models import ScheduledRun
+    from pipeline.rebuild import RebuildTimedOut
+
+    _root, binaries = rebuild_environment
+    failure = (
+        subprocess.TimeoutExpired(cmd=["valhalla_build_tiles"], timeout=REBUILD_TIMEOUT_S)
+        if kind == "binary_killed"
+        else RebuildTimedOut("no time left to run valhalla_build_tiles")
+    )
+
+    def wedged(command, deadline=None, clock=None):
+        if command[0] == "valhalla_build_tiles":
+            raise failure
+        return binaries(command)
+
+    monkeypatch.setattr("pipeline.run._run_command", wedged)
+
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+    assert "build_tiles" in str(abandoned.value)
+
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert not run.succeeded
+    assert "RebuildAbandoned" in run.detail
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None
+
+
+def test_both_deadline_failures_are_terminal_causes() -> None:
+    """Named, so that removing either from the tuple fails here rather than
+    three hours into a retried rebuild."""
+    from config.procrastinate import terminal_causes
+    from pipeline.rebuild import RebuildTimedOut
+
+    assert RebuildTimedOut in terminal_causes()
+    assert subprocess.TimeoutExpired in terminal_causes()
+
+
 # --- Startability: a cold worker, as compose runs it ----------------------------------
 
 
@@ -308,6 +396,56 @@ def test_a_sweep_past_its_budget_fails_the_job(monkeypatch) -> None:
         app.tasks["membership_sweep"].func(timestamp=0)
     assert time.monotonic() - started < 2
     assert not ScheduledRun.objects.get(task="membership_sweep").succeeded
+
+
+def backend_count() -> int:
+    """Backends this database is serving, read from the server rather than
+    inferred from Django's own bookkeeping."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM pg_stat_activity WHERE datname = current_database()")
+        return cursor.fetchone()[0]
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("blocked_in", ["python", "the database"])
+def test_an_abandoned_task_gives_its_connection_back(blocked_in) -> None:
+    """The deadline abandoned the thread and the thread kept the connection.
+
+    Django's connections are per-thread, so the `finally` that closes one runs
+    on the thread that owns it - and that `finally` does not run while the body
+    is still going. A sweep abandoned at its deadline therefore sat on a backend
+    for as long as it kept running, every five minutes, up to six copies
+    resident; the proof was pytest failing to drop its own test database
+    afterwards because it was "being accessed by other users".
+
+    Both ways of being stuck are exercised, because they need different
+    remedies: a statement in flight has to be cancelled before the thread can
+    unwind, and a body blocked in Python has nothing to cancel and needs the
+    socket closed under it.
+    """
+    import threading
+
+    from core.runs import TaskTimedOut, run_with_deadline
+
+    opened = threading.Event()
+    before = backend_count()
+
+    def hog() -> None:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+            opened.set()
+            if blocked_in == "the database":
+                cursor.execute("SELECT pg_sleep(30)")
+        time.sleep(30)
+
+    with pytest.raises(TaskTimedOut):
+        run_with_deadline(hog, 1.0, "hog")
+    assert opened.is_set(), "the abandoned body really did open a connection"
+
+    deadline = time.monotonic() + 10
+    while backend_count() > before and time.monotonic() < deadline:
+        time.sleep(0.1)
+    assert backend_count() <= before, "the abandoned thread is still holding a backend"
 
 
 # --- The degraded-guild mark, and the sweep it rides beside ---------------------------
@@ -488,12 +626,156 @@ def test_the_task_itself_refuses_a_dump_whose_listing_leaks(monkeypatch, tmp_pat
 
     monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
 
-    def leaking_listing(archive, env):
+    def leaking_listing(archive, env, timeout=None):
         assert archive.exists(), "the dump is written before it is verified"
         return "1; 0 1 TABLE DATA public app_user r\n2; 0 2 TABLE DATA public app_session r\n"
 
     with pytest.raises(BackupVerificationFailed, match="app_session"):
         perform_backup(read_listing=leaking_listing)
+
+
+def locking_connection():
+    """A second backend, for holding a lock `pg_dump` has to wait behind.
+
+    Django's test connection is the one the test itself runs on, so a lock taken
+    through it would be held by the transaction the test is already in and block
+    nothing that matters.
+    """
+    import psycopg
+
+    settings_dict = connection.settings_dict
+    return psycopg.connect(
+        host=settings_dict["HOST"] or "127.0.0.1",
+        port=settings_dict["PORT"] or 5432,
+        dbname=settings_dict["NAME"],
+        user=settings_dict["USER"],
+        password=settings_dict["PASSWORD"],
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_backup_past_its_budget_is_killed_and_recorded_as_failed(monkeypatch, tmp_path) -> None:
+    """`pg_dump` had no timeout at all, and the maintenance worker is one slot.
+
+    A dump blocked on a lock therefore held that slot for as long as the process
+    lived, while every five-minute degraded-guild tick under it was dropped -
+    Procrastinate skips a periodic job whose predecessor is still queued or
+    locked. The block here is the real one: `pg_dump` takes ACCESS SHARE on
+    every table it dumps, and another backend holding ACCESS EXCLUSIVE on one of
+    them stops it dead, exactly as a stuck `DROP TABLE` or a wedged migration
+    would.
+    """
+    from core.models import ScheduledRun
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setattr("config.procrastinate.BACKUP_TIMEOUT_S", 2)
+
+    blocker = locking_connection()
+    try:
+        blocker.execute("LOCK TABLE app_user IN ACCESS EXCLUSIVE MODE")
+        started = time.monotonic()
+        with pytest.raises(BackupTimedOut, match="budget"):
+            app.tasks["nightly_backup"].func(timestamp=0)
+        assert time.monotonic() - started < 30, "the dump was killed, not waited out"
+    finally:
+        blocker.rollback()
+        blocker.close()
+
+    run = ScheduledRun.objects.get(task="nightly_backup")
+    assert not run.succeeded
+    assert "BackupTimedOut" in run.detail
+    assert list((tmp_path / "backups").glob("*.dump")) == [], (
+        "a half-written archive must not be left where the next restore would find it"
+    )
+
+
+def test_a_timed_out_backup_is_not_retried_but_an_ordinary_failure_is() -> None:
+    """Retried, a thirty-minute timeout would hold the single-slot maintenance
+    queue for two and a half hours more - the starvation the budget exists to
+    end. The nightly schedule is the retry."""
+    from config.procrastinate import BackupVerificationFailed
+
+    strategy = app.tasks["nightly_backup"].retry_strategy
+    backup_job = Job(
+        queue="maintenance",
+        lock=None,
+        queueing_lock="nightly_backup",
+        task_name="nightly_backup",
+        task_kwargs={},
+        attempts=0,
+    )
+    assert strategy.get_retry_decision(exception=BackupTimedOut("budget"), job=backup_job) is None
+    assert (
+        strategy.get_retry_decision(
+            exception=BackupVerificationFailed("no table data"), job=backup_job
+        )
+        is not None
+    ), "a dump that failed for any other reason is still worth another go tonight"
+
+
+def test_the_backup_budget_is_the_maintenance_queues_bound() -> None:
+    """It is not the dump's own convenience: it is how long one job may hold the
+    single slot every other maintenance task queues behind. The membership sweep
+    already bounds that slot at thirty minutes, so the queue's worst case is
+    unchanged by the backup existing."""
+    assert BACKUP_TIMEOUT_S == 30 * 60
+    assert BACKUP_TIMEOUT_S <= SWEEP_TIMEOUT_S
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_backup_prunes_all_but_the_newest_dumps(monkeypatch, tmp_path) -> None:
+    """Dumps are local-only and land on the volume the rebuild's disk gate
+    measures, so an unbounded series of them ends as a rebuild that refuses
+    every week with "grow the volume" as the only remedy."""
+    from core.models import ScheduledRun
+
+    backups = tmp_path / "backups"
+    backups.mkdir()
+    monkeypatch.setattr(settings, "BACKUP_DIR", backups)
+    older = [f"routemaker-2026010{day}T000000Z.dump" for day in range(1, 10)]
+    for name in older:
+        (backups / name).write_bytes(b"old")
+
+    app.tasks["nightly_backup"].func(timestamp=0)
+
+    remaining = sorted(path.name for path in backups.glob("*.dump"))
+    assert len(remaining) == BACKUP_KEEP
+    assert remaining[-1] not in older, "tonight's dump is the newest one kept"
+    assert remaining[:-1] == older[-(BACKUP_KEEP - 1) :], "the oldest dumps are the ones that go"
+    assert f"pruned {len(older) - BACKUP_KEEP + 1} old dumps" in (
+        ScheduledRun.objects.get(task="nightly_backup").detail
+    )
+
+
+def test_the_local_dump_retention_is_a_week() -> None:
+    """Long enough that corruption noticed over a weekend still has a local copy
+    to restore from; short enough that the volume carries gigabytes rather than a
+    year of them. The plan's remote 30-day retention is a separate, unbuilt
+    thing."""
+    assert BACKUP_KEEP == 7
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_heartbeat_task_writes_a_row_that_the_alert_reads() -> None:
+    """The plan's worker health check. A stalled worker stops writing every
+    other alert row too, but their windows are 26 and 12 hours, so without this
+    a dead worker takes half a day to notice."""
+    from core.models import ScheduledRun
+    from core.runs import stale_tasks
+
+    now = timezone.now()
+    assert "worker_heartbeat" in stale_tasks(now)
+
+    app.tasks["worker_heartbeat"].func(timestamp=0)
+
+    run = ScheduledRun.objects.get(task="worker_heartbeat")
+    assert run.succeeded and run.finished_at is not None
+    assert str(os.getpid()) in run.detail
+    assert "worker_heartbeat" not in stale_tasks(now)
+
+
+def test_the_heartbeat_is_not_retried_because_the_next_tick_is_the_retry() -> None:
+    assert app.tasks["worker_heartbeat"].retry_strategy is None
 
 
 def test_the_verification_refuses_a_dump_that_carries_what_it_must_not() -> None:
@@ -518,20 +800,73 @@ def test_an_alert_reads_the_absence_of_a_recent_success() -> None:
     """A rebuild that stopped being scheduled emits no error at all, so an alert
     built on errors stays silent through exactly the outage it exists for."""
     from core.models import ScheduledRun
-    from core.runs import stale_tasks
+    from core.runs import STALE_AFTER, stale_tasks
 
     now = timezone.now()
-    assert set(stale_tasks(now)) == {"weekly_rebuild", "nightly_backup", "membership_sweep"}
+    assert set(stale_tasks(now)) == set(STALE_AFTER)
 
-    for task in ("weekly_rebuild", "nightly_backup", "membership_sweep"):
+    for task in STALE_AFTER:
         ScheduledRun.objects.create(
-            task=task, started_at=now - timedelta(hours=1), finished_at=now, succeeded=True
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
         )
     assert stale_tasks(now) == []
 
     # A failure is not a success, and neither is an old one.
     ScheduledRun.objects.filter(task="weekly_rebuild").update(succeeded=False)
     assert stale_tasks(now) == ["weekly_rebuild"]
+
+
+@pytest.mark.django_db
+def test_a_success_older_than_its_own_window_is_stale() -> None:
+    """The window itself, one task at a time, on both sides of its edge.
+
+    The suite only ever pinned the rebuild's window. Every other number in
+    `STALE_AFTER` could be multiplied by ten - a backup alert at 260 hours, a
+    membership sweep at 500 - and nothing failed, because no test ever wrote a
+    success old enough to matter. Nor did anything exercise the second half of
+    the staleness predicate: with `(now - started_at) >= window` deleted, a task
+    that succeeded once a year ago read as healthy forever and every test still
+    passed.
+    """
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, stale_tasks
+
+    now = timezone.now()
+    for task, window in STALE_AFTER.items():
+        ScheduledRun.objects.filter(task=task).delete()
+        inside = ScheduledRun.objects.create(
+            task=task,
+            started_at=now - timedelta(seconds=window - 60),
+            finished_at=now,
+            succeeded=True,
+        )
+        assert task not in stale_tasks(now), f"{task} is not stale a minute inside its window"
+
+        inside.started_at = now - timedelta(seconds=window + 60)
+        inside.save(update_fields=["started_at"])
+        assert task in stale_tasks(now), f"{task} is stale a minute past its window"
+
+
+def test_every_alert_window_is_pinned() -> None:
+    """Flat, because every one of these is a promise made elsewhere.
+
+    The rebuild's eight days and the backup's 26 hours are the plan's own alert
+    numbers; the membership sweep's twelve hours is two missed six-hourly runs;
+    the two five-minute tasks are windowed at six missed ticks, since
+    Procrastinate drops a periodic tick whose predecessor still holds the queue
+    and a single drop is ordinary; and the heartbeat is the plan's "worker
+    heartbeat silent for 10 minutes", which is two missed ticks of its own
+    five-minute schedule.
+    """
+    from core.runs import STALE_AFTER
+
+    assert STALE_AFTER == {
+        "weekly_rebuild": 8 * 24 * 60 * 60,
+        "nightly_backup": 26 * 60 * 60,
+        "membership_sweep": 12 * 60 * 60,
+        "degraded_guild_sweep": 30 * 60,
+        "worker_heartbeat": 10 * 60,
+    }
 
 
 def test_rebuild_timeout_is_shorter_than_its_alert_window() -> None:
@@ -558,7 +893,10 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
         "weekly_rebuild": WEEKLY_REBUILD_CRON,
         "nightly_backup": NIGHTLY_BACKUP_CRON,
         "membership_sweep": MEMBERSHIP_SWEEP_CRON,
+        "degraded_guild_sweep": DEGRADED_GUILD_SWEEP_CRON,
+        "worker_heartbeat": WORKER_HEARTBEAT_CRON,
     }
+    assert set(crons) == set(STALE_AFTER), "every scheduled task is watched, and the reverse"
     base = timezone.now()
     for task, cron in crons.items():
         iterator = croniter(cron, base)

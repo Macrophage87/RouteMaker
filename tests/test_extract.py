@@ -171,3 +171,51 @@ def test_the_ordinal_does_not_depend_on_the_rest_of_the_extract(tmp_path) -> Non
         return [ordinal for ordinal, _ in iter_segments(way, max_points=2)]
 
     assert ordinals(lonely) == ordinals(crowded) == [0, 1]
+
+
+def test_a_derived_value_that_is_absent_is_written_as_no_tag_at_all() -> None:
+    """`None` means "not known for this way", and the tag transform reads these
+    as strings: written through, it becomes the literal string "None", which is
+    a truthy value for every consumer downstream. A way with no measured volume
+    would carry `rm:aadt = "None"` into the graph, and the Lua transform's
+    `tonumber` would quietly get nil for a tag that is present.
+
+    Booleans are the reason this is not simply a falsiness check: `False` is a
+    known answer and has to survive as "no".
+    """
+    from pipeline.extract import DERIVED_PREFIX, derived_tags
+
+    tags = derived_tags(
+        {"aadt": None, "stress": 2, "lit": False, "urban": True, "authority": "NPS"}
+    )
+
+    assert tags == {
+        f"{DERIVED_PREFIX}stress": "2",
+        f"{DERIVED_PREFIX}lit": "no",
+        f"{DERIVED_PREFIX}urban": "yes",
+        f"{DERIVED_PREFIX}authority": "NPS",
+    }
+    assert "None" not in tags.values()
+    assert f"{DERIVED_PREFIX}aadt" not in tags
+
+
+def test_an_absent_derived_value_never_reaches_the_extract(tmp_path) -> None:
+    """The same thing where it matters: in the file valhalla_build_tiles reads."""
+    from pipeline.extract import derived_tags
+
+    source = tmp_path / "source.osm.pbf"
+    write_pbf(source, [(1, -77.0, 38.9), (2, -77.01, 38.91)], [(10, [1, 2])])
+    destination = tmp_path / "out.osm.pbf"
+
+    write_extract(
+        source,
+        destination,
+        way_tags={10: derived_tags({"aadt": None, "stress": 1})},
+        new_nodes=[],
+        way_node_ids={10: [1, 2]},
+    )
+
+    written = read_ways(destination)[0].tags
+    assert written["rm:stress"] == "1"
+    assert "rm:aadt" not in written
+    assert "None" not in written.values()

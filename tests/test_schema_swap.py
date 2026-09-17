@@ -280,17 +280,40 @@ def test_migrations_land_in_public_even_when_live_exists(segment_schemas) -> Non
     assert homes == {"public"}, f"application tables must live in public, found {homes}"
 
 
+def test_the_swaps_defaults_are_the_ones_it_ships_with() -> None:
+    """`perform_swap` calls `swap_schemas()` with no arguments, so these three
+    constants are the production values rather than defaults something overrides.
+    Pinned flat because each is a promise the plan makes: a lock timeout short
+    enough that a blocked `DROP SCHEMA` gives up and retries rather than sitting
+    on an access-exclusive lock while requests queue behind it, and a bounded
+    retry with backoff behind it. At one attempt there is no retry at all, and
+    at a hundred times the timeout the first attempt is the outage."""
+    from pipeline import swap
+
+    assert (swap.DEFAULT_LOCK_TIMEOUT_MS, swap.DEFAULT_ATTEMPTS, swap.DEFAULT_BACKOFF_S) == (
+        3_000,
+        5,
+        2.0,
+    )
+
+
 def test_a_swap_does_not_take_the_application_schema_with_it(segment_schemas) -> None:
     """The consequence the ordering prevents, asserted end to end."""
+    from core.models import User
     from pipeline.swap import swap_schemas
+
+    # A row, because "the users table still resolves" was asserted as a count of
+    # zero against a table nothing had ever written to: the same assertion passes
+    # against an empty table, a table in the wrong schema and a table Django has
+    # just created for the test.
+    User.objects.create(discord_user_id=4242)
 
     live, staging = segment_schemas
     insert_segment(staging, 4242)
     swap_schemas()
 
-    from core.models import User
-
-    assert User.objects.count() == 0, "the users table must still resolve after a swap"
+    assert User.objects.count() == 1, "the users table must still resolve after a swap"
+    assert User.objects.get().discord_user_id == 4242
     assert row_count(live) == 1
 
 

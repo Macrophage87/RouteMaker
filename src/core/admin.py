@@ -914,3 +914,6 @@ class DriftReportAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return False
+
+
+from . import admin_operations  # noqa: E402,F401  - the operations page registers on import
