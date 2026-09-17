@@ -20,6 +20,7 @@ from core.standing import (
     Viewer,
     Visibility,
     can_read,
+    can_review,
     can_see_marshal_detail,
     resolve,
 )
@@ -292,8 +293,8 @@ class TestOrthogonalGrants:
 
         viewer = Viewer(user_id=2)
         r = route(collaborator_ids=frozenset({2}))
-        assert not can_review(viewer, r, Level.COLLABORATOR)
-        assert can_review(viewer, route(reviewer_ids=frozenset({2})), Level.COLLABORATOR)
+        assert not can_review(viewer, r, active(), NOW)
+        assert can_review(viewer, route(reviewer_ids=frozenset({2})), active(), NOW)
 
 
 class TestSanctionedMembers:
@@ -303,9 +304,36 @@ class TestSanctionedMembers:
         viewer = Viewer(user_id=2, memberships=(fresh(timed_out_until=NOW + timedelta(hours=1)),))
         assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.NONE
 
-    def test_a_removed_member_does_not_fall_through_to_guest(self) -> None:
+    def test_a_removed_member_does_fall_through_to_guest(self) -> None:
+        """The plan's explicit rule, which the sanction test had inverted.
+
+        "Losing all configured-guild membership downgrades a user to guest
+        standing rather than revoking their sessions." Reading `removed_at` as an
+        active sanction cost someone guest commenting on every club's public
+        routes for 72 hours because they left one club, and made a voluntary
+        departure indistinguishable from a ban.
+        """
         viewer = Viewer(user_id=2, memberships=(fresh(removed_at=NOW),))
-        assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.NONE
+        assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.GUEST
+
+    def test_but_removal_still_ends_every_guild_derived_grant_at_once(self) -> None:
+        """The guest floor is the only thing that survives it, and only on a
+        public route. A removal is still immediate everywhere it counts."""
+        viewer = Viewer(
+            user_id=2,
+            memberships=(fresh(removed_at=NOW),),
+            admin_guild_ids=frozenset({GUILD}),
+            reviewer_guild_ids=frozenset({GUILD}),
+        )
+        for tier in (Visibility.PRIVATE, Visibility.REVIEWERS, Visibility.SERVER, Visibility.LINK):
+            assert resolve(viewer, route(visibility=tier), active(), NOW) is Level.NONE
+        assert not can_read(viewer, route(visibility=Visibility.SERVER), active(), NOW)
+
+    def test_a_removed_member_still_cannot_comment_where_guests_cannot(self) -> None:
+        """The floor is the guest floor, not an exemption from it."""
+        viewer = Viewer(user_id=2, memberships=(fresh(removed_at=NOW),))
+        unwelcoming = route(visibility=Visibility.PUBLIC, guest_comments_enabled=False)
+        assert resolve(viewer, unwelcoming, active(), NOW) is Level.NONE
 
 
 class TestStaleGrantCeiling:
@@ -378,3 +406,103 @@ def test_the_tier_constants_track_the_visibility_enum() -> None:
 
     assert MIN_TIER_FOR_GUILD_MEMBER == Visibility.SERVER
     assert MIN_TIER_FOR_GUILD_REVIEWER == Visibility.REVIEWERS
+
+
+class TestReviewersWhoAreAlsoCollaborators:
+    """COLLABORATOR (40) sorts above REVIEWER (30), so the collapsed level cannot
+    answer "does this person hold the reviewer role" on its own - and the guard
+    that used to try read `is Level.REVIEWER`, which a collaborator never is.
+    """
+
+    def reviewer_viewer(self, **kwargs) -> Viewer:
+        return Viewer(
+            user_id=2,
+            memberships=(fresh(),),
+            reviewer_guild_ids=frozenset({GUILD}),
+            **kwargs,
+        )
+
+    def test_a_guild_reviewer_may_review(self) -> None:
+        viewer = self.reviewer_viewer()
+        r = route()
+        assert can_review(viewer, r, active(), NOW)
+
+    def test_a_guild_reviewer_who_is_also_a_collaborator_may_still_review(self) -> None:
+        """Naming someone a collaborator took their reviewer powers away."""
+        viewer = self.reviewer_viewer()
+        r = route(collaborator_ids=frozenset({2}))
+        assert resolve(viewer, r, active(), NOW) is Level.COLLABORATOR, (
+            "the lattice really does collapse them"
+        )
+        assert can_review(viewer, r, active(), NOW)
+
+    def test_a_collaborator_who_is_not_a_reviewer_still_may_not(self) -> None:
+        """The other direction, which is what the identity test was protecting:
+        a level comparison alone would make every collaborator a reviewer and
+        render the owner's audited review grant unenforceable."""
+        viewer = Viewer(user_id=2, memberships=(fresh(),))
+        r = route(collaborator_ids=frozenset({2}))
+        assert not can_review(viewer, r, active(), NOW)
+
+    def test_a_reviewer_in_another_club_may_not(self) -> None:
+        viewer = Viewer(
+            user_id=2,
+            memberships=(fresh(),),
+            reviewer_guild_ids=frozenset({OTHER_GUILD}),
+        )
+        r = route(collaborator_ids=frozenset({2}))
+        assert not can_review(viewer, r, active(), NOW)
+
+    def test_a_reviewer_whose_guild_is_revoked_may_not(self) -> None:
+        """The resolved level is kept in the conjunction precisely for this: the
+        role is still mapped, the guild is gone, and reading the role alone would
+        outlive the standing it came from."""
+        viewer = self.reviewer_viewer()
+        revoked = {GUILD: GuildStanding(GUILD, GuildState.REVOKED, NOW)}
+        r = route(collaborator_ids=frozenset({2}))
+        assert not can_review(viewer, r, revoked, NOW)
+
+    def test_a_named_route_reviewer_needs_no_guild_role_at_all(self) -> None:
+        viewer = Viewer(user_id=2, memberships=(fresh(),))
+        r = route(reviewer_ids=frozenset({2}))
+        assert can_review(viewer, r, active(), NOW)
+
+
+class TestAdminStandingAgainstThePrivateTier:
+    """An open owner decision, pinned as it currently resolves.
+
+    The round-3 panel declined to contest it and flagged that no decision is on
+    record: a guild admin and an instance admin both outrank PRIVATE, so either
+    can read a route its owner marked private. Plausibly intended - somebody has
+    to be able to moderate - and plausibly not, on a deployment where a private
+    route may be an unpermitted ride whose owner chose privacy deliberately.
+
+    Behaviour is deliberately unchanged here. This test exists so that whichever
+    way the owner decides, the change is a decision someone makes rather than a
+    drift nobody notices. See the note in PLAN.md's visibility section.
+    """
+
+    def test_a_guild_admin_reads_a_private_route_of_their_own_guild(self) -> None:
+        admin = Viewer(user_id=9, memberships=(fresh(),), admin_guild_ids=frozenset({GUILD}))
+        r = route(owner_id=1, visibility=Visibility.PRIVATE)
+        assert resolve(admin, r, active(), NOW) is Level.GUILD_ADMIN
+        assert can_read(admin, r, active(), NOW)
+
+    def test_an_instance_admin_reads_a_private_route_of_any_guild(self) -> None:
+        admin = Viewer(user_id=9, is_instance_admin=True)
+        r = route(owner_id=1, visibility=Visibility.PRIVATE, owning_guild_id=OTHER_GUILD)
+        assert resolve(admin, r, active(), NOW) is Level.INSTANCE_ADMIN
+        assert can_read(admin, r, active(), NOW)
+
+    def test_a_guild_admin_of_another_guild_does_not(self) -> None:
+        """Whatever the decision above, this half is settled: the grant is the
+        owning guild's admin, not any admin anywhere."""
+        admin = Viewer(
+            user_id=9,
+            memberships=(fresh(OTHER_GUILD),),
+            admin_guild_ids=frozenset({OTHER_GUILD}),
+        )
+        guilds = {**active(), **active(OTHER_GUILD)}
+        r = route(owner_id=1, visibility=Visibility.PRIVATE)
+        assert resolve(admin, r, guilds, NOW) is Level.NONE
+        assert not can_read(admin, r, guilds, NOW)

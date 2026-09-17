@@ -13,6 +13,7 @@ per request rather than once per check.
 
 from __future__ import annotations
 
+from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 
 from .models import CachedMembership, ConfiguredGuild, RoleMapping, User
@@ -54,17 +55,62 @@ class DiscordStandingBackend:
             # Nobody writes the log, including an instance admin. A log whose
             # entries can be edited from the surface it audits is not a log.
             "auditlogentry",
+            # The table that grants any role in any guild. It was missing, so the
+            # only thing between a guild admin and it was CachedMembershipAdmin's
+            # own has_add_permission - and flipping that override to True left
+            # the whole suite green.
+            "cachedmembership",
+            # Derived state the pipeline owns. A hand edit desynchronises the
+            # crossings table from the graph until the next rebuild overwrites it.
+            "bordercrossing",
         }
     )
     WRITE_ACTIONS = ("add_", "change_", "delete_")
 
-    def has_perm(self, user_obj, perm, obj=None) -> bool:
-        """Answered from standing, never from permission rows.
+    # Everything a guild admin holds, named one permission at a time.
+    #
+    # An allow-list rather than a deny-list, and the difference is not stylistic.
+    # The deny-list this replaced answered True for every permission nobody had
+    # thought to list, so a guild admin held `core.approve_override`,
+    # `auth.add_permission` and `admin.delete_logentry`, and `has_module_perms`
+    # answered True for every app label including `admin` and `auth`. Nothing was
+    # exploitable only because every registered ModelAdmin happened to override
+    # its own hooks - one of them did not, and the next surface to forget would
+    # have been the first one that mattered. Phase 1's job is the pattern every
+    # later admin surface follows, and the safe default for a permission that
+    # does not exist yet is no.
+    #
+    # Reading only. Every write on every authorization table is an audited
+    # action or an instance admin's, never a change form a guild admin can post.
+    GUILD_ADMIN_PERMISSIONS = frozenset(
+        {
+            "core.view_configuredguild",
+            "core.view_rolemapping",
+            "core.view_cachedmembership",
+            "core.view_bordercrossing",
+            "core.view_jurisdiction",
+            "core.view_override",
+        }
+    )
 
-        The permission string is read rather than ignored. Returning True for
-        everything made every guild admin hold every permission on every model,
-        so the only thing between them and an editable model was whether that
-        particular ModelAdmin happened to override its hooks - and one did not.
+    def has_perm(self, user_obj, perm, obj=None) -> bool:
+        """Answered from standing, never from permission rows."""
+        if not getattr(user_obj, "is_active", False):
+            return False
+        if getattr(user_obj, "is_instance_admin", False):
+            return True
+        if not getattr(user_obj, "_admin_guild_ids", ()):
+            return False
+        return perm in self.GUILD_ADMIN_PERMISSIONS
+
+    def has_module_perms(self, user_obj, app_label) -> bool:
+        """Whether this person holds anything at all in that app.
+
+        Answered from the allow-list rather than by handing the app label to
+        `has_perm` as if it were a permission string, which is how every guild
+        admin came to hold `has_module_perms("admin")` and
+        `has_module_perms("auth")`: neither label starts with a write prefix, so
+        the deny-list let both through.
         """
         if not getattr(user_obj, "is_active", False):
             return False
@@ -72,17 +118,35 @@ class DiscordStandingBackend:
             return True
         if not getattr(user_obj, "_admin_guild_ids", ()):
             return False
+        prefix = f"{app_label}."
+        return any(perm.startswith(prefix) for perm in self.GUILD_ADMIN_PERMISSIONS)
 
-        action, _, model = perm.partition(".")[2].partition("_") if "." in perm else ("", "", "")
+
+def check_guild_admin_allow_list(permissions, instance_admin_only) -> None:
+    """A guild admin's allow-list may never name a write on a table that grants
+    standing.
+
+    Checked at import rather than left to review, so the two constants cannot
+    drift apart silently: `INSTANCE_ADMIN_ONLY_MODELS` is the statement of which
+    tables those are, and this is what makes that statement bind on the
+    allow-list rather than only on the deny path that used to read it.
+    """
+    for perm in sorted(permissions):
         codename = perm.split(".", 1)[-1]
-        if any(codename.startswith(prefix) for prefix in self.WRITE_ACTIONS):
-            target = codename.split("_", 1)[-1]
-            if target in self.INSTANCE_ADMIN_ONLY_MODELS:
-                return False
-        return True
+        if not codename.startswith(DiscordStandingBackend.WRITE_ACTIONS):
+            continue
+        target = codename.split("_", 1)[-1]
+        if target in instance_admin_only:
+            raise ImproperlyConfigured(
+                f"{perm} grants a guild admin a write on {target}, which is "
+                "instance-admin only; a guild admin editing it is privilege escalation"
+            )
 
-    def has_module_perms(self, user_obj, app_label) -> bool:
-        return self.has_perm(user_obj, f"{app_label}")
+
+check_guild_admin_allow_list(
+    DiscordStandingBackend.GUILD_ADMIN_PERMISSIONS,
+    DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS,
+)
 
 
 def attach_standing(user: User, now=None) -> None:
@@ -132,6 +196,22 @@ def attach_standing(user: User, now=None) -> None:
                 reviewer.add(guild_snowflake)
             elif permission == RoleMapping.Permission.GUILD_ADMIN:
                 admin.add(guild_snowflake)
+            elif permission == RoleMapping.Permission.INSTANCE_ADMIN:
+                # Deliberately nothing, and the branch exists so that is a
+                # decision on the page rather than an omission.
+                #
+                # The plan makes instance admin "independent of every guild,
+                # deriving from the instance-admin list alone and never from
+                # guild membership, role mapping, the bot, or the membership
+                # cache, so the people who can fix a broken bot can still sign in
+                # when every guild is degraded". Honouring the mapping here would
+                # make the deployment's one cross-guild role lapse with a club's
+                # gateway connection - the exact failure that sentence rules out.
+                #
+                # Appointment happens in the user admin instead, audited. That
+                # the mapping choice exists at all is an open owner decision;
+                # see the note in PLAN.md's visibility section.
+                pass
 
     user._admin_guild_ids = frozenset(admin)
     user._reviewer_guild_ids = frozenset(reviewer)
@@ -143,6 +223,12 @@ def session_is_current(user: User, issued_epoch: int, created_at, last_seen_at, 
     from .revocation import ABSOLUTE_SESSION_LIFETIME, IDLE_SESSION_LIFETIME
 
     now = now or timezone.now()
+    # Ban and deletion, belt to the epoch's braces. Both bump the epoch, so this
+    # is redundant on every path that goes through `bump_session_epoch` - and it
+    # is the one check that still refuses the session when a flag was set by a
+    # migration, a fixture, or a hand-written UPDATE that never bumped anything.
+    if not user.is_active:
+        return False
     if issued_epoch != user.session_epoch:
         return False
     if now - created_at >= ABSOLUTE_SESSION_LIFETIME:
@@ -150,4 +236,9 @@ def session_is_current(user: User, issued_epoch: int, created_at, last_seen_at, 
     return now - last_seen_at < IDLE_SESSION_LIFETIME
 
 
-__all__ = ["DiscordStandingBackend", "attach_standing", "session_is_current"]
+__all__ = [
+    "DiscordStandingBackend",
+    "attach_standing",
+    "check_guild_admin_allow_list",
+    "session_is_current",
+]

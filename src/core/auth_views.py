@@ -26,7 +26,9 @@ from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, HttpResponseRedirect
+from django.utils.encoding import iri_to_uri
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 
 from .discord_oauth import LoginRequest, OAuthStateError, begin_login, scopes_are_minimal
@@ -42,13 +44,48 @@ class LoginRefused(RuntimeError):
     """The login cannot proceed, for a reason the person may be told."""
 
 
+def safe_redirect_target(request, candidate: str | None) -> str:
+    """The post-login destination, or `/` if it points off this deployment.
+
+    `?next=` went into the session unvalidated and came back out as a `Location`
+    header, which is a credential-phishing primitive rather than an untidiness:
+    the link starts on the real host, passes a genuine Discord consent - silent,
+    since the authorize URL sends `prompt=none` - and lands wherever the attacker
+    chose, with the person having seen nothing but their own site and Discord.
+    The people this deployment is for are mass-ride and assembly organizers, and
+    a convincing "sign in again" page is the whole attack.
+
+    Checked in both places rather than once. `login_start` validates what it
+    stores, and the callback validates what it read back, because the stored
+    value is what is actually used and a session survives a deploy, a settings
+    change, and anything else that could put an unchecked value in it. The check
+    is cheap and the two run at different times against different ALLOWED_HOSTS.
+
+    `require_https` follows the request rather than being hardcoded, so a value
+    that downgrades an HTTPS session to http:// is refused in production and
+    local development over http still works.
+    """
+    if not candidate:
+        return "/"
+    if url_has_allowed_host_and_scheme(
+        url=candidate,
+        allowed_hosts={request.get_host(), *settings.ALLOWED_HOSTS},
+        require_https=request.is_secure(),
+    ):
+        # iri_to_uri is what Django's own login view applies, and it is what
+        # stops a newline or a control character in the value from splitting the
+        # response header.
+        return iri_to_uri(candidate)
+    return "/"
+
+
 @require_http_methods(["GET"])
 def login_start(request):
     url, pending = begin_login(
         client_id=settings.DISCORD_CLIENT_ID,
         redirect_uri=settings.DISCORD_REDIRECT_URI,
         now=timezone.now(),
-        redirect_after=request.GET.get("next", "/"),
+        redirect_after=safe_redirect_target(request, request.GET.get("next")),
     )
     request.session[STATE_SESSION_KEY] = {
         "state": pending.state,
@@ -109,7 +146,7 @@ def login_callback(request, exchange=None):
     user.last_login = timezone.now()
     user.save(update_fields=["last_login"])
     issue_session(request, user)
-    return HttpResponseRedirect(pending.redirect_after)
+    return HttpResponseRedirect(safe_redirect_target(request, pending.redirect_after))
 
 
 @require_http_methods(["POST"])

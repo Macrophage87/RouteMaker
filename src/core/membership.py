@@ -82,6 +82,27 @@ def should_purge(row: Membership, has_ever_signed_in: bool, now: datetime) -> bo
     return now - row.last_confirmed >= PURGE_NEVER_SIGNED_IN_AFTER
 
 
+def is_forgotten(discord_user_id: int) -> bool:
+    """Whether this Discord id has asked to be forgotten, or is banned outright.
+
+    Two sources, because deletion removes the account row and a ban has to
+    survive it: the account's own `is_deleted`, and the keyed tombstone that is
+    all that is kept of a deleted id. Either one means no cached membership row
+    for this person may exist, however many gateway events arrive and however
+    firmly they are still in the guild.
+    """
+    from django.conf import settings
+
+    from .models import BanTombstone, User
+    from .revocation import tombstone
+
+    if User.objects.filter(discord_user_id=discord_user_id, is_deleted=True).exists():
+        return True
+    return BanTombstone.objects.filter(
+        tombstone=tombstone(discord_user_id, settings.TOMBSTONE_KEY)
+    ).exists()
+
+
 def record_event(event: GatewayEvent, now: datetime | None = None):
     """Apply a gateway event to the cached row for one person in one guild.
 
@@ -103,6 +124,16 @@ def record_event(event: GatewayEvent, now: datetime | None = None):
     now = now or timezone.now()
     guild = ConfiguredGuild.objects.filter(guild_id=event.guild_id).first()
     if guild is None:
+        return None
+
+    if is_forgotten(event.user_id):
+        # Deletion removes the cached rows; without this the next gateway event
+        # writes them straight back, because the person is still in the guild and
+        # the gateway has no idea an account here ever existed. The tombstone is
+        # exactly what the plan says keeps the bot "from recreating [them] on the
+        # next gateway event or sweep even though the person is still in the
+        # guild". Any row that survived an earlier event goes with it.
+        CachedMembership.objects.filter(discord_user_id=event.user_id).delete()
         return None
 
     row = CachedMembership.objects.filter(discord_user_id=event.user_id, guild=guild).first()
@@ -137,10 +168,13 @@ def record_event(event: GatewayEvent, now: datetime | None = None):
 
 
 def sweep_memberships(now: datetime | None = None) -> tuple[int, int]:
-    """The six-hourly backstop. Returns (never-signed-in rows purged, departed
-    rows dropped).
+    """The six-hourly backstop. Returns (rows purged, departed rows dropped).
 
-    Two deletions, each for its own reason, and one deliberate non-deletion.
+    Three deletions, each for its own reason, and one deliberate non-deletion.
+
+    Rows for an account that has been deleted, or whose Discord id carries a ban
+    tombstone, go on sight. They are counted with the purge because they are the
+    same rule: this deployment does not hold rows it has no business holding.
 
     Rows for people who have never signed in go after thirty days, because this
     deployment should not hold a roster of a guild it only ever saw through the
@@ -169,10 +203,22 @@ def sweep_memberships(now: datetime | None = None) -> tuple[int, int]:
     now = now or timezone.now()
 
     signed_in = set(
-        User.objects.filter(last_login__isnull=False).values_list("discord_user_id", flat=True)
+        User.objects.filter(
+            last_login__isnull=False, is_deleted=False
+        ).values_list("discord_user_id", flat=True)
     )
 
     purged = 0
+    # A deleted or ban-tombstoned account keeps its own `last_login`, so the
+    # never-signed-in purge below steps straight over its rows and they stayed
+    # forever. This is the sweep's half of the same rule `record_event` enforces
+    # on the gateway: someone who asked to be forgotten is forgotten by both
+    # paths, or by neither.
+    for row in CachedMembership.objects.all().iterator():
+        if is_forgotten(row.discord_user_id):
+            row.delete()
+            purged += 1
+
     for row in CachedMembership.objects.exclude(discord_user_id__in=signed_in):
         if should_purge(
             Membership(

@@ -20,7 +20,11 @@ from datetime import datetime, timedelta
 # Django implements idle expiry natively but not an absolute cap, so the
 # absolute one is enforced here.
 ABSOLUTE_SESSION_LIFETIME = timedelta(days=90)
-IDLE_SESSION_LIFETIME = timedelta(days=14)
+# The plan's figure, and it was 14 days here for three rounds without anything
+# noticing, because every test computed its own boundary from this constant
+# rather than from the number the plan writes down. `test_settings_security`
+# pins it flat now.
+IDLE_SESSION_LIFETIME = timedelta(days=30)
 
 # The gateway disconnect that raises an alert. The degraded window runs from this
 # mark rather than from the end of a grace period; stacking the two would leave
@@ -74,3 +78,208 @@ def should_mark_degraded(last_gateway_event: datetime, now: datetime) -> bool:
     after a full grace period would double the maximum stale-grant window.
     """
     return now - last_gateway_event >= GATEWAY_ALERT_AFTER
+
+
+# The run row the bot writes each time it hears from the gateway. It is a
+# `ScheduledRun`, so the existing "nothing has succeeded lately" alert reads it
+# with no new table and no new alert mechanism. Writing it is the bot's job (see
+# the outstanding gateway-ingest work); this module only reads it.
+GATEWAY_HEARTBEAT_TASK = "gateway_heartbeat"
+
+
+def last_gateway_event(default=None):
+    """When the gateway was last heard from, or `default` if never."""
+    from .runs import last_success
+
+    run = last_success(GATEWAY_HEARTBEAT_TASK)
+    return run.started_at if run is not None else default
+
+
+_UNSET = object()
+
+
+def mark_degraded_guilds(now=None, last_event=_UNSET) -> tuple[int, int]:
+    """Move guilds into and out of degraded as the gateway comes and goes.
+
+    Returns (marked degraded, restored to active).
+
+    This is the transition `should_mark_degraded` and `degraded_window` were
+    written for and never had: both predicates were correct, well tested, and
+    called from nowhere, so `ConfiguredGuild.state` was written by nothing and no
+    guild could ever leave `active`. A grace period with no way into the state it
+    guards is not a grace period.
+
+    The window runs from the *alert*, which fires `GATEWAY_ALERT_AFTER` past the
+    last event, not from now and not from the end of a grace period. Stacking two
+    windows would leave the whole deployment carrying stale grants for twice as
+    long as a single lost guild does, and 72 hours from the alert is the only
+    number.
+
+    A guild already degraded is left alone rather than re-marked: re-marking on
+    every tick would slide `state_since` forward and make the ceiling in
+    `GuildStanding.grants_standing` unreachable, which is the same bug as
+    trusting the column. A revoked guild is never touched - revocation is a
+    decision, not a symptom, and the gateway coming back does not reverse it.
+
+    Never having heard from the gateway counts as silence. The bot is a phase 1
+    deliverable and its absence is exactly the outage this guards; failing open
+    would mean a deployment whose bot never started grants full standing forever.
+
+    The worker's task module owns scheduling. Register this on a short cron - the
+    bound is five minutes, so six-hourly is not it.
+    """
+    from django.utils import timezone
+
+    from .models import ConfiguredGuild
+
+    now = now or timezone.now()
+    if last_event is _UNSET:
+        last_event = last_gateway_event()
+
+    if last_event is not None and not should_mark_degraded(last_event, now):
+        return 0, _restore_degraded(now)
+
+    alert_at = (last_event + GATEWAY_ALERT_AFTER) if last_event is not None else now
+    marked = 0
+    for guild in ConfiguredGuild.objects.filter(state="active"):
+        guild.state = "degraded"
+        guild.state_since = alert_at
+        guild.standing_valid_until = degraded_window(alert_at)
+        guild.save(update_fields=["state", "state_since", "standing_valid_until"])
+        _audit_worker(
+            "mark_degraded",
+            guild,
+            detail=f"gateway silent since {last_event}; standing lapses {guild.standing_valid_until}",
+        )
+        marked += 1
+    return marked, 0
+
+
+def _restore_degraded(now) -> int:
+    """Bring degraded guilds back to active once the gateway is talking again.
+
+    Without this one blip degrades the deployment permanently: nothing else
+    writes the column back, so every guild would lapse 72 hours later and the
+    only repair would be an UPDATE against production.
+
+    Revoked guilds are not restored. A guild that ejected the bot, or that an
+    admin revoked by hand, comes back by re-invite and backfill, not by the
+    gateway reconnecting.
+    """
+    from .models import ConfiguredGuild
+
+    restored = 0
+    for guild in ConfiguredGuild.objects.filter(state="degraded"):
+        guild.state = "active"
+        guild.state_since = now
+        guild.standing_valid_until = None
+        guild.save(update_fields=["state", "state_since", "standing_valid_until"])
+        _audit_worker("restore_active", guild, detail="gateway reconnected")
+        restored += 1
+    return restored
+
+
+def revoke_guild(guild, actor=None, now=None, reason: str = ""):
+    """Collapse a guild's window at once - the plan's audited revoke-now.
+
+    "Either way an instance admin, or an admin of the affected guild, can
+    collapse the window at once with an audited revoke-now action." Who may call
+    it is the admin's business; that this writes the state and the audit row
+    together is this function's.
+
+    `standing_valid_until` is cleared rather than left behind. A revoked guild
+    grants nothing whatever the column says, but a stale expiry sitting on the
+    row is the thing that made a previously degraded guild keep granting standing
+    once, and leaving it would invite the same reading again.
+    """
+    from django.utils import timezone
+
+    now = now or timezone.now()
+    guild.state = "revoked"
+    guild.state_since = now
+    guild.standing_valid_until = None
+    guild.save(update_fields=["state", "state_since", "standing_valid_until"])
+    _audit_worker("revoke_now", guild, actor=actor, detail=reason or "revoke-now")
+    return guild
+
+
+def _audit_worker(action: str, guild, actor=None, detail: str = "") -> None:
+    from .audit import record
+    from .models import AuditLogEntry
+
+    record(
+        actor,
+        action,
+        guild._meta.model_name,
+        guild.pk,
+        AuditLogEntry.Outcome.ALLOWED,
+        detail=f"guild {guild.guild_id}: {detail}",
+    )
+
+
+def bump_session_epoch(user, reason: str, actor=None) -> int:
+    """End every one of this person's sessions, and nobody else's.
+
+    The counter existed, the middleware read it, and nothing anywhere
+    incremented it - so ban, suspension, deletion and sign-out-everywhere all
+    left the person signed in, which is the whole mechanism this module opens by
+    describing.
+
+    The rows are deleted as well as invalidated. The epoch alone is enough to
+    refuse the session on its next request, but a row nothing will ever accept
+    again is a user id and a timestamp sitting in the table for up to ninety
+    days.
+    """
+    from .models import Session, User
+
+    user.session_epoch += 1
+    User.objects.filter(pk=user.pk).update(session_epoch=user.session_epoch)
+    Session.objects.filter(user=user).delete()
+    _audit_user(user, "sign_out_everywhere", actor=actor, detail=reason)
+    return user.session_epoch
+
+
+def _audit_user(user, action: str, actor=None, detail: str = "") -> None:
+    from .audit import record
+    from .models import AuditLogEntry
+
+    record(actor, action, "user", user.pk, AuditLogEntry.Outcome.ALLOWED, detail=detail)
+
+
+def sweep_sessions(now=None) -> int:
+    """Drop application session rows that can never be accepted again.
+
+    Three shapes, and none of them is theoretical. A row whose Django session has
+    already gone - expired, flushed, or cleared by `clearsessions` - is orphaned:
+    nothing can present its key, and the middleware only ever reaches a row when
+    a request carries the matching cookie, so an orphan is never looked at again
+    and never deleted. A row past the absolute or idle lifetime is the same. A
+    row belonging to a banned or deleted account is the same, and is the one that
+    matters: it names who was signed in and when, for someone who asked to be
+    forgotten.
+
+    Register this alongside the membership sweep in the worker's task module.
+    """
+    from django.contrib.sessions.models import Session as DjangoSession
+    from django.utils import timezone
+
+    from .models import Session
+
+    now = now or timezone.now()
+    live_keys = set(
+        DjangoSession.objects.filter(expire_date__gt=now).values_list("session_key", flat=True)
+    )
+
+    dropped = 0
+    for row in Session.objects.select_related("user").iterator():
+        expired = (
+            row.session_key not in live_keys
+            or now - row.created_at >= ABSOLUTE_SESSION_LIFETIME
+            or now - row.last_seen_at >= IDLE_SESSION_LIFETIME
+            or row.issued_epoch != row.user.session_epoch
+            or not row.user.is_active
+        )
+        if expired:
+            row.delete()
+            dropped += 1
+    return dropped
