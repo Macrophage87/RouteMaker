@@ -16,7 +16,15 @@ and, given the inputs, produces the other two:
     python scripts/install_reference_data.py --data-root /srv/routemaker/data \\
         --extract /srv/routemaker/data/extracts/source.osm.pbf \\
         --urban-areas tl_2024_us_uac20.geojson \\
-        --volume vdot-aadt-2024.geojson --volume-source vdot --volume-year 2024
+        --volume vdot-aadt-2024.geojson --volume-source vdot --volume-year 2024 \\
+        --volume ddot-aadt-2024.geojson --volume-source ddot --volume-year 2024
+
+`--volume` and its two companions repeat, and the three lists are matched up in
+order. The region has three count-publishing agencies and the conflation step
+exists precisely to arbitrate between them on a road they both cover, so a
+single-valued option could not express the input that makes the arbitration
+mean anything: installing DDOT after VDOT overwrote the file and left one
+agency, and the precedence rule had nothing to choose between.
 
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
@@ -38,6 +46,57 @@ sys.path.insert(0, str(REPO / "src"))
 CROSSINGS_FIXTURE = REPO / "fixtures" / "crossings" / "potomac-anacostia.json"
 REQUIRED = ("crossings.json", "urban-areas.json", "volume.json")
 
+# Agency to precedence tier. `conflation.SOURCE_PRECEDENCE` is
+# ("locality", "state", "osm") - tiers, not agencies - and this script wrote the
+# agency's own name into the `source` field the ranking reads. Every real source
+# therefore fell off the end of the tuple to the lowest precedence, where
+# `conflate` ranks them all equally and the locality-over-state rule could never
+# fire: measured on one way covered by both a DDOT and a VDOT count, the two
+# came out two tiers apart in the wrong direction and which one won was decided
+# by overlap and distance instead.
+#
+# The tier is resolved here, at install time, rather than in `conflate`, for two
+# reasons. This is the only place that knows which agency a file came from - by
+# the time `conflate` sees a row there is no agency left to map - and it is the
+# place an operator adding a fourth agency is already editing, so an unknown
+# agency can be refused with a message naming the ones it knows instead of
+# resolving to "no precedence" three stages later.
+#
+# The agency name is not lost: it stays in each row's feature id, which is what
+# a reviewer reads when two agencies disagree about the same road.
+SOURCE_TIERS = {
+    # A locality surveys its own streets more densely than the state does, which
+    # is the whole reason the precedence rule prefers it.
+    "ddot": "locality",
+    "montgomery": "locality",
+    "arlington": "locality",
+    "alexandria": "locality",
+    "fairfax": "locality",
+    "loudoun": "locality",
+    "prince-georges": "locality",
+    # State DOTs.
+    "vdot": "state",
+    "mdot-sha": "state",
+    "mdsha": "state",
+    # Derived from OSM's own tagging rather than surveyed by anyone.
+    "osm": "osm",
+}
+
+# A way is graded urban only if at least this share of its length lies inside a
+# Census urban area. Deliberately the same figure as `pipeline.run`'s
+# `MIN_JURISDICTION_FRACTION`, and pinned equal to it by a test: both answer the
+# same question - how much of a way has to be inside a polygon before the
+# polygon describes the way - and two different answers to it would be two
+# different definitions of "mostly outside" in one build.
+#
+# Bare intersection was the rule, with no length at all. A Loudoun through road
+# whose last hundred metres clip Leesburg's urban area was graded urban along
+# its whole length, which is the 30 mph urban default standing in for the 50 mph
+# rural one on every mile of it - erring *low* on stress, against the
+# classifier's own rule of taking the higher-stress reading of an ambiguous
+# input, and on exactly the roads the rural references ride.
+MIN_URBAN_FRACTION = 0.10
+
 
 def install_crossings(reference: Path) -> Path:
     destination = reference / "crossings.json"
@@ -57,14 +116,27 @@ def _geometries(geojson: Path):
             yield shape(geometry), feature.get("properties") or {}
 
 
-def urban_way_ids(extract: Path, urban_areas: Path) -> list[int]:
-    """Ways whose geometry intersects any urban-area polygon.
+def urban_way_ids(
+    extract: Path, urban_areas: Path, min_fraction: float = MIN_URBAN_FRACTION
+) -> list[int]:
+    """Ways with at least `min_fraction` of their length inside an urban area.
 
-    Intersection rather than containment, so a street that leaves the urban
-    boundary is still graded against urban speeds: the alternative grades the
-    last block of a District street as rural.
+    Not containment, so a street that leaves the urban boundary is still graded
+    against urban speeds - the alternative grades the last block of a District
+    street as rural. And not bare intersection either, which is what this was:
+    a way was urban if it touched a polygon anywhere, so a Loudoun through road
+    whose end clips Leesburg's urban area was graded at the 30 mph urban default
+    along its whole length. Both errors are real; the threshold is where they
+    trade off, and it is `MIN_JURISDICTION_FRACTION`'s figure because it is
+    `MIN_JURISDICTION_FRACTION`'s question.
+
+    Length is measured in degrees rather than on the geography. The comparison
+    is a ratio of two lengths of the *same* way over a span of a few kilometres,
+    where the local scale factor cancels; the threshold is a judgement call at
+    one significant figure, and nothing downstream reads the length itself.
     """
     from shapely.geometry import LineString
+    from shapely.ops import unary_union
     from shapely.strtree import STRtree
 
     from pipeline.extract import read_ways
@@ -78,7 +150,15 @@ def urban_way_ids(extract: Path, urban_areas: Path) -> list[int]:
         if len(way.coordinates) < 2:
             continue
         line = LineString(way.coordinates)
-        if any(polygons[i].intersects(line) for i in index.query(line)):
+        nearby = [polygons[i] for i in index.query(line)]
+        if not nearby:
+            continue
+        # Unioned before the intersection is measured: two adjacent urban areas
+        # each covering a third of a way describe a way two thirds urban, and
+        # summing the pieces separately would double-count any overlap between
+        # them.
+        inside = line.intersection(unary_union(nearby)).length
+        if line.length > 0 and inside / line.length >= min_fraction:
             ids.append(way.osm_id)
     return sorted(ids)
 
@@ -89,7 +169,14 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
     Bidirectional AADT is the one definition; an agency publishing directional
     counts has to be summed before it reaches here, which is why the property
     name is an argument rather than guessed.
+
+    `source` is the agency; what lands in each row's `source` field is that
+    agency's precedence tier, which is the vocabulary `conflation.conflate`
+    ranks on. The agency itself survives in the feature id, so a reviewer
+    looking at two rows that disagree about one road can still see which agency
+    published which count.
     """
+    tier = source_tier(source)
     rows = []
     for number, (geometry, properties) in enumerate(_geometries(volume)):
         value = properties.get(aadt_property)
@@ -105,14 +192,58 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                 continue
             rows.append(
                 {
-                    "id": f"{source}-{properties.get('OBJECTID', number)}-{part}",
+                    # Agency, then the file it came from, then the agency's own
+                    # object id. The file is in there because `--volume`
+                    # repeats: an agency that publishes one file per county
+                    # restarts its object ids in each of them, and `conflate`
+                    # keys exclusivity on this id, so two counties' counts
+                    # sharing an id would have one claiming the other's span.
+                    "id": f"{source}-{volume.stem}-{properties.get('OBJECTID', number)}-{part}",
                     "coordinates": [[x, y] for x, y in line.coords],
                     "aadt": int(float(value)),
-                    "source": source,
+                    "source": tier,
+                    "agency": source,
                     "year": year,
                 }
             )
     return rows
+
+
+def source_tier(source: str) -> str:
+    """The precedence tier an agency's counts rank at.
+
+    Refused rather than defaulted. A tier chosen for an agency nobody has placed
+    is a silent guess at which of two agencies should win on a road they both
+    cover, which is the one decision this vocabulary exists to make.
+    """
+    try:
+        return SOURCE_TIERS[source.strip().casefold()]
+    except KeyError:
+        known = ", ".join(sorted(SOURCE_TIERS))
+        raise SystemExit(
+            f"unknown --volume-source {source!r}: add it to SOURCE_TIERS with the precedence "
+            f"tier its counts should rank at. Known agencies: {known}"
+        ) from None
+
+
+def _per_volume(parser, flag: str, values: list, volumes: list, default):
+    """One value of `flag` per `--volume`, or one value shared by all of them.
+
+    Repeating every companion flag for a single-agency install would be noise,
+    and silently pairing three files with one agency name would be worse than
+    noise, so the two readable shapes are allowed and anything else is refused
+    with the counts named.
+    """
+    if not values:
+        return [default] * len(volumes)
+    if len(values) == 1:
+        return values * len(volumes)
+    if len(values) != len(volumes):
+        parser.error(
+            f"{flag} given {len(values)} times for {len(volumes)} --volume files; "
+            f"give it once, or once per file in the same order"
+        )
+    return values
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -124,10 +255,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--extract", type=Path, help="the source OSM extract, for --urban-areas")
     parser.add_argument("--urban-areas", type=Path, help="Census urban-area polygons, GeoJSON")
-    parser.add_argument("--volume", type=Path, help="agency count lines, GeoJSON")
-    parser.add_argument("--volume-source", default="vdot")
-    parser.add_argument("--volume-year", type=int)
-    parser.add_argument("--aadt-property", default="AADT")
+    # Repeatable, and matched up in order with its two companions. The region
+    # has three count-publishing agencies and the conflation step exists to
+    # arbitrate between them on a road they all cover; a single-valued option
+    # wrote the file once per flag, so installing DDOT after VDOT left one
+    # agency in it and the precedence rule had nothing to choose between.
+    parser.add_argument(
+        "--volume", type=Path, action="append", default=[], help="agency count lines, GeoJSON"
+    )
+    parser.add_argument(
+        "--volume-source",
+        action="append",
+        default=[],
+        help=f"the publishing agency, one per --volume ({', '.join(sorted(SOURCE_TIERS))})",
+    )
+    parser.add_argument("--volume-year", type=int, action="append", default=[])
+    parser.add_argument("--aadt-property", action="append", default=[])
     args = parser.parse_args(argv)
 
     reference = args.data_root / "reference"
@@ -143,7 +286,24 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {reference / 'urban-areas.json'}: {len(ids)} urban ways")
 
     if args.volume:
-        rows = volume_rows(args.volume, args.volume_source, args.volume_year, args.aadt_property)
+        sources = _per_volume(parser, "--volume-source", args.volume_source, args.volume, "vdot")
+        years = _per_volume(parser, "--volume-year", args.volume_year, args.volume, None)
+        properties = _per_volume(parser, "--aadt-property", args.aadt_property, args.volume, "AADT")
+        rows: list[dict] = []
+        for path, source, year, aadt_property in zip(
+            args.volume, sources, years, properties, strict=True
+        ):
+            produced = volume_rows(path, source, year, aadt_property)
+            print(f"  {path}: {len(produced)} count lines from {source} ({source_tier(source)})")
+            rows.extend(produced)
+        if len({row["id"] for row in rows}) != len(rows):
+            # The id is built to be unique, so this is a backstop rather than a
+            # rule: it fires if the same file is given twice, which produces two
+            # identical sets of counts and doubles nothing but the arbitration.
+            parser.error(
+                "two count lines share a feature id; `conflate` keys exclusivity on it, so "
+                "one count would claim another's span. Was a --volume file given twice?"
+            )
         (reference / "volume.json").write_text(json.dumps(rows))
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
 

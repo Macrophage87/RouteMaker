@@ -6,7 +6,10 @@ from pathlib import Path
 import pytest
 
 from pipeline.variants import (
+    DuplicateCrossingName,
     Variant,
+    check_crossing_names_unique,
+    crossing_names,
     inject,
     is_sidepath_only,
     is_trail_class,
@@ -137,23 +140,143 @@ class FakeWay:
         self.tags = tags
 
 
-def extract_from_fixture() -> list[FakeWay]:
-    """One bridge way per row, named as a real OSM way would be - which, for a
-    row carrying `osm_names`, is the OSM spelling, not this file's label. A
-    fixture that used the label here for a row where the two differ (Key
-    Bridge / Francis Scott Key Bridge) would never be exercising the
-    `osm_names` lookup at all, only the label matching itself."""
+# --- What the fixture is expected to say ------------------------------------
+#
+# Every value below is typed in here, by hand, and read from nothing. That is
+# the whole point of the table: three rounds of review have now found errors in
+# this file's *content*, and each time the tests moved with it, because every
+# test derived its expectation from the row it was checking. A reviewer
+# measured the gap exactly - setting Key Bridge's `osm_names` to
+# ["Ponte Vecchio"] left the suite green, flipping Key and Chain back to
+# `roadway_bicycle_legal: false` (the round-3 error, verbatim) left the suite
+# green, and deleting every `osm_names` array in the file left the suite green.
+#
+# So the fixture and the expectation cannot move together any more. The names
+# here are the OSM spellings a way is expected to carry; the two flags are the
+# two columns the pipeline reads, which say different things and are checked
+# separately (see `TestIsSidepathOnly`). Changing this table is a deliberate act
+# with a reviewer behind it, which is what changing the fixture should be too.
+#
+#                                      OSM name(s)                 sidepath  legal
+EXPECTED_CROSSINGS: dict[str, tuple[tuple[str, ...], bool, bool]] = {
+    "Arlington Memorial Bridge": (("Arlington Memorial Bridge",), False, True),
+    # The label in the file is "Key Bridge"; OSM's name is the full one, and
+    # this row is the reason `osm_names` exists at all.
+    "Key Bridge": (("Francis Scott Key Bridge",), True, True),
+    # Legal roadways, both. Recording either as roadway-illegal is the round-3
+    # error: a narrow bridge a mass ride cannot share is not a bridge bicycles
+    # are barred from, and Chain Bridge is a standard climb out of Georgetown.
+    "Chain Bridge": (("Chain Bridge",), True, True),
+    # The 14th Street complex: three highway spans, the Long Bridge (rail) and
+    # the Fenwick Bridge (Metro). The shared-use path is a sidewalk on the
+    # George Mason span, so that is the row that is sidepath-only; the other two
+    # highway spans are barred outright with nothing standing in.
+    "George Mason Memorial Bridge": (("George Mason Memorial Bridge",), True, False),
+    "Rochambeau Bridge": (("Rochambeau Bridge",), False, False),
+    "Arland D. Williams Jr. Memorial Bridge": (
+        ("Arland D. Williams Jr. Memorial Bridge",),
+        False,
+        False,
+    ),
+    # The Metro crossing, which this file used to describe on the Williams row.
+    "Charles R. Fenwick Bridge": (("Charles R. Fenwick Bridge",), False, False),
+    "Woodrow Wilson Bridge path": (("Woodrow Wilson Memorial Bridge",), True, False),
+    "Sousa Bridge (Pennsylvania Avenue SE)": (
+        ("Sousa Bridge (Pennsylvania Avenue SE)",),
+        False,
+        True,
+    ),
+    "11th Street Bridge": (("11th Street Bridge",), False, True),
+    "Frederick Douglass Memorial Bridge": (("Frederick Douglass Memorial Bridge",), False, True),
+    "Whitney Young Memorial Bridge": (
+        ("Whitney Young Memorial Bridge", "Whitney M. Young Jr. Memorial Bridge"),
+        False,
+        True,
+    ),
+    "Benning Road Bridge": (("Benning Road Bridge",), False, True),
+    "Theodore Roosevelt Bridge": (("Theodore Roosevelt Bridge",), False, False),
+    # "George Kennan Memorial Bridge" was an alias here and is deliberately not:
+    # nothing places that name on this structure, and an unplaceable alias can
+    # only ever match the wrong way.
+    "American Legion Bridge": (("American Legion Bridge",), False, False),
+}
+
+
+def expected_extract() -> list[FakeWay]:
+    """One bridge way per expected crossing, named from the table above.
+
+    Built from the *expectation*, never from the fixture. The version this
+    replaces took each way's name from the row it was about to check, so the
+    extract matched the fixture by construction: every name lookup in the
+    pipeline was being tested against a map generated from its own input, and a
+    row whose OSM spelling was wrong - or replaced with "Ponte Vecchio" - still
+    resolved perfectly.
+    """
     return [
-        FakeWay(
-            1000 + index,
-            {
-                "highway": "secondary",
-                "bridge": "yes",
-                "name": (row.get("osm_names") or [row["name"]])[0],
-            },
-        )
-        for index, row in enumerate(crossing_rows())
+        FakeWay(1000 + index, {"highway": "secondary", "bridge": "yes", "name": names[0]})
+        for index, (names, _sidepath, _legal) in enumerate(EXPECTED_CROSSINGS.values())
     ]
+
+
+class TestTheFixtureSaysWhatItIsExpectedToSay:
+    """The fixture's content, against literals rather than against itself."""
+
+    def test_the_rows_are_the_expected_crossings(self) -> None:
+        assert [row["name"] for row in crossing_rows()] == list(EXPECTED_CROSSINGS)
+
+    def test_every_row_claims_the_expected_osm_spellings(self) -> None:
+        """Including the rows with no `osm_names` array, whose label is the
+        spelling - deleting every array in the file has to fail here, and the
+        only way it can is if the expectation names the spellings itself."""
+        claimed = {row["name"]: tuple(crossing_names(row)) for row in crossing_rows()}
+        expected = {name: names for name, (names, _s, _l) in EXPECTED_CROSSINGS.items()}
+        assert claimed == expected
+
+    def test_every_row_carries_the_expected_flags(self) -> None:
+        """The two columns the pipeline reads, pinned separately because they
+        say different things: `sidepath_only` is a routing decision for mass
+        rides and `roadway_bicycle_legal` is a legality fact for every variant."""
+        actual = {
+            row["name"]: (row["sidepath_only"], row["roadway_bicycle_legal"])
+            for row in crossing_rows()
+        }
+        expected = {
+            name: (sidepath, legal) for name, (_n, sidepath, legal) in EXPECTED_CROSSINGS.items()
+        }
+        assert actual == expected
+
+    def test_the_expected_spellings_resolve_through_the_real_resolvers(self) -> None:
+        """And the same table, driven through the production functions against
+        an extract built from the expected spellings. A row whose spelling has
+        drifted from the one a real OSM way carries stops resolving here, which
+        is the failure the fixture's own names could never produce."""
+        rows = crossing_rows()
+        ways = expected_extract()
+
+        bridge_ids, unmatched = resolve_sidepath_bridge_ids(rows, ways)
+        assert not unmatched
+        legality = resolve_bridge_bicycle_legality(rows, ways)
+
+        for way, (name, (_names, sidepath, legal)) in zip(
+            ways, EXPECTED_CROSSINGS.items(), strict=True
+        ):
+            assert (way.osm_id in bridge_ids) is sidepath, f"{name}: sidepath_only"
+            assert legality[way.osm_id] is legal, f"{name}: roadway_bicycle_legal"
+
+    def test_no_two_rows_claim_the_same_osm_name(self) -> None:
+        """Names are how this file resolves, and they merge into one flat dict:
+        a name claimed twice resolves to whichever row was written last, and the
+        two rows disagree about the columns the file exists to record."""
+        check_crossing_names_unique(crossing_rows())
+
+        duplicated = [
+            {"name": "A", "osm_names": ["Shared Bridge"], "roadway_bicycle_legal": True},
+            {"name": "B", "osm_names": ["Shared Bridge"], "roadway_bicycle_legal": False},
+        ]
+        with pytest.raises(DuplicateCrossingName, match="Shared Bridge"):
+            check_crossing_names_unique(duplicated)
+        with pytest.raises(DuplicateCrossingName):
+            resolve_bridge_bicycle_legality(duplicated, [])
 
 
 def test_the_committed_crossings_fixture_is_well_formed() -> None:
@@ -205,12 +328,14 @@ def test_every_sidepath_only_crossing_is_trail_class_on_the_no_trail_variant() -
     `resolve_bridge_bicycle_legality`, below.
     """
     rows = crossing_rows()
-    ways = extract_from_fixture()
+    ways = expected_extract()
     bridge_ids, unmatched = resolve_sidepath_bridge_ids(rows, ways)
-    assert not unmatched, "every row in the fixture must resolve against its own names"
+    assert not unmatched, "every row in the fixture must resolve against the expected names"
 
-    for row, way in zip(rows, ways, strict=True):
-        expected_drop = row["sidepath_only"]
+    for row, way, (names, expected_drop, _legal) in zip(
+        rows, ways, EXPECTED_CROSSINGS.values(), strict=True
+    ):
+        assert way.tags["name"] == names[0]
         # is_trail_class alone must never answer for the sidepath rule - only
         # a way's own highway tag does, which none of these bridges carry.
         assert not is_trail_class(way.tags), row["name"]
@@ -290,16 +415,56 @@ class TestBridgeBicycleLegality:
         way = FakeWay(502, {"highway": "secondary", "bridge": "yes", "name": "Untracked Bridge"})
         assert resolve_bridge_bicycle_legality([row], [way]) == {}
 
+    @pytest.mark.parametrize("highway", ["cycleway", "path", "footway"])
+    def test_the_sidepath_on_a_bridge_is_not_the_bridges_roadway(self, highway: str) -> None:
+        """The column is about the *roadway*, and a trail-class way carrying the
+        bridge's name is the sidepath on it.
+
+        That is the ordinary OSM shape for a shared-use path on a bridge - the
+        Woodrow Wilson path, the 14th Street path and the Key Bridge sidewalk are
+        all `highway=cycleway` or `footway` ways tagged `bridge=yes` and named
+        after the structure. Matching them wrote `rm:bridge_bicycle=no` onto the
+        path on every variant, which `routemaker_remap` turns into `bicycle=no`,
+        which deletes the only bicycle crossing of the Potomac at those points
+        from all three graphs - on the strength of a column that says nothing
+        about the path.
+        """
+        row = {
+            "name": "Woodrow Wilson Bridge path",
+            "osm_way_id": 0,
+            "osm_names": ["Woodrow Wilson Memorial Bridge"],
+            "roadway_bicycle_legal": False,
+        }
+        path = FakeWay(
+            600,
+            {"highway": highway, "bridge": "yes", "name": "Woodrow Wilson Memorial Bridge"},
+        )
+        roadway = FakeWay(
+            601, {"highway": "motorway", "bridge": "yes", "name": "Woodrow Wilson Memorial Bridge"}
+        )
+        legality = resolve_bridge_bicycle_legality([row], [path, roadway])
+        assert 600 not in legality, "the path is not the roadway this column describes"
+        assert legality == {601: False}, "and the roadway still resolves"
+
+    def test_an_explicit_way_id_is_the_operators_own_claim(self) -> None:
+        """The trail-class exclusion applies to the *name* lookup, which is a
+        guess about which way a name means. An id someone pinned by hand against
+        the clipped extract is not a guess, so it is honoured as written."""
+        row = {"name": "Pinned Bridge", "osm_way_id": 4242, "roadway_bicycle_legal": False}
+        assert resolve_bridge_bicycle_legality([row], []) == {4242: False}
+
     def test_a_street_named_after_a_bridge_is_not_matched(self) -> None:
         row = {"name": "Key Bridge", "osm_way_id": 0, "roadway_bicycle_legal": True}
         approach = FakeWay(503, {"highway": "secondary", "name": "Key Bridge"})
         assert resolve_bridge_bicycle_legality([row], [approach]) == {}
 
-    def test_the_fixture_resolves_cleanly_against_its_own_names(self) -> None:
+    def test_the_fixture_resolves_cleanly_against_the_expected_names(self) -> None:
         """Every row that states an opinion resolves against a same-named
-        bridge way, the same as the sidepath set does."""
+        bridge way, the same as the sidepath set does. The extract is built from
+        the expected spellings, not from the rows, so a row whose spelling has
+        drifted stops resolving instead of resolving against itself."""
         rows = crossing_rows()
-        ways = extract_from_fixture()
+        ways = expected_extract()
         legality = resolve_bridge_bicycle_legality(rows, ways)
         opinionated = [row for row in rows if row.get("roadway_bicycle_legal") is not None]
         assert len(legality) == len(opinionated)

@@ -5,10 +5,34 @@ legality and the authority on each of the three layers per crossing.
 
 It does two jobs. It seeds the override table, so a listed bridge bypasses the
 midpoint heuristic entirely — Memorial Bridge is one authority end to end, the
-former "14th Street Bridge" is three parallel structures under different
-authorities and different answers (which is why it is three rows here, not
-one), and the Wilson Bridge path is a separate structure again, so splitting at
-the midpoint gives the wrong answer for each.
+"14th Street Bridge" is **five** parallel structures with different answers
+(three highway spans, the Long Bridge carrying rail, and the Charles R. Fenwick
+Bridge carrying Metro's Yellow Line), and the Wilson Bridge path is a separate
+structure again, so splitting at the midpoint gives the wrong answer for each.
+
+The 14th Street complex has been wrong here twice and is worth stating plainly,
+because the names do not say which structure is which:
+
+* **Arland D. Williams Jr. Memorial Bridge** — the 1950 **highway** span,
+  carrying I-395 southbound out of the District. It is the span Air Florida
+  flight 90 struck in January 1982, renamed in 1985 for the passenger who
+  passed the rescue line to others and drowned. This file previously recorded
+  it as the Metrorail bridge carrying the Mount Vernon Trail connection; it is
+  neither of those things, and that is a matter of record rather than an OSM
+  question.
+* **George Mason Memorial Bridge** — the 1962 highway span, I-395 northbound,
+  and the one carrying the shared-use path: the Mount Vernon Trail connection
+  that ramps to Columbia Island on the Virginia side and Ohio Drive SW on the
+  District side is a sidewalk on this span. *Which* highway span carries the
+  path is community knowledge rather than record — medium-high confidence, from
+  the reviewer who rides it — and the row says so.
+* **Rochambeau Bridge** — the 1972 span, carrying the US-1 local lanes.
+* **Charles R. Fenwick Bridge** — the Metro (Yellow Line) crossing, absent from
+  this file entirely until its name turned up on the Williams row's note. A
+  Metro bridge carries no roadway and no path, so it has no bicycle access of
+  any kind.
+* **Long Bridge** — freight and commuter rail, with no row here for the same
+  reason nothing else rail-only has one: it carries no way a router can use.
 
 And it supplies two independent sets to the tile build, from two different
 columns. Do not OR them together; a rebuild that did once passed its own test
@@ -23,14 +47,23 @@ while being inert, because every row where it mattered happened to agree.
   with no way off it mid-span, for a field of hundreds — via
   `resolve_sidepath_bridge_ids` and `variants.inject()`. It says nothing about
   legality and must never be treated as a legal claim.
-* `roadway_bicycle_legal` — a legal fact, read by every variant alike, because
-  access is not a request-time dial. False means OSM carries `bicycle=no` on
-  the roadway itself: the 14th Street freeway spans (George Mason Memorial,
-  Rochambeau), the Wilson Bridge roadway, and the Theodore Roosevelt Bridge.
-  True means the roadway is an ordinary, legal road, whatever its comfort -
-  Key Bridge and Chain Bridge are both `true` even though `sidepath_only` is
-  also `true` for both. `resolve_bridge_bicycle_legality` turns this into the
+* `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
+  variant alike, because access is not a request-time dial. False means OSM
+  carries `bicycle=no` on the roadway itself: the three 14th Street highway
+  spans, the Wilson Bridge roadway, and the Theodore Roosevelt Bridge. True
+  means the roadway is an ordinary, legal road, whatever its comfort - Key
+  Bridge and Chain Bridge are both `true` even though `sidepath_only` is also
+  `true` for both. `resolve_bridge_bicycle_legality` turns this into the
   `rm:bridge_bicycle` tag `graph.lua` already reads.
+
+  **The roadway, and not the path on it.** A shared-use path on a bridge is
+  mapped as its own `highway=cycleway` or `footway` way, tagged `bridge=yes`
+  and named after the structure — that is what the Wilson path, the 14th Street
+  path and the Key Bridge sidewalk all look like in OSM. The resolver excludes
+  trail-class ways from the name match for that reason. Without the exclusion
+  the column barred the path as well as the roadway, on every variant, and the
+  remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
+  those points from all three graphs.
 
 At least one row (Theodore Roosevelt Bridge, American Legion Bridge) has
 `roadway_bicycle_legal: false` **and** `sidepath_only: false` — barred outright,
@@ -52,6 +85,14 @@ name in this file differs from the `name` tag on the bridge in OSM, add an
 `osm_names` array listing the tagged spellings; the row's `name` is used when it
 is absent.
 
+A name may be claimed by one row only. The names merge into one flat dict, so a
+name claimed twice would resolve to whichever row was written last — silently,
+and with the two rows disagreeing about the columns this file exists to record.
+`variants.check_crossing_names_unique` refuses that at load time, and the same
+reasoning is why the unplaceable alias "George Kennan Memorial Bridge" has been
+removed from the American Legion row: an alias nothing places can only ever
+match the wrong way.
+
 **Every `osm_names` entry in this file is `osm_names_verified: false`, without
 exception, including the ones a round-3 reviewer supplied by name (Francis
 Scott Key Bridge; George Mason Memorial Bridge, Rochambeau Bridge, Arland D.
@@ -70,6 +111,30 @@ of a fixture edit that merely looks confident.
 `osm_way_id` remains as an override for a crossing someone has pinned against
 the clipped extract by hand. It is ignored when 0 rather than matched against
 way 0, which exists and is not a bridge.
+
+## The authority columns
+
+The Potomac spans are one authority end to end, not two. The DC–Virginia
+boundary on the Potomac is the **1791 Virginia shoreline**, not the channel, so
+a span from the District to Virginia lies within the District along essentially
+its whole length and MPD's jurisdiction runs the full distance. The Arlington
+Memorial Bridge row had that shape from the start; Key Bridge and Chain Bridge
+were recorded with a police split down the middle, which is the midpoint
+heuristic this file exists to override, written into the data. Chain Bridge's
+Virginia end was also named as Fairfax County when the abutment is in Arlington
+County — wrong twice over, since above the shoreline it is not a Virginia
+authority's to police at all.
+
+The Wilson Bridge is the exception that proves it: it is the one Potomac
+crossing that touches all three jurisdictions, so its row names Alexandria,
+Prince George's County **and** MPD. Its `row_owner` moved from MDTA to MDOT SHA
+— MDTA is Maryland's toll authority and this bridge is toll-free, which is the
+tell — and keeps `row_owner_verified: false`, because the Virginia-side
+connecting right-of-way may be VDOT's again.
+
+Boundaries are a matter of record; the policing and ownership that follow from
+them are the community's own working knowledge, at the confidence each row's
+note states, and are not legal statements.
 
 Nothing here is a legal statement about access. It records what a rider can use
 and who to ask, and the authority names (`police`, `row_owner`, `manager`) are

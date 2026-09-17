@@ -112,7 +112,10 @@ def test_the_script_installs_every_file_the_loader_requires(tmp_path) -> None:
     assert loaded.urban_way_ids == {200, 300, 400, 500}, "the road outside the area is rural"
     assert len(loaded.volume_features) == 1, "a count with no AADT is not a count"
     feature = loaded.volume_features[0]
-    assert (feature.aadt, feature.source, feature.year) == (12500, "vdot", 2024)
+    # `state`, not `vdot`: the field is the precedence tier `conflate` ranks on,
+    # and the agency name it used to carry is not in that vocabulary at all.
+    assert (feature.aadt, feature.source, feature.year) == (12500, "state", 2024)
+    assert feature.feature_id.startswith("vdot-"), "the agency survives in the feature id"
     assert feature.coordinates == [(-77.02, 38.90), (-76.98, 38.90)]
     assert loaded.unmatched_crossings, "the toy extract has none of the real bridges"
 
@@ -170,3 +173,183 @@ def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path
     # row that shows it.
     assert "Arlington Memorial Bridge" not in unmatched[0]
     assert "Arlington Memorial Bridge" in unverified[0]
+
+
+def line_feature(coordinates: list[list[float]], aadt: str, object_id: int = 1) -> dict:
+    return {
+        "type": "Feature",
+        "properties": {"OBJECTID": object_id, "AADT": aadt},
+        "geometry": {"type": "LineString", "coordinates": coordinates},
+    }
+
+
+def install(tmp_path: Path, *args: str):
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), "--data-root", str(tmp_path / "data"), *args],
+        capture_output=True,
+        text=True,
+    )
+
+
+class TestTwoAgenciesCoveringTheSameRoad:
+    """`--volume` is repeatable, and what it writes is a precedence tier.
+
+    Two defects, one symptom. The option was single-valued and the file was
+    rewritten per flag, so installing DDOT after VDOT left one agency in it -
+    and the region has three count-publishing agencies whose disagreements are
+    the whole reason `conflate` has a precedence rule. And the rows carried the
+    agency's own name in the `source` field, while
+    `conflation.SOURCE_PRECEDENCE` is ("locality", "state", "osm"): every real
+    source fell off the end of that tuple to equal lowest precedence, so the
+    locality-over-state rule could not fire even once both agencies were in the
+    file.
+    """
+
+    def test_a_ddot_and_a_vdot_count_on_one_way_resolve_to_the_localitys(self, tmp_path) -> None:
+        """End to end: two agency files in, one installed volume.json, loaded by
+        the production loader and conflated by the production matcher against a
+        way both counts cover. The DDOT count is deliberately the *worse* match
+        on geometry - drawn further from the way than VDOT's - so only
+        precedence can produce the expected answer."""
+        from pipeline.conflation import conflate
+        from pipeline.extract import read_ways
+        from pipeline.run import ReferenceData
+
+        extract = tmp_path / "source.osm.pbf"
+        build_toy_extract(extract)
+        # Way 100 in the toy extract: (-77.02, 38.90) to (-76.98, 38.90).
+        vdot = tmp_path / "vdot.geojson"
+        vdot.write_text(
+            json.dumps(geojson([line_feature([[-77.02, 38.90], [-76.98, 38.90]], "24000")]))
+        )
+        ddot = tmp_path / "ddot.geojson"
+        ddot.write_text(
+            json.dumps(geojson([line_feature([[-77.02, 38.90004], [-76.98, 38.90004]], "9000", 2)]))
+        )
+
+        result = install(
+            tmp_path,
+            "--volume", str(vdot), "--volume-source", "vdot", "--volume-year", "2024",
+            "--volume", str(ddot), "--volume-source", "ddot", "--volume-year", "2024",
+        )  # fmt: skip
+        assert "MISSING" in result.stderr, "urban-areas is still absent"
+        rows = json.loads((tmp_path / "data" / "reference" / "volume.json").read_text())
+        assert len(rows) == 2, "the second --volume did not overwrite the first"
+        assert {row["source"] for row in rows} == {"state", "locality"}
+
+        (tmp_path / "data" / "reference" / "urban-areas.json").write_text("[]")
+        (tmp_path / "data" / "reference" / "crossings.json").write_text("[]")
+        reference = ReferenceData.load(tmp_path / "data" / "reference")
+
+        ways = [(w.osm_id, w.coordinates, False) for w in read_ways(extract) if w.osm_id == 100]
+        matched = conflate(ways, reference.volume_features).matched
+        assert matched[100].aadt == 9000, "the locality's own survey outranks the state's"
+        assert matched[100].source == "locality"
+
+    def test_an_unplaced_agency_is_refused_rather_than_ranked_last(self, tmp_path) -> None:
+        """Defaulting an unknown agency to "no precedence" is a silent guess at
+        which of two agencies wins on a road they both cover, which is the one
+        decision this vocabulary exists to make."""
+        volume = tmp_path / "counts.geojson"
+        volume.write_text(json.dumps(geojson([line_feature([[0, 0], [1, 1]], "100")])))
+        result = install(tmp_path, "--volume", str(volume), "--volume-source", "sha-of-narnia")
+        assert result.returncode != 0
+        assert "unknown --volume-source" in result.stderr
+        assert "ddot" in result.stderr and "vdot" in result.stderr
+
+    def test_one_companion_value_covers_every_file(self, tmp_path) -> None:
+        """Two files from one agency is the ordinary case and does not have to
+        repeat the agency twice; a count that matches neither shape is refused
+        rather than silently paired."""
+        first = tmp_path / "a.geojson"
+        first.write_text(json.dumps(geojson([line_feature([[0, 0], [1, 1]], "100", 1)])))
+        second = tmp_path / "b.geojson"
+        second.write_text(json.dumps(geojson([line_feature([[2, 2], [3, 3]], "200", 2)])))
+
+        shared = install(
+            tmp_path, "--volume", str(first), "--volume", str(second), "--volume-source", "vdot"
+        )
+        rows = json.loads((tmp_path / "data" / "reference" / "volume.json").read_text())
+        assert "MISSING" in shared.stderr
+        assert [row["source"] for row in rows] == ["state", "state"]
+
+        mismatched = install(
+            tmp_path,
+            "--volume", str(first), "--volume", str(second),
+            "--volume-source", "vdot", "--volume-source", "ddot", "--volume-source", "osm",
+        )  # fmt: skip
+        assert mismatched.returncode == 2
+        assert "once per file in the same order" in mismatched.stderr
+
+
+class TestTheUrbanLengthFraction:
+    """A way is urban when enough of it is inside an urban area, not when it
+    touches one.
+
+    Bare intersection graded a Loudoun through road whose end clips Leesburg's
+    urban area at the 30 mph urban default along its whole length - the
+    lower-stress reading of an ambiguous input, which is the opposite of the
+    classifier's rule, on exactly the roads the rural references ride.
+    """
+
+    def test_the_threshold_is_the_jurisdiction_fraction(self) -> None:
+        """Pinned equal rather than merely similar: both answer the same
+        question - how much of a way has to be inside a polygon before the
+        polygon describes the way - and two answers to it in one build would be
+        two definitions of "mostly outside"."""
+        import importlib.util
+
+        from pipeline.run import MIN_JURISDICTION_FRACTION
+
+        spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.MIN_URBAN_FRACTION == MIN_JURISDICTION_FRACTION
+        assert module.MIN_URBAN_FRACTION == 0.10
+
+    def test_a_way_that_clips_an_urban_area_by_its_end_is_not_urban(self, tmp_path) -> None:
+        """Through the real producer over a real PBF. Way 100 runs from
+        -77.02 to -76.98; the polygon reaches -77.018, so a fiftieth of it is
+        inside - the Loudoun-road shape in miniature."""
+        import importlib.util
+
+        extract = tmp_path / "source.osm.pbf"
+        build_toy_extract(extract)
+
+        def polygon(east: float) -> Path:
+            path = tmp_path / f"urban-{east}.geojson"
+            path.write_text(
+                json.dumps(
+                    geojson(
+                        [
+                            {
+                                "type": "Feature",
+                                "properties": {},
+                                "geometry": {
+                                    "type": "Polygon",
+                                    "coordinates": [
+                                        [
+                                            [-77.03, 38.895],
+                                            [east, 38.895],
+                                            [east, 38.905],
+                                            [-77.03, 38.905],
+                                            [-77.03, 38.895],
+                                        ]
+                                    ],
+                                },
+                            }
+                        ]
+                    )
+                )
+            )
+            return path
+
+        spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        clipped = module.urban_way_ids(extract, polygon(-77.018))
+        assert 100 not in clipped, "a fiftieth of its length inside is not an urban road"
+        # Half the way inside, and it is urban - the District street whose last
+        # block leaves the boundary is why this is a fraction and not containment.
+        assert 100 in module.urban_way_ids(extract, polygon(-77.00))

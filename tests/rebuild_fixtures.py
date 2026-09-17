@@ -139,7 +139,56 @@ def state_polygons():
     Jurisdiction.objects.all().delete()
 
 
-def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=(), legality=()) -> Path:
+def build_named_bridge_extract(path: Path, *, roadway_id: int, sidepath_id: int, name: str) -> None:
+    """A bridge's roadway and the shared-use path on it, both carrying the
+    bridge's name.
+
+    The ordinary OSM shape for a Potomac crossing with a path on it: the path is
+    a separate `highway=cycleway` way, tagged `bridge=yes` like the roadway it
+    runs on and named after the same structure, because that is the name the
+    structure has. The Woodrow Wilson path, the 14th Street path and the Key
+    Bridge sidewalk are all mapped this way.
+
+    It exists so the crossings fixture's `roadway_bicycle_legal` column can be
+    driven through the real pipeline against the geometry it has to tell apart,
+    rather than against a synthetic row keyed by way id.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            1: (-77.045, 38.905),
+            2: (-77.030, 38.905),
+            3: (-77.045, 38.9052),
+            4: (-77.030, 38.9052),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=roadway_id,
+                nodes=[1, 2],
+                version=1,
+                tags={"highway": "motorway", "bridge": "yes", "name": name},
+            )
+        )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=sidepath_id,
+                nodes=[3, 4],
+                version=1,
+                tags={"highway": "cycleway", "bridge": "yes", "name": name},
+            )
+        )
+    finally:
+        writer.close()
+
+
+def write_reference_data(
+    root: Path, *, urban=(), sidepath=(), volume=(), legality=(), crossings=()
+) -> Path:
     """The reference inputs the rebuild refuses to run without.
 
     `legality` is {way id: roadway bicycle legal}, the other half of the
@@ -152,6 +201,11 @@ def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=(), legali
     directory = root / "reference"
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "urban-areas.json").write_text(json.dumps(list(urban)))
+    # `crossings` is for rows that have to resolve the way the shipped fixture
+    # does - by name, against whatever the extract carries - rather than by an
+    # id the test already knows. `sidepath` and `legality` stay id-keyed,
+    # because most of these tests are about what the pipeline does with an
+    # answer rather than about how it reaches one.
     (directory / "crossings.json").write_text(
         json.dumps(
             [
@@ -162,6 +216,7 @@ def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=(), legali
                 {"osm_way_id": way_id, "sidepath_only": False, "roadway_bicycle_legal": legal}
                 for way_id, legal in dict(legality).items()
             ]
+            + list(crossings)
         )
     )
     (directory / "volume.json").write_text(json.dumps(list(volume)))

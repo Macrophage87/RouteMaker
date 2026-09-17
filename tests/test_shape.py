@@ -41,3 +41,25 @@ def test_bends_separate_a_sweep_from_a_zigzag() -> None:
     sweep = line((-77.0, 38.90), (-77.002, 38.902), (-77.005, 38.903), (-77.008, 38.9035))
     zigzag = line((-77.0, 38.90), (-77.002, 38.902), (-77.004, 38.900), (-77.006, 38.902))
     assert sharp_bends_per_mile(zigzag) > sharp_bends_per_mile(sweep)
+
+
+def test_the_threshold_is_where_scoring_starts() -> None:
+    """Pinned at the boundary rather than beside it.
+
+    `test_short_stub_is_not_scored` uses a five metre stub, so the threshold
+    could be raised a hundredfold - to 2.5 km, longer than most segments in the
+    region - and every winding way in the city would silently score 1.0 with the
+    suite green. The Group Ride winding-path penalty reads this number, so that
+    mutation turns the penalty off.
+
+    The two lines below are the same dog-leg at two scales: 20 m of it is noise
+    between two junctions, 37 m of it is a way that really does turn a corner.
+    """
+    from routemaker.shape import MIN_MEANINGFUL_LENGTH_M
+
+    assert MIN_MEANINGFUL_LENGTH_M == 25.0
+
+    below = line((-77.0, 38.90000), (-77.0, 38.90010), (-77.00010, 38.90010))
+    above = line((-77.0, 38.90000), (-77.0, 38.90018), (-77.00020, 38.90018))
+    assert sinuosity(below) == 1.0, "under the threshold, the ratio means nothing"
+    assert sinuosity(above) == pytest.approx(1.411, abs=0.01), "over it, the corner is real"
