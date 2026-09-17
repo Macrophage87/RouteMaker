@@ -64,6 +64,16 @@ def test_resample_produces_a_pixel_is_point_grid() -> None:
 
     assert "SRTMHGT" in command
 
+    # The resampling kernel, pinned. `near` writes a file GDAL is equally happy
+    # with and the same size, so nothing downstream can tell: it takes the
+    # nearest 3DEP sample instead of interpolating, which on a one-arcsecond
+    # source resampled to one-arcsecond nodes displaces every value by up to
+    # half a pixel - the same 12 to 15 m shift the half-pixel outset above
+    # exists to remove, reintroduced by the kernel. On a 15 percent pitch that
+    # is nearly 2 m of elevation error against a 3 m gain hysteresis and a grade
+    # cap a mass ride is planned around.
+    assert command[command.index("-r") + 1] == "bilinear"
+
 
 def test_truncated_file_is_rejected_not_read_as_flat() -> None:
     """Zeroes from a short read are indistinguishable from flat terrain.

@@ -221,14 +221,43 @@ def test_the_ebike_variant_is_not_a_copy_of_standard(workspace, states) -> None:
 
 def test_stress_reaches_the_extract_the_tiles_are_built_from(workspace, states) -> None:
     """Classification ran after the tiles were built, so the tag transform read
-    a tier that did not exist yet and the graph carried no stress at all."""
+    a tier that did not exist yet and the graph carried no stress at all.
+
+    The value is asserted, not its presence. `rm:stress_tier` is what
+    `lua/graph.lua` turns into the cycleway write and what every preset's
+    use_roads dial is reasoned against, so a tier that is merely *there* is not
+    the check: writing a constant 1 onto every way - the whole District read as
+    a quiet residential street - left the earlier version of this test green.
+    35 mph secondary with no facility is LTS4, and the difference between 3 and
+    4 is the difference between routing a beginner onto this road and not.
+
+    Checked on all three variant extracts, because each is written from its own
+    per-way tag set and the tiles are built from all three.
+    """
     from pipeline.extract import read_ways
 
     source, root = workspace
     context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
 
+    # The classifier's own answer for each way, from the run that just happened.
+    expected = {way_id: str(int(stress.tier)) for way_id, stress in context.stress_by_way.items()}
+    assert expected[100] == "4", "a 35 mph secondary with no facility is top-tier stress"
+    assert expected[200] == "1", "and a trail is lowest"
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        for way_id, tier in sorted(expected.items()):
+            if way_id not in tags:
+                continue  # dropped from this variant; test_the_no_trail_... covers that
+            assert tags[way_id].get("rm:stress_tier") == tier, (
+                f"{variant.value}: way {way_id} carries "
+                f"{tags[way_id].get('rm:stress_tier')!r}, not the classifier's {tier!r}"
+            )
+        assert len(set(tags[w].get("rm:stress_tier") for w in tags)) > 1, (
+            f"{variant.value}: every way carries the same tier, which is not a classification"
+        )
+
     tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
-    assert tags[100].get("rm:stress_tier"), "every way must carry its tier"
     assert tags[200].get("rm:trail_class") == "yes"
 
 
