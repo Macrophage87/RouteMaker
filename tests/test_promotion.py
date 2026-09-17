@@ -16,7 +16,6 @@ from django.db import connection
 pytestmark = pytest.mark.django_db(transaction=True)
 
 BEFORE = "0004_audit_log"
-AFTER = "0005_swap_settings_and_staged_crossings"
 
 
 def public_indexes(table: str) -> dict[str, str]:
@@ -29,12 +28,22 @@ def public_indexes(table: str) -> dict[str, str]:
         return dict(cursor.fetchall())
 
 
-def migrate_core(target: str) -> None:
+def migrate_core(target: str | None) -> None:
+    """Migrate `core` to `target`, or to its head when `target` is None.
+
+    The round trip must come back to the head and not to 0005: a later
+    migration (0006 as of this writing) is applied to the test database at
+    session start, and stepping forward only to 0005 would leave every later
+    test running against a schema without its columns.
+    """
     from django.db.migrations.executor import MigrationExecutor
 
     executor = MigrationExecutor(connection)
     executor.loader.build_graph()
-    executor.migrate([("core", target)])
+    if target is None:
+        executor.migrate(executor.loader.graph.leaf_nodes("core"))
+    else:
+        executor.migrate([("core", target)])
 
 
 def test_reversing_0005_recreates_the_crossings_table_it_dropped(segment_schemas) -> None:
@@ -58,6 +67,6 @@ def test_reversing_0005_recreates_the_crossings_table_it_dropped(segment_schemas
         assert any("osm_way_id" in definition for definition in indexes.values())
         assert any("node_id" in definition for definition in indexes.values())
     finally:
-        migrate_core(AFTER)
+        migrate_core(None)
 
     assert public_indexes("border_crossing") == {}, "and forwards drops it again"
