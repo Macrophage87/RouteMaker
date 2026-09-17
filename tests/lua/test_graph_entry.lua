@@ -1,4 +1,4 @@
--- Run with: ROUTEMAKER_LUA_DIR=lua lua5.4 tests/lua/test_graph_entry.lua
+-- Run with: ROUTEMAKER_LUA_DIR=lua luajit tests/lua/test_graph_entry.lua
 --
 -- This exercises lua/graph.lua against the *genuinely vendored* Valhalla
 -- transform in lua/vendor. The previous version of this check installed a
@@ -76,6 +76,191 @@ local border_ok = pcall(nodes_proc, { barrier = "border_control", access = "no" 
 check("upstream's own closed border crossing does not halt the build", border_ok)
 
 check("rels_proc delegates", ({ rels_proc({ type = "route", route = "bicycle" }, 2) })[1] ~= nil)
+
+-- ---------------------------------------------------------------------------
+-- The stress remap may not grant bicycle access on a way Valhalla drops.
+--
+-- Asserted here, through the real transform, and not at the remap's own output
+-- table, because that is exactly how this shipped: both Lua suites checked what
+-- remap_way returned and neither ever pushed a restricted way through
+-- filter_tags_generic. `classify()` rates all three of these LTS1 - it grades
+-- stress, not access - and the cycleway write then took them from filter=1, no
+-- edge at all, to filter=0 with bike access true in both directions.
+-- ---------------------------------------------------------------------------
+
+local function transform_way(tags)
+  local kv, n = {}, 0
+  for k, v in pairs(tags) do kv[k] = v ; n = n + 1 end
+  local filter, out = ways_proc(kv, n)
+  return filter, out
+end
+
+local restricted = {
+  { name = "private farm track", tags = { highway = "track", access = "no", surface = "gravel" } },
+  { name = "closed service road", tags = { highway = "service", access = "no" } },
+  { name = "gated living street", tags = { highway = "living_street", access = "no" } },
+  { name = "agricultural track", tags = { highway = "track", access = "agricultural" } },
+  { name = "forestry track", tags = { highway = "track", access = "forestry" } },
+  { name = "discouraged lane", tags = { highway = "unclassified", access = "discouraged" } },
+}
+
+for _, case in ipairs(restricted) do
+  local tags = { ["rm:stress_tier"] = "1" }
+  for k, v in pairs(case.tags) do tags[k] = v end
+
+  local bare_filter = transform_way(case.tags)
+  local filter, out = transform_way(tags)
+
+  check("upstream drops a " .. case.name .. " on its own", bare_filter == 1, bare_filter)
+  check("a " .. case.name .. " at tier 1 is still dropped", filter == 1, filter)
+  check("no cycleway is written onto a " .. case.name, out.cycleway == nil, out.cycleway)
+end
+
+-- access=emergency and access=psv are not dropped, but arrive with bicycle
+-- access already false, so the write would flip that instead of the filter.
+for _, value in ipairs({ "emergency", "psv" }) do
+  local _, out = transform_way({ highway = "service", access = value, ["rm:stress_tier"] = "1" })
+  check("access=" .. value .. " keeps bicycle access off", out.bike_forward == "false",
+    out.bike_forward)
+  check("no cycleway is written onto access=" .. value, out.cycleway == nil, out.cycleway)
+end
+
+-- `vehicle` is the one that reads as a motor-vehicle key and is not: OSM's
+-- vehicle covers bicycles, and upstream bars them on vehicle=no.
+local _, vehicle_out = transform_way({ highway = "track", vehicle = "no", ["rm:stress_tier"] = "1" })
+check("a way tagged vehicle=no keeps bicycle access off",
+  vehicle_out.bike_forward == "false", vehicle_out.bike_forward)
+check("no cycleway is written onto vehicle=no", vehicle_out.cycleway == nil, vehicle_out.cycleway)
+
+-- A destination-only way keeps bicycle access under upstream's tables, so this
+-- one is about the claim rather than the access: the way arrives marked private
+-- and a separated-track write would assert provision the tagging denies.
+local _, private_out =
+  transform_way({ highway = "service", access = "private", ["rm:stress_tier"] = "1" })
+check("a private way is still routable", private_out.bike_forward == "true")
+check("but carries no cycleway write", private_out.cycleway == nil, private_out.cycleway)
+check("and is marked private by upstream", private_out.private == "true", private_out.private)
+
+-- The way the guard must not catch: an ordinary low-stress street still gets
+-- its write, and a permissively tagged one does too.
+local open_filter, open_out =
+  transform_way({ highway = "residential", access = "yes", ["rm:stress_tier"] = "1" })
+check("an access=yes residential street still gets the write", open_out.cycleway == "track",
+  open_out.cycleway)
+check("and is kept", open_filter == 0, open_filter)
+
+-- ---------------------------------------------------------------------------
+-- gate_cost applies only where tagged_access is 0.
+-- ---------------------------------------------------------------------------
+
+local function transform_node(tags)
+  local kv, n = {}, 0
+  for k, v in pairs(tags) do kv[k] = v ; n = n + 1 end
+  local _, out = nodes_proc(kv, n)
+  return out
+end
+
+-- The bicycle bit of upstream's access mask, which must not move when a
+-- motor-vehicle key is cleared.
+local function bike_allowed(out)
+  return math.floor(tonumber(out.access_mask) / 4) % 2 == 1
+end
+
+local motor_barrier = transform_node({ barrier = "cycle_barrier", motor_vehicle = "no" })
+check("a cycle barrier tagged motor_vehicle=no becomes a gate",
+  motor_barrier.gate == "true", motor_barrier.gate)
+check("and reaches tagged_access 0, so gate_cost applies",
+  motor_barrier.tagged_access == 0, motor_barrier.tagged_access)
+check("with bicycle access unchanged", bike_allowed(motor_barrier))
+
+local bollard = transform_node({ barrier = "bollard", maxwidth = "1.2", motorcar = "no" })
+check("a narrow bollard tagged motorcar=no also reaches tagged_access 0",
+  bollard.tagged_access == 0, bollard.tagged_access)
+
+-- A restrictive bicycle tag is a real refusal and survives, tagged_access and
+-- all: arming a cost dial is not a reason to widen access.
+local closed_barrier = transform_node({ barrier = "cycle_barrier", bicycle = "no" })
+check("a cycle barrier tagged bicycle=no keeps the refusal",
+  closed_barrier.tagged_access == 1 and not bike_allowed(closed_barrier),
+  closed_barrier.tagged_access)
+
+-- vehicle=no is not cleared, and never needed to be: it is absent from
+-- upstream's tagged_access test, so the dial was armed already.
+local vehicle_barrier = transform_node({ barrier = "cycle_barrier", vehicle = "no" })
+check("a cycle barrier tagged vehicle=no was never what held the dial off",
+  vehicle_barrier.tagged_access == 0, vehicle_barrier.tagged_access)
+check("and its refusal survives", not bike_allowed(vehicle_barrier))
+
+-- ---------------------------------------------------------------------------
+-- A violation is loud and leaves the element where it was.
+--
+-- error() inside an entry point does not halt a build: Transform catches it and
+-- returns an empty tag map, so the element is silently stripped and dropped -
+-- the opposite of what both guards claimed to do.
+-- ---------------------------------------------------------------------------
+
+local remap = require("routemaker_remap")
+
+local logged = {}
+local real_stderr = io.stderr
+io.stderr = { write = function(_, line) logged[#logged + 1] = line end }
+
+local real_remap_way = remap.remap_way
+remap.remap_way = function() return { highway = "motorway", cycleway = "track" } end
+local before = #remap.violations
+local forbidden_ok, forbidden_filter, forbidden_out =
+  pcall(ways_proc, { highway = "residential", name = "Ordinary Street" }, 2)
+remap.remap_way = real_remap_way
+
+check("a forbidden write does not raise", forbidden_ok, forbidden_filter)
+check("the way is kept rather than blanked", forbidden_filter == 0, forbidden_filter)
+check("the way keeps the class it arrived with",
+  forbidden_out and forbidden_out.highway == "residential", forbidden_out and forbidden_out.highway)
+check("the rest of the tags survive", forbidden_out and forbidden_out.name == "Ordinary Street")
+check("the permitted part of the change still applies", forbidden_out.cycleway == "track")
+check("the violation is recorded", #remap.violations == before + 1)
+check("the element carries the sentinel", forbidden_out[remap.VIOLATION_TAG] ~= nil,
+  forbidden_out[remap.VIOLATION_TAG])
+check("and a line goes to the build log under the searched prefix",
+  #logged == 1 and logged[1]:find(remap.VIOLATION_LOG_PREFIX, 1, true) == 1, logged[1])
+
+-- The border guard, which is the one whose error() deleted the node it exists
+-- to protect.
+logged = {}
+local real_remap_node = remap.remap_node
+remap.remap_node = function() return { bicycle = "no" } end
+before = #remap.violations
+local border_ok, _, border_out =
+  pcall(nodes_proc, { barrier = "border_control", name = "State Line" }, 2)
+remap.remap_node = real_remap_node
+
+check("a denying border change does not raise", border_ok)
+check("the border node is not blanked", border_out and border_out.name == "State Line")
+check("upstream still sees a border control", border_out.border_control == "true")
+check("the denying change is refused rather than applied", border_out.bicycle == nil,
+  border_out.bicycle)
+check("bicycle access at the border survives", bike_allowed(border_out))
+check("the violation is recorded and logged", #remap.violations == before + 1 and #logged == 1)
+
+io.stderr = real_stderr
+
+-- ---------------------------------------------------------------------------
+-- Every value this remap can emit onto a bicycle key is one upstream reads.
+-- Read out of the vendored table rather than remembered: a value outside it
+-- maps to nil, which drops the override instead of granting it.
+-- ---------------------------------------------------------------------------
+check("the vendored upstream exposes its bicycle table", type(bicycle) == "table")
+for value in pairs(remap.EMITTABLE_BICYCLE) do
+  check("upstream's bicycle table carries '" .. value .. "'", bicycle[value] ~= nil)
+end
+check("customers is ranked but never emitted",
+  remap.ACCESS_RANK.customers ~= nil and remap.EMITTABLE_BICYCLE.customers == nil
+    and bicycle["customers"] == nil)
+
+local customers_only = remap.remap_conditional_access(
+  { bicycle = "no", ["bicycle:conditional"] = "customers @ (Mo-Su 08:00-20:00)" })
+check("a conditional that only upstream cannot express writes nothing",
+  next(customers_only) == nil)
 
 -- Loading twice would capture this file's own entry points as "upstream".
 local twice_ok, twice_err = pcall(dofile, "lua/graph.lua")

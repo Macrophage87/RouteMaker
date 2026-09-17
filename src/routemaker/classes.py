@@ -24,8 +24,11 @@ TRAIL_CLASS_HIGHWAY = frozenset({"cycleway", "footway", "path", "pedestrian", "b
 # table. `trunk` is deliberately absent: US-1, US-50 and New York Avenue NE are
 # trunk here and are routinely bicycle-legal, so a blanket rule would be a
 # derived access determination, which the plan reserves for an audited row. They
-# reach LTS4 on their own speed and lane count anyway, and by going through the
-# ordinary path they can still take shoulder credit - which is the distinction a
-# rural group ride most needs and which a short-circuit would lose.
+# reach LTS4 on their own speed and lane count anyway - which is true only
+# because `trunk` and `trunk_link` are now in both default speed tables; while
+# they were missing from both, an untagged one read as a 30 mph street and came
+# out LTS3, and this comment was wrong about the thing it was defending. Going
+# through the ordinary path also leaves their facility and shoulder tagging
+# readable, which a short-circuit would discard.
 ALWAYS_TOP_TIER_HIGHWAY = frozenset({"motorway", "motorway_link"})
 MOTOR_ONLY_HIGHWAY = ALWAYS_TOP_TIER_HIGHWAY  # retained name for existing imports
