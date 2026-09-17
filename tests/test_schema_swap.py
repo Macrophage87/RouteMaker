@@ -494,3 +494,80 @@ def test_deadlock_is_classified_as_a_lock_error() -> None:
 
     assert _is_lock_error(FakeDeadlock())
     assert not _is_lock_error(FakeSyntaxError())
+
+
+# --- The rollback's own guards ----------------------------------------------
+#
+# Round 4: every guard the forward path has, the rollback lacked - and it is the
+# path that runs when something has already gone wrong.
+
+
+def test_rollback_refuses_to_run_inside_a_transaction(segment_schemas) -> None:
+    """The same refusal as the forward swap, for the same reason: a rename that
+    commits or rolls back with an enclosing transaction's work is not something
+    to do quietly. `swap_schemas` has refused since round 2; `rollback_swap`
+    took the plan's requirement as applying to the forward path only."""
+    from django.db import transaction
+
+    from pipeline.swap import SwapInsideTransaction, rollback_swap, swap_schemas
+
+    swap_schemas()
+    with pytest.raises(SwapInsideTransaction), transaction.atomic():
+        rollback_swap()
+
+
+def test_a_rollback_that_cannot_take_its_lock_is_classified_as_a_timeout(segment_schemas) -> None:
+    """`swap_schemas` raises SwapLockTimeout when its attempts run out; the
+    rollback re-raised the raw psycopg error, so the operator's undo reported
+    contention as an unclassified database failure - in the one path where
+    knowing it is worth retrying matters most."""
+    from pipeline.swap import SwapLockTimeout, rollback_swap, swap_schemas
+
+    live, _staging = segment_schemas
+    swap_schemas()
+    holder = second_connection()
+    try:
+        with holder.cursor() as cursor:
+            cursor.execute("BEGIN")
+            cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS SHARE MODE")
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '5s'")
+        try:
+            with pytest.raises(SwapLockTimeout):
+                rollback_swap(lock_timeout_ms=150, attempts=2, backoff_s=0.0)
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("SET statement_timeout = 0")
+    finally:
+        holder.rollback()
+        holder.close()
+
+
+def test_rollback_drops_the_staging_schema_a_failed_rebuild_left_behind(segment_schemas) -> None:
+    """A rebuild that fails at the swap leaves its staging schema on the disk,
+    and the rollback's first rename needs that name. It used to raise a raw
+    `schema "staging" already exists` from the middle of the rename - after the
+    operator had decided to roll back and with nothing else having moved. The
+    leftover is the failed rebuild's, so it is dropped."""
+    from pipeline.schema import create_segment_schema
+    from pipeline.swap import rollback_swap, swap_schemas
+
+    live, staging = segment_schemas
+    insert_segment(live, 111)
+    insert_segment(staging, 222)
+    swap_schemas()
+
+    # The next rebuild builds into staging again and then fails at the swap.
+    create_segment_schema(staging)
+    insert_segment(staging, 333)
+
+    rollback_swap()
+
+    assert row_count(live) == 1, "the build before the one served is back"
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id FROM {live}.segment")
+        assert cursor.fetchone()[0] == 111
+    assert row_count(staging) == 1, "staging holds what was live, not the abandoned rebuild"
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id FROM {staging}.segment")
+        assert cursor.fetchone()[0] == 222

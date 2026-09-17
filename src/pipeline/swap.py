@@ -38,7 +38,12 @@ from dataclasses import dataclass
 
 from django.db import connection, transaction
 
-from .schema import create_segment_schema, schema_exists, validate_schema_name
+from .schema import (
+    create_segment_schema,
+    drop_segment_schema,
+    schema_exists,
+    validate_schema_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -172,8 +177,19 @@ def rollback_swap(
     """Undo a swap by putting the retired schema back.
 
     Pairs with repointing the settings table back to the previous tile extracts;
-    this half only restores the database.
+    this half only restores the database. `promotion.rollback` is the caller
+    that decides whether there is a previous build to go back to at all; this
+    function's own gate - that a retired schema exists - is true forever after
+    the first swap and says nothing about what is in it.
     """
+    if connection.in_atomic_block:
+        # The same refusal as the forward path, and for the same reason: a
+        # rename that commits or rolls back with an enclosing transaction's
+        # work is not something to do quietly. The plan requires it of the
+        # swap; there is no argument that makes the emergency path the
+        # exception.
+        raise SwapInsideTransaction("rollback_swap must not run inside an enclosing transaction")
+
     live = live or _live()
     staging = staging or _staging()
     validate_schema_name(live)
@@ -184,6 +200,19 @@ def rollback_swap(
             f"there is no {retired} schema to roll back to; a rollback ran already "
             "or no swap has happened"
         )
+    if schema_exists(staging):
+        # A rebuild that fails at the swap leaves its staging schema behind, and
+        # the first rename below needs that name free. The leftover is that
+        # failed rebuild's own output - a successful swap renames staging away -
+        # so it is dropped rather than raising a raw "schema already exists"
+        # from the middle of a rename the operator has already committed to.
+        logger.warning(
+            "dropping the %s schema left behind by a rebuild that did not swap; "
+            "the rollback's rename needs the name",
+            staging,
+        )
+        drop_segment_schema(staging)
+    last_error: Exception | None = None
     for attempt in range(1, attempts + 1):
         try:
             with transaction.atomic(), connection.cursor() as cursor:
@@ -196,9 +225,21 @@ def rollback_swap(
                 cursor.execute(f"ALTER SCHEMA {live} RENAME TO {staging}")
                 cursor.execute(f"ALTER SCHEMA {retired} RENAME TO {live}")
             return
-        except Exception as error:  # noqa: BLE001
+        except Exception as error:  # noqa: BLE001 - re-raised below if terminal
             # The emergency path needs the retry more than the forward one does,
             # not less: it runs when something is already wrong.
-            if not _is_lock_error(error) or attempt == attempts:
+            last_error = error
+            if not _is_lock_error(error):
                 raise
+            if attempt == attempts:
+                # Classified the way the forward path classifies it. Re-raising
+                # the raw psycopg error told an operator whose rollback lost a
+                # race with a reader that the database had failed, in the one
+                # path where knowing it is worth retrying matters most.
+                raise SwapLockTimeout(
+                    f"could not take the rollback lock in {attempts} attempts"
+                ) from error
+            logger.warning("rollback attempt %d could not take its lock, retrying", attempt)
             time.sleep(backoff_s * attempt)
+    else:  # pragma: no cover - the loop always returns or raises
+        raise SwapLockTimeout("the rollback rename exhausted its attempts") from last_error

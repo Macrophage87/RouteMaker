@@ -36,6 +36,12 @@ class Migration(migrations.Migration):
             name="bordercrossing",
             options={"managed": False},
         ),
+        # Both indexes 0001 created are written out by name: the reverse has to
+        # land on the table 0001 would have left, or a release rolled back to
+        # the previous version runs every spatial predicate over the crossings
+        # as a sequential scan, and `makemigrations --check` sees no drift to
+        # report. The names are Django's own for that model.
+        #
         # Marking the model unmanaged leaves the managed table behind, and with
         # `public` first on the search path that orphan would shadow the
         # promoted copy in the live schema forever. Dropped explicitly, and
@@ -55,6 +61,8 @@ class Migration(migrations.Migration):
                 );
                 CREATE INDEX border_cros_osm_way_efb172_idx
                     ON public.border_crossing (osm_way_id);
+                CREATE INDEX border_crossing_location_63c86e22_id
+                    ON public.border_crossing USING gist (location);
             """,
         ),
         migrations.CreateModel(

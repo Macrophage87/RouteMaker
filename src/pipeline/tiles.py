@@ -51,6 +51,17 @@ class TilePathsNotPerVariant(ValueError):
     """A serving config names a tile path outside its own variant's directory."""
 
 
+class BuildDirectoryExists(FileExistsError):
+    """A build id names a directory that is already there.
+
+    Build ids are second-resolution (`pipeline.run.new_build_id`), so two
+    rebuilds starting inside one second take the same id. The second one then
+    wrote its tiles into the directory the first had already promoted - the
+    graph being served - and promoting it again pointed `current` and
+    `previous` at the same directory, leaving nothing to roll back to.
+    """
+
+
 def serving_config_path(config_dir: Path, variant: Variant) -> Path:
     return Path(config_dir) / f"valhalla-{variant.value}.json"
 
@@ -95,6 +106,20 @@ def build_config(
 
 
 def write_build_config(config_dir: Path, tiles_dir: Path, variant: Variant, build_id: str) -> Path:
+    """Write the build config, claiming this variant's build directory.
+
+    The claim is what makes a build id mean one build: the directory must not
+    exist yet. A rebuild that takes an id already on disk refuses here, before
+    it has written a byte, rather than building into a directory that may be
+    the one being served.
+    """
+    destination = build_dir(tiles_dir, variant, build_id)
+    if destination.exists():
+        raise BuildDirectoryExists(
+            f"{destination} already exists; the build id {build_id!r} has been used. "
+            "A second build writing there would write into the directory the first "
+            "one promoted, which is the graph being served."
+        )
     path, config = build_config(config_dir, tiles_dir, variant, build_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     Path(config["mjolnir"]["tile_dir"]).mkdir(parents=True, exist_ok=True)
@@ -206,6 +231,50 @@ def promoted_build_id(tiles_dir: Path, variant: Variant, link: str = CURRENT) ->
     return os.readlink(path)
 
 
+@dataclass(frozen=True)
+class TileLinks:
+    """What a variant's two links said at one moment. `None` means no link."""
+
+    current: str | None
+    previous: str | None
+
+
+def links(tiles_dir: Path, variant: Variant) -> TileLinks:
+    """Both links as they stand, for a caller that may have to put them back."""
+    return TileLinks(
+        current=promoted_build_id(tiles_dir, variant, CURRENT),
+        previous=promoted_build_id(tiles_dir, variant, PREVIOUS),
+    )
+
+
+def _remove_link(link: Path) -> None:
+    """Remove a promotion symlink. Anything that is not one is not ours."""
+    if link.is_symlink():
+        link.unlink()
+
+
+def restore_links(tiles_dir: Path, variant: Variant, state: TileLinks) -> None:
+    """Put both links back as `state` found them, removing what was not there.
+
+    This is the undo of a promotion, which is not a demotion: before the second
+    rebuild ever runs there is no `previous`, so `demote` had nothing to move
+    back and a failed first swap left `current` pointing at a build the rest of
+    the swap never completed. "There was no link" is a state this has to be
+    able to restore, and removing the link is how.
+
+    A `current` that was a real empty directory - what Docker leaves when it
+    bind-mounts a path that does not exist yet - is not recreated. It carries
+    no information: `promote` removes it and the serving container makes it
+    again on its next start.
+    """
+    variant_dir = Path(tiles_dir) / variant.value
+    for name, target in ((CURRENT, state.current), (PREVIOUS, state.previous)):
+        if target is None:
+            _remove_link(variant_dir / name)
+        else:
+            _replace_symlink(variant_dir / name, target)
+
+
 def promote(tiles_dir: Path, variant: Variant, build_id: str) -> str | None:
     """Make a dated build the served one. Returns the build it replaced."""
     variant_dir = Path(tiles_dir) / variant.value
@@ -220,12 +289,24 @@ def promote(tiles_dir: Path, variant: Variant, build_id: str) -> str | None:
 
 
 def demote(tiles_dir: Path, variant: Variant) -> str | None:
-    """Put `previous` back as `current`. Returns the build now served."""
+    """Put `previous` back as `current`, and leave no `previous` behind.
+
+    The operator's rollback, per variant. After it there is no build before the
+    one being served - the retired schema has gone back to being live and the
+    settings row's `previous_build_id` is cleared - so leaving `previous`
+    pointing at the build now current would be the one piece of state claiming
+    there is still something to roll back to.
+
+    Returns the build now served, or None when there was no previous to put
+    back. `promotion.rollback` refuses before calling this rather than relying
+    on that None; undoing a *failed* swap is `restore_links`, not this.
+    """
     variant_dir = Path(tiles_dir) / variant.value
     previous = promoted_build_id(tiles_dir, variant, PREVIOUS)
     if previous is None:
         return None
     _replace_symlink(variant_dir / CURRENT, previous)
+    _remove_link(variant_dir / PREVIOUS)
     return previous
 
 
