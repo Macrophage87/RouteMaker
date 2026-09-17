@@ -117,8 +117,16 @@ def state_polygons():
     Jurisdiction.objects.all().delete()
 
 
-def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=()) -> Path:
-    """The reference inputs the rebuild refuses to run without."""
+def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=(), legality=()) -> Path:
+    """The reference inputs the rebuild refuses to run without.
+
+    `legality` is {way id: roadway bicycle legal}, the other half of the
+    crossings fixture: a row that says nothing about `sidepath_only` but does
+    say whether OSM's `bicycle` tag bars the roadway outright. The two columns
+    are deliberately separable here, because in the fixture this file used to
+    ship with they were perfectly correlated and OR-ing them together tested
+    green while being inert.
+    """
     directory = root / "reference"
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "urban-areas.json").write_text(json.dumps(list(urban)))
@@ -128,10 +136,68 @@ def write_reference_data(root: Path, *, urban=(), sidepath=(), volume=()) -> Pat
                 {"osm_way_id": way_id, "sidepath_only": True, "roadway_bicycle_legal": False}
                 for way_id in sidepath
             ]
+            + [
+                {"osm_way_id": way_id, "sidepath_only": False, "roadway_bicycle_legal": legal}
+                for way_id, legal in dict(legality).items()
+            ]
         )
     )
     (directory / "volume.json").write_text(json.dumps(list(volume)))
     return directory
+
+
+def build_parallel_extract(path: Path, *, road_id: int, trail_id: int) -> None:
+    """A road and a shared-use path running alongside it, with one count line
+    drawn between them and slightly nearer the path.
+
+    The Mount Vernon Trail / GW Parkway geometry, in miniature: the trail sits
+    15 m from the roadway, well inside `conflation.MAX_SEPARATION_M`, and an
+    agency survey line is not drawn to the centreline. So the path can out-rank
+    the roadway on distance alone, and exclusivity then denies the count to the
+    roadway as well - the whole count lost to a way that carries no motor
+    traffic at all.
+
+    Both ids are parameters so a test can put either way first in the file,
+    which is the order `read_ways` produces and the order `conflate` sees.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        # ~15 m and ~9 m north of the roadway, at this latitude.
+        road_lat, trail_lat = 38.9000, 38.900135
+        nodes = {
+            1: (-77.020, road_lat),
+            2: (-77.002, road_lat),
+            3: (-77.020, trail_lat),
+            4: (-77.002, trail_lat),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            road_id: (
+                [1, 2],
+                {"highway": "primary", "maxspeed": "45 mph", "name": "Parkway"},
+            ),
+            trail_id: ([3, 4], {"highway": "cycleway", "name": "Riverside Trail"}),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()
+
+
+PARALLEL_COUNT = {
+    "id": "count-parkway",
+    # Drawn between the two ways and nearer the trail, which is what makes the
+    # trail the better candidate on geometry alone.
+    "coordinates": [[-77.021, 38.90008], [-77.001, 38.90008]],
+    "aadt": 24000,
+    "source": "state",
+    "year": 2025,
+}
 
 
 def fake_fetch(tile: TileName, into: Path) -> Path:
