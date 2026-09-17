@@ -79,6 +79,13 @@ def assign_way(geometry: LineString) -> list[LayerAssignment]:
 # geography, so it is metres rather than degrees.
 SHARED_BOUNDARY_TOLERANCE_M = 2.0
 
+# Degrees-per-metre at this region's latitude is about 1/86_500 in the
+# longitude direction (111_320 m/deg at the equator, times cos(~39 degrees));
+# 1/80_000 pads that generously in both directions rather than tuning it
+# exactly, because this value only has to be an overestimate - the precise
+# geography check right after it is what decides the match.
+_METRES_TO_DEGREES = 1 / 80_000.0
+
 # How far a shared stretch has to run before it is reported as one. Every
 # ordinary boundary crossing has one vertex within the tolerance of both sides,
 # so without this every crossing grows a metre-long "both authorities" run in
@@ -113,7 +120,22 @@ def route_crossings(
     fraction measured in degrees by a length measured in metres, which on a route
     mixing north-south and east-west legs misplaced crossings by about four
     percent - larger than the collapse threshold it fed.
+
+    The join is filtered twice, not once. `ST_DWithin(j.geometry::geography, ...)`
+    alone is precise but casts every row's geometry to geography inline, which
+    is a computed expression the GiST index on `jurisdiction.geometry` does not
+    cover - so Postgres has no choice but a sequential scan per vertex.
+    Measured on a synthetic 20,000-polygon jurisdiction table against a
+    1,025-vertex segmentized route (this function's own query shape): 171.5
+    seconds. Prefiltering with a plain-geometry `ST_DWithin`, in degrees rather
+    than metres, *is* index-assisted - Postgres rewrites it internally into
+    `geometry && ST_Expand(...)`, a bounding-box test the GiST index answers
+    directly - and cuts the same query to 26 ms, about 6,500 times faster. The
+    degree tolerance overestimates on purpose (see `_METRES_TO_DEGREES`); the
+    geography check right after it still decides the real match, so the
+    prefilter only has to avoid excluding anything, not be exact.
     """
+    prefilter_deg = shared_tolerance_m * _METRES_TO_DEGREES
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -130,10 +152,11 @@ def route_crossings(
             FROM vertices v
             LEFT JOIN jurisdiction j
               ON j.layer = %s
+             AND ST_DWithin(j.geometry, v.point, %s)
              AND ST_DWithin(j.geometry::geography, v.point::geography, %s)
             ORDER BY v.idx, j.is_federal_enclave DESC NULLS LAST, j.name
             """,
-            [geometry.ewkb, step_m, layer, shared_tolerance_m],
+            [geometry.ewkb, step_m, layer, prefilter_deg, shared_tolerance_m],
         )
         rows = cursor.fetchall()
 
