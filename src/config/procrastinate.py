@@ -49,6 +49,29 @@ DEGRADED_GUILD_SWEEP_CRON = "*/5 * * * *"
 # under core.runs.run_with_deadline.
 REBUILD_TIMEOUT_S = 6 * 60 * 60
 SWEEP_TIMEOUT_S = 30 * 60
+# The backup's ceiling, and it is the maintenance queue's bound rather than the
+# backup's own convenience. `pg_dump` had no timeout at all, and the maintenance
+# worker is one slot (`--concurrency` defaults to 1), so a dump blocked on a
+# lock or a stalled write held that slot for as long as the process lived -
+# forever, in the case the timeout exists for - while every five-minute
+# degraded-guild tick under it was dropped, because Procrastinate skips a
+# periodic job whose previous one is still queued or locked.
+#
+# Thirty minutes rather than a number derived from the dump: it is the bound the
+# membership sweep already puts on the same slot, so the queue's worst case is
+# unchanged by the backup existing, and a `pg_dump -Fc` of this database is
+# minutes, so half an hour is a wedged process rather than a slow night. What
+# this does not do on its own is restore the five-minute bound: a tick that
+# falls inside a legitimate 20-minute dump is still dropped. Only a second slot
+# does that, and the slot count lives in compose - see docs/OPERATIONS.md.
+BACKUP_TIMEOUT_S = 30 * 60
+
+# The worker's own heartbeat, as a periodic task that writes a run row. The plan
+# alerts on "worker heartbeat silent for 10 minutes", and the cheapest honest
+# form of that here is the same shape as every other alert in this file: a row
+# whose absence `core.runs.stale_tasks` reports. Five minutes so that ten is two
+# missed ticks rather than one.
+WORKER_HEARTBEAT_CRON = "*/5 * * * *"
 
 # The plan's job rule: retried with exponential backoff, up to five times.
 # Procrastinate counts an attempt when a run finishes or is scheduled for
@@ -65,6 +88,15 @@ RETRY = RetryStrategy(max_attempts=5, exponential_wait=6)
 # it is rebuildable from the bot's backfill; the session table because a dump
 # that sits on disk for months must not carry live sessions.
 BACKUP_EXCLUDED_TABLES = ("cached_membership", "app_session")
+
+# How many dumps stay on the data volume. They are local-only for now - the
+# plan's S3 upload with SSE-KMS and 30-day remote retention is not built - and
+# they land on the volume the rebuild's disk gate measures, so an unbounded
+# series of them would eventually refuse every rebuild with "grow the volume" as
+# the only remedy. Seven: a week of nightly dumps, so corruption noticed over a
+# weekend still has a local copy to restore from, at a bounded cost in gigabytes
+# rather than a year's worth.
+BACKUP_KEEP = 7
 
 
 class RebuildAbandoned(RuntimeError):
@@ -101,6 +133,7 @@ def weekly_rebuild(timestamp: int) -> None:
     from django.conf import settings
 
     from core.runs import record
+    from pipeline import retention
     from pipeline.rebuild import RebuildFailed, RebuildTimedOut, run_rebuild
     from pipeline.run import RebuildContext, build_handlers
 
@@ -119,15 +152,44 @@ def weekly_rebuild(timestamp: int) -> None:
             raise
         except RebuildTimedOut as error:
             raise RebuildAbandoned(str(error)) from error
-        run.detail = f"build {context.build_id}: {len(report.completed)} stages completed"
+        # After the promotion, not before it: what is removed is decided by
+        # where `current` and `previous` point, and until the swap has moved
+        # them the build being retired still looks like the one being served.
+        # Nothing pruned these, so a deployment kept one dated tile set per week
+        # forever on the volume whose disk gate refuses a rebuild that cannot
+        # fit two - the gate would eventually decline every rebuild with "grow
+        # the volume" as the only remedy left.
+        pruned = retention.prune_tile_builds(settings.TILES_DIR)
+        run.detail = (
+            f"build {context.build_id}: {len(report.completed)} stages completed, "
+            f"pruned {sum(len(builds) for builds in pruned.values())} old build directories"
+        )
         run.save(update_fields=["detail"])
 
 
 def terminal_causes() -> tuple[type[Exception], ...]:
     """Failures a retry cannot fix. Imported lazily: this module is imported
-    at Django app-ready time and the pipeline imports the ORM."""
+    at Django app-ready time and the pipeline imports the ORM.
+
+    The two timeouts are here for a harder reason than the others. A rebuild
+    killed by its own deadline - `RebuildTimedOut` from the stage boundary
+    check, `subprocess.TimeoutExpired` from a binary handed the remaining
+    budget - is not going to finish inside six hours on the next attempt
+    either; the budget is the same and the work is the same. Left retryable it
+    was retried five times, and a retry re-runs the whole rebuild including
+    SWAP, whose `DROP SCHEMA live_old` destroys the very schema a rollback
+    would put back. The first timed-out rebuild would have spent thirty hours
+    of CPU dismantling its own rollback target one attempt at a time.
+
+    `RebuildTimedOut` raised *between* stages is caught by name in the task
+    body; this entry is for the same class arriving as a `RebuildFailed.cause`,
+    which is what happens when a handler's own `_run_command` finds no budget
+    left.
+    """
+    import subprocess
+
     from pipeline.elevation import ElevationTileInvalid
-    from pipeline.rebuild import StageNotImplemented
+    from pipeline.rebuild import RebuildTimedOut, StageNotImplemented
     from pipeline.run import ReferenceDataMissing, ValidationFailed
     from pipeline.tiles import DiskGateRefused, TilePathsNotPerVariant
 
@@ -138,6 +200,8 @@ def terminal_causes() -> tuple[type[Exception], ...]:
         StageNotImplemented,
         ElevationTileInvalid,
         TilePathsNotPerVariant,
+        RebuildTimedOut,
+        subprocess.TimeoutExpired,
     )
 
 
@@ -150,20 +214,63 @@ def _retry_only_rebuild_failures() -> None:
 _retry_only_rebuild_failures()
 
 
+class BackupTimedOut(RuntimeError):
+    """The dump ran past its budget and was killed. Not retried."""
+
+
+class RetryUnlessTimedOut(RetryStrategy):
+    """`RETRY`, except for a job that ran out of its own time budget.
+
+    A dump killed at thirty minutes is not a transient failure: the budget is
+    the same on the next attempt and so is the lock or the stalled write that
+    consumed it. Retried, it would hold the single-slot maintenance queue for
+    thirty minutes five more times - two and a half hours of exactly the
+    starvation the timeout was added to end. The nightly schedule is the retry,
+    and the 26-hour alert window is what notices if that one fails too.
+    """
+
+    def get_retry_decision(self, *, exception, job):  # type: ignore[override]
+        if isinstance(exception, BackupTimedOut):
+            return None
+        return super().get_retry_decision(exception=exception, job=job)
+
+
 @app.periodic(cron=NIGHTLY_BACKUP_CRON)
-@app.task(name="nightly_backup", queue="maintenance", queueing_lock="nightly_backup", retry=RETRY)
+@app.task(
+    name="nightly_backup",
+    queue="maintenance",
+    queueing_lock="nightly_backup",
+    retry=RetryUnlessTimedOut(
+        max_attempts=RETRY.max_attempts, exponential_wait=RETRY.exponential_wait
+    ),
+)
 def nightly_backup(timestamp: int) -> None:
-    """Dump the database, excluding the membership cache and the sessions.
+    """Dump the database, excluding the membership cache and the sessions, then
+    prune what the dump and the run history leave behind.
 
     The cache is excluded rather than dumped and protected. Who organizes with
     whom is the sensitive part of this deployment, and the cache is rebuildable
     from the bot's backfill, so the copy that sits on disk for months is the one
     worth not having.
+
+    The pruning rides here rather than on a schedule of its own for the same
+    reason the session sweep rides with the membership sweep: it is the same
+    shape of work, it is cheap, and a second schedule is a second thing to
+    notice had stopped. It runs after the dump has been written and verified, so
+    a night on which the backup fails keeps every old dump it has.
     """
-    from core.runs import record
+    from django.conf import settings
+
+    from core.runs import prune_job_rows, prune_run_rows, record
+    from pipeline import retention
 
     with record("nightly_backup") as run:
-        run.detail = str(perform_backup())
+        destination = perform_backup()
+        pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
+        run.detail = (
+            f"{destination}; pruned {len(pruned_dumps)} old dumps, "
+            f"{prune_run_rows()} run rows, {prune_job_rows()} finished job rows"
+        )
         run.save(update_fields=["detail"])
 
 
@@ -254,15 +361,55 @@ def degraded_guild_sweep(timestamp: int) -> None:
         run.save(update_fields=["detail"])
 
 
+@app.periodic(cron=WORKER_HEARTBEAT_CRON)
+@app.task(name="worker_heartbeat", queue="maintenance", queueing_lock="worker_heartbeat")
+def worker_heartbeat(timestamp: int) -> None:
+    """Write a row saying the worker is still running jobs.
+
+    The plan's health check for the worker, and the one alert on the list that
+    fires when the component that writes every *other* alert row has died: a
+    stalled worker stops writing the backup row and the sweep rows too, but
+    their windows are 26 and 12 hours, so without this the deployment would take
+    half a day to notice. This is the cheapest honest form - the row is written
+    by the same machinery as every other periodic task, so "the worker is dead"
+    becomes a stale row like everything else rather than a second mechanism.
+
+    Honest about what it measures: it reports that the worker dequeued and
+    finished a job, not that its process is alive. On a one-slot maintenance
+    worker a job holding the slot past the window shows up here as a gap, which
+    is a true statement about a worker that is running nothing else - and the
+    reason every task on this queue has a bounded timeout.
+
+    Not retried, for the same reason the degraded-guild sweep is not: the next
+    tick is the retry, and a retry schedule would hold the queueing lock across
+    several ticks of the bound it exists to keep.
+    """
+    from core.runs import record
+
+    with record("worker_heartbeat") as run:
+        run.detail = f"worker alive, pid {os.getpid()}"
+        run.save(update_fields=["detail"])
+
+
 class BackupVerificationFailed(RuntimeError):
     """The dump on disk is not the dump the task promised."""
 
 
-def perform_backup(now=None, read_listing: Callable[[Path, dict], str] | None = None) -> Path:
+def perform_backup(
+    now=None,
+    read_listing: Callable[[Path, dict, float], str] | None = None,
+    timeout_s: float | None = None,
+) -> Path:
     """pg_dump to the data volume, then read the archive's table of contents
     back to prove it is what was asked for. Separated so the task body stays
     readable. `read_listing` is pg_restore --list, injectable so a test can
-    hand this function a listing that leaks and watch it refuse."""
+    hand this function a listing that leaks and watch it refuse.
+
+    Both binaries run under one budget, the same way the rebuild runs its own:
+    a monotonic deadline taken once, and whatever is left of it handed to each
+    subprocess as its timeout. One budget rather than one each, because what is
+    bounded is the maintenance slot the whole task holds, not either process.
+    """
     import subprocess
 
     from django.conf import settings
@@ -270,34 +417,62 @@ def perform_backup(now=None, read_listing: Callable[[Path, dict], str] | None = 
 
     read_listing = read_listing or _pg_restore_list
     now = now or timezone.now()
+    deadline = time.monotonic() + (BACKUP_TIMEOUT_S if timeout_s is None else timeout_s)
     settings.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     destination = settings.BACKUP_DIR / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump"
     database = settings.DATABASES["default"]
     env = {**os.environ, "PGPASSWORD": database["PASSWORD"]}
-    subprocess.run(
-        [
-            "pg_dump",
-            "--format=custom",
-            f"--host={database['HOST']}",
-            f"--port={database['PORT']}",
-            f"--username={database['USER']}",
-            # Excluded, not merely unprotected. See the task docstring.
-            *(f"--exclude-table-data=*.{table}" for table in BACKUP_EXCLUDED_TABLES),
-            f"--file={destination}",
-            database["NAME"],
-        ],
-        check=True,
-        env=env,
-    )
-    verify_dump_listing(read_listing(destination, env))
+    try:
+        subprocess.run(
+            [
+                "pg_dump",
+                "--format=custom",
+                f"--host={database['HOST']}",
+                f"--port={database['PORT']}",
+                f"--username={database['USER']}",
+                # Excluded, not merely unprotected. See the task docstring.
+                *(f"--exclude-table-data=*.{table}" for table in BACKUP_EXCLUDED_TABLES),
+                f"--file={destination}",
+                database["NAME"],
+            ],
+            check=True,
+            env=env,
+            timeout=_remaining(deadline, "pg_dump"),
+        )
+        listing = read_listing(destination, env, _remaining(deadline, "pg_restore --list"))
+    except subprocess.TimeoutExpired as expired:
+        # The child is already killed by subprocess.run; what is left is the
+        # half-written archive, which must not be mistaken for last night's.
+        destination.unlink(missing_ok=True)
+        raise BackupTimedOut(
+            f"the backup exceeded its {BACKUP_TIMEOUT_S:.0f}s budget and was killed "
+            f"while running {expired.cmd[0]}"
+        ) from expired
+    verify_dump_listing(listing)
     return destination
 
 
-def _pg_restore_list(archive: Path, env: dict) -> str:
+def _remaining(deadline: float, what: str) -> float:
+    """What is left of the budget, or a refusal to start something that cannot
+    finish inside it."""
+    import subprocess
+
+    left = deadline - time.monotonic()
+    if left <= 0:
+        raise subprocess.TimeoutExpired(cmd=[what], timeout=0)
+    return left
+
+
+def _pg_restore_list(archive: Path, env: dict, timeout: float | None = None) -> str:
     import subprocess
 
     return subprocess.run(
-        ["pg_restore", "--list", str(archive)], check=True, capture_output=True, text=True, env=env
+        ["pg_restore", "--list", str(archive)],
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=timeout,
     ).stdout
 
 

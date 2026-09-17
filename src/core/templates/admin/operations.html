@@ -1,0 +1,72 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>Operations</h1>
+
+<h2>Stale tasks</h2>
+{% if stale %}
+<p>Each of these has no successful run inside its window. Everything on this
+list is an alert.</p>
+<table>
+  <thead><tr><th>Task</th><th>Window</th><th>Last success</th></tr></thead>
+  <tbody>
+  {% for entry in stale %}
+    <tr class="stale-task">
+      <th scope="row">{{ entry.task }}</th>
+      <td>{{ entry.window_s }} s</td>
+      <td>{% if entry.last_success_at %}{{ entry.last_success_at }} ({{ entry.age_s|floatformat:0 }} s ago){% else %}never{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="no-stale-tasks">Every scheduled task has succeeded inside its window.</p>
+{% endif %}
+
+<h2>Windows</h2>
+<table>
+  <thead><tr><th>Task</th><th>Considered stale after</th></tr></thead>
+  <tbody>
+  {% for task, window in windows %}
+    <tr><th scope="row">{{ task }}</th><td>{{ window }} s</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Failed jobs</h2>
+{% if failed_jobs %}
+<table>
+  <thead><tr><th>Job</th><th>Task</th><th>Queue</th><th>Attempts</th><th>Last event</th></tr></thead>
+  <tbody>
+  {% for job in failed_jobs %}
+    <tr class="failed-job">
+      <th scope="row">{{ job.id }}</th>
+      <td>{{ job.task_name }}</td>
+      <td>{{ job.queue_name }}</td>
+      <td>{{ job.attempts }}</td>
+      <td>{{ job.last_event_at|default:"unknown" }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="no-failed-jobs">No job is in a failed state.</p>
+{% endif %}
+
+<h2>Recent runs</h2>
+<table>
+  <thead><tr><th>Task</th><th>Started</th><th>Finished</th><th>Outcome</th><th>Detail</th></tr></thead>
+  <tbody>
+  {% for run in recent_runs %}
+    <tr class="scheduled-run">
+      <th scope="row">{{ run.task }}</th>
+      <td>{{ run.started_at }}</td>
+      <td>{{ run.finished_at|default:"-" }}</td>
+      <td>{% if run.succeeded %}succeeded{% elif run.finished_at %}failed{% else %}running{% endif %}</td>
+      <td>{{ run.detail }}</td>
+    </tr>
+  {% empty %}
+    <tr><td colspan="5">No scheduled task has run yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

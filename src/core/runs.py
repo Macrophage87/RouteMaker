@@ -13,6 +13,7 @@ import logging
 import threading
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from datetime import timedelta
 from typing import TypeVar
 
 from django.utils import timezone
@@ -25,11 +26,43 @@ logger = logging.getLogger(__name__)
 # The rebuild's window is eight days rather than seven, so one missed run is not
 # an alert; two are. The backup's is 26 hours for the same reason at a day's
 # cadence.
+#
+# The two five-minute tasks are windowed at six missed ticks rather than at one.
+# A single dropped tick is ordinary: Procrastinate skips a periodic job whose
+# previous one is still queued or locked, so any job ahead of it on the
+# maintenance queue - a backup, a sweep - drops the tick that falls under it,
+# and a worker restart drops one too. Six consecutive misses is not a skipped
+# tick, it is a worker that stopped, and thirty minutes is well inside the
+# windows either task feeds: the degraded mark's own deadline is anchored to the
+# gateway heartbeat row rather than to the time of the mark, so a mark made half
+# an hour late still lapses standing at the same instant, and the plan's
+# ten-minute heartbeat alert fires first and names the worker directly.
+#
+# The heartbeat's window is the plan's own number - "worker heartbeat silent for
+# 10 minutes" - which is two missed ticks of its five-minute schedule. It is
+# deliberately the tightest window here: it is the one alert that fires when the
+# worker itself has died, and every other row on this list stops being written
+# at the same moment without any of their windows having passed.
 STALE_AFTER = {
     "weekly_rebuild": 8 * 24 * 60 * 60,
     "nightly_backup": 26 * 60 * 60,
     "membership_sweep": 12 * 60 * 60,
+    "degraded_guild_sweep": 30 * 60,
+    "worker_heartbeat": 10 * 60,
 }
+
+# How long a run row is kept. The five-minute tasks alone write about 105,000
+# rows a year into a table nothing ever pruned, and the rows are read by exactly
+# one question - "has this task succeeded lately" - which needs the newest row
+# and no other. Thirty days is what the plan retains request logs for, and it is
+# long enough that the morning after a bad week still has the history in it.
+RUN_ROW_RETENTION_S = 30 * 24 * 60 * 60
+
+# Finished Procrastinate jobs and their events, same reasoning and same number.
+# Only terminal jobs are pruned: a row still `todo` or `doing` is live state the
+# worker owns, whatever its age.
+JOB_ROW_RETENTION_S = RUN_ROW_RETENTION_S
+TERMINAL_JOB_STATUSES = ("succeeded", "failed", "cancelled", "aborted")
 
 
 @contextmanager
@@ -63,12 +96,30 @@ def last_success(task: str):
 
 def stale_tasks(now=None) -> list[str]:
     """Tasks with no success inside their window. What the alert reads."""
+    return [entry["task"] for entry in stale_task_details(now)]
+
+
+def stale_task_details(now=None) -> list[dict]:
+    """The same answer with its evidence attached, for the surfaces that show it.
+
+    One predicate, used by both, because two copies of "is this task stale"
+    drift: an operations page that disagrees with the alert about which task is
+    broken is worse than not having the page.
+    """
     now = now or timezone.now()
     stale = []
     for task, window in STALE_AFTER.items():
         run = last_success(task)
-        if run is None or (now - run.started_at).total_seconds() >= window:
-            stale.append(task)
+        age = None if run is None else (now - run.started_at).total_seconds()
+        if age is None or age >= window:
+            stale.append(
+                {
+                    "task": task,
+                    "window_s": window,
+                    "last_success_at": None if run is None else run.started_at,
+                    "age_s": age,
+                }
+            )
     return stale
 
 
@@ -79,34 +130,167 @@ class TaskTimedOut(RuntimeError):
     """A scheduled task ran past its budget and was abandoned."""
 
 
+# How long the caller waits, after cancelling the abandoned thread's query, for
+# that thread to unwind and close its own connection properly. Past it the
+# caller closes the socket itself. Short because it is only ever paid on the
+# timeout path, and long enough for a cancelled statement to raise and a
+# `finally` to run.
+ABANDON_GRACE_S = 0.5
+
+
 def run_with_deadline(function: Callable[[], T], timeout_s: float, name: str = "task") -> T:
     """Run a task body with a hard time budget.
 
     The body runs in its own thread with its own database connection, and the
     caller waits at most `timeout_s`. Past that the caller raises and the job
     fails - which is what lets Procrastinate retry it and the alert see it -
-    while the abandoned body is left to finish or die with the process; it is
-    a daemon thread and holds nothing the next attempt needs. This is the
-    enforcement for the sweep, which is pure Python and SQL and cannot be given
-    a subprocess timeout the way the rebuild's binaries can.
+    while the abandoned body is left to finish or die with the process. This is
+    the enforcement for the sweep, which is pure Python and SQL and cannot be
+    given a subprocess timeout the way the rebuild's binaries can.
+
+    "Left to finish" used to include the connection it had opened. Django's
+    connections are per-thread, so the `finally` below runs on the thread that
+    owns the connection and is the only place that can close it politely - and
+    it does not run at all while the body is still going. A sweep abandoned at
+    its deadline therefore sat on a backend for as long as it kept running,
+    every five minutes, with up to six copies resident; the suite proved it by
+    failing to drop its own test database afterwards.
+
+    So the deadline now reaches into the abandoned thread. `cancel()` is
+    PQcancel, which is the one libpq entry point documented as safe to call from
+    another thread, and it unblocks a statement in flight so the body raises and
+    closes its own connection on the way out. A body blocked in Python rather
+    than in the database has nothing to cancel, so after a short grace the caller
+    closes the socket itself: an abandoned thread that is going to be killed by
+    the process is not a reason to hold a backend open until then.
     """
-    from django.db import connection
+    from django.db import connections
 
     outcome: dict[str, object] = {}
+    opened: dict[str, object] = {}
 
     def body() -> None:
+        # Bound on this thread, where `connections["default"]` is this thread's
+        # own wrapper, so the caller can reach the right one.
+        opened["connection"] = connections["default"]
         try:
             outcome["result"] = function()
         except BaseException as error:  # noqa: BLE001 - re-raised on the caller's thread
             outcome["error"] = error
         finally:
-            connection.close()
+            connections["default"].close()
 
     thread = threading.Thread(target=body, name=f"{name}-deadline", daemon=True)
     thread.start()
     thread.join(timeout_s)
     if thread.is_alive():
+        _release_abandoned_connection(opened.get("connection"), thread, name)
         raise TaskTimedOut(f"{name} exceeded its {timeout_s:.0f}s budget and was abandoned")
     if "error" in outcome:
         raise outcome["error"]  # type: ignore[misc]
     return outcome["result"]  # type: ignore[return-value]
+
+
+def _release_abandoned_connection(wrapper, thread: threading.Thread, name: str) -> None:
+    """Give an abandoned thread's database connection back to the server."""
+    raw = getattr(wrapper, "connection", None)
+    if raw is None or getattr(raw, "closed", False):
+        return
+    try:
+        raw.cancel()
+    except Exception:  # noqa: BLE001 - nothing here may replace the timeout
+        logger.exception("could not cancel the abandoned %s query", name)
+    thread.join(ABANDON_GRACE_S)
+    if getattr(raw, "closed", False):
+        return
+    try:
+        raw.close()
+    except Exception:  # noqa: BLE001 - same
+        logger.exception("could not close the abandoned %s connection", name)
+
+
+def prune_run_rows(now=None) -> int:
+    """Drop run rows past their retention, keeping what the alert reads.
+
+    The newest row per task survives whatever its age, and so does the newest
+    *successful* row per task, because those two are the whole of what
+    `stale_tasks` looks at. Pruning them would turn a task that has not run for
+    a year into a task with no history, which reads the same as a task that has
+    never been registered - and a retention policy that erases the alert's own
+    reference is worse than no retention at all.
+    """
+    now = now or timezone.now()
+    keep = set(
+        ScheduledRun.objects.order_by("task", "-started_at")
+        .distinct("task")
+        .values_list("id", flat=True)
+    )
+    keep |= set(
+        ScheduledRun.objects.filter(succeeded=True)
+        .order_by("task", "-started_at")
+        .distinct("task")
+        .values_list("id", flat=True)
+    )
+    cutoff = now - timedelta(seconds=RUN_ROW_RETENTION_S)
+    deleted, _ = ScheduledRun.objects.filter(started_at__lt=cutoff).exclude(id__in=keep).delete()
+    return deleted
+
+
+def prune_job_rows(now=None) -> int:
+    """Drop finished Procrastinate jobs past their retention, events with them.
+
+    Age is the time of a job's last event rather than `scheduled_at`, which is
+    null for anything deferred immediately - the same reading Procrastinate's
+    own `delete_old_jobs` takes. Events go by the foreign key's ON DELETE
+    CASCADE. A job still referenced by a periodic-defer row is left alone: that
+    reference is how the scheduler knows it has already fired this tick, and
+    deleting it violates the constraint rather than tidying anything.
+    """
+    from django.db import connection
+
+    now = now or timezone.now()
+    cutoff = now - timedelta(seconds=JOB_ROW_RETENTION_S)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            DELETE FROM procrastinate_jobs
+            WHERE id IN (
+                SELECT aged.id FROM (
+                    SELECT DISTINCT ON (job.id) job.id, job.status, event.at AS latest_at
+                      FROM procrastinate_jobs job
+                      JOIN procrastinate_events event ON job.id = event.job_id
+                     ORDER BY job.id, event.at DESC
+                ) AS aged
+                WHERE aged.status = ANY(%s::procrastinate_job_status[])
+                  AND aged.latest_at < %s
+            )
+            AND id NOT IN (
+                SELECT job_id FROM procrastinate_periodic_defers WHERE job_id IS NOT NULL
+            )
+            """,
+            [list(TERMINAL_JOB_STATUSES), cutoff],
+        )
+        return cursor.rowcount
+
+
+def failed_jobs(limit: int = 50):
+    """Recent Procrastinate jobs in a failed state, newest first.
+
+    The plan's "failed jobs appear on an admin page and alert after the final
+    retry": a job that has exhausted its retries is left `failed` by the worker,
+    and until something displays that, the only record of a job that died five
+    times is a log line nobody is reading.
+
+    Annotated with the time of its last event, because a job row carries no
+    timestamp of its own other than `scheduled_at`, which is null for anything
+    deferred immediately - so "when did this fail" is otherwise unanswerable
+    from the row an operator is looking at.
+    """
+    from django.db.models import Max
+    from procrastinate.contrib.django.models import ProcrastinateJob
+
+    return list(
+        ProcrastinateJob.objects.filter(status="failed")
+        .annotate(last_event_at=Max("procrastinateevent__at"))
+        .order_by("-id")[:limit]
+    )
