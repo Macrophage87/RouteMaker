@@ -420,9 +420,7 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
 
     @pytest.mark.parametrize("model", AUTHORIZATION_TABLES)
     @pytest.mark.parametrize("verb", ADMIN_WRITE_VERBS)
-    def test_a_guild_admin_is_refused_and_audited(
-        self, as_guild_admin, rows, model, verb
-    ) -> None:
+    def test_a_guild_admin_is_refused_and_audited(self, as_guild_admin, rows, model, verb) -> None:
         """Twelve cases from two lists, so adding a table or a verb to either
         covers it everywhere rather than in whichever cases somebody wrote out."""
         if verb == "add":
@@ -463,9 +461,7 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
         entry = rows["auditlogentry"]
         assert as_instance_admin.post(admin_url("core_auditlogentry_add"), {}).status_code == 403
         assert (
-            as_instance_admin.post(
-                admin_url("core_auditlogentry_change", entry.pk), {}
-            ).status_code
+            as_instance_admin.post(admin_url("core_auditlogentry_change", entry.pk), {}).status_code
             == 403
         )
         assert (
@@ -569,9 +565,7 @@ class TestTheRevokeNowAction:
         assert guild_admin._admin_guild_ids == frozenset()
         assert not guild_admin.is_staff
 
-    def test_a_guild_admin_cannot_revoke_another_guild(
-        self, as_guild_admin, other_guild
-    ) -> None:
+    def test_a_guild_admin_cannot_revoke_another_guild(self, as_guild_admin, other_guild) -> None:
         """The changelist queryset scopes what they can select; this is the
         second half, checked per object so a hand-built POST cannot reach past
         it."""
@@ -584,9 +578,7 @@ class TestTheRevokeNowAction:
 
         User = get_user_model()
         member = User.objects.create(discord_user_id=9003)
-        RoleMapping.objects.create(
-            guild=guild, role_id=3, permission=RoleMapping.Permission.MEMBER
-        )
+        RoleMapping.objects.create(guild=guild, role_id=3, permission=RoleMapping.Permission.MEMBER)
         CachedMembership.objects.create(
             discord_user_id=9003, guild=guild, role_ids=[3], last_confirmed=timezone.now()
         )
@@ -625,9 +617,7 @@ class TestTheUserAdmin:
     def test_and_can_then_stand_down(self, as_instance_admin, instance_admin) -> None:
         User = get_user_model()
         successor = User.objects.create(discord_user_id=9101, is_instance_admin=True)
-        response = as_instance_admin.post(
-            admin_url("core_user_change", instance_admin.pk), {}
-        )
+        response = as_instance_admin.post(admin_url("core_user_change", instance_admin.pk), {})
         assert response.status_code == 302
         instance_admin.refresh_from_db()
         assert not instance_admin.is_instance_admin

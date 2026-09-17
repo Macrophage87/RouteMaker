@@ -203,9 +203,9 @@ def sweep_memberships(now: datetime | None = None) -> tuple[int, int]:
     now = now or timezone.now()
 
     signed_in = set(
-        User.objects.filter(
-            last_login__isnull=False, is_deleted=False
-        ).values_list("discord_user_id", flat=True)
+        User.objects.filter(last_login__isnull=False, is_deleted=False).values_list(
+            "discord_user_id", flat=True
+        )
     )
 
     purged = 0

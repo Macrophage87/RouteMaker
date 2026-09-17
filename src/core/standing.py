@@ -394,9 +394,10 @@ def can_review(
         return False
 
     usable = usable_guild_ids(viewer, guilds, now)
-    return bool(
-        viewer.reviewer_guild_ids & usable & route.all_audience_guilds
-    ) and route.visibility >= MIN_TIER_FOR_GUILD_REVIEWER
+    return (
+        bool(viewer.reviewer_guild_ids & usable & route.all_audience_guilds)
+        and route.visibility >= MIN_TIER_FOR_GUILD_REVIEWER
+    )
 
 
 def can_see_marshal_detail(

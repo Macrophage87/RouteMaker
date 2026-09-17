@@ -26,8 +26,8 @@ from django.conf import settings
 from django.contrib.auth import login as django_login
 from django.contrib.auth import logout as django_logout
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, HttpResponseRedirect
-from django.utils.encoding import iri_to_uri
 from django.utils import timezone
+from django.utils.encoding import iri_to_uri
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.http import require_http_methods
 

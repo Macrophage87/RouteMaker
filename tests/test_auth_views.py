@@ -165,3 +165,167 @@ def test_no_discord_token_is_persisted_anywhere(client, monkeypatch) -> None:
     assert populated == {"User": 1, "Session": 1}
     assert not User.objects.get(discord_user_id=782).has_usable_password()
     assert Session.objects.get().issued_epoch == User.objects.get(discord_user_id=782).session_epoch
+
+
+EVIL = "evil.example.com"
+
+
+class TestTheOpenRedirect:
+    """`?next=` went into the session unvalidated and came out of the callback as
+    a Location header.
+
+    A phishing primitive rather than an untidiness. The link starts on the real
+    host, passes a genuine Discord consent - silent, because the authorize URL
+    sends `prompt=none` - and lands wherever the attacker chose, with the person
+    having seen nothing but their own site and Discord's. The people this is for
+    are mass-ride and assembly organizers.
+
+    Driven through both views with the test client, because the value is stored
+    by one and used by the other and a unit test of either alone proves nothing
+    about the pair.
+    """
+
+    def assert_never_offsite(self, response) -> None:
+        location = response.headers.get("Location", "")
+        assert EVIL not in location, location
+        assert "//" not in location.removeprefix("https://discord.com/oauth2/authorize"), location
+
+    @pytest.mark.parametrize(
+        "hostile",
+        [
+            "https://evil.example.com/phish",
+            "http://evil.example.com/phish",
+            "//evil.example.com/phish",
+            "\\\\evil.example.com/phish",
+            "https:evil.example.com",
+            "javascript:alert(1)",
+            "/\\evil.example.com",
+            "https://evil.example.com\\@localhost/",
+        ],
+    )
+    def test_the_callback_never_redirects_off_this_host(self, client, monkeypatch, hostile) -> None:
+        client.get(reverse("login"), {"next": hostile})
+        state = client.session[STATE_SESSION_KEY]["state"]
+        response = callback(client, monkeypatch, state=state, user_id=901)
+
+        assert response.status_code == 302
+        assert response["Location"] == "/"
+        self.assert_never_offsite(response)
+
+    def test_the_hostile_value_is_never_stored_either(self, client) -> None:
+        """`login_start` validates what it stores as well, so a value that
+        reaches the session cannot become a redirect later - after a deploy, an
+        ALLOWED_HOSTS change, or any other reason the callback's own check might
+        one day be reached with something the session already held."""
+        client.get(reverse("login"), {"next": f"https://{EVIL}/phish"})
+        assert client.session[STATE_SESSION_KEY]["redirect_after"] == "/"
+
+    def test_a_value_planted_directly_in_the_session_is_still_refused(
+        self, client, monkeypatch
+    ) -> None:
+        """The callback's half, isolated: the stored value is what is used, so it
+        is checked where it is used and not only where it was written."""
+        client.get(reverse("login"))
+        session = client.session
+        state = session[STATE_SESSION_KEY]["state"]
+        session[STATE_SESSION_KEY] = {
+            **session[STATE_SESSION_KEY],
+            "redirect_after": f"https://{EVIL}/phish",
+        }
+        session.save()
+
+        response = callback(client, monkeypatch, state=state, user_id=902)
+        assert response["Location"] == "/"
+        self.assert_never_offsite(response)
+
+    @pytest.mark.parametrize(
+        "friendly", ["/routes/17", "/routes/17?tab=cue", "/", "/routes/17#marshals"]
+    )
+    def test_an_on_site_destination_still_works(self, client, monkeypatch, friendly) -> None:
+        """The refusal has to be narrow, or signing in always dumps people on the
+        home page and the feature is gone."""
+        client.get(reverse("login"), {"next": friendly})
+        state = client.session[STATE_SESSION_KEY]["state"]
+        response = callback(client, monkeypatch, state=state, user_id=903)
+        assert response["Location"] == friendly
+
+    def test_the_deployments_own_host_is_allowed(self, client, monkeypatch) -> None:
+        absolute = "http://testserver/routes/17"
+        client.get(reverse("login"), {"next": absolute})
+        state = client.session[STATE_SESSION_KEY]["state"]
+        response = callback(client, monkeypatch, state=state, user_id=904)
+        assert response["Location"] == absolute
+
+    def test_no_next_at_all_lands_on_the_root(self, client, monkeypatch) -> None:
+        _response, state = start_login(client)
+        response = callback(client, monkeypatch, state=state, user_id=905)
+        assert response["Location"] == "/"
+
+
+class TestTheSignOutVerb:
+    def test_signing_out_is_a_post_and_not_a_get(self, client, monkeypatch) -> None:
+        """A GET sign-out is triggered by any image tag on any page, which is
+        cross-site request forgery with no token to forge."""
+        from core.models import Session
+
+        _response, state = start_login(client)
+        callback(client, monkeypatch, state=state, user_id=906)
+        assert Session.objects.count() == 1
+
+        assert client.get(reverse("logout")).status_code == 405
+        assert Session.objects.count() == 1, "and the GET did nothing"
+
+        assert client.post(reverse("logout")).status_code == 302
+        assert not Session.objects.exists()
+
+
+class TestCsrfIsActuallyEnforced:
+    """Deleting CsrfViewMiddleware left 431 tests passing.
+
+    Behavioural rather than a settings assertion: the middleware is checked by
+    making the request it is supposed to refuse. `logout` rather than an admin
+    URL on purpose - admin views carry their own `csrf_protect` decorator, so
+    they answer 403 whether the middleware is installed or not and would prove
+    nothing about the site-wide configuration.
+    """
+
+    def client_that_checks(self):
+        from django.test import Client
+
+        return Client(enforce_csrf_checks=True)
+
+    def sign_in(self, client, monkeypatch, user_id):
+        monkeypatch.setattr(
+            "core.auth_views.exchange_code", lambda _code: (user_id, "identify"), raising=False
+        )
+        client.get(reverse("login"))
+        state = client.session[STATE_SESSION_KEY]["state"]
+        client.get(reverse("login-callback"), {"state": state, "code": "abc"})
+
+    def test_a_post_without_a_token_is_refused(self, monkeypatch) -> None:
+        from core.models import Session
+
+        client = self.client_that_checks()
+        self.sign_in(client, monkeypatch, 907)
+        assert Session.objects.count() == 1
+
+        assert client.post(reverse("logout")).status_code == 403
+        assert Session.objects.count() == 1, "and the forged request changed nothing"
+
+    def test_the_same_post_with_a_token_succeeds(self, monkeypatch) -> None:
+        """So the refusal above is the token and not the endpoint."""
+        from django.middleware.csrf import get_token
+        from django.test import RequestFactory
+
+        from core.models import Session
+
+        client = self.client_that_checks()
+        self.sign_in(client, monkeypatch, 908)
+
+        request = RequestFactory().get("/")
+        request.META["CSRF_COOKIE"] = client.cookies["csrftoken"].value
+        token = get_token(request)
+
+        response = client.post(reverse("logout"), {"csrfmiddlewaretoken": token})
+        assert response.status_code == 302
+        assert not Session.objects.exists()

@@ -175,7 +175,8 @@ class AuditedAdmin(admin.ModelAdmin):
         try:
             return super().changelist_view(request, extra_context)
         except PermissionDenied:
-            self._audit_refusal(request, "action", ",".join(request.POST.getlist("_selected_action")))
+            selected = ",".join(request.POST.getlist("_selected_action"))
+            self._audit_refusal(request, "action", selected)
             raise
 
     def save_model(self, request, obj, form, change) -> None:

@@ -149,7 +149,9 @@ def mark_degraded_guilds(now=None, last_event=_UNSET) -> tuple[int, int]:
         _audit_worker(
             "mark_degraded",
             guild,
-            detail=f"gateway silent since {last_event}; standing lapses {guild.standing_valid_until}",
+            detail=(
+                f"gateway silent since {last_event}; standing lapses {guild.standing_valid_until}"
+            ),
         )
         marked += 1
     return marked, 0
