@@ -165,6 +165,43 @@ def test_crossing_lengths_sum_to_the_route_length(authorities) -> None:
     assert covered == pytest.approx(route_length, rel=0.02)
 
 
+def test_a_federal_enclave_that_overlaps_another_polygon_still_sorts_first(authorities) -> None:
+    """The ORDER BY's enclave-first key, not alphabetising, decides which
+    authority is primary where a federal enclave genuinely overlaps another
+    polygon on the same layer - M-NCPPC's own land, inside which the Park
+    Service holds a small federal enclave, the way it does at Rock Creek.
+
+    Without `is_federal_enclave DESC NULLS LAST` the query falls back to
+    `j.name` alone, and "M-NCPPC" alphabetises ahead of "National Park
+    Service" - the wrong authority would become primary rather than `also`,
+    and a crossing that changes which body issues the permit would be
+    reported as the ordinary one.
+    """
+    from core.models import Jurisdiction
+    from pipeline.jurisdiction import route_crossings
+
+    Jurisdiction.objects.create(
+        layer="manager", name="M-NCPPC", state="MD", geometry=box(-77.03, -77.01)
+    )
+    Jurisdiction.objects.create(
+        layer="manager",
+        name="National Park Service",
+        state="DC",
+        is_federal_enclave=True,
+        geometry=box(-77.02, -77.015),
+    )
+
+    # Both endpoints sit inside the overlap of the two polygons, so the whole
+    # route is one run naming both authorities.
+    way = LineString((-77.018, 38.90), (-77.016, 38.90), srid=4326)
+    crossings = route_crossings(way, "manager")
+
+    assert len(crossings) == 1, crossings
+    assert crossings[0].authority == "National Park Service"
+    assert crossings[0].also_authority == "M-NCPPC"
+    assert crossings[0].is_federal_enclave
+
+
 def test_a_route_along_a_shared_boundary_reports_both_authorities(authorities) -> None:
     """A boundary street's centreline *is* the line, so its vertices sit on the
     shared edge of two polygons and both authorities apply along its length.

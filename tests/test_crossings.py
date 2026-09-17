@@ -78,3 +78,16 @@ def test_state_crossings_are_relative_to_the_home_jurisdiction() -> None:
         crossing("DC", LONG, layer="state"),
     ]
     assert [c.authority for c in state_line_crossings(crossings, "DC")] == ["VA"]
+
+
+def test_state_crossings_ignore_a_non_state_layer_even_with_a_foreign_authority() -> None:
+    """The membership test is `layer == "state"`, not just `authority !=
+    home_state`. A police or manager-layer crossing named for a Virginia agency
+    is not a state-line crossing - dropping the layer half of the filter would
+    let it through just because its authority string is not the home state."""
+    crossings = [
+        crossing("VA", LONG, layer="state"),
+        crossing("Arlington County Police", LONG, layer="police"),
+        crossing("NOVA Parks", LONG, layer="manager"),
+    ]
+    assert [c.authority for c in state_line_crossings(crossings, "DC")] == ["VA"]
