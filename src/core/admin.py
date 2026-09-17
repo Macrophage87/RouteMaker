@@ -419,6 +419,16 @@ class AuditLogEntryAdmin(AuditedAdmin):
         return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_module_permission(self, request) -> bool:
+        """Belt and braces, and currently only braces.
+
+        Flipping this to True changes nothing observable and no test can catch
+        it: `AdminSite._build_app_dict` skips any model whose four model perms
+        are all False before it ever looks at the app list, and the four below
+        are. Recorded so the next person to find it surviving a mutation does not
+        spend the afternoon writing a test that cannot exist. It stays because it
+        is the correct answer to the question, and because it is what would hold
+        if one of the four below ever became True.
+        """
         return self.has_view_permission(request)
 
     def has_add_permission(self, request) -> bool:

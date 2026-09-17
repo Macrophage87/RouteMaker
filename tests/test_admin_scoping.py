@@ -451,6 +451,25 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
             k: v for k, v in before.items() if not k.startswith("_")
         }
 
+    @pytest.mark.parametrize("model", AUTHORIZATION_TABLES)
+    def test_the_guard_on_each_admin_answers_before_anything_else_does(
+        self, as_guild_admin, rows, model
+    ) -> None:
+        """The delete *confirmation* page, which is what isolates each admin's
+        own `has_delete_permission` from the cascade.
+
+        Found by mutation: flipping `ConfiguredGuildAdmin.has_delete_permission`
+        to True left the POST test green, because deleting a configured guild
+        cascades to the membership and mapping tables and Django refuses on
+        *those* admins' delete permissions instead - so the POST answered 403
+        either way and the guard the test was named for was never exercised.
+        Django checks this admin's own hook before it collects the cascade, so
+        the GET tells them apart: 403 with the guard, the confirmation page
+        without it.
+        """
+        response = as_guild_admin.get(admin_url(f"core_{model}_delete", rows[model].pk))
+        assert response.status_code == 403, model
+
     def test_nobody_may_write_the_log_including_an_instance_admin(
         self, as_instance_admin, rows
     ) -> None:
@@ -476,6 +495,30 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
         """It names who acted where, which is the membership cache's
         sensitivity."""
         assert as_guild_admin.get(admin_url("core_auditlogentry_changelist")).status_code == 403
+
+    def test_an_action_posted_at_a_changelist_they_cannot_read_is_audited(
+        self, as_guild_admin, rows
+    ) -> None:
+        """The third refusal path, which is neither a change form nor a delete.
+
+        Found by mutation: the audit around `changelist_view` could be deleted
+        with the suite green, because every other test reached the changelist
+        either by GET or on a model the guild admin may read. A bulk action is
+        exactly the shape of attempt this log exists for.
+        """
+        response = as_guild_admin.post(
+            admin_url("core_auditlogentry_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": [str(rows["auditlogentry"].pk)],
+                "index": "0",
+            },
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == ("auditlogentry", "action")
+        assert entry.object_id == str(rows["auditlogentry"].pk)
 
     def test_derived_state_is_not_writable_by_an_instance_admin_either(
         self, as_instance_admin
@@ -566,12 +609,48 @@ class TestTheRevokeNowAction:
         assert not guild_admin.is_staff
 
     def test_a_guild_admin_cannot_revoke_another_guild(self, as_guild_admin, other_guild) -> None:
-        """The changelist queryset scopes what they can select; this is the
-        second half, checked per object so a hand-built POST cannot reach past
-        it."""
+        """The first of the two things that stop it: the changelist queryset
+        never contains the other guild, so the selection resolves to nothing."""
         self.revoke(as_guild_admin, other_guild)
         other_guild.refresh_from_db()
         assert other_guild.state == "active"
+
+    def unscope(self, monkeypatch) -> None:
+        from core.admin import ConfiguredGuildAdmin
+        from core.models import ConfiguredGuild
+
+        monkeypatch.setattr(
+            ConfiguredGuildAdmin,
+            "get_queryset",
+            lambda self, request: ConfiguredGuild.objects.all(),
+        )
+
+    def test_the_per_object_check_holds_if_the_scoping_ever_stops(
+        self, as_guild_admin, other_guild, monkeypatch
+    ) -> None:
+        """The second, exercised against exactly the regression it exists for.
+
+        Found by mutation: `may_revoke` could be replaced with `return True` and
+        the suite stayed green, because the queryset scoping refuses first and
+        the guard behind it is never reached. That makes it a guard nobody can
+        show works - which is how a scoping change becomes a cross-guild write.
+        So the scoping is lifted for this one test and the POST is still real.
+        """
+        self.unscope(monkeypatch)
+        assert self.revoke(as_guild_admin, other_guild).status_code == 302
+
+        other_guild.refresh_from_db()
+        assert other_guild.state == "active", "the per-object check refused it on its own"
+        assert refusals().filter(action="revoke_now").exists()
+
+    def test_and_their_own_guild_still_goes_through_that_check(
+        self, as_guild_admin, guild, monkeypatch
+    ) -> None:
+        """So the refusal above is the guild and not the unscoped queryset."""
+        self.unscope(monkeypatch)
+        self.revoke(as_guild_admin, guild)
+        guild.refresh_from_db()
+        assert guild.state == "revoked"
 
     def test_a_plain_member_never_reaches_the_action(self, client, monkeypatch, guild) -> None:
         from core.models import CachedMembership, RoleMapping
