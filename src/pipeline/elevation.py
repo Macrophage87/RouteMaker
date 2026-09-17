@@ -23,9 +23,19 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
+# Skadi has one dimension and no other. `src/skadi/sample.cc:27` is
+# `constexpr size_t HGT_DIM = 3601;`, HGT_BYTES is derived from it, and :74
+# refuses any RAW tile whose size is not exactly that:
+# `if (format == format_t::RAW && size != HGT_BYTES) return false;`. The refusal
+# is not an error - :626 logs "Corrupt elevation data: <file>" and the tile is
+# simply left out of the cache - so a 1201-square tile is a cell with no
+# elevation at all, reported as a warning in a build log nobody reads.
+#
+# This module used to accept 1201 as well, and the rebuild fixture defaulted to
+# it, so the elevation stage wrote three-arcsecond tiles, validated them, called
+# them ready, and the tile build ignored every one.
 HGT_1ARCSEC_SIDE = 3601
-HGT_3ARCSEC_SIDE = 1201
-SUPPORTED_SIDES = (HGT_1ARCSEC_SIDE, HGT_3ARCSEC_SIDE)
+SUPPORTED_SIDES = (HGT_1ARCSEC_SIDE,)
 
 
 @dataclass(frozen=True)
@@ -114,7 +124,10 @@ def gdalwarp_command(source: str, destination: str, tile: TileName) -> list[str]
 
 
 def expected_bytes(side: int = HGT_1ARCSEC_SIDE) -> int:
-    """HGT is raw big-endian int16 with no header, so size alone validates shape."""
+    """HGT is raw big-endian int16 with no header, so size alone validates shape.
+
+    One supported side, because skadi has one: sample.cc:27.
+    """
     if side not in SUPPORTED_SIDES:
         raise ValueError(f"unsupported HGT side length: {side}")
     return side * side * 2
@@ -124,14 +137,18 @@ def validate_size(byte_count: int) -> int:
     """Return the side length implied by a file size, or raise.
 
     A truncated download is otherwise indistinguishable from flat terrain: the
-    reader returns zeroes and every route reports no climbing.
+    reader returns zeroes and every route reports no climbing. So is a grid of
+    the wrong shape, which skadi drops with a warning rather than an error
+    (sample.cc:74 and :626).
     """
-    for side in SUPPORTED_SIDES:
-        if byte_count == expected_bytes(side):
-            return side
+    if byte_count == expected_bytes(HGT_1ARCSEC_SIDE):
+        return HGT_1ARCSEC_SIDE
+    side = math.isqrt(byte_count // 2)
+    shape = f"{side} x {side}" if side * side * 2 == byte_count else "no square grid"
     raise ValueError(
-        f"{byte_count} bytes matches no supported HGT grid; "
-        f"expected {expected_bytes(HGT_1ARCSEC_SIDE)} or {expected_bytes(HGT_3ARCSEC_SIDE)}"
+        f"{byte_count} bytes matches no supported HGT grid ({shape}); skadi reads one "
+        f"dimension only, {HGT_1ARCSEC_SIDE} x {HGT_1ARCSEC_SIDE} = "
+        f"{expected_bytes(HGT_1ARCSEC_SIDE)} bytes, and ignores every other tile"
     )
 
 

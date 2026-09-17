@@ -78,9 +78,26 @@ def test_truncated_file_is_rejected_not_read_as_flat() -> None:
         validate_size(25_934_400)
 
 
-def test_three_arcsecond_tiles_are_accepted() -> None:
-    """The reader takes 1201 square as well, so rejecting them would be wrong."""
-    assert validate_size(1201 * 1201 * 2) == 1201
+def test_a_three_arcsecond_tile_is_rejected_because_skadi_reads_one_dimension() -> None:
+    """1201 square is a valid HGT grid and skadi does not read it.
+
+    `src/skadi/sample.cc:27` is `constexpr size_t HGT_DIM = 3601;`, HGT_BYTES
+    follows from it, and :74 refuses any RAW tile of another size outright:
+    `if (format == format_t::RAW && size != HGT_BYTES) return false;`. That
+    refusal is not an error - :626 logs "Corrupt elevation data: <file>" and the
+    tile is left out of the cache - so accepting one here produced a cell with
+    no elevation that this module had already called ready.
+    """
+    with pytest.raises(ValueError) as caught:
+        validate_size(1201 * 1201 * 2)
+    message = str(caught.value)
+    assert "1201 x 1201" in message, "the message has to name what was rejected"
+    assert str(1201 * 1201 * 2) in message
+    assert "3601" in message, "and what was wanted"
+
+    assert expected_bytes(3601) == 25_934_402
+    with pytest.raises(ValueError, match="unsupported HGT side length: 1201"):
+        expected_bytes(1201)
 
 
 # --- The stage -------------------------------------------------------------------
@@ -113,7 +130,7 @@ def fetch_recording(seen: list):
 def test_the_stage_puts_every_tile_the_box_touches_in_the_band_layout(tmp_path) -> None:
     seen: list = []
     ready = ensure_tiles(
-        tmp_path, (-77.5, 38.5, -76.5, 39.2), fetch_recording(seen), warp_writing(1201)
+        tmp_path, (-77.5, 38.5, -76.5, 39.2), fetch_recording(seen), warp_writing(3601)
     )
     assert sorted(seen) == ["N38W077", "N38W078", "N39W077", "N39W078"]
     assert {p.relative_to(tmp_path).as_posix() for p in ready} == {
@@ -122,7 +139,7 @@ def test_the_stage_puts_every_tile_the_box_touches_in_the_band_layout(tmp_path) 
         "N39/N39W077.hgt",
         "N39/N39W078.hgt",
     }
-    assert all(p.stat().st_size == 1201 * 1201 * 2 for p in ready)
+    assert all(p.stat().st_size == 3601 * 3601 * 2 for p in ready)
 
 
 def test_a_valid_cached_tile_is_kept_and_not_fetched_again(tmp_path) -> None:
@@ -151,6 +168,26 @@ def test_a_resample_that_produces_a_bad_grid_leaves_no_tile_behind(tmp_path) -> 
         ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording([]), warp_writing(3600))
     assert not (tmp_path / "N38" / "N38W078.hgt").exists()
     assert not (tmp_path / "N38" / "N38W078.hgt.part").exists()
+
+
+def test_the_stage_refuses_a_three_arcsecond_tile_rather_than_calling_it_ready(tmp_path) -> None:
+    """The level it takes effect: a stage that accepted 1201 wrote the tile,
+    validated it, returned it as ready, and the tile build then ignored it. The
+    rebuild has to stop here instead."""
+    with pytest.raises(ElevationTileInvalid, match="1201 x 1201"):
+        ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording([]), warp_writing(1201))
+    assert not (tmp_path / "N38" / "N38W078.hgt").exists()
+
+
+def test_a_cached_three_arcsecond_tile_is_replaced_rather_than_trusted(tmp_path) -> None:
+    """And one already on disk from before this was fixed is not kept."""
+    stale = tmp_path / "N38" / "N38W078.hgt"
+    stale.parent.mkdir()
+    stale.write_bytes(b"\0" * (1201 * 1201 * 2))
+    seen: list = []
+    ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording(seen), warp_writing(3601))
+    assert seen == ["N38W078"], "the stale tile was kept"
+    assert stale.stat().st_size == 3601 * 3601 * 2
 
 
 def test_the_3dep_cell_is_named_by_its_north_west_corner() -> None:

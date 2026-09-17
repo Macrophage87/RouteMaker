@@ -319,6 +319,50 @@ function M.remap_conditional_access(tags)
   return out
 end
 
+-- One foot, in metres. OSM's maxwidth is metres unless a unit says otherwise,
+-- and the unit that appears here is feet: the wiki's own imperial form is
+-- `5'6"`, with `3'`, `3 ft` and `3 feet` all in use.
+M.FOOT_M = 0.3048
+
+--- An OSM maxwidth value in metres, or nil if it cannot be read.
+--
+-- The earlier version was `tonumber((value:gsub("[^%d%.]", "")))`, which does
+-- not fail on the forms it cannot read - it silently returns a different
+-- number. `3'` came out as 3 rather than 0.91, and `1,5` as fifteen metres
+-- rather than one and a half: both a bollard the Cargo preset should be charged
+-- for, read as a gap wide enough to ignore.
+--
+-- Anything this cannot read returns nil and the node keeps upstream's own
+-- reading, which is the direction to fail in. Converting a bollard to a gate
+-- adds cost; refusing to convert one leaves the rider's route no more expensive
+-- than Valhalla already makes it, so an unreadable value costs an unmodelled
+-- squeeze rather than a detour around a barrier that is not there.
+function M.parse_width_m(value)
+  if type(value) ~= "string" then return nil end
+  local text = (value:lower():gsub("%s", ""))
+
+  -- Comma as the decimal separator: "1,5" is one and a half metres. Only when
+  -- it separates digits and appears once, so a list like "1,5,2" is refused
+  -- rather than guessed at.
+  local whole, fraction = text:match("^(%d+),(%d+)$")
+  if whole then text = whole .. "." .. fraction end
+
+  -- Feet, with or without inches: 5'6", 3', 3ft, 3feet.
+  local feet, inches = text:match([[^(%d+%.?%d*)'(%d+%.?%d*)"?$]])
+  if not feet then
+    feet = text:match([[^(%d+%.?%d*)'$]])
+      or text:match("^(%d+%.?%d*)ft$")
+      or text:match("^(%d+%.?%d*)feet$")
+  end
+  if feet then
+    return tonumber(feet) * M.FOOT_M + (tonumber(inches) or 0) * M.FOOT_M / 12
+  end
+
+  -- Metres, with or without the unit spelled out.
+  local metres = text:match("^(%d+%.?%d*)$") or text:match("^(%d+%.?%d*)m$")
+  return metres and tonumber(metres) or nil
+end
+
 --- Remap one node's tags.
 function M.remap_node(tags)
   local out = {}
@@ -386,7 +430,7 @@ function M.remap_node(tags)
     out.barrier = "gate"
     clear_access_that_holds_off_gate_cost(out)
   elseif barrier == "bollard" and tags.maxwidth then
-    local width = tonumber((tags.maxwidth:gsub("[^%d%.]", "")))
+    local width = M.parse_width_m(tags.maxwidth)
     if width and width < M.NARROW_GAP_M then
       out.barrier = "gate"
       clear_access_that_holds_off_gate_cost(out)

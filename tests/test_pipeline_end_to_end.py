@@ -25,6 +25,7 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
+    LUA_LOADED_LOG,
     PARALLEL_COUNT,
     REPO,
     FakeBinaries,
@@ -369,6 +370,178 @@ def test_the_wrong_lua_script_fails_the_build(workspace, states) -> None:
         )
 
 
+class PerVariantLog(FakeBinaries):
+    """A fake whose tile build logs the Lua line for one variant only.
+
+    Which is the shape the joined-log check could not see: `.search` over the
+    three variants' logs concatenated is satisfied by the first match, so two
+    variants could have fallen back to Valhalla's compiled-in transform - and
+    dropped every derived tag - with validation still passing.
+    """
+
+    def __init__(self, logged_for: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.logged_for = logged_for
+
+    def __call__(self, command):
+        command = list(command)
+        if Path(command[0]).name == "valhalla_build_tiles":
+            config = json.loads(Path(command[2]).read_text())
+            variant = Path(config["mjolnir"]["tile_dir"]).parents[1].name
+            self.log = LUA_LOADED_LOG if variant == self.logged_for else "tiles built, 0 errors"
+        return super().__call__(command)
+
+
+def test_a_variant_that_fell_back_is_caught_even_when_another_logged_the_script(
+    workspace, states
+) -> None:
+    """Every variant is checked against its own build log."""
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=PerVariantLog(logged_for="standard"), build_id="one")
+    assert caught.value.stage is Stage.VALIDATE
+    assert "built-in transform" in str(caught.value.cause)
+    # And the message says which variant, since two of the three are fine.
+    assert "no-trail" in str(caught.value.cause) or "ebike" in str(caught.value.cause)
+
+    # The same fake with every variant logging the line passes, so the failure
+    # above is the per-variant check and not the fake.
+    run_pipeline(source, root, binaries=FakeBinaries(), skip=NOT_SWAPPED, build_id="all")
+
+
+def test_a_transform_rule_violation_in_the_parse_log_fails_the_build(workspace, states) -> None:
+    """`lua/routemaker_remap.lua` and `lua/graph.lua` both say this stage greps
+    the parse log for ROUTEMAKER-VIOLATION, and until now nothing did.
+
+    The transform cannot refuse an element - lua_pcall failure returns an empty
+    tag map, which deletes it - so a violated rule is a change dropped, a line
+    on stderr, and a build that reports success. A graph built around a rule
+    this project states it does not break was promoted with nobody told.
+    """
+    source, root = workspace
+    violation = (
+        "ROUTEMAKER-VIOLATION: the remap attempted to write 'highway', which is never permitted\n"
+    )
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(violations=violation), build_id="bad")
+    assert caught.value.stage is Stage.VALIDATE
+    assert "ROUTEMAKER-VIOLATION" in str(caught.value.cause)
+    assert "never permitted" in str(caught.value.cause), "the offending line is quoted"
+
+    # Without the line the same rebuild passes, so the check is the violation
+    # and not the stage.
+    run_pipeline(source, root, binaries=FakeBinaries(), skip=NOT_SWAPPED, build_id="clean")
+
+
+def test_the_violation_prefix_is_searched_on_the_streams_the_lua_writes_to(
+    workspace, states
+) -> None:
+    """The remap writes its violations with `io.stderr:write`, while Valhalla's
+    own lines go to stdout under `mjolnir.logging.type: std_out`. The build log
+    has to be both streams or the check reads a log the violation is not in."""
+    from pipeline.run import VIOLATION_LOG_PREFIX, assert_no_rule_violations
+    from pipeline.tiles import CommandOutput
+
+    assert VIOLATION_LOG_PREFIX == "ROUTEMAKER-VIOLATION"
+    output = CommandOutput("Using LUA script: /conf/lua/graph.lua", f"{VIOLATION_LOG_PREFIX}: x")
+    with pytest.raises(Exception, match=VIOLATION_LOG_PREFIX):
+        assert_no_rule_violations(output.log, "standard")
+
+
+def test_a_build_that_leaves_no_admin_database_fails_the_build(workspace, states) -> None:
+    """PLAN:13 commits to valhalla_build_admins and valhalla_build_timezones and
+    nothing ran either. Both paths are retargeted into the dated build directory
+    with every other tile path, and 3.5.1 warns and carries on without them
+    (src/mjolnir/graphbuilder.cc:431-444), so the graph silently has no
+    timezone and `date_time.type: 3` evaluates nothing."""
+    source, root = workspace
+    # Distinct build ids: the dated directory is named to the second, so two
+    # rebuilds in the same second would share one and the second would find the
+    # first's databases already sitting there.
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(build_admin=False), build_id="no-admin")
+    assert caught.value.stage is Stage.VALIDATE
+    assert "mjolnir.admin" in str(caught.value.cause)
+
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(build_timezone=False), build_id="no-tz")
+    assert "mjolnir.timezone" in str(caught.value.cause)
+
+
+def test_every_variant_gets_an_admin_and_a_timezone_database_where_its_config_says(
+    workspace, states
+) -> None:
+    """And the timezone database is fetched once and copied, because it is a
+    function of the world rather than of the extract."""
+    source, root = workspace
+    binaries = FakeBinaries()
+    context, _ = run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
+
+    for variant, config_path in context.build_configs.items():
+        config = json.loads(Path(config_path).read_text())
+        for key in ("admin", "timezone"):
+            path = Path(config["mjolnir"][key])
+            assert path.is_file() and path.stat().st_size, f"{variant.value}: {key}"
+            assert context.build_id in path.parts, (
+                "written into the dated build, not the served one"
+            )
+
+    admins = binaries.commands("valhalla_build_admins")
+    assert len(admins) == 3, "one per variant, each through its own config"
+    assert {c[-1] for c in admins} == {str(source)}, "built from the source extract"
+
+    downloads = [c for c in binaries.calls if c[0] == "sh"]
+    copies = [c for c in binaries.calls if c[0] == "cp"]
+    assert len(downloads) == 1, "a hundred megabytes, fetched once"
+    assert len(copies) == 2
+
+
+def test_a_lit_value_upstream_reads_as_lit_survives_the_whole_pipeline(workspace, states) -> None:
+    """`lit=24/7` is a lit street. The derivation was `tags["lit"] == "yes"`,
+    which called it - and `automatic`, `dusk-dawn` and `sunset-sunrise` - unlit,
+    and then wrote `lit=no` over the way's own tag, so the graph disagreed with
+    OSM in the one direction the "Prefer lit streets" preference reads.
+
+    Checked where it takes effect, on both sides: the tag through the real
+    transform under LuaJIT, which is the interpreter valhalla_build_tiles links
+    against, and the segment column the preference reads.
+    """
+    from test_lua_remap import _lua_driver
+
+    from pipeline.extract import read_ways
+
+    source, root = workspace
+    staging = settings.SEGMENT_SCHEMA_STAGING
+    context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+
+    tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert tags[100]["lit"] == "24/7", "the source tag is left alone"
+    assert tags[100]["rm:lit"] == "yes"
+    assert tags[200]["rm:lit"] == "no", "and `disused` is not lit"
+
+    # Through lua/graph.lua and Valhalla's own transform, from the tags the
+    # build would actually read out of this extract.
+    entries = ", ".join(f"[{json.dumps(k)}] = {json.dumps(v)}" for k, v in tags[100].items())
+    result = _lua_driver(
+        'dofile("lua/graph.lua")\n'
+        f"local kv = {{{entries}}}\n"
+        f"local _, out = ways_proc(kv, {len(tags[100])})\n"
+        'io.stdout:write(tostring(out.lit), "\\n")\n'
+    )
+    assert result.returncode == 0, result.stderr
+    # Upstream's own `lit` table maps the value it is handed onto "true"/"false"
+    # (lua/vendor/graph_upstream.lua:414-423, applied at :1480), and
+    # src/mjolnir/pbfgraphparser.cc:1909 reads the result.
+    assert result.stdout.strip() == "true"
+
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id, lit FROM {staging}.segment ORDER BY osm_way_id")
+        lit = dict(cursor.fetchall())
+    assert lit[100] is True, "the column the preference reads"
+    assert lit[200] is False
+    assert lit[300] is None, "an untagged way asserts nothing either way"
+
+
 def test_a_tile_build_without_elevation_fails_the_build(workspace, states) -> None:
     """Caching the HGT data is not the same as using it: with no elevation
     directory every hills dial is inert and the grade cap has nothing to read."""
@@ -500,7 +673,10 @@ def test_elevation_tiles_land_where_the_configs_say_the_build_reads(workspace, s
     assert expected, "the coverage box must touch at least one tile"
     assert set(context.elevation_tiles) == expected
     for tile in expected:
-        assert tile.stat().st_size == 1201 * 1201 * 2, "a valid HGT grid, not a short file"
+        # The one grid skadi reads (sample.cc:27), not merely a plausible one:
+        # a 1201-square tile passes this module's own writer and is then dropped
+        # by the reader with a warning, which is a cell with no elevation.
+        assert tile.stat().st_size == 3601 * 3601 * 2, "a valid HGT grid, not a short file"
     assert (root / "elevation" / "N38" / "N38W078.hgt") in expected, "the District's own cell"
 
     configured = json.loads((REPO / "valhalla" / "valhalla-standard.json").read_text())

@@ -18,7 +18,8 @@ from pathlib import Path
 import osmium
 from django.contrib.gis.geos import MultiPolygon, Polygon
 
-from pipeline.elevation import HGT_3ARCSEC_SIDE, TileName
+from pipeline.elevation import HGT_1ARCSEC_SIDE, TileName
+from pipeline.tiles import CommandOutput
 
 REPO = Path(__file__).resolve().parents[1]
 LUA_LOADED_LOG = "... Using LUA script: /conf/lua/graph.lua ..."
@@ -46,13 +47,34 @@ def build_toy_extract(path: Path, *, changed: bool = False) -> None:
             writer.add_node(
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
-        road_tags = {"highway": "secondary", "maxspeed": "35 mph", "name": "Test Road"}
+        # `lit=24/7` is on the road deliberately. It is one of the four values
+        # upstream reads as lit (lua/vendor/graph_upstream.lua:414-423) that a
+        # `== "yes"` derivation calls unlit, and the whole point of it being on a
+        # way the end-to-end tests already follow through the pipeline is that
+        # both consumers - the `rm:lit` tag and the segment column - are read
+        # back from a real rebuild rather than from a unit test of the mapping.
+        road_tags = {
+            "highway": "secondary",
+            "maxspeed": "35 mph",
+            "name": "Test Road",
+            "lit": "24/7",
+        }
         if changed:
-            road_tags = {"highway": "residential", "maxspeed": "20 mph", "name": "Test Road"}
+            road_tags = {
+                "highway": "residential",
+                "maxspeed": "20 mph",
+                "name": "Test Road",
+                "lit": "24/7",
+            }
         writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=road_tags))
         writer.add_way(
             osmium.osm.mutable.Way(
-                id=200, nodes=[3, 4], version=1, tags={"highway": "cycleway", "name": "Test Trail"}
+                id=200,
+                nodes=[3, 4],
+                version=1,
+                # And the other direction: `disused` is a value upstream reads as
+                # *not* lit, which a `!= "no"` derivation would call lit.
+                tags={"highway": "cycleway", "name": "Test Trail", "lit": "disused"},
             )
         )
         if not changed:
@@ -214,14 +236,24 @@ def roomy_disk(path: str):
 
 
 class FakeBinaries:
-    """Stands in for gdalwarp, valhalla_build_tiles, valhalla_build_extract and
-    valhalla_service, and for nothing else.
+    """Stands in for gdalwarp, valhalla_build_admins, valhalla_build_timezones,
+    valhalla_build_tiles, valhalla_build_extract and valhalla_service, and for
+    nothing else.
 
     Each does what the real one would leave on disk - a tile of the right size,
-    a tile directory, a tile extract - and `valhalla_service` answers a
-    trace_attributes request the way a built graph would, with the grade and
-    cycle lane this instance was told to report. Every call is recorded so a
-    test can assert which config a build or a read used.
+    an admin database, a timezone database, a tile directory, a tile extract -
+    and `valhalla_service` answers a trace_attributes request the way a built
+    graph would, with the grade and cycle lane this instance was told to report.
+    Every call is recorded so a test can assert which config a build or a read
+    used.
+
+    The two streams are kept apart, the way the real runner keeps them, and on
+    the stream each one really uses. That is not decoration: the earlier version
+    returned one string with the log *before* the JSON, which is the one
+    arrangement valhalla_service never produces - in one-shot mode it forces
+    logging to stderr and writes the response to stdout
+    (src/valhalla_service.cc:42-44) - and every validation read raised "Extra
+    data" against a real build while this fake kept the suite green.
     """
 
     def __init__(
@@ -229,32 +261,61 @@ class FakeBinaries:
         grade: float = 5.5,
         cycle_lane: str | None = "separated",
         log: str = LUA_LOADED_LOG,
-        hgt_side: int = HGT_3ARCSEC_SIDE,
+        hgt_side: int = HGT_1ARCSEC_SIDE,
+        violations: str = "",
+        build_admin: bool = True,
+        build_timezone: bool = True,
     ) -> None:
         self.grade = grade
         self.cycle_lane = cycle_lane
         self.log = log
         self.hgt_side = hgt_side
+        # What the transform wrote to stderr during the parse. Valhalla's own
+        # lines go to stdout under `mjolnir.logging.type: std_out`; the remap's
+        # refusals are `io.stderr:write` from inside the Lua.
+        self.violations = violations
+        self.build_admin = build_admin
+        self.build_timezone = build_timezone
         self.calls: list[list[str]] = []
 
-    def __call__(self, command: Sequence[str]) -> str:
+    def __call__(self, command: Sequence[str]) -> CommandOutput:
         command = list(command)
         self.calls.append(command)
         name = Path(command[0]).name
         if name == "gdalwarp":
             Path(command[-1]).write_bytes(b"\0" * (self.hgt_side * self.hgt_side * 2))
-            return ""
+            return CommandOutput("", "")
+        if name == "valhalla_build_admins":
+            config = json.loads(Path(command[2]).read_text())
+            if self.build_admin:
+                Path(config["mjolnir"]["admin"]).write_bytes(b"SQLite format 3\0admins")
+            return CommandOutput("", "")
+        if name == "sh":
+            # The timezone build: a shell script with no arguments whose output
+            # is its stdout, so the pipeline redirects it. The destination is
+            # read back off the `mv` that puts it in place, which is the
+            # pipeline's own way of not leaving a truncated file behind.
+            assert "valhalla_build_timezones" in command[-1], command
+            destination = command[-1].rsplit(" ", 1)[-1]
+            if self.build_timezone:
+                Path(destination).write_bytes(b"SQLite format 3\0timezones")
+            return CommandOutput("", "downloading timezone polygon file.\n")
+        if name == "cp":
+            source, destination = Path(command[1]), Path(command[2])
+            if source.exists():
+                destination.write_bytes(source.read_bytes())
+            return CommandOutput("", "")
         if name == "valhalla_build_tiles":
             config = json.loads(Path(command[2]).read_text())
             tile_dir = Path(config["mjolnir"]["tile_dir"])
             tile_dir.mkdir(parents=True, exist_ok=True)
             (tile_dir / "0").mkdir(exist_ok=True)
             (tile_dir / "0" / "003.gph").write_bytes(b"tile")
-            return self.log
+            return CommandOutput(self.log, self.violations)
         if name == "valhalla_build_extract":
             config = json.loads(Path(command[2]).read_text())
             Path(config["mjolnir"]["tile_extract"]).write_bytes(b"tar")
-            return ""
+            return CommandOutput("", "")
         if name == "valhalla_service":
             _config, action, request = command[1:4]
             assert action == "trace_attributes", action
@@ -265,7 +326,16 @@ class FakeBinaries:
                 edge["max_upward_grade"] = self.grade
             if "edge.cycle_lane" in wanted and self.cycle_lane is not None:
                 edge["cycle_lane"] = self.cycle_lane
-            return "some log line\n" + json.dumps({"edges": [edge], "units": "kilometers"})
+            # Response on stdout, log on stderr, which is the only arrangement
+            # one-shot mode produces. The two log lines are the ones a real
+            # read always emits: the extract's tile count
+            # (src/baldr/graphreader.cc:110) and the traffic extract every
+            # generated config names and no deployment has (:158-159).
+            return CommandOutput(
+                json.dumps({"edges": [edge], "units": "kilometers"}),
+                "2026/09/17 [INFO] Tile extract successfully loaded with tile count: 12\n"
+                "2026/09/17 [WARN] Traffic tile extract could not be loaded\n",
+            )
         raise AssertionError(f"the pipeline ran a binary the tests do not stand in for: {command}")
 
     def commands(self, name: str) -> list[list[str]]:

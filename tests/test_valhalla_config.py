@@ -319,15 +319,99 @@ def host_path_for(container_path: str, mounts: dict[str, str]) -> str | None:
     return None
 
 
+# The absolute paths this deployment genuinely reads or writes, which therefore
+# have to resolve to a mount in the rebuild container and in the serving one.
+USED_PATH_KEYS = (
+    "mjolnir.tile_dir",
+    "mjolnir.tile_extract",
+    "mjolnir.admin",
+    "mjolnir.timezone",
+    "mjolnir.graph_lua_name",
+    "additional_data.elevation",
+)
+
+# And the absolute paths the generated configs carry and nothing here uses, each
+# with the reason it is still there. Named rather than left out, because an
+# earlier version of the mount test simply listed the six above and read as a
+# claim about every path in the file.
+UNUSED_PATH_KEYS = {
+    "mjolnir.landmarks": (
+        "valhalla_build_landmarks is not run; the file is absent and nothing reads it"
+    ),
+    "mjolnir.traffic_extract": (
+        "no traffic data; present because upstream's generator gives it a plain string "
+        "default rather than an Optional, so it cannot be dropped without diverging from "
+        "the default set"
+    ),
+    "mjolnir.transit_dir": "no transit tiles are built",
+    "mjolnir.transit_feeds_dir": "no GTFS feeds are imported",
+}
+
+
+def absolute_paths(node, prefix: str = "") -> dict[str, str]:
+    """Every absolute path in a config, by dotted key.
+
+    Anything else upstream carries is a socket (`ipc:///tmp/...`), a listen
+    address or a bare log file name, none of which a mount has to cover.
+    """
+    found: dict[str, str] = {}
+    for key, value in node.items():
+        here = f"{prefix}.{key}" if prefix else key
+        if isinstance(value, dict):
+            found |= absolute_paths(value, here)
+        elif isinstance(value, str) and value.startswith("/"):
+            found[here] = value
+    return found
+
+
 def configured_paths(config: dict) -> dict[str, str]:
-    return {
-        "mjolnir.tile_dir": config["mjolnir"]["tile_dir"],
-        "mjolnir.tile_extract": config["mjolnir"]["tile_extract"],
-        "mjolnir.admin": config["mjolnir"]["admin"],
-        "mjolnir.timezone": config["mjolnir"]["timezone"],
-        "mjolnir.graph_lua_name": config["mjolnir"]["graph_lua_name"],
-        "additional_data.elevation": config["additional_data"]["elevation"],
-    }
+    """The paths a mount has to cover: USED_PATH_KEYS, and not every path.
+
+    Narrowed deliberately. The four in UNUSED_PATH_KEYS are upstream defaults
+    this deployment reads nothing from, and requiring a mount for them would be
+    requiring directories to exist for features that are not switched on.
+    `test_every_absolute_path_in_the_config_is_accounted_for` is what keeps this
+    from quietly becoming a list of the paths someone happened to think of.
+    """
+    paths = absolute_paths(config)
+    return {key: paths[key] for key in USED_PATH_KEYS}
+
+
+def test_every_absolute_path_in_the_config_is_accounted_for(config: dict) -> None:
+    """Either mounted, or named as unused with a reason.
+
+    A new path key arriving in a re-vendor is otherwise silently exempt from the
+    mount check, which is the shape of the bug that check was written for: three
+    paths covered by no mount at all, so the tiles landed on ephemeral container
+    storage and vanished with it.
+    """
+    assert set(absolute_paths(config)) == set(USED_PATH_KEYS) | set(UNUSED_PATH_KEYS)
+
+
+def test_the_traffic_extract_key_is_upstreams_and_its_warnings_are_expected() -> None:
+    """Recorded because it is the source of log lines a reviewer will meet.
+
+    `mjolnir.traffic_extract` names /data/valhalla/traffic.tar, which no
+    deployment here has. src/baldr/graphreader.cc:121 acts on any value that is
+    present - `if (pt.get_optional<std::string>("traffic_extract"))` - hands it
+    to midgard::tar, which throws for a file that is not there, and the handler
+    emits two warnings at :158-159. So every read of a build writes at least
+    three lines to stderr, which is precisely why the validation parse reads
+    stdout alone and never the concatenation.
+
+    Dropping the key would silence them, and it cannot be done from the
+    overrides: the vendored generator gives it a plain string default
+    (valhalla/vendor/valhalla_build_config.py:36) rather than an `Optional`, so
+    `load_upstream_defaults` keeps it and
+    `test_the_config_covers_every_key_upstream_defines` requires it. Upstream's
+    own default set is the definition of complete here, and three predictable
+    warnings are the cheaper half of that bargain.
+    """
+    generator = (
+        Path(__file__).resolve().parents[1] / "valhalla" / "vendor" / "valhalla_build_config.py"
+    ).read_text()
+    assert "'traffic_extract': '/data/valhalla/traffic.tar'" in generator
+    assert "'traffic_extract': Optional" not in generator
 
 
 def test_every_configured_path_is_mounted_for_the_service_that_uses_it() -> None:

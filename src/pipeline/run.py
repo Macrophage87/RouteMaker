@@ -52,6 +52,50 @@ logger = logging.getLogger(__name__)
 LUA_LOADED_PATTERN = re.compile(r"Using LUA script:\s*(\S+)")
 LUA_SCRIPT_PATH = "/conf/lua/graph.lua"
 
+# The prefix `lua/routemaker_remap.lua` writes a refused change under, and the
+# thing the comments in that file and in `lua/graph.lua` have always said this
+# stage greps the parse log for. It did not: `grep -rn ROUTEMAKER-VIOLATION src/`
+# was empty, so a transform that refused a change - a write of `highway` or
+# `maxspeed`, a remap that would have denied a bicycle at a border-control node
+# - said so to stderr and the rebuild promoted the graph anyway.
+#
+# Kept as a literal here and pinned against the Lua declaration by a test, since
+# the two files cannot share a constant.
+VIOLATION_LOG_PREFIX = "ROUTEMAKER-VIOLATION"
+# How many offending lines the failure quotes. A systematic violation produces
+# one line per element and there is no sense putting a million of them in an
+# exception; the count is always reported in full.
+REPORTED_VIOLATIONS = 5
+
+# How OSM's `lit` values map to true and false, which is not "yes" against
+# everything else.
+#
+# This is upstream's own table, read out of lua/vendor/graph_upstream.lua:414-423
+# rather than remembered, because it is the table that decides what reaches the
+# graph: `ways_proc` sets `kv["lit"] = lit[kv["lit"]]` (:1480) and
+# src/mjolnir/pbfgraphparser.cc:1909 reads the result. Four values - 24/7,
+# automatic, dusk-dawn, sunset-sunrise - name a street that is lit, and
+# `tags["lit"] == "yes"` called every one of them unlit. The same expression
+# wrote the segment table's `lit` column, which is what the "Prefer lit streets"
+# preference reads, so the two halves agreed with each other and disagreed with
+# the map.
+#
+# A value that is not in this table maps to nil upstream, which drops the tag
+# rather than asserting either way, so it is left out here too instead of being
+# guessed at. `tests/test_lua_remap.py` re-extracts the table from the vendored
+# file and compares, so a re-vendor that changes it fails there rather than
+# diverging quietly.
+LIT_BY_OSM_VALUE = {
+    "yes": True,
+    "no": False,
+    "24/7": True,
+    "automatic": True,
+    "limited": False,
+    "disused": False,
+    "dusk-dawn": True,
+    "sunset-sunrise": True,
+}
+
 # What the derived-tag sentinel must read back. The remap writes cycleway=track
 # onto a tier-1 way with no cycleway tag of its own, which Valhalla stores as a
 # separated cycle lane; nothing but this project's transform produces that on a
@@ -65,6 +109,18 @@ DERIVED_SENTINEL_EXPECTED = "separated"
 # the permit list of a ride that never entered the park. `assign_way` returns
 # every fraction and says the caller decides; this is the decision.
 MIN_JURISDICTION_FRACTION = 0.10
+
+
+def lit_value(tags: dict) -> bool | None:
+    """Whether a way is lit, by upstream's own reading of its `lit` tag.
+
+    None for an absent tag and for a value upstream does not carry, which is
+    upstream's answer too: the tag is dropped rather than turned into a claim
+    either way. One derivation for both consumers - the `rm:lit` tag the tile
+    build reads and the segment table column the preference reads - so they
+    cannot drift apart again.
+    """
+    return LIT_BY_OSM_VALUE.get(tags.get("lit"))
 
 
 def new_build_id(now: datetime | None = None) -> str:
@@ -199,7 +255,11 @@ class RebuildContext:
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     rows: list[dict] = field(default_factory=list)
-    build_log: str = ""
+    # Per variant, not one concatenation of the three. A single `.search` over
+    # the three logs joined together is satisfied by whichever variant logged
+    # the line first, so two variants could have fallen back to Valhalla's
+    # built-in transform and the check would still pass.
+    build_logs: dict[variants.Variant, str] = field(default_factory=dict)
     disk_gate: tiles.DiskGate | None = None
     elevation_tiles: list[Path] = field(default_factory=list)
     build_configs: dict[variants.Variant, Path] = field(default_factory=dict)
@@ -215,23 +275,96 @@ class RebuildContext:
         return self.reference
 
 
-def assert_lua_script_was_loaded(build_log: str, expected: str) -> None:
+def assert_lua_script_was_loaded(build_log: str, expected: str, where: str) -> None:
     """The guard for Valhalla's silent fallback.
 
     A key it cannot resolve leaves it using the compiled-in transform, dropping
     every derived tag while routing merely looks a little off.
+
+    `where` names the variant, because this is asked once per variant against
+    that variant's own log. Asked once against the three joined together, the
+    first match satisfied all three and two variants could have fallen back
+    without the check noticing.
     """
     match = LUA_LOADED_PATTERN.search(build_log)
     if match is None:
         raise ValidationFailed(
-            "the tile build never logged 'Using LUA script:', so Valhalla fell back "
+            f"the {where} tile build never logged 'Using LUA script:', so Valhalla fell back "
             "to its built-in transform and every derived tag was dropped"
         )
     loaded = match.group(1)
     # Compared as full paths: Valhalla's own built-in script is also called
     # graph.lua, so a basename match would pass the very fallback this catches.
     if loaded != expected:
-        raise ValidationFailed(f"the tile build loaded {loaded!r}, not this project's {expected!r}")
+        raise ValidationFailed(
+            f"the {where} tile build loaded {loaded!r}, not this project's {expected!r}"
+        )
+
+
+def assert_no_rule_violations(build_log: str, where: str) -> None:
+    """The reader `ROUTEMAKER-VIOLATION` never had.
+
+    The transform cannot refuse an element: `LuaTagTransform::Transform` runs
+    each entry point under lua_pcall and hands back an empty tag map when it
+    fails, so an `error()` guard deletes the element instead of refusing it.
+    `lua/routemaker_remap.lua` therefore keeps the element, drops the offending
+    change, and writes a line to stderr under a fixed prefix - and both that
+    file and `lua/graph.lua` say in as many words that this stage asserts no
+    such line appears in the parse log. Nothing did. A guard that fires is the
+    remap having tried to write `highway` or `maxspeed`, or to deny a bicycle at
+    a border-control node: a graph built around a rule this project states it
+    does not break, promoted without anyone being told.
+
+    Read off the build log, which is both streams of `valhalla_build_tiles`: the
+    Lua writes to `io.stderr` while Valhalla's own lines go to stdout under
+    `mjolnir.logging.type: std_out`.
+    """
+    offending = [line for line in build_log.splitlines() if VIOLATION_LOG_PREFIX in line]
+    if not offending:
+        return
+    shown = "; ".join(line.strip() for line in offending[:REPORTED_VIOLATIONS])
+    more = (
+        ""
+        if len(offending) <= REPORTED_VIOLATIONS
+        else f" (and {len(offending) - REPORTED_VIOLATIONS} more)"
+    )
+    raise ValidationFailed(
+        f"the {where} tile build logged {len(offending)} {VIOLATION_LOG_PREFIX} line(s), so the "
+        f"transform refused a change it was asked to make and the graph is not the one this "
+        f"project describes: {shown}{more}"
+    )
+
+
+def assert_admin_and_timezone_databases_were_built(
+    build_configs: dict[variants.Variant, Path],
+) -> None:
+    """The other half of SF3: the commands ran, and they left something behind.
+
+    `mjolnir.admin` and `mjolnir.timezone` are retargeted into the dated build
+    directory, and 3.5.1 does not fail a build that cannot find either - it logs
+    "Admin db not found. Not saving admin information." and "Time zone db not
+    found. Not saving time zone information." and carries on
+    (src/mjolnir/graphbuilder.cc:431-444). The result is a graph whose edges
+    carry no timezone, which is invisible until a `date_time` request quietly
+    evaluates every conditional restriction against nothing.
+    """
+    missing: list[str] = []
+    for variant in variants.Variant:
+        config_path = build_configs.get(variant)
+        if config_path is None:
+            missing.append(f"{variant.value}: no build config")
+            continue
+        config = json.loads(Path(config_path).read_text())
+        for key in ("admin", "timezone"):
+            path = Path(config["mjolnir"][key])
+            if not path.is_file() or path.stat().st_size == 0:
+                missing.append(f"{variant.value}: mjolnir.{key} = {path}")
+    if missing:
+        raise ValidationFailed(
+            "the tile build left no database at these configured paths, so the graph carries "
+            "no admin or timezone information and every date_time request evaluates its "
+            "conditional restrictions against nothing: " + "; ".join(missing)
+        )
 
 
 def assert_elevation_reached_the_tiles(max_grade_on_known_steep_edge: float) -> None:
@@ -465,8 +598,9 @@ def build_handlers(
                     derived["bridge_bicycle"] = legal
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
-                if "lit" in way.tags:
-                    derived["lit"] = way.tags["lit"] == "yes"
+                lit = lit_value(way.tags)
+                if lit is not None:
+                    derived["lit"] = lit
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
@@ -497,15 +631,31 @@ def build_handlers(
         # derived from its serving config: valhalla_build_tiles has no
         # tile-directory option, so the directory has to come from the file,
         # and the serving config names the graph being served.
-        logs = []
+        #
+        # The admin and timezone databases are built here too, into the same
+        # dated directory, because the retargeted config is what names them and
+        # nothing else ever writes there. The timezone database is a function of
+        # the world rather than of the extract, so the first variant builds it
+        # and the rest copy it.
+        timezone_source: Path | None = None
         for variant in variants.Variant:
             config_path = tiles.write_build_config(
                 context.config_dir, context.tiles_dir, variant, context.build_id
             )
             context.build_configs[variant] = config_path
-            for command in tiles.tile_build_commands(config_path, context.variant_pbf(variant)):
-                logs.append(run(command))
-        context.build_log = "\n".join(logs)
+            timezone_db = Path(json.loads(config_path.read_text())["mjolnir"]["timezone"])
+            commands = tiles.tile_build_commands(
+                config_path,
+                context.variant_pbf(variant),
+                admin_pbf=context.source_pbf,
+                timezone_db=timezone_db,
+                timezone_source=timezone_source,
+            )
+            # Kept per variant: the Lua-fallback and violation checks are asked
+            # of each variant's own log, and one joined string would let the
+            # first match answer for all three.
+            context.build_logs[variant] = "\n".join(run(command).log for command in commands)
+            timezone_source = timezone_source or timezone_db
 
     def write_segments() -> None:
         from .schema import schema_exists
@@ -532,14 +682,22 @@ def build_handlers(
                         is_trail_class=trail,
                         is_unpaved=is_unpaved(way.tags),
                         is_rough=is_rough(way.tags),
-                        lit=way.tags.get("lit") == "yes" if "lit" in way.tags else None,
+                        lit=lit_value(way.tags),
                     )
                 )
         context.rows = rows
         writers.write_segments(context.staging_schema, rows)
 
     def validate() -> None:
-        assert_lua_script_was_loaded(context.build_log, LUA_SCRIPT_PATH)
+        if set(context.build_logs) != set(variants.Variant):
+            raise ValidationFailed(
+                "not every variant produced a build log, so there is nothing to check the "
+                f"missing ones against: have {sorted(v.value for v in context.build_logs)}"
+            )
+        for variant, build_log in context.build_logs.items():
+            assert_lua_script_was_loaded(build_log, LUA_SCRIPT_PATH, variant.value)
+            assert_no_rule_violations(build_log, variant.value)
+        assert_admin_and_timezone_databases_were_built(context.build_configs)
         assert_elevation_reached_the_tiles(sample_grade())
         assert_derived_tags_reached_the_tiles(sample_derived_tag(), DERIVED_SENTINEL_EXPECTED)
 
@@ -616,12 +774,22 @@ def _run_command(
     command: Sequence[str],
     deadline: float | None = None,
     clock: Callable[[], float] = time.monotonic,
-) -> str:
+) -> tiles.CommandOutput:
     """Run one of the pipeline's binaries, inside whatever time budget remains.
 
     The budget is the rebuild's own: a wedged valhalla_build_tiles is killed
     when the rebuild's deadline arrives rather than being left for the eight-day
     "nothing completed" alarm.
+
+    The two streams come back separately. Returning `stdout + stderr` was a
+    silent break of every validation read: valhalla_service in one-shot mode
+    puts the response on stdout and its log on stderr
+    (src/valhalla_service.cc:42-44), so the concatenation is JSON followed by
+    log lines, and stderr is never empty - src/baldr/graphreader.cc:110 logs the
+    loaded tile count and :121-159 warns twice about the traffic extract every
+    generated config names and no deployment has. `sample_grade` is the first
+    thing VALIDATE calls, so the rebuild died there every week and nothing could
+    ever promote. See tiles.CommandOutput.
     """
     timeout = None
     if deadline is not None:
@@ -629,7 +797,7 @@ def _run_command(
         if timeout <= 0:
             raise RebuildTimedOut(f"no time left to run {command[0]}")
     result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
-    return result.stdout + result.stderr
+    return tiles.CommandOutput(result.stdout, result.stderr)
 
 
 def _state_at(lon: float, lat: float) -> str | None:

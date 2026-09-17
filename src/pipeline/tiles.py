@@ -22,10 +22,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import shlex
 import shutil
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import NamedTuple
 
 from .variants import Variant
 
@@ -100,14 +102,76 @@ def write_build_config(config_dir: Path, tiles_dir: Path, variant: Variant, buil
     return path
 
 
-def tile_build_commands(config_path: Path, pbf: Path) -> list[list[str]]:
+def tile_build_commands(
+    config_path: Path,
+    pbf: Path,
+    *,
+    admin_pbf: Path,
+    timezone_db: Path,
+    timezone_source: Path | None = None,
+) -> list[list[str]]:
     """The binaries a variant's build runs, in order.
 
     valhalla_build_tiles writes the tile directory; valhalla_build_extract packs
     it into the tar the service reads (tile_extract), which is what the serving
-    config names. Neither has been run in this environment.
+    config names. None of these has been run in this environment.
+
+    Four commands, not two, and the two additions are the ones nothing ran.
+    `mjolnir.admin` and `mjolnir.timezone` are in TILE_PATH_KEYS, so they are
+    retargeted into this dated build directory along with every other tile path
+    - and only these commands ever put a file there. 3.5.1 does not refuse a
+    build without them, it warns and carries on
+    (src/mjolnir/graphbuilder.cc:431-444 for both databases, and
+    src/mjolnir/graphenhancer.cc:1293-1296 again for the admin one), so the
+    graph comes out with no timezone at all and every `date_time.type: 3`
+    request - which PLAN:82 builds the whole request design on - evaluates its
+    conditional restrictions against nothing. PLAN:13 commits to running both.
+
+    valhalla_build_admins takes `-c <config>` and the PBFs positionally
+    (src/mjolnir/valhalla_build_admins.cc:31-37) and writes the database named
+    by `mjolnir.admin`, which it reads out of the config's mjolnir subtree
+    (src/mjolnir/adminbuilder.cc:373, opened for write at :403). It is handed
+    the *source* extract rather than this variant's. Boundary relations are
+    copied into every variant extract, but a variant also drops ways, and a
+    dropped way that is a member of a boundary relation is a broken admin
+    polygon and a country-crossing cost charged in the wrong place. Which
+    administrative area a point is in is a fact about the region, not about
+    which trails a variant keeps; PLAN:13 says the same thing by building admin
+    data from the merged extract before clipping.
+
+    valhalla_build_timezones is a POSIX shell script, not a binary. It takes no
+    arguments, writes its progress to stderr, and writes the finished SQLite
+    database to *stdout* (scripts/valhalla_build_timezones:38, `cat ${tz_file}`)
+    - so a redirect is the only way to name its output, and the command runner
+    cannot be the thing that captures it, since the runner decodes as text and
+    this is a SQLite file. It is also written to run in a scratch directory: it
+    begins `rm -rf dist` and `rm -f ./timezones-with-oceans.shapefile.zip` and
+    unzips into the working directory (:21-22, :28), so it is given the build
+    directory as its cwd rather than whatever the rebuild happens to be in. The
+    redirect goes to a `.part` name that is moved into place only on success,
+    because `>` truncates before the script runs and a failed run would
+    otherwise leave an empty file where the build config says the database is.
+
+    It also downloads roughly a hundred megabytes from GitHub each time, and the
+    database is identical for all three variants - it is a function of the
+    world, not of the extract. So the first variant of a rebuild builds it and
+    the other two copy that file (`timezone_source`): one download per rebuild
+    rather than three, and two fewer chances for the fetch to fail.
     """
+    if timezone_source is not None:
+        timezone = ["cp", str(timezone_source), str(timezone_db)]
+    else:
+        partial = f"{timezone_db}.part"
+        timezone = [
+            "sh",
+            "-c",
+            f"cd {shlex.quote(str(timezone_db.parent))} && "
+            f"valhalla_build_timezones > {shlex.quote(partial)} && "
+            f"mv {shlex.quote(partial)} {shlex.quote(str(timezone_db))}",
+        ]
     return [
+        ["valhalla_build_admins", "-c", str(config_path), str(admin_pbf)],
+        timezone,
         ["valhalla_build_tiles", "-c", str(config_path), str(pbf)],
         ["valhalla_build_extract", "-c", str(config_path), "-v"],
     ]
@@ -178,30 +242,82 @@ def trace_attributes_request(edge: Sequence[Sequence[float]], attributes: Sequen
     }
 
 
+class CommandOutput(NamedTuple):
+    """One command's two streams, kept apart.
+
+    The pipeline's command runner returns this rather than one string, because
+    for valhalla_service in one-shot mode the stream a line arrived on is the
+    difference between a parsed response and an exception.
+    src/valhalla_service.cc:42-44: with `argc == 4` it configures logging to
+    `std_err` - the comment there is "because we want the program output to go
+    only to stdout we force any logging to be stderr" - and writes the response
+    to stdout. Concatenating the two therefore produces the response *first*
+    and the log after it, which is the opposite of what an earlier version of
+    this module assumed, and `json.loads` on the whole thing raises "Extra
+    data" every time.
+
+    And stderr is never empty on a successful one-shot read.
+    src/baldr/graphreader.cc:110 logs "Tile extract successfully loaded with
+    tile count:" whenever `mjolnir.tile_extract` loads, which every generated
+    config names, and :121-159 logs two more warnings because every generated
+    config also names a `mjolnir.traffic_extract` that does not exist, so the
+    tar constructor throws and the handler emits `LOG_WARN(e.what())` and
+    "Traffic tile extract could not be loaded". None of that is an error and
+    none of it may reach the JSON parser.
+    """
+
+    stdout: str
+    stderr: str
+
+    @property
+    def log(self) -> str:
+        """Both streams, for the callers that want the whole record of a run.
+
+        A tile build's log is genuinely both: `mjolnir.logging.type` is
+        `std_out`, so Valhalla's own lines - "Using LUA script:" among them -
+        come back on stdout, while the transform's `io.stderr:write` violations
+        come back on stderr.
+        """
+        return self.stdout + self.stderr
+
+
 def trace_attributes(
-    run: Callable[[Sequence[str]], str], config_path: Path, request: dict
+    run: Callable[[Sequence[str]], CommandOutput], config_path: Path, request: dict
 ) -> list[dict]:
     """Ask valhalla_service, in one-shot mode, what the built tiles say.
 
     `valhalla_service <config> <action> <json>` answers a single request and
     exits without starting the HTTP server, which is what lets validation read
-    a build before anything serves it and without a second container. The
-    output is the response JSON; the build's own log lines, if any, precede it,
-    so the parse starts at the first brace.
+    a build before anything serves it and without a second container.
+
+    The response is stdout and stdout alone (src/valhalla_service.cc:42-44; see
+    CommandOutput), so that is the only stream parsed here. Within stdout the
+    response is bounded with `raw_decode` rather than read to the end of the
+    string: a trailing line from anything that did not honour the logging
+    configuration would otherwise turn a good response into "Extra data".
 
     NOT EXECUTED AGAINST A REAL BUILD: no Valhalla binary exists in this
     environment. The one-shot invocation form and the attribute names are from
-    the 3.5.1 documentation; the first real rebuild is what confirms them.
+    the 3.5.1 source and documentation; the first real rebuild is what confirms
+    the attribute names.
     """
     output = run(["valhalla_service", str(config_path), "trace_attributes", json.dumps(request)])
-    start = output.find("{")
+    start = output.stdout.find("{")
     if start < 0:
-        raise ValueError("valhalla_service returned no JSON")
-    return json.loads(output[start:]).get("edges", [])
+        raise ValueError(f"valhalla_service returned no JSON on stdout: {output.stdout[:200]!r}")
+    try:
+        response, _end = json.JSONDecoder().raw_decode(output.stdout[start:])
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            f"valhalla_service's stdout is not a JSON response: {output.stdout[start:][:200]!r}"
+        ) from error
+    return response.get("edges", [])
 
 
 def sample_grade(
-    run: Callable[[Sequence[str]], str], config_path: Path, steep_edge: Sequence[Sequence[float]]
+    run: Callable[[Sequence[str]], CommandOutput],
+    config_path: Path,
+    steep_edge: Sequence[Sequence[float]],
 ) -> float:
     """The largest weighted grade along the known steep edge, in percent."""
     edges = trace_attributes(
@@ -215,7 +331,9 @@ def sample_grade(
 
 
 def sample_cycle_lane(
-    run: Callable[[Sequence[str]], str], config_path: Path, edge: Sequence[Sequence[float]]
+    run: Callable[[Sequence[str]], CommandOutput],
+    config_path: Path,
+    edge: Sequence[Sequence[float]],
 ) -> str | None:
     """What the tiles say about the cycle lane on a known tier-1 street.
 

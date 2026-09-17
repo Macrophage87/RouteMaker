@@ -53,6 +53,38 @@ check("a gap just under it converts and one just over it does not",
   M.remap_node({ barrier = "bollard", maxwidth = "1.49" }).barrier == "gate"
     and M.remap_node({ barrier = "bollard", maxwidth = "1.51" }).barrier == nil)
 
+-- maxwidth is not always metres written with a full stop, and the forms it is
+-- not written in used to be read as a *different number* rather than refused:
+-- `tonumber((value:gsub("[^%d%.]", "")))` turned `3'` into three metres and
+-- `1,5` into fifteen, so a bollard the Cargo preset should be charged for read
+-- as a gap wide enough to ignore.
+local function close(a, b) return a and math.abs(a - b) < 1e-9 end
+check("a width in feet is converted rather than read as metres",
+  close(M.parse_width_m("3'"), 3 * 0.3048))
+check("feet and inches are read together",
+  close(M.parse_width_m([[5'6"]]), 5 * 0.3048 + 6 * 0.3048 / 12))
+check("a spelled-out foot unit is read too",
+  close(M.parse_width_m("3 ft"), 3 * 0.3048) and close(M.parse_width_m("3feet"), 3 * 0.3048))
+check("a comma decimal separator is read as a decimal point",
+  close(M.parse_width_m("1,2"), 1.2) and close(M.parse_width_m("1,5"), 1.5))
+check("plain metres still read, with or without the unit",
+  close(M.parse_width_m("1.2"), 1.2) and close(M.parse_width_m("2 m"), 2))
+check("a value that cannot be read is refused rather than guessed at",
+  M.parse_width_m("wide") == nil and M.parse_width_m("1,5,2") == nil
+    and M.parse_width_m("~2") == nil and M.parse_width_m(nil) == nil)
+
+check("a three-foot bollard gap is narrow and becomes a gate",
+  M.remap_node({ barrier = "bollard", maxwidth = "3'" }).barrier == "gate")
+check("a comma-decimal 1,2 m gap is narrow and becomes a gate",
+  M.remap_node({ barrier = "bollard", maxwidth = "1,2" }).barrier == "gate")
+check("a six-foot gap is wide and is left alone",
+  M.remap_node({ barrier = "bollard", maxwidth = [[6']] }).barrier == nil)
+-- Refusing fails toward not charging: the rider's route is no more expensive
+-- than Valhalla already makes it, rather than detoured around a barrier this
+-- remap cannot show is there.
+check("an unreadable width leaves the bollard as upstream reads it",
+  M.remap_node({ barrier = "bollard", maxwidth = "narrow" }).barrier == nil)
+
 -- Valhalla multiplies gate_cost by (not tagged_access), so a permissive access
 -- tag left in place makes the Cargo preset's gate dial inert on exactly the
 -- nodes it exists for. A Lua table cannot hold a nil, so the removal is

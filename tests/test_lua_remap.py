@@ -253,3 +253,48 @@ def test_neither_entry_point_guards_with_error() -> None:
     entry_points = source[source.index("function ways_proc") :]
     assert "error(" not in entry_points, "a guard inside an entry point deletes the element"
     assert "record_violation" in entry_points
+
+
+def lua_table(source: str, name: str) -> dict[str, str]:
+    """One `name = { ... }` table out of a Lua file, as a dict of strings."""
+    body = re.search(rf"^{name}\s*=\s*\{{(.*?)\}}", source, re.MULTILINE | re.DOTALL)
+    assert body, f"no {name} table in the vendored file"
+    return dict(re.findall(r'\["([^"]+)"\]\s*=\s*"([^"]*)"', body.group(1)))
+
+
+def test_the_lit_mapping_is_upstreams_own_table() -> None:
+    """The pipeline decides `rm:lit` from OSM's `lit` value, and what that value
+    means is upstream's table, not "yes against everything else".
+
+    `24/7`, `automatic`, `dusk-dawn` and `sunset-sunrise` all name a lit street.
+    The derivation was `tags["lit"] == "yes"`, which called every one of them
+    unlit and then wrote `lit=no` over the way's own tag - so the graph and the
+    segment column both disagreed with OSM, in the direction the "Prefer lit
+    streets" preference reads. Regenerated and compared rather than copied, so a
+    re-vendor that changes the table fails here instead of diverging quietly.
+    """
+    from pipeline.run import LIT_BY_OSM_VALUE, lit_value
+
+    upstream = lua_table((REPO / "lua" / "vendor" / "graph_upstream.lua").read_text(), "lit")
+    assert upstream, "the vendored transform has no lit table any more"
+    assert LIT_BY_OSM_VALUE == {key: value == "true" for key, value in upstream.items()}
+
+    # The two mutations a `== "yes"` derivation survives.
+    assert lit_value({"lit": "24/7"}) is True
+    assert lit_value({"lit": "disused"}) is False, '`!= "no"` would call this lit'
+    # A value upstream does not carry maps to nil there, which drops the tag
+    # rather than asserting either way, so nothing is asserted here either.
+    assert lit_value({"lit": "maybe"}) is None
+    assert lit_value({}) is None
+
+
+def test_the_violation_prefix_the_pipeline_greps_for_is_the_one_the_lua_writes() -> None:
+    """Two files that cannot share a constant, and the whole guard is the string
+    matching. `lua/routemaker_remap.lua` writes it and `pipeline.run` searches
+    the parse log for it."""
+    from pipeline.run import VIOLATION_LOG_PREFIX
+
+    source = (REPO / "lua" / "routemaker_remap.lua").read_text()
+    declared = re.search(r'M\.VIOLATION_LOG_PREFIX\s*=\s*"([^"]+)"', source)
+    assert declared, "the remap no longer declares a violation prefix"
+    assert declared.group(1) == VIOLATION_LOG_PREFIX
