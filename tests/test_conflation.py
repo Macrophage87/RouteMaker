@@ -14,7 +14,9 @@ import pytest
 
 from pipeline.conflation import (
     MAX_SEPARATION_M,
+    MAX_SPAN_REUSE,
     AgencyFeature,
+    _claim,
     _overlap_fraction,
     conflate,
 )
@@ -174,6 +176,109 @@ class TestExclusivity:
         result = conflate(ways, [feature("corridor", corridor)])
         assert set(result.matched) == {1, 2}
         assert [way_id for way_id, _ in result.rejected] == [3]
+
+
+class TestTrailExclusion:
+    def test_a_parallel_trail_never_competes_for_a_motor_count(self) -> None:
+        """Domain S3: with the Mount Vernon Trail 15 m from the GW Parkway -
+        well inside max_separation_m - a trail must never be a *candidate* for
+        a motor-vehicle AADT, in either extract order. Before this exclusion,
+        whichever of the trail or the roadway happened to be listed first
+        could win the corridor count on bearing and overlap alone, and span
+        exclusivity then denied the count to the roadway blocks that lost."""
+        corridor = [(-77.06, 38.90002), (-76.96, 38.89998)]
+        road_1 = (1, [(-77.06, 38.9), (-77.04, 38.9)])
+        road_2 = (2, [(-77.04, 38.9), (-77.02, 38.9)])
+        trail = (3, shifted([(-77.06, 38.9), (-77.04, 38.9)], 15.0), True)
+
+        for ways in ([road_1, road_2, trail], [trail, road_1, road_2]):
+            result = conflate(list(ways), [feature("corridor", corridor, aadt=18000)])
+            assert set(result.matched) == {1, 2}, ways
+            assert 3 not in result.matched, "a trail must never take a motor-vehicle count"
+
+    def test_exclusion_holds_even_when_the_trail_is_the_closer_line(self) -> None:
+        """Distance-based tie-breaking is not what is supposed to be doing this
+        job: a trail must be refused the count even in the (real-world
+        plausible - a realigned road whose survey line was never updated)
+        case where the trail happens to run closer to the surveyed line than
+        the roadway does. Only the explicit exclusion catches this; the
+        geometric tie-break alone would hand the count to the trail."""
+        # The "count" is surveyed exactly on the trail's alignment - as close
+        # to it as a line can be - while the road sits 15 m away, still well
+        # inside max_separation_m.
+        trail_line = [(-77.06, 38.90), (-77.04, 38.90)]
+        surveyed_on_the_trail = feature("count", trail_line, aadt=9000)
+        road = (1, shifted(trail_line, 15.0))
+        trail = (2, trail_line, True)
+
+        result = conflate([road, trail], [surveyed_on_the_trail])
+        assert 1 in result.matched, "the roadway must still get the count"
+        assert 2 not in result.matched, "the trail must never get it, however close it runs"
+
+    def test_the_two_element_form_still_works_uninstructed(self) -> None:
+        """A caller that has not been updated to pass the trail flag gets the
+        old behaviour, not a crash - the fix is additive until the call site
+        (run.py's conflate_volume) passes `variants.is_trail_class(way.tags)`
+        as the third element."""
+        result = conflate([(1, ROAD)], [feature("f1", SURVEYED_ROAD)])
+        assert 1 in result.matched
+
+
+class TestGeometricTieBreak:
+    def test_ties_are_broken_by_distance_not_input_order(self) -> None:
+        """Same precedence, same overlap fraction (both fully within
+        tolerance of the same agency line): the earlier ranking fell through
+        to input order once precedence and overlap were exhausted, so
+        reversing the `ways` list reversed the winner. The way that actually
+        runs closer to the feature must win regardless of which is listed
+        first."""
+        near = ROAD
+        far = shifted(ROAD, 5.0)
+        agency = feature("f1", SURVEYED_ROAD)
+
+        forward = conflate([(1, near), (2, far)], [agency])
+        backward = conflate([(2, far), (1, near)], [agency])
+
+        assert 1 in forward.matched and 2 not in forward.matched, forward
+        assert 1 in backward.matched and 2 not in backward.matched, backward
+
+
+class TestSpanReuseThreshold:
+    def test_max_span_reuse_pins_the_threshold(self) -> None:
+        """0.25 exactly, not merely 'some fraction below 1'. Pinned at a
+        divided-carriageway case sitting right on the boundary, plus a case
+        that would pass a mutation to 0.99 but must not pass at 0.25."""
+        assert MAX_SPAN_REUSE == 0.25
+
+        at_threshold = {}
+        assert _claim(at_threshold, "f", (0.0, 1.0)) is True
+        # Reuses exactly 0.25 of the new span: allowed, the way a junction
+        # shared by two blocks is meant to be.
+        assert _claim(at_threshold, "f", (0.75, 1.75)) is True
+
+        halfway = {}
+        assert _claim(halfway, "f", (0.0, 1.0)) is True
+        # Reuses half the new span - refused at 0.25, but would wrongly pass
+        # if the threshold regressed to 0.99. This is the divided-carriageway
+        # shape: two ways lying alongside each other rather than end to end.
+        assert _claim(halfway, "f", (0.5, 1.5)) is False
+
+
+class TestUnmatchedFeatures:
+    def test_unmatched_features_are_named_not_just_counted(self) -> None:
+        result = conflate([(1, ROAD)], [feature("far-away", shifted(ROAD, 60.0))])
+        assert result.unmatched_features == ["far-away"]
+
+    def test_the_unmatched_count_reaches_the_result(self) -> None:
+        """`unmatched_features` must be derived from the actual match set, not
+        hardcoded - a matching feature and a missing one together, so a stub
+        that always returns [] or always returns every feature id both fail."""
+        result = conflate(
+            [(1, ROAD)],
+            [feature("matches", SURVEYED_ROAD), feature("misses", shifted(ROAD, 60.0))],
+        )
+        assert result.unmatched_features == ["misses"]
+        assert "matches" not in result.unmatched_features
 
 
 class TestPrecedence:
