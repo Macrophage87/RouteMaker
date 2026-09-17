@@ -17,6 +17,15 @@ modifier on two-lane roads rather than a primary variable: what makes a road
 hostile to a bicycle is the speed differential of the traffic passing it, so a
 quiet two-lane road posted at 50 is high stress at almost any volume while a
 congested downtown grid posted at 25 is not.
+
+Two consequences of that ordering are easy to get backwards, so they are stated
+here as well as at the code that implements them. A painted bike lane and a
+rideable paved shoulder are the same provision and are scored on the same table,
+which is what keeps a shoulder from ever rating a road safer than a bike lane on
+it. And surface is last and nearly inert: it never sets a tier and a maintained
+gravel road moves nothing, because gravel here is a low-traffic choice rather
+than a hazard - it only floors LTS1, the tier that claims a child could ride it,
+against a surface that would shed one.
 """
 
 from __future__ import annotations
