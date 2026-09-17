@@ -68,9 +68,21 @@ between them.
 
 City examples; the rural set below covers the other setting. Four of the five
 stay inside the District. **Purple Line does not**: it is 51% in Maryland and
-crosses the District line twice (out and back), which the domain review caught
-and PLAN's "all five city group rides stay inside the District" claim does not
-survive - that claim needs the same correction wherever else it is repeated.
+crosses the District line **four** times, into **two** different Maryland
+counties - out at mile 8.84 into Prince George's County, back in at 18.90, out
+again at 20.20 into Montgomery County, back in at 28.16. It was recorded here
+as "twice, out and back", which is the shape of a route that leaves once and
+returns; this one leaves twice, on opposite sides of the District, and the
+jurisdiction report a permit application is drawn from has to name both
+counties and all four transitions. PLAN's "all five city group rides stay
+inside the District" claim does not survive either, and that correction belongs
+wherever else it is repeated.
+
+The count matters beyond the arithmetic. It is the reference route the
+`route_crossings` re-entry behaviour is grounded in - a route that visits an
+area twice must report two crossings and not one averaged pair - and a fixture
+that says "twice" makes the two-county, four-transition case look like an
+untested edge rather than the one real route this set has for it.
 
 Two of these matter more than their numbers.
 
@@ -133,7 +145,7 @@ knowing because turn count alone does not separate a trail route from a road one
 | | Mass Ride | Group Ride, city | Group Ride, rural | Trailmaxxing |
 |---|---|---|---|---|
 | Distance | 5 to 7.5 mi | 12 to 35 mi | 24 to 30 mi | 15 to 76 mi |
-| Gain | 63 to 164 ft | 347 to 985 ft | 2219 to 2360 ft | 701 to 2333 ft |
+| Gain | 63 to 164 ft | 347 to 985 ft | 2219 to 2361 ft | 701 to 2333 ft |
 | Max grade | 4.4 to 6.3% | 8.5 to 10.9% | 14.5 to 19.0% | 8.3 to 11.8% |
 | Turns per mile | 2.3 to 4.7 | 2.4 to 3.3 | 1.0 to 1.1 | 2.3 to 2.9 |
 | Shape | point-to-point | mostly point-to-point | loop | either |

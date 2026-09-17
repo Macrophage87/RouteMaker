@@ -196,7 +196,8 @@ reverting the fix and confirming a test catches it:
 
 Recorded rather than left for a round-4 reviewer to discover. None of these is a
 defect in shipped code: each is a plan-named behaviour with no implementation
-anywhere, and the last three cannot be built before the first is.
+anywhere. The three guild-lifecycle windows cannot be built before the bot is;
+the last row is a different kind of gap and carries its own note below.
 
 | Gap | Where the plan says it | State |
 |---|---|---|
@@ -204,6 +205,17 @@ anywhere, and the last three cannot be built before the first is.
 | Guild **re-invite token's 24-hour expiry** - "wrapped in a single-use token expiring in 24 hours". | PLAN.md:272 | No token, no expiry, no code anywhere. |
 | **Unmapped-guild alert, default 30 days** - "A guild left unmapped beyond a configurable period, default 30 days, alerts instance admins and offers bulk reassignment or archival". | PLAN.md:272 | No setting, no alert. |
 | **Remap-reversal window of 7 days** - "an instance admin can reverse a remap within 7 days, restoring the prior ids and mapping but never cached standing". | PLAN.md:272 | No remap action, so no reversal window. |
+| **Mass Ride's crossing report** - "the router reports that no roadway-legal crossing of that river is available under Mass Ride and names the ones that are, in the style of the road exposure report". The data half exists and is tested: the crossings fixture records `roadway_bicycle_legal` per structure, `resolve_bridge_bicycle_legality` turns it into `rm:bridge_bicycle`, the remap turns that into `bicycle=no`, and the no-trail variant drops the sidepath-only roadways - so the router really will find no roadway-legal Potomac crossing outside Memorial Bridge and the Anacostia spans. What is missing is the *report*: nothing catches that failure and turns it into a named list of the crossings that remain. | PLAN.md:100 (Mass Ride, L1) | Not built, and deliberately not built here. |
+
+The Mass Ride crossing report is listed with them for one reason and not the
+others: it is router behaviour, not pipeline behaviour. It lives where a
+no-route result is turned into something an organizer can read, alongside the
+road exposure report it is explicitly written "in the style of" - which is layer
+4, and which does not exist yet either. Building it from the pipeline side would
+mean the tile build deciding what a routing failure means, which is the wrong
+component holding the decision and a thing that would have to be unpicked when
+the report is actually written. The fixture it needs is checked in and asserted;
+the rest is the router's.
 
 The three durations belong to guild-lifecycle features (re-invite link, guild
 remap, unmapped-guild alerting) that all presuppose a live bot: the re-invite

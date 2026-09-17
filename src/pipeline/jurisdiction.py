@@ -38,6 +38,16 @@ _QUADRANT = re.compile(
     re.IGNORECASE,
 )
 
+# And the street type, which OSM abbreviates at least as often as it spells out.
+# "Eastern Ave NE" and "Western Ave" are the same two streets as "Eastern Avenue
+# Northeast" and "Western Avenue", and both spellings run along each of them:
+# the quadrant normaliser alone left the abbreviated halves unmatched, which is
+# the same partial firing it was written to prevent, one step further in. The
+# border inserter then fragmented the abbreviated stretches of a boundary street
+# and the crossing report showed entries into Montgomery County for a ride that
+# never left the curb.
+_STREET_TYPE = re.compile(r"\s+(?:ave|av)\.?$", re.IGNORECASE)
+
 
 @dataclass(frozen=True)
 class LayerAssignment:
@@ -270,11 +280,13 @@ def _length_m(geometry: LineString) -> float:
 def is_boundary_street(name: str | None) -> bool:
     """Whether a way's centreline is itself the District line.
 
-    Normalised before matching: "Western Avenue Northwest" and "Western Avenue"
-    are the same street, and OSM carries both spellings along its length. Not
-    surfaced in UI copy as a legal statement; it decides how the way is tagged,
-    and the crossing list notes both authorities.
+    Normalised before matching, in both of the ways OSM varies here: "Western
+    Avenue Northwest", "Western Avenue", "Western Ave NW" and "Western Ave" are
+    one street, and every one of those spellings is carried somewhere along it.
+    Not surfaced in UI copy as a legal statement; it decides how the way is
+    tagged, and the crossing list notes both authorities.
     """
     if not name:
         return False
-    return _QUADRANT.sub("", name.strip()).casefold() in BOUNDARY_STREETS
+    normalised = _STREET_TYPE.sub(" Avenue", _QUADRANT.sub("", name.strip()))
+    return normalised.casefold() in BOUNDARY_STREETS

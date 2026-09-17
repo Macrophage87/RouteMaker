@@ -28,7 +28,11 @@ RECORDED = {
     "group-crit-mass-feb": (14.50, 511, 47),
     "group-crit-mass-jan": (13.77, 604, 33),
     "group-purple-line": (35.25, 985, 118),
-    "rural-group-loco-30": (30.12, 2360, None),  # sampled too densely to count turns
+    # 2361, not 2360: the measurement is 2360.89 ft and the README's table has
+    # always said 2361. The one-foot disagreement was inside this file's own
+    # `abs=1` tolerance, so neither number was wrong enough to fail and the two
+    # sat there disagreeing. The README is the recorded table, so the README wins.
+    "rural-group-loco-30": (30.12, 2361, None),  # sampled too densely to count turns
     "rural-group-tnl": (24.32, 2219, 26),
     "rural-group-two-bridges": (30.11, 2232, 30),
     "trail-annapolis-bwi": (75.73, 2333, 177),

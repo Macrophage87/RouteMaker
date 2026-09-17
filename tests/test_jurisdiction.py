@@ -94,11 +94,49 @@ def test_federal_enclave_flag_survives_to_the_crossing(authorities) -> None:
     assert collapse_short_crossings(manager) == manager
 
 
-def test_boundary_streets_are_recognised() -> None:
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Western Avenue",
+        "Western Avenue Northwest",
+        "Western Ave NW",
+        # The abbreviated spellings the normaliser used to miss. OSM carries
+        # both along each of these streets, so an exact match fired on part of
+        # the length and not the rest - which is worse than not firing, because
+        # the border inserter then fragments only the part it missed and the
+        # crossing report shows entries into Montgomery County for a ride that
+        # never left the curb.
+        "Western Ave",
+        "Eastern Ave NE",
+        "Eastern Ave",
+        "Southern Ave SE",
+        "eastern ave se",
+    ],
+)
+def test_boundary_streets_are_recognised(name: str) -> None:
     from pipeline.jurisdiction import is_boundary_street
 
-    assert is_boundary_street("Western Avenue")
-    assert not is_boundary_street("Connecticut Avenue")
+    assert is_boundary_street(name)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "Connecticut Avenue",
+        "Connecticut Ave NW",
+        # Normalising the street type must not turn an unrelated name into a
+        # boundary street: it expands the abbreviation, it does not match on it.
+        "Ave",
+        "Western Street",
+        "Western Ave Extended",
+        None,
+        "",
+    ],
+)
+def test_other_streets_are_not(name: str | None) -> None:
+    from pipeline.jurisdiction import is_boundary_street
+
+    assert not is_boundary_street(name)
 
 
 def test_reentry_produces_two_crossings_not_a_phantom_one(authorities) -> None:

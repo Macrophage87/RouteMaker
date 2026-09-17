@@ -18,11 +18,39 @@ hostile to a bicycle is the speed differential of the traffic passing it, so a
 quiet two-lane road posted at 50 is high stress at almost any volume while a
 congested downtown grid posted at 25 is not.
 
-Two consequences of that ordering are easy to get backwards, so they are stated
-here as well as at the code that implements them. A painted bike lane and a
-rideable paved shoulder are the same provision and are scored on the same table,
-which is what keeps a shoulder from ever rating a road safer than a bike lane on
-it. And surface is last and nearly inert: it never sets a tier and a maintained
+Three consequences of that ordering are easy to get backwards, so they are
+stated here as well as at the code that implements them.
+
+A painted bike lane and a rideable paved shoulder are the same provision and are
+scored on the same table, which is what keeps a shoulder from ever rating a road
+safer than a bike lane read the same way. The one thing that separates them is
+the door zone, which a shoulder cannot have: a parking lane is never beside a
+shoulder, so the shoulder is measured against Furth's no-parking width and a
+bike lane on a road whose parking is untagged is measured, conservatively,
+against the wider one. That is a difference in what is known about the road, not
+a difference in the credit the provision earns.
+
+One provision earns one credit. Volume is a modifier on roads with *no*
+provision, so a road that has taken the bike-lane table's credit does not also
+take the volume credit - and "has a provision" has to mean the same thing at the
+facility step and at the volume gate, or the hierarchy inverts through the gap
+between them. It did: the gate asked only about cycleway tags, so a rideable
+shoulder took both credits and a painted lane took one, and a shouldered road
+came out a tier *better* than the same road with a bike lane below `VOLUME_QUIET`
+and a tier *worse* above `VOLUME_BUSY` - the second putting a well-shouldered
+arterial into `is_top_tier`. The gate is therefore asked about the provision,
+not about the tag that happens to record it.
+
+That is the order this module keeps rather than running volume before the
+facility step, which is the other way to close the same gap: the facility step
+*sets* a tier from a table while the volume step *moves* one by a tier, so
+running the modifier first means the facility table immediately overwrites it,
+and recovering the volume reading afterwards means keeping a second candidate
+tier around and combining the two by hand. Excluding provisioned roads from the
+gate says the same thing in one line, at the gate, where a reader asking "why did
+this road not get the low-volume relief" is already looking.
+
+And surface is last and nearly inert: it never sets a tier and a maintained
 gravel road moves nothing, because gravel here is a low-traffic choice rather
 than a hazard - it only floors LTS1, the tier that claims a child could ride it,
 against a surface that would shed one.
@@ -121,6 +149,17 @@ PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane", "left", 
 
 RIDEABLE_SHOULDER_M = 1.2
 
+# Furth's two bike-lane width criteria, in metres, and the only thing separating
+# a door-zone stripe from a lane a rider can use. Furth, "Level of Traffic Stress
+# Criteria for Road Segments, version 2.0" (2017), the bike-lane table: a lane
+# running alongside a parking lane is measured as the bike lane *plus* the
+# parking lane, 13.5 ft; a lane with nothing parked beside it is measured on its
+# own, 5.5 ft. Named rather than written inline at the comparison because a
+# reviewer replaced them with 2.1 and 0.7 - half and a third of the published
+# figures - and the whole suite stayed green.
+FURTH_LANE_BESIDE_PARKING_M = 4.1
+FURTH_LANE_ALONE_M = 1.7
+
 # An unsurveyed unpaved rural lane. Deliberately below the 35 mph boundary at
 # which mixed traffic becomes LTS4, rather than exactly on it: Virginia's
 # statutory default for a highway that is not surface treated is 35, and reading
@@ -209,11 +248,18 @@ def _bike_lane_tier(
     table serves both a painted bike lane and a paved shoulder: Furth scores the
     two identically, and giving a shoulder its own ladder is what inverted the
     provision hierarchy (see `classify`).
+
+    `parking` is whether a parking lane runs alongside *this provision*, which is
+    the question Furth's two width criteria turn on and not quite the question
+    "does this road have parking on it". The shoulder call passes a known False
+    (see `classify`); the bike-lane call passes what the tags say, with unknown
+    read as present.
     """
     # Treat unknown parking as present and unknown width as narrow: both are the
     # higher-stress reading, and both are common in this region's tagging.
     beside_parking = parking is not False
-    narrow = width_m is None or width_m < (4.1 if beside_parking else 1.7)
+    threshold = FURTH_LANE_BESIDE_PARKING_M if beside_parking else FURTH_LANE_ALONE_M
+    narrow = width_m is None or width_m < threshold
 
     if speed_mph >= 40:
         return Stress.LTS4, f"{facility}, 40 mph or above"
@@ -276,13 +322,28 @@ def classify(
         assumed.append("lanes")
 
     cycleways = cycleway_values(tags)
-    # A tag asserting the *absence* of a facility is not a facility. Testing the
-    # raw value set let `cycleway=no`, which is common here, skip the volume
-    # modifier the rural position depends on.
-    has_facility = bool(cycleways & (SEPARATED_CYCLEWAY | PAINTED_CYCLEWAY))
     parking = has_parking_lane(tags)
     if parking is None:
         assumed.append("parking")
+
+    # Resolved here rather than inside the facility branch below, because the
+    # volume gate has to ask the same question and get the same answer. A
+    # shoulder earns the bike-lane table's credit only when it is wide enough to
+    # sit in and someone has surveyed the width; a shoulder of unknown or
+    # unrideable width earns nothing, so it is not a provision for the volume
+    # gate either, and such a road is scored exactly like a road with no
+    # shoulder at all.
+    shoulder_present = bool(has_shoulder(tags))
+    shoulder_width = shoulder_width_m(tags) if shoulder_present else None
+    rideable_shoulder = shoulder_width is not None and shoulder_width >= RIDEABLE_SHOULDER_M
+
+    # A tag asserting the *absence* of a facility is not a facility. Testing the
+    # raw value set let `cycleway=no`, which is common here, skip the volume
+    # modifier the rural position depends on.
+    has_cycleway = bool(cycleways & (SEPARATED_CYCLEWAY | PAINTED_CYCLEWAY))
+    # Set by the shoulder branch below when the bike-lane table is what produced
+    # the tier. See `has_facility`, after the facility step.
+    shoulder_credited = False
 
     # Facility, in descending order of separation.
     if cycleways & SEPARATED_CYCLEWAY:
@@ -319,28 +380,64 @@ def classify(
         # Scoring it on the one table is what makes the hierarchy hold by
         # construction rather than by a floor bolted on beside it: the shoulder
         # tier can never come out below the tier the same road would get with a
-        # painted lane of the same width, at any speed or lane count.
+        # painted lane of the same width read the same way, at any speed or lane
+        # count. "Read the same way" is not a hedge - it is the door zone, and it
+        # is the one thing that separates the two provisions; see the comment on
+        # the `parking=False` argument below.
         #
         # Two conditions survive from the old credit. The width has to be one a
         # rider can actually sit in, since a six-inch shoulder is not a refuge
         # and an untagged width is read as narrow. And the result may not be
         # *worse* than the same road with no shoulder at all, which is what the
-        # min below is for: at 20 mph the bike-lane table's door-zone rule
-        # outranks quiet mixed traffic, and that reading is about parked cars,
-        # which a shoulder does not have.
-        if has_shoulder(tags):
-            shoulder_width = shoulder_width_m(tags)
+        # comparison below is for: a shoulder narrower than Furth's criterion
+        # scores LTS2 on the table while a 20 mph street with nothing at all
+        # scores LTS1, and a strip of asphalt at the edge of a quiet street does
+        # not make it more hostile than no strip of asphalt would.
+        if shoulder_present:
             if shoulder_width is None:
                 assumed.append("shoulder width")
-            elif shoulder_width >= RIDEABLE_SHOULDER_M:
+            elif rideable_shoulder:
+                # `parking=False`, always, rather than whatever the road's
+                # parking tags say. A parking lane cannot run beside a shoulder:
+                # a shoulder is the outermost strip of the carriageway, so a car
+                # parked on it is parked *on* the shoulder rather than beside it,
+                # and Furth's door-zone criterion - the one that measures the
+                # bike lane plus the parking lane it runs next to - has nothing
+                # to measure. Passing the road's own value instead made the
+                # credit inert below 35 mph on almost every road it was written
+                # for: parking is untagged on essentially every rural road, an
+                # untagged parking lane is read as present, and an eight-foot
+                # shoulder then had to clear 4.1 m to count as anything but
+                # narrow. Snickersville Turnpike with a surveyed 8 ft shoulder
+                # scored the same as Snickersville Turnpike with none.
                 shoulder_tier, shoulder_rule = _bike_lane_tier(
-                    speed_mph, lanes, shoulder_width, parking, facility="paved shoulder"
+                    speed_mph, lanes, shoulder_width, False, facility="paved shoulder"
                 )
                 if shoulder_tier < tier:
                     tier, rule = shoulder_tier, shoulder_rule
+                    shoulder_credited = True
 
-    # Volume, as a modifier on two-lane roads only, and never upward past the
-    # tier speed already set.
+    # What "this road has a provision" means, in one place, for both the step
+    # above and the gate below - one provision earns one credit. A painted lane
+    # always takes the bike-lane table, so a cycleway tag always counts. A
+    # shoulder takes that table only when it beats plain mixed traffic, and a
+    # shoulder that does not - too narrow to clear Furth's width criterion, or
+    # on a street already quieter than any bike lane would make it - has earned
+    # nothing, so the road is scored exactly as one with no provision at all,
+    # volume gate included.
+    #
+    # Keeping the exemption without taking the table is the inversion arriving
+    # by its subtler route: a 20 mph street at AADT 12,000 took the mixed-traffic
+    # LTS1, declined the table's LTS2, and then skipped the high-volume bump that
+    # the same street with no shoulder and the same street with a bike lane both
+    # took, so a narrow shoulder rated a busy street a tier below either.
+    has_facility = has_cycleway or shoulder_credited
+
+    # Volume, as a modifier on two-lane roads with no provision of their own,
+    # and never upward past the tier speed already set. `has_facility` is the
+    # one definition of "has a provision", shared with the facility step above
+    # so that one provision earns exactly one credit; see the module docstring
+    # for what happened while the two steps disagreed about a paved shoulder.
     volume_source = aadt_source if aadt is not None else None
     if aadt is not None and lanes <= 1 and not has_facility:
         # A guessed speed may not be improved by a guess, but a measured count is

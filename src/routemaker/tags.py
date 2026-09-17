@@ -154,11 +154,31 @@ SHOULDER_WIDTH_KEYS = (
 )
 
 
+SHOULDER_ABSENT = frozenset({"no", "none"})
+
+
 def has_shoulder(tags: dict[str, str]) -> bool | None:
-    for key in SHOULDER_PRESENCE_KEYS:
-        if (value := tags.get(key)) is not None:
-            return value not in {"no", "none"}
-    return None
+    """Whether the way has a shoulder on at least one side.
+
+    Every presence key is read before any answer is returned, rather than the
+    first one found deciding. The keys are not alternatives, they are sides: a
+    way carrying `shoulder=no` *and* `shoulder:right=yes` has a shoulder on the
+    right, and returning at the first key read it as having none at all - which
+    is the more specific tag losing to the more general one, and the more
+    general one is the one a mapper writes first and refines afterwards.
+
+    A surveyed width counts as presence on its own. `shoulder:width=2.4` with no
+    presence key is a mapper who measured the shoulder and did not separately
+    assert that it exists; reading that as "no shoulder tagged" threw away the
+    only measurement on the way, and it is the measurement, not the presence
+    key, that the bike-lane table needs.
+    """
+    values = [value for key in SHOULDER_PRESENCE_KEYS if (value := tags.get(key)) is not None]
+    if any(value not in SHOULDER_ABSENT for value in values):
+        return True
+    if shoulder_width_m(tags) is not None:
+        return True
+    return False if values else None
 
 
 def shoulder_width_m(tags: dict[str, str]) -> float | None:

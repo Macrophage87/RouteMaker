@@ -29,6 +29,7 @@ from rebuild_fixtures import (
     REPO,
     FakeBinaries,
     box,
+    build_named_bridge_extract,
     build_parallel_extract,
     build_toy_extract,
     fake_fetch,
@@ -76,13 +77,19 @@ def run_pipeline(
     sidepath=(),
     volume=(),
     legality=(),
+    crossings=(),
     skip: frozenset[Stage] = frozenset(),
     build_id: str | None = None,
     disk_usage=roomy_disk,
 ):
     """The weekly task's call, with the binaries stood in for."""
     reference = write_reference_data(
-        root, urban=urban, sidepath=sidepath, volume=volume, legality=legality
+        root,
+        urban=urban,
+        sidepath=sidepath,
+        volume=volume,
+        legality=legality,
+        crossings=crossings,
     )
     context = RebuildContext(
         source_pbf=source,
@@ -319,6 +326,55 @@ def test_a_bridge_barred_to_bicycles_is_tagged_so_on_every_variant(workspace, st
         assert tags[500].get("rm:bridge_bicycle") == "no", variant.value
         assert tags[100].get("rm:bridge_bicycle") == "yes", variant.value
         assert "rm:bridge_bicycle" not in tags[300], "no opinion means no claim"
+
+
+def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
+    tmp_path, states
+) -> None:
+    """The crossings fixture's legality column describes the *roadway*, and
+    nothing stopped it matching the path.
+
+    A shared-use path on a bridge is mapped as a `highway=cycleway` way tagged
+    `bridge=yes` and named after the structure - that is the ordinary OSM shape,
+    and it is what the Woodrow Wilson path, the 14th Street path and the Key
+    Bridge sidewalk all look like. `resolve_bridge_bicycle_legality` matched by
+    name over any bridge-tagged way, so the path resolved False, `inject_tags`
+    emitted `rm:bridge_bicycle=no` on it on every variant, and
+    `routemaker_remap` turns that into `bicycle=no`: the only bicycle crossing
+    of the Potomac at that point, deleted from all three graphs by a column that
+    says nothing about it.
+
+    Driven through the real pipeline and read back from the written PBF, which
+    is the only thing the tile build ever sees.
+    """
+    from pipeline.extract import read_ways
+
+    source = tmp_path / "bridge.osm.pbf"
+    build_named_bridge_extract(
+        source, roadway_id=700, sidepath_id=701, name="Woodrow Wilson Memorial Bridge"
+    )
+    row = {
+        "name": "Woodrow Wilson Bridge path",
+        "osm_way_id": 0,
+        "osm_names": ["Woodrow Wilson Memorial Bridge"],
+        "roadway_bicycle_legal": False,
+        "sidepath_only": True,
+    }
+    context, _ = run_pipeline(source, tmp_path, urban=(700, 701), crossings=[row], skip=NOT_SWAPPED)
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if variant is Variant.NO_TRAIL:
+            # Both ways are gone from this one, by the two separate rules that
+            # each exist for it: the path because it is trail class, the roadway
+            # because the row is `sidepath_only` and a mass ride cannot use it.
+            assert 701 not in tags and 700 not in tags
+            continue
+        assert "rm:bridge_bicycle" not in tags[701], (
+            f"the path was barred on the {variant.value} variant by the roadway's row"
+        )
+        # The roadway's own row still bites.
+        assert tags[700].get("rm:bridge_bicycle") == "no", variant.value
 
 
 def test_a_way_clipping_an_authority_by_a_sliver_is_not_tagged_with_it(workspace, states) -> None:

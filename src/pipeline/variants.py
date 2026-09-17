@@ -12,7 +12,7 @@ it costs a request option; anything that needs a different graph is a variant.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from enum import Enum
 
 # Trail-class ways are defined once, by highway alone and regardless of bicycle
@@ -67,6 +67,48 @@ def is_trail_class(
     asking this function to.
     """
     return tags.get("highway") in TRAIL_CLASS_HIGHWAY
+
+
+class DuplicateCrossingName(ValueError):
+    """Two crossing rows claim the same OSM name.
+
+    Names are how this fixture resolves against the extract, and the lookups
+    below merge every row's `osm_names` into one flat dict keyed by the
+    casefolded name. A name claimed twice therefore resolves to whichever row
+    happened to be written last, silently, and the two rows disagree about the
+    two things the fixture exists to record - so this is raised at load time,
+    where an operator sees it, rather than resolved by file order.
+    """
+
+
+def crossing_names(row: dict) -> list[str]:
+    """Every OSM name this row claims: its `osm_names` spellings, or its label.
+
+    One definition, shared by both resolvers, so the sidepath half and the
+    legality half can never disagree about which names belong to a row.
+    """
+    return list(row.get("osm_names") or ([row["name"]] if row.get("name") else []))
+
+
+def check_crossing_names_unique(rows: Sequence[dict]) -> None:
+    """Refuse a fixture where two rows claim the same OSM name.
+
+    Checked across every row rather than only the rows one resolver looks at,
+    because the two resolvers read different subsets - `sidepath_only` rows and
+    rows with a `roadway_bicycle_legal` opinion - and a name duplicated across
+    the two subsets would be caught by neither while still deciding, by file
+    order, which row a bridge in the extract resolves to.
+    """
+    claimed: dict[str, int] = {}
+    for index, row in enumerate(rows):
+        for name in crossing_names(row):
+            key = name.casefold()
+            if claimed.setdefault(key, index) != index:
+                first = rows[claimed[key]].get("name")
+                raise DuplicateCrossingName(
+                    f"{first!r} and {row.get('name')!r} both claim the OSM name {name!r}; "
+                    f"one of them is wrong and the file cannot say which"
+                )
 
 
 def is_sidepath_only(row: dict) -> bool:
@@ -128,6 +170,8 @@ def resolve_sidepath_bridge_ids(
     operator needs told - it means either the clip moved or the name changed, and
     either way the sidepath rule is not biting on that bridge.
     """
+    rows = list(rows)
+    check_crossing_names_unique(rows)
     wanted: dict[str, list[str]] = {}
     explicit: set[int] = set()
     for row in rows:
@@ -136,8 +180,7 @@ def resolve_sidepath_bridge_ids(
         if int(row.get("osm_way_id") or 0) != 0:
             explicit.add(int(row["osm_way_id"]))
             continue
-        names = row.get("osm_names") or ([row["name"]] if row.get("name") else [])
-        if names:
+        if names := crossing_names(row):
             wanted[row["name"]] = [name.casefold() for name in names]
 
     by_name = {name for names in wanted.values() for name in names}
@@ -158,7 +201,11 @@ def resolve_sidepath_bridge_ids(
 
 
 def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dict[int, bool]:
-    """Per-way roadway bicycle legality, from the crossing fixture.
+    """Per-way *roadway* bicycle legality, from the crossing fixture.
+
+    Roadway, as the column and this docstring have always said, and now as the
+    code does: trail-class ways are excluded even when they carry the bridge's
+    own name.
 
     A different question from `resolve_sidepath_bridge_ids`, matched the same
     way (by name against a bridge-tagged way, or by an explicit `osm_way_id`).
@@ -176,6 +223,8 @@ def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dic
     entirely, so the pipeline never injects a legality tag it has no fixture
     backing for and OSM's own tagging is left to stand.
     """
+    rows = list(rows)
+    check_crossing_names_unique(rows)
     by_name: dict[str, bool] = {}
     explicit: dict[int, bool] = {}
     for row in rows:
@@ -185,13 +234,29 @@ def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dic
         if int(row.get("osm_way_id") or 0) != 0:
             explicit[int(row["osm_way_id"])] = bool(legal)
             continue
-        names = row.get("osm_names") or ([row["name"]] if row.get("name") else [])
-        for name in names:
+        for name in crossing_names(row):
             by_name[name.casefold()] = bool(legal)
 
     out: dict[int, bool] = dict(explicit)
     for way in ways:
         if way.tags.get("bridge") in (None, "no"):
+            continue
+        # The roadway only. A trail-class way carrying the bridge's name is the
+        # sidepath on it, not the roadway this column describes, and it is the
+        # ordinary OSM shape for a shared-use path on a bridge: the Woodrow
+        # Wilson path, the 14th Street path and the Key Bridge sidewalk are all
+        # `highway=cycleway` or `footway` ways tagged `bridge=yes` and named
+        # after the structure they run on.
+        #
+        # Without this the name match reached them, every variant got
+        # `rm:bridge_bicycle=no`, and `routemaker_remap` turned that into
+        # `bicycle=no` - deleting the only bicycle crossing of the Potomac at
+        # those three points from all three graphs, on the strength of a column
+        # that says nothing about the path. The guard is the one `conflate()`
+        # takes on the same geometry (a trail beside a road is not the road) and
+        # the one the `cycleway=track` write already has for the same reason (a
+        # derived tag written onto a trail-class way changes its access).
+        if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
             continue
         name = (way.tags.get("name") or "").casefold()
         if name and name in by_name and way.osm_id not in out:
