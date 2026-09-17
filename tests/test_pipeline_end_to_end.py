@@ -25,9 +25,11 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
+    PARALLEL_COUNT,
     REPO,
     FakeBinaries,
     box,
+    build_parallel_extract,
     build_toy_extract,
     fake_fetch,
     roomy_disk,
@@ -73,12 +75,15 @@ def run_pipeline(
     urban=(100, 200, 300, 400, 500),
     sidepath=(),
     volume=(),
+    legality=(),
     skip: frozenset[Stage] = frozenset(),
     build_id: str | None = None,
     disk_usage=roomy_disk,
 ):
     """The weekly task's call, with the binaries stood in for."""
-    reference = write_reference_data(root, urban=urban, sidepath=sidepath, volume=volume)
+    reference = write_reference_data(
+        root, urban=urban, sidepath=sidepath, volume=volume, legality=legality
+    )
     context = RebuildContext(
         source_pbf=source,
         work_dir=root / "work",
@@ -113,7 +118,14 @@ def test_a_full_rebuild_populates_the_staging_schema(workspace, states) -> None:
 
     assert tiers[200] == 1, "a trail is lowest stress"
     assert tiers[300] == 1, "a gravel farm track is a low-stress choice, not a hazard"
-    assert tiers[100] >= 3, "a 35 mph secondary with no facility is high stress"
+    # `>= 3` was exactly weak enough to let the classifier's 35 -> 45 mph
+    # boundary mutation through: 35 mph is the LTS3/LTS4 boundary and the most
+    # common arterial posting in the region, and a tier-3 reading here would be
+    # the boundary having moved. Beginner's "zero top-tier distance" invariant
+    # and the road-exposure report both key on LTS4, so the difference between
+    # 3 and 4 is the difference between routing a beginner onto this road and
+    # not.
+    assert tiers[100] == 4, "a 35 mph secondary with no facility is top-tier stress"
 
 
 def test_the_border_node_reaches_the_staged_crossings_table(workspace, states) -> None:
@@ -250,6 +262,63 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
     context, _ = run_pipeline(source, root, volume=volume, skip=NOT_SWAPPED)
     assert context.aadt_by_way.get(100) == (900, "state")
     assert context.stress_by_way[100].volume_source == "state"
+
+
+@pytest.mark.parametrize(
+    ("road_id", "trail_id"),
+    [(100, 200), (200, 100)],
+    ids=["road-first", "trail-first"],
+)
+def test_a_trail_alongside_a_road_cannot_take_the_roads_count(
+    tmp_path, states, road_id, trail_id
+) -> None:
+    """Through the real `conflate_volume` handler, not `conflate()`.
+
+    A motor-vehicle AADT is not an attribute of a shared-use path. With the
+    Mount Vernon Trail 15 m from the GW Parkway - well inside
+    `MAX_SEPARATION_M` - a trail left in the candidate set out-ranks the
+    roadway whenever the survey line is drawn nearer the path than the
+    centreline, and exclusivity then denies the count to the roadway too. So
+    the count reaches neither way and the arterial is classified as if it were
+    uncounted.
+
+    `conflation.conflate` grew the trail-class flag and defaults it to False,
+    so the fix was inert until this handler passed it. Asserted in both input
+    orders because the ordering was the tie-break the previous defect turned
+    on.
+    """
+    source = tmp_path / "parallel.osm.pbf"
+    build_parallel_extract(source, road_id=road_id, trail_id=trail_id)
+    context, _ = run_pipeline(
+        source, tmp_path, urban=(road_id, trail_id), volume=[PARALLEL_COUNT], skip=NOT_SWAPPED
+    )
+
+    assert context.aadt_by_way.get(road_id) == (24000, "state"), "the count belongs to the road"
+    assert trail_id not in context.aadt_by_way, "a path carries no motor traffic"
+    assert context.stress_by_way[road_id].volume_source == "state"
+
+
+def test_a_bridge_barred_to_bicycles_is_tagged_so_on_every_variant(workspace, states) -> None:
+    """`resolve_bridge_bicycle_legality` existed and nothing called it, so the
+    tag `graph.lua` reads (`derived.bridge_bicycle_legal`) was emitted by no
+    stage at all and the remap's bicycle=no branch was unreachable in
+    production.
+
+    On every variant, because whether OSM's `bicycle` tag bars a bridge's
+    roadway outright is a legal fact rather than a request-time dial. Read back
+    from the written PBF, which is the only thing the tile build ever sees.
+    """
+    from pipeline.extract import read_ways
+
+    source, root = workspace
+    # Way 500 is the trunk bridge; way 100 the road the fixture says is legal.
+    context, _ = run_pipeline(source, root, legality={500: False, 100: True}, skip=NOT_SWAPPED)
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        assert tags[500].get("rm:bridge_bicycle") == "no", variant.value
+        assert tags[100].get("rm:bridge_bicycle") == "yes", variant.value
+        assert "rm:bridge_bicycle" not in tags[300], "no opinion means no claim"
 
 
 def test_a_way_clipping_an_authority_by_a_sliver_is_not_tagged_with_it(workspace, states) -> None:

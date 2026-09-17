@@ -95,6 +95,25 @@ def last_gateway_event(default=None):
     return run.started_at if run is not None else default
 
 
+def gateway_has_ever_reported() -> bool:
+    """Whether a heartbeat row has ever been written, successful or not.
+
+    `mark_degraded_guilds` fails closed on silence, which is right for a bot
+    that goes quiet and wrong for a deployment whose bot does not exist yet:
+    with nothing writing the heartbeat, the first tick would mark every active
+    guild degraded and standing would lapse deployment-wide 72 hours later. The
+    scheduler consults this so the two cases are told apart - "the bot has never
+    run here" is not "the bot has stopped answering".
+
+    Any row counts, not only a successful one. Once the heartbeat exists at all,
+    the bot is a thing this deployment has, and its silence is the outage the
+    window exists for.
+    """
+    from .models import ScheduledRun
+
+    return ScheduledRun.objects.filter(task=GATEWAY_HEARTBEAT_TASK).exists()
+
+
 _UNSET = object()
 
 

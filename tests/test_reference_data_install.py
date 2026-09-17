@@ -126,3 +126,47 @@ def test_without_inputs_the_script_installs_the_fixture_and_names_what_is_missin
     assert "MISSING" in result.stderr and "urban-areas.json" in result.stderr
     assert "volume.json" in result.stderr
     assert Path(tmp_path / "reference" / "volume.json").exists() is False
+
+
+def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path, caplog) -> None:
+    """Two warnings, not one. "Not found in the extract" means the sidepath rule
+    is inert on that bridge - the clip moved, or the name changed. "Found, but
+    nobody has confirmed the spelling" means the match is believed rather than
+    checked, which is the state every row in the shipped fixture is in while
+    Overpass is blocked. An operator can act on the first and can only queue the
+    second, so folding them into one line hides the distinction the fixture's
+    `osm_names_verified` column exists to record.
+
+    `unverified_crossing_names` existed and nothing called it.
+    """
+    import logging
+
+    from pipeline.extract import read_ways
+    from pipeline.run import ReferenceData
+
+    extract = tmp_path / "source.osm.pbf"
+    build_toy_extract(extract)
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "urban-areas.json").write_text("[]")
+    (reference / "volume.json").write_text("[]")
+    (reference / "crossings.json").write_bytes(
+        (REPO / "fixtures" / "crossings" / "potomac-anacostia.json").read_bytes()
+    )
+
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        ReferenceData.load(reference, read_ways(extract))
+
+    messages = [record.getMessage() for record in caplog.records]
+    unmatched = [m for m in messages if "not found in the extract" in m]
+    unverified = [m for m in messages if "not yet verified" in m]
+    assert len(unmatched) == 1, messages
+    assert len(unverified) == 1, messages
+    assert unmatched[0] != unverified[0]
+    # Arlington Memorial Bridge is not sidepath-only, so it is never in the
+    # unmatched list whatever the extract carries - and it is unverified like
+    # every other row. The two lists answer different questions and this is the
+    # row that shows it.
+    assert "Arlington Memorial Bridge" not in unmatched[0]
+    assert "Arlington Memorial Bridge" in unverified[0]

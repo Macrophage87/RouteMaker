@@ -109,6 +109,12 @@ class ReferenceData:
     # not biting on that bridge and an operator needs told which.
     unmatched_crossings: tuple[str, ...]
 
+    # Per-way roadway bicycle legality from the crossing fixture, for the ways it
+    # has an opinion about. A legal fact rather than a routing preference, so
+    # `inject_tags` emits it on every variant; a way absent from this mapping is
+    # left to OSM's own tagging rather than being asserted either way.
+    bridge_bicycle_legal: dict[int, bool]
+
     @classmethod
     def load(cls, directory: Path, ways: Sequence[extract.Way] = ()) -> ReferenceData:
         urban = directory / "urban-areas.json"
@@ -138,11 +144,24 @@ class ReferenceData:
                 "crossings not found in the extract, so the sidepath rule is inert on them: %s",
                 ", ".join(unmatched),
             )
+        # A second, deliberately separate warning. "Not found in the extract" and
+        # "found, but nobody has confirmed the spelling" are different levels of
+        # confidence and an operator cannot act on them the same way; folding
+        # them into one line would hide the distinction the fixture's
+        # `osm_names_verified` column exists to record.
+        unverified = variants.unverified_crossing_names(crossing_rows)
+        if unverified:
+            logger.warning(
+                "crossing names not yet verified against a real extract, so their match "
+                "is believed rather than checked: %s",
+                ", ".join(unverified),
+            )
         return cls(
             urban_way_ids=frozenset(json.loads(urban.read_text())),
             sidepath_bridge_ids=bridge_ids,
             volume_features=features,
             unmatched_crossings=tuple(unmatched),
+            bridge_bicycle_legal=variants.resolve_bridge_bicycle_legality(crossing_rows, ways),
         )
 
 
@@ -310,8 +329,18 @@ def build_handlers(
 
     def conflate_volume() -> None:
         reference = context.require_reference()
+        # The third element is the trail-class flag, and it is what keeps a
+        # motor-vehicle AADT off a shared-use path: the Mount Vernon Trail runs
+        # 15 m from the GW Parkway, well inside `MAX_SEPARATION_M`, so a trail
+        # left in the candidate set can out-rank the roadway on bearing and
+        # overlap and then deny the count to both real roadway blocks by
+        # exclusivity. `conflate` defaults it to False for the two-element
+        # form, so until this call passed it the exclusion did not apply.
         result = conflation.conflate(
-            [(way.osm_id, way.coordinates) for way in context.ways],
+            [
+                (way.osm_id, way.coordinates, variants.is_trail_class(way.tags))
+                for way in context.ways
+            ],
             reference.volume_features,
         )
         context.aadt_by_way = {
@@ -424,6 +453,16 @@ def build_handlers(
                         way.tags, way.osm_id, reference.sidepath_bridge_ids
                     )
                 }
+                # On every variant, not only the no-trail one: whether OSM's
+                # `bicycle` tag bars a bridge's roadway outright is a legal
+                # fact, true or false everywhere, and access is not a
+                # request-time dial. `graph.lua` already reads this tag
+                # (`derived.bridge_bicycle_legal`); this is the emitter it
+                # never had. Ways the fixture has no opinion about are left
+                # out, so OSM's own tagging stands.
+                legal = reference.bridge_bicycle_legal.get(way.osm_id)
+                if legal is not None:
+                    derived["bridge_bicycle"] = legal
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
                 if "lit" in way.tags:
