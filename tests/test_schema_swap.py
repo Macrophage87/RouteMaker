@@ -3,6 +3,13 @@
 The swap is the riskiest operation in the weekly rebuild: it takes an ACCESS
 EXCLUSIVE lock on a live database while requests are in flight. These tests
 exercise the parts that only a real engine has.
+
+Every test below takes its schema names from the `segment_schemas` fixture
+rather than writing `"live"` / `"staging"` as literals. That is the fix for
+handoff item 18: with the names hardcoded, setting `ROUTEMAKER_LIVE_SCHEMA`
+and `ROUTEMAKER_STAGING_SCHEMA` failed eleven of these tests, because the
+fixture created schemas under the renamed names while the tests still read
+and wrote `live` and `staging`.
 """
 
 from __future__ import annotations
@@ -30,34 +37,74 @@ def insert_segment(schema: str, way_id: int, tier: int = 2) -> None:
         )
 
 
+# --- Schema-name injection guard (pipeline/schema.py) -----------------------
+#
+# validate_schema_name's comment used to say schema names "come from settings
+# today", as if that made interpolating them into DDL safe by default. It does
+# not: settings.SEGMENT_SCHEMA_LIVE and SEGMENT_SCHEMA_STAGING are themselves
+# `os.environ.get(...)`, so the guard is what stands between whatever an
+# operator's environment sets and arbitrary SQL running against production,
+# not a defense against some hypothetical future change. Nothing called it
+# with a hostile name before this.
+
+
+def test_validate_schema_name_rejects_a_statement_terminator() -> None:
+    from pipeline.schema import validate_schema_name
+
+    with pytest.raises(ValueError):
+        validate_schema_name("live; DROP SCHEMA public")
+
+
+def test_validate_schema_name_rejects_uppercase() -> None:
+    from pipeline.schema import validate_schema_name
+
+    with pytest.raises(ValueError):
+        validate_schema_name("Live")
+
+
+def test_validate_schema_name_rejects_the_empty_string() -> None:
+    from pipeline.schema import validate_schema_name
+
+    with pytest.raises(ValueError):
+        validate_schema_name("")
+
+
+def test_validate_schema_name_accepts_an_ordinary_name() -> None:
+    from pipeline.schema import validate_schema_name
+
+    assert validate_schema_name("live_b") == "live_b"
+
+
 def test_swap_promotes_staging_and_retires_live(segment_schemas) -> None:
     from pipeline.schema import schema_exists
     from pipeline.swap import swap_schemas
 
-    insert_segment("live", 111)
-    insert_segment("staging", 222)
-    insert_segment("staging", 333)
+    live, staging = segment_schemas
+    insert_segment(live, 111)
+    insert_segment(staging, 222)
+    insert_segment(staging, 333)
 
     result = swap_schemas()
 
-    assert row_count("live") == 2, "staging content should now be live"
+    assert row_count(live) == 2, "staging content should now be live"
     assert schema_exists(result.retired), "previous live must be kept for rollback"
     assert row_count(result.retired) == 1
-    assert not schema_exists("staging")
+    assert not schema_exists(staging)
 
 
 def test_rollback_restores_the_previous_live(segment_schemas) -> None:
     from pipeline.swap import rollback_swap, swap_schemas
 
-    insert_segment("live", 111)
-    insert_segment("staging", 222)
-    insert_segment("staging", 333)
+    live, staging = segment_schemas
+    insert_segment(live, 111)
+    insert_segment(staging, 222)
+    insert_segment(staging, 333)
 
     swap_schemas()
     rollback_swap()
 
-    assert row_count("live") == 1, "the original live content must come back"
-    assert row_count("staging") == 2
+    assert row_count(live) == 1, "the original live content must come back"
+    assert row_count(staging) == 2
 
 
 def test_rename_is_three_steps_not_one(segment_schemas) -> None:
@@ -65,10 +112,11 @@ def test_rename_is_three_steps_not_one(segment_schemas) -> None:
     single-rename implementation raises 'schema already exists' here."""
     from pipeline.swap import swap_schemas
 
-    insert_segment("live", 111)
-    insert_segment("staging", 222)
+    live, staging = segment_schemas
+    insert_segment(live, 111)
+    insert_segment(staging, 222)
     result = swap_schemas()
-    assert result.retired == "live_old"
+    assert result.retired == f"{live}_old"
     assert result.attempts == 1
 
 
@@ -99,11 +147,12 @@ def test_a_non_lock_failure_is_raised_as_itself(segment_schemas) -> None:
     from pipeline.schema import drop_segment_schema
     from pipeline.swap import SwapLockTimeout, swap_schemas
 
-    drop_segment_schema("staging")
+    _live, staging = segment_schemas
+    drop_segment_schema(staging)
     with _pytest.raises(ProgrammingError):
         swap_schemas(attempts=1)
     # And specifically not the lock error.
-    drop_segment_schema("staging")
+    drop_segment_schema(staging)
     try:
         swap_schemas(attempts=2, backoff_s=0)
     except SwapLockTimeout:  # pragma: no cover - the failure this guards against
@@ -139,16 +188,18 @@ def test_first_swap_on_a_fresh_deployment_succeeds(segment_schemas) -> None:
     from pipeline.schema import drop_segment_schema, schema_exists
     from pipeline.swap import swap_schemas
 
-    drop_segment_schema("live")
-    assert not schema_exists("live")
-    insert_segment("staging", 222)
+    live, staging = segment_schemas
+    drop_segment_schema(live)
+    assert not schema_exists(live)
+    insert_segment(staging, 222)
     swap_schemas()
-    assert row_count("live") == 1
+    assert row_count(live) == 1
 
 
 def test_no_foreign_key_points_into_the_swapped_schema(segment_schemas) -> None:
     """A cross-schema constraint would make the rename impossible, so the rule is
     asserted rather than left to reviewer memory."""
+    live, staging = segment_schemas
     with connection.cursor() as cursor:
         cursor.execute(
             """
@@ -159,9 +210,10 @@ def test_no_foreign_key_points_into_the_swapped_schema(segment_schemas) -> None:
             JOIN pg_class parent ON parent.oid = c.confrelid
             JOIN pg_namespace parent_ns ON parent_ns.oid = parent.relnamespace
             WHERE c.contype = 'f'
-              AND parent_ns.nspname IN ('live', 'staging')
-              AND child_ns.nspname NOT IN ('live', 'staging')
-            """
+              AND parent_ns.nspname IN (%s, %s)
+              AND child_ns.nspname NOT IN (%s, %s)
+            """,
+            [live, staging, live, staging],
         )
         assert cursor.fetchone()[0] == 0
 
@@ -184,7 +236,8 @@ def test_the_unmanaged_segment_model_is_readable_through_the_orm(segment_schemas
     """
     from core.models import Segment
 
-    insert_segment("live", 4242)
+    live, _staging = segment_schemas
+    insert_segment(live, 4242)
     assert Segment.objects.count() == 1
     assert Segment.objects.first().osm_way_id == 4242
 
@@ -231,13 +284,14 @@ def test_a_swap_does_not_take_the_application_schema_with_it(segment_schemas) ->
     """The consequence the ordering prevents, asserted end to end."""
     from pipeline.swap import swap_schemas
 
-    insert_segment("staging", 4242)
+    live, staging = segment_schemas
+    insert_segment(staging, 4242)
     swap_schemas()
 
     from core.models import User
 
     assert User.objects.count() == 0, "the users table must still resolve after a swap"
-    assert row_count("live") == 1
+    assert row_count(live) == 1
 
 
 def second_connection():
@@ -272,11 +326,12 @@ def test_the_swap_takes_a_lock_that_conflicts_with_an_ordinary_reader(segment_sc
 
     from pipeline.swap import SwapLockTimeout, swap_schemas
 
+    live, _staging = segment_schemas
     holder = second_connection()
     try:
         with holder.cursor() as cursor:
             cursor.execute("BEGIN")
-            cursor.execute("LOCK TABLE live.segment IN ACCESS SHARE MODE")
+            cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS SHARE MODE")
 
         # A backstop on the *test's* session, so that a swap which sets no
         # lock_timeout of its own fails here rather than blocking until the
@@ -309,13 +364,14 @@ def test_a_reader_that_lets_go_costs_the_swap_an_attempt_rather_than_the_rebuild
 
     from pipeline.swap import swap_schemas
 
+    live, _staging = segment_schemas
     holder = second_connection()
     released = threading.Event()
 
     def hold_briefly() -> None:
         with holder.cursor() as cursor:
             cursor.execute("BEGIN")
-            cursor.execute("LOCK TABLE live.segment IN ACCESS SHARE MODE")
+            cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS SHARE MODE")
         time.sleep(0.6)
         holder.rollback()
         released.set()
@@ -344,13 +400,14 @@ def test_the_rollback_path_takes_the_same_lock(segment_schemas) -> None:
 
     from pipeline.swap import rollback_swap, swap_schemas
 
+    live, _staging = segment_schemas
     swap_schemas()
 
     holder = second_connection()
     try:
         with holder.cursor() as cursor:
             cursor.execute("BEGIN")
-            cursor.execute("LOCK TABLE live.segment IN ACCESS SHARE MODE")
+            cursor.execute(f"LOCK TABLE {live}.segment IN ACCESS SHARE MODE")
 
         with connection.cursor() as cursor:
             cursor.execute("SET statement_timeout = '3s'")
@@ -365,3 +422,75 @@ def test_the_rollback_path_takes_the_same_lock(segment_schemas) -> None:
     finally:
         holder.rollback()
         holder.close()
+
+
+# --- F10: two consecutive swaps ---------------------------------------------
+#
+# Every test above calls swap_schemas() at most once per test, so the retired
+# schema never exists yet when `DROP SCHEMA IF EXISTS {retired} CASCADE` runs:
+# the statement is always a no-op, and a mutation that deleted it outright
+# would still leave every test above green. Only a second swap, with staging
+# refilled in between, makes the retired schema non-empty at the moment the
+# drop runs.
+
+
+def test_two_consecutive_swaps_actually_drop_the_retired_schema(segment_schemas) -> None:
+    """The first swap's DROP SCHEMA ... CASCADE finds nothing to drop, because
+    the retired name has never been used yet. The second swap's does: it has to
+    remove the schema (and the rows in it) that the first swap's rename left
+    behind, or the second swap's own rename fails outright with 'schema already
+    exists' instead of quietly leaving stale data around.
+    """
+    from pipeline.schema import create_segment_schema
+    from pipeline.swap import swap_schemas
+
+    live, staging = segment_schemas
+    insert_segment(live, 111)
+    insert_segment(staging, 222)
+
+    first = swap_schemas()
+    assert row_count(first.retired) == 1  # the original live content: way 111
+
+    # Refill staging for a second rebuild, the way a real weekly rebuild would.
+    create_segment_schema(staging)
+    insert_segment(staging, 444)
+
+    second = swap_schemas()
+    assert second.retired == first.retired, "the retired name is fixed, not incremented"
+    assert row_count(live) == 1
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id FROM {live}.segment")
+        assert cursor.fetchone()[0] == 444
+
+    # The schema that held way 111 was dropped by the second swap's DROP
+    # SCHEMA ... CASCADE, not merely renamed away a second time: it now holds
+    # what used to be live (way 222), and 111 is gone everywhere.
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT osm_way_id FROM {second.retired}.segment")
+        assert cursor.fetchone()[0] == 222
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT
+                (SELECT count(*) FROM {live}.segment WHERE osm_way_id = 111) +
+                (SELECT count(*) FROM {second.retired}.segment WHERE osm_way_id = 111)"""
+        )
+        assert cursor.fetchone()[0] == 0, "way 111 must not survive the second swap anywhere"
+
+
+def test_deadlock_is_classified_as_a_lock_error() -> None:
+    """55P03 (lock_not_available) is not the only SQLSTATE contention raises.
+    40P01 (deadlock_detected) is a lock error too - the swap and the rollback
+    both retry on it rather than raising it as a terminal failure - and losing
+    it from LOCK_SQLSTATES would silently reclassify a deadlocked swap as one
+    that should not be retried.
+    """
+    from pipeline.swap import _is_lock_error
+
+    class FakeDeadlock(Exception):
+        sqlstate = "40P01"
+
+    class FakeSyntaxError(Exception):
+        sqlstate = "42601"
+
+    assert _is_lock_error(FakeDeadlock())
+    assert not _is_lock_error(FakeSyntaxError())

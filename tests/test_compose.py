@@ -78,15 +78,7 @@ def test_one_valhalla_process_per_tile_variant() -> None:
     assert variants == ["valhalla-ebike", "valhalla-no-trail", "valhalla-standard"]
 
 
-def test_the_swap_time_peak_fits_in_the_host() -> None:
-    """The one rule the script adds that this file does not: the sum of the
-    limits, including the duplicate Valhalla containers resident during a swap,
-    has to stay under host RAM.
-
-    Run in-process rather than as a subprocess. The script used to be shelled out
-    to here, which re-ran the two limit checks above a fourth time and reported
-    whatever it found as a single opaque return code.
-    """
+def _load_check_compose_limits():
     import importlib.util
 
     spec = importlib.util.spec_from_file_location(
@@ -95,5 +87,40 @@ def test_the_swap_time_peak_fits_in_the_host() -> None:
     assert spec is not None and spec.loader is not None
     script = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(script)
+    return script
 
-    assert script.main() == 0
+
+def test_the_swap_time_peak_fits_in_the_host() -> None:
+    """The one rule the script adds that this file does not: the sum of the
+    limits, including the duplicate Valhalla containers resident during a swap,
+    has to stay under host RAM.
+
+    Run in-process rather than as a subprocess. The script used to be shelled out
+    to here, which re-ran the two limit checks above a fourth time and reported
+    whatever it found as a single opaque return code.
+
+    The path is passed explicitly (NIT 7): main()'s old default,
+    `"compose.yaml"`, resolved against pytest's own working directory rather
+    than the repository root, so a run from any other directory silently
+    parsed a different file - or none - from the one this test's other
+    assertions were written against.
+    """
+    script = _load_check_compose_limits()
+    assert script.main(str(REPO / "compose.yaml")) == 0
+
+
+def test_valhalla_worker_count_is_checked_against_its_own_limit(tmp_path) -> None:
+    """PLAN: "the CI compose check asserts the worker count against the limit
+    rather than merely asserting that a limit exists." A worker count raised
+    from 2 to 64 at the same 2 GB limit is exactly the mutation that survived
+    the round-3 panel, and it must fail here, not just the weak `>= 2` floor
+    tests/test_valhalla_config.py used to carry alone.
+    """
+    script = _load_check_compose_limits()
+
+    mutated = yaml.safe_load((REPO / "compose.yaml").read_text())
+    mutated["services"]["valhalla-standard"]["command"][2] = "64"
+    mutated_path = tmp_path / "compose.yaml"
+    mutated_path.write_text(yaml.safe_dump(mutated))
+
+    assert script.main(str(mutated_path)) == 1, "64 workers at a 2 GB, 2-cpu limit must be refused"

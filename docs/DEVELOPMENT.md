@@ -73,19 +73,32 @@ Setting `CI=1` turns the suite's missing-interpreter skips into failures.
 
 ## Running the suite twice at once
 
-The database name and the swapped schema names both come from the environment,
-and both have to be set together. The suite creates and drops `live`, `staging`
-and `live_old`, so a second run against the same database drops the first one's
-tables mid-test — and the failures that follow read as code defects rather than
-as contention.
+**A private `PGDATABASE` is enough on its own.** Each Postgres database is its
+own namespace, so two runs against two different databases cannot drop each
+other's schemas no matter what either one names `live` and `staging` — the
+whole failure mode below only exists when two runs share one database.
 
 ```sh
-PGDATABASE=routemaker_b \
+PGDATABASE=routemaker_b .venv/bin/python -m pytest
+```
+
+`ROUTEMAKER_LIVE_SCHEMA` and `ROUTEMAKER_STAGING_SCHEMA` exist for the
+narrower case that actually needs them: two runs sharing one database — a
+shared CI Postgres instance, say — where the `live`, `staging` and `live_old`
+schema names themselves would otherwise collide and each run would drop the
+other's tables mid-test, producing failures that read as code defects rather
+than as contention. `tests/test_schema_swap.py` and the rest of the suite take
+their schema names from the `segment_schemas` fixture and from
+`settings.SEGMENT_SCHEMA_LIVE` / `SEGMENT_SCHEMA_STAGING` rather than writing
+`"live"` / `"staging"` as literals, so setting these alongside a private
+`PGDATABASE` is safe:
+
+```sh
+PGDATABASE=routemaker_shared \
 ROUTEMAKER_LIVE_SCHEMA=live_b \
 ROUTEMAKER_STAGING_SCHEMA=staging_b \
   .venv/bin/python -m pytest
 ```
 
-Most of `tests/test_schema_swap.py` still writes `live` and `staging` as
-literals, so a renamed run fails there loudly rather than corrupting anything.
-That is the safe direction, not full isolation.
+The suite is green both with these two variables unset and with them set to
+non-default names; both invocations are exercised before either is relied on.

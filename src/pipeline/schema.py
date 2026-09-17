@@ -18,9 +18,11 @@ import re
 from django.db import connection
 
 # Schema names are interpolated into DDL, which no parameter placeholder can
-# carry. They come from settings today, so this is not exploitable - but it is
-# one config-from-environment change away from being so, in the one module that
-# runs DDL against production.
+# carry. They come from settings, which itself reads them straight from
+# ROUTEMAKER_LIVE_SCHEMA and ROUTEMAKER_STAGING_SCHEMA - so this guard is not a
+# defense against some hypothetical future change, it is what stands between
+# whatever an operator's environment happens to set and arbitrary SQL running
+# against production today, in the one module that runs DDL there.
 _SCHEMA_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 

@@ -68,6 +68,27 @@ def test_a_writer_never_targets_the_live_schema(segment_schemas) -> None:
         write_segments("live", [])
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "phase1/pipeline: write_segments guards `schema == \"live\"` literally "
+        "instead of `schema == settings.SEGMENT_SCHEMA_LIVE`, so it does not stop "
+        "a write to a renamed live schema. Owned by the pipeline cluster "
+        "(handoff.md item 18; test-quality.md F2, which also notes the test "
+        "above shares this literal with the code and so cannot tell the two "
+        "apart). Delete this xfail once writers.py reads the setting."
+    ),
+)
+def test_a_writer_never_targets_the_live_schema_even_when_it_is_renamed(settings) -> None:
+    """The test above and the code it tests both write the word "live", so a
+    guard that checked the wrong thing entirely could still pass it. This
+    drives the guard through the name the rest of the pipeline actually uses,
+    the way a deployment with ROUTEMAKER_LIVE_SCHEMA set would exercise it."""
+    settings.SEGMENT_SCHEMA_LIVE = "prod_live"
+    with pytest.raises(ValueError, match="never target the live schema"):
+        write_segments(settings.SEGMENT_SCHEMA_LIVE, [])
+
+
 def test_border_crossings_are_replaced_wholesale(segment_schemas) -> None:
     """The node ids are reassigned every rebuild and are not persistent identity,
     so last week's rows describe nodes that no longer exist. Appending would
@@ -108,3 +129,82 @@ def test_segment_row_carries_the_derived_attributes(segment_schemas) -> None:
     assert row["is_trail_class"] is True
     assert row["is_unpaved"] is None, "unknown stays unknown rather than becoming false"
     assert row["lit"] is True
+
+
+# --- F3: the segment key, protected by nothing ------------------------------
+#
+# `row["ordinal"] -> 0` in the writer, `UNIQUE (osm_way_id, ordinal)` ->
+# `(osm_way_id, ordinal, id)`, and `CHECK (stress_tier BETWEEN 1 AND 4)` ->
+# `BETWEEN 0 AND 5` all survived the mutation panel, because nothing wrote two
+# segments for one way or tried a tier outside the range.
+
+
+def test_distinct_ordinals_for_one_way_all_reach_their_own_rows(segment_schemas) -> None:
+    """A way chunked into many pipeline segments (this one has 70, deliberately
+    past the 64-point chunk size Valhalla's own shape encoding uses as a round
+    number) must keep every ordinal distinct in the row. `row["ordinal"] -> 0`
+    would collapse them onto the same (osm_way_id, ordinal) key; either the
+    UNIQUE constraint raises mid-batch or the count of distinct ordinals
+    written comes back wrong, but it does not pass quietly either way.
+    """
+    _live, staging = segment_schemas
+    way_id = 999
+    count = 70
+    rows = [
+        segment_row(
+            way_id,
+            ordinal,
+            [(-77.0 - ordinal * 0.001, 38.9), (-77.0 - ordinal * 0.001 - 0.001, 38.9)],
+            stress=StressResult(Stress.LTS1, "trail-class way"),
+        )
+        for ordinal in range(count)
+    ]
+
+    assert write_segments(staging, rows) == count
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT ordinal FROM {staging}.segment WHERE osm_way_id = %s ORDER BY ordinal",
+            [way_id],
+        )
+        ordinals = [row[0] for row in cursor.fetchall()]
+    assert ordinals == list(range(count)), "every ordinal for this way must reach its own row"
+
+
+def test_the_segment_key_rejects_a_duplicate_way_and_ordinal(segment_schemas) -> None:
+    """The UNIQUE constraint asserted directly against the DDL, rather than
+    through the writer, so a widened constraint - adding the surrogate `id` to
+    it, say - is caught even if every writer call happens to stay well-behaved.
+    """
+    from django.db import IntegrityError
+
+    _live, staging = segment_schemas
+    insert_segment(staging, way_id=5000, tier=2)
+    with pytest.raises(IntegrityError):
+        insert_segment(staging, way_id=5000, tier=3)  # same (osm_way_id, ordinal)
+
+
+def test_the_stress_tier_check_rejects_a_tier_outside_one_to_four(segment_schemas) -> None:
+    """Asserted directly against the DDL. `classify()` can never itself produce
+    a tier outside 1-4 - `Stress` is an IntEnum of exactly those four values -
+    so this is the database's own backstop against whatever else ever writes
+    this column, and nothing exercised it.
+    """
+    from django.db import IntegrityError
+
+    _live, staging = segment_schemas
+    with pytest.raises(IntegrityError):
+        insert_segment(staging, way_id=6000, tier=5)
+    with pytest.raises(IntegrityError):
+        insert_segment(staging, way_id=6001, tier=0)
+
+
+def insert_segment(schema: str, way_id: int, tier: int) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""INSERT INTO {schema}.segment
+                (osm_way_id, ordinal, geometry, stress_tier, stress_rule)
+                VALUES (%s, 0, ST_GeomFromText('LINESTRING(-77 38.9, -77.01 38.91)', 4326),
+                        %s, 'test')""",
+            [way_id, tier],
+        )
