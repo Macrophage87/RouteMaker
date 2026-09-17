@@ -52,7 +52,7 @@ def test_is_trail_class_takes_the_highway_tag_alone() -> None:
     assert is_trail_class({"highway": "path"})
 
 
-def test_sidepath_bridges_are_dropped_only_by_the_no_trail_variant(): # noqa: D103
+def test_sidepath_bridges_are_dropped_only_by_the_no_trail_variant():  # noqa: D103
     """The no-trail variant's own drop decision, not `is_trail_class`, is where
     a sidepath-only bridge's roadway is excluded - and only from that one
     variant. The id is a parameter rather than a tag: an earlier version read
@@ -264,7 +264,9 @@ class TestBridgeBicycleLegality:
             "osm_way_id": 0,
             "roadway_bicycle_legal": False,
         }
-        way = FakeWay(500, {"highway": "trunk", "bridge": "yes", "name": "Theodore Roosevelt Bridge"})
+        way = FakeWay(
+            500, {"highway": "trunk", "bridge": "yes", "name": "Theodore Roosevelt Bridge"}
+        )
         legality = resolve_bridge_bicycle_legality([row], [way])
         assert legality == {500: False}
 

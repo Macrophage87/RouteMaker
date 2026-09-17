@@ -267,7 +267,9 @@ def conflate(
             delta = bearing_delta(way_bearing, feature_bearing)
             if min(delta, 180.0 - delta) > bearing_tolerance_deg:
                 continue
-            overlap, span, mean_distance = _overlap(coordinates, feature.coordinates, max_separation_m)
+            overlap, span, mean_distance = _overlap(
+                coordinates, feature.coordinates, max_separation_m
+            )
             if overlap < min_overlap:
                 continue
             candidates.append((overlap, way_id, feature, span, mean_distance))
