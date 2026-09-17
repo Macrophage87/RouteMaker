@@ -45,9 +45,16 @@ def test_cookies_are_secure_outside_debug() -> None:
 def test_the_search_path_names_both_schemas() -> None:
     """The live schema carries the rebuilt segment tables; public carries
     everything migrations own, including the jurisdiction table the pipeline
-    queries unqualified."""
+    queries unqualified.
+
+    Checked against `settings.SEGMENT_SCHEMA_LIVE` rather than the literal
+    "live": with ROUTEMAKER_LIVE_SCHEMA set, a bare substring check on "live"
+    would still happen to pass against a name like "live_b", which is exactly
+    the kind of accidental pass this cluster exists to remove.
+    """
     options = settings.DATABASES["default"]["OPTIONS"]["options"]
-    assert "live" in options and "public" in options
+    schemas = options.split("search_path=", 1)[1].split(",")
+    assert schemas == ["public", settings.SEGMENT_SCHEMA_LIVE]
 
 
 def test_the_admin_is_not_at_the_default_path() -> None:

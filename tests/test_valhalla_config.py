@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 CONFIGS = sorted((Path(__file__).resolve().parents[1] / "valhalla").glob("*.json"))
 
@@ -108,18 +109,38 @@ def test_worker_counts_come_from_the_command_line_not_the_config(config: dict) -
     back to std::thread::hardware_concurrency() - which inside a two-core limit
     would start one worker per core of the whole host. The setting that actually
     decides this is the compose command, so that is what is asserted.
+
+    The floor below (`>= 2`) only ever catches a worker count going too low.
+    PLAN is explicit that the CI compose check has to assert the count against
+    the limit, not merely that a limit exists - the direction that actually
+    matters, since raising it multiplies the resident tile working set against
+    the container's memory limit - so this also delegates to
+    `check_compose_limits.check_valhalla_worker_counts`, the single place that
+    rule is implemented, rather than re-deriving a second copy of it here.
     """
     import re
 
     for key in ("loki_workers", "thor_workers", "odin_workers"):
         assert key not in config, f"{key} is read by nothing and invites the old assumption"
 
-    compose = (Path(__file__).resolve().parents[1] / "compose.yaml").read_text()
-    commands = re.findall(r'command: \["valhalla_service", "([^"]+)", "(\d+)"\]', compose)
+    repo = Path(__file__).resolve().parents[1]
+    compose_text = (repo / "compose.yaml").read_text()
+    commands = re.findall(r'command: \["valhalla_service", "([^"]+)", "(\d+)"\]', compose_text)
     assert len(commands) == 3, "each variant needs a command; the image has no CMD of its own"
     for config_path, workers in commands:
         assert config_path.startswith("/conf/valhalla-")
         assert int(workers) >= 2, "a single worker serialises the candidate set"
+
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "check_compose_limits", repo / "scripts" / "check_compose_limits.py"
+    )
+    script = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(script)
+    services = yaml.safe_load(compose_text)["services"]
+    problems = script.check_valhalla_worker_counts(services)
+    assert not problems, problems
 
 
 def test_every_variant_service_is_given_a_command() -> None:
