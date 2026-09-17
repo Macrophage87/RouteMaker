@@ -53,8 +53,20 @@ def main(path: str = "compose.yaml") -> int:
         if service.get("ports") and name not in MAY_PUBLISH_PORTS:
             problems.append(f"{name}: publishes a port but is not the edge proxy")
 
-    # The rebuild exits before validation starts, so it is not resident with the
-    # duplicates; the duplicates are.
+    # Two peaks, both asserted, because they describe two arrangements.
+    #
+    # Today: every service is resident, the rebuild worker included, and the
+    # build validates itself by reading the tiles back inside its own
+    # container - no duplicate serving containers exist. The peak is the plain
+    # sum of the limits.
+    if total_gb > HOST_RAM_GB:
+        problems.append(f"resident total {total_gb:.1f}G exceeds host RAM {HOST_RAM_GB}G")
+
+    # The plan's blue/green swap: a duplicate Valhalla per variant against the
+    # new extracts, with the rebuild container out of the way before they
+    # start. That arithmetic holds only while the rebuild is not resident, so
+    # whoever introduces the duplicates inherits the constraint that the
+    # rebuild worker is stopped for the swap window.
     duplicate_gb = sum(
         parse_memory_gb(services[s]["deploy"]["resources"]["limits"]["memory"])
         for s in SWAP_DUPLICATE_SERVICES
@@ -74,7 +86,10 @@ def main(path: str = "compose.yaml") -> int:
     for problem in problems:
         print(f"compose: {problem}", file=sys.stderr)
     if not problems:
-        print(f"compose: {len(services)} services, swap-time peak {peak_gb:.1f}G")
+        print(
+            f"compose: {len(services)} services, resident {total_gb:.1f}G, "
+            f"blue/green swap-time peak {peak_gb:.1f}G"
+        )
     return 1 if problems else 0
 
 

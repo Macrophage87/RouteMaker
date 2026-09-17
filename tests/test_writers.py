@@ -2,7 +2,8 @@
 
 Two rules the module and the model docstrings argue for at length and that
 nothing asserted: the stress provenance travelling into the row, and the border
-crossings being replaced wholesale rather than appended to.
+crossings being written whole into the schema being built rather than appended
+to the one being served.
 """
 
 from __future__ import annotations
@@ -65,30 +66,69 @@ def test_a_writer_never_targets_the_live_schema(segment_schemas) -> None:
     step for exactly that reason."""
     live, _staging = segment_schemas
     with pytest.raises(ValueError, match="never target the live schema"):
-        write_segments("live", [])
+        write_segments(live, [])
+    with pytest.raises(ValueError, match="never target the live schema"):
+        write_border_crossings(live, [])
 
 
-def test_border_crossings_are_replaced_wholesale(segment_schemas) -> None:
+def test_the_live_guard_follows_the_configured_name(monkeypatch) -> None:
+    """The guard compared against the literal "live". With ROUTEMAKER_LIVE_SCHEMA
+    set it guarded a schema nothing was serving and let a writer into the one
+    that was. The configured name is refused; the literal, now just a name, is
+    not."""
+    from django.conf import settings
+
+    monkeypatch.setattr(settings, "SEGMENT_SCHEMA_LIVE", "live_x")
+    with pytest.raises(ValueError, match="never target the live schema"):
+        write_segments("live_x", [])
+    assert write_segments("live", []) == 0, "no longer the live schema, so not refused"
+
+
+def crossing_node_ids(schema: str) -> list[int]:
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT node_id FROM {schema}.border_crossing ORDER BY node_id")
+        return [row[0] for row in cursor.fetchall()]
+
+
+def test_border_crossings_are_written_whole_into_the_staging_schema(segment_schemas) -> None:
     """The node ids are reassigned every rebuild and are not persistent identity,
-    so last week's rows describe nodes that no longer exist. Appending would
-    leave the application resolving a crossing direction from a node id the graph
-    reuses for somewhere else."""
-    from core.models import BorderCrossing
+    so last week's rows describe nodes that no longer exist. The rows go into
+    the schema being built, to change hands with the segments at the rename;
+    they used to go into a managed table in public, which was the live table,
+    five stages before the swap."""
+    live, staging = segment_schemas
 
-    assert write_border_crossings([Node(1), Node(2)]) == 2
-    assert BorderCrossing.objects.count() == 2
+    assert write_border_crossings(staging, [Node(1), Node(2)]) == 2
+    assert crossing_node_ids(staging) == [1, 2]
+    assert crossing_node_ids(live) == [], "the served table is not touched"
 
-    assert write_border_crossings([Node(3)]) == 1
-    assert list(BorderCrossing.objects.values_list("node_id", flat=True)) == [3]
+    assert write_border_crossings(staging, [Node(3)]) == 1
+    assert crossing_node_ids(staging) == [3]
 
 
 def test_a_rebuild_that_finds_no_crossings_still_clears_the_table(segment_schemas) -> None:
     """The case an append would hide completely."""
+    _live, staging = segment_schemas
+
+    write_border_crossings(staging, [Node(1)])
+    write_border_crossings(staging, [])
+    assert crossing_node_ids(staging) == []
+
+
+def test_the_orm_reads_the_promoted_crossings(segment_schemas) -> None:
+    """BorderCrossing is unmanaged and resolves through the search path, like
+    Segment; the application reads whichever schema is live."""
     from core.models import BorderCrossing
 
-    write_border_crossings([Node(1)])
-    write_border_crossings([])
-    assert not BorderCrossing.objects.exists()
+    live, staging = segment_schemas
+    write_border_crossings(staging, [Node(7)])
+    assert BorderCrossing.objects.count() == 0
+
+    from pipeline.swap import swap_schemas
+
+    swap_schemas()
+    assert list(BorderCrossing.objects.values_list("node_id", flat=True)) == [7]
+    assert BorderCrossing.objects.get().osm_way_id == 1
 
 
 def test_segment_row_carries_the_derived_attributes(segment_schemas) -> None:

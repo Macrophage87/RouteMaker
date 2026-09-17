@@ -40,25 +40,41 @@ services:
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       PGPASSWORD: ${PGPASSWORD}
-    depends_on: [postgis]
+    depends_on:
+      postgis: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
     deploy:
       resources:
         limits: { memory: 2G, cpus: "2" }
 
+  # The worker runs under manage.py so Django is set up before a task runs, and
+  # its schema arrives through the migrate one-shot below like every other
+  # table. The bare `procrastinate --app=... worker` this replaced died on a
+  # missing schema function and, with the schema applied by hand, every task
+  # raised AppRegistryNotReady. The queue list is explicit: the rebuild queue
+  # belongs to the rebuild service, which is the container with the Valhalla
+  # binaries and the data mounts.
   worker:
     <<: *restart
     image: routemaker/api:${TAG}
-    command: ["procrastinate", "--app=config.procrastinate.app", "worker"]
+    command: ["./manage.py", "procrastinate", "worker", "--queues=maintenance"]
     environment:
       DJANGO_SETTINGS_MODULE: config.settings
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       PGPASSWORD: ${PGPASSWORD}
-    depends_on: [postgis]
+    volumes:
+      - ${DATA_ROOT}/backups:/data/backups
+    depends_on:
+      postgis: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
     deploy:
       resources:
         limits: { memory: 2G, cpus: "2" }
 
+  # Applies every migration, the worker's job tables included: procrastinate's
+  # Django integration ships its schema as migrations, so this one step both
+  # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
     image: routemaker/api:${TAG}
     command: ["./manage.py", "migrate", "--noinput"]
@@ -109,8 +125,14 @@ services:
     # limit. It is not a configuration key; the loki_workers, thor_workers and
     # odin_workers keys the configs used to carry are read by nothing.
     command: ["valhalla_service", "/conf/valhalla-standard.json", "2"]
+    # The served build, at the path the config names. `current` is a symlink
+    # the rebuild replaces at promotion; the container loads whatever it
+    # points at when it starts, and is restarted after a swap to load the
+    # next one. The same path resolves to the same file inside the rebuild
+    # container, which mounts the whole data volume.
     volumes:
-      - ${DATA_ROOT}/tiles/standard:/data:ro
+      - ${DATA_ROOT}/tiles/standard/current:/data/tiles/standard/current:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
     deploy:
@@ -132,8 +154,14 @@ services:
     # limit. It is not a configuration key; the loki_workers, thor_workers and
     # odin_workers keys the configs used to carry are read by nothing.
     command: ["valhalla_service", "/conf/valhalla-no-trail.json", "2"]
+    # The served build, at the path the config names. `current` is a symlink
+    # the rebuild replaces at promotion; the container loads whatever it
+    # points at when it starts, and is restarted after a swap to load the
+    # next one. The same path resolves to the same file inside the rebuild
+    # container, which mounts the whole data volume.
     volumes:
-      - ${DATA_ROOT}/tiles/no-trail:/data:ro
+      - ${DATA_ROOT}/tiles/no-trail/current:/data/tiles/no-trail/current:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
     deploy:
@@ -155,8 +183,14 @@ services:
     # limit. It is not a configuration key; the loki_workers, thor_workers and
     # odin_workers keys the configs used to carry are read by nothing.
     command: ["valhalla_service", "/conf/valhalla-ebike.json", "2"]
+    # The served build, at the path the config names. `current` is a symlink
+    # the rebuild replaces at promotion; the container loads whatever it
+    # points at when it starts, and is restarted after a swap to load the
+    # next one. The same path resolves to the same file inside the rebuild
+    # container, which mounts the whole data volume.
     volumes:
-      - ${DATA_ROOT}/tiles/ebike:/data:ro
+      - ${DATA_ROOT}/tiles/ebike/current:/data/tiles/ebike/current:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
     deploy:
@@ -185,17 +219,42 @@ services:
       resources:
         limits: { memory: 512M, cpus: "1" }
 
-  # Exits before the validation containers start, so the build and the duplicate
-  # Valhalla processes are never resident together. Takes half the cores.
+  # The weekly rebuild's executor: a worker on the rebuild queue alone, in the
+  # image that carries the Valhalla and GDAL binaries. The scheduling is
+  # Procrastinate's (the periodic task is registered in every worker and the
+  # deferral is deduplicated in the database), the execution is here, because
+  # this is the container with the binaries, the mounts and the limits. Takes
+  # half the cores.
+  #
+  # It mounts the whole data volume at /data, so DATA_ROOT inside it is /data
+  # and every path the generated Valhalla configs name - the tile directories
+  # under /data/tiles, the elevation cache at /data/elevation - resolves to the
+  # same host file the serving containers mount. The earlier version mounted
+  # /tiles and /extracts, neither of which any configured path named, so tiles
+  # landed on ephemeral container storage and vanished with it.
+  #
+  # Phase 1 validates a build by reading it back with valhalla_service in
+  # one-shot mode inside this container; it starts no duplicate serving
+  # containers, so this service is the only extra memory resident at swap
+  # time. When blue/green validation containers arrive, this worker has to be
+  # out of the way for the plan's swap-time arithmetic to hold - see
+  # scripts/check_compose_limits.py, which asserts both figures.
   rebuild:
+    <<: *restart
     image: routemaker/pipeline:${TAG}
-    profiles: ["rebuild"]
-    restart: "no"
+    command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
     environment:
+      DJANGO_SETTINGS_MODULE: config.settings
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DATA_ROOT: /data
       PGPASSWORD: ${PGPASSWORD}
     volumes:
-      - ${DATA_ROOT}/tiles:/tiles
-      - ${DATA_ROOT}/extracts:/extracts
+      - ${DATA_ROOT}:/data
+      - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
+    depends_on:
+      postgis: { condition: service_started }
+      migrate: { condition: service_completed_successfully }
     deploy:
       resources:
         limits: { memory: 8G, cpus: "4" }

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from pipeline.rebuild import PRE_SWAP_STAGES, RebuildFailed, Stage, run_rebuild
+from pipeline.rebuild import (
+    PRE_SWAP_STAGES,
+    RebuildFailed,
+    RebuildTimedOut,
+    Stage,
+    StageNotImplemented,
+    run_rebuild,
+)
 
 
 def test_stages_run_in_order() -> None:
@@ -76,3 +83,34 @@ def test_border_nodes_are_inserted_before_tiles_are_built() -> None:
     would produce a graph with no border-control nodes in it."""
     order = list(Stage)
     assert order.index(Stage.INSERT_BORDER_NODES) < order.index(Stage.BUILD_TILES)
+
+
+def test_elevation_is_ready_before_the_tiles_are_built() -> None:
+    """The build stage reads the elevation directory; a stage after it would
+    populate a directory nothing reads again until next week."""
+    order = list(Stage)
+    assert order.index(Stage.ELEVATION) < order.index(Stage.BUILD_TILES)
+    assert order.index(Stage.ELEVATION) > order.index(Stage.FETCH_EXTRACT), "after the disk gate"
+
+
+def test_a_missing_handler_is_refused_before_the_first_stage() -> None:
+    """Raising when the gap was reached meant hours of building before the
+    rebuild found out nothing would swap it."""
+    ran: list[Stage] = []
+    handlers = {
+        stage: (lambda s=stage: ran.append(s)) for stage in Stage if stage is not Stage.SWAP
+    }
+    with pytest.raises(StageNotImplemented, match="swap"):
+        run_rebuild(handlers)
+    assert ran == []
+
+
+def test_the_deadline_is_checked_between_stages() -> None:
+    """A rebuild past its budget stops at the next boundary rather than
+    starting the swap at hour seven."""
+    ran: list[Stage] = []
+    clock = iter([0.0, 0.0, 100.0, 100.0, 100.0])
+    handlers = {stage: (lambda s=stage: ran.append(s)) for stage in Stage}
+    with pytest.raises(RebuildTimedOut, match="elevation"):
+        run_rebuild(handlers, deadline=50.0, clock=lambda: next(clock))
+    assert ran == [Stage.FETCH_EXTRACT, Stage.LOAD_REFERENCE_DATA]

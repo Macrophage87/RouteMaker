@@ -18,25 +18,64 @@ fails at the loading stage rather than quietly substituting nothing for them.
 
 from __future__ import annotations
 
+import functools
 import json
 import logging
 import re
 import subprocess
+import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
 
-from . import borders, conflation, extract, overrides, variants, writers
-from .rebuild import Stage
+from . import (
+    borders,
+    conflation,
+    elevation,
+    extract,
+    overrides,
+    promotion,
+    reconcile,
+    tiles,
+    variants,
+    writers,
+)
+from .rebuild import RebuildTimedOut, Stage
 
 logger = logging.getLogger(__name__)
 
 LUA_LOADED_PATTERN = re.compile(r"Using LUA script:\s*(\S+)")
 LUA_SCRIPT_PATH = "/conf/lua/graph.lua"
+
+# What the derived-tag sentinel must read back. The remap writes cycleway=track
+# onto a tier-1 way with no cycleway tag of its own, which Valhalla stores as a
+# separated cycle lane; nothing but this project's transform produces that on a
+# plain residential street.
+DERIVED_SENTINEL_EXPECTED = "separated"
+
+# A way is tagged with an authority only if at least this share of its length
+# lies inside it; the dominant authority on each layer is always kept. Below a
+# tenth, the overlap is a polygon's edge crossing the way's end - a road that
+# clips a park boundary by a few metres - and tagging it puts a park agency on
+# the permit list of a ride that never entered the park. `assign_way` returns
+# every fraction and says the caller decides; this is the decision.
+MIN_JURISDICTION_FRACTION = 0.10
+
+
+def new_build_id(now: datetime | None = None) -> str:
+    """The dated tile directory's name. UTC, second resolution, sortable."""
+    return (now or datetime.now(UTC)).strftime("%Y%m%dT%H%M%SZ")
+
+
+def _setting(name: str):
+    from django.conf import settings
+
+    return getattr(settings, name)
 
 
 class ValidationFailed(RuntimeError):
@@ -109,12 +148,29 @@ class ReferenceData:
 
 @dataclass
 class RebuildContext:
-    """State threaded between stages."""
+    """State threaded between stages.
+
+    Every path and name here defaults from settings rather than from a literal.
+    `staging_schema` was the literal "staging" while the swap read
+    settings.SEGMENT_SCHEMA_STAGING, so with the environment variables set the
+    rebuild wrote its rows into one schema and the swap promoted another, empty
+    one - a silent empty promotion rather than an error.
+    """
 
     source_pbf: Path
     work_dir: Path
     reference_dir: Path
-    staging_schema: str = "staging"
+    staging_schema: str = field(default_factory=lambda: _setting("SEGMENT_SCHEMA_STAGING"))
+    tiles_dir: Path = field(default_factory=lambda: _setting("TILES_DIR"))
+    elevation_dir: Path = field(default_factory=lambda: _setting("ELEVATION_DIR"))
+    config_dir: Path = field(default_factory=lambda: _setting("VALHALLA_CONFIG_DIR"))
+    coverage_bbox: tuple[float, float, float, float] = field(
+        default_factory=lambda: tuple(_setting("COVERAGE_BBOX"))
+    )
+    upstreams: dict[str, str] = field(default_factory=lambda: dict(_setting("VALHALLA_UPSTREAMS")))
+    build_id: str = field(default_factory=new_build_id)
+    # Monotonic-clock instant after which no further stage or binary starts.
+    deadline: float | None = None
 
     reference: ReferenceData | None = None
     ways: list[extract.Way] = field(default_factory=list)
@@ -125,6 +181,11 @@ class RebuildContext:
     override_report: overrides.OverrideReport | None = None
     rows: list[dict] = field(default_factory=list)
     build_log: str = ""
+    disk_gate: tiles.DiskGate | None = None
+    elevation_tiles: list[Path] = field(default_factory=list)
+    build_configs: dict[variants.Variant, Path] = field(default_factory=dict)
+    swap_outcome: promotion.SwapOutcome | None = None
+    drift_report: object | None = None
 
     def variant_pbf(self, variant: variants.Variant) -> Path:
         return self.work_dir / f"{variant.value}.osm.pbf"
@@ -185,16 +246,50 @@ def build_handlers(
     sample_derived_tag: Callable[[], str | None] | None = None,
     state_at: Callable[[float, float], str | None] | None = None,
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
+    disk_usage: Callable | None = None,
+    fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
 ) -> dict[Stage, Callable[[], None]]:
-    """The real handler set, with the external dependencies injected so the
-    wiring is testable without Valhalla."""
-    run = run or _run_command
+    """The real handler set, one per stage, with the external dependencies
+    injected so the wiring is testable without Valhalla.
+
+    Every stage has a handler. The production call is `build_handlers(context)`
+    with nothing injected, and that shape has to run: the first version
+    returned eleven handlers for thirteen stages and required samplers that the
+    production call never passed, so the weekly job raised on every fire. What
+    is injectable here is exactly the set of things that touch a binary, a
+    network or a disk - the command runner, the two tile readers, the state
+    lookup, the override loader, the disk measurement and the 3DEP fetch - and
+    each default is the production implementation.
+    """
+    run = run or functools.partial(_run_command, deadline=context.deadline)
     state_at = state_at or _state_at
     load_overrides = load_overrides or overrides.load_approved
+    disk_usage = disk_usage or tiles.shutil.disk_usage
+    fetch_elevation = fetch_elevation or elevation.fetch_3dep
+    sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
+    sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
 
     def fetch_extract() -> None:
         if not context.source_pbf.exists():
             raise ReferenceDataMissing(f"source extract missing: {context.source_pbf}")
+        # The disk gate, before anything is written: a rebuild that cannot fit
+        # a second full tile set beside the served one refuses to start rather
+        # than filling the volume partway through a build.
+        context.disk_gate = tiles.check_disk_gate(
+            context.tiles_dir,
+            context.source_pbf.stat().st_size,
+            _setting("REBUILD_MIN_FREE_BYTES"),
+            _setting("DISK_GATE_FRACTION"),
+            disk_usage=disk_usage,
+        )
+        # The staging schema is rebuilt from scratch every week, and it is reset
+        # here rather than by the segment writer because the crossings are
+        # written into it several stages before the segments are.
+        from .schema import reset_segment_schema
+
+        writers.refuse_live_schema(context.staging_schema)
+        reset_segment_schema(context.staging_schema)
+
         context.ways = extract.read_ways(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
@@ -204,6 +299,14 @@ def build_handlers(
         # Given the ways, because the crossings fixture resolves by name against
         # the extract. FETCH_EXTRACT runs first for exactly this reason.
         context.reference = ReferenceData.load(context.reference_dir, context.ways)
+
+    def ensure_elevation() -> None:
+        # Cached across rebuilds and re-validated on each: a truncated tile
+        # reads as flat terrain rather than as an error, and the build stage
+        # reads whatever is in this directory without complaint.
+        context.elevation_tiles = elevation.ensure_tiles(
+            context.elevation_dir, context.coverage_bbox, fetch_elevation, run
+        )
 
     def conflate_volume() -> None:
         reference = context.require_reference()
@@ -248,7 +351,7 @@ def build_handlers(
             assignments = assign_way(LineString(way.coordinates, srid=4326))
             way.tags.setdefault(
                 "_jurisdictions",
-                ",".join(sorted({a.authority for a in assignments})),
+                ",".join(sorted(authorities_for(assignments, MIN_JURISDICTION_FRACTION))),
             )
 
     def apply_overrides() -> None:
@@ -288,7 +391,9 @@ def build_handlers(
             if nodes:
                 context.border_nodes_by_way[way.osm_id] = nodes
                 found.extend(nodes)
-        writers.write_border_crossings(found)
+        # Into staging, to be promoted with the segments by the rename. This
+        # used to rewrite the live table five stages before the swap.
+        writers.write_border_crossings(context.staging_schema, found)
 
     def inject_tags() -> None:
         reference = context.require_reference()
@@ -349,25 +454,28 @@ def build_handlers(
             )
 
     def build_tiles() -> None:
+        # Each variant builds into its own dated directory through a config
+        # derived from its serving config: valhalla_build_tiles has no
+        # tile-directory option, so the directory has to come from the file,
+        # and the serving config names the graph being served.
         logs = []
         for variant in variants.Variant:
-            config = f"valhalla/valhalla-{variant.value}.json"
-            logs.append(
-                run(["valhalla_build_tiles", "-c", config, str(context.variant_pbf(variant))])
+            config_path = tiles.write_build_config(
+                context.config_dir, context.tiles_dir, variant, context.build_id
             )
+            context.build_configs[variant] = config_path
+            for command in tiles.tile_build_commands(config_path, context.variant_pbf(variant)):
+                logs.append(run(command))
         context.build_log = "\n".join(logs)
 
     def write_segments() -> None:
-        # The staging schema is rebuilt from scratch every week. Nothing created
-        # it before, so the first rebuild on a real box failed on a missing
-        # relation and every later one inserted into a schema still holding last
-        # week's rows, which the segment key then rejected partway through. The
-        # end-to-end test could not see either, because its fixture handed it a
-        # freshly created empty staging.
-        from .schema import create_segment_schema, drop_segment_schema
+        from .schema import schema_exists
 
-        drop_segment_schema(context.staging_schema)
-        create_segment_schema(context.staging_schema)
+        if not schema_exists(context.staging_schema):
+            raise RuntimeError(
+                f"{context.staging_schema} does not exist; FETCH_EXTRACT resets it and "
+                "must have run first"
+            )
 
         reference = context.require_reference()
         rows: list[dict] = []
@@ -393,17 +501,25 @@ def build_handlers(
 
     def validate() -> None:
         assert_lua_script_was_loaded(context.build_log, LUA_SCRIPT_PATH)
-        if sample_grade is None or sample_derived_tag is None:
-            raise ValidationFailed(
-                "the elevation and derived-tag samplers are required; a validation "
-                "that cannot read the built tiles validates nothing"
-            )
         assert_elevation_reached_the_tiles(sample_grade())
-        assert_derived_tags_reached_the_tiles(sample_derived_tag(), "yes")
+        assert_derived_tags_reached_the_tiles(sample_derived_tag(), DERIVED_SENTINEL_EXPECTED)
 
-    return {
+    def swap() -> None:
+        context.swap_outcome = promotion.perform_swap(
+            context.tiles_dir, context.build_id, context.upstreams
+        )
+
+    def reconcile_after_swap() -> None:
+        context.drift_report = reconcile.drift_report(
+            context.build_id,
+            _setting("SEGMENT_SCHEMA_LIVE"),
+            _setting("SEGMENT_SCHEMA_RETIRED"),
+        )
+
+    handlers = {
         Stage.FETCH_EXTRACT: fetch_extract,
         Stage.LOAD_REFERENCE_DATA: load_reference_data,
+        Stage.ELEVATION: ensure_elevation,
         Stage.CONFLATE_VOLUME: conflate_volume,
         Stage.CLASSIFY_STRESS: classify_stress,
         Stage.TAG_JURISDICTIONS: tag_jurisdictions,
@@ -413,11 +529,67 @@ def build_handlers(
         Stage.BUILD_TILES: build_tiles,
         Stage.WRITE_SEGMENTS: write_segments,
         Stage.VALIDATE: validate,
+        Stage.SWAP: swap,
+        Stage.RECONCILE: reconcile_after_swap,
     }
+    # A stage added to the enum without a handler here is a rebuild that
+    # raises on every fire. Asserted at construction, not at hour six.
+    assert set(handlers) == set(Stage), set(Stage) - set(handlers)
+    return handlers
 
 
-def _run_command(command: Sequence[str]) -> str:
-    result = subprocess.run(command, capture_output=True, text=True, check=True)
+def authorities_for(assignments, minimum_fraction: float) -> set[str]:
+    """The authorities a way is tagged with: per layer, the largest share
+    always, and any other that covers at least `minimum_fraction` of it."""
+    by_layer: dict[str, list] = {}
+    for assignment in assignments:
+        by_layer.setdefault(assignment.layer, []).append(assignment)
+    chosen: set[str] = set()
+    for layer_assignments in by_layer.values():
+        ranked = sorted(layer_assignments, key=lambda a: a.fraction, reverse=True)
+        chosen.add(ranked[0].authority)
+        chosen.update(a.authority for a in ranked[1:] if a.fraction >= minimum_fraction)
+    return chosen
+
+
+def _least_grade_across_variants(context: RebuildContext, run) -> float:
+    """Every variant's build must have baked elevation, so the check is the
+    smallest grade any of them reports on the known steep edge."""
+    steep = _setting("REBUILD_SENTINEL_STEEP_EDGE")
+    grades = [
+        tiles.sample_grade(run, context.build_configs[variant], steep)
+        for variant in variants.Variant
+        if variant in context.build_configs
+    ]
+    if len(grades) != len(variants.Variant):
+        raise ValidationFailed("not every variant has a build config to read back")
+    return min(grades)
+
+
+def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
+    config_path = context.build_configs.get(variants.Variant.STANDARD)
+    if config_path is None:
+        raise ValidationFailed("the standard variant has no build config to read back")
+    return tiles.sample_cycle_lane(run, config_path, _setting("REBUILD_SENTINEL_TIER1_EDGE"))
+
+
+def _run_command(
+    command: Sequence[str],
+    deadline: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
+) -> str:
+    """Run one of the pipeline's binaries, inside whatever time budget remains.
+
+    The budget is the rebuild's own: a wedged valhalla_build_tiles is killed
+    when the rebuild's deadline arrives rather than being left for the eight-day
+    "nothing completed" alarm.
+    """
+    timeout = None
+    if deadline is not None:
+        timeout = deadline - clock()
+        if timeout <= 0:
+            raise RebuildTimedOut(f"no time left to run {command[0]}")
+    result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
     return result.stdout + result.stderr
 
 

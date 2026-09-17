@@ -4,14 +4,16 @@ Written as stages with explicit names because the operational questions asked of
 it are all "where did it get to": the alert says a rebuild has not completed in
 eight days, and the answer has to be a stage rather than a log scrape.
 
-Nothing here runs the swap. The rebuild builds into staging, validates against
-the reference routes, and only then hands off; a rebuild that validates badly
-must leave the live schema and the live tiles exactly as they were.
+Nothing here runs the swap; `pipeline.run` supplies the handlers, and the swap
+handler is `pipeline.promotion`. The rebuild builds into staging and a dated
+tile directory, validates, and only then hands off; a rebuild that validates
+badly must leave the live schema and the live tiles exactly as they were.
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -39,6 +41,12 @@ class Stage(Enum):
 
     FETCH_EXTRACT = "fetch_extract"
     LOAD_REFERENCE_DATA = "load_reference_data"
+    # With the other inputs, before any derivation: the HGT tiles are cached,
+    # but "cached" is checked every week rather than assumed, and a missing or
+    # truncated tile fails here rather than after the whole classification has
+    # run. The constraint that matters is that it precedes BUILD_TILES, which
+    # is the only stage that reads the directory.
+    ELEVATION = "elevation"
     CONFLATE_VOLUME = "conflate_volume"
     CLASSIFY_STRESS = "classify_stress"
     TAG_JURISDICTIONS = "tag_jurisdictions"
@@ -73,31 +81,51 @@ class StageNotImplemented(RuntimeError):
     """A stage has no handler and was not declared skipped."""
 
 
+class RebuildTimedOut(RuntimeError):
+    """The deadline passed between stages. Raised before the next one starts."""
+
+
 def run_rebuild(
     handlers: dict[Stage, Callable[[], None]],
     skip: frozenset[Stage] = frozenset(),
+    deadline: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> RebuildReport:
     """Run each stage in order, stopping at the first failure.
 
-    A stage with no handler raises unless it is named in `skip`. Silently
-    continuing past a missing handler made an omitted stage indistinguishable
-    from a deliberate one: the report said the rebuild had run, and the segments
-    it produced simply had no jurisdiction on them.
+    A stage with no handler raises unless it is named in `skip`, and it raises
+    *before the first stage runs* rather than when the gap is reached: the
+    production handler set once covered eleven of thirteen stages, and the
+    weekly job would have spent hours building tiles before discovering that
+    nothing would swap them. Silently continuing past a missing handler is
+    worse still - it made an omitted stage indistinguishable from a deliberate
+    one, and the segments simply had no jurisdiction on them.
+
+    `deadline` is a monotonic-clock instant. It is checked between stages, so a
+    rebuild past its budget stops at the next boundary rather than starting the
+    swap at hour seven; the binaries a stage runs are given the remaining time
+    as their own subprocess timeout by the handler set.
 
     Stages before the swap are safe to abandon: they write only to staging and to
     a dated tile directory, so a failure leaves the live system untouched and the
     remedy is to drop staging and keep the old tiles. That is why validation sits
     immediately before the swap rather than after it.
     """
+    missing = [stage for stage in Stage if stage not in skip and stage not in handlers]
+    if missing:
+        raise StageNotImplemented(
+            "stages with no handler and not declared skipped: "
+            + ", ".join(stage.value for stage in missing)
+        )
+
     report = RebuildReport()
     for stage in Stage:
         if stage in skip:
             continue
-        handler = handlers.get(stage)
-        if handler is None:
-            raise StageNotImplemented(
-                f"stage {stage.value} has no handler and was not declared skipped"
-            )
+        handler = handlers[stage]
+        if deadline is not None and clock() >= deadline:
+            report.failed_at = stage
+            raise RebuildTimedOut(f"the rebuild's time budget ran out before {stage.value}")
         try:
             handler()
         except Exception as error:  # noqa: BLE001 - wrapped and re-raised

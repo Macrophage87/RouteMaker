@@ -41,8 +41,43 @@ def test_elevation_directory_is_configured(config: dict) -> None:
     """Caching HGT tiles is not the same as using them. Without the elevation
     directory at tile build, weighted_grade is never baked onto edges, use_hills
     is inert on every preset that sets it, and the Mass Ride grade cap has no
-    max_grade to read."""
-    assert config["mjolnir"]["additional_data"]["elevation"]
+    max_grade to read.
+
+    The key Valhalla reads is the top-level `additional_data.elevation`: the
+    elevation builder is constructed from config.get_child("additional_data"),
+    and nothing in 3.5.1 reads a `mjolnir.additional_data`. The earlier version
+    of this test asserted the one under mjolnir - a key read by nothing - and
+    the generator wrote both and claimed both were needed.
+    """
+    assert config["additional_data"]["elevation"] == "/data/elevation"
+    assert "additional_data" not in config["mjolnir"], (
+        "a key read by nothing invites the assumption"
+    )
+
+
+def test_each_variant_names_its_own_tile_directory() -> None:
+    """valhalla_build_tiles has no tile-directory option: the directory comes
+    from mjolnir.tile_dir and nowhere else. Three configs naming one directory
+    were three builds overwriting each other, so only the last variant's graph
+    survived - the no-trail and e-bike variants existed on disk for the
+    duration of a build and never afterwards. The earlier test compared each
+    file to the generator's output for that variant, which the generator
+    ignored, so it could not fail.
+    """
+    configs = {p.stem.removeprefix("valhalla-"): json.loads(p.read_text()) for p in CONFIGS}
+    texts = {p.stem: p.read_text() for p in CONFIGS}
+    for a in texts:
+        for b in texts:
+            if a < b:
+                assert texts[a] != texts[b], f"{a} and {b} are byte-identical"
+
+    for key in ("tile_dir", "tile_extract", "admin", "timezone"):
+        values = {variant: c["mjolnir"][key] for variant, c in configs.items()}
+        assert len(set(values.values())) == 3, f"{key} is shared: {values}"
+        for variant, value in values.items():
+            assert value.startswith(f"/data/tiles/{variant}/current/"), (
+                f"{variant}: {key} = {value} is not under its own variant's directory"
+            )
 
 
 def test_exclude_polygon_limit_is_raised_above_the_default(config: dict) -> None:
@@ -244,3 +279,89 @@ def test_the_vendored_generator_is_pinned_to_the_image_tag() -> None:
     compose = (repo / "compose.yaml").read_text()
     assert f"ghcr.io/valhalla/valhalla:{pinned}" in compose
     assert (repo / "lua" / "vendor" / "VERSION").read_text().strip() == pinned
+
+
+def mounts_of(service: dict) -> dict[str, str]:
+    """{container path: host path} for a service's bind mounts."""
+    out = {}
+    for volume in service.get("volumes") or []:
+        host, container = volume.split(":")[:2]
+        out[container] = host
+    return out
+
+
+def host_path_for(container_path: str, mounts: dict[str, str]) -> str | None:
+    """Where a container path lands on the host, or None if no mount covers it."""
+    for container_dir, host_dir in sorted(mounts.items(), key=lambda kv: -len(kv[0])):
+        if container_path == container_dir or container_path.startswith(container_dir + "/"):
+            return host_dir + container_path[len(container_dir) :]
+    return None
+
+
+def configured_paths(config: dict) -> dict[str, str]:
+    return {
+        "mjolnir.tile_dir": config["mjolnir"]["tile_dir"],
+        "mjolnir.tile_extract": config["mjolnir"]["tile_extract"],
+        "mjolnir.admin": config["mjolnir"]["admin"],
+        "mjolnir.timezone": config["mjolnir"]["timezone"],
+        "mjolnir.graph_lua_name": config["mjolnir"]["graph_lua_name"],
+        "additional_data.elevation": config["additional_data"]["elevation"],
+    }
+
+
+def test_every_configured_path_is_mounted_for_the_service_that_uses_it() -> None:
+    """A reviewer walked every path in the generated configs against the compose
+    mounts and found three covered by nothing: the rebuild service mounted
+    /tiles and /extracts, which no config named, so tiles landed on ephemeral
+    container storage and vanished with it, and the Lua script and elevation
+    directory it needed at build time existed in no mount at all.
+
+    Two services use each variant's config: the rebuild, which builds from it,
+    and that variant's valhalla_service, which serves from it. Every path has
+    to resolve to a mount in both.
+    """
+    import yaml
+
+    compose = yaml.safe_load((Path(__file__).resolve().parents[1] / "compose.yaml").read_text())
+    services = compose["services"]
+    for path in CONFIGS:
+        variant = path.stem.removeprefix("valhalla-")
+        config = json.loads(path.read_text())
+        for service_name in ("rebuild", f"valhalla-{variant}"):
+            mounts = mounts_of(services[service_name])
+            uncovered = {
+                key: value
+                for key, value in configured_paths(config).items()
+                if host_path_for(value, mounts) is None
+            }
+            assert not uncovered, f"{service_name} has no mount for {uncovered}"
+
+
+def test_the_build_writes_where_the_serving_container_reads() -> None:
+    """The same container path in the rebuild and in a serving container has to
+    be the same host file, or the build writes a graph nothing serves. The
+    rebuild mounts the whole data volume; each server mounts its variant's
+    `current` directory at the identical container path."""
+    import yaml
+
+    compose = yaml.safe_load((Path(__file__).resolve().parents[1] / "compose.yaml").read_text())
+    services = compose["services"]
+    assert services["rebuild"]["environment"]["DATA_ROOT"] == "/data"
+    rebuild = mounts_of(services["rebuild"])
+    assert rebuild.get("/data") == "${DATA_ROOT}"
+
+    for path in CONFIGS:
+        variant = path.stem.removeprefix("valhalla-")
+        config = json.loads(path.read_text())
+        serving = mounts_of(services[f"valhalla-{variant}"])
+        for key, value in configured_paths(config).items():
+            if key == "mjolnir.graph_lua_name":
+                continue  # the same checked-in file in both; test_graph_lua_name... covers it
+            assert host_path_for(value, rebuild) == host_path_for(value, serving), (
+                f"{variant}: {key} = {value} is a different host file for the build and the server"
+            )
+        tile_extract = config["mjolnir"]["tile_extract"]
+        assert (
+            host_path_for(tile_extract, serving)
+            == f"${{DATA_ROOT}}/tiles/{variant}/current/tiles.tar"
+        )

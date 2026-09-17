@@ -97,3 +97,49 @@ def test_the_swap_time_peak_fits_in_the_host() -> None:
     spec.loader.exec_module(script)
 
     assert script.main() == 0
+
+
+def test_the_worker_starts_through_django() -> None:
+    """`procrastinate --app=... worker` never set Django up: it died on the
+    missing schema, and past that every task raised AppRegistryNotReady. The
+    process has to be the management command, whose schema comes from the same
+    migrate one-shot as every other table."""
+    for name in ("worker", "rebuild"):
+        command = SERVICES[name]["command"]
+        assert command[:3] == ["./manage.py", "procrastinate", "worker"], name
+        assert SERVICES[name]["depends_on"]["migrate"] == {
+            "condition": "service_completed_successfully"
+        }, f"{name} must not start before the schema exists"
+    assert SERVICES["api"]["depends_on"]["migrate"] == {
+        "condition": "service_completed_successfully"
+    }
+
+
+def test_the_rebuild_queue_is_consumed_only_by_the_container_with_the_binaries() -> None:
+    """The queue split is load-bearing: the rebuild service is the one with the
+    Valhalla and GDAL binaries, the data mounts and the 8G limit, so it is the
+    only worker on the rebuild queue - and the api-image worker, which has
+    none of those, never picks a rebuild up."""
+
+    def queues(name: str) -> set[str]:
+        for argument in SERVICES[name]["command"]:
+            if argument.startswith("--queues="):
+                return set(argument.removeprefix("--queues=").split(","))
+        raise AssertionError(f"{name} listens on every queue")
+
+    assert queues("rebuild") == {"rebuild"}
+    assert "rebuild" not in queues("worker")
+    assert "maintenance" in queues("worker")
+    assert SERVICES["rebuild"]["image"] != SERVICES["worker"]["image"]
+    assert SERVICES["rebuild"]["restart"] == "unless-stopped", "a resident worker, not a one-shot"
+
+
+def test_the_rebuild_sees_the_whole_data_volume_at_the_path_its_settings_assume() -> None:
+    volumes = SERVICES["rebuild"]["volumes"]
+    assert "${DATA_ROOT}:/data" in volumes
+    assert SERVICES["rebuild"]["environment"]["DATA_ROOT"] == "/data"
+    assert "./lua:/conf/lua:ro" in volumes and "./valhalla:/conf:ro" in volumes
+
+
+def test_the_backup_lands_on_the_data_volume() -> None:
+    assert "${DATA_ROOT}/backups:/data/backups" in SERVICES["worker"]["volumes"]
