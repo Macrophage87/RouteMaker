@@ -40,28 +40,54 @@ def is_trail_class(
     osm_id: int | None = None,
     sidepath_bridge_ids: frozenset[int] = frozenset(),
 ) -> bool:
-    """Whether a way is trail class.
+    """Whether a way is trail class, by its highway tag alone.
 
-    Sidepath-only bridge ways count, because most Potomac and Anacostia
-    crossings are bike-legal only by a sidepath, and a definition that missed
-    them would leave the no-trail variant thinking those crossings are roadways
-    and hand a mass ride the Key Bridge sidewalk.
+    A sidepath-only bridge - Key Bridge, Chain Bridge - does *not* count here,
+    even though its roadway must still be kept off the no-trail variant. Those
+    are two different questions: this one is "what is this way", asked once and
+    answered the same for the segment table and for every variant; the other is
+    "should the no-trail variant drop it", which is variant-specific and lives
+    in `inject()`'s own combination of this function and the sidepath id lookup.
 
-    The id set is taken pre-built rather than as an iterable, because building a
-    set per way turns a whole-extract pass into a quadratic one.
+    Folding the sidepath lookup into this function's *return value* was the
+    bug: `is_trail_class` fed both the shared per-way `trail_class` tag (all
+    three variants, via `run.py`'s `inject_tags`) and the segment table's
+    `is_trail_class` column (via `write_segments`), so Chain Bridge's
+    *roadway* - a standard, bike-legal climb out of Georgetown - came out
+    trail-class on every variant and on the segment table, and Trailmaxxing's
+    road-exposure report counted a roadway bridge as trail.
+
+    `osm_id` and `sidepath_bridge_ids` are still accepted, and still ignored,
+    for exactly one reason: both of `run.py`'s existing call sites
+    (`inject_tags`'s derived `trail_class` tag, `write_segments`'s
+    `is_trail_class` column) pass them today, and the fix that matters is this
+    function no longer *acting* on them, not forcing an unrelated call-site
+    edit to land in the same change. `inject()` is the only caller that still
+    needs the sidepath answer, and it now computes that itself rather than
+    asking this function to.
     """
-    if tags.get("highway") in TRAIL_CLASS_HIGHWAY:
-        return True
-    # The id is a parameter rather than a tag. An earlier version read it from
-    # `tags["_osm_id"]`, which only a test ever set: a way read from a real PBF
-    # carries OSM's own tags and nothing else, so the sidepath lookup could never
-    # match and the test proved the function rather than the pipeline.
-    return osm_id is not None and osm_id in sidepath_bridge_ids
+    return tags.get("highway") in TRAIL_CLASS_HIGHWAY
 
 
 def is_sidepath_only(row: dict) -> bool:
-    """Whether a crossing row describes a bridge bike-legal only by a sidepath."""
-    return bool(row.get("sidepath_only") or row.get("roadway_bicycle_legal") is False)
+    """Whether a crossing row's *routing-relevant* provision is a sidepath.
+
+    `sidepath_only` alone, not OR'd with `roadway_bicycle_legal is False`. Those
+    are different claims about different bridges: `sidepath_only` says a mass
+    ride cannot practically use this crossing's roadway even though an ordinary
+    rider legally can (Key Bridge, Chain Bridge - narrow, no shoulder, no way off
+    mid-span) and drives the no-trail variant's drop decision;
+    `roadway_bicycle_legal` says whether OSM's `bicycle=no` bars the roadway
+    outright (the 14th Street freeway spans, the Wilson Bridge roadway, the
+    Theodore Roosevelt Bridge) and drives `resolve_bridge_bicycle_legality`
+    instead, applied to every variant because access is not a request-time
+    dial. The two columns happened to be perfectly correlated in the fixture
+    this file used to ship with, which is why OR-ing them together tested green
+    while being inert: every row where it mattered had both flags agreeing.
+    American Legion Bridge and the Theodore Roosevelt Bridge are the fixture
+    rows that pull them apart - barred outright, with no sidepath standing in.
+    """
+    return bool(row.get("sidepath_only"))
 
 
 def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
@@ -131,6 +157,66 @@ def resolve_sidepath_bridge_ids(
     return frozenset(matched_ids | explicit), sorted(unmatched)
 
 
+def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dict[int, bool]:
+    """Per-way roadway bicycle legality, from the crossing fixture.
+
+    A different question from `resolve_sidepath_bridge_ids`, matched the same
+    way (by name against a bridge-tagged way, or by an explicit `osm_way_id`).
+    That one asks "should the no-trail variant drop this way", a routing
+    decision that applies to one variant. This asks "does OSM's `bicycle` tag
+    bar the roadway outright" - a legal fact, true or false on every variant
+    alike, because access is not a request-time dial. It is what
+    `rm:bridge_bicycle` carries into `graph.lua`, which the transform already
+    reads (`derived.bridge_bicycle_legal`) but which no stage has ever emitted -
+    the caller (`run.py`'s `inject_tags`) needs to set
+    `changes["rm:bridge_bicycle"] = "yes" if legal else "no"` for every way this
+    returns, on every variant, not only the no-trail one.
+
+    Rows with no opinion (`roadway_bicycle_legal` absent or `None`) are left out
+    entirely, so the pipeline never injects a legality tag it has no fixture
+    backing for and OSM's own tagging is left to stand.
+    """
+    by_name: dict[str, bool] = {}
+    explicit: dict[int, bool] = {}
+    for row in rows:
+        legal = row.get("roadway_bicycle_legal")
+        if legal is None:
+            continue
+        if int(row.get("osm_way_id") or 0) != 0:
+            explicit[int(row["osm_way_id"])] = bool(legal)
+            continue
+        names = row.get("osm_names") or ([row["name"]] if row.get("name") else [])
+        for name in names:
+            by_name[name.casefold()] = bool(legal)
+
+    out: dict[int, bool] = dict(explicit)
+    for way in ways:
+        if way.tags.get("bridge") in (None, "no"):
+            continue
+        name = (way.tags.get("name") or "").casefold()
+        if name and name in by_name and way.osm_id not in out:
+            out[way.osm_id] = by_name[name]
+    return out
+
+
+def unverified_crossing_names(rows: Iterable[dict]) -> list[str]:
+    """Names of crossing rows whose `osm_names` have not been checked against a
+    real extract.
+
+    Overpass is blocked in this environment, so every name in the fixture -
+    including the ones a reviewer supplied - is `osm_names_verified: false`
+    today. The loader (`ReferenceData.load` in `run.py`) logs this list at
+    rebuild time alongside the unmatched-name warning `resolve_sidepath_bridge_ids`
+    already produces, because a name that resolves against the extract and a
+    name that is merely believed to be correct are different levels of
+    confidence and an operator should be able to tell which crossings are
+    which without reading this file.
+    """
+    return sorted(
+        row["name"] for row in rows if row.get("name") and row.get("osm_names_verified") is False
+    )
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],
@@ -147,7 +233,14 @@ def inject(
         return dict(tags)
 
     if variant is Variant.NO_TRAIL:
-        return None if is_trail_class(tags, osm_id, sidepath_bridge_ids) else dict(tags)
+        # A sidepath-only bridge is dropped here and only here: it is not trail
+        # class (its roadway is an ordinary, bike-legal road on the segment
+        # table and on the other two variants), but a mass ride cannot use an
+        # eight-foot sidewalk with no way off it mid-span, so the no-trail
+        # variant's own drop decision folds the two together rather than
+        # `is_trail_class` doing it for every caller.
+        is_sidepath_bridge = osm_id is not None and osm_id in sidepath_bridge_ids
+        return None if (is_trail_class(tags) or is_sidepath_bridge) else dict(tags)
 
     if variant is Variant.EBIKE:
         out = dict(tags)

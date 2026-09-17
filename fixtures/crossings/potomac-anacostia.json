@@ -2,6 +2,7 @@
   {
     "name": "Arlington Memorial Bridge",
     "osm_way_id": 0,
+    "osm_names_verified": false,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "US Park Police",
@@ -12,46 +13,79 @@
   {
     "name": "Key Bridge",
     "osm_way_id": 0,
-    "roadway_bicycle_legal": false,
+    "osm_names": ["Francis Scott Key Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": true,
     "sidepath_only": true,
     "police": "MPD / Arlington County Police",
     "row_owner": "DDOT / VDOT",
     "manager": null,
-    "note": "Bike provision is a narrow sidewalk. Must be trail-class on the no-trail variant so a mass ride is never routed onto it."
+    "note": "The roadway is a legal, ordinary climb, not barred - riders use it every day. sidepath_only marks it anyway: it is a narrow bridge with no shoulder and no way off mid-span, so a mass ride still has to be kept to the sidewalk provision rather than the traffic lane. Do not read sidepath_only as a legality claim; roadway_bicycle_legal is the legality claim."
   },
   {
     "name": "Chain Bridge",
     "osm_way_id": 0,
-    "roadway_bicycle_legal": false,
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": true,
     "sidepath_only": true,
     "police": "MPD / Fairfax County Police",
     "row_owner": "DDOT / VDOT",
     "manager": null,
-    "note": "Five-foot sidewalk with no way off mid-span."
+    "note": "A standard, bike-legal climb out of Georgetown - not barred. Five-foot sidewalk with no way off mid-span is why sidepath_only is still set: a mass ride cannot use the roadway safely even though an individual rider legally can."
   },
   {
-    "name": "14th Street Bridge (Mount Vernon Trail connection)",
+    "name": "George Mason Memorial Bridge",
     "osm_way_id": 0,
+    "osm_names": ["George Mason Memorial Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": false,
+    "police": "US Park Police",
+    "row_owner": "National Park Service / VDOT",
+    "manager": "National Park Service",
+    "note": "One of three parallel structures once lumped together as \"14th Street Bridge\"; not one bridge and not one answer, which is why this is now three rows. This one carries I-395's southbound freeway lanes: OSM carries bicycle=no on the roadway and there is no sidepath on this particular structure, so this is a bar-outright case, not a sidepath-only one. Community working knowledge, unverified against a real extract."
+  },
+  {
+    "name": "Rochambeau Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["Rochambeau Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": false,
+    "police": "US Park Police",
+    "row_owner": "National Park Service / VDOT",
+    "manager": "National Park Service",
+    "note": "The second of the three former \"14th Street Bridge\" spans, carrying I-395's northbound freeway lanes. Same shape as George Mason Memorial Bridge: bicycle=no on the roadway, no sidepath on this structure, barred outright. Community working knowledge, unverified against a real extract."
+  },
+  {
+    "name": "Arland D. Williams Jr. Memorial Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["Arland D. Williams Jr. Memorial Bridge"],
+    "osm_names_verified": false,
     "roadway_bicycle_legal": false,
     "sidepath_only": true,
     "police": "US Park Police",
     "row_owner": "National Park Service / VDOT",
     "manager": "National Park Service",
-    "note": "Several parallel structures under different authorities; not one bridge and not one answer."
+    "note": "The third of the three former \"14th Street Bridge\" spans - the Metrorail bridge, which is also where the Mount Vernon Trail connection actually is. No roadway lane a bicycle could use, so roadway_bicycle_legal is false; the shared-use path is the only and the intended crossing, so sidepath_only is true. Community working knowledge, unverified against a real extract."
   },
   {
     "name": "Woodrow Wilson Bridge path",
     "osm_way_id": 0,
+    "osm_names": ["Woodrow Wilson Memorial Bridge"],
+    "osm_names_verified": false,
     "roadway_bicycle_legal": false,
     "sidepath_only": true,
     "police": "Alexandria PD / MDTA",
     "row_owner": "MDTA",
+    "row_owner_verified": false,
     "manager": null,
-    "note": "Separate structure from the roadway; the Jones Point sliver is the short-crossing case."
+    "note": "The roadway carries I-95/I-495 and bicycle=no in OSM; the shared-use path is a separate structure and the only crossing. row_owner is best-known community knowledge, not confirmed against a current authority list - MDTA operates the bridge itself, but ownership of the connecting right-of-way on the Virginia side (the Jones Point sliver, the short-crossing case) may sit with VDOT instead."
   },
   {
     "name": "Sousa Bridge (Pennsylvania Avenue SE)",
     "osm_way_id": 0,
+    "osm_names_verified": false,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
@@ -62,11 +96,72 @@
   {
     "name": "11th Street Bridge",
     "osm_way_id": 0,
+    "osm_names_verified": false,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
     "note": "Local span carries bikes; the freeway spans do not."
+  },
+  {
+    "name": "Frederick Douglass Memorial Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["Frederick Douglass Memorial Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": true,
+    "sidepath_only": false,
+    "police": "MPD",
+    "row_owner": "DDOT",
+    "manager": null,
+    "note": "South Capitol Street's Anacostia crossing; a bike-legal roadway with its own protected provision, not a sidepath-only case. Community working knowledge, unverified against a real extract."
+  },
+  {
+    "name": "Whitney Young Memorial Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["Whitney Young Memorial Bridge", "Whitney M. Young Jr. Memorial Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": true,
+    "sidepath_only": false,
+    "police": "MPD",
+    "row_owner": "DDOT",
+    "manager": null,
+    "note": "A bike-legal roadway. Community working knowledge, unverified against a real extract - included on the reviewer's word that it belongs in this set, without an independently confirmed location or spelling."
+  },
+  {
+    "name": "Benning Road Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["Benning Road Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": true,
+    "sidepath_only": false,
+    "police": "MPD",
+    "row_owner": "DDOT",
+    "manager": null,
+    "note": "Benning Road's Anacostia crossing; a bike-legal roadway. Community working knowledge, unverified against a real extract."
+  },
+  {
+    "name": "Theodore Roosevelt Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["Theodore Roosevelt Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": false,
+    "police": "US Park Police",
+    "row_owner": "National Park Service / VDOT",
+    "manager": "National Park Service",
+    "note": "Carries I-66 across the Potomac; bicycle=no in OSM and no sidepath on the structure, so this is barred outright rather than sidepath-only. Tagged highway=trunk, which MOTOR_ONLY does not catch, so the no-trail variant depends entirely on the rm:bridge_bicycle mechanism (resolve_bridge_bicycle_legality) to keep a mass ride off it - there is no highway-class fallback here. Community working knowledge, unverified against a real extract."
+  },
+  {
+    "name": "American Legion Bridge",
+    "osm_way_id": 0,
+    "osm_names": ["American Legion Bridge", "George Kennan Memorial Bridge"],
+    "osm_names_verified": false,
+    "roadway_bicycle_legal": false,
+    "sidepath_only": false,
+    "police": "Montgomery County Police / Fairfax County Police",
+    "row_owner": "Maryland SHA / VDOT",
+    "manager": null,
+    "note": "Carries the Capital Beltway (I-495) across the Potomac near Cabin John. No bicycle or pedestrian provision of any kind - not sidepath-only, no access. Community working knowledge, unverified against a real extract."
   }
 ]
