@@ -678,6 +678,11 @@ def test_a_settings_write_that_fails_partway_repoints_no_row_at_all(
         run_pipeline(source, root, build_id="20260917T080000Z")
     assert caught.value.stage is Stage.SWAP
     assert saves == 3, "the third variant's write is the one that failed"
+    assert "the connection dropped mid-repoint" in str(caught.value.cause), (
+        "the undo must report the failure it is undoing, not one of its own: with the "
+        "before-state read only on the repoint's full success, the undo has nothing to "
+        "work from and fails over the top of it"
+    )
 
     rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
     assert set(rows) == {"standard", "no-trail", "ebike"}
@@ -688,6 +693,47 @@ def test_a_settings_write_that_fails_partway_repoints_no_row_at_all(
         assert os.readlink(variant_dir / "current") == "20260910T080000Z"
         assert not (variant_dir / "previous").exists(), "the promotion was undone whole"
     assert count(settings.SEGMENT_SCHEMA_LIVE) == 5, "last week's graph is still served"
+
+
+def test_a_repoint_that_dies_partway_leaves_no_row_half_written(
+    workspace, states, monkeypatch
+) -> None:
+    """The transaction, on its own terms: a worker killed mid-repoint runs no
+    undo at all.
+
+    Procrastinate restarts a worker whose job died, and the rebuild's error is
+    retryable, so the repoint is re-entered - against a settings table that
+    nothing has repaired, because the process that would have repaired it is
+    gone. Only the database can leave that table consistent, which is what
+    writing every variant in one transaction is for. The undo is stubbed out
+    here to stand in for the process not being there to run it.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline import promotion
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+
+    real_save = ValhallaUpstream.save
+    saves = 0
+
+    def save_that_drops_on_the_third(self, *args, **kwargs):
+        nonlocal saves
+        saves += 1
+        if saves == 3:
+            raise RuntimeError("the worker was killed mid-repoint")
+        return real_save(self, *args, **kwargs)
+
+    monkeypatch.setattr(ValhallaUpstream, "save", save_that_drops_on_the_third)
+    monkeypatch.setattr(promotion, "restore_upstreams", lambda before: None)
+    build_toy_extract(source, changed=True)
+    with pytest.raises(RebuildFailed):
+        run_pipeline(source, root, build_id="20260917T080000Z")
+
+    for row in ValhallaUpstream.objects.all():
+        assert (row.build_id, row.previous_build_id) == ("20260910T080000Z", ""), (
+            f"{row.variant} names a build that no tile directory and no schema describes"
+        )
 
 
 def test_a_first_rebuild_whose_swap_fails_promotes_nothing(workspace, states, monkeypatch) -> None:
