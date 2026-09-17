@@ -34,7 +34,14 @@ class SessionEpochMiddleware:
                     row.delete()
                 logout(request)
             else:
-                row.last_seen_at = timezone.now()
-                row.save(update_fields=["last_seen_at"])
+                # An UPDATE against the primary key rather than `save()`.
+                # `save(update_fields=...)` on a row that has gone since it was
+                # read - swept, or revoked by another request between the SELECT
+                # above and here - raises `DatabaseError("Save with update_fields
+                # did not affect any rows")`, which is a 500 on an ordinary
+                # request for a clock refresh that does not matter. An UPDATE
+                # matching nothing is simply a no-op, which is the right
+                # behaviour when the session it would have touched is gone.
+                Session.objects.filter(pk=row.pk).update(last_seen_at=timezone.now())
                 attach_standing(user)
         return self.get_response(request)

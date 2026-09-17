@@ -90,6 +90,13 @@ class DiscordStandingBackend:
             "core.view_bordercrossing",
             "core.view_jurisdiction",
             "core.view_override",
+            # "the current instance admins are listed to every guild admin".
+            # A proxy model with its own view permission, not `view_user`: the
+            # account table is every account on the deployment and carries the
+            # membership cache's sensitivity, while this one is the
+            # instance-admin list and the Discord id. Naming the proxy here is
+            # what keeps the two apart.
+            "core.view_instanceadminlisting",
         }
     )
 

@@ -89,11 +89,37 @@ def test_rows_for_people_who_never_signed_in_are_purged() -> None:
 
 def test_degraded_sweep_prioritises_active_sessions() -> None:
     """The budget runs out, so ordering decides who keeps working; staleness is
-    noticed first by the people currently using the site."""
-    idle = row(last_confirmed=NOW - timedelta(hours=1))
-    active = row(last_confirmed=NOW - timedelta(hours=2))
+    noticed first by the people currently using the site.
+
+    The session-bearing row is the *fresher* of the two here, on purpose. With
+    it also the stalest, the assertion held for either key - session first, or
+    oldest first - so dropping the session half of the sort left the suite
+    green while the ordering became "whoever has been cached longest", which is
+    a different rule and serves the wrong people first.
+    """
+    idle = row(last_confirmed=NOW - timedelta(hours=2))
+    active = row(last_confirmed=NOW - timedelta(hours=1))
     ordered = sweep_priority([(idle, False), (active, True)])
-    assert ordered[0] is active
+    assert ordered[0] is active, "an active session outranks a staler row"
+
+
+def test_the_degraded_sweep_breaks_ties_by_staleness() -> None:
+    """And within each group the stalest goes first, because it is the row
+    whose grants have had longest to drift from what Discord says."""
+    stale_session = row(last_confirmed=NOW - timedelta(hours=3))
+    fresh_session = row(last_confirmed=NOW - timedelta(minutes=5))
+    stale_idle = row(last_confirmed=NOW - timedelta(hours=4))
+    fresh_idle = row(last_confirmed=NOW - timedelta(minutes=1))
+
+    ordered = sweep_priority(
+        [
+            (fresh_idle, False),
+            (fresh_session, True),
+            (stale_idle, False),
+            (stale_session, True),
+        ]
+    )
+    assert ordered == [stale_session, fresh_session, stale_idle, fresh_idle]
 
 
 # The gateway path end to end: event in, row written, permission resolved. Until

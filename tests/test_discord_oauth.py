@@ -48,7 +48,11 @@ def test_state_is_unguessable() -> None:
     _, first = begin_login("client", "https://example.test/cb", NOW)
     _, second = begin_login("client", "https://example.test/cb", NOW)
     assert first.state != second.state
-    assert len(first.state) >= 32
+    # The exact length `secrets.token_urlsafe(32)` produces, not a floor: a
+    # floor of 32 is satisfied by token_urlsafe(24), which is eight bytes less
+    # entropy in the value that binds an authorize URL to one browser session.
+    assert len(first.state) == 43
+    assert len(second.state) == 43
 
 
 def test_excess_granted_scope_is_refused_not_ignored() -> None:

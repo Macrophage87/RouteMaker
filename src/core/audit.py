@@ -51,11 +51,20 @@ def record(
 
     Narrow on purpose, like the membership cache: who acted on what and whether
     it was allowed, never a copy of the row.
+
+    The actor's primary key is written alongside the foreign key rather than
+    read back through it. The key is `SET_NULL`, so once an account is deleted
+    the row is indistinguishable from one a worker wrote with no actor at all -
+    and the plan wants those told apart: "Audit log rows keep the numeric actor
+    id and display 'deleted user'". Recorded here, at the one writer, because a
+    column populated by some call sites and not others answers nothing.
     """
     from .models import AuditLogEntry
 
+    actor_pk = getattr(actor, "pk", None)
     return AuditLogEntry.objects.create(
-        actor=actor if getattr(actor, "pk", None) else None,
+        actor=actor if actor_pk else None,
+        actor_user_id=actor_pk,
         action=action,
         model=model,
         object_id=str(object_id or ""),

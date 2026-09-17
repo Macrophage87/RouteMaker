@@ -58,13 +58,50 @@ def test_the_bot_alone_holds_the_bot_token() -> None:
     assert holders == ["bot"]
 
 
-def test_the_key_encryption_key_reaches_only_api_and_worker() -> None:
-    holders = sorted(
+def key_encryption_key_holders() -> list[str]:
+    return sorted(
         name
         for name, service in SERVICES.items()
         if "KEY_ENCRYPTION_KEY" in (service.get("environment") or {})
     )
-    assert holders == ["api", "worker"]
+
+
+def test_the_key_encryption_key_reaches_the_api_and_the_worker() -> None:
+    """Both of them, and the pin matters: the ban tombstone's HMAC key is
+    derived from this one, so a service that lost it would refuse to start
+    rather than key tombstones with something else."""
+    assert {"api", "worker"} <= set(key_encryption_key_holders())
+
+
+def test_the_key_encryption_key_reaches_only_the_services_that_run_django() -> None:
+    """Which is a wider set than it was, on purpose.
+
+    `settings.TOMBSTONE_KEY` is derived from this key and has no default at all,
+    so every process that imports Django settings needs it or fails at import -
+    including `migrate` and the rebuild worker, neither of which computes a
+    tombstone. That is the intended direction: a container that cannot key a
+    tombstone should stop, not carry on with a key from the repository.
+
+    What the scoping rule is actually protecting is asserted here rather than
+    implied by an equality against two names: the bot, the edge proxy, the
+    database and the routing containers never see it. The bot is the one that
+    matters - it is the source of authorization truth and holds the token that
+    reads every guild's roster.
+    """
+    assert key_encryption_key_holders() == ["api", "migrate", "rebuild", "worker"]
+    for name in ("bot", "caddy", "postgis", "photon", "valhalla-standard"):
+        assert "KEY_ENCRYPTION_KEY" not in (SERVICES[name].get("environment") or {}), name
+
+
+def test_the_bootstrap_instance_admin_id_reaches_the_api_alone() -> None:
+    """The admin is the only surface that reads it, and it is inert once the
+    instance-admin list is non-empty."""
+    holders = sorted(
+        name
+        for name, service in SERVICES.items()
+        if "BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID" in (service.get("environment") or {})
+    )
+    assert holders == ["api"]
 
 
 def test_no_service_uses_a_shared_env_file() -> None:

@@ -15,7 +15,12 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-DJANGO_SETTINGS_MODULE = "config.settings"
+# The suite runs the production settings through `config.test_settings`, which
+# supplies the one secret they refuse to import without (KEY_ENCRYPTION_KEY,
+# which keys the ban tombstones) and overrides nothing else. pytest-django sets
+# Django up before any conftest body runs, so the default cannot come from
+# tests/conftest.py.
+DJANGO_SETTINGS_MODULE = "config.test_settings"
 
 [tool.ruff]
 line-length = 100

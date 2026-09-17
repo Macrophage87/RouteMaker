@@ -15,7 +15,10 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.settings")
+# `config.test_settings` is the production settings plus the one secret they
+# refuse to import without; see its docstring for why that default cannot live
+# in this file.
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "config.test_settings")
 
 
 def pytest_configure() -> None:

@@ -39,6 +39,11 @@ services:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
+      # The one bootstrap Discord id. It grants standing only while the
+      # instance-admin list is empty, and the first admin request under it
+      # writes the id into the list and disables this path for good. The admin
+      # is the only surface that reads it, so it goes to this service alone.
+      BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID: ${BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID:-}
       PGPASSWORD: ${PGPASSWORD}
     depends_on:
       postgis: { condition: service_started }
@@ -81,6 +86,13 @@ services:
     restart: "no"
     environment:
       DJANGO_SETTINGS_MODULE: config.settings
+      # Every process that imports settings needs this: the ban tombstone's
+      # HMAC key is derived from it and there is deliberately no default, so a
+      # container without it fails at import rather than keying tombstones with
+      # a value from the repository. That is why it reaches the two services
+      # that only ever run migrations and the rebuild, neither of which
+      # computes a tombstone.
+      KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       PGPASSWORD: ${PGPASSWORD}
     depends_on: [postgis]
     deploy:
@@ -246,6 +258,7 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       DATA_ROOT: /data
       PGPASSWORD: ${PGPASSWORD}
     volumes:

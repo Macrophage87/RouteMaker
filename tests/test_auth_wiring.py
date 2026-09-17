@@ -104,6 +104,27 @@ class TestDerivedStaff:
         attach_standing(user)
         assert not user.is_staff
 
+    def test_a_banned_admin_is_not_staff_even_with_standing_on_the_object(self) -> None:
+        """`is_staff`'s own ban conjunct, isolated.
+
+        The test above bans and then resolves, and `attach_standing` empties the
+        guild sets for a banned account - so the emptied set is what refuses and
+        the conjunct inside `is_staff` could be deleted with the suite green.
+        Here the standing is on the object and the flag is the only thing left
+        to say no, which is the case that matters: a ban has to end the admin
+        whatever some earlier resolution left cached on the instance.
+        """
+        user = User.objects.create(discord_user_id=6, is_banned=True)
+        user._admin_guild_ids = frozenset({1000})
+        assert not user.is_staff
+
+        user.is_banned = False
+        user.is_deleted = True
+        assert not user.is_staff
+
+        user.is_deleted = False
+        assert user.is_staff, "and the standing is otherwise real"
+
     def test_a_revoked_guild_takes_its_admins_with_it(self, guild) -> None:
         from core.auth_backend import attach_standing
         from core.models import RoleMapping
@@ -404,6 +425,45 @@ class TestHasPerm:
         assert not user.is_active
         assert not DiscordStandingBackend().has_perm(user, "core.view_configuredguild")
 
+    def test_a_member_with_no_admin_standing_holds_no_permission(self, guild) -> None:
+        """The guard that answers before the allow-list is consulted.
+
+        Deleting `if not _admin_guild_ids: return False` from `has_perm` left
+        the suite green, because reaching the admin at all needs `is_staff`,
+        which needs the same set - so every test that drives a permission
+        through a request has an admin on the other end and the guard is masked.
+        Asked directly, an ordinary club member must hold nothing: the
+        allow-list is what a guild admin holds, not what anyone holds.
+
+        `has_module_perms`' identical guard is already killed by the module test
+        below; this is the other half of the same conjunction.
+        """
+        from core.auth_backend import DiscordStandingBackend, attach_standing
+        from core.models import RoleMapping
+
+        backend = DiscordStandingBackend()
+        member = User.objects.create(discord_user_id=34)
+        member_of(guild, member, permission=RoleMapping.Permission.MEMBER)
+        attach_standing(member)
+
+        assert member.is_active and not member.is_instance_admin
+        assert member._member_guild_ids == frozenset({1000}), "a member in good standing"
+        assert member._admin_guild_ids == frozenset(), "and no admin anywhere"
+
+        for perm in sorted(DiscordStandingBackend.GUILD_ADMIN_PERMISSIONS):
+            assert not backend.has_perm(member, perm), perm
+        assert not backend.has_module_perms(member, "core")
+
+    def test_a_signed_in_stranger_holds_nothing_either(self) -> None:
+        """No memberships at all, which is what a brand new account is."""
+        from core.auth_backend import DiscordStandingBackend, attach_standing
+
+        backend = DiscordStandingBackend()
+        stranger = User.objects.create(discord_user_id=35)
+        attach_standing(stranger)
+        for perm in sorted(DiscordStandingBackend.GUILD_ADMIN_PERMISSIONS):
+            assert not backend.has_perm(stranger, perm), perm
+
     def test_a_banned_instance_admin_holds_nothing(self) -> None:
         """is_active is load-bearing here and nowhere else.
 
@@ -631,6 +691,65 @@ class TestSessionEpochMiddleware:
         store = SessionStore()
         store.create()
         assert self.run_middleware(self.request_for(AnonymousUser(), store)) == "ok"
+
+    def test_a_row_is_never_matched_against_another_persons_epoch(self) -> None:
+        """The `user=user` half of the lookup.
+
+        Session keys are unguessable, so this is not a lookup an attacker drives
+        - but without the conjunct the middleware answers a question about
+        whoever holds the key rather than about whoever is signed in, and it
+        would then write another account's clock and attach standing to a
+        request that has no row of its own. A row belongs to one person, and
+        every revocation in this deployment is per person.
+        """
+        from core.models import Session
+
+        owner = User.objects.create(discord_user_id=45)
+        other = User.objects.create(discord_user_id=46)
+        store = self.signed_in(owner, last_seen_at=timezone.now() - timedelta(hours=2))
+        # Read before the middleware runs: `logout` flushes the store and leaves
+        # `store.session_key` as None, so reading it afterwards looks up nothing.
+        key = store.session_key
+        before = Session.objects.get(session_key=key).last_seen_at
+
+        request = self.request_for(other, store)
+        self.run_middleware(request)
+
+        assert not request.user.is_authenticated, "no row of their own, so no session"
+        assert Session.objects.get(session_key=key).last_seen_at == before, (
+            "and the owner's clock was not moved by somebody else's request"
+        )
+
+    def test_a_row_swept_mid_request_is_not_an_error(self, monkeypatch) -> None:
+        """The clock refresh is an UPDATE, not a `save(update_fields=...)`.
+
+        `save(update_fields=...)` raises `DatabaseError("Save with update_fields
+        did not affect any rows")` when the row has gone since it was read - the
+        session sweep running, or a sign-out-everywhere from another request,
+        between the SELECT and the write. That is a 500 on an ordinary request,
+        for a timestamp that does not matter. An UPDATE matching nothing is a
+        no-op, which is the right answer when the row it would have touched is
+        already gone.
+
+        The disappearance is staged where it actually happens: between the read
+        and the write, by way of the validity check the middleware makes in
+        between.
+        """
+        from core.models import Session
+
+        user = User.objects.create(discord_user_id=47)
+        store = self.signed_in(user)
+        key = store.session_key
+
+        def vanish(*args, **kwargs):
+            Session.objects.filter(session_key=key).delete()
+            return True
+
+        monkeypatch.setattr("core.middleware.session_is_current", vanish)
+
+        request = self.request_for(user, store)
+        assert self.run_middleware(request) == "ok"
+        assert not Session.objects.filter(session_key=key).exists()
 
 
 @pytest.mark.django_db(transaction=True)

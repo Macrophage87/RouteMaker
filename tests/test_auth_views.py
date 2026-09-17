@@ -160,7 +160,9 @@ def test_no_discord_token_is_persisted_anywhere(client, monkeypatch) -> None:
     populated = {
         model.__name__: model.objects.count()
         for model in apps.get_app_config("core").get_models()
-        if model._meta.managed and model.objects.count()
+        # Proxies are the same table read under another name and another
+        # permission, so counting them would count one row twice.
+        if model._meta.managed and not model._meta.proxy and model.objects.count()
     }
     assert populated == {"User": 1, "Session": 1}
     assert not User.objects.get(discord_user_id=782).has_usable_password()

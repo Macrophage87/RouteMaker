@@ -7,9 +7,14 @@ host, and proxy settings are asserted in CI rather than trusted to review.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import os
 import sys
+from datetime import timedelta
 from pathlib import Path
+
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -149,8 +154,79 @@ DISCORD_REDIRECT_URI = os.environ.get("DISCORD_REDIRECT_URI", "http://localhost:
 # Keys a ban tombstone. A Discord id is a structured 64-bit value whose candidate
 # set any guild's member list resolves directly, so an unkeyed hash of one gives
 # no privacy against whoever holds a dump. This lives in SSM and never appears in
-# one. Encoded rather than stored as text so it is bytes at the point of use.
-TOMBSTONE_KEY = os.environ.get("TOMBSTONE_KEY", "insecure-development-tombstone-key").encode()
+# one.
+#
+# Derived from KEY_ENCRYPTION_KEY rather than read from a variable of its own,
+# for two reasons.
+#
+# The plan names the key-encryption key as the key this HMAC uses ("computed as
+# an HMAC keyed with the key-encryption key"), and it is the secret compose
+# already delivers to the api and the worker and to nothing else. A second
+# variable for the same purpose was declared by no service, so the value that
+# actually keyed every tombstone was the literal in this file - which is public,
+# and with it anyone holding a dump recovers the tombstone of every candidate
+# Discord id from a guild member list. That is the whole of the privacy this
+# construction exists to provide.
+#
+# And it is *derived* rather than used directly, so that the key that encrypts
+# and the key that tombstones are two distinct values from one delivered secret:
+# a tombstone is a public-by-design artefact of the dump, and an oracle over it
+# should not be an oracle over the encryption key. One HMAC over a constant
+# label is HKDF-Expand with a single output block, which is the standard way to
+# split one secret into domain-separated subkeys.
+#
+# Required, with no default. An unset variable fails at import rather than
+# silently keying every tombstone in the deployment with a value that is in the
+# repository; the test settings supply one explicitly.
+TOMBSTONE_KEY_LABEL = b"routemaker/ban-tombstone/v1"
+_key_encryption_key = os.environ.get("KEY_ENCRYPTION_KEY", "")
+if not _key_encryption_key:
+    raise ImproperlyConfigured(
+        "KEY_ENCRYPTION_KEY is required: it keys the ban tombstones, and a "
+        "default here would be a published key. Set it from SSM in production "
+        "and from the environment file locally."
+    )
+TOMBSTONE_KEY = hmac.new(_key_encryption_key.encode(), TOMBSTONE_KEY_LABEL, hashlib.sha256).digest()
+del _key_encryption_key
+
+# The one bootstrap Discord id, and the only way a deployment gets its first
+# instance admin. There is no password login and no `createsuperuser` here, so
+# on an empty database every signed-in account was refused at the admin with a
+# 404 and the only repair was a hand-written UPDATE against production.
+#
+# It grants standing *only while the instance-admin list is empty*, and the
+# first admin request under that standing writes the id into the list and
+# audits it. After that the variable is inert even if it still names someone,
+# which is what makes `.env` read access worth nothing on a running deployment.
+BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID = (
+    int(os.environ["BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID"])
+    if os.environ.get("BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID", "").strip()
+    else None
+)
+
+# How long the removal of an instance admin other than yourself waits before it
+# takes effect, during which any instance admin can cancel it. The plan's
+# figure: "takes effect after a delay, configurable and defaulting to an hour".
+# Without it one admin removes every peer down to themselves in a single
+# audited but unstoppable action. Self-removal is immediate, as the plan says.
+INSTANCE_ADMIN_REMOVAL_DELAY = timedelta(
+    seconds=int(os.environ.get("INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS", 60 * 60))
+)
+
+# A minimal logging configuration, because Django's default sends application
+# logs nowhere a container operator can read: the two application packages log
+# at INFO to stdout, which is where compose and the deployment collect them.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "{asctime} {levelname} {name} {message}", "style": "{"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {
+        "core": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        "pipeline": {"handlers": ["console"], "level": "INFO", "propagate": False},
+    },
+}
 
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"

@@ -304,6 +304,25 @@ class TestSanctionedMembers:
         viewer = Viewer(user_id=2, memberships=(fresh(timed_out_until=NOW + timedelta(hours=1)),))
         assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.NONE
 
+    def test_a_lapsed_timeout_is_not_a_sanction(self) -> None:
+        """The plan restores a timeout automatically at its end time, so the
+        column has to be compared against now rather than read for presence.
+
+        Both halves are asserted here: the predicate itself, and the guest floor
+        it gates. Reading the column's presence alone blocked that floor
+        permanently - a timeout somebody served a year ago went on costing them
+        guest commenting on every club's public routes forever - and every other
+        test in this class uses a timeout that is still running, so the
+        comparison could be deleted with the suite green.
+        """
+        served = fresh(timed_out_until=NOW - timedelta(hours=1))
+        assert not served.is_sanctioned(NOW)
+        assert fresh(timed_out_until=NOW + timedelta(hours=1)).is_sanctioned(NOW)
+
+        viewer = Viewer(user_id=2, memberships=(served,))
+        assert not viewer.is_sanctioned_anywhere(NOW)
+        assert resolve(viewer, route(visibility=Visibility.PUBLIC), active(), NOW) is Level.MEMBER
+
     def test_a_removed_member_does_fall_through_to_guest(self) -> None:
         """The plan's explicit rule, which the sanction test had inverted.
 

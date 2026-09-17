@@ -4,6 +4,71 @@ The plan's deployment target is one Docker Compose stack on one AWS host. For
 development the same components run natively, which is faster to iterate against
 and, for the database layer, tests the real thing rather than a stand-in.
 
+## Environment variables
+
+`.env.example` is the full list; three of them decide whether the deployment
+works at all and are explained here rather than in a comment beside a default.
+
+### `KEY_ENCRYPTION_KEY` — required, no default
+
+Every process that imports `config.settings` needs it, including `migrate` and
+the rebuild worker, and settings **refuse to import without it**. It keys the
+ban tombstones: `settings.TOMBSTONE_KEY` is derived from it with one HMAC over
+a fixed label (`routemaker/ban-tombstone/v1`), which is HKDF-Expand with a
+single output block, so the key that encrypts and the key that tombstones are
+two distinct values from one delivered secret.
+
+There is deliberately no fallback. A Discord id is a structured 64-bit value
+whose candidate set any guild's member list resolves directly, so an unkeyed —
+or publicly keyed — digest of one gives no privacy at all against whoever holds
+a dump. With a development default in the settings file, the published literal
+*was* the key on every deployment that had not set the variable, and nothing
+declared it. A container without the key now stops at import instead.
+
+It comes from SSM (SecureString, KMS-backed) in production and from the
+environment file locally. Rotating it invalidates every existing ban tombstone,
+which is a re-tombstoning job and not a restart.
+
+The suite supplies its own value through `config.test_settings`, which is
+`config.settings` plus that one default and nothing else. It cannot come from
+`tests/conftest.py`: pytest-django sets Django up while it loads the initial
+conftests, before any conftest body has run.
+
+### `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` — how a new deployment gets its first admin
+
+There is no password login, no `createsuperuser`, and the only surface that
+writes `is_instance_admin` is an admin page only an instance admin can reach, so
+a fresh database has no way into the admin at all. Set this to one Discord id
+before the first start:
+
+```sh
+BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID=123456789012345678
+```
+
+That id grants standing **only while the instance-admin list is empty**. Sign in
+with that Discord account and open the admin once: the first admitted request
+writes the id into the instance-admin list, records a `bootstrap_instance_admin`
+audit row, and from then on the variable is inert even if it still names
+somebody. Nothing has to be unset afterwards for the deployment to be safe,
+though leaving it set is pointless.
+
+It reaches the `api` service alone, since the admin is the only reader.
+
+### `INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS` — the removal window
+
+Removing an *other* instance admin does not take effect immediately. It writes a
+pending removal with an effective time this many seconds out (default 3600, the
+plan's hour), during which any instance admin can cancel it from the "pending
+instance admin removals" page; without the window, one admin removes every peer
+down to themselves in a single unstoppable action. Standing down — clearing your
+own flag — is immediate, and the last instance admin can never be removed by
+either path.
+
+Due removals are applied by `core.models.apply_due_instance_admin_removals()`,
+which the periodic maintenance sweep calls. Notification of the removed party
+and the remaining admins is **not** implemented: phase 1 has no Discord DM path
+and no email path, so the window and the cancel exist and the notice does not.
+
 ## Database
 
 PostgreSQL 16 with PostGIS 3.4, GEOS, GDAL and PROJ. GeoDjango needs all four.
