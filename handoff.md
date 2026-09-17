@@ -123,6 +123,9 @@ report.
 | 17 | **The suite asserts rules and does not assert values.** Ten constants the plan writes down can each change by two orders of magnitude with 431 tests green — session lifetimes, `DEGRADED_WINDOW`, `MAX_ROW_AGE`, `GUILD_REMOVAL_GRACE`, `PURGE_NEVER_SIGNED_IN_AFTER`, the swap's timeout/attempts/backoff, `DEFAULT_MIN_CROSSING_M`. The mechanism is always the same: *the test computes its boundary from the constant it is testing*. This already cost item 16, and nobody could have known. A flat table of `assert CONSTANT == <plan figure>` is cheap. | |
 | 18 | **My test-isolation fix is broken.** Setting the schema env vars fails 11 tests, because `test_schema_swap.py` (21 literal occurrences) and `test_pipeline_end_to_end.py` write `"live"`/`"staging"` as strings. It was also partly misdirected — a private `PGDATABASE` already isolated concurrent runs. Worse, **production has the same hardcoding**: `run.py:117` `staging_schema: str = "staging"` while `swap_schemas` reads `settings.SEGMENT_SCHEMA_STAGING`, which silently promotes an *empty* segment table; and `writers.py:39`'s `if schema == "live"` guard does not guard a renamed live schema. | Mine |
 
+Plan-named behaviour with no implementation at all - the bot, and three
+guild-lifecycle windows that depend on it - is recorded separately in §7.
+
 Beyond these, each reviewer filed 6–12 should-fix items — conflation letting a parallel trail take a
 motor-traffic count with extract order as the tie-break, `has_perm` being allow-by-default, the
 backup dumping the session table, no disk gate, no region data producers at all. Full reports are
@@ -186,3 +189,35 @@ reverting the fix and confirming a test catches it:
   speed split; boundary-street handling; lanes normalised per direction before the Furth tables;
   reference-route measurements reproducing the README tables exactly.
 - 51 of 57 targeted auth mutations and 123 of 173 total mutations killed.
+
+---
+
+## 7. Known phase-1 gaps
+
+Recorded rather than left for a round-4 reviewer to discover. None of these is a
+defect in shipped code: each is a plan-named behaviour with no implementation
+anywhere, and the last three cannot be built before the first is.
+
+| Gap | Where the plan says it | State |
+|---|---|---|
+| **No bot** (item 11, restated). `record_event` has a caller now but no *producer*: there is no bot source, no gateway handler and no ingest route, so nothing writes the membership cache in production and nobody ever holds standing. Nothing writes the gateway heartbeat either - the `ScheduledRun(task="gateway_heartbeat")` row `core.revocation.last_gateway_event` reads. | PLAN.md:270 ("The bot"), :274 ("Re-validation") | Not built. Phase 1 owes it. |
+| Guild **re-invite token's 24-hour expiry** - "wrapped in a single-use token expiring in 24 hours". | PLAN.md:272 | No token, no expiry, no code anywhere. |
+| **Unmapped-guild alert, default 30 days** - "A guild left unmapped beyond a configurable period, default 30 days, alerts instance admins and offers bulk reassignment or archival". | PLAN.md:272 | No setting, no alert. |
+| **Remap-reversal window of 7 days** - "an instance admin can reverse a remap within 7 days, restoring the prior ids and mapping but never cached standing". | PLAN.md:272 | No remap action, so no reversal window. |
+
+The three durations belong to guild-lifecycle features (re-invite link, guild
+remap, unmapped-guild alerting) that all presuppose a live bot: the re-invite
+link is an OAuth install URL for it, the remap's precondition is that it is
+already present in the new guild with its backfill complete, and "unmapped"
+is a state only the backfill can leave. So they are not three missing constants
+that could be added to `test_plan_constants.py`; they are three windows on
+features that do not exist. They are deliberately **not** implemented here.
+
+One consequence is already wired for, and is the reason it is worth writing
+down. `core.revocation.mark_degraded_guilds` fails closed when no heartbeat has
+ever been recorded - correct for a bot that goes silent, and on this deployment
+it would mark every guild degraded on the first tick and lapse the whole
+deployment's standing 72 hours later. Its scheduler
+(`config.procrastinate.degraded_guild_sweep`) therefore holds the mark until one
+heartbeat row exists, and arms itself the moment the bot writes one. Anything
+else built against the heartbeat needs the same reading.
