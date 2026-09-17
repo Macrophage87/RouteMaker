@@ -581,9 +581,10 @@ class TestSessionEpochMiddleware:
         user.session_epoch += 1
         user.save(update_fields=["session_epoch"])
 
+        key = store.session_key  # logout() flushes the store and clears it
         request = self.request_for(user, store)
         self.run_middleware(request)
-        assert not Session.objects.filter(session_key=store.session_key).exists()
+        assert not Session.objects.filter(session_key=key).exists()
         assert not request.user.is_authenticated
 
     def test_a_session_past_the_absolute_lifetime_ends(self) -> None:
@@ -595,8 +596,9 @@ class TestSessionEpochMiddleware:
         store = self.signed_in(
             user, created_at=timezone.now() - ABSOLUTE_SESSION_LIFETIME - timedelta(minutes=1)
         )
+        key = store.session_key
         self.run_middleware(self.request_for(user, store))
-        assert not Session.objects.filter(session_key=store.session_key).exists()
+        assert not Session.objects.filter(session_key=key).exists()
 
     def test_an_idle_session_ends(self) -> None:
         from core.models import Session
@@ -606,8 +608,9 @@ class TestSessionEpochMiddleware:
         store = self.signed_in(
             user, last_seen_at=timezone.now() - IDLE_SESSION_LIFETIME - timedelta(minutes=1)
         )
+        key = store.session_key
         self.run_middleware(self.request_for(user, store))
-        assert not Session.objects.filter(session_key=store.session_key).exists()
+        assert not Session.objects.filter(session_key=key).exists()
 
     def test_a_session_with_no_row_is_refused(self) -> None:
         """The row is the only thing carrying the epoch, so a session without one
@@ -628,3 +631,45 @@ class TestSessionEpochMiddleware:
         store = SessionStore()
         store.create()
         assert self.run_middleware(self.request_for(AnonymousUser(), store)) == "ok"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_stale_session_row_is_deleted_by_a_real_request(client, monkeypatch) -> None:
+    """Round-3 test-quality NIT A2: `row.delete()` in the middleware was
+    unasserted, and removing it left the suite green.
+
+    The three assertions that looked like they covered it did not. Each read
+    `store.session_key` *after* running the middleware, and `logout()` flushes
+    the session store, which sets that attribute to None - so the filter ran on
+    `session_key IS NULL`, matched nothing, and passed whether the row was
+    deleted or not.
+
+    This signs in through the real login flow, bumps the epoch the way a ban
+    does, and makes a second real request. The key is held from before the
+    request, so the row is looked for where it actually is. Without the delete
+    the row survives every future request too: the middleware only ever reaches
+    it when a request carries the matching cookie, and that cookie is gone.
+    """
+    from django.urls import reverse
+
+    from core.auth_views import STATE_SESSION_KEY
+    from core.models import Session
+
+    monkeypatch.setattr(
+        "core.auth_views.exchange_code", lambda _code: (901, "identify"), raising=False
+    )
+    client.get(reverse("login"))
+    state = client.session[STATE_SESSION_KEY]["state"]
+    client.get(reverse("login-callback"), {"state": state, "code": "abc"})
+
+    user = User.objects.get(discord_user_id=901)
+    key = Session.objects.get(user=user).session_key
+
+    user.session_epoch += 1
+    User.objects.filter(pk=user.pk).update(session_epoch=user.session_epoch)
+
+    client.get(reverse("login"))
+
+    assert not Session.objects.filter(session_key=key).exists(), (
+        "a row nothing will ever accept again is a user id and a timestamp left in the table"
+    )
