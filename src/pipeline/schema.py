@@ -18,9 +18,9 @@ import re
 from django.db import connection
 
 # Schema names are interpolated into DDL, which no parameter placeholder can
-# carry. They come from settings today, so this is not exploitable - but it is
-# one config-from-environment change away from being so, in the one module that
-# runs DDL against production.
+# carry. They come from the environment (ROUTEMAKER_LIVE_SCHEMA and its
+# staging twin), so this is the one module that would run an operator's typo
+# as DDL against production.
 _SCHEMA_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
 
@@ -56,6 +56,24 @@ CREATE TABLE {schema}.segment (
 CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
 CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
+
+-- What each synthetic border-control node means. The node ids are reassigned
+-- every rebuild, so this table describes one particular graph and changes
+-- hands in the same rename as the segment table. It used to be a managed table
+-- in public, rewritten five stages before the swap, which left a failed rebuild
+-- with a served graph whose node ids resolved against a table describing a
+-- graph that never existed. Column names match core.models.BorderCrossing,
+-- which reads it unqualified through the search path exactly as Segment does.
+CREATE TABLE {schema}.border_crossing (
+    id              bigserial PRIMARY KEY,
+    node_id         bigint      NOT NULL UNIQUE,
+    location        geometry(Point, 4326) NOT NULL,
+    osm_way_id      bigint      NOT NULL,
+    state_a         varchar(2)  NOT NULL,
+    state_b         varchar(2)  NOT NULL
+);
+
+CREATE INDEX border_crossing_way_idx ON {schema}.border_crossing (osm_way_id);
 """
 
 
@@ -70,6 +88,20 @@ def drop_segment_schema(schema: str) -> None:
     validate_schema_name(schema)
     with connection.cursor() as cursor:
         cursor.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+
+
+def reset_segment_schema(schema: str) -> None:
+    """Drop and recreate a staging schema, empty.
+
+    The first stage of every rebuild. Nothing created the schema before the
+    first rebuild on a real box, so it failed on a missing relation, and every
+    later one inserted into a schema still holding last week's rows. It runs
+    first rather than in the segment writer because the crossings table is
+    written several stages earlier than the segments and would otherwise be
+    dropped along with the schema it had just been written into.
+    """
+    drop_segment_schema(schema)
+    create_segment_schema(schema)
 
 
 def schema_exists(schema: str) -> bool:

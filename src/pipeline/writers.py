@@ -4,8 +4,8 @@ Written with `execute_values`-style batching rather than the ORM, because the
 segment table is unmanaged and rebuilt whole each week: there is no model
 lifecycle to respect and several million rows to insert.
 
-Everything here targets a schema by name and never `live`, so a writer cannot
-touch the schema currently being served. The swap is the only thing that
+Everything here targets a schema by name and never the live one, so a writer
+cannot touch the schema currently being served. The swap is the only thing that
 promotes staging, and it is a separate step for exactly that reason.
 """
 
@@ -16,6 +16,8 @@ from collections.abc import Iterable, Sequence
 from django.db import connection
 
 from routemaker.stress import StressResult
+
+from .schema import validate_schema_name
 
 BATCH = 1_000
 
@@ -33,11 +35,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
     different claims, and the published derivative needs to know which segments
     a conditionally licensed source touched.
     """
-    from .schema import validate_schema_name
-
     validate_schema_name(schema)
-    if schema == "live":
-        raise ValueError("writers never target the live schema; write to staging and swap")
+    refuse_live_schema(schema)
 
     values = [
         (
@@ -110,31 +109,58 @@ def _json_list(values: Iterable[str]) -> str:
     return json.dumps(list(values))
 
 
-def write_border_crossings(nodes: Sequence) -> int:
-    """Record what each synthetic border node means.
+def write_border_crossings(schema: str, nodes: Sequence) -> int:
+    """Record what each synthetic border node means, into the staging schema.
 
     Valhalla keeps no custom node tags, so the two states a node separates live
-    here and the application resolves crossing direction from this table. These
-    rows are replaced wholesale each rebuild, because the node ids are
-    reassigned each time and are not persistent identity.
+    here and the application resolves crossing direction from this table. The
+    table is written whole into the schema being built, because the node ids
+    are reassigned each rebuild and are not persistent identity: the rows
+    describe this build's graph and are promoted with it by the rename. The
+    first version wrote them through the ORM into a managed table in public,
+    which was the live table, five stages before the swap.
     """
-    from core.models import BorderCrossing
+    validate_schema_name(schema)
+    refuse_live_schema(schema)
 
-    BorderCrossing.objects.all().delete()
-    BorderCrossing.objects.bulk_create(
-        [
-            BorderCrossing(
-                node_id=node.node_id,
-                location=f"SRID=4326;POINT({node.lon} {node.lat})",
-                osm_way_id=node.osm_way_id,
-                state_a=node.state_a,
-                state_b=node.state_b,
+    written = 0
+    with connection.cursor() as cursor:
+        cursor.execute(f"DELETE FROM {schema}.border_crossing")
+        for batch in _batched(list(nodes)):
+            args = ",".join(
+                cursor.mogrify(
+                    "(%s,ST_SetSRID(ST_MakePoint(%s,%s),4326),%s,%s,%s)",
+                    (
+                        node.node_id,
+                        node.lon,
+                        node.lat,
+                        node.osm_way_id,
+                        node.state_a,
+                        node.state_b,
+                    ),
+                )
+                for node in batch
             )
-            for node in nodes
-        ],
-        batch_size=BATCH,
-    )
-    return len(nodes)
+            cursor.execute(
+                f"""INSERT INTO {schema}.border_crossing
+                    (node_id, location, osm_way_id, state_a, state_b)
+                    VALUES {args}"""
+            )
+            written += len(batch)
+    return written
+
+
+def refuse_live_schema(schema: str) -> None:
+    """The one rule every writer shares: never the schema being served.
+
+    Compared against the configured name, not the literal "live". With
+    ROUTEMAKER_LIVE_SCHEMA set, the literal guarded a schema nothing was serving
+    and let a writer into the one that was.
+    """
+    from django.conf import settings
+
+    if schema == settings.SEGMENT_SCHEMA_LIVE:
+        raise ValueError("writers never target the live schema; write to staging and swap")
 
 
 def segment_row(

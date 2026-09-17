@@ -104,8 +104,17 @@ class BorderCrossing(models.Model):
 
     Valhalla keeps no custom node tags, so the two states a node separates are
     recorded here and the application resolves crossing direction from this
-    table. Node ids come from a reserved negative range that cannot collide with
-    real OSM node ids.
+    table. Node ids come from a reserved *positive* range above every id OSM has
+    issued (`pipeline.borders.SYNTHETIC_NODE_ID_FLOOR`); a negative range was the
+    first design and valhalla_build_tiles rejects it as unsorted input.
+
+    Unmanaged, and in the swapped schema rather than in `public`, for the same
+    reason as `Segment`: the ids are reassigned every rebuild, so the table
+    describes one particular graph and has to change hands in the same rename
+    as the tiles it describes. The first version was a managed table in
+    `public` rewritten five stages before the swap, so a rebuild that failed at
+    validation left the served graph's node ids resolving against a table
+    describing a graph that was never served.
     """
 
     node_id = models.BigIntegerField(unique=True)
@@ -115,6 +124,7 @@ class BorderCrossing(models.Model):
     state_b = models.CharField(max_length=2)
 
     class Meta:
+        managed = False  # DDL comes from the pipeline, alongside the segment table.
         db_table = "border_crossing"
         indexes = [models.Index(fields=["osm_way_id"])]
 
@@ -476,6 +486,71 @@ class ScheduledRun(models.Model):
     def __str__(self) -> str:
         state = "succeeded" if self.succeeded else ("running" if not self.finished_at else "failed")
         return f"{self.task} {state} at {self.started_at:%Y-%m-%d %H:%M}"
+
+
+class ValhallaUpstream(models.Model):
+    """Where the API's routing client finds each tile variant's Valhalla, and
+    which build it is serving.
+
+    This is the "settings table the API watches" in the plan's swap. The swap
+    writes it *before* it renames the schema, so the inconsistency window is a
+    live segment table describing the older graph rather than a graph nobody is
+    serving; rollback writes the previous values back. The previous build is
+    kept on the row so a rollback needs nothing but the row.
+
+    Nothing reads `url` yet - the routing client is phase 2 - but the row has to
+    exist and be written now, because the swap's ordering argument depends on
+    it and a swap without it is only half a swap.
+    """
+
+    variant = models.CharField(max_length=16, unique=True)
+    url = models.CharField(max_length=200)
+    # The dated build directory being served, e.g. 20260917T080000Z, and the
+    # one before it. Both are directory names under TILES_DIR/<variant>.
+    build_id = models.CharField(max_length=32, blank=True)
+    previous_build_id = models.CharField(max_length=32, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "valhalla_upstream"
+
+    def __str__(self) -> str:
+        return f"{self.variant} -> {self.url} ({self.build_id or 'no build'})"
+
+
+class DriftReport(models.Model):
+    """What changed between the graph just retired and the one just promoted.
+
+    The plan's reconciliation job re-resolves anchors after each swap and emits
+    a drift report. Anchors are phase 2 - there are no routes yet to anchor
+    anything to - so in phase 1 the report is the segment-level half only: how
+    many segments the new build lost, gained, or re-graded, measured against the
+    retired schema while it still exists. `unresolved_anchors` stays null until
+    there are anchors to resolve, and is not zero, because zero would be a
+    claim.
+    """
+
+    build_id = models.CharField(max_length=32)
+    created_at = models.DateTimeField(auto_now_add=True)
+    segments_before = models.IntegerField()
+    segments_after = models.IntegerField()
+    segments_lost = models.IntegerField()
+    segments_added = models.IntegerField()
+    segments_regraded = models.IntegerField()
+    crossings_before = models.IntegerField()
+    crossings_after = models.IntegerField()
+    unresolved_anchors = models.IntegerField(null=True, blank=True)
+    note = models.TextField(blank=True)
+
+    class Meta:
+        db_table = "drift_report"
+        indexes = [models.Index(fields=["-created_at"])]
+
+    def __str__(self) -> str:
+        return (
+            f"build {self.build_id}: {self.segments_lost} lost, {self.segments_added} added, "
+            f"{self.segments_regraded} regraded"
+        )
 
 
 class Session(models.Model):

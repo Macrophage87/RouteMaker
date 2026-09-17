@@ -31,9 +31,11 @@ from .models import (
     BorderCrossing,
     CachedMembership,
     ConfiguredGuild,
+    DriftReport,
     Jurisdiction,
     Override,
     RoleMapping,
+    ValhallaUpstream,
 )
 
 
@@ -330,6 +332,49 @@ class BorderCrossingAdmin(GISModelAdmin):
 
     list_display = ("node_id", "osm_way_id", "state_a", "state_b")
     search_fields = ("osm_way_id",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(ValhallaUpstream, site=site)
+class ValhallaUpstreamAdmin(admin.ModelAdmin):
+    """The swap's settings table, displayed only. The rebuild writes it at the
+    swap and the rollback writes it back; a hand edit would point the API at a
+    build no container is serving."""
+
+    list_display = ("variant", "url", "build_id", "previous_build_id", "updated_at")
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+
+@admin.register(DriftReport, site=site)
+class DriftReportAdmin(admin.ModelAdmin):
+    """What each swap changed, for the morning after."""
+
+    list_display = (
+        "build_id",
+        "created_at",
+        "segments_before",
+        "segments_after",
+        "segments_lost",
+        "segments_added",
+        "segments_regraded",
+    )
+    ordering = ("-created_at",)
 
     def has_add_permission(self, request) -> bool:
         return False

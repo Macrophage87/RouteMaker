@@ -17,7 +17,11 @@ grid; the trim is not a step.
 from __future__ import annotations
 
 import math
+import shutil
+import urllib.request
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 HGT_1ARCSEC_SIDE = 3601
 HGT_3ARCSEC_SIDE = 1201
@@ -129,3 +133,102 @@ def validate_size(byte_count: int) -> int:
         f"{byte_count} bytes matches no supported HGT grid; "
         f"expected {expected_bytes(HGT_1ARCSEC_SIDE)} or {expected_bytes(HGT_3ARCSEC_SIDE)}"
     )
+
+
+# --- The stage ----------------------------------------------------------------
+#
+# Everything above describes a correct tile. This is what puts one on disk. It
+# is a stage of the weekly rebuild even though the data is cached, because the
+# guard that matters - a known steep edge reporting a nonzero grade after the
+# build - can only be reached if the directory the build reads was populated
+# first, and "populated" has to be checked every week rather than assumed from
+# the week before: a truncated file reads as flat terrain, not as an error.
+
+# USGS 3DEP 1 arc-second, as staged on The National Map's public bucket. One
+# GeoTIFF per one-degree cell, named by its north-west corner in lower case,
+# which is the same cell the HGT tile is named by (its south-west corner plus
+# one degree of latitude) - so N38W078 is fetched as n39w078.
+THREEDEP_URL = (
+    "https://prd-tnm.s3.amazonaws.com/StagedProducts/Elevation/1/TIFF/current/"
+    "{cell}/USGS_1_{cell}.tif"
+)
+
+
+class ElevationTileInvalid(RuntimeError):
+    """A tile on disk is not a readable HGT grid."""
+
+
+def threedep_cell(tile: TileName) -> str:
+    """The 3DEP product cell that covers an HGT tile."""
+    lat = tile.lat + 1
+    ns = "n" if lat >= 0 else "s"
+    ew = "e" if tile.lon >= 0 else "w"
+    return f"{ns}{abs(lat):02d}{ew}{abs(tile.lon):03d}"
+
+
+def fetch_3dep(tile: TileName, into: Path) -> Path:
+    """Download the 3DEP source raster for one tile.
+
+    NOT EXECUTED IN THIS ENVIRONMENT: outbound access to the USGS bucket is
+    denied by the network policy, so this has been run against nothing. The URL
+    pattern is The National Map's documented staged-products layout.
+    """
+    cell = threedep_cell(tile)
+    into.mkdir(parents=True, exist_ok=True)
+    destination = into / f"USGS_1_{cell}.tif"
+    if destination.exists():
+        return destination
+    partial = destination.with_suffix(".tif.part")
+    with urllib.request.urlopen(THREEDEP_URL.format(cell=cell)) as response:  # noqa: S310
+        with partial.open("wb") as out:
+            shutil.copyfileobj(response, out)
+    partial.replace(destination)
+    return destination
+
+
+def ensure_tiles(
+    directory: Path,
+    bbox: Sequence[float],
+    fetch: Callable[[TileName, Path], Path],
+    run: Callable[[Sequence[str]], str],
+) -> list[Path]:
+    """Make every HGT tile the coverage box needs present and valid.
+
+    A tile already on disk is validated by size and kept. A missing or
+    truncated one is fetched, resampled with `gdalwarp_command` into a
+    temporary name, validated, and only then moved into place, so a build that
+    starts while a fetch is failing sees either a valid tile or no tile - never
+    a short one, which the reader treats as flat terrain.
+
+    Returns the tiles' paths, in the reader's band layout.
+    """
+    west, south, east, north = bbox
+    directory = Path(directory)
+    scratch = directory / ".fetch"
+    ready: list[Path] = []
+
+    for tile in tiles_covering(west, south, east, north):
+        destination = directory / tile.path()
+        if destination.exists():
+            try:
+                validate_size(destination.stat().st_size)
+                ready.append(destination)
+                continue
+            except ValueError:
+                destination.unlink()
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        source = fetch(tile, scratch)
+        partial = destination.with_name(destination.name + ".part")
+        run(gdalwarp_command(str(source), str(partial), tile))
+        if not partial.exists():
+            raise ElevationTileInvalid(f"gdalwarp produced nothing at {partial}")
+        try:
+            validate_size(partial.stat().st_size)
+        except ValueError as error:
+            partial.unlink()
+            raise ElevationTileInvalid(f"{tile.stem}: {error}") from error
+        partial.replace(destination)
+        ready.append(destination)
+
+    return ready

@@ -149,6 +149,12 @@ def write_extract(
     the node block.
     """
     drop_ways = drop_ways or set()
+    # osmium refuses to open an existing file for writing, and the variant
+    # extracts are rewritten in the same work directory every week: the second
+    # rebuild on a real box failed here, at INJECT_TAGS, on last week's file.
+    # The source extracts the plan retains for rollback are the inputs, not
+    # these; these are scratch.
+    Path(destination).unlink(missing_ok=True)
     writer = osmium.SimpleWriter(str(destination))
     try:
 

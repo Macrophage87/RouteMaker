@@ -27,19 +27,35 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 VENDOR = REPO / "valhalla" / "vendor" / "valhalla_build_config.py"
 
-# Tile data is mounted per variant at the same path, so only the Lua entry point
-# and the tile directories are shared; the variants differ in their extract, not
-# in their configuration. Keeping them identical is deliberate - a difference
-# here would be a second place for variant behaviour to live, and variant
-# behaviour belongs in the tags.
+# The variants differ in their extract, not in their behaviour: variant
+# behaviour belongs in the tags, and nothing in these configs encodes any. But
+# they cannot share a tile directory. valhalla_build_tiles has no tile-directory
+# option on its command line - it reads mjolnir.tile_dir - so three configs
+# naming one directory are three builds overwriting each other, and only the
+# last variant's graph survives. Each variant therefore names its own
+# directory, and the test asserts the three files differ in exactly that.
 VARIANTS = ("standard", "no-trail", "ebike")
+
+# Where a variant's served tiles live, as both the rebuild container and the
+# serving container see them: DATA_ROOT is mounted at /data in the first and
+# `${DATA_ROOT}/tiles/<variant>/current` at this same path in the second, so
+# one path names one file in both. `current` is a symlink the rebuild replaces
+# at promotion; the build itself writes to a dated sibling through a derived
+# config (pipeline/tiles.py) and never to this path.
+TILE_ROOT = "/data/tiles/{variant}/current"
+
+# The elevation directory. Skadi reads it from the top-level additional_data
+# key and nowhere else: valhalla_build_tiles' elevation builder is constructed
+# from config.get_child("additional_data"), and there is no read of a
+# mjolnir.additional_data in 3.5.1. An earlier version of this file set both and
+# claimed both were needed, and its test asserted the one that is read by
+# nothing. Baking weighted_grade at build time is what this key is for:
+# without it, use_hills is inert on every preset that sets it and the Mass Ride
+# grade cap has no max_grade to read.
+ELEVATION_DIR = "/data/elevation"
 
 OVERRIDES: dict = {
     "mjolnir": {
-        "tile_dir": "/data/valhalla",
-        "tile_extract": "/data/valhalla/tiles.tar",
-        "admin": "/data/valhalla/admin.sqlite",
-        "timezone": "/data/valhalla/tz_world.sqlite",
         # The key that matters most. An unrecognised or misplaced Lua key makes
         # Valhalla fall back silently to its compiled-in transform, dropping
         # every derived tag while routing merely looks slightly off. Verified
@@ -47,18 +63,12 @@ OVERRIDES: dict = {
         # config.get_child("mjolnir") into every parse stage, and
         # PBFGraphParser's get_lua reads graph_lua_name from that subtree.
         "graph_lua_name": "/conf/lua/graph.lua",
-        # Baking weighted_grade onto edges at tile build. Caching HGT tiles is
-        # not the same thing: without this, use_hills is inert on every preset
-        # that sets it and the Mass Ride grade cap has no max_grade to read.
-        "additional_data": {"elevation": "/data/elevation"},
         "hierarchy": True,
         "shortcuts": True,
         "concurrency": 4,
         "logging": {"type": "std_out", "color": False},
     },
-    # Skadi reads the elevation directory from the top level, mjolnir from its
-    # own subtree. Both are needed and they are not the same key.
-    "additional_data": {"elevation": "/data/elevation"},
+    "additional_data": {"elevation": ELEVATION_DIR},
     "loki": {
         # trace_attributes is what the stats block comes from; without it every
         # route reports nothing.
@@ -136,8 +146,23 @@ def merge(base: dict, overrides: dict) -> dict:
     return out
 
 
+def variant_overrides(variant: str) -> dict:
+    """The part of the config that is genuinely per variant: its tile paths."""
+    if variant not in VARIANTS:
+        raise ValueError(f"unknown variant {variant!r}")
+    root = TILE_ROOT.format(variant=variant)
+    return {
+        "mjolnir": {
+            "tile_dir": f"{root}/tiles",
+            "tile_extract": f"{root}/tiles.tar",
+            "admin": f"{root}/admin.sqlite",
+            "timezone": f"{root}/tz_world.sqlite",
+        }
+    }
+
+
 def build(variant: str) -> dict:
-    return merge(load_upstream_defaults(), OVERRIDES)
+    return merge(merge(load_upstream_defaults(), OVERRIDES), variant_overrides(variant))
 
 
 def render(config: dict) -> str:
