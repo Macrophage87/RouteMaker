@@ -10,8 +10,10 @@ it exists for. What is watched is the absence of a recent success.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+import threading
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
+from typing import TypeVar
 
 from django.utils import timezone
 
@@ -68,3 +70,43 @@ def stale_tasks(now=None) -> list[str]:
         if run is None or (now - run.started_at).total_seconds() >= window:
             stale.append(task)
     return stale
+
+
+T = TypeVar("T")
+
+
+class TaskTimedOut(RuntimeError):
+    """A scheduled task ran past its budget and was abandoned."""
+
+
+def run_with_deadline(function: Callable[[], T], timeout_s: float, name: str = "task") -> T:
+    """Run a task body with a hard time budget.
+
+    The body runs in its own thread with its own database connection, and the
+    caller waits at most `timeout_s`. Past that the caller raises and the job
+    fails - which is what lets Procrastinate retry it and the alert see it -
+    while the abandoned body is left to finish or die with the process; it is
+    a daemon thread and holds nothing the next attempt needs. This is the
+    enforcement for the sweep, which is pure Python and SQL and cannot be given
+    a subprocess timeout the way the rebuild's binaries can.
+    """
+    from django.db import connection
+
+    outcome: dict[str, object] = {}
+
+    def body() -> None:
+        try:
+            outcome["result"] = function()
+        except BaseException as error:  # noqa: BLE001 - re-raised on the caller's thread
+            outcome["error"] = error
+        finally:
+            connection.close()
+
+    thread = threading.Thread(target=body, name=f"{name}-deadline", daemon=True)
+    thread.start()
+    thread.join(timeout_s)
+    if thread.is_alive():
+        raise TaskTimedOut(f"{name} exceeded its {timeout_s:.0f}s budget and was abandoned")
+    if "error" in outcome:
+        raise outcome["error"]  # type: ignore[misc]
+    return outcome["result"]  # type: ignore[return-value]

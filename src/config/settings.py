@@ -25,8 +25,21 @@ INSTALLED_APPS = [
     "django.contrib.admin",
     "django.contrib.staticfiles",
     "django.contrib.gis",
+    # The worker's schema and connector. Its tables arrive through the same
+    # `migrate` one-shot as everything else, which is the only step that can
+    # both create the schema on a fresh box and upgrade it on an existing one:
+    # `procrastinate schema --apply` does the first and fails on the second.
+    # Before this was listed, the worker died on a missing schema function and,
+    # once the schema was applied by hand, every task raised AppRegistryNotReady
+    # because nothing had set Django up.
+    "procrastinate.contrib.django",
     "core",
 ]
+
+# The task module, named rather than autodiscovered: a module called `tasks`
+# anywhere in an installed app would otherwise be imported for its side effects.
+PROCRASTINATE_IMPORT_PATHS = ["config.procrastinate"]
+PROCRASTINATE_AUTODISCOVER_MODULE_NAME = ""
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -80,6 +93,51 @@ REBUILD_WORK_DIR = DATA_ROOT / "rebuild"
 REBUILD_SOURCE_PBF = DATA_ROOT / "extracts" / "source.osm.pbf"
 REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
 BACKUP_DIR = DATA_ROOT / "backups"
+# Tiles: one directory per variant, a dated build directory under each, and a
+# `current` symlink that the serving container mounts. Inside the rebuild
+# container DATA_ROOT is /data, so these are the paths the generated Valhalla
+# configs name, and the same path resolves to the same file in both containers.
+TILES_DIR = DATA_ROOT / "tiles"
+ELEVATION_DIR = DATA_ROOT / "elevation"
+# The checked-in serving configs the rebuild derives its build configs from.
+VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
+
+# The coverage polygon's bounding box, west, south, east, north: roughly
+# Frederick and Leesburg to the north-west, Annapolis to the east and
+# Fredericksburg to the south. The elevation stage fetches every one-degree HGT
+# tile this box touches.
+COVERAGE_BBOX = (-78.0, 38.2, -76.3, 39.5)
+
+# Where the API's routing client finds each variant's Valhalla. The swap
+# repoints these rows (core.models.ValhallaUpstream) before it renames the
+# schema; the URL per variant is the compose service name unless overridden.
+VALHALLA_UPSTREAMS = {
+    "standard": os.environ.get("VALHALLA_STANDARD_URL", "http://valhalla-standard:8002"),
+    "no-trail": os.environ.get("VALHALLA_NO_TRAIL_URL", "http://valhalla-no-trail:8002"),
+    "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
+}
+
+# The disk gate. A rebuild refuses to start unless a second full tile set fits
+# beside the current one without taking the data volume past the alert
+# threshold. Until a first build has been measured there is no current set to
+# size the second from, so a floor applies: the three DC-area variants at
+# 3.5.1 are expected well under it, and it is the number to revise once the
+# measured size table exists.
+DISK_GATE_FRACTION = 0.8
+REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024**3))
+
+# Build validation reads two known edges back out of the tiles. The steep edge
+# proves elevation was baked; the tier-1 street proves the derived tags reached
+# the graph, because a residential street with no cycleway tag in OSM only
+# reports a separated cycle lane if this project's remap ran. Both are read
+# through valhalla_service in one-shot mode against the freshly built tiles.
+# NEITHER HAS BEEN CONFIRMED AGAINST A REAL BUILD: no Valhalla binary has run
+# in this environment. The first real rebuild will either pass or name the
+# sentinel that needs moving; both are overridable here for that reason.
+# Steep: the climb of Chain Bridge Road NW out of the Potomac gorge.
+# Tier 1: a 20 mph residential block in Petworth with no bicycle facility.
+REBUILD_SENTINEL_STEEP_EDGE = ((-77.1050, 38.9318), (-77.1032, 38.9339))
+REBUILD_SENTINEL_TIER1_EDGE = ((-77.0247, 38.9455), (-77.0247, 38.9468))
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user
