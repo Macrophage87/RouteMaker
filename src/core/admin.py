@@ -41,13 +41,19 @@ from .models import (
     CachedMembership,
     ConfiguredGuild,
     DriftReport,
+    InstanceAdminListing,
     Jurisdiction,
     LastInstanceAdmin,
     Override,
+    PendingInstanceAdminRemoval,
     RoleMapping,
+    Session,
     User,
     ValhallaUpstream,
+    cancel_instance_admin_removal,
     check_last_instance_admin,
+    claim_bootstrap_instance_admin,
+    schedule_instance_admin_removal,
 )
 from .revocation import revoke_guild
 
@@ -64,14 +70,42 @@ class RouteMakerAdminSite(admin.AdminSite):
         `is_active` is kept in the conjunction, as Django's own implementation
         has it: dropping it would leave a banned or deleted account holding the
         admin, which is precisely what a ban is supposed to end.
+
+        This is also where a new deployment gets its first instance admin. The
+        plan's bootstrap id "grants standing only while the instance-admin list
+        is empty", and "the first successful admin action writes the bootstrap
+        id into the list and permanently disables the environment path,
+        audited". The first request this site admits is that first action, so
+        the claim is attempted here, before the request is admitted, and
+        everything downstream runs as an ordinary instance admin rather than
+        under a second kind of standing that every later surface would have to
+        know about. `claim_bootstrap_instance_admin` is a no-op - and issues no
+        query at all - unless the variable is set and names this account.
         """
         user = getattr(request, "user", None)
+        if user is not None and user.is_authenticated and getattr(user, "is_active", False):
+            claim_bootstrap_instance_admin(user)
         return bool(
             user
             and user.is_authenticated
             and getattr(user, "is_active", False)
             and getattr(user, "is_staff", False)
         )
+
+    def logout(self, request, extra_context=None):
+        """Django's admin logout flushes its own session and leaves this
+        deployment's `core.Session` row behind.
+
+        That row is what ban, suspension, deletion and sign-out-everywhere act
+        on, and a row nothing will ever accept again is a user id and a pair of
+        timestamps sitting in the table until the sweep reaches it. The site's
+        own `logout_view` deletes it; this path did not, so whether signing out
+        left a trace depended on which of two buttons was pressed.
+        """
+        key = request.session.session_key
+        if key:
+            Session.objects.filter(session_key=key).delete()
+        return super().logout(request, extra_context)
 
     def admin_view(self, view, cacheable=False):
         """Django's version redirects an unadmitted request to the login page.
@@ -175,11 +209,33 @@ class AuditedAdmin(admin.ModelAdmin):
         if request.method != "POST":
             return super().changelist_view(request, extra_context)
         try:
+            self._refuse_unpermitted_action(request)
             return super().changelist_view(request, extra_context)
         except PermissionDenied:
             selected = ",".join(request.POST.getlist("_selected_action"))
             self._audit_refusal(request, "action", selected)
             raise
+
+    def _refuse_unpermitted_action(self, request) -> None:
+        """Posting a bulk action the viewer does not hold is a refused write.
+
+        Django's own answer is to say nothing. `get_actions` filters the action
+        list by the viewer's permissions, `changelist_view` calls
+        `response_action` only when that filtered list is non-empty, and when it
+        is empty the POST falls through to an ordinary render. Measured: a guild
+        admin posting `delete_selected` at a table they may read got 200 and the
+        message "No action selected", and the audit log recorded nothing - while
+        the plan says of exactly this shape of attempt that it is "refused and
+        audited".
+
+        So the check is made before the view runs: a named action that is not in
+        the viewer's own action list is `PermissionDenied`, which the wrapper
+        above records like every other refusal. An action they do hold is not
+        touched here and goes through the action's own per-object checks.
+        """
+        requested = request.POST.get("action", "")
+        if requested and requested not in self.get_actions(request):
+            raise PermissionDenied
 
     def save_model(self, request, obj, form, change) -> None:
         super().save_model(request, obj, form, change)
@@ -202,6 +258,34 @@ class AuditedAdmin(admin.ModelAdmin):
             object_id,
             AuditLogEntry.Outcome.ALLOWED,
         )
+
+    def delete_queryset(self, request, queryset) -> None:
+        """The other delete, and the one that had no audit row at all.
+
+        `delete_model` is the single-object confirmation page. The changelist's
+        `delete_selected` action never calls it: it calls this, once, with the
+        whole queryset. Measured: two role mappings deleted in bulk left zero
+        rows in this deployment's audit log - two in `django_admin_log`, which
+        is not registered here and is not the log the plan means - and the same
+        held on the configured guild, jurisdiction and override pages. A
+        deletion that leaves no record is exactly what the log exists to stop
+        being possible, and the bulk path is the cheap way to do several.
+
+        Each object is audited individually, with its identity captured before
+        the delete because afterwards there is nothing to read it from.
+        """
+        model_name = self.model._meta.model_name
+        doomed = [(obj.pk, str(obj)) for obj in queryset]
+        super().delete_queryset(request, queryset)
+        for object_id, label in doomed:
+            audit(
+                request,
+                "delete",
+                model_name,
+                object_id,
+                AuditLogEntry.Outcome.ALLOWED,
+                detail=f"bulk delete of {label}",
+            )
 
 
 class GuildScopedAdmin(AuditedAdmin):
@@ -411,11 +495,33 @@ class AuditLogEntryAdmin(AuditedAdmin):
     and that is the same sensitivity as the membership cache.
     """
 
-    list_display = ("at", "actor", "action", "model", "object_id", "outcome")
+    list_display = ("at", "actor_label", "action", "model", "object_id", "outcome")
     list_filter = ("outcome", "action", "model")
     search_fields = ("object_id", "detail")
-    readonly_fields = ("at", "actor", "action", "model", "object_id", "outcome", "detail")
+    readonly_fields = (
+        "at",
+        "actor",
+        "actor_user_id",
+        "actor_label",
+        "action",
+        "model",
+        "object_id",
+        "outcome",
+        "detail",
+    )
     ordering = ("-at",)
+
+    @admin.display(description="actor", ordering="actor_user_id")
+    def actor_label(self, obj) -> str:
+        """Who acted, with a deleted account distinguished from no actor.
+
+        The foreign key is `SET_NULL`, so a row a worker wrote and a row a named
+        person wrote before their account was deleted were the same row read
+        from this page. The plan asks for the id to be kept and the row to read
+        "deleted user"; the column beside the key is what makes that possible,
+        and this is where it is displayed.
+        """
+        return obj.actor_label()
 
     def has_view_permission(self, request, obj=None) -> bool:
         return bool(getattr(request.user, "is_instance_admin", False))
@@ -452,6 +558,37 @@ class BorderCrossingAdmin(AuditedAdmin, GISModelAdmin):
     list_display = ("node_id", "osm_way_id", "state_a", "state_b")
     search_fields = ("osm_way_id",)
 
+    def _relation_exists(self) -> bool:
+        """Whether the crossings table is there to be read.
+
+        It is unmanaged and lives in the schema the weekly swap renames, so
+        `migrate` does not create it and it does not exist at all until a
+        rebuild has run. Opening this changelist on a freshly deployed box
+        therefore raised `ProgrammingError` - an unhandled 500 on a read-only
+        page, from the one state every new deployment starts in.
+        """
+        from django.db import connection
+
+        return self.model._meta.db_table in connection.introspection.table_names()
+
+    def get_queryset(self, request):
+        queryset = super().get_queryset(request)
+        if not self._relation_exists():
+            # `none()` is resolved without a query, so the page renders empty
+            # rather than reaching for a relation that is not there.
+            return queryset.none()
+        return queryset
+
+    def changelist_view(self, request, extra_context=None):
+        if not self._relation_exists():
+            self.message_user(
+                request,
+                "No tile build has run on this deployment yet, so the border-crossing "
+                "table does not exist. The first rebuild creates it.",
+                level=messages.WARNING,
+            )
+        return super().changelist_view(request, extra_context)
+
     def has_add_permission(self, request) -> bool:
         return False
 
@@ -471,6 +608,11 @@ class InstanceAdminFlagForm(forms.ModelForm):
     into the field error the person who tried to clear the box needs to read.
     """
 
+    # Set per request by `UserAdmin.get_form`. The refusal below is a refused
+    # policy write and has to reach the audit log with the actor on it, and a
+    # form does not otherwise know who is posting to it.
+    request = None
+
     class Meta:
         model = User
         fields = ("is_instance_admin",)
@@ -483,6 +625,26 @@ class InstanceAdminFlagForm(forms.ModelForm):
                 # writes cleaned data onto it later, in _post_clean.
                 check_last_instance_admin(self.instance, removing=True)
             except LastInstanceAdmin as error:
+                # Recorded here rather than left as a form error alone. This is
+                # the deployment's lockout guard refusing a write, which is the
+                # definition of what this log is for, and it was the one refusal
+                # path that wrote nothing: a 200 with a field error and zero
+                # audit rows, indistinguishable from nobody having tried.
+                #
+                # Written from inside the form's own validation, which runs
+                # inside `changeform_view`'s atomic block - and survives,
+                # because an invalid form is a rendered 200 rather than an
+                # exception, so the transaction commits. The refusals that had
+                # to move outside the block are the ones that raise.
+                if self.request is not None:
+                    record_audit(
+                        getattr(self.request, "user", None),
+                        "change",
+                        "user",
+                        self.instance.pk,
+                        AuditLogEntry.Outcome.REFUSED,
+                        detail=f"refused to remove the last instance admin: {error}",
+                    )
                 raise forms.ValidationError(str(error)) from error
         return value
 
@@ -533,6 +695,159 @@ class UserAdmin(InstanceAdminOnly):
 
     def has_module_permission(self, request) -> bool:
         return self._is_instance_admin(request)
+
+    def get_form(self, request, obj=None, change=False, **kwargs):
+        """Hand the form the request, so its one refusal can be audited.
+
+        `modelform_factory` builds a fresh class per call, so setting the
+        attribute here does not leak the request into another request's form.
+        """
+        form = super().get_form(request, obj, change=change, **kwargs)
+        form.request = request
+        return form
+
+    def save_model(self, request, obj, form, change) -> None:
+        """Removing somebody else's instance admin schedules it; it does not do
+        it.
+
+        "Removing an instance admin other than yourself notifies every remaining
+        instance admin and the removed party and takes effect after a delay,
+        configurable and defaulting to an hour, during which any instance admin
+        can cancel it; without that, one admin could remove every peer down to
+        themselves in a single audited but unstoppable action." Measured before
+        this: three POSTs, one admin left, no delay and nothing to cancel.
+
+        So the flag is left exactly as it was and a pending row is written
+        instead. The person stays an instance admin for the length of the
+        window, which is what makes the window one - a delay that takes the
+        powers away immediately and only records the removal later is a
+        notification, not a delay.
+
+        Standing down is not routed through this. The delay guards against being
+        removed by somebody else; an admin clearing their own flag has no peer
+        to appeal to, and the plan says self-removal is immediate.
+
+        The notification half has no channel in phase 1 - there is no Discord DM
+        path and no email path in this deployment - so it is an outstanding gap
+        rather than something this pretends to do.
+        """
+        previous = User.objects.filter(pk=obj.pk).first() if change else None
+        removing_someone_else = (
+            previous is not None
+            and previous.is_instance_admin
+            and not obj.is_instance_admin
+            and obj.pk != getattr(request.user, "pk", None)
+        )
+        if removing_someone_else:
+            obj.is_instance_admin = True
+            pending = schedule_instance_admin_removal(previous, actor=request.user)
+            self.message_user(
+                request,
+                f"{previous} stays an instance admin until {pending.effective_at:%Y-%m-%d %H:%M} "
+                "UTC. Any instance admin can cancel it before then, on the pending "
+                "instance admin removals page.",
+                level=messages.WARNING,
+            )
+            return
+        super().save_model(request, obj, form, change)
+
+
+@admin.register(PendingInstanceAdminRemoval, site=site)
+class PendingInstanceAdminRemovalAdmin(InstanceAdminOnly):
+    """The window, and the cancel that is the point of having one.
+
+    Displayed only, with one action. Editing an effective time by hand would
+    make the delay whatever the person removing a peer wants it to be, and
+    deleting a row from a change list is a cancel with no audit row, so both
+    are closed and the action is the way through.
+    """
+
+    list_display = ("user", "requested_by", "requested_at", "effective_at")
+    readonly_fields = (
+        "user",
+        "requested_by",
+        "requested_by_user_id",
+        "requested_at",
+        "effective_at",
+    )
+    ordering = ("effective_at",)
+    actions = ("cancel_removal",)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        return self._is_instance_admin(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._is_instance_admin(request)
+
+    @admin.action(description="Cancel - this removal will not take effect")
+    def cancel_removal(self, request, queryset) -> None:
+        cancelled = 0
+        for pending in queryset:
+            cancel_instance_admin_removal(pending, actor=request.user)
+            cancelled += 1
+        if cancelled:
+            self.message_user(
+                request, f"Cancelled {cancelled} pending removal(s).", level=messages.INFO
+            )
+
+
+@admin.register(InstanceAdminListing, site=site)
+class InstanceAdminListingAdmin(AuditedAdmin):
+    """Who holds instance admin, readable by every guild admin.
+
+    "It is visible to the clubs it holds power over: the current instance admins
+    are listed to every guild admin." They could see nothing of it: the only
+    page naming instance admins is the whole account table, which carries the
+    membership cache's sensitivity and is instance-admin only.
+
+    Read-only to everyone, and narrow on purpose: the queryset is the instance
+    admins and the column is the Discord id. This is a separate model rather
+    than a filter on the account page so that the permission differs and not
+    only the queryset - a guild admin's allow-list names `view_` on this and
+    never on `user`, so nothing here can widen what is readable about an
+    ordinary account.
+    """
+
+    list_display = ("discord_user_id",)
+    list_display_links = None
+    ordering = ("discord_user_id",)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).filter(is_instance_admin=True)
+
+    def _may_read(self, request) -> bool:
+        user = getattr(request, "user", None)
+        return bool(
+            getattr(user, "is_instance_admin", False)
+            or getattr(user, "_admin_guild_ids", frozenset())
+        )
+
+    def has_view_permission(self, request, obj=None) -> bool:
+        # The list, and only the list. With an object this is the change form,
+        # which Django serves read-only to a viewer and which would show the
+        # rest of the account row.
+        return obj is None and self._may_read(request)
+
+    def has_module_permission(self, request) -> bool:
+        return self._may_read(request)
+
+    def has_add_permission(self, request) -> bool:
+        return False
+
+    def has_change_permission(self, request, obj=None) -> bool:
+        return False
+
+    def has_delete_permission(self, request, obj=None) -> bool:
+        return False
 
 
 @receiver(pre_delete, sender=User, dispatch_uid="core.refuse_deleting_the_last_instance_admin")

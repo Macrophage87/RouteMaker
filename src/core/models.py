@@ -10,8 +10,10 @@ would make the swap impossible.
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.gis.db import models
+from django.utils import timezone
 
 from . import standing
 
@@ -311,6 +313,32 @@ class User(AbstractBaseUser):
         )
 
 
+class InstanceAdminListing(User):
+    """The instance-admin list, as a surface a guild admin may read.
+
+    The plan makes the role "visible to the clubs it holds power over: the
+    current instance admins are listed to every guild admin". Guild admins could
+    see nothing of it: the only surface naming instance admins is `UserAdmin`,
+    which is the whole account table and carries the membership cache's
+    sensitivity, so it is instance-admin only and correctly so.
+
+    A proxy rather than a filtered view of that page, because the permission is
+    what has to be different, not just the queryset. This model gets its own
+    `view_` permission, which is the one thing a guild admin's allow-list names;
+    `core.view_user` stays out of it, so widening this list can never widen what
+    is readable about an ordinary account. The queryset is filtered to instance
+    admins and the page shows the id and nothing else.
+
+    A proxy adds no table and no column; the migration is a no-op against the
+    database.
+    """
+
+    class Meta:
+        proxy = True
+        verbose_name = "instance admin"
+        verbose_name_plural = "instance admins"
+
+
 class ConfiguredGuild(models.Model):
     """A Discord guild an instance admin has admitted to the deployment.
 
@@ -428,6 +456,25 @@ class BanTombstone(models.Model):
     whose candidate set any guild's member list resolves directly, so an unkeyed
     hash gives no privacy at all against whoever holds a dump. The key lives in
     SSM and never appears in one.
+
+    This table is deliberately *not* excluded from the nightly dump, and the
+    decision is recorded here rather than left to be re-argued. With a real key
+    the dump is safe by design: the tombstone is an HMAC under a secret that is
+    never written to the database and never appears in a backup, so a dump hands
+    an attacker nothing they can invert or enumerate. That is the whole reason
+    the construction is keyed. Excluding it would instead mean a restore comes
+    up with the ban list empty, which silently readmits every banned account -
+    a worse failure than the one the exclusion would be guarding against.
+
+    The exclusion list exists for the tables whose *plaintext* is the
+    sensitivity - the membership cache, which names who organizes with whom, and
+    the session table. Neither is recoverable by the bot from a keyed digest;
+    both are rebuilt on restore. This one is not that shape.
+
+    It does mean the key is load-bearing for the backup's safety as well as the
+    database's, which is why `settings.TOMBSTONE_KEY` is derived from
+    KEY_ENCRYPTION_KEY with no default at all: a published key would make every
+    tombstone in every dump reversible against any guild's member list.
     """
 
     tombstone = models.CharField(max_length=64, unique=True)
@@ -461,6 +508,22 @@ class AuditLogEntry(models.Model):
     actor = models.ForeignKey(
         "User", on_delete=models.SET_NULL, null=True, related_name="audit_entries"
     )
+    # The actor's numeric id, kept alongside the foreign key and written at
+    # record time. SET_NULL alone makes two different rows identical: an action
+    # a worker took with no actor at all, and an action a named person took
+    # whose account was afterwards deleted. The plan wants those distinguished -
+    # "Audit log rows keep the numeric actor id and display 'deleted user'" - so
+    # null here as well as on the FK means "no actor", and a number with a null
+    # FK means "the person who has since been deleted".
+    #
+    # The application's own primary key rather than the Discord id, and the
+    # choice matters: the same section says deletion "retains only a tombstone
+    # of the Discord id", keyed, precisely so the id itself does not survive in
+    # the clear. Denormalising the Discord id into every audit row would keep in
+    # plaintext, forever, the identifier the deletion flow goes to some trouble
+    # to destroy. The pk identifies the actor within this deployment, which is
+    # all an audit trail needs, and it means nothing outside it.
+    actor_user_id = models.BigIntegerField(null=True, blank=True)
     action = models.CharField(max_length=32)
     model = models.CharField(max_length=64)
     object_id = models.CharField(max_length=64, blank=True)
@@ -477,6 +540,18 @@ class AuditLogEntry(models.Model):
 
     def __str__(self) -> str:
         return f"{self.actor_id} {self.outcome} {self.action} {self.model} {self.object_id}"
+
+    def actor_label(self) -> str:
+        """Who acted, including when the account is gone.
+
+        Three distinct answers, which is the point of carrying the id as well as
+        the foreign key: a live account, a deleted one, and no actor at all.
+        """
+        if self.actor_id is not None:
+            return str(self.actor)
+        if self.actor_user_id is not None:
+            return f"deleted user {self.actor_user_id}"
+        return "no actor (worker)"
 
 
 class ScheduledRun(models.Model):
@@ -623,3 +698,216 @@ def check_last_instance_admin(user: User, *, removing: bool) -> None:
             "refusing to remove the last instance admin; there is no login path that "
             "could restore one, so appoint another first"
         )
+
+
+class PendingInstanceAdminRemoval(models.Model):
+    """A removal of an instance admin that has been requested and not yet taken
+    effect.
+
+    The plan: "Removing an instance admin other than yourself notifies every
+    remaining instance admin and the removed party and takes effect after a
+    delay, configurable and defaulting to an hour, during which any instance
+    admin can cancel it; without that, one admin could remove every peer down to
+    themselves in a single audited but unstoppable action." Measured before this
+    existed: three POSTs, one admin left, no delay and nothing to cancel.
+
+    So the removal writes a row here instead of clearing the flag. The flag is
+    still set while this row exists - the person remains an instance admin, with
+    every power that carries, until `apply_due_instance_admin_removals` passes
+    over them - which is what makes the window a real window rather than a
+    notification about something that already happened.
+
+    Self-removal does not come through here. The plan makes the delay a guard
+    against being removed by somebody else, and an admin standing down has no
+    peer to appeal to; `check_last_instance_admin` is what stops that emptying
+    the list.
+
+    The notification half is not built. Phase 1 has no channel to send it on -
+    no Discord DM path and no email path exists in this deployment - so this
+    carries the delay and the cancel, and the notification is an outstanding
+    gap rather than something silently dropped.
+    """
+
+    user = models.OneToOneField(
+        User, on_delete=models.CASCADE, related_name="pending_instance_admin_removal"
+    )
+    # Who asked. SET_NULL for the same reason the audit log's actor is, and the
+    # id is kept beside it so a deleted requester is not indistinguishable from
+    # a removal nobody requested.
+    requested_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="requested_admin_removals"
+    )
+    requested_by_user_id = models.BigIntegerField(null=True, blank=True)
+    requested_at = models.DateTimeField(auto_now_add=True)
+    # Read from the row rather than recomputed from the setting at application
+    # time: changing the delay must not move a removal that is already pending.
+    effective_at = models.DateTimeField()
+
+    class Meta:
+        db_table = "pending_instance_admin_removal"
+        indexes = [models.Index(fields=["effective_at"])]
+
+    def __str__(self) -> str:
+        return f"remove {self.user} at {self.effective_at:%Y-%m-%d %H:%M}"
+
+    def is_due(self, now=None) -> bool:
+        return (now or timezone.now()) >= self.effective_at
+
+
+def schedule_instance_admin_removal(user: User, actor=None, now=None):
+    """Request the removal of `user`'s instance admin, to take effect later.
+
+    Refuses the same removal `save()` would refuse: scheduling the removal of
+    the last instance admin is the lockout, only an hour later, and an hour is
+    long enough for everyone to forget it was coming.
+    """
+    from .audit import record
+
+    check_last_instance_admin(user, removing=True)
+    now = now or timezone.now()
+    effective_at = now + settings.INSTANCE_ADMIN_REMOVAL_DELAY
+    pending, _created = PendingInstanceAdminRemoval.objects.update_or_create(
+        user=user,
+        defaults={
+            "requested_by": actor if getattr(actor, "pk", None) else None,
+            "requested_by_user_id": getattr(actor, "pk", None),
+            "effective_at": effective_at,
+        },
+    )
+    record(
+        actor,
+        "schedule_removal",
+        "user",
+        user.pk,
+        AuditLogEntry.Outcome.ALLOWED,
+        detail=f"instance admin removal takes effect at {effective_at.isoformat()}",
+    )
+    return pending
+
+
+def cancel_instance_admin_removal(pending: PendingInstanceAdminRemoval, actor=None) -> None:
+    """Call off a pending removal. Any instance admin may, which is the half of
+    the plan's sentence that makes the delay worth having."""
+    from .audit import record
+
+    user_id = pending.user_id
+    pending.delete()
+    record(
+        actor,
+        "cancel_removal",
+        "user",
+        user_id,
+        AuditLogEntry.Outcome.ALLOWED,
+        detail="pending instance admin removal cancelled",
+    )
+
+
+def apply_due_instance_admin_removals(now=None) -> int:
+    """Clear the flag for every removal whose delay has run out, and audit each.
+
+    Returns the number applied.
+
+    Separated from any scheduler on purpose: the worker's task module is another
+    owner's file, so this is the callable the existing periodic sweep calls, and
+    it takes `now` so a test does not have to wait an hour. It has no request and
+    therefore no actor; the requester is on the row and in the scheduling audit
+    entry.
+
+    A removal that has become the last one is left pending and audited as
+    refused rather than dropped: `check_last_instance_admin` is the deployment's
+    lockout guard and the delay does not get to walk past it, and a row still
+    sitting there is visible in the admin, where an instance admin can cancel it
+    or appoint a successor.
+    """
+    from .audit import record
+
+    now = now or timezone.now()
+    applied = 0
+    for pending in PendingInstanceAdminRemoval.objects.select_related("user").filter(
+        effective_at__lte=now
+    ):
+        user = pending.user
+        user.is_instance_admin = False
+        try:
+            user.save(update_fields=["is_instance_admin"])
+        except LastInstanceAdmin as error:
+            record(
+                None,
+                "apply_removal",
+                "user",
+                user.pk,
+                AuditLogEntry.Outcome.REFUSED,
+                detail=str(error),
+            )
+            continue
+        pending.delete()
+        record(
+            None,
+            "apply_removal",
+            "user",
+            user.pk,
+            AuditLogEntry.Outcome.ALLOWED,
+            detail=(
+                "instance admin removed; requested by "
+                f"{pending.requested_by_user_id} at {pending.requested_at.isoformat()}"
+            ),
+        )
+        applied += 1
+    return applied
+
+
+def claim_bootstrap_instance_admin(user: User) -> bool:
+    """Write the bootstrap id into the instance-admin list, once.
+
+    The plan: the environment holds one bootstrap Discord id, "and that value
+    grants standing only while the instance-admin list is empty. The first
+    successful admin action writes the bootstrap id into the list and
+    permanently disables the environment path, audited, after which anyone
+    holding `.env` read access holds nothing."
+
+    Before this there was no bootstrap path at all: `is_instance_admin` is a
+    stored flag, the only surface that writes it is an admin page that only an
+    instance admin may reach, there is no password login and no
+    `createsuperuser`, so on an empty database every signed-in account got a 404
+    at the admin and the deployment could only be started with a hand-written
+    UPDATE against production.
+
+    Reaching the admin at all is the "first successful admin action" - it is the
+    first request this deployment admits under the bootstrap standing - so the
+    claim happens in `RouteMakerAdminSite.has_permission`, before the request is
+    admitted, and everything after it runs as an ordinary instance admin.
+
+    Returns whether the flag was written. False whenever the list is not empty,
+    which is what makes the variable inert afterwards even if it still names
+    somebody, and false for a banned or deleted account, which must not be
+    admitted by any path.
+    """
+    from .audit import record
+
+    bootstrap_id = getattr(settings, "BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID", None)
+    if not bootstrap_id or user.is_instance_admin:
+        return False
+    if user.discord_user_id != bootstrap_id or not user.is_active:
+        return False
+    if User.objects.filter(is_instance_admin=True).exists():
+        # The list is not empty, so the environment path grants nothing to
+        # anyone - including to the id it still names.
+        return False
+
+    # Written with update() rather than save(): nothing else on the row changes,
+    # and this is an appointment rather than the moderation path save() carries
+    # the epoch and lockout logic for.
+    User.objects.filter(pk=user.pk).update(is_instance_admin=True)
+    user.is_instance_admin = True
+    record(
+        user,
+        "bootstrap_instance_admin",
+        "user",
+        user.pk,
+        AuditLogEntry.Outcome.ALLOWED,
+        detail=(
+            "bootstrap Discord id claimed instance admin on an empty list; "
+            "the environment path is inert from here"
+        ),
+    )
+    return True
