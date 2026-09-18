@@ -3,10 +3,12 @@
 # The weekly rebuild's executor: a Procrastinate worker on the `rebuild` queue
 # alone, in the one image that carries the Valhalla binaries. It needs
 # valhalla_build_admins, valhalla_build_timezones, valhalla_build_tiles,
-# valhalla_build_extract (pipeline/tiles.py:198-201) and valhalla_service
-# (pipeline/tiles.py:385, the one-shot trace_attributes readback that validates
-# a build), so it is built FROM the same image the serving containers run rather
-# than compiling Valhalla again.
+# valhalla_build_extract (pipeline/tiles.py, `tile_build_commands`) and
+# valhalla_service (pipeline/tiles.py, `trace_attributes` - the one-shot
+# readback that validates a build), so it is built FROM the same image the
+# serving containers run rather than compiling Valhalla again. Named by
+# function rather than by line number: the two line ranges that used to be
+# here pointed at neither by the time anybody read them.
 #
 # The tag is the serving tag on purpose. A rebuild that writes tiles with a
 # different Valhalla than the one that reads them is a tile-schema mismatch that
@@ -88,7 +90,16 @@ ENV DEBIAN_FRONTEND=noninteractive \
 #                              unzips it, and loads the shapefile with
 #                              spatialite_tool and spatialite. It checks for
 #                              spatialite and unzip by name and exits if either
-#                              is missing.
+#                              is missing - and NOT for spatialite_tool, which
+#                              it calls one line later (3.5.1
+#                              scripts/valhalla_build_timezones: the `which`
+#                              guards, then `spatialite_tool -i -shp ...`), so a
+#                              missing spatialite_tool is a timezone build that
+#                              gets past its own checks and fails on the import.
+#                              Both binaries are in the one package: noble's
+#                              spatialite-bin ships /usr/bin/spatialite and
+#                              /usr/bin/spatialite_tool
+#                              (packages.ubuntu.com/noble/amd64/spatialite-bin/filelist).
 #   libpq5                     psycopg2-binary carries its own libpq, but the
 #                              psycopg 3 that procrastinate pulls in does not
 #                              unless its binary wheel is used.
@@ -123,7 +134,7 @@ RUN set -eux; \
 RUN set -eux; \
     for b in valhalla_build_admins valhalla_build_timezones valhalla_build_tiles \
              valhalla_build_extract valhalla_service gdalwarp osmium sqlite3 \
-             spatialite unzip curl; do \
+             spatialite spatialite_tool unzip curl; do \
         command -v "$b" >/dev/null || { echo "missing binary: $b" >&2; exit 1; }; \
     done
 

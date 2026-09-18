@@ -80,6 +80,34 @@ PIPELINE_REQUIRED_PACKAGES = {
     "spatialite-bin": "valhalla_build_timezones loads the shapefile with it",
 }
 
+# The binaries the pipeline image's own `command -v` loop has to name. The loop
+# is what turns "this stage will fail six hours in" into "this image does not
+# build", so what it leaves out is what nothing checks.
+#
+# spatialite_tool is the one that was left out and is the reason this list
+# exists. valhalla_build_timezones checks for `spatialite` and `unzip` by name
+# and exits if either is missing, then runs `spatialite_tool -i -shp ...` with
+# no check at all (3.5.1 scripts/valhalla_build_timezones), so a missing
+# spatialite_tool is a timezone build that passes the script's own guards and
+# dies on the shapefile import - after the hundred-megabyte download. It is in
+# the same package as spatialite, so nothing here has to be installed for it;
+# noble's spatialite-bin ships /usr/bin/spatialite and /usr/bin/spatialite_tool
+# (packages.ubuntu.com/noble/amd64/spatialite-bin/filelist).
+PIPELINE_GUARDED_BINARIES = (
+    "valhalla_build_admins",
+    "valhalla_build_timezones",
+    "valhalla_build_tiles",
+    "valhalla_build_extract",
+    "valhalla_service",
+    "gdalwarp",
+    "osmium",
+    "sqlite3",
+    "spatialite",
+    "spatialite_tool",
+    "unzip",
+    "curl",
+)
+
 
 # --- a Dockerfile, as far as these tests need to understand one ---------------
 
@@ -370,6 +398,26 @@ def test_the_pipeline_image_installs_the_binaries_the_rebuild_shells_out_to(
     assert installs, (
         f"docker/pipeline.Dockerfile does not install {package}, needed for: "
         f"{PIPELINE_REQUIRED_PACKAGES[package]}"
+    )
+
+
+@pytest.mark.parametrize("binary", PIPELINE_GUARDED_BINARIES)
+def test_the_pipeline_image_asserts_every_binary_it_shells_out_to_is_present(binary: str) -> None:
+    """The Dockerfile's `command -v` loop, held to a list.
+
+    Installing the package is half of it: the guard is what makes a missing
+    binary a build failure instead of a rebuild that runs for hours and then
+    cannot find a program. A binary the loop does not name is one nothing
+    checks - which is how `spatialite_tool` came to be installed, needed, and
+    unguarded.
+    """
+    dockerfile = Dockerfile(REPO / "docker" / "pipeline.Dockerfile")
+    guards = [rest for _, rest in dockerfile.of("RUN") if "command -v" in rest]
+    assert len(guards) == 1, f"expected one `command -v` guard loop, found {len(guards)}"
+    named = re.findall(r"[\w.]+", guards[0].partition(" in ")[2].partition(";")[0])
+    assert binary in named, (
+        f"docker/pipeline.Dockerfile's `command -v` loop does not name {binary}; a missing "
+        "one is a rebuild that fails at runtime rather than an image that fails to build"
     )
 
 
