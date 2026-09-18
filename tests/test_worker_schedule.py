@@ -135,6 +135,13 @@ def test_the_rebuild_task_runs_the_real_handler_set(rebuild_environment, states)
     run = ScheduledRun.objects.get(task="weekly_rebuild")
     assert run.succeeded and run.finished_at is not None
     assert "14 stages completed" in run.detail
+    # The promotion is not the end of the deployment's work and the row says so:
+    # valhalla_service does not reload tiles at runtime, so the three routers go
+    # on serving the build they started against until their containers restart,
+    # and nothing in phase 1 restarts them.
+    assert (
+        "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike" in run.detail
+    ), f"the run that promoted a build must say what still has to happen: {run.detail}"
 
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.segment")
