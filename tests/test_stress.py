@@ -86,6 +86,37 @@ class TestFacility:
         )
         assert narrow.tier > wide.tier
 
+    def test_cycleway_separate_rates_the_roadway_as_the_roadway_it_is(self) -> None:
+        """`separate` is a pointer to another OSM way, not a facility on this one.
+
+        Round 5's B1, on the two roads it was measured on. `cycleway=separate`
+        says the cycle facility is mapped as its own way somewhere alongside;
+        it says nothing whatever about the carriageway, and the separate way
+        already carries its own trail-class LTS1 at the top of `classify`.
+        Reading it here as a separated track rated a 45 mph six-lane primary
+        LTS1 - level with a protected track, three tiers below the same road
+        bare - and, because any cycleway value counts as a provision, shut the
+        volume gate on it too.
+        """
+        arterial = {"highway": "primary", "maxspeed": "45 mph", "lanes": "6"}
+        bare = classify(arterial)
+        separate = classify({**arterial, "cycleway": "separate"})
+        assert bare.tier is Stress.LTS4
+        assert separate.tier is bare.tier, "the roadway is scored as the roadway it is"
+        assert separate.is_top_tier
+
+        # And the gate it also shut: a cycleway value counts as a provision, so
+        # reading `separate` as one exempted the road from the volume modifier.
+        quiet = {"highway": "unclassified", "maxspeed": "30 mph"}
+        assert classify(quiet, aadt=900).tier is Stress.LTS2, "the low-volume relief"
+        assert classify({**quiet, "cycleway": "separate"}, aadt=900).tier is Stress.LTS2
+
+        # A 25 mph street, where the misreading is quieter but the same: LTS2
+        # mixed traffic, not the LTS1 a real track alongside would earn.
+        street = {"highway": "residential", "maxspeed": "25 mph"}
+        assert classify({**street, "cycleway": "separate"}).tier is Stress.LTS2
+        assert classify({**street, "cycleway": "track"}).tier is Stress.LTS1
+
     def test_bike_lane_does_not_rescue_a_fast_road(self) -> None:
         """A painted lane at 40 mph is still LTS4: paint is not separation."""
         result = classify({"highway": "primary", "maxspeed": "45 mph", "cycleway": "lane"})
@@ -383,7 +414,7 @@ class TestTheProvisionHierarchy:
     @pytest.mark.parametrize("lanes", ["1", "2", "4", "8"])
     @pytest.mark.parametrize("width", ["1.4", "2.4", "4.5"])
     @pytest.mark.parametrize("parking", [None, "no", "parallel"])
-    @pytest.mark.parametrize("aadt", [None, 900, 12_000])
+    @pytest.mark.parametrize("aadt", [None, 900, 1_500, 8_000, 12_000])
     def test_a_shoulder_never_rates_safer_than_the_same_road_with_a_bike_lane(
         self, speed: str, lanes: str, width: str, parking: str | None, aadt: int | None
     ) -> None:
@@ -403,24 +434,37 @@ class TestTheProvisionHierarchy:
         unfixed classifier fails this 26 times below `VOLUME_QUIET` and, through
         the adoption rule the fix also needed, 20 more times above `VOLUME_BUSY`.
 
-        The painted lane it is compared against declares its parking absent, and
-        the road under test may not. That is deliberate and it is the one place
-        the two provisions are read differently: a shoulder is measured against
-        Furth's no-parking width because a parking lane cannot run beside one,
-        while a bike lane on a road whose parking is untagged is measured,
-        conservatively, against the wider criterion. Comparing the shoulder
-        against *that* reading would not be comparing the same provision, it
-        would be asserting that an unknown on one road governs the other; the one
-        permitted consequence is pinned by name in
-        `test_a_shoulder_is_measured_against_furths_no_parking_width`.
+        The painted lane it is compared against declares its parking absent
+        **only where the road under test says nothing about parking**, and that
+        one case is the only place the two provisions are read differently: on a
+        road with no parking tags a shoulder is measured against Furth's
+        no-parking width, because a parking lane cannot run beside one, while a
+        bike lane there is measured, conservatively, against the wider
+        criterion. Comparing the shoulder against *that* reading would not be
+        comparing the same provision, it would be asserting that an unknown on
+        one road governs the other; the one permitted consequence is pinned by
+        name in `test_a_shoulder_is_measured_against_furths_no_parking_width`.
+
+        Where the road *declares* its parking, present or absent, there is no
+        unknown left to differ about and the comparison is against a painted
+        lane on the same road, parking tag and all. Forcing `parking:both=no`
+        onto the painted lane there was round 5's B2: it handed the bike lane
+        the narrow-width relief on a road whose own tags deny it, so the
+        property compared a shoulder beside a declared parking lane against a
+        bike lane beside none, and could not see a 25 mph street with
+        `parking:both=parallel` and a 2.4 m shoulder rating LTS1 against LTS2
+        for the same width of paint.
         """
         road = {"highway": "secondary", "maxspeed": speed, "lanes": lanes}
         if parking is not None:
             road["parking:both"] = parking
+        # The unknown-parking case, and only it, is compared against a lane that
+        # declares its parking absent; see the docstring.
+        painted_road = {**road, "parking:both": "no"} if parking is None else road
 
         bare = classify(road, aadt=aadt).tier
         painted = classify(
-            {**road, "parking:both": "no", "cycleway": "lane", "cycleway:width": width}, aadt=aadt
+            {**painted_road, "cycleway": "lane", "cycleway:width": width}, aadt=aadt
         ).tier
         result = classify({**road, "shoulder": "both", "shoulder:width": width}, aadt=aadt)
         shoulder = result.tier
@@ -482,6 +526,45 @@ class TestTheProvisionHierarchy:
         assert classify({**declared, **surveyed}).tier is Stress.LTS2
         assert (
             classify({**declared, "cycleway": "lane", "cycleway:width": "2.4"}).tier is Stress.LTS2
+        )
+
+    def test_a_shoulder_beside_declared_parking_is_measured_against_the_wider_width(
+        self,
+    ) -> None:
+        """Round 5's B2, the other half of the width question.
+
+        The no-parking width is earned by a road that says nothing about
+        parking, because a parking lane cannot run beside a shoulder. A road
+        that *declares* a parking lane has said its outermost strip is occupied,
+        so the width tag on it measures the parking lane, the door zone beside
+        it, or the two together - which is the quantity Furth's beside-parking
+        criterion is written against. The credit is not denied, it is measured
+        properly: a strip wide enough to hold a parked car and a rider still
+        earns the table.
+
+        Measured before the fix: this street came out LTS1, a tier below the
+        same street with a painted lane of identical width, and the Lua remap
+        then wrote `cycleway=track` onto a street that declares a parking lane.
+        """
+        street = {"highway": "residential", "maxspeed": "25 mph", "parking:both": "parallel"}
+        shoulder = classify({**street, "shoulder": "both", "shoulder:width": "2.4"})
+        painted = classify({**street, "cycleway": "lane", "cycleway:width": "2.4"})
+
+        assert shoulder.tier is Stress.LTS2
+        assert painted.tier is Stress.LTS2
+        assert shoulder.tier == painted.tier, (
+            "with the parking declared there is no unknown left for the two to differ about"
+        )
+        # Not denied outright: a strip that clears the beside-parking criterion
+        # earns exactly what a bike lane of that width earns.
+        wide = classify({**street, "shoulder": "both", "shoulder:width": "4.5"})
+        assert wide.tier is Stress.LTS1
+        assert "paved shoulder" in wide.rule
+
+        # And the unknown-parking road keeps the wave-3 reading, unchanged.
+        untagged = {"highway": "residential", "maxspeed": "25 mph"}
+        assert classify({**untagged, "shoulder": "both", "shoulder:width": "2.4"}).tier is (
+            Stress.LTS1
         )
 
     def test_a_shoulder_earns_the_bike_lane_table_or_the_volume_gate_never_both(self) -> None:

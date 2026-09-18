@@ -24,11 +24,15 @@ stated here as well as at the code that implements them.
 A painted bike lane and a rideable paved shoulder are the same provision and are
 scored on the same table, which is what keeps a shoulder from ever rating a road
 safer than a bike lane read the same way. The one thing that separates them is
-the door zone, which a shoulder cannot have: a parking lane is never beside a
-shoulder, so the shoulder is measured against Furth's no-parking width and a
-bike lane on a road whose parking is untagged is measured, conservatively,
-against the wider one. That is a difference in what is known about the road, not
-a difference in the credit the provision earns.
+the door zone, and it separates them only where nobody has said whether the road
+has parking: a road with no parking tags cannot have a parking lane beside its
+shoulder, so the shoulder is measured against Furth's no-parking width while a
+bike lane on the same road is measured, conservatively, against the wider one.
+That is a difference in what is known about the road, not a difference in the
+credit the provision earns - and it lasts exactly as long as the ignorance does.
+A road that *declares* a parking lane has said that its outermost strip is
+occupied, so the shoulder there is measured against the beside-parking width
+like any other provision on it.
 
 One provision earns one credit. Volume is a modifier on roads with *no*
 provision, so a road that has taken the bike-lane table's credit does not also
@@ -139,14 +143,34 @@ DEFAULT_MAXSPEED_MPH_RURAL = {
 DEFAULT_MAXSPEED_MPH = DEFAULT_MAXSPEED_MPH_URBAN
 DEFAULT_LANES_PER_DIRECTION = 1
 
-# Volume thresholds in vehicles per day, as a modifier on two-lane roads only.
-# Normalized to one definition before the classifier reads them: VDOT publishes
-# bidirectional counts, the District publishes AADT, and Maryland's is embedded
-# in a finished score.
-# A shoulder narrower than this is not somewhere a rider can sit.
-SEPARATED_CYCLEWAY = frozenset({"track", "separate", "opposite_track"})
-PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane", "left", "right"})
+# The `cycleway` values that describe a facility *on this way*, split by how much
+# separation the facility gives, because the two sets score on different tables.
+#
+# `separate` is deliberately absent from both, and its absence is the whole of
+# the rule these sets encode: a cycleway value has to describe a facility this
+# way carries. `cycleway=separate` says the opposite - that the facility is
+# mapped as a way of its own, somewhere off to the side - so it is a pointer to
+# another OSM object and says nothing whatever about the carriageway. Reading it
+# as a separated track here rated the roadway by the facility next to it: a
+# 45 mph six-lane primary tagged `cycleway=separate` came out LTS1, where the
+# same road bare comes out LTS4, and it shut the volume gate too because a
+# cycleway value counts as a provision. The separate way is in the extract and
+# is classified on its own merits - it is trail-class, so it returns LTS1 at the
+# top of `classify` - so the low-stress reading is already in the graph, on the
+# object that earned it. The roadway is scored as the roadway it is.
+#
+# `tags.has_parking_lane` reads the same OSM idiom the same way: `parking:*
+# =separate` is in its `absent` set, because there too the value means "recorded
+# elsewhere", not "present here".
+#
+# `left` and `right` are absent for a related reason: they are key suffixes
+# (`cycleway:left=lane`), never values, and `cycleway_values` only ever yields
+# the value half of a tag. Listing them here could only ever match a way tagged
+# `cycleway=left`, which is not a thing a mapper writes.
+SEPARATED_CYCLEWAY = frozenset({"track", "opposite_track"})
+PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane"})
 
+# A shoulder narrower than this is not somewhere a rider can sit.
 RIDEABLE_SHOULDER_M = 1.2
 
 # Furth's two bike-lane width criteria, in metres, and the only thing separating
@@ -171,6 +195,10 @@ FURTH_LANE_ALONE_M = 1.7
 # arterials inverts the meaning of the map on a rural route.
 UNPAVED_RURAL_DEFAULT_MPH = 30.0
 
+# Volume thresholds in vehicles per day, as a modifier on two-lane roads only.
+# Normalized to one definition before the classifier reads them: VDOT publishes
+# bidirectional counts, the District publishes AADT, and Maryland's is embedded
+# in a finished score.
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000
 
@@ -251,9 +279,9 @@ def _bike_lane_tier(
 
     `parking` is whether a parking lane runs alongside *this provision*, which is
     the question Furth's two width criteria turn on and not quite the question
-    "does this road have parking on it". The shoulder call passes a known False
-    (see `classify`); the bike-lane call passes what the tags say, with unknown
-    read as present.
+    "does this road have parking on it". The shoulder call passes False only
+    where the road's parking is unknown or declared absent (see `classify`); the
+    bike-lane call passes what the tags say, with unknown read as present.
     """
     # Treat unknown parking as present and unknown width as narrow: both are the
     # higher-stress reading, and both are common in this region's tagging.
@@ -397,21 +425,52 @@ def classify(
             if shoulder_width is None:
                 assumed.append("shoulder width")
             elif rideable_shoulder:
-                # `parking=False`, always, rather than whatever the road's
-                # parking tags say. A parking lane cannot run beside a shoulder:
-                # a shoulder is the outermost strip of the carriageway, so a car
-                # parked on it is parked *on* the shoulder rather than beside it,
-                # and Furth's door-zone criterion - the one that measures the
-                # bike lane plus the parking lane it runs next to - has nothing
-                # to measure. Passing the road's own value instead made the
+                # `False` where the road's parking is unknown or declared
+                # absent, and the road's own value where parking is declared
+                # *present*. The two halves of that are separate arguments and
+                # only the first one survives a road that says it has parking.
+                #
+                # Where nothing is tagged, or parking is tagged absent: a
+                # parking lane cannot run beside a shoulder. A shoulder is the
+                # outermost strip of the carriageway, so a car parked on it is
+                # parked *on* the shoulder rather than beside it, and Furth's
+                # door-zone criterion - the one that measures the bike lane plus
+                # the parking lane it runs next to - has nothing to measure.
+                # Reading an untagged road as "parking present" here made the
                 # credit inert below 35 mph on almost every road it was written
-                # for: parking is untagged on essentially every rural road, an
-                # untagged parking lane is read as present, and an eight-foot
-                # shoulder then had to clear 4.1 m to count as anything but
-                # narrow. Snickersville Turnpike with a surveyed 8 ft shoulder
-                # scored the same as Snickersville Turnpike with none.
+                # for: parking is untagged on essentially every rural road, and
+                # an eight-foot shoulder then had to clear 4.1 m to count as
+                # anything but narrow. Snickersville Turnpike with a surveyed
+                # 8 ft shoulder scored the same as Snickersville Turnpike with
+                # none. That argument is about what is *unknown* about the road,
+                # and it is pinned by name in
+                # `test_a_shoulder_is_measured_against_furths_no_parking_width`.
+                #
+                # Where the road declares a parking lane, the argument runs out.
+                # A road tagged `parking:both=parallel` *and* `shoulder:width`
+                # has told us cars stand on that strip: the outermost strip is
+                # the parking lane, so what the width tag measures is the
+                # parking lane, the door zone beside it, or the two together -
+                # which is exactly the quantity Furth's beside-parking criterion
+                # is written against, the bike lane plus the parking lane at
+                # 13.5 ft. So the road's own value is passed and the wider
+                # criterion applies. Furth is followed rather than the credit
+                # simply denied because his table already has the right reading
+                # for this case: a strip wide enough to hold a parked car *and*
+                # a rider still earns the table, and a 2.4 m strip does not.
+                #
+                # Measured, before this: a residential 25 mph street with
+                # `parking:both=parallel` and `shoulder:width=2.4` came out LTS1,
+                # a tier below the same street with `cycleway=lane` at the same
+                # width, and the Lua remap then wrote `cycleway=track` onto a
+                # street that declares a parking lane.
+                shoulder_parking = parking if parking is True else False
                 shoulder_tier, shoulder_rule = _bike_lane_tier(
-                    speed_mph, lanes, shoulder_width, False, facility="paved shoulder"
+                    speed_mph,
+                    lanes,
+                    shoulder_width,
+                    shoulder_parking,
+                    facility="paved shoulder",
                 )
                 if shoulder_tier < tier:
                     tier, rule = shoulder_tier, shoulder_rule
