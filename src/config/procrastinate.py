@@ -110,6 +110,20 @@ class RebuildAbandoned(RuntimeError):
     """
 
 
+# What a finished swap leaves the operator to do, in one place because it is
+# said twice - once in the success detail and once in the message a failure
+# after the swap is abandoned with - and the two must not drift. The abandoned
+# message used to say "the new build is being served", which is the one thing
+# that is not true until somebody restarts the routers: the schema swap is
+# instant, the tile directories are not, so an operator reading that alert
+# concluded there was nothing to do and left three routers serving last week's
+# graph against this week's segment rows.
+ROUTER_RESTART_NOTICE = (
+    "The routers serve the previous build until they are restarted: "
+    "`docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike`."
+)
+
+
 @app.periodic(cron=WEEKLY_REBUILD_CRON)
 @app.task(
     name="weekly_rebuild",
@@ -176,7 +190,7 @@ def weekly_rebuild(timestamp: int) -> None:
                 raise RebuildAbandoned(
                     f"{error}. The swap completed, so this rebuild is not retried: a retry "
                     f"would re-run the swap and drop the {settings.SEGMENT_SCHEMA_RETIRED} "
-                    "schema a rollback needs. The new build is being served; re-run the "
+                    f"schema a rollback needs. {ROUTER_RESTART_NOTICE} Re-run the "
                     "reconciliation by hand, or let next week's rebuild write the next "
                     "drift report."
                 ) from error
@@ -200,9 +214,7 @@ def weekly_rebuild(timestamp: int) -> None:
             )
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
-            f"pruned {reclaimed} old build directories. The routers serve the previous "
-            "build until they are restarted: `docker compose restart valhalla-standard "
-            "valhalla-no-trail valhalla-ebike`."
+            f"pruned {reclaimed} old build directories. {ROUTER_RESTART_NOTICE}"
         )
         run.save(update_fields=["detail"])
 
