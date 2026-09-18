@@ -352,6 +352,30 @@ def as_guild_admin(client, monkeypatch, guild_admin):
     return sign_in(client, monkeypatch, guild_admin)
 
 
+def make_a_plain_member_of(user, of_guild) -> None:
+    """Give `user` ordinary membership in `of_guild` and nothing more.
+
+    The shape every object-level guild check has to tell apart, and the one the
+    fixtures above could not produce: a guild admin of A who is simply in B, as
+    any organiser who rides with two clubs is. `attach_standing` resolves that
+    to B in `_member_guild_ids` and not in `_admin_guild_ids`, so a check that
+    read the wrong one of those two sets would answer yes here - and the
+    changelist scoping, which reads `_admin_guild_ids`, would go on hiding B's
+    rows and hiding the mistake with them.
+    """
+    from core.models import CachedMembership, RoleMapping
+
+    RoleMapping.objects.get_or_create(
+        guild=of_guild, role_id=3, permission=RoleMapping.Permission.MEMBER
+    )
+    CachedMembership.objects.create(
+        discord_user_id=user.discord_user_id,
+        guild=of_guild,
+        role_ids=[3],
+        last_confirmed=timezone.now(),
+    )
+
+
 @pytest.fixture
 def as_instance_admin(client, monkeypatch, instance_admin):
     return sign_in(client, monkeypatch, instance_admin)
@@ -725,6 +749,60 @@ class TestAGuildAdminEditsTheirOwnGuildsSettings:
         assert theirs.name == "Another Club"
         assert theirs.admin_contact_email == ""
 
+    def test_the_object_check_refuses_a_guild_they_are_only_a_member_of(
+        self, as_guild_admin, guild_admin, other_guild, monkeypatch
+    ) -> None:
+        """`has_change_permission`'s object branch, reached directly.
+
+        The test above gets its 403 without the branch ever running: `get_object`
+        goes through the scoped queryset, finds nothing, and Django asks the hook
+        with `obj=None`. So `obj.guild_id in _admin_guild_ids` was never
+        executed against a real row, and replacing that set with
+        `_member_guild_ids` left the whole suite green - a guild admin of one
+        club who merely rides with another would have been able to rename it and
+        set the address its degraded-guild alerts are mailed to.
+
+        The scoping is lifted for this one test so the branch is what answers,
+        and the actor is made an ordinary member of the other guild so the two
+        sets disagree about it.
+        """
+        from core.models import ConfiguredGuild
+
+        make_a_plain_member_of(guild_admin, other_guild)
+        monkeypatch.setattr(
+            "core.admin.ConfiguredGuildAdmin.get_queryset",
+            lambda self, request: ConfiguredGuild.objects.all(),
+        )
+
+        response = as_guild_admin.post(
+            admin_url("core_configuredguild_change", other_guild.pk), self.FIELDS
+        )
+        assert response.status_code == 403, "membership is not administration"
+
+        theirs = ConfiguredGuild.objects.get(pk=other_guild.pk)
+        assert theirs.name == "Another Club"
+        assert theirs.admin_contact_email == ""
+        assert refusals().filter(model="configuredguild", action="change").exists()
+
+    def test_and_their_own_guild_still_passes_that_same_branch(
+        self, as_guild_admin, guild, monkeypatch
+    ) -> None:
+        """So the refusal above is the guild and not the lifted scoping."""
+        from core.models import ConfiguredGuild
+
+        monkeypatch.setattr(
+            "core.admin.ConfiguredGuildAdmin.get_queryset",
+            lambda self, request: ConfiguredGuild.objects.all(),
+        )
+        assert (
+            as_guild_admin.post(
+                admin_url("core_configuredguild_change", guild.pk), self.FIELDS
+            ).status_code
+            == 302
+        )
+        guild.refresh_from_db()
+        assert guild.name == self.FIELDS["name"]
+
     @pytest.mark.parametrize(
         ("column", "posted"),
         [
@@ -874,6 +952,39 @@ class TestTheRevokeNowAction:
         other_guild.refresh_from_db()
         assert other_guild.state == "active"
 
+    def test_the_selection_the_scoping_dropped_is_audited(
+        self, as_guild_admin, other_guild
+    ) -> None:
+        """And it is refused *on the record*, which it was not.
+
+        `response_action` filters the posted ids through `get_queryset` before
+        the action sees them, so this attempt arrived with an empty queryset:
+        the loop did nothing, `may_revoke` was never asked, and the log said
+        nothing at all. A hand-built POST at another club's guild id is the
+        clearest attempt this surface can receive and it was the one attempt it
+        did not record.
+        """
+        from core.models import AuditLogEntry
+
+        self.revoke(as_guild_admin, other_guild)
+
+        entry = refusals().get(action="revoke_now")
+        assert entry.model == "configuredguild"
+        assert entry.actor.discord_user_id == 9002
+        assert entry.object_id == str(other_guild.pk), "the row is keyed on what was selected"
+        assert not AuditLogEntry.objects.filter(
+            action="revoke_now", outcome=AuditLogEntry.Outcome.ALLOWED
+        ).exists()
+
+    def test_their_own_guild_leaves_no_refusal_beside_the_revocation(
+        self, as_guild_admin, guild
+    ) -> None:
+        """So the row above is the selection and not the action firing at all."""
+        self.revoke(as_guild_admin, guild)
+        guild.refresh_from_db()
+        assert guild.state == "revoked"
+        assert not refusals().filter(action="revoke_now").exists()
+
     def unscope(self, monkeypatch) -> None:
         from core.admin import ConfiguredGuildAdmin
         from core.models import ConfiguredGuild
@@ -885,7 +996,7 @@ class TestTheRevokeNowAction:
         )
 
     def test_the_per_object_check_holds_if_the_scoping_ever_stops(
-        self, as_guild_admin, other_guild, monkeypatch
+        self, as_guild_admin, guild_admin, other_guild, monkeypatch
     ) -> None:
         """The second, exercised against exactly the regression it exists for.
 
@@ -894,7 +1005,15 @@ class TestTheRevokeNowAction:
         the guard behind it is never reached. That makes it a guard nobody can
         show works - which is how a scoping change becomes a cross-guild write.
         So the scoping is lifted for this one test and the POST is still real.
+
+        And the actor is a guild admin of their own guild who is *also a plain
+        member of this one*, which is the second thing the check has to get
+        right and the second mutation that survived: `may_revoke` reading
+        `_member_guild_ids` instead of `_admin_guild_ids` left the suite green,
+        because nobody in it was ever in two guilds at two different standings.
+        Riding with two clubs is not a licence to end one of them.
         """
+        make_a_plain_member_of(guild_admin, other_guild)
         self.unscope(monkeypatch)
         assert self.revoke(as_guild_admin, other_guild).status_code == 302
 
@@ -1812,7 +1931,11 @@ class TestTheAuditLogTellsADeletedActorFromNoActor:
         assert (person_row.actor_id, person_row.actor_user_id) == (None, acting_admin_pk)
         assert worker_row.actor_label() != person_row.actor_label()
         assert person_row.actor_label() == f"deleted user {acting_admin_pk}"
-        assert worker_row.actor_label() == "no actor (worker)"
+        assert worker_row.actor_label() == "no actor (worker or host operator)", (
+            "a host operator running run_rebuild_now or rollback_rebuild through "
+            "`docker compose exec` audits with actor=None too, and naming only the "
+            "worker puts a human's action on the machine's account"
+        )
 
     def test_a_live_actor_is_named_as_themselves(self, guild, instance_admin) -> None:
         from core.models import AuditLogEntry

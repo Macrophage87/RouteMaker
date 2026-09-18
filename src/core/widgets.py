@@ -49,6 +49,17 @@ OL_CSS = "core/ol/ol.css"
 # is an operator's setting rather than user input, but a value interpolated into
 # script is escaped where it is interpolated or it is escaped nowhere; these are
 # the same five characters `django.utils.html.json_script` neutralises.
+#
+# Three of the five are load-bearing and two are belt and braces, which is worth
+# writing down because a mutation run will find them. `json.dumps` defaults to
+# `ensure_ascii=True` and therefore already emits U+2028 and U+2029 as `\u2028`
+# and `\u2029`, so deleting those two rows changes no output and no test can
+# catch it - the same shape as `AuditLogEntryAdmin.has_module_permission`. They
+# stay because this table is the statement of which characters may not reach a
+# script body, and because they become the only thing enforcing it the moment
+# anyone passes `ensure_ascii=False` to get a shorter URL in the page. Django's
+# own `_json_script_escapes` names only the first three for exactly this reason.
+# What is pinned instead is the property: the literal is ASCII, always.
 _SCRIPT_ESCAPES = {
     ord(">"): "\\u003E",
     ord("<"): "\\u003C",

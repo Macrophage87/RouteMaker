@@ -106,6 +106,29 @@ class TestTheAdminBasemapHasNoPublicDefault:
         ):
             assert forbidden not in source, f"settings.py names {forbidden}"
 
+    def test_a_whitespace_only_value_is_not_a_configured_basemap(self, monkeypatch) -> None:
+        """The `.strip()` on the environment read, pinned at the layer that
+        performs it.
+
+        `core.widgets.basemap_tile_url` strips too, and it has to: the setting
+        can be moved by `override_settings` without going near this file. But a
+        value that arrives from a `.env` file with a trailing newline, or a line
+        written as `ADMIN_BASEMAP_TILE_URL= `, is truthy, and every consumer
+        that reads the setting directly rather than through the helper would
+        take it for an operator's choice of tile server.
+        """
+        monkeypatch.setenv("ADMIN_BASEMAP_TILE_URL", " \t\n ")
+        module = load_settings_module("config_settings_blank_basemap")
+        assert module.ADMIN_BASEMAP_TILE_URL == ""
+
+    def test_a_real_value_survives_the_strip_with_its_surrounding_space_gone(
+        self, monkeypatch
+    ) -> None:
+        """So the line above is a strip and not a blanket refusal."""
+        monkeypatch.setenv("ADMIN_BASEMAP_TILE_URL", "  https://tiles.example.test/{z}.png\n")
+        module = load_settings_module("config_settings_padded_basemap")
+        assert module.ADMIN_BASEMAP_TILE_URL == "https://tiles.example.test/{z}.png"
+
     def test_the_env_example_offers_it_only_commented_out(self) -> None:
         """An operator copies this file and fills in the `change-me`s. A live
         line here would be a value they did not choose, pointing somewhere this
@@ -139,19 +162,60 @@ def test_the_swapped_schema_names_come_from_the_environment() -> None:
     assert os.environ.get("ROUTEMAKER_LIVE_SCHEMA") in (None, settings.SEGMENT_SCHEMA_LIVE)
 
 
-def test_settings_refuse_a_live_schema_too_long_to_retire(monkeypatch) -> None:
+@pytest.mark.parametrize("variable", ["ROUTEMAKER_LIVE_SCHEMA", "ROUTEMAKER_STAGING_SCHEMA"])
+def test_settings_refuse_a_schema_name_too_long_to_retire(monkeypatch, variable) -> None:
     """PostgreSQL truncates identifiers at 63 bytes and the retired schema is
     the live name plus `_old`, so a 60-character live name makes `<live>_old`
     truncate straight back to `<live>` - and the swap's
     `DROP SCHEMA IF EXISTS <retired> CASCADE` deletes the served graph one
     statement before renaming into it. The refusal is at import, so a deployment
     configured this way does not start rather than starting and destroying the
-    graph on Tuesday morning."""
+    graph on Tuesday morning.
+
+    Both names an operator sets, because the bound is applied to both and only
+    one was asserted: deleting the `ROUTEMAKER_STAGING_SCHEMA` row from the
+    check left the suite green. Staging is not merely symmetry - a rollback
+    promotes the retired schema and the reconciliation reads a `<staging>_old`
+    of its own, so a staging name that cannot carry a suffix is the same
+    truncation one stage later.
+    """
     from django.core.exceptions import ImproperlyConfigured
 
-    monkeypatch.setenv("ROUTEMAKER_LIVE_SCHEMA", "a" * 60)
-    with pytest.raises(ImproperlyConfigured, match="at most 59 characters"):
-        load_settings_module("config_settings_overlong_live_schema")
+    monkeypatch.setenv(variable, "a" * 60)
+    with pytest.raises(ImproperlyConfigured, match="at most 59 characters") as raised:
+        load_settings_module(f"config_settings_overlong_{variable.lower()}")
+    assert variable in str(raised.value), "the refusal must name the variable to fix"
+
+
+@pytest.mark.parametrize(
+    ("colliding_with", "because"),
+    [
+        ("live", "the rebuild's first stage drops and recreates staging"),
+        ("retired", "the swap drops the retired schema before renaming into it"),
+    ],
+)
+def test_settings_refuse_a_staging_schema_that_is_one_of_the_others(
+    monkeypatch, colliding_with, because
+) -> None:
+    """The three names must be three schemas, and all three rows of that check
+    are load-bearing.
+
+    Dropping any one entry from `_SEGMENT_SCHEMAS` makes the length comparison
+    that enforces distinctness true again, so the collision it was there to
+    catch passes at import and the weekly rebuild drops the graph it is serving
+    (staging == live) or the one a rollback would restore (staging == retired).
+    Each of the three is pinned by a collision only that row can see.
+    """
+    from django.conf import settings
+    from django.core.exceptions import ImproperlyConfigured
+
+    live = settings.SEGMENT_SCHEMA_LIVE
+    monkeypatch.setenv("ROUTEMAKER_LIVE_SCHEMA", live)
+    monkeypatch.setenv(
+        "ROUTEMAKER_STAGING_SCHEMA", live if colliding_with == "live" else f"{live}_old"
+    )
+    with pytest.raises(ImproperlyConfigured, match="three distinct names"):
+        load_settings_module(f"config_settings_staging_is_{colliding_with}")
 
 
 def test_settings_accept_the_longest_live_schema_that_still_retires(monkeypatch) -> None:

@@ -408,6 +408,14 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
     """A guild admin sees their own guild and may write its two guild-scoped
     fields on it: `name` and `admin_contact_email`, and nothing else.
 
+    `admin_contact_email` is written to on two of the plan's own readings and
+    they do not agree. PLAN.md:61 has the address "entered by an instance admin
+    when the guild is configured"; PLAN.md:208 lists it among the settings at
+    guild scope, "set by that guild's admin". This class follows :208, which is
+    what wave 6 cited, and the divergence is recorded as an owner call in
+    handoff §7 rather than settled here - it is a question about who owns the
+    address SES will one day mail, not about what this form does today.
+
     Scoping a queryset is not the same as gating a write, which is the gap an
     earlier version left: adding a row here self-onboards a server and pushes an
     arbitrary roster into the database, and editing `guild_id` is an unaudited
@@ -486,6 +494,36 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
             return True
         return guild.guild_id in getattr(request.user, "_admin_guild_ids", frozenset())
 
+    def _audit_selection_the_scoping_dropped(self, request, queryset) -> None:
+        """The refusal `get_queryset` makes silently, written down.
+
+        `response_action` builds an action's queryset by filtering
+        `get_queryset` down to the posted `_selected_action` ids, so a guild
+        admin who hand-builds a POST naming another guild's id arrives here with
+        that id already gone and the loop below simply does not run. The attempt
+        is refused - correctly, by the scoping - and until this existed it was
+        refused with nothing in the log, which is the one shape of refusal on
+        this surface the plan asks to be audited and this page was dropping.
+
+        Keyed on the ids that fell outside, as the strings the POST carried: a
+        hand-built POST is under no obligation to name a row that exists, so
+        there is nothing to resolve them to and the raw selection is what an
+        instance admin reading the log needs to see.
+        """
+        selected = request.POST.getlist("_selected_action")
+        if not selected:
+            return
+        present = {str(pk) for pk in queryset.values_list("pk", flat=True)}
+        outside = [pk for pk in selected if pk not in present]
+        if not outside:
+            return
+        self._audit_refusal(request, "revoke_now", ",".join(outside))
+        self.message_user(
+            request,
+            f"Refused: {len(outside)} selected guild(s) are not yours to revoke.",
+            level=messages.ERROR,
+        )
+
     @admin.action(description="Revoke now - end this guild's standing immediately")
     def revoke_now(self, request, queryset) -> None:
         """The transition the degraded window has had no way into.
@@ -495,6 +533,7 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
         guild could never be marked degraded or revoked and the plan's audited
         revoke-now existed on no surface.
         """
+        self._audit_selection_the_scoping_dropped(request, queryset)
         now = timezone.now()
         revoked = 0
         for guild in queryset:
@@ -540,10 +579,29 @@ class RoleMappingAdmin(GuildScopedAdmin):
     edit another guild's mapping could grant themselves any permission there, and
     one who could edit `guild` could move a mapping wholesale.
 
-    Instance-admin only for writes, because a mapping decides who holds guild
-    admin and a guild admin editing their own guild's mapping is the definition
-    of privilege escalation. A guild admin sees their own guild's rows and
-    nothing else.
+    Instance-admin only for writes, and the reason is the plan's rather than an
+    escalation argument. An earlier docstring here called a guild admin editing
+    their own guild's mapping "the definition of privilege escalation", and that
+    was not true of this application: `attach_standing` ignores `INSTANCE_ADMIN`
+    rows when it resolves standing, and `GuildScopedAdmin` already puts every
+    other guild's rows out of reach, so the worst an own-guild edit reaches is
+    guild admin in a guild where they already hold it. PLAN.md:272 says the real
+    reason: the mapping "is maintained through one audited action rather than an
+    admin change form: the form is read-only like every other authorization
+    table, and the action revalidates each role id against the live guild,
+    refuses ids the bot cannot see, writes an audit row with the prior mapping,
+    and notifies the guild's other admins".
+
+    That action is not built. It revalidates role ids against the live guild
+    through the bot, and there is no bot in phase 1 - the same reason its three
+    siblings in that paragraph (the re-invite token, the remap-reversal window,
+    the unmapped-guild alert) are recorded as gaps rather than written. So what
+    stands here is the read-only half of PLAN.md:272 without the half that
+    maintains it: a guild admin who needs a role id changed asks an instance
+    admin, who edits the mapping on this page. Recorded in handoff §7; do not
+    read the read-only form as the finished design.
+
+    A guild admin sees their own guild's rows and nothing else.
     """
 
     guild_scope_field = "guild__guild_id"
@@ -637,6 +695,16 @@ class BorderCrossingAdmin(AuditedAdmin, GISModelAdmin):
     # widget's media, so this page loaded the CDN script too. "No CDN reference
     # anywhere in the rendered admin" means every GIS surface, not just the one
     # the finding named.
+    #
+    # Inert as this class now stands, and unpinnable by construction - the same
+    # shape as `AuditLogEntryAdmin.has_module_permission`, recorded for the same
+    # reason. All three write permissions below are False, so the change form is
+    # rendered with every field read-only, no field means no bound widget and no
+    # bound widget means no widget media: deleting this line changes nothing in
+    # any rendered byte and no test can catch it. It stays because it is the
+    # correct answer to "which map widget does this admin use", and because it
+    # is what would hold the moment any field on this page became editable or
+    # any read-only rendering of a geometry grew a map of its own.
     gis_widget = SelfHostedOpenLayersWidget
 
     list_display = ("node_id", "osm_way_id", "state_a", "state_b")
