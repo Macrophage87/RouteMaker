@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -157,48 +158,131 @@ class FakeWay:
 # separately (see `TestIsSidepathOnly`). Changing this table is a deliberate act
 # with a reviewer behind it, which is what changing the fixture should be too.
 #
-#                                      OSM name(s)                 sidepath  legal
-EXPECTED_CROSSINGS: dict[str, tuple[tuple[str, ...], bool, bool]] = {
-    "Arlington Memorial Bridge": (("Arlington Memorial Bridge",), False, True),
+class ExpectedCrossing(NamedTuple):
+    """One row of the fixture, as this file expects it to read.
+
+    Five columns, not two. `police` and `row_owner` joined the table in round 5
+    because round 4's authority corrections - the Potomac shoreline putting Key
+    and Chain Bridge wholly under MPD, Chain Bridge's Virginia end being
+    Arlington rather than Fairfax, the Wilson Bridge naming all three
+    jurisdictions, Wilson's owner moving from MDTA to MDOT SHA - lived only in
+    the fixture and in prose. A reviewer reverted every one of them and the
+    suite reported 1590 passed.
+    """
+
+    names: tuple[str, ...]
+    sidepath: bool
+    legal: bool
+    police: str
+    row_owner: str
+
+
+EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
+    "Arlington Memorial Bridge": ExpectedCrossing(
+        ("Arlington Memorial Bridge",), False, True, "US Park Police", "National Park Service"
+    ),
     # The label in the file is "Key Bridge"; OSM's name is the full one, and
-    # this row is the reason `osm_names` exists at all.
-    "Key Bridge": (("Francis Scott Key Bridge",), True, True),
+    # this row is the reason `osm_names` exists at all. One authority end to
+    # end, because the DC-Virginia boundary on the Potomac is the 1791 Virginia
+    # shoreline and not the channel - the police split down the middle was the
+    # midpoint heuristic written into the data.
+    "Key Bridge": ExpectedCrossing(("Francis Scott Key Bridge",), True, True, "MPD", "DDOT"),
     # Legal roadways, both. Recording either as roadway-illegal is the round-3
     # error: a narrow bridge a mass ride cannot share is not a bridge bicycles
     # are barred from, and Chain Bridge is a standard climb out of Georgetown.
-    "Chain Bridge": (("Chain Bridge",), True, True),
+    # Chain Bridge's Virginia end was also recorded as Fairfax County, which was
+    # wrong twice over - the abutment is in Arlington, and above the shoreline
+    # it is not a Virginia authority's to police at all.
+    "Chain Bridge": ExpectedCrossing(("Chain Bridge",), True, True, "MPD", "DDOT"),
     # The 14th Street complex: three highway spans, the Long Bridge (rail) and
     # the Fenwick Bridge (Metro). The shared-use path is a sidewalk on the
     # George Mason span, so that is the row that is sidepath-only; the other two
     # highway spans are barred outright with nothing standing in.
-    "George Mason Memorial Bridge": (("George Mason Memorial Bridge",), True, False),
-    "Rochambeau Bridge": (("Rochambeau Bridge",), False, False),
-    "Arland D. Williams Jr. Memorial Bridge": (
+    "George Mason Memorial Bridge": ExpectedCrossing(
+        ("George Mason Memorial Bridge",),
+        True,
+        False,
+        "US Park Police / MPD",
+        "National Park Service / VDOT",
+    ),
+    "Rochambeau Bridge": ExpectedCrossing(
+        ("Rochambeau Bridge",), False, False, "US Park Police", "National Park Service / VDOT"
+    ),
+    "Arland D. Williams Jr. Memorial Bridge": ExpectedCrossing(
         ("Arland D. Williams Jr. Memorial Bridge",),
         False,
         False,
+        "US Park Police",
+        "National Park Service / VDOT",
     ),
     # The Metro crossing, which this file used to describe on the Williams row.
-    "Charles R. Fenwick Bridge": (("Charles R. Fenwick Bridge",), False, False),
-    "Woodrow Wilson Bridge path": (("Woodrow Wilson Memorial Bridge",), True, False),
-    "Sousa Bridge (Pennsylvania Avenue SE)": (
-        ("Sousa Bridge (Pennsylvania Avenue SE)",),
-        False,
-        True,
+    "Charles R. Fenwick Bridge": ExpectedCrossing(
+        ("Charles R. Fenwick Bridge",), False, False, "Metro Transit Police", "WMATA"
     ),
-    "11th Street Bridge": (("11th Street Bridge",), False, True),
-    "Frederick Douglass Memorial Bridge": (("Frederick Douglass Memorial Bridge",), False, True),
-    "Whitney Young Memorial Bridge": (
+    # And the rail crossing, which had no row at all while Fenwick - rail-only
+    # in exactly the same sense - had one. One rule for both.
+    "Long Bridge": ExpectedCrossing(
+        ("Long Bridge",), False, False, "CSX Police / MPD", "CSX Transportation"
+    ),
+    # Three authorities, not two: the one Potomac crossing that touches all
+    # three jurisdictions. And MDOT SHA, not MDTA - MDTA is Maryland's toll
+    # authority and this bridge is toll-free.
+    "Woodrow Wilson Bridge path": ExpectedCrossing(
+        ("Woodrow Wilson Memorial Bridge",),
+        True,
+        False,
+        "Alexandria PD / Prince George's County Police / MPD",
+        "MDOT SHA",
+    ),
+    # The row's `name` is this file's label; OSM's is the full one. It carried
+    # no `osm_names` at all until round 5, so the label - parenthesis and all -
+    # was what the resolver matched on.
+    "Sousa Bridge (Pennsylvania Avenue SE)": ExpectedCrossing(
+        ("John Philip Sousa Bridge",), False, True, "MPD", "DDOT"
+    ),
+    # The 11th Street crossing, split for the reason the 14th Street one is:
+    # the local span carries bikes and the two I-695 freeway spans do not, which
+    # is three answers and was one row.
+    "11th Street Bridge (local span)": ExpectedCrossing(
+        ("11th Street Bridge",), False, True, "MPD", "DDOT"
+    ),
+    "11th Street Bridge (I-695 inbound)": ExpectedCrossing(
+        ("11th Street Bridges (inbound)",), False, False, "MPD", "DDOT"
+    ),
+    "11th Street Bridge (I-695 outbound)": ExpectedCrossing(
+        ("11th Street Bridges (outbound)",), False, False, "MPD", "DDOT"
+    ),
+    "Frederick Douglass Memorial Bridge": ExpectedCrossing(
+        ("Frederick Douglass Memorial Bridge",), False, True, "MPD", "DDOT"
+    ),
+    "Whitney Young Memorial Bridge": ExpectedCrossing(
         ("Whitney Young Memorial Bridge", "Whitney M. Young Jr. Memorial Bridge"),
         False,
         True,
+        "MPD",
+        "DDOT",
     ),
-    "Benning Road Bridge": (("Benning Road Bridge",), False, True),
-    "Theodore Roosevelt Bridge": (("Theodore Roosevelt Bridge",), False, False),
+    "Benning Road Bridge": ExpectedCrossing(("Benning Road Bridge",), False, True, "MPD", "DDOT"),
+    "Theodore Roosevelt Bridge": ExpectedCrossing(
+        ("Theodore Roosevelt Bridge",),
+        False,
+        False,
+        "US Park Police",
+        "National Park Service / VDOT",
+    ),
     # "George Kennan Memorial Bridge" was an alias here and is deliberately not:
     # nothing places that name on this structure, and an unplaceable alias can
-    # only ever match the wrong way.
-    "American Legion Bridge": (("American Legion Bridge",), False, False),
+    # only ever match the wrong way. The police column was a split down the
+    # middle until round 5; the Potomac above Washington is Maryland's to the
+    # Virginia bank, so the span is Maryland's along its length and Fairfax is
+    # reached only at the approach.
+    "American Legion Bridge": ExpectedCrossing(
+        ("American Legion Bridge",),
+        False,
+        False,
+        "Montgomery County Police / Maryland State Police",
+        "MDOT SHA / VDOT",
+    ),
 }
 
 
@@ -213,8 +297,8 @@ def expected_extract() -> list[FakeWay]:
     resolved perfectly.
     """
     return [
-        FakeWay(1000 + index, {"highway": "secondary", "bridge": "yes", "name": names[0]})
-        for index, (names, _sidepath, _legal) in enumerate(EXPECTED_CROSSINGS.values())
+        FakeWay(1000 + index, {"highway": "secondary", "bridge": "yes", "name": expected.names[0]})
+        for index, expected in enumerate(EXPECTED_CROSSINGS.values())
     ]
 
 
@@ -229,7 +313,7 @@ class TestTheFixtureSaysWhatItIsExpectedToSay:
         spelling - deleting every array in the file has to fail here, and the
         only way it can is if the expectation names the spellings itself."""
         claimed = {row["name"]: tuple(crossing_names(row)) for row in crossing_rows()}
-        expected = {name: names for name, (names, _s, _l) in EXPECTED_CROSSINGS.items()}
+        expected = {name: row.names for name, row in EXPECTED_CROSSINGS.items()}
         assert claimed == expected
 
     def test_every_row_carries_the_expected_flags(self) -> None:
@@ -240,10 +324,44 @@ class TestTheFixtureSaysWhatItIsExpectedToSay:
             row["name"]: (row["sidepath_only"], row["roadway_bicycle_legal"])
             for row in crossing_rows()
         }
-        expected = {
-            name: (sidepath, legal) for name, (_n, sidepath, legal) in EXPECTED_CROSSINGS.items()
-        }
+        expected = {name: (row.sidepath, row.legal) for name, row in EXPECTED_CROSSINGS.items()}
         assert actual == expected
+
+    def test_every_row_names_the_expected_authorities(self) -> None:
+        """SF-6: the authority columns, pinned against literals like the flags.
+
+        Round 4 corrected four of them - the Potomac shoreline putting Key and
+        Chain Bridge wholly under MPD rather than split at the midpoint, Chain
+        Bridge's Virginia end being Arlington and not Fairfax, the Wilson Bridge
+        naming all three jurisdictions, and Wilson's owner moving from MDTA to
+        MDOT SHA - and a reviewer then reverted every one of them and watched
+        1590 tests pass. Nothing read these columns, so nothing could.
+
+        They are not decoration. `police` and `row_owner` are what the
+        jurisdiction report names to an organizer asking whose permit a ride
+        needs, and a reverted correction is a wrong agency named with the same
+        confidence as a right one. Reverting one now fails here by name.
+        """
+        actual = {row["name"]: (row["police"], row["row_owner"]) for row in crossing_rows()}
+        expected = {name: (row.police, row.row_owner) for name, row in EXPECTED_CROSSINGS.items()}
+        assert actual == expected
+
+    def test_no_authority_column_uses_a_spelling_this_file_retired(self) -> None:
+        """One agency, one spelling, in the columns a report prints.
+
+        "Maryland SHA" and "MDOT SHA" are the same body, and a file that names
+        it both ways reads as though there were two of them. MDTA is a
+        different body - Maryland's toll authority - and naming it as the owner
+        of a toll-free bridge was round 4's correction. Both are still
+        discussed in the notes, which is where the reasoning belongs; neither
+        may appear in a value.
+        """
+        retired = ("Maryland SHA", "MDTA")
+        for row in crossing_rows():
+            for column in ("police", "row_owner", "manager"):
+                value = row.get(column) or ""
+                for spelling in retired:
+                    assert spelling not in value, f"{row['name']}.{column} says {value!r}"
 
     def test_the_expected_spellings_resolve_through_the_real_resolvers(self) -> None:
         """And the same table, driven through the production functions against
@@ -257,11 +375,9 @@ class TestTheFixtureSaysWhatItIsExpectedToSay:
         assert not unmatched
         legality = resolve_bridge_bicycle_legality(rows, ways)
 
-        for way, (name, (_names, sidepath, legal)) in zip(
-            ways, EXPECTED_CROSSINGS.items(), strict=True
-        ):
-            assert (way.osm_id in bridge_ids) is sidepath, f"{name}: sidepath_only"
-            assert legality[way.osm_id] is legal, f"{name}: roadway_bicycle_legal"
+        for way, (name, expected) in zip(ways, EXPECTED_CROSSINGS.items(), strict=True):
+            assert (way.osm_id in bridge_ids) is expected.sidepath, f"{name}: sidepath_only"
+            assert legality[way.osm_id] is expected.legal, f"{name}: roadway_bicycle_legal"
 
     def test_no_two_rows_claim_the_same_osm_name(self) -> None:
         """Names are how this file resolves, and they merge into one flat dict:
@@ -332,15 +448,13 @@ def test_every_sidepath_only_crossing_is_trail_class_on_the_no_trail_variant() -
     bridge_ids, unmatched = resolve_sidepath_bridge_ids(rows, ways)
     assert not unmatched, "every row in the fixture must resolve against the expected names"
 
-    for row, way, (names, expected_drop, _legal) in zip(
-        rows, ways, EXPECTED_CROSSINGS.values(), strict=True
-    ):
-        assert way.tags["name"] == names[0]
+    for row, way, expected in zip(rows, ways, EXPECTED_CROSSINGS.values(), strict=True):
+        assert way.tags["name"] == expected.names[0]
         # is_trail_class alone must never answer for the sidepath rule - only
         # a way's own highway tag does, which none of these bridges carry.
         assert not is_trail_class(way.tags), row["name"]
         dropped = inject(Variant.NO_TRAIL, way.tags, way.osm_id, bridge_ids) is None
-        assert dropped is expected_drop, f"{row['name']} on the no-trail variant"
+        assert dropped is expected.sidepath, f"{row['name']} on the no-trail variant"
         # And never on the other two variants, regardless of sidepath_only -
         # the roadway is not gone, it is just refused to a mass ride.
         assert inject(Variant.STANDARD, way.tags, way.osm_id, bridge_ids) is not None, row["name"]
