@@ -578,6 +578,11 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
     """A6 — with two promoted builds on disk, the rollback rehearses, then
     runs, and the routers serve the older build afterwards."""
     if not ctx.args.second_rebuild:
+        if ctx.args.dry_run:  # the plan, even though the item itself is skipped
+            ctx.exec_in("rebuild", "./manage.py", "run_rebuild_now", check=False)
+            ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", check=False)
+            ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", "--confirm", check=False)
+            ctx.compose("restart", *ROUTERS)
         raise Skip("needs two promoted builds; run with --second-rebuild (another full rebuild)")
     a4_first_rebuild(ctx, out, second=True)
     dry = ctx.exec_in("rebuild", "./manage.py", "rollback_rebuild", check=False, timeout=120)
@@ -672,6 +677,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         if item in passed_before:
             results.append(Result(item, title, "PASS", ["passed in the resumed report"]))
+            print(f"[PASS] {item} {title}\n      passed in the resumed report")
             continue
         out: list[str] = []
         t0 = time.time()
