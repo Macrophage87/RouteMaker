@@ -61,6 +61,56 @@ def test_the_stress_provenance_reaches_the_row(segment_schemas) -> None:
     assert source == "vdot"
 
 
+def test_the_volume_provenance_reaches_the_row(segment_schemas) -> None:
+    """Agency, count and vintage, in three columns, read back out of the table
+    the derivative is published from.
+
+    `volume_source` held the precedence *tier* the conflater ranks with, so an
+    MDOT SHA count and a VDOT count both wrote "state" and were one source in
+    the output; the year was dropped a stage earlier and there was no column for
+    the count at all. The two rows here rank at the same tier deliberately: a
+    pair that happened to differ on tier would pass while the distinction the
+    derivative needs - which segments a conditionally licensed source touched -
+    was still gone.
+    """
+    _live, staging = segment_schemas
+    rows = [
+        {
+            "osm_way_id": way_id,
+            "ordinal": 0,
+            "wkt": "LINESTRING(-77 38.9, -77.01 38.91)",
+            "stress": StressResult(
+                Stress.LTS3,
+                "mixed traffic, 30 mph, single lane",
+                (),
+                agency,
+                aadt,
+                year,
+            ),
+        }
+        for way_id, agency, aadt, year in (
+            (1, "vdot", 9100, 2024),
+            (2, "mdot-sha", 3300, 2019),
+            (3, None, None, None),
+        )
+    ]
+    assert write_segments(staging, rows) == 3
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT osm_way_id, volume_source, volume_aadt, volume_year
+                FROM {staging}.segment ORDER BY osm_way_id"""
+        )
+        written = cursor.fetchall()
+
+    assert written == [
+        (1, "vdot", 9100, 2024),
+        (2, "mdot-sha", 3300, 2019),
+        # A way no count reached says so in every one of the three columns.
+        (3, None, None, None),
+    ]
+
+
 def test_a_writer_never_targets_the_live_schema(segment_schemas) -> None:
     """The swap is the only thing that promotes staging, and it is a separate
     step for exactly that reason."""

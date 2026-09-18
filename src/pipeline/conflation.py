@@ -56,23 +56,51 @@ SOURCE_PRECEDENCE = ("locality", "state", "osm")
 
 @dataclass(frozen=True)
 class AgencyFeature:
-    """One agency record: a line, a volume, and where it came from."""
+    """One agency record: a line, a volume, and where it came from.
+
+    `source` and `agency` are two different facts and both are needed. `source`
+    is the *precedence tier* - one of `SOURCE_PRECEDENCE` - and it exists only
+    so that two counts covering the same road can be ranked against each other;
+    it says that DDOT outranks VDOT on a District street, and nothing else.
+    `agency` is who published the count: `ddot`, `vdot`, `mdot-sha`. The
+    installer decides both from one `--volume-source` flag and writes both into
+    `volume.json`.
+
+    Only the tier was carried for a while, and the derivative paid for it: the
+    segment table's `volume_source` column held "state", so an MDOT SHA count
+    and a VDOT count were the same string in the published output, and PLAN:31-34
+    asks the derivative to be able to say which segments a conditionally
+    licensed source influenced. It could not. `agency` is what answers that
+    question and `source` is what ranks; neither substitutes for the other.
+    """
 
     feature_id: str
     coordinates: Sequence[tuple[float, float]]
     aadt: int
     source: str
     year: int | None = None
+    agency: str | None = None
 
 
 @dataclass(frozen=True)
 class Match:
+    """One agency feature attached to one OSM way, with everything it carries.
+
+    Everything, because the pipeline stage downstream of this is where the
+    provenance stops being recoverable: the feature list is not kept and the
+    segment table is the published artefact. `year` and `agency` travelled this
+    far and were dropped at the assignment into `aadt_by_way`, which took
+    `(aadt, source)` - the volume and its precedence tier - and left a segment
+    table that could not name the agency or the vintage of any count in it.
+    """
+
     osm_way_id: int
     feature_id: str
     aadt: int
     source: str
     year: int | None
     score: float
+    agency: str | None = None
 
 
 @dataclass(frozen=True)
@@ -315,6 +343,7 @@ def conflate(
             source=feature.source,
             year=feature.year,
             score=overlap,
+            agency=feature.agency,
         )
         if way_id in matched or not _claim(claimed, feature.feature_id, span):
             rejected.append((way_id, match))

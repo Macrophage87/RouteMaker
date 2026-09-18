@@ -118,6 +118,12 @@ def test_the_script_installs_every_file_the_loader_requires(tmp_path) -> None:
     # and the agency name it used to carry is not in that vocabulary at all.
     assert (feature.aadt, feature.source, feature.year) == (12500, "state", 2024)
     assert feature.feature_id.startswith("vdot-"), "the agency survives in the feature id"
+    # And in a field of its own, which is what reaches the segment table. While
+    # only the tier was carried, the published derivative recorded "state" for
+    # every count Virginia and Maryland published alike.
+    assert feature.agency == "vdot"
+    row = json.loads((reference / "volume.json").read_text())[0]
+    assert (row["source"], row["agency"]) == ("state", "vdot")
     assert feature.coordinates == [(-77.02, 38.90), (-76.98, 38.90)]
     assert loaded.unmatched_crossings, "the toy extract has none of the real bridges"
     # Named, not just counted, and named from both halves of the union: a
@@ -410,6 +416,10 @@ class TestTwoAgenciesCoveringTheSameRoad:
         matched = conflate(ways, reference.volume_features).matched
         assert matched[100].aadt == 9000, "the locality's own survey outranks the state's"
         assert matched[100].source == "locality"
+        # The tier decided the contest; the agency is what says who won it, and
+        # the two are separate fields because they answer separate questions.
+        assert matched[100].agency == "ddot"
+        assert {row["agency"] for row in rows} == {"vdot", "ddot"}
 
     def test_an_unplaced_agency_is_refused_rather_than_ranked_last(self, tmp_path) -> None:
         """Defaulting an unknown agency to "no precedence" is a silent guess at

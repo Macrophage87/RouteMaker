@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 import pytest
 from django.contrib.gis.geos import LineString, MultiPolygon, Polygon
 from django.db import connection
@@ -148,6 +150,14 @@ def test_federal_enclave_flag_survives_to_the_crossing(authorities) -> None:
         "Eastern Ave",
         "Southern Ave SE",
         "eastern ave se",
+        # The `av` alternative, which no case reached: OSM carries "Western Av"
+        # and "Eastern Av NE" on stretches of both streets, and deleting `av`
+        # from `_STREET_TYPE` left the whole suite green while those stretches
+        # went unmatched - the same partial firing, one abbreviation further in.
+        "Western Av",
+        "Eastern Av NE",
+        "Southern Av.",
+        "western av nw",
     ],
 )
 def test_boundary_streets_are_recognised(name: str) -> None:
@@ -164,7 +174,11 @@ def test_boundary_streets_are_recognised(name: str) -> None:
         # Normalising the street type must not turn an unrelated name into a
         # boundary street: it expands the abbreviation, it does not match on it.
         "Ave",
+        "Av",
         "Western Street",
+        # The abbreviation is expanded at the *end* of the name only, so a
+        # street type in the middle of one is not a boundary street either.
+        "Western Ave Park",
         "Western Ave Extended",
         None,
         "",
@@ -387,3 +401,89 @@ def test_a_long_boundary_stretch_between_two_inland_legs_is_still_reported(autho
     ]
     assert shared[0].length_m > 1000, "the stretch along the line is most of the route"
     assert {shared[0].authority, shared[0].also_authority} == {"MPD", "Arlington County Police"}
+
+
+# Metres per degree of longitude at this fixture's latitude, so a test can place
+# a route a stated number of metres off the shared edge at -77.00.
+METRES_PER_DEGREE_LON = 111_320.0 * math.cos(math.radians(38.90))
+# And of latitude, so a shared stretch can be given a stated length.
+METRES_PER_DEGREE_LAT = 111_320.0
+
+
+def test_the_shared_boundary_constants_are_the_figures_the_module_argues_for() -> None:
+    """Both were free. `SHARED_BOUNDARY_TOLERANCE_M` moved from 2.0 to 20.0 and
+    `MIN_SHARED_RUN_M` from 50.0 to 5.0 with the whole suite green, because
+    every case above is either a route *on* the line - centimetres from both
+    polygons, which clears any tolerance - or one well inland, and every shared
+    stretch in them is either one vertex long or over a kilometre. Neither
+    figure had a case anywhere near it, so the two behavioural pins below stand
+    on either side of each, and the figures themselves are typed in here the way
+    `stress`'s Furth widths are.
+    """
+    from pipeline.jurisdiction import MIN_SHARED_RUN_M, SHARED_BOUNDARY_TOLERANCE_M
+
+    assert SHARED_BOUNDARY_TOLERANCE_M == 2.0
+    assert MIN_SHARED_RUN_M == 50.0
+
+
+@pytest.mark.parametrize(
+    ("offset_m", "shared"),
+    [(0.5, True), (1.5, True), (3.0, False), (10.0, False)],
+)
+def test_the_tolerance_decides_how_far_off_the_line_is_still_the_line(
+    authorities, offset_m: float, shared: bool
+) -> None:
+    """What the two metres buy, on either side of the figure.
+
+    A boundary street's centreline *is* the line, so its vertices sit within
+    centimetres of both polygons; a street a few metres inside the District is
+    a District street and naming a Virginia authority on it would put a county
+    on a permit application for a ride that never left DC. Widening the
+    tolerance to 20 m - which the suite allowed - reaches the next street over.
+    """
+    from pipeline.jurisdiction import route_crossings
+
+    lon = -77.00 - offset_m / METRES_PER_DEGREE_LON
+    route = LineString((lon, 38.890), (lon, 38.910), srid=4326)
+    crossings = route_crossings(route, layer="police")
+    assert crossings
+    named_both = [c for c in crossings if c.also_authority]
+    assert bool(named_both) is shared, (
+        offset_m,
+        [(c.authority, c.also_authority) for c in crossings],
+    )
+
+
+@pytest.mark.parametrize(
+    ("run_m", "reported"),
+    [(20.0, False), (40.0, False), (120.0, True), (400.0, True)],
+)
+def test_the_minimum_run_separates_a_boundary_street_from_a_crossing(
+    authorities, run_m: float, reported: bool
+) -> None:
+    """The other constant, on either side of its figure.
+
+    Every ordinary boundary crossing puts a vertex within the tolerance of both
+    sides, so without a minimum each one grows a short "both authorities" run in
+    front of it and an out-and-back through one county reports four entries
+    instead of two. A boundary street runs for blocks. The route here comes out
+    of the District, runs along the line for `run_m`, and turns back inland, so
+    the only thing varying between the cases is the length of the shared
+    stretch.
+    """
+    from pipeline.jurisdiction import route_crossings
+
+    half = run_m / 2 / METRES_PER_DEGREE_LAT
+    route = LineString(
+        (-77.02, 38.900 - half),
+        (-77.00, 38.900 - half),
+        (-77.00, 38.900 + half),
+        (-77.02, 38.900 + half),
+        srid=4326,
+    )
+    crossings = route_crossings(route, layer="police")
+    shared = [c for c in crossings if c.also_authority]
+    assert bool(shared) is reported, (
+        run_m,
+        [(c.authority, c.also_authority, round(c.end_m - c.start_m)) for c in crossings],
+    )

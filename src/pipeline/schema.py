@@ -101,7 +101,23 @@ CREATE TABLE {schema}.segment (
     stress_tier     smallint    NOT NULL CHECK (stress_tier BETWEEN 1 AND 4),
     stress_rule     text        NOT NULL,
     stress_assumed  jsonb       NOT NULL DEFAULT '[]'::jsonb,
+    -- Volume provenance, three columns because three separate facts have to
+    -- survive into the published derivative. `volume_source` is the publishing
+    -- AGENCY (`ddot`, `vdot`, `mdot-sha`) and never the precedence tier it once
+    -- held: with "state" in this column an MDOT SHA count and a VDOT count were
+    -- the same row, and PLAN:31-34 asks the derivative to be able to name the
+    -- segments a conditionally licensed source influenced. `volume_aadt` is the
+    -- count and `volume_year` its vintage; a count nobody can date is a
+    -- different claim from a current one, which is why the year is stored
+    -- rather than assumed and is nullable rather than defaulted. All three are
+    -- null on a way no count reached.
+    --
+    -- No migration accompanies these: the segment schema is created whole by
+    -- `create_segment_schema` on every rebuild and promoted by rename, and
+    -- `core.models.Segment` is unmanaged.
     volume_source   text,
+    volume_aadt     integer,
+    volume_year     smallint,
     sinuosity       double precision,
     is_trail_class  boolean     NOT NULL DEFAULT false,
     -- Nullable on purpose: absent `surface` is unknown, not paved. Untagged

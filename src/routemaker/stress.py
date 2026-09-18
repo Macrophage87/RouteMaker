@@ -52,6 +52,20 @@ pins the case; the divergence is one tier, never reaches `is_top_tier`, and is
 recorded as an owner decision in the review log rather than closed by putting
 the floor on both branches.
 
+Both provisions are read on the worst side a rider may be made to use. A
+painted lane and a paved shoulder can each be tagged per side, and on a two-way
+street the two sides are the two directions of travel while one tier is stored
+per way - so a facility on one side only is mixed traffic for a rider heading
+the other way, and where both sides carry one it is the narrower that counts. On
+a one-way street there is one direction and one side in use, so either side
+answers for the way, which is what keeps the District's contraflow lanes
+(`cycleway:left=opposite_lane` on a one-way street) reading as the facility they
+are. Presence and width had disagreed about this - presence was "any side" and
+width was "the worst side" - and the disagreement made building the second half
+of a facility a penalty: a 25 mph secondary with a 2.0 m lane on the left and
+`cycleway:right=no` was LTS1, the same street with 2.0 m and 1.2 m lanes on both
+sides was LTS2, and the same street bare was LTS2.
+
 One provision earns one credit. Volume is a modifier on roads with *no*
 provision, so a road that has taken the bike-lane table's credit does not also
 take the volume credit - and "has a provision" has to mean the same thing at the
@@ -85,6 +99,8 @@ from enum import IntEnum
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 from .tags import (
+    PAINTED_CYCLEWAY,
+    SEPARATED_CYCLEWAY,
     cycleway_values,
     cycleway_width_m,
     has_parking_lane,
@@ -172,32 +188,13 @@ DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL = 50.0
 
 DEFAULT_LANES_PER_DIRECTION = 1
 
-# The `cycleway` values that describe a facility *on this way*, split by how much
-# separation the facility gives, because the two sets score on different tables.
-#
-# `separate` is deliberately absent from both, and its absence is the whole of
-# the rule these sets encode: a cycleway value has to describe a facility this
-# way carries. `cycleway=separate` says the opposite - that the facility is
-# mapped as a way of its own, somewhere off to the side - so it is a pointer to
-# another OSM object and says nothing whatever about the carriageway. Reading it
-# as a separated track here rated the roadway by the facility next to it: a
-# 45 mph six-lane primary tagged `cycleway=separate` came out LTS1, where the
-# same road bare comes out LTS4, and it shut the volume gate too because a
-# cycleway value counts as a provision. The separate way is in the extract and
-# is classified on its own merits - it is trail-class, so it returns LTS1 at the
-# top of `classify` - so the low-stress reading is already in the graph, on the
-# object that earned it. The roadway is scored as the roadway it is.
-#
-# `tags.has_parking_lane` reads the same OSM idiom the same way: `parking:*
-# =separate` is in its `absent` set, because there too the value means "recorded
-# elsewhere", not "present here".
-#
-# `left` and `right` are absent for a related reason: they are key suffixes
-# (`cycleway:left=lane`), never values, and `cycleway_values` only ever yields
-# the value half of a tag. Listing them here could only ever match a way tagged
-# `cycleway=left`, which is not a thing a mapper writes.
-SEPARATED_CYCLEWAY = frozenset({"track", "opposite_track"})
-PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane"})
+# `SEPARATED_CYCLEWAY` and `PAINTED_CYCLEWAY` are defined in `tags` and
+# re-exported here, where the facility step reads them. They moved because
+# `tags.cycleway_values` has to rank one side of a road against the other before
+# this module sees either side, and ranking needs to know which values are
+# facilities and how much separation each gives; the comment explaining what is
+# in the sets and what is deliberately not - `separate` above all - is on them
+# there.
 
 # A shoulder narrower than this is not somewhere a rider can sit.
 RIDEABLE_SHOULDER_M = 1.2
@@ -247,12 +244,29 @@ class StressResult:
     history needs to know whether the speed was posted or assumed, and the
     published derivative needs to know which segments were influenced by a
     conditionally licensed source.
+
+    `volume_source` is the **publishing agency** - `ddot`, `vdot`, `mdot-sha` -
+    and never the precedence tier. It held the tier for a while, which is to say
+    it held "state" for every count Virginia and Maryland published alike, and
+    the claim in the paragraph above was false while it did: a derivative built
+    on a conditionally licensed Maryland layer could not be told from one built
+    on VDOT's. `conflation.AgencyFeature` carries both facts and they are not
+    interchangeable; the tier stays in `conflation` where the ranking is.
+
+    `volume_aadt` and `volume_year` are the count itself and its vintage, kept
+    for the same reason and set whenever a count was in hand - whether or not
+    the volume gate moved the tier, because the question the derivative asks is
+    which segments a source *touched*, not which ones it changed. A count with
+    no year is a count nobody can date, so the field is nullable and its
+    emptiness is a fact about the source rather than a default.
     """
 
     tier: Stress
     rule: str
     assumed: tuple[str, ...] = field(default_factory=tuple)
     volume_source: str | None = None
+    volume_aadt: int | None = None
+    volume_year: int | None = None
 
     @property
     def is_top_tier(self) -> bool:
@@ -347,8 +361,14 @@ def classify(
     aadt: int | None = None,
     aadt_source: str | None = None,
     urban: bool = True,
+    aadt_year: int | None = None,
 ) -> StressResult:
     """Classify one way. `aadt` is bidirectional vehicles per day, already normalized.
+
+    `aadt_source` is the publishing agency, not its precedence tier - see
+    `StressResult` - and `aadt_year` is the count's vintage. Both are recorded
+    on the result whenever `aadt` is given, and both are the derivative's only
+    route back to which agency's data is in a segment.
 
     `urban` selects which speed defaults apply where nothing is posted. It comes
     from the coverage polygon's urban-area layer at preprocessing time; the
@@ -387,6 +407,14 @@ def classify(
         lanes = DEFAULT_LANES_PER_DIRECTION
         assumed.append("lanes")
 
+    # The provision on the *worst side a rider may be made to use*, not every
+    # value tagged anywhere on the way. On a two-way street the sides are the
+    # two directions and one tier is stored per way, so a lane on one side only
+    # is mixed traffic for the other direction; on a one-way street there is one
+    # side in use and either side answers. The same rule runs through
+    # `cycleway_width_m`, `has_shoulder` and `shoulder_width_m`, and it is what
+    # keeps building the second side of a facility from *raising* a road's
+    # stress. See `tags.cycleway_values`.
     cycleways = cycleway_values(tags)
     parking = has_parking_lane(tags)
     if parking is None:
@@ -545,7 +573,11 @@ def classify(
     # one definition of "has a provision", shared with the facility step above
     # so that one provision earns exactly one credit; see the module docstring
     # for what happened while the two steps disagreed about a paved shoulder.
+    # Recorded from the presence of a count, not from the gate firing: a
+    # segment a source touched is a segment that source influenced, whether or
+    # not the modifier below moved the tier.
     volume_source = aadt_source if aadt is not None else None
+    volume_year = aadt_year if aadt is not None else None
     if aadt is not None and lanes <= 1 and not has_facility:
         # A guessed speed may not be improved by a guess, but a measured count is
         # evidence: the conservative rule is about missing evidence, not about
@@ -594,7 +626,7 @@ def classify(
     if tier is Stress.LTS1 and is_rough(tags):
         tier, rule = Stress.LTS2, rule + ", rough surface"
 
-    return StressResult(tier, rule, tuple(assumed), volume_source)
+    return StressResult(tier, rule, tuple(assumed), volume_source, aadt, volume_year)
 
 
 def is_rough(tags: dict[str, str]) -> bool:
