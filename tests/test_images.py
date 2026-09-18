@@ -591,6 +591,55 @@ def test_the_api_entrypoint_derives_its_fallback_from_a_cpu_budget(tmp_path) -> 
     assert workers_of(argv) == 2 * cores + 1, argv
 
 
+def cpu_max_stub(tmp_path: Path, contents: str) -> str:
+    """A stand-in for `/sys/fs/cgroup/cpu.max`, handed to the script by path.
+
+    The box this suite runs on is usually under no cgroup v2 cpu quota at all,
+    so the entrypoint's quota branch is unreachable here unless it is pointed
+    somewhere a test can write - which is what `CGROUP_CPU_MAX_FILE` is for.
+    """
+    path = tmp_path / "cpu.max"
+    path.write_text(f"{contents}\n")
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    ("cpu_max", "workers", "why"),
+    [
+        ("200000 100000", 5, "two whole cores: 2 * 2 + 1"),
+        ("150000 100000", 5, "one and a half cores round UP to two, not down to one"),
+        ("50000 100000", 3, "half a core rounds up to one"),
+        ("0 100000", 3, "a degenerate zero quota is floored at one core, not zero"),
+        ("max 100000", 129, "no quota at all: the host's nproc, stubbed at 64"),
+    ],
+)
+def test_the_api_entrypoint_worker_count_follows_the_cgroup_quota(
+    tmp_path, cpu_max: str, workers: int, why: str
+) -> None:
+    """The fallback worker count, *run* against a quota file rather than read.
+
+    This is the test that holds the cgroup branch up. `nproc` is stubbed at an
+    absurd 64 - 129 workers, the OOM-kill figure PLAN:293's 8-vCPU host used to
+    produce - so a script that stopped consulting the quota, or never called
+    the function, lands on 129 and every quota case below fails at once.
+
+    The arithmetic is `2 * cores + 1` over cores = ceil(quota / period), and
+    both ends of that rounding are pinned: 1.5 cores is worth two cores' worth
+    of workers, and half a core is still worth one.
+    """
+    argv = run_entrypoint(tmp_path, nproc=64, CGROUP_CPU_MAX_FILE=cpu_max_stub(tmp_path, cpu_max))
+    assert workers_of(argv) == workers, f"{cpu_max!r} ({why}): {argv}"
+
+
+def test_the_api_entrypoint_ignores_an_unreadable_quota_file(tmp_path) -> None:
+    """A cgroup v1 host, or a namespace that does not expose the file at all,
+    falls through to `nproc` rather than failing to start."""
+    argv = run_entrypoint(
+        tmp_path, nproc=4, CGROUP_CPU_MAX_FILE=str(tmp_path / "absent" / "cpu.max")
+    )
+    assert workers_of(argv) == 9, argv
+
+
 def test_the_api_entrypoint_reads_the_cgroup_quota_before_nproc() -> None:
     """The ordering, in the text, because the box this suite runs on decides
     which of the two branches the test above actually exercises."""

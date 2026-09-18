@@ -28,9 +28,16 @@ set -eu
 # honest case for falling through to nproc, since then the service really does
 # have the machine. A v1 host, or a cgroup namespace that does not expose the
 # file, falls through the same way.
+# The path is a variable so the suite can point the function at a stub file.
+# A build box is usually *not* under a cgroup v2 cpu quota, so without this the
+# only branch a test can reach is the nproc fallback, and the arithmetic that
+# this whole block exists for - the rounding, and the floor of one core - would
+# never be run. Nothing sets it in production; the default is the real file.
+CGROUP_CPU_MAX_FILE=${CGROUP_CPU_MAX_FILE:-/sys/fs/cgroup/cpu.max}
+
 cgroup_cpus() {
-    [ -r /sys/fs/cgroup/cpu.max ] || return 1
-    read -r quota period < /sys/fs/cgroup/cpu.max || return 1
+    [ -r "$CGROUP_CPU_MAX_FILE" ] || return 1
+    read -r quota period < "$CGROUP_CPU_MAX_FILE" || return 1
     case "$quota" in
         ''|*[!0-9]*) return 1 ;;
     esac
