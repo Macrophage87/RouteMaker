@@ -551,12 +551,20 @@ class AuditLogEntry(models.Model):
 
         Three distinct answers, which is the point of carrying the id as well as
         the foreign key: a live account, a deleted one, and no actor at all.
+
+        "No actor" is two populations rather than one, and the label says so.
+        A scheduled task has no request and so no actor; so does a host operator
+        running `manage.py run_rebuild_now` or `rollback_rebuild` through
+        `docker compose exec`, which audits with `actor=None` for the same
+        reason. Reading an actorless row as "the worker did it" would put a
+        human action on the machine's account, and the log has no other column
+        that would correct it.
         """
         if self.actor_id is not None:
             return str(self.actor)
         if self.actor_user_id is not None:
             return f"deleted user {self.actor_user_id}"
-        return "no actor (worker)"
+        return "no actor (worker or host operator)"
 
 
 class ScheduledRun(models.Model):

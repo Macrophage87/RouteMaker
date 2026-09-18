@@ -494,6 +494,36 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
             return True
         return guild.guild_id in getattr(request.user, "_admin_guild_ids", frozenset())
 
+    def _audit_selection_the_scoping_dropped(self, request, queryset) -> None:
+        """The refusal `get_queryset` makes silently, written down.
+
+        `response_action` builds an action's queryset by filtering
+        `get_queryset` down to the posted `_selected_action` ids, so a guild
+        admin who hand-builds a POST naming another guild's id arrives here with
+        that id already gone and the loop below simply does not run. The attempt
+        is refused - correctly, by the scoping - and until this existed it was
+        refused with nothing in the log, which is the one shape of refusal on
+        this surface the plan asks to be audited and this page was dropping.
+
+        Keyed on the ids that fell outside, as the strings the POST carried: a
+        hand-built POST is under no obligation to name a row that exists, so
+        there is nothing to resolve them to and the raw selection is what an
+        instance admin reading the log needs to see.
+        """
+        selected = request.POST.getlist("_selected_action")
+        if not selected:
+            return
+        present = {str(pk) for pk in queryset.values_list("pk", flat=True)}
+        outside = [pk for pk in selected if pk not in present]
+        if not outside:
+            return
+        self._audit_refusal(request, "revoke_now", ",".join(outside))
+        self.message_user(
+            request,
+            f"Refused: {len(outside)} selected guild(s) are not yours to revoke.",
+            level=messages.ERROR,
+        )
+
     @admin.action(description="Revoke now - end this guild's standing immediately")
     def revoke_now(self, request, queryset) -> None:
         """The transition the degraded window has had no way into.
@@ -503,6 +533,7 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
         guild could never be marked degraded or revoked and the plan's audited
         revoke-now existed on no surface.
         """
+        self._audit_selection_the_scoping_dropped(request, queryset)
         now = timezone.now()
         revoked = 0
         for guild in queryset:
