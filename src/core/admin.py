@@ -214,6 +214,37 @@ class AuditedAdmin(admin.ModelAdmin):
             detail=f"{type(self).__name__} refused {action} over {request.method}",
         )
 
+    def _audit_refused_selection(self, request, action: str, selected) -> None:
+        """The same refusal, for the paths whose subject is a whole selection.
+
+        `object_id` is a 64-character column and a bulk selection is unbounded:
+        joining twenty-five ticked ids into it overflowed the column, and since
+        the write is the last thing that happens on the refusal path, what the
+        attacker got back was a 500 and an empty log. `record` now truncates, so
+        the row is written either way - but a row keyed on a comma-joined list
+        cut off mid-id identifies nothing and cannot be searched for, which is
+        the other half of the same defect.
+
+        So the two fields carry what each is shaped for. `object_id` gets the
+        first selected id, which is a value the `model`/`object_id` index can
+        actually be queried on, and `detail` - a TextField - carries how many
+        were selected and the list itself. Reading the log for "who tried this"
+        works on the first; reading one row tells you the rest.
+        """
+        selected = [str(value) for value in selected]
+        head = selected[0] if selected else None
+        record_audit(
+            getattr(request, "user", None),
+            action,
+            self.model._meta.model_name,
+            head,
+            AuditLogEntry.Outcome.REFUSED,
+            detail=(
+                f"{type(self).__name__} refused {action} over {request.method}; "
+                f"{len(selected)} selected: {','.join(selected)}"
+            ),
+        )
+
     def changeform_view(self, request, object_id=None, form_url="", extra_context=None):
         if request.method != "POST":
             return super().changeform_view(request, object_id, form_url, extra_context)
@@ -239,8 +270,9 @@ class AuditedAdmin(admin.ModelAdmin):
             self._refuse_unpermitted_action(request)
             return super().changelist_view(request, extra_context)
         except PermissionDenied:
-            selected = ",".join(request.POST.getlist("_selected_action"))
-            self._audit_refusal(request, "action", selected)
+            self._audit_refused_selection(
+                request, "action", request.POST.getlist("_selected_action")
+            )
             raise
 
     def _refuse_unpermitted_action(self, request) -> None:
@@ -508,7 +540,10 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
         Keyed on the ids that fell outside, as the strings the POST carried: a
         hand-built POST is under no obligation to name a row that exists, so
         there is nothing to resolve them to and the raw selection is what an
-        instance admin reading the log needs to see.
+        instance admin reading the log needs to see. Written through
+        `_audit_refused_selection` rather than joined into `object_id`, because
+        the selection is unbounded and that column is 64 characters wide - see
+        that method for which half of the row now carries which.
         """
         selected = request.POST.getlist("_selected_action")
         if not selected:
@@ -517,7 +552,7 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
         outside = [pk for pk in selected if pk not in present]
         if not outside:
             return
-        self._audit_refusal(request, "revoke_now", ",".join(outside))
+        self._audit_refused_selection(request, "revoke_now", outside)
         self.message_user(
             request,
             f"Refused: {len(outside)} selected guild(s) are not yours to revoke.",

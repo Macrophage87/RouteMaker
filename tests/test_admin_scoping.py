@@ -2331,3 +2331,238 @@ class TestTheCrossingsPageBeforeTheFirstRebuild:
         response = as_instance_admin.get(admin_url("core_bordercrossing_changelist"))
         assert response.status_code == 200
         assert "does not exist" in response.content.decode()
+
+
+# The audit writer's bounds, and the refusals that used to fall through them.
+#
+# `AuditLogEntry.object_id` is a `CharField(max_length=64)` and `detail` is a
+# `TextField`. The writer bounded the TextField and passed the CharField straight
+# through, which is the wrong way round in the way that matters: the value with the
+# narrow column behind it was the unbounded one, and it is the value a request
+# controls. Every refusal on this surface is written *after* `PermissionDenied`
+# has unwound the transaction, so the write is the last thing that happens - a
+# column that rejects it turns a 403 with a row into a 500 with none.
+#
+# That handed a guild admin a switch on their own audit trail. Padding the object
+# id in the URL they posted at, or ticking enough rows for a bulk action, made the
+# attempt unloggable: measured at 500 with zero rows against the plan's "refused
+# and audited" (PLAN.md:326). The padding is not a payload and needs no
+# sophistication - it is zeroes, and Django's admin routes `<path:object_id>` so
+# they arrive intact.
+#
+# Every probe below is one of those, and each asserts both halves: the refusal the
+# request deserves, and exactly one row recording it.
+
+
+# Long enough to overflow a 64-character column several times over, and made of
+# the one character that cannot be mistaken for an escaping problem.
+PADDING = "0" * 120
+
+# The three tables the finding was measured on: the ones a guild admin can open
+# a change form for and write nothing on.
+PADDED_TARGETS = ["rolemapping", "cachedmembership", "configuredguild"]
+
+
+def column_width() -> int:
+    from core.models import AuditLogEntry
+
+    return AuditLogEntry._meta.get_field("object_id").max_length
+
+
+def padded(url: str, pk) -> str:
+    """The same admin URL with the object id padded past the column width.
+
+    Built by substitution on the reversed URL rather than by string-building the
+    path, so the test keeps working if the admin prefix or the URL shape moves.
+    """
+    assert f"/{pk}/" in url, url
+    return url.replace(f"/{pk}/", f"/{pk}{PADDING}/", 1)
+
+
+class TestTheWriterBoundsWhatTheColumnBounds:
+    def test_the_named_bound_is_the_column(self) -> None:
+        """A number spelled twice drifts. This is the assertion that stops the
+        constant and the migration disagreeing quietly."""
+        from core.audit import OBJECT_ID_MAX
+
+        assert OBJECT_ID_MAX == column_width()
+
+    @db
+    def test_an_overlong_object_id_is_truncated_rather_than_raising(self) -> None:
+        """Directly at the writer, because every caller below depends on it.
+
+        Bounding at the call sites instead would be a rule the next call site
+        has to remember, and the call sites are exactly what cannot be relied on
+        here: the bulk paths join a whole selection into this argument.
+        """
+        from core.audit import record
+        from core.models import AuditLogEntry
+
+        entry = record(None, "probe", "rolemapping", "9" * 500, AuditLogEntry.Outcome.REFUSED)
+
+        entry.refresh_from_db()
+        assert entry.object_id == "9" * column_width()
+
+    @db
+    def test_none_is_still_the_empty_string(self) -> None:
+        """The truncation must not change what a missing id records as; the
+        worker paths pass None."""
+        from core.audit import record
+        from core.models import AuditLogEntry
+
+        entry = record(None, "probe", "rolemapping", None, AuditLogEntry.Outcome.REFUSED)
+        entry.refresh_from_db()
+        assert entry.object_id == ""
+
+
+@db
+class TestAPaddedUrlCannotSuppressTheRefusalRow:
+    """The switch, in each of the places it was reachable.
+
+    Measured before the bound: 500 and no row. The unpadded form of the same
+    request was 403 and one row the whole time, so the only thing separating a
+    logged attempt from an unlogged one was the length of a number.
+    """
+
+    @pytest.mark.parametrize("model", PADDED_TARGETS)
+    def test_a_padded_change_post_is_refused_and_recorded(
+        self, as_guild_admin, rows, model
+    ) -> None:
+        row = rows[model]
+        response = as_guild_admin.post(
+            padded(admin_url(f"core_{model}_change", row.pk), row.pk), {"role_id": 1}
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == (model, "change")
+        assert entry.actor.discord_user_id == 9002
+        assert len(entry.object_id) <= column_width()
+
+    @pytest.mark.parametrize("model", PADDED_TARGETS)
+    def test_a_padded_delete_post_is_refused_and_recorded(
+        self, as_guild_admin, rows, model
+    ) -> None:
+        row = rows[model]
+        response = as_guild_admin.post(
+            padded(admin_url(f"core_{model}_delete", row.pk), row.pk), {"post": "yes"}
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == (model, "delete")
+        assert len(entry.object_id) <= column_width()
+
+    def test_the_unpadded_form_of_the_same_request_is_unchanged(self, as_guild_admin, rows) -> None:
+        """So the rows above are the padding being survived and not the padding
+        being the only thing that refuses."""
+        row = rows["rolemapping"]
+        response = as_guild_admin.post(admin_url("core_rolemapping_change", row.pk), {"role_id": 1})
+        assert response.status_code == 403
+        assert refusals().get().object_id == str(row.pk)
+
+
+@db
+class TestABulkSelectionIsRecordedReadably:
+    """The other way past a 64-character column, and the one that needs no
+    hand-built URL at all: tick enough boxes.
+
+    `changelist_view` joined the whole selection into `object_id`, so a
+    twenty-five row `delete_selected` overflowed it - 500, zero rows, from the
+    changelist's own checkboxes. Truncating the join would have written the row
+    but keyed it on a list cut off mid-id, which identifies nothing and cannot
+    be searched for. So the two fields carry what each is shaped for.
+    """
+
+    SELECTION = [str(n) for n in range(1, 26)]
+
+    def post_bulk(self, client, selection):
+        return client.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": selection,
+                "index": "0",
+                "post": "yes",
+            },
+        )
+
+    def test_twenty_five_ticked_rows_are_refused_and_recorded(self, as_guild_admin, rows) -> None:
+        assert self.post_bulk(as_guild_admin, self.SELECTION).status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == ("rolemapping", "action")
+        assert len(entry.object_id) <= column_width()
+
+    def test_the_row_is_keyed_on_a_single_id_and_not_a_cut_off_join(
+        self, as_guild_admin, rows
+    ) -> None:
+        """Keyed on something the `model`/`object_id` index can be queried on.
+
+        A truncated join is not that: it is neither the first id nor any id, so
+        an instance admin asking "what has been attempted against row 17" gets
+        nothing back.
+        """
+        self.post_bulk(as_guild_admin, self.SELECTION)
+
+        entry = refusals().get()
+        assert entry.object_id == self.SELECTION[0]
+        assert "," not in entry.object_id
+
+    def test_the_detail_carries_the_count_and_the_whole_selection(
+        self, as_guild_admin, rows
+    ) -> None:
+        """Because the first id alone loses what was actually attempted, and
+        `detail` is a TextField with room for it."""
+        self.post_bulk(as_guild_admin, self.SELECTION)
+
+        entry = refusals().get()
+        assert "25 selected" in entry.detail
+        for selected in self.SELECTION:
+            assert selected in entry.detail
+
+    def test_one_ticked_row_still_reads_as_that_row(self, as_guild_admin, rows) -> None:
+        """The single-object case is the common one and must not have been
+        turned into a list of one."""
+        self.post_bulk(as_guild_admin, [str(rows["rolemapping"].pk)])
+        assert refusals().get().object_id == str(rows["rolemapping"].pk)
+
+
+@db
+class TestTheRevokeNowSelectionSurvivesPadding:
+    """Wave 7's own refusal row, which the same column defeated.
+
+    `_audit_selection_the_scoping_dropped` exists because `response_action`
+    filters the posted ids through `get_queryset` before the action sees them,
+    so a hand-built POST at another club's guild arrives with the id already
+    gone. It joined those ids into `object_id` - so the attempt it was written
+    to catch could suppress it by naming a few more.
+    """
+
+    def revoke(self, client, selection):
+        return client.post(
+            admin_url("core_configuredguild_changelist"),
+            {"action": "revoke_now", "_selected_action": selection, "index": "0"},
+        )
+
+    def test_a_padded_selection_is_still_recorded(self, as_guild_admin, guild, other_guild) -> None:
+        fabricated = [str(900000 + n) for n in range(20)]
+        response = self.revoke(as_guild_admin, [str(other_guild.pk), *fabricated])
+        assert response.status_code == 302
+
+        entry = refusals().get(action="revoke_now")
+        assert entry.model == "configuredguild"
+        assert entry.actor.discord_user_id == 9002
+        assert len(entry.object_id) <= column_width()
+        assert entry.object_id == str(other_guild.pk), "keyed on the first id selected"
+        assert "21 selected" in entry.detail
+        for fake in fabricated:
+            assert fake in entry.detail
+
+    def test_nothing_was_revoked_by_it(self, as_guild_admin, guild, other_guild) -> None:
+        """The record is the half that was missing; the refusal itself must not
+        have moved."""
+        self.revoke(as_guild_admin, [str(other_guild.pk), *[str(900000 + n) for n in range(20)]])
+        other_guild.refresh_from_db()
+        guild.refresh_from_db()
+        assert (other_guild.state, guild.state) == ("active", "active")
