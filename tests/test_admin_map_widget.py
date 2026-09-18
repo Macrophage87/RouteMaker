@@ -165,11 +165,21 @@ def django_pinned_openlayers_version() -> str:
 
 
 def test_the_vendored_version_is_the_one_django_asks_for() -> None:
+    """Anchored to the `Version` block's own first word, not to the file.
+
+    `version in source` was true of prose: the number appears in the release
+    URL, in the sentence about jsdelivr and in the "keep this in step" note, so
+    a SOURCE whose *declaration* said 8.0.0 while the release URL still said
+    7.2.2 passed - which is precisely the state a half-finished upgrade leaves
+    the file in, and precisely what this test exists to catch.
+    """
     version = django_pinned_openlayers_version()
     source = (VENDORED / "SOURCE").read_text()
-    assert version in source, (
+    declared = re.search(r"^Version\n[ \t]+(\S+)", source, re.MULTILINE)
+    assert declared, "SOURCE has no `Version` block declaring one"
+    assert declared.group(1) == version, (
         f"Django 5's OpenLayersWidget is built against OpenLayers {version} and "
-        f"core/static/core/ol/SOURCE does not name it"
+        f"core/static/core/ol/SOURCE declares {declared.group(1)}"
     )
     assert f"openlayers/releases/download/v{version}/" in source, (
         "SOURCE must name the release the files were taken from, at that version"
@@ -267,6 +277,17 @@ class TestNeitherAdminMapPageLeavesThisDeployment:
         body = page(as_instance_admin, self.urls(jurisdiction)[which])
         assert "ol.source.XYZ" not in body
         assert "ol.layer.Tile" not in body
+        # And the layer is present rather than absent, which is the whole of the
+        # empty branch. `var base_layer = null` passes every negative assertion
+        # above and is the worst possible value: Django's own OLMapWidget.js
+        # builds `new ol.source.OSM()` when `options.base_layer` is falsy, so a
+        # page with no layer at all is a page that fetches tile.openstreetmap.org
+        # - the one thing PLAN.md:15 rules out - from inside the vendored ol.js.
+        assert "var base_layer = new ol.layer.Vector" in body, (
+            "the empty branch must build an empty vector layer; a falsy base_layer "
+            "makes Django's MapWidget fall back to ol.source.OSM"
+        )
+        assert "new ol.source.Vector()" in body
 
     @pytest.mark.parametrize("which", ["add", "change"])
     def test_a_configured_basemap_becomes_one_xyz_source_and_nothing_else(
@@ -289,6 +310,30 @@ class TestNeitherAdminMapPageLeavesThisDeployment:
         assert "ol.source.OSM" not in body
         # The configured host, and nothing that arrived with it.
         assert foreign_hosts(body, "testserver") == {"tiles.example.test"}
+        # And it is a JavaScript *string literal*, not a bare token. Without the
+        # quotes `json.dumps` puts round it, `{url: https://.../{z}/{x}/{y}.png}`
+        # is a syntax error and the widget does not initialise at all.
+        assert f'url: "{url}"' in body, "the URL is interpolated into script unquoted"
+
+    @pytest.mark.parametrize("configured", ["   ", "\t", "\n  ", " \t\n "])
+    def test_a_whitespace_only_setting_is_not_a_configured_basemap(
+        self, as_instance_admin, jurisdiction, settings, configured
+    ) -> None:
+        """A trailing newline in an env file is not an operator's choice.
+
+        `.env` files pick up spaces and newlines, and `"  "` is truthy. Without
+        the `.strip()` in `basemap_tile_url` the widget takes a run of spaces
+        for a tile template and emits `new ol.source.XYZ({url: "  "})`, which is
+        a layer requesting the admin page's own directory once per tile.
+        """
+        from core.widgets import basemap_tile_url
+
+        settings.ADMIN_BASEMAP_TILE_URL = configured
+        assert basemap_tile_url() == "", "whitespace is not a configured basemap"
+
+        body = page(as_instance_admin, self.urls(jurisdiction)["add"])
+        assert "ol.source.XYZ" not in body
+        assert "var base_layer = new ol.layer.Vector" in body
 
 
 # --- The widget is still a map ----------------------------------------------------------
@@ -361,3 +406,114 @@ def test_a_polygon_drawn_on_the_map_still_saves(client, monkeypatch) -> None:
     saved = Jurisdiction.objects.get(name="Drawn By Hand")
     assert saved.geometry.srid == 4326
     assert saved.geometry.intersects(GEOSGeometry(SQUARE, srid=4326))
+
+
+# --- The one value that reaches a <script> block ----------------------------------------
+
+
+class TestTheTileUrlIsEscapedWhereItIsInterpolated:
+    """`js_string_literal` is the only thing between a settings value and a
+    `<script>` body, and every part of it survived mutation: replacing the whole
+    function with `mark_safe(value)` left the suite green, and so did dropping
+    the `<` escape on its own.
+
+    The tile URL is an operator's setting rather than user input, so this is not
+    a live cross-site-scripting hole; it is the escaping that keeps it from
+    becoming one when a URL arrives from somewhere else, and an escape nothing
+    asserts is an escape that gets deleted in a refactor. The five characters
+    are the ones `django.utils.html.json_script` neutralises, for the same
+    reasons: `<` and `>` end the script element early, `&` is HTML-decoded
+    inside some contexts, and U+2028 and U+2029 are JavaScript line terminators
+    that end a string literal without a newline anyone can see.
+    """
+
+    def literal(self, value: str) -> str:
+        from core.widgets import js_string_literal
+
+        return str(js_string_literal(value))
+
+    def test_a_plain_url_is_a_quoted_json_string(self) -> None:
+        """The shape, not just the content: `mark_safe(value)` returns the bare
+        characters, which the template interpolates into `{url: ...}` as a
+        syntax error rather than a string."""
+        import json
+
+        url = "https://tiles.example.test/{z}/{x}/{y}.png"
+        literal = self.literal(url)
+        assert literal == json.dumps(url)
+        assert literal.startswith('"') and literal.endswith('"')
+        assert json.loads(literal) == url, "the literal must round-trip to the value"
+
+    def test_the_result_is_marked_safe(self) -> None:
+        """Because autoescaping would turn the quotes into `&quot;`. The mark is
+        load-bearing and is the reason the escaping has to be complete here."""
+        from django.utils.safestring import SafeString
+
+        from core.widgets import js_string_literal
+
+        assert isinstance(js_string_literal("https://example.test/"), SafeString)
+
+    @pytest.mark.parametrize(
+        ("character", "escaped"),
+        [
+            ("<", "\\u003C"),
+            (">", "\\u003E"),
+            ("&", "\\u0026"),
+            ("\u2028", "\\u2028"),
+            ("\u2029", "\\u2029"),
+        ],
+    )
+    def test_each_character_is_neutralised(self, character: str, escaped: str) -> None:
+        literal = self.literal(f"https://tiles.example.test/a{character}b")
+        assert character not in literal, f"{character!r} reaches the script body unescaped"
+        assert escaped in literal, f"{character!r} is not escaped as {escaped}"
+
+    def test_the_literal_is_ascii_whatever_it_was_handed(self) -> None:
+        """Which is the property behind the last two rows of the escape table.
+
+        U+2028 and U+2029 are neutralised today by `json.dumps`'s
+        `ensure_ascii=True` rather than by the table - deleting those two rows
+        changes no byte, and `core/widgets.py` records that. The assertion that
+        can still be made is the one that covers them and every other line
+        terminator, byte order mark and bidirectional override at once: whatever
+        reaches a `<script>` body from here is ASCII. Passing
+        `ensure_ascii=False` fails here even for a character nobody listed.
+        """
+        literal = self.literal("https://tiles.example.test/\u2028\u2029\ufeff\u202e/{z}.png")
+        assert literal.isascii(), f"a non-ASCII character reaches the script body: {literal!r}"
+
+    def test_a_closing_script_tag_cannot_close_the_script(self) -> None:
+        """The payload the escaping exists for, end to end through the function.
+
+        `</script>` inside a JavaScript string literal ends the element in every
+        HTML parser regardless of the quotes round it, so this is the one case
+        where correct JSON is still unsafe markup.
+        """
+        import json
+
+        payload = "https://tiles.example.test/</script><script>alert(1)</script>/{z}.png"
+        literal = self.literal(payload)
+        assert "</script>" not in literal
+        assert "<" not in literal and ">" not in literal
+        assert "\\u003C/script\\u003E" in literal
+        assert json.loads(literal) == payload, "neutralised, not mangled"
+
+
+@db
+def test_the_rendered_page_escapes_the_configured_url_rather_than_the_setting(
+    as_instance_admin, jurisdiction, settings
+) -> None:
+    """The template has to use the escaped context value, not the raw one.
+
+    Asserted through the page because that is where the two can come apart:
+    `basemap_tile_url` and `basemap_tile_url_js` are both in the context, and
+    `{{ basemap_tile_url }}` renders without a syntax error in the ordinary
+    case - it would simply be autoescaped, unquoted and broken only for values
+    nobody tests with.
+    """
+    settings.ADMIN_BASEMAP_TILE_URL = "https://tiles.example.test/</script>/{z}/{x}/{y}.png"
+
+    body = page(as_instance_admin, add_url())
+    assert "\\u003C/script\\u003E" in body, "the URL is not escaped where it is interpolated"
+    assert "tiles.example.test/</script>" not in body
+    assert "&quot;" not in body.split("<script>")[-1], "the literal was HTML-escaped instead"
