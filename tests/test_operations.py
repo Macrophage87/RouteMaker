@@ -1792,3 +1792,67 @@ def test_the_percentages_the_page_renders_are_percentages(monkeypatch) -> None:
     unmeasured = disk_headroom()
     assert unmeasured["status"] == "unmeasured"
     assert unmeasured["fraction_pct"] == 80.0, unmeasured
+
+
+@db
+def test_unwedge_job_reports_the_status_the_retry_actually_left(tmp_path) -> None:
+    """Read back, not assumed.
+
+    `procrastinate_retry_job_v2` does not always requeue: a `doing` job with an
+    abort requested on it is *finished* as `failed` instead, which is the right
+    answer - somebody asked this job to stop - and the wrong thing to print
+    "is queued again" about. Told that, an operator watches the rebuild service
+    for a job that will never be picked up, and the audit row says a job went
+    back on the queue when it did not.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import AuditLogEntry
+
+    job_id = wedged_rebuild()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET abort_requested = true WHERE id = %s", [job_id]
+        )
+
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+
+    landed = job_status(job_id)
+    assert landed == "failed", (
+        "the premise of this test: an abort request turns the retry into a finish, and if "
+        "Procrastinate has changed that, what this command prints has to be re-derived"
+    )
+    printed = out.getvalue()
+    assert "is now failed" in printed, printed
+    assert "queued again" not in printed, (
+        f"the command claimed the job was requeued when the retry failed it: {printed}"
+    )
+    entry = AuditLogEntry.objects.get(action="unwedge_job")
+    assert "is now failed" in entry.detail, entry.detail
+
+
+@db
+def test_unwedge_job_is_not_blocked_by_the_lock_its_own_row_holds() -> None:
+    """The queueing-lock check is about *another* job.
+
+    It can only ever be about another job, because the row being unwedged is
+    `doing` - the command refuses anything else before it gets here - and
+    Procrastinate's queueing-lock index is partial on `WHERE status = 'todo'`.
+    So the wedged job's own lock is not a collision with itself, and the
+    exclusion of its own id is a belt on top of that braces.
+    """
+    from django.core.management import call_command
+    from procrastinate.contrib.django.models import ProcrastinateJob
+
+    job_id = wedged_rebuild()
+    assert ProcrastinateJob.objects.get(id=job_id).queueing_lock == "weekly_rebuild"
+    assert not ProcrastinateJob.objects.filter(
+        queueing_lock="weekly_rebuild", status="todo"
+    ).exists(), "nothing else holds the lock, and the wedged row itself is `doing`"
+
+    call_command("unwedge_job", str(job_id))
+
+    assert job_status(job_id) == "todo"

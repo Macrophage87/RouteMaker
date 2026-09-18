@@ -166,3 +166,32 @@ def test_the_dry_run_prints_the_restart_hint(stubbed_rollback) -> None:
     assert RESTART_HINT in printed
     for variant in ("valhalla-standard", "valhalla-no-trail", "valhalla-ebike"):
         assert variant in printed, variant
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_refusal_names_the_oldest_rebuild_in_flight(stubbed_rollback) -> None:
+    """Two can be in flight at once - Procrastinate's queueing-lock index is
+    partial on `WHERE status = 'todo'`, so a running rebuild and a queued one
+    coexist - and the one the operator has to deal with is the running one.
+
+    `jobs_in_flight` returns them oldest first. Named from the other end, the
+    refusal points at the job that is merely queued while the one actually
+    writing into the staging schema goes unmentioned: the operator is told to
+    watch `docker compose logs -f rebuild` for a job that is not running, and
+    the running one is what the rollback would have been racing.
+    """
+    running = app.tasks["weekly_rebuild"].defer(timestamp=0)
+    set_status(running, "doing")
+    queued = app.tasks["weekly_rebuild"].defer(timestamp=1)
+    assert queued > running, "ids are handed out in order, so the older job sorts first"
+
+    with pytest.raises(CommandError) as refused:
+        call_command("rollback_rebuild", "--confirm")
+
+    message = str(refused.value)
+    assert f"job {running} is doing" in message, (
+        f"the refusal does not name the running rebuild, which is the one a rollback "
+        f"would be racing: {message}"
+    )
+    assert f"job {queued}" not in message, message
+    assert stubbed_rollback == []
