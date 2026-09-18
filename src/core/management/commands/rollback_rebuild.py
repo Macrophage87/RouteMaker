@@ -12,6 +12,20 @@ wants twice: it retires the graph being served. Run with no arguments it prints
 `rollback_target`'s verdict - the build each variant would go back to, or the
 refusal naming every part of a previous deployment that is missing - and
 changes nothing. `--confirm` is the whole of the difference.
+
+It refuses outright while a rebuild is in flight, which `run_rebuild_now` did
+and this did not. `rollback_swap` drops any staging schema `CASCADE` - the
+comment on it says "left behind by a rebuild that did not swap" - so running
+this against a rebuild that is halfway through deletes the rows that rebuild is
+still writing into. What follows is not a clean refusal: the build fails later
+as a plain `RebuildFailed`, is retried five times, and each retry writes into a
+schema this command may drop again. The worse interleaving is narrower and
+quieter - a rollback landing between `perform_swap`'s repoint of the upstream
+rows and the schema rename leaves the tiles naming one build and the schema
+another, with nothing raising anywhere. So the pre-flight is first, before
+`rollback_target` and on the dry run as well: an operator reading "would go
+back to build X" while a rebuild runs is being told about a plan that is not
+safe to carry out.
 """
 
 from __future__ import annotations
@@ -32,7 +46,8 @@ RESTART_HINT = (
 class Command(BaseCommand):
     help = (
         "Report, or perform, the rollback of the last completed swap: the previous "
-        "build's schema, tiles and settings rows, together."
+        "build's schema, tiles and settings rows, together. Refuses while a rebuild is "
+        "queued or running, on the dry run as well."
     )
 
     def add_arguments(self, parser) -> None:
@@ -50,6 +65,26 @@ class Command(BaseCommand):
         # import time would do it during `manage.py help` as well.
         from core.audit import record
         from core.models import AuditLogEntry
+        from core.runs import jobs_in_flight
+
+        # Before `rollback_target`, and before anything is printed. A rollback
+        # drops the staging schema a running rebuild is writing into, and it
+        # repoints the upstream rows the swap is about to repoint itself; the
+        # dry run is refused too because its whole output is advice about an
+        # action that must not be taken while this is true.
+        in_flight = jobs_in_flight("weekly_rebuild")
+        if in_flight:
+            job = in_flight[0]
+            raise CommandError(
+                f"a rebuild is in flight - job {job.id} is {job.status} on the "
+                f"{job.queue_name} queue - so nothing was rolled back. A rollback drops the "
+                "staging schema a running rebuild is writing into and repoints the upstream "
+                "rows it is about to repoint itself, and neither one raises: the rebuild "
+                "fails later, or succeeds having written a build the settings rows do not "
+                "name. Let it finish, or stop it first - `docker compose logs -f rebuild` "
+                "shows a running one, the operations page and `manage.py check_operations` "
+                "show a queued or wedged one - then run this again."
+            )
 
         tiles_dir = settings.TILES_DIR
         try:
@@ -68,6 +103,12 @@ class Command(BaseCommand):
 
         if not options["confirm"]:
             self.stdout.write("dry run: nothing was changed. Re-run with --confirm to roll back.")
+            # The restart is half the procedure, and the dry run is where an
+            # operator reads what the procedure is. Printing it only on the
+            # confirmed path meant the rehearsal did not mention the step that
+            # makes the rollback take effect - and the routers keep serving the
+            # build they started against until they are restarted.
+            self.stdout.write(RESTART_HINT)
             return
 
         rollback(tiles_dir)
