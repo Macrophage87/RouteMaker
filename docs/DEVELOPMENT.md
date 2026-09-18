@@ -252,6 +252,11 @@ blocked by the egress proxy, so the Compose stack cannot be brought up here. It
 is written to be validated on the deployment host. The native database above is
 the loop to develop against in the meantime.
 
+`docs/DEPLOYMENT.md` is what the images are: what `docker compose build` builds,
+what each image installs and why, the `collectstatic` deploy step, and the list
+of things that still stop a `docker compose up`. No image in this repository has
+been built in any environment yet, which that document says plainly.
+
 ## Lua
 
 The tag transform runs under LuaJIT, because Valhalla 3.5.1's build requires it

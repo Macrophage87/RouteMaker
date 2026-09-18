@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# scripts/install_reference_data.py, which prepares the three files under
+# <DATA_ROOT>/reference/ the rebuild refuses to run without. It is run in this
+# image because this is the image with the data volume mounted.
+shapely==2.1.2

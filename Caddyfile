@@ -1,0 +1,45 @@
+# The edge. PLAN.md:64-65: Caddy terminates TLS and serves the built frontend
+# along with the admin and Ninja assets, and no service but Caddy publishes a
+# port.
+#
+# compose.yaml bind-mounts this file at /etc/caddy/Caddyfile. It did not exist,
+# and Docker creates a *directory* at a missing bind-mount source, so Caddy
+# started against a directory where it expected a config file.
+#
+# The site address is read from the environment through Caddy's own `{$VAR}`
+# substitution, which happens when the config is loaded, so one file serves both
+# deployments: a hostname such as `routes.example.org` gets an automatic
+# certificate, and `:80` serves a local stack over plain HTTP. compose passes
+# CADDY_SITE_ADDRESS to this service and nothing else; it is not a secret.
+{$CADDY_SITE_ADDRESS} {
+	# Django's collected assets, from the volume `collectstatic` writes and this
+	# service mounts read-only (${DATA_ROOT}/static -> /srv/static). STATIC_URL
+	# is "static/", so /static/admin/css/base.css has to resolve to
+	# /srv/static/admin/css/base.css: handle_path strips the matched prefix
+	# before the file server sees the path, which `handle` would not.
+	#
+	# This does not shadow the admin. The admin mounts under DJANGO_ADMIN_PATH
+	# (config/urls.py, defaulting to `internal-8f3a/`), which is not /static/.
+	handle_path /static/* {
+		root * /srv/static
+		file_server
+	}
+
+	# Everything else is the API, on the port docker/api-entrypoint.sh binds
+	# gunicorn to. Photon, Valhalla and the renderer are deliberately absent:
+	# PLAN.md:65 says they are reachable only through the API, which proxies
+	# geocoding behind session authentication and a per-user rate limit Photon
+	# has no notion of a user to enforce itself. A route here for any of them
+	# would publish them to the internet, which is the one thing this file's
+	# service exists to avoid.
+	handle {
+		reverse_proxy api:8000 {
+			# Caddy terminates TLS, so the request reaching Django is plain
+			# HTTP. settings.SECURE_PROXY_SSL_HEADER reads
+			# HTTP_X_FORWARDED_PROTO; without this header request.is_secure()
+			# is false behind TLS, which breaks the CSRF origin check on every
+			# https form post and makes Django build http:// redirects.
+			header_up X-Forwarded-Proto {scheme}
+		}
+	}
+}

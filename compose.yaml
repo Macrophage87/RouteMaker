@@ -56,6 +56,15 @@ services:
       - ${DATA_ROOT}/caddy:/data
       - ${DATA_ROOT}/static:/srv/static:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      # The one variable this service takes, and not a secret. The Caddyfile's
+      # site address is `{$CADDY_SITE_ADDRESS}` - Caddy's own environment
+      # substitution, read when the config loads - so one file serves a
+      # deployment and a local stack: a hostname gets an automatic certificate,
+      # `:80` serves plain HTTP. The default is the local one, because a
+      # hostname guessed here would be a certificate request for someone else's
+      # name.
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
     deploy:
       resources:
         limits: { memory: 256M, cpus: "0.5" }
@@ -63,6 +72,9 @@ services:
   api:
     <<: *restart
     image: routemaker/api:${TAG}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     environment:
       <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -116,6 +128,9 @@ services:
   worker:
     <<: *restart
     image: routemaker/api:${TAG}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     # Four slots, not the default one: every periodic task except the rebuild
     # queues here, and Procrastinate drops a periodic tick whose predecessor is
     # still running rather than delaying it. With one slot a nightly dump held
@@ -147,6 +162,9 @@ services:
   # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
     image: routemaker/api:${TAG}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     command: ["./manage.py", "migrate", "--noinput"]
     restart: "no"
     environment:
@@ -320,6 +338,9 @@ services:
   rebuild:
     <<: *restart
     image: routemaker/pipeline:${TAG}
+    build:
+      context: .
+      dockerfile: docker/pipeline.Dockerfile
     command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
     environment:
       <<: *django-env

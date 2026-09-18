@@ -1,0 +1,6 @@
+-r requirements.txt
+
+# The API server. PLAN.md:64: "the API runs under gunicorn with a worker count
+# set from the host's cores" - the count is computed at start by
+# docker/api-entrypoint.sh, not baked into a layer.
+gunicorn==26.2.0
