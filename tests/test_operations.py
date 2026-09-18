@@ -30,13 +30,23 @@ def empty_job_tables(transactional_db):
     does not touch them: a job deferred by another test in the same run is still
     sitting there, failed or not, and a test that asserts "nothing is wrong"
     would read another file's leftovers.
+
+    Afterwards as well as before, and the second half is not symmetry. The
+    tests here leave `todo` rebuilds behind on purpose - that is what unwedging
+    one produces - and files that run later have their own single-flight
+    refusals to assert, which a leftover queued rebuild satisfies for them.
     """
-    with connection.cursor() as cursor:
-        cursor.execute(
-            "TRUNCATE procrastinate_periodic_defers, procrastinate_events, "
-            "procrastinate_jobs RESTART IDENTITY CASCADE"
-        )
+
+    def empty() -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "TRUNCATE procrastinate_periodic_defers, procrastinate_events, "
+                "procrastinate_jobs RESTART IDENTITY CASCADE"
+            )
+
+    empty()
     yield
+    empty()
 
 
 @pytest.fixture(autouse=True)
