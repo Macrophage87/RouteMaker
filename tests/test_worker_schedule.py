@@ -22,6 +22,7 @@ import subprocess
 import sys
 import time
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 from django.conf import settings
@@ -214,31 +215,220 @@ def test_a_rebuild_abandoned_for_a_terminal_cause_is_not_retried() -> None:
     assert strategy.get_retry_decision(exception=abandoned, job=job(0)) is None
 
 
+VARIANTS = ("standard", "no-trail", "ebike")
+
+
+def builds_on_disk(root, variant: str) -> list[str]:
+    """The dated build directories under one variant, oldest first."""
+    return sorted(
+        entry.name for entry in (root / "tiles" / variant).iterdir() if not entry.is_symlink()
+    )
+
+
+def last_rebuild_detail():
+    from core.models import ScheduledRun
+
+    return ScheduledRun.objects.filter(task="weekly_rebuild").order_by("-started_at")[0].detail
+
+
 @pytest.mark.django_db(transaction=True)
 def test_the_rebuild_prunes_the_build_directories_it_has_retired(rebuild_environment) -> None:
     """One dated tile set per week, kept forever, on the volume whose disk gate
     refuses a rebuild that cannot fit two of them. Nothing removed them, so the
-    gate's own remedy - "grow the volume" - was the only one left. The two
-    newest survive, which is what the plan sizes the volume for, and the
-    promotion symlinks are what decide the rest."""
-    from core.models import ScheduledRun
+    gate's own remedy - "grow the volume" - was the only one left.
 
+    Two rules, in one run each. A build no promotion symlink names is scratch
+    and goes at the start of the next rebuild, before the gate is consulted;
+    the two the symlinks do name - the served graph and the rollback target,
+    which is what the plan sizes the volume for - survive whatever their age.
+    """
     root, _binaries = rebuild_environment
     stale = ["20260901T080000Z", "20260908T080000Z", "20260915T080000Z"]
-    for variant in ("standard", "no-trail", "ebike"):
+    for variant in VARIANTS:
         for build in stale:
             (root / "tiles" / variant / build / "tiles").mkdir(parents=True)
 
     app.tasks["weekly_rebuild"].func(timestamp=0)
 
-    for variant in ("standard", "no-trail", "ebike"):
+    for variant in VARIANTS:
+        remaining = builds_on_disk(root, variant)
+        assert remaining == [os.readlink(root / "tiles" / variant / "current")], (
+            f"{variant}: nothing but the build just promoted, since no symlink named the rest"
+        )
+    assert "pruned 9 old build directories" in last_rebuild_detail()
+
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    for variant in VARIANTS:
         variant_dir = root / "tiles" / variant
-        remaining = sorted(entry.name for entry in variant_dir.iterdir() if not entry.is_symlink())
-        assert remaining[0] == stale[-1], f"{variant}: the newest retired build is kept"
+        remaining = builds_on_disk(root, variant)
         assert len(remaining) == 2, f"{variant}: two full sets, no more"
         assert os.readlink(variant_dir / "current") == remaining[-1]
+        assert os.readlink(variant_dir / "previous") == remaining[0], "the rollback target stays"
+    assert "pruned 0 old build directories" in last_rebuild_detail()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_the_gate_would_refuse_prunes_before_the_gate_reads_the_volume(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The disk gate is terminal, and retention used to sit downstream of it.
+
+    So the first week the volume was too full for a second tile set, the gate
+    refused - and the only mechanism that could have freed the space ran after
+    the gate, which means it never ran again. The refusal repeated every week
+    with prunable builds sitting on the volume and "grow the volume" as the
+    only remedy the operator was offered. The prune runs first now, and it is
+    safe there by construction: it never removes what `current` or `previous`
+    names.
+
+    The gate here is stood in for by one that measures what is on the volume
+    against a budget, because the real one measures the developer's own disk.
+    """
+    from pipeline import tiles
+
+    root, _binaries = rebuild_environment
+    a_set = 4096
+    # Room for the two sets the volume is sized for and not a byte more, so the
+    # three that are on it refuse the gate and the two the prune leaves do not.
+    budget = 2 * len(VARIANTS) * a_set
+    for variant in VARIANTS:
+        for build in ("20260901T080000Z", "20260908T080000Z", "20260915T080000Z"):
+            directory = root / "tiles" / variant / build
+            directory.mkdir(parents=True)
+            (directory / "tiles.tar").write_bytes(b"x" * a_set)
+
+    def gate_with_a_budget(tiles_dir, source_bytes, minimum_free, fraction, disk_usage=None):
+        used = tiles.directory_bytes(Path(tiles_dir))
+        if used > budget:
+            raise tiles.DiskGateRefused(
+                f"a second tile set does not fit in the {budget} bytes this volume has; "
+                "grow the volume, which is an online resize."
+            )
+        return tiles.DiskGate(budget, used, budget - used, 0, 0.0)
+
+    monkeypatch.setattr("pipeline.tiles.check_disk_gate", gate_with_a_budget)
+
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    detail = last_rebuild_detail()
+    assert "14 stages completed" in detail, detail
+    assert "pruned 9 old build directories" in detail
+    for variant in VARIANTS:
+        assert builds_on_disk(root, variant) == [
+            os.readlink(root / "tiles" / variant / "current")
+        ], f"{variant}: the stale sets the gate was refusing over are gone"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_only_the_newest_failed_builds_directory_survives_its_run(
+    rebuild_environment, monkeypatch
+) -> None:
+    """A rebuild that dies after BUILD_TILES leaves a third tile set behind.
+
+    Nothing removed it: the prune ran after `run_rebuild` returned, and a
+    failure never returns - so the orphan sat beside the two full sets the
+    volume is sized for until the *second* following success, and a second
+    failed week put a fourth set there. The rule is written down in
+    docs/OPERATIONS.md and pinned here: one failed build's directory survives,
+    because there has to be something to look at, and the run after it takes
+    that one back as it goes out.
+    """
+    from pipeline.rebuild import Stage
+    from pipeline.retention import KEEP_BUILDS
+    from pipeline.run import ValidationFailed
+
+    root, _binaries = rebuild_environment
+
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+    served = {variant: builds_on_disk(root, variant) for variant in VARIANTS}
+    assert all(len(builds) == KEEP_BUILDS for builds in served.values())
+
+    from pipeline import run as pipeline_run
+
+    checked = pipeline_run.assert_elevation_reached_the_tiles
+    refusing = {"now": True}
+
+    def refuse_validation(*read_back) -> None:
+        if refusing["now"]:
+            raise ValidationFailed("the elevation never reached the tiles")
+        checked(*read_back)
+
+    monkeypatch.setattr("pipeline.run.assert_elevation_reached_the_tiles", refuse_validation)
+
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+    assert Stage.VALIDATE.value in str(abandoned.value)
+
+    first_failure = {}
+    for variant in VARIANTS:
+        remaining = builds_on_disk(root, variant)
+        assert len(remaining) == KEEP_BUILDS + 1, f"{variant}: {remaining}"
+        assert remaining[:KEEP_BUILDS] == served[variant], "neither served set was touched"
+        first_failure[variant] = remaining[-1]
+        assert (root / "tiles" / variant / remaining[-1] / "tiles.tar").is_file(), (
+            "the failed build's tiles are still there to look at"
+        )
+        assert os.readlink(root / "tiles" / variant / "current") == served[variant][-1]
+
+    # A second failed week. The volume must not now be carrying four sets: the
+    # week before's failed build has been looked at or it never will be.
+    with pytest.raises(RebuildAbandoned):
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    for variant in VARIANTS:
+        remaining = builds_on_disk(root, variant)
+        assert len(remaining) == KEEP_BUILDS + 1, f"{variant}: {remaining}"
+        assert first_failure[variant] not in remaining, "only the newest failure is kept"
+        assert remaining[:KEEP_BUILDS] == served[variant]
+
+    refusing["now"] = False
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    for variant in VARIANTS:
+        remaining = builds_on_disk(root, variant)
+        assert len(remaining) == KEEP_BUILDS, f"{variant}: {remaining}"
+        assert os.readlink(root / "tiles" / variant / "current") == remaining[-1]
+        assert os.readlink(root / "tiles" / variant / "previous") == remaining[0]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failure_after_the_swap_is_not_retried_and_the_retired_schema_survives(
+    rebuild_environment, monkeypatch
+) -> None:
+    """A reconcile that fails is an ordinary error, and retrying it was fatal.
+
+    The retry re-runs the whole rebuild including SWAP, and SWAP begins with
+    `DROP SCHEMA live_old CASCADE` - the schema a rollback puts back. So a
+    reconciliation that hit a database hiccup would have destroyed the
+    rollback target on its way to reporting the same error five more times,
+    over a deployment that was already serving the new build correctly.
+    """
+    from core.models import ScheduledRun
+    from pipeline.schema import schema_exists
+
+    _root, _binaries = rebuild_environment
+
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+    assert schema_exists(settings.SEGMENT_SCHEMA_RETIRED)
+
+    def dropped_connection(*args, **kwargs):
+        raise RuntimeError("the connection dropped while reading the retired schema")
+
+    monkeypatch.setattr("pipeline.reconcile.drift_report", dropped_connection)
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+    assert "swap completed" in str(abandoned.value)
+    assert settings.SEGMENT_SCHEMA_RETIRED in str(abandoned.value)
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None, (
+        "a retry would re-run the swap over a deployment that has already swapped"
+    )
+    assert schema_exists(settings.SEGMENT_SCHEMA_RETIRED), "the rollback target is still there"
     assert (
-        "pruned 6 old build directories" in ScheduledRun.objects.get(task="weekly_rebuild").detail
+        not ScheduledRun.objects.filter(task="weekly_rebuild").order_by("-started_at")[0].succeeded
     )
 
 
@@ -662,6 +852,82 @@ def test_the_task_itself_refuses_a_dump_whose_listing_leaks(monkeypatch, tmp_pat
 
     with pytest.raises(BackupVerificationFailed, match="app_session"):
         perform_backup(read_listing=leaking_listing)
+    assert left_behind(tmp_path / "backups") == [], (
+        "a dump the verification rejected must not be left under the name a restore trusts, "
+        "least of all this one: the listing says it carries the rows the exclusion exists for"
+    )
+
+
+def left_behind(directory) -> list[str]:
+    """Everything in the backup directory, whatever it is called.
+
+    Not `glob("*.dump")`: the point of the part file is that a failed dump is
+    not named like a kept one, and a check that only looks for `.dump` would
+    pass just as happily on a directory full of abandoned part files.
+    """
+    return sorted(entry.name for entry in directory.iterdir()) if directory.is_dir() else []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_verified_dump_is_the_only_thing_the_successful_path_leaves(
+    monkeypatch, tmp_path
+) -> None:
+    """One file, under the ordinary name, with no part file beside it."""
+    from config.procrastinate import perform_backup
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+
+    destination = perform_backup()
+
+    assert left_behind(tmp_path / "backups") == [destination.name]
+    assert destination.name.endswith(".dump") and destination.is_file()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_dump_that_exits_non_zero_leaves_nothing_on_the_volume(monkeypatch, tmp_path) -> None:
+    """The failure that is not a timeout, against the real `pg_dump`.
+
+    Only the timeout path cleaned up after itself, so a dump that merely exited
+    non-zero - a wrong database name, no permission, a full volume - left
+    `routemaker-<instant>.dump` behind: the newest by name, and therefore the
+    one an operator restoring last night's backup picks up. Here the database
+    does not exist, which is `pg_dump` connecting and failing after it has
+    already created the archive file.
+    """
+    import subprocess as sp
+
+    from config.procrastinate import perform_backup
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    monkeypatch.setitem(settings.DATABASES["default"], "NAME", "routemaker_no_such_database")
+
+    with pytest.raises(sp.CalledProcessError):
+        perform_backup()
+
+    assert left_behind(tmp_path / "backups") == []
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_dump_the_verification_rejects_leaves_nothing_on_the_volume(
+    monkeypatch, tmp_path
+) -> None:
+    """The archive is real and whole; what fails is the check that it is what
+    was asked for. It must not survive under a name the restore procedure
+    trusts - the archive a verification rejects is exactly the one that may
+    carry what the exclusion exists to keep off the disk."""
+    from config.procrastinate import BackupVerificationFailed, perform_backup
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+
+    def refuse(listing):
+        raise BackupVerificationFailed("the archive carries data it must exclude: ['public.x']")
+
+    monkeypatch.setattr("config.procrastinate.verify_dump_listing", refuse)
+
+    with pytest.raises(BackupVerificationFailed):
+        perform_backup()
+
+    assert left_behind(tmp_path / "backups") == []
 
 
 def locking_connection():
