@@ -457,12 +457,113 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
             "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
             "aadt": 900,
             "source": "state",
+            "agency": "vdot",
             "year": 2025,
         }
     ]
     context, _ = run_pipeline(source, root, volume=volume, skip=NOT_SWAPPED)
-    assert context.aadt_by_way.get(100) == (900, "state")
-    assert context.stress_by_way[100].volume_source == "state"
+    match = context.aadt_by_way.get(100)
+    assert match is not None
+    assert (match.aadt, match.source, match.agency, match.year) == (900, "state", "vdot", 2025)
+    # The agency, not the precedence tier: "state" is how `conflate` ranked this
+    # count against a locality's, and it is not who published it.
+    assert context.stress_by_way[100].volume_source == "vdot"
+    assert context.stress_by_way[100].volume_aadt == 900
+    assert context.stress_by_way[100].volume_year == 2025
+
+
+def test_the_agency_and_year_of_a_count_reach_the_segment_table(workspace, states) -> None:
+    """Read back out of the staging schema, which is the published artefact.
+
+    `volume_source` held the precedence *tier* - "locality" or "state" - which
+    is the vocabulary `conflate` ranks two counts with and says nothing about
+    who published the winner. So every state layer wrote the same string and a
+    Maryland iMAP count was indistinguishable from a VDOT one in the only table
+    the derivative is built from, while `write_segments` and `StressResult` both
+    claimed the derivative could tell which segments a conditionally licensed
+    source had touched. `Match.year` was dropped at the same assignment and the
+    table had no column for the count either.
+
+    Two agencies at two different tiers here, and a third agency at the *same*
+    tier as one of them further down, because a column that merely happened to
+    differ between a locality and a state would pass a one-agency test while
+    still collapsing MDOT SHA onto VDOT.
+    """
+    source, root = workspace
+    staging = settings.SEGMENT_SCHEMA_STAGING
+    volume = [
+        {
+            "id": "ddot-1",
+            "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+            "aadt": 9100,
+            "source": "locality",
+            "agency": "ddot",
+            "year": 2024,
+        },
+        {
+            "id": "mdot-sha-1",
+            "coordinates": [[-77.045, 38.92], [-77.035, 38.92]],
+            "aadt": 3300,
+            "source": "state",
+            "agency": "mdot-sha",
+            "year": 2019,
+        },
+    ]
+    run_pipeline(source, root, volume=volume, skip=NOT_SWAPPED)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""SELECT osm_way_id, volume_source, volume_aadt, volume_year
+                FROM {staging}.segment WHERE volume_source IS NOT NULL
+                ORDER BY osm_way_id"""
+        )
+        counted = cursor.fetchall()
+
+    by_agency = {row[1]: row for row in counted}
+    assert set(by_agency) == {"ddot", "mdot-sha"}, "the agency, not its precedence tier"
+    assert by_agency["ddot"][0] == 100
+    assert by_agency["ddot"][2:] == (9100, 2024)
+    assert by_agency["mdot-sha"][2:] == (3300, 2019)
+    # And nothing wrote a tier into the column the agency belongs in.
+    assert not {"locality", "state", "osm"} & set(by_agency)
+
+
+def test_two_agencies_at_one_precedence_tier_stay_distinguishable(workspace, states) -> None:
+    """The half a locality-versus-state case cannot reach. VDOT and MDOT SHA
+    both rank at "state" - that is what the tier is for - so a segment table
+    that recorded the tier lost the distinction PLAN:31-34 is about: Maryland's
+    iMAP layer is conditionally licensed and Virginia's is not, and the
+    published derivative has to be able to name the segments one of them
+    influenced. Same tier, different agency, different row."""
+    source, root = workspace
+    staging = settings.SEGMENT_SCHEMA_STAGING
+    volume = [
+        {
+            "id": "vdot-1",
+            "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+            "aadt": 9100,
+            "source": "state",
+            "agency": "vdot",
+            "year": 2024,
+        },
+        {
+            "id": "mdot-sha-1",
+            "coordinates": [[-77.045, 38.92], [-77.035, 38.92]],
+            "aadt": 3300,
+            "source": "state",
+            "agency": "mdot-sha",
+            "year": 2019,
+        },
+    ]
+    run_pipeline(source, root, volume=volume, skip=NOT_SWAPPED)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT volume_source FROM {staging}.segment WHERE volume_source IS NOT NULL"
+        )
+        agencies = {row[0] for row in cursor.fetchall()}
+
+    assert agencies == {"vdot", "mdot-sha"}
 
 
 @pytest.mark.parametrize(
@@ -492,12 +593,17 @@ def test_a_trail_alongside_a_road_cannot_take_the_roads_count(
         tmp_path, build_parallel_extract, road_id=road_id, trail_id=trail_id
     )
     context, _ = run_pipeline(
-        source, tmp_path, urban=(road_id, trail_id), volume=[PARALLEL_COUNT], skip=NOT_SWAPPED
+        source,
+        tmp_path,
+        urban=(road_id, trail_id),
+        volume=[{**PARALLEL_COUNT, "agency": "vdot"}],
+        skip=NOT_SWAPPED,
     )
 
-    assert context.aadt_by_way.get(road_id) == (24000, "state"), "the count belongs to the road"
+    matched = context.aadt_by_way.get(road_id)
+    assert matched is not None and matched.aadt == 24000, "the count belongs to the road"
     assert trail_id not in context.aadt_by_way, "a path carries no motor traffic"
-    assert context.stress_by_way[road_id].volume_source == "state"
+    assert context.stress_by_way[road_id].volume_source == "vdot"
 
 
 def test_a_bridge_barred_to_bicycles_is_tagged_so_on_every_variant(workspace, states) -> None:

@@ -250,6 +250,15 @@ class ReferenceData:
                 aadt=int(row["aadt"]),
                 source=row["source"],
                 year=row.get("year"),
+                # The precedence tier above and the publishing agency here are
+                # two facts and the installer writes both. Only the tier was
+                # read, so "state" was all the segment table ever learned about
+                # a count and MDOT SHA and VDOT were one source in the published
+                # derivative. Absent on a `volume.json` written before the
+                # installer emitted it, and left absent rather than backfilled
+                # from the tier: an unknown agency is a thing a reviewer can
+                # see, a tier wearing an agency's name is not.
+                agency=row.get("agency"),
             )
             for row in json.loads(volume.read_text())
         )
@@ -331,7 +340,10 @@ class RebuildContext:
     merged_pbf: Path | None = None
     ways: list[extract.Way] = field(default_factory=list)
     ways_by_id: dict[int, extract.Way] = field(default_factory=dict)
-    aadt_by_way: dict[int, tuple[int, str]] = field(default_factory=dict)
+    # The whole `Match`, not `(aadt, tier)`. The stage that reads this is the
+    # last one that could record where a count came from, and the pair dropped
+    # the agency and the year on the floor.
+    aadt_by_way: dict[int, conflation.Match] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
@@ -678,9 +690,7 @@ def build_handlers(
             ],
             reference.volume_features,
         )
-        context.aadt_by_way = {
-            way_id: (match.aadt, match.source) for way_id, match in result.matched.items()
-        }
+        context.aadt_by_way = dict(result.matched)
         # Recorded rather than discarded: two agencies disagreeing about one
         # road, and a count that matched nothing, are both things a reviewer
         # needs to see.
@@ -694,11 +704,15 @@ def build_handlers(
     def classify_stress() -> None:
         reference = context.require_reference()
         for way in context.ways:
-            aadt, source = context.aadt_by_way.get(way.osm_id, (None, None))
+            match = context.aadt_by_way.get(way.osm_id)
             context.stress_by_way[way.osm_id] = classify(
                 way.tags,
-                aadt=aadt,
-                aadt_source=source,
+                aadt=match.aadt if match else None,
+                # The agency, not the precedence tier: the tier is what
+                # `conflate` ranked two counts with and says nothing about who
+                # published the winner.
+                aadt_source=match.agency if match else None,
+                aadt_year=match.year if match else None,
                 urban=way.osm_id in reference.urban_way_ids,
             )
 

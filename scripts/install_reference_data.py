@@ -63,8 +63,11 @@ REQUIRED = ("crossings.json", "urban-areas.json", "volume.json")
 # agency can be refused with a message naming the ones it knows instead of
 # resolving to "no precedence" three stages later.
 #
-# The agency name is not lost: it stays in each row's feature id, which is what
-# a reviewer reads when two agencies disagree about the same road.
+# The agency name is not lost: each row carries it in an `agency` field of its
+# own, and in its feature id. The field is the one that travels - through
+# `AgencyFeature`, `Match` and `StressResult` into the segment table's
+# `volume_source` column - because two agencies at one tier are otherwise
+# indistinguishable in the published derivative.
 SOURCE_TIERS = {
     # A locality surveys its own streets more densely than the state does, which
     # is the whole reason the precedence rule prefers it.
@@ -215,9 +218,16 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
 
     `source` is the agency; what lands in each row's `source` field is that
     agency's precedence tier, which is the vocabulary `conflation.conflate`
-    ranks on. The agency itself survives in the feature id, so a reviewer
-    looking at two rows that disagree about one road can still see which agency
-    published which count.
+    ranks on. The agency itself is written to a field of its own, and to the
+    feature id, so a reviewer looking at two rows that disagree about one road
+    can see which agency published which count.
+
+    The separate `agency` field is what reaches the published segment table,
+    and it is not decoration on the feature id: VDOT and MDOT SHA both rank at
+    "state", so while only the tier travelled past `ReferenceData.load` the
+    derivative recorded one indistinguishable source for both - and PLAN:31-34
+    asks it to be able to name the segments a conditionally licensed Maryland
+    layer influenced.
     """
     tier = source_tier(source)
     rows = []

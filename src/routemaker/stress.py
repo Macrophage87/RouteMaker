@@ -244,12 +244,29 @@ class StressResult:
     history needs to know whether the speed was posted or assumed, and the
     published derivative needs to know which segments were influenced by a
     conditionally licensed source.
+
+    `volume_source` is the **publishing agency** - `ddot`, `vdot`, `mdot-sha` -
+    and never the precedence tier. It held the tier for a while, which is to say
+    it held "state" for every count Virginia and Maryland published alike, and
+    the claim in the paragraph above was false while it did: a derivative built
+    on a conditionally licensed Maryland layer could not be told from one built
+    on VDOT's. `conflation.AgencyFeature` carries both facts and they are not
+    interchangeable; the tier stays in `conflation` where the ranking is.
+
+    `volume_aadt` and `volume_year` are the count itself and its vintage, kept
+    for the same reason and set whenever a count was in hand - whether or not
+    the volume gate moved the tier, because the question the derivative asks is
+    which segments a source *touched*, not which ones it changed. A count with
+    no year is a count nobody can date, so the field is nullable and its
+    emptiness is a fact about the source rather than a default.
     """
 
     tier: Stress
     rule: str
     assumed: tuple[str, ...] = field(default_factory=tuple)
     volume_source: str | None = None
+    volume_aadt: int | None = None
+    volume_year: int | None = None
 
     @property
     def is_top_tier(self) -> bool:
@@ -344,8 +361,14 @@ def classify(
     aadt: int | None = None,
     aadt_source: str | None = None,
     urban: bool = True,
+    aadt_year: int | None = None,
 ) -> StressResult:
     """Classify one way. `aadt` is bidirectional vehicles per day, already normalized.
+
+    `aadt_source` is the publishing agency, not its precedence tier - see
+    `StressResult` - and `aadt_year` is the count's vintage. Both are recorded
+    on the result whenever `aadt` is given, and both are the derivative's only
+    route back to which agency's data is in a segment.
 
     `urban` selects which speed defaults apply where nothing is posted. It comes
     from the coverage polygon's urban-area layer at preprocessing time; the
@@ -550,7 +573,11 @@ def classify(
     # one definition of "has a provision", shared with the facility step above
     # so that one provision earns exactly one credit; see the module docstring
     # for what happened while the two steps disagreed about a paved shoulder.
+    # Recorded from the presence of a count, not from the gate firing: a
+    # segment a source touched is a segment that source influenced, whether or
+    # not the modifier below moved the tier.
     volume_source = aadt_source if aadt is not None else None
+    volume_year = aadt_year if aadt is not None else None
     if aadt is not None and lanes <= 1 and not has_facility:
         # A guessed speed may not be improved by a guess, but a measured count is
         # evidence: the conservative rule is about missing evidence, not about
@@ -599,7 +626,7 @@ def classify(
     if tier is Stress.LTS1 and is_rough(tags):
         tier, rule = Stress.LTS2, rule + ", rough surface"
 
-    return StressResult(tier, rule, tuple(assumed), volume_source)
+    return StressResult(tier, rule, tuple(assumed), volume_source, aadt, volume_year)
 
 
 def is_rough(tags: dict[str, str]) -> bool:

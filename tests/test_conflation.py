@@ -44,8 +44,40 @@ SURVEYED_ROAD = [
 ]
 
 
-def feature(fid: str, coords, aadt: int = 5000, source: str = "state") -> AgencyFeature:
-    return AgencyFeature(feature_id=fid, coordinates=coords, aadt=aadt, source=source)
+def feature(
+    fid: str, coords, aadt: int = 5000, source: str = "state", agency: str | None = None
+) -> AgencyFeature:
+    return AgencyFeature(
+        feature_id=fid, coordinates=coords, aadt=aadt, source=source, agency=agency
+    )
+
+
+def test_the_agency_travels_onto_the_match_beside_the_precedence_tier() -> None:
+    """Two facts, two fields, and the match carries both.
+
+    `source` is the precedence tier `conflate` ranks with; `agency` is who
+    published the count. VDOT and MDOT SHA both rank at "state" - that is what a
+    tier is for - so a pipeline that carried only the tier could not tell a
+    Virginia count from a conditionally licensed Maryland one anywhere
+    downstream, and downstream is where the published derivative is written.
+    The year travels for the same reason: a count nobody can date is a different
+    claim from a current one.
+    """
+    virginia = feature("f1", SURVEYED_ROAD, agency="vdot")
+    maryland = AgencyFeature(
+        feature_id="f2",
+        coordinates=shifted(SURVEYED_ROAD, 2_000),
+        aadt=3300,
+        source="state",
+        year=2019,
+        agency="mdot-sha",
+    )
+    result = conflate([(1, ROAD), (2, shifted(ROAD, 2_000))], [virginia, maryland])
+
+    assert result.matched[1].source == result.matched[2].source == "state"
+    assert result.matched[1].agency == "vdot"
+    assert result.matched[2].agency == "mdot-sha"
+    assert result.matched[2].year == 2019
 
 
 def shifted(coords, metres: float):

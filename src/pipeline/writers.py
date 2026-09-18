@@ -34,6 +34,15 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
     derived from assumed inputs and one derived from surveyed inputs are
     different claims, and the published derivative needs to know which segments
     a conditionally licensed source touched.
+
+    Which it can now do, and could not while this docstring said it could:
+    `volume_source` held the precedence *tier* the conflater ranks on, so every
+    state layer wrote "state" and an MDOT SHA count was indistinguishable from a
+    VDOT one in the one table the derivative is published from. It holds the
+    publishing agency, and `volume_aadt` and `volume_year` the count and its
+    vintage, so a query over this table can name the segments any one agency
+    influenced. Naming them is not the same as being able to exclude them from
+    an export, which is unbuilt; see the review log.
     """
     validate_schema_name(schema)
     refuse_live_schema(schema)
@@ -47,6 +56,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row["stress"].rule,
             list(row["stress"].assumed),
             row["stress"].volume_source,
+            row["stress"].volume_aadt,
+            row["stress"].volume_year,
             row.get("sinuosity"),
             row.get("is_trail_class", False),
             row.get("is_unpaved"),
@@ -61,7 +72,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
         for batch in _batched(values):
             args = ",".join(
                 cursor.mogrify(
-                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s)",
+                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -70,6 +81,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         rule,
                         _json_list(assumed),
                         source,
+                        volume_aadt,
+                        volume_year,
                         sinuosity,
                         trail,
                         unpaved,
@@ -85,6 +98,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     rule,
                     assumed,
                     source,
+                    volume_aadt,
+                    volume_year,
                     sinuosity,
                     trail,
                     unpaved,
@@ -95,8 +110,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             cursor.execute(
                 f"""INSERT INTO {schema}.segment
                     (osm_way_id, ordinal, geometry, stress_tier, stress_rule,
-                     stress_assumed, volume_source, sinuosity, is_trail_class,
-                     is_unpaved, is_rough, lit)
+                     stress_assumed, volume_source, volume_aadt, volume_year,
+                     sinuosity, is_trail_class, is_unpaved, is_rough, lit)
                     VALUES {args}"""
             )
             written += len(batch)
