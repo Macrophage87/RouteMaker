@@ -909,3 +909,116 @@ def test_the_services_that_build_never_pull(env_file) -> None:
             f"the {name} service builds its image but renders pull_policy="
             f"{services[name].get('pull_policy')!r}, so a host without the tag pulls it"
         )
+
+
+# --- A `$` in a password, through the parser that actually reads it ----------
+
+# The form `.env.example` tells an operator to use for a value containing a `$`,
+# and the literal that form has to deliver. Single quotes, because compose's
+# dotenv reader strips a matching pair and expands nothing inside them - which
+# is one rule rather than one decision per character.
+DOLLAR_PASSWORD = "pa$w0rd"
+DOLLAR_LINE = "PGPASSWORD='pa$w0rd'"
+
+
+# `docker compose config` renders a configuration that is itself a compose file,
+# so a literal `$` comes back out of it doubled. Proved without any env-file
+# parsing in the way: a value handed to compose through the process environment,
+# where nothing unescapes anything, renders with its `$` doubled too. Undo it
+# before comparing, or this asserts about the renderer rather than the value.
+def unescape(rendered: str) -> str:
+    return rendered.replace("$$", "$")
+
+
+def render_password(tmp_path, line: str) -> str:
+    """The `POSTGRES_PASSWORD` the postgis container would be started with, from
+    an otherwise untouched copy of `.env.example` with its PGPASSWORD replaced."""
+    body = [
+        line if original.startswith("PGPASSWORD=") else original
+        for original in ENV_EXAMPLE.read_text().splitlines()
+    ]
+    assert line in body, "no PGPASSWORD line in .env.example to replace"
+    destination = tmp_path / "env"
+    destination.write_text("\n".join(body) + "\n")
+    return unescape(render(destination)["services"]["postgis"]["environment"]["POSTGRES_PASSWORD"])
+
+
+def test_the_quoting_this_file_prescribes_delivers_the_password_it_was_given(
+    tmp_path,
+) -> None:
+    """The defect: `.env.example` described a rule for `$` that nobody had run.
+
+    A password is the one value in that file where being off by a character is
+    not a warning. `POSTGRES_PASSWORD` initialises PGDATA on the first `up`, and
+    every later start ignores it - so a value that reached the container
+    mangled, once, is the password the role now has, and the disagreement shows
+    up as `pg_isready` green, migrate failing authentication, and api, worker
+    and rebuild never starting.
+    """
+    assert render_password(tmp_path, DOLLAR_LINE) == DOLLAR_PASSWORD
+
+
+def test_the_forms_that_file_warns_against_really_do_lose_the_dollar(
+    tmp_path,
+) -> None:
+    """The other half, so the warning is not folklore.
+
+    A bare `$` introduces a name compose expands - to nothing, with a warning
+    nobody reads on a `docker compose up -d` - and double quotes do not stop
+    it. If either of these ever started delivering the literal, the guidance
+    above would be over-cautious rather than wrong, and this is where that
+    would be noticed.
+    """
+    assert render_password(tmp_path, "PGPASSWORD=pa$w0rd") == "pa"
+    assert render_password(tmp_path, 'PGPASSWORD="pa$w0rd"') == "pa"
+
+
+def test_the_example_recommends_the_form_it_was_measured_to_need(tmp_path) -> None:
+    """And says so in the file an operator is reading while they paste the
+    value, rather than only in a test."""
+    body = ENV_EXAMPLE.read_text()
+    assert DOLLAR_LINE.replace("PGPASSWORD=", "") in body, (
+        f"`.env.example` no longer shows {DOLLAR_LINE!r} as the form to use for a value "
+        "containing a dollar sign"
+    )
+    assert "single quotes" in body
+    assert "strips a matching pair" in " ".join(body.split()), (
+        "`.env.example` no longer says compose's dotenv reader strips the quotes, which "
+        "is what makes the single-quoted form above work - it used to claim the "
+        "opposite, and the single-quoted form would be meaningless under that claim"
+    )
+
+
+def test_the_shipped_secrets_reach_the_containers_unaltered(rendered) -> None:
+    """The example's own four `change-me` values, end to end.
+
+    They are placeholders, and that is the point: whatever an operator replaces
+    them with has to arrive the way it was written, and the way to notice that
+    it does not is to check that the shipped ones do. A `$` slipped into any of
+    them - by an editor, by a paste, by somebody making the placeholders look
+    more like passwords - is a silent change to the value, and for PGPASSWORD a
+    silent change to the password PGDATA is initialised with.
+    """
+    expected = dict(
+        line.split("=", 1) for line in ENV_EXAMPLE.read_text().splitlines() if "=" in line
+    )
+    checked = 0
+    for service, name, source in (
+        ("postgis", "POSTGRES_PASSWORD", "PGPASSWORD"),
+        ("api", "DJANGO_SECRET_KEY", "DJANGO_SECRET_KEY"),
+        ("api", "KEY_ENCRYPTION_KEY", "KEY_ENCRYPTION_KEY"),
+        ("api", "DISCORD_CLIENT_SECRET", "DISCORD_CLIENT_SECRET"),
+    ):
+        # An inherited variable beats the env file, and this suite runs with
+        # `KEY_ENCRYPTION_KEY` set - `config.test_settings` refuses to import
+        # without one. `render()` drops the `PG*` names for the same reason;
+        # the rest are skipped here rather than made to depend on who is
+        # running the tests. PGPASSWORD is the one this test is really about
+        # and it is always checked.
+        if source in os.environ and not source.startswith("PG"):
+            continue
+        assert unescape(environment(rendered, service)[name]) == expected[source], (
+            f"{service}'s {name} is not the {source} line of .env.example verbatim"
+        )
+        checked += 1
+    assert checked, "every secret was skipped; the environment this ran in set all of them"

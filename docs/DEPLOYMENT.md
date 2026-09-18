@@ -178,8 +178,16 @@ Step 1 runs under the *old* password, which the running container still holds
 in its own environment, so it has to happen before step 2. `up -d` and not
 `restart`: compose reads `.env` when it creates a container, so a restarted
 container keeps the environment it was created with and the new value never
-reaches it. Write the value with the same rules as any other in that file —
-no quotes, and a literal `$` doubled.
+reaches it.
+
+Write the value the way `.env.example` says to: if it contains a `$`, wrap the
+whole value in single quotes (`PGPASSWORD='pa$w0rd'`), because compose's dotenv
+reader strips the quotes and expands nothing between them. Written bare, `$w0rd`
+is a variable name that expands to nothing and the role ends up with `pa` —
+which is now the password in PGDATA, since `POSTGRES_PASSWORD` is only read
+when the directory is initialised. And do **not** source `.env` into a shell on
+the way: the shell has its own rules for `$`, `$$` and backticks, and an
+exported value wins over the file.
 
 **`DJANGO_SECRET_KEY`: rotating it signs every user out.** Sessions are
 database-backed and their payload is signed with this key; `settings.py` sets
