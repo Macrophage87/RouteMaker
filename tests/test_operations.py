@@ -1450,3 +1450,114 @@ def test_the_default_job_budget_is_the_maintenance_queues_bound() -> None:
     assert DEFAULT_JOB_BUDGET_S == BACKUP_TIMEOUT_S == SWEEP_TIMEOUT_S, (
         "it is the queue's bound, and these three being equal is the reason it is that number"
     )
+
+
+def test_the_stalled_worker_timeout_is_procrastinates_own_number() -> None:
+    """Read out of the library rather than asserted against itself.
+
+    `unwedge_job` refuses while a job's worker has beaten inside
+    `STALLED_WORKER_TIMEOUT_S`, and the number is only defensible because it is
+    the one Procrastinate's own `prune_stalled_workers` uses: a command with a
+    shorter window would requeue jobs the library still considers owned, and a
+    longer one would refuse to clear a job whose worker row the next worker's
+    startup has already deleted. The old test imported the constant and
+    compared it with itself, so 30.0 could have become 30000.0 without a single
+    failure.
+
+    There is no module-level constant to import in 3.9.0 - the default lives on
+    the keyword argument of `procrastinate.worker.Worker.__init__` - so the
+    signature is what is read, the same way the dropped-tick doc test reads
+    `procrastinate.periodic.MAX_DELAY`.
+    """
+    import inspect
+
+    from procrastinate.worker import Worker
+
+    from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
+
+    parameters = inspect.signature(Worker.__init__).parameters
+    assert "stalled_worker_timeout" in parameters, (
+        "procrastinate.worker.Worker no longer takes stalled_worker_timeout; unwedge_job's "
+        "definition of a dead worker has to be re-derived from whatever replaced it"
+    )
+    assert STALLED_WORKER_TIMEOUT_S == parameters["stalled_worker_timeout"].default, (
+        "unwedge_job and the worker must agree about which workers still exist"
+    )
+
+
+def wedged_backup(minutes: int = 600, worker_id=None) -> int:
+    """A `nightly_backup` job `doing` on the maintenance queue for longer than
+    its budget, owned by `worker_id` or by nobody.
+
+    No queueing lock: the backup does not take one, which is also why an
+    operator unwedging it is not told about a lock collision.
+    """
+    at = timezone.now() - timedelta(minutes=minutes)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO procrastinate_jobs
+                (queue_name, task_name, priority, args, status, attempts,
+                 abort_requested, worker_id)
+            VALUES ('maintenance', 'nightly_backup', 0, '{}'::jsonb, 'doing', 0, false, %s)
+            RETURNING id
+            """,
+            [worker_id],
+        )
+        job_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO procrastinate_events (job_id, type, at) VALUES (%s, 'started', %s)",
+            [job_id, at],
+        )
+    return job_id
+
+
+@db
+def test_unwedging_a_backup_names_the_worker_rather_than_the_rebuild() -> None:
+    """What the command told an operator to do next was one fixed paragraph.
+
+    It named the rebuild service, `docker compose logs -f rebuild` and
+    `manage.py run_rebuild_now` - for every job on every queue. A SIGKILLed
+    `nightly_backup` leaves a `doing` row exactly the way a killed rebuild
+    does, and it is the ordinary case on any stack that has ever been
+    recreated while the maintenance worker was mid-dump; the operator who
+    cleared it was then sent to a service that does not run the task and to a
+    command that does not queue it. `run_rebuild_now` would have queued a
+    six-hour rebuild instead of the backup they came to fix.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    job_id = wedged_backup()
+
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+
+    assert job_status(job_id) == "todo"
+    printed = out.getvalue()
+    assert "queued again" in printed
+    assert "worker service" in printed, f"the service that actually runs it: {printed}"
+    assert "maintenance queue" in printed, f"and the queue it is on: {printed}"
+    assert "nightly_backup is periodic" in printed, printed
+    assert "run_rebuild_now" not in printed, (
+        f"a backup is not requeued by the rebuild's hand-fire command: {printed}"
+    )
+    assert "logs -f rebuild" not in printed, (
+        f"nor watched in the container that does not run it: {printed}"
+    )
+
+
+@db
+def test_unwedging_a_rebuild_still_names_the_rebuild_service() -> None:
+    """The other half of the same change: making the paragraph task-aware must
+    not cost the rebuild the one hand-fire command there is."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    out = StringIO()
+    call_command("unwedge_job", str(wedged_rebuild()), stdout=out)
+    printed = out.getvalue()
+    assert "rebuild service" in printed and "run_rebuild_now" in printed, printed
+    assert "worker service" not in printed, printed
