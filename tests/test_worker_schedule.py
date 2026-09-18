@@ -755,8 +755,16 @@ def test_a_cold_worker_runs_a_deferred_job() -> None:
     assert result.returncode == 0, result.stderr[-3000:]
 
     assert ProcrastinateJob.objects.get(id=job_id).status == "succeeded", result.stderr[-3000:]
-    run = ScheduledRun.objects.get(task="membership_sweep")
-    assert run.succeeded
+    # `filter().first()` rather than `get()`: the worker runs its own periodic
+    # deferrer before taking a job, and that deferrer queues any tick whose cron
+    # boundary is inside the last ten minutes (procrastinate.periodic.MAX_DELAY).
+    # The sweep's `0 */6 * * *` therefore produces a second run row whenever the
+    # suite runs in the ten minutes after 00:00, 06:00, 12:00 or 18:00 UTC, and
+    # `get()` raised MultipleObjectsReturned for four twenty-fourths of the day.
+    # Both rows are this worker's, and what is being asserted is that the cold
+    # process ran the job at all.
+    run = ScheduledRun.objects.filter(task="membership_sweep").order_by("-started_at").first()
+    assert run is not None and run.succeeded
     assert run.detail.startswith("purged ")
 
 
