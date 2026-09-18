@@ -15,6 +15,7 @@ edges in them (PLAN:13).
 
 from __future__ import annotations
 
+import logging
 import os
 import time
 from datetime import UTC, datetime, timedelta
@@ -34,17 +35,27 @@ class FakeOsmium:
     Every command is recorded, and each one writes the file named by its `-o`
     argument with content derived from its inputs, so a test can assert that the
     clip was taken from the merged file rather than from one state's download.
+
+    `stderr` is what each command says while doing it, keyed by "curl", "merge"
+    or "extract". The real runner captures that stream and hands it back on the
+    `CommandOutput`, and what this stage does with it is the subject of the
+    tests below.
     """
 
-    def __init__(self, write: bool = True) -> None:
+    def __init__(self, write: bool = True, stderr: dict[str, str] | None = None) -> None:
         self.commands: list[list[str]] = []
         self.write = write
+        self.stderr = dict(stderr or {})
+
+    def _output(self, command) -> CommandOutput:
+        key = "curl" if command[0] == "curl" else command[1]
+        return CommandOutput("", self.stderr.get(key, ""))
 
     def __call__(self, command) -> CommandOutput:
         command = list(command)
         self.commands.append(command)
         if not self.write:
-            return CommandOutput("", "")
+            return self._output(command)
         output = Path(command[command.index("-o") + 1])
         output.parent.mkdir(parents=True, exist_ok=True)
         if command[0] == "curl":
@@ -57,7 +68,7 @@ class FakeOsmium:
             ]
             joined = "+".join(path.read_text() for path in inputs)
             output.write_text(joined if command[1] == "merge" else f"clip({joined})")
-        return CommandOutput("", "")
+        return self._output(command)
 
     def named(self, *first_arguments: str) -> list[list[str]]:
         return [c for c in self.commands if tuple(c[: len(first_arguments)]) == first_arguments]
@@ -320,13 +331,20 @@ def test_the_extract_and_the_tiles_share_the_volume_the_disk_gate_measures() -> 
     volume the 1-2 GB download never touches: the rebuild that filled the other
     one would pass the gate on its way to ENOSPC.
     """
-    import yaml
+    # Read from the *rendered* configuration rather than from the YAML, which
+    # is what `tests/test_compose_render.py` exists for. Every value in
+    # compose.yaml is a `${...}` string, and a mount written the way half that
+    # file is - `${SOMEWHERE:-/srv/extracts}:/data/extracts` - has three colons
+    # in it: splitting the short syntax on the first one reads the target as
+    # `-/srv/extracts}`, which is not under /data, so the second volume this
+    # test exists to forbid walked straight past it. Compose does the
+    # substitution and hands back source and target as fields.
+    from test_compose_render import ENV_EXAMPLE, render
 
-    compose = yaml.safe_load((Path(__file__).resolve().parents[1] / "compose.yaml").read_text())
-    rebuild = compose["services"]["rebuild"]
+    rebuild = render(ENV_EXAMPLE)["services"]["rebuild"]
     assert rebuild["environment"]["DATA_ROOT"] == "/data"
 
-    targets = [str(volume).split(":")[1] for volume in rebuild["volumes"]]
+    targets = [volume["target"] for volume in rebuild["volumes"]]
     under_data = [t for t in targets if t == "/data" or t.startswith("/data/")]
     assert under_data == ["/data"], (
         "the rebuild service mounts something other than the one volume at /data, so the "
@@ -487,3 +505,85 @@ def test_the_freshness_clock_is_the_files_own_age(tmp_path) -> None:
         tmp_path / source.MERGED_NAME, tmp_path / source.CLIPPED_NAME, now=later
     )
     assert "8 days old" in reason
+
+
+# --- What the commands say ------------------------------------------------------
+
+# The line this stage exists to make visible. osmium-tool warns when a merge of
+# non-history files meets two versions of one object; the wording here is
+# representative rather than quoted from a run, since nothing in this
+# environment has osmium (see the module docstring) - which is why
+# `source.MULTIPLE_VERSION_MARKERS` matches the condition by two fragments
+# rather than by a message.
+MULTIPLE_VERSIONS_WARNING = (
+    "WARNING: Multiple versions of the same object found. "
+    "Use --with-history to merge history files."
+)
+
+
+def test_the_merge_warning_that_the_files_are_not_one_snapshot_is_logged_at_warning(
+    tmp_path, caplog
+) -> None:
+    """The module docstring's whole same-snapshot argument rests on this
+    warning reaching a human being.
+
+    Geofabrik's three state extracts are assumed to be cut from one planet
+    snapshot; when they are not - a mirror days out of step, a `SOURCE_EXTRACT_URLS`
+    pointed somewhere else - `osmium merge` says so and produces a small history
+    file rather than a map, and `valhalla_build_admins` then reads a merged file
+    carrying two versions of the objects it builds boundaries from. The runner
+    captures stderr, so until this stage logged it the warning existed and
+    nobody could ever see it.
+    """
+    run = FakeOsmium(stderr={"merge": MULTIPLE_VERSIONS_WARNING})
+
+    with caplog.at_level(logging.INFO, logger="pipeline.source"):
+        source.ensure_extract(tmp_path / "extracts", BBOX, run)
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1, (
+        f"the merge's multiple-version warning is the one thing here that is a warning: "
+        f"{[r.getMessage() for r in warnings]}"
+    )
+    message = warnings[0].getMessage()
+    assert "--with-history" in message, "the line osmium wrote is quoted"
+    assert "osmium merge" in message, "and the step it came from is named"
+
+
+def test_a_commands_ordinary_output_is_logged_under_the_step_it_came_from(tmp_path, caplog) -> None:
+    """The rest of it, at INFO: osmium's progress and summary, and whatever curl
+    says under `-sS` (which is nothing unless something went wrong).
+
+    Named per step because three commands write into one stage's log and a
+    download that stalled and a clip that complained are different problems.
+    `config/settings.py` puts the `pipeline` logger at INFO, so these records
+    reach the console of a real rebuild.
+    """
+    run = FakeOsmium(
+        stderr={
+            "curl": "curl: (18) transfer closed with outstanding read data remaining",
+            "merge": "[======] 100%",
+            "extract": "Sorting objects...\n",
+        }
+    )
+
+    with caplog.at_level(logging.INFO, logger="pipeline.source"):
+        source.ensure_extract(tmp_path / "extracts", BBOX, run)
+
+    info = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
+    assert any("transfer closed" in m and "downloading https://" in m for m in info)
+    assert any("100%" in m and "osmium merge" in m for m in info)
+    assert any("Sorting objects" in m and "osmium extract" in m for m in info)
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING], (
+        "ordinary progress is not a warning, or the warning above would mean nothing"
+    )
+
+
+def test_a_runner_that_returns_no_streams_is_not_a_failure(caplog) -> None:
+    """The stage takes whatever the injected runner returns and reads `.stderr`
+    off it if there is one. A runner without one - a hand-wired one, an older
+    test's - must not turn a working download into an exception."""
+    with caplog.at_level(logging.INFO, logger="pipeline.source"):
+        source.log_command_output("osmium merge", None)
+        source.log_command_output("osmium merge", object())
+    assert caplog.records == []

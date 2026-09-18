@@ -391,6 +391,34 @@ class CommandOutput(NamedTuple):
         """
         return self.stdout + self.stderr
 
+    def tail(self, lines: int) -> str:
+        """The end of each stream, labelled, for the report of a failed command.
+
+        The end rather than the whole of it because these streams are unbounded:
+        `valhalla_build_tiles` writes progress for six hours, `curl` retries a
+        1-2 GB transfer three times, and this text goes into an exception
+        message, a log record and a Procrastinate job row. What says why a
+        command stopped is at the end of what it wrote - osmium's "Could not
+        detect file format", curl's "The requested URL returned error: 404",
+        gdalwarp's "not recognized as a supported file format" - so the tail is
+        the part worth carrying and the rest is what would make it unread.
+
+        Both streams, because which one carries the diagnosis is the command's
+        business: osmium and curl write theirs to stderr, while a Valhalla
+        binary configured with `logging.type: std_out` puts its last words on
+        stdout. Each is labelled so a reader knows which is which, and an empty
+        one says so rather than leaving a blank the reader has to interpret.
+        """
+        return "\n".join(
+            f"the last {lines} lines of {name}:\n{_last_lines(stream, lines)}"
+            for name, stream in (("stderr", self.stderr), ("stdout", self.stdout))
+        )
+
+
+def _last_lines(stream: str, lines: int) -> str:
+    kept = [line for line in stream.splitlines() if line.strip()][-lines:]
+    return "\n".join(kept) if kept else "(nothing)"
+
 
 def trace_attributes(
     run: Callable[[Sequence[str]], CommandOutput], config_path: Path, request: dict

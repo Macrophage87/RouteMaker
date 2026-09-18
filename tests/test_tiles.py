@@ -484,3 +484,25 @@ def test_a_build_refuses_to_write_into_a_build_directory_that_exists(tmp_path) -
     # different build id on the same variant is fine.
     tiles.write_build_config(REPO / "valhalla", tmp_path, Variant.STANDARD, "b1")
     tiles.write_build_config(REPO / "valhalla", tmp_path, Variant.EBIKE, "b2")
+
+
+def test_the_tail_of_a_run_quotes_the_end_of_both_streams_and_says_which() -> None:
+    """What a failed command's report is built from.
+
+    Both streams, because which one carries the diagnosis is the command's
+    business: osmium and curl write theirs to stderr, while a Valhalla binary
+    under `mjolnir.logging.type: std_out` puts its last words on stdout. The
+    end of each, because these are unbounded - a six-hour tile build, a
+    retried 1-2 GB transfer - and the reason a command stopped is the last
+    thing it wrote. And an empty stream says so, rather than leaving a blank
+    the reader has to interpret as "nothing" or as "this was dropped".
+    """
+    output = tiles.CommandOutput(stdout="", stderr="\n".join(f"line {n}" for n in range(1, 51)))
+
+    tail = output.tail(3)
+
+    assert "line 50" in tail and "line 48" in tail, "the end of the stream"
+    assert "line 47" not in tail, "and no more of it than was asked for"
+    assert "the last 3 lines of stderr" in tail and "the last 3 lines of stdout" in tail
+    assert tail.index("stderr") < tail.index("stdout"), "the diagnosing stream first"
+    assert "(nothing)" in tail, "an empty stream is said rather than left blank"

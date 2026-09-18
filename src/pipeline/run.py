@@ -22,6 +22,7 @@ import functools
 import json
 import logging
 import re
+import shlex
 import sqlite3
 import subprocess
 import time
@@ -53,7 +54,18 @@ from .rebuild import RebuildTimedOut, Stage
 logger = logging.getLogger(__name__)
 
 LUA_LOADED_PATTERN = re.compile(r"Using LUA script:\s*(\S+)")
-LUA_SCRIPT_PATH = "/conf/lua/graph.lua"
+
+# How much of a failed command's output is carried out of `_run_command`.
+#
+# Bounded because these streams are not: a `valhalla_build_tiles` that dies six
+# hours in has written hundreds of thousands of progress lines, and this text
+# goes into an exception message, a WARNING record and the Procrastinate job
+# row. Twenty because the thing being rescued is the diagnosis a tool prints
+# just before it stops - osmium's "Could not detect file format for filename",
+# curl's "The requested URL returned error: 404", the merge's multiple-version
+# warning - and each of those is a line or two with a little context around it,
+# while a hundred would put a screen of progress in front of every reader.
+COMMAND_OUTPUT_TAIL_LINES = 20
 
 # The prefix `lua/routemaker_remap.lua` writes a refused change under, and the
 # thing the comments in that file and in `lua/graph.lua` have always said this
@@ -151,6 +163,36 @@ def _setting(name: str):
 
 class ValidationFailed(RuntimeError):
     """A pre-swap check did not pass, so the swap must not happen."""
+
+
+class CommandFailed(RuntimeError):
+    """A binary the rebuild shells out to exited non-zero, with what it said.
+
+    `subprocess.CalledProcessError` carries `.stdout` and `.stderr` on the
+    exception object, and nothing read them: its `str()` is the argv and the
+    exit status, so every failure of this pipeline's external commands was
+    reported as "Command '[...]' returned non-zero exit status 1" and the
+    reason was discarded with the object. That covered the first rebuild on a
+    fresh deployment end to end - curl on a 404 from a mirror, `osmium merge`
+    on "Could not detect file format for filename", gdalwarp on an HGT it could
+    not read, and `valhalla_build_tiles` failing six hours in - every one of
+    which says why on a stream that was captured and thrown away.
+
+    Deliberately not in `config.procrastinate.terminal_causes`, which keeps the
+    behaviour a `CalledProcessError` had: a mirror that was briefly unreachable
+    or a download that dropped is the failure a retry fixes.
+    """
+
+    def __init__(
+        self, command: Sequence[str], returncode: int, output: tiles.CommandOutput
+    ) -> None:
+        self.command = list(command)
+        self.returncode = returncode
+        self.output = output
+        super().__init__(
+            f"{Path(self.command[0]).name} exited {returncode}: "
+            f"{shlex.join(self.command)}\n{output.tail(COMMAND_OUTPUT_TAIL_LINES)}"
+        )
 
 
 class ReferenceDataMissing(RuntimeError):
@@ -318,7 +360,7 @@ class RebuildContext:
         return self.reference
 
 
-def assert_lua_script_was_loaded(build_log: str, expected: str, where: str) -> None:
+def assert_lua_script_was_loaded(build_log: str, build_config: Path, where: str) -> None:
     """The guard for Valhalla's silent fallback.
 
     A key it cannot resolve leaves it using the compiled-in transform, dropping
@@ -328,7 +370,25 @@ def assert_lua_script_was_loaded(build_log: str, expected: str, where: str) -> N
     that variant's own log. Asked once against the three joined together, the
     first match satisfied all three and two variants could have fallen back
     without the check noticing.
+
+    What the log is compared against is read out of `build_config` - the file
+    this variant's `valhalla_build_tiles` was handed - rather than from a
+    constant here. `mjolnir.graph_lua_name` in that file is the instruction
+    Valhalla was given, so this asks the only question worth asking: did the
+    build load the script its own config named. A second copy of the path in
+    this module would be the copy that goes stale, and the failure it would
+    hide is precise - a generator retargeted at another script would produce
+    builds that loaded exactly what they were told to and failed validation
+    against a path nothing had used since.
     """
+    config = json.loads(Path(build_config).read_text())
+    expected = config.get("mjolnir", {}).get("graph_lua_name")
+    if not expected:
+        raise ValidationFailed(
+            f"the {where} build config {build_config} names no mjolnir.graph_lua_name, so "
+            "the build was never told which transform to load and nothing can say whether "
+            "it loaded the right one"
+        )
     match = LUA_LOADED_PATTERN.search(build_log)
     if match is None:
         raise ValidationFailed(
@@ -850,7 +910,13 @@ def build_handlers(
                 f"missing ones against: have {sorted(v.value for v in context.build_logs)}"
             )
         for variant, build_log in context.build_logs.items():
-            assert_lua_script_was_loaded(build_log, LUA_SCRIPT_PATH, variant.value)
+            build_config = context.build_configs.get(variant)
+            if build_config is None:
+                raise ValidationFailed(
+                    f"the {variant.value} variant produced a build log and no build config, "
+                    "so there is nothing to say which transform its build was told to load"
+                )
+            assert_lua_script_was_loaded(build_log, build_config, variant.value)
             assert_no_rule_violations(build_log, variant.value)
         assert_admin_and_timezone_databases_were_built(context.build_configs)
         assert_elevation_reached_the_tiles(sample_grade())
@@ -945,13 +1011,31 @@ def _run_command(
     generated config names and no deployment has. `sample_grade` is the first
     thing VALIDATE calls, so the rebuild died there every week and nothing could
     ever promote. See tiles.CommandOutput.
+
+    A command that exits non-zero raises `CommandFailed` carrying the end of
+    both streams, because `subprocess.run(check=True)` raises an error whose
+    text is the argv and the exit status and whose captured output nothing was
+    reading. See that class.
     """
     timeout = None
     if deadline is not None:
         timeout = deadline - clock()
         if timeout <= 0:
             raise RebuildTimedOut(f"no time left to run {command[0]}")
-    result = subprocess.run(command, capture_output=True, text=True, check=True, timeout=timeout)
+    try:
+        result = subprocess.run(
+            command, capture_output=True, text=True, check=True, timeout=timeout
+        )
+    except subprocess.CalledProcessError as error:
+        output = tiles.CommandOutput(error.stdout or "", error.stderr or "")
+        failure = CommandFailed(command, error.returncode, output)
+        # Logged as well as raised. The exception reaches an operator through
+        # the job row and the alert, which is the right place for it and is not
+        # where somebody reading the rebuild's own log at the moment it failed
+        # is looking; and a handler that catches this - none does today - would
+        # otherwise take the only copy of the diagnosis with it.
+        logger.warning("%s", failure)
+        raise failure from error
     return tiles.CommandOutput(result.stdout, result.stderr)
 
 

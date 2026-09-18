@@ -43,10 +43,16 @@ assumption this stage makes, and it is Geofabrik's published arrangement rather
 than anything this code enforces. It is acceptable because the three downloads
 happen minutes apart in one rebuild, so they are the same day's build; a
 deployment pointing `SOURCE_EXTRACT_URLS` at mirrors that are days out of step
-with each other would break it. A mismatch is not silent: osmium warns on
-multiple versions of an object unless it is given `-H/--with-history` (which
-this does not pass), so it lands in the rebuild's own build log, which is the
-place to look when admin polygons or geometry come out wrong after a refresh.
+with each other would break it. A mismatch is not silent, and this module is
+what makes that true: osmium warns on multiple versions of an object unless it
+is given `-H/--with-history` (which this does not pass), and the warning goes
+to stderr, which the pipeline's command runner captures. Captured and
+discarded, the argument above was an assumption nobody could check - the
+warning existed and no human being would ever see it. So every command run from
+here has its stderr logged, by `log_command_output`, on the `pipeline.source`
+logger: osmium's progress at INFO, and a line naming multiple versions or
+`--with-history` at WARNING, in the rebuild's own log. That is the place to
+look when admin polygons or geometry come out wrong after a refresh.
 
 Nothing here has been executed: this environment has neither `osmium` nor
 `curl` on PATH nor any route to Geofabrik, so the command lines are from the
@@ -140,6 +146,56 @@ DEFAULT_MAX_AGE = timedelta(days=6)
 ESTIMATED_BYTES = 2 * 1024**3
 
 
+# What osmium says when the files it was handed are not one snapshot, matched
+# case-insensitively as substrings of a line.
+#
+# Two fragments rather than one message, because what has to be caught is the
+# condition and not a wording: osmium-tool names the remedy (`--with-history`)
+# and the symptom ("multiple versions") in the warning it writes when a merge
+# of non-history files meets two versions of one object, and a release that
+# rephrases one of them is unlikely to drop both. Nothing here has run osmium
+# - see the module docstring - so a match that is too narrow would fail in the
+# direction of saying nothing, which is the failure this exists to end.
+MULTIPLE_VERSION_MARKERS = ("multiple versions", "with-history", "with_history")
+
+
+def log_command_output(what: str, output: object) -> None:
+    """Put a command's stderr in the rebuild's log, one record per line.
+
+    `what` names the step, because three commands write to this log in one
+    stage and "downloading" and "merging" are different problems.
+
+    At INFO, since this is ordinary progress - curl says nothing under `-sS`
+    unless something went wrong, and osmium's is a progress bar and a summary.
+    At WARNING for the one line that changes what the output *is*: a merge that
+    saw two versions of an object produced a small history file rather than a
+    snapshot, and everything built from it - the admin database above all -
+    describes a map that never existed at any one moment.
+
+    `output` is whatever the injected runner returned. Read by attribute rather
+    than by type: this module is imported by `config/settings.py` at settings
+    time and must not import `pipeline.tiles` (which would import Django's
+    settings back), and a runner that returns None - a test's, an operator's
+    hand-wired one - is not a reason to fail a download.
+    """
+    stderr = getattr(output, "stderr", None)
+    if not isinstance(stderr, str):
+        return
+    for line in stderr.splitlines():
+        if not line.strip():
+            continue
+        if any(marker in line.lower() for marker in MULTIPLE_VERSION_MARKERS):
+            logger.warning(
+                "%s: osmium reports more than one version of an object, so the files it was "
+                "given are not one point in time and what came out is a small history file "
+                "rather than a snapshot: %s",
+                what,
+                line,
+            )
+        else:
+            logger.info("%s: %s", what, line)
+
+
 class SourceExtractFailed(RuntimeError):
     """A download, merge or clip did not leave the file it was asked for.
 
@@ -198,7 +254,7 @@ def download(url: str, destination: Path, run: Callable[[Sequence[str]], object]
     destination.parent.mkdir(parents=True, exist_ok=True)
     partial = destination.with_name(destination.name + ".part")
     partial.unlink(missing_ok=True)
-    run(curl_command(url, partial))
+    log_command_output(f"downloading {url}", run(curl_command(url, partial)))
     if not partial.is_file() or partial.stat().st_size == 0:
         partial.unlink(missing_ok=True)
         raise SourceExtractFailed(f"curl left nothing at {partial} for {url}")
@@ -231,7 +287,7 @@ def merge(inputs: Sequence[Path], merged: Path, run: Callable[[Sequence[str]], o
     merged = Path(merged)
     partial = merged.with_name(merged.name + ".part")
     partial.unlink(missing_ok=True)
-    run(merge_command([Path(p) for p in inputs], partial))
+    log_command_output("osmium merge", run(merge_command([Path(p) for p in inputs], partial)))
     if not partial.is_file():
         raise SourceExtractFailed(f"osmium merge left nothing at {partial}")
     partial.replace(merged)
@@ -287,7 +343,7 @@ def clip(
     clipped = Path(clipped)
     partial = clipped.with_name(clipped.name + ".part")
     partial.unlink(missing_ok=True)
-    run(clip_command(Path(merged), partial, region))
+    log_command_output("osmium extract", run(clip_command(Path(merged), partial, region)))
     if not partial.is_file():
         raise SourceExtractFailed(f"osmium extract left nothing at {partial}")
     partial.replace(clipped)

@@ -16,6 +16,7 @@ as the weekly task runs them.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import tempfile
@@ -1843,6 +1844,112 @@ def test_the_command_runner_hands_back_both_streams_kept_apart() -> None:
     assert output.stdout == "out\n"
     assert output.stderr == "err\n", "the stream the transform's refusals arrive on"
     assert output.log == "out\nerr\n", "and the log is both, in that order"
+
+
+def test_a_command_that_exits_non_zero_reports_what_it_said(caplog, tmp_path) -> None:
+    """The other half of the runner, and the one every first rebuild meets.
+
+    `subprocess.run(check=True)` raises a `CalledProcessError` whose message is
+    the argv and the exit status; it carries the captured streams on the
+    exception object and nothing read them. So a curl that got a 404, an
+    `osmium merge` that could not detect a file format, a gdalwarp that could
+    not read an HGT, and a `valhalla_build_tiles` that died six hours in were
+    all reported as a command and a number - while the tool's own account of
+    why it stopped sat in an attribute on the exception and was collected.
+
+    Run against a real shell for the same reason the test above is: this is the
+    one function nothing can fake for itself.
+    """
+    from pipeline.run import CommandFailed, _run_command
+
+    # The script is a file rather than `sh -c <text>` so that what it prints is
+    # nowhere in the argv: the argv is in the message already, and a test whose
+    # expected line is quoted there passes against a runner that reports only
+    # the command it ran, which is the defect being fixed.
+    script = tmp_path / "failing-command.sh"
+    script.write_text(
+        "echo 'reading /data/extracts/merged.osm.pbf.part'\n"
+        "echo 'Could not detect file format for filename' 1>&2\n"
+        "exit 3\n"
+    )
+
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        with pytest.raises(CommandFailed) as caught:
+            _run_command(["sh", str(script)])
+
+    message = str(caught.value)
+    assert str(script) in message, "the argv is still reported"
+    assert "Could not detect file format for filename" in message, (
+        "the reason the command gave is what the message is for"
+    )
+    assert "merged.osm.pbf.part" in message, "and stdout, for the binaries that diagnose there"
+    assert "exited 3" in message, "with the exit status, which is a different fact"
+    assert caught.value.returncode == 3
+    # And an operator watching the rebuild's log at the moment it failed sees
+    # the same thing, rather than having to wait for the job row.
+    assert "Could not detect file format for filename" in caplog.text
+    assert [r.levelname for r in caplog.records] == ["WARNING"]
+
+
+def test_a_failed_commands_output_is_quoted_from_the_end_and_bounded(caplog, tmp_path) -> None:
+    """A tail, because `valhalla_build_tiles` writes progress for six hours and
+    this text goes into an exception, a log record and the job row - and because
+    what says why a command stopped is the last thing it wrote."""
+    from pipeline.run import COMMAND_OUTPUT_TAIL_LINES, CommandFailed, _run_command
+
+    script = tmp_path / "chatty-command.sh"
+    script.write_text("seq 1 500 1>&2\necho 'the reason it stopped' 1>&2\nexit 1\n")
+
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        with pytest.raises(CommandFailed) as caught:
+            _run_command(["sh", str(script)])
+
+    message = str(caught.value)
+    assert "the reason it stopped" in message, "the end of the stream is the part kept"
+    assert "\n1\n" not in message, "and the beginning of 500 progress lines is not"
+    quoted = [line for line in message.splitlines() if line.strip().isdigit()]
+    assert len(quoted) == COMMAND_OUTPUT_TAIL_LINES - 1, (
+        "the quote is bounded by the constant that says why it is bounded"
+    )
+
+
+def test_the_lua_check_reads_the_script_out_of_the_config_the_build_was_given(tmp_path) -> None:
+    """N-3: `mjolnir.graph_lua_name` in the config handed to
+    `valhalla_build_tiles` is the instruction Valhalla was given, so it is what
+    its log has to be held to.
+
+    Against a constant in `pipeline/run.py`, the path lived in two files - here
+    and in `scripts/build_valhalla_configs.py` - and the pair that had to agree
+    were never compared. A generator retargeted at another script would then
+    produce builds that loaded exactly what they were told to and failed
+    validation against a path nothing had used since.
+    """
+    from pipeline.run import ValidationFailed, assert_lua_script_was_loaded
+
+    log = "... Using LUA script: /conf/lua/graph.lua ..."
+    config = tmp_path / "valhalla.json"
+
+    config.write_text(json.dumps({"mjolnir": {"graph_lua_name": "/conf/lua/elsewhere.lua"}}))
+    with pytest.raises(ValidationFailed) as caught:
+        assert_lua_script_was_loaded(log, config, "standard")
+    assert "/conf/lua/elsewhere.lua" in str(caught.value), "the message names what was asked for"
+
+    # The same log against a config that names that script passes, so the
+    # failure above is the comparison and not the log.
+    config.write_text(json.dumps({"mjolnir": {"graph_lua_name": "/conf/lua/graph.lua"}}))
+    assert_lua_script_was_loaded(log, config, "standard")
+
+
+def test_the_lua_check_refuses_a_config_that_names_no_script(tmp_path) -> None:
+    """A build config with no `mjolnir.graph_lua_name` was never told which
+    transform to load, so there is no question to ask of its log and the answer
+    is not "it passed"."""
+    from pipeline.run import ValidationFailed, assert_lua_script_was_loaded
+
+    config = tmp_path / "valhalla.json"
+    config.write_text(json.dumps({"mjolnir": {"tile_dir": "/data/tiles/standard/x"}}))
+    with pytest.raises(ValidationFailed, match="graph_lua_name"):
+        assert_lua_script_was_loaded("Using LUA script: /conf/lua/graph.lua", config, "standard")
 
 
 def test_validate_refuses_when_a_variant_produced_no_build_log(tmp_path) -> None:
