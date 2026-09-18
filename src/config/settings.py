@@ -289,6 +289,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 USE_TZ = True
 TIME_ZONE = "UTC"
 STATIC_URL = "static/"
+# collectstatic's destination, and the only reason it can run at all: without a
+# STATIC_ROOT the command refuses, and it is not overridable from the command
+# line. PLAN.md:64 - "Django's admin and Ninja assets are collected into the
+# same named volume, which Caddy serves". That volume is `${DATA_ROOT}/static`,
+# which compose mounts into the caddy service at /srv/static read-only, so a
+# deploy that points this anywhere else leaves the admin unstyled.
+STATIC_ROOT = DATA_ROOT / "static"
 
 # Asserted in CI. A share link is a bearer token in a URL, so a cookie that
 # travels cross-site or a page that can be framed is a real leak, not a lint.

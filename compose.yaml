@@ -27,6 +27,15 @@ services:
       - ${DATA_ROOT}/caddy:/data
       - ${DATA_ROOT}/static:/srv/static:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    environment:
+      # The one variable this service takes, and not a secret. The Caddyfile's
+      # site address is `{$CADDY_SITE_ADDRESS}` - Caddy's own environment
+      # substitution, read when the config loads - so one file serves a
+      # deployment and a local stack: a hostname gets an automatic certificate,
+      # `:80` serves plain HTTP. The default is the local one, because a
+      # hostname guessed here would be a certificate request for someone else's
+      # name.
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
     deploy:
       resources:
         limits: { memory: 256M, cpus: "0.5" }

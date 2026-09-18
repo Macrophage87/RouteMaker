@@ -169,7 +169,7 @@ sudo chown -R 10001:10001 "$DATA_ROOT"
 A missed `chown` is a permission error from a binary six hours into a rebuild,
 which is not obviously an ownership problem to whoever reads it.
 
-## Static assets — a deploy step, and it does not work yet
+## Static assets — a deploy step, and it works now
 
 PLAN.md:64: the React frontend is built to static assets, "and Django's admin and
 Ninja assets are collected into the same named volume, which Caddy serves; both
@@ -180,45 +180,118 @@ There is no build-time `collectstatic` in `docker/api.Dockerfile`, for a reason
 that is not going away: `settings.py` raises `ImproperlyConfigured` without
 `KEY_ENCRYPTION_KEY`, so any build-time management command would need the
 deployment's real secret as a build input, and a secret in a build argument is a
-secret in the image's metadata. `collectstatic` is a deploy step:
+secret in the image's metadata. `collectstatic` is a deploy step, run after every
+`docker compose build` and after a restore:
 
 ```sh
 docker compose run --rm \
-  -v "$DATA_ROOT/static:/srv/static" \
+  -e DATA_ROOT=/data \
+  -v "$DATA_ROOT/static:/data/static" \
   api ./manage.py collectstatic --noinput
 ```
 
-**This does not work today, and the blocker is in `src/`, not here.**
-`settings.py` defines `STATIC_URL` and no `STATIC_ROOT`, and `collectstatic`
-refuses to run without one — it is not overridable from the command line. Until
-`STATIC_ROOT` is set (to `/srv/static`, or to a path the command above mounts),
-the admin's CSS and JS never reach the volume Caddy serves and the admin renders
-unstyled. Setting it is a one-line change to `src/config/settings.py`.
+`settings.STATIC_ROOT` is now `DATA_ROOT / "static"` — the same host directory
+Caddy mounts at `/srv/static`, so the assets land where the edge serves them from
+and nowhere else. Until it was set the command above could not run at all:
+`collectstatic` refuses without a `STATIC_ROOT` and it is not overridable from
+the command line, so the admin rendered unstyled.
+
+The two flags are both load-bearing, and the earlier version of this command had
+neither right. `-v` alone mounted the host directory at `/srv/static`, which is
+**Caddy's** path and not this container's: the api service sets no `DATA_ROOT`
+(see the blocker below), so inside the image `settings.DATA_ROOT` falls back to
+`BASE_DIR / "data"` and `STATIC_ROOT` with it — `/app/data/static`, on the
+container's writable layer, discarded when `run --rm` exits. `-e DATA_ROOT=/data`
+puts it at `/data/static`, which is what the bind mount covers, and matches the
+`rebuild` service's own `DATA_ROOT: /data`. Drop the `-e` and the mount has to
+move to `/app/data/static` instead; what must not happen is the two disagreeing,
+because that failure is silent — the command reports the files it copied and the
+volume stays empty.
 
 The frontend half of that sentence has no source either: `frontend/` is a single
 module and its test, with no React application, no bundler and no build script,
-so there is nothing to build into the volume yet.
+so there is nothing to build into the volume yet. Only the admin's and Ninja's
+assets reach the volume today.
+
+## The edge: `Caddyfile` and `CADDY_SITE_ADDRESS`
+
+`compose.yaml` bind-mounts `./Caddyfile` at `/etc/caddy/Caddyfile:ro`. The file
+did not exist, and Docker creates a *directory* at a missing bind-mount source,
+so this was not a startup error — Caddy came up against a directory where it
+expected a config and served nothing. It exists now, and `tests/test_deploy_surface.py`
+holds every value in it that is also written somewhere else.
+
+Caddy is the only service that publishes a port (PLAN.md:65) and **the only thing
+that terminates TLS**. Nothing downstream speaks TLS: gunicorn listens on plain
+HTTP inside the compose network, so Django would see every request as insecure —
+which fails the CSRF origin check on https form posts and builds `http://`
+redirects — if the proxy did not say otherwise. The reverse proxy therefore sets
+`X-Forwarded-Proto`, which is the header `settings.SECURE_PROXY_SSL_HEADER`
+(`HTTP_X_FORWARDED_PROTO`) reads. That setting is safe only while nothing but
+Caddy can reach the API, which is exactly what the no-published-ports rule
+enforces.
+
+The file routes two things and no more:
+
+- `handle_path /static/*` → `file_server` rooted at `/srv/static`, matching
+  `STATIC_URL = "static/"` and the mount above. `handle_path` rather than
+  `handle` because the matched prefix has to be stripped before the file server
+  sees the path. It does not shadow the admin, which mounts under
+  `DJANGO_ADMIN_PATH` (`internal-8f3a/` by default).
+- everything else → `reverse_proxy api:8000`, the port
+  `docker/api-entrypoint.sh` binds gunicorn to.
+
+Photon, Valhalla and the renderer have no route here on purpose. PLAN.md:65: they
+are "reachable only through the API", which proxies geocoding behind session
+authentication and a per-user rate limit Photon has no notion of a user to
+enforce for itself. A `reverse_proxy` to any of them would put an unauthenticated
+geocoder, router or renderer on the public internet, and the suite fails if one
+appears.
+
+### `CADDY_SITE_ADDRESS`
+
+The site address is the one variable the caddy service takes, read by the
+Caddyfile through Caddy's own `{$VAR}` substitution (evaluated when the config
+loads, not by compose), so one file serves both the deployment and a local stack.
+It is in `.env.example` and defaults to `:80` in `compose.yaml`.
+
+```sh
+CADDY_SITE_ADDRESS=routes.example.org   # a hostname: automatic TLS from Let's Encrypt
+CADDY_SITE_ADDRESS=:80                  # local: plain HTTP, no certificate at all
+```
+
+A hostname commits Caddy to obtaining a certificate for it, so the name has to
+resolve to the host and ports 80 and 443 have to be reachable from outside before
+the stack comes up. There is no committed default hostname for that reason: a
+guess here would be a certificate request for somebody else's name on every host
+that ran this stack.
+
+**Caddy has never run in this environment.** There is no Caddy binary here and no
+Docker daemon, so the Caddyfile has not been parsed by Caddy, let alone served a
+request. The tests read it as text.
 
 ## Known blockers on `docker compose up`
 
 Building the images is necessary and not sufficient. Three things in the
-repository will still stop or silently misconfigure the stack, all of them
-outside this document's files:
+repository stopped or silently misconfigured the stack; two are fixed, and the
+third is still open.
 
-1. **`config.wsgi` does not exist.** `settings.py` declares
-   `WSGI_APPLICATION = "config.wsgi.application"` and there is no `wsgi.py`
-   under `src/config/`. The api service's default command is
-   `gunicorn config.wsgi:application` — held to the settings value by
-   `tests/test_images.py` rather than written twice — so the api container will
-   exit at start with `ModuleNotFoundError: No module named 'config.wsgi'`
-   until that module is added. Nothing else in the stack depends on it:
-   `worker`, `migrate` and `rebuild` run `./manage.py` and start fine.
-2. **`./Caddyfile` does not exist.** `compose.yaml` mounts
-   `./Caddyfile:/etc/caddy/Caddyfile:ro`, and Docker creates a *directory* at a
-   bind-mount source that is missing, so Caddy starts against a directory where
-   it expects a config file.
-3. **The `worker` service has no `DATA_ROOT`.** Its environment block sets
-   `DJANGO_SETTINGS_MODULE`, `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY` and
+1. ~~**`config.wsgi` does not exist.**~~ **Fixed.** `settings.py` declares
+   `WSGI_APPLICATION = "config.wsgi.application"` and there was no `wsgi.py`
+   under `src/config/`, so the api container exited at start with
+   `ModuleNotFoundError: No module named 'config.wsgi'` while every other
+   service came up — `worker`, `migrate` and `rebuild` run `./manage.py` and
+   never load it. The module is the standard four lines. The api service's
+   default command is `gunicorn config.wsgi:application`, held to the settings
+   value by `tests/test_images.py` rather than written twice, and
+   `tests/test_deploy_surface.py` imports that same dotted path and checks what
+   it resolves to is callable.
+2. ~~**`./Caddyfile` does not exist.**~~ **Fixed**, and described under "The
+   edge" above. Docker creates a *directory* at a missing bind-mount source, so
+   the absence was never a startup error: Caddy ran against a directory and
+   served nothing.
+3. **The `worker` service has no `DATA_ROOT`.** Still open. Its environment
+   block sets `DJANGO_SETTINGS_MODULE`, `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY` and
    `PGPASSWORD` but not `DATA_ROOT`, so `settings.DATA_ROOT` falls back to
    `BASE_DIR / "data"` — `/app/data` in the image — and `BACKUP_DIR` with it.
    The service mounts `${DATA_ROOT}/backups` at `/data/backups`, which nothing
