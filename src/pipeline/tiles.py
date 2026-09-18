@@ -132,7 +132,9 @@ def tile_build_commands(
     pbf: Path,
     *,
     admin_pbf: Path,
+    admin_db: Path,
     timezone_db: Path,
+    admin_source: Path | None = None,
     timezone_source: Path | None = None,
 ) -> list[list[str]]:
     """The binaries a variant's build runs, in order.
@@ -191,7 +193,26 @@ def tile_build_commands(
     world, not of the extract. So the first variant of a rebuild builds it and
     the other two copy that file (`timezone_source`): one download per rebuild
     rather than three, and two fewer chances for the fetch to fail.
+
+    The admin database is copied the same way, for the same reason and with one
+    more of its own. Every variant's admin build ran `valhalla_build_admins` over
+    `admin_pbf`, and `admin_pbf` is the *merged* extract - the same file for all
+    three, by construction, since the whole point of reading the merged one is
+    that admin polygons are a fact about the region and not about which ways a
+    variant keeps. The three runs differed only in which `mjolnir.admin` path
+    the config named, so the rebuild parsed a 1-2 GB PBF and rebuilt the same
+    boundary polygons three times to write three byte-identical databases. Now
+    the first variant builds it and the other two `cp` it (`admin_source`).
+
+    The extra reason is that this one is not just slow: three parses of the
+    merged extract inside the same rebuild are three chances to be killed by
+    the rebuild's six-hour budget at a stage that has already succeeded once.
     """
+    if admin_source is not None:
+        admins = ["cp", str(admin_source), str(admin_db)]
+    else:
+        admins = ["valhalla_build_admins", "-c", str(config_path), str(admin_pbf)]
+
     if timezone_source is not None:
         timezone = ["cp", str(timezone_source), str(timezone_db)]
     else:
@@ -204,7 +225,7 @@ def tile_build_commands(
             f"mv {shlex.quote(partial)} {shlex.quote(str(timezone_db))}",
         ]
     return [
-        ["valhalla_build_admins", "-c", str(config_path), str(admin_pbf)],
+        admins,
         timezone,
         ["valhalla_build_tiles", "-c", str(config_path), str(pbf)],
         ["valhalla_build_extract", "-c", str(config_path), "-v"],

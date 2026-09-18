@@ -150,6 +150,8 @@ def test_the_merge_command_names_every_input_and_overwrites(tmp_path) -> None:
         "osmium",
         "merge",
         "--overwrite",
+        "-f",
+        "pbf",
         *[str(path) for path in inputs],
         "-o",
         str(tmp_path / "merged.osm.pbf.part"),
@@ -170,6 +172,8 @@ def test_the_clip_command_is_the_plans_strategy_and_its_option(tmp_path) -> None
         "osmium",
         "extract",
         "--overwrite",
+        "-f",
+        "pbf",
         "-s",
         "smart",
         "-S",
@@ -211,6 +215,79 @@ def test_the_merge_and_the_clip_both_go_through_a_part_name(tmp_path) -> None:
     assert not Path(f"{merged}.part").exists() and not Path(f"{clipped}.part").exists()
     assert merged.read_text() == "osm:dc.osm.pbf+osm:md.osm.pbf"
     assert clipped.read_text() == "clip(osm:dc.osm.pbf+osm:md.osm.pbf)"
+
+
+def test_every_osmium_output_written_to_a_part_name_states_its_format(tmp_path) -> None:
+    """The rule the whole stage lives under, asserted over what it actually
+    runs rather than over the two command builders by name.
+
+    osmium takes the output format from the file name's last dot-separated
+    element (libosmium `detect_format_from_suffix`, include/osmium/io/file.hpp:
+    `gz`/`bz2`, then `pbf`/`xml`/`opl`/..., then `osm`/`osh`/`osc`). Every
+    output here is a `.part`, `part` matches none of those, and
+    `with_osm_output::check_output_file` (osmium-tool src/io.cpp:157-171) calls
+    `File::check()` during *argument setup* - so the command dies with "Could
+    not detect file format for filename" before reading a byte. Both commands
+    did, which made the first rebuild on a new deployment download three state
+    extracts and then fail at the merge.
+
+    `-f/--output-format` is the documented answer ("Can be used to set the
+    output file format if it can't be autodetected from the output file name",
+    osmium-tool man/output-options.md) and both subcommands take it - the same
+    OUTPUT OPTIONS block is included into osmium-merge.md and
+    osmium-extract.md, and src/io.cpp:182 registers it for every command that
+    writes an OSM file.
+
+    Driven through `ensure_extract` so a third osmium command added later is
+    covered by this without anyone remembering to add it here. Nothing runs
+    osmium: it is not on PATH in this environment.
+    """
+    run = FakeOsmium()
+    source.ensure_extract(tmp_path / "extracts", BBOX, run)
+
+    osmium = [c for c in run.commands if c[0] == "osmium"]
+    assert osmium, "the stage runs osmium; if it stopped, this test is measuring nothing"
+    for command in osmium:
+        output = command[command.index("-o") + 1]
+        assert output.endswith(".part"), (
+            f"{command[1]} no longer writes through a .part name; either restore that or "
+            "this test is the wrong shape for what it does now"
+        )
+        assert "-f" in command, (
+            f"osmium {command[1]} writes {output} and does not say -f; osmium cannot detect "
+            "a format from a .part suffix and exits during argument setup"
+        )
+        assert command[command.index("-f") + 1] == "pbf", (
+            f"osmium {command[1]} names a format that is not pbf for {output}"
+        )
+
+
+def test_the_extract_and_the_tiles_share_the_volume_the_disk_gate_measures() -> None:
+    """`tiles.check_disk_gate` is handed `TILES_DIR` and asked whether the
+    *extract* will fit, which is only an honest question while `/data/tiles` and
+    `/data/extracts` are on one filesystem.
+
+    They are because the rebuild service has exactly one mount anywhere under
+    `/data` - `${DATA_ROOT}:/data`, the whole volume - and `DATA_ROOT` inside it
+    is `/data`, so `TILES_DIR` is `/data/tiles` and the extract lands at
+    `/data/extracts` on that same filesystem. (Its other mounts, the config and
+    the Lua at `/conf`, are read-only and nothing writes to them.) Bind a second
+    volume at `/data/extracts` and the gate would be measuring free space on a
+    volume the 1-2 GB download never touches: the rebuild that filled the other
+    one would pass the gate on its way to ENOSPC.
+    """
+    import yaml
+
+    compose = yaml.safe_load((Path(__file__).resolve().parents[1] / "compose.yaml").read_text())
+    rebuild = compose["services"]["rebuild"]
+    assert rebuild["environment"]["DATA_ROOT"] == "/data"
+
+    targets = [str(volume).split(":")[1] for volume in rebuild["volumes"]]
+    under_data = [t for t in targets if t == "/data" or t.startswith("/data/")]
+    assert under_data == ["/data"], (
+        "the rebuild service mounts something other than the one volume at /data, so the "
+        f"disk gate on TILES_DIR no longer speaks for the extracts directory: {under_data}"
+    )
 
 
 def test_an_osmium_run_that_leaves_nothing_is_a_failure(tmp_path) -> None:

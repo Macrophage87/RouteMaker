@@ -815,7 +815,11 @@ def test_every_variant_gets_an_admin_and_a_timezone_database_where_its_config_sa
             )
 
     admins = binaries.commands("valhalla_build_admins")
-    assert len(admins) == 3, "one per variant, each through its own config"
+    assert len(admins) == 1, (
+        "the merged extract is parsed once per rebuild, not once per variant: the command's "
+        "only inputs are the config and the merged PBF, so three runs wrote three identical "
+        "databases"
+    )
     # The merged extract, not the clipped one. PLAN:13 builds admin data from
     # the merged file before clipping, because the clip cuts boundary relations
     # at the coverage edge and an admin polygon with a false edge in it is a
@@ -827,7 +831,21 @@ def test_every_variant_gets_an_admin_and_a_timezone_database_where_its_config_sa
     downloads = [c for c in binaries.calls if c[0] == "sh"]
     copies = [c for c in binaries.calls if c[0] == "cp"]
     assert len(downloads) == 1, "a hundred megabytes, fetched once"
-    assert len(copies) == 2
+    # Two variants copy the timezone database and two copy the admin one, and
+    # each copy is from the first variant's build directory into its own - which
+    # is what the per-variant file assertions above have already read back.
+    assert len(copies) == 4
+
+    def named(variant, key):
+        return json.loads(Path(context.build_configs[variant]).read_text())["mjolnir"][key]
+
+    first, *rest = list(context.build_configs)
+    assert sorted(c[1:] for c in copies) == sorted(
+        [named(first, key), named(variant, key)]
+        for variant in rest
+        for key in ("admin", "timezone")
+    ), "each of the other two variants copies the first variant's two databases into its own"
+    assert admins[0][2] == str(context.build_configs[first]), "and the first is the one that built"
 
 
 def test_a_lit_value_upstream_reads_as_lit_survives_the_whole_pipeline(workspace, states) -> None:
