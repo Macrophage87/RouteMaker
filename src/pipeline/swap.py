@@ -41,6 +41,8 @@ from django.db import connection, transaction
 from .schema import (
     create_segment_schema,
     drop_segment_schema,
+    refuse_undroppable_retired,
+    refuse_unswappable_schema,
     schema_exists,
     validate_schema_name,
 )
@@ -125,6 +127,11 @@ def swap_schemas(
     validate_schema_name(live)
     validate_schema_name(staging)
     retired = _retired_name(live)
+    # Before anything is renamed, because the first statement inside the
+    # transaction below is a `DROP ... CASCADE` against a name nothing checked:
+    # `refuse_unswappable_schema` fronts the staging reset and this path had
+    # only the settings layer behind it. See `refuse_undroppable_retired`.
+    refuse_undroppable_retired(retired, live=live, staging=staging)
     last_error: Exception | None = None
 
     # A fresh deployment has staging but no live yet, and the rename of a
@@ -211,6 +218,12 @@ def rollback_swap(
             "the rollback's rename needs the name",
             staging,
         )
+        # The same refusal the rebuild's own reset runs, and for the same
+        # reason: this is a `DROP SCHEMA ... CASCADE` against whatever
+        # ROUTEMAKER_STAGING_SCHEMA says, on the emergency path, where a staging
+        # name that is really the live or the retired schema turns a rollback
+        # into the loss it was run to avoid.
+        refuse_unswappable_schema(staging)
         drop_segment_schema(staging)
     last_error: Exception | None = None
     for attempt in range(1, attempts + 1):

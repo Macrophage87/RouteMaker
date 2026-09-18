@@ -45,6 +45,12 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options) -> None:
+        # Imported inside the handler, like the pipeline imports above are used:
+        # this reaches the ORM, and a management command that touched models at
+        # import time would do it during `manage.py help` as well.
+        from core.audit import record
+        from core.models import AuditLogEntry
+
         tiles_dir = settings.TILES_DIR
         try:
             # Read before anything is renamed or moved, and read again inside
@@ -65,6 +71,32 @@ class Command(BaseCommand):
             return
 
         rollback(tiles_dir)
+        # The audit log's account of the most destructive thing an operator can
+        # do to this deployment from a shell: it repoints every ValhallaUpstream
+        # row and retires the graph being served. Nothing under src/pipeline or
+        # in these commands wrote an audit row before, so a rollback left the
+        # settings rows changed and no record of who changed them or when - the
+        # one question asked afterwards.
+        #
+        # The actor is None because there is honestly no actor: this runs in a
+        # container with no request and no session, and the log's own convention
+        # is that a null actor with a null numeric id means the worker or the
+        # host operator rather than an account that was since deleted.
+        #
+        # On the confirmed path only. A dry run changes nothing, and an audit
+        # log that records reads is one nobody reads.
+        record(
+            None,
+            "rollback_rebuild",
+            "valhallaupstream",
+            "",
+            AuditLogEntry.Outcome.ALLOWED,
+            detail=(
+                "rolled back to "
+                + ", ".join(f"{variant.value}={target[variant]}" for variant in Variant)
+                + f"; live segments restored from {settings.SEGMENT_SCHEMA_RETIRED}"
+            ),
+        )
         for variant in Variant:
             self.stdout.write(f"{variant.value}: serving build {target[variant]}")
         self.stdout.write(RESTART_HINT)

@@ -11,18 +11,30 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
 
 - **The operations page**, in the admin, at `<DJANGO_ADMIN_PATH>core/scheduledrun/`
   — with the default path, `/internal-8f3a/core/scheduledrun/`. It lists the
-  stale tasks with the window each one missed, the failed Procrastinate jobs
-  with their attempt counts, and the last 25 runs. Instance admins only, and
+  stale tasks with the window each one missed, the jobs still running past the
+  budget their own task enforces, the failed Procrastinate jobs with their
+  attempt counts, and the last 25 runs. Instance admins only, and
   read-only to them as well: these rows are the evidence for an alert, so an
   admin who could edit them could silence one by hand. Anyone else gets the same
   404 the rest of the admin gives an unadmitted request.
 - **`./manage.py check_operations`**, for anything that cannot log in. It prints
-  one line per stale task and per failed job and exits 1 if there is anything to
-  print, 0 otherwise. A cron entry is the intended caller:
+  one line per stale task, per wedged job and per failed job, and exits 1 if
+  there is anything to print, 0 otherwise. A cron entry is the intended caller:
 
   ```sh
   */10 * * * * docker compose exec -T api ./manage.py check_operations || mail-the-ops-channel
   ```
+
+**Wedged jobs** are the third row because the first two miss the same outage.
+Both lists are built from `status="failed"`, and a worker killed mid-job never
+writes that status — the process that would have written it is gone, so the row
+stays `doing` for ever. A rebuild killed at hour three was therefore on no
+surface at all until `weekly_rebuild` went stale, eight days later, while the
+job holding the rebuild queue's only slot was never going to move. A job still
+`doing` longer ago than the budget its own task enforces (`REBUILD_TIMEOUT_S`
+for the rebuild, the task's own figure otherwise — one table, in
+`core.runs.job_budgets`) is reported as wedged, on both surfaces, and
+`check_operations` exits non-zero on it.
 
 There is no paging integration and no scraper yet; the plan records both as
 follow-ups. What exists is the thing that has to exist first — the state is
@@ -289,17 +301,44 @@ queued and the two that matter are the ones an operator is already exec'ing
 into for the rest of this document.
 
 **A second call while one is queued or running is refused**, with a non-zero
-exit and a message naming the job in flight. That is not this command being
-careful: `weekly_rebuild` carries `queueing_lock="weekly_rebuild"`, which is a
-unique index over unfinished jobs, so PostgreSQL refuses the insert and
-Procrastinate raises `AlreadyEnqueued`. Two concurrent rebuilds would write the
-same staging schema and the same dated tile directory. The refusal is reported
-rather than swallowed because an operator who fires a second rebuild under the
-impression the first has stalled must not be told it worked.
+exit and a message naming the job in flight by id and status. Two things do
+that, and it is worth knowing which does which, because the first was once
+described as doing both.
 
-Nothing about the weekly schedule changes: the periodic deferral is
-deduplicated in the database against the same lock, so a hand-fired run in
-flight on a Tuesday morning means that tick is dropped rather than doubled.
+`weekly_rebuild` carries `queueing_lock="weekly_rebuild"`, and Procrastinate's
+queueing-lock index is partial: `WHERE status = 'todo'`. It deduplicates jobs
+that are **queued** and has no opinion at all about one that is **running**.
+Deferring a second rebuild while the first was `doing` therefore succeeded — and
+then cost the running one its retry, because `procrastinate_retry_job` puts a
+retried job back to `todo`, straight onto the row the second deferral had
+inserted: a transient failure in the rebuild became a unique violation inside
+the job-finishing path instead of a retry.
+
+So the command reads the job table before it defers and refuses if any
+`weekly_rebuild` is `todo` **or** `doing`, naming the job. The lock is still
+there and still does the half it can: it settles the race between the read and
+the insert — two operators, or an operator and the Tuesday tick — and that
+arrives as `AlreadyEnqueued` and is reported as a refusal too. Both refusals
+are reported rather than swallowed because an operator who fires a second
+rebuild under the impression the first has stalled must not be told it worked.
+Two concurrent rebuilds would write the same staging schema and the same dated
+tile directory.
+
+The task refuses as well, on the way in: `weekly_rebuild` will not **start**
+while another `weekly_rebuild` is `doing`. That is the half the periodic
+deferrer needs. A tick is skipped only on `AlreadyEnqueued`, which the `todo`
+index raises and a running job does not, so a hand-fired rebuild still in
+flight on a Tuesday morning is **doubled** by that tick rather than dropping
+it. What has been serialising the two in practice is `--concurrency=1` on the
+`rebuild` service — one slot, so the second job waits rather than being refused
+— and that is a slot count, not a guarantee. The in-task check makes it one: a
+second rebuild that reaches a worker while another is running fails immediately,
+without retrying, and says which job it deferred to.
+
+Rebuilds started by hand are recorded in the audit log, as `run_rebuild_now`
+with the job id, with no actor — there is no request and no session behind a
+shell in a container, and a null actor is what the log means by the host
+operator. `rollback_rebuild --confirm` writes one the same way.
 
 ## First rebuild on a fresh host
 

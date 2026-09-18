@@ -75,6 +75,127 @@ def test_validate_schema_name_accepts_an_ordinary_name() -> None:
     assert validate_schema_name("live_b") == "live_b"
 
 
+def test_validate_schema_name_rejects_a_name_too_long_to_retire() -> None:
+    """PostgreSQL truncates identifiers at 63 bytes, silently, and the retired
+    schema is the live name plus `_old`. At 60 characters `<live>_old` truncates
+    back onto `<live>`, so the swap's `DROP SCHEMA IF EXISTS <retired> CASCADE`
+    deletes the graph the very next statement renames - executed against a real
+    database, which is where the collapse is visible at all."""
+    from pipeline.schema import validate_schema_name
+
+    with pytest.raises(ValueError, match="characters"):
+        validate_schema_name("a" * 60)
+
+
+def test_validate_schema_name_accepts_the_longest_name_that_still_retires() -> None:
+    """59 plus `_old` is 63, which is the whole identifier and not one byte of
+    it truncated. The bound is on the name the suffix is appended to."""
+    from pipeline.schema import validate_schema_name
+
+    name = "a" * 59
+    assert validate_schema_name(name) == name
+    assert validate_schema_name(f"{name}_old") == f"{name}_old", (
+        "and the derived retired name, which nothing appends anything to, still passes "
+        "the reconcile and the promotion that validate it"
+    )
+
+
+@pytest.mark.parametrize("reserved", ["public", "information_schema", "pg_catalog", "pg_toast"])
+def test_the_reset_refuses_every_reserved_schema(segment_schemas, settings, reserved) -> None:
+    """`public` was the only name in the set, and the catalogs are the same
+    class of mistake with the same `DROP SCHEMA ... CASCADE` behind them:
+    `information_schema` is the view `schema_exists` itself reads, and
+    `pg_catalog` is the database."""
+    from pipeline.schema import reset_segment_schema
+
+    settings.SEGMENT_SCHEMA_STAGING = reserved
+    with pytest.raises(ValueError, match="refusing"):
+        reset_segment_schema(reserved)
+
+
+# --- What the two other drops refuse (pipeline/swap.py) -------------------------
+#
+# `refuse_unswappable_schema` fronted `reset_segment_schema` and nothing else,
+# while the swap runs `DROP SCHEMA IF EXISTS <retired> CASCADE` and the rollback
+# drops a leftover staging schema, both against settings-supplied names and both
+# with only the settings layer behind them. The settings layer is one import on
+# one deploy; these two run every Tuesday.
+
+
+def test_the_swap_refuses_to_drop_a_retired_name_that_is_the_live_one(
+    segment_schemas, monkeypatch
+) -> None:
+    """The truncation collapse, at the statement that would act on it. A live
+    name whose `_old` form truncates back onto it makes the swap's first
+    statement drop the served graph half a second before renaming it."""
+    from pipeline import swap as swap_module
+
+    live, staging = segment_schemas
+    insert_segment(live, 7001)
+    # `_retired_name` is what derives the name, so a collapse is expressed by
+    # making it collapse rather than by finding a 63-byte name PostgreSQL will
+    # truncate for us inside a test database.
+    monkeypatch.setattr(swap_module, "_retired_name", lambda name: name)
+
+    with pytest.raises(ValueError, match="also the live schema"):
+        swap_module.swap_schemas(live, staging)
+
+    assert row_count(live) == 1, "the served graph is still there"
+
+
+def test_the_swap_refuses_to_drop_a_retired_name_that_is_the_staging_one(
+    segment_schemas, monkeypatch
+) -> None:
+    """The other collision at the same statement: the build this swap exists to
+    promote, dropped by the statement that clears the way for it."""
+    from pipeline import swap as swap_module
+
+    live, staging = segment_schemas
+    insert_segment(staging, 7002)
+    monkeypatch.setattr(swap_module, "_retired_name", lambda name: staging)
+
+    with pytest.raises(ValueError, match="also the staging schema"):
+        swap_module.swap_schemas(live, staging)
+
+    assert row_count(staging) == 1, "the build being promoted is still there"
+
+
+def test_the_swap_refuses_to_drop_a_reserved_retired_name(segment_schemas, monkeypatch) -> None:
+    """A retired name that is a catalog. It cannot arrive by the suffix today,
+    which is the point of a guard at the statement: it does not depend on how
+    the name was derived."""
+    from pipeline import swap as swap_module
+
+    live, staging = segment_schemas
+    monkeypatch.setattr(swap_module, "_retired_name", lambda name: "information_schema")
+
+    with pytest.raises(ValueError, match="refusing to drop 'information_schema'"):
+        swap_module.swap_schemas(live, staging)
+
+
+def test_the_rollback_refuses_to_drop_a_staging_name_that_is_the_live_one(
+    segment_schemas, settings, monkeypatch
+) -> None:
+    """The emergency path, where a wrong `ROUTEMAKER_STAGING_SCHEMA` turns the
+    rollback into the loss it was run to avoid.
+
+    `rollback_swap` drops a leftover staging schema before renaming, because a
+    rebuild that failed at the swap leaves one and the rename needs the name.
+    With staging set to the live schema that drop is the served graph.
+    """
+    from pipeline.schema import create_segment_schema
+    from pipeline.swap import rollback_swap
+
+    live, _staging = segment_schemas
+    create_segment_schema(settings.SEGMENT_SCHEMA_RETIRED)
+    insert_segment(live, 7003)
+
+    with pytest.raises(ValueError, match="refusing"):
+        rollback_swap(live=live, staging=live)
+
+    assert row_count(live) == 1, "the graph the rollback would have replaced is still there"
+
+
 # --- What the reset refuses to drop (pipeline/schema.py, config/settings.py) ---
 #
 # `reset_segment_schema` is the first thing FETCH_EXTRACT does, and the first
