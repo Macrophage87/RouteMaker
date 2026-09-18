@@ -131,7 +131,9 @@ EXPOSE 8000
 # `manage.py collectstatic` here: settings.py raises ImproperlyConfigured
 # without KEY_ENCRYPTION_KEY, so any build-time management command would need
 # the secret in the build. collectstatic is a deploy step; docs/DEPLOYMENT.md
-# has it, and records that it cannot run yet because settings.py defines no
-# STATIC_ROOT.
+# has the command. (It used to say here that the step could not run at all
+# because settings.py defined no STATIC_ROOT. It does now - `DATA_ROOT /
+# "static"`, the directory Caddy mounts - so that sentence was describing a
+# fixed defect as a current one.)
 COPY --chown=root:root docker/api-entrypoint.sh /usr/local/bin/routemaker-api
 CMD ["routemaker-api"]

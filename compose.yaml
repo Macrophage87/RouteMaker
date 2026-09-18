@@ -178,7 +178,19 @@ services:
       # computes a tombstone.
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       PGPASSWORD: ${PGPASSWORD}
-    depends_on: [postgis]
+    # `service_started` is the container running, which for PostgreSQL is a
+    # process that has not finished recovery and is refusing connections. The
+    # first `up` on a fresh volume is the case that matters: initdb, the PostGIS
+    # extension and the first start take tens of seconds, and a migrate that
+    # raced it exited with OperationalError - after which `api`, `worker` and
+    # `rebuild`, all held on `service_completed_successfully`, never started at
+    # all and the stack came up as nothing but Caddy and the routers.
+    #
+    # The health gate is on this service alone. The other three wait on migrate
+    # having *completed*, which is a strictly later event than the database
+    # being healthy, so gating them as well would only restate it.
+    depends_on:
+      postgis: { condition: service_healthy }
     deploy:
       resources:
         limits: { memory: 256M, cpus: "1" }
@@ -186,18 +198,45 @@ services:
   postgis:
     <<: *restart
     image: postgis/postgis:16-3.4
+    # The same two names Django connects with, from the same variables and the
+    # same defaults. They were literals here while every Django service read
+    # ${PGUSER}/${PGDATABASE}, so a deployment that set either one in `.env`
+    # created a database and a role this file never made, and the healthcheck
+    # below - which has to probe the database the application uses - would have
+    # inherited that split.
     environment:
-      POSTGRES_DB: routemaker
-      POSTGRES_USER: routemaker
+      POSTGRES_DB: ${PGDATABASE:-routemaker}
+      POSTGRES_USER: ${PGUSER:-routemaker}
       POSTGRES_PASSWORD: ${PGPASSWORD}
+    # What `migrate` waits for. `pg_isready` against this database and this role
+    # rather than a bare TCP connect: the entrypoint of this image starts a
+    # temporary server on a unix socket to run initdb and the extension scripts,
+    # so a port that answers is not yet a database that will accept a client.
+    # The start period covers that first-boot work on an empty volume, and the
+    # retries cover an ordinary restart.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-routemaker} -d ${PGDATABASE:-routemaker}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
     volumes: ["${DATA_ROOT}/postgres:/var/lib/postgresql/data"]
     deploy:
       resources:
         limits: { memory: 4G, cpus: "4" }
 
+  # Pinned, like every other image in this file - PLAN:293's "all images
+  # pinned" - because `latest` is whatever that repository's maintainer pushed
+  # last and a `docker compose pull` on a bad week is a different geocoder with
+  # no change in this repository. 2.4.0 is the newest release tag on Docker Hub
+  # (rtuszik/photon-docker, pushed 2026-08-17); `latest`, `2` and `2.4` all
+  # resolve to the same digest today, which is how the tag was chosen.
+  #
+  # Nothing in phase 1 calls this service: the index it serves from is empty
+  # and populating it (PLAN:60) is unbuilt. See docs/DEPLOYMENT.md, "Photon".
   photon:
     <<: *restart
-    image: rtuszik/photon-docker:latest
+    image: rtuszik/photon-docker:2.4.0
     volumes: ["${DATA_ROOT}/photon:/photon/photon_data"]
     deploy:
       resources:
@@ -293,8 +332,17 @@ services:
       resources:
         limits: { memory: 2G, cpus: "2" }
 
+  # No source, no `build:`, and therefore no image anywhere: `docker compose up`
+  # stopped at a pull of routemaker/renderer:${TAG} from a registry that has
+  # never held it. Parked behind a profile so the default `up` skips it and the
+  # stack that *can* start does. handoff.md section 7 carries both rows; the
+  # service stays here, with its limits, so the sizing arithmetic and the
+  # no-published-ports rule keep counting it.
+  #
+  #     docker compose --profile unbuilt up -d   # once there is something to run
   renderer:
     <<: *restart
+    profiles: ["unbuilt"]
     image: routemaker/renderer:${TAG}
     deploy:
       resources:
@@ -303,8 +351,14 @@ services:
   # The only component that holds the bot token, and the source of authorization
   # truth. Exposes its membership interface on the internal network behind a
   # shared secret, read-only.
+  # Behind the same profile as the renderer and for the same reason: there is no
+  # bot source in this repository, so there is no routemaker/bot image to pull.
+  # handoff.md section 7's first row. What follows from its absence is written
+  # down rather than discovered - the membership cache is only as fresh as the
+  # last hand-run sweep, and nothing answers the API's membership queries.
   bot:
     <<: *restart
+    profiles: ["unbuilt"]
     image: routemaker/bot:${TAG}
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}

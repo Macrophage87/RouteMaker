@@ -31,12 +31,16 @@ REPO = Path(__file__).resolve().parents[1]
 COMPOSE = yaml.safe_load((REPO / "compose.yaml").read_text())
 SERVICES: dict = COMPOSE["services"]
 
-# Images the stack pulls. Pinned, per PLAN.md:64 ("all images pinned"), which is
-# why `latest` on photon is worth seeing in this list rather than buried.
+# Images the stack pulls. Every one is pinned to a specific tag, per PLAN:293
+# ("all images pinned"), which is the property this list exists to make visible.
+# Photon was the exception and carried `latest` - not a pin at all: whatever that
+# repository's maintainer had pushed last would arrive on the next
+# `docker compose pull`, with no change in this repository to point at. It is
+# 2.4.0 now, the newest release tag on Docker Hub when that was written.
 EXTERNAL_IMAGES = {
     "caddy:2.8-alpine",
     "postgis/postgis:16-3.4",
-    "rtuszik/photon-docker:latest",
+    "rtuszik/photon-docker:2.4.0",
     "ghcr.io/valhalla/valhalla:3.5.1",
 }
 
@@ -409,3 +413,18 @@ def test_the_dockerignore_keeps_the_host_virtualenv_and_env_out_of_the_context()
     }
     required = {".venv", ".env", ".git", "node_modules", "tests", "*.py[cod]", "data", "tiles"}
     assert required <= ignored, f".dockerignore is missing: {sorted(required - ignored)}"
+
+
+def test_no_pulled_image_floats() -> None:
+    """The rule the list above is written to, rather than a property of how it
+    happens to be spelled today. `latest` is a moving target and a bare name
+    with no tag is `latest` written shorter; either one makes the deployed stack
+    a function of when it was pulled."""
+    floating = sorted(
+        image for image in EXTERNAL_IMAGES if ":" not in image or image.endswith(":latest")
+    )
+    assert not floating, f"external images that are not pinned: {floating}"
+    named = {service["image"] for service in SERVICES.values()}
+    assert EXTERNAL_IMAGES <= named, (
+        f"this list has drifted from compose.yaml: {sorted(EXTERNAL_IMAGES - named)}"
+    )

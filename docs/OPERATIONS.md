@@ -204,7 +204,7 @@ deployment's box does, and the graph is then charged a state- or
 country-crossing cost along a line no boundary follows.
 
 `curl` and `osmium` run in the `rebuild` container, so the pipeline image has
-to carry both (`curl` and Debian's `osmium-tool`) alongside the Valhalla and
+to carry both (`curl` and Ubuntu's `osmium-tool`) alongside the Valhalla and
 GDAL binaries; a rebuild on an image without them fails at stage one with a
 `FileNotFoundError` naming the binary.
 
@@ -245,6 +245,167 @@ disk there is nothing to measure, so the gate is sized from
 four for the build's own three variant extracts and its scratch); once there is
 one, its real size is what the gate charges. A rebuild refused by the gate has
 downloaded nothing.
+
+## Firing a rebuild by hand
+
+```sh
+docker compose exec -T rebuild ./manage.py run_rebuild_now
+```
+
+This document has referred to a hand-fired rebuild in three places since wave 3
+— the build-id collision above, the freshness rule's list of reasons a rebuild
+re-runs inside the same week, and the RECONCILE failure that is "worth a
+hand-run" — and until this command there was no way to fire one. The rebuild is
+a Procrastinate periodic task on its own queue, so the only route to it was
+`python -c` inside the right container with Django set up by hand.
+
+It **queues** a job and returns; it does not run the rebuild. The `rebuild`
+service is what picks the job up, because that is the container with the
+Valhalla binaries, the data mounts and the six-hour budget, and it takes it
+within seconds while that service is up. Follow it with
+`docker compose logs -f rebuild`, or on the operations page.
+
+Run it in `rebuild` or in `worker`, not in `api`: the queue is in the database
+so any Django container could defer the job, but the command prints what it
+queued and the two that matter are the ones an operator is already exec'ing
+into for the rest of this document.
+
+**A second call while one is queued or running is refused**, with a non-zero
+exit and a message naming the job in flight. That is not this command being
+careful: `weekly_rebuild` carries `queueing_lock="weekly_rebuild"`, which is a
+unique index over unfinished jobs, so PostgreSQL refuses the insert and
+Procrastinate raises `AlreadyEnqueued`. Two concurrent rebuilds would write the
+same staging schema and the same dated tile directory. The refusal is reported
+rather than swallowed because an operator who fires a second rebuild under the
+impression the first has stalled must not be told it worked.
+
+Nothing about the weekly schedule changes: the periodic deferral is
+deduplicated in the database against the same lock, so a hand-fired run in
+flight on a Tuesday morning means that tick is dropped rather than doubled.
+
+## First rebuild on a fresh host
+
+A new deployment serves no routes at all until this has been done once: nothing
+but a rebuild creates the tiles the three Valhalla containers mount, and the
+`current` symlinks they read do not exist yet. The order below is the order the
+code forces, not a preference — each step exists because the one after it fails
+without it.
+
+**None of this has been executed.** There is no Docker daemon in the
+development environment and registries are blocked, so no image in this
+repository has been built and this stack has never been started. What has been
+run here is the suite, which covers the pieces: the rebuild task against its
+real handler set with the binaries stood in for, a cold worker in a subprocess
+running a deferred job, `run_rebuild_now` against a real database (it queues one
+job, and a second call is refused), and the compose configuration rendered from
+`.env.example`. The sequence itself is read out of the code, step by step, and
+the first host to run it is the first test of it.
+
+1. **Prepare the data volume, before the first `up`.**
+
+   ```sh
+   set -a; . ./.env; set +a
+   sudo -E sh scripts/prepare_data_root.sh
+   ```
+
+   Ordering, not hygiene: Docker creates a missing bind-mount source itself, as
+   a root-owned directory, and both images run as uid 10001. See
+   docs/DEPLOYMENT.md, "`${DATA_ROOT}` and the order it has to be prepared in".
+
+2. **Build and start.**
+
+   ```sh
+   docker compose build
+   docker compose up -d
+   ```
+
+   `bot` and `renderer` are behind the `unbuilt` profile and are skipped; they
+   have no source and no image. `migrate` waits for the database's health check
+   and runs every migration, and `api`, `worker` and `rebuild` wait for it to
+   have completed.
+
+3. **Collect the static assets**, the deploy step in docs/DEPLOYMENT.md. Until
+   this runs the admin renders unstyled, which is the surface the next step
+   uses.
+
+4. **Bootstrap the first instance admin.** There is no `createsuperuser` here
+   and no password login: set `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` to your own
+   Discord id, sign in at `/auth/login`, and open the admin. The first admin
+   request under that id writes it into the instance-admin list and disables the
+   path; unset it afterwards. docs/DEVELOPMENT.md has the whole mechanism.
+
+5. **Fetch the extract by running the rebuild once, and expect it to stop.**
+
+   ```sh
+   docker compose exec -T rebuild ./manage.py run_rebuild_now
+   ```
+
+   This is not a wasted run and there is no way to skip it. The rebuild's first
+   stage, `FETCH_EXTRACT`, is the only thing in the deployment that produces
+   `<DATA_ROOT>/extracts/source.osm.pbf` — it downloads the three Geofabrik
+   state extracts, merges them and clips the merge to the coverage box — and the
+   *second* stage, `LOAD_REFERENCE_DATA`, is what needs the reference files. So
+   this run downloads 1–2 GB, writes `merged.osm.pbf` and `source.osm.pbf`, and
+   then fails at stage two with "reference data missing".
+
+   That failure is terminal rather than retried (`ReferenceDataMissing` is in
+   `config.procrastinate.terminal_causes`), so it costs one run, not six. The
+   extract it wrote stays on the volume and the freshness rule — six days —
+   means step 7 reuses it rather than pulling it again.
+
+6. **Install the reference data, pointed at the extract step 5 just wrote.**
+
+   ```sh
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --urban-areas tl_2024_us_uac20.geojson \
+       --volume vdot-aadt-2024.geojson --volume-source vdot --volume-year 2024
+   ```
+
+   `--extract` is the clipped `source.osm.pbf`, and the clipped one is right:
+   the script reads ways out of it to decide which way ids fall inside a Census
+   urban area, and a way outside the coverage box is a way this deployment does
+   not route over. (`merged.osm.pbf`, the unclipped file kept beside it, exists
+   for `valhalla_build_admins`, which needs boundary relations the clip cuts.)
+   The two GeoJSON inputs are not in this repository and not downloadable by the
+   stack — where each comes from is in docs/DEVELOPMENT.md, "Reference data" —
+   so they have to be put somewhere the container can read, such as under
+   `${DATA_ROOT}`. The crossings fixture is in the image and is copied for you.
+
+   Run with `--data-root` alone it installs the crossings and exits non-zero
+   naming whichever of the other two is still missing, which is the cheap way to
+   check this step before spending step 7 on it.
+
+7. **Run the rebuild for real.**
+
+   ```sh
+   docker compose exec -T rebuild ./manage.py run_rebuild_now
+   docker compose logs -f rebuild
+   ```
+
+   The elevation cache fills here rather than in a step of its own: `ELEVATION`
+   is a stage of the rebuild, and it downloads a one-arcsecond 3DEP tile for
+   every one-degree cell the coverage box touches and resamples each with
+   `gdalwarp` into `<DATA_ROOT>/elevation`. It is the slowest part of a first
+   rebuild and the cheapest part of every later one, since the cache is checked
+   rather than refilled. It is also the stage with the most external surface: the
+   3DEP fetch has never been executed in this environment — the host is blocked
+   from that bucket — so a first host should expect to debug it before it expects
+   it to work.
+
+   Budget six hours, which is also the point at which the rebuild abandons
+   itself.
+
+8. **Restart the routers.** `valhalla_service` opens its tile extract once at
+   start, so until this runs the three containers are serving the empty
+   directories they started against.
+
+   ```sh
+   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
+   ```
+
+After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
+windows in the table above watching that it keeps happening.
 
 ## After a rebuild: restart the routers
 
@@ -314,10 +475,23 @@ run with no arguments it prints the build each variant would go back to and
 changes nothing — and `--confirm` is what performs it.
 
 ```sh
-docker compose exec -T api ./manage.py rollback_rebuild            # what would happen
-docker compose exec -T api ./manage.py rollback_rebuild --confirm  # do it
+docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
+docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
 ```
+
+**In `rebuild`, not in `api`.** This command reads and rewrites the promotion
+symlinks under `settings.TILES_DIR`, which is `<DATA_ROOT>/tiles`. The `api`
+service mounts no part of the data volume and sets no `DATA_ROOT`, so inside
+that container `DATA_ROOT` is the module's fallback `BASE_DIR / "data"` and
+`TILES_DIR` is `/app/data/tiles` — a path on the container's own writable layer
+with nothing in it. Run there, `rollback_target` finds no `previous` link for
+any variant and the command refuses with "no previous tiles", which reads like
+a deployment that has never rebuilt rather than like a command in the wrong
+container. `rebuild` is the service that mounts `${DATA_ROOT}` whole at `/data`
+and sets `DATA_ROOT=/data`, so the paths it resolves are the ones the swap
+wrote. (`worker` sets `DATA_ROOT=/data` too, but mounts only `backups`, so the
+tiles are equally absent there.)
 
 The restart is part of the procedure, not an afterthought: `valhalla_service`
 does not reload tiles at runtime, so until the containers restart they are

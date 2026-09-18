@@ -9,6 +9,23 @@ and, for the database layer, tests the real thing rather than a stand-in.
 `.env.example` is the full list; three of them decide whether the deployment
 works at all and are explained here rather than in a comment beside a default.
 
+**The example ships a hostname deployment over HTTPS.** `CADDY_SITE_ADDRESS`,
+`DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS` and
+`DISCORD_REDIRECT_URI` all name `routes.example.org`, which is replaced with
+your own name in four places. A plain-HTTP stack on a laptop is the commented
+block at the end of the file, and it is a block rather than a single variable
+because `:80` on its own does not work: `settings.py` derives
+`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` from `not DEBUG`, so without
+`DJANGO_DEBUG=1` every cookie is `Secure` and a plain-HTTP browser throws the
+session away without saying anything. Take the five lines together or take the
+hostname. `tests/test_compose_render.py` refuses any other combination.
+
+Nothing on this page needs the compose stack: the native loop under "Database"
+below is what to develop against. If you are standing up a real host, the order
+the code forces is in docs/OPERATIONS.md, "First rebuild on a fresh host" —
+notably that the reference data below cannot be installed until a first rebuild
+has fetched the extract it is checked against.
+
 **How a variable reaches a container.** There is no `env_file`: one shared file
 would hand the key-encryption key to Photon and Valhalla and contradict the
 claim that one component alone holds the bot token. Every variable is declared
@@ -268,6 +285,14 @@ python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
 
 Run with only `--data-root`, the script installs the crossings and exits
 non-zero naming whichever of the other two is still missing.
+
+On a deployment, `$DATA_ROOT/extracts/source.osm.pbf` does not exist until a
+rebuild has produced it: `FETCH_EXTRACT` is the stage that downloads, merges and
+clips it, and `LOAD_REFERENCE_DATA` is the one after it. So the first rebuild on
+a fresh host is run knowing it will stop at stage two, and this script is run
+against the extract that run left behind. docs/OPERATIONS.md, "First rebuild on
+a fresh host", has the whole sequence; the script runs in the `rebuild`
+container, which is the one with the data volume mounted.
 
 ## Tiles and the swap
 
