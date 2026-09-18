@@ -41,7 +41,7 @@ esac
 
 # Every ${DATA_ROOT} bind-mount source in compose.yaml, plus the three
 # directories the rebuild writes inside its whole-volume mount and so does not
-# name as a mapping of its own. tests/test_data_root.py reads the mappings out
+# name as a mapping of its own. tests/test_deploy_docs.py reads the mappings out
 # of compose.yaml and fails if this list stops covering them, so a mount added
 # to the stack cannot be forgotten here.
 DIRECTORIES="
