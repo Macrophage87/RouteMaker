@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import tempfile
+import time
 from pathlib import Path
 
 import osmium
@@ -25,6 +27,7 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
+    GIB,
     LUA_LOADED_LOG,
     PARALLEL_COUNT,
     REPO,
@@ -34,6 +37,7 @@ from rebuild_fixtures import (
     build_parallel_extract,
     build_toy_extract,
     fake_fetch,
+    install_source_extract,
     roomy_disk,
     state_polygons,
     write_reference_data,
@@ -56,11 +60,16 @@ def states():
 
 @pytest.fixture
 def workspace(segment_schemas):
+    """A deployment that already has this week's extract on disk.
+
+    Both files, under the names FETCH_EXTRACT produces them under, so the
+    freshness rule reuses them: these tests are about the stages after the
+    extract, and the ones about the extract itself start from an empty
+    directory.
+    """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        source = root / "source.osm.pbf"
-        build_toy_extract(source)
-        yield source, root
+        yield install_source_extract(root), root
 
 
 def count(schema: str, table: str = "segment") -> int:
@@ -108,6 +117,160 @@ def run_pipeline(
     )
     report = run_rebuild(handlers, skip=skip)
     return context, report
+
+
+# --- The source extract ---------------------------------------------------------
+
+
+@pytest.fixture
+def fresh_deployment(segment_schemas):
+    """A box that has never run a rebuild: a data root with no extract in it.
+
+    Which is the state the first rebuild used to fail in. FETCH_EXTRACT checked
+    that `<DATA_ROOT>/extracts/source.osm.pbf` existed, nothing anywhere made
+    that file, and no document said how to; the rebuild stopped at stage one
+    with ReferenceDataMissing and the deployment could not proceed at all.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        yield root / "extracts" / "source.osm.pbf", root
+
+
+def test_a_first_rebuild_downloads_merges_and_clips_its_own_extract(
+    fresh_deployment, states
+) -> None:
+    """The whole of B-1, through the real stage: three Geofabrik downloads, one
+    merge, one clip, both files kept, and the rebuild carries on to populate
+    staging from what it produced."""
+    source, root = fresh_deployment
+    binaries = FakeBinaries()
+    context, report = run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
+
+    assert report.completed, "the rebuild ran rather than stopping at stage one"
+    downloads = binaries.commands("curl")
+    assert [c[-1] for c in downloads] == [
+        "https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf",
+        "https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf",
+    ]
+    osmium = binaries.commands("osmium")
+    assert [c[1] for c in osmium] == ["merge", "extract"], "merged, then clipped"
+    assert osmium[1][osmium[1].index("-s") + 1 : osmium[1].index("-s") + 4] == [
+        "smart",
+        "-S",
+        "types=any",
+    ], "PLAN:13's strategy, so boundary relations survive the clip"
+
+    merged = root / "extracts" / "merged.osm.pbf"
+    assert merged.is_file(), "the file valhalla_build_admins reads is kept"
+    assert source.is_file(), "and the clip the rest of the rebuild reads"
+    assert not list((root / "extracts").glob("*.part")), "nothing partial is left behind"
+    assert count(settings.SEGMENT_SCHEMA_STAGING) == 5, "the extract it produced is the one it read"
+
+    # The admin database is built from the merged file, which is the half of
+    # PLAN:13 that was being read backwards: the clipped extract was handed to
+    # valhalla_build_admins with a comment citing the plan as endorsing it.
+    admins = binaries.commands("valhalla_build_admins")
+    assert {c[-1] for c in admins} == {str(merged)}
+    assert str(source) not in {c[-1] for c in admins}
+
+
+def test_an_extract_from_earlier_in_the_week_is_not_downloaded_again(workspace, states) -> None:
+    """1-2 GB per rebuild, and a rebuild is retried. The freshness rule is what
+    makes a second run in the same week start at the tile build's speed rather
+    than the network's."""
+    source, root = workspace
+    binaries = FakeBinaries()
+    run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
+
+    assert binaries.commands("curl") == [], "a fresh extract is reused"
+    assert binaries.commands("osmium") == []
+
+
+def test_an_extract_older_than_the_limit_is_rebuilt(workspace, states) -> None:
+    """The other half of the same rule, and the one that decides whether the
+    weekly refresh refreshes anything: with no age check every rebuild after the
+    first re-derived the whole map from one frozen snapshot."""
+    source, root = workspace
+    eight_days_ago = time.time() - 8 * 24 * 3600
+    for name in ("source.osm.pbf", "merged.osm.pbf"):
+        os.utime(root / name, (eight_days_ago, eight_days_ago))
+
+    binaries = FakeBinaries()
+    run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
+
+    assert len(binaries.commands("curl")) == 3, "the three states again"
+    assert source.stat().st_mtime > eight_days_ago, "and this week's clip replaced it"
+
+
+def test_a_partial_download_left_behind_is_never_read_as_the_extract(
+    fresh_deployment, states
+) -> None:
+    """A killed container leaves a `.part` holding an unknown amount of a real
+    extract. Nothing downstream can tell a truncated PBF from a small region -
+    osmium reads what is there - so it is neither renamed into place nor
+    resumed."""
+    source, root = fresh_deployment
+    (root / "extracts").mkdir(parents=True)
+    partials = {
+        root / "extracts" / "source.osm.pbf.part": b"half of last week's clip",
+        root / "extracts" / "district-of-columbia-latest.osm.pbf.part": b"half of the District",
+    }
+    for path, content in partials.items():
+        path.write_bytes(content)
+
+    binaries = FakeBinaries()
+    run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
+
+    assert len(binaries.commands("curl")) == 3, "the partial file is not a download"
+    for path in partials:
+        assert not path.exists(), f"{path.name} was left behind"
+    assert source.read_bytes() != partials[root / "extracts" / "source.osm.pbf.part"]
+    assert count(settings.SEGMENT_SCHEMA_STAGING) == 5, "a readable extract was built"
+
+
+def test_the_disk_gate_refuses_before_the_extract_is_downloaded(fresh_deployment, states) -> None:
+    """The gate runs before the download, not after it.
+
+    The extract is the largest thing this rebuild puts on the data volume - the
+    three state files, the merge, then the clip, all under <DATA_ROOT>/extracts,
+    which is the volume the gate measures - so a gate that ran once the extract
+    was on disk would be a gate on a volume the rebuild had already filled.
+    With no extract to measure it is sized from `source.ESTIMATED_BYTES`.
+    """
+    from pipeline.tiles import DiskGateRefused
+
+    source, root = fresh_deployment
+
+    def nearly_full(path):
+        return shutil._ntuple_diskusage(total=200 * GIB, used=170 * GIB, free=30 * GIB)
+
+    binaries = FakeBinaries()
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=binaries, disk_usage=nearly_full)
+
+    assert caught.value.stage is Stage.FETCH_EXTRACT
+    assert isinstance(caught.value.cause, DiskGateRefused)
+    assert binaries.commands("curl") == [], "nothing was downloaded onto a full volume"
+    assert not (root / "extracts").exists() or not list((root / "extracts").iterdir())
+
+
+def test_a_deployment_configured_for_an_extract_nothing_writes_is_refused(
+    fresh_deployment, states
+) -> None:
+    """The stage produces `source.osm.pbf` beside the merged file, under that
+    name. A REBUILD_SOURCE_PBF naming anything else is a deployment reading a
+    file no stage writes, which is the failure this check still exists for -
+    and it says what was produced instead rather than only what is missing."""
+    _source, root = fresh_deployment
+    elsewhere = root / "extracts" / "last-years.osm.pbf"
+
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(elsewhere, root, skip=NOT_SWAPPED)
+
+    assert caught.value.stage is Stage.FETCH_EXTRACT
+    assert "source extract missing" in str(caught.value.cause)
+    assert "source.osm.pbf" in str(caught.value.cause), "it names what was produced"
 
 
 # --- The pre-swap stages -------------------------------------------------------
@@ -307,7 +470,7 @@ def test_volume_reaches_the_classifier(workspace, states) -> None:
     ids=["road-first", "trail-first"],
 )
 def test_a_trail_alongside_a_road_cannot_take_the_roads_count(
-    tmp_path, states, road_id, trail_id
+    tmp_path, segment_schemas, states, road_id, trail_id
 ) -> None:
     """Through the real `conflate_volume` handler, not `conflate()`.
 
@@ -324,8 +487,9 @@ def test_a_trail_alongside_a_road_cannot_take_the_roads_count(
     orders because the ordering was the tie-break the previous defect turned
     on.
     """
-    source = tmp_path / "parallel.osm.pbf"
-    build_parallel_extract(source, road_id=road_id, trail_id=trail_id)
+    source = install_source_extract(
+        tmp_path, build_parallel_extract, road_id=road_id, trail_id=trail_id
+    )
     context, _ = run_pipeline(
         source, tmp_path, urban=(road_id, trail_id), volume=[PARALLEL_COUNT], skip=NOT_SWAPPED
     )
@@ -359,7 +523,7 @@ def test_a_bridge_barred_to_bicycles_is_tagged_so_on_every_variant(workspace, st
 
 
 def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
-    tmp_path, states
+    tmp_path, segment_schemas, states
 ) -> None:
     """The crossings fixture's legality column describes the *roadway*, and
     nothing stopped it matching the path.
@@ -379,9 +543,12 @@ def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
     """
     from pipeline.extract import read_ways
 
-    source = tmp_path / "bridge.osm.pbf"
-    build_named_bridge_extract(
-        source, roadway_id=700, sidepath_id=701, name="Woodrow Wilson Memorial Bridge"
+    source = install_source_extract(
+        tmp_path,
+        build_named_bridge_extract,
+        roadway_id=700,
+        sidepath_id=701,
+        name="Woodrow Wilson Memorial Bridge",
     )
     row = {
         "name": "Woodrow Wilson Bridge path",
@@ -494,6 +661,51 @@ def test_a_variant_that_fell_back_is_caught_even_when_another_logged_the_script(
     run_pipeline(source, root, binaries=FakeBinaries(), skip=NOT_SWAPPED, build_id="all")
 
 
+class PerVariantGrade(FakeBinaries):
+    """A fake whose tiles report a real grade for every variant but one.
+
+    The shape a "did elevation reach the tiles" check that took the *largest*
+    grade across the variants could not see. Each variant is built by its own
+    `valhalla_build_tiles` run against its own config, and the elevation
+    directory is read per build, so one variant built without it is one graph
+    where `use_hills` is inert, Mass Ride's grade cap has no max_grade to read
+    and the Recovery and Mountain Goat invariants tie at zero - while the other
+    two report 5.5 percent on the same edge and the answer looks fine.
+    """
+
+    def __init__(self, zero_for: str, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.zero_for = zero_for
+        self.built_grade = self.grade
+
+    def __call__(self, command):
+        command = list(command)
+        if Path(command[0]).name == "valhalla_service":
+            config = json.loads(Path(command[1]).read_text())
+            variant = Path(config["mjolnir"]["tile_dir"]).parents[1].name
+            self.grade = 0.0 if variant == self.zero_for else self.built_grade
+        return super().__call__(command)
+
+
+def test_a_variant_built_without_elevation_is_caught_even_when_the_others_have_it(
+    workspace, states
+) -> None:
+    """Every variant's build has to have baked elevation, so the check is the
+    smallest grade any of them reports on the known steep edge rather than the
+    largest. With the largest, two variants could have been built with no
+    elevation directory at all and validation would still have passed on the
+    third one's answer."""
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=PerVariantGrade(zero_for="ebike"), build_id="flat")
+    assert caught.value.stage is Stage.VALIDATE
+    assert "elevation directory" in str(caught.value.cause)
+
+    # The same fake with every variant reporting a grade passes, so the failure
+    # above is the per-variant check and not the fake.
+    run_pipeline(source, root, binaries=FakeBinaries(), skip=NOT_SWAPPED, build_id="hilly")
+
+
 def test_a_transform_rule_violation_in_the_parse_log_fails_the_build(workspace, states) -> None:
     """`lua/routemaker_remap.lua` and `lua/graph.lua` both say this stage greps
     the parse log for ROUTEMAKER-VIOLATION, and until now nothing did.
@@ -544,13 +756,44 @@ def test_a_build_that_leaves_no_admin_database_fails_the_build(workspace, states
     # rebuilds in the same second would share one and the second would find the
     # first's databases already sitting there.
     with pytest.raises(RebuildFailed) as caught:
-        run_pipeline(source, root, binaries=FakeBinaries(build_admin=False), build_id="no-admin")
+        run_pipeline(source, root, binaries=FakeBinaries(admin="missing"), build_id="no-admin")
     assert caught.value.stage is Stage.VALIDATE
     assert "mjolnir.admin" in str(caught.value.cause)
 
     with pytest.raises(RebuildFailed) as caught:
-        run_pipeline(source, root, binaries=FakeBinaries(build_timezone=False), build_id="no-tz")
+        run_pipeline(source, root, binaries=FakeBinaries(timezone="missing"), build_id="no-tz")
     assert "mjolnir.timezone" in str(caught.value.cause)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "named"),
+    [
+        ({"admin": "empty-file"}, "mjolnir.admin"),
+        ({"timezone": "empty-file"}, "mjolnir.timezone"),
+        ({"admin": "no-rows"}, "mjolnir.admin"),
+        ({"timezone": "no-rows"}, "mjolnir.timezone"),
+    ],
+    ids=["admin-zero-bytes", "timezone-zero-bytes", "admin-no-admins", "timezone-no-tz-world"],
+)
+def test_a_database_that_is_there_but_holds_nothing_fails_the_build(
+    workspace, states, kwargs, named
+) -> None:
+    """A file at the configured path is a weak claim, and both of these shapes
+    read back as a graph with no admin or timezone information.
+
+    Zero bytes is what `valhalla_build_timezones` leaves when the shell script
+    the pipeline redirects dies partway: `>` has already created the file. An
+    empty table is what an admin build over an extract carrying no boundary
+    relations leaves - which is the direction building admins from the *clipped*
+    extract tends in - a perfectly valid SQLite database with nothing in
+    `admins`. So the check queries each database rather than weighing it.
+    """
+    source, root = workspace
+    build_id = "-".join(f"{k}-{v}" for k, v in kwargs.items())
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(**kwargs), build_id=build_id)
+    assert caught.value.stage is Stage.VALIDATE
+    assert named in str(caught.value.cause)
 
 
 def test_every_variant_gets_an_admin_and_a_timezone_database_where_its_config_says(
@@ -573,7 +816,13 @@ def test_every_variant_gets_an_admin_and_a_timezone_database_where_its_config_sa
 
     admins = binaries.commands("valhalla_build_admins")
     assert len(admins) == 3, "one per variant, each through its own config"
-    assert {c[-1] for c in admins} == {str(source)}, "built from the source extract"
+    # The merged extract, not the clipped one. PLAN:13 builds admin data from
+    # the merged file before clipping, because the clip cuts boundary relations
+    # at the coverage edge and an admin polygon with a false edge in it is a
+    # country-crossing cost charged where no boundary is.
+    merged = source.with_name("merged.osm.pbf")
+    assert {c[-1] for c in admins} == {str(merged)}, "built from the merged extract"
+    assert str(source) not in {c[-1] for c in admins}, "and not from the clipped one"
 
     downloads = [c for c in binaries.calls if c[0] == "sh"]
     copies = [c for c in binaries.calls if c[0] == "cp"]
@@ -1183,9 +1432,7 @@ def test_the_rebuild_writes_to_the_configured_staging_schema(renamed_schemas, st
 
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        source = root / "source.osm.pbf"
-        build_toy_extract(source)
-        context, report = run_pipeline(source, root)
+        context, report = run_pipeline(install_source_extract(root), root)
 
     assert report.succeeded
     assert context.staging_schema == "staging_x"
@@ -1230,6 +1477,58 @@ def test_a_rebuild_without_reference_data_refuses_to_run(workspace, states) -> N
     with pytest.raises(RebuildFailed) as caught:
         run_rebuild(handlers)
     assert caught.value.stage is Stage.LOAD_REFERENCE_DATA
+
+
+def test_the_command_runner_hands_back_both_streams_kept_apart() -> None:
+    """Run for real, against a shell, because this is the one function in the
+    pipeline that nothing can fake for itself.
+
+    `valhalla_service` in one-shot mode forces its logging to stderr and writes
+    the response to stdout (src/valhalla_service.cc:42-44), so a runner that
+    returned `CommandOutput(stdout, "")` would throw away every line the build
+    log is read for - "Using LUA script:", and the transform's own
+    ROUTEMAKER-VIOLATION lines, which `io.stderr:write` puts on stderr while
+    Valhalla's go to stdout. The Lua-fallback check and the violation check are
+    both read off `.log`, which is the two concatenated, so dropping stderr
+    silently disarms the violation guard while every test that fakes the runner
+    keeps passing.
+    """
+    from pipeline.run import _run_command
+
+    output = _run_command(["sh", "-c", "echo out; echo err 1>&2"])
+
+    assert output.stdout == "out\n"
+    assert output.stderr == "err\n", "the stream the transform's refusals arrive on"
+    assert output.log == "out\nerr\n", "and the log is both, in that order"
+
+
+def test_validate_refuses_when_a_variant_produced_no_build_log(tmp_path) -> None:
+    """The guard before the guards. Every per-variant check reads
+    `context.build_logs[variant]`, so a variant that produced no log at all is a
+    variant nothing is asked about - and iterating the logs that are there would
+    have passed a rebuild in which only one variant was ever built.
+    """
+    from pipeline.run import ValidationFailed
+
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+        tiles_dir=tmp_path / "tiles",
+    )
+    handlers = build_handlers(
+        context, run=FakeBinaries(), fetch_elevation=fake_fetch, disk_usage=roomy_disk
+    )
+    context.build_logs = {
+        Variant.STANDARD: LUA_LOADED_LOG,
+        Variant.NO_TRAIL: LUA_LOADED_LOG,
+    }
+
+    with pytest.raises(ValidationFailed) as caught:
+        handlers[Stage.VALIDATE]()
+
+    assert "not every variant produced a build log" in str(caught.value)
+    assert "'no-trail', 'standard'" in str(caught.value), "it says which it has"
 
 
 def test_a_missing_handler_is_refused_before_any_stage_runs() -> None:

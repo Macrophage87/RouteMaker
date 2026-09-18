@@ -146,6 +146,108 @@ the whole rebuild again including the swap — whose `DROP SCHEMA live_old`
 destroys the schema a rollback would have put back. Five retries of a timed-out
 rebuild would have dismantled its own rollback target, one attempt at a time.
 
+## The source extract
+
+The rebuild's first stage produces the map it builds from, rather than expecting
+to find one. Until this existed nothing anywhere made `source.osm.pbf`: the
+first rebuild on a new deployment stopped at stage one with "source extract
+missing", and wherever somebody had made the file by hand every later weekly
+rebuild re-derived the whole map from that one frozen snapshot — a weekly
+refresh that refreshed nothing.
+
+What is downloaded, per PLAN:13, is Geofabrik's three state extracts:
+
+```
+https://download.geofabrik.de/north-america/us/district-of-columbia-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/maryland-latest.osm.pbf
+https://download.geofabrik.de/north-america/us/virginia-latest.osm.pbf
+```
+
+**Roughly 1–2 GB in total at today's sizes** — Virginia and Maryland are most of
+it, the District is small — and approximate by nature, since these files grow
+with the map. They are merged and then clipped, and **both** results are kept
+under `<DATA_ROOT>/extracts/`:
+
+| File | What it is | Who reads it |
+| --- | --- | --- |
+| `<region>-latest.osm.pbf` | the three downloads as they arrived | the merge |
+| `merged.osm.pbf` | the three states, merged, **not** clipped | `valhalla_build_admins` |
+| `source.osm.pbf` | that file clipped to the coverage region | every other stage |
+
+The merged file is kept because admin data is built from it *before* the clip.
+A clip cuts boundary relations at the coverage edge, so an admin database built
+from `source.osm.pbf` describes administrative areas that stop where this
+deployment's box does, and the graph is then charged a state- or
+country-crossing cost along a line no boundary follows.
+
+`curl` and `osmium` run in the `rebuild` container, so the pipeline image has
+to carry both (`curl` and Debian's `osmium-tool`) alongside the Valhalla and
+GDAL binaries; a rebuild on an image without them fails at stage one with a
+`FileNotFoundError` naming the binary.
+
+The commands are `curl -fsSL --retry 3 -o <file>.part <url>`, then
+`osmium merge --overwrite <three files> -o merged.osm.pbf.part`, then
+`osmium extract --overwrite -s smart -S types=any --bbox W,S,E,N -o
+source.osm.pbf.part merged.osm.pbf`. Everything is written to a `.part` name and
+moved into place only on success: a 1–2 GB transfer killed partway would
+otherwise leave a truncated file under the real name, and nothing downstream can
+tell a truncated PBF from a smaller region — osmium reads what is there and the
+rebuild carries on with part of Virginia missing. A `.part` found on disk is
+deleted and re-fetched, never resumed or renamed into place.
+
+**The freshness rule.** The extract is rebuilt when either file is missing or
+more than `SOURCE_EXTRACT_MAX_AGE` old, which defaults to **six days** —
+deliberately just under the weekly cadence. At seven or more the ordinary weekly
+run would accept last week's snapshot and the map would age by a week every
+week; below it, a rebuild re-run in the same week (a retry, a hand-fired run, a
+second attempt after a validation failure) reuses what is on disk instead of
+pulling 1–2 GB again.
+
+**Forcing a refresh**, when a rebuild must start from today's Geofabrik build:
+
+```sh
+rm <DATA_ROOT>/extracts/source.osm.pbf        # or set the variable and restart
+SOURCE_EXTRACT_FORCE_REFRESH=1
+```
+
+Either works and there is no third mechanism. `SOURCE_EXTRACT_URLS` (a
+comma-separated list) points the download at a mirror.
+
+**The disk gate runs before the download, not after it.** The extract is the
+largest single thing a rebuild puts on the data volume and it lands on the
+volume the gate measures, so a gate placed after the extract had been produced
+would be a gate on a volume the rebuild had already filled. With no extract on
+disk there is nothing to measure, so the gate is sized from
+`pipeline.source.ESTIMATED_BYTES` (2 GiB, which `check_disk_gate` multiplies by
+four for the build's own three variant extracts and its scratch); once there is
+one, its real size is what the gate charges. A rebuild refused by the gate has
+downloaded nothing.
+
+## After a rebuild: restart the routers
+
+**`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`
+once at start and serves that graph for the life of the process, so replacing
+the `current` symlink promotes a build the running containers cannot see. The
+swap is complete in the database and on disk, `valhalla_upstream` names the new
+build id, and the three routers keep answering from last week's tiles until they
+are restarted:
+
+```sh
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
+```
+
+Nothing in the rebuild does this, and there is no check that notices it has not
+been done: the symptom is a deployment whose routes disagree with its own
+segment table, which reads like a conflation bug rather than a missed restart.
+Run it after every successful rebuild and after a rollback, which moves the same
+symlink back.
+
+The restart is a few seconds of 502s per variant, taken one at a time. Starting
+the new containers against the new build before stopping the old ones — the
+blue/green arrangement the plan describes, which would make the swap invisible
+to a request in flight — is phase 2; it is recorded in the handoff rather than
+built here.
+
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.

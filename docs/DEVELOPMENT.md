@@ -132,6 +132,49 @@ never sets Django up: it dies on the missing schema, and with the schema applied
 by hand every task raises `AppRegistryNotReady`. The suite starts a worker cold
 in a subprocess and runs a job through it for exactly this reason.
 
+## The source extract
+
+The rebuild makes its own. `FETCH_EXTRACT` downloads Geofabrik's three state
+extracts — District of Columbia, Maryland, Virginia, about **1–2 GB together at
+today's sizes**, and that figure moves with the map — merges them, and clips the
+merge to the coverage region, leaving two files under `<DATA_ROOT>/extracts/`:
+
+- `merged.osm.pbf`, the three states before the clip. This is what
+  `valhalla_build_admins` is given (PLAN:13): the clip cuts boundary relations
+  at the coverage edge, so admin polygons built from the clipped file stop where
+  the box does.
+- `source.osm.pbf`, the clip, which every other stage reads.
+
+```sh
+curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
+osmium merge --overwrite dc.osm.pbf md.osm.pbf va.osm.pbf -o merged.osm.pbf.part
+osmium extract --overwrite -s smart -S types=any --bbox -78.0,38.2,-76.3,39.5 \
+    -o source.osm.pbf.part merged.osm.pbf
+```
+
+`-s smart -S types=any` is PLAN:13's, and the `-S` half is the one that is easy
+to lose: without it the strategy keeps multipolygon relations complete and cuts
+every other type, which is exactly the administrative boundaries. Every command
+writes a `.part` and moves it into place on success, so a killed download is
+never mistaken for a small region.
+
+It is not downloaded every run. The extract is rebuilt only when either file is
+missing or older than `SOURCE_EXTRACT_MAX_AGE` (six days, just under the weekly
+cadence), so a rebuild re-run in the same week reuses it. Force a fresh pull by
+deleting either file or setting `SOURCE_EXTRACT_FORCE_REFRESH=1`;
+`SOURCE_EXTRACT_URLS` points the download at a mirror. Operations covers the
+same rules from the deployment's side, including why the disk gate runs before
+the download.
+
+Neither `curl` nor `osmium` is on PATH in this development container and there
+is no route to Geofabrik, so this stage has never been executed here:
+`tests/test_source.py` holds the command lines argument by argument and
+`tests/test_pipeline_end_to_end.py` drives the stage through the rebuild with
+both binaries stood in for. Developing against a real extract means either
+running the rebuild on the deployment host or putting a small hand-made
+`merged.osm.pbf`/`source.osm.pbf` pair in `<DATA_ROOT>/extracts/`, which the
+freshness rule will then reuse.
+
 ## Reference data
 
 The rebuild refuses to run without three files under `<DATA_ROOT>/reference/`,

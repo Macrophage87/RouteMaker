@@ -22,6 +22,7 @@ import functools
 import json
 import logging
 import re
+import sqlite3
 import subprocess
 import time
 from collections.abc import Callable, Sequence
@@ -42,6 +43,7 @@ from . import (
     promotion,
     reconcile,
     retention,
+    source,
     tiles,
     variants,
     writers,
@@ -249,12 +251,21 @@ class RebuildContext:
     coverage_bbox: tuple[float, float, float, float] = field(
         default_factory=lambda: tuple(_setting("COVERAGE_BBOX"))
     )
+    # The coverage polygon the clip prefers over the box, when a deployment has
+    # one. None everywhere today: the repository carries no polygon file, and
+    # the box is what PLAN:13's clip is given until it does.
+    coverage_polygon: Path | None = field(default_factory=lambda: _setting("COVERAGE_POLYGON"))
     upstreams: dict[str, str] = field(default_factory=lambda: dict(_setting("VALHALLA_UPSTREAMS")))
     build_id: str = field(default_factory=new_build_id)
     # Monotonic-clock instant after which no further stage or binary starts.
     deadline: float | None = None
 
     reference: ReferenceData | None = None
+    # The merged, *unclipped* extract FETCH_EXTRACT produced or reused, which is
+    # what `valhalla_build_admins` is given (PLAN:13). Not `source_pbf`: that one
+    # is the clip, and an admin database built from it describes administrative
+    # areas that stop at the coverage boundary.
+    merged_pbf: Path | None = None
     ways: list[extract.Way] = field(default_factory=list)
     ways_by_id: dict[int, extract.Way] = field(default_factory=dict)
     aadt_by_way: dict[int, tuple[int, str]] = field(default_factory=dict)
@@ -342,10 +353,39 @@ def assert_no_rule_violations(build_log: str, where: str) -> None:
     )
 
 
+# The table each database is read back through, and the only thing that tells a
+# built database from a file of the right shape. Both names are upstream's:
+# `valhalla_build_admins` creates `admins` (src/mjolnir/adminbuilder.cc) and
+# `valhalla_build_timezones` ships the `tz_world` table its consumers query.
+# NOT CONFIRMED AGAINST A REAL BUILD - no Valhalla binary has run here - which
+# is why a table that cannot be read is reported with the error SQLite gave
+# rather than swallowed.
+ADMIN_AND_TIMEZONE_TABLES = {"admin": "admins", "timezone": "tz_world"}
+
+
+def _sqlite_row_count(path: Path, table: str) -> int:
+    """Rows in one table of a SQLite file, read directly.
+
+    Python's own `sqlite3` rather than the `sqlite3` binary through the command
+    runner: the pipeline image is not required to carry that binary, and a check
+    that silently depends on one would fail for the wrong reason on a box
+    without it.
+
+    Opened read-only through a URI so that reading a database cannot create or
+    journal one; a path that is not a database raises here and the caller
+    reports it.
+    """
+    connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        return int(connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0])
+    finally:
+        connection.close()
+
+
 def assert_admin_and_timezone_databases_were_built(
     build_configs: dict[variants.Variant, Path],
 ) -> None:
-    """The other half of SF3: the commands ran, and they left something behind.
+    """The other half of SF3: the commands ran, and they left something usable.
 
     `mjolnir.admin` and `mjolnir.timezone` are retargeted into the dated build
     directory, and 3.5.1 does not fail a build that cannot find either - it logs
@@ -354,6 +394,15 @@ def assert_admin_and_timezone_databases_were_built(
     (src/mjolnir/graphbuilder.cc:431-444). The result is a graph whose edges
     carry no timezone, which is invisible until a `date_time` request quietly
     evaluates every conditional restriction against nothing.
+
+    Each database is queried rather than weighed. A non-empty file is a weak
+    claim: `valhalla_build_timezones` redirects a shell script's stdout, so a
+    script that failed after printing its first progress line leaves a file with
+    bytes in it and no schema, and an admin build that parsed an extract with no
+    boundary relations - which is exactly what building admins from the *clipped*
+    extract tends toward - leaves a perfectly valid database with an empty
+    `admins` table. Both read back as a graph with no admin or timezone
+    information, and both used to pass this check.
     """
     missing: list[str] = []
     for variant in variants.Variant:
@@ -362,15 +411,26 @@ def assert_admin_and_timezone_databases_were_built(
             missing.append(f"{variant.value}: no build config")
             continue
         config = json.loads(Path(config_path).read_text())
-        for key in ("admin", "timezone"):
+        for key, table in ADMIN_AND_TIMEZONE_TABLES.items():
             path = Path(config["mjolnir"][key])
-            if not path.is_file() or path.stat().st_size == 0:
-                missing.append(f"{variant.value}: mjolnir.{key} = {path}")
+            if not path.is_file():
+                missing.append(f"{variant.value}: mjolnir.{key} = {path} is absent")
+                continue
+            try:
+                rows = _sqlite_row_count(path, table)
+            except sqlite3.Error as error:
+                missing.append(
+                    f"{variant.value}: mjolnir.{key} = {path} is not a database with a "
+                    f"{table} table in it ({error})"
+                )
+                continue
+            if rows <= 0:
+                missing.append(f"{variant.value}: mjolnir.{key} = {path} holds no {table} rows")
     if missing:
         raise ValidationFailed(
-            "the tile build left no database at these configured paths, so the graph carries "
-            "no admin or timezone information and every date_time request evaluates its "
-            "conditional restrictions against nothing: " + "; ".join(missing)
+            "the tile build left no usable database at these configured paths, so the graph "
+            "carries no admin or timezone information and every date_time request evaluates "
+            "its conditional restrictions against nothing: " + "; ".join(missing)
         )
 
 
@@ -429,18 +489,68 @@ def build_handlers(
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
 
     def fetch_extract() -> None:
-        if not context.source_pbf.exists():
-            raise ReferenceDataMissing(f"source extract missing: {context.source_pbf}")
-        # The disk gate, before anything is written: a rebuild that cannot fit
-        # a second full tile set beside the served one refuses to start rather
-        # than filling the volume partway through a build.
+        """Produce this week's extract, or reuse the one on disk, then read it.
+
+        Produce: this stage used to check that `<DATA_ROOT>/extracts/source.osm.pbf`
+        existed and fail when it did not, so the first rebuild on a fresh
+        deployment stopped here and nothing anywhere made the file. Now the
+        three Geofabrik state extracts are downloaded, merged and clipped
+        (`pipeline.source`, PLAN:13) when what is on disk is missing or older
+        than `SOURCE_EXTRACT_MAX_AGE`.
+
+        Reuse: the freshness rule is what keeps a second run in the same week
+        from pulling 1-2 GB again, and it is why a rebuild retried after a
+        validation failure starts at the tile build's speed rather than the
+        network's.
+        """
+        extracts_dir = context.source_pbf.parent
+        # Asked here only to size the gate below, since what the gate has to
+        # cover depends on whether an extract is about to be downloaded.
+        # `ensure_extract` asks again and is what decides.
+        refresh = source.refresh_reason(
+            extracts_dir / source.MERGED_NAME,
+            extracts_dir / source.CLIPPED_NAME,
+            max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
+            force=_setting("SOURCE_EXTRACT_FORCE_REFRESH"),
+        )
+
+        # The disk gate, before anything is written *and before the download*.
+        # The extract is the largest single thing this rebuild puts on the data
+        # volume - three state files, the merge, then the clip, all under
+        # <DATA_ROOT>/extracts, which is the volume the gate measures - so a gate
+        # placed after the download would be a gate on a volume the rebuild had
+        # already filled. With no extract on disk there is nothing to measure,
+        # so it is sized from `source.ESTIMATED_BYTES`; check_disk_gate already
+        # reserves four times the source size for the build's own three variant
+        # extracts and scratch, which covers the production's files as well.
         context.disk_gate = tiles.check_disk_gate(
             context.tiles_dir,
-            context.source_pbf.stat().st_size,
+            source.ESTIMATED_BYTES if refresh else context.source_pbf.stat().st_size,
             _setting("REBUILD_MIN_FREE_BYTES"),
             _setting("DISK_GATE_FRACTION"),
             disk_usage=disk_usage,
         )
+
+        produced = source.ensure_extract(
+            extracts_dir,
+            context.coverage_polygon or context.coverage_bbox,
+            run,
+            urls=_setting("SOURCE_EXTRACT_URLS"),
+            max_age=_setting("SOURCE_EXTRACT_MAX_AGE"),
+            force=_setting("SOURCE_EXTRACT_FORCE_REFRESH"),
+        )
+        # `valhalla_build_admins` reads this one, so its absence is a missing
+        # input rather than a detail: PLAN:13 builds admin data from the merged
+        # extract before clipping.
+        if not produced.merged.is_file():
+            raise ReferenceDataMissing(f"merged extract missing: {produced.merged}")
+        context.merged_pbf = produced.merged
+        if not context.source_pbf.exists():
+            raise ReferenceDataMissing(
+                f"source extract missing: {context.source_pbf}; the extract stage produced "
+                f"{produced.clipped}, so this deployment is configured to read a file "
+                "nothing writes"
+            )
         # The staging schema is rebuilt from scratch every week, and it is reset
         # here rather than by the segment writer because the crossings are
         # written into it several stages before the segments are.
@@ -644,6 +754,10 @@ def build_handlers(
         # nothing else ever writes there. The timezone database is a function of
         # the world rather than of the extract, so the first variant builds it
         # and the rest copy it.
+        if context.merged_pbf is None:
+            raise ReferenceDataMissing(
+                "no merged extract to build admin data from; FETCH_EXTRACT produces it"
+            )
         timezone_source: Path | None = None
         for variant in variants.Variant:
             config_path = tiles.write_build_config(
@@ -654,7 +768,7 @@ def build_handlers(
             commands = tiles.tile_build_commands(
                 config_path,
                 context.variant_pbf(variant),
-                admin_pbf=context.source_pbf,
+                admin_pbf=context.merged_pbf,
                 timezone_db=timezone_db,
                 timezone_source=timezone_source,
             )

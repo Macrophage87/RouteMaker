@@ -341,7 +341,11 @@ UNUSED_PATH_KEYS = {
     "mjolnir.traffic_extract": (
         "no traffic data; present because upstream's generator gives it a plain string "
         "default rather than an Optional, so it cannot be dropped without diverging from "
-        "the default set"
+        "the default set. The file this names must never actually exist: "
+        "src/baldr/graphreader.cc:141-146 resets the routing archive when a traffic "
+        "extract loads with no usable tiles in it, so an empty or mismatched traffic tar "
+        "costs this deployment its whole graph rather than only its speeds - which is "
+        "also why valhalla_build_extract must never be passed -t here"
     ),
     "mjolnir.transit_dir": "no transit tiles are built",
     "mjolnir.transit_feeds_dir": "no GTFS feeds are imported",
