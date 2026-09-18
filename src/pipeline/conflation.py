@@ -246,7 +246,10 @@ def conflate(
     was given in. The defect this replaces: reversing the order of two
     equally-plausible candidates in the input list used to reverse which one
     won, because Python's stable sort otherwise falls through to input order
-    once the ranking key is exhausted.
+    once the ranking key is exhausted. The key now ends in the way id and the
+    feature id, so it is never exhausted: candidates alike on geometry as well
+    are decided by id, which is arbitrary but is the same arbitrary answer on
+    every rebuild of the same extract.
     """
     candidates: list[tuple[float, int, AgencyFeature, tuple[float, float] | None, float]] = []
 
@@ -276,15 +279,24 @@ def conflate(
 
     # Best first: precedence, then overlap, then how close the way actually
     # runs to the feature - geometry breaking the tie rather than input order.
+    #
+    # And the ids last, so the key is never exhausted. Three candidates alike on
+    # all three measures is not a contrived case: a divided carriageway plus a
+    # ramp drawn from the same survey line, or one agency's line lying over a
+    # block split into equal ways, gives identical overlap and identical mean
+    # distance, and the sort then fell through to input order - which is the
+    # order `read_ways` happened to return the extract in, so the same data
+    # clipped twice could attach the count to a different way. The ids decide it
+    # instead: arbitrary, but the same arbitrary answer every rebuild.
     def rank(
         candidate: tuple[float, int, AgencyFeature, tuple[float, float] | None, float],
     ):
-        overlap, _, feature, _span, mean_distance = candidate
+        overlap, way_id, feature, _span, mean_distance = candidate
         try:
             precedence = SOURCE_PRECEDENCE.index(feature.source)
         except ValueError:
             precedence = len(SOURCE_PRECEDENCE)
-        return (precedence, -overlap, mean_distance)
+        return (precedence, -overlap, mean_distance, way_id, feature.feature_id)
 
     matched: dict[int, Match] = {}
     rejected: list[tuple[int, Match]] = []

@@ -13,7 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from routemaker.geo import METRES_PER_MILE, Point, cumulative_distances, haversine
+from routemaker.geo import (
+    EARTH_RADIUS_M,
+    METRES_PER_MILE,
+    Point,
+    cumulative_distances,
+    haversine,
+)
 from routemaker.gpx import read_track_points
 from routemaker.measure import (
     REVISIT_ALONG_ROUTE_M,
@@ -184,6 +190,85 @@ def test_the_grid_index_agrees_with_the_pairwise_definition(name: str) -> None:
     that the index has no others on any route this project has. A cell size that
     is wrong on either axis shows up here as a route whose count drops."""
     points = read_track_points(FIXTURES / f"{name}.gpx")
+    assert revisits(points) == brute_force_revisits(points)
+
+
+# --- The cell margin, at the coverage box's latitude extremes ----------------
+#
+# The square cell was the large failure; this is the small one left behind. The
+# cosine is the route's *mean* latitude's, so on a route spanning the region the
+# cell at either end is narrower in ground distance than the mean says, and the
+# 111,320 m the latitude axis divides by is 125 m more than `haversine`'s sphere
+# gives a degree. Both shave the longitude cell under `REVISIT_PROXIMITY_M`,
+# which is the one thing the nine-cell scan needs to be a shortcut rather than a
+# different measurement.
+
+COVERAGE_LAT_SOUTH = 38.2  # settings.COVERAGE_BBOX, the region this deployment clips to
+COVERAGE_LAT_NORTH = 39.5
+NEAR_RADIUS_OFFSET_M = 24.93  # inside the 25 m radius, and outside an unpadded cell
+DEGREE_OF_LATITUDE_M = math.pi * EARTH_RADIUS_M / 180.0
+
+
+def region_spanning_revisit_route(base_lon: float) -> list[Point]:
+    """A route from the south of the coverage box to the north, with its one
+    revisit at the northern extreme.
+
+    The long stem is what puts the route's mean latitude in the middle of the
+    region while the pair that has to be found sits at its edge - which is the
+    whole of the case, and is why a short out-and-back like
+    `parallel_offset_route` cannot show it: over 500 m the mean latitude and the
+    local one are the same number.
+
+    The revisit itself is the same shape as that one: a 500 m leg north and a
+    500 m leg back `NEAR_RADIUS_OFFSET_M` to the east, so the two legs are inside
+    the proximity radius and their ends are outside the along-route minimum.
+    """
+    east = NEAR_RADIUS_OFFSET_M / DEGREE_OF_LATITUDE_M / math.cos(math.radians(COVERAGE_LAT_NORTH))
+    span = COVERAGE_LAT_NORTH - COVERAGE_LAT_SOUTH
+    stem_points = 289  # the region's 1.3 degrees at roughly 500 m spacing
+    top = COVERAGE_LAT_NORTH
+
+    points = [
+        Point(base_lon, COVERAGE_LAT_SOUTH + span * i / (stem_points - 1))
+        for i in range(stem_points)
+    ]
+    step = REVISIT_SPACING_M / DEGREE_OF_LATITUDE_M
+    count = int(REVISIT_LEG_M / REVISIT_SPACING_M) + 1
+    points += [Point(base_lon, top + i * step) for i in range(1, count)]
+    points += [Point(base_lon + east, top + i * step) for i in reversed(range(count))]
+    return points
+
+
+def test_the_pair_is_inside_the_radius_and_the_route_spans_the_region() -> None:
+    """The premises of the case below, stated separately so a failure there says
+    which half moved."""
+    points = region_spanning_revisit_route(-77.0)
+    outbound = next(p for p in points if p.lat > COVERAGE_LAT_NORTH)
+    returning = next(p for p in reversed(points) if p.lat == outbound.lat)
+    assert haversine(outbound, returning) == pytest.approx(NEAR_RADIUS_OFFSET_M, abs=0.01)
+    assert haversine(outbound, returning) < REVISIT_PROXIMITY_M, "it is a revisit by the definition"
+    mean_lat = sum(p.lat for p in points) / len(points)
+    assert COVERAGE_LAT_NORTH - mean_lat > 0.5, "the pair is at the edge and the mean is not"
+
+
+def test_a_pair_just_inside_the_radius_is_found_at_the_regions_northern_edge() -> None:
+    """The alignment is chosen rather than swept, because this failure is small.
+
+    The square cell missed roughly a sixth of alignments, which a twenty-sample
+    sweep catches every time. What is left over is under one percent of a cell,
+    so a sweep would find it only by luck: the west leg is placed a hair inside
+    the top of a cell computed the way the unpadded index computed it, which is
+    the alignment - and the only alignment - at which a pair 1.006 cells apart
+    lands two cells apart. With the margin the pair is 0.996 cells apart and no
+    alignment can do it.
+    """
+    unpadded_cell_lon = (REVISIT_PROXIMITY_M / 111_320.0) / math.cos(
+        math.radians(sum(p.lat for p in region_spanning_revisit_route(-77.0)) / 330)
+    )
+    boundary = (math.floor(-77.0 / unpadded_cell_lon) + 1) * unpadded_cell_lon
+    points = region_spanning_revisit_route(boundary - 1e-12)
+
+    assert revisits(points) == 1
     assert revisits(points) == brute_force_revisits(points)
 
 

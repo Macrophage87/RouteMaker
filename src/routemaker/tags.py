@@ -209,6 +209,20 @@ def has_shoulder(tags: dict[str, str]) -> bool | None:
     assert that it exists; reading that as "no shoulder tagged" threw away the
     only measurement on the way, and it is the measurement, not the presence
     key, that the bike-lane table needs.
+
+    That includes the contradictory pair, and deliberately: `shoulder=no`
+    together with a `shoulder:width` reads as **present**. The two tags
+    disagree, and the width is the survey - somebody went and measured a
+    shoulder, which is not a thing to do to a road that has none, while
+    `shoulder=no` is the value a mapper leaves behind after refining the way
+    with a more specific tag (the same order of events the side keys above
+    describe). Believing the width also keeps this function's answer consistent
+    with `shoulder_width_m`, which reads the width whatever the presence keys
+    say: the alternative is a way that has no shoulder and a shoulder width,
+    which the classifier cannot score. It errs toward the lower-stress reading
+    on a contradiction, which is the one place in this module that happens, and
+    it is bounded - the width still has to clear `RIDEABLE_SHOULDER_M` before
+    `stress` credits anything for it.
     """
     values = [value for key in SHOULDER_PRESENCE_KEYS if (value := tags.get(key)) is not None]
     if any(value not in SHOULDER_ABSENT for value in values):
