@@ -237,7 +237,11 @@ def test_a_part_file_is_neither_pruned_nor_counted_as_a_kept_dump(tmp_path) -> N
         "two real dumps are kept and the oldest goes; the part file is not one of the three"
     )
     assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted([*dumps[1:], part.name])
-    assert part.exists(), "and the part file is left where it is, for its own owner to clean up"
+    assert part.exists(), (
+        "and this one is left where it is: it is newer than every kept dump, which is the "
+        "shape of the dump being written right now. An abandoned one, older than the newest "
+        "kept dump, is reclaimed - see test_a_part_file_left_by_a_sigkill_is_reclaimed"
+    )
 
 
 def test_the_newest_real_dump_survives_a_part_file_taking_the_last_kept_slot(tmp_path) -> None:
@@ -377,3 +381,78 @@ def test_a_build_id_is_chosen_against_the_root_the_build_will_be_written_into(
     assert context.build_id != this_second, (
         "the context's own root is what its build id is chosen against"
     )
+
+
+def test_a_part_file_left_by_a_sigkill_is_reclaimed(tmp_path) -> None:
+    """The one thing on the data volume nothing ever removed.
+
+    `perform_backup` writes `<name>.dump.part` and its own `finally` removes it
+    on every path its process lives through - a failed dump, a rejected
+    listing, the thirty-minute timeout. The path it cannot cover is the one the
+    staging name exists for: a SIGKILL, from `docker compose down`, a host
+    reboot or the OOM killer. That leaves a full-sized archive under a name
+    `prune_backups` matched none of, on the volume the rebuild's disk gate
+    measures and the dumps share with PGDATA - and it stayed there for ever,
+    one per kill, until the gate refused a rebuild with "grow the volume".
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 5)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    abandoned = tmp_path / "routemaker-20260910T070000Z.dump.part"
+    abandoned.write_bytes(b"half a dump")
+
+    removed = prune_backups(tmp_path, keep=2)
+
+    assert not abandoned.exists(), "a part file older than every kept dump is wreckage"
+    assert [path.name for path in removed] == dumps[:2], (
+        "the part file is not a dump and is not counted into the dumps that were pruned"
+    )
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == dumps[2:]
+
+
+def test_a_part_file_newer_than_every_kept_dump_is_the_one_being_written(tmp_path) -> None:
+    """The rule is "older than the newest kept dump" rather than an age, and
+    this is why. `prune_backups` runs from `nightly_backup`, in the same task
+    as the dump; a part file whose instant is newer than every kept dump is the
+    archive being written right now, and deleting it would be retention
+    reaching into a live write.
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 4)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    in_flight = tmp_path / "routemaker-20260914T070000Z.dump.part"
+    in_flight.write_bytes(b"half a dump")
+
+    prune_backups(tmp_path, keep=2)
+
+    assert in_flight.exists()
+
+
+def test_the_first_dump_in_flight_is_left_alone_with_nothing_to_compare_against(tmp_path) -> None:
+    """With no kept dump there is no instant to measure a part file against,
+    and the only part file that can exist beside no dump at all is the first
+    one, in flight. Nothing is removed, which is the same answer the rule above
+    gives seen from the other side.
+    """
+    first = tmp_path / "routemaker-20260911T070000Z.dump.part"
+    first.write_bytes(b"half a dump")
+
+    assert prune_backups(tmp_path, keep=7) == []
+    assert first.exists()
+
+
+def test_only_the_part_files_this_task_wrote_are_reclaimed(tmp_path) -> None:
+    """Same rule as the dumps themselves: this module deletes files, and it
+    does so only where it is certain what it is looking at."""
+    (tmp_path / "routemaker-20260912T070000Z.dump").write_bytes(b"dump")
+    others = ["notes.txt.part", "somebody-elses.dump.part", "routemaker-nonsense.dump.part"]
+    for name in others:
+        (tmp_path / name).write_bytes(b"not ours")
+
+    prune_backups(tmp_path, keep=7)
+
+    assert sorted(
+        entry.name
+        for entry in tmp_path.iterdir()
+        if entry.name != "routemaker-20260912T070000Z.dump"
+    ) == sorted(others)
