@@ -17,15 +17,23 @@ from routemaker.geo import (
     EARTH_RADIUS_M,
     METRES_PER_MILE,
     Point,
+    bearing,
+    bearing_delta,
     cumulative_distances,
     haversine,
 )
 from routemaker.gpx import read_track_points
 from routemaker.measure import (
+    DEGREE_OF_LATITUDE_M,
+    GRADE_MIN_RUN_M,
     REVISIT_ALONG_ROUTE_M,
+    REVISIT_CELL_LON_MARGIN,
     REVISIT_PROXIMITY_M,
+    TURN_MIN_BEARING_DEG,
     RouteStats,
+    revisit_cell_degrees,
     revisits,
+    turns,
 )
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "reference-routes"
@@ -81,6 +89,98 @@ def test_turns_match_recorded_where_sampling_permits(name: str) -> None:
     assert stats.turns == expected
 
 
+# The max-grade column of the README's tables, per file, as `measure.max_grade`
+# produces it. Two decimals against a table printed to one, so the pin is
+# tighter than the rounding it has to agree with.
+RECORDED_GRADE_PCT = {
+    "2025-05-dcbp-btr": 6.24,
+    "2025-12-dcbp": 6.30,
+    "2026-04-dcbp": 4.41,
+    "2026-07-dcbp": 4.79,
+    "group-blow-off-steam": 10.89,
+    "group-crit-mass-2024-03": 9.92,
+    "group-crit-mass-feb": 8.50,
+    "group-crit-mass-jan": 8.62,
+    "group-purple-line": 10.35,
+    "rural-group-loco-30": 16.91,
+    "rural-group-tnl": 14.51,
+    "rural-group-two-bridges": 18.99,
+    "trail-annapolis-bwi": 11.29,
+    "trail-bethesda-loop": 11.81,
+    "trail-brookside-gardens": 8.34,
+}
+
+# The two directions of one loop. The README says so on other grounds - the
+# bounding boxes and the start points coincide - and it is what makes the pair
+# a check on the grade column rather than two more numbers in it.
+SAME_LOOP_BOTH_WAYS = ("rural-group-loco-30", "rural-group-two-bridges")
+
+
+def test_grade_is_regenerated_not_reproduced() -> None:
+    """Why the recorded max-grade column is asserted differently from the rest.
+
+    Distance, gain and turns above are reproduced from the tables the routes
+    arrived with: the definition was recovered until the code agreed with the
+    supplied numbers, and a disagreement there is a defect in the code. The
+    grade column is not that. The supplied column could not be reproduced by any
+    formulation of the measurement and was internally implausible - it recorded
+    4.7 percent as the steepest pitch on a Loudoun loop that climbs 78 feet per
+    mile, while recording 19.0 on the *same loop ridden the other way round*.
+    Two directions of one loop cross the same hills, so the two figures are
+    measurements of the same terrain and cannot be four times apart. So the
+    column was regenerated from `measure.max_grade` rather than matched, and the
+    README marks it provisional for a second reason as well: these files carry
+    the GPX elevation they were recorded with, while the application derives
+    elevation from 3DEP.
+
+    What this test pins is therefore the regenerated column itself, per file,
+    and the internal consistency that the supplied one failed. Without it the
+    measurement had no test at all: `max_grade` is what PLAN's 6 percent Mass
+    Ride grade cap is argued from - the four mass rides brief 4.4 to 6.3 percent
+    pitches - and dropping the anchor advance from its loop moves every one of
+    those figures to between 1.4 and 2.0, which would argue for a cap a third
+    of the size against the same real routes.
+    """
+    measured = {name: stats_for(name).max_grade_pct for name in RECORDED_GRADE_PCT}
+
+    ccw, cw = (measured[name] for name in SAME_LOOP_BOTH_WAYS)
+    assert abs(ccw - cw) < 3.0, (
+        "the same loop ridden both ways reports grades two points apart, not four times apart"
+    )
+
+    # And the mass rides, which are the evidence for the cap: brief pitches to
+    # around 6 percent, and nothing that would let a lower cap through.
+    mass_rides = [measured[name] for name in RECORDED_GRADE_PCT if name.endswith("dcbp")]
+    mass_rides.append(measured["2025-05-dcbp-btr"])
+    assert max(mass_rides) == pytest.approx(6.30, abs=0.01)
+    assert min(mass_rides) == pytest.approx(4.41, abs=0.01)
+
+
+@pytest.mark.parametrize("name", sorted(RECORDED_GRADE_PCT))
+def test_max_grade_matches_the_regenerated_column(name: str) -> None:
+    """Per file, because a single aggregate cannot say which route moved.
+
+    The tolerance is a hundredth of a percentage point against a README printed
+    to a tenth: the column is deterministic output of deterministic code over a
+    checked-in file, so there is nothing here for a loose tolerance to absorb.
+    """
+    stats = stats_for(name)
+    assert stats.max_grade_pct == pytest.approx(RECORDED_GRADE_PCT[name], abs=0.01)
+    # And the README's own table, to the tenth it prints, so the pin above and
+    # the document that quotes it cannot drift apart the way the distance and
+    # gain columns once did.
+    readme = (FIXTURES / "README.md").read_text()
+    assert f"{stats.max_grade_pct:.1f}%" in readme, f"{name} is not the README's figure"
+
+
+def test_the_minimum_run_is_thirty_metres() -> None:
+    """Flat, because it is the whole of the definition and moves every figure in
+    the column: at ten metres the Bethesda loop reports 12.3 percent against
+    11.8, the Loudoun loop 52 against 16.9, and a one-metre elevation wobble
+    between two adjacent samples starts reporting a 40 percent pitch."""
+    assert GRADE_MIN_RUN_M == 30.0
+
+
 def test_dense_trace_is_flagged_rather_than_silently_miscounted() -> None:
     """The one trace sampled at 6.4 m under-counts turns by roughly two thirds,
     because a turn taken over 15 m splits into three sub-threshold steps. The
@@ -89,6 +189,31 @@ def test_dense_trace_is_flagged_rather_than_silently_miscounted() -> None:
     assert stats.mean_spacing_m < 20.0
     assert not stats.turns_reliable
     assert stats.turns_per_mile < 0.5  # against ~1.0 for its two sibling rural loops
+
+
+def test_a_bearing_change_exactly_at_the_threshold_is_not_a_turn() -> None:
+    """The tie in `turns`, on the boundary rather than beside it.
+
+    The comparison is `>`, so a corner of exactly `TURN_MIN_BEARING_DEG` is not
+    counted. Nothing pinned it: the reference traces carry no corner within a
+    degree of 40, so `>=` reproduced all fifteen recorded counts, and turn
+    density is the measure the README's four-set comparison rests on and the one
+    PLAN's mass-ride invariant is drawn against.
+
+    Taken against the corner's own measured delta rather than against a
+    coordinate pair chosen to land on 40.000, which the sphere's convergence
+    will not do exactly: it is the same tie either way.
+    """
+    corner = [
+        Point(-77.0, 38.9000),
+        Point(-77.0, 38.9010),
+        Point(-76.99923, 38.90192),
+    ]
+    delta = bearing_delta(bearing(corner[0], corner[1]), bearing(corner[1], corner[2]))
+    assert 30.0 < delta < 50.0, "a corner in the range the threshold lives in"
+    assert turns(corner, min_bearing_deg=delta) == 0
+    assert turns(corner, min_bearing_deg=math.nextafter(delta, 0.0)) == 1
+    assert TURN_MIN_BEARING_DEG == 40.0
 
 
 def test_mass_rides_never_revisit_their_own_line() -> None:
@@ -195,18 +320,24 @@ def test_the_grid_index_agrees_with_the_pairwise_definition(name: str) -> None:
 
 # --- The cell margin, at the coverage box's latitude extremes ----------------
 #
-# The square cell was the large failure; this is the small one left behind. The
-# cosine is the route's *mean* latitude's, so on a route spanning the region the
-# cell at either end is narrower in ground distance than the mean says, and the
-# 111,320 m the latitude axis divides by is 125 m more than `haversine`'s sphere
-# gives a degree. Both shave the longitude cell under `REVISIT_PROXIMITY_M`,
-# which is the one thing the nine-cell scan needs to be a shortcut rather than a
-# different measurement.
+# The square cell was the large failure; this is the small one it left behind.
+# The cosine used to be the route's *mean* latitude's, so on a route spanning
+# the region the cell at the northern end was narrower in ground distance than
+# the mean said, and the 111,320 m the latitude axis divided by is 125 m more
+# than `haversine`'s sphere gives a degree. Both shaved the longitude cell under
+# `REVISIT_PROXIMITY_M`, which is the one thing the nine-cell scan needs to be a
+# shortcut rather than a different measurement. The cell is now sized from the
+# route's smallest cosine and the sphere's own degree; these cases are what say
+# so, and they fail against either of the two figures it replaced.
 
 COVERAGE_LAT_SOUTH = 38.2  # settings.COVERAGE_BBOX, the region this deployment clips to
 COVERAGE_LAT_NORTH = 39.5
 NEAR_RADIUS_OFFSET_M = 24.93  # inside the 25 m radius, and outside an unpadded cell
-DEGREE_OF_LATITUDE_M = math.pi * EARTH_RADIUS_M / 180.0
+
+# Imported rather than restated: the grid divides by this and so does every
+# route built here, so a test that carried its own copy would go on passing if
+# the two stopped agreeing - which is half of what this section is about.
+assert DEGREE_OF_LATITUDE_M == math.pi * EARTH_RADIUS_M / 180.0
 
 
 def region_spanning_revisit_route(base_lon: float) -> list[Point]:
@@ -270,6 +401,130 @@ def test_a_pair_just_inside_the_radius_is_found_at_the_regions_northern_edge() -
 
     assert revisits(points) == 1
     assert revisits(points) == brute_force_revisits(points)
+
+
+# --- The cell margin against a route whose bulk is in the south -------------
+#
+# The case above spans the region evenly, so its mean latitude sits near the
+# middle of it. A real route need not: a ride around one town with a long spur
+# north puts almost all of its points at one end and pulls the mean most of the
+# way there, and the cosine the cell was sized from is then a southern one while
+# the pair that has to be found is at the northern extreme. That is the shape
+# the reviewer measured, and the shape that says why the cosine has to be the
+# route's minimum rather than its mean: the mean is not a property of where the
+# points are that have to be compared.
+
+BULK_LAT = 38.2  # the southern end of the coverage box, where the ride is
+BULK_POINTS = 600  # 15 km of it at the 25 m spacing these traces carry
+STEM_POINTS = 289  # the spur north, at roughly 500 m
+
+
+def bulk_south_revisit_route(base_lon: float) -> list[Point]:
+    """A ride at the bottom of the coverage box with a spur to the top of it.
+
+    600 points running east along 38.2 N, a spur north to 39.5 N, and the same
+    500 m out-and-back at the top that `region_spanning_revisit_route` uses, its
+    two legs `NEAR_RADIUS_OFFSET_M` apart and so inside the proximity radius.
+    Nothing but the northernmost 81 points is anywhere near the pair; the rest
+    is what the mean latitude is made of.
+    """
+    step = REVISIT_SPACING_M / DEGREE_OF_LATITUDE_M
+    east_step = step / math.cos(math.radians(BULK_LAT))
+    points = [Point(base_lon + i * east_step, BULK_LAT) for i in range(BULK_POINTS)]
+
+    lon = base_lon + (BULK_POINTS - 1) * east_step
+    span = COVERAGE_LAT_NORTH - BULK_LAT
+    points += [Point(lon, BULK_LAT + span * i / (STEM_POINTS - 1)) for i in range(1, STEM_POINTS)]
+
+    count = int(REVISIT_LEG_M / REVISIT_SPACING_M) + 1
+    east = NEAR_RADIUS_OFFSET_M / DEGREE_OF_LATITUDE_M / math.cos(math.radians(COVERAGE_LAT_NORTH))
+    points += [Point(lon, COVERAGE_LAT_NORTH + i * step) for i in range(1, count)]
+    points += [Point(lon + east, COVERAGE_LAT_NORTH + i * step) for i in reversed(range(count))]
+    return points
+
+
+def test_the_bulk_south_routes_mean_latitude_is_nowhere_near_its_revisit() -> None:
+    """The premise, stated separately so a failure below says which half moved.
+
+    The mean sits within half a degree of the southern end while the pair to be
+    found is at the northern one, and the pair is inside the radius by the
+    definition.
+    """
+    points = bulk_south_revisit_route(-77.0)
+    mean_lat = sum(p.lat for p in points) / len(points)
+    assert mean_lat - BULK_LAT < 0.5
+    assert COVERAGE_LAT_NORTH - mean_lat > 1.0
+
+    outbound = next(p for p in points if p.lat > COVERAGE_LAT_NORTH)
+    returning = next(p for p in reversed(points) if p.lat == outbound.lat)
+    assert haversine(outbound, returning) == pytest.approx(NEAR_RADIUS_OFFSET_M, abs=0.01)
+    assert haversine(outbound, returning) < REVISIT_PROXIMITY_M
+
+
+def test_a_pair_at_the_top_of_a_bulk_south_route_is_found() -> None:
+    """The alignment is chosen rather than swept, as above and for the reason
+    above: on this route the failure is three tenths of a percent of a cell
+    wide, so a sweep would find it only by luck.
+
+    The west leg is placed a hair inside the top of a cell computed the way the
+    mean-cosine index computed it - the one alignment at which a pair 1.003 of
+    those cells apart lands two cells apart and is never compared. Sized from
+    the route's minimum cosine and the sphere's own degree instead, the cell is
+    25.25 m across in ground distance everywhere on the route and no alignment
+    can do it.
+    """
+    probe = bulk_south_revisit_route(-77.0)
+    mean_cosine_cell = (
+        REVISIT_CELL_LON_MARGIN * REVISIT_PROXIMITY_M / DEGREE_OF_LATITUDE_M
+    ) / math.cos(math.radians(sum(p.lat for p in probe) / len(probe)))
+    offset = (
+        (BULK_POINTS - 1)
+        * REVISIT_SPACING_M
+        / DEGREE_OF_LATITUDE_M
+        / math.cos(math.radians(BULK_LAT))
+    )
+    boundary = (math.floor(-77.0 / mean_cosine_cell) + 1) * mean_cosine_cell
+    points = bulk_south_revisit_route(boundary - 1e-12 - offset)
+
+    assert revisits(points) == 1
+    assert revisits(points) == brute_force_revisits(points)
+
+
+@pytest.mark.parametrize(
+    "points",
+    [
+        pytest.param(bulk_south_revisit_route(-77.0), id="bulk-south"),
+        pytest.param(region_spanning_revisit_route(-77.0), id="region-spanning"),
+        pytest.param(parallel_offset_route(-77.0), id="one-block"),
+    ],
+)
+def test_the_cell_is_at_least_the_radius_across_at_every_latitude_on_the_route(points) -> None:
+    """The property the nine-cell scan is a correct shortcut under, measured on
+    the cell itself rather than inferred from a route that exposes it.
+
+    A cell has to be at least `REVISIT_PROXIMITY_M` across in ground distance
+    everywhere the route goes, and the margin has to be *left over* at the
+    binding point rather than spent reaching it. Both axes are checked, because
+    both were divided by a figure 125 m too large: the latitude axis directly,
+    and the longitude axis through it.
+
+    A route is the wrong instrument for this. Whether a pair lands two cells
+    apart depends on where the route falls against the grid's origin, so a cell
+    a whole percent too narrow shows up only at some alignments and a cell a
+    tenth of a percent too narrow shows up at none - the margin absorbs it,
+    correctly, and the absorbed tenth is then not available for anything else.
+    That is how the two errors this replaces stacked.
+    """
+    cell_lat, cell_lon = revisit_cell_degrees(points, REVISIT_PROXIMITY_M)
+
+    assert cell_lat * DEGREE_OF_LATITUDE_M == pytest.approx(REVISIT_PROXIMITY_M, abs=1e-6)
+
+    widths = [
+        cell_lon * DEGREE_OF_LATITUDE_M * math.cos(math.radians(point.lat))
+        for point in (min(points, key=lambda p: p.lat), max(points, key=lambda p: p.lat))
+    ]
+    assert min(widths) >= REVISIT_PROXIMITY_M
+    assert min(widths) == pytest.approx(REVISIT_CELL_LON_MARGIN * REVISIT_PROXIMITY_M, abs=0.01)
 
 
 # --- The Purple Line's jurisdiction sequence --------------------------------

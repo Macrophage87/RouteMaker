@@ -133,16 +133,33 @@ def is_oneway(tags: dict[str, str]) -> bool:
     return tags.get("oneway") in {"yes", "1", "-1", "true"}
 
 
+DIRECTIONAL_LANE_KEYS = ("lanes:forward", "lanes:backward")
+
+
 def lanes_per_direction(tags: dict[str, str]) -> int | None:
     """Through lanes in the direction of travel.
 
     `lanes` counts both directions on a two-way road, so comparing a raw `lanes`
     value against a Furth table built on per-direction counts reads every two-way
     street as one class worse than it is.
+
+    Where both directional keys are present the *larger* of the two is returned,
+    rather than whichever of them is read first. They are not alternatives, they
+    are the two directions, and a way is scored once for both: one tier is
+    stored per way and a rider uses the way in either direction. So
+    `lanes=4, lanes:forward=1, lanes:backward=3` is a road that carries three
+    lanes one way round, and returning the forward 1 read it as a single-lane
+    street - LTS3 on the mixed-traffic table where its mirror image, the same
+    road with the two values swapped, came out LTS4. Taking the maximum is this
+    module's rule of erring toward the higher-stress reading of an ambiguous
+    input, and it is what makes the tier independent of which side a mapper
+    happened to tag first.
     """
-    for key in ("lanes:forward", "lanes:backward"):
-        if (value := parse_int(tags.get(key))) is not None:
-            return max(1, value)
+    directional = [
+        value for key in DIRECTIONAL_LANE_KEYS if (value := parse_int(tags.get(key))) is not None
+    ]
+    if directional:
+        return max(1, max(directional))
     total = parse_int(tags.get("lanes"))
     if total is None:
         return None
@@ -175,6 +192,39 @@ def cycleway_values(tags: dict[str, str]) -> set[str]:
     """Every cycleway value on the way, from whichever of the tag forms is used."""
     keys = ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
     return {tags[k] for k in keys if tags.get(k)}
+
+
+# One width key per cycleway key form, in the same order as `cycleway_values`
+# reads them.
+CYCLEWAY_WIDTH_KEYS = (
+    "cycleway:width",
+    "cycleway:both:width",
+    "cycleway:left:width",
+    "cycleway:right:width",
+)
+
+
+def cycleway_width_m(tags: dict[str, str]) -> float | None:
+    """The narrowest surveyed painted-lane width, or None if none is tagged.
+
+    `shoulder_width_m`'s rule, for the same reason and with the same shape. The
+    four keys are not a fallback chain to be walked until one of them answers:
+    `cycleway:left:width` and `cycleway:right:width` are the two sides of the
+    road, a rider is on whichever side the route uses, and the tile build does
+    not know which - one tier is stored per way. Taking the first key present
+    made a road with `cycleway:left:width=2.0` and `cycleway:right:width=1.2`
+    read as a 2.0 m lane, LTS1 and "adequate", while the same road carrying only
+    the 1.2 m right-hand lane read LTS2 - so surveying the wider side *lowered*
+    the stress of a road whose narrow side had not changed. The narrower of the
+    two is the higher-stress reading and the one a rider can be made to use.
+
+    `cycleway:width` and `cycleway:both:width` are not a third and fourth side.
+    Each states the width of the lane on *each* side, so such a value enters the
+    comparison as itself and no key outranks another: whichever surveyed width
+    is smallest is the answer, whatever key carries it.
+    """
+    widths = [w for key in CYCLEWAY_WIDTH_KEYS if (w := parse_width_m(tags.get(key))) is not None]
+    return min(widths) if widths else None
 
 
 SHOULDER_PRESENCE_KEYS = ("shoulder", "shoulder:both", "shoulder:left", "shoulder:right")

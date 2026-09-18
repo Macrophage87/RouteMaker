@@ -11,6 +11,8 @@ import pytest
 from routemaker.stress import (
     DEFAULT_LANES_PER_DIRECTION,
     DEFAULT_MAXSPEED_MPH_RURAL,
+    DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL,
+    DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN,
     DEFAULT_MAXSPEED_MPH_URBAN,
     FURTH_LANE_ALONE_M,
     FURTH_LANE_BESIDE_PARKING_M,
@@ -26,7 +28,9 @@ from routemaker.stress import (
     is_unpaved,
 )
 from routemaker.tags import (
+    IMPLICIT_MAXSPEED_MPH,
     cycleway_values,
+    cycleway_width_m,
     has_parking_lane,
     has_shoulder,
     lanes_per_direction,
@@ -180,6 +184,31 @@ class TestLanesPerDirection:
     def test_explicit_directional_tag_wins(self) -> None:
         assert lanes_per_direction({"lanes": "5", "lanes:forward": "3"}) == 3
 
+    def test_the_wider_direction_decides_when_both_are_tagged(self) -> None:
+        """The two keys are the two directions of one way, not a fallback chain.
+
+        A way is scored once for both: one tier is stored per way and a rider
+        uses it either way round, so the direction that carries three lanes is
+        the one the tier has to answer for. Returning whichever key was read
+        first read `lanes:forward=1, lanes:backward=3` as a single-lane street,
+        which is the lower-stress reading of an unambiguous input.
+        """
+        assert lanes_per_direction({"lanes": "4", "lanes:forward": "1", "lanes:backward": "3"}) == 3
+        assert lanes_per_direction({"lanes": "4", "lanes:forward": "3", "lanes:backward": "1"}) == 3
+
+    def test_a_road_and_its_mirror_image_take_the_same_tier(self) -> None:
+        """Stated as the tier, because that is where it was visible: at 30 mph
+        the mixed-traffic table turns on single lane against multilane, so the
+        same road came out LTS3 with the three lanes tagged backward and LTS4
+        with them tagged forward - one tier of difference decided by which side
+        a mapper wrote first."""
+        road = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "4"}
+        forward = classify({**road, "lanes:forward": "1", "lanes:backward": "3"})
+        backward = classify({**road, "lanes:forward": "3", "lanes:backward": "1"})
+        assert forward.tier is backward.tier is Stress.LTS4
+        assert "single lane" not in forward.rule
+        assert "single lane" not in backward.rule
+
 
 class TestMaxspeedParsing:
     @pytest.mark.parametrize(
@@ -213,6 +242,74 @@ class TestMaxspeedParsing:
 
     def test_unparseable_is_unknown_not_slow(self) -> None:
         assert parse_maxspeed_mph("signals") is None
+
+    def test_the_two_implicit_values_that_bracket_the_region(self) -> None:
+        """`US:rural` and `DC:urban`, pinned flat at the numbers rather than at
+        each other or at a default.
+
+        The parametrised table above carries `US:urban` only, so every other
+        entry in `IMPLICIT_MAXSPEED_MPH` could take any value with the suite
+        green. These two are the ends of the range this deployment reads, and
+        they are the two where a wrong number moves a tier in the direction the
+        module refuses: `US:rural` at 55 is what puts an unposted Loudoun
+        through road in LTS4, and `DC:urban` at 20 is what a District street's
+        LTS1 rests on - 25 there would push every unposted District residential
+        street off the 20-mph-or-below row of the mixed-traffic table.
+        """
+        assert IMPLICIT_MAXSPEED_MPH["US:rural"] == 55.0
+        assert IMPLICIT_MAXSPEED_MPH["DC:urban"] == 20.0
+        assert parse_maxspeed_mph("US:rural") == 55.0
+        assert parse_maxspeed_mph("DC:urban") == 20.0
+
+    def test_an_implicit_value_is_not_an_assumption(self) -> None:
+        """It is a posted speed stated in words, so nothing about it is guessed:
+        `maxspeed` must not appear on the assumed list, and neither must
+        `maxspeed unit` - the unit is part of the country code."""
+        result = classify({"highway": "residential", "maxspeed": "DC:urban", "lanes": "2"})
+        assert result.tier is Stress.LTS1
+        assert result.assumed == ("parking",)
+
+
+class TestTheSpeedDefaultForAnUnrecognisedHighwayClass:
+    """`highway=road` is OSM for "a road, class unknown", and it is in neither
+    default table.
+
+    Both tables are `dict.get` calls with a literal fallback, and the rural
+    fallback is the one that matters: outside an urban area an unknown class is
+    read at 50 mph, which is the higher-stress reading and the only safe one for
+    a way nobody has classified. Neither fallback was pinned, so either could be
+    changed - or transposed with the other - with the suite green.
+    """
+
+    def test_the_two_fallbacks_are_the_numbers_they_are(self) -> None:
+        assert DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL == 50.0
+        assert DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN == 30.0
+        assert "road" not in DEFAULT_MAXSPEED_MPH_RURAL, "it is the fallback being read"
+        assert "road" not in DEFAULT_MAXSPEED_MPH_URBAN
+
+    def test_an_unknown_class_outside_an_urban_area_is_read_at_fifty(self) -> None:
+        """Through `classify`, on `highway=road` and `urban=False`.
+
+        The mixed-traffic table cannot tell 50 from 35 - both are "35 mph or
+        above" - so the reading is pinned on the bike-lane table as well, whose
+        boundary is at 40: a painted lane of any width on this way is LTS4
+        rather than the LTS3 a 35 mph way with the same lane would get.
+        """
+        result = classify({"highway": "road"}, urban=False)
+        assert result.tier is Stress.LTS4
+        assert "maxspeed" in result.assumed
+        assert "mixed traffic, 35 mph or above" == result.rule
+
+        with_lane = classify({"highway": "road", "cycleway": "lane"}, urban=False)
+        assert with_lane.rule == "bike lane, 40 mph or above"
+        posted_35 = classify({"highway": "road", "maxspeed": "35 mph", "cycleway": "lane"})
+        assert posted_35.rule == "bike lane, 35 mph", "the boundary the reading clears"
+
+    def test_inside_an_urban_area_the_same_class_is_read_at_thirty(self) -> None:
+        """The other fallback, so that transposing the two fails here."""
+        urban = classify({"highway": "road", "lanes": "2"}, urban=True)
+        assert urban.tier is Stress.LTS3
+        assert urban.rule == "mixed traffic, 30 mph, single lane"
 
 
 class TestSurfaceIsNotStress:
@@ -1188,6 +1285,77 @@ class TestTheCyclewayWidthIsTheCyclewaysOwn:
         assert "cycleway width" not in result.assumed
 
 
+class TestTheNarrowestCyclewayWidthIsTheOneThatCounts:
+    """`shoulder_width_m`'s rule, applied to the painted lane's four width keys.
+
+    The four keys were a fallback chain walked until one of them answered, so
+    the first key present decided. They are not alternatives: `cycleway:left`
+    and `cycleway:right` are the two sides of one road, the way carries one
+    tier, and the tile build does not know which side a route will use - which
+    is the reason `shoulder_width_m` takes the minimum and is written at it.
+    """
+
+    # A 25 mph residential street with a painted lane and no parking, which is
+    # where Furth's 1.7 m no-parking criterion is the difference between LTS1
+    # and LTS2 - the pair of tiers the reviewer measured this on.
+    STREET = {
+        "highway": "residential",
+        "maxspeed": "25 mph",
+        "lanes": "2",
+        "cycleway": "lane",
+        "parking:both": "no",
+    }
+
+    def test_two_sides_are_read_as_the_narrower(self) -> None:
+        assert cycleway_width_m({"cycleway:left:width": "2.0", "cycleway:right:width": "1.2"}) == (
+            pytest.approx(1.2)
+        )
+        assert cycleway_width_m({"cycleway:right:width": "1.2", "cycleway:left:width": "2.0"}) == (
+            pytest.approx(1.2)
+        )
+
+    def test_surveying_the_wider_side_does_not_lower_the_stress(self) -> None:
+        """The measured case. A road whose right-hand lane is 1.2 m is LTS2; it
+        was LTS1 and "adequate" the moment somebody also surveyed a 2.0 m lane
+        on the left, because the left key was read first - so a measurement of
+        the side the rider may not be on improved the tier of the side they may.
+        """
+        narrow_side_only = classify({**self.STREET, "cycleway:right:width": "1.2"})
+        assert narrow_side_only.tier is Stress.LTS2
+        both_sides = classify(
+            {**self.STREET, "cycleway:left:width": "2.0", "cycleway:right:width": "1.2"}
+        )
+        assert both_sides.tier is narrow_side_only.tier
+        assert both_sides.rule == narrow_side_only.rule
+
+    def test_no_key_outranks_another(self) -> None:
+        """The precedence, pinned: there is none. `cycleway:width` and
+        `cycleway:both:width` each state the width of the lane on *each* side,
+        so they enter the comparison as themselves rather than at the head of a
+        chain, and the narrowest surveyed width is the answer whatever key
+        carries it. Reversing the order of the keys must change nothing.
+        """
+        assert cycleway_width_m({"cycleway:width": "2.0", "cycleway:right:width": "1.2"}) == (
+            pytest.approx(1.2)
+        )
+        assert cycleway_width_m({"cycleway:both:width": "2.0", "cycleway:left:width": "1.2"}) == (
+            pytest.approx(1.2)
+        )
+        assert cycleway_width_m({"cycleway:right:width": "2.0", "cycleway:width": "1.2"}) == (
+            pytest.approx(1.2)
+        )
+
+    def test_one_surveyed_side_is_still_a_surveyed_width(self) -> None:
+        """The minimum is over the keys that are present, not over the four:
+        reading an absent side as zero would make every one-sided lane narrow
+        and put `cycleway width` back on the assumed list."""
+        assert cycleway_width_m({"cycleway:left:width": "2.0"}) == pytest.approx(2.0)
+        assert cycleway_width_m({}) is None
+        result = classify({**self.STREET, "cycleway:left:width": "2.0"})
+        assert result.tier is Stress.LTS1
+        assert "cycleway width" not in result.assumed
+
+
 class TestParkingAbsence:
     """Every value that says parking is absent, and every one that says it is not.
 
@@ -1253,6 +1421,38 @@ class TestNoShoulderTagsMeanNoShoulder:
     def test_a_road_tagged_with_one_has_one(self) -> None:
         assert has_shoulder({"shoulder": "both"}) is True
         assert has_shoulder({"shoulder:right": "yes"}) is True
+
+    def test_a_surveyed_width_beats_a_shoulder_no_on_the_same_way(self) -> None:
+        """The contradictory pair, and the one deliberate lower-stress reading
+        in this module, so it is pinned rather than left to the docstring.
+
+        `shoulder=no` with a `shoulder:width` is two tags that disagree, and the
+        width is the survey: somebody went and measured a shoulder, which is not
+        a thing done to a road that has none, while `shoulder=no` is what a
+        mapper leaves behind after refining the way. The body reads every
+        presence key *and* the width before answering; reordering it so the
+        presence keys decide first turns this into `False` and throws the only
+        measurement on the way away - and leaves `has_shoulder` disagreeing with
+        `shoulder_width_m`, which reads the width whatever the presence keys
+        say, so the classifier would see a road with no shoulder and a shoulder
+        width.
+        """
+        contradictory = {"shoulder": "no", "shoulder:width": "2.4"}
+        assert has_shoulder(contradictory) is True
+        assert shoulder_width_m(contradictory) == pytest.approx(2.4)
+        # And it is bounded: the width still has to clear the rideable
+        # criterion before `stress` credits anything for it.
+        road = {"highway": "secondary", "maxspeed": "35 mph"}
+        assert classify({**road, **contradictory}).tier is Stress.LTS3
+        narrow = {"shoulder": "no", "shoulder:width": str(RIDEABLE_SHOULDER_M - 0.01)}
+        assert has_shoulder(narrow) is True
+        assert classify({**road, **narrow}).tier is Stress.LTS4
+
+    def test_shoulder_no_on_its_own_is_still_no_shoulder(self) -> None:
+        """The other half, so the pin above cannot be satisfied by a bare
+        `True`: without a width there is nothing to believe over the tag."""
+        assert has_shoulder({"shoulder": "no"}) is False
+        assert has_shoulder({"shoulder": "no", "shoulder:right": "no"}) is False
 
 
 class TestTheCyclewayValueSets:

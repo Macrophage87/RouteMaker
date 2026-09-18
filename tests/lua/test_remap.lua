@@ -365,8 +365,28 @@ check("so is one on a converted bollard",
   M.remap_node({ barrier = "bollard", maxwidth = "1.0", hgv = "no" }).hgv == M.REMOVE)
 check("nothing is cleared on a barrier that was not converted",
   M.remap_node({ barrier = "bollard", motor_vehicle = "no" }).motor_vehicle == nil)
+-- `bicycle` is the member of BICYCLE_ACCESS_KEYS the checks above exercise, and
+-- it was the only one: the list could be cut to { "bicycle" } with the suite
+-- green. Both of the others are ordinary tagging on the barriers this converts -
+-- a trail bollard or cycle barrier carrying `access=yes` or `foot=yes` - and
+-- either one left in place holds tagged_access at 1, which multiplies gate_cost
+-- to nothing and makes the Cargo preset's dial inert on exactly the nodes it
+-- exists for.
+check("a permissive access tag on a converted barrier is marked for removal too",
+  M.remap_node({ barrier = "cycle_barrier", access = "yes" }).access == M.REMOVE)
+check("and a permissive foot tag",
+  M.remap_node({ barrier = "cycle_barrier", foot = "yes" }).foot == M.REMOVE)
+check("every permissive value counts, not just yes",
+  M.remap_node({ barrier = "cycle_barrier", access = "permissive" }).access == M.REMOVE
+    and M.remap_node({ barrier = "cycle_barrier", foot = "designated" }).foot == M.REMOVE)
+check("and the same on a converted bollard",
+  M.remap_node({ barrier = "bollard", maxwidth = "1.0", access = "yes" }).access == M.REMOVE)
+check("nothing is cleared on a bollard that was not converted",
+  M.remap_node({ barrier = "bollard", access = "yes" }).access == nil)
 check("a restrictive bicycle tag is never cleared",
   M.remap_node({ barrier = "cycle_barrier", bicycle = "no" }).bicycle == nil)
+check("nor a restrictive foot tag",
+  M.remap_node({ barrier = "cycle_barrier", foot = "no" }).foot == nil)
 check("nor is vehicle=no, which bars bicycles under OSM semantics",
   M.remap_node({ barrier = "cycle_barrier", vehicle = "no" }).vehicle == nil)
 check("nor is a restrictive access tag",

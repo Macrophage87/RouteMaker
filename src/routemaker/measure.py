@@ -18,6 +18,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 
 from .geo import (
+    EARTH_RADIUS_M,
     METRES_PER_FOOT,
     METRES_PER_MILE,
     Point,
@@ -36,25 +37,39 @@ REVISIT_PROXIMITY_M = 25.0
 REVISIT_ALONG_ROUTE_M = 400.0
 GRADE_MIN_RUN_M = 30.0
 
+# Metres in a degree of latitude on `haversine`'s own sphere, which is the only
+# sphere any distance in this module is measured on. The 111,320 m figure the
+# grid used instead is 125 m more than this one gives, so every cell computed
+# from it was 0.1 percent narrower in ground distance than it claimed - a
+# shortfall on the axis that had no room for one.
+DEGREE_OF_LATITUDE_M = math.pi * EARTH_RADIUS_M / 180.0
+
 # A margin on the *longitude* axis of `revisits`' grid, and on that axis only.
 #
 # Not normative: it changes no definition, only how wide the index's cells are.
 # The nine-cell scan is a correct shortcut for the pairwise definition exactly
 # while a cell is at least `REVISIT_PROXIMITY_M` across in ground distance on
-# both axes, and two approximations shave the longitude axis below that. The
-# cosine is the route's *mean* latitude's, so at the north and south ends of a
-# region-spanning route the local one is smaller and the cell there is narrower
-# than the mean says; and the 111,320 m a degree of latitude is divided by is
-# 125 m more than `haversine`'s own sphere gives it, which narrows both axes by
-# a further 0.1 percent. Together they put a pair 24.93 m apart - inside the
-# 25 m radius, and running purely east-west, which is the hardest case because a
-# parallel street a block over is exactly that - marginally over one cell width
-# apart at the extremes, so it could land two cells apart and never be compared.
-# That is the square-cell failure again, an order of magnitude smaller.
+# both axes, and nothing in the cell size may be allowed to shave the longitude
+# axis below that. Two approximations did. The cosine was the route's *mean*
+# latitude's, so at the north end of a region-spanning route the local one is
+# smaller and the cell there is narrower in ground distance than the mean says;
+# and the degree of latitude was 111,320 m rather than the sphere's own
+# `DEGREE_OF_LATITUDE_M`, which narrows both axes by a further 0.1 percent.
+# Together they put a pair 24.93 m apart - inside the 25 m radius, and running
+# purely east-west, which is the hardest case because a parallel street a block
+# over is exactly that - marginally over one cell width apart at the northern
+# edge of the coverage box, so it could land two cells apart and never be
+# compared. That is the square-cell failure again, an order of magnitude
+# smaller, and it is measurable: on a route whose bulk lies at 38.2 N with a
+# stem to 39.5 N, a few tenths of a percent of east-west alignments lost the
+# pair.
 #
-# One percent covers both across the coverage box's 1.3 degrees of latitude, and
-# costs a handful of extra haversines per cell. The brute-force equivalence test
-# over every reference route is what says it is enough.
+# Both are now fixed in the cell size itself rather than paid for out of the
+# margin: the cosine is the route's smallest, so the cell is sized for the
+# narrowest ground width anywhere on it, and the degree is the sphere's. What
+# the margin is left covering is the ordinary floating-point edge, at a cost of
+# a handful of extra haversines per cell. The brute-force equivalence test over
+# every reference route is what says it is enough.
 REVISIT_CELL_LON_MARGIN = 1.01
 
 # Below this sample spacing the turn definition stops being reliable: a turn taken
@@ -120,6 +135,28 @@ def turns(
     )
 
 
+def revisit_cell_degrees(
+    points: Sequence[Point], proximity_m: float = REVISIT_PROXIMITY_M
+) -> tuple[float, float]:
+    """The size of `revisits`' grid cell over these points, (latitude, longitude).
+
+    A function rather than four lines inside `revisits` because the property the
+    nine-cell scan is a correct shortcut under is a property of the cell size
+    and not of any route: a cell has to be at least `proximity_m` across in
+    ground distance everywhere the route goes. Measured here, that is one
+    assertion; inferred from `revisits`' output it needs a route contrived to
+    land a pair exactly astride a cell boundary, which catches a cell that is
+    too narrow by a whole percent and cannot see one that is too narrow by a
+    tenth of one - the margin absorbs it, which is what the margin is for, and
+    the absorbed tenth is then not there for anything else.
+    """
+    cell_lat = proximity_m / DEGREE_OF_LATITUDE_M  # degrees of latitude per proximity radius
+    # The smallest cosine on the route, so the cell is sized for its narrowest
+    # ground width rather than its average one. See `revisits`.
+    min_cos = min(math.cos(math.radians(p.lat)) for p in points)
+    return cell_lat, REVISIT_CELL_LON_MARGIN * cell_lat / max(min_cos, 0.01)
+
+
 def revisits(
     points: Sequence[Point],
     proximity_m: float = REVISIT_PROXIMITY_M,
@@ -143,23 +180,28 @@ def revisits(
     # measurement that belongs in the stats block of every saved route.
     #
     # Two cell sizes, not one, and the second is the whole correctness of the
-    # index. A degree of latitude is 111.32 km everywhere; a degree of longitude
-    # is that times cos(latitude), which at this region's 38.9 N is 0.778 of it.
-    # Dividing both axes by the latitude figure therefore made every cell 22
-    # percent *narrower* than `proximity_m` in ground distance, so a pair 22.5 m
-    # apart on an east-west offset could sit two cells apart in x and never be
-    # compared: the nine-cell scan silently stopped covering the radius it is
-    # the index for. A parallel street a block over - which is what a revisit on
-    # a city grid looks like - was the case it lost.
+    # index. A degree of latitude is 111.195 km everywhere; a degree of
+    # longitude is that times cos(latitude), which at this region's 38.9 N is
+    # 0.778 of it. Dividing both axes by the latitude figure therefore made
+    # every cell 22 percent *narrower* than `proximity_m` in ground distance, so
+    # a pair 22.5 m apart on an east-west offset could sit two cells apart in x
+    # and never be compared: the nine-cell scan silently stopped covering the
+    # radius it is the index for. A parallel street a block over - which is what
+    # a revisit on a city grid looks like - was the case it lost.
     #
-    # The cosine is taken once, at the route's mean latitude, rather than per
-    # point: over a route's span it varies by far less than the cell margin, and
-    # a per-point cell size would put the same ground position in different
-    # cells depending on which point asked.
+    # The cosine is taken once for the whole route rather than per point: a
+    # per-point cell size would put the same ground position in different cells
+    # depending on which point asked. It is the route's *smallest* cosine, not
+    # its mean. One cell size has to be wide enough in ground distance
+    # everywhere the route goes, and a degree of longitude is narrowest at the
+    # highest latitude, so the mean sized the cell for the middle of the route
+    # and left its northern end short - which on a route whose bulk is in the
+    # south is most of the way to a missed pair, and was measurably so. The
+    # minimum is the only value that is safe at every point on the route, and it
+    # is the conservative direction: too wide a cell costs comparisons, too
+    # narrow a cell loses revisits.
     # See `REVISIT_CELL_LON_MARGIN` for the one percent on the longitude axis.
-    cell_lat = proximity_m / 111_320.0  # degrees of latitude per proximity radius
-    mean_lat = sum(p.lat for p in points) / len(points)
-    cell_lon = REVISIT_CELL_LON_MARGIN * cell_lat / max(math.cos(math.radians(mean_lat)), 0.01)
+    cell_lat, cell_lon = revisit_cell_degrees(points, proximity_m)
 
     grid: dict[tuple[int, int], list[int]] = {}
     for i, p in enumerate(points):

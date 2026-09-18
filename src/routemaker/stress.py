@@ -68,12 +68,12 @@ from enum import IntEnum
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
 from .tags import (
     cycleway_values,
+    cycleway_width_m,
     has_parking_lane,
     has_shoulder,
     lanes_per_direction,
     maxspeed_is_unitless,
     parse_maxspeed_mph,
-    parse_width_m,
     shoulder_width_m,
 )
 
@@ -141,6 +141,17 @@ DEFAULT_MAXSPEED_MPH_RURAL = {
     "service": 20.0,
 }
 DEFAULT_MAXSPEED_MPH = DEFAULT_MAXSPEED_MPH_URBAN
+
+# What an unposted way whose `highway` value is in neither table is read at.
+# `highway=road` is OSM for "a road, class unknown", and there is no way to be
+# conservative about an unknown class except by number: outside an urban area
+# that is the statutory rural default, so a way nobody has classified is read at
+# the speed of the roads around it rather than at a residential 25. Named rather
+# than left as a literal in the `dict.get` call so that the two figures can be
+# pinned and cannot be transposed.
+DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN = 30.0
+DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL = 50.0
+
 DEFAULT_LANES_PER_DIRECTION = 1
 
 # The `cycleway` values that describe a facility *on this way*, split by how much
@@ -336,7 +347,10 @@ def classify(
         assumed.append("maxspeed unit")
     if speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
-        speed_mph = table.get(highway, 30.0 if urban else 50.0)
+        unknown = (
+            DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN if urban else DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL
+        )
+        speed_mph = table.get(highway, unknown)
         if not urban and is_unpaved(tags):
             # Virginia's statutory default on a highway that is not surface
             # treated is 35, not 55, and an unpaved lane is not a through road
@@ -380,12 +394,12 @@ def classify(
         # Only the cycleway's own width. Reading the roadway `width` tag made a
         # four-lane arterial *lower* stress the moment someone surveyed its
         # carriageway, which is backwards.
-        width = parse_width_m(
-            tags.get("cycleway:width")
-            or tags.get("cycleway:both:width")
-            or tags.get("cycleway:left:width")
-            or tags.get("cycleway:right:width")
-        )
+        #
+        # And the narrowest of the cycleway's own width keys, not the first one
+        # present - `shoulder_width_m`'s rule, for the reason written at
+        # `cycleway_width_m`: the left and right keys are two sides of one road
+        # and the tile build does not know which side the route uses.
+        width = cycleway_width_m(tags)
         if width is None:
             assumed.append("cycleway width")
         tier, rule = _bike_lane_tier(speed_mph, lanes, width, parking)

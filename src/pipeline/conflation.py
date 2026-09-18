@@ -39,7 +39,11 @@ from routemaker.geo import Point, bearing, bearing_delta, distance_to_line, have
 # survey noise and a curving road, tight enough to exclude a cross street.
 BEARING_TOLERANCE_DEG = 25.0
 
-# As a fraction of the shorter of the two features.
+# As a fraction of *the way*, which is what `_overlap` measures and is not the
+# same thing as a fraction of the shorter of the two features: a twenty-metre
+# agency stub lying on a two-kilometre road scores 1.0 as a fraction of the
+# shorter line and 0.01 as a fraction of the way, and it is the way that the
+# count is being asked to describe. See `_overlap` for the other direction.
 MIN_OVERLAP_FRACTION = 0.5
 
 # Beyond this the features are not the same road, whatever their bearing.
