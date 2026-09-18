@@ -1,6 +1,6 @@
 # Deployment: building the stack's images
 
-`compose.yaml` names four images under `routemaker/`. Until this document's
+`compose.yaml` names four images of this project's own. Until this document's
 commit, nothing in the repository built any of them: there was no Dockerfile
 anywhere and no `build:` stanza, so `docker compose up` on a host with a working
 daemon stopped at the first pull of an image that exists in no registry. Five
@@ -10,10 +10,50 @@ Two of the four are built now. Two are not, because they have no source.
 
 | Image | Built by | State |
 | --- | --- | --- |
-| `routemaker/api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Written, never built |
-| `routemaker/pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Written, never built |
-| `routemaker/renderer:${TAG}` | — | No source in the repository |
-| `routemaker/bot:${TAG}` | — | No source in the repository |
+| `ghcr.io/macrophage87/routemaker-api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Written, never built |
+| `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Written, never built |
+| `ghcr.io/macrophage87/routemaker-renderer:${TAG}` | — | No source in the repository |
+| `ghcr.io/macrophage87/routemaker-bot:${TAG}` | — | No source in the repository |
+
+### Why every image name carries a registry
+
+The four used to be `routemaker/api:${TAG}` and so on. An unqualified image
+reference is a Docker Hub one, so that name is `docker.io/routemaker/api:dev` —
+a namespace nobody here controls, and one that exists on Hub today with zero
+repositories in it. Nothing stops the next person who registers it from pushing
+a `routemaker/api:dev`, and the first host that does not already hold a locally
+built image with that tag — after a `docker system prune`, or on a `TAG` it has
+never built — would pull it and start it with `PGPASSWORD`,
+`KEY_ENCRYPTION_KEY`, `DJANGO_SECRET_KEY` and `DISCORD_CLIENT_SECRET` in its
+environment.
+
+Two changes, and they are one decision:
+
+- the four are `ghcr.io/macrophage87/routemaker-<name>`, the GitHub Container
+  Registry namespace of this repository's own owner, so the name resolves to a
+  place this project controls rather than to a Hub default;
+- the four services that declare a `build:` also declare `pull_policy: build`,
+  which makes a missing image a build rather than a pull. Compose's default for
+  a service with both `image:` and `build:` is `missing`, which pulls first.
+
+The three third-party images are written out the same way —
+`docker.io/library/caddy:2.8-alpine`, `docker.io/postgis/postgis:16-3.4`,
+`docker.io/rtuszik/photon-docker:2.4.0`. Nothing about where they come from
+changes; what changes is that the registry is stated rather than defaulted.
+`tests/test_compose_render.py` asserts that no `image:` in the rendered stack is
+an unqualified reference.
+
+**A `TAG` rollback is a pull unless the host still has the image.** `TAG=v3` and
+`docker compose up -d` recreates `api`, `worker`, `migrate` and `rebuild` on
+`ghcr.io/macrophage87/routemaker-api:v3` — and `pull_policy: build` means a host
+that no longer holds that tag *builds* it from the working tree, which is the
+current tree and not v3. So a rollback needs one of two things to be true: the
+previous image is still in the host's local store (it is, until something prunes
+it), or it was pushed to that ghcr namespace and the host can pull it. Nothing
+in this repository pushes images anywhere; until something does, the rollback
+path is the local store, and `docker image prune -a` on this host is what takes
+it away. Check with `docker image ls ghcr.io/macrophage87/routemaker-api` before
+relying on a tag being there to go back to.
 
 ## Not built here — read this first
 
@@ -41,8 +81,7 @@ its image runs. **Nothing here is a claim that either image builds.** The first
 
 ```sh
 cp .env.example .env               # then fill it in; see docs/DEVELOPMENT.md
-set -a; . ./.env; set +a           # DATA_ROOT, for the step below and nothing else
-sudo -E sh scripts/prepare_data_root.sh   # BEFORE the first up; see below for why
+sudo sh scripts/prepare_data_root.sh --env-file ./.env   # BEFORE the first up
 docker compose build               # builds api and pipeline
 docker compose up -d               # bot and renderer are skipped: they have no image
 ```
@@ -51,7 +90,7 @@ docker compose up -d               # bot and renderer are skipped: they have no 
 which sit behind the `unbuilt` profile. `bot` and `renderer` are there because
 neither has a source in this repository and so neither has an image in any
 registry: without the profile this command was a pull of
-`routemaker/bot:${TAG}` that could not succeed, on a stack where every other
+`ghcr.io/macrophage87/routemaker-bot:${TAG}` that could not succeed, on a stack where every other
 service was ready to start. `photon` is there because the pinned image's first
 act on a fresh host is to download a 61 GB planet index onto the root volume —
 see "Photon" below, which has the arithmetic and the two lines that make
@@ -61,8 +100,10 @@ is — no membership sweep from a gateway connection, no thumbnails, no geocoder
 
 `TAG` is the image tag, read from `.env` (`TAG=dev` in `.env.example`). It names
 the built image, not a registry: `build:` sits beside `image:` in every service
-that builds, so `docker compose build` tags the result `routemaker/api:${TAG}`
-and `routemaker/pipeline:${TAG}` locally and the `worker`, `migrate` and
+that builds, so `docker compose build` tags the result
+`ghcr.io/macrophage87/routemaker-api:${TAG}` and
+`ghcr.io/macrophage87/routemaker-pipeline:${TAG}` locally and the `worker`,
+`migrate` and
 `rebuild` services find it there. Bump it per release so a rollback is a `TAG`
 change and `docker compose up -d` rather than a rebuild — and `up -d`
 specifically, because the tag is baked into each container at creation:
@@ -82,6 +123,13 @@ build, so the rule is the schedule: release outside Tuesday 08:00 UTC and the
 hours after it, check `docker compose ps rebuild` first, and if it has already
 happened, `docker compose exec -T worker ./manage.py unwedge_job <job_id>`
 moves the row back to `todo` (docs/OPERATIONS.md, "Wedged jobs").
+
+`worker` declares the same `stop_grace_period: 60s` and wedges the same way on
+a task of its own — a nightly dump or a sweep — with the same repair. And both
+grace periods are why a `down` or an `up -d` taken while something is running
+**takes about a minute to return**: that is the SIGTERM, the full wait, and
+then the kill, not a command that has hung. The two services are stopped in the
+same pass, so it is a minute and not two.
 
 **Moving `TAG` back does not undo a migration.** Migrations are applied by the
 `migrate` one-shot at every `up`, and nothing runs them backwards: `TAG` set to
@@ -122,22 +170,51 @@ therefore goes green, `migrate` fails authentication, and `api`, `worker` and
 The stack comes up as Caddy and three routers, exactly the shape a wrong
 `PGHOST` used to produce.
 
+**That shape has two causes and this is only one of them.** The other needs
+nobody to have rotated anything: a password that reaches compose through a
+shell. `set -a; . ./.env; set +a` before a `docker compose` command — which is
+what every snippet in this document used to open with — makes `$$` in a
+password the shell's own process id rather than compose's literal-`$` escape,
+so `hunter$$2` is `hunter47112` from the shell that ran the first `up` and
+`hunter81330` from the next one, and an exported value beats the env file when
+compose reads it. PGDATA keeps the first, the second fails authentication, and
+what an operator sees is identical to the paragraph above: `pg_isready` green,
+`migrate` refused, three services that never start. If you are reading this
+because that happened, check whether the shell you ran `up` in had sourced
+`.env` before you go looking for a rotation — see "`.env` is compose's input,
+not the shell's" below, and use `docker compose config` to see the value
+compose is actually about to send (it prints a literal `$` doubled, so decode
+`$$` back to `$`).
+
 The order that works:
 
 ```sh
 docker compose exec -T postgis \
-  psql -U "$PGUSER" -d "$PGDATABASE" \
-  -c "ALTER ROLE $PGUSER WITH PASSWORD 'the-new-value';"   # 1. the database
+  psql -U routemaker -d routemaker \
+  -c "ALTER ROLE routemaker WITH PASSWORD 'the-new-value';"  # 1. the database
 # 2. then PGPASSWORD=the-new-value in .env
-docker compose up -d                                       # 3. recreate
+docker compose up -d                                         # 3. recreate
 ```
+
+`routemaker` is `PGUSER`/`PGDATABASE` from `.env`, which ship as that and are
+also the compose defaults; substitute your own if you changed them. Written out
+rather than `"$PGUSER"`, because this document no longer sources `.env` into a
+shell and an unset `$PGUSER` here is `psql -U ""`.
 
 Step 1 runs under the *old* password, which the running container still holds
 in its own environment, so it has to happen before step 2. `up -d` and not
 `restart`: compose reads `.env` when it creates a container, so a restarted
 container keeps the environment it was created with and the new value never
-reaches it. Write the value with the same rules as any other in that file —
-no quotes, and a literal `$` doubled.
+reaches it.
+
+Write the value the way `.env.example` says to: if it contains a `$`, wrap the
+whole value in single quotes (`PGPASSWORD='pa$w0rd'`), because compose's dotenv
+reader strips the quotes and expands nothing between them. Written bare, `$w0rd`
+is a variable name that expands to nothing and the role ends up with `pa` —
+which is now the password in PGDATA, since `POSTGRES_PASSWORD` is only read
+when the directory is initialised. And do **not** source `.env` into a shell on
+the way: the shell has its own rules for `$`, `$$` and backticks, and an
+exported value wins over the file.
 
 **`DJANGO_SECRET_KEY`: rotating it signs every user out.** Sessions are
 database-backed and their payload is signed with this key; `settings.py` sets
@@ -151,6 +228,31 @@ question rather than being surprised by it.
 tombstones, the stored tombstone is the HMAC and nothing else, and there is no
 second key path. See docs/DEVELOPMENT.md, "`KEY_ENCRYPTION_KEY` — required, no
 default", for what a rotation would silently do.
+
+**`DISCORD_CLIENT_SECRET`: rotate it at Discord first, then here, then
+`up -d`.** It is not one of the four generated values — it is issued by the
+Discord application and rotated in the developer portal, which invalidates the
+old one immediately. Nothing is stored under it: `api` uses it once per sign-in
+to exchange an authorization code for a token, reads the identify scope and
+throws the token away, so a rotation costs nothing already signed in and there
+is no re-encryption anywhere. The only window is between Discord issuing the
+new secret and the container holding it, during which every `/auth/callback`
+fails the code exchange and the user gets a sign-in refusal; it is seconds if
+the `.env` edit is ready before the rotation.
+
+`docker compose up -d`, **not** `docker compose restart`. Compose reads `.env`
+when it *creates* a container; `restart` restarts the process the container
+already has, with the environment it was created with, so the old secret stays
+in place and the sign-in path stays broken with nothing in any log to say the
+file was changed. That is the same distinction as `TAG` above and as
+`BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` in docs/DEVELOPMENT.md, and it catches
+people every time. `docker compose up -d api` is enough — it is the only
+service that reads this.
+
+**`BOT_INTERNAL_SECRET`** is shared between `api` and `bot`, and `bot` has no
+image in phase 1, so there is nothing on the other end of it to disagree with
+yet. When there is, both services read it from `.env` and both need recreating
+in the same `up -d`.
 
 ## Log rotation
 
@@ -256,11 +358,12 @@ Runs as uid 10001, non-root.
 
 ### The two images with no source
 
-`routemaker/renderer:${TAG}` is PLAN.md:63's thumbnail renderer, "a small Node
+`ghcr.io/macrophage87/routemaker-renderer:${TAG}` is PLAN.md:63's thumbnail
+renderer, "a small Node
 sidecar using `@maplibre/maplibre-gl-native`". There is no Node service source
 in the repository: `frontend/` holds one stress-style module and its test, and
-`scripts/` holds five Python scripts and a shell script. `routemaker/bot:${TAG}`
-is handoff.md section 7's first row — no bot source, no gateway handler, no
+`scripts/` holds five Python scripts and a shell script.
+`ghcr.io/macrophage87/routemaker-bot:${TAG}` is handoff.md section 7's first row — no bot source, no gateway handler, no
 ingest route.
 
 Neither has a Dockerfile and neither has a `build:`, because writing one would
@@ -278,27 +381,64 @@ reference, its own work directory, and the elevation cache — the timezone
 database `valhalla_build_timezones` writes goes into the work directory beside
 them).
 
-**Every shell snippet in this document that uses `$DATA_ROOT` needs the
-deployment's environment loaded first.** It is not exported by anything; it
-lives in `.env`, which is compose's input and not the shell's:
+### `.env` is compose's input, not the shell's
+
+**Nothing in this document sources `.env`, and nothing you run before
+`docker compose` should either.** It used to open with
+`set -a; . ./.env; set +a`, on the reasoning that `$DATA_ROOT` had to come from
+somewhere, and the cost of that was every *other* value in the file going
+through a shell on its way to compose:
+
+- `$$` is a literal-`$` escape to compose's parser and the shell's own process
+  id to `sh`, so `PGPASSWORD=hunter$$2` becomes `hunter47112` in one shell and
+  `hunter81330` in the next;
+- backticks and `$(...)` in a value are commands the shell runs;
+- and an exported variable **wins over the env file**, so whatever the shell
+  made of the value is what compose uses.
+
+The way that lands is an outage that does not look like one. The first
+`up` initialises PGDATA with whatever this shell produced; the next `up -d`,
+from a different shell, sends a different string; `pg_isready` reports
+PQPING_OK either way, `migrate` fails authentication, and `api`, `worker` and
+`rebuild` — all held on `service_completed_successfully` — never start. That is
+the same stack-comes-up-as-Caddy-and-three-routers shape described under
+`PGPASSWORD` above, and it happens without anybody having rotated anything.
+
+So the two places that genuinely needed `$DATA_ROOT` each get it another way:
+
+- `scripts/prepare_data_root.sh` takes `--env-file ./.env` and reads the one
+  `DATA_ROOT=` line out of it with `sed`. It does not evaluate the file, so a
+  password containing `$` or a backtick is a string it never touches.
+- `collectstatic` runs under `docker compose run`, which gives the container
+  the `api` service's own environment and mounts — no `-v` built out of a shell
+  variable at all.
+
+For the handful of host-side snippets that still want the path (creating
+`reference/inputs`, copying GeoJSON in), export **that one variable** by hand:
 
 ```sh
-set -a; . ./.env; set +a          # or: export DATA_ROOT=/srv/routemaker/data
+export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 ```
 
-Do not skip it and do not guess. `sudo chown -R 10001:10001 "$DATA_ROOT"` with
-`DATA_ROOT` unset is `chown -R 10001:10001 ""`, and with a stray trailing slash
-or an empty value in a shell that word-splits it, the argument that reaches
-`chown` can be `/`. Recursively chowning the root filesystem ends the host.
-`scripts/prepare_data_root.sh` refuses to run without `DATA_ROOT` set to an
-absolute path for exactly this reason; the manual form has no such guard.
+It is a path rather than a secret, and typing it is what keeps the rest of the
+file out of the shell. Do not skip it and do not guess.
+`sudo chown -R 10001:10001 "$DATA_ROOT"` with `DATA_ROOT` unset is
+`chown -R 10001:10001 ""`, and with a stray trailing slash or an empty value in
+a shell that word-splits it, the argument that reaches `chown` can be `/`.
+Recursively chowning the root filesystem ends the host.
+`scripts/prepare_data_root.sh` refuses to run without `DATA_ROOT` resolving to
+an absolute path for exactly this reason; the manual form has no such guard.
 
 ### The directories have to exist, as 10001, before the first `up`
 
 ```sh
-set -a; . ./.env; set +a
-sudo -E sh scripts/prepare_data_root.sh
+sudo sh scripts/prepare_data_root.sh --env-file ./.env
 ```
+
+`--env-file` rather than `sudo -E` with a sourced `.env`, for the reason above:
+the script wants one path out of that file and has no business receiving the
+deployment's secrets to get it. `DATA_ROOT` already exported also works, and
+`--env-file` wins if both are given.
 
 The `chown -R` this replaced was correct and useless, because of when it ran. A
 bind mount whose source does not exist on the host is not an error: **the Docker
@@ -357,6 +497,188 @@ but how the failure presents — a permission error from a Valhalla binary six
 hours into a rebuild, or a nightly dump that fails on a file it cannot create,
 neither of which reads as an ownership problem to whoever is paged for it.
 
+## Moving `${DATA_ROOT}` to a bigger disk
+
+The volume is sized for a second full tile set beside the current one, and the
+gate that enforces it (`REBUILD_MIN_FREE_BYTES`, 20 GiB by default) refuses a
+rebuild rather than filling the disk. Growing a gp3 volume in place is an online
+resize and is the first answer. Moving to a different disk is the second, and it
+has one rule:
+
+**Stop the stack first. PGDATA is live.** `${DATA_ROOT}/postgres` is the
+database's own data directory, bound straight into the postgis container, and
+copying it out from under a running server produces a copy that is neither a
+backup nor a filesystem-consistent snapshot — PostgreSQL is writing into it
+while `cp` reads it.
+
+```sh
+export DATA_ROOT=/srv/routemaker/data          # the current one
+docker compose down                            # everything, including postgis
+sudo cp -a "$DATA_ROOT/." /mnt/bigger/routemaker/data/
+# then DATA_ROOT=/mnt/bigger/routemaker/data in .env
+sudo sh scripts/prepare_data_root.sh --env-file ./.env
+docker compose up -d
+```
+
+`cp -a` and not `cp -r`: ownership and modes are the point. Everything under
+there is owned either by uid 10001 (the seven directories this project's images
+write) or by the postgis image's own uid (`postgres/`), and `${DATA_ROOT}/caddy`
+holds a private key whose mode matters. Re-running the prepare script afterwards
+is belt and braces — it creates anything the copy missed and re-asserts the
+ownership of the seven, and it touches `postgres/`, `caddy/` and `photon/`
+never.
+
+Nothing else has to change. Every path in `compose.yaml` is `${DATA_ROOT}/...`,
+every path *inside* a container is `/data/...` and unaffected, and the tile
+symlinks under `tiles/<variant>/current` are relative to their own directory, so
+they survive the move. `docker compose up -d` recreates every container whose
+bind sources changed, which is all of them; `restart` would not, for the usual
+reason.
+
+Verify before deleting the old copy: `docker compose ps` all up,
+`docker compose exec -T worker ./manage.py check_operations` naming the new path
+in its free-space line, and — if tiles were already built — a route. Then `rm`
+the old tree.
+
+## Bumping the `postgis` image
+
+`docker.io/postgis/postgis:16-3.4` is a floating patch tag: it is PostgreSQL 16
+and PostGIS 3.4, and the image behind it moves as both are patched. A
+`docker compose pull postgis && docker compose up -d postgis` therefore picks up
+patch releases of each, and that is the ordinary case — it is a restart of the
+database and nothing more.
+
+**A PostGIS patch or minor bump wants one statement afterwards.** The extension
+in the database keeps the version it was created or last updated with, and the
+new image's shared library and its SQL definitions are ahead of it. That
+mismatch is not loud; it shows up as functions behaving as the old version did.
+
+```sh
+docker compose exec -T postgis \
+  psql -U routemaker -d routemaker -c "ALTER EXTENSION postgis UPDATE;"
+docker compose exec -T postgis \
+  psql -U routemaker -d routemaker -c "SELECT postgis_full_version();"
+```
+
+**A PostgreSQL major bump — 16 to 17 — is a dump and restore, not a pull.**
+PGDATA's on-disk format is major-version-specific: a 17 server started against a
+16 data directory refuses with "database files are incompatible with server" and
+the container crash-loops. There is no in-place path in this stack (`pg_upgrade`
+is not in the image, and would want both binaries side by side), so it is:
+
+1. take a dump **with the old image still running**, through the ordinary
+   nightly path or by hand;
+2. `docker compose down`, move `${DATA_ROOT}/postgres` aside — do not delete it
+   until the new one is serving;
+3. change the tag in `compose.yaml`, `docker compose up -d postgis`, let it
+   initdb a fresh PGDATA;
+4. restore into it, exactly as "Restoring one" in docs/OPERATIONS.md has it —
+   into the empty database, before `migrate` runs;
+5. `docker compose up -d`, then `collectstatic`.
+
+**The dump has to come from the old server, and the `pg_dump` has to be at
+least as new as it.** `pg_dump` refuses an archive it does not understand and
+`pg_restore` refuses one from a *newer* major than its own. The nightly dump is
+taken inside `worker`, whose image pins `postgresql-client-16` to match the
+server major — so bumping the server major means bumping that pin in
+`docker/api.Dockerfile` in the same change, and taking the dump before the
+client is bumped or with a client of the new major against the old server
+(which is allowed; the other direction is not).
+
+Neither of these has been executed here: there is no daemon in this environment
+and no server has ever run from this file. The refusals quoted are PostgreSQL's
+documented behaviour, not a transcript.
+
+## Changing posture on a running stack: `:80` to a hostname
+
+The five values that make a deployment plain-HTTP-local or named-and-HTTPS are
+one decision (see "Why the example is a hostname and not `:80`"), and changing
+them on a stack that is already up is a sequence rather than an edit.
+
+**DNS first.** A hostname commits Caddy to obtaining a certificate for it from
+Let's Encrypt the moment the config loads, and that validation is an inbound
+request to this host on port 80. So the name has to resolve here, and 80 and 443
+have to be reachable from outside, **before** the stack comes up with the new
+address. Out of order, Caddy retries with a backoff and the site serves nothing
+usable in the meantime — and repeated failures against the same name burn Let's
+Encrypt rate limits, which are per name and per week.
+
+Then all five lines in `.env`, together:
+
+```sh
+CADDY_SITE_ADDRESS=routes.example.org
+DJANGO_ALLOWED_HOSTS=routes.example.org
+DJANGO_CSRF_TRUSTED_ORIGINS=https://routes.example.org
+DISCORD_REDIRECT_URI=https://routes.example.org/auth/callback
+# and DJANGO_DEBUG deleted or emptied
+```
+
+`DJANGO_DEBUG` is the one that is easy to leave behind, and it is the one that
+matters most: the local block sets it because `settings.py` derives
+`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` from `not DEBUG` and a
+plain-HTTP browser discards a Secure cookie. Left set under a hostname, the
+deployment serves tracebacks with its settings in them to the internet and
+issues cookies that are not Secure over a connection that is.
+
+**Register the new redirect URI on the Discord application** before anyone
+tries to sign in. It has to match character for character; Discord refuses an
+authorize request whose `redirect_uri` is not on the list, and the failure is on
+Discord's page rather than in any log here. Leave `http://localhost/auth/callback`
+registered alongside it if the same application also serves a local stack.
+
+Then:
+
+```sh
+docker compose up -d
+```
+
+**`up -d`, not `restart`.** Compose reads `.env` when it creates a container, so
+`restart` gives every service the environment it already had: Caddy would keep
+serving `:80` and the api would keep the old `ALLOWED_HOSTS`. `up -d` sees the
+changed values, recreates `caddy` and `api`, and leaves the rest alone.
+
+Changing `CADDY_SITE_ADDRESS` alone is the failure worth naming, because it
+half-works: Caddy gets its certificate and serves the name, and then **every
+request is a DisallowedHost 400** because `DJANGO_ALLOWED_HOSTS` still says
+`localhost`. The site is up, the padlock is there, and nothing renders. The same
+edit without `DJANGO_CSRF_TRUSTED_ORIGINS` gets through to the pages and refuses
+every POST.
+
+Going the other way — a named stack back to `:80` — is the same five lines in
+reverse plus `DJANGO_DEBUG=1`, and it is for a laptop. Never on a host reachable
+from outside.
+
+## Adding a second instance admin
+
+There is no "add" button on the user page, and that is deliberate rather than
+missing: accounts are created by signing in, never by an admin typing an id.
+
+1. **They sign in first.** Send them to `<your host>/auth/login` and have them
+   complete the Discord round-trip once. They will get the admin's ordinary 404
+   if they go looking for it — that is what an account with no standing gets —
+   but the sign-in creates the `core.User` row, which is the thing that has to
+   exist.
+2. **Then an existing instance admin promotes them**, at
+   `<DJANGO_ADMIN_PATH>core/user/` — `/internal-8f3a/core/user/` with the
+   default path. Find the row by Discord id (the list searches on it), open it,
+   tick **is instance admin**, save. Every other field on that page is
+   read-only, there is no add and no delete, and the save is audited.
+3. They sign out and in again, or simply reload: standing is resolved per
+   request, so the next request after the save already has it.
+
+The list is only readable by an instance admin in the first place, so step 2 is
+something only an existing one can do — which is the whole reason
+`BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` exists for the first one
+(docs/DEVELOPMENT.md).
+
+Removing one is the same page, unticked, and it is **not** immediate for anyone
+but yourself: removing another instance admin schedules it
+`INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS` ahead (an hour by default) and any
+instance admin can cancel it at
+`<DJANGO_ADMIN_PATH>core/pendinginstanceadminremoval/` in the meantime.
+Removing yourself takes effect at once. The application refuses to remove the
+last one by any path it controls.
+
 ## Host requirements
 
 PLAN:293's initial host: **8 vCPU, 32 GB RAM**, with storage split — a small
@@ -388,7 +710,8 @@ in the repository that assumes it:
 
 ## Photon
 
-`photon` is pinned to `rtuszik/photon-docker:2.4.0` — the newest release tag on
+`photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0` — the newest release
+tag on
 Docker Hub when this was written (pushed 2026-08-17; `latest`, `2` and `2.4` all
 resolved to the same digest, which is how the tag was chosen). It was on
 `latest`, which is not a pin: PLAN:293 says all images pinned, and a
@@ -476,17 +799,25 @@ secret in the image's metadata. `collectstatic` is a deploy step, run after ever
 `docker compose build` and after a restore:
 
 ```sh
-set -a; . ./.env; set +a        # $DATA_ROOT is in .env, not in your shell
-docker compose run --rm \
-  -e DATA_ROOT=/data \
-  -v "$DATA_ROOT/static:/data/static" \
-  api ./manage.py collectstatic --noinput
+docker compose run --rm api ./manage.py collectstatic --noinput
 ```
 
-Without the first line `$DATA_ROOT` expands to nothing and the `-v` argument
-becomes `/static:/data/static`, which mounts a directory at the *host's* root
-rather than the data volume: the command succeeds, reports the files it copied,
-and Caddy still serves nothing.
+That is the whole command, and the reason it has no flags is that `compose.yaml`
+carries what it needs: the `api` service declares `DATA_ROOT: /data` and binds
+`${DATA_ROOT}/static` at `/data/static`, so `settings.STATIC_ROOT` inside the
+container is `/data/static` and that is the host directory Caddy serves from.
+`docker compose run` gives the one-off container the service's own environment
+and mounts, and compose fills `${DATA_ROOT}` in from `.env` itself.
+
+It used to carry `-e DATA_ROOT=/data` and a `-v` mount of
+`"$DATA_ROOT/static"`, preceded by a line that sourced `.env` into the shell to
+fill that variable in. Both halves were a way to get this wrong. Sourcing the
+file hands every value in it to the shell on the way to compose, which is the
+thing this document no longer does anywhere (see "`.env` is compose's input,
+not the shell's" above). And skipping the sourcing left `$DATA_ROOT` empty, so
+the `-v` argument became `/static:/data/static` — a directory at the **host's**
+root — and the command reported the files it copied while Caddy went on serving
+nothing.
 
 `settings.STATIC_ROOT` is now `DATA_ROOT / "static"` — the same host directory
 Caddy mounts at `/srv/static`, so the assets land where the edge serves them from
@@ -498,33 +829,44 @@ The two flags are both load-bearing, and the earlier version of this command had
 neither right. `-v` alone mounted the host directory at `/srv/static`, which is
 **Caddy's** path and not this container's: **the api service mounts no part of
 the data volume and sets no `DATA_ROOT`**, so inside the image
-`settings.DATA_ROOT` falls back to `BASE_DIR / "data"` and `STATIC_ROOT` with it — `/app/data/static`, on the
-container's writable layer, discarded when `run --rm` exits. `-e DATA_ROOT=/data`
-puts it at `/data/static`, which is what the bind mount covers, and matches the
-`rebuild` service's own `DATA_ROOT: /data`. Drop the `-e` and the mount has to
-move to `/app/data/static` instead; what must not happen is the two disagreeing,
-because that failure is silent — the command reports the files it copied and the
-volume stays empty.
+`settings.DATA_ROOT` fell back to `BASE_DIR / "data"` and `STATIC_ROOT` with it — `/app/data/static`, on the
+container's writable layer, discarded when `run --rm` exits. The service's own
+`DATA_ROOT: /data` and its `${DATA_ROOT}/static:/data/static` bind are what make
+the two agree by construction now, which matters because the failure was silent:
+the command reported the files it copied and the volume stayed empty.
 
-### The api is not the container to run data commands in
+### What the api mounts, and why it is still not where data commands run
 
-That the api mounts no data is not a blocker and is not being fixed: the api
-serves requests and writes nothing durable, so a `DATA_ROOT` on it would name a
-path that does not exist inside it. It is a rule about where a command runs, and
-it is the reason `collectstatic` above is a `run --rm` with an explicit mount
-rather than an `exec` into the running api.
+The api binds two directories and writes one of them:
 
-Every management command that reads or writes the data volume therefore runs in
-`rebuild`, which binds `tiles`, `elevation`, `extracts`, `reference` and
-`rebuild` under `/data`, or in `worker`, which binds `${DATA_ROOT}/backups`
-there:
+| Path | Mode | Who reads it |
+| --- | --- | --- |
+| `${DATA_ROOT}/static` → `/data/static` | read-write | `collectstatic`, as the deploy step above. Caddy mounts the same directory `:ro` and serves it. |
+| `${DATA_ROOT}/tiles` → `/data/tiles` | **read-only** | the operations page's free-space line, which is a `statvfs` on `settings.TILES_DIR`. |
+
+The tiles bind is read-only and it is there for one reader. The operations page
+is rendered by the `api` service, and its free-space block measures
+`settings.TILES_DIR` — so without the mount it measured `/app/data/tiles`, a
+path nothing creates, `statvfs` walked up to `/`, and the page reported the
+**container's own writable layer** as the room the next rebuild has. A positive
+statement about a filesystem the process could not see. Read-only because a
+`statvfs` is the whole of what it does with it; the promotion symlinks under
+that directory belong to `rebuild`.
+
+Neither of those makes the api the place to run a data command, and that has
+not changed. It holds none of the other four directories the rebuild writes —
+`elevation`, `extracts`, `reference`, `rebuild` — and it has no Valhalla or
+GDAL binaries at all. Every management command that reads or writes the data
+volume therefore runs in `rebuild`, which binds all five under `/data`, or in
+`worker`, which binds `${DATA_ROOT}/backups` there and `${DATA_ROOT}/tiles`
+read-only beside it:
 
 | Command | Container | Because |
 | --- | --- | --- |
 | `rollback_rebuild` | `rebuild` | Reads and rewrites the promotion symlinks under `<DATA_ROOT>/tiles`. In `api` those resolve to `/app/data/tiles`, which is empty, and the command refuses on every variant with "no previous tiles" — a refusal that reads like a deployment that has never rebuilt. |
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
-| `check_operations` | `rebuild` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which only `rebuild` mounts — in `api` it would measure the container's own layer. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
+| `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container that does not mount it, the check reports `not measured` and exits 1 rather than measuring the container's own layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
 | `unwedge_job` | `worker` | Reads and updates the job table only, so any Django container works; `worker` is the one that is up whenever the stack is, including while `rebuild` is the container being restarted. |
 
 The frontend half of that sentence has no source either: `frontend/` is a single
@@ -588,6 +930,29 @@ this pair going missing would be a silent `request.is_secure()` of false, and
 `SECURE_PROXY_SSL_HEADER` and checks the proxy sets it. That setting is safe only while nothing but
 Caddy can reach the API, which is exactly what the no-published-ports rule
 enforces.
+
+It sets one header on everything it serves:
+`Strict-Transport-Security: max-age=31536000`. Under the hostname posture Caddy
+already redirects `http` to `https`, and HSTS is what removes the plaintext
+round trip that redirect *is* — for a browser that has been here before and
+whose user types the bare name or follows an old `http://` link. It is at the
+site level, so it covers the static responses as much as the proxied ones, and
+it is harmless under the `:80` posture: RFC 6797 section 8.1 requires a browser
+to ignore this header on a response that did not arrive over a secure
+transport, so a local plain-HTTP stack neither pins anything nor breaks.
+
+Deliberately without `includeSubDomains` and without `preload`. The first makes
+every sibling name under the same domain HTTPS-only for a year; the second is a
+submission to a list browsers ship and which is slow to leave. Neither is a
+commitment this repository can make on behalf of whoever runs it — add them in
+your own deployment if the domain is yours alone.
+
+**This one was executed.** Caddy 2.8.4 — the minor the `caddy:2.8-alpine` image
+tracks — was run against this file on both postures: `caddy validate` accepts
+it, and a live server started from it returned
+`Strict-Transport-Security: max-age=31536000` on a static file and on a proxied
+path (a 502, with the api absent, which is the point: the header is the site's
+and not the upstream's). Everything else below is still read as text.
 
 The file routes two things and no more:
 
@@ -707,8 +1072,8 @@ rendered: the YAML was right and the deployment was not.
    against a copy of `.env.example` and asserts the rendered value, which is the
    level the YAML-only test could not see.
 5. ~~**`bot` and `renderer` had no image and no profile.**~~ **Fixed.** Neither
-   has a source, neither has a `build:`, and `routemaker/bot:${TAG}` is in no
-   registry, so the documented `docker compose up -d` stopped at a pull that
+   has a source, neither has a `build:`, and
+   `ghcr.io/macrophage87/routemaker-bot:${TAG}` is in no registry, so the documented `docker compose up -d` stopped at a pull that
    cannot succeed. Both are behind `profiles: ["unbuilt"]` now and the default
    `up` skips them.
 6. ~~**`${DATA_ROOT}`'s writable subdirectories were root-owned.**~~ **Fixed**,

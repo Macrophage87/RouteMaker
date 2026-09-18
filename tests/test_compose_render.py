@@ -47,6 +47,11 @@ UNBUILT_PROFILE = "unbuilt"
 UNBUILT_SERVICES = {"bot", "renderer", "photon"}
 NO_IMAGE_ANYWHERE = {"bot", "renderer"}
 
+# The registry namespace this project's own four images live under: the GitHub
+# Container Registry account of this repository's owner. Named once, because
+# three tests below are about it being one namespace and a real one.
+OURS = "ghcr.io/macrophage87/routemaker-"
+
 # Scheme to the port a browser uses when the URL names none. A redirect URI is
 # written without a port on a real deployment, and "no port" is a port.
 DEFAULT_PORTS = {"http": 80, "https": 443}
@@ -805,13 +810,13 @@ def test_the_default_ports_are_the_ports_the_stack_publishes(rendered) -> None:
 def test_the_imageless_services_are_the_ones_nothing_builds(env_file) -> None:
     """`NO_IMAGE_ANYWHERE`, derived.
 
-    An image under `routemaker/` is one this repository is the source of: there
-    is no such organisation on any registry and nothing pulls one. So a service
-    whose image is in that namespace and which declares no `build:` is a
-    service whose image exists nowhere at all - `api`, `worker`, `migrate` and
-    `rebuild` name the same namespace and each carries a `build:` stanza, and
-    `photon`, `caddy` and the three routers are pulled from real registries
-    under their own names.
+    An image under `OURS` is one this repository is the source of, and nothing
+    pushes one anywhere: the tag exists on a host because that host built it.
+    So a service whose image is in that namespace and which declares no
+    `build:` is a service whose image exists nowhere at all - `api`, `worker`,
+    `migrate` and `rebuild` name the same namespace and each carries a
+    `build:` stanza, and `photon`, `caddy` and the three routers are pulled
+    from real registries under their own names.
 
     Read with the profile on, because the services this names are absent from
     the default render - which is the property the tests above check.
@@ -820,7 +825,7 @@ def test_the_imageless_services_are_the_ones_nothing_builds(env_file) -> None:
     imageless = {
         name
         for name, service in services.items()
-        if str(service.get("image", "")).startswith("routemaker/") and not service.get("build")
+        if str(service.get("image", "")).startswith(OURS) and not service.get("build")
     }
     assert NO_IMAGE_ANYWHERE == imageless, (
         f"NO_IMAGE_ANYWHERE names {sorted(NO_IMAGE_ANYWHERE)} and the stack declares "
@@ -831,3 +836,189 @@ def test_the_imageless_services_are_the_ones_nothing_builds(env_file) -> None:
         "has to be something else behind it too - photon, which has an image and is "
         "parked for a different reason"
     )
+
+
+# --- Every image names a registry ---------------------------------------------
+
+
+def test_no_image_in_the_rendered_stack_is_an_unqualified_reference(env_file) -> None:
+    """An image name with no registry in it is a Docker Hub name, and Hub is a
+    default rather than a decision.
+
+    The four images of this project's own were `routemaker/api:${TAG}` and so
+    on, which is `docker.io/routemaker/api:dev`: a namespace this project does
+    not own, empty on Hub at the time of writing and registrable by anybody. A
+    host without the locally built tag - after a prune, or on a `TAG` it never
+    built - would have pulled whatever was there and started it with
+    `PGPASSWORD`, `KEY_ENCRYPTION_KEY` and `DJANGO_SECRET_KEY` in its
+    environment.
+
+    The rule is the reference grammar's own: the first path component is the
+    registry when it contains a `.` or a `:`, and otherwise the whole name is a
+    Hub path. So this asks of every rendered image that its first component be
+    a host, which `docker.io/postgis/postgis:16-3.4` satisfies as much as
+    `ghcr.io/...` does - what is refused is the reference that leaves it out.
+
+    Rendered rather than read from the YAML, because `${TAG}` is not the part
+    that matters and a reference is what the daemon is handed.
+    """
+    services = render(env_file, UNBUILT_PROFILE)["services"]
+    unqualified = {}
+    for name, service in sorted(services.items()):
+        image = str(service.get("image", ""))
+        assert image, f"the {name} service renders with no image at all"
+        head = image.split("/")[0]
+        if "/" not in image or ("." not in head and ":" not in head):
+            unqualified[name] = image
+    assert not unqualified, (
+        f"these images name no registry, so they resolve to Docker Hub by default: {unqualified}"
+    )
+
+
+def test_our_own_images_are_under_a_namespace_this_project_controls(env_file) -> None:
+    """And the same one, so there is a single place a release would be pushed
+    to and a single place a rollback would pull from."""
+    services = render(env_file, UNBUILT_PROFILE)["services"]
+    ours = {
+        name: service["image"]
+        for name, service in services.items()
+        if service.get("build") or name in NO_IMAGE_ANYWHERE
+    }
+    assert set(ours) == {"api", "worker", "migrate", "rebuild"} | NO_IMAGE_ANYWHERE
+    for name, image in sorted(ours.items()):
+        assert image.startswith(OURS), (
+            f"the {name} service's image is {image!r}, which is outside {OURS!r} - the "
+            "namespace of this repository's own owner"
+        )
+
+
+def test_the_services_that_build_never_pull(env_file) -> None:
+    """`pull_policy: build`, on each of the four.
+
+    Compose's default policy for a service that declares both `image:` and
+    `build:` is `missing`, which is a pull attempt first and a build only if
+    that fails. These four are built from this working tree and pushed nowhere,
+    so a pull of one of them can only fetch somebody else's image under a name
+    that looks like ours. `build` removes the pull from the path entirely.
+    """
+    services = render(env_file, UNBUILT_PROFILE)["services"]
+    building = {name for name, service in services.items() if service.get("build")}
+    assert building == {"api", "worker", "migrate", "rebuild"}
+    for name in sorted(building):
+        assert services[name].get("pull_policy") == "build", (
+            f"the {name} service builds its image but renders pull_policy="
+            f"{services[name].get('pull_policy')!r}, so a host without the tag pulls it"
+        )
+
+
+# --- A `$` in a password, through the parser that actually reads it ----------
+
+# The form `.env.example` tells an operator to use for a value containing a `$`,
+# and the literal that form has to deliver. Single quotes, because compose's
+# dotenv reader strips a matching pair and expands nothing inside them - which
+# is one rule rather than one decision per character.
+DOLLAR_PASSWORD = "pa$w0rd"
+DOLLAR_LINE = "PGPASSWORD='pa$w0rd'"
+
+
+# `docker compose config` renders a configuration that is itself a compose file,
+# so a literal `$` comes back out of it doubled. Proved without any env-file
+# parsing in the way: a value handed to compose through the process environment,
+# where nothing unescapes anything, renders with its `$` doubled too. Undo it
+# before comparing, or this asserts about the renderer rather than the value.
+def unescape(rendered: str) -> str:
+    return rendered.replace("$$", "$")
+
+
+def render_password(tmp_path, line: str) -> str:
+    """The `POSTGRES_PASSWORD` the postgis container would be started with, from
+    an otherwise untouched copy of `.env.example` with its PGPASSWORD replaced."""
+    body = [
+        line if original.startswith("PGPASSWORD=") else original
+        for original in ENV_EXAMPLE.read_text().splitlines()
+    ]
+    assert line in body, "no PGPASSWORD line in .env.example to replace"
+    destination = tmp_path / "env"
+    destination.write_text("\n".join(body) + "\n")
+    return unescape(render(destination)["services"]["postgis"]["environment"]["POSTGRES_PASSWORD"])
+
+
+def test_the_quoting_this_file_prescribes_delivers_the_password_it_was_given(
+    tmp_path,
+) -> None:
+    """The defect: `.env.example` described a rule for `$` that nobody had run.
+
+    A password is the one value in that file where being off by a character is
+    not a warning. `POSTGRES_PASSWORD` initialises PGDATA on the first `up`, and
+    every later start ignores it - so a value that reached the container
+    mangled, once, is the password the role now has, and the disagreement shows
+    up as `pg_isready` green, migrate failing authentication, and api, worker
+    and rebuild never starting.
+    """
+    assert render_password(tmp_path, DOLLAR_LINE) == DOLLAR_PASSWORD
+
+
+def test_the_forms_that_file_warns_against_really_do_lose_the_dollar(
+    tmp_path,
+) -> None:
+    """The other half, so the warning is not folklore.
+
+    A bare `$` introduces a name compose expands - to nothing, with a warning
+    nobody reads on a `docker compose up -d` - and double quotes do not stop
+    it. If either of these ever started delivering the literal, the guidance
+    above would be over-cautious rather than wrong, and this is where that
+    would be noticed.
+    """
+    assert render_password(tmp_path, "PGPASSWORD=pa$w0rd") == "pa"
+    assert render_password(tmp_path, 'PGPASSWORD="pa$w0rd"') == "pa"
+
+
+def test_the_example_recommends_the_form_it_was_measured_to_need(tmp_path) -> None:
+    """And says so in the file an operator is reading while they paste the
+    value, rather than only in a test."""
+    body = ENV_EXAMPLE.read_text()
+    assert DOLLAR_LINE.replace("PGPASSWORD=", "") in body, (
+        f"`.env.example` no longer shows {DOLLAR_LINE!r} as the form to use for a value "
+        "containing a dollar sign"
+    )
+    assert "single quotes" in body
+    assert "strips a matching pair" in " ".join(body.split()), (
+        "`.env.example` no longer says compose's dotenv reader strips the quotes, which "
+        "is what makes the single-quoted form above work - it used to claim the "
+        "opposite, and the single-quoted form would be meaningless under that claim"
+    )
+
+
+def test_the_shipped_secrets_reach_the_containers_unaltered(rendered) -> None:
+    """The example's own four `change-me` values, end to end.
+
+    They are placeholders, and that is the point: whatever an operator replaces
+    them with has to arrive the way it was written, and the way to notice that
+    it does not is to check that the shipped ones do. A `$` slipped into any of
+    them - by an editor, by a paste, by somebody making the placeholders look
+    more like passwords - is a silent change to the value, and for PGPASSWORD a
+    silent change to the password PGDATA is initialised with.
+    """
+    expected = dict(
+        line.split("=", 1) for line in ENV_EXAMPLE.read_text().splitlines() if "=" in line
+    )
+    checked = 0
+    for service, name, source in (
+        ("postgis", "POSTGRES_PASSWORD", "PGPASSWORD"),
+        ("api", "DJANGO_SECRET_KEY", "DJANGO_SECRET_KEY"),
+        ("api", "KEY_ENCRYPTION_KEY", "KEY_ENCRYPTION_KEY"),
+        ("api", "DISCORD_CLIENT_SECRET", "DISCORD_CLIENT_SECRET"),
+    ):
+        # An inherited variable beats the env file, and this suite runs with
+        # `KEY_ENCRYPTION_KEY` set - `config.test_settings` refuses to import
+        # without one. `render()` drops the `PG*` names for the same reason;
+        # the rest are skipped here rather than made to depend on who is
+        # running the tests. PGPASSWORD is the one this test is really about
+        # and it is always checked.
+        if source in os.environ and not source.startswith("PG"):
+            continue
+        assert unescape(environment(rendered, service)[name]) == expected[source], (
+            f"{service}'s {name} is not the {source} line of .env.example verbatim"
+        )
+        checked += 1
+    assert checked, "every secret was skipped; the environment this ran in set all of them"

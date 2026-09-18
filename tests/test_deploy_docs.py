@@ -61,18 +61,160 @@ def documented_exec_invocations(text: str) -> list[tuple[str, str]]:
 
 
 def test_the_services_this_file_reasons_about_still_mount_what_it_says() -> None:
-    """The premise of everything below, asserted rather than assumed: `rebuild`
-    has the whole volume and `api` has none of it. A stack that gave the api a
-    data mount would make these tests wrong rather than failing."""
+    """The premise of everything below, asserted rather than assumed.
+
+    `rebuild` writes the five directories under `/data`. `api` holds two of
+    them and neither makes it a place to run a data command: `static`, which is
+    the `collectstatic` target, and `tiles` **read-only**, which exists for the
+    operations page's `statvfs`. A stack that gave the api `extracts` or
+    `reference` would make the table of which command runs where wrong rather
+    than failing.
+    """
     rebuild_volumes = SERVICES["rebuild"]["volumes"]
     assert "${DATA_ROOT}/tiles:/data/tiles" in rebuild_volumes
     assert "${DATA_ROOT}/reference:/data/reference" in rebuild_volumes
     assert SERVICES["rebuild"]["environment"]["DATA_ROOT"] == "/data"
-    assert not SERVICES["api"].get("volumes"), (
-        f"the api now mounts {SERVICES['api']['volumes']}; docs/DEPLOYMENT.md says it "
-        "mounts nothing durable and the table of which command runs where follows from that"
+    api_volumes = set(SERVICES["api"].get("volumes") or [])
+    assert api_volumes == {
+        "${DATA_ROOT}/static:/data/static",
+        "${DATA_ROOT}/tiles:/data/tiles:ro",
+    }, (
+        f"the api mounts {sorted(api_volumes)}; docs/DEPLOYMENT.md's table of what it "
+        "binds, and the rule about where data commands run, both follow from this set"
     )
-    assert "DATA_ROOT" not in (SERVICES["api"].get("environment") or {})
+    assert SERVICES["api"]["environment"]["DATA_ROOT"] == "/data", (
+        "the api binds /data/static and /data/tiles but does not set DATA_ROOT, so "
+        "settings.STATIC_ROOT and settings.TILES_DIR are under /app/data and neither "
+        "mount is reached by anything"
+    )
+
+
+@pytest.mark.parametrize("service", ["api", "worker"])
+def test_the_tiles_are_bound_read_only_into_the_services_that_only_measure_them(
+    service: str,
+) -> None:
+    """The free-space figure, on both surfaces that carry it.
+
+    `core.operations` reports the room left for the next rebuild as a `statvfs`
+    on `settings.TILES_DIR`. The operations page runs that in `api`; the
+    `check_operations` cron entry runs it in `worker`. Neither mounted the
+    tiles, so both resolved `/data/tiles` (or `/app/data/tiles`) to a path that
+    does not exist, `statvfs` walked up to the nearest one that does, and the
+    figure reported was the container's own writable layer - a positive
+    statement about a filesystem the process could not see.
+
+    Read-only, because measuring is all either of them does: the build
+    directories and the `current` symlinks under it belong to `rebuild`.
+    """
+    volumes = SERVICES[service]["volumes"]
+    assert "${DATA_ROOT}/tiles:/data/tiles:ro" in volumes, (
+        f"the {service} service binds {volumes}; without the tiles it reports the room "
+        "left on its own layer as the room left for a rebuild"
+    )
+    assert SERVICES[service]["environment"]["DATA_ROOT"] == "/data", (
+        f"the {service} service mounts the tiles at /data/tiles but DATA_ROOT does not "
+        "point there, so settings.TILES_DIR is somewhere else"
+    )
+
+
+def test_the_free_space_check_is_documented_against_the_container_that_runs_it() -> None:
+    """The cron entry, `docs/DEPLOYMENT.md`'s table and the mount are three
+    statements of one decision, and the review before this one found them two
+    versions apart."""
+    rows = [line for line in DEPLOYMENT.splitlines() if line.startswith("| `check_operations`")]
+    assert len(rows) == 1, f"expected one check_operations row, found {len(rows)}"
+    documented = rows[0].split("|")[2].strip().strip("`")
+    cron = [
+        line
+        for line in OPERATIONS.splitlines()
+        if "check_operations" in line and "docker compose exec" in line
+    ]
+    assert cron, "docs/OPERATIONS.md no longer shows check_operations as a compose exec"
+    for line in cron:
+        service = documented_exec_invocations(line)[0][0]
+        assert service == documented, (
+            f"docs/DEPLOYMENT.md says check_operations runs in {documented!r} and "
+            f"docs/OPERATIONS.md runs it in {service!r}"
+        )
+    assert "${DATA_ROOT}/tiles:/data/tiles:ro" in SERVICES[documented]["volumes"], (
+        f"check_operations is documented against {documented!r}, which does not mount "
+        "the tiles its free-space check measures"
+    )
+
+
+@pytest.mark.parametrize("service", ["rebuild", "worker"])
+def test_both_procrastinate_workers_get_longer_than_the_ten_second_default(
+    service: str,
+) -> None:
+    """A SIGKILLed worker leaves whatever it was running `doing` for ever, and
+    the repair is a hand-run `unwedge_job`.
+
+    Compose's default is ten seconds between the SIGTERM and the SIGKILL, and
+    what a Procrastinate worker owes the database on the way out is a real
+    shutdown: it cancels its side tasks and then calls `unregister_worker`,
+    which is a round trip. Neither value saves a *running* job - nothing does,
+    since `shutdown_graceful_timeout` is unset and the wait is unbounded - so
+    what the grace period buys is that the idle case, which is almost every
+    `down` and `up -d`, is a clean unregister rather than a race.
+
+    `rebuild` had one and `worker` did not, and the difference was never a
+    decision: a nightly dump or a sweep killed at second ten leaves exactly the
+    same wedged row a killed rebuild does.
+    """
+    grace = SERVICES[service].get("stop_grace_period")
+    assert grace, (
+        f"the {service} service declares no stop_grace_period, so compose kills its "
+        "Procrastinate worker ten seconds after the SIGTERM"
+    )
+    assert grace == "60s", f"the {service} service's grace period is {grace!r}, not 60s"
+
+
+def test_the_api_declares_a_healthcheck_the_image_can_actually_run() -> None:
+    """`/healthz`, probed with the interpreter gunicorn already runs under.
+
+    Two things make this more than a line of YAML. The runtime stage of
+    `docker/api.Dockerfile` installs no `curl` in the image that runs, so a
+    `CMD curl ...` healthcheck is a check that reports unhealthy on a healthy
+    container. And Django refuses a request whose `Host` is not in
+    `ALLOWED_HOSTS` with a 400, so a probe of `http://127.0.0.1:8000/` on a
+    deployment whose `DJANGO_ALLOWED_HOSTS` is its public name is red for ever
+    - which is why the check sends the first name out of that variable.
+    """
+    check = SERVICES["api"].get("healthcheck")
+    assert check, "the api service declares no healthcheck"
+    test = check["test"]
+    assert test[0] == "CMD", f"the healthcheck is {test!r}; CMD runs it without a shell"
+    assert test[1] == "python", (
+        f"the healthcheck runs {test[1]!r}; the api image's runtime stage installs no "
+        "curl, and python is the interpreter gunicorn is already running under"
+    )
+    body = test[-1]
+    assert "/healthz" in body, f"the healthcheck does not probe /healthz: {body!r}"
+    assert "DJANGO_ALLOWED_HOSTS" in body, (
+        "the healthcheck sends no Host header derived from DJANGO_ALLOWED_HOSTS, so on "
+        "a deployment with a real hostname every probe is a DisallowedHost 400"
+    )
+    assert "urllib" in body, f"the healthcheck does not use urllib: {body!r}"
+    port = re.search(r"127\.0\.0\.1:(\d+)", body)
+    assert port, f"the healthcheck names no loopback port: {body!r}"
+    entrypoint = (REPO / "docker" / "api-entrypoint.sh").read_text()
+    assert f"0.0.0.0:{port.group(1)}" in entrypoint, (
+        f"the healthcheck probes port {port.group(1)} and the entrypoint binds gunicorn "
+        "somewhere else"
+    )
+    # `depends_on` is either a mapping of conditions or a plain list of names.
+    gated = [
+        name
+        for name, service in SERVICES.items()
+        if isinstance(service.get("depends_on"), dict)
+        and service["depends_on"].get("api", {}).get("condition") == "service_healthy"
+    ]
+    assert not gated, (
+        f"{gated} now wait on the api being healthy; this check is a `docker compose ps` "
+        "an operator reads, not a condition the stack refuses to come up without - and "
+        "a /healthz that 404s on a release that has not added the view yet would then "
+        "hold the whole stack down"
+    )
 
 
 @pytest.mark.parametrize("command", ["rollback_rebuild", "run_rebuild_now"])
@@ -286,24 +428,88 @@ def test_the_script_refuses_to_run_without_an_absolute_data_root() -> None:
     assert "must be an absolute path" in body, "the script no longer refuses a relative path"
 
 
-def test_every_documented_data_root_snippet_loads_the_environment_first() -> None:
-    """`$DATA_ROOT` lives in `.env`, which is compose's input and not the
-    shell's, so a snippet that uses it without `set -a; . ./.env; set +a` is a
-    snippet that runs with it empty. In the `chown -R` case that is a chown of
-    `/`; in the `collectstatic` case it is a mount of the host's root that
-    reports success and leaves the volume empty."""
-    blocks = re.findall(r"```sh\n(.*?)```", DEPLOYMENT, re.DOTALL)
-    using = [block for block in blocks if "$DATA_ROOT" in block]
-    assert using, "docs/DEPLOYMENT.md has no shell snippet using $DATA_ROOT any more"
-    unguarded = [
-        block
-        for block in using
-        if ". ./.env" not in block and not re.search(r"^\s*export DATA_ROOT=", block, re.M)
-    ]
-    assert not unguarded, (
-        "these snippets use $DATA_ROOT without loading the environment file first: "
-        + "\n---\n".join(unguarded)
+# Sourcing `.env` into a shell, in any of the spellings that do it. Prose is
+# allowed to name them - both documents explain at length why not to - so this
+# is matched against the shell snippets only.
+SOURCES_ENV = re.compile(r"(?:^|\s)(?:set -a\b|\.\s+\S*\.env\b|source\s+\S*\.env\b)")
+
+
+def shell_snippets(text: str) -> list[str]:
+    return re.findall(r"```sh\n(.*?)```", text, re.DOTALL)
+
+
+@pytest.mark.parametrize("name", sorted(DOCUMENTS))
+def test_no_documented_command_sources_the_environment_file(name: str) -> None:
+    """`.env` is compose's input and it must not reach a shell.
+
+    Every snippet in these documents used to open with
+    `set -a; . ./.env; set +a` and then run `docker compose` in the same shell,
+    which put every value in the file through `sh` on the way: `$$` is a
+    literal-`$` escape to compose's parser and the shell's pid to `sh`,
+    backticks and `$(...)` in a value are commands, and an exported variable
+    beats the env file when compose reads it. So the first `up` initialised
+    PGDATA with `hunter47112`, the next `up -d` from a different shell sent
+    `hunter81330`, `pg_isready` went green on both, `migrate` failed
+    authentication and the three services gated on it never started - an outage
+    with the shape of a rotated password that nobody had rotated.
+
+    The two snippets that genuinely needed `$DATA_ROOT` get it another way now:
+    `scripts/prepare_data_root.sh --env-file ./.env` reads the one line it
+    wants without evaluating the file, and `collectstatic` runs under
+    `docker compose run`, which gives the container the service's own
+    environment.
+    """
+    offenders = [block for block in shell_snippets(DOCUMENTS[name]) if SOURCES_ENV.search(block)]
+    assert not offenders, (
+        f"{name} has shell snippets that source the environment file:\n" + "\n---\n".join(offenders)
     )
+
+
+def test_the_prepare_script_reads_the_env_file_rather_than_sourcing_it() -> None:
+    """The option that let the guide stop sourcing, and the property that makes
+    it worth having: it never evaluates the file, so a `$`, a backtick or a
+    semicolon in a password beside the `DATA_ROOT=` line is a string it does not
+    touch."""
+    script = PREPARE.read_text()
+    assert "--env-file" in script, "scripts/prepare_data_root.sh takes no --env-file"
+    assert not SOURCES_ENV.search(script.split("set -eu", 1)[1]), (
+        "scripts/prepare_data_root.sh sources the file it was given instead of reading "
+        "one line out of it"
+    )
+    assert "sed -n" in script, (
+        "the script no longer extracts DATA_ROOT with sed; anything that evaluates the "
+        "file runs whatever is in the other values"
+    )
+    for name, body in DOCUMENTS.items():
+        for line in body.splitlines():
+            stripped = line.strip()
+            if "prepare_data_root.sh" in stripped and stripped.startswith(("sudo ", "sh ", "./")):
+                assert "--env-file" in stripped, (
+                    f"{name} runs the script without naming an env file: {stripped}"
+                )
+
+
+def test_every_documented_data_root_snippet_has_the_value_from_somewhere() -> None:
+    """`$DATA_ROOT` is not exported by anything, so a snippet that uses it
+    without setting it runs with it empty. In the `chown -R` case that is a
+    chown of `/`; in the `install -d` case it is a directory at the host's root
+    that the rebuild container cannot see.
+
+    The permitted source is now an explicit `export DATA_ROOT=<path>` - one
+    variable, typed out, a path and not a secret - rather than the whole file.
+    """
+    used = 0
+    for name, body in DOCUMENTS.items():
+        using = [block for block in shell_snippets(body) if "$DATA_ROOT" in block]
+        used += len(using)
+        unguarded = [
+            block for block in using if not re.search(r"^\s*export DATA_ROOT=", block, re.M)
+        ]
+        assert not unguarded, (
+            f"these {name} snippets use $DATA_ROOT without setting it first: "
+            + "\n---\n".join(unguarded)
+        )
+    assert used, "no snippet uses $DATA_ROOT any more, so this test is vacuous"
 
 
 # --- The figures the host is sized from --------------------------------------
@@ -802,4 +1008,223 @@ def test_the_migration_rule_the_rollback_depends_on_is_written_down() -> None:
     assert "not enforced" in paragraph or "stated and not enforced" in paragraph, (
         "the paragraph presents the rule as something the suite checks; nothing reads a "
         "migration and refuses a DROP COLUMN"
+    )
+
+
+# --- The procedures this round added -----------------------------------------
+
+
+def section(text: str, heading: str) -> str:
+    """The body of one `##`/`###` section, up to the next heading of its level
+    or shallower.
+
+    Fenced blocks are skipped: a shell comment inside one starts with `#` and
+    would otherwise end the section at the first `# 2. then ...` line.
+    """
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == heading), None)
+    assert start is not None, f"no section {heading!r}"
+    depth = len(heading.split(" ", 1)[0])
+    fenced = False
+    for end in range(start + 1, len(lines)):
+        stripped = lines[end].strip()
+        if stripped.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if stripped.startswith("#") and len(stripped.split(" ", 1)[0]) <= depth:
+            return "\n".join(lines[start:end])
+    return "\n".join(lines[start:])
+
+
+def test_the_restore_runbook_restores_into_an_empty_database() -> None:
+    """The ordering is the runbook, and it is the part that cannot be fixed
+    afterwards.
+
+    A `pg_restore` into a database a full `up` had already migrated gave 169
+    errors and exit 0 - `pg_restore` continues past a failing statement and
+    reports success, so what an operator sees is a restore that worked.
+    `django_content_type`, `auth_permission` and `django_migrations` are all
+    created by `migrate` and all carried by the dump. The same archive into an
+    empty database gave 0 errors.
+    """
+    body = section(OPERATIONS, "## Restoring one")
+    commanded = "\n".join(shell_snippets(body))
+    assert "pg_restore" in commanded, (
+        "no command in the restore runbook runs pg_restore; the prose may mention it, "
+        "but the runbook is the snippet"
+    )
+    commands = [line for line in body.splitlines() if "docker compose up -d" in line]
+    assert commands, "the restore runbook never starts the stack"
+    first, rest = commands[0], commands[1:]
+    assert "postgis" in first, (
+        f"the first `up -d` in the restore runbook is {first.strip()!r}; restoring into "
+        "a database `migrate` has already run against collides on every table both it "
+        "and the dump create, and pg_restore exits 0 anyway"
+    )
+    assert rest, "the runbook never brings the rest of the stack up after the restore"
+    assert all("postgis" not in line for line in rest), rest
+    for expected in ("empty", "0 errors", "169"):
+        assert expected in body, (
+            f"the restore runbook does not say {expected!r}, which is what makes the "
+            "ordering an instruction rather than a preference"
+        )
+
+
+def test_the_restore_runbook_says_what_the_deployment_has_afterwards() -> None:
+    """A restore is not a rollback: the membership cache and the sessions are
+    excluded from the dump and nothing in phase 1 refills the cache, the tiles
+    are not in the database at all, and `nightly_backup` is stale until the next
+    07:00 UTC because the dump is taken from inside its own run row."""
+    body = section(OPERATIONS, "## Restoring one")
+    for expected in ("membership", "tiles", "nightly_backup", "collectstatic"):
+        assert expected in body, f"the restore runbook says nothing about {expected}"
+
+
+def test_the_snapshot_is_in_the_action_list_and_not_only_in_a_sentence() -> None:
+    """It was named as the thing standing between this deployment and a lost
+    host, in a paragraph, and appeared in no list of things to do."""
+    body = section(OPERATIONS, "## Deployment actions")
+    assert "snapshot" in body.lower(), (
+        "docs/OPERATIONS.md's deployment actions do not include the volume snapshot, "
+        "which is the only copy of the database that is not on the volume itself"
+    )
+
+
+def test_the_epoch_rule_is_the_one_the_code_computes() -> None:
+    """`core.runs.deployment_epoch` is the earlier of the oldest run row and
+    `MAX(django_migrations.applied)`. The document still carried the rule from
+    before that - "on a database with no rows at all nothing is stale" - which
+    is the state a `--queues` typo or a crash-looping worker leaves, and it was
+    being described as the reason the alerts are trustworthy."""
+    body = section(OPERATIONS, "## What is watched, and for how long")
+    assert "django_migrations" in body, (
+        "the staleness section does not mention the migration half of the epoch, so it "
+        "is still describing the run-row-only rule"
+    )
+    assert "with no rows at all nothing is stale" not in " ".join(body.split()), (
+        "the pre-wave-7 epoch rule is back in docs/OPERATIONS.md"
+    )
+    source = REPO / "src" / "core" / "runs.py"
+    assert "MAX(applied) FROM django_migrations" in source.read_text(), (
+        "core.runs no longer reads django_migrations, so the documented rule is now the "
+        "one that is wrong"
+    )
+
+
+def test_the_posture_change_is_documented_as_five_values_and_an_up() -> None:
+    """Changing `CADDY_SITE_ADDRESS` alone half-works, which is the worst
+    shape: Caddy gets its certificate and serves the name, and every request is
+    a DisallowedHost 400 because ALLOWED_HOSTS still says localhost."""
+    body = section(DEPLOYMENT, "## Changing posture on a running stack: `:80` to a hostname")
+    # In a snippet, not in prose: the point of the section is the block an
+    # operator copies, and a value explained in a paragraph and missing from
+    # the block is the one that gets left behind. `DJANGO_DEBUG` is that value.
+    edited = "\n".join(shell_snippets(body))
+    for name in (
+        "CADDY_SITE_ADDRESS",
+        "DJANGO_ALLOWED_HOSTS",
+        "DJANGO_CSRF_TRUSTED_ORIGINS",
+        "DISCORD_REDIRECT_URI",
+        "DJANGO_DEBUG",
+    ):
+        assert name in edited, f"the block of `.env` lines the posture change asks for omits {name}"
+    assert "DNS" in body, "the procedure does not say the name has to resolve here first"
+    assert "Discord" in body, "the procedure does not say to register the new redirect URI"
+    assert "not `restart`" in body or "not\n`restart`" in body, (
+        "the procedure does not say `up -d` rather than `restart`, which is the "
+        "difference between the new values reaching a container and not"
+    )
+
+
+def test_the_second_instance_admin_procedure_names_the_page_that_exists() -> None:
+    """There is no add on the user admin - accounts are created by signing in -
+    so the procedure is sign in, then promote, and the page it happens on is
+    derived here rather than restated."""
+    body = section(DEPLOYMENT, "## Adding a second instance admin")
+    assert "/auth/login" in body, (
+        "the procedure does not say the new admin signs in first; without the account "
+        "row there is nothing on the page to promote"
+    )
+    assert "core/user/" in body, "the procedure does not name the page the promotion happens on"
+    assert "is instance admin" in body.lower()
+    assert "no add" in body.lower() or 'no "add"' in body.lower(), (
+        "the procedure does not say there is no add button, which is the thing a reader "
+        "goes looking for first"
+    )
+
+
+def test_the_discord_client_secret_is_in_the_rotation_section() -> None:
+    """It is the fifth secret in `.env` and the only one issued by somebody
+    else, and the rotation section listed four."""
+    body = section(DEPLOYMENT, "## Secrets, and what rotating one costs")
+    assert "DISCORD_CLIENT_SECRET" in body, (
+        "docs/DEPLOYMENT.md's rotation section does not cover DISCORD_CLIENT_SECRET"
+    )
+    after = body.split("DISCORD_CLIENT_SECRET", 1)[1]
+    assert "up -d" in after and "restart" in after, (
+        "the DISCORD_CLIENT_SECRET rotation does not say `up -d` rather than `restart`; "
+        "a restarted container keeps the secret it was created with"
+    )
+
+
+def test_the_postgis_bump_covers_both_kinds() -> None:
+    """A patch bump of a floating tag is a pull and one SQL statement; a
+    PostgreSQL major bump is a dump and restore, because PGDATA's on-disk format
+    is major-version-specific."""
+    body = section(DEPLOYMENT, "## Bumping the `postgis` image")
+    assert "ALTER EXTENSION postgis UPDATE" in body, (
+        "the procedure does not name ALTER EXTENSION postgis UPDATE, so the extension "
+        "stays at the version it was created with while the library moves"
+    )
+    assert "pg_dump" in body and "pg_restore" in body, (
+        "the major-version half of the procedure does not name the dump and restore"
+    )
+    assert "postgresql-client" in body, (
+        "the procedure does not mention the pinned client major in docker/api.Dockerfile, "
+        "which is what takes the nightly dump"
+    )
+    major = re.search(r"ARG PG_MAJOR=(\d+)", (REPO / "docker" / "api.Dockerfile").read_text())
+    assert major, "docker/api.Dockerfile no longer pins a client major"
+    assert major.group(1) in SERVICES["postgis"]["image"], (
+        f"the api image pins postgresql-client-{major.group(1)} and the postgis service "
+        f"runs {SERVICES['postgis']['image']}; the nightly pg_dump is the thing between them"
+    )
+
+
+def test_moving_the_data_root_says_to_stop_the_stack_first() -> None:
+    """`${DATA_ROOT}/postgres` is PGDATA, bound straight into the running
+    postgis container. Copying it out from under a live server produces a copy
+    that is neither a backup nor a consistent snapshot."""
+    body = section(DEPLOYMENT, "## Moving `${DATA_ROOT}` to a bigger disk")
+    assert "PGDATA" in body, "the procedure does not say what makes the live case dangerous"
+    lines = body.splitlines()
+    down = next((i for i, line in enumerate(lines) if "docker compose down" in line), None)
+    copy = next((i for i, line in enumerate(lines) if line.strip().startswith("sudo cp")), None)
+    assert down is not None, "the procedure never stops the stack"
+    assert copy is not None, "the procedure never copies anything"
+    assert down < copy, "the procedure copies the data volume before stopping the stack"
+    assert "cp -a" in body, (
+        "the copy is not `cp -a`; ownership and modes are the point - uid 10001 on seven "
+        "directories, the postgis uid on PGDATA, and a private key under caddy/"
+    )
+
+
+@pytest.mark.parametrize("name", ["docs/OPERATIONS.md", "docs/DEPLOYMENT.md"])
+def test_the_sigkill_warnings_cover_the_worker_too(name: str) -> None:
+    """`worker` has the same grace period and the same Procrastinate worker, so
+    a nightly dump or a sweep killed mid-run leaves the same `doing` row. Both
+    documents warned about `rebuild` alone."""
+    body = DOCUMENTS[name]
+    grace = SERVICES["worker"]["stop_grace_period"]
+    quoted = f"stop_grace_period: {grace}"
+    windows = [
+        " ".join(body.split())[max(0, m.start() - 600) : m.end() + 600]
+        for m in re.finditer(re.escape(quoted), body)
+    ]
+    assert windows, f"{name} does not quote `{quoted}` anywhere"
+    assert any("worker" in window and "rebuild" in window for window in windows), (
+        f"{name} explains the grace period against `rebuild` alone; `worker` carries the "
+        "same one and wedges the same way"
     )

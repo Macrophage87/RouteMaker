@@ -39,10 +39,15 @@ SERVICES: dict = COMPOSE["services"]
 # repository's maintainer had pushed last would arrive on the next
 # `docker compose pull`, with no change in this repository to point at. It is
 # 2.4.0 now, the newest release tag on Docker Hub when that was written.
+#
+# Every one also names its registry. An unqualified reference is a Docker Hub
+# one, so the registry was always there - it was just the default rather than
+# something this file said, and a default is what a registry mirror or a
+# namespace somebody else registers gets to reinterpret.
 EXTERNAL_IMAGES = {
-    "caddy:2.8-alpine",
-    "postgis/postgis:16-3.4",
-    "rtuszik/photon-docker:2.4.0",
+    "docker.io/library/caddy:2.8-alpine",
+    "docker.io/postgis/postgis:16-3.4",
+    "docker.io/rtuszik/photon-docker:2.4.0",
     "ghcr.io/valhalla/valhalla:3.5.1",
 }
 
@@ -61,8 +66,8 @@ EXTERNAL_IMAGES = {
 # a `build:` for it. That is the point of the set: an unbuilt image is recorded,
 # not tolerated silently.
 UNBUILT_IMAGES = {
-    "routemaker/renderer:${TAG}",
-    "routemaker/bot:${TAG}",
+    "ghcr.io/macrophage87/routemaker-renderer:${TAG}",
+    "ghcr.io/macrophage87/routemaker-bot:${TAG}",
 }
 
 SECRET_ENV_NAMES = {
@@ -728,3 +733,64 @@ def test_the_data_root_is_prepared_for_the_uid_the_images_run_as() -> None:
         f"{uid}:{gid}; every write into a bound directory would fail with EACCES"
     )
     assert f"uid {uid}" in script, "the message it prints names a different uid than it sets"
+
+
+# The gunicorn access-log atoms that carry a query string, and therefore carry
+# a Discord id out of an admin search and into the container log. Read off
+# gunicorn 26.2.0's own `glogging.Logger.atoms` - the version
+# `docker/requirements-api.txt` pins:
+#
+#   'r' -> "%s %s %s" % (REQUEST_METHOD, RAW_URI, SERVER_PROTOCOL)   <- RAW_URI
+#   'q' -> QUERY_STRING
+#   'f' -> HTTP_REFERER
+#
+# `f` belongs here and is the one that is easy to miss: `settings.py` sets
+# SECURE_REFERRER_POLICY = "same-origin", so a browser following a link away
+# from `?q=<discord id>` sends that whole URL as the Referer. Both of the first
+# two are in gunicorn's default format, which is what the entrypoint used.
+QUERY_BEARING_LOG_ATOMS = {"%(r)s": "RAW_URI", "%(q)s": "QUERY_STRING", "%(f)s": "HTTP_REFERER"}
+
+
+def access_log_format() -> str:
+    """The `--access-logformat` argument the entrypoint gives gunicorn."""
+    body = ENTRYPOINT.read_text()
+    match = re.search(r"--access-logformat\s+'([^']*)'", body)
+    assert match, (
+        "docker/api-entrypoint.sh sets no --access-logformat, so gunicorn uses its "
+        "default - which logs the request line and the Referer, both of which carry an "
+        "admin search's query string"
+    )
+    return match.group(1)
+
+
+def test_the_access_log_keeps_the_query_string_out_of_the_container_log() -> None:
+    """The admin's user and instance-admin listings search by Discord id.
+
+    gunicorn's default access line is the request line and the Referer, so
+    every such search wrote the id it searched for into a file under
+    /var/lib/docker/containers - read by whoever can read the host, rather than
+    by whoever the admin admits. The path is what is worth logging and the
+    query string is not.
+    """
+    fmt = access_log_format()
+    present = {atom: source for atom, source in QUERY_BEARING_LOG_ATOMS.items() if atom in fmt}
+    assert not present, (
+        f"the access-log format is {fmt!r}, which logs {present} - each of those carries "
+        "the query string of an admin search"
+    )
+    assert "%(U)s" in fmt, (
+        f"the access-log format is {fmt!r} and names no path atom; %(U)s is PATH_INFO, "
+        "the request line without its query string"
+    )
+    assert "%(s)s" in fmt, f"the access-log format logs no status: {fmt!r}"
+
+
+def test_the_access_log_format_is_one_argument_gunicorn_parses(tmp_path) -> None:
+    """Run, not read: the entrypoint under `sh` with gunicorn stood in for, so
+    a quoting mistake in that line is a failure here rather than an api
+    container that will not start."""
+    argv = run_entrypoint(tmp_path, nproc=4, WEB_CONCURRENCY="2")
+    assert "--access-logformat" in argv, argv
+    assert argv[argv.index("--access-logformat") + 1] == access_log_format(), (
+        f"the shell splits the format into more than one argument: {argv}"
+    )
