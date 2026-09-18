@@ -1918,6 +1918,14 @@ def test_a_failed_commands_output_is_quoted_from_the_end_and_bounded(caplog, tmp
     assert len(quoted) == COMMAND_OUTPUT_TAIL_LINES - 1, (
         "the quote is bounded by the constant that says why it is bounded"
     )
+    # And the constant itself, because everything above holds for any value of
+    # it. What is being rescued is the diagnosis a tool prints just before it
+    # stops - osmium's "Could not detect file format for filename", curl's "The
+    # requested URL returned error: 404", the merge's multiple-version warning -
+    # and each of those is a line or two with a little context around it. Three
+    # would cut the context off; a hundred would put a screen of progress in
+    # front of every reader of an exception, a log record and a job row.
+    assert COMMAND_OUTPUT_TAIL_LINES == 20
 
 
 def test_the_lua_check_reads_the_script_out_of_the_config_the_build_was_given(tmp_path) -> None:
@@ -2012,7 +2020,15 @@ def test_validate_refuses_when_a_variant_has_no_build_config(workspace, states) 
 
     with pytest.raises(ValidationFailed) as caught:
         handlers[Stage.VALIDATE]()
-    assert "build config" in str(caught.value)
+    # The guard's own words, not merely "a ValidationFailed came out". Skipped
+    # rather than raised, the loop simply passes over the two variants it
+    # cannot check and the elevation read-back below raises a few lines later,
+    # which is a message about grades on a rebuild whose transform was never
+    # checked at all - so a test satisfied by any refusal mentioning a build
+    # config is satisfied by the guard not being there.
+    message = str(caught.value)
+    assert "produced a build log and no build config" in message
+    assert Variant.NO_TRAIL.value in message, "and it names the variant it stopped on"
 
     # And the elevation read-back refuses on its own account, not only because
     # the admin-database check happens to run first and notice the same gap.

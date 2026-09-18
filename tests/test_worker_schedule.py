@@ -715,6 +715,28 @@ def test_both_deadline_failures_are_terminal_causes() -> None:
     assert subprocess.TimeoutExpired in terminal_causes()
 
 
+def test_a_command_that_exited_non_zero_is_not_a_terminal_cause() -> None:
+    """The other half of the same list, and the one nothing pinned.
+
+    `CommandFailed` is what a mirror that was briefly unreachable, a download
+    that dropped mid-transfer and a tile build killed by the host all arrive
+    as, which is the failure a retry is for; it stands where
+    `subprocess.CalledProcessError` stood before it carried the reason. Added
+    to the tuple it would look like tightening the list, and the effect would
+    be that the first rebuild to lose a connection is abandoned until someone
+    fires it by hand a week later. The class's own docstring says it is
+    deliberately not here; this is what holds it to that.
+    """
+    from config.procrastinate import terminal_causes
+    from pipeline.run import CommandFailed
+    from pipeline.source import SourceExtractFailed
+
+    assert CommandFailed not in terminal_causes()
+    assert SourceExtractFailed not in terminal_causes(), (
+        "and its caller in the extract stage, for the same reason"
+    )
+
+
 # --- Startability: a cold worker, as compose runs it ----------------------------------
 
 

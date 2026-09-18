@@ -589,6 +589,71 @@ def test_the_merge_warning_that_the_files_are_not_one_snapshot_is_logged_at_warn
     assert "osmium merge" in message, "and the step it came from is named"
 
 
+# One line per spelling `source.MULTIPLE_VERSION_MARKERS` carries, each line
+# carrying exactly one of them.
+#
+# The warning above quotes a line that carries the symptom and the remedy at
+# once, which is what a real osmium warning does and what makes it useless for
+# holding the table: against it any one of the three fragments could be dropped
+# and one of the others would answer for the line. The table is two fragments
+# rather than one message precisely because a release may rephrase either half,
+# so each half has to be caught on a line that carries only it.
+#
+# The first is capitalised, which is how osmium writes it, and is what holds
+# the `.lower()` fold: matched as written it would be missed.
+MULTIPLE_VERSION_LINES = {
+    "multiple versions": "WARNING: Multiple versions of the same object found.",
+    "with-history": "Use --with-history to merge these files.",
+    "with_history": "Use --with_history to merge these files.",
+}
+
+
+def test_every_multiple_version_spelling_is_covered_by_a_line_of_its_own() -> None:
+    """A marker added to the table without a line here is a spelling nothing
+    proves is caught, and one removed from the table is a wording that stops
+    being caught with nothing to say so."""
+    assert set(source.MULTIPLE_VERSION_MARKERS) == set(MULTIPLE_VERSION_LINES)
+
+
+@pytest.mark.parametrize("spelling", sorted(MULTIPLE_VERSION_LINES))
+def test_each_multiple_version_spelling_is_caught_on_its_own(spelling, caplog) -> None:
+    """Each fragment, alone on a line, against a merge that said nothing else.
+
+    What has to be caught is the condition and not a wording: osmium-tool names
+    the symptom and the remedy in the warning it writes when a merge of
+    non-history files meets two versions of one object, and a release that
+    rephrases one of them is unlikely to drop both. Nothing in this environment
+    has run osmium, so the table errs wide on purpose - and a table that errs
+    wide is only worth having if every entry in it works on its own.
+    """
+    line = MULTIPLE_VERSION_LINES[spelling]
+    assert [m for m in source.MULTIPLE_VERSION_MARKERS if m in line.lower()] == [spelling], (
+        "each line carries one spelling and no other, or a dropped marker would "
+        "be answered for by a fragment of the same line"
+    )
+
+    with caplog.at_level(logging.INFO, logger="pipeline.source"):
+        source.log_command_output("osmium merge", CommandOutput("", line))
+
+    warnings = [r for r in caplog.records if r.levelno >= logging.WARNING]
+    assert len(warnings) == 1, (
+        f"{spelling!r} alone on a line is the merge saying the files are not one "
+        f"snapshot: {[r.getMessage() for r in caplog.records]}"
+    )
+    assert line in warnings[0].getMessage(), "and the line osmium wrote is quoted"
+
+
+def test_a_blank_line_of_output_is_not_a_record(caplog) -> None:
+    """These streams end on blank lines routinely - a progress bar's last
+    newline, a redirect that flushed - and a rebuild's log is read by a person.
+    One empty INFO record per trailing newline, under a step name, is noise in
+    the place the merge's one real warning has to be found."""
+    with caplog.at_level(logging.INFO, logger="pipeline.source"):
+        source.log_command_output("osmium merge", CommandOutput("", "\n   \n[======] 100%\n\n"))
+
+    assert [r.getMessage() for r in caplog.records] == ["osmium merge: [======] 100%"]
+
+
 def test_a_commands_ordinary_output_is_logged_under_the_step_it_came_from(tmp_path, caplog) -> None:
     """The rest of it, at INFO: osmium's progress and summary, and whatever curl
     says under `-sS` (which is nothing unless something went wrong).

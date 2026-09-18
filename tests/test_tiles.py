@@ -542,3 +542,24 @@ def test_the_tail_of_a_run_quotes_the_end_of_both_streams_and_says_which() -> No
     assert "the last 3 lines of stderr" in tail and "the last 3 lines of stdout" in tail
     assert tail.index("stderr") < tail.index("stdout"), "the diagnosing stream first"
     assert "(nothing)" in tail, "an empty stream is said rather than left blank"
+
+
+def test_blank_lines_do_not_spend_the_tails_budget() -> None:
+    """The budget is for what a command said, and a blank line says nothing.
+
+    Commands end on blank lines routinely - a progress bar's final newline, a
+    shell's own trailing output, a redirect that flushed - and there are only
+    ever a handful of lines to spend. Counted, four trailing newlines are
+    enough to push the sentence that says why a six-hour tile build stopped out
+    of the exception, the log record and the job row, and what the reader gets
+    instead is blank space under a heading promising three lines.
+    """
+    output = tiles.CommandOutput(
+        stdout="",
+        stderr="opening the extract\nreading the transform\nthe reason it stopped\n\n\n\n",
+    )
+
+    tail = output.tail(3)
+
+    assert "the reason it stopped" in tail, "the diagnosis is not spent on the trailing newlines"
+    assert "opening the extract" in tail, "and the budget still reaches back three real lines"

@@ -306,7 +306,14 @@ def restore_links(tiles_dir: Path, variant: Variant, state: TileLinks) -> None:
 
 
 def promote(tiles_dir: Path, variant: Variant, build_id: str) -> str | None:
-    """Make a dated build the served one. Returns the build it replaced."""
+    """Make a dated build the served one. Returns the build it replaced.
+
+    `previous` is written before `current`, so that a crash between the two
+    leaves the build that is still being served also named as the rollback
+    target - a duplicate, which a rollback survives. The other order would
+    leave the new build served with `previous` still naming the build before
+    the one it replaced, which is a rollback target one build too old.
+    """
     variant_dir = Path(tiles_dir) / variant.value
     target = variant_dir / build_id
     if not (target / "tiles.tar").is_file():
