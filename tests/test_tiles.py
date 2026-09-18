@@ -563,3 +563,146 @@ def test_blank_lines_do_not_spend_the_tails_budget() -> None:
 
     assert "the reason it stopped" in tail, "the diagnosis is not spent on the trailing newlines"
     assert "opening the extract" in tail, "and the budget still reaches back three real lines"
+
+
+# --- Which edge answers the sentinel read ----------------------------------------
+
+SENTINEL_WAY = 4242
+SENTINEL_EDGE = ((-77.0247, 38.9455), (-77.0247, 38.9468))
+
+
+def trace_returning(edges, stdout=None):
+    """A `valhalla_service` one-shot read that answers with these edges."""
+
+    def run(command):
+        body = stdout if stdout is not None else json.dumps({"edges": list(edges)})
+        return tiles.CommandOutput(
+            body,
+            "2026/09/17 [INFO] Tile extract successfully loaded with tile count: 12\n",
+        )
+
+    return run
+
+
+def test_only_the_sentinel_ways_edges_answer_the_cycle_lane_read(tmp_path) -> None:
+    """`edge.way_id` was asked for and then thrown away.
+
+    A map-snapped trace along a two-point shape returns every edge it matched,
+    so a neighbouring way's own OSM-tagged separated lane - a real facility this
+    project derived nothing for - answered for the sentinel, and the check that
+    exists to prove the transform ran passed over a build where it had not.
+    """
+    run = trace_returning(
+        [
+            {"way_id": 999, "cycle_lane": "separated"},
+            {"way_id": SENTINEL_WAY, "cycle_lane": "shared"},
+        ]
+    )
+    assert (
+        tiles.sample_cycle_lane(run, tmp_path / "c.json", SENTINEL_EDGE, SENTINEL_WAY) == "shared"
+    ), "the neighbour's lane answered for the sentinel"
+
+
+def test_a_cycle_lane_read_that_cannot_be_attributed_to_one_way_answers_nothing(tmp_path) -> None:
+    """Three ways of not knowing, all of which used to produce a value.
+
+    Without the way id the trace has to lie along one way for the answer to
+    belong to the sentinel at all; an edge with no way id means the attribute
+    was not asked for or the build does not carry it, and every edge then looks
+    alike; and edges of one way that disagree mean the transform reached part of
+    the block, which is exactly the failure this read exists to catch and not a
+    tie to be broken by taking the first or the last.
+    """
+    config = tmp_path / "c.json"
+    spanning = trace_returning(
+        [{"way_id": 1, "cycle_lane": "separated"}, {"way_id": 2, "cycle_lane": "shared"}]
+    )
+    assert tiles.sample_cycle_lane(spanning, config, SENTINEL_EDGE) is None
+
+    # What dropping "edge.way_id" from the request produces: Valhalla answers
+    # with the attributes it was asked for and no others.
+    unidentified = trace_returning([{"cycle_lane": "separated"}, {"cycle_lane": "separated"}])
+    assert tiles.sample_cycle_lane(unidentified, config, SENTINEL_EDGE) is None
+    assert tiles.sample_cycle_lane(unidentified, config, SENTINEL_EDGE, SENTINEL_WAY) is None
+
+    disagreeing = trace_returning(
+        [
+            {"way_id": SENTINEL_WAY, "cycle_lane": "separated"},
+            {"way_id": SENTINEL_WAY, "cycle_lane": "shared"},
+        ]
+    )
+    assert tiles.sample_cycle_lane(disagreeing, config, SENTINEL_EDGE, SENTINEL_WAY) is None
+    # And the same way, read twice, agreeing, is one answer rather than none.
+    agreeing = trace_returning(
+        [
+            {"way_id": SENTINEL_WAY, "cycle_lane": "separated"},
+            {"way_id": SENTINEL_WAY, "cycle_lane": "separated"},
+        ]
+    )
+    assert tiles.sample_cycle_lane(agreeing, config, SENTINEL_EDGE, SENTINEL_WAY) == "separated"
+
+
+def test_no_cycle_lane_reads_as_no_lane_rather_than_as_a_value(tmp_path) -> None:
+    """Valhalla reports `none` for an edge with no cycle lane
+    (baldr::CycleLane::kNone), and a non-empty string is truthy: a graph built
+    with the transform's derived tags missing answered the sentinel read with
+    "none", which is a value, and only the comparison against "separated" stood
+    between that and a promoted graph."""
+    run = trace_returning([{"way_id": SENTINEL_WAY, "cycle_lane": tiles.NO_CYCLE_LANE}])
+    assert tiles.sample_cycle_lane(run, tmp_path / "c.json", SENTINEL_EDGE, SENTINEL_WAY) is None
+
+
+def test_the_request_asks_for_the_way_id_the_filter_needs(tmp_path) -> None:
+    """The filter is only as good as the attribute list: an answer with no way
+    ids in it cannot be narrowed to anything."""
+    seen: list[list[str]] = []
+
+    def run(command):
+        seen.append(list(command))
+        return tiles.CommandOutput(
+            json.dumps({"edges": [{"way_id": SENTINEL_WAY, "cycle_lane": "separated"}]}), ""
+        )
+
+    tiles.sample_cycle_lane(run, tmp_path / "c.json", SENTINEL_EDGE, SENTINEL_WAY)
+    attributes = json.loads(seen[0][3])["filters"]["attributes"]
+    assert "edge.way_id" in attributes and "edge.cycle_lane" in attributes
+
+
+def test_a_refusal_by_the_service_is_told_from_a_failure_of_the_command() -> None:
+    """One-shot mode serialises the exception a request raised to stdout and
+    exits 1, so "no edge near this location" reaches the runner as the same
+    non-zero status a dropped download does. The body is what tells them
+    apart; `run.py` is what turns the one into a terminal failure."""
+    refusal = json.dumps(
+        {
+            "error_code": 171,
+            "error": "No suitable edges near location",
+            "status_code": 400,
+            "status": "Bad Request",
+        }
+    )
+    assert tiles.valhalla_exception(refusal)["error_code"] == 171
+    assert tiles.valhalla_exception("2026/09/17 [ERROR] could not load config\n") is None
+    assert tiles.valhalla_exception("") is None
+    # A JSON body that is not an exception - a truncated response, an answer
+    # from a build that failed for another reason - is not a refusal either.
+    assert tiles.valhalla_exception(json.dumps({"edges": []})) is None
+    assert tiles.valhalla_exception('{"error_code": 17') is None
+
+
+def test_the_tile_extract_is_packed_verbosely(tmp_path) -> None:
+    """`-v` is a log level and nothing else (valhalla_build_extract's own
+    argument parsing), and it is the only record of which tiles went into the
+    tar: the packer writes one file and says nothing about what it contains
+    unless asked. A rebuild that has to be diagnosed after the fact has the
+    build log and nothing else."""
+    path, config = write_config(tmp_path)
+    commands = tiles.tile_build_commands(
+        path,
+        tmp_path / "standard.osm.pbf",
+        admin_pbf=tmp_path / "merged.osm.pbf",
+        admin_db=Path(config["mjolnir"]["admin"]),
+        timezone_db=Path(config["mjolnir"]["timezone"]),
+    )
+    packer = [c for c in commands if Path(c[0]).name == "valhalla_build_extract"]
+    assert packer == [["valhalla_build_extract", "-c", str(path), "-v"]]

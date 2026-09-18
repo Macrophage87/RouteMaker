@@ -427,6 +427,33 @@ def _last_lines(stream: str, lines: int) -> str:
     return "\n".join(kept) if kept else "(nothing)"
 
 
+def valhalla_exception(stdout: str) -> dict | None:
+    """The `valhalla_exception_t` body a failed one-shot read writes, if that is
+    what this stdout is.
+
+    `valhalla_service` in one-shot mode catches the exception a request raises,
+    serialises it to stdout as `{"error_code": ..., "error": ..., ...}` and
+    exits 1 (src/valhalla_service.cc). The exit status is all the command runner
+    sees, so "map matching found no edge near the sentinel" arrived as the same
+    `CommandFailed` a mirror timing out does - retryable, and the weekly rebuild
+    spent five full attempts on a sentinel that had moved, each one rebuilding
+    every tile first. The body is what tells the two apart, and it is on stdout
+    for the same reason the response is: one-shot mode forces logging to stderr.
+
+    None when the stream carries no such body, which is the ordinary failure -
+    a binary that is not installed, a config it cannot read, a kill - and must
+    stay retryable.
+    """
+    start = stdout.find("{")
+    if start < 0:
+        return None
+    try:
+        body, _end = json.JSONDecoder().raw_decode(stdout[start:])
+    except json.JSONDecodeError:
+        return None
+    return body if isinstance(body, dict) and "error_code" in body else None
+
+
 def trace_attributes(
     run: Callable[[Sequence[str]], CommandOutput], config_path: Path, request: dict
 ) -> list[dict]:
@@ -476,10 +503,19 @@ def sample_grade(
     return max(grades, default=0.0)
 
 
+# What Valhalla reports for an edge with no cycle lane at all
+# (baldr::CycleLane::kNone). A string, and therefore truthy, which is the whole
+# reason it is named here: `if e.get("cycle_lane")` counts it as a lane, so a
+# graph built with no derived tags on it answers the sentinel read with a value
+# rather than with nothing.
+NO_CYCLE_LANE = "none"
+
+
 def sample_cycle_lane(
     run: Callable[[Sequence[str]], CommandOutput],
     config_path: Path,
     edge: Sequence[Sequence[float]],
+    way_id: int | None = None,
 ) -> str | None:
     """What the tiles say about the cycle lane on a known tier-1 street.
 
@@ -487,12 +523,40 @@ def sample_cycle_lane(
     of its own, and Valhalla stores that as a separated cycle lane. A residential
     street with no facility in OSM therefore reads back "separated" only if this
     project's transform ran and its derived tags survived into the graph.
+
+    Which edge answers is the whole of the check's worth, and until this it was
+    whichever one the trace happened to return first. `edge.way_id` was
+    requested and then ignored: a map-snapped trace along a two-point shape
+    returns every edge it matched, so a neighbouring way's own `cycleway=track`
+    - a real separated lane, tagged in OSM, that this project derived nothing
+    for - answered for the sentinel and the transform could have produced
+    nothing at all.
+
+    So the edges are narrowed to the sentinel's way and the answer has to be
+    unambiguous. `way_id` names that way when the deployment knows it; with no
+    id the fallback is that every edge in the trace must belong to one and the
+    same way, which is what a shape lying along a single block should match. A
+    trace spanning several ways, an edge with no way id (the attribute was not
+    asked for, or the build does not carry it) and a set of edges that disagree
+    about the lane all read as "nothing to attribute to the sentinel" and come
+    back as None, which VALIDATE turns into a refusal. Disagreement is not a
+    tie to be broken by position: the sentinel is one block, and a transform
+    that reached half of it is the failure this read exists to catch.
     """
     edges = trace_attributes(
         run, config_path, trace_attributes_request(edge, ["edge.cycle_lane", "edge.way_id"])
     )
-    lanes = [e.get("cycle_lane") for e in edges if e.get("cycle_lane")]
-    return lanes[0] if lanes else None
+    if way_id is not None:
+        edges = [e for e in edges if e.get("way_id") == way_id]
+    way_ids = {e.get("way_id") for e in edges}
+    if len(way_ids) != 1 or None in way_ids:
+        return None
+    lanes = {
+        e.get("cycle_lane")
+        for e in edges
+        if e.get("cycle_lane") and e.get("cycle_lane") != NO_CYCLE_LANE
+    }
+    return lanes.pop() if len(lanes) == 1 else None
 
 
 # --- The disk gate ---------------------------------------------------------------

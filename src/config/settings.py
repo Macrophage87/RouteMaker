@@ -132,6 +132,11 @@ BACKUP_DIR = DATA_ROOT / "backups"
 TILES_DIR = DATA_ROOT / "tiles"
 ELEVATION_DIR = DATA_ROOT / "elevation"
 # The checked-in serving configs the rebuild derives its build configs from.
+# Read from inside the image (BASE_DIR), while the transform those configs name
+# is the working tree's, bind-mounted at /conf/lua, so a `TAG` rollback moves
+# one and not the other; `tests/test_valhalla_config.py` regenerates these files
+# from scripts/build_valhalla_configs.py and compares, which keeps the checked-in
+# copies honest but says nothing about the pair staying together on a box.
 VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 
 # The coverage polygon's bounding box, west, south, east, north: roughly

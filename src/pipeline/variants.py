@@ -339,6 +339,27 @@ def unverified_crossing_names(rows: Iterable[dict]) -> list[str]:
     )
 
 
+def bars_electric_bicycle(tags: dict[str, str]) -> bool:
+    """Whether this way bars electric bicycles, by the rule the e-bike bar uses.
+
+    A function rather than a comparison written twice, because two places have
+    to agree about it exactly: `inject` writes `bicycle=no` on these ways for
+    the e-bike variant, and `run.inject_tags` withholds the crossings fixture's
+    roadway legality from that same variant on them, so that the transform does
+    not grant back the access this bar has just taken away. A second spelling of
+    the rule in the second place - `!= "yes"`, or any of `private`, `destination`
+    and `customers` folded in - would suppress the fixture's row on ways the bar
+    never touched.
+
+    `== "no"` and nothing wider, deliberately. `electric_bicycle=private` or
+    `=destination` restricts who may ride, not whether an e-bike is a vehicle
+    the way admits, and `inject` does not bar those ways; what this function
+    answers is "did the e-bike variant bar this way", which is one question with
+    one answer.
+    """
+    return tags.get("electric_bicycle") == "no"
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],
@@ -369,7 +390,7 @@ def inject(
         # An e-bike is barred where electric bicycles are barred, which is not
         # the same set of ways as where bicycles are barred. Expressed through
         # the bicycle tag because Valhalla's bicycle costing is what reads it.
-        if out.get("electric_bicycle") == "no":
+        if bars_electric_bicycle(out):
             out["bicycle"] = "no"
         return out
 

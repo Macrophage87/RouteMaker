@@ -30,6 +30,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypeVar
 
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
@@ -52,6 +53,9 @@ from . import (
 from .rebuild import RebuildTimedOut, Stage
 
 logger = logging.getLogger(__name__)
+
+# What one of the two validation reads answers with; see `_read_back`.
+_Read = TypeVar("_Read")
 
 LUA_LOADED_PATTERN = re.compile(r"Using LUA script:\s*(\S+)")
 
@@ -116,6 +120,19 @@ LIT_BY_OSM_VALUE = {
 # separated cycle lane; nothing but this project's transform produces that on a
 # plain residential street.
 DERIVED_SENTINEL_EXPECTED = "separated"
+
+# The way id the tier-1 sentinel edge lies on, when a deployment knows it. The
+# read is narrowed to that way, so that a neighbouring way's own OSM-tagged
+# separated lane cannot answer for a transform that derived nothing.
+#
+# None here, and that is not a placeholder for a value this repository could
+# supply: `REBUILD_SENTINEL_TIER1_EDGE` is a pair of coordinates picked off a
+# map and never confirmed against a real extract, so no id can honestly be
+# written down beside it until a rebuild has run and named the way it matched.
+# With none, `tiles.sample_cycle_lane` still refuses a trace that spans more
+# than one way, which is the part of the defect that does not need the id.
+# Recorded in section 7 as the narrower check a first real rebuild unlocks.
+DERIVED_SENTINEL_WAY_ID: int | None = None
 
 # A way is tagged with an authority only if at least this share of its length
 # lies inside it; the dominant authority on each layer is always kept. Below a
@@ -335,6 +352,12 @@ class RebuildContext:
     stress_by_way: dict[int, object] = field(default_factory=dict)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
+    # Ways an approved access override wrote a `bicycle`, `bicycle:forward` or
+    # `bicycle:backward` key onto, which `inject_tags` reads: the crossings
+    # fixture's legality column is withheld on them, so the audited table
+    # outranks the checked-in file rather than the other way round. Set by the
+    # override stage and empty until it runs.
+    bicycle_override_way_ids: frozenset[int] = frozenset()
     rows: list[dict] = field(default_factory=list)
     # Per variant, not one concatenation of the three. A single `.search` over
     # the three logs joined together is satisfied by whichever variant logged
@@ -740,9 +763,37 @@ def build_handlers(
         and the graph was built exactly as if it were not there.
         """
         rows = load_overrides()
-        access, access_missing = overrides.apply_access(context.ways, rows)
-        stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
-        jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+        unhandled = sorted({row.kind for row in rows} - overrides.HANDLED_KINDS)
+        if unhandled:
+            # Refused rather than ignored, and terminal rather than retried: a
+            # kind no applier handles is a row that was written, reviewed and
+            # approved and then did nothing at all, which is the failure this
+            # whole stage exists to end, and a fifth attempt applies it no more
+            # than the first. The offending rows are named because the fix is to
+            # the row or to the appliers, and neither is findable from the kind
+            # alone.
+            rows_named = ", ".join(
+                f"{row.kind} on way {row.osm_way_id}"
+                for row in rows
+                if row.kind not in overrides.HANDLED_KINDS
+            )
+            raise ValidationFailed(
+                f"approved override rows carry kinds no applier handles: {unhandled}; "
+                f"the handled kinds are {sorted(overrides.HANDLED_KINDS)} ({rows_named})"
+            )
+        try:
+            access, access_missing, superseding = overrides.apply_access(context.ways, rows)
+            stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
+            jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+        except overrides.OverrideRefused as refused:
+            # The same door as the unhandled kind above and it has to close the
+            # same way: an approved row asking for something an override may not
+            # do - a write outside the access keys, an authority list with
+            # nothing in it - is answered by editing the row, never by running
+            # the rebuild again. `OverrideRefused` is a ValueError and nothing
+            # made it terminal, so each one cost five full rebuilds before the
+            # alert said anything an operator could act on.
+            raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
         missing = tuple(sorted({*access_missing, *stress_missing, *jurisdiction_missing}))
         if missing:
@@ -750,11 +801,32 @@ def build_handlers(
             # not in force, which is worth an operator's attention rather than a
             # silent no-op.
             logger.warning("approved overrides matched no way in the extract: %s", missing)
+        reference = context.reference
+        # Only the ways the fixture actually has an opinion about: a bicycle key
+        # written on any other way supersedes nothing, and counting it would
+        # turn an ordinary access correction into a report that a checked-in row
+        # had been overruled.
+        superseded = frozenset(
+            way_id
+            for way_id in superseding
+            if reference is not None and way_id in reference.bridge_bicycle_legal
+        )
+        context.bicycle_override_way_ids = superseded
+        for way_id in sorted(superseded):
+            way = context.ways_by_id.get(way_id)
+            logger.info(
+                "way %s (%s) carries an approved bicycle access override, so the crossings "
+                "fixture's roadway legality is withheld on it and the reviewed value is what "
+                "the graph carries",
+                way_id,
+                getattr(way, "name", None) or "unnamed",
+            )
         context.override_report = overrides.OverrideReport(
             access=access,
             stress=stress,
             jurisdiction=jurisdiction,
             unmatched_way_ids=missing,
+            fixture_rows_superseded=len(superseded),
         )
 
     def insert_border_nodes() -> None:
@@ -831,7 +903,39 @@ def build_handlers(
                 # (`derived.bridge_bicycle_legal`); this is the emitter it
                 # never had. Ways the fixture has no opinion about are left
                 # out, so OSM's own tagging stands.
+                #
+                # Withheld in two cases, because this tag is not just another
+                # derived value: the transform writes the `bicycle` key from
+                # it, so wherever it is emitted it is the last word on that
+                # key, and something else has already had the first.
                 legal = reference.bridge_bicycle_legal.get(way.osm_id)
+                if way.osm_id in context.bicycle_override_way_ids:
+                    # An approved access override wrote a bicycle key onto this
+                    # way. `bridge_may_be_granted` reads `access` and `vehicle`
+                    # and never the bicycle keys - correctly, since a legality
+                    # row is itself a correction to OSM's `bicycle` tagging -
+                    # so with the tag emitted the checked-in fixture overwrote
+                    # the reviewed row in whichever direction it ran:
+                    # `bicycle=no` over a legality of true came back as
+                    # `bicycle=yes`, and `bicycle=yes` over a legality of false
+                    # was flattened to `no`. The override table is the plan's
+                    # sole audited path for an access correction (PLAN:18, :28)
+                    # and the fixture is a checked-in file, so the fixture is
+                    # what gives way - on every variant, since the row is a
+                    # legal fact and not a variant's opinion.
+                    legal = None
+                elif variant is variants.Variant.EBIKE and variants.bars_electric_bicycle(way.tags):
+                    # The e-bike variant bars this way by writing `bicycle=no`
+                    # (`variants.inject`), and a legality of true would be
+                    # granted straight back over it by the transform. Declined
+                    # here rather than in the Lua because this loop knows which
+                    # variant it is building and the transform does not: one
+                    # script serves all three extracts, so the guard it can
+                    # write reads the `electric_bicycle` tag and therefore
+                    # declines the grant on the standard and no-trail variants
+                    # too, where no e-bike rule applies and the fixture's row
+                    # should stand.
+                    legal = None
                 if legal is not None:
                     derived["bridge_bicycle"] = legal
                 if stress is not None:
@@ -1006,12 +1110,45 @@ def authorities_for(assignments, minimum_fraction: float) -> set[str]:
     return chosen
 
 
+def _read_back(sample: Callable[[], _Read]) -> _Read:
+    """Run one of the validation reads, with a refusal by the service told from
+    a failure of the command.
+
+    `valhalla_service` in one-shot mode answers a request it cannot satisfy by
+    writing a `valhalla_exception_t` body to stdout and exiting 1 - "No suitable
+    edges near location" is the one this pipeline will meet, because both
+    sentinels are coordinates nobody has confirmed against a real extract. The
+    exit status is all `_run_command` sees, so that arrived as `CommandFailed`,
+    which is deliberately retryable, and the weekly job answered a sentinel that
+    had moved by rebuilding every tile five times over.
+
+    A refusal carrying an error code is terminal: the next attempt sends the
+    same shape to the same graph. Everything else keeps the class it had - a
+    mirror that dropped, a binary killed - because that is the failure a retry
+    does fix.
+    """
+    try:
+        return sample()
+    except CommandFailed as failure:
+        refusal = tiles.valhalla_exception(failure.output.stdout)
+        if refusal is None:
+            raise
+        raise ValidationFailed(
+            "valhalla_service refused a validation read of the built tiles: "
+            f"error_code {refusal['error_code']}: {refusal.get('error', '(no message)')}. "
+            "A refused request is answered no differently by a rebuilt graph, so this "
+            "is not retried; the sentinel edges in settings are what to check first."
+        ) from failure
+
+
 def _least_grade_across_variants(context: RebuildContext, run) -> float:
     """Every variant's build must have baked elevation, so the check is the
     smallest grade any of them reports on the known steep edge."""
     steep = _setting("REBUILD_SENTINEL_STEEP_EDGE")
     grades = [
-        tiles.sample_grade(run, context.build_configs[variant], steep)
+        _read_back(
+            functools.partial(tiles.sample_grade, run, context.build_configs[variant], steep)
+        )
         for variant in variants.Variant
         if variant in context.build_configs
     ]
@@ -1024,7 +1161,15 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
     config_path = context.build_configs.get(variants.Variant.STANDARD)
     if config_path is None:
         raise ValidationFailed("the standard variant has no build config to read back")
-    return tiles.sample_cycle_lane(run, config_path, _setting("REBUILD_SENTINEL_TIER1_EDGE"))
+    return _read_back(
+        functools.partial(
+            tiles.sample_cycle_lane,
+            run,
+            config_path,
+            _setting("REBUILD_SENTINEL_TIER1_EDGE"),
+            DERIVED_SENTINEL_WAY_ID,
+        )
+    )
 
 
 def _run_command(
