@@ -8,12 +8,19 @@ grade column was replaced rather than matched.
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import pytest
 
+from routemaker.geo import Point, cumulative_distances, haversine
 from routemaker.gpx import read_track_points
-from routemaker.measure import RouteStats
+from routemaker.measure import (
+    REVISIT_ALONG_ROUTE_M,
+    REVISIT_PROXIMITY_M,
+    RouteStats,
+    revisits,
+)
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures" / "reference-routes"
 
@@ -84,3 +91,97 @@ def test_mass_rides_never_revisit_their_own_line() -> None:
     reject real routes."""
     for name in ("2025-05-dcbp-btr", "2025-12-dcbp", "2026-04-dcbp", "2026-07-dcbp"):
         assert stats_for(name).revisits == 0
+
+
+# --- The revisit index ------------------------------------------------------
+#
+# `revisits` buckets points into a lat/lon grid and compares only the nine
+# neighbouring cells, which is only a correct shortcut while a cell is at least
+# `proximity_m` across on *both* axes. It was not: both axes were divided by
+# 111,320 m, the length of a degree of latitude, so every cell was
+# cos(38.9 deg) = 0.78 of `proximity_m` wide in ground distance and a pair on an
+# east-west offset could sit two cells apart in x and never be compared. A
+# parallel street a block over is what a revisit on a city grid looks like.
+
+REVISIT_OFFSET_M = 22.5  # inside the 25 m proximity radius, outside a 0.78 cell
+REVISIT_LEG_M = 500.0
+REVISIT_SPACING_M = 25.0
+DC_LAT = 38.9
+
+
+def parallel_offset_route(base_lon: float) -> list[Point]:
+    """An out-and-back whose return leg is `REVISIT_OFFSET_M` east of its outbound.
+
+    One revisit by the definition: the two legs run 22.5 m apart, which is inside
+    the 25 m proximity radius, and the ends of the route are 1000 m apart along
+    it, which is outside the 400 m along-route minimum.
+    """
+    degrees_per_m_lat = 1.0 / 111_320.0
+    degrees_per_m_lon = degrees_per_m_lat / math.cos(math.radians(DC_LAT))
+    offset = REVISIT_OFFSET_M * degrees_per_m_lon
+    step = REVISIT_SPACING_M * degrees_per_m_lat
+    count = int(REVISIT_LEG_M / REVISIT_SPACING_M) + 1
+
+    north = [Point(base_lon, DC_LAT + i * step) for i in range(count)]
+    south = [Point(base_lon + offset, DC_LAT + i * step) for i in reversed(range(count))]
+    return north + south
+
+
+@pytest.mark.parametrize("sample", range(20))
+def test_a_parallel_return_leg_inside_the_radius_is_a_revisit(sample: int) -> None:
+    """The case the square cell lost, swept across one cell width of alignment.
+
+    Whether the square-cell index found this pair at all depended on where the
+    route happened to fall against the grid's origin: a 22.5 m east-west offset
+    is 1.16 old cells, so for roughly a sixth of base longitudes the two legs
+    landed two cells apart in x and the nine-cell scan never compared them. The
+    sweep is what makes that a test rather than a coin flip - the measurement
+    may not depend on where in the world the route is.
+    """
+    cell = REVISIT_PROXIMITY_M / 111_320.0
+    base_lon = -77.0 + sample * cell / 20.0
+    assert revisits(parallel_offset_route(base_lon)) == 1
+
+
+def brute_force_revisits(
+    points: list[Point],
+    proximity_m: float = REVISIT_PROXIMITY_M,
+    along_route_m: float = REVISIT_ALONG_ROUTE_M,
+) -> int:
+    """The definition, written out pairwise, with no index in it at all.
+
+    This is what the grid is an optimisation of, so it is the only thing that
+    can say whether the optimisation is one.
+    """
+    cum = cumulative_distances(points)
+    flagged = [False] * len(points)
+    for i, p in enumerate(points):
+        for j in range(i + 1, len(points)):
+            if cum[j] - cum[i] <= along_route_m:
+                continue
+            if haversine(p, points[j]) < proximity_m:
+                flagged[i] = flagged[j] = True
+    occurrences, previous = 0, False
+    for now in flagged:
+        if now and not previous:
+            occurrences += 1
+        previous = now
+    return occurrences // 2
+
+
+# `rural-group-loco-30` is excluded by its point count, not by its answer: at
+# 7,538 points the pairwise form is 28 million haversines and runs for half a
+# minute, which is not a price this suite pays on every run. The other fourteen
+# cover 127 to 2,240 points and every revisit count the set contains.
+BRUTE_FORCE_ROUTES = sorted(name for name in RECORDED if name != "rural-group-loco-30")
+
+
+@pytest.mark.parametrize("name", BRUTE_FORCE_ROUTES)
+def test_the_grid_index_agrees_with_the_pairwise_definition(name: str) -> None:
+    """Every reference route, indexed and unindexed, on the real geometry.
+
+    The synthetic case above pins the one failure a reviewer measured; this pins
+    that the index has no others on any route this project has. A cell size that
+    is wrong on either axis shows up here as a route whose count drops."""
+    points = read_track_points(FIXTURES / f"{name}.gpx")
+    assert revisits(points) == brute_force_revisits(points)

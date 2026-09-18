@@ -484,3 +484,68 @@ class TestUnverifiedCrossingNames:
             {"name": "Unverified Bridge", "osm_names_verified": False},
         ]
         assert unverified_crossing_names(rows) == ["Unverified Bridge"]
+
+
+def test_a_footway_carrying_a_bridges_name_is_not_what_the_sidepath_rule_matches() -> None:
+    """SF-1: the sidepath rule matches the roadway, never the sidepath.
+
+    A shared-use path on a bridge is its own `highway=footway` or
+    `highway=cycleway` way, tagged `bridge=yes` and named after the structure -
+    the Key Bridge sidewalk is two such ways, one per side. Without the
+    trail-class guard those two satisfied the name match, so "Key Bridge" came
+    off the `unmatched` list and nothing warned, while the Key Bridge *roadway*
+    - the way this rule exists to keep a field of hundreds off - stayed in the
+    no-trail graph. The guard is the one `resolve_bridge_bicycle_legality` has
+    had for the same reason on the same OSM shape.
+    """
+    # Named with the OSM spelling the row's `osm_names` claims, which is what
+    # the resolver matches on - the row's own label is the file's, not OSM's.
+    roadway = FakeWay(
+        3001, {"highway": "secondary", "bridge": "yes", "name": "Francis Scott Key Bridge"}
+    )
+    north_walk = FakeWay(
+        3002, {"highway": "footway", "bridge": "yes", "name": "Francis Scott Key Bridge"}
+    )
+    south_walk = FakeWay(
+        3003, {"highway": "footway", "bridge": "yes", "name": "Francis Scott Key Bridge"}
+    )
+
+    ids, unmatched = resolve_sidepath_bridge_ids(crossing_rows(), [north_walk, roadway, south_walk])
+
+    # The roadway is what matched, and it is what the no-trail variant drops.
+    assert 3001 in ids, "the Key Bridge roadway is not in the sidepath set"
+    assert inject(Variant.NO_TRAIL, roadway.tags, 3001, ids) is None
+    # The footways are not what matched. They are dropped from the no-trail
+    # variant anyway, by `is_trail_class`, which is a different rule.
+    assert 3002 not in ids and 3003 not in ids
+    # And nothing was silently satisfied: with only the footways present, the
+    # crossing is reported unmatched rather than resolving against them.
+    footways_only, unmatched_footways = resolve_sidepath_bridge_ids(
+        crossing_rows(), [north_walk, south_walk]
+    )
+    assert footways_only == frozenset()
+    assert "Key Bridge" in unmatched_footways
+    assert "Key Bridge" not in unmatched, "the roadway was present and should have matched"
+
+
+def test_a_street_named_after_a_bridge_is_not_a_bridge() -> None:
+    """F_VAR3: the bridge guard, stated on the streets that would resolve without it.
+
+    Key Bridge Road and Chain Bridge Road are ordinary Virginia roads that run
+    for miles, and the `name` tag on a way named after a crossing says nothing
+    about whether the way is the crossing. Restricting the match to
+    `bridge`-tagged ways is what keeps the approach from inheriting the
+    crossing's sidepath rule - and the approach is where a mass ride actually
+    rides, so treating it as sidepath-only would drop miles of legal roadway
+    from the no-trail graph.
+    """
+    approaches = [
+        FakeWay(4001, {"highway": "secondary", "name": "Francis Scott Key Bridge"}),
+        FakeWay(4002, {"highway": "secondary", "name": "Chain Bridge"}),
+        FakeWay(4003, {"highway": "secondary", "bridge": "no", "name": "Chain Bridge"}),
+    ]
+    ids, unmatched = resolve_sidepath_bridge_ids(crossing_rows(), approaches)
+    assert ids == frozenset()
+    assert {"Key Bridge", "Chain Bridge"} <= set(unmatched)
+    for way in approaches:
+        assert inject(Variant.NO_TRAIL, way.tags, way.osm_id, ids) is not None

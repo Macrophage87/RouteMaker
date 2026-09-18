@@ -849,20 +849,66 @@ class TestRoughIsNotComfortable:
         assert not is_rough({k: "grade1" if k == "tracktype" else "asphalt" for k in tags})
 
 
+FOOT = 0.3048
+
+# The width grammar, as one table, asserted here and in `tests/lua/test_remap.lua`
+# against the same cases. Two parsers read these same OSM tags off the same
+# extract - this one for `shoulder:*:width` and `cycleway:*:width`, the Lua one
+# for a bollard's `maxwidth` - and round 5 found them disagreeing on four of
+# these forms, in the dangerous direction both ways: `"8 feet"` was 8.0 metres
+# here, a twenty-six-foot shoulder that clears Furth's widest criterion on a tag
+# that says nothing of the kind, while `"2.4m"`, `"1,5"` and `5'6"` were
+# unreadable here and read correctly there.
+WIDTH_CASES: list[tuple[str, float]] = [
+    # Feet, in the four forms the OSM wiki carries.
+    ("3'", 3 * FOOT),
+    ("8'", 8 * FOOT),
+    ("3 ft", 3 * FOOT),
+    ("8ft", 8 * FOOT),
+    ("3feet", 3 * FOOT),
+    ("8 feet", 8 * FOOT),
+    # Feet and inches, the wiki's own imperial example.
+    ("5'6\"", 5 * FOOT + 6 * FOOT / 12),
+    ("5'6", 5 * FOOT + 6 * FOOT / 12),
+    # Metres, bare and with the unit, and with a comma decimal separator.
+    ("1.2", 1.2),
+    ("2.4", 2.4),
+    ("2 m", 2.0),
+    ("2.4 m", 2.4),
+    ("2.4m", 2.4),
+    ("1,2", 1.2),
+    ("1,5", 1.5),
+]
+
+# Everything else is unknown, never a guess: the module rule.
+WIDTH_UNREADABLE: list[str | None] = [None, "", "wide", "ft", "1,5,2", "~2", "8 metres", "-2"]
+
+
 class TestWidthParsing:
     """US widths are commonly tagged in feet, and the feet branch feeds the
     shoulder credit and the bike-lane door zone alike."""
 
-    @pytest.mark.parametrize(
-        ("value", "expected"),
-        [("8'", 2.4384), ("8ft", 2.4384), ("8 ft", 2.4384), ("2.4", 2.4), ("2.4 m", 2.4)],
-    )
+    @pytest.mark.parametrize(("value", "expected"), WIDTH_CASES)
     def test_units(self, value: str, expected: float) -> None:
         assert parse_width_m(value) == pytest.approx(expected, abs=0.001)
 
-    @pytest.mark.parametrize("value", [None, "", "wide", "ft"])
+    @pytest.mark.parametrize("value", WIDTH_UNREADABLE)
     def test_unreadable_is_unknown_rather_than_zero(self, value: str | None) -> None:
         assert parse_width_m(value) is None
+
+    def test_a_shoulder_in_feet_is_not_read_as_that_many_metres(self) -> None:
+        """What the disagreement cost, at the classifier rather than the parser.
+
+        `"8 feet"` read as 8.0 metres clears `FURTH_LANE_BESIDE_PARKING_M` twice
+        over, so a 30 mph road with an eight-foot shoulder beside a declared
+        parking lane came out a tier better than the same eight feet written
+        `8'`. The two spellings are the same shoulder.
+        """
+        road = {"highway": "secondary", "maxspeed": "30 mph", "parking:both": "parallel"}
+        spelled = classify({**road, "shoulder": "both", "shoulder:width": "8 feet"})
+        ticked = classify({**road, "shoulder": "both", "shoulder:width": "8'"})
+        assert spelled.tier is ticked.tier
+        assert spelled.tier is Stress.LTS3
 
 
 class TestThePinnedFurthWidths:
