@@ -97,6 +97,27 @@ function M.access_is_unrestricted(tags)
   return true
 end
 
+-- The four key forms a cycleway tag arrives in, and the same list Python's
+-- `tags.cycleway_values` reads. `cycleway` and `cycleway:both` speak for both
+-- sides of the road, `cycleway:left` and `cycleway:right` for one side each.
+M.CYCLEWAY_KEYS = { "cycleway", "cycleway:both", "cycleway:left", "cycleway:right" }
+
+--- Whether the way already says something about a cycleway on any side.
+--
+-- Presence, not value. A way tagged `cycleway:both=no` has been surveyed and
+-- found to have none, and a way tagged `cycleway:left=lane` has a painted lane
+-- on one side; writing `cycleway=track` over either is this file asserting a
+-- separated track the mapper did not tag, and on the second it also overwrites
+-- what they did tag. The guard read the bare `cycleway` key alone, so both of
+-- those passed straight through it - and a one-sided lane is how most of the
+-- District's network is written.
+function M.declares_cycleway(tags)
+  for _, key in ipairs(M.CYCLEWAY_KEYS) do
+    if tags[key] ~= nil then return true end
+  end
+  return false
+end
+
 -- The way-level access statement the crossings fixture may not talk over. It is
 -- `ACCESS_KEYS` minus the bicycle keys, and the difference between the two lists
 -- is the whole of the fixture's authority; see `M.bridge_may_be_granted`.
@@ -143,31 +164,28 @@ M.MOTOR_ONLY_HIGHWAY = { motorway = true, motorway_link = true }
 function M.bridge_may_be_granted(tags)
   if M.MOTOR_ONLY_HIGHWAY[tags.highway] then return false end
 
-  -- Nor over an `electric_bicycle` restriction, which is the one key here that
-  -- is not read for what it says about the roadway.
+  -- `electric_bicycle` is deliberately *not* read here, and this file used to
+  -- read it.
   --
   -- The e-bike variant is built by writing `bicycle=no` onto every way tagged
-  -- `electric_bicycle=no` (`variants.inject`), because Valhalla's bicycle
+  -- `electric_bicycle=no` (`variants.inject_tags`), because Valhalla's bicycle
   -- costing is what reads the bicycle tag and there is no e-bike access mask to
   -- write to. That change is made in the extract; this transform then runs over
   -- the extract, sees a bridge whose roadway the fixture calls legal and whose
   -- `bicycle=no` looks exactly like OSM's own tagging on a barred bridge, and
-  -- overrides it back to `yes`. The variant's whole decision is reverted on the
-  -- one class of way this file is allowed to widen.
+  -- would override it back to `yes`, reverting the variant's whole decision on
+  -- the one class of way this file is allowed to widen.
   --
-  -- Guarded on the tag rather than on the variant because one Lua script serves
-  -- all three extracts - `mjolnir.graph_lua_name` is a single path in every
-  -- build config - and nothing in the tag table says which extract is being
-  -- parsed. The cost of reading the tag instead is that a bridge tagged
-  -- `electric_bicycle=no` declines its legality row on the standard and
-  -- no-trail variants too, where the row would have applied. That is the
-  -- conservative direction: a bridge the fixture calls legal keeps whatever
-  -- OSM's own `bicycle` tagging says rather than gaining a grant, and the
-  -- combination is rare - `electric_bicycle` is tagged on a handful of ways in
-  -- this region and on no bridge roadway carrying a fixture row today.
-  local electric = tags.electric_bicycle
-  if electric ~= nil and not M.PERMISSIVE_ACCESS[electric] then return false end
-
+  -- The protection is real and it belongs in the injection, not here. One Lua
+  -- script serves all three extracts - `mjolnir.graph_lua_name` is a single
+  -- path in every build config - so a guard in this file cannot tell which
+  -- variant is being parsed and has to decline the legality row on the standard
+  -- and no-trail extracts too, where the row applies and nothing has written
+  -- `bicycle=no`. `inject_tags` knows the variant, so it suppresses the
+  -- bridge-legality tag on an `electric_bicycle=no` way for the EBIKE variant
+  -- alone and leaves the other two extracts carrying it. Declining the grant
+  -- here as well would take the row away from the two variants that are
+  -- entitled to it, so this function stays silent about the key.
   for _, key in ipairs(M.WAY_ACCESS_KEYS) do
     local value = tags[key]
     if value ~= nil and not M.PERMISSIVE_ACCESS[value] then
@@ -254,7 +272,7 @@ function M.remap_way(tags, derived)
   -- matters and removes a whole class of this failure rather than one instance.
   if
     derived.stress_tier == 1
-    and not tags.cycleway
+    and not M.declares_cycleway(tags)
     and not derived.is_trail_class
     and M.access_is_unrestricted(tags)
   then

@@ -228,28 +228,45 @@ check("trunk is not motor-only here - US-1 and New York Avenue are trunk and bik
   M.remap_way({ highway = "trunk", bridge = "yes" },
               { bridge_bicycle_legal = true }).bicycle == "yes")
 
--- The e-bike variant's own decision is not the fixture's to revert.
+-- `electric_bicycle` says nothing to this file, and the grant is not declined
+-- for it.
 --
--- That variant is built by writing `bicycle=no` onto every way tagged
--- `electric_bicycle=no`, in the extract, before this transform ever sees it. A
--- bridge whose roadway the fixture calls legal then arrives here carrying a
--- `bicycle=no` indistinguishable from OSM's own, and the grant put it back to
--- `yes` - undoing the variant on exactly the ways this file may widen. One Lua
--- script serves all three extracts, so the guard reads the tag the variant
--- keyed on rather than the variant; see `bridge_may_be_granted`.
-check("a way barred to e-bikes is never granted by a legality row",
+-- The protection it used to provide is real: the e-bike variant is built by
+-- writing `bicycle=no` onto every way tagged `electric_bicycle=no`, in the
+-- extract, before this transform ever sees it, so a bridge whose roadway the
+-- fixture calls legal arrives carrying a `bicycle=no` indistinguishable from
+-- OSM's own and the grant put it back to `yes` - undoing the variant on exactly
+-- the ways this file may widen.
+--
+-- It is in the wrong layer here and it was wider than the thing it protected.
+-- One Lua script serves all three extracts, so a guard in this file cannot tell
+-- which variant is being parsed: it declined the legality row on the standard
+-- and no-trail extracts too, where nothing had written `bicycle=no` and the row
+-- applies. And it declined on `private`, `destination` and `customers` as well,
+-- values no variant writes, so narrowing it to `== "no"` left both suites
+-- green. `variants.inject_tags` knows the variant and suppresses the
+-- bridge-legality tag on an `electric_bicycle=no` way for the EBIKE variant
+-- alone, which is where the protection lives now; these cases assert that this
+-- file no longer takes the row away from the two variants entitled to it.
+check("a way barred to e-bikes still takes its legality row here",
   M.remap_way({ highway = "secondary", bridge = "yes", bicycle = "no",
                 electric_bicycle = "no" },
-              { bridge_bicycle_legal = true }).bicycle == nil)
+              { bridge_bicycle_legal = true }).bicycle == "yes")
 check("and the barring half of the row still applies there",
   M.remap_way({ highway = "secondary", bridge = "yes", electric_bicycle = "no" },
               { bridge_bicycle_legal = false }).bicycle == "no")
-check("a permissive electric_bicycle value is no restriction",
-  M.remap_way({ highway = "secondary", bridge = "yes", bicycle = "no",
-                electric_bicycle = "designated" },
-              { bridge_bicycle_legal = true }).bicycle == "yes")
-check("and an untagged way is unaffected by the clause",
+check("the key is not read at all, whatever its value",
+  M.bridge_may_be_granted({ highway = "secondary", bridge = "yes",
+                            electric_bicycle = "no" })
+    and M.bridge_may_be_granted({ highway = "secondary", bridge = "yes",
+                                  electric_bicycle = "designated" }))
+check("and an untagged way is granted as before",
   M.bridge_may_be_granted({ highway = "secondary", bridge = "yes" }))
+-- The guards that remain are the way's own access statement and the motor-only
+-- class, and they are unmoved by the key going away.
+check("an access restriction still declines the grant even with e-bikes permitted",
+  not M.bridge_may_be_granted({ highway = "secondary", bridge = "yes",
+                                access = "no", electric_bicycle = "designated" }))
 
 -- ---------------------------------------------------------------------------
 -- The lit write, which is the derived value with no Lua-side test at all.
@@ -419,6 +436,40 @@ check("no tier at all writes nothing",
 check("and so does a permissively tagged one",
   M.remap_way({ highway = "track", access = "permissive" }, { stress_tier = 1 }).cycleway
     == "track")
+
+-- ---------------------------------------------------------------------------
+-- A way that already declares a cycleway on any side keeps what it was tagged.
+--
+-- The guard read the bare `cycleway` key alone, so the three side forms went
+-- straight through it: `cycleway:both=no` is a mapper who surveyed the street
+-- and found no facility, and the write asserted a separated track over that
+-- survey; `cycleway:left=lane` is a painted lane on one side, and the write
+-- replaced the mapper's own value with `track`, which is both an invention and
+-- a loss. A side key is not an exotic spelling - it is what a mapper writes the
+-- moment a street has a facility on one side only, which is most of the
+-- District's network.
+--
+-- The key list is the same one Python's `tags.cycleway_values` reads, and it is
+-- presence that blocks the write rather than value, exactly as the bare-key
+-- guard always worked: the question is whether anybody has already said
+-- something about a cycleway here, not what they said.
+for _, key in ipairs({ "cycleway", "cycleway:both", "cycleway:left", "cycleway:right" }) do
+  for _, value in ipairs({ "no", "lane", "track", "separate" }) do
+    local tags = { highway = "residential" }
+    tags[key] = value
+    check(key .. "=" .. value .. " blocks the write",
+      M.remap_way(tags, { stress_tier = 1 }).cycleway == nil, key .. "=" .. value)
+    check(key .. "=" .. value .. " is seen by declares_cycleway", M.declares_cycleway(tags))
+  end
+end
+check("the key list is exactly the four forms", #M.CYCLEWAY_KEYS == 4)
+-- And nothing wider: a width key is not a facility value and a sidewalk is not
+-- a cycleway, so neither may block a write the way deserves.
+check("a cycleway width alone does not block the write",
+  M.remap_way({ highway = "residential", ["cycleway:left:width"] = "2.0", sidewalk = "both" },
+              { stress_tier = 1 }).cycleway == "track")
+check("and declares_cycleway says so",
+  not M.declares_cycleway({ highway = "residential", ["cycleway:left:width"] = "2.0" }))
 
 -- ---------------------------------------------------------------------------
 -- The barrier conversion, and what it may and may not clear.

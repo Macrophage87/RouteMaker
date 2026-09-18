@@ -209,6 +209,55 @@ check("the bridge's own bicycle=no bars it without a fixture row",
   base_out.bike_forward == "false", base_out.bike_forward)
 
 -- ---------------------------------------------------------------------------
+-- `rm:lit` and `rm:reviewer_surface` reach the graph as the attributes they name.
+--
+-- `derived_from` is five one-line joins and three of them were pinned. The
+-- `rm:lit` line could be deleted outright, and its comparison inverted from
+-- `== "yes"` to `~= "yes"`, with both Lua suites and the whole Python suite
+-- green: the pipeline's side asserts that the tag is injected and
+-- test_remap.lua asserts what `remap_way` does with `derived.lit`, and nothing
+-- ran a way carrying the tag through the entry point. Under the inversion every
+-- lit street in the region arrives in the graph as unlit and every unlit one as
+-- lit, which is the input the night-ride preference reads.
+--
+-- Read at upstream's own output rather than at the remap's change set, for the
+-- same reason the bridge cases above are: upstream maps `lit` through a value
+-- table of its own (`yes`/`24/7`/`automatic`/... to "true"), so this is the
+-- whole join from the injected tag to the attribute costing sees.
+-- ---------------------------------------------------------------------------
+
+local _, lit_out = transform_way({ highway = "residential", ["rm:lit"] = "yes" })
+check("rm:lit=yes reaches the graph as lit", lit_out.lit == "true", lit_out.lit)
+local _, unlit_out = transform_way({ highway = "residential", ["rm:lit"] = "no" })
+check("rm:lit=no reaches the graph as unlit", unlit_out.lit == "false", unlit_out.lit)
+check("the derived tag itself never reaches the tile build", lit_out["rm:lit"] == nil)
+
+-- The third case is what tells a deleted join from an inverted one: a way the
+-- pipeline said nothing about keeps upstream's own reading of the OSM tag.
+local _, lit_silent = transform_way({ highway = "residential" })
+check("a way with no rm:lit carries no lit attribute", lit_silent.lit == nil,
+  tostring(lit_silent.lit))
+local _, osm_lit = transform_way({ highway = "residential", lit = "24/7" })
+check("and upstream's own reading of lit=24/7 is untouched", osm_lit.lit == "true", osm_lit.lit)
+-- And the derived value is the one that wins where both are present, which is
+-- the point of deriving it: `lit=disused` is a value upstream reads as unlit.
+local _, overridden = transform_way({ highway = "residential", lit = "disused", ["rm:lit"] = "yes" })
+check("the derived value overrides the way's own", overridden.lit == "true", overridden.lit)
+
+-- `rm:reviewer_surface` is the same shape of join and was equally unpinned: the
+-- value has to arrive in `derived` before `bounded_surface` can cap it, and a
+-- deleted line leaves every reviewer penalty inert with nothing failing.
+local _, penalised = transform_way({
+  highway = "residential", surface = "paved", ["rm:reviewer_surface"] = "gravel",
+})
+check("a reviewer surface penalty reaches the graph, capped",
+  penalised.surface == "compacted", penalised.surface)
+check("and the derived tag is stripped", penalised["rm:reviewer_surface"] == nil)
+local _, unpenalised = transform_way({ highway = "residential", surface = "paved" })
+check("a way with no penalty keeps its surveyed surface",
+  unpenalised.surface == "paved", unpenalised.surface)
+
+-- ---------------------------------------------------------------------------
 -- gate_cost applies only where tagged_access is 0.
 -- ---------------------------------------------------------------------------
 
