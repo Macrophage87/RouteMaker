@@ -301,10 +301,15 @@ def membership_sweep(timestamp: int) -> None:
         # people who may have asked to be forgotten), it is cheap, and a second
         # schedule would be a second thing to notice had stopped. Inside the
         # same deadline, so the budget covers the task rather than half of it.
-        # Due instance-admin removals ride here for the same reason: the delay
-        # PLAN.md:212 puts on removing a peer is only a delay if something
-        # applies it once it has elapsed, and this is the sweep that is already
-        # watched for having stopped.
+        # Due instance-admin removals ride here too, as a backstop rather than
+        # as the applier. The applier is the five-minute degraded sweep: at this
+        # task's `0 */6 * * *` the plan's one-hour delay was really one to seven
+        # hours, depending on where in the cycle the removal was requested. It is
+        # kept here as well because it is one indexed query on a table that is
+        # almost always empty, and because this is the sweep whose absence the
+        # operations alerts already notice - so if the five-minute task stops,
+        # removals are late rather than never. On a healthy deployment this
+        # reports zero, which is the honest number.
         purged, departed = sweep_memberships()
         return purged, departed, sweep_sessions(), apply_due_instance_admin_removals()
 
@@ -349,9 +354,29 @@ def degraded_guild_sweep(timestamp: int) -> None:
     Not retried. It is idempotent and runs every five minutes, so the next tick
     is the retry - and a retry schedule would hold the queueing lock through
     several ticks, which is the opposite of what a five-minute bound wants.
+
+    It also applies due instance-admin removals, and that half runs whatever the
+    gateway gate says.
+
+    PLAN.md:212 makes the removal of a peer take effect "after a delay,
+    configurable and defaulting to an hour". The only thing that applied one was
+    the membership sweep on `0 */6 * * *`, so an hour's delay was in fact between
+    one and seven hours depending on where in the six-hour cycle the removal was
+    requested - a removed admin kept every power for most of a working day. This
+    is the five-minute task, so the delay becomes the plan's hour plus at most
+    five minutes.
+
+    Outside the gate deliberately. The gate exists because `mark_degraded_guilds`
+    fails closed on a deployment whose bot has never reported and would revoke
+    every guild's standing for an outage that has not happened. Applying a
+    removal whose clock has already run out depends on no gateway, no bot and no
+    heartbeat; holding it behind that gate would mean that on this deployment -
+    where nothing writes a heartbeat at all, because the bot is unbuilt - the
+    five-minute path applied nothing and the effective delay was still six hours.
     """
     import logging
 
+    from core.models import apply_due_instance_admin_removals
     from core.revocation import gateway_has_ever_reported, mark_degraded_guilds
     from core.runs import record
 
@@ -362,10 +387,12 @@ def degraded_guild_sweep(timestamp: int) -> None:
                 "held: this would otherwise degrade every guild on a deployment whose "
                 "bot has not been built yet"
             )
-            run.detail = "waiting for the gateway: no heartbeat has ever been recorded"
+            detail = "waiting for the gateway: no heartbeat has ever been recorded"
         else:
             marked, restored = mark_degraded_guilds()
-            run.detail = f"marked {marked} guilds degraded, restored {restored} to active"
+            detail = f"marked {marked} guilds degraded, restored {restored} to active"
+        removals = apply_due_instance_admin_removals()
+        run.detail = f"{detail}; applied {removals} due instance-admin removals"
         run.save(update_fields=["detail"])
 
 

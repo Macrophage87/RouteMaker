@@ -18,6 +18,35 @@
 x-restart: &restart
   restart: unless-stopped
 
+# Everything `config/settings.py` reads from the environment that is not a
+# secret and that every Django process needs the same value of. The four
+# services that import Django settings - api, worker, migrate and rebuild - all
+# merge this; the secrets stay written out per service below, because which
+# container holds which secret is the thing the scoping rule exists to make
+# readable at a glance.
+#
+# This block used to not exist and neither did most of its contents. Six
+# variables were declared against the twenty-four settings.py reads, so
+# ALLOWED_HOSTS was the module's own "localhost" default and every request
+# arriving through Caddy was a DisallowedHost 400; the authorize URL carried an
+# empty client_id and a localhost redirect; and the database host was the
+# 127.0.0.1 default rather than the compose service. tests/test_compose.py
+# derives the set of names from settings.py's source and fails until each one is
+# either declared here or named in that test's allow-list.
+#
+# Defaults are repeated from settings.py only where an unset variable would
+# otherwise reach it as the empty string (`int("")` raises at import) or where
+# settings.py's own default is wrong inside a container - PGHOST, whose default
+# 127.0.0.1 is this container rather than the database.
+x-django-env: &django-env
+  DJANGO_SETTINGS_MODULE: config.settings
+  DJANGO_DEBUG: ${DJANGO_DEBUG:-}
+  PGHOST: ${PGHOST:-postgis}
+  PGPORT: ${PGPORT:-5432}
+  PGDATABASE: ${PGDATABASE:-routemaker}
+  PGUSER: ${PGUSER:-routemaker}
+  DJANGO_CONN_MAX_AGE: ${DJANGO_CONN_MAX_AGE:-60}
+
 services:
   caddy:
     <<: *restart
@@ -35,16 +64,41 @@ services:
     <<: *restart
     image: routemaker/api:${TAG}
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings
+      <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
-      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
+      PGPASSWORD: ${PGPASSWORD}
+      # The host and origin settings. Both have defaults in settings.py that are
+      # correct for a checkout and wrong for this stack: ALLOWED_HOSTS falls back
+      # to "localhost", which behind Caddy makes every request a DisallowedHost
+      # 400, and CSRF_TRUSTED_ORIGINS falls back to empty, which refuses every
+      # POST that arrives over the proxy's HTTPS. Required, with no compose
+      # default, because there is no value that is right for two deployments.
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
+      DJANGO_ADMIN_PATH: ${DJANGO_ADMIN_PATH:-internal-8f3a/}
+      # Discord sign-in, identify scope only. The client id and the redirect are
+      # not secrets - they are in every authorize URL - but without them the URL
+      # this service builds names an empty application and sends the browser back
+      # to localhost, so the login path does not work at all. The secret is used
+      # once per login to exchange a code and is read by this service alone.
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_REDIRECT_URI: ${DISCORD_REDIRECT_URI}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
       # The one bootstrap Discord id. It grants standing only while the
       # instance-admin list is empty, and the first admin request under it
       # writes the id into the list and disables this path for good. The admin
       # is the only surface that reads it, so it goes to this service alone.
       BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID: ${BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID:-}
-      PGPASSWORD: ${PGPASSWORD}
+      # The removal window. Read where a removal is scheduled, which is the
+      # admin, which is this service.
+      INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS: ${INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS:-3600}
+      # Where the routing client finds each variant. The swap repoints the
+      # ValhallaUpstream rows; these are the values a row is seeded from, so the
+      # API and the rebuild that writes those rows must agree on them.
+      VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
+      VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
+      VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
     depends_on:
       postgis: { condition: service_started }
       migrate: { condition: service_completed_successfully }
@@ -69,10 +123,16 @@ services:
     # silently missed their ticks (docs/OPERATIONS.md, "The maintenance queue").
     command: ["./manage.py", "procrastinate", "worker", "--queues=maintenance", "--concurrency=4"]
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings
+      <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
       PGPASSWORD: ${PGPASSWORD}
+      # settings.BACKUP_DIR is DATA_ROOT/backups, and the only mount this
+      # service has is the backups directory at /data/backups. Without this the
+      # nightly dump resolved BACKUP_DIR against the module's default - a `data`
+      # directory inside the image - and wrote every dump to container storage
+      # that the next restart discards.
+      DATA_ROOT: /data
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
     depends_on:
@@ -90,7 +150,8 @@ services:
     command: ["./manage.py", "migrate", "--noinput"]
     restart: "no"
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings
+      <<: *django-env
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       # Every process that imports settings needs this: the ban tombstone's
       # HMAC key is derived from it and there is deliberately no default, so a
       # container without it fails at import rather than keying tombstones with
@@ -261,11 +322,19 @@ services:
     image: routemaker/pipeline:${TAG}
     command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
     environment:
-      DJANGO_SETTINGS_MODULE: config.settings
+      <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       KEY_ENCRYPTION_KEY: ${KEY_ENCRYPTION_KEY}
-      DATA_ROOT: /data
       PGPASSWORD: ${PGPASSWORD}
+      DATA_ROOT: /data
+      # The disk gate: a rebuild refuses to start unless a second full tile set
+      # fits beside the current one. This is the only service that reads it.
+      REBUILD_MIN_FREE_BYTES: ${REBUILD_MIN_FREE_BYTES:-21474836480}
+      # The rebuild writes the ValhallaUpstream rows at the swap, seeding any
+      # row that does not exist yet from these.
+      VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
+      VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
+      VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
     volumes:
       - ${DATA_ROOT}:/data
       - ./valhalla:/conf:ro

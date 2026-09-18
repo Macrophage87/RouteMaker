@@ -810,19 +810,61 @@ class InstanceAdminListingAdmin(AuditedAdmin):
     membership cache's sensitivity and is instance-admin only.
 
     Read-only to everyone, and narrow on purpose: the queryset is the instance
-    admins and the column is the Discord id. This is a separate model rather
-    than a filter on the account page so that the permission differs and not
-    only the queryset - a guild admin's allow-list names `view_` on this and
-    never on `user`, so nothing here can widen what is readable about an
-    ordinary account.
+    admins and the column is the Discord id.
+
+    What keeps this apart from the account table is the pair of permission
+    overrides below - `has_view_permission`, which refuses every object-level
+    request so the change form (which would render the rest of the account row)
+    is unreachable, and `has_module_permission`. The allow-list entry
+    `core.view_instanceadminlisting` in `DiscordStandingBackend` is what lets a
+    guild admin past `has_perm` at all, and naming the proxy there rather than
+    `core.view_user` is deliberate - but it grants nothing this class does not
+    also allow, so it is redundant-but-correct rather than the separation
+    itself. An earlier version of this docstring said the reverse, which would
+    have sent the next reader looking at the wrong file.
+
+    Narrow means narrow in three directions, not one.
+
+    The column is the Discord id. The *filters* are none at all, and
+    `lookup_allowed` refuses every lookup but that column: `ModelAdmin`'s own
+    implementation permits any lookup on a local field, and this proxy's local
+    fields are `User`'s, so `?is_banned__exact=1`, `?session_epoch__gt=0` and
+    `?last_login__isnull=0` all answered 200 with the matching rows removed from
+    the list - which is an oracle over the ban state, the sign-in state and the
+    revocation state of every instance admin, readable by any guild admin. That
+    is the whole of what this page was supposed not to disclose.
+
+    And the queryset is the admins who actually hold it: `is_instance_admin`
+    alone would list a banned or deleted holder as current, while
+    `check_last_instance_admin` - the rule that decides whether the list is
+    empty - counts neither. A page that answers a different question from the
+    rule it is a view of is worse than no page.
     """
 
     list_display = ("discord_user_id",)
     list_display_links = None
     ordering = ("discord_user_id",)
+    # No filters, and nothing to turn into one. `list_filter` is written out
+    # rather than left to the default so that adding one is a visible edit.
+    list_filter = ()
+    search_fields = ()
+    date_hierarchy = None
+
+    # The only lookup this page will answer. Not a prefix match: `discord_user_id`
+    # exactly, so `discord_user_id__in` and friends cannot be used to binary-search
+    # the list either.
+    ALLOWED_LOOKUPS = frozenset({"discord_user_id"})
+
+    def lookup_allowed(self, lookup, value, request=None) -> bool:
+        return lookup in self.ALLOWED_LOOKUPS
 
     def get_queryset(self, request):
-        return super().get_queryset(request).filter(is_instance_admin=True)
+        # Banned and deleted excluded, matching `check_last_instance_admin`.
+        return (
+            super()
+            .get_queryset(request)
+            .filter(is_instance_admin=True, is_banned=False, is_deleted=False)
+        )
 
     def _may_read(self, request) -> bool:
         user = getattr(request, "user", None)

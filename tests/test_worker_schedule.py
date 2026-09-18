@@ -547,6 +547,55 @@ class TestTheDegradedGuildSweep:
         of a five-minute bound, which is the opposite of what the bound wants."""
         assert app.tasks["degraded_guild_sweep"].retry_strategy is None
 
+    def test_a_due_removal_is_applied_here_with_no_heartbeat_ever_recorded(self) -> None:
+        """The plan's hour, measured.
+
+        PLAN.md:212 puts a delay of "an hour" on removing a peer, and the only
+        thing applying one was the six-hourly membership sweep - so the delay was
+        really one to seven hours, depending on when in the cycle the removal was
+        asked for, and the removed admin kept every power for the difference.
+        This is the five-minute task, so the delay is now the hour plus at most
+        five minutes.
+
+        With no gateway heartbeat, which is the state of this deployment and of
+        every deployment until the bot exists. The removal half must run outside
+        that gate: behind it, the five-minute path would apply nothing here and
+        the six-hour figure would stand unchanged with a test that looked green.
+        """
+        from core.models import (
+            PendingInstanceAdminRemoval,
+            ScheduledRun,
+            User,
+            schedule_instance_admin_removal,
+        )
+        from core.revocation import gateway_has_ever_reported
+
+        assert not gateway_has_ever_reported(), "the gate is closed, which is the point"
+
+        requester = User.objects.create(discord_user_id=94100, is_instance_admin=True)
+        doomed = User.objects.create(discord_user_id=94101, is_instance_admin=True)
+        not_yet = User.objects.create(discord_user_id=94102, is_instance_admin=True)
+        # Due six minutes ago: one tick of this task past its effective time.
+        schedule_instance_admin_removal(
+            doomed,
+            actor=requester,
+            now=timezone.now() - settings.INSTANCE_ADMIN_REMOVAL_DELAY - timedelta(minutes=6),
+        )
+        schedule_instance_admin_removal(not_yet, actor=requester, now=timezone.now())
+
+        run = self.run_task()
+
+        doomed.refresh_from_db()
+        not_yet.refresh_from_db()
+        assert not doomed.is_instance_admin, (
+            "six minutes past due and still holding every power the role carries"
+        )
+        assert not_yet.is_instance_admin, "still inside its window, so still cancellable"
+        assert not PendingInstanceAdminRemoval.objects.filter(user=doomed).exists()
+        assert "waiting for the gateway" in run.detail, "the marking half is still held"
+        assert "applied 1 due instance-admin removals" in run.detail
+        assert ScheduledRun.objects.get(task="degraded_guild_sweep").succeeded
+
 
 @pytest.mark.django_db(transaction=True)
 def test_the_membership_sweep_also_drops_dead_session_rows() -> None:
@@ -642,6 +691,15 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
     assert any("app_user" in line for line in data_entries), "the dump carries the users"
     assert not any("app_session" in line for line in data_entries)
     assert not any("cached_membership" in line for line in data_entries)
+    # And the tombstones stay in. They are the only record that a ban happened
+    # at all - the account row is gone by then - so a dump without them restores
+    # a deployment on which every banned Discord id may sign up again. The
+    # tombstone is an HMAC keyed with a secret that is not in the dump, which is
+    # what makes keeping it safe to keep; excluding it would trade a privacy
+    # gain it does not make for the loss of the ban list.
+    assert any("ban_tombstone" in line for line in data_entries), (
+        "the ban list must survive a restore"
+    )
 
     app.tasks["nightly_backup"].func(timestamp=0)
     assert ScheduledRun.objects.get(task="nightly_backup").succeeded

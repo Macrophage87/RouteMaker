@@ -10,12 +10,17 @@ would make the swap impossible.
 
 from __future__ import annotations
 
+import logging
+
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.gis.db import models
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from . import standing
+
+logger = logging.getLogger(__name__)
 
 
 class StressTier(models.IntegerChoices):
@@ -760,12 +765,25 @@ def schedule_instance_admin_removal(user: User, actor=None, now=None):
     Refuses the same removal `save()` would refuse: scheduling the removal of
     the last instance admin is the lockout, only an hour later, and an hour is
     long enough for everyone to forget it was coming.
+
+    Requesting a removal that is already pending updates who asked and leaves
+    the clock where it is unless the new time is later. The row's own comment
+    already says the effective time is read from the row rather than recomputed
+    "because changing the delay must not move a removal that is already
+    pending", and `update_or_create` overwrote it from the setting on every
+    request, so a second request under a shortened delay moved a window that was
+    already running *forwards*. Never earlier, in one direction only: the window
+    exists to be long enough to notice, and nobody may shorten one that is
+    already ticking by asking for the same removal again.
     """
     from .audit import record
 
     check_last_instance_admin(user, removing=True)
     now = now or timezone.now()
     effective_at = now + settings.INSTANCE_ADMIN_REMOVAL_DELAY
+    existing = PendingInstanceAdminRemoval.objects.filter(user=user).first()
+    if existing is not None:
+        effective_at = max(existing.effective_at, effective_at)
     pending, _created = PendingInstanceAdminRemoval.objects.update_or_create(
         user=user,
         defaults={
@@ -856,6 +874,58 @@ def apply_due_instance_admin_removals(now=None) -> int:
     return applied
 
 
+class BootstrapClaim(models.Model):
+    """The record that the environment bootstrap path has been used.
+
+    PLAN.md:212 says the first successful admin action under the bootstrap id
+    "permanently disables the environment path". Permanently is the word that
+    was not implemented: the check was `User.objects.filter(is_instance_admin=
+    True).exists()`, so the path was disabled only while the list stayed
+    non-empty. Measured: claim once (flag set), `.update(is_instance_admin=
+    False)` on the only holder - which is what a management shell, a migration
+    or the removal of a ban-tombstoned account does - and the same id claimed
+    again. Anyone who ever held `.env` read access held a standing offer of
+    instance admin against any future moment the list happened to be empty,
+    which is exactly what the sentence rules out.
+
+    So the claim is recorded here instead, in a row, in the database that the
+    nightly dump carries - not in a module-level flag, which a restart clears,
+    and not inferred from the list, which is the state that changes.
+
+    One row, and that is a constraint rather than a convention: `singleton` is
+    a constant column with a unique index, so a second INSERT is an
+    `IntegrityError` from PostgreSQL rather than a second row that a later
+    reader has to interpret. That also closes the race the handoff's §7 records
+    as accepted - two simultaneous first requests from the bootstrap id both
+    passing the empty-list check - because one of the two INSERTs loses.
+
+    What it costs: once this row exists, an instance-admin list that empties
+    cannot be refilled through the application at all. That is the trade the
+    plan asks for, and the repair is the same break-glass the handoff already
+    names - a hand-written UPDATE against the database by whoever has access.
+    `check_last_instance_admin` exists precisely so that the list cannot empty
+    through any path the application offers.
+    """
+
+    SINGLETON = 1
+
+    singleton = models.PositiveSmallIntegerField(default=SINGLETON, unique=True, editable=False)
+    # The id that claimed it, kept as a number rather than only as a relation:
+    # the account can be deleted and the record of which id spent the path
+    # should outlive it.
+    discord_user_id = models.BigIntegerField()
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    claimed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "bootstrap_claim"
+
+    def __str__(self) -> str:
+        return f"bootstrap claimed by {self.discord_user_id} at {self.claimed_at:%Y-%m-%d %H:%M}"
+
+
 def claim_bootstrap_instance_admin(user: User) -> bool:
     """Write the bootstrap id into the instance-admin list, once.
 
@@ -881,6 +951,22 @@ def claim_bootstrap_instance_admin(user: User) -> bool:
     which is what makes the variable inert afterwards even if it still names
     somebody, and false for a banned or deleted account, which must not be
     admitted by any path.
+
+    And false forever once it has succeeded once, which is the other half of
+    "permanently disables". The disabling is a `BootstrapClaim` row rather than
+    the state of the list: the list is what changes, so a check against it
+    re-armed the environment path every time the list happened to empty, and a
+    holder of `.env` read access held a standing offer of instance admin rather
+    than nothing. Once that row exists, an emptied list is recoverable only by
+    the break-glass the handoff records - a hand-written UPDATE against the
+    database - and `check_last_instance_admin` is what keeps the application
+    from ever emptying it.
+
+    The emptiness test counts the instance admins `check_last_instance_admin`
+    counts: banned and deleted holders excluded, because they cannot sign in and
+    so are not somebody the deployment can be administered by. The two used to
+    disagree, so a deployment whose only instance admin had been banned was one
+    the lockout guard called empty and this function called occupied.
     """
     from .audit import record
 
@@ -889,15 +975,36 @@ def claim_bootstrap_instance_admin(user: User) -> bool:
         return False
     if user.discord_user_id != bootstrap_id or not user.is_active:
         return False
-    if User.objects.filter(is_instance_admin=True).exists():
+    if BootstrapClaim.objects.exists():
+        logger.warning(
+            "the bootstrap instance-admin path has already been spent and will not "
+            "be offered again; restoring an empty instance-admin list needs direct "
+            "database access"
+        )
+        return False
+    if User.objects.filter(is_instance_admin=True, is_banned=False, is_deleted=False).exists():
         # The list is not empty, so the environment path grants nothing to
         # anyone - including to the id it still names.
         return False
 
-    # Written with update() rather than save(): nothing else on the row changes,
-    # and this is an appointment rather than the moderation path save() carries
-    # the epoch and lockout logic for.
-    User.objects.filter(pk=user.pk).update(is_instance_admin=True)
+    # The claim row first, and in the same transaction as the flag: if two
+    # requests arrive together, the unique index on `singleton` makes one of
+    # them lose here rather than both writing the flag.
+    #
+    # The flag is written with update() rather than save(): nothing else on the
+    # row changes, and this is an appointment rather than the moderation path
+    # save() carries the epoch and lockout logic for.
+    try:
+        with transaction.atomic():
+            BootstrapClaim.objects.create(discord_user_id=user.discord_user_id, user=user)
+            User.objects.filter(pk=user.pk).update(is_instance_admin=True)
+    except IntegrityError:
+        logger.warning(
+            "the bootstrap instance-admin path was spent by a concurrent request; "
+            "this one grants nothing"
+        )
+        return False
+
     user.is_instance_admin = True
     record(
         user,
@@ -907,7 +1014,7 @@ def claim_bootstrap_instance_admin(user: User) -> bool:
         AuditLogEntry.Outcome.ALLOWED,
         detail=(
             "bootstrap Discord id claimed instance admin on an empty list; "
-            "the environment path is inert from here"
+            "the environment path is spent permanently, recorded by a bootstrap_claim row"
         ),
     )
     return True

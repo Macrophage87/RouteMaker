@@ -6,6 +6,7 @@ suite as everything else, rather than only on push.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
@@ -220,3 +221,158 @@ def test_the_rebuild_sees_the_whole_data_volume_at_the_path_its_settings_assume(
 
 def test_the_backup_lands_on_the_data_volume() -> None:
     assert "${DATA_ROOT}/backups:/data/backups" in SERVICES["worker"]["volumes"]
+
+
+# --- What settings.py reads, against what compose delivers -----------------------------
+
+SETTINGS_SOURCE = REPO / "src" / "config" / "settings.py"
+
+# Every `os.environ[...]` and `os.environ.get(...)` in the settings module,
+# derived from the source rather than restated here. A list written out by hand
+# is a list that stops matching the module the day somebody adds a lookup, which
+# is exactly how six declared variables came to stand against twenty-four read
+# ones.
+ENVIRONMENT_LOOKUP = re.compile(r"""os\.environ(?:\.get)?\(\s*["']([A-Z0-9_]+)["']""")
+
+# The names settings.py reads that the `api` service deliberately does not
+# declare, each with the services that do - or None where nothing in the stack
+# delivers it, because nothing in the stack should.
+#
+# This is the one escape hatch, and it is deliberately narrow: anything not
+# named here must reach the api, so a new `os.environ.get("NEW_THING")` in
+# settings.py fails this file until compose carries it or until somebody writes
+# down here why it should not.
+NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
+    # Test isolation only. Two concurrent runs on one host would otherwise reach
+    # into each other's `live` and `staging`; a deployment uses the defaults and
+    # the swap renames them, so a container that could override them would be a
+    # way to point one deployment's API at another's tables.
+    "ROUTEMAKER_LIVE_SCHEMA": None,
+    "ROUTEMAKER_STAGING_SCHEMA": None,
+    # The data volume, inside the containers that mount it. The api mounts none:
+    # it serves requests and writes nothing durable, and a DATA_ROOT on it would
+    # name a path that does not exist in that container. Note that the
+    # `${DATA_ROOT}` in every volume mapping is the *host* path, read from the
+    # deployment's environment file by compose itself, not by a container.
+    "DATA_ROOT": ("rebuild", "worker"),
+    # The rebuild's disk gate, read by the rebuild alone.
+    "REBUILD_MIN_FREE_BYTES": ("rebuild",),
+}
+
+
+def environment_names_read_by_settings() -> set[str]:
+    return set(ENVIRONMENT_LOOKUP.findall(SETTINGS_SOURCE.read_text()))
+
+
+def declared_by(service: str) -> set[str]:
+    return set(SERVICES[service].get("environment") or {})
+
+
+def test_the_regex_finds_the_lookups_settings_actually_has() -> None:
+    """The derivation is the load-bearing part of the test below, so it is
+    checked against a handful of names that are certainly in the module - one
+    from each shape of lookup, including the bracket form that has no default.
+    A regex that silently matched nothing would make the next test vacuous."""
+    names = environment_names_read_by_settings()
+    assert {
+        "DJANGO_SECRET_KEY",  # os.environ.get with a string default
+        "DATA_ROOT",  # os.environ.get with a non-string default
+        "BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID",  # os.environ[...] and os.environ.get
+        "DISCORD_CLIENT_ID",
+        "KEY_ENCRYPTION_KEY",
+    } <= names
+    assert len(names) >= 20, f"the lookups stopped being found: {sorted(names)}"
+
+
+def test_the_api_declares_every_setting_it_reads_from_the_environment() -> None:
+    """The stack has to deliver the settings the running code reads.
+
+    It did not, and the sign-in path is where that showed. Six variables were
+    declared against the twenty-four settings.py reads, so under the stack as
+    written ALLOWED_HOSTS was the module's `["localhost"]` default and every
+    request arriving through Caddy was a DisallowedHost 400; the authorize URL
+    carried `client_id=` empty and a `localhost:8000` redirect; and the database
+    host was 127.0.0.1, which inside that container is that container. PLAN:299
+    puts "Discord login with the identify scope" in phase 1, and none of it
+    could work.
+
+    Derived from the module's source, so this keeps holding: a lookup added to
+    settings.py fails here until compose carries it.
+    """
+    undeclared = sorted(
+        name
+        for name in environment_names_read_by_settings() - declared_by("api")
+        if name not in NOT_DELIVERED_TO_THE_API
+    )
+    assert not undeclared, (
+        f"settings.py reads these and the api service declares none of them: {undeclared}"
+    )
+
+
+def test_the_names_the_api_skips_reach_the_services_that_do_read_them() -> None:
+    """The allow-list above is an exemption from the api, not from the stack. A
+    name parked in it and delivered nowhere would be the same defect one
+    dictionary further away."""
+    missing = {
+        name: [s for s in services if name not in declared_by(s)]
+        for name, services in NOT_DELIVERED_TO_THE_API.items()
+        if services
+    }
+    assert not any(missing.values()), f"allow-listed but not delivered either: {missing}"
+
+
+def test_every_django_service_can_reach_the_database() -> None:
+    """The four services that import Django settings all open a connection, and
+    settings.py's own defaults for the host are wrong inside a container:
+    127.0.0.1 is the container itself, not the postgis service."""
+    for name in ("api", "worker", "migrate", "rebuild"):
+        declared = declared_by(name)
+        assert {"PGHOST", "PGUSER", "PGDATABASE", "PGPASSWORD"} <= declared, name
+        assert SERVICES[name]["environment"]["PGHOST"] != "127.0.0.1", name
+
+
+def test_the_discord_client_id_and_redirect_reach_the_api() -> None:
+    """Neither is a secret - both are in the authorize URL the browser follows -
+    and neither has a usable default: the client id defaults to the empty string
+    and the redirect to localhost, so a stack without them has a login button
+    that goes to an application Discord does not know."""
+    environment = SERVICES["api"]["environment"]
+    assert environment["DISCORD_CLIENT_ID"] == "${DISCORD_CLIENT_ID}"
+    assert environment["DISCORD_REDIRECT_URI"] == "${DISCORD_REDIRECT_URI}"
+    assert "localhost" not in environment["DISCORD_REDIRECT_URI"], (
+        "a compose default here would ship a redirect to the developer's own machine"
+    )
+
+
+def test_the_client_secret_still_reaches_the_api_alone() -> None:
+    """The scoping rule survives the widening: the id and the redirect are
+    public, the secret is not, and only the service that exchanges an
+    authorization code sees it."""
+    holders = sorted(
+        name
+        for name, service in SERVICES.items()
+        if "DISCORD_CLIENT_SECRET" in (service.get("environment") or {})
+    )
+    assert holders == ["api"]
+
+
+def test_the_env_example_lists_every_name_the_stack_expects_from_it() -> None:
+    """`.env.example` is what an operator fills in, so a variable compose
+    interpolates and the example never names is one the first deployment leaves
+    empty. Only the names with no compose-side default are required here - the
+    rest fall back to a value that works."""
+    example = {
+        line.split("=", 1)[0].strip()
+        for line in (REPO / ".env.example").read_text().splitlines()
+        if "=" in line and not line.lstrip().startswith("#")
+    }
+    required = set()
+    for service in SERVICES.values():
+        for value in (service.get("environment") or {}).values():
+            if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
+                inner = value[2:-1]
+                if ":-" not in inner and ":?" not in inner:
+                    required.add(inner)
+    assert required <= example, (
+        f"compose requires these and .env.example omits them: {sorted(required - example)}"
+    )

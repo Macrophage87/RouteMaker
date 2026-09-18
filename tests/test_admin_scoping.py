@@ -327,6 +327,12 @@ def as_instance_admin(client, monkeypatch, instance_admin):
     return sign_in(client, monkeypatch, instance_admin)
 
 
+def schedule_removal(user, *, actor, now=None):
+    from core.models import schedule_instance_admin_removal
+
+    return schedule_instance_admin_removal(user, actor=actor, now=now)
+
+
 def refusals():
     from core.models import AuditLogEntry
 
@@ -1069,6 +1075,126 @@ class TestTheBootstrapInstanceAdmin:
         assert claim_bootstrap_instance_admin(user) is False
         assert AuditLogEntry.objects.filter(action="bootstrap_instance_admin").count() == 1
 
+    def test_the_path_does_not_re_arm_when_the_list_empties_again(
+        self, monkeypatch, caplog
+    ) -> None:
+        """ "Permanently disables the environment path", against the state that
+        made it temporary.
+
+        Measured before the fix: claim once, then `.update(is_instance_admin=
+        False)` on the only holder - which is what a management shell, a data
+        migration or a hand-written repair does, and which emits no signal that
+        `User.save()` or `pre_delete` could catch - and the same id claimed
+        instance admin again. The disabling was the list being non-empty, and
+        the list is the thing that changes, so anyone who ever read `.env` held
+        a standing offer against any future moment it happened to be empty.
+
+        Now the disabling is a row. A second claim answers False, writes no
+        second audit row, and says at WARNING that the path is spent, because an
+        operator staring at a 404 deserves to be told which of the two reasons
+        it is.
+        """
+        import logging
+
+        from core.models import AuditLogEntry, BootstrapClaim, claim_bootstrap_instance_admin
+
+        User = get_user_model()
+        user = User.objects.create(discord_user_id=7783)
+        self.bootstrap(monkeypatch, 7783)
+
+        assert claim_bootstrap_instance_admin(user) is True
+        assert BootstrapClaim.objects.count() == 1
+
+        # The list empties by a route that reaches no model hook at all.
+        User.objects.filter(pk=user.pk).update(is_instance_admin=False)
+        user.refresh_from_db()
+        assert not User.objects.filter(is_instance_admin=True).exists(), "the list really is empty"
+
+        with caplog.at_level(logging.WARNING, logger="core.models"):
+            assert claim_bootstrap_instance_admin(user) is False
+        user.refresh_from_db()
+        assert not user.is_instance_admin, "the environment path is spent, not merely quiet"
+        assert AuditLogEntry.objects.filter(action="bootstrap_instance_admin").count() == 1
+        assert BootstrapClaim.objects.count() == 1
+        assert any(
+            record.levelno == logging.WARNING and "already been spent" in record.getMessage()
+            for record in caplog.records
+        ), "an operator locked out by this deserves to be told why"
+
+    def test_the_record_is_durable_rather_than_process_state(self, monkeypatch) -> None:
+        """A module-level flag would pass the test above and be cleared by the
+        next container restart, so the row is read back out of the database and
+        the claim is re-attempted against nothing but that row."""
+        from core.models import BootstrapClaim, claim_bootstrap_instance_admin
+
+        User = get_user_model()
+        user = User.objects.create(discord_user_id=7784)
+        self.bootstrap(monkeypatch, 7784)
+        assert claim_bootstrap_instance_admin(user) is True
+
+        claim = BootstrapClaim.objects.get()
+        assert claim.discord_user_id == 7784
+        assert claim.user_id == user.pk
+        assert claim.claimed_at is not None
+
+    def test_a_second_row_cannot_be_written_at_all(self, monkeypatch) -> None:
+        """One row, enforced by the database rather than by the code path above
+        it: the unique index is what makes two simultaneous first requests
+        resolve to one claim instead of two."""
+        from django.db import IntegrityError, transaction
+
+        from core.models import BootstrapClaim, claim_bootstrap_instance_admin
+
+        User = get_user_model()
+        user = User.objects.create(discord_user_id=7785)
+        self.bootstrap(monkeypatch, 7785)
+        assert claim_bootstrap_instance_admin(user) is True
+
+        with pytest.raises(IntegrityError), transaction.atomic():
+            BootstrapClaim.objects.create(discord_user_id=9999)
+
+    def test_a_banned_holder_leaves_the_list_empty_for_both_rules(self, monkeypatch) -> None:
+        """The two counts have to be one count.
+
+        `check_last_instance_admin` refuses a removal only while somebody who is
+        neither banned nor deleted still holds the flag, because those are the
+        people who can still sign in. The claim counted every row with the flag
+        set, so a deployment whose only instance admin had been banned - the
+        exact state where nobody can reach the admin and the bootstrap path is
+        for - was one the lockout guard called empty and the claim called
+        occupied, and the bootstrap id was refused.
+        """
+        from core.models import (
+            LastInstanceAdmin,
+            check_last_instance_admin,
+            claim_bootstrap_instance_admin,
+        )
+
+        User = get_user_model()
+        banned = User.objects.create(discord_user_id=7786, is_instance_admin=True, is_banned=True)
+        deleted = User.objects.create(discord_user_id=7787, is_instance_admin=True, is_deleted=True)
+        hopeful = User.objects.create(discord_user_id=7788)
+        self.bootstrap(monkeypatch, 7788)
+
+        # What the lockout guard thinks of that list: neither of them counts, so
+        # a third holder would be the last one.
+        third = User.objects.create(discord_user_id=7789, is_instance_admin=True)
+        with pytest.raises(LastInstanceAdmin):
+            check_last_instance_admin(third, removing=True)
+        # Cleared with update() so the pre_delete guard - which asks the same
+        # question and would raise the same way - does not get in the way of the
+        # arrangement.
+        User.objects.filter(pk=third.pk).update(is_instance_admin=False)
+        third.refresh_from_db()
+        third.delete()
+
+        assert banned.is_instance_admin and deleted.is_instance_admin, "the flags are still set"
+        assert claim_bootstrap_instance_admin(hopeful) is True, (
+            "a banned holder is not somebody this deployment can be administered by"
+        )
+        hopeful.refresh_from_db()
+        assert hopeful.is_instance_admin
+
 
 @db
 class TestTheInstanceAdminRemovalWindow:
@@ -1221,6 +1347,112 @@ class TestTheInstanceAdminRemovalWindow:
             schedule_instance_admin_removal(instance_admin, actor=instance_admin)
         assert not PendingInstanceAdminRemoval.objects.exists()
 
+    def test_the_target_can_cancel_their_own_removal_pending_the_owner_decision(
+        self, client, monkeypatch, instance_admin, peer
+    ) -> None:
+        """Pinned as it is, because it is an open owner decision rather than a
+        settled rule.
+
+        PLAN.md:212 says the window is one "during which any instance admin can
+        cancel it", and the person being removed is an instance admin until it
+        takes effect - that is the deliberate design of the window, and this
+        module's own docstring says so: the flag stays set, "which is what makes
+        the window a real window rather than a notification about something that
+        already happened". So the plan's words permit exactly this, literally.
+
+        The open question, recorded in the handoff's §7 rather than answered
+        here: two admins can then hold each other's removals off indefinitely,
+        each cancelling the other's, and nothing in phase 1 breaks that tie -
+        there is no quorum, no notification and no escalation path. The
+        alternative readings (the target may not cancel; a cancel by the target
+        notifies the others; a second request within the window applies
+        immediately) are all changes of behaviour, and the owner has not chosen
+        one.
+
+        This test exists so that the next round can tell a decision from an
+        oversight. If the rule changes, this test changes with it, in a diff
+        somebody reads.
+        """
+        from core.models import AuditLogEntry, PendingInstanceAdminRemoval
+
+        pending = schedule_removal(peer, actor=instance_admin)
+        as_the_target = sign_in(client, monkeypatch, peer)
+
+        response = as_the_target.post(
+            admin_url("core_pendinginstanceadminremoval_changelist"),
+            {"action": "cancel_removal", "_selected_action": [str(pending.pk)], "index": "0"},
+        )
+        assert response.status_code == 302
+        assert not PendingInstanceAdminRemoval.objects.exists(), (
+            "the target cancelled their own removal, which PLAN:212 permits literally"
+        )
+
+        peer.refresh_from_db()
+        assert peer.is_instance_admin
+
+        entry = AuditLogEntry.objects.get(action="cancel_removal")
+        assert entry.actor_id == peer.pk, "and the log names who did it"
+
+    def test_a_cancel_records_who_did_it(self, as_instance_admin, instance_admin, peer) -> None:
+        """The cancel is the only action on the page and it is the one that
+        makes the window worth having, so the row naming the actor is what
+        distinguishes a cancelled removal from one that was never requested."""
+        from core.models import AuditLogEntry, PendingInstanceAdminRemoval
+
+        pending = schedule_removal(peer, actor=instance_admin)
+        as_instance_admin.post(
+            admin_url("core_pendinginstanceadminremoval_changelist"),
+            {"action": "cancel_removal", "_selected_action": [str(pending.pk)], "index": "0"},
+        )
+
+        entry = AuditLogEntry.objects.get(action="cancel_removal")
+        assert entry.actor_id == instance_admin.pk
+        assert entry.actor_user_id == instance_admin.pk
+        assert (entry.model, entry.object_id) == ("user", str(peer.pk))
+        assert entry.outcome == AuditLogEntry.Outcome.ALLOWED
+        assert not PendingInstanceAdminRemoval.objects.exists()
+
+    def test_re_requesting_a_removal_never_moves_its_clock_earlier(
+        self, instance_admin, peer
+    ) -> None:
+        """The window may be extended by asking again and may never be shortened.
+
+        `PendingInstanceAdminRemoval.effective_at` carries its own comment -
+        read from the row rather than recomputed, "because changing the delay
+        must not move a removal that is already pending" - and the scheduling
+        path overwrote it from the setting on every request, so a second request
+        under a shortened delay dragged a window that was already running
+        forwards. An hour that a second POST can turn into a minute is not an
+        hour.
+
+        Both directions, with the delay changed under it rather than with the
+        clock: `now` advancing on its own makes the second time later for
+        reasons that have nothing to do with the rule.
+        """
+        from datetime import timedelta
+
+        from core.models import PendingInstanceAdminRemoval
+
+        now = timezone.now()
+        first = schedule_removal(peer, actor=instance_admin, now=now)
+        original = first.effective_at
+
+        # A shorter delay, the same instant: the clock must not move.
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(settings, "INSTANCE_ADMIN_REMOVAL_DELAY", timedelta(seconds=1))
+            again = schedule_removal(peer, actor=instance_admin, now=now)
+        assert again.effective_at == original
+        assert PendingInstanceAdminRemoval.objects.get(user=peer).effective_at == original
+
+        # A longer one: extending is allowed, because a longer window is more
+        # time to notice and not less.
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(settings, "INSTANCE_ADMIN_REMOVAL_DELAY", timedelta(days=1))
+            longer = schedule_removal(peer, actor=instance_admin, now=now)
+        assert longer.effective_at == now + timedelta(days=1)
+
+        assert PendingInstanceAdminRemoval.objects.filter(user=peer).count() == 1
+
     def test_a_guild_admin_sees_no_pending_removals_page(self, as_guild_admin) -> None:
         assert (
             as_guild_admin.get(admin_url("core_pendinginstanceadminremoval_changelist")).status_code
@@ -1350,6 +1582,89 @@ class TestTheInstanceAdminListIsVisibleToGuildAdmins:
         assert client.get(admin_url("core_instanceadminlisting_changelist")).status_code == 404, (
             "not staff, so no admin at all"
         )
+
+    # --- What the page discloses beyond the column it draws ---------------------
+
+    @pytest.mark.parametrize(
+        ("parameter", "because"),
+        [
+            ("is_banned__exact", "whether an instance admin is banned"),
+            ("is_deleted__exact", "whether an instance admin has deleted their account"),
+            ("session_epoch__gt", "how many times their sessions have been revoked"),
+            ("last_login__isnull", "whether they have ever signed in"),
+            ("date_joined__year", "when the account was created"),
+        ],
+    )
+    def test_a_filter_on_any_other_column_is_refused(
+        self, as_guild_admin, instance_admin, parameter, because
+    ) -> None:
+        """Measured before the override: every one of these answered 200 with
+        the non-matching rows gone, which is a working oracle over the field.
+
+        `ModelAdmin.lookup_allowed` permits any lookup that resolves to a local
+        field, and this proxy's local fields are the whole of `User` - so a page
+        whose `list_display` is one column disclosed the ban state, the deletion
+        state, the revocation counter and the sign-in history of every instance
+        admin to any guild admin who typed a query string.
+
+        Over the test client, because that is where the disclosure was: Django
+        turns the refused lookup into `DisallowedModelAdminLookup`, a
+        `SuspiciousOperation`, which the handler answers 400.
+        """
+        url = admin_url("core_instanceadminlisting_changelist")
+        unfiltered = as_guild_admin.get(url)
+        assert unfiltered.status_code == 200
+        rows = set(unfiltered.context["cl"].queryset.values_list("pk", flat=True))
+
+        filtered = as_guild_admin.get(url, {parameter: "1"})
+        assert filtered.status_code == 400, f"the page still discloses {because}"
+        assert "cl" not in (filtered.context or {}), "no row set is computed at all"
+
+        # And the list itself is unchanged by the attempt.
+        again = as_guild_admin.get(url)
+        assert set(again.context["cl"].queryset.values_list("pk", flat=True)) == rows
+
+    def test_the_one_lookup_it_does_answer_is_the_column_it_draws(
+        self, as_guild_admin, instance_admin
+    ) -> None:
+        """The refusal is a narrow allow-list, not a blanket no: the Discord id
+        is on the page already, so filtering by it discloses nothing the page
+        does not."""
+        url = admin_url("core_instanceadminlisting_changelist")
+        response = as_guild_admin.get(url, {"discord_user_id": str(instance_admin.discord_user_id)})
+        assert response.status_code == 200
+        assert set(response.context["cl"].queryset.values_list("pk", flat=True)) == {
+            instance_admin.pk
+        }
+
+    def test_it_offers_no_filters_of_its_own(self, as_guild_admin, instance_admin) -> None:
+        """A `list_filter` entry would be a lookup the override has to keep
+        allowing, so the page carries none and the empty tuple is written out."""
+        from core.admin import InstanceAdminListingAdmin
+
+        assert InstanceAdminListingAdmin.list_filter == ()
+        response = as_guild_admin.get(admin_url("core_instanceadminlisting_changelist"))
+        assert response.context["cl"].list_filter == ()
+
+    def test_a_banned_instance_admin_is_not_listed_as_a_current_one(
+        self, as_guild_admin, instance_admin
+    ) -> None:
+        """`check_last_instance_admin` counts the admins who are neither banned
+        nor deleted, because those are the ones who can still sign in. A listing
+        that counted differently would tell a club that somebody holds power
+        over them who in fact holds nothing - and would hide the state where the
+        deployment has no reachable admin at all.
+        """
+        User = get_user_model()
+        banned = User.objects.create(discord_user_id=9610, is_instance_admin=True, is_banned=True)
+        deleted = User.objects.create(discord_user_id=9611, is_instance_admin=True, is_deleted=True)
+
+        response = as_guild_admin.get(admin_url("core_instanceadminlisting_changelist"))
+        listed = set(response.context["cl"].queryset.values_list("discord_user_id", flat=True))
+        assert listed == {instance_admin.discord_user_id}
+        assert banned.discord_user_id not in listed
+        assert deleted.discord_user_id not in listed
+        assert str(banned.discord_user_id) not in response.content.decode()
 
 
 @db

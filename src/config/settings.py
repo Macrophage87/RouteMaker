@@ -214,8 +214,15 @@ INSTANCE_ADMIN_REMOVAL_DELAY = timedelta(
 )
 
 # A minimal logging configuration, because Django's default sends application
-# logs nowhere a container operator can read: the two application packages log
+# logs nowhere a container operator can read: the three application packages log
 # at INFO to stdout, which is where compose and the deployment collect them.
+#
+# `config` is on the list because the scheduled tasks live in
+# `config.procrastinate`, and the one line that explains the state of a
+# five-minute sweep - "no gateway heartbeat has ever been recorded, so the
+# degraded mark is held" - is logged from there at INFO. Under `root` at WARNING
+# it reached nothing, so the operator of a deployment whose guilds were not being
+# marked had no way to tell the arming state from a broken task.
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -225,6 +232,9 @@ LOGGING = {
     "loggers": {
         "core": {"handlers": ["console"], "level": "INFO", "propagate": False},
         "pipeline": {"handlers": ["console"], "level": "INFO", "propagate": False},
+        # Named at the package, so `config.procrastinate` and anything else this
+        # package logs from are covered by one entry.
+        "config": {"handlers": ["console"], "level": "INFO", "propagate": False},
     },
 }
 

@@ -513,6 +513,10 @@ class TestHasPerm:
                 "auditlogentry",
                 "cachedmembership",
                 "bordercrossing",
+                # Deleting the bootstrap claim re-arms the environment path, so
+                # it belongs with the tables that grant standing even though
+                # nothing registers it in the admin.
+                "bootstrapclaim",
             }
         )
 
@@ -792,3 +796,81 @@ def test_a_stale_session_row_is_deleted_by_a_real_request(client, monkeypatch) -
     assert not Session.objects.filter(session_key=key).exists(), (
         "a row nothing will ever accept again is a user id and a timestamp left in the table"
     )
+
+
+class TestTheAuthorizeUrlCarriesARealApplication:
+    """The sign-in path needs settings the stack has to deliver, and did not.
+
+    `compose.yaml` declared six of the twenty-four variables `config/settings.py`
+    reads, and `DISCORD_CLIENT_ID` and `DISCORD_REDIRECT_URI` were not among
+    them. Both have module defaults - the empty string and
+    `http://localhost:8000/auth/callback` - so nothing failed at import and
+    nothing failed under test either: the suite has never needed a real client
+    id, so every existing assertion about the authorize URL passed against
+    `client_id=` and a redirect to the developer's own machine. The deployed
+    login button led to an application Discord does not know.
+
+    The delivery is asserted in tests/test_compose.py. This is the other half:
+    what the values do when they are there, and what the URL looks like when
+    they are not.
+    """
+
+    def authorize_url(self, client) -> str:
+        from django.urls import reverse
+
+        response = client.get(reverse("login"))
+        assert response.status_code == 302
+        return response["Location"]
+
+    def test_the_configured_client_id_and_redirect_are_the_ones_discord_is_sent(
+        self, client
+    ) -> None:
+        from urllib.parse import parse_qs, urlparse
+
+        from django.test import override_settings
+
+        with override_settings(
+            DISCORD_CLIENT_ID="123456789012345678",
+            DISCORD_REDIRECT_URI="https://routes.example.org/auth/callback",
+        ):
+            url = self.authorize_url(client)
+
+        query = parse_qs(urlparse(url).query)
+        assert query["client_id"] == ["123456789012345678"]
+        assert query["redirect_uri"] == ["https://routes.example.org/auth/callback"]
+        assert query["scope"] == ["identify"]
+        assert query["response_type"] == ["code"]
+
+    def test_an_undelivered_client_id_makes_a_url_that_names_no_application(self, client) -> None:
+        """Why the compose assertion exists, stated as behaviour rather than as
+        a claim about a YAML file: with the variable undelivered the settings
+        default reaches Discord, and the empty `client_id` is the whole of the
+        failure. Nothing raises, which is what made it survive four rounds.
+        """
+        from urllib.parse import parse_qs, urlparse
+
+        from django.test import override_settings
+
+        with override_settings(DISCORD_CLIENT_ID=""):
+            url = self.authorize_url(client)
+
+        assert parse_qs(urlparse(url).query).get("client_id", [""]) == [""]
+
+    def test_the_settings_carry_no_usable_default_for_either(self) -> None:
+        """Neither may acquire one. A default client id would be another
+        deployment's application, and a default redirect sends the browser back
+        to localhost after Discord approves the grant - which on a real
+        deployment is the point at which the login silently stops working."""
+        import os
+        from pathlib import Path
+
+        import config.settings as live
+
+        source = Path(live.__file__).read_text()
+        assert 'os.environ.get("DISCORD_CLIENT_ID", "")' in source
+        assert "http://localhost:8000/auth/callback" in source, (
+            "the redirect's default is a developer convenience, and it must stay "
+            "obviously unusable in production rather than become a real-looking host"
+        )
+        # And under an environment that delivers them, they are what arrives.
+        assert settings.DISCORD_CLIENT_ID == os.environ.get("DISCORD_CLIENT_ID", "")

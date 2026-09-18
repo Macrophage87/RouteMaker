@@ -63,6 +63,12 @@ class DiscordStandingBackend:
             # Derived state the pipeline owns. A hand edit desynchronises the
             # crossings table from the graph until the next rebuild overwrites it.
             "bordercrossing",
+            # The record that the environment bootstrap path has been spent.
+            # Deleting that row re-arms it, so whoever can delete it can hand
+            # instance admin to whatever Discord id `.env` names the next time
+            # the list empties. Nothing registers it in the admin today; naming
+            # it here is what keeps that true if something ever does.
+            "bootstrapclaim",
         }
     )
     WRITE_ACTIONS = ("add_", "change_", "delete_")

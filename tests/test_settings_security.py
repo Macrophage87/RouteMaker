@@ -295,7 +295,7 @@ class TestApplicationLogsGoSomewhereReadable:
     def test_a_console_handler_is_configured(self) -> None:
         assert settings.LOGGING["handlers"]["console"]["class"] == "logging.StreamHandler"
 
-    @pytest.mark.parametrize("name", ["core", "pipeline"])
+    @pytest.mark.parametrize("name", ["core", "pipeline", "config"])
     def test_each_application_package_logs_at_info(self, name: str) -> None:
         logger = settings.LOGGING["loggers"][name]
         assert logger["level"] == "INFO"
@@ -307,3 +307,99 @@ class TestApplicationLogsGoSomewhereReadable:
         import logging
 
         assert logging.getLogger("core").getEffectiveLevel() == logging.INFO
+
+    def test_a_record_from_a_scheduled_task_reaches_the_console_handler(self) -> None:
+        """The tasks live in `config.procrastinate`, and the line that explains
+        why a five-minute sweep is touching nothing - "no gateway heartbeat has
+        ever been recorded, so the degraded mark is held" - is logged from there
+        at INFO. With only `core` and `pipeline` named, it fell to `root` at
+        WARNING and reached nobody, so the operator of a deployment whose guilds
+        were not being marked could not tell the arming state from a dead task.
+
+        Asserted by emitting a record and catching it at the configured handler
+        rather than by reading the dictionary back: a logger listed in LOGGING
+        whose records still go nowhere is the failure this is about.
+        """
+        import io
+        import logging
+
+        logger = logging.getLogger("config.procrastinate")
+        assert logger.getEffectiveLevel() <= logging.INFO
+
+        handlers = [h for h in logging.getLogger("config").handlers]
+        assert handlers, "the package logger carries the console handler itself"
+        handler = handlers[0]
+        assert isinstance(handler, logging.StreamHandler)
+
+        captured = io.StringIO()
+        original, handler.stream = handler.stream, captured
+        try:
+            logger.info("no gateway heartbeat has ever been recorded")
+        finally:
+            handler.stream = original
+
+        written = captured.getvalue()
+        assert "no gateway heartbeat has ever been recorded" in written
+        assert "config.procrastinate" in written, "the formatter names the logger"
+
+    def test_the_task_module_logs_through_that_logger(self) -> None:
+        """The test above is only worth anything if the task really does log
+        under this package. `degraded_guild_sweep` takes its logger from
+        `__name__`, which is `config.procrastinate`."""
+        from pathlib import Path
+
+        import config.procrastinate as tasks
+
+        assert tasks.__name__ == "config.procrastinate"
+        source = Path(tasks.__file__).read_text()
+        assert "logging.getLogger(__name__)" in source
+
+
+def test_the_test_settings_relax_nothing() -> None:
+    """`config.test_settings` is the production settings plus the one secret
+    they refuse to import without, and its own docstring says so: "Nothing else
+    is overridden. A test settings module that quietly relaxed a security
+    setting would make the assertions in this file assertions about itself."
+
+    Nothing checked it. So this compares the two module namespaces over every
+    uppercase name - which is every Django setting - and allows a difference in
+    exactly the two names that the supplied key is allowed to move.
+
+    The comparison is against the modules rather than against
+    `django.conf.settings`, because the live settings object is whichever of the
+    two this process was started with, so asking it can only ever agree with
+    itself.
+    """
+    import config.settings as production
+    import config.test_settings as under_test
+
+    # The only names a test value of KEY_ENCRYPTION_KEY is allowed to move: the
+    # key itself is never a module attribute (it is read, used and deleted), and
+    # TOMBSTONE_KEY is derived from it.
+    ALLOWED = {"KEY_ENCRYPTION_KEY", "TOMBSTONE_KEY"}
+
+    def public_settings(module) -> dict:
+        return {
+            name: value
+            for name, value in vars(module).items()
+            if name.isupper() and not name.startswith("_")
+        }
+
+    theirs = public_settings(production)
+    ours = public_settings(under_test)
+
+    added = sorted(set(ours) - set(theirs) - ALLOWED)
+    assert not added, f"config.test_settings invents settings the deployment has not: {added}"
+
+    missing = sorted(set(theirs) - set(ours) - ALLOWED)
+    assert not missing, f"config.test_settings drops settings the deployment has: {missing}"
+
+    differing = sorted(
+        name
+        for name in set(theirs) & set(ours)
+        if name not in ALLOWED and ours[name] != theirs[name]
+    )
+    assert not differing, (
+        "config.test_settings overrides these, so every assertion in this file about "
+        f"them is an assertion about the test settings and not the deployment: {differing}"
+    )

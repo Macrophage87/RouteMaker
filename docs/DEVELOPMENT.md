@@ -9,6 +9,25 @@ and, for the database layer, tests the real thing rather than a stand-in.
 `.env.example` is the full list; three of them decide whether the deployment
 works at all and are explained here rather than in a comment beside a default.
 
+**How a variable reaches a container.** There is no `env_file`: one shared file
+would hand the key-encryption key to Photon and Valhalla and contradict the
+claim that one component alone holds the bot token. Every variable is declared
+on the services that read it, in `compose.yaml`. The non-secret settings that
+every Django process needs the same value of live in the `x-django-env` anchor
+at the top of that file and are merged into `api`, `worker`, `migrate` and
+`rebuild`; the secrets stay written out per service, so which container holds
+which one is readable at a glance.
+
+`tests/test_compose.py` derives the set of names `config/settings.py` reads from
+that module's own source and fails until each one is either declared on `api` or
+named in the small, commented allow-list there - so adding an
+`os.environ.get("NEW_THING")` to settings without also delivering it fails the
+suite rather than producing a container that quietly runs on the default. That
+test exists because the stack had declared six of the twenty-four: under it,
+`ALLOWED_HOSTS` was the module's `["localhost"]` fallback, so every request that
+arrived through Caddy was a `DisallowedHost` 400, and the Discord authorize URL
+carried an empty `client_id` and a redirect back to `localhost:8000`.
+
 ### `KEY_ENCRYPTION_KEY` — required, no default
 
 Every process that imports `config.settings` needs it, including `migrate` and
@@ -54,6 +73,40 @@ though leaving it set is pointless.
 
 It reaches the `api` service alone, since the admin is the only reader.
 
+**It is spent once, permanently.** The claim writes a `bootstrap_claim` row -
+one row, enforced by a unique index - and from then on the environment path is
+refused whatever the instance-admin list looks like. That is what "permanently
+disables the environment path" has to mean: the earlier version tested the list
+instead, so emptying the list re-armed the variable, and anyone who had ever
+read `.env` held a standing offer of instance admin against any future moment
+the list happened to be empty. A refused second claim logs at WARNING saying the
+path is spent, so the 404 has a reason attached to it.
+
+The list counts the holders who could actually sign in - banned and deleted
+accounts excluded - which is the same count `check_last_instance_admin` uses, so
+a deployment whose only instance admin has been banned is one both rules agree is
+empty.
+
+The consequence is worth stating plainly: **once the claim row exists, an
+instance-admin list that empties cannot be refilled through the application at
+all.** There is no password login and no `createsuperuser`, so the only repair is
+direct database access:
+
+```sql
+-- Break glass. Run against the deployment database by whoever has access.
+UPDATE app_user SET is_instance_admin = true WHERE discord_user_id = <id>;
+```
+
+`check_last_instance_admin` exists so this should never be needed: it refuses
+every application path - `save()`, the admin, and `delete()` through the
+`pre_delete` guard - that would remove the last instance admin. What it cannot
+cover is `QuerySet.update()`, which issues one UPDATE and emits no signal, so a
+management shell or a data migration can still empty the list. That is the case
+the break-glass above is for.
+
+The `bootstrap_claim` row is in the nightly dump, so a restore restores the
+disabling along with everything else.
+
 ### `INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS` — the removal window
 
 Removing an *other* instance admin does not take effect immediately. It writes a
@@ -64,8 +117,17 @@ down to themselves in a single unstoppable action. Standing down — clearing yo
 own flag — is immediate, and the last instance admin can never be removed by
 either path.
 
+Re-requesting a removal that is already pending updates who asked and moves the
+effective time later or not at all - never earlier - so a window that is already
+running cannot be shortened by asking for the same removal again under a
+shortened delay.
+
 Due removals are applied by `core.models.apply_due_instance_admin_removals()`,
-which the periodic maintenance sweep calls. Notification of the removed party
+which the five-minute `degraded_guild_sweep` calls (outside that task's
+gateway-heartbeat gate, which has nothing to do with removals) and which the
+six-hourly membership sweep also calls as a backstop. It used to be the
+six-hourly sweep alone, which made the plan's hour an effective one-to-seven
+hours; it is now the hour plus at most five minutes. Notification of the removed party
 and the remaining admins is **not** implemented: phase 1 has no Discord DM path
 and no email path, so the window and the cancel exist and the notice does not.
 
