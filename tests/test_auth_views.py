@@ -331,3 +331,87 @@ class TestCsrfIsActuallyEnforced:
         response = client.post(reverse("logout"), {"csrfmiddlewaretoken": token})
         assert response.status_code == 302
         assert not Session.objects.exists()
+
+
+class TestAMalformedDiscordPayloadIsRefusedRatherThanCrashing:
+    """`exchange_code` maps a bad exchange to `LoginRefused`, which the callback
+    answers with 400 - but the two lines that actually read the profile sat
+    outside the `try` that does the mapping.
+
+    The handler named `KeyError` and `ValueError` already, because a malformed
+    response is the *expected* failure on this path: it is a JSON document from
+    another party, parsed by `json.load`, and the id is then passed to `int()`.
+    Both of those raise exactly the exceptions the handler names, and both raised
+    them one line too late - so a profile with no `id`, or with an `id` that is
+    not a number, was a 500 with a traceback in the logs instead of the 400 every
+    other malformed-exchange shape already got.
+
+    Reachable without controlling Discord: anything that answers the token or
+    user endpoint answers these, which includes a proxy or a captive portal
+    returning an error document with a 200. Driven through the real
+    `exchange_code` with only the transport faked, since the defect is inside it
+    and injecting a fake exchange would skip the code under test entirely.
+    """
+
+    class FakeResponse:
+        def __init__(self, payload: str) -> None:
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc) -> bool:
+            return False
+
+        def read(self):
+            return self.payload.encode()
+
+    def transport(self, monkeypatch, profile: str) -> None:
+        import json
+
+        responses = iter([json.dumps({"access_token": "t", "scope": "identify"}), profile])
+        monkeypatch.setattr(
+            "core.auth_views.urllib.request.urlopen",
+            lambda *args, **kwargs: self.FakeResponse(next(responses)),
+        )
+
+    @pytest.mark.parametrize(
+        ("profile", "shape"),
+        [
+            ("{}", "no id at all"),
+            ('{"id": "not-a-number"}', "an id that is not numeric"),
+            ('{"id": null}', "a null id"),
+            ('{"id": ["1234"]}', "an id that is not a scalar"),
+        ],
+    )
+    def test_the_exchange_refuses_it(self, monkeypatch, profile, shape) -> None:
+        from core.auth_views import LoginRefused, exchange_code
+
+        self.transport(monkeypatch, profile)
+        with pytest.raises(LoginRefused):
+            exchange_code("abc")
+
+    @pytest.mark.parametrize(
+        ("profile", "shape"),
+        [
+            ("{}", "no id at all"),
+            ('{"id": "not-a-number"}', "an id that is not numeric"),
+        ],
+    )
+    def test_the_callback_answers_four_hundred(self, client, monkeypatch, profile, shape) -> None:
+        """The half that was 500, as the browser sees it."""
+        _response, state = start_login(client)
+        self.transport(monkeypatch, profile)
+        response = client.get(reverse("login-callback"), {"state": state, "code": "abc"})
+        assert response.status_code == 400
+
+    def test_a_well_formed_payload_still_signs_in(self, client, monkeypatch) -> None:
+        """So the two above are the malformed shapes and not the fake transport
+        refusing everything."""
+        from core.models import User
+
+        _response, state = start_login(client)
+        self.transport(monkeypatch, '{"id": "4321"}')
+        response = client.get(reverse("login-callback"), {"state": state, "code": "abc"})
+        assert response.status_code == 302
+        assert User.objects.filter(discord_user_id=4321).exists()
