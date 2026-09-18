@@ -296,6 +296,30 @@ SEGMENT_SCHEMA_LIVE = os.environ.get("ROUTEMAKER_LIVE_SCHEMA", "live")
 SEGMENT_SCHEMA_STAGING = os.environ.get("ROUTEMAKER_STAGING_SCHEMA", "staging")
 SEGMENT_SCHEMA_RETIRED = f"{SEGMENT_SCHEMA_LIVE}_old"
 
+# The three names must be three schemas. The rebuild's first stage drops and
+# recreates the staging schema, and the swap drops the retired one, so a staging
+# name that collides with either of the other two makes the weekly rebuild delete
+# the graph it is serving or the one a rollback would put back - before it has
+# fetched anything, with no error to read afterwards. `public` is worse again:
+# it carries every migrated table, so `DROP SCHEMA public CASCADE` is the users,
+# the sessions, the memberships and the audit log. Refused at import, so a
+# deployment with the wrong variable set does not start rather than starting and
+# destroying something on Tuesday morning.
+_SEGMENT_SCHEMAS = {
+    "ROUTEMAKER_LIVE_SCHEMA": SEGMENT_SCHEMA_LIVE,
+    "ROUTEMAKER_STAGING_SCHEMA": SEGMENT_SCHEMA_STAGING,
+    "the retired schema (<live>_old)": SEGMENT_SCHEMA_RETIRED,
+}
+if len(set(_SEGMENT_SCHEMAS.values())) != len(_SEGMENT_SCHEMAS):
+    raise ImproperlyConfigured(
+        "the live, staging and retired segment schemas must be three distinct names, "
+        f"not {_SEGMENT_SCHEMAS}"
+    )
+if "public" in _SEGMENT_SCHEMAS.values():
+    raise ImproperlyConfigured(
+        f"no segment schema may be `public`, which carries every migrated table: {_SEGMENT_SCHEMAS}"
+    )
+
 # The search path has to name both. `live` carries the rebuilt segment tables,
 # which are unmanaged and owned by the pipeline; `public` carries everything
 # migrations own, including the jurisdiction table the pipeline queries

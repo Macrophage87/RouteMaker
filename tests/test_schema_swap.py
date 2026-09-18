@@ -75,6 +75,131 @@ def test_validate_schema_name_accepts_an_ordinary_name() -> None:
     assert validate_schema_name("live_b") == "live_b"
 
 
+# --- What the reset refuses to drop (pipeline/schema.py, config/settings.py) ---
+#
+# `reset_segment_schema` is the first thing FETCH_EXTRACT does, and the first
+# thing it does is `DROP SCHEMA <staging> CASCADE`. The name comes from
+# ROUTEMAKER_STAGING_SCHEMA by way of settings, unexamined: `writers.
+# refuse_live_schema` guards the additive writers and nothing guarded this, and
+# nothing anywhere asserted that staging and live are two different names. Set
+# the variable to the live name - a typo, a copied `.env`, a second deployment
+# sharing a host - and Tuesday morning's rebuild deletes the served graph before
+# it has fetched a byte of OSM.
+
+
+PROTECTED_SCHEMAS = ["the live schema", "the retired schema", "public"]
+
+
+@pytest.mark.parametrize("which", PROTECTED_SCHEMAS)
+def test_reset_refuses_a_staging_name_that_names_a_schema_it_must_never_drop(
+    segment_schemas, settings, which
+) -> None:
+    """The misconfiguration in full: the staging setting carries a name that is
+    already something else, and the rebuild's first stage is handed it.
+
+    Three names are refused. The live schema is the served graph; the retired
+    schema is what `rollback_rebuild` puts back, so dropping it turns one bad
+    rebuild into an unrecoverable one; `public` carries every migrated table -
+    users, sessions, memberships, the audit log - so a `DROP SCHEMA public
+    CASCADE` here is the deployment rather than one week's segments.
+    """
+    from pipeline.schema import create_segment_schema, reset_segment_schema, schema_exists
+
+    live, _staging = segment_schemas
+    retired = settings.SEGMENT_SCHEMA_RETIRED
+    create_segment_schema(retired)
+    insert_segment(live, 4242)
+    insert_segment(retired, 4243)
+
+    settings.SEGMENT_SCHEMA_STAGING = {
+        "the live schema": live,
+        "the retired schema": retired,
+        "public": "public",
+    }[which]
+
+    with pytest.raises(ValueError, match="refusing"):
+        reset_segment_schema(settings.SEGMENT_SCHEMA_STAGING)
+
+    assert row_count(live) == 1, "the served graph is still there"
+    assert row_count(retired) == 1, "and so is the rollback target"
+    assert schema_exists("public"), "and so is everything migrations own"
+
+
+def test_reset_still_builds_an_ordinary_staging_schema(segment_schemas) -> None:
+    """The refusal is a refusal of three names and not of the first stage."""
+    from pipeline.schema import reset_segment_schema
+
+    _live, staging = segment_schemas
+    insert_segment(staging, 99)
+
+    reset_segment_schema(staging)
+
+    assert row_count(staging) == 0, "last week's rows are gone, the schema is not"
+
+
+def test_reset_refuses_a_name_no_ddl_should_carry(segment_schemas) -> None:
+    """`validate_schema_name`'s rule applies before the drop, not after it."""
+    from pipeline.schema import reset_segment_schema
+
+    with pytest.raises(ValueError):
+        reset_segment_schema("staging; DROP SCHEMA public CASCADE")
+
+
+def test_settings_refuse_a_staging_schema_that_is_the_live_one(monkeypatch) -> None:
+    """The other half, one layer earlier: a deployment configured this way does
+    not start, rather than starting and destroying something on Tuesday.
+
+    `config/settings.py` is executed again under a modified environment, the way
+    tests/test_settings_security.py does it, because what is being tested is what
+    happens at import time.
+    """
+    from django.conf import settings as live_settings
+    from django.core.exceptions import ImproperlyConfigured
+    from test_settings_security import load_settings_module
+
+    monkeypatch.setenv("ROUTEMAKER_STAGING_SCHEMA", live_settings.SEGMENT_SCHEMA_LIVE)
+    with pytest.raises(ImproperlyConfigured, match="distinct"):
+        load_settings_module("config_settings_colliding_schemas")
+
+
+def test_settings_refuse_a_staging_schema_that_is_the_retired_one(monkeypatch) -> None:
+    """`<live>_old` is the rollback target, and it is derived rather than set,
+    so this is the collision an operator is least likely to see coming."""
+    from django.conf import settings as live_settings
+    from django.core.exceptions import ImproperlyConfigured
+    from test_settings_security import load_settings_module
+
+    monkeypatch.setenv("ROUTEMAKER_STAGING_SCHEMA", f"{live_settings.SEGMENT_SCHEMA_LIVE}_old")
+    with pytest.raises(ImproperlyConfigured, match="distinct"):
+        load_settings_module("config_settings_retired_collision")
+
+
+@pytest.mark.parametrize("variable", ["ROUTEMAKER_LIVE_SCHEMA", "ROUTEMAKER_STAGING_SCHEMA"])
+def test_settings_refuse_public_as_either_schema(monkeypatch, variable) -> None:
+    """Either variable set to `public` puts the swap's DROP over every migrated
+    table in the deployment."""
+    from django.core.exceptions import ImproperlyConfigured
+    from test_settings_security import load_settings_module
+
+    monkeypatch.setenv(variable, "public")
+    with pytest.raises(ImproperlyConfigured, match="public"):
+        load_settings_module(f"config_settings_public_{variable.lower()}")
+
+
+def test_the_shipped_schema_names_are_three_distinct_non_public_names() -> None:
+    """Against the settings this process is running under, not a re-executed
+    copy: whatever the environment of this run is, it passed the check."""
+    from django.conf import settings as live_settings
+
+    names = [
+        live_settings.SEGMENT_SCHEMA_LIVE,
+        live_settings.SEGMENT_SCHEMA_STAGING,
+        live_settings.SEGMENT_SCHEMA_RETIRED,
+    ]
+    assert len(set(names)) == 3
+    assert "public" not in names
+
+
 def test_swap_promotes_staging_and_retires_live(segment_schemas) -> None:
     from pipeline.schema import schema_exists
     from pipeline.swap import swap_schemas

@@ -92,6 +92,41 @@ def drop_segment_schema(schema: str) -> None:
         cursor.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
 
 
+def refuse_unswappable_schema(schema: str) -> str:
+    """Refuse a staging name that names something the rebuild must never drop.
+
+    `writers.refuse_live_schema` is the same rule for the additive writers, and
+    it was the only one: this function runs `DROP SCHEMA ... CASCADE` as the
+    very first thing the rebuild does, against whatever `ROUTEMAKER_STAGING_
+    SCHEMA` happens to say. With staging set to the live name - a typo, a
+    copied `.env`, a second deployment on one host - the first stage of the
+    weekly rebuild deletes the served graph before it has fetched a single
+    byte, and the rollback target goes the same way if it names that.
+
+    `public` is here for a harder reason than either: it is where every
+    migrated table lives - users, sessions, memberships, the audit log - and
+    `DROP SCHEMA public CASCADE` is the whole deployment, not one week's tiles.
+
+    Settings refuses these three names at import as well. Both layers, because
+    the settings check is what an operator meets on the next deploy and this
+    one is what stands in front of the DDL however the name arrived.
+    """
+    from django.conf import settings
+
+    validate_schema_name(schema)
+    protected = {
+        settings.SEGMENT_SCHEMA_LIVE: "the schema being served",
+        settings.SEGMENT_SCHEMA_RETIRED: "the schema a rollback puts back",
+        "public": "the schema every migrated table lives in",
+    }
+    if schema in protected:
+        raise ValueError(
+            f"refusing to drop and recreate {schema!r}: it is {protected[schema]}. "
+            "The rebuild resets its staging schema only."
+        )
+    return schema
+
+
 def reset_segment_schema(schema: str) -> None:
     """Drop and recreate a staging schema, empty.
 
@@ -101,7 +136,12 @@ def reset_segment_schema(schema: str) -> None:
     first rather than in the segment writer because the crossings table is
     written several stages earlier than the segments and would otherwise be
     dropped along with the schema it had just been written into.
+
+    Which is why the name is checked before anything is dropped: the first
+    thing the first stage of the rebuild does is destructive, and the name it
+    is handed comes from the environment.
     """
+    refuse_unswappable_schema(schema)
     drop_segment_schema(schema)
     create_segment_schema(schema)
 
