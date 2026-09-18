@@ -1,0 +1,39 @@
+OpenLayers, vendored.
+
+Version
+    7.2.2 - the version django.contrib.gis.forms.widgets.OpenLayersWidget pins
+    in its own Media declaration on Django 5.2. Django's declaration points at
+    https://cdn.jsdelivr.net/npm/ol@v7.2.2/, which PLAN.md:15 and PLAN.md:52
+    rule out along with the public OpenStreetMap tile servers: the admin map
+    must make no request off this deployment's own origin. Keep this version in
+    step with that widget when Django is upgraded - core/widgets.py stops
+    extending it if the two disagree, and tests/test_admin_map_widget.py pins
+    the pair.
+
+Release
+    https://github.com/openlayers/openlayers/releases/download/v7.2.2/v7.2.2-package.zip
+    sha256 31b848cc55967c7de63fece8cd1699fc51152421d04653b859103c7391ad5bbe
+
+    That archive is the published npm package, so `dist/ol.js` and `ol.css` in
+    it are byte-for-byte what the jsdelivr URLs above serve. There is no
+    `-dist.zip` asset on this release; `-package.zip` and `-site.zip` are the
+    two it carries.
+
+Files taken from it, unmodified
+    dist/ol.js  -> ol.js
+        sha256 12d3babf6b47adc2bc4b6acd1fb3279752fa66c219d7856f12788a92c49a642e
+    ol.css      -> ol.css
+        sha256 065779b56c76f9ba2966e30f29c721b197c1eda4be93e73c4c16cd5138fec1c9
+    LICENSE.md  -> LICENSE.md
+        sha256 6c4347b83a8c9feef18d57b18e3b6c44cf901b3c344a4a1fbd837e421555ab8e
+
+    `dist/ol.js.map` is deliberately not taken: it is 4 MB of source map that
+    nothing in production reads.
+
+Serving
+    Through the application's own staticfiles app, so `collectstatic` lands
+    them in `${DATA_ROOT}/static` and Caddy serves them from `/srv/static`
+    alongside the rest of the admin's assets. See docs/DEPLOYMENT.md.
+
+Licence
+    BSD 2-Clause, reproduced in LICENSE.md beside this file.

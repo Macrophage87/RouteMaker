@@ -246,22 +246,54 @@ SETTINGS_SOURCE = REPO / "src" / "config" / "settings.py"
 # invisible to it, as were `os.getenv("X")` and every `from os import environ`
 # form. Two undeclared reads in those shapes left this file passing, which made
 # the claim below false in exactly the direction that matters.
-ENVIRON_NAMES = frozenset({"environ"})
-GETENV_NAMES = frozenset({"getenv"})
+# The attribute names, which an alias cannot change: `os.environ` is
+# `os.environ` however `os` itself was imported, so `import os as operating_system`
+# needs nothing special here.
+ENVIRON_ATTRIBUTES = frozenset({"environ"})
+GETENV_ATTRIBUTES = frozenset({"getenv"})
 
 
-def _is_environ(node: ast.AST) -> bool:
-    """`os.environ`, or a bare `environ` from `from os import environ`."""
+def bare_os_names(tree: ast.AST) -> tuple[frozenset[str], frozenset[str]]:
+    """The local names this module binds `os.environ` and `os.getenv` to.
+
+    Resolved from the module's own imports rather than assumed. The version this
+    replaces hard-coded `frozenset({"environ"})`, which reads
+    `from os import environ` and nothing else: `from os import environ as E`
+    binds the same object to a different name, `E["DJANGO_SECRET_KEY"]` is the
+    same undeclared read as `os.environ["DJANGO_SECRET_KEY"]`, and this file saw
+    none of it. The whole point of deriving the list from the source is that it
+    keeps holding when somebody writes the lookup a way nobody predicted, so a
+    derivation that only understands one spelling of the import is the same
+    defect the regex was.
+
+    A bare name with no import behind it binds nothing and is not collected: a
+    module-level `environ = {...}` is a dictionary, not the environment.
+    """
+    environ: set[str] = set()
+    getenv: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "os" and not node.level:
+            for alias in node.names:
+                bound = alias.asname or alias.name
+                if alias.name in ENVIRON_ATTRIBUTES:
+                    environ.add(bound)
+                elif alias.name in GETENV_ATTRIBUTES:
+                    getenv.add(bound)
+    return frozenset(environ), frozenset(getenv)
+
+
+def _is_environ(node: ast.AST, bare: frozenset[str]) -> bool:
+    """`<os>.environ`, or whatever name `from os import environ [as ...]` bound."""
     if isinstance(node, ast.Attribute):
-        return node.attr in ENVIRON_NAMES
-    return isinstance(node, ast.Name) and node.id in ENVIRON_NAMES
+        return node.attr in ENVIRON_ATTRIBUTES
+    return isinstance(node, ast.Name) and node.id in bare
 
 
-def _is_getenv(node: ast.AST) -> bool:
-    """`os.getenv`, or a bare `getenv` from `from os import getenv`."""
+def _is_getenv(node: ast.AST, bare: frozenset[str]) -> bool:
+    """`<os>.getenv`, or whatever name `from os import getenv [as ...]` bound."""
     if isinstance(node, ast.Attribute):
-        return node.attr in GETENV_NAMES
-    return isinstance(node, ast.Name) and node.id in GETENV_NAMES
+        return node.attr in GETENV_ATTRIBUTES
+    return isinstance(node, ast.Name) and node.id in bare
 
 
 def _literal_key(node: ast.AST | None) -> str | None:
@@ -272,21 +304,24 @@ def environment_names_in(source: str) -> set[str]:
     """The string key of every environment read in `source`.
 
     Covered: `environ["X"]`, `environ.get("X")`, `environ.setdefault("X", ...)`
-    and `getenv("X")`, each whether reached through `os.` or imported bare. A
-    lookup whose key is not a literal string is not collected - there is none in
-    settings.py, and one would have to be declared by hand anyway.
+    and `getenv("X")`, each whether reached through `os.`, through an alias of
+    `os`, or imported bare under its own name or an alias of it. A lookup whose
+    key is not a literal string is not collected - there is none in settings.py,
+    and one would have to be declared by hand anyway.
     """
+    tree = ast.parse(source)
+    bare_environ, bare_getenv = bare_os_names(tree)
     names: set[str] = set()
-    for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Subscript) and _is_environ(node.value):
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and _is_environ(node.value, bare_environ):
             if (key := _literal_key(node.slice)) is not None:
                 names.add(key)
         elif isinstance(node, ast.Call) and node.args:
             function = node.func
-            reads_environment = _is_getenv(function) or (
+            reads_environment = _is_getenv(function, bare_getenv) or (
                 isinstance(function, ast.Attribute)
                 and function.attr in ("get", "setdefault")
-                and _is_environ(function.value)
+                and _is_environ(function.value, bare_environ)
             )
             if reads_environment and (key := _literal_key(node.args[0])) is not None:
                 names.add(key)
@@ -322,6 +357,21 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     "SOURCE_EXTRACT_MAX_AGE_DAYS": ("rebuild",),
     "SOURCE_EXTRACT_FORCE_REFRESH": ("rebuild",),
     "COVERAGE_POLYGON": ("rebuild",),
+    # The admin map widget's optional tile template. Read by the api - the admin
+    # is the only surface that renders a map - and delivered by nothing, because
+    # phase 1 has nothing to deliver: the PMTiles extract and the renderer are
+    # unbuilt, so there is no self-hosted basemap to point it at and no public
+    # one it is allowed to point at (PLAN:15). Unset, the widget draws the
+    # polygon over a plain background and requests no tiles, which is the
+    # shipped configuration rather than a degraded one.
+    #
+    # It is parked here rather than declared on the api because a declared
+    # `${ADMIN_BASEMAP_TILE_URL}` with no compose-side default would make
+    # .env.example owe it a value, and the value it owes does not exist yet.
+    # When the renderer lands, this entry comes out and the api declares it with
+    # an empty default - and until then a deployment that has its own tiles
+    # reaches the container the same way any other unlisted variable does.
+    "ADMIN_BASEMAP_TILE_URL": None,
 }
 
 
@@ -358,6 +408,17 @@ def test_the_derivation_finds_the_lookups_settings_actually_has() -> None:
         'from os import environ\nX = environ["SHAPE_UNDER_TEST"]',
         'from os import environ\nX = environ.get("SHAPE_UNDER_TEST", "")',
         'from os import getenv\nX = getenv("SHAPE_UNDER_TEST", "")',
+        # The aliased shapes. `from os import environ as E` binds the same
+        # object to a name the hard-coded list could not know, and the lookup
+        # through it is the same undeclared read.
+        'from os import environ as E\nX = E["SHAPE_UNDER_TEST"]',
+        'from os import environ as E\nX = E.get("SHAPE_UNDER_TEST", "")',
+        'from os import environ as E\nX = E.setdefault("SHAPE_UNDER_TEST", "")',
+        'from os import getenv as read_env\nX = read_env("SHAPE_UNDER_TEST")',
+        # And an alias of the module, which needs nothing special because the
+        # attribute is still spelled `environ` - asserted so that a future
+        # rewrite that starts resolving module names keeps covering it.
+        'import os as operating_system\nX = operating_system.environ["SHAPE_UNDER_TEST"]',
         'X = int(os.environ.get("SHAPE_UNDER_TEST", "1"))',
         'X = [h for h in os.getenv("SHAPE_UNDER_TEST", "").split(",") if h]',
     ],

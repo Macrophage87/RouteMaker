@@ -56,6 +56,7 @@ from .models import (
     schedule_instance_admin_removal,
 )
 from .revocation import revoke_guild
+from .widgets import SelfHostedOpenLayersWidget
 
 
 class RouteMakerAdminSite(admin.AdminSite):
@@ -151,6 +152,21 @@ class RouteMakerAdminSite(admin.AdminSite):
         """Nor a password change. Django registers this for any staff user, and
         it is a path to setting a usable password on an account that must never
         have one."""
+        raise Http404
+
+    def password_change_done(self, request, extra_context=None):
+        """And nor its confirmation page, which is a separate URL.
+
+        `AdminSite.get_urls` registers `password_change/` and
+        `password_change/done/` as two views, and only the first was overridden.
+        Measured: a signed-in instance admin got 404 from `password_change/` and
+        200 from `password_change/done/` - a page reading "Your password was
+        changed" on a deployment where no account has a password and none was
+        changed. It is not a way to set one, so this is not an escalation; it is
+        a surface that contradicts the rule the line above it states, and the
+        first person to reach it would reasonably conclude the password path is
+        live. Both halves answer the same 404.
+        """
         raise Http404
 
 
@@ -350,7 +366,20 @@ class InstanceAdminOnly(AuditedAdmin):
 @admin.register(Jurisdiction, site=site)
 class JurisdictionAdmin(InstanceAdminOnly, GISModelAdmin):
     """Deployment-wide content: polygons are global and editing one changes what
-    every guild sees, which is why this is instance-admin territory."""
+    every guild sees, which is why this is instance-admin territory.
+
+    `GISModelAdmin` is what makes the polygon editable by drawing rather than by
+    typing WKT into a textarea, which is the whole reason PLAN.md:52 chose
+    Django here - "jurisdiction overrides, closures, and way-level corrections
+    are edited by drawing on a map in the admin rather than in a second bespoke
+    editor". It stays. What does not stay is its default widget: `gis_widget`
+    defaults to `OSMWidget`, whose media loads OpenLayers from jsdelivr into an
+    instance admin's authenticated session and whose template emits
+    `ol.source.OSM()` - the public tile servers PLAN.md:15 rules out. See
+    core/widgets.py.
+    """
+
+    gis_widget = SelfHostedOpenLayersWidget
 
     list_display = ("name", "layer", "state", "is_federal_enclave")
     list_filter = ("layer", "state", "is_federal_enclave")
@@ -376,7 +405,8 @@ class OverrideAdmin(InstanceAdminOnly):
 
 @admin.register(ConfiguredGuild, site=site)
 class ConfiguredGuildAdmin(GuildScopedAdmin):
-    """A guild admin sees their own guild and can write almost nothing on it.
+    """A guild admin sees their own guild and may write its two guild-scoped
+    fields on it: `name` and `admin_contact_email`, and nothing else.
 
     Scoping a queryset is not the same as gating a write, which is the gap an
     earlier version left: adding a row here self-onboards a server and pushes an
@@ -384,6 +414,12 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
     remap of the snowflake every standing check matches against - the action the
     plan routes through a dedicated workflow with preconditions, confirmation and
     notification. Deleting cascades away every role mapping and membership row.
+    All three stay instance-admin only.
+
+    The state columns are read-only to everyone including an instance admin,
+    because `state` and `standing_valid_until` are what the degraded window and
+    the revoke-now action write; a guild that could type its own standing window
+    into a form would not have one.
     """
 
     guild_scope_field = "guild_id"
@@ -397,11 +433,42 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
         return bool(getattr(request.user, "is_instance_admin", False))
 
     def has_change_permission(self, request, obj=None) -> bool:
-        """Every field on this form is read-only, so a change POST can only ever
-        be a no-op or an attempt at one of them. Instance admins keep the verb
-        because the form is how they read a guild; nobody else gets to post to
-        it at all."""
-        return bool(getattr(request.user, "is_instance_admin", False))
+        """A guild admin may edit their own guild's two guild-scoped fields.
+
+        The docstring this replaces said "every field on this form is read-only,
+        so a change POST can only ever be a no-op or an attempt at one of them",
+        and that was simply not true of the form: `readonly_fields` names four
+        columns and the model has six, so `name` and `admin_contact_email` were
+        editable and audited the whole time. A permission docstring that
+        misdescribes the form it gates is worse than none, because it is what
+        the next person reads instead of the field list.
+
+        Which way to resolve it is the plan's, not a judgement call. PLAN.md:208
+        puts "the admin contact address" at **guild** scope, "set by that guild's
+        admin and applying only to routes whose owning guild it is", and
+        PLAN.md:210 gives a guild admin leave to "edit that guild's own
+        settings". So the two editable columns are exactly right, and the gate
+        widens to match the form rather than the form narrowing to match a
+        sentence that was never the plan's.
+
+        Object-level, and that is the whole of it. `get_queryset` already scopes
+        the changelist, but scoping a list is not gating a write: a hand-built
+        POST at another guild's id has to be refused by something, and this is
+        that something. Returning False for `obj is None` is deliberate too -
+        Django checks this hook before it checks whether the row was found, so a
+        guild admin posting at a row outside their scope gets the 403 and the
+        refused audit row the attempt deserves rather than a bare 404.
+
+        What does not widen: `guild_id`, `state`, `state_since` and
+        `standing_valid_until` stay in `readonly_fields` for everyone, so the
+        unaudited remap and a self-granted standing window remain impossible;
+        add and delete remain instance-admin only above and below this.
+        """
+        if getattr(request.user, "is_instance_admin", False):
+            return True
+        if obj is None:
+            return False
+        return obj.guild_id in getattr(request.user, "_admin_guild_ids", frozenset())
 
     def has_delete_permission(self, request, obj=None) -> bool:
         return bool(getattr(request.user, "is_instance_admin", False))
@@ -565,6 +632,12 @@ class BorderCrossingAdmin(AuditedAdmin, GISModelAdmin):
     """Derived state, displayed only. The pipeline owns these rows and a rebuild
     reassigns their ids; editing one by hand would be overwritten next Tuesday
     and would desynchronise the graph from the crossings table in the meantime."""
+
+    # Read-only pages still build the form, and a form still carries its
+    # widget's media, so this page loaded the CDN script too. "No CDN reference
+    # anywhere in the rendered admin" means every GIS surface, not just the one
+    # the finding named.
+    gis_widget = SelfHostedOpenLayersWidget
 
     list_display = ("node_id", "osm_way_id", "state_a", "state_b")
     search_fields = ("osm_way_id",)

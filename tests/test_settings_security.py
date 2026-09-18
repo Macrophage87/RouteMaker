@@ -61,6 +61,66 @@ def test_the_admin_is_not_at_the_default_path() -> None:
     assert not settings.ADMIN_PATH.startswith("admin")
 
 
+class TestTheAdminBasemapHasNoPublicDefault:
+    """PLAN:15 ends "Do not use the public OpenStreetMap tile servers", and
+    PLAN:52 names the GeoDjango map widget as one "configured against the
+    self-hosted basemap rather than its default, which would otherwise call the
+    public OpenStreetMap tile servers this plan rules out".
+
+    The self-hosted basemap does not exist yet - the PMTiles extract and the
+    renderer are unbuilt - so the setting that would point at it is optional and
+    empty, and that is the whole of the rule: there is no value a default could
+    honestly carry, and every value it could dishonestly carry is either the
+    thing the plan forbids or a path this deployment does not serve.
+    """
+
+    def source(self) -> str:
+        import importlib
+
+        return Path(importlib.import_module("config.settings").__file__).read_text()
+
+    def test_it_is_read_from_the_environment_with_an_empty_default(self) -> None:
+        assert settings.ADMIN_BASEMAP_TILE_URL == ""
+        assert 'os.environ.get("ADMIN_BASEMAP_TILE_URL", "")' in self.source(), (
+            "the default has to be the empty string, in the source, where a "
+            "change to it is a diff somebody reads"
+        )
+
+    def test_no_setting_names_a_tile_server_or_a_cdn(self) -> None:
+        """Not just this one setting: the whole module. A default that moved
+        into a different name would be the same finding under a new spelling.
+
+        `openstreetmap.org` covers `tile.openstreetmap.org` and its `[abc].`
+        siblings, which is what `ol.source.OSM` resolves to; the CDN hosts are
+        the ones GeoDjango's own widget media names.
+        """
+        source = self.source().lower()
+        for forbidden in (
+            "openstreetmap.org",
+            "tile.osm",
+            "cdn.jsdelivr.net",
+            "unpkg.com",
+            "cdnjs.cloudflare.com",
+            "basemaps.arcgis.com",
+            "vis.earthdata.nasa.gov",
+        ):
+            assert forbidden not in source, f"settings.py names {forbidden}"
+
+    def test_the_env_example_offers_it_only_commented_out(self) -> None:
+        """An operator copies this file and fills in the `change-me`s. A live
+        line here would be a value they did not choose, pointing somewhere this
+        deployment has not earned the right to call."""
+        repo = Path(__file__).resolve().parents[1]
+        lines = [
+            line
+            for line in (repo / ".env.example").read_text().splitlines()
+            if "ADMIN_BASEMAP_TILE_URL" in line
+        ]
+        assert lines, ".env.example does not mention the setting at all"
+        live = [line for line in lines if not line.lstrip().startswith("#")]
+        assert not live, f".env.example sets it for the operator: {live}"
+
+
 def test_the_swapped_schema_names_come_from_the_environment() -> None:
     """The database name was already an environment variable and the schema names
     were not, so two runs on one host reached into each other's `live` and
