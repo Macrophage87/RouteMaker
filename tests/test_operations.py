@@ -164,6 +164,66 @@ def test_an_instance_admin_sees_the_stale_tasks_and_the_failed_jobs(client) -> N
 
 
 @db
+def test_a_guild_admin_who_reaches_the_page_is_refused_by_the_page(client) -> None:
+    """`has_module_permission` only hides the index entry, and the admin site's
+    `admin_view` wrapper only asks `has_permission`, which is staff - so a guild
+    admin, who is staff, reaches this view. The changelist replaces Django's own
+    and never calls `super()`, so the permission check inside it is the only
+    thing standing between them and the deployment's internals.
+    """
+    from core.auth_backend import attach_standing
+    from core.models import CachedMembership, ConfiguredGuild, RoleMapping, User
+
+    guild = ConfiguredGuild.objects.create(guild_id=5000, name="Test Club")
+    guild_admin = User.objects.create(discord_user_id=9004)
+    RoleMapping.objects.create(
+        guild=guild, role_id=7, permission=RoleMapping.Permission.GUILD_ADMIN
+    )
+    CachedMembership.objects.create(
+        discord_user_id=guild_admin.discord_user_id,
+        guild=guild,
+        role_ids=[7],
+        last_confirmed=timezone.now(),
+    )
+    attach_standing(guild_admin)
+    assert guild_admin.is_staff, "a guild admin reaches the admin at all, which is the point"
+
+    sign_in(client, guild_admin)
+    assert client.get(operations_url()).status_code == 403
+
+
+@db
+def test_the_page_marks_the_stale_task_and_only_the_stale_task(client) -> None:
+    """The row, not the word. `nightly_backup` appears elsewhere on the page -
+    in the windows table and in any run row - so a test that searches the body
+    for the name is satisfied by a page whose stale list is empty."""
+    import re
+
+    from core.models import ScheduledRun, User
+    from core.runs import STALE_AFTER
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        if task != "nightly_backup":
+            ScheduledRun.objects.create(
+                task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+            )
+
+    admin = User.objects.create(discord_user_id=9005, is_instance_admin=True)
+    sign_in(client, admin)
+    body = client.get(operations_url()).content.decode()
+
+    rows = re.findall(r'<tr class="stale-task">.*?</tr>', body, re.DOTALL)
+    assert len(rows) == 1, f"one row for one stale task, found {len(rows)}"
+    assert "nightly_backup" in rows[0]
+    assert "never" in rows[0], "a task that has never succeeded says so"
+    assert "no-stale-tasks" not in body
+    assert not any("weekly_rebuild" in row for row in rows), (
+        "a task that has succeeded inside its window has no row"
+    )
+
+
+@db
 def test_the_page_says_so_when_nothing_is_wrong(client) -> None:
     from core.models import ScheduledRun, User
     from core.runs import STALE_AFTER
@@ -254,6 +314,41 @@ def test_check_operations_reports_a_failed_job_even_when_nothing_is_stale() -> N
 
 
 @db
+def test_check_operations_counts_every_failed_job_and_lists_the_newest() -> None:
+    """The count is the number that is wrong, not the number being shown.
+
+    With a limit of 25 and 400 failed jobs the summary line printed "25 failed
+    job(s)" on every run, which reads as a number that has stopped moving
+    rather than one that is off the end of the page - and the flag's own help
+    said the rest were "still counted".
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    jobs = [make_job("weekly_rebuild", "failed", timedelta(minutes=minute)) for minute in range(4)]
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", "--failed-job-limit", "2", stdout=out)
+    printed = out.getvalue()
+
+    assert exit_code.value.code == 1
+    assert "0 stale task(s), 4 failed job(s)" in printed
+    assert printed.count("failed job: ") == 2, "the listing is the one that is truncated"
+    assert "listing the 2 newest of 4 failed jobs" in printed
+    assert f"failed job: {max(jobs)}" in printed, "newest first"
+
+
+@db
 def test_check_operations_ignores_a_job_that_merely_finished() -> None:
     from io import StringIO
 
@@ -339,6 +434,64 @@ def test_finished_job_rows_past_their_retention_go_and_live_ones_do_not() -> Non
     assert aged_success not in surviving
     assert aged_todo in surviving, "a job the worker has not finished is live state, not history"
     assert recent_failure in surviving
+
+
+@db
+def test_the_newest_successful_row_survives_even_when_a_later_run_failed() -> None:
+    """The keep set is two rows per task, not one.
+
+    `stale_tasks` reads the newest *successful* row, and a task whose newest row
+    is a failure is exactly the task an operator is about to ask about. Keeping
+    only the newest row of any kind would prune the success it is measured
+    against, turning "this succeeded three months ago and has failed since" into
+    "this has never succeeded".
+    """
+    from core.models import ScheduledRun
+    from core.runs import RUN_ROW_RETENTION_S, prune_run_rows, stale_task_details
+
+    now = timezone.now()
+    ancient = now - timedelta(seconds=RUN_ROW_RETENTION_S * 2)
+    success = ScheduledRun.objects.create(
+        task="nightly_backup", started_at=ancient, finished_at=ancient, succeeded=True
+    )
+    failure = ScheduledRun.objects.create(
+        task="nightly_backup",
+        started_at=ancient + timedelta(hours=1),
+        finished_at=ancient + timedelta(hours=1),
+        succeeded=False,
+    )
+
+    assert prune_run_rows(now) == 0
+
+    assert ScheduledRun.objects.filter(id=failure.id).exists(), "the newest row of any kind"
+    assert ScheduledRun.objects.filter(id=success.id).exists(), "and the newest successful one"
+    backup = [entry for entry in stale_task_details(now) if entry["task"] == "nightly_backup"]
+    assert backup and backup[0]["last_success_at"] == success.started_at, (
+        "the alert can still say when this last worked"
+    )
+
+
+@db
+def test_a_job_still_running_is_not_history_however_old_it_is() -> None:
+    """Only terminal statuses are pruned. A job left `doing` by a worker that
+    died is live state - the row another worker's `fetch_job` and the admin's
+    failed-job page both read - and deleting it makes the work disappear rather
+    than the history."""
+    from core.runs import JOB_ROW_RETENTION_S, prune_job_rows
+
+    old = timedelta(seconds=JOB_ROW_RETENTION_S * 2)
+    doing = make_job("weekly_rebuild", "doing", old)
+    aborting = make_job("membership_sweep", "aborting", old)
+    finished = make_job("nightly_backup", "succeeded", old)
+
+    assert prune_job_rows() == 1
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT id FROM procrastinate_jobs ORDER BY id")
+        surviving = [row[0] for row in cursor.fetchall()]
+    assert doing in surviving, "a job a worker is holding is not old history"
+    assert aborting in surviving, "nor is one that has been asked to stop"
+    assert finished not in surviving
 
 
 @db

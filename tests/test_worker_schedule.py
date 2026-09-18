@@ -1012,6 +1012,35 @@ def test_a_dump_the_verification_rejects_leaves_nothing_on_the_volume(
     assert left_behind(tmp_path / "backups") == []
 
 
+def under_a_watchdog(call, seconds: float):
+    """Run `call` on its own thread and fail if it is still running after
+    `seconds`. Returns the exception it raised, or None.
+
+    The watchdog is the point rather than a nicety: every test here that
+    asserts a job is bounded is testing a call that, unbounded, does not fail -
+    it waits. Asserting the elapsed time after the call returns cannot notice
+    a call that never returns, so a budget removed from the code would hang the
+    suite rather than fail it, which reads as an infrastructure problem.
+    """
+    import threading
+
+    outcome: dict[str, BaseException] = {}
+
+    def body() -> None:
+        try:
+            call()
+        except BaseException as error:  # noqa: BLE001 - handed back to the caller
+            outcome["error"] = error
+
+    thread = threading.Thread(target=body, name="watchdog", daemon=True)
+    thread.start()
+    thread.join(seconds)
+    assert not thread.is_alive(), (
+        f"still running after {seconds:.0f}s: whatever bounds this is not bounding it"
+    )
+    return outcome.get("error")
+
+
 def locking_connection():
     """A second backend, for holding a lock `pg_dump` has to wait behind.
 
@@ -1052,8 +1081,14 @@ def test_a_backup_past_its_budget_is_killed_and_recorded_as_failed(monkeypatch, 
     try:
         blocker.execute("LOCK TABLE app_user IN ACCESS EXCLUSIVE MODE")
         started = time.monotonic()
-        with pytest.raises(BackupTimedOut, match="budget"):
-            app.tasks["nightly_backup"].func(timestamp=0)
+        # Under a watchdog, because the thing being tested is a bound on how
+        # long something takes: without the budget this call does not fail, it
+        # waits on the lock for as long as the lock is held, and a test that
+        # asserts an elapsed time after the fact hangs forever instead of
+        # failing when the budget is taken away.
+        error = under_a_watchdog(lambda: app.tasks["nightly_backup"].func(timestamp=0), seconds=30)
+        assert isinstance(error, BackupTimedOut), error
+        assert "budget" in str(error)
         assert time.monotonic() - started < 30, "the dump was killed, not waited out"
     finally:
         blocker.rollback()
@@ -1123,6 +1158,57 @@ def test_the_backup_prunes_all_but_the_newest_dumps(monkeypatch, tmp_path) -> No
     assert f"pruned {len(older) - BACKUP_KEEP + 1} old dumps" in (
         ScheduledRun.objects.get(task="nightly_backup").detail
     )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_backup_also_prunes_the_run_and_job_history(monkeypatch, tmp_path) -> None:
+    """The row pruning rides on the backup rather than on a schedule of its own,
+    which means the only thing standing between it and never running is this
+    call. Asserted as rows that were there before the task and are not there
+    after it, because a detail string can be written by hand."""
+    from core.models import ScheduledRun
+    from core.runs import JOB_ROW_RETENTION_S, RUN_ROW_RETENTION_S
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+
+    now = timezone.now()
+    ancient = now - timedelta(seconds=RUN_ROW_RETENTION_S * 2)
+    doomed_run = ScheduledRun.objects.create(
+        task="membership_sweep", started_at=ancient, finished_at=ancient, succeeded=True
+    )
+    kept_run = ScheduledRun.objects.create(
+        task="membership_sweep",
+        started_at=ancient + timedelta(days=1),
+        finished_at=ancient + timedelta(days=1),
+        succeeded=True,
+    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO procrastinate_jobs
+                (queue_name, task_name, priority, args, status, attempts, abort_requested)
+            VALUES ('maintenance', 'membership_sweep', 0, '{}'::jsonb,
+                    'succeeded'::procrastinate_job_status, 1, false)
+            RETURNING id
+            """
+        )
+        doomed_job = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO procrastinate_events (job_id, type, at) VALUES (%s, 'succeeded', %s)",
+            [doomed_job, now - timedelta(seconds=JOB_ROW_RETENTION_S * 2)],
+        )
+
+    app.tasks["nightly_backup"].func(timestamp=0)
+
+    assert not ScheduledRun.objects.filter(id=doomed_run.id).exists(), (
+        "a run row past its retention is still there, so nothing pruned it"
+    )
+    assert ScheduledRun.objects.filter(id=kept_run.id).exists(), "the newest success per task stays"
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE id = %s", [doomed_job])
+        assert cursor.fetchone()[0] == 0, "a finished job past its retention was not pruned"
+    detail = ScheduledRun.objects.filter(task="nightly_backup").order_by("-started_at")[0].detail
+    assert "1 run rows, 1 finished job rows" in detail
 
 
 def test_the_local_dump_retention_is_a_week() -> None:

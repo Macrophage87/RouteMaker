@@ -316,6 +316,19 @@ def prune_job_rows(now=None) -> int:
         return cursor.rowcount
 
 
+def failed_job_count() -> int:
+    """How many jobs are in a failed state, not how many are being shown.
+
+    `failed_jobs` truncates, and a surface that reports the length of a
+    truncated list reports its own limit: with 25 shown of 400 failed jobs the
+    alert said "25 failed job(s)" every time, which reads as a number that has
+    stopped moving.
+    """
+    from procrastinate.contrib.django.models import ProcrastinateJob
+
+    return ProcrastinateJob.objects.filter(status="failed").count()
+
+
 def failed_jobs(limit: int = 50):
     """Recent Procrastinate jobs in a failed state, newest first.
 

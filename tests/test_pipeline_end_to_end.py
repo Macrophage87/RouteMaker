@@ -1311,6 +1311,62 @@ def test_a_rollback_that_fails_partway_puts_the_deployment_back(
         assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
 
 
+def test_the_rollback_command_is_dry_until_it_is_confirmed(workspace, states, monkeypatch) -> None:
+    """`promotion.rollback` had no caller: the one procedure the plan names for
+    a bad promotion could only be run by importing the module in a shell. It is
+    dry by default because it is destructive in the direction nobody wants
+    twice - it retires the graph being served."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ValhallaUpstream
+
+    source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+    two_rebuilds(source, root)
+
+    out = StringIO()
+    call_command("rollback_rebuild", stdout=out)
+    printed = out.getvalue()
+
+    assert "standard: would go back to build 20260910T080000Z" in printed
+    assert "dry run: nothing was changed" in printed
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4, "the newer graph is still being served"
+    assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260917T080000Z"
+
+    out = StringIO()
+    call_command("rollback_rebuild", "--confirm", stdout=out)
+    printed = out.getvalue()
+
+    assert "ebike: serving build 20260910T080000Z" in printed
+    assert "docker compose restart valhalla-standard" in printed, (
+        "the routers do not reload tiles, so the rollback is not finished without a restart"
+    )
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    for variant in Variant:
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+    assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260910T080000Z"
+
+
+def test_the_rollback_command_refuses_on_a_deployment_with_nothing_behind_it(
+    workspace, monkeypatch
+) -> None:
+    """A fresh database, which is the state an operator is most likely to try
+    this in by mistake. It exits non-zero with the refusal on it rather than
+    promoting the empty schema the first swap creates."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    _source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+
+    with pytest.raises(CommandError) as refused:
+        call_command("rollback_rebuild")
+    assert "refusing to roll back" in str(refused.value)
+    assert "has no settings row" in str(refused.value)
+
+
 # --- `rollback_target`, one clause at a time ----------------------------------------
 #
 # All four preconditions are read before anything is renamed or moved, and each

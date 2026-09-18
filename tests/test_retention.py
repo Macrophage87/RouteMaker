@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from pipeline.retention import (
+    BUILD_ID_FORMAT,
     KEEP_BUILDS,
     prune_backups,
     prune_builds,
@@ -269,3 +270,38 @@ def test_new_build_id_skips_a_directory_that_already_exists(settings, tmp_path) 
     assert first == "20260917T080000Z"
     assert second != first
     assert second.startswith("20260917T080000Z")
+
+
+def test_a_build_id_is_chosen_against_the_root_the_build_will_be_written_into(
+    settings, tmp_path
+) -> None:
+    """The context carries its own tiles root, and a rebuild that reads the id
+    off one directory and writes the build into another is choosing against the
+    wrong set of names: the collision this exists to prevent is two builds in
+    the *build's* root, not in the setting's.
+    """
+    from pipeline import run
+
+    settings.TILES_DIR = tmp_path / "somewhere-else"
+    real_root = tmp_path / "tiles"
+    now = datetime(2026, 9, 17, 8, 0, 0, tzinfo=UTC)
+    (real_root / "standard" / "20260917T080000Z").mkdir(parents=True)
+
+    assert run.new_build_id(now, tiles_dir=real_root) == "20260917T080000Z-1"
+    assert run.new_build_id(now) == "20260917T080000Z", "the setting's root knows nothing of it"
+
+    # And the context chooses its own, against its own root: a directory
+    # already carrying this second's id under `real_root` has to push it to a
+    # suffix, while the same directory under the setting's root would not be
+    # seen at all.
+    this_second = datetime.now(UTC).strftime(BUILD_ID_FORMAT)
+    (real_root / "standard" / this_second).mkdir(parents=True, exist_ok=True)
+    context = run.RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+        tiles_dir=real_root,
+    )
+    assert context.build_id != this_second, (
+        "the context's own root is what its build id is chosen against"
+    )
