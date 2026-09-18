@@ -97,6 +97,60 @@ function M.access_is_unrestricted(tags)
   return true
 end
 
+-- The way-level access statement the crossings fixture may not talk over. It is
+-- `ACCESS_KEYS` minus the bicycle keys, and the difference between the two lists
+-- is the whole of the fixture's authority; see `M.bridge_may_be_granted`.
+M.WAY_ACCESS_KEYS = { "access", "vehicle" }
+
+-- Classes where "the roadway is bike-legal" cannot be true whatever a fixture
+-- row says. `trunk` is deliberately absent: US-1, US-50 and New York Avenue NE
+-- are `trunk` here and are routinely bicycle-legal, which is the same call
+-- `stress.MOTOR_ONLY` makes.
+M.MOTOR_ONLY_HIGHWAY = { motorway = true, motorway_link = true }
+
+--- Whether the fixture's `roadway_bicycle_legal: true` may be written onto this way.
+--
+-- The write is a *widening* one, so it needs the guard the cycleway write has,
+-- and it needs a different one, because the two writes answer to different
+-- authorities.
+--
+-- What the fixture may override: an explicit `bicycle=no` on the roadway. PLAN
+-- names this write as "bridge legality sets `bicycle=yes/no` per roadway or
+-- sidepath way", and a row saying a bridge's roadway is legal is exactly a
+-- reviewed correction to OSM's own `bicycle` tagging on that bridge - which is
+-- the thing the fixture exists to carry, at the confidence its note states.
+-- Refusing the override would leave the `yes` half of the write able to do
+-- nothing at all: a bridge whose roadway OSM already leaves unrestricted needs
+-- no row to be routable.
+--
+-- What it may not override: the way's own `access` or `vehicle` statement. A
+-- crossing row is community knowledge about whether bicycles may use a roadway;
+-- it is not a claim that a way tagged `access=no` or `access=private` is open to
+-- the public, and `vehicle=no` bars bicycles under OSM semantics. Upstream
+-- drops `access=no` outright (filter 1, no edge at all), so writing `bicycle=yes`
+-- over it is the same widening the cycleway write was guarded against in round
+-- 4 - a legal claim in the widening direction with no override row and no
+-- review, bypassing the table the plan makes the sole audited path for an
+-- access correction.
+--
+-- Nor a motor-only class. No row in the fixture claims a motorway roadway is
+-- legal and none should; a row that did would be a fixture error, and this is
+-- the one place it could turn into `bicycle=yes` on an interstate.
+--
+-- The `false` half needs no guard at all and gets none: it only ever narrows,
+-- and a fixture that says a roadway is barred agreeing with tagging that
+-- already bars it costs nothing.
+function M.bridge_may_be_granted(tags)
+  if M.MOTOR_ONLY_HIGHWAY[tags.highway] then return false end
+  for _, key in ipairs(M.WAY_ACCESS_KEYS) do
+    local value = tags[key]
+    if value ~= nil and not M.PERMISSIVE_ACCESS[value] then
+      return false
+    end
+  end
+  return true
+end
+
 -- Increasing roughness, matching Valhalla's surface enum ordering.
 M.SURFACE_ORDER = {
   paved_smooth = 1, paved = 2, paved_rough = 3, compacted = 4,
@@ -187,8 +241,18 @@ function M.remap_way(tags, derived)
 
   -- Bridge legality is per roadway or sidepath way, from the crossings fixture
   -- rather than from the midpoint heuristic.
-  if derived.bridge_bicycle_legal ~= nil then
-    out.bicycle = derived.bridge_bicycle_legal and "yes" or "no"
+  --
+  -- The two halves are not symmetric and were written as though they were. `no`
+  -- only narrows and is always written. `yes` widens - it is the same class of
+  -- write as `cycleway=track` above, and on a way tagged `access=no` upstream
+  -- takes it from dropped to routable - so it goes through
+  -- `bridge_may_be_granted`, which lets the fixture override an explicit
+  -- `bicycle=no` on the roadway (that is what a legality row *is*) but never an
+  -- `access` or `vehicle` restriction, and never on a motor-only class.
+  if derived.bridge_bicycle_legal == false then
+    out.bicycle = "no"
+  elseif derived.bridge_bicycle_legal and M.bridge_may_be_granted(tags) then
+    out.bicycle = "yes"
   end
 
   if derived.lit ~= nil then

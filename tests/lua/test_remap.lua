@@ -73,6 +73,33 @@ check("a value that cannot be read is refused rather than guessed at",
   M.parse_width_m("wide") == nil and M.parse_width_m("1,5,2") == nil
     and M.parse_width_m("~2") == nil and M.parse_width_m(nil) == nil)
 
+-- The same table as `TestWidthParsing` in tests/test_stress.py, case for case.
+-- Two parsers read these same OSM tags off the same extract - this one for a
+-- bollard's `maxwidth`, the Python one for `shoulder:*:width` and
+-- `cycleway:*:width` - and round 5 found them disagreeing on four of these
+-- forms, in the dangerous direction both ways: `"8 feet"` was 8.0 metres on the
+-- Python side, a twenty-six-foot shoulder that rates a road low-stress on a tag
+-- that says nothing of the kind, while `"2.4m"`, `"1,5"` and `5'6"` were
+-- unreadable there and read correctly here. Neither table is allowed to move
+-- without the other.
+local FOOT = 0.3048
+for _, case in ipairs({
+  { "3'", 3 * FOOT }, { "8'", 8 * FOOT },
+  { "3 ft", 3 * FOOT }, { "8ft", 8 * FOOT },
+  { "3feet", 3 * FOOT }, { "8 feet", 8 * FOOT },
+  { [[5'6"]], 5 * FOOT + 6 * FOOT / 12 }, { "5'6", 5 * FOOT + 6 * FOOT / 12 },
+  { "1.2", 1.2 }, { "2.4", 2.4 }, { "2 m", 2.0 }, { "2.4 m", 2.4 }, { "2.4m", 2.4 },
+  { "1,2", 1.2 }, { "1,5", 1.5 },
+}) do
+  check("width " .. case[1] .. " reads the same as it does in Python",
+    close(M.parse_width_m(case[1]), case[2]))
+end
+for _, value in ipairs({ "wide", "ft", "1,5,2", "~2", "8 metres", "-2" }) do
+  check("width " .. value .. " is unreadable on both sides",
+    M.parse_width_m(value) == nil)
+end
+check("and so is an absent one", M.parse_width_m(nil) == nil and M.parse_width_m("") == nil)
+
 check("a three-foot bollard gap is narrow and becomes a gate",
   M.remap_node({ barrier = "bollard", maxwidth = "3'" }).barrier == "gate")
 check("a comma-decimal 1,2 m gap is narrow and becomes a gate",
@@ -111,6 +138,50 @@ check("a mapping that denied access would be caught",
 -- Bridge legality is expressed through access, which is what it actually is.
 check("bridge legality sets bicycle access",
   M.remap_way({ highway = "trunk" }, { bridge_bicycle_legal = false }).bicycle == "no")
+check("and the legal half writes yes",
+  M.remap_way({ highway = "secondary", bridge = "yes" },
+              { bridge_bicycle_legal = true }).bicycle == "yes")
+check("a row with no opinion writes nothing",
+  M.remap_way({ highway = "secondary", bridge = "yes" }, {}).bicycle == nil)
+
+-- The `yes` half widens access, so it carries the guard the cycleway write
+-- carries - and a different one, because the two answer to different
+-- authorities. A legality row IS a reviewed correction to OSM's own `bicycle`
+-- tagging on that bridge, so it overrides `bicycle=no`; it is not a claim that
+-- a way its owner has closed is open to the public, so it never overrides an
+-- `access` or `vehicle` restriction, and never lands on a motorway.
+check("the fixture may override an explicit bicycle=no on the roadway",
+  M.remap_way({ highway = "secondary", bridge = "yes", bicycle = "no" },
+              { bridge_bicycle_legal = true }).bicycle == "yes")
+check("and a directional one",
+  M.remap_way({ highway = "secondary", bridge = "yes", ["bicycle:forward"] = "no" },
+              { bridge_bicycle_legal = true }).bicycle == "yes")
+
+for _, case in ipairs({
+  { highway = "service", bridge = "yes", access = "no" },
+  { highway = "service", bridge = "yes", access = "private" },
+  { highway = "service", bridge = "yes", access = "customers" },
+  { highway = "service", bridge = "yes", access = "destination" },
+  { highway = "service", bridge = "yes", vehicle = "no" },
+  { highway = "motorway", bridge = "yes" },
+  { highway = "motorway_link", bridge = "yes", bicycle = "no" },
+}) do
+  local label = (case.access and ("access=" .. case.access))
+    or (case.vehicle and ("vehicle=" .. case.vehicle))
+    or ("highway=" .. case.highway)
+  check(label .. " is never widened to bicycle=yes",
+    M.remap_way(case, { bridge_bicycle_legal = true }).bicycle == nil)
+  -- And the narrowing half still applies there, because it only narrows.
+  check(label .. " still takes a barring row",
+    M.remap_way(case, { bridge_bicycle_legal = false }).bicycle == "no")
+end
+
+check("a permissively tagged bridge still takes the grant",
+  M.remap_way({ highway = "unclassified", bridge = "yes", access = "permissive" },
+              { bridge_bicycle_legal = true }).bicycle == "yes")
+check("trunk is not motor-only here - US-1 and New York Avenue are trunk and bike-legal",
+  M.remap_way({ highway = "trunk", bridge = "yes" },
+              { bridge_bicycle_legal = true }).bicycle == "yes")
 
 -- Directional conditional access, for the parkway reversal. Valhalla reads
 -- bicycle:forward and bicycle:backward and reads no *:conditional key at all -
@@ -222,6 +293,20 @@ end
 
 check("an unrestricted low-stress way still gets its write",
   M.remap_way({ highway = "residential" }, { stress_tier = 1 }).cycleway == "track")
+
+-- The gate is `stress_tier == 1` and nothing else. LTS1 is the only tier that
+-- claims the separation a `cycleway=track` write asserts; LTS2 and LTS3 are
+-- roads a confident adult rides in traffic, and writing a separated track onto
+-- them hands upstream's accommodation factor to roads that have no provision at
+-- all. Every tier is checked because `== 1` widened to `<= 2` or `<= 3` moves
+-- only the tiers a two-case test never looks at.
+for tier = 1, 4 do
+  check("stress tier " .. tier .. " writes a cycleway only at 1",
+    (M.remap_way({ highway = "residential" }, { stress_tier = tier }).cycleway == "track")
+      == (tier == 1))
+end
+check("no tier at all writes nothing",
+  M.remap_way({ highway = "residential" }, {}).cycleway == nil)
 check("and so does a permissively tagged one",
   M.remap_way({ highway = "track", access = "permissive" }, { stress_tier = 1 }).cycleway
     == "track")
