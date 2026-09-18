@@ -34,6 +34,9 @@ services:
   api:
     <<: *restart
     image: routemaker/api:${TAG}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     environment:
       DJANGO_SETTINGS_MODULE: config.settings
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -62,6 +65,9 @@ services:
   worker:
     <<: *restart
     image: routemaker/api:${TAG}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     # Four slots, not the default one: every periodic task except the rebuild
     # queues here, and Procrastinate drops a periodic tick whose predecessor is
     # still running rather than delaying it. With one slot a nightly dump held
@@ -87,6 +93,9 @@ services:
   # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
     image: routemaker/api:${TAG}
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
     command: ["./manage.py", "migrate", "--noinput"]
     restart: "no"
     environment:
@@ -259,6 +268,9 @@ services:
   rebuild:
     <<: *restart
     image: routemaker/pipeline:${TAG}
+    build:
+      context: .
+      dockerfile: docker/pipeline.Dockerfile
     command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
     environment:
       DJANGO_SETTINGS_MODULE: config.settings

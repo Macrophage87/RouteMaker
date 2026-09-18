@@ -1,0 +1,32 @@
+# Runtime dependencies, shared by the api and pipeline images.
+#
+# Why this file exists at all: `pyproject.toml` declares no `[project]
+# dependencies` key, so `pip install .` installs the four packages under `src/`
+# and not one thing they import. `requirements-dev.txt` is deliberately loose
+# ("Pinned loosely here and exactly in the image build"), so this is the exact
+# pin the plan's Operations section asks for.
+#
+# Every version here is the version in the repository's `.venv`, which is the
+# interpreter and package set the suite is green against, and every one was
+# confirmed present on PyPI. Transitive dependencies are resolved by pip at
+# build time and are NOT pinned here; a full lock needs a `pip freeze` taken
+# from a real build, which has not happened - see docs/DEPLOYMENT.md.
+
+Django==5.2.17
+# Named by PLAN.md:64 (its assets are collected into the Caddy-served volume)
+# and carried in requirements-dev.txt. Nothing under src/ imports it yet; it is
+# installed so the API layer does not change the image when it lands.
+django-ninja==1.7.0
+# GeoDjango's PostGIS backend. The binary wheel bundles its own libpq, so the
+# image needs no libpq for Django itself - it needs one for pg_dump.
+psycopg2-binary==2.9.13
+# The worker. Its Django integration ships the job schema as migrations, which
+# is why `migrate` is the only step that creates and upgrades it.
+procrastinate==3.9.0
+# routemaker.gpx parses uploaded GPX, which is untrusted XML.
+defusedxml==0.7.1
+# pipeline.extract, the only module that knows what a PBF is. Installed in the
+# api image as well as the pipeline one: the maintenance worker imports
+# `pipeline.retention`, so `pipeline` is an importable package in that image and
+# an import that reaches `pipeline.extract` must not die on a missing module.
+osmium==4.3.1

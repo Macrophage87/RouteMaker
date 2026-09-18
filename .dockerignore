@@ -1,0 +1,53 @@
+# Build context exclusions.
+#
+# The images carry the application and the data it reads at startup, and nothing
+# else. Two of these lines matter beyond image size:
+#
+#   .venv/          a host virtualenv copied into the context would shadow the
+#                   image's own interpreter's site-packages if it were ever put
+#                   on the path, and it carries host-absolute shebangs.
+#   .env            the deployment's real secrets. Compose delivers them per
+#                   service at runtime; a copy in a layer is a published secret
+#                   that survives every `docker history` and every push.
+#
+# Everything else here is weight or noise: the suite, the review documents, the
+# scratch trees, and the data directories, which are bind mounts at runtime and
+# are never baked in.
+
+.git
+.github
+.gitignore
+.dockerignore
+
+.venv
+venv
+*.egg-info
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+.coverage
+htmlcov
+
+node_modules
+frontend/dist
+
+tests
+docs
+scratchpad
+PLAN.md
+handoff.md
+README.md
+LICENSE
+
+.env
+*.log
+
+# Runtime state. These are bind mounts from ${DATA_ROOT} on the deployment host;
+# a copy in the image would be a stale map that silently shadows nothing and
+# costs gigabytes.
+data
+tiles
+postgres-data
+dist
+build
