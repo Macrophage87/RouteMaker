@@ -101,11 +101,22 @@ class RouteMakerAdminSite(admin.AdminSite):
         timestamps sitting in the table until the sweep reaches it. The site's
         own `logout_view` deletes it; this path did not, so whether signing out
         left a trace depended on which of two buttons was pressed.
+
+        The order matters. Django 5's admin logout is `LogoutView`, which is
+        POST-only and answers a GET with 405 - but this method runs before that
+        dispatch, so deleting first meant a GET deleted the row and *then* got
+        its 405: an `<img src="<admin>/logout/">` on any page anywhere signed an
+        admin out, with no CSRF token, no audit row and no same-origin check.
+        So `super()` goes first and its own dispatch is the gate; the row is
+        deleted only on the method Django actually accepted. The check is not a
+        decorator here on purpose: wrapping this method would answer the GET
+        itself and change the 405 Django owes.
         """
         key = request.session.session_key
-        if key:
+        response = super().logout(request, extra_context)
+        if key and request.method == "POST":
             Session.objects.filter(session_key=key).delete()
-        return super().logout(request, extra_context)
+        return response
 
     def admin_view(self, view, cacheable=False):
         """Django's version redirects an unadmitted request to the login page.

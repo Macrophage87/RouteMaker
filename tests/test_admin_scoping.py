@@ -1745,6 +1745,76 @@ class TestTheInstanceAdminListIsVisibleToGuildAdmins:
 
 
 @db
+class TestMembershipAloneScopesNothingIn:
+    """Which of the two cached guild sets the changelists filter on.
+
+    `attach_standing` caches `_admin_guild_ids` and `_member_guild_ids`, and the
+    scoping is only meaningful against the first: being in a club is what every
+    signed-in person has, and being its admin is what the admin site is for.
+    Nothing here constructed the one state that tells them apart - a guild the
+    viewer is a plain member of and not an admin of - so `_admin_guild_ids` ->
+    `_member_guild_ids` in `GuildScopedAdmin.get_queryset` left the whole suite
+    passing while every club's membership cache, role mappings and configuration
+    became readable by any member of any other club.
+    """
+
+    @pytest.fixture
+    def member_elsewhere(self, guild_admin, other_guild):
+        """The guild admin, additionally a plain MEMBER of `other_guild`.
+
+        The role there maps to MEMBER, not GUILD_ADMIN, so the guild lands in
+        `_member_guild_ids` and must stay out of `_admin_guild_ids`.
+        """
+        from core.auth_backend import attach_standing
+        from core.models import CachedMembership, RoleMapping
+
+        mapping = RoleMapping.objects.create(
+            guild=other_guild, role_id=21, permission=RoleMapping.Permission.MEMBER
+        )
+        membership = CachedMembership.objects.create(
+            discord_user_id=guild_admin.discord_user_id,
+            guild=other_guild,
+            role_ids=[21],
+            last_confirmed=timezone.now(),
+        )
+        attach_standing(guild_admin)
+        assert guild_admin._member_guild_ids == {other_guild.guild_id, 5000}
+        assert guild_admin._admin_guild_ids == {5000}, "a member there, an admin only at home"
+        return {"mapping": mapping, "membership": membership}
+
+    def _visible(self, client, model, field):
+        response = client.get(admin_url(f"core_{model}_changelist"))
+        assert response.status_code == 200
+        return set(response.context["cl"].queryset.values_list(field, flat=True))
+
+    def test_the_guild_list_shows_only_the_guilds_they_administer(
+        self, as_guild_admin, other_guild, member_elsewhere
+    ) -> None:
+        visible = self._visible(as_guild_admin, "configuredguild", "guild_id")
+        assert visible == {5000}, "membership is not administration"
+        assert other_guild.guild_id not in visible
+
+    def test_the_membership_cache_shows_only_the_guilds_they_administer(
+        self, as_guild_admin, other_guild, rows, member_elsewhere
+    ) -> None:
+        """Their own row in the other club is still their row - and it is still
+        another club's membership cache, which is the table this scoping exists
+        to keep club-private."""
+        visible = self._visible(as_guild_admin, "cachedmembership", "guild__guild_id")
+        assert 5000 in visible, "the scoping has not simply emptied the page"
+        assert other_guild.guild_id not in visible
+
+    def test_the_role_mappings_show_only_the_guilds_they_administer(
+        self, as_guild_admin, other_guild, rows, member_elsewhere
+    ) -> None:
+        """Role mappings decide who holds what in a club; a member reading
+        another club's is reading that club's authorization table."""
+        visible = self._visible(as_guild_admin, "rolemapping", "guild__guild_id")
+        assert 5000 in visible
+        assert other_guild.guild_id not in visible
+
+
+@db
 class TestTheAdminLogoutEndsTheApplicationSession:
     def test_the_session_row_goes_with_it(self, as_instance_admin) -> None:
         """Django's admin logout flushes its own session and left this
@@ -1757,6 +1827,42 @@ class TestTheAdminLogoutEndsTheApplicationSession:
         response = as_instance_admin.post(f"/{settings.ADMIN_PATH}logout/")
         assert response.status_code in (200, 302)
         assert not Session.objects.exists()
+
+    def test_a_get_signs_nobody_out(self, as_instance_admin) -> None:
+        """Django 5's admin logout is `LogoutView`, which is POST-only and
+        answers a GET with 405. The override ran before that dispatch and
+        deleted the `core.Session` row first, so the 405 arrived after the row
+        was already gone: an `<img src="<admin>/logout/">` on any page anywhere
+        signed an admin out, with no CSRF token, no audit row and nothing
+        checking the origin. The row must survive the refusal, and the admin
+        must still be signed in afterwards.
+        """
+        from core.models import Session
+
+        assert Session.objects.count() == 1
+        response = as_instance_admin.get(f"/{settings.ADMIN_PATH}logout/")
+        assert response.status_code == 405, (
+            "Django's own POST-only dispatch is the gate; a different status means "
+            "something answered ahead of it"
+        )
+        assert Session.objects.count() == 1, "a refused request signed them out anyway"
+        assert as_instance_admin.get(f"/{settings.ADMIN_PATH}").status_code == 200
+
+    def test_a_cross_origin_get_signs_nobody_out_either(self, as_instance_admin) -> None:
+        """The same request as it actually arrives from an attacker's page: a
+        third-party Referer on a tag the browser sends with cookies and without
+        a token. Nothing here is allowed to depend on the Referer - the point is
+        that the shape a CSRF would take gets the same 405 and leaves the row.
+        """
+        from core.models import Session
+
+        response = as_instance_admin.get(
+            f"/{settings.ADMIN_PATH}logout/",
+            HTTP_REFERER="https://evil.example/post",
+        )
+        assert response.status_code == 405
+        assert Session.objects.count() == 1
+        assert as_instance_admin.get(f"/{settings.ADMIN_PATH}").status_code == 200
 
 
 @db
