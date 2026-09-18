@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from pipeline.retention import (
+    BUILD_ID_FORMAT,
     KEEP_BUILDS,
     prune_backups,
     prune_builds,
@@ -88,6 +89,42 @@ def test_pruning_a_directory_that_was_never_promoted_keeps_the_newest(tmp_path) 
 
     assert prune_builds(root, keep=2) == BUILDS[:3]
     assert names(root) == BUILDS[3:]
+
+
+def test_a_protected_build_survives_whatever_its_place_in_the_order(tmp_path) -> None:
+    """The rebuild protects the build it has just written, by name.
+
+    Not "the newest as well": `unique_build_id` hands out the first free
+    suffix inside a second, so a directory this run wrote can sort *before* one
+    a failed run left, and a newest-N rule would then keep the wrong one and
+    delete the build that had just been made. Here the protected build is the
+    oldest of the five and no symlink names it.
+    """
+    root = variant_with_builds(tmp_path / "standard", current=BUILDS[4], previous=BUILDS[3])
+
+    removed = prune_builds(root, keep=0, protect=[BUILDS[0]])
+
+    assert removed == BUILDS[1:3]
+    assert names(root) == [BUILDS[0], BUILDS[3], BUILDS[4]]
+    assert (root / BUILDS[0] / "tiles.tar").is_file(), "the run's own build is still there"
+
+
+def test_a_protected_build_is_protected_under_every_variant(tmp_path) -> None:
+    """One build id names one rebuild, which wrote a directory under each
+    variant; protecting it under one of them only would be half a build."""
+    from pipeline.retention import prune_tile_builds
+
+    tiles = tmp_path / "tiles"
+    for variant in ("standard", "no-trail", "ebike"):
+        variant_with_builds(tiles / variant, current=BUILDS[4], previous=BUILDS[3])
+
+    pruned = prune_tile_builds(tiles, keep=0, protect=[BUILDS[0]])
+
+    assert {variant: removed for variant, removed in pruned.items()} == {
+        variant: BUILDS[1:3] for variant in ("standard", "no-trail", "ebike")
+    }
+    for variant in ("standard", "no-trail", "ebike"):
+        assert names(tiles / variant) == [BUILDS[0], BUILDS[3], BUILDS[4]]
 
 
 def test_pruning_touches_nothing_it_does_not_recognise(tmp_path) -> None:
@@ -233,3 +270,38 @@ def test_new_build_id_skips_a_directory_that_already_exists(settings, tmp_path) 
     assert first == "20260917T080000Z"
     assert second != first
     assert second.startswith("20260917T080000Z")
+
+
+def test_a_build_id_is_chosen_against_the_root_the_build_will_be_written_into(
+    settings, tmp_path
+) -> None:
+    """The context carries its own tiles root, and a rebuild that reads the id
+    off one directory and writes the build into another is choosing against the
+    wrong set of names: the collision this exists to prevent is two builds in
+    the *build's* root, not in the setting's.
+    """
+    from pipeline import run
+
+    settings.TILES_DIR = tmp_path / "somewhere-else"
+    real_root = tmp_path / "tiles"
+    now = datetime(2026, 9, 17, 8, 0, 0, tzinfo=UTC)
+    (real_root / "standard" / "20260917T080000Z").mkdir(parents=True)
+
+    assert run.new_build_id(now, tiles_dir=real_root) == "20260917T080000Z-1"
+    assert run.new_build_id(now) == "20260917T080000Z", "the setting's root knows nothing of it"
+
+    # And the context chooses its own, against its own root: a directory
+    # already carrying this second's id under `real_root` has to push it to a
+    # suffix, while the same directory under the setting's root would not be
+    # seen at all.
+    this_second = datetime.now(UTC).strftime(BUILD_ID_FORMAT)
+    (real_root / "standard" / this_second).mkdir(parents=True, exist_ok=True)
+    context = run.RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+        tiles_dir=real_root,
+    )
+    assert context.build_id != this_second, (
+        "the context's own root is what its build id is chosen against"
+    )

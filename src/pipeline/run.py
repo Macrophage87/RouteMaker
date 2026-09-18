@@ -126,15 +126,21 @@ def lit_value(tags: dict) -> bool | None:
     return LIT_BY_OSM_VALUE.get(tags.get("lit"))
 
 
-def new_build_id(now: datetime | None = None) -> str:
+def new_build_id(now: datetime | None = None, tiles_dir: Path | str | None = None) -> str:
     """The dated tile directory's name. UTC, second resolution, sortable, and
     never one that is already taken under the tiles root: two fires in one
     second would otherwise share a directory (`write_build_config` refuses the
     second, but refusing is a failed rebuild and disambiguating is not).
+
+    The root is the caller's when the caller has one. `RebuildContext` carries
+    a `tiles_dir` that a test or a second deployment may have pointed
+    elsewhere, and reading `settings.TILES_DIR` here meant the id was chosen
+    against one directory and the build written into another: two rebuilds
+    against the same real root could pick the same id, which is the collision
+    this function exists to prevent.
     """
-    return retention.unique_build_id(
-        now or datetime.now(UTC), retention.taken_build_ids(Path(_setting("TILES_DIR")))
-    )
+    root = Path(tiles_dir if tiles_dir is not None else _setting("TILES_DIR"))
+    return retention.unique_build_id(now or datetime.now(UTC), retention.taken_build_ids(root))
 
 
 def _setting(name: str):
@@ -256,7 +262,9 @@ class RebuildContext:
     # the box is what PLAN:13's clip is given until it does.
     coverage_polygon: Path | None = field(default_factory=lambda: _setting("COVERAGE_POLYGON"))
     upstreams: dict[str, str] = field(default_factory=lambda: dict(_setting("VALHALLA_UPSTREAMS")))
-    build_id: str = field(default_factory=new_build_id)
+    # Empty means "choose one", which `__post_init__` does against this
+    # context's own `tiles_dir`. A `default_factory` cannot see another field.
+    build_id: str = ""
     # Monotonic-clock instant after which no further stage or binary starts.
     deadline: float | None = None
 
@@ -283,6 +291,10 @@ class RebuildContext:
     build_configs: dict[variants.Variant, Path] = field(default_factory=dict)
     swap_outcome: promotion.SwapOutcome | None = None
     drift_report: object | None = None
+
+    def __post_init__(self) -> None:
+        if not self.build_id:
+            self.build_id = new_build_id(tiles_dir=self.tiles_dir)
 
     def variant_pbf(self, variant: variants.Variant) -> Path:
         return self.work_dir / f"{variant.value}.osm.pbf"

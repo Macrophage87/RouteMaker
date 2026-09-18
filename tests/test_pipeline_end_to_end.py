@@ -990,6 +990,46 @@ def test_the_disk_gate_refuses_before_anything_is_written(workspace, states) -> 
     assert count(staging) == 1, "the gate runs before the staging schema is reset"
 
 
+def test_the_disk_gate_refuses_on_free_space_a_huge_volume_makes_look_small(tmp_path) -> None:
+    """Two clauses, and the percentage one alone is not a gate.
+
+    A volume big enough makes any absolute shortfall disappear into the
+    fraction: 2 GiB free on a 10 TiB filesystem is a build that cannot write
+    its tiles, and `(used + required) / total` reads 1 percent. The free-space
+    clause is what refuses it, and the fraction is what refuses the volume that
+    has room today and would be at 90 percent tomorrow.
+    """
+    import shutil
+
+    from rebuild_fixtures import GIB
+
+    from pipeline.tiles import DiskGateRefused, check_disk_gate
+
+    def huge_and_nearly_empty(path):
+        return shutil._ntuple_diskusage(total=10_000 * GIB, used=100 * GIB, free=2 * GIB)
+
+    with pytest.raises(DiskGateRefused) as refused:
+        check_disk_gate(
+            tmp_path / "tiles",
+            source_bytes=0,
+            minimum_free=8 * GIB,
+            fraction=0.80,
+            disk_usage=huge_and_nearly_empty,
+        )
+    assert "2.0 GiB free" in str(refused.value)
+    assert "1%" in str(refused.value), "the fraction is nowhere near the gate"
+
+    # And the same volume with the room it says it needs is allowed through.
+    gate = check_disk_gate(
+        tmp_path / "tiles",
+        source_bytes=0,
+        minimum_free=1 * GIB,
+        fraction=0.80,
+        disk_usage=huge_and_nearly_empty,
+    )
+    assert gate.required == 1 * GIB
+
+
 def test_elevation_tiles_land_where_the_configs_say_the_build_reads(workspace, states) -> None:
     """The stage writes HGT tiles into the elevation directory, in the reader's
     band layout, for every one-degree cell the coverage box touches. And that
@@ -1379,6 +1419,262 @@ def test_rollback_after_a_rebuild_that_failed_at_the_swap_is_refused(
     for variant in Variant:
         assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
     assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260910T080000Z"
+
+
+def two_rebuilds(source: Path, root: Path) -> None:
+    """Two weeks of rebuilds, which is the least a rollback needs behind it."""
+    run_pipeline(source, root, build_id="20260910T080000Z")
+    build_toy_extract(source, changed=True)
+    run_pipeline(source, root, build_id="20260917T080000Z")
+
+
+def test_an_undo_that_fails_on_one_variant_still_undoes_the_others(
+    workspace, states, monkeypatch
+) -> None:
+    """The undo used to be one unguarded sequence, so the first step to raise
+    skipped every step after it - the other two variants and the settings rows
+    with them. That is the half-swapped deployment the undo exists to prevent,
+    reached by the undo itself, and on a retryable error it would have been
+    reached again on every attempt."""
+    from core.models import ValhallaUpstream
+    from pipeline import promotion, tiles
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+
+    real_restore = tiles.restore_links
+
+    def restore_that_fails_on_the_first_variant(tiles_dir, variant, state):
+        if variant is Variant.STANDARD:
+            raise OSError("the data volume is read-only")
+        return real_restore(tiles_dir, variant, state)
+
+    monkeypatch.setattr(promotion, "swap_schemas", refusing_swap)
+    monkeypatch.setattr(tiles, "restore_links", restore_that_fails_on_the_first_variant)
+    build_toy_extract(source, changed=True)
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260917T080000Z")
+    assert "could not take the swap lock" in str(caught.value.cause), (
+        "the swap's own failure is what the rebuild reports, not the undo's"
+    )
+    assert any("standard's tile links" in note for note in caught.value.cause.__notes__), (
+        "what the undo could not put back is on the error an operator reads"
+    )
+
+    for variant in (Variant.NO_TRAIL, Variant.EBIKE):
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260910T080000Z", (
+            f"{variant.value} was left on a build the swap never completed"
+        )
+        assert not (variant_dir / "previous").exists()
+    for row in ValhallaUpstream.objects.all():
+        assert (row.build_id, row.previous_build_id) == ("20260910T080000Z", ""), row.variant
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5, "last week's graph is still served"
+
+
+def test_a_promotion_that_dies_between_its_own_two_links_is_undone(
+    workspace, states, monkeypatch
+) -> None:
+    """`promote` moves `previous` and then `current`, and a failure between
+    them returns nothing - so the variant is in neither the promoted set nor
+    the untouched one. An undo that walked the promoted set left that variant's
+    `previous` naming the build still being served, which is the one piece of
+    state claiming there is something to roll back to."""
+    from pipeline import promotion, tiles
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+
+    real_promote = tiles.promote
+
+    def promote_that_dies_between_its_links(tiles_dir, variant, build_id):
+        if variant is not Variant.NO_TRAIL:
+            return real_promote(tiles_dir, variant, build_id)
+        variant_dir = Path(tiles_dir) / variant.value
+        before = tiles.promoted_build_id(tiles_dir, variant)
+        tiles._replace_symlink(variant_dir / tiles.PREVIOUS, before)
+        raise OSError("the volume filled between the two links")
+
+    monkeypatch.setattr(promotion.tiles, "promote", promote_that_dies_between_its_links)
+    build_toy_extract(source, changed=True)
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260917T080000Z")
+    assert caught.value.stage is Stage.SWAP
+
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260910T080000Z", variant.value
+        assert not (variant_dir / "previous").exists(), (
+            f"{variant.value} still claims there is a build to roll back to"
+        )
+
+
+def test_a_rollback_that_fails_partway_puts_the_deployment_back(
+    workspace, states, monkeypatch
+) -> None:
+    """The emergency path had no undo at all.
+
+    `rollback_swap` had already renamed the schemas when the per-variant loop
+    began, so a `demote` that raised on the second variant left the schemas
+    rolled back, one variant on last week's tiles and two on this week's, and
+    one settings row rewritten - a state no rebuild and no rollback can reason
+    about, reached by the one command whose purpose is to get out of one.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline import promotion, tiles
+    from pipeline.schema import schema_exists
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    real_demote = tiles.demote
+
+    def demote_that_fails_on_the_second_variant(tiles_dir, variant):
+        if variant is Variant.NO_TRAIL:
+            raise OSError("the data volume went read-only")
+        return real_demote(tiles_dir, variant)
+
+    monkeypatch.setattr(promotion.tiles, "demote", demote_that_fails_on_the_second_variant)
+
+    with pytest.raises(OSError, match="read-only"):
+        promotion.rollback(root / "tiles")
+
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4, "the newer graph is served again"
+    assert schema_exists(settings.SEGMENT_SCHEMA_RETIRED), "and the rollback target is back"
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260917T080000Z", variant.value
+        assert os.readlink(variant_dir / "previous") == "20260910T080000Z", variant.value
+    for row in ValhallaUpstream.objects.all():
+        assert (row.build_id, row.previous_build_id) == (
+            "20260917T080000Z",
+            "20260910T080000Z",
+        ), row.variant
+
+    # And the deployment is one an operator can still act on: with the volume
+    # writable again, the rollback the command was run for goes through.
+    monkeypatch.setattr(promotion.tiles, "demote", real_demote)
+    promotion.rollback(root / "tiles")
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    for variant in Variant:
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+
+
+def test_the_rollback_command_is_dry_until_it_is_confirmed(workspace, states, monkeypatch) -> None:
+    """`promotion.rollback` had no caller: the one procedure the plan names for
+    a bad promotion could only be run by importing the module in a shell. It is
+    dry by default because it is destructive in the direction nobody wants
+    twice - it retires the graph being served."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ValhallaUpstream
+
+    source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+    two_rebuilds(source, root)
+
+    out = StringIO()
+    call_command("rollback_rebuild", stdout=out)
+    printed = out.getvalue()
+
+    assert "standard: would go back to build 20260910T080000Z" in printed
+    assert "dry run: nothing was changed" in printed
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4, "the newer graph is still being served"
+    assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260917T080000Z"
+
+    out = StringIO()
+    call_command("rollback_rebuild", "--confirm", stdout=out)
+    printed = out.getvalue()
+
+    assert "ebike: serving build 20260910T080000Z" in printed
+    assert "docker compose restart valhalla-standard" in printed, (
+        "the routers do not reload tiles, so the rollback is not finished without a restart"
+    )
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    for variant in Variant:
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+    assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260910T080000Z"
+
+
+def test_the_rollback_command_refuses_on_a_deployment_with_nothing_behind_it(
+    workspace, monkeypatch
+) -> None:
+    """A fresh database, which is the state an operator is most likely to try
+    this in by mistake. It exits non-zero with the refusal on it rather than
+    promoting the empty schema the first swap creates."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    _source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+
+    with pytest.raises(CommandError) as refused:
+        call_command("rollback_rebuild")
+    assert "refusing to roll back" in str(refused.value)
+    assert "has no settings row" in str(refused.value)
+
+
+# --- `rollback_target`, one clause at a time ----------------------------------------
+#
+# All four preconditions are read before anything is renamed or moved, and each
+# one is the only thing standing between some half-built deployment and a
+# rollback that promotes it. The two refusal tests above are satisfied by
+# whichever clause fires first, so each clause gets a test that satisfies the
+# other three.
+
+
+def test_rollback_is_refused_when_a_settings_row_names_no_previous_build(workspace, states) -> None:
+    """The row is the only record of which build was being served before this
+    one. Without it there is nothing to repoint the upstreams to, and the
+    rollback would have blanked them."""
+    from core.models import ValhallaUpstream
+    from pipeline.promotion import RollbackUnavailable, rollback_target
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    ValhallaUpstream.objects.filter(variant="ebike").update(previous_build_id="")
+
+    with pytest.raises(RollbackUnavailable, match="ebike's settings row names no previous build"):
+        rollback_target(root / "tiles")
+
+
+def test_rollback_is_refused_when_the_tiles_and_the_row_disagree(workspace, states) -> None:
+    """`previous` and `previous_build_id` name the same build on a deployment
+    that swapped cleanly. When they disagree, one of them is from a rebuild
+    that did not finish, and a rollback would put a graph and an extract from
+    different weeks together."""
+    from pipeline import tiles
+    from pipeline.promotion import RollbackUnavailable, rollback_target
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    tiles._replace_symlink(root / "tiles" / "ebike" / "previous", "20260101T080000Z")
+
+    with pytest.raises(RollbackUnavailable, match="ebike's previous tiles are 20260101T080000Z"):
+        rollback_target(root / "tiles")
+
+
+def test_rollback_is_refused_when_the_retired_schema_holds_no_segments(workspace, states) -> None:
+    """A retired schema exists forever after the first swap, and an empty one
+    is what the first swap retires: `swap_schemas` creates an empty live schema
+    on a fresh deployment so the first rename has something to move out of the
+    way. Promoting that over the served graph took a five-segment live table to
+    zero with nothing raised."""
+    from pipeline.promotion import RollbackUnavailable, rollback_target
+
+    source, root = workspace
+    two_rebuilds(source, root)
+    rollback_target(root / "tiles")  # everything else about this deployment is fine
+
+    with connection.cursor() as cursor:
+        cursor.execute(f"TRUNCATE {settings.SEGMENT_SCHEMA_RETIRED}.segment CASCADE")
+
+    with pytest.raises(RollbackUnavailable, match="holds no segments"):
+        rollback_target(root / "tiles")
 
 
 def test_a_rebuild_cannot_build_into_a_build_id_already_on_disk(workspace, states) -> None:

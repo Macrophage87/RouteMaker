@@ -17,7 +17,7 @@ import sys
 
 from django.core.management.base import BaseCommand
 
-from core.runs import failed_jobs, stale_task_details
+from core.runs import failed_job_count, failed_jobs, stale_task_details
 
 # Deliberately the shell convention rather than a richer set: monitoring tools
 # read "zero or not zero", and a scheme with more codes in it invites a check
@@ -34,12 +34,16 @@ class Command(BaseCommand):
             "--failed-job-limit",
             type=int,
             default=25,
-            help="How many failed jobs to list (all of them are still counted).",
+            help=(
+                "How many failed jobs to list. The count on the last line is all of them, "
+                "and the listing says so when it is showing fewer."
+            ),
         )
 
     def handle(self, *args, **options) -> None:
         stale = stale_task_details()
         jobs = failed_jobs(options["failed_job_limit"])
+        failed_total = failed_job_count()
 
         for entry in stale:
             last = entry["last_success_at"] or "never"
@@ -52,8 +56,17 @@ class Command(BaseCommand):
                 f"failed job: {job.id} {job.task_name} on {job.queue_name} "
                 f"after {job.attempts} attempts (last event: {job.last_event_at or 'unknown'})"
             )
-        if not stale and not jobs:
+        if len(jobs) < failed_total:
+            self.stdout.write(
+                f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
+                "--failed-job-limit lists more)"
+            )
+        if not stale and not failed_total:
             self.stdout.write("ok: no stale tasks, no failed jobs")
             sys.exit(EXIT_OK)
-        self.stdout.write(f"{len(stale)} stale task(s), {len(jobs)} failed job(s)")
+        # The total rather than the length of the list above it. Reporting the
+        # length reported the limit: 400 failed jobs and a limit of 25 printed
+        # "25 failed job(s)" every run, which reads as a number that has
+        # stopped moving rather than one that is off the end of the page.
+        self.stdout.write(f"{len(stale)} stale task(s), {failed_total} failed job(s)")
         sys.exit(EXIT_ALERT)

@@ -129,6 +129,12 @@ def weekly_rebuild(timestamp: int) -> None:
     six-hour build does not sit in front of the sweep - and so that the
     container with the Valhalla binaries and the data mounts is the one that
     runs it: compose's `rebuild` service is a worker on this queue alone.
+
+    Retention brackets the run rather than following it: once before the disk
+    gate, which is terminal and would otherwise refuse every week on a volume
+    the prune could have made room on, and once in a `finally`, so the
+    directory a failed rebuild wrote does not sit on the volume until the
+    second following success.
     """
     from django.conf import settings
 
@@ -144,27 +150,103 @@ def weekly_rebuild(timestamp: int) -> None:
             reference_dir=settings.REBUILD_REFERENCE_DIR,
             deadline=time.monotonic() + REBUILD_TIMEOUT_S,
         )
+        # Before the disk gate, which is the first thing the first stage runs.
+        # Pruning only after a successful run put the whole of retention
+        # downstream of a gate that is terminal: once the volume was too full
+        # for a second tile set the gate refused every week, and the one
+        # mechanism that could have freed the space never ran again, however
+        # many prunable builds were sitting on the volume. It is safe here by
+        # construction - `prune_builds` never removes what `current` or
+        # `previous` points at, which is the served graph and the rollback
+        # target, and this rebuild has written nothing yet.
+        reclaimed = _prune_tile_builds(
+            context.tiles_dir, retention.KEEP_BUILDS, "before the disk gate"
+        )
         try:
             report = run_rebuild(build_handlers(context), deadline=context.deadline)
         except RebuildFailed as error:
+            if error.stage in stages_after_swap():
+                # The swap completed, so `live_old` is now the schema a
+                # rollback would put back - and a retry re-runs SWAP, whose
+                # `DROP SCHEMA live_old CASCADE` destroys it. The reconcile is
+                # a report rather than a promotion, so the deployment is
+                # serving the new build correctly and what is missing is the
+                # drift row; that is worth an alert and a hand-run, not five
+                # more swaps.
+                raise RebuildAbandoned(
+                    f"{error}. The swap completed, so this rebuild is not retried: a retry "
+                    f"would re-run the swap and drop the {settings.SEGMENT_SCHEMA_RETIRED} "
+                    "schema a rollback needs. The new build is being served; re-run the "
+                    "reconciliation by hand, or let next week's rebuild write the next "
+                    "drift report."
+                ) from error
             if isinstance(error.cause, terminal_causes()):
                 raise RebuildAbandoned(str(error)) from error
             raise
         except RebuildTimedOut as error:
             raise RebuildAbandoned(str(error)) from error
-        # After the promotion, not before it: what is removed is decided by
-        # where `current` and `previous` point, and until the swap has moved
-        # them the build being retired still looks like the one being served.
-        # Nothing pruned these, so a deployment kept one dated tile set per week
-        # forever on the volume whose disk gate refuses a rebuild that cannot
-        # fit two - the gate would eventually decline every rebuild with "grow
-        # the volume" as the only remedy left.
-        pruned = retention.prune_tile_builds(settings.TILES_DIR)
+        finally:
+            # On every path, not only the successful one. A rebuild that died
+            # after BUILD_TILES left a third tile set on the volume that
+            # nothing removed until the *second* following success, because
+            # the prune ran after `run_rebuild` returned and a failure never
+            # returns. What survives here is what the promotion symlinks name -
+            # the served graph and the rollback target - plus this run's own
+            # build, which is `current` if it swapped and something to look at
+            # if it did not. Everything else goes now rather than a week from
+            # now, so a second failed week does not leave a fourth tile set.
+            reclaimed += _prune_tile_builds(
+                context.tiles_dir, 0, "after the run", protect=[context.build_id]
+            )
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
-            f"pruned {sum(len(builds) for builds in pruned.values())} old build directories"
+            f"pruned {reclaimed} old build directories. The routers serve the previous "
+            "build until they are restarted: `docker compose restart valhalla-standard "
+            "valhalla-no-trail valhalla-ebike`."
         )
         run.save(update_fields=["detail"])
+
+
+def _prune_tile_builds(tiles_dir, keep: int, what: str, protect=()) -> int:
+    """`retention.prune_tile_builds`, counted, and never the reason a rebuild fails.
+
+    It runs in a `finally` that is on the path of every failure the rebuild can
+    have, so an error raised here would replace the error being reported - the
+    rebuild's own, which is the one the alert and the run row need to name. A
+    prune that cannot run is logged and left to the next attempt; the disk gate
+    is what notices if it never runs at all.
+    """
+    import logging
+
+    from pipeline import retention
+
+    try:
+        pruned = retention.prune_tile_builds(tiles_dir, keep=keep, protect=protect)
+    except Exception:  # noqa: BLE001 - cleanup must not replace the failure it follows
+        logging.getLogger(__name__).exception("could not prune old build directories %s", what)
+        return 0
+    return sum(len(builds) for builds in pruned.values())
+
+
+def stages_after_swap() -> frozenset:
+    """Stages that run once the schema rename has been made.
+
+    A failure in one of them is terminal however ordinary its cause. The
+    retry strategy retries a plain `RebuildFailed`, and a retried rebuild
+    runs the whole thing again including SWAP - whose `DROP SCHEMA live_old
+    CASCADE` destroys the schema a rollback would put back. So the first
+    `RECONCILE` failure, a reconciliation that hit a database hiccup, would
+    have dismantled the rollback target on its way to reporting the same
+    error five more times.
+
+    Derived from the stage order rather than written out, so a stage added
+    after the swap is terminal on the day it is added. Imported lazily for the
+    same reason `terminal_causes` is: this module is imported at Django
+    app-ready time and the pipeline imports the ORM.
+    """
+    from pipeline.rebuild import Stage, stages_before
+
+    return frozenset(Stage) - set(stages_before(Stage.SWAP)) - {Stage.SWAP}
 
 
 def terminal_causes() -> tuple[type[Exception], ...]:
@@ -444,6 +526,12 @@ def perform_backup(
     a monotonic deadline taken once, and whatever is left of it handed to each
     subprocess as its timeout. One budget rather than one each, because what is
     bounded is the maintenance slot the whole task holds, not either process.
+
+    The dump is written to `<name>.dump.part` and renamed to `<name>.dump` only
+    after the verification has passed, and the part file is removed on every
+    failure path. A dump under the ordinary name is therefore a dump that was
+    written whole and read back, which is the only promise a restore procedure
+    can act on.
     """
     import subprocess
 
@@ -455,35 +543,55 @@ def perform_backup(
     deadline = time.monotonic() + (BACKUP_TIMEOUT_S if timeout_s is None else timeout_s)
     settings.BACKUP_DIR.mkdir(parents=True, exist_ok=True)
     destination = settings.BACKUP_DIR / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump"
+    # Written under a name no restore would ever pick and renamed only once the
+    # listing has been read back and accepted. Only the timeout used to clean up
+    # after itself, so a `pg_dump` that exited non-zero - a wrong database name,
+    # a permission error, a full volume - and a dump the verification rejected
+    # both left `routemaker-<instant>.dump` on the volume: the newest by name,
+    # which is precisely the one an operator restoring "last night's" reaches
+    # for, and in the verification case possibly carrying the membership-cache
+    # rows the exclusion exists to keep off the disk. `prune_backups` matches
+    # the final name only, so a part file is never mistaken for a kept dump
+    # either.
+    part = destination.with_name(destination.name + ".part")
     database = settings.DATABASES["default"]
     env = {**os.environ, "PGPASSWORD": database["PASSWORD"]}
     try:
-        subprocess.run(
-            [
-                "pg_dump",
-                "--format=custom",
-                f"--host={database['HOST']}",
-                f"--port={database['PORT']}",
-                f"--username={database['USER']}",
-                # Excluded, not merely unprotected. See the task docstring.
-                *(f"--exclude-table-data=*.{table}" for table in BACKUP_EXCLUDED_TABLES),
-                f"--file={destination}",
-                database["NAME"],
-            ],
-            check=True,
-            env=env,
-            timeout=_remaining(deadline, "pg_dump"),
-        )
-        listing = read_listing(destination, env, _remaining(deadline, "pg_restore --list"))
-    except subprocess.TimeoutExpired as expired:
-        # The child is already killed by subprocess.run; what is left is the
-        # half-written archive, which must not be mistaken for last night's.
-        destination.unlink(missing_ok=True)
-        raise BackupTimedOut(
-            f"the backup exceeded its {BACKUP_TIMEOUT_S:.0f}s budget and was killed "
-            f"while running {expired.cmd[0]}"
-        ) from expired
-    verify_dump_listing(listing)
+        try:
+            subprocess.run(
+                [
+                    "pg_dump",
+                    "--format=custom",
+                    f"--host={database['HOST']}",
+                    f"--port={database['PORT']}",
+                    f"--username={database['USER']}",
+                    # Excluded, not merely unprotected. See the task docstring.
+                    *(f"--exclude-table-data=*.{table}" for table in BACKUP_EXCLUDED_TABLES),
+                    f"--file={part}",
+                    database["NAME"],
+                ],
+                check=True,
+                env=env,
+                timeout=_remaining(deadline, "pg_dump"),
+            )
+            listing = read_listing(part, env, _remaining(deadline, "pg_restore --list"))
+        except subprocess.TimeoutExpired as expired:
+            # The child is already killed by subprocess.run; what is left is the
+            # half-written archive, which the cleanup below removes.
+            raise BackupTimedOut(
+                f"the backup exceeded its {BACKUP_TIMEOUT_S:.0f}s budget and was killed "
+                f"while running {expired.cmd[0]}"
+            ) from expired
+        verify_dump_listing(listing)
+        # The rename is the last thing that happens, so the ordinary name exists
+        # only for an archive that was written whole and verified.
+        part.replace(destination)
+    except BaseException:
+        # Every failure path, including the ones nothing here anticipates: what
+        # must not survive is a partial or rejected archive under a name the
+        # restore procedure trusts.
+        part.unlink(missing_ok=True)
+        raise
     return destination
 
 
