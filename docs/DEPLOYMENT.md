@@ -80,7 +80,7 @@ worker behind it — nothing retries it, the next Tuesday's tick refuses on it,
 and the staleness alert is eight days out. No grace period covers a six-hour
 build, so the rule is the schedule: release outside Tuesday 08:00 UTC and the
 hours after it, check `docker compose ps rebuild` first, and if it has already
-happened, `docker compose exec -T rebuild ./manage.py unwedge_job <job_id>`
+happened, `docker compose exec -T worker ./manage.py unwedge_job <job_id>`
 moves the row back to `todo` (docs/OPERATIONS.md, "Wedged jobs").
 
 **Moving `TAG` back does not undo a migration.** Migrations are applied by the
@@ -524,7 +524,8 @@ there:
 | `rollback_rebuild` | `rebuild` | Reads and rewrites the promotion symlinks under `<DATA_ROOT>/tiles`. In `api` those resolve to `/app/data/tiles`, which is empty, and the command refuses on every variant with "no previous tiles" — a refusal that reads like a deployment that has never rebuilt. |
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
-| `check_operations` | `api` | Reads the database only, so the container with no data mount is the right one. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
+| `check_operations` | `rebuild` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which only `rebuild` mounts — in `api` it would measure the container's own layer. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
+| `unwedge_job` | `worker` | Reads and updates the job table only, so any Django container works; `worker` is the one that is up whenever the stack is, including while `rebuild` is the container being restarted. |
 
 The frontend half of that sentence has no source either: `frontend/` is a single
 module and its test, with no React application, no bundler and no build script,

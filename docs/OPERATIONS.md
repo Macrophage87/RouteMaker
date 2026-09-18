@@ -18,12 +18,20 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   admin who could edit them could silence one by hand. Anyone else gets the same
   404 the rest of the admin gives an unadmitted request.
 - **`./manage.py check_operations`**, for anything that cannot log in. It prints
-  one line per stale task, per wedged job and per failed job, and exits 1 if
-  there is anything to print, 0 otherwise. A cron entry is the intended caller:
+  one line per stale task, per wedged job, per failed job and per volume short
+  of room for the next rebuild, and exits 1 if there is anything to print, 0
+  otherwise. A cron entry is the intended caller:
 
   ```sh
-  */10 * * * * cd /srv/routemaker && docker compose exec -T api ./manage.py check_operations || mail-the-ops-channel
+  */10 * * * * cd /srv/routemaker && docker compose exec -T rebuild ./manage.py check_operations || mail-the-ops-channel
   ```
+
+  It runs in `rebuild` and not `api` because of the fourth line: the free-space
+  check is a `statvfs` on `TILES_DIR`, and `rebuild` is the one container that
+  mounts the tiles. In `api` the same call would measure the container's own
+  writable layer and report room that the rebuild does not have. The line names
+  the path it measured, so a check run in the wrong container is visibly about
+  the wrong filesystem rather than silently reassuring.
 
   **The `cd` is the entry, not decoration.** `docker compose` finds its project
   by looking for a compose file in the working directory and then upwards, and
@@ -374,9 +382,18 @@ index raises and a running job does not, so a hand-fired rebuild still in
 flight on a Tuesday morning is **doubled** by that tick rather than dropping
 it. What has been serialising the two in practice is `--concurrency=1` on the
 `rebuild` service — one slot, so the second job waits rather than being refused
-— and that is a slot count, not a guarantee. The in-task check makes it one: a
-second rebuild that reaches a worker while another is running fails immediately,
-without retrying, and says which job it deferred to.
+— and that is a slot count, not a guarantee. The in-task check is the guarantee
+for the case the slot count does not cover: a second rebuild that reaches a
+worker while another is running — a second `rebuild` replica, or a raised
+`--concurrency` — is refused on the way in, without retrying, names the job it
+deferred to, and finishes **aborted** rather than failed, so it does not page.
+On the shipped single slot it never fires, because the second job cannot reach
+a worker while the first holds the slot: the tick's job waits in `todo` and
+runs a **second full rebuild** the moment the hand-fired one finishes. That is
+the doubling to expect on a Tuesday, and its one lasting consequence is that
+`<live>_old` and the `previous` links then name the hand-fired build from an
+hour earlier rather than last week's, which is what `rollback_rebuild` would
+put back.
 
 Rebuilds started by hand are recorded in the audit log, as `run_rebuild_now`
 with the job id, with no actor — there is no request and no session behind a
