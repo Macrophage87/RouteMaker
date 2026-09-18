@@ -62,8 +62,36 @@ a dump. With a development default in the settings file, the published literal
 declared it. A container without the key now stops at import instead.
 
 It comes from SSM (SecureString, KMS-backed) in production and from the
-environment file locally. Rotating it invalidates every existing ban tombstone,
-which is a re-tombstoning job and not a restart.
+environment file locally.
+
+**It is not rotatable in phase 1, and the failure mode is silent.** A
+`BanTombstone` row holds the HMAC and nothing else — `tombstone`, `created_at`
+and a free-text `reason` (`core/models.py`) — which is the property that makes
+the table safe to keep in the nightly dump, and it is also the property that
+makes a rotation unrecoverable: the Discord id the digest was taken over is not
+stored anywhere, so there is nothing to re-derive the new digest from. This was
+once written down here as "a re-tombstoning job", which implies a job exists.
+None does, and none can from the data that is kept.
+
+What a rotation actually does is **re-admit every banned account**. The ban
+check computes `tombstone(discord_user_id, settings.TOMBSTONE_KEY)` at sign-in
+and looks the result up; under a new key no stored row ever matches, so every
+tombstoned id signs in again as if it had never been banned, the old rows sit
+in the table matching nothing, and nothing logs or refuses. Treat the value as
+permanent for the life of a deployment: back it up with the database rather
+than rotating it, and if it has to change, the bans have to be re-entered from
+whatever record exists outside this system. handoff.md section 7 carries that
+as an open row.
+
+`DJANGO_SECRET_KEY` is the opposite case and is worth stating beside it, since
+both are "a random string in `.env`" and they are not alike. Rotating it is
+safe and it is not free: sessions are database-backed, their payload is signed
+with that key, `settings.py` sets no `SECRET_KEY_FALLBACKS`, and so every
+session fails to decode on the next request and is discarded. **Every signed-in
+user is signed out**, and signs back in through Discord. Nothing is corrupted
+and nothing needs repair. docs/DEPLOYMENT.md, "Secrets, and what rotating one
+costs", has the same two alongside `PGPASSWORD`, whose rotation is a procedure
+rather than an edit.
 
 The suite supplies its own value through `config.test_settings`, which is
 `config.settings` plus that one default and nothing else. It cannot come from

@@ -19,7 +19,9 @@ command looks for it.
 
 from __future__ import annotations
 
+import os
 import re
+import shutil
 import stat
 import subprocess
 from pathlib import Path
@@ -97,6 +99,18 @@ PIPELINE_REQUIRED_PACKAGES = {
 # the same package as spatialite, so nothing here has to be installed for it;
 # noble's spatialite-bin ships /usr/bin/spatialite and /usr/bin/spatialite_tool
 # (packages.ubuntu.com/noble/amd64/spatialite-bin/filelist).
+# The runtime stage installs four packages that are not there for a binary the
+# rebuild shells out to, so they are not in the table above and this is where
+# that is said rather than left as a silent difference: TLS roots for the
+# downloads, libpq for psycopg, and the two python3 packages the virtualenv is
+# built with.
+PACKAGES_NOT_FOR_A_REBUILD_BINARY = {
+    "ca-certificates",
+    "libpq5",
+    "python3-pip",
+    "python3-venv",
+}
+
 PIPELINE_GUARDED_BINARIES = (
     "valhalla_build_admins",
     "valhalla_build_timezones",
@@ -422,6 +436,167 @@ def test_the_pipeline_image_asserts_every_binary_it_shells_out_to_is_present(bin
     assert binary in named, (
         f"docker/pipeline.Dockerfile's `command -v` loop does not name {binary}; a missing "
         "one is a rebuild that fails at runtime rather than an image that fails to build"
+    )
+
+
+def runtime_apt_packages(dockerfile: Dockerfile) -> set[str]:
+    """The packages the *runtime* stage installs.
+
+    There are two `apt-get install` lines in this file - the wheel-building
+    stage installs a compiler - and only the second one puts anything in the
+    image that ships. Stages are tracked by `FROM ... AS <name>` rather than by
+    taking the last match, so adding a third stage does not silently change
+    which list this reads.
+    """
+    stage = None
+    packages: set[str] = set()
+    for keyword, rest in dockerfile.instructions:
+        if keyword == "FROM":
+            tokens = dockerfile.expand(rest).split()
+            stage = tokens[tokens.index("AS") + 1] if "AS" in tokens else None
+        elif keyword == "RUN" and stage == "runtime" and "apt-get install" in rest:
+            listed = rest.split("apt-get install", 1)[1].split(";")[0]
+            packages |= {
+                token.strip().rstrip(";")
+                for token in listed.split()
+                if not token.startswith("-") and token.strip().rstrip(";")
+            }
+    assert packages, "no apt-get install found in the runtime stage"
+    return packages
+
+
+def test_the_required_package_table_is_the_runtime_stage_it_describes() -> None:
+    """`PIPELINE_REQUIRED_PACKAGES`, derived.
+
+    The table above is hand-written on purpose - it carries *why* each package
+    is required, which the Dockerfile cannot - and a hand-written list is one
+    that can be narrowed with the suite still green. Drop `spatialite-bin` from
+    it and the parametrised test above stops asking whether the package that
+    `valhalla_build_timezones` loads its shapefile with is installed at all,
+    and nothing anywhere says so.
+
+    So it is asserted equal to what the runtime stage installs, less the four
+    packages that are not there for a rebuild binary. Dropping the package from
+    *both* sides is still possible and is what the image's own `command -v`
+    guard is for: the loop names `spatialite` and `spatialite_tool`, so the
+    image would fail to build.
+    """
+    installed = runtime_apt_packages(Dockerfile(REPO / "docker" / "pipeline.Dockerfile"))
+    assert set(PIPELINE_REQUIRED_PACKAGES) == installed - PACKAGES_NOT_FOR_A_REBUILD_BINARY, (
+        f"the table names {sorted(PIPELINE_REQUIRED_PACKAGES)} and the runtime stage "
+        f"installs {sorted(installed)}, of which "
+        f"{sorted(PACKAGES_NOT_FOR_A_REBUILD_BINARY)} are not there for a rebuild binary"
+    )
+    assert PACKAGES_NOT_FOR_A_REBUILD_BINARY < installed, (
+        "the exemption list names a package the runtime stage does not install: "
+        f"{sorted(PACKAGES_NOT_FOR_A_REBUILD_BINARY - installed)}"
+    )
+
+
+def test_the_guarded_binary_list_is_the_guard_loop_it_describes() -> None:
+    """`PIPELINE_GUARDED_BINARIES`, derived, and the other direction of the
+    test above it.
+
+    The parametrised test asks, for each name here, whether the Dockerfile's
+    loop names it - so a name deleted from the *loop* fails. A name deleted
+    from this tuple instead leaves the loop intact and the suite green while
+    the list that is supposed to be the record of what the rebuild shells out
+    to has quietly shrunk. `spatialite_tool` is the one this matters for: it is
+    the binary `valhalla_build_timezones` runs with no check of its own, which
+    is why it is in the loop at all.
+    """
+    dockerfile = Dockerfile(REPO / "docker" / "pipeline.Dockerfile")
+    guards = [rest for _, rest in dockerfile.of("RUN") if "command -v" in rest]
+    assert len(guards) == 1, f"expected one `command -v` guard loop, found {len(guards)}"
+    named = re.findall(r"[\w.]+", guards[0].partition(" in ")[2].partition(";")[0])
+    assert set(PIPELINE_GUARDED_BINARIES) == set(named), (
+        f"PIPELINE_GUARDED_BINARIES names {sorted(PIPELINE_GUARDED_BINARIES)} and the "
+        f"image's guard loop names {sorted(named)}"
+    )
+    assert len(set(PIPELINE_GUARDED_BINARIES)) == len(PIPELINE_GUARDED_BINARIES)
+
+
+# --- the api entrypoint, run --------------------------------------------------
+
+ENTRYPOINT = REPO / "docker" / "api-entrypoint.sh"
+
+
+def run_entrypoint(tmp_path: Path, nproc: int, **environ: str) -> list[str]:
+    """The entrypoint under `sh`, with gunicorn and nproc stood in for.
+
+    It ends in `exec gunicorn ...`, so a stub named gunicorn that prints its
+    own argv is the whole of the harness. `nproc` is stubbed as well, because
+    what the count must *not* follow is the host this test runs on.
+    """
+    if shutil.which("sh") is None:  # pragma: no cover - there is always a shell
+        pytest.skip("no POSIX shell")
+    stubs = tmp_path / "bin"
+    stubs.mkdir(exist_ok=True)
+    (stubs / "gunicorn").write_text('#!/bin/sh\nfor a in "$@"; do echo "$a"; done\n')
+    (stubs / "nproc").write_text(f"#!/bin/sh\necho {nproc}\n")
+    for stub in ("gunicorn", "nproc"):
+        (stubs / stub).chmod(0o755)
+    finished = subprocess.run(
+        ["sh", str(ENTRYPOINT)],
+        cwd=REPO,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        env={"PATH": f"{stubs}:{os.environ['PATH']}", **environ},
+    )
+    assert finished.returncode == 0, finished.stderr
+    return finished.stdout.split("\n")
+
+
+def workers_of(argv: list[str]) -> int:
+    assert "--workers" in argv, argv
+    return int(argv[argv.index("--workers") + 1])
+
+
+def test_the_api_entrypoint_uses_the_worker_count_compose_hands_it(tmp_path) -> None:
+    """`compose.yaml` sets `WEB_CONCURRENCY` on the api service from `.env`, and
+    that is the value the operator can change. If the script derived one anyway
+    the variable would be decoration."""
+    argv = run_entrypoint(tmp_path, nproc=64, WEB_CONCURRENCY="3")
+    assert workers_of(argv) == 3, argv
+
+
+def test_the_api_entrypoint_derives_its_fallback_from_a_cpu_budget(tmp_path) -> None:
+    """The fallback, for a container run by hand with no WEB_CONCURRENCY.
+
+    `nproc` reports the *host*: a compose `cpus:` limit is a cgroup quota and
+    does not change it, so on PLAN:293's 8-vCPU box the old `nproc * 2 + 1` was
+    17 sync gunicorn workers - 17 full Django processes - inside the api's 2 GB
+    limit. The script reads `/sys/fs/cgroup/cpu.max` first and falls through to
+    `nproc` only when there is no quota, which is the case where the container
+    really does have the machine.
+
+    The expected figure is computed from whichever of the two applies *here*,
+    because a test box may or may not be under a quota of its own; the stub
+    `nproc` is deliberately absurd so that a script that ignored the quota
+    would be obvious.
+    """
+    quota = Path("/sys/fs/cgroup/cpu.max")
+    cores = 64
+    if quota.exists():
+        allowance, _, period = quota.read_text().strip().partition(" ")
+        if allowance != "max":
+            cores = max(1, -(-int(allowance) // int(period)))
+    argv = run_entrypoint(tmp_path, nproc=64)
+    assert workers_of(argv) == 2 * cores + 1, argv
+
+
+def test_the_api_entrypoint_reads_the_cgroup_quota_before_nproc() -> None:
+    """The ordering, in the text, because the box this suite runs on decides
+    which of the two branches the test above actually exercises."""
+    body = ENTRYPOINT.read_text()
+    assert "/sys/fs/cgroup/cpu.max" in body, (
+        "the entrypoint no longer looks at the container's cpu quota, so its fallback is "
+        "the host's core count again"
+    )
+    assert body.index("/sys/fs/cgroup/cpu.max") < body.index("$(nproc)"), (
+        "the entrypoint reads nproc before the cgroup quota; nproc reports the host and "
+        "is the answer only when there is no quota at all"
     )
 
 

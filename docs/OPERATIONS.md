@@ -22,8 +22,20 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   there is anything to print, 0 otherwise. A cron entry is the intended caller:
 
   ```sh
-  */10 * * * * docker compose exec -T api ./manage.py check_operations || mail-the-ops-channel
+  */10 * * * * cd /srv/routemaker && docker compose exec -T api ./manage.py check_operations || mail-the-ops-channel
   ```
+
+  **The `cd` is the entry, not decoration.** `docker compose` finds its project
+  by looking for a compose file in the working directory and then upwards, and
+  cron runs a job from the owner's home directory with a minimal environment.
+  Without the `cd` the command is `no configuration file provided: not found`
+  and exit 1 on every tick — which the `||` turns into a page every ten
+  minutes, from the monitor, saying nothing about the stack it is monitoring.
+  The path is wherever this repository is checked out on the host;
+  `docker compose --project-directory /srv/routemaker exec -T api ...` does the
+  same job without changing directory. And the `&&` is deliberate: a `cd` that
+  fails — a checkout moved, a volume not mounted — pages too, rather than
+  silently running nothing.
 
 **Wedged jobs** are the third row because the first two miss the same outage.
 Both lists are built from `status="failed"`, and a worker killed mid-job never
@@ -79,6 +91,23 @@ that fires when the component that writes every *other* alert row has died — a
 stalled worker stops writing the backup and sweep rows as well, but their
 windows are 26 and 12 hours. It is honest about what it measures: the row says
 the worker dequeued and finished a job, not that its process is alive.
+
+**A stack that is down across a scheduled tick loses that run rather than
+catching it up.** The schedules in the table are Procrastinate periodic tasks,
+and its deferrer ignores any tick it finds further in the past than
+`procrastinate.periodic.MAX_DELAY`, which is 10 minutes: on start it defers
+what is due now and drops what was due while nothing was running. So a host rebooted, or a stack
+left down, for more than ten minutes across Tuesday 08:00 UTC skips that week's
+rebuild silently, and the first thing that says so is `weekly_rebuild` going
+stale eight days later. The catch-up is a hand-fired one —
+`./manage.py run_rebuild_now`, "Firing a rebuild by hand" below — and it is
+worth firing after any maintenance window that covered a scheduled time. The
+five-minute tasks catch up on their own within the window; the weekly one is
+the one that costs a week.
+
+**A job left `doing` by a worker that died is not one any of these windows
+notices in time**, which is what the wedged-job row above is for and what
+`./manage.py unwedge_job <job_id>` moves back to `todo`.
 
 ## The maintenance queue has four slots, and every task on it is bounded
 
@@ -410,6 +439,21 @@ the first host to run it is the first test of it.
    (docs/DEPLOYMENT.md, "Photon"). `migrate` waits for the database's health
    check and runs every migration, and `api`, `worker` and `rebuild` wait for
    it to have completed.
+
+   **On a host that is already serving, check first whether a rebuild is
+   running.** `docker compose up -d`, `restart` and `down` all stop the
+   `rebuild` container, and stopping it during a build is a wedge: the worker
+   gets a SIGTERM, Procrastinate waits for the running job rather than
+   abandoning it — `shutdown_graceful_timeout` is unset, so the wait has no
+   bound — and the `stop_grace_period: 60s` on that service expires into a
+   SIGKILL that leaves the `weekly_rebuild` row `doing` with nothing behind it.
+   Nothing retries it, the next Tuesday's tick refuses on the job that is still
+   `doing`, and the alert arrives eight days later. `docker compose ps rebuild`
+   and `docker compose logs --tail=20 rebuild` are the check;
+   `./manage.py unwedge_job <job_id>` is the repair if it has already happened.
+   A build takes up to six hours from 08:00 UTC on Tuesdays and no grace period
+   can cover it, so the answer is to wait or to accept the unwedge, not to
+   lengthen the grace.
 
    If this first `up` reports that `migrate` failed, run `docker compose up -d`
    again before debugging anything. The health check gates `migrate` on a
