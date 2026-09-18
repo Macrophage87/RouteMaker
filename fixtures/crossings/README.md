@@ -10,6 +10,45 @@ table is the admin's, filled with reviewed rows and read by
 `<DATA_ROOT>/reference/crossings.json`, `ReferenceData.load` reads it at rebuild
 time, and the tile build resolves it against the clipped extract by name.
 
+## What is in scope, and what is missing
+
+The set is the road and path crossings of **the Potomac and the Anacostia**
+inside the coverage box, plus the rail and transit structures standing at those
+same crossings. On the Potomac that runs from the American Legion Bridge
+downstream to the Woodrow Wilson Bridge; on the Anacostia, from the Benning Road
+Bridge downstream to the confluence. Those two rivers are here because they are
+where a wrong answer is expensive: each is a barrier tens of kilometres long
+with a handful of crossings, so a crossing the router gets wrong does not cost a
+detour of a block, it costs the ride.
+
+Nothing else is in scope, and the absences are deliberate rather than pending:
+
+* **Other water crossings** — Rock Creek, Four Mile Run, Cabin John Creek, the
+  Northwest and Northeast Branches. They are crossed every few hundred metres
+  and OSM's own tagging carries them; a structure list adds nothing, because
+  there is no midpoint heuristic to override when the alternative is the next
+  bridge along.
+* **Crossings outside the coverage box** — Point of Rocks, White's Ferry, the
+  Nice/Middleton Bridge. A row for a structure the clip does not contain
+  resolves against nothing and reports itself unmatched on every rebuild.
+* **The Anacostia's rail crossings.** These are a real gap and not a rule. The
+  Potomac's two rail structures have rows — Long Bridge and the Fenwick Bridge —
+  on the rule stated below: a structure at a crossing this file already has an
+  opinion about gets a row whatever it carries, so that its identity is recorded
+  here rather than rediscovered on a neighbouring row's note, which is exactly
+  how Fenwick's name was found. CSX's Anacostia crossings meet that rule and
+  have no rows, because nobody has reviewed them: their OSM spellings, their
+  owners and which of them still carry track are all unchecked, and a row
+  guessed at would be worse than an absent one. They carry no way a router can
+  use, so nothing routes wrongly today; what is lost is the identity check, and
+  a reviewer who can name them should add them.
+
+The list is therefore complete for **road and path** crossings of the two rivers
+and incomplete for rail. Both halves of that sentence matter: an operator
+reading an unmatched-name warning needs to know whether a crossing missing from
+the log is missing because the extract lost it or because this file never had
+it.
+
 The first job is to answer, per structure, the two questions the midpoint
 heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
 no-trail (mass ride) variant drops, and `resolve_bridge_bicycle_legality`
@@ -67,7 +106,14 @@ two columns the pipeline reads, written where nothing reads them:
   freeway spans, barred outright. Their OSM spellings are the least confident
   claim in this file and may well resolve against nothing; unlike the Theodore
   Roosevelt Bridge, which is `trunk`, these are motorway class, so a ride is
-  kept off them by highway class even when the name misses.
+  kept off them by highway class even when the name misses. A miss is now said
+  out loud, which it was not when this paragraph was written: neither row is
+  `sidepath_only`, and until `resolve_bridge_bicycle_legality` started returning
+  its own unmatched names, only the sidepath resolver reported anything — so
+  these two, and the twelve other legality-only rows, could resolve against
+  nothing on every rebuild and appear in no log at all. That mattered most for
+  the Theodore Roosevelt Bridge, whose row *is* the whole of what keeps a ride
+  off it.
 
 And it supplies two independent sets to the tile build, from two different
 columns. Do not OR them together; a rebuild that did once passed its own test
@@ -122,6 +168,17 @@ name in this file differs from the `name` tag on the bridge in OSM, add an
 `osm_names` array listing the tagged spellings; the row's `name` is used when it
 is absent.
 
+A row's names are matched against **both `name` and `bridge:name`** on the way.
+`name` on a road way is the *street*: the way across the Anacostia at
+Pennsylvania Avenue SE carries `name=Pennsylvania Avenue Southeast`, because
+that is what the road is called, and "John Philip Sousa Bridge" is on it only in
+`bridge:name` — which is OSM's conventional home for a structure's own name on a
+road. Reading `name` alone meant every row named for the structure rather than
+for the street could only resolve where a mapper happened to put the structure's
+name in both, and the miss looked exactly like a stale way id: the row reported
+unmatched and its columns did nothing. Both keys are read; neither widens *which
+ways* are eligible, which is still bridge-tagged and not trail class.
+
 A name may be claimed by one row only. The names merge into one flat dict, so a
 name claimed twice would resolve to whichever row was written last — silently,
 and with the two rows disagreeing about the columns this file exists to record.
@@ -139,8 +196,12 @@ Bridge).** Overpass is
 blocked in this environment, so nothing here has been checked against a real
 extract, regardless of how confident the source. `variants.unverified_crossing_names`
 returns this list; the loader (`ReferenceData.load` in `run.py`) logs it at
-rebuild time, alongside the unmatched-name warning `resolve_sidepath_bridge_ids`
-already produces. Both logs matter and say different things: an unmatched name
+rebuild time, alongside the unmatched-name warning the two resolvers produce
+between them — one line over the union of what
+`resolve_sidepath_bridge_ids` and `resolve_bridge_bicycle_legality` each failed
+to find, because a crossing the extract does not carry is one fact about one
+bridge however many of this file's columns it silences. Both logs matter and
+say different things: an unmatched name
 means the clip moved or the name changed and the rule is not biting at all; an
 unverified name means the rule is biting, but on a spelling nobody has
 confirmed against the map. Clearing `osm_names_verified` to `true` for a row is

@@ -242,6 +242,32 @@ class TestGeometricTieBreak:
         assert 1 in forward.matched and 2 not in forward.matched, forward
         assert 1 in backward.matched and 2 not in backward.matched, backward
 
+    def test_a_three_way_tie_is_decided_by_id_not_by_input_order(self) -> None:
+        """Geometry runs out, and then the key does too.
+
+        Three ways lying on the same line - a carriageway split into equal
+        pieces by a mapper, or the same survey line drawn over a pair plus its
+        ramp - score identical overlap and identical mean distance, so
+        precedence, overlap and distance are all exhausted and the stable sort
+        fell through to the order `ways` arrived in. That order is whatever
+        `read_ways` returns for the extract, so the same data clipped twice
+        could hand the count to a different way and the segment table would
+        disagree with itself between rebuilds for no reason a reviewer could
+        see.
+
+        The winner being way 1 is not the point - any of the three is as good -
+        the point is that it is the same one both times.
+        """
+        agency = feature("f1", SURVEYED_ROAD)
+        ways = [(1, ROAD), (2, list(ROAD)), (3, list(ROAD))]
+
+        forward = conflate(ways, [agency])
+        backward = conflate(list(reversed(ways)), [agency])
+
+        assert list(forward.matched) == [1], forward
+        assert list(backward.matched) == [1], backward
+        assert len(forward.rejected) == len(backward.rejected) == 2
+
 
 class TestSpanReuseThreshold:
     def test_max_span_reuse_pins_the_threshold(self) -> None:

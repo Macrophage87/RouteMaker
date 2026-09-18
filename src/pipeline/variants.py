@@ -111,6 +111,32 @@ def check_crossing_names_unique(rows: Sequence[dict]) -> None:
                 )
 
 
+# The two tags a bridge way can carry a structure's name in. `name` on a road
+# way is the *street*: the way over the Anacostia at Pennsylvania Avenue SE is
+# named "Pennsylvania Avenue Southeast", because that is what the road is
+# called, and the structure's own name lives in `bridge:name` - which is OSM's
+# conventional home for it, and the only place "John Philip Sousa Bridge"
+# appears on that way. Reading `name` alone meant a row whose crossing is named
+# after the structure rather than after the street could never resolve, on
+# either side of the fixture, and the miss was silent in the same way a stale
+# way id was: the name simply reported unmatched.
+#
+# Both keys are read, and both are still filtered by the bridge and trail-class
+# guards below - `bridge:name` widens which *names* a bridge way answers to, not
+# which ways are eligible to answer.
+NAME_KEYS = ("name", "bridge:name")
+
+
+def way_names(way) -> list[str]:
+    """Every casefolded name a way carries, from whichever of `NAME_KEYS` it has.
+
+    One definition, shared by both resolvers, for the same reason
+    `crossing_names` is shared on the fixture side: the sidepath half and the
+    legality half must never disagree about which OSM ways a row's names reach.
+    """
+    return [value.casefold() for key in NAME_KEYS if (value := way.tags.get(key))]
+
+
 def is_sidepath_only(row: dict) -> bool:
     """Whether a crossing row's *routing-relevant* provision is a sidepath.
 
@@ -191,10 +217,10 @@ def resolve_sidepath_bridge_ids(
         # routes onto, so it is never what the rule matches.
         if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
             continue
-        name = (way.tags.get("name") or "").casefold()
-        if name and name in by_name:
-            matched_ids.add(way.osm_id)
-            seen.add(name)
+        for name in way_names(way):
+            if name in by_name:
+                matched_ids.add(way.osm_id)
+                seen.add(name)
 
     unmatched = [
         label for label, names in wanted.items() if not any(name in seen for name in names)
@@ -202,7 +228,9 @@ def resolve_sidepath_bridge_ids(
     return frozenset(matched_ids | explicit), sorted(unmatched)
 
 
-def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dict[int, bool]:
+def resolve_bridge_bicycle_legality(
+    rows: Iterable[dict], ways: Iterable
+) -> tuple[dict[int, bool], list[str]]:
     """Per-way *roadway* bicycle legality, from the crossing fixture.
 
     Roadway, as the column and this docstring have always said, and now as the
@@ -224,11 +252,24 @@ def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dic
     Rows with no opinion (`roadway_bicycle_legal` absent or `None`) are left out
     entirely, so the pipeline never injects a legality tag it has no fixture
     backing for and OSM's own tagging is left to stand.
+
+    Returns the mapping *and* the names that matched nothing, exactly as
+    `resolve_sidepath_bridge_ids` does, and for the same reason. Only that one
+    reported its misses, so the only crossings an operator ever heard about were
+    the four `sidepath_only` rows; the fourteen rows that carry a legality
+    opinion and no sidepath flag - the Theodore Roosevelt Bridge among them,
+    whose whole effect on the no-trail variant is this column - resolved against
+    nothing and said nothing. A reviewer ran it: with an extract carrying only
+    the four sidepath bridges, `unmatched` was empty and fourteen legality rows
+    were inert, reported nowhere. The two lists are logged as one union by
+    `ReferenceData.load`, because "this crossing is not in the extract" is one
+    fact about one bridge however many of the fixture's columns it silences.
     """
     rows = list(rows)
     check_crossing_names_unique(rows)
     by_name: dict[str, bool] = {}
     explicit: dict[int, bool] = {}
+    wanted: dict[str, list[str]] = {}
     for row in rows:
         legal = row.get("roadway_bicycle_legal")
         if legal is None:
@@ -236,10 +277,13 @@ def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dic
         if int(row.get("osm_way_id") or 0) != 0:
             explicit[int(row["osm_way_id"])] = bool(legal)
             continue
+        if names := crossing_names(row):
+            wanted[row["name"]] = [name.casefold() for name in names]
         for name in crossing_names(row):
             by_name[name.casefold()] = bool(legal)
 
     out: dict[int, bool] = dict(explicit)
+    seen: set[str] = set()
     for way in ways:
         if way.tags.get("bridge") in (None, "no"):
             continue
@@ -260,10 +304,21 @@ def resolve_bridge_bicycle_legality(rows: Iterable[dict], ways: Iterable) -> dic
         # derived tag written onto a trail-class way changes its access).
         if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
             continue
-        name = (way.tags.get("name") or "").casefold()
-        if name and name in by_name and way.osm_id not in out:
-            out[way.osm_id] = by_name[name]
-    return out
+        for name in way_names(way):
+            if name not in by_name:
+                continue
+            # Seen whether or not this way is the one recorded: the question the
+            # unmatched list answers is whether the extract carries the
+            # crossing at all, and an id an operator pinned by hand does not
+            # make the name a miss.
+            seen.add(name)
+            if way.osm_id not in out:
+                out[way.osm_id] = by_name[name]
+
+    unmatched = [
+        label for label, names in wanted.items() if not any(name in seen for name in names)
+    ]
+    return out, sorted(unmatched)
 
 
 def unverified_crossing_names(rows: Iterable[dict]) -> list[str]:
@@ -273,8 +328,8 @@ def unverified_crossing_names(rows: Iterable[dict]) -> list[str]:
     Overpass is blocked in this environment, so every name in the fixture -
     including the ones a reviewer supplied - is `osm_names_verified: false`
     today. The loader (`ReferenceData.load` in `run.py`) logs this list at
-    rebuild time alongside the unmatched-name warning `resolve_sidepath_bridge_ids`
-    already produces, because a name that resolves against the extract and a
+    rebuild time alongside the unmatched-name warning the two resolvers produce
+    between them, because a name that resolves against the extract and a
     name that is merely believed to be correct are different levels of
     confidence and an operator should be able to tell which crossings are
     which without reading this file.

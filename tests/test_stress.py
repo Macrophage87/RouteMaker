@@ -26,6 +26,7 @@ from routemaker.stress import (
     is_unpaved,
 )
 from routemaker.tags import (
+    cycleway_values,
     has_parking_lane,
     has_shoulder,
     lanes_per_direction,
@@ -1238,6 +1239,26 @@ class TestTheCyclewayValueSets:
     SEPARATED = ("track", "opposite_track")
     PAINTED = ("lane", "opposite_lane", "buffered_lane")
 
+    # And the four tag forms a value can arrive in, typed in the same way and
+    # for the same reason. `cycleway_values` reads a key list that nothing
+    # enumerated: dropping `cycleway:left` and `cycleway:right` from it left the
+    # whole suite green, because every case here wrote the bare `cycleway` key.
+    # A side key is not an exotic spelling - it is what a mapper writes the
+    # moment a street has a facility on one side only, which is most of the
+    # District's network, and losing it takes a 25 mph one-way secondary with
+    # `cycleway:left=track` from LTS1 to LTS3.
+    KEYS = ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
+
+    def test_the_key_forms_are_exactly_these(self) -> None:
+        """Pinned against the literal list, the way `SEPARATED` and `PAINTED`
+        are: a key dropped from `cycleway_values` takes its own case with it if
+        the test reads the key list from the code."""
+        for key in self.KEYS:
+            assert cycleway_values({key: "track"}) == {"track"}
+        # And nothing else is read: `cycleway:left:width` is a width, not a
+        # facility value, and `sidewalk` is not a cycleway.
+        assert cycleway_values({"cycleway:left:width": "2.0", "sidewalk": "both"}) == set()
+
     def test_the_separated_set_is_exactly_these(self) -> None:
         assert SEPARATED_CYCLEWAY == frozenset(self.SEPARATED)
         # `separate` is deliberately absent, and its absence is the rule these
@@ -1258,34 +1279,58 @@ class TestTheCyclewayValueSets:
         read as separated and its painted reading would be unreachable."""
         assert not (SEPARATED_CYCLEWAY & PAINTED_CYCLEWAY)
 
+    @pytest.mark.parametrize("key", KEYS)
     @pytest.mark.parametrize("value", SEPARATED)
-    def test_every_separated_member_rates_a_fast_arterial_lts1(self, value: str) -> None:
+    def test_every_separated_member_rates_a_fast_arterial_lts1(self, value: str, key: str) -> None:
         """What separation means: a protected track is LTS1 at any speed the
-        roadway carries, which is the whole of the distinction from paint."""
+        roadway carries, which is the whole of the distinction from paint.
+
+        Every value in every key form, because the value set and the key list
+        are two separate lists that both go unenumerated: a track on the left
+        side of a road is a track.
+        """
         arterial = {"highway": "primary", "maxspeed": "45 mph", "lanes": "6"}
         assert classify(arterial).tier is Stress.LTS4
-        result = classify({**arterial, "cycleway": value})
-        assert result.tier is Stress.LTS1, f"{value} did not read as separation"
+        result = classify({**arterial, key: value})
+        assert result.tier is Stress.LTS1, f"{key}={value} did not read as separation"
         assert "separated track" in result.rule
 
+    @pytest.mark.parametrize("key", KEYS)
     @pytest.mark.parametrize("value", PAINTED)
-    def test_every_painted_member_takes_the_bike_lane_table(self, value: str) -> None:
+    def test_every_painted_member_takes_the_bike_lane_table(self, value: str, key: str) -> None:
         """Paint is not separation: the bike-lane table still rates 45 mph LTS4,
-        and a wide lane on a quiet street LTS1, which mixed traffic would not."""
+        and a wide lane on a quiet street LTS1, which mixed traffic would not.
+
+        The width is tagged on the matching key form - `cycleway:left=lane` with
+        `cycleway:left:width` - which is how a mapper writes a one-sided lane.
+        """
         street = {"highway": "residential", "maxspeed": "25 mph", "parking:both": "no"}
-        result = classify({**street, "cycleway": value, "cycleway:width": "2.0"})
-        assert result.tier is Stress.LTS1, f"{value} did not read as a painted lane"
+        result = classify({**street, key: value, f"{key}:width": "2.0"})
+        assert result.tier is Stress.LTS1, f"{key}={value} did not read as a painted lane"
         assert "bike lane" in result.rule
-        assert classify({"highway": "primary", "maxspeed": "45 mph", "cycleway": value}).tier is (
+        assert classify({"highway": "primary", "maxspeed": "45 mph", key: value}).tier is (
             Stress.LTS4
         )
 
+    @pytest.mark.parametrize("key", KEYS)
     @pytest.mark.parametrize("value", SEPARATED + PAINTED)
-    def test_every_member_counts_as_a_provision_at_the_volume_gate(self, value: str) -> None:
+    def test_every_member_counts_as_a_provision_at_the_volume_gate(
+        self, value: str, key: str
+    ) -> None:
         """One provision earns one credit, and the gate reads the same sets the
         facility step does. A member missing from either is a road that takes
         the table's credit and the volume credit both."""
         quiet = {"highway": "unclassified", "maxspeed": "30 mph"}
         assert classify(quiet, aadt=900).tier is Stress.LTS2, "the relief this road gets bare"
-        with_facility = classify({**quiet, "cycleway": value}, aadt=900)
-        assert "low volume" not in with_facility.rule, f"{value} took the volume credit as well"
+        with_facility = classify({**quiet, key: value}, aadt=900)
+        assert "low volume" not in with_facility.rule, f"{key}={value} took the volume credit"
+
+    def test_a_one_sided_track_on_a_slow_secondary_is_lts1(self) -> None:
+        """The measured case, stated on its own: a 25 mph one-way secondary with
+        `cycleway:left=track` is LTS1, and went to LTS3 under the mutation that
+        dropped the two side keys from `cycleway_values`. It is the ordinary
+        shape of a contraflow or one-sided protected lane downtown.
+        """
+        street = {"highway": "secondary", "maxspeed": "25 mph", "oneway": "yes", "lanes": "2"}
+        assert classify(street).tier is Stress.LTS3, "what the road is without the track"
+        assert classify({**street, "cycleway:left": "track"}).tier is Stress.LTS1

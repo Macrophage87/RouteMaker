@@ -36,6 +36,27 @@ REVISIT_PROXIMITY_M = 25.0
 REVISIT_ALONG_ROUTE_M = 400.0
 GRADE_MIN_RUN_M = 30.0
 
+# A margin on the *longitude* axis of `revisits`' grid, and on that axis only.
+#
+# Not normative: it changes no definition, only how wide the index's cells are.
+# The nine-cell scan is a correct shortcut for the pairwise definition exactly
+# while a cell is at least `REVISIT_PROXIMITY_M` across in ground distance on
+# both axes, and two approximations shave the longitude axis below that. The
+# cosine is the route's *mean* latitude's, so at the north and south ends of a
+# region-spanning route the local one is smaller and the cell there is narrower
+# than the mean says; and the 111,320 m a degree of latitude is divided by is
+# 125 m more than `haversine`'s own sphere gives it, which narrows both axes by
+# a further 0.1 percent. Together they put a pair 24.93 m apart - inside the
+# 25 m radius, and running purely east-west, which is the hardest case because a
+# parallel street a block over is exactly that - marginally over one cell width
+# apart at the extremes, so it could land two cells apart and never be compared.
+# That is the square-cell failure again, an order of magnitude smaller.
+#
+# One percent covers both across the coverage box's 1.3 degrees of latitude, and
+# costs a handful of extra haversines per cell. The brute-force equivalence test
+# over every reference route is what says it is enough.
+REVISIT_CELL_LON_MARGIN = 1.01
+
 # Below this sample spacing the turn definition stops being reliable: a turn taken
 # over fifteen metres splits into three sub-threshold steps and is not counted.
 # Measured on the reference set, where the one trace sampled at 6.4 m reports a
@@ -135,9 +156,10 @@ def revisits(
     # point: over a route's span it varies by far less than the cell margin, and
     # a per-point cell size would put the same ground position in different
     # cells depending on which point asked.
+    # See `REVISIT_CELL_LON_MARGIN` for the one percent on the longitude axis.
     cell_lat = proximity_m / 111_320.0  # degrees of latitude per proximity radius
     mean_lat = sum(p.lat for p in points) / len(points)
-    cell_lon = cell_lat / max(math.cos(math.radians(mean_lat)), 0.01)
+    cell_lon = REVISIT_CELL_LON_MARGIN * cell_lat / max(math.cos(math.radians(mean_lat)), 0.01)
 
     grid: dict[tuple[int, int], list[int]] = {}
     for i, p in enumerate(points):

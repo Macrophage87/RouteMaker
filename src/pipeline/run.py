@@ -209,10 +209,21 @@ class ReferenceData:
             )
             for row in json.loads(volume.read_text())
         )
-        bridge_ids, unmatched = variants.resolve_sidepath_bridge_ids(crossing_rows, ways)
+        bridge_ids, unmatched_sidepath = variants.resolve_sidepath_bridge_ids(crossing_rows, ways)
+        legality, unmatched_legality = variants.resolve_bridge_bicycle_legality(crossing_rows, ways)
+        # One warning over the union of both resolvers, because a crossing the
+        # extract does not carry is one fact about one bridge however many of
+        # the fixture's columns it silences. Only the sidepath half used to
+        # report, so the fourteen rows that carry a legality opinion and no
+        # sidepath flag - every row the `rm:bridge_bicycle` tag exists for,
+        # including the Theodore Roosevelt Bridge, whose entire effect on the
+        # no-trail variant is that column - could resolve against nothing and
+        # reach no log at all.
+        unmatched = sorted(set(unmatched_sidepath) | set(unmatched_legality))
         if unmatched:
             logger.warning(
-                "crossings not found in the extract, so the sidepath rule is inert on them: %s",
+                "crossings not found in the extract, so the sidepath rule and the "
+                "bridge-legality column are both inert on them: %s",
                 ", ".join(unmatched),
             )
         # A second, deliberately separate warning. "Not found in the extract" and
@@ -232,7 +243,7 @@ class ReferenceData:
             sidepath_bridge_ids=bridge_ids,
             volume_features=features,
             unmatched_crossings=tuple(unmatched),
-            bridge_bicycle_legal=variants.resolve_bridge_bicycle_legality(crossing_rows, ways),
+            bridge_bicycle_legal=legality,
         )
 
 
