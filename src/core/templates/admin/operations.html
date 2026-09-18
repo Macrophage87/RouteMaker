@@ -32,6 +32,31 @@ list is an alert.</p>
   </tbody>
 </table>
 
+<h2>Wedged jobs</h2>
+{% if wedged_jobs %}
+<p>Each of these has been running for longer than the budget its task enforces
+on itself, which means nothing enforced it: a worker killed mid-job leaves its
+row <code>doing</code> for ever, because the process that would have finished it
+is gone. Everything on this list is an alert.</p>
+<table>
+  <thead><tr><th>Job</th><th>Task</th><th>Queue</th><th>Running for</th><th>Budget</th><th>Started</th></tr></thead>
+  <tbody>
+  {% for entry in wedged_jobs %}
+    <tr class="wedged-job">
+      <th scope="row">{{ entry.id }}</th>
+      <td>{{ entry.task }}</td>
+      <td>{{ entry.queue }}</td>
+      <td>{{ entry.age_s|floatformat:0 }} s</td>
+      <td>{{ entry.budget_s|floatformat:0 }} s</td>
+      <td>{{ entry.started_at }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p id="no-wedged-jobs">No job has outlived the budget of the task it is running.</p>
+{% endif %}
+
 <h2>Failed jobs</h2>
 {% if failed_jobs %}
 <table>

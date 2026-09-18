@@ -505,6 +505,206 @@ def test_a_rebuild_killed_by_its_own_deadline_is_abandoned_rather_than_retried(
     assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None
 
 
+@pytest.mark.django_db(transaction=True)
+def test_a_budget_that_lapses_after_the_swap_names_the_swap_and_the_restart(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The boundary check at SWAP -> RECONCILE, which was the one silent door.
+
+    `RebuildTimedOut` was caught by name and abandoned with "the time budget ran
+    out" and nothing else, while the identical failure arriving from inside the
+    reconcile handler - wrapped in `RebuildFailed`, which carries a stage - got
+    the swap-completed message and the router-restart notice. So a rebuild whose
+    budget lapsed one instant after the rename produced an alert that mentioned
+    neither the completed swap nor the three routers still serving last week's
+    graph, which is the whole of what the operator has to do about it.
+
+    Executed here as the reviewer executed it: the swap runs for real and
+    succeeds, so `live_old` exists, and the budget lapses before the reconcile.
+    The clock is the patched part rather than the wall, because waiting out a
+    real budget is the same test with six hours in it.
+    """
+    from core.models import ScheduledRun
+    from pipeline import rebuild as rebuild_module
+    from pipeline import run as run_module
+    from pipeline.rebuild import Stage
+    from pipeline.schema import schema_exists
+
+    _root, _binaries = rebuild_environment
+    swapped: list[bool] = []
+
+    real_build_handlers = run_module.build_handlers
+
+    def handlers_whose_swap_spends_the_last_of_the_budget(context, *args, **kwargs):
+        handlers = dict(real_build_handlers(context, *args, **kwargs))
+        swap = handlers[Stage.SWAP]
+
+        def swap_then_run_out_of_time() -> None:
+            swap()
+            swapped.append(True)
+
+        handlers[Stage.SWAP] = swap_then_run_out_of_time
+        return handlers
+
+    real_run_rebuild = rebuild_module.run_rebuild
+
+    def run_rebuild_on_a_clock_that_stops_after_the_swap(handlers, **kwargs):
+        deadline = kwargs["deadline"]
+        kwargs["clock"] = lambda: deadline + 1 if swapped else 0.0
+        return real_run_rebuild(handlers, **kwargs)
+
+    monkeypatch.setattr(
+        "pipeline.run.build_handlers", handlers_whose_swap_spends_the_last_of_the_budget
+    )
+    monkeypatch.setattr(
+        "pipeline.rebuild.run_rebuild", run_rebuild_on_a_clock_that_stops_after_the_swap
+    )
+
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    message = str(abandoned.value)
+    assert swapped, "the probe is worthless unless the swap really ran"
+    assert schema_exists(settings.SEGMENT_SCHEMA_RETIRED), "the swap completed"
+    assert "time budget" in message, f"it is still a timeout: {message}"
+    assert "reconcile" in message, f"and it names the stage it stopped before: {message}"
+    assert "swap completed" in message, (
+        f"the abandoned message must say the rename happened: {message}"
+    )
+    assert ROUTER_RESTART_NOTICE in message, (
+        f"and must carry the router restart, as the other door does: {message}"
+    )
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None, (
+        "a retry would re-run the swap over a deployment that has already swapped"
+    )
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert not run.succeeded
+
+
+def test_a_timeout_between_stages_carries_the_stage_it_stopped_before() -> None:
+    """The attribute the classification turns on, asserted where it is set, so
+    that removing it fails here rather than three hours into a swapped rebuild
+    whose alert says nothing about the swap."""
+    from pipeline.rebuild import RebuildTimedOut, Stage, run_rebuild
+
+    handlers = {stage: (lambda: None) for stage in Stage}
+    with pytest.raises(RebuildTimedOut) as timed_out:
+        run_rebuild(handlers, deadline=0.0, clock=lambda: 1.0)
+
+    assert timed_out.value.stage is Stage.FETCH_EXTRACT
+
+
+# --- Single-flight, which the queueing lock only half provides ------------------------
+
+
+@pytest.fixture
+def no_jobs_left_over():
+    """Empty the job table around a test that puts rows in it.
+
+    Procrastinate's models are unmanaged, so the `flush` pytest-django runs
+    between transactional tests does not touch them: a job left `doing` by one
+    of these tests is still there for the next, where the pre-flight under test
+    would refuse a rebuild that has every right to run.
+    """
+    from django.db import connection
+
+    def empty() -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "TRUNCATE procrastinate_periodic_defers, procrastinate_events, "
+                "procrastinate_jobs RESTART IDENTITY CASCADE"
+            )
+
+    empty()
+    yield
+    empty()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_task_refuses_to_start_while_another_rebuild_is_running(
+    rebuild_environment, monkeypatch, no_jobs_left_over
+) -> None:
+    """The pre-flight inside the task, which protects the cron path too.
+
+    Procrastinate's queueing-lock index is partial on `WHERE status = 'todo'`,
+    so a Tuesday tick is deduplicated against a *queued* rebuild and not against
+    a running one: a hand-fired rebuild still in flight on Tuesday morning is
+    doubled by the tick rather than dropping it, and what serialises the two
+    today is `--concurrency=1` on the rebuild service - one slot, not a refusal.
+    Raise the slot count or add a second rebuild worker and two rebuilds write
+    the same staging schema and the same dated tile directory.
+
+    So the task refuses to start, and it refuses before the run row is opened:
+    a duplicate that never ran must not write a failure row for the rebuild that
+    is running perfectly well.
+    """
+    from django.db import connection
+
+    from config.procrastinate import RebuildAlreadyRunning
+    from core.models import ScheduledRun
+
+    other = app.tasks["weekly_rebuild"].defer(timestamp=0)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET status = 'doing'::procrastinate_job_status "
+            "WHERE id = %s",
+            [other],
+        )
+
+    with pytest.raises(RebuildAlreadyRunning) as refused:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    assert f"job {other}" in str(refused.value)
+    assert not ScheduledRun.objects.filter(task="weekly_rebuild").exists(), (
+        "a rebuild that never started must not write a run row for the one that did"
+    )
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=refused.value, job=job(0)) is None, (
+        "retrying is not the answer to another rebuild already running"
+    )
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_running_rebuild_does_not_refuse_itself(rebuild_environment, no_jobs_left_over) -> None:
+    """The pre-flight excludes the job it is running under, which is the row
+    Procrastinate has already set to `doing` before the task body is entered.
+    Without the exclusion every rebuild the worker ever picks up refuses
+    itself - the failure mode a count with no `exclude_id` has."""
+    from django.db import connection
+    from procrastinate.job_context import JobContext
+    from procrastinate.jobs import Job
+
+    from core.models import ScheduledRun
+
+    job_id = app.tasks["weekly_rebuild"].defer(timestamp=0)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET status = 'doing'::procrastinate_job_status "
+            "WHERE id = %s",
+            [job_id],
+        )
+
+    context = JobContext(
+        app=app,
+        job=Job(
+            id=job_id,
+            queue="rebuild",
+            lock=None,
+            queueing_lock="weekly_rebuild",
+            task_name="weekly_rebuild",
+            task_kwargs={"timestamp": 0},
+        ),
+        start_timestamp=time.time(),
+        abort_reason=lambda: None,
+    )
+    app.tasks["weekly_rebuild"].func(context, timestamp=0)
+
+    assert ScheduledRun.objects.get(task="weekly_rebuild").succeeded
+
+
 def test_both_deadline_failures_are_terminal_causes() -> None:
     """Named, so that removing either from the tuple fails here rather than
     three hours into a retried rebuild."""
@@ -555,8 +755,16 @@ def test_a_cold_worker_runs_a_deferred_job() -> None:
     assert result.returncode == 0, result.stderr[-3000:]
 
     assert ProcrastinateJob.objects.get(id=job_id).status == "succeeded", result.stderr[-3000:]
-    run = ScheduledRun.objects.get(task="membership_sweep")
-    assert run.succeeded
+    # `filter().first()` rather than `get()`: the worker runs its own periodic
+    # deferrer before taking a job, and that deferrer queues any tick whose cron
+    # boundary is inside the last ten minutes (procrastinate.periodic.MAX_DELAY).
+    # The sweep's `0 */6 * * *` therefore produces a second run row whenever the
+    # suite runs in the ten minutes after 00:00, 06:00, 12:00 or 18:00 UTC, and
+    # `get()` raised MultipleObjectsReturned for four twenty-fourths of the day.
+    # Both rows are this worker's, and what is being asserted is that the cold
+    # process ran the job at all.
+    run = ScheduledRun.objects.filter(task="membership_sweep").order_by("-started_at").first()
+    assert run is not None and run.succeeded
     assert run.detail.startswith("purged ")
 
 

@@ -310,7 +310,7 @@ def test_check_operations_exits_zero_when_nothing_is() -> None:
     with pytest.raises(SystemExit) as exit_code:
         call_command("check_operations", stdout=out)
     assert exit_code.value.code == 0
-    assert "ok: no stale tasks, no failed jobs" in out.getvalue()
+    assert "ok: no stale tasks, no wedged jobs, no failed jobs" in out.getvalue()
 
 
 @db
@@ -367,7 +367,7 @@ def test_check_operations_counts_every_failed_job_and_lists_the_newest() -> None
     printed = out.getvalue()
 
     assert exit_code.value.code == 1
-    assert "0 stale task(s), 4 failed job(s)" in printed
+    assert "0 stale task(s), 0 wedged job(s), 4 failed job(s)" in printed
     assert printed.count("failed job: ") == 2, "the listing is the one that is truncated"
     assert "listing the 2 newest of 4 failed jobs" in printed
     assert f"failed job: {max(jobs)}" in printed, "newest first"
@@ -395,92 +395,152 @@ def test_check_operations_ignores_a_job_that_merely_finished() -> None:
     assert exit_code.value.code == 0
 
 
-# --- A deployment's first minutes ------------------------------------------------------
+# --- A job nothing finished ------------------------------------------------------------
+#
+# Both surfaces read `status="failed"` and nothing else. A worker killed
+# mid-job - OOM, a `docker compose down` in the middle of a rebuild, a host
+# reboot - never writes that status, because the process that would have
+# written it is gone: the row stays `doing` for ever. So a rebuild killed at
+# hour three was on no surface at all until `weekly_rebuild` went stale eight
+# days later, while the job holding the rebuild queue's only slot was never
+# going to move, and the operations page said nothing was wrong the whole time.
 
 
 @db
-def test_a_fresh_deployment_has_nothing_to_alert_about() -> None:
-    """The cron entry docs/OPERATIONS.md gives is `check_operations` every ten
-    minutes, and on a host that had just run `docker compose up -d` it exited 1
-    with all five tasks named. Nothing was wrong: `weekly_rebuild` had not
-    missed eight days, it had existed for a minute. "Has never run" and "has not
-    run for long enough to matter" were the same missing row.
-
-    The first alert an operator ever sees being a false one, on the morning of
-    the install, from the entry they have just added, is how a monitor gets
-    muted - which costs the alert that fires six weeks later for a real reason.
-    """
+def test_check_operations_reports_a_job_wedged_past_its_budget() -> None:
+    """The rebuild's own six-hour budget is what "too long" means for it, so a
+    job that has outlived it is a job whose enforcement did not happen."""
     from io import StringIO
 
     from django.core.management import call_command
 
-    from core.runs import stale_task_details, stale_tasks
+    from config.procrastinate import REBUILD_TIMEOUT_S
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER
 
-    assert stale_tasks() == [], f"a database with no runs at all reports {stale_task_details()}"
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    job_id = make_job("weekly_rebuild", "doing", timedelta(seconds=REBUILD_TIMEOUT_S + 60))
 
     out = StringIO()
     with pytest.raises(SystemExit) as exit_code:
         call_command("check_operations", stdout=out)
-    assert exit_code.value.code == 0, (
-        f"check_operations pages on a deployment that has just started: {out.getvalue()}"
-    )
+    printed = out.getvalue()
+
+    assert exit_code.value.code == 1, "nothing else on this deployment is wrong, and it is"
+    assert f"wedged job: {job_id} weekly_rebuild" in printed, printed
+    assert f"past its {REBUILD_TIMEOUT_S:.0f}s budget" in printed, printed
+    assert "1 wedged job(s)" in printed
 
 
 @db
-def test_a_task_that_has_never_run_is_stale_once_its_window_has_passed() -> None:
-    """The other half, and the one the change must not cost: a task that is
-    never scheduled at all is still an alert. Its clock starts at the
-    deployment's first run row - the only evidence in the database of when this
-    stack started running - so the rebuild is named eight days later and the
-    heartbeat ten minutes later, which is the same lateness every other silent
-    failure here gets.
-    """
-    from core.runs import STALE_AFTER, stale_task_details, stale_tasks
+def test_check_operations_leaves_a_job_inside_its_budget_alone() -> None:
+    """The alert is "past its budget", not "running". A six-hour rebuild that
+    is three hours in is a rebuild, and an alert that fired on it would fire
+    every Tuesday morning."""
+    from io import StringIO
 
-    now = timezone.now()
-    window = STALE_AFTER["weekly_rebuild"]
-    first = deployment_up_since(timedelta(seconds=window - 60), now)
+    from django.core.management import call_command
 
-    assert "weekly_rebuild" not in stale_tasks(now), (
-        "a minute inside the window measured from the deployment's first row"
-    )
-    assert "nightly_backup" in stale_tasks(now), (
-        "the backup's 26-hour window passed days ago on this deployment and it has never succeeded"
-    )
-
-    first.started_at = now - timedelta(seconds=window + 60)
-    first.save(update_fields=["started_at"])
-    stale = {entry["task"]: entry for entry in stale_task_details(now)}
-    assert "weekly_rebuild" in stale, "a minute past it, and no success anywhere, is stale"
-    assert stale["weekly_rebuild"]["last_success_at"] is None
-    assert stale["weekly_rebuild"]["age_s"] is None, (
-        "there is no age to report for a task that has never succeeded; the surfaces print "
-        "'never' from this"
-    )
-
-
-@db
-def test_the_first_row_is_the_deployments_and_not_the_tasks_own() -> None:
-    """One clock for every task that has never succeeded, and it is the oldest
-    row in the table whatever wrote it. A per-task first row would be no clock
-    at all - a task that has never run has no row of its own, which is the
-    whole condition being measured.
-    """
+    from config.procrastinate import REBUILD_TIMEOUT_S
     from core.models import ScheduledRun
-    from core.runs import first_run_at, stale_tasks
+    from core.runs import STALE_AFTER
 
     now = timezone.now()
-    assert first_run_at() is None
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    make_job("weekly_rebuild", "doing", timedelta(seconds=REBUILD_TIMEOUT_S - 60))
 
-    # One task succeeding is what starts every other task's window.
-    started = now - timedelta(hours=27)
-    ScheduledRun.objects.create(
-        task="worker_heartbeat", started_at=started, finished_at=started, succeeded=True
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+
+    assert exit_code.value.code == 0, out.getvalue()
+    assert "wedged" not in out.getvalue().replace("no wedged jobs", "")
+
+
+@db
+def test_the_budget_a_job_is_judged_against_is_its_own_tasks() -> None:
+    """One table, read from the constants the tasks enforce on themselves. The
+    sweep's half hour and the rebuild's six hours are two different numbers, and
+    judging the sweep by the rebuild's budget is a sweep that is wedged for five
+    and a half hours before anything says so."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from config.procrastinate import REBUILD_TIMEOUT_S, SWEEP_TIMEOUT_S
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, job_budgets
+
+    assert job_budgets()["membership_sweep"] == SWEEP_TIMEOUT_S
+    assert job_budgets()["weekly_rebuild"] == REBUILD_TIMEOUT_S
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    sweep = make_job("membership_sweep", "doing", timedelta(seconds=SWEEP_TIMEOUT_S + 60))
+    # Older than the sweep's budget, younger than the rebuild's, so a single
+    # shared number cannot make both of these assertions pass.
+    make_job("weekly_rebuild", "doing", timedelta(seconds=SWEEP_TIMEOUT_S + 60))
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+
+    assert exit_code.value.code == 1
+    assert f"wedged job: {sweep} membership_sweep" in printed, printed
+    assert "1 wedged job(s)" in printed, (
+        f"the rebuild is three hours short of its own budget: {printed}"
     )
-    assert first_run_at() == started
-    stale = stale_tasks(now)
-    assert "nightly_backup" in stale, "26 hours have passed since this deployment's first row"
-    assert "weekly_rebuild" not in stale, "eight days have not"
+
+
+@db
+def test_the_operations_page_shows_a_wedged_job(client) -> None:
+    """The same row on the surface an operator who is logged in is looking at.
+    Two surfaces, one computation, which is the rule the stale list already
+    follows: a page that disagrees with the alert is worse than no page."""
+    from config.procrastinate import REBUILD_TIMEOUT_S
+    from core.models import User
+
+    job_id = make_job("weekly_rebuild", "doing", timedelta(seconds=REBUILD_TIMEOUT_S + 60))
+
+    admin = User.objects.create(discord_user_id=9010, is_instance_admin=True)
+    sign_in(client, admin)
+    response = client.get(operations_url())
+
+    assert response.status_code == 200
+    body = response.content.decode()
+    wedged_section = body.split("<h2>Wedged jobs</h2>")[1].split("<h2>Failed jobs</h2>")[0]
+    assert f">{job_id}<" in wedged_section, wedged_section
+    assert "weekly_rebuild" in wedged_section
+    assert "no-wedged-jobs" not in body
+
+
+@db
+def test_the_operations_page_says_so_when_no_job_is_wedged(client) -> None:
+    """The row, not the word: a page whose wedged section is empty must say it
+    is empty, or an operator reading it cannot tell the check from a check that
+    is not there."""
+    from config.procrastinate import REBUILD_TIMEOUT_S
+    from core.models import User
+
+    make_job("weekly_rebuild", "doing", timedelta(seconds=REBUILD_TIMEOUT_S - 60))
+
+    admin = User.objects.create(discord_user_id=9011, is_instance_admin=True)
+    sign_in(client, admin)
+    body = client.get(operations_url()).content.decode()
+
+    assert 'id="no-wedged-jobs"' in body
+    assert 'class="wedged-job"' not in body
 
 
 # --- Pruning the history ---------------------------------------------------------------
@@ -627,3 +687,91 @@ def test_a_job_a_periodic_defer_still_points_at_is_left_alone() -> None:
     with connection.cursor() as cursor:
         cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE id = %s", [job_id])
         assert cursor.fetchone()[0] == 1
+
+
+# --- A deployment's first minutes ------------------------------------------------------
+
+
+@db
+def test_a_fresh_deployment_has_nothing_to_alert_about() -> None:
+    """The cron entry docs/OPERATIONS.md gives is `check_operations` every ten
+    minutes, and on a host that had just run `docker compose up -d` it exited 1
+    with all five tasks named. Nothing was wrong: `weekly_rebuild` had not
+    missed eight days, it had existed for a minute. "Has never run" and "has not
+    run for long enough to matter" were the same missing row.
+
+    The first alert an operator ever sees being a false one, on the morning of
+    the install, from the entry they have just added, is how a monitor gets
+    muted - which costs the alert that fires six weeks later for a real reason.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.runs import stale_task_details, stale_tasks
+
+    assert stale_tasks() == [], f"a database with no runs at all reports {stale_task_details()}"
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    assert exit_code.value.code == 0, (
+        f"check_operations pages on a deployment that has just started: {out.getvalue()}"
+    )
+
+
+@db
+def test_a_task_that_has_never_run_is_stale_once_its_window_has_passed() -> None:
+    """The other half, and the one the change must not cost: a task that is
+    never scheduled at all is still an alert. Its clock starts at the
+    deployment's first run row - the only evidence in the database of when this
+    stack started running - so the rebuild is named eight days later and the
+    heartbeat ten minutes later, which is the same lateness every other silent
+    failure here gets.
+    """
+    from core.runs import STALE_AFTER, stale_task_details, stale_tasks
+
+    now = timezone.now()
+    window = STALE_AFTER["weekly_rebuild"]
+    first = deployment_up_since(timedelta(seconds=window - 60), now)
+
+    assert "weekly_rebuild" not in stale_tasks(now), (
+        "a minute inside the window measured from the deployment's first row"
+    )
+    assert "nightly_backup" in stale_tasks(now), (
+        "the backup's 26-hour window passed days ago on this deployment and it has never succeeded"
+    )
+
+    first.started_at = now - timedelta(seconds=window + 60)
+    first.save(update_fields=["started_at"])
+    stale = {entry["task"]: entry for entry in stale_task_details(now)}
+    assert "weekly_rebuild" in stale, "a minute past it, and no success anywhere, is stale"
+    assert stale["weekly_rebuild"]["last_success_at"] is None
+    assert stale["weekly_rebuild"]["age_s"] is None, (
+        "there is no age to report for a task that has never succeeded; the surfaces print "
+        "'never' from this"
+    )
+
+
+@db
+def test_the_first_row_is_the_deployments_and_not_the_tasks_own() -> None:
+    """One clock for every task that has never succeeded, and it is the oldest
+    row in the table whatever wrote it. A per-task first row would be no clock
+    at all - a task that has never run has no row of its own, which is the
+    whole condition being measured.
+    """
+    from core.models import ScheduledRun
+    from core.runs import first_run_at, stale_tasks
+
+    now = timezone.now()
+    assert first_run_at() is None
+
+    # One task succeeding is what starts every other task's window.
+    started = now - timedelta(hours=27)
+    ScheduledRun.objects.create(
+        task="worker_heartbeat", started_at=started, finished_at=started, succeeded=True
+    )
+    assert first_run_at() == started
+    stale = stale_tasks(now)
+    assert "nightly_backup" in stale, "26 hours have passed since this deployment's first row"
+    assert "weekly_rebuild" not in stale, "eight days have not"

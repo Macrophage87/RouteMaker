@@ -139,6 +139,47 @@ def test_the_swapped_schema_names_come_from_the_environment() -> None:
     assert os.environ.get("ROUTEMAKER_LIVE_SCHEMA") in (None, settings.SEGMENT_SCHEMA_LIVE)
 
 
+def test_settings_refuse_a_live_schema_too_long_to_retire(monkeypatch) -> None:
+    """PostgreSQL truncates identifiers at 63 bytes and the retired schema is
+    the live name plus `_old`, so a 60-character live name makes `<live>_old`
+    truncate straight back to `<live>` - and the swap's
+    `DROP SCHEMA IF EXISTS <retired> CASCADE` deletes the served graph one
+    statement before renaming into it. The refusal is at import, so a deployment
+    configured this way does not start rather than starting and destroying the
+    graph on Tuesday morning."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    monkeypatch.setenv("ROUTEMAKER_LIVE_SCHEMA", "a" * 60)
+    with pytest.raises(ImproperlyConfigured, match="at most 59 characters"):
+        load_settings_module("config_settings_overlong_live_schema")
+
+
+def test_settings_accept_the_longest_live_schema_that_still_retires(monkeypatch) -> None:
+    """59 plus `_old` is exactly 63: the whole identifier, nothing truncated.
+    The bound is the one that makes the retired name a name of its own, not a
+    round number."""
+    monkeypatch.setenv("ROUTEMAKER_LIVE_SCHEMA", "a" * 59)
+    module = load_settings_module("config_settings_longest_live_schema")
+
+    assert module.SEGMENT_SCHEMA_LIVE == "a" * 59
+    assert module.SEGMENT_SCHEMA_RETIRED == "a" * 59 + "_old"
+    assert len(module.SEGMENT_SCHEMA_RETIRED) == 63
+
+
+@pytest.mark.parametrize("reserved", ["information_schema", "pg_catalog", "pg_toast"])
+@pytest.mark.parametrize("variable", ["ROUTEMAKER_LIVE_SCHEMA", "ROUTEMAKER_STAGING_SCHEMA"])
+def test_settings_refuse_a_reserved_schema_that_is_not_public(monkeypatch, variable, reserved):
+    """`public` was refused and the catalogs were not, though the statement
+    behind them is the same `DROP SCHEMA ... CASCADE`: `information_schema` is
+    the view the rebuild's own `schema_exists` reads back, and `pg_catalog` is
+    the database."""
+    from django.core.exceptions import ImproperlyConfigured
+
+    monkeypatch.setenv(variable, reserved)
+    with pytest.raises(ImproperlyConfigured, match=reserved):
+        load_settings_module(f"config_settings_{reserved}_{variable.lower()}")
+
+
 def test_the_search_path_still_names_public_first_whatever_the_live_schema_is() -> None:
     """The ordering is the data-loss guard and must not depend on the name."""
     from django.conf import settings

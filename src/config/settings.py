@@ -336,9 +336,46 @@ if len(set(_SEGMENT_SCHEMAS.values())) != len(_SEGMENT_SCHEMAS):
         "the live, staging and retired segment schemas must be three distinct names, "
         f"not {_SEGMENT_SCHEMAS}"
     )
-if "public" in _SEGMENT_SCHEMAS.values():
+# `public` carries every migrated table, so `DROP SCHEMA public CASCADE` is the
+# users, the sessions, the memberships and the audit log. The catalogs are here
+# for the same reason one line down: `information_schema` is the view the
+# rebuild's own `schema_exists` reads, and `pg_catalog` is the database. The
+# same set is refused again in `pipeline.schema.RESERVED_SCHEMAS`, in front of
+# the DDL; this layer is the one an operator meets on the next deploy.
+_RESERVED_SCHEMAS = {"public", "information_schema", "pg_catalog", "pg_toast"}
+_reserved = sorted(set(_SEGMENT_SCHEMAS.values()) & _RESERVED_SCHEMAS)
+if _reserved:
     raise ImproperlyConfigured(
-        f"no segment schema may be `public`, which carries every migrated table: {_SEGMENT_SCHEMAS}"
+        f"no segment schema may be one of {sorted(_RESERVED_SCHEMAS)} - `public` carries "
+        f"every migrated table and the rest are PostgreSQL's own - but {_reserved} is: "
+        f"{_SEGMENT_SCHEMAS}"
+    )
+
+# PostgreSQL truncates identifiers at 63 bytes, silently, and the retired name
+# is the live name plus `_old`. At 63 characters `<live>_old` truncates back to
+# `<live>`, so the swap's `DROP SCHEMA IF EXISTS <retired> CASCADE` deletes the
+# served graph one statement before renaming it - executed against a real
+# server. The bound is therefore on the name the suffix is appended to, and it
+# is applied to all three so that one number is the rule rather than three.
+# `pipeline.schema.validate_schema_name` enforces the same bound in front of the
+# DDL; this is the layer that refuses the deployment at import.
+_MAX_SEGMENT_SCHEMA_LENGTH = 63 - len("_old")
+# The two names an operator sets. The retired one is derived from the live name
+# and is allowed to reach the full 63; bounding it here at 59 would refuse a
+# 59-character live name for the length of a string this file computed itself.
+_too_long = sorted(
+    f"{name}={value!r} ({len(value)} characters)"
+    for name, value in (
+        ("ROUTEMAKER_LIVE_SCHEMA", SEGMENT_SCHEMA_LIVE),
+        ("ROUTEMAKER_STAGING_SCHEMA", SEGMENT_SCHEMA_STAGING),
+    )
+    if len(value) > _MAX_SEGMENT_SCHEMA_LENGTH
+)
+if _too_long:
+    raise ImproperlyConfigured(
+        f"a segment schema name may be at most {_MAX_SEGMENT_SCHEMA_LENGTH} characters, "
+        "because PostgreSQL truncates identifiers at 63 bytes and the retired schema is the "
+        f"live name plus `_old`: {_too_long}"
     )
 
 # The search path has to name both. `live` carries the rebuilt segment tables,

@@ -1510,6 +1510,51 @@ class TestTheInstanceAdminRemovalWindow:
         assert entry.actor_id is None and entry.actor_user_id is None, "no request, no actor"
         assert entry.object_id == str(peer.pk)
 
+    def test_the_lock_is_taken_on_the_removal_rows_and_not_on_the_users(
+        self, instance_admin, peer
+    ) -> None:
+        """`select_related("user")` puts the user table in the same SELECT, and a
+        bare `FOR UPDATE` locks every table the statement joined.
+
+        That is a sweep taking a row lock on `app_user` every five minutes, on
+        exactly the rows an instance admin is most likely to be editing in the
+        admin at that moment - the account being removed - and holding it for the
+        whole of the transaction that applies the removals. `of=("self",)` pins
+        it to the rows this task owns. Asserted against the SQL, because the
+        clause is one keyword long and its absence changes nothing an outcome
+        test can see.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from core.models import (
+            PendingInstanceAdminRemoval,
+            User,
+            apply_due_instance_admin_removals,
+            schedule_instance_admin_removal,
+        )
+
+        pending = schedule_instance_admin_removal(peer, actor=instance_admin)
+
+        with CaptureQueriesContext(connection) as captured:
+            assert apply_due_instance_admin_removals(now=pending.effective_at) == 1
+
+        locking = [
+            query["sql"] for query in captured.captured_queries if "FOR UPDATE" in query["sql"]
+        ]
+        assert len(locking) == 1, f"one locking read, not {len(locking)}: {locking}"
+        statement = locking[0]
+        assert "FOR UPDATE OF" in statement, (
+            f"the lock must name the table it is taken on: {statement}"
+        )
+        assert "SKIP LOCKED" in statement, statement
+        table = PendingInstanceAdminRemoval._meta.db_table
+        of_clause = statement.split("FOR UPDATE OF")[1]
+        assert table in of_clause, f"the removal table is what is locked: {statement}"
+        assert User._meta.db_table not in of_clause, (
+            f"and the user rows the admin is editing are not: {statement}"
+        )
+
     def test_a_run_skips_the_rows_another_run_is_already_applying(
         self, instance_admin, peer
     ) -> None:

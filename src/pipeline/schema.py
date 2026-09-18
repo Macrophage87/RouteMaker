@@ -25,10 +25,68 @@ from django.db import connection
 # against production today, in the one module that runs DDL there.
 _SCHEMA_NAME = re.compile(r"^[a-z_][a-z0-9_]*$")
 
+# PostgreSQL truncates an identifier at NAMEDATALEN-1 bytes, silently, and the
+# swap derives the retired name by appending a suffix. So a live name of the
+# full 63 bytes makes `<live>_old` truncate straight back to the live name, and
+# the swap's `DROP SCHEMA IF EXISTS {retired} CASCADE` drops the very schema the
+# rename on the next line is about to move - the served graph, deleted by the
+# statement that exists to clear the way for it. Executed against a real server,
+# not reasoned about.
+#
+# The bound is therefore on the name the suffix is appended to: at most 59, so
+# that `<live>_old` is a name of its own. The one exception is a name that
+# already carries the suffix, which is the derived retired name itself - nothing
+# appends anything to that, so it only has to fit in an identifier. Without the
+# exception a 59-character live name would pass every check the settings layer
+# makes and then fail here, in the reconcile, on its own rollback target.
+MAX_IDENTIFIER_LENGTH = 63
+RETIRED_SUFFIX = "_old"
+MAX_SCHEMA_NAME_LENGTH = MAX_IDENTIFIER_LENGTH - len(RETIRED_SUFFIX)
+
+# Names that are not this deployment's to drop, whatever role a setting puts
+# them in. `public` carries every migrated table - users, sessions, memberships,
+# the audit log - and the other three are the system catalogs: `DROP SCHEMA
+# information_schema CASCADE` takes out the view `schema_exists` itself reads,
+# and `pg_catalog` is the database. They are listed here rather than only at the
+# one call site that used to know about `public`, because the rebuild runs three
+# different drops against three different settings-supplied names.
+RESERVED_SCHEMAS = {
+    "public": "the schema every migrated table lives in",
+    "information_schema": "the catalog every schema query reads",
+    "pg_catalog": "the system catalog",
+    "pg_toast": "the system catalog's out-of-line storage",
+}
+
 
 def validate_schema_name(schema: str) -> str:
     if not _SCHEMA_NAME.match(schema):
         raise ValueError(f"refusing to interpolate {schema!r} into DDL")
+    limit = MAX_IDENTIFIER_LENGTH if schema.endswith(RETIRED_SUFFIX) else MAX_SCHEMA_NAME_LENGTH
+    if len(schema) > limit:
+        raise ValueError(
+            f"refusing to interpolate {schema!r} into DDL: it is {len(schema)} characters "
+            f"and at most {limit} are allowed here. PostgreSQL truncates identifiers at "
+            f"{MAX_IDENTIFIER_LENGTH} bytes, so a longer name makes {schema + RETIRED_SUFFIX!r} "
+            "truncate back onto a schema that already exists - and the swap drops what it is "
+            "about to rename."
+        )
+    return schema
+
+
+def refuse_reserved_schema(schema: str) -> str:
+    """Refuse a name that belongs to PostgreSQL or to every migration.
+
+    Every destructive statement in the rebuild reaches this: the staging reset,
+    the swap's drop of the retired schema, and the rollback's drop of a staging
+    schema a failed rebuild left behind. Each of the three is handed a name that
+    came from the environment by way of settings, and none of the three has any
+    business dropping a catalog.
+    """
+    if schema in RESERVED_SCHEMAS:
+        raise ValueError(
+            f"refusing to drop {schema!r}: it is {RESERVED_SCHEMAS[schema]}, "
+            "and no part of the rebuild may drop it."
+        )
     return schema
 
 
@@ -106,18 +164,19 @@ def refuse_unswappable_schema(schema: str) -> str:
     `public` is here for a harder reason than either: it is where every
     migrated table lives - users, sessions, memberships, the audit log - and
     `DROP SCHEMA public CASCADE` is the whole deployment, not one week's tiles.
+    It arrives with the rest of `RESERVED_SCHEMAS`, the catalogs included.
 
-    Settings refuses these three names at import as well. Both layers, because
-    the settings check is what an operator meets on the next deploy and this
-    one is what stands in front of the DDL however the name arrived.
+    Settings refuses these names at import as well. Both layers, because the
+    settings check is what an operator meets on the next deploy and this one is
+    what stands in front of the DDL however the name arrived.
     """
     from django.conf import settings
 
     validate_schema_name(schema)
+    refuse_reserved_schema(schema)
     protected = {
         settings.SEGMENT_SCHEMA_LIVE: "the schema being served",
         settings.SEGMENT_SCHEMA_RETIRED: "the schema a rollback puts back",
-        "public": "the schema every migrated table lives in",
     }
     if schema in protected:
         raise ValueError(
@@ -125,6 +184,36 @@ def refuse_unswappable_schema(schema: str) -> str:
             "The rebuild resets its staging schema only."
         )
     return schema
+
+
+def refuse_undroppable_retired(retired: str, live: str, staging: str) -> str:
+    """Refuse to drop a retired name that is really one of the other two.
+
+    The swap's first statement is `DROP SCHEMA IF EXISTS {retired} CASCADE`, and
+    `retired` is derived - `<live>_old` - rather than configured, which is
+    exactly why nothing checked it. Two ways it stops being a name of its own:
+    the identifier truncation `validate_schema_name` now bounds, which collapses
+    `<live>_old` onto `<live>`; and a staging setting that happens to spell the
+    retired name, which the settings layer refuses but which this function is
+    the last stop for. Either way the statement deletes the graph being served
+    or the one this rebuild just built, half a second before renaming it.
+
+    Cheap, and it runs inside the swap's transaction on the one path where
+    being wrong is unrecoverable.
+    """
+    refuse_reserved_schema(retired)
+    if retired == live:
+        raise ValueError(
+            f"refusing to drop {retired!r}: it is also the live schema. The retired name is "
+            f"{live!r} plus {RETIRED_SUFFIX!r}, so this means the identifier was truncated, "
+            "and the drop would delete the graph the next statement renames."
+        )
+    if retired == staging:
+        raise ValueError(
+            f"refusing to drop {retired!r}: it is also the staging schema, which holds the "
+            "build this swap is about to promote."
+        )
+    return retired
 
 
 def reset_segment_schema(schema: str) -> None:

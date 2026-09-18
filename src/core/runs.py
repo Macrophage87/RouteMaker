@@ -364,6 +364,119 @@ def prune_job_rows(now=None) -> int:
         return cursor.rowcount
 
 
+# Statuses a job holds while Procrastinate still has work to do with it. The
+# queueing lock is not this set: Procrastinate's partial unique index is
+# `WHERE status = 'todo'` (procrastinate/sql/schema.sql), so it deduplicates
+# *queued* jobs and has no opinion at all about one that is running. Everything
+# that wants "is this task in flight" has to ask for both.
+IN_FLIGHT_JOB_STATUSES = ("todo", "doing")
+
+
+def jobs_in_flight(
+    task_name: str,
+    statuses: tuple[str, ...] = IN_FLIGHT_JOB_STATUSES,
+    exclude_id: int | None = None,
+) -> list:
+    """Jobs of one task that Procrastinate has not finished with, oldest first.
+
+    The one reader of this that matters is the pre-flight in `run_rebuild_now`.
+    The command relied on the queueing lock alone and documented it as covering
+    "queued or running", which is half true and dangerous in the half that is
+    not: with a rebuild `doing`, the index is empty, the second deferral
+    succeeds, and when the running job hits a transient failure
+    `procrastinate_retry_job` sets it back to `todo` - straight onto the row the
+    second deferral put there. The retry becomes a unique violation inside the
+    job-finishing path, so a rebuild that should have been retried is a worker
+    error instead.
+
+    `exclude_id` is for a caller that is itself one of the jobs being counted.
+    """
+    from procrastinate.contrib.django.models import ProcrastinateJob
+
+    jobs = ProcrastinateJob.objects.filter(task_name=task_name, status__in=list(statuses))
+    if exclude_id is not None:
+        jobs = jobs.exclude(id=exclude_id)
+    return list(jobs.order_by("id"))
+
+
+# How long a job may sit in `doing` before it is wedged rather than slow, per
+# task, in one place. Every number here is the budget the task enforces on
+# itself, so a job that has outlived it is a job whose enforcement did not
+# happen - a worker killed mid-run, an abandoned thread, a container OOMed -
+# rather than a long one.
+#
+# The two five-minute tasks enforce no budget of their own; they get the
+# maintenance queue's bound, which is what every other task on that queue is
+# held to and is 360 times their cadence. Anything not named gets it too.
+DEFAULT_JOB_BUDGET_S = 30 * 60
+
+
+def job_budgets() -> dict[str, float]:
+    """The budget table, read from the constants the tasks themselves use.
+
+    Imported lazily and not at module scope: `config.procrastinate` is imported
+    at Django app-ready time and imports this module back, inside its task
+    bodies.
+    """
+    from config.procrastinate import BACKUP_TIMEOUT_S, REBUILD_TIMEOUT_S, SWEEP_TIMEOUT_S
+
+    return {
+        "weekly_rebuild": REBUILD_TIMEOUT_S,
+        "nightly_backup": BACKUP_TIMEOUT_S,
+        "membership_sweep": SWEEP_TIMEOUT_S,
+        "degraded_guild_sweep": DEFAULT_JOB_BUDGET_S,
+        "worker_heartbeat": DEFAULT_JOB_BUDGET_S,
+    }
+
+
+def wedged_jobs(now=None) -> list[dict]:
+    """Jobs still `doing` long past the budget of the task they are running.
+
+    The gap this closes is the one a killed rebuild fell into. Both surfaces
+    read `status="failed"`, and a worker that dies mid-job never writes that
+    status: the row stays `doing` forever, because the process that would have
+    finished it is gone. So a rebuild killed at hour three was on no alert at
+    all until `weekly_rebuild` went stale - eight days later - and in the
+    meantime the operations page said nothing was wrong while the job holding
+    the rebuild queue's only slot was never going to move.
+
+    Age is measured from the job's last event, which for a `doing` job is the
+    `started` event Procrastinate writes when it picks the job up. There is no
+    `started_at` column to read; `scheduled_at` is the fallback and is null for
+    anything deferred immediately, and a job with neither is left alone rather
+    than reported on a timestamp that was guessed.
+    """
+    from django.db.models import Max
+    from procrastinate.contrib.django.models import ProcrastinateJob
+
+    now = now or timezone.now()
+    budgets = job_budgets()
+    wedged = []
+    running = (
+        ProcrastinateJob.objects.filter(status="doing")
+        .annotate(last_event_at=Max("procrastinateevent__at"))
+        .order_by("id")
+    )
+    for job in running:
+        started = job.last_event_at or job.scheduled_at
+        if started is None:
+            continue
+        budget = budgets.get(job.task_name, DEFAULT_JOB_BUDGET_S)
+        age = (now - started).total_seconds()
+        if age >= budget:
+            wedged.append(
+                {
+                    "id": job.id,
+                    "task": job.task_name,
+                    "queue": job.queue_name,
+                    "budget_s": budget,
+                    "age_s": age,
+                    "started_at": started,
+                }
+            )
+    return wedged
+
+
 def failed_job_count() -> int:
     """How many jobs are in a failed state, not how many are being shown.
 

@@ -17,7 +17,7 @@ import sys
 
 from django.core.management.base import BaseCommand
 
-from core.runs import failed_job_count, failed_jobs, stale_task_details
+from core.runs import failed_job_count, failed_jobs, stale_task_details, wedged_jobs
 
 # Deliberately the shell convention rather than a richer set: monitoring tools
 # read "zero or not zero", and a scheme with more codes in it invites a check
@@ -27,7 +27,7 @@ EXIT_ALERT = 1
 
 
 class Command(BaseCommand):
-    help = "Report stale scheduled tasks and failed jobs; exit non-zero if any exist."
+    help = "Report stale scheduled tasks, wedged jobs and failed jobs; exit non-zero if any exist."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(
@@ -42,6 +42,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options) -> None:
         stale = stale_task_details()
+        wedged = wedged_jobs()
         jobs = failed_jobs(options["failed_job_limit"])
         failed_total = failed_job_count()
 
@@ -50,6 +51,17 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"stale: {entry['task']} has no success inside {entry['window_s']}s "
                 f"(last success: {last})"
+            )
+        # The row that did not exist. A worker killed mid-job leaves its job
+        # `doing` forever - the process that would have written `failed` is
+        # gone - so a rebuild killed at hour three was on no surface at all
+        # until `weekly_rebuild` went stale eight days later, while the job
+        # holding the rebuild queue's only slot was never going to move.
+        for entry in wedged:
+            self.stdout.write(
+                f"wedged job: {entry['id']} {entry['task']} on {entry['queue']} has been "
+                f"running for {entry['age_s']:.0f}s, past its {entry['budget_s']:.0f}s budget "
+                f"(started: {entry['started_at']})"
             )
         for job in jobs:
             self.stdout.write(
@@ -61,12 +73,14 @@ class Command(BaseCommand):
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
                 "--failed-job-limit lists more)"
             )
-        if not stale and not failed_total:
-            self.stdout.write("ok: no stale tasks, no failed jobs")
+        if not stale and not wedged and not failed_total:
+            self.stdout.write("ok: no stale tasks, no wedged jobs, no failed jobs")
             sys.exit(EXIT_OK)
         # The total rather than the length of the list above it. Reporting the
         # length reported the limit: 400 failed jobs and a limit of 25 printed
         # "25 failed job(s)" every run, which reads as a number that has
         # stopped moving rather than one that is off the end of the page.
-        self.stdout.write(f"{len(stale)} stale task(s), {failed_total} failed job(s)")
+        self.stdout.write(
+            f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), {failed_total} failed job(s)"
+        )
         sys.exit(EXIT_ALERT)

@@ -30,7 +30,7 @@ from django.template.response import TemplateResponse
 
 from .admin import site
 from .models import ScheduledRun
-from .runs import STALE_AFTER, failed_jobs, stale_task_details
+from .runs import STALE_AFTER, failed_jobs, stale_task_details, wedged_jobs
 
 # How many of each list the page shows. Enough to see a pattern, few enough that
 # the page stays one screen.
@@ -75,6 +75,11 @@ class ScheduledRunAdmin(admin.ModelAdmin):
             "title": "Operations",
             "stale": stale_task_details(),
             "windows": sorted(STALE_AFTER.items()),
+            # A job still `doing` long past its own budget. It is on this page
+            # for the same reason it is in `check_operations`: a worker killed
+            # mid-job never writes `failed`, so the failed-jobs list below is
+            # empty for exactly the outage that has stopped the queue.
+            "wedged_jobs": wedged_jobs(),
             "failed_jobs": failed_jobs(RECENT_FAILURES),
             "recent_runs": ScheduledRun.objects.order_by("-started_at")[:RECENT_RUNS],
             **(extra_context or {}),

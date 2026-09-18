@@ -82,7 +82,26 @@ class StageNotImplemented(RuntimeError):
 
 
 class RebuildTimedOut(RuntimeError):
-    """The deadline passed between stages. Raised before the next one starts."""
+    """The deadline passed. Raised before a stage starts, or inside one.
+
+    It carries the stage when the between-stages check is what raised it, and
+    that attribute is the whole of the fix for a real silence. The task body
+    caught this class by name and abandoned the rebuild with nothing but "the
+    time budget ran out", while the same failure arriving from inside a handler
+    came wrapped in `RebuildFailed`, which does carry a stage - and the stage is
+    what decides whether the swap has already happened. A budget that lapsed at
+    the SWAP -> RECONCILE boundary therefore produced an alert that said the
+    rebuild ran out of time and said nothing at all about the schema having been
+    renamed underneath the running routers, which is the one thing the operator
+    reading it has to act on.
+
+    `_run_command` raises it from inside a stage with no stage of its own; the
+    handler's own wrapping into `RebuildFailed` supplies it there.
+    """
+
+    def __init__(self, message: str, stage: Stage | None = None) -> None:
+        super().__init__(message)
+        self.stage = stage
 
 
 def run_rebuild(
@@ -125,7 +144,9 @@ def run_rebuild(
         handler = handlers[stage]
         if deadline is not None and clock() >= deadline:
             report.failed_at = stage
-            raise RebuildTimedOut(f"the rebuild's time budget ran out before {stage.value}")
+            raise RebuildTimedOut(
+                f"the rebuild's time budget ran out before {stage.value}", stage=stage
+            )
         try:
             handler()
         except Exception as error:  # noqa: BLE001 - wrapped and re-raised

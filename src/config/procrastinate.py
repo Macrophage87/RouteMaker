@@ -124,18 +124,30 @@ ROUTER_RESTART_NOTICE = (
 )
 
 
+class RebuildAlreadyRunning(RuntimeError):
+    """Another `weekly_rebuild` job is already `doing`, so this one will not start.
+
+    Not retried, and it is a subclass of nothing that is: the reason this job
+    cannot run is that another one is running, and by the time a retry came
+    round the thing to do would be to look at that one rather than to start a
+    third. `RebuildAbandoned` carries the same meaning for every other terminal
+    cause; this is a class of its own only so the message reads as what it is.
+    """
+
+
 @app.periodic(cron=WEEKLY_REBUILD_CRON)
 @app.task(
     name="weekly_rebuild",
     queue="rebuild",
     queueing_lock="weekly_rebuild",
+    pass_context=True,
     retry=RetryStrategy(
         max_attempts=RETRY.max_attempts,
         exponential_wait=RETRY.exponential_wait,
         retry_exceptions=[],  # filled below, once the exception class is importable
     ),
 )
-def weekly_rebuild(timestamp: int) -> None:
+def weekly_rebuild(context=None, *, timestamp: int) -> None:
     """Build into staging and a dated tile directory, validate, swap, reconcile.
 
     Queued under a lock because two concurrent rebuilds would write the same
@@ -143,6 +155,22 @@ def weekly_rebuild(timestamp: int) -> None:
     six-hour build does not sit in front of the sweep - and so that the
     container with the Valhalla binaries and the data mounts is the one that
     runs it: compose's `rebuild` service is a worker on this queue alone.
+
+    The lock is not the whole of that guarantee and was read as if it were.
+    Procrastinate's queueing-lock index is partial on `WHERE status = 'todo'`,
+    so it deduplicates *queued* rebuilds and permits the tick to queue one
+    behind a rebuild that is `doing`. What has been serialising those in
+    practice is `--concurrency=1` on the rebuild service: the second job waits
+    because there is one slot, not because anything refused it. So the pre-flight
+    below refuses to *start* while another `weekly_rebuild` is `doing`, which is
+    the guarantee the docstring claimed - it holds for a second rebuild worker,
+    for a slot count somebody raises, and for the hand-fired job that
+    `run_rebuild_now` queues, where the tick is the second caller rather than
+    the first.
+
+    `context` is Procrastinate's job context, which is how this job knows its
+    own id and does not refuse itself. It defaults to None so the task body
+    stays callable directly, which is how the suite runs it.
 
     Retention brackets the run rather than following it: once before the disk
     gate, which is terminal and would otherwise refuse every week on a volume
@@ -152,10 +180,22 @@ def weekly_rebuild(timestamp: int) -> None:
     """
     from django.conf import settings
 
-    from core.runs import record
+    from core.runs import jobs_in_flight, record
     from pipeline import retention
     from pipeline.rebuild import RebuildFailed, RebuildTimedOut, run_rebuild
     from pipeline.run import RebuildContext, build_handlers
+
+    # Before the run row is opened, so a duplicate that never starts does not
+    # write a failure row for a rebuild that is running perfectly well.
+    job_id = getattr(getattr(context, "job", None), "id", None)
+    running = jobs_in_flight("weekly_rebuild", statuses=("doing",), exclude_id=job_id)
+    if running:
+        other = running[0]
+        raise RebuildAlreadyRunning(
+            f"refusing to start: job {other.id} is already running a weekly_rebuild on the "
+            f"{other.queue_name} queue, and two at once write the same staging schema and "
+            "the same tile directory. Watch that one, or look at the operations page."
+        )
 
     with record("weekly_rebuild") as run:
         context = RebuildContext(
@@ -177,7 +217,21 @@ def weekly_rebuild(timestamp: int) -> None:
             context.tiles_dir, retention.KEEP_BUILDS, "before the disk gate"
         )
         try:
-            report = run_rebuild(build_handlers(context), deadline=context.deadline)
+            try:
+                report = run_rebuild(build_handlers(context), deadline=context.deadline)
+            except RebuildTimedOut as timed_out:
+                # The between-stages door, reshaped into the one the stages
+                # themselves come through. Both are "this rebuild stopped at
+                # stage X", and the classification below turns on nothing but
+                # the stage - so a budget that lapsed at the SWAP -> RECONCILE
+                # boundary used to be abandoned with "the time budget ran out"
+                # and no mention that the schema had already been renamed, while
+                # the identical failure from inside the reconcile handler got the
+                # swap-completed message and the router-restart notice. One
+                # classification, both doors.
+                if timed_out.stage is None:
+                    raise
+                raise RebuildFailed(timed_out.stage, timed_out) from timed_out
         except RebuildFailed as error:
             if error.stage in stages_after_swap():
                 # The swap completed, so `live_old` is now the schema a
@@ -198,6 +252,9 @@ def weekly_rebuild(timestamp: int) -> None:
                 raise RebuildAbandoned(str(error)) from error
             raise
         except RebuildTimedOut as error:
+            # Only a timeout that names no stage reaches this, which `run_rebuild`
+            # does not raise today. Kept so that the class is terminal however it
+            # arrives rather than retried by default.
             raise RebuildAbandoned(str(error)) from error
         finally:
             # On every path, not only the successful one. A rebuild that died
@@ -275,10 +332,13 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     would put back. The first timed-out rebuild would have spent thirty hours
     of CPU dismantling its own rollback target one attempt at a time.
 
-    `RebuildTimedOut` raised *between* stages is caught by name in the task
-    body; this entry is for the same class arriving as a `RebuildFailed.cause`,
-    which is what happens when a handler's own `_run_command` finds no budget
-    left.
+    Both doors arrive here as a `RebuildFailed.cause` now: the one a handler's
+    own `_run_command` comes through when it finds no budget left, and the
+    between-stages check, which carries the stage it was about to start and is
+    wrapped into the same `RebuildFailed` by the task body. That is what makes
+    the stage-after-swap branch cover a timeout as well, so a budget that lapses
+    at the SWAP -> RECONCILE boundary is abandoned with the router-restart
+    notice rather than with "the time budget ran out" and nothing else.
     """
     import subprocess
 
