@@ -74,6 +74,32 @@ class TestNoSecondCredential:
         assert "django.contrib.auth.backends.ModelBackend" not in settings.AUTHENTICATION_BACKENDS
 
 
+class TestTheAdminSiteKeepsTheActiveConjunct:
+    """`RouteMakerAdminSite.has_permission` ANDs `is_active` with `is_staff`,
+    as Django's own implementation does. Today `User.is_staff` already returns
+    False for a banned or deleted account, so the conjunct is defence in depth
+    and no ordinary account can tell whether it is there. This test can: it
+    stands in an `is_staff` that says True for a banned account - the shape a
+    future change to the derivation could take - and asserts the site still
+    refuses. Round 5's mutation pass deleted the conjunct with the suite green;
+    the docstring on the site defends it, so this pins the defence.
+    """
+
+    def test_a_banned_account_is_refused_even_if_is_staff_said_yes(self, monkeypatch) -> None:
+        from django.test import RequestFactory
+
+        from core.admin import site
+
+        user = User.objects.create(discord_user_id=990, is_instance_admin=True, is_banned=True)
+        monkeypatch.setattr(type(user), "is_staff", property(lambda self: True))
+        assert user.is_staff, "the stand-in derivation grants staff to a banned account"
+        assert not user.is_active
+
+        request = RequestFactory().get("/")
+        request.user = user
+        assert site.has_permission(request) is False
+
+
 class TestDerivedStaff:
     def test_a_plain_member_is_not_staff(self, guild) -> None:
         from core.auth_backend import attach_standing
