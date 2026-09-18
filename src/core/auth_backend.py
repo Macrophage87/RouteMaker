@@ -51,9 +51,21 @@ class DiscordStandingBackend:
             "override",
             "bantombstone",
             "user",
-            # A mapping decides who holds guild admin, so a guild admin editing
-            # their own guild's mapping is the definition of privilege
-            # escalation.
+            # Not because the mapping is not theirs - it expressly is.
+            # PLAN:272 hands it to the guild admin to maintain, since role ids
+            # change as a server reorganizes, and routing that through the
+            # deployment operator "would not survive contact with a dozen
+            # clubs". What the plan withholds is this surface: the mapping "is
+            # maintained through one audited action rather than an admin change
+            # form: the form is read-only like every other authorization table".
+            # The action revalidates each role id against the live guild,
+            # refuses ids the bot cannot see, writes an audit row carrying the
+            # prior mapping and notifies the guild's other admins. None of that
+            # is built yet, and none of it is anything a ModelAdmin change form
+            # does. So the model permission stays withheld until the action
+            # exists to replace it, and the change form stays read-only in the
+            # meantime - the same shape as every other table in this set, for a
+            # different reason from most of them.
             "rolemapping",
             # Nobody writes the log, including an instance admin. A log whose
             # entries can be edited from the surface it audits is not a log.
@@ -155,7 +167,9 @@ def check_guild_admin_allow_list(permissions, instance_admin_only) -> None:
         if target in instance_admin_only:
             raise ImproperlyConfigured(
                 f"{perm} grants a guild admin a write on {target}, which is "
-                "instance-admin only; a guild admin editing it is privilege escalation"
+                "instance-admin only; every table in that set is written by an "
+                "instance admin or by a dedicated audited action, never from a "
+                "change form a guild admin can post"
             )
 
 

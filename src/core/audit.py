@@ -38,6 +38,11 @@ write belongs.
 
 from __future__ import annotations
 
+# `AuditLogEntry.object_id` is a CharField of this width. Named rather than
+# spelled inline so the two cannot drift apart silently; the model asserts the
+# same number in tests/test_admin_scoping.py.
+OBJECT_ID_MAX = 64
+
 
 def record(
     actor,
@@ -58,6 +63,19 @@ def record(
     and the plan wants those told apart: "Audit log rows keep the numeric actor
     id and display 'deleted user'". Recorded here, at the one writer, because a
     column populated by some call sites and not others answers nothing.
+
+    Both values are bounded here, at the writer, and both bounds are the ones
+    the column actually has: `object_id` to the 64 characters of its CharField
+    and `detail` to a length its TextField will always take. Only `detail` used
+    to be bounded, which had it exactly the wrong way round - the unbounded
+    value was the one with the narrow column behind it. A guild admin could
+    therefore choose whether their refusal was recorded at all, by padding the
+    object id in the URL they posted at past 64 characters: the refusal raised
+    `PermissionDenied`, the wrapper in `admin.py` tried to write the row, the
+    column rejected it, and what reached the client was a 500 with nothing in
+    the log. Truncating at the writer is what makes "refused and audited"
+    unconditional, because no caller can be relied on to have measured its own
+    identifier - the bulk paths join a whole selection into it.
     """
     from .models import AuditLogEntry
 
@@ -67,10 +85,10 @@ def record(
         actor_user_id=actor_pk,
         action=action,
         model=model,
-        object_id=str(object_id or ""),
+        object_id=str(object_id or "")[:OBJECT_ID_MAX],
         outcome=outcome,
         detail=detail[:2000],
     )
 
 
-__all__ = ["record"]
+__all__ = ["OBJECT_ID_MAX", "record"]

@@ -2331,3 +2331,406 @@ class TestTheCrossingsPageBeforeTheFirstRebuild:
         response = as_instance_admin.get(admin_url("core_bordercrossing_changelist"))
         assert response.status_code == 200
         assert "does not exist" in response.content.decode()
+
+
+# The audit writer's bounds, and the refusals that used to fall through them.
+#
+# `AuditLogEntry.object_id` is a `CharField(max_length=64)` and `detail` is a
+# `TextField`. The writer bounded the TextField and passed the CharField straight
+# through, which is the wrong way round in the way that matters: the value with the
+# narrow column behind it was the unbounded one, and it is the value a request
+# controls. Every refusal on this surface is written *after* `PermissionDenied`
+# has unwound the transaction, so the write is the last thing that happens - a
+# column that rejects it turns a 403 with a row into a 500 with none.
+#
+# That handed a guild admin a switch on their own audit trail. Padding the object
+# id in the URL they posted at, or ticking enough rows for a bulk action, made the
+# attempt unloggable: measured at 500 with zero rows against the plan's "refused
+# and audited" (PLAN.md:326). The padding is not a payload and needs no
+# sophistication - it is zeroes, and Django's admin routes `<path:object_id>` so
+# they arrive intact.
+#
+# Every probe below is one of those, and each asserts both halves: the refusal the
+# request deserves, and exactly one row recording it.
+
+
+# Long enough to overflow a 64-character column several times over, and made of
+# the one character that cannot be mistaken for an escaping problem.
+PADDING = "0" * 120
+
+# The three tables the finding was measured on: the ones a guild admin can open
+# a change form for and write nothing on.
+PADDED_TARGETS = ["rolemapping", "cachedmembership", "configuredguild"]
+
+
+def column_width() -> int:
+    from core.models import AuditLogEntry
+
+    return AuditLogEntry._meta.get_field("object_id").max_length
+
+
+def padded(url: str, pk) -> str:
+    """The same admin URL with the object id padded past the column width.
+
+    Built by substitution on the reversed URL rather than by string-building the
+    path, so the test keeps working if the admin prefix or the URL shape moves.
+    """
+    assert f"/{pk}/" in url, url
+    return url.replace(f"/{pk}/", f"/{pk}{PADDING}/", 1)
+
+
+class TestTheWriterBoundsWhatTheColumnBounds:
+    def test_the_named_bound_is_the_column(self) -> None:
+        """A number spelled twice drifts. This is the assertion that stops the
+        constant and the migration disagreeing quietly."""
+        from core.audit import OBJECT_ID_MAX
+
+        assert OBJECT_ID_MAX == column_width()
+
+    @db
+    def test_an_overlong_object_id_is_truncated_rather_than_raising(self) -> None:
+        """Directly at the writer, because every caller below depends on it.
+
+        Bounding at the call sites instead would be a rule the next call site
+        has to remember, and the call sites are exactly what cannot be relied on
+        here: the bulk paths join a whole selection into this argument.
+        """
+        from core.audit import record
+        from core.models import AuditLogEntry
+
+        entry = record(None, "probe", "rolemapping", "9" * 500, AuditLogEntry.Outcome.REFUSED)
+
+        entry.refresh_from_db()
+        assert entry.object_id == "9" * column_width()
+
+    @db
+    def test_none_is_still_the_empty_string(self) -> None:
+        """The truncation must not change what a missing id records as; the
+        worker paths pass None."""
+        from core.audit import record
+        from core.models import AuditLogEntry
+
+        entry = record(None, "probe", "rolemapping", None, AuditLogEntry.Outcome.REFUSED)
+        entry.refresh_from_db()
+        assert entry.object_id == ""
+
+
+@db
+class TestAPaddedUrlCannotSuppressTheRefusalRow:
+    """The switch, in each of the places it was reachable.
+
+    Measured before the bound: 500 and no row. The unpadded form of the same
+    request was 403 and one row the whole time, so the only thing separating a
+    logged attempt from an unlogged one was the length of a number.
+    """
+
+    @pytest.mark.parametrize("model", PADDED_TARGETS)
+    def test_a_padded_change_post_is_refused_and_recorded(
+        self, as_guild_admin, rows, model
+    ) -> None:
+        row = rows[model]
+        response = as_guild_admin.post(
+            padded(admin_url(f"core_{model}_change", row.pk), row.pk), {"role_id": 1}
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == (model, "change")
+        assert entry.actor.discord_user_id == 9002
+        assert len(entry.object_id) <= column_width()
+
+    @pytest.mark.parametrize("model", PADDED_TARGETS)
+    def test_a_padded_delete_post_is_refused_and_recorded(
+        self, as_guild_admin, rows, model
+    ) -> None:
+        row = rows[model]
+        response = as_guild_admin.post(
+            padded(admin_url(f"core_{model}_delete", row.pk), row.pk), {"post": "yes"}
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == (model, "delete")
+        assert len(entry.object_id) <= column_width()
+
+    def test_the_unpadded_form_of_the_same_request_is_unchanged(self, as_guild_admin, rows) -> None:
+        """So the rows above are the padding being survived and not the padding
+        being the only thing that refuses."""
+        row = rows["rolemapping"]
+        response = as_guild_admin.post(admin_url("core_rolemapping_change", row.pk), {"role_id": 1})
+        assert response.status_code == 403
+        assert refusals().get().object_id == str(row.pk)
+
+
+@db
+class TestABulkSelectionIsRecordedReadably:
+    """The other way past a 64-character column, and the one that needs no
+    hand-built URL at all: tick enough boxes.
+
+    `changelist_view` joined the whole selection into `object_id`, so a
+    twenty-five row `delete_selected` overflowed it - 500, zero rows, from the
+    changelist's own checkboxes. Truncating the join would have written the row
+    but keyed it on a list cut off mid-id, which identifies nothing and cannot
+    be searched for. So the two fields carry what each is shaped for.
+    """
+
+    SELECTION = [str(n) for n in range(1, 26)]
+
+    def post_bulk(self, client, selection):
+        return client.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": "delete_selected",
+                "_selected_action": selection,
+                "index": "0",
+                "post": "yes",
+            },
+        )
+
+    def test_twenty_five_ticked_rows_are_refused_and_recorded(self, as_guild_admin, rows) -> None:
+        assert self.post_bulk(as_guild_admin, self.SELECTION).status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == ("rolemapping", "action")
+        assert len(entry.object_id) <= column_width()
+
+    def test_the_row_is_keyed_on_a_single_id_and_not_a_cut_off_join(
+        self, as_guild_admin, rows
+    ) -> None:
+        """Keyed on something the `model`/`object_id` index can be queried on.
+
+        A truncated join is not that: it is neither the first id nor any id, so
+        an instance admin asking "what has been attempted against row 17" gets
+        nothing back.
+        """
+        self.post_bulk(as_guild_admin, self.SELECTION)
+
+        entry = refusals().get()
+        assert entry.object_id == self.SELECTION[0]
+        assert "," not in entry.object_id
+
+    def test_the_detail_carries_the_count_and_the_whole_selection(
+        self, as_guild_admin, rows
+    ) -> None:
+        """Because the first id alone loses what was actually attempted, and
+        `detail` is a TextField with room for it."""
+        self.post_bulk(as_guild_admin, self.SELECTION)
+
+        entry = refusals().get()
+        assert "25 selected" in entry.detail
+        for selected in self.SELECTION:
+            assert selected in entry.detail
+
+    def test_one_ticked_row_still_reads_as_that_row(self, as_guild_admin, rows) -> None:
+        """The single-object case is the common one and must not have been
+        turned into a list of one."""
+        self.post_bulk(as_guild_admin, [str(rows["rolemapping"].pk)])
+        assert refusals().get().object_id == str(rows["rolemapping"].pk)
+
+
+@db
+class TestTheRevokeNowSelectionSurvivesPadding:
+    """Wave 7's own refusal row, which the same column defeated.
+
+    `_audit_selection_the_scoping_dropped` exists because `response_action`
+    filters the posted ids through `get_queryset` before the action sees them,
+    so a hand-built POST at another club's guild arrives with the id already
+    gone. It joined those ids into `object_id` - so the attempt it was written
+    to catch could suppress it by naming a few more.
+    """
+
+    def revoke(self, client, selection):
+        return client.post(
+            admin_url("core_configuredguild_changelist"),
+            {"action": "revoke_now", "_selected_action": selection, "index": "0"},
+        )
+
+    def test_a_padded_selection_is_still_recorded(self, as_guild_admin, guild, other_guild) -> None:
+        fabricated = [str(900000 + n) for n in range(20)]
+        response = self.revoke(as_guild_admin, [str(other_guild.pk), *fabricated])
+        assert response.status_code == 302
+
+        entry = refusals().get(action="revoke_now")
+        assert entry.model == "configuredguild"
+        assert entry.actor.discord_user_id == 9002
+        assert len(entry.object_id) <= column_width()
+        assert entry.object_id == str(other_guild.pk), "keyed on the first id selected"
+        assert "21 selected" in entry.detail
+        for fake in fabricated:
+            assert fake in entry.detail
+
+    def test_nothing_was_revoked_by_it(self, as_guild_admin, guild, other_guild) -> None:
+        """The record is the half that was missing; the refusal itself must not
+        have moved."""
+        self.revoke(as_guild_admin, [str(other_guild.pk), *[str(900000 + n) for n in range(20)]])
+        other_guild.refresh_from_db()
+        guild.refresh_from_db()
+        assert (other_guild.state, guild.state) == ("active", "active")
+
+
+# Which posted `action` the refusal check reads, against which one Django runs.
+#
+# A changelist draws the action form twice, above and below the list, so `action`
+# is posted once per form and `index` names the button that was pushed.
+# `response_action` therefore resolves `getlist("action")[index]`, while
+# `QueryDict.get("action")` returns the *last* value. `_refuse_unpermitted_action`
+# read the second and Django ran the first, and a hand-built POST chooses both
+# freely.
+#
+# So `action=["delete_selected", ""]` with `index=0` left the check reading the
+# empty string - no named action, nothing refused - and Django went on to act on
+# `delete_selected`. Measured on every table a guild admin can read: 200, or a
+# redirect back to the changelist where the model has actions at all, and no audit
+# row. Nothing was deleted, because `get_actions` still filters the choices by
+# permission, but the plan's "refused and audited" and this class's own measured
+# defect were both back.
+#
+# The fix resolves the action exactly as Django does, including both of Django's
+# fallbacks, and these are the tests for that - in both directions, since a check
+# that refuses an action the viewer *does* hold is the same defect pointing the
+# other way.
+
+
+# Every model a guild admin holds a view permission on, which is every
+# changelist they can post an action form at. Parametrized rather than written
+# out because the defect was uniform across all of them and a new readable
+# surface must not quietly be the one that is not covered.
+GUILD_READABLE = [
+    "configuredguild",
+    "rolemapping",
+    "cachedmembership",
+    "bordercrossing",
+    "jurisdiction",
+    "override",
+    "instanceadminlisting",
+]
+
+
+@db
+class TestTheDuplicateActionPost:
+    """The POST shape itself, on each readable table."""
+
+    @pytest.mark.parametrize("model", GUILD_READABLE)
+    def test_it_is_refused(self, as_guild_admin, rows, model) -> None:
+        response = as_guild_admin.post(
+            admin_url(f"core_{model}_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": ["1"],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        assert response.status_code == 403, (
+            "200 or a redirect here is Django resolving a different action from "
+            "the one the check read"
+        )
+
+    @pytest.mark.parametrize("model", GUILD_READABLE)
+    def test_it_leaves_exactly_one_refused_row(self, as_guild_admin, rows, model) -> None:
+        as_guild_admin.post(
+            admin_url(f"core_{model}_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": ["1"],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        entry = refusals().get()
+        assert (entry.model, entry.action) == (model, "action")
+        assert entry.actor.discord_user_id == 9002
+
+    def test_the_last_value_alone_is_not_what_is_read(self, as_guild_admin, rows) -> None:
+        """The mirror image, which is what makes the test above about the
+        resolution rather than about there being two values.
+
+        `index=1` names the empty string, and the empty string is what Django
+        will resolve too, so nothing is being attempted and nothing may be
+        refused. A check that simply refused whenever any posted value was
+        unpermitted would fail here - and would refuse the bottom form's button
+        on an ordinary page with two forms on it.
+        """
+        response = as_guild_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": ["1"],
+                "index": "1",
+                "post": "yes",
+            },
+        )
+        assert response.status_code != 403
+        assert not refusals().exists()
+
+
+@db
+class TestDjangosOwnFallbacksAreMirrored:
+    """Both of them, because the defect being fixed is the check and the view
+    disagreeing - in whichever direction they disagree."""
+
+    def post(self, client, *, index):
+        return client.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": ["", "delete_selected"],
+                "_selected_action": ["1"],
+                "index": index,
+                "post": "yes",
+            },
+        )
+
+    def test_a_non_numeric_index_is_index_zero(self, as_guild_admin, rows) -> None:
+        """`response_action` maps `ValueError` to 0, so index 0 is the action
+        that runs and the empty string there is genuinely nothing attempted."""
+        assert self.post(as_guild_admin, index="not-a-number").status_code != 403
+        assert not refusals().exists()
+
+    def test_an_out_of_range_index_falls_back_to_the_last_value(self, as_guild_admin, rows) -> None:
+        """Django's `IndexError` branch leaves `data["action"]` as the QueryDict's
+        last value rather than clearing it, so that is the action it will run.
+
+        Answering "nothing was named" here instead would have handed back the
+        very hole this file exists for, reachable with `index=9`.
+        """
+        assert self.post(as_guild_admin, index="9").status_code == 403
+        assert refusals().get().action == "action"
+
+
+@db
+class TestAPermittedActionStillRuns:
+    """The over-refusal side. A resolution that is merely stricter is not a fix:
+    it would break the ordinary two-form changelist for everybody."""
+
+    def test_a_guild_admins_own_action_is_not_refused(self, as_guild_admin, guild) -> None:
+        """`revoke_now` is theirs on their own guild, posted in the same
+        duplicated shape."""
+        response = as_guild_admin.post(
+            admin_url("core_configuredguild_changelist"),
+            {
+                "action": ["revoke_now", ""],
+                "_selected_action": [str(guild.pk)],
+                "index": "0",
+            },
+        )
+        assert response.status_code == 302
+        guild.refresh_from_db()
+        assert guild.state == "revoked"
+        assert not refusals().exists()
+
+    def test_an_instance_admins_bulk_delete_is_not_refused(self, as_instance_admin, rows) -> None:
+        from core.models import RoleMapping
+
+        mapping = rows["rolemapping"]
+        response = as_instance_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": [str(mapping.pk)],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        assert response.status_code == 302
+        assert not RoleMapping.objects.filter(pk=mapping.pk).exists()
+        assert not refusals().exists()

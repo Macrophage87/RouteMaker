@@ -206,9 +206,21 @@ def exchange_code(code: str) -> tuple[int, str]:
             timeout=10,
         ) as response:
             profile = json.load(response)
-    except (urllib.error.URLError, KeyError, ValueError) as error:
+        # Inside the same `try`, and that is the whole of this fix. The handler
+        # already names `KeyError` and `ValueError` because a malformed response
+        # is the expected failure here, but the two lines that actually read the
+        # payload sat outside it: a profile with no `id` raised KeyError and one
+        # whose `id` was not numeric raised ValueError, and both reached the
+        # client as a 500 instead of the 400 every other malformed-exchange
+        # shape gets. `int()` on a `json.load` result is not a safe expression -
+        # the value is whatever the other end sent - so it belongs where the
+        # other parsing of that payload already is.
+        #
+        # The tokens go no further than this function. Nothing returns them,
+        # nothing stores them, and the only thing kept is the id.
+        discord_user_id = int(profile["id"])
+        granted_scopes = token.get("scope", "")
+    except (urllib.error.URLError, KeyError, ValueError, TypeError) as error:
         raise LoginRefused(f"the Discord exchange failed: {error}") from error
 
-    # The tokens go no further than this function. Nothing returns them, nothing
-    # stores them, and the only thing kept is the id.
-    return int(profile["id"]), token.get("scope", "")
+    return discord_user_id, granted_scopes

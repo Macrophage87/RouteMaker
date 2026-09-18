@@ -609,11 +609,56 @@ class TestHasPerm:
             DiscordStandingBackend.GUILD_ADMIN_PERMISSIONS,
             DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS,
         )
-        with pytest.raises(ImproperlyConfigured, match="privilege escalation"):
+        with pytest.raises(ImproperlyConfigured, match="never from a change form"):
             check_guild_admin_allow_list(
                 frozenset({"core.change_rolemapping"}),
                 DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS,
             )
+
+    def test_the_refusal_does_not_call_the_role_mapping_an_escalation(self) -> None:
+        """The message is read by whoever trips the check, and it was telling
+        them something this application does not do.
+
+        `rolemapping` is in the instance-admin-only set for the reason
+        `RoleMappingAdmin`'s own docstring gives - PLAN:272 maintains the mapping
+        through an audited action and keeps "the form read-only like every other
+        authorization table" - and not because a guild admin editing their own
+        guild's mapping escalates anything. `attach_standing` ignores
+        INSTANCE_ADMIN rows when it resolves standing and `GuildScopedAdmin`
+        puts every other guild's rows out of reach, so the worst an own-guild
+        edit could reach is guild admin in a guild where they already hold it.
+        The docstring was corrected once; the message the check actually raises
+        was not, so the claim survived in the one place a person meets it.
+        """
+        from django.core.exceptions import ImproperlyConfigured
+
+        from core.auth_backend import DiscordStandingBackend, check_guild_admin_allow_list
+
+        with pytest.raises(ImproperlyConfigured) as raised:
+            check_guild_admin_allow_list(
+                frozenset({"core.change_rolemapping"}),
+                DiscordStandingBackend.INSTANCE_ADMIN_ONLY_MODELS,
+            )
+        assert "escalation" not in str(raised.value)
+
+    def test_the_role_mapping_comment_gives_the_plans_reason(self) -> None:
+        """The same claim, in the comment beside the constant.
+
+        Asserted on the source because a comment is where the next person reads
+        why the entry is there, and a wrong reason recorded there outlives any
+        number of corrected docstrings elsewhere.
+        """
+        import inspect
+
+        from core import auth_backend
+
+        source = inspect.getsource(auth_backend)
+        head, _, tail = source.partition('"rolemapping",')
+        assert tail, "the entry itself must still be in the set"
+        reason = head[-1400:]
+        assert "privilege escalation" not in reason
+        assert "PLAN:272" in reason
+        assert "read-only" in reason
 
 
 class TestSessionEpochMiddleware:
