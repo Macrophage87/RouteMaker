@@ -11,6 +11,7 @@ from pipeline.crossings import (
     distinct_authorities,
     state_line_crossings,
 )
+from routemaker.geo import METRES_PER_MILE
 
 LONG = DEFAULT_MIN_CROSSING_M * 3
 SHORT = DEFAULT_MIN_CROSSING_M / 4
@@ -51,6 +52,29 @@ def test_a_crossing_exactly_at_the_minimum_is_kept() -> None:
         start_m=0.0,
         end_m=math.nextafter(DEFAULT_MIN_CROSSING_M, 0.0),
     )
+    assert collapse_short_crossings([under]) == []
+
+
+def test_the_minimum_crossing_is_a_tenth_of_a_mile() -> None:
+    """The threshold in miles, not as a multiple of itself.
+
+    Every other case in this file reaches it through `DEFAULT_MIN_CROSSING_M` -
+    `LONG` is three times it, `SHORT` a quarter of it, and the tie above is the
+    constant itself - so the whole file passes unchanged at a tenth of a mile,
+    at a seventh, or at a fifth. The figure is what the crossing list is
+    readable at: the Capitol grounds clip at 1st and Louisiana and the Secret
+    Service edge of President's Park are both around a tenth, and they are the
+    crossings the report exists for.
+
+    So two lengths on either side of it, written in miles: a crossing of 0.12
+    mile is kept and one of 0.08 mile is dropped. Neither is within the carve-
+    outs, so it is the length alone that decides them.
+    """
+    assert DEFAULT_MIN_CROSSING_M == 0.1 * METRES_PER_MILE
+
+    over = crossing("USPP", 0.12 * METRES_PER_MILE)
+    under = crossing("USPP", 0.08 * METRES_PER_MILE)
+    assert collapse_short_crossings([over]) == [over]
     assert collapse_short_crossings([under]) == []
 
 

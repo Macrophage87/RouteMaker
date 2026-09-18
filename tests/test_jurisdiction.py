@@ -176,6 +176,27 @@ def test_other_streets_are_not(name: str | None) -> None:
     assert not is_boundary_street(name)
 
 
+def test_the_match_is_on_the_name_alone_and_says_so() -> None:
+    """Baltimore's Eastern Avenue answers true, and that is the accepted reading.
+
+    There is no geometry test and no bounding box in `is_boundary_street`: any
+    way in the extract carrying one of the three names matches, and Baltimore is
+    inside the coverage box. Recorded as a test rather than only as a comment,
+    because the cost is asymmetric and the asymmetry is the argument. The one
+    consumer is `borders.find_state_crossings`, so a false match costs a border
+    node not inserted on a street that crosses no state line; a false negative
+    fragments a District boundary street into a string of stubs. Narrowing it
+    would mean a geometry test here, and nothing needs one yet.
+
+    If that changes - if a second consumer appears that acts on the name in a
+    way a Baltimore street should not reach - this is the test that should stop
+    it, by being rewritten rather than by silently continuing to pass.
+    """
+    from pipeline.jurisdiction import is_boundary_street
+
+    assert is_boundary_street("Eastern Avenue"), "and nothing here knows which one"
+
+
 def test_reentry_produces_two_crossings_not_a_phantom_one(authorities) -> None:
     """The earlier implementation located intersection pieces on the line with
     ST_LineLocatePoint, which is ambiguous once a route visits an area twice. On

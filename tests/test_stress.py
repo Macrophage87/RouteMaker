@@ -196,6 +196,47 @@ class TestLanesPerDirection:
         assert lanes_per_direction({"lanes": "4", "lanes:forward": "1", "lanes:backward": "3"}) == 3
         assert lanes_per_direction({"lanes": "4", "lanes:forward": "3", "lanes:backward": "1"}) == 3
 
+    def test_a_direction_tagged_with_no_lanes_still_has_one(self) -> None:
+        """The floor under the directional read, which had nothing holding it.
+
+        `lanes:backward=0` is ordinary OSM: it is how a mapper says a signed
+        one-way carries nothing the other way, and it arrives beside a `lanes`
+        count that does not agree with it. Without the floor the function
+        returns zero lanes in the direction of travel, which is not a road -
+        and every Furth comparison downstream is written as `lanes > 1` or
+        `lanes <= 1`, so a zero reads as the *quietest* possible road and the
+        classifier says so with no assumption recorded.
+
+        The same floor is on both `lanes` branches below, where it is exercised
+        by `lanes=1` on a two-way street (1 // 2 == 0). Only the directional
+        branch had no case at all, so `max(1, max(directional))` could lose its
+        `max(1, ...)` with the suite green.
+        """
+        assert lanes_per_direction({"lanes": "1", "oneway": "yes", "lanes:backward": "0"}) == 1
+        assert lanes_per_direction({"lanes": "2", "lanes:forward": "0", "lanes:backward": "0"}) == 1
+        # And the tier that follows from it: one lane per direction, not none.
+        result = classify(
+            {
+                "highway": "residential",
+                "maxspeed": "25 mph",
+                "lanes": "2",
+                "lanes:forward": "0",
+                "lanes:backward": "0",
+                "parking:both": "no",
+            }
+        )
+        assert result.tier is Stress.LTS2
+        assert "single lane" in result.rule, result.rule
+        assert "lanes" not in result.assumed, "the count was tagged; it is the floor that applies"
+
+    def test_the_two_way_halving_is_floored_at_one_lane(self) -> None:
+        """The other side of the same floor: `lanes=1` on a two-way street.
+
+        A single-lane two-way street - an alley, a narrow residential block -
+        halves to zero without it.
+        """
+        assert lanes_per_direction({"lanes": "1"}) == 1
+
     def test_a_road_and_its_mirror_image_take_the_same_tier(self) -> None:
         """Stated as the tier, because that is where it was visible: at 30 mph
         the mixed-traffic table turns on single lane against multilane, so the
