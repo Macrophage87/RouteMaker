@@ -238,6 +238,27 @@ ADMIN_WRITE_VERBS = ("add", "change", "delete")
 # one verb each on the two tables that do.
 AUTHORIZATION_TABLES = ("cachedmembership", "rolemapping", "configuredguild", "auditlogentry")
 
+# The one write on those tables a guild admin does hold, and the reason the
+# sweep below is a list comprehension rather than a product of the two tuples.
+#
+# PLAN:208 puts the admin contact address at guild scope, "set by that guild's
+# admin", and PLAN:210 gives a guild admin leave to "edit that guild's own
+# settings"; `ConfiguredGuildAdmin` locks `guild_id`, `state`, `state_since` and
+# `standing_valid_until` and leaves `name` and `admin_contact_email` editable.
+# So a blanket "every verb on every table is refused" would be asserting the
+# opposite of the plan on this one pair. It is asserted both ways round instead,
+# in TestAGuildAdminEditsTheirOwnGuildsSettings: allowed on their own guild,
+# refused and audited on anybody else's, and the locked columns unwritable
+# either way.
+GUILD_SCOPED_WRITES = frozenset({("configuredguild", "change")})
+
+REFUSED_TO_A_GUILD_ADMIN = [
+    (model, verb)
+    for model in AUTHORIZATION_TABLES
+    for verb in ADMIN_WRITE_VERBS
+    if (model, verb) not in GUILD_SCOPED_WRITES
+]
+
 
 def admin_url(name: str, *args) -> str:
     from django.urls import reverse
@@ -499,11 +520,11 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
     on the two tables that do.
     """
 
-    @pytest.mark.parametrize("model", AUTHORIZATION_TABLES)
-    @pytest.mark.parametrize("verb", ADMIN_WRITE_VERBS)
+    @pytest.mark.parametrize(("model", "verb"), REFUSED_TO_A_GUILD_ADMIN)
     def test_a_guild_admin_is_refused_and_audited(self, as_guild_admin, rows, model, verb) -> None:
-        """Twelve cases from two lists, so adding a table or a verb to either
-        covers it everywhere rather than in whichever cases somebody wrote out."""
+        """Eleven cases from two lists less the one pair the plan grants, so
+        adding a table or a verb to either covers it everywhere rather than in
+        whichever cases somebody wrote out."""
         if verb == "add":
             url, payload = admin_url(f"core_{model}_add"), {}
         elif verb == "change":
@@ -520,12 +541,17 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
 
     @pytest.mark.parametrize("model", AUTHORIZATION_TABLES)
     def test_the_row_is_unchanged_and_still_there(self, as_guild_admin, rows, model) -> None:
+        """The refusals above, read off the database rather than off a status
+        code. The change POST is skipped on the one pair the plan grants - an
+        empty payload there is a *valid* form that blanks two editable fields,
+        so asserting the row is untouched would be asserting the opposite of
+        PLAN:210."""
         row = rows[model]
         before = type(row).objects.get(pk=row.pk).__dict__.copy()
-        for url, payload in (
-            (admin_url(f"core_{model}_change", row.pk), {}),
-            (admin_url(f"core_{model}_delete", row.pk), {"post": "yes"}),
-        ):
+        attempts = [(admin_url(f"core_{model}_delete", row.pk), {"post": "yes"})]
+        if (model, "change") not in GUILD_SCOPED_WRITES:
+            attempts.insert(0, (admin_url(f"core_{model}_change", row.pk), {}))
+        for url, payload in attempts:
             as_guild_admin.post(url, payload)
         after = type(row).objects.get(pk=row.pk)
         assert {k: v for k, v in after.__dict__.items() if not k.startswith("_")} == {
@@ -626,6 +652,158 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
             assert as_guild_admin.post(url, {}).status_code in (403, 404)
         assert RoleMapping.objects.get(pk=theirs.pk).role_id == 99
         assert ConfiguredGuild.objects.get(pk=other_guild.pk).name == "Another Club"
+
+
+@db
+class TestAGuildAdminEditsTheirOwnGuildsSettings:
+    """The one write on the configured guild list that is not an instance
+    admin's, and the three that still are.
+
+    `ConfiguredGuildAdmin.has_change_permission` used to answer instance admin
+    or nothing, with a docstring that explained the refusal by saying "every
+    field on this form is read-only, so a change POST can only ever be a no-op
+    or an attempt at one of them". The form has six columns and
+    `readonly_fields` names four: `name` and `admin_contact_email` were
+    editable, and audited, the whole time the docstring said they were not.
+
+    Which way to resolve that is the plan's. PLAN:208 lists "the admin contact
+    address" among the settings at **guild** scope, "set by that guild's admin
+    and applying only to routes whose owning guild it is", and PLAN:210 gives a
+    guild admin leave to "edit that guild's own settings". PLAN:61 says why the
+    address is there at all: it is the channel a degraded-guild alert and a
+    re-invite link travel down when the bot is the thing that has failed, so a
+    guild whose admin cannot correct it is a guild whose rescue path rots
+    silently. So the gate widens to the form, and the docstring stops
+    misdescribing it.
+
+    Their own guild, and nobody else's: the object check here is the second half
+    of `get_queryset`'s scoping, and the half a hand-built POST has to get past.
+    """
+
+    FIELDS = {"name": "Renamed By Its Own Admin", "admin_contact_email": "club@example.test"}
+
+    def test_their_own_guild_is_writable_and_audited(self, as_guild_admin, guild) -> None:
+        from core.models import AuditLogEntry
+
+        response = as_guild_admin.post(
+            admin_url("core_configuredguild_change", guild.pk), self.FIELDS
+        )
+        assert response.status_code == 302, response.context["errors"] if response.context else ""
+
+        guild.refresh_from_db()
+        assert guild.name == self.FIELDS["name"]
+        assert guild.admin_contact_email == self.FIELDS["admin_contact_email"]
+
+        entry = AuditLogEntry.objects.get(model="configuredguild", action="change")
+        assert entry.outcome == AuditLogEntry.Outcome.ALLOWED
+        assert entry.actor.discord_user_id == 9002
+        assert entry.object_id == str(guild.pk)
+        assert not refusals().exists()
+
+    def test_another_guilds_row_is_refused_and_audited(
+        self, as_guild_admin, guild, other_guild
+    ) -> None:
+        """403 rather than 404, and the difference is the object check.
+
+        Django asks `has_change_permission` before it asks whether the row was
+        found, so a hook that answered "any guild admin" would let the request
+        fall through to the not-found redirect and answer 404 with nothing in
+        the log - a refused escalation recorded as a typo.
+        """
+        from core.models import ConfiguredGuild
+
+        response = as_guild_admin.post(
+            admin_url("core_configuredguild_change", other_guild.pk), self.FIELDS
+        )
+        assert response.status_code == 403
+
+        entry = refusals().get()
+        assert (entry.model, entry.action) == ("configuredguild", "change")
+        assert entry.actor.discord_user_id == 9002
+
+        theirs = ConfiguredGuild.objects.get(pk=other_guild.pk)
+        assert theirs.name == "Another Club"
+        assert theirs.admin_contact_email == ""
+
+    @pytest.mark.parametrize(
+        ("column", "posted"),
+        [
+            ("guild_id", "424242"),
+            ("state", "revoked"),
+            ("state_since", "2000-01-01 00:00:00"),
+            ("standing_valid_until", "2099-01-01 00:00:00"),
+        ],
+    )
+    def test_the_locked_columns_are_not_writable_by_the_guild_admin(
+        self, as_guild_admin, guild, column, posted
+    ) -> None:
+        """The widening is two columns wide, and these are the four it does not
+        reach.
+
+        `guild_id` is the snowflake every standing check matches against, and
+        editing it here is the unaudited remap the plan routes through a
+        dedicated workflow. `state` and `standing_valid_until` are what the
+        degraded window and the revoke-now action write: a guild that could type
+        its own standing window into a form would not have one, and a revoked
+        guild could un-revoke itself with the same POST.
+        """
+        before = getattr(guild, column)
+        response = as_guild_admin.post(
+            admin_url("core_configuredguild_change", guild.pk), {**self.FIELDS, column: posted}
+        )
+        assert response.status_code == 302
+
+        guild.refresh_from_db()
+        assert getattr(guild, column) == before, f"{column} was writable"
+        # And the write that was allowed still happened, so this is a locked
+        # column rather than a rejected form.
+        assert guild.name == self.FIELDS["name"]
+
+    def test_adding_and_deleting_stay_instance_admin_only(self, as_guild_admin, guild) -> None:
+        """Adding a row self-onboards a server and pushes an arbitrary roster
+        into the database; deleting one cascades away every role mapping and
+        membership row. Neither is "that guild's own settings"."""
+        from core.models import ConfiguredGuild
+
+        assert as_guild_admin.post(admin_url("core_configuredguild_add"), {}).status_code == 403
+        assert (
+            as_guild_admin.post(
+                admin_url("core_configuredguild_delete", guild.pk), {"post": "yes"}
+            ).status_code
+            == 403
+        )
+        assert ConfiguredGuild.objects.filter(pk=guild.pk).exists()
+
+    def test_an_instance_admin_still_writes_any_guilds_settings(
+        self, as_instance_admin, other_guild
+    ) -> None:
+        """The widening takes nothing away from the deployment-level role."""
+        from core.models import AuditLogEntry
+
+        response = as_instance_admin.post(
+            admin_url("core_configuredguild_change", other_guild.pk), self.FIELDS
+        )
+        assert response.status_code == 302
+        other_guild.refresh_from_db()
+        assert other_guild.admin_contact_email == self.FIELDS["admin_contact_email"]
+        assert AuditLogEntry.objects.filter(
+            model="configuredguild", action="change", outcome=AuditLogEntry.Outcome.ALLOWED
+        ).exists()
+
+    def test_the_state_columns_are_locked_for_an_instance_admin_too(
+        self, as_instance_admin, guild
+    ) -> None:
+        """`readonly_fields` is not a guild-admin gate; it is the statement that
+        these four columns belong to the degraded window and the remap workflow
+        rather than to any form."""
+        response = as_instance_admin.post(
+            admin_url("core_configuredguild_change", guild.pk),
+            {**self.FIELDS, "state": "revoked", "guild_id": "424242"},
+        )
+        assert response.status_code == 302
+        guild.refresh_from_db()
+        assert guild.state == "active"
+        assert guild.guild_id == 5000
 
 
 @db
