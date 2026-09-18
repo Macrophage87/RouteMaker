@@ -763,31 +763,40 @@ def build_handlers(
         #
         # The admin and timezone databases are built here too, into the same
         # dated directory, because the retargeted config is what names them and
-        # nothing else ever writes there. The timezone database is a function of
-        # the world rather than of the extract, so the first variant builds it
-        # and the rest copy it.
+        # nothing else ever writes there. Neither is a function of the variant:
+        # the timezone database is a function of the world, and the admin
+        # database is a function of the merged extract, which is one file every
+        # variant's admin build was handed. So the first variant builds each of
+        # them and the rest copy the file - one ~100 MB download and one parse
+        # of the 1-2 GB merged PBF per rebuild, rather than one and three.
         if context.merged_pbf is None:
             raise ReferenceDataMissing(
                 "no merged extract to build admin data from; FETCH_EXTRACT produces it"
             )
+        admin_source: Path | None = None
         timezone_source: Path | None = None
         for variant in variants.Variant:
             config_path = tiles.write_build_config(
                 context.config_dir, context.tiles_dir, variant, context.build_id
             )
             context.build_configs[variant] = config_path
-            timezone_db = Path(json.loads(config_path.read_text())["mjolnir"]["timezone"])
+            mjolnir = json.loads(config_path.read_text())["mjolnir"]
+            admin_db = Path(mjolnir["admin"])
+            timezone_db = Path(mjolnir["timezone"])
             commands = tiles.tile_build_commands(
                 config_path,
                 context.variant_pbf(variant),
                 admin_pbf=context.merged_pbf,
+                admin_db=admin_db,
                 timezone_db=timezone_db,
+                admin_source=admin_source,
                 timezone_source=timezone_source,
             )
             # Kept per variant: the Lua-fallback and violation checks are asked
             # of each variant's own log, and one joined string would let the
             # first match answer for all three.
             context.build_logs[variant] = "\n".join(run(command).log for command in commands)
+            admin_source = admin_source or admin_db
             timezone_source = timezone_source or timezone_db
 
     def write_segments() -> None:

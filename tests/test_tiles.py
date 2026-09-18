@@ -276,6 +276,7 @@ def test_the_admin_and_timezone_databases_are_built_before_the_tiles(tmp_path) -
         config_path,
         tmp_path / "standard.osm.pbf",
         admin_pbf=tmp_path / "merged.osm.pbf",
+        admin_db=Path(config["mjolnir"]["admin"]),
         timezone_db=Path(config["mjolnir"]["timezone"]),
     )
     programs = [Path(c[0]).name for c in commands]
@@ -301,6 +302,41 @@ def test_the_admin_and_timezone_databases_are_built_before_the_tiles(tmp_path) -
     assert str(tmp_path / "standard.osm.pbf") not in admins
 
 
+def test_the_admin_database_is_built_once_and_copied(tmp_path) -> None:
+    """Three variants used to mean three `valhalla_build_admins` runs, and all
+    three were the same run: the command's only inputs are `-c <config>` and the
+    merged PBF, the merged PBF is one file for the whole rebuild (it is read
+    *because* admin polygons are a fact about the region rather than about which
+    ways a variant keeps), and the configs differ only in which `mjolnir.admin`
+    path they name. So the pipeline parsed 1-2 GB of OSM and rebuilt the same
+    boundary polygons three times to write three identical databases, inside a
+    rebuild that is killed at six hours.
+
+    The same shape the timezone database already had: the first variant builds
+    it, the rest copy the file.
+    """
+    config_path, config = write_config(tmp_path)
+    first = tmp_path / "standard" / "admin.sqlite"
+    commands = tiles.tile_build_commands(
+        config_path,
+        tmp_path / "ebike.osm.pbf",
+        admin_pbf=tmp_path / "merged.osm.pbf",
+        admin_db=Path(config["mjolnir"]["admin"]),
+        timezone_db=Path(config["mjolnir"]["timezone"]),
+        admin_source=first,
+        timezone_source=tmp_path / "standard-tz.sqlite",
+    )
+
+    assert not any(Path(c[0]).name == "valhalla_build_admins" for c in commands), (
+        "the merged extract is parsed again for a database the first variant already wrote"
+    )
+    assert ["cp", str(first), config["mjolnir"]["admin"]] in commands
+    # And the copy still lands before the tiles that read it.
+    programs = [Path(c[0]).name for c in commands]
+    copy_index = commands.index(["cp", str(first), config["mjolnir"]["admin"]])
+    assert copy_index < programs.index("valhalla_build_tiles")
+
+
 def test_the_timezone_script_writes_to_stdout_so_the_pipeline_redirects_it(tmp_path) -> None:
     """valhalla_build_timezones takes no arguments and `cat`s the finished
     SQLite database to stdout (scripts/valhalla_build_timezones:38), so the
@@ -319,6 +355,7 @@ def test_the_timezone_script_writes_to_stdout_so_the_pipeline_redirects_it(tmp_p
         config_path,
         tmp_path / "standard.osm.pbf",
         admin_pbf=tmp_path / "source.osm.pbf",
+        admin_db=Path(config["mjolnir"]["admin"]),
         timezone_db=timezone_db,
     )
     shell = next(c for c in commands if c[0] == "sh")
@@ -364,6 +401,7 @@ def test_a_failed_timezone_build_leaves_no_database_behind(tmp_path) -> None:
             config_path,
             tmp_path / "standard.osm.pbf",
             admin_pbf=tmp_path / "source.osm.pbf",
+            admin_db=Path(config["mjolnir"]["admin"]),
             timezone_db=timezone_db,
         )
         if c[0] == "sh"
@@ -391,13 +429,12 @@ def test_the_timezone_database_is_downloaded_once_and_copied(tmp_path) -> None:
         config_path,
         tmp_path / "ebike.osm.pbf",
         admin_pbf=tmp_path / "source.osm.pbf",
+        admin_db=Path(config["mjolnir"]["admin"]),
         timezone_db=Path(config["mjolnir"]["timezone"]),
         timezone_source=tmp_path / "standard-tz.sqlite",
     )
     assert not any(c[0] == "sh" for c in commands), "nothing is downloaded a second time"
     assert ["cp", str(tmp_path / "standard-tz.sqlite"), config["mjolnir"]["timezone"]] in commands
-    # The admin database is still built per variant: it is cheap and local.
-    assert any(Path(c[0]).name == "valhalla_build_admins" for c in commands)
 
 
 def test_the_links_a_promotion_found_are_what_restoring_puts_back(tmp_path) -> None:
