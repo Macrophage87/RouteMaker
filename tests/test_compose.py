@@ -7,6 +7,7 @@ suite as everything else, rather than only on push.
 from __future__ import annotations
 
 import ast
+import math
 from pathlib import Path
 
 import pytest
@@ -544,4 +545,41 @@ def test_the_env_example_lists_every_name_the_stack_expects_from_it() -> None:
                     required.add(inner)
     assert required <= example, (
         f"compose requires these and .env.example omits them: {sorted(required - example)}"
+    )
+
+
+def test_the_env_examples_commented_worker_count_is_composes_own_default() -> None:
+    """A commented-out example is what an operator uncomments.
+
+    `WEB_CONCURRENCY` is commented out in `.env.example` precisely because
+    compose already carries a default that matches the api service's cpu limit,
+    and the line is there to say what that default is. Uncommented, it becomes
+    the value - so a figure that has drifted from compose's is a worker count an
+    operator adopts by agreeing with the file. The number that used to be there,
+    `nproc * 2 + 1` on PLAN:293's 8-vCPU host, is 17 full Django processes
+    inside this service's 2 GB limit, which is a container OOM kill rather than
+    a throughput setting.
+
+    All three figures are derived rather than written down: the default out of
+    compose's `${WEB_CONCURRENCY:-N}`, the limit out of the same service's
+    `cpus:`, and the formula - `2 * cpus + 1`, the same one
+    `docker/api-entrypoint.sh` applies to the cgroup quota - between them.
+    """
+    import re
+
+    interpolation = SERVICES["api"]["environment"]["WEB_CONCURRENCY"]
+    default = int(interpolation.removeprefix("${WEB_CONCURRENCY:-").removesuffix("}"))
+    cpus = float(limits("api")["cpus"])
+    assert default == 2 * math.ceil(cpus) + 1, (
+        f"compose's WEB_CONCURRENCY default is {default} against a {cpus} cpu limit; the "
+        "entrypoint derives 2 * cores + 1 from the cgroup quota and the two have to agree"
+    )
+
+    commented = re.findall(
+        r"^#\s*WEB_CONCURRENCY=(\d+)\s*$", (REPO / ".env.example").read_text(), re.MULTILINE
+    )
+    assert commented == [str(default)], (
+        f".env.example offers {commented} as the worker count to uncomment and compose's "
+        f"default is {default}; the file an operator edits and the file it documents "
+        "disagree"
     )

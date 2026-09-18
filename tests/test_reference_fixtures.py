@@ -743,12 +743,30 @@ def test_a_pair_at_the_top_of_a_bulk_south_route_is_found() -> None:
     assert revisits(points) == brute_force_revisits(points)
 
 
+def high_latitude_route(lat: float = 70.0, lon: float = 20.0) -> list[Point]:
+    """A kilometre of northbound line far outside the coverage box.
+
+    Synthetic on purpose. The `max(min_cos, ...)` in `revisit_cell_degrees` is a
+    guard against a cosine that has collapsed - a division by something near
+    zero at the pole - and not a statement about where this deployment routes.
+    Raised to any value a real route's cosine can fall below, it stops being a
+    guard and becomes a second cell size, narrower than the radius in ground
+    distance, on every route north of the latitude it implies; and the cell size
+    is the whole correctness of the nine-cell scan. Measured here at 70 N, where
+    the cosine is 0.34, so the floor is asserted to be a floor rather than a
+    clamp.
+    """
+    step = REVISIT_SPACING_M / DEGREE_OF_LATITUDE_M
+    return [Point(lon, lat + i * step) for i in range(41)]
+
+
 @pytest.mark.parametrize(
     "points",
     [
         pytest.param(bulk_south_revisit_route(-77.0), id="bulk-south"),
         pytest.param(region_spanning_revisit_route(-77.0), id="region-spanning"),
         pytest.param(parallel_offset_route(-77.0), id="one-block"),
+        pytest.param(high_latitude_route(), id="high-latitude"),
     ],
 )
 def test_the_cell_is_at_least_the_radius_across_at_every_latitude_on_the_route(points) -> None:
@@ -788,6 +806,19 @@ def test_the_cell_is_at_least_the_radius_across_at_every_latitude_on_the_route(p
         "the margin has to survive to the binding latitude, not be spent reaching it"
     )
     assert min(widths) == pytest.approx(REVISIT_CELL_LON_MARGIN * REVISIT_PROXIMITY_M, abs=0.01)
+    # And an upper bound, against a figure rather than against the constant
+    # itself. The margin is there to absorb the floating-point edge and nothing
+    # else - the two real errors it used to be paying for are fixed in the cell
+    # size now - and every percent of it is paid for in comparisons: the scan is
+    # nine cells whatever they contain, so a cell half again as wide as the
+    # radius carries half again as many points through the inner loop on a trace
+    # that runs to 7,538 of them. A margin that has grown is a margin that is
+    # covering something again, and the thing it is covering should be named in
+    # the cell size instead.
+    assert min(widths) <= REVISIT_PROXIMITY_M * 1.05, (
+        f"the longitude cell is {min(widths) / REVISIT_PROXIMITY_M:.3f} radii across at the "
+        "binding latitude; the margin absorbs floating point, not a correction"
+    )
 
 
 # --- The Purple Line's jurisdiction sequence --------------------------------

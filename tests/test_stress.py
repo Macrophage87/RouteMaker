@@ -237,6 +237,21 @@ class TestLanesPerDirection:
         """
         assert lanes_per_direction({"lanes": "1"}) == 1
 
+    def test_the_one_way_branch_is_floored_at_one_lane_too(self) -> None:
+        """The third of the three returns, so the floor is a property of the
+        function rather than of two of its branches.
+
+        `lanes=0` beside `oneway=yes` is what a mapper writes on a one-way
+        stretch with no through lane of its own - a service road, a bus gate, a
+        block tagged mid-survey - and zero lanes in the direction of travel is
+        not an answer this function can give. Every reader downstream asks
+        `lanes > 1` or `lanes <= 1`, so a zero is indistinguishable from one
+        there and the floor is invisible from the tier; it is visible here,
+        which is where the function's own contract is.
+        """
+        assert lanes_per_direction({"lanes": "0", "oneway": "yes"}) == 1
+        assert lanes_per_direction({"lanes": "0"}) == 1, "and the two-way branch agrees"
+
     def test_a_road_and_its_mirror_image_take_the_same_tier(self) -> None:
         """Stated as the tier, because that is where it was visible: at 30 mph
         the mixed-traffic table turns on single lane against multilane, so the

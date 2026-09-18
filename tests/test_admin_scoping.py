@@ -376,6 +376,35 @@ def make_a_plain_member_of(user, of_guild) -> None:
     )
 
 
+@pytest.mark.django_db
+def test_the_plain_membership_helper_produces_a_plain_membership(
+    guild_admin, guild, other_guild
+) -> None:
+    """The helper's own postcondition, because nothing else asserts it.
+
+    Every test that calls `make_a_plain_member_of` then asserts a *refusal*,
+    and a user with no membership at all is refused for the same reason a plain
+    member is - so a helper that quietly stopped granting anything would leave
+    the suite green while testing nothing. The shape under test is the one the
+    fixtures could not produce, and it is a shape rather than an absence: guild
+    admin of A, ordinary member of B, which is any organiser who rides with two
+    clubs.
+    """
+    from core.auth_backend import attach_standing
+
+    make_a_plain_member_of(guild_admin, other_guild)
+    attach_standing(guild_admin)
+
+    assert other_guild.guild_id in guild_admin._member_guild_ids, (
+        "the helper granted no membership at all, so every refusal asserted against it "
+        "is a refusal of a stranger rather than of a member"
+    )
+    assert other_guild.guild_id not in guild_admin._admin_guild_ids, (
+        "membership is not administration, which is the whole distinction these tests are about"
+    )
+    assert guild.guild_id in guild_admin._admin_guild_ids, "and their own guild is unchanged"
+
+
 @pytest.fixture
 def as_instance_admin(client, monkeypatch, instance_admin):
     return sign_in(client, monkeypatch, instance_admin)

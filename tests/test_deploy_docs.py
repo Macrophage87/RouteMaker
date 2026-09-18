@@ -584,14 +584,19 @@ def test_the_api_dockerfile_does_not_still_say_there_is_no_static_root() -> None
 # --- The osmium commands, as the documents print them ------------------------
 
 
-def documented_osmium_commands() -> list[tuple[str, list[str]]]:
+def documented_osmium_commands(documents=None) -> list[tuple[str, list[str]]]:
     """(document, argv) for every osmium command line in docs/*.md.
 
     Shell blocks only, with the eighty-column continuations folded back in, so
     what is checked is what an operator would paste.
+
+    `documents` is for the test below that hands it a block of its own: this
+    collector stands between every flag assertion here and the runbook, so what
+    it does *not* match has to be stated against an input that has one, rather
+    than against whatever the documents happen to look like today.
     """
     found = []
-    for name, body in DOCUMENTS.items():
+    for name, body in (documents if documents is not None else DOCUMENTS).items():
         for block in re.findall(r"```sh\n(.*?)```", body, re.DOTALL):
             for line in block.replace("\\\n", " ").splitlines():
                 if line.strip().startswith("osmium "):
@@ -615,6 +620,39 @@ def osmium_line_count() -> int:
         for block in re.findall(r"```sh\n(.*?)```", body, re.DOTALL):
             total += len(re.findall(r"(?m)^[ \t]*osmium\b", block.replace("\\\n", " ")))
     return total
+
+
+def test_the_osmium_collector_reads_an_indented_command_line() -> None:
+    """Indentation is not part of a command.
+
+    A shell block nests: a command under a numbered step, inside a `for` loop,
+    or under a heading an author indented for readability, is still a line an
+    operator pastes. Matched at column zero only, such a line is invisible to
+    every flag assertion above - and invisibly so, because the documents today
+    happen to carry none, which is exactly why this is asserted against a block
+    written here rather than against `docs/`.
+
+    The sibling count in `osmium_line_count` is deliberately written with a
+    different predicate and compared against this collector's output, so an
+    indented line appearing in a real document is caught there too.
+    """
+    indented = {
+        "synthetic.md": (
+            "Under a step:\n\n```sh\n"
+            "  osmium merge dc.osm.pbf md.osm.pbf --overwrite -f pbf -o merged.osm.pbf\n"
+            "\tosmium extract -s smart -S types=any --overwrite -f pbf \\\n"
+            "    -b -78.0,38.2,-76.3,39.5 merged.osm.pbf -o source.osm.pbf\n"
+            "```\n"
+        )
+    }
+
+    assert osmium_line_count.__doc__, "the sibling count is the other half of this"
+    found = documented_osmium_commands(indented)
+    assert [argv[1] for _, argv in found] == ["merge", "extract"], (
+        f"the collector saw {found} in a block holding two indented osmium lines; a line "
+        "it does not see is a command in a runbook that nothing checks"
+    )
+    assert all(argv[0] == "osmium" for _, argv in found), found
 
 
 def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> None:
