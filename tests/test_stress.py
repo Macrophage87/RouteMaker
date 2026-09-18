@@ -946,11 +946,20 @@ class TestTheProvisionHierarchy:
 
     def test_every_shoulder_presence_key_has_a_width_key(self) -> None:
         """A way tagged `shoulder:right=yes` with `shoulder:right:width=2.4` read
-        as a shoulder of unknown width, so a surveyed shoulder earned nothing."""
+        as a shoulder of unknown width, so a surveyed shoulder earned nothing.
+
+        The street is one-way so that each key form is tested on a road where a
+        shoulder on that side is the shoulder of the only direction of travel.
+        On a two-way street a single side key is not the road's provision at all
+        (`TestTheWorstSideIsTheOneScored`), which would hide whether its width
+        key had been read; here the side under test is the only width tagged, so
+        dropping its key from `SHOULDER_WIDTH_KEYS` still fails the case.
+        """
         for side in ("both", "left", "right"):
             surveyed = {
                 "highway": "secondary",
                 "maxspeed": "35 mph",
+                "oneway": "yes",
                 f"shoulder:{side}": "yes",
                 f"shoulder:{side}:width": "2.4",
             }
@@ -1276,8 +1285,20 @@ class TestHasShoulder:
     def test_a_side_specific_yes_outranks_a_general_no(self) -> None:
         """`shoulder=no` read first and returned, so a way a mapper had refined
         with `shoulder:right=yes` came out with no shoulder at all - the more
-        specific tag losing to the more general one, which is backwards."""
-        assert has_shoulder({"shoulder": "no", "shoulder:right": "yes"}) is True
+        specific tag losing to the more general one, which is backwards.
+
+        The refinement is read *within a side*: on a one-way street, where the
+        right-hand side is the side of the only direction of travel, the way has
+        a shoulder. On a two-way street the same tags say the left side has none
+        - which is the answer for the way, because a shoulder a rider heading
+        the other way cannot reach is not a shoulder for that rider. Both halves
+        are asserted here: reordering the body so the general `no` decides turns
+        the one-way case False, and dropping the worst-side rule turns the
+        two-way case True.
+        """
+        refined = {"shoulder": "no", "shoulder:right": "yes"}
+        assert has_shoulder({**refined, "oneway": "yes"}) is True
+        assert has_shoulder(refined) is False
         assert has_shoulder({"shoulder": "no"}) is False
         assert has_shoulder({"shoulder": "no", "shoulder:left": "none"}) is False
 
@@ -1300,9 +1321,21 @@ class TestHasShoulder:
         assert "shoulder width" not in result.assumed
 
     def test_a_refined_side_earns_its_credit_over_a_general_no(self) -> None:
-        road = {"highway": "secondary", "maxspeed": "35 mph"}
+        """Through `classify`, on the one-way street where the refined side is
+        the side the only direction of travel uses. The two-way case is the
+        companion below: there the unrefined side is the road's provision."""
+        road = {"highway": "secondary", "maxspeed": "35 mph", "oneway": "yes"}
         refined = {"shoulder": "no", "shoulder:right": "yes", "shoulder:right:width": "2.4"}
         assert classify({**road, **refined}).tier is Stress.LTS3
+
+    def test_a_refinement_on_one_side_of_a_two_way_street_earns_nothing(self) -> None:
+        """The same tags without `oneway`: a rider heading the other way is on
+        the left, which the general `shoulder=no` says has nothing, so the road
+        is scored as the bare arterial it is for that direction."""
+        road = {"highway": "secondary", "maxspeed": "35 mph"}
+        refined = {"shoulder": "no", "shoulder:right": "yes", "shoulder:right:width": "2.4"}
+        assert classify(road).tier is Stress.LTS4
+        assert classify({**road, **refined}).tier is Stress.LTS4
 
 
 class TestTheSharedClassSets:
@@ -1544,7 +1577,12 @@ class TestNoShoulderTagsMeanNoShoulder:
 
     def test_a_road_tagged_with_one_has_one(self) -> None:
         assert has_shoulder({"shoulder": "both"}) is True
-        assert has_shoulder({"shoulder:right": "yes"}) is True
+        # A side key answers for a one-way street, where that side is the side
+        # of the only direction of travel. On a two-way street it is one
+        # direction's shoulder and the other direction has none, which is False
+        # and not None: the way has spoken about shoulders.
+        assert has_shoulder({"shoulder:right": "yes", "oneway": "yes"}) is True
+        assert has_shoulder({"shoulder:right": "yes"}) is False
 
     def test_a_surveyed_width_beats_a_shoulder_no_on_the_same_way(self) -> None:
         """The contradictory pair, and the one deliberate lower-stress reading
@@ -1606,12 +1644,37 @@ class TestTheCyclewayValueSets:
     # `cycleway:left=track` from LTS1 to LTS3.
     KEYS = ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
 
+    # `cycleway` and `cycleway:both` speak for both sides of a road; the other
+    # two speak for one side each, and on a two-way street one side is one
+    # direction of travel, so a facility tagged there is not the road's
+    # provision at all - which is `TestTheWorstSideIsTheOneScored`'s subject and
+    # would make the cases below pass for the wrong reason. The cases below ask
+    # only whether each key form is read and what each *value* means, so the
+    # one-sided forms are put on a one-way street, where the tagged side is the
+    # side of the only trip anyone makes on the way. That is also the shape the
+    # value `opposite_lane` exists for.
+    ONE_SIDED_KEYS = ("cycleway:left", "cycleway:right")
+
+    @classmethod
+    def way(cls, base: dict[str, str], key: str, value: str) -> dict[str, str]:
+        tagged = {**base, key: value}
+        if key in cls.ONE_SIDED_KEYS:
+            tagged["oneway"] = "yes"
+        return tagged
+
     def test_the_key_forms_are_exactly_these(self) -> None:
         """Pinned against the literal list, the way `SEPARATED` and `PAINTED`
         are: a key dropped from `cycleway_values` takes its own case with it if
-        the test reads the key list from the code."""
+        the test reads the key list from the code.
+
+        On a one-way street, where the side a facility is tagged on is the side
+        of the only direction of travel, so all four forms answer alike and the
+        case is about whether the key is read at all. What each form means on a
+        *two-way* street - where the sides are the two directions - is
+        `TestTheWorstSideIsTheOneScored`.
+        """
         for key in self.KEYS:
-            assert cycleway_values({key: "track"}) == {"track"}
+            assert cycleway_values({key: "track", "oneway": "yes"}) == {"track"}
         # And nothing else is read: `cycleway:left:width` is a width, not a
         # facility value, and `sidewalk` is not a cycleway.
         assert cycleway_values({"cycleway:left:width": "2.0", "sidewalk": "both"}) == set()
@@ -1648,7 +1711,7 @@ class TestTheCyclewayValueSets:
         """
         arterial = {"highway": "primary", "maxspeed": "45 mph", "lanes": "6"}
         assert classify(arterial).tier is Stress.LTS4
-        result = classify({**arterial, key: value})
+        result = classify(self.way(arterial, key, value))
         assert result.tier is Stress.LTS1, f"{key}={value} did not read as separation"
         assert "separated track" in result.rule
 
@@ -1662,12 +1725,11 @@ class TestTheCyclewayValueSets:
         `cycleway:left:width` - which is how a mapper writes a one-sided lane.
         """
         street = {"highway": "residential", "maxspeed": "25 mph", "parking:both": "no"}
-        result = classify({**street, key: value, f"{key}:width": "2.0"})
+        result = classify({**self.way(street, key, value), f"{key}:width": "2.0"})
         assert result.tier is Stress.LTS1, f"{key}={value} did not read as a painted lane"
         assert "bike lane" in result.rule
-        assert classify({"highway": "primary", "maxspeed": "45 mph", key: value}).tier is (
-            Stress.LTS4
-        )
+        fast = {"highway": "primary", "maxspeed": "45 mph"}
+        assert classify(self.way(fast, key, value)).tier is Stress.LTS4
 
     @pytest.mark.parametrize("key", KEYS)
     @pytest.mark.parametrize("value", SEPARATED + PAINTED)
@@ -1679,7 +1741,7 @@ class TestTheCyclewayValueSets:
         the table's credit and the volume credit both."""
         quiet = {"highway": "unclassified", "maxspeed": "30 mph"}
         assert classify(quiet, aadt=900).tier is Stress.LTS2, "the relief this road gets bare"
-        with_facility = classify({**quiet, key: value}, aadt=900)
+        with_facility = classify(self.way(quiet, key, value), aadt=900)
         assert "low volume" not in with_facility.rule, f"{key}={value} took the volume credit"
 
     def test_a_one_sided_track_on_a_slow_secondary_is_lts1(self) -> None:
@@ -1691,3 +1753,206 @@ class TestTheCyclewayValueSets:
         street = {"highway": "secondary", "maxspeed": "25 mph", "oneway": "yes", "lanes": "2"}
         assert classify(street).tier is Stress.LTS3, "what the road is without the track"
         assert classify({**street, "cycleway:left": "track"}).tier is Stress.LTS1
+
+
+class TestTheWorstSideIsTheOneScored:
+    """One rule for both provisions: score the worst side a rider may be made
+    to use.
+
+    Presence and width had answered two different questions. `cycleway_values`
+    and `has_shoulder` were a union over the four key forms - a facility
+    anywhere on the way counted - while `cycleway_width_m` and
+    `shoulder_width_m` took the minimum, the worst side. The two readings only
+    coincide on a road tagged the same on both sides, and where they parted,
+    *building the second half of a facility raised the road's stress*. Measured,
+    all three on the same 25 mph two-way secondary with no parking:
+
+      - `cycleway:left=lane` at 2.0 m with `cycleway:right=no`: LTS1
+      - `cycleway:both=lane` at 2.0 m and 1.2 m: LTS2
+      - nothing at all: LTS2
+
+    and the shoulder mirrors it at 30 mph (one 2.4 m side LTS2, 2.4 m and 1.3 m
+    LTS3, bare LTS3). Worst of all, `cycleway:left=track` with
+    `cycleway:right=no` on a 35 mph four-lane two-way secondary came out LTS1,
+    three tiers below the bare road: the union kept the `track` and discarded
+    the `no`.
+
+    The rule now: on a two-way street each side is a direction of travel and one
+    tier is stored per way, so a side with no facility - the key absent, or
+    present and saying `no` - makes the way's provision that side's. A one-sided
+    lane on a two-way street is mixed traffic for the rider heading the other
+    way. Where both sides carry a facility the narrower is the width. On a
+    one-way street there is one direction and one side in use, so either side
+    answers for the way, which is what keeps the District's contraflow lanes
+    reading as the facilities they are.
+    """
+
+    # The three cases the reviewer executed, on the roads they were executed on.
+    STREET = {
+        "highway": "secondary",
+        "maxspeed": "25 mph",
+        "lanes": "2",
+        "parking:both": "no",
+    }
+
+    def test_a_lane_on_one_side_of_a_two_way_street_is_not_the_roads_provision(self) -> None:
+        bare = classify(self.STREET)
+        one_side = classify({**self.STREET, "cycleway:left": "lane", "cycleway:left:width": "2.0"})
+        declared = classify(
+            {
+                **self.STREET,
+                "cycleway:left": "lane",
+                "cycleway:left:width": "2.0",
+                "cycleway:right": "no",
+            }
+        )
+        both_sides = classify(
+            {
+                **self.STREET,
+                "cycleway:both": "lane",
+                "cycleway:left:width": "2.0",
+                "cycleway:right:width": "1.2",
+            }
+        )
+
+        assert bare.tier is Stress.LTS2
+        # It was LTS1 - better than the same street with lanes on both sides.
+        assert one_side.tier is bare.tier
+        assert one_side.rule == bare.rule, "a one-sided lane is mixed traffic the other way"
+        # And saying so out loud changes nothing: an absent side and a side
+        # tagged `no` are the same road. The union discarded the `no` outright.
+        assert declared.tier is bare.tier
+        # Provisioning the second side never raises the tier.
+        assert both_sides.tier <= one_side.tier
+
+    def test_a_shoulder_on_one_side_of_a_two_way_street_is_not_the_roads_provision(self) -> None:
+        """The shoulder mirror of the case above, at 30 mph where Furth's
+        no-parking width criterion separates the tiers."""
+        road = {**self.STREET, "maxspeed": "30 mph"}
+        bare = classify(road)
+        one_side = classify({**road, "shoulder:left": "yes", "shoulder:left:width": "2.4"})
+        both_sides = classify(
+            {
+                **road,
+                "shoulder:both": "yes",
+                "shoulder:left:width": "2.4",
+                "shoulder:right:width": "1.3",
+            }
+        )
+
+        assert bare.tier is Stress.LTS3
+        # It was LTS2 - a tier better than the same road shouldered both sides.
+        assert one_side.tier is bare.tier
+        assert "paved shoulder" not in one_side.rule
+        assert "shoulder width" not in one_side.assumed
+        assert both_sides.tier <= one_side.tier
+
+    def test_a_one_sided_track_does_not_rate_a_fast_arterial_lts1(self) -> None:
+        """The worst of the three: three tiers, on the most common arterial
+        posting in this region."""
+        arterial = {"highway": "secondary", "maxspeed": "35 mph", "lanes": "4"}
+        tagged = {**arterial, "cycleway:left": "track", "cycleway:right": "no"}
+        assert classify(arterial).tier is Stress.LTS4
+        assert classify(tagged).tier is Stress.LTS4
+        # The same tags on a one-way street are a real protected track, because
+        # there is no second direction to strand.
+        assert classify({**tagged, "oneway": "yes"}).tier is Stress.LTS1
+
+    def test_a_side_tagged_no_is_the_answer_for_the_way(self) -> None:
+        """At the function, so the discarded value is visible rather than
+        inferred from a tier: the weaker side's values are what comes back."""
+        assert cycleway_values({"cycleway:left": "lane", "cycleway:right": "no"}) == {"no"}
+        assert cycleway_values({"cycleway:left": "track"}) == set()
+        assert cycleway_values({"cycleway:left": "track", "cycleway:right": "lane"}) == {"lane"}
+        assert cycleway_values({"cycleway:both": "lane"}) == {"lane"}
+        assert cycleway_values({"cycleway": "track"}) == {"track"}
+
+    # The space the existing parametrised cases cover, as roads: every
+    # mixed-traffic speed band, single and multilane, quiet and fast.
+    ROADS = (
+        {"highway": "residential", "maxspeed": "20 mph", "lanes": "2"},
+        {"highway": "residential", "maxspeed": "20 mph", "lanes": "4"},
+        {"highway": "secondary", "maxspeed": "25 mph", "lanes": "2"},
+        {"highway": "secondary", "maxspeed": "30 mph", "lanes": "2"},
+        {"highway": "secondary", "maxspeed": "30 mph", "lanes": "4"},
+        {"highway": "secondary", "maxspeed": "35 mph", "lanes": "4"},
+        {"highway": "primary", "maxspeed": "45 mph", "lanes": "6"},
+        {"highway": "unclassified", "maxspeed": "30 mph"},
+    )
+    # Widths that clear Furth's no-parking criterion, so the facility is one the
+    # road genuinely benefits from. A *narrow* lane is excluded deliberately and
+    # only from the second half of the property: Furth's table rates a lane
+    # narrower than his criterion LTS2 where calm mixed traffic is LTS1, this
+    # module keeps that reading on the bike-lane branch with no floor under it
+    # (an owner decision, pinned by
+    # `test_a_bike_lane_is_scored_on_furths_table_without_the_shoulders_floor`),
+    # so on a 20 mph street two narrow lanes really are a tier worse than none.
+    ADEQUATE = "2.0"
+
+    @pytest.mark.parametrize("road", ROADS)
+    @pytest.mark.parametrize("value", ("track", "opposite_track", "lane", "buffered_lane"))
+    @pytest.mark.parametrize("aadt", (None, 900, 12_000))
+    def test_the_second_side_never_raises_the_tier(
+        self, road: dict[str, str], value: str, aadt: int | None
+    ) -> None:
+        """The property, over the whole space and at every volume the gate
+        reads: a facility on one side of a two-way street scores exactly as the
+        bare road, and completing it can only help.
+
+        The first half is the rule. The second is what the union broke: it was
+        false at four points in this space before the fix, every one of them a
+        road whose one-sided tagging beat its two-sided tagging.
+        """
+        base = {**road, "parking:both": "no"}
+        one_side = {**base, "cycleway:left": value, "cycleway:left:width": self.ADEQUATE}
+        both_sides = {
+            **base,
+            "cycleway:both": value,
+            "cycleway:left:width": self.ADEQUATE,
+            "cycleway:right:width": self.ADEQUATE,
+        }
+
+        bare_tier = classify(base, aadt=aadt).tier
+        one_tier = classify(one_side, aadt=aadt).tier
+        assert one_tier is bare_tier, "a one-sided facility is not a two-way road's provision"
+        assert classify(both_sides, aadt=aadt).tier <= one_tier
+
+    @pytest.mark.parametrize("road", ROADS)
+    @pytest.mark.parametrize("width", ("2.4", "1.3"))
+    def test_a_one_sided_shoulder_scores_as_no_shoulder(
+        self, road: dict[str, str], width: str
+    ) -> None:
+        """The same property for the other provision, at a rideable width and at
+        one below Furth's criterion. The shoulder branch carries this module's
+        floor, so completing the shoulder can never raise the tier at either
+        width."""
+        base = {**road, "parking:both": "no"}
+        one_side = {**base, "shoulder:right": "yes", "shoulder:right:width": width}
+        both_sides = {**base, "shoulder:both": "yes", "shoulder:width": width}
+
+        bare = classify(base)
+        assert classify(one_side).tier is bare.tier
+        assert classify(one_side).rule == bare.rule
+        assert classify(both_sides).tier <= bare.tier
+
+    def test_a_one_way_street_still_reads_the_side_it_has(self) -> None:
+        """The regression the rule must not take with it. A contraflow lane on a
+        one-way street is tagged on one side by definition - it is the whole of
+        what `opposite_lane` and `opposite_track` mean, and most of the
+        District's downtown protected network - and there is no second direction
+        of travel to strand, so the one-sided reading is the correct one."""
+        oneway = {"highway": "secondary", "maxspeed": "25 mph", "oneway": "yes", "lanes": "2"}
+        assert classify(oneway).tier is Stress.LTS3
+        assert classify({**oneway, "cycleway:left": "opposite_track"}).tier is Stress.LTS1
+        single = {**oneway, "lanes": "1", "parking:both": "no"}
+        assert classify(single).tier is Stress.LTS2
+        contraflow = classify(
+            {**single, "cycleway:left": "opposite_lane", "cycleway:left:width": "2.0"}
+        )
+        assert contraflow.tier is Stress.LTS1
+        assert "bike lane" in contraflow.rule
+        # `oneway=-1` is the same street drawn the other way round.
+        assert classify({**oneway, "oneway": "-1", "cycleway:right": "track"}).tier is Stress.LTS1
+        # And a one-way street with a shoulder on the side it has.
+        shouldered = {**oneway, "maxspeed": "35 mph", "shoulder:right": "yes"}
+        assert classify({**shouldered, "shoulder:right:width": "2.4"}).tier is Stress.LTS3
