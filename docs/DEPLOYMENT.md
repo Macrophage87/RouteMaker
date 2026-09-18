@@ -124,6 +124,13 @@ hours after it, check `docker compose ps rebuild` first, and if it has already
 happened, `docker compose exec -T worker ./manage.py unwedge_job <job_id>`
 moves the row back to `todo` (docs/OPERATIONS.md, "Wedged jobs").
 
+`worker` declares the same `stop_grace_period: 60s` and wedges the same way on
+a task of its own — a nightly dump or a sweep — with the same repair. And both
+grace periods are why a `down` or an `up -d` taken while something is running
+**takes about a minute to return**: that is the SIGTERM, the full wait, and
+then the kill, not a command that has hung. The two services are stopped in the
+same pass, so it is a minute and not two.
+
 **Moving `TAG` back does not undo a migration.** Migrations are applied by the
 `migrate` one-shot at every `up`, and nothing runs them backwards: `TAG` set to
 the previous release and `docker compose up -d` puts the old code in front of
@@ -183,11 +190,16 @@ The order that works:
 
 ```sh
 docker compose exec -T postgis \
-  psql -U "$PGUSER" -d "$PGDATABASE" \
-  -c "ALTER ROLE $PGUSER WITH PASSWORD 'the-new-value';"   # 1. the database
+  psql -U routemaker -d routemaker \
+  -c "ALTER ROLE routemaker WITH PASSWORD 'the-new-value';"  # 1. the database
 # 2. then PGPASSWORD=the-new-value in .env
-docker compose up -d                                       # 3. recreate
+docker compose up -d                                         # 3. recreate
 ```
+
+`routemaker` is `PGUSER`/`PGDATABASE` from `.env`, which ship as that and are
+also the compose defaults; substitute your own if you changed them. Written out
+rather than `"$PGUSER"`, because this document no longer sources `.env` into a
+shell and an unset `$PGUSER` here is `psql -U ""`.
 
 Step 1 runs under the *old* password, which the running container still holds
 in its own environment, so it has to happen before step 2. `up -d` and not
@@ -216,6 +228,31 @@ question rather than being surprised by it.
 tombstones, the stored tombstone is the HMAC and nothing else, and there is no
 second key path. See docs/DEVELOPMENT.md, "`KEY_ENCRYPTION_KEY` — required, no
 default", for what a rotation would silently do.
+
+**`DISCORD_CLIENT_SECRET`: rotate it at Discord first, then here, then
+`up -d`.** It is not one of the four generated values — it is issued by the
+Discord application and rotated in the developer portal, which invalidates the
+old one immediately. Nothing is stored under it: `api` uses it once per sign-in
+to exchange an authorization code for a token, reads the identify scope and
+throws the token away, so a rotation costs nothing already signed in and there
+is no re-encryption anywhere. The only window is between Discord issuing the
+new secret and the container holding it, during which every `/auth/callback`
+fails the code exchange and the user gets a sign-in refusal; it is seconds if
+the `.env` edit is ready before the rotation.
+
+`docker compose up -d`, **not** `docker compose restart`. Compose reads `.env`
+when it *creates* a container; `restart` restarts the process the container
+already has, with the environment it was created with, so the old secret stays
+in place and the sign-in path stays broken with nothing in any log to say the
+file was changed. That is the same distinction as `TAG` above and as
+`BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` in docs/DEVELOPMENT.md, and it catches
+people every time. `docker compose up -d api` is enough — it is the only
+service that reads this.
+
+**`BOT_INTERNAL_SECRET`** is shared between `api` and `bot`, and `bot` has no
+image in phase 1, so there is nothing on the other end of it to disagree with
+yet. When there is, both services read it from `.env` and both need recreating
+in the same `up -d`.
 
 ## Log rotation
 
@@ -460,6 +497,188 @@ but how the failure presents — a permission error from a Valhalla binary six
 hours into a rebuild, or a nightly dump that fails on a file it cannot create,
 neither of which reads as an ownership problem to whoever is paged for it.
 
+## Moving `${DATA_ROOT}` to a bigger disk
+
+The volume is sized for a second full tile set beside the current one, and the
+gate that enforces it (`REBUILD_MIN_FREE_BYTES`, 20 GiB by default) refuses a
+rebuild rather than filling the disk. Growing a gp3 volume in place is an online
+resize and is the first answer. Moving to a different disk is the second, and it
+has one rule:
+
+**Stop the stack first. PGDATA is live.** `${DATA_ROOT}/postgres` is the
+database's own data directory, bound straight into the postgis container, and
+copying it out from under a running server produces a copy that is neither a
+backup nor a filesystem-consistent snapshot — PostgreSQL is writing into it
+while `cp` reads it.
+
+```sh
+export DATA_ROOT=/srv/routemaker/data          # the current one
+docker compose down                            # everything, including postgis
+sudo cp -a "$DATA_ROOT/." /mnt/bigger/routemaker/data/
+# then DATA_ROOT=/mnt/bigger/routemaker/data in .env
+sudo sh scripts/prepare_data_root.sh --env-file ./.env
+docker compose up -d
+```
+
+`cp -a` and not `cp -r`: ownership and modes are the point. Everything under
+there is owned either by uid 10001 (the seven directories this project's images
+write) or by the postgis image's own uid (`postgres/`), and `${DATA_ROOT}/caddy`
+holds a private key whose mode matters. Re-running the prepare script afterwards
+is belt and braces — it creates anything the copy missed and re-asserts the
+ownership of the seven, and it touches `postgres/`, `caddy/` and `photon/`
+never.
+
+Nothing else has to change. Every path in `compose.yaml` is `${DATA_ROOT}/...`,
+every path *inside* a container is `/data/...` and unaffected, and the tile
+symlinks under `tiles/<variant>/current` are relative to their own directory, so
+they survive the move. `docker compose up -d` recreates every container whose
+bind sources changed, which is all of them; `restart` would not, for the usual
+reason.
+
+Verify before deleting the old copy: `docker compose ps` all up,
+`docker compose exec -T worker ./manage.py check_operations` naming the new path
+in its free-space line, and — if tiles were already built — a route. Then `rm`
+the old tree.
+
+## Bumping the `postgis` image
+
+`docker.io/postgis/postgis:16-3.4` is a floating patch tag: it is PostgreSQL 16
+and PostGIS 3.4, and the image behind it moves as both are patched. A
+`docker compose pull postgis && docker compose up -d postgis` therefore picks up
+patch releases of each, and that is the ordinary case — it is a restart of the
+database and nothing more.
+
+**A PostGIS patch or minor bump wants one statement afterwards.** The extension
+in the database keeps the version it was created or last updated with, and the
+new image's shared library and its SQL definitions are ahead of it. That
+mismatch is not loud; it shows up as functions behaving as the old version did.
+
+```sh
+docker compose exec -T postgis \
+  psql -U routemaker -d routemaker -c "ALTER EXTENSION postgis UPDATE;"
+docker compose exec -T postgis \
+  psql -U routemaker -d routemaker -c "SELECT postgis_full_version();"
+```
+
+**A PostgreSQL major bump — 16 to 17 — is a dump and restore, not a pull.**
+PGDATA's on-disk format is major-version-specific: a 17 server started against a
+16 data directory refuses with "database files are incompatible with server" and
+the container crash-loops. There is no in-place path in this stack (`pg_upgrade`
+is not in the image, and would want both binaries side by side), so it is:
+
+1. take a dump **with the old image still running**, through the ordinary
+   nightly path or by hand;
+2. `docker compose down`, move `${DATA_ROOT}/postgres` aside — do not delete it
+   until the new one is serving;
+3. change the tag in `compose.yaml`, `docker compose up -d postgis`, let it
+   initdb a fresh PGDATA;
+4. restore into it, exactly as "Restoring one" in docs/OPERATIONS.md has it —
+   into the empty database, before `migrate` runs;
+5. `docker compose up -d`, then `collectstatic`.
+
+**The dump has to come from the old server, and the `pg_dump` has to be at
+least as new as it.** `pg_dump` refuses an archive it does not understand and
+`pg_restore` refuses one from a *newer* major than its own. The nightly dump is
+taken inside `worker`, whose image pins `postgresql-client-16` to match the
+server major — so bumping the server major means bumping that pin in
+`docker/api.Dockerfile` in the same change, and taking the dump before the
+client is bumped or with a client of the new major against the old server
+(which is allowed; the other direction is not).
+
+Neither of these has been executed here: there is no daemon in this environment
+and no server has ever run from this file. The refusals quoted are PostgreSQL's
+documented behaviour, not a transcript.
+
+## Changing posture on a running stack: `:80` to a hostname
+
+The five values that make a deployment plain-HTTP-local or named-and-HTTPS are
+one decision (see "Why the example is a hostname and not `:80`"), and changing
+them on a stack that is already up is a sequence rather than an edit.
+
+**DNS first.** A hostname commits Caddy to obtaining a certificate for it from
+Let's Encrypt the moment the config loads, and that validation is an inbound
+request to this host on port 80. So the name has to resolve here, and 80 and 443
+have to be reachable from outside, **before** the stack comes up with the new
+address. Out of order, Caddy retries with a backoff and the site serves nothing
+usable in the meantime — and repeated failures against the same name burn Let's
+Encrypt rate limits, which are per name and per week.
+
+Then all five lines in `.env`, together:
+
+```sh
+CADDY_SITE_ADDRESS=routes.example.org
+DJANGO_ALLOWED_HOSTS=routes.example.org
+DJANGO_CSRF_TRUSTED_ORIGINS=https://routes.example.org
+DISCORD_REDIRECT_URI=https://routes.example.org/auth/callback
+# and DJANGO_DEBUG deleted or emptied
+```
+
+`DJANGO_DEBUG` is the one that is easy to leave behind, and it is the one that
+matters most: the local block sets it because `settings.py` derives
+`SESSION_COOKIE_SECURE` and `CSRF_COOKIE_SECURE` from `not DEBUG` and a
+plain-HTTP browser discards a Secure cookie. Left set under a hostname, the
+deployment serves tracebacks with its settings in them to the internet and
+issues cookies that are not Secure over a connection that is.
+
+**Register the new redirect URI on the Discord application** before anyone
+tries to sign in. It has to match character for character; Discord refuses an
+authorize request whose `redirect_uri` is not on the list, and the failure is on
+Discord's page rather than in any log here. Leave `http://localhost/auth/callback`
+registered alongside it if the same application also serves a local stack.
+
+Then:
+
+```sh
+docker compose up -d
+```
+
+**`up -d`, not `restart`.** Compose reads `.env` when it creates a container, so
+`restart` gives every service the environment it already had: Caddy would keep
+serving `:80` and the api would keep the old `ALLOWED_HOSTS`. `up -d` sees the
+changed values, recreates `caddy` and `api`, and leaves the rest alone.
+
+Changing `CADDY_SITE_ADDRESS` alone is the failure worth naming, because it
+half-works: Caddy gets its certificate and serves the name, and then **every
+request is a DisallowedHost 400** because `DJANGO_ALLOWED_HOSTS` still says
+`localhost`. The site is up, the padlock is there, and nothing renders. The same
+edit without `DJANGO_CSRF_TRUSTED_ORIGINS` gets through to the pages and refuses
+every POST.
+
+Going the other way — a named stack back to `:80` — is the same five lines in
+reverse plus `DJANGO_DEBUG=1`, and it is for a laptop. Never on a host reachable
+from outside.
+
+## Adding a second instance admin
+
+There is no "add" button on the user page, and that is deliberate rather than
+missing: accounts are created by signing in, never by an admin typing an id.
+
+1. **They sign in first.** Send them to `<your host>/auth/login` and have them
+   complete the Discord round-trip once. They will get the admin's ordinary 404
+   if they go looking for it — that is what an account with no standing gets —
+   but the sign-in creates the `core.User` row, which is the thing that has to
+   exist.
+2. **Then an existing instance admin promotes them**, at
+   `<DJANGO_ADMIN_PATH>core/user/` — `/internal-8f3a/core/user/` with the
+   default path. Find the row by Discord id (the list searches on it), open it,
+   tick **is instance admin**, save. Every other field on that page is
+   read-only, there is no add and no delete, and the save is audited.
+3. They sign out and in again, or simply reload: standing is resolved per
+   request, so the next request after the save already has it.
+
+The list is only readable by an instance admin in the first place, so step 2 is
+something only an existing one can do — which is the whole reason
+`BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` exists for the first one
+(docs/DEVELOPMENT.md).
+
+Removing one is the same page, unticked, and it is **not** immediate for anyone
+but yourself: removing another instance admin schedules it
+`INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS` ahead (an hour by default) and any
+instance admin can cancel it at
+`<DJANGO_ADMIN_PATH>core/pendinginstanceadminremoval/` in the meantime.
+Removing yourself takes effect at once. The application refuses to remove the
+last one by any path it controls.
+
 ## Host requirements
 
 PLAN:293's initial host: **8 vCPU, 32 GB RAM**, with storage split — a small
@@ -647,7 +866,7 @@ read-only beside it:
 | `rollback_rebuild` | `rebuild` | Reads and rewrites the promotion symlinks under `<DATA_ROOT>/tiles`. In `api` those resolve to `/app/data/tiles`, which is empty, and the command refuses on every variant with "no previous tiles" — a refusal that reads like a deployment that has never rebuilt. |
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
-| `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container without it the call measures its own writable layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
+| `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container that does not mount it, the check reports `not measured` and exits 1 rather than measuring the container's own layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
 | `unwedge_job` | `worker` | Reads and updates the job table only, so any Django container works; `worker` is the one that is up whenever the stack is, including while `rebuild` is the container being restarted. |
 
 The frontend half of that sentence has no source either: `frontend/` is a single

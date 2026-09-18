@@ -1009,3 +1009,222 @@ def test_the_migration_rule_the_rollback_depends_on_is_written_down() -> None:
         "the paragraph presents the rule as something the suite checks; nothing reads a "
         "migration and refuses a DROP COLUMN"
     )
+
+
+# --- The procedures this round added -----------------------------------------
+
+
+def section(text: str, heading: str) -> str:
+    """The body of one `##`/`###` section, up to the next heading of its level
+    or shallower.
+
+    Fenced blocks are skipped: a shell comment inside one starts with `#` and
+    would otherwise end the section at the first `# 2. then ...` line.
+    """
+    lines = text.splitlines()
+    start = next((i for i, line in enumerate(lines) if line.strip() == heading), None)
+    assert start is not None, f"no section {heading!r}"
+    depth = len(heading.split(" ", 1)[0])
+    fenced = False
+    for end in range(start + 1, len(lines)):
+        stripped = lines[end].strip()
+        if stripped.startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
+        if stripped.startswith("#") and len(stripped.split(" ", 1)[0]) <= depth:
+            return "\n".join(lines[start:end])
+    return "\n".join(lines[start:])
+
+
+def test_the_restore_runbook_restores_into_an_empty_database() -> None:
+    """The ordering is the runbook, and it is the part that cannot be fixed
+    afterwards.
+
+    A `pg_restore` into a database a full `up` had already migrated gave 169
+    errors and exit 0 - `pg_restore` continues past a failing statement and
+    reports success, so what an operator sees is a restore that worked.
+    `django_content_type`, `auth_permission` and `django_migrations` are all
+    created by `migrate` and all carried by the dump. The same archive into an
+    empty database gave 0 errors.
+    """
+    body = section(OPERATIONS, "## Restoring one")
+    commanded = "\n".join(shell_snippets(body))
+    assert "pg_restore" in commanded, (
+        "no command in the restore runbook runs pg_restore; the prose may mention it, "
+        "but the runbook is the snippet"
+    )
+    commands = [line for line in body.splitlines() if "docker compose up -d" in line]
+    assert commands, "the restore runbook never starts the stack"
+    first, rest = commands[0], commands[1:]
+    assert "postgis" in first, (
+        f"the first `up -d` in the restore runbook is {first.strip()!r}; restoring into "
+        "a database `migrate` has already run against collides on every table both it "
+        "and the dump create, and pg_restore exits 0 anyway"
+    )
+    assert rest, "the runbook never brings the rest of the stack up after the restore"
+    assert all("postgis" not in line for line in rest), rest
+    for expected in ("empty", "0 errors", "169"):
+        assert expected in body, (
+            f"the restore runbook does not say {expected!r}, which is what makes the "
+            "ordering an instruction rather than a preference"
+        )
+
+
+def test_the_restore_runbook_says_what_the_deployment_has_afterwards() -> None:
+    """A restore is not a rollback: the membership cache and the sessions are
+    excluded from the dump and nothing in phase 1 refills the cache, the tiles
+    are not in the database at all, and `nightly_backup` is stale until the next
+    07:00 UTC because the dump is taken from inside its own run row."""
+    body = section(OPERATIONS, "## Restoring one")
+    for expected in ("membership", "tiles", "nightly_backup", "collectstatic"):
+        assert expected in body, f"the restore runbook says nothing about {expected}"
+
+
+def test_the_snapshot_is_in_the_action_list_and_not_only_in_a_sentence() -> None:
+    """It was named as the thing standing between this deployment and a lost
+    host, in a paragraph, and appeared in no list of things to do."""
+    body = section(OPERATIONS, "## Deployment actions")
+    assert "snapshot" in body.lower(), (
+        "docs/OPERATIONS.md's deployment actions do not include the volume snapshot, "
+        "which is the only copy of the database that is not on the volume itself"
+    )
+
+
+def test_the_epoch_rule_is_the_one_the_code_computes() -> None:
+    """`core.runs.deployment_epoch` is the earlier of the oldest run row and
+    `MAX(django_migrations.applied)`. The document still carried the rule from
+    before that - "on a database with no rows at all nothing is stale" - which
+    is the state a `--queues` typo or a crash-looping worker leaves, and it was
+    being described as the reason the alerts are trustworthy."""
+    body = section(OPERATIONS, "## What is watched, and for how long")
+    assert "django_migrations" in body, (
+        "the staleness section does not mention the migration half of the epoch, so it "
+        "is still describing the run-row-only rule"
+    )
+    assert "with no rows at all nothing is stale" not in " ".join(body.split()), (
+        "the pre-wave-7 epoch rule is back in docs/OPERATIONS.md"
+    )
+    source = REPO / "src" / "core" / "runs.py"
+    assert "MAX(applied) FROM django_migrations" in source.read_text(), (
+        "core.runs no longer reads django_migrations, so the documented rule is now the "
+        "one that is wrong"
+    )
+
+
+def test_the_posture_change_is_documented_as_five_values_and_an_up() -> None:
+    """Changing `CADDY_SITE_ADDRESS` alone half-works, which is the worst
+    shape: Caddy gets its certificate and serves the name, and every request is
+    a DisallowedHost 400 because ALLOWED_HOSTS still says localhost."""
+    body = section(DEPLOYMENT, "## Changing posture on a running stack: `:80` to a hostname")
+    # In a snippet, not in prose: the point of the section is the block an
+    # operator copies, and a value explained in a paragraph and missing from
+    # the block is the one that gets left behind. `DJANGO_DEBUG` is that value.
+    edited = "\n".join(shell_snippets(body))
+    for name in (
+        "CADDY_SITE_ADDRESS",
+        "DJANGO_ALLOWED_HOSTS",
+        "DJANGO_CSRF_TRUSTED_ORIGINS",
+        "DISCORD_REDIRECT_URI",
+        "DJANGO_DEBUG",
+    ):
+        assert name in edited, f"the block of `.env` lines the posture change asks for omits {name}"
+    assert "DNS" in body, "the procedure does not say the name has to resolve here first"
+    assert "Discord" in body, "the procedure does not say to register the new redirect URI"
+    assert "not `restart`" in body or "not\n`restart`" in body, (
+        "the procedure does not say `up -d` rather than `restart`, which is the "
+        "difference between the new values reaching a container and not"
+    )
+
+
+def test_the_second_instance_admin_procedure_names_the_page_that_exists() -> None:
+    """There is no add on the user admin - accounts are created by signing in -
+    so the procedure is sign in, then promote, and the page it happens on is
+    derived here rather than restated."""
+    body = section(DEPLOYMENT, "## Adding a second instance admin")
+    assert "/auth/login" in body, (
+        "the procedure does not say the new admin signs in first; without the account "
+        "row there is nothing on the page to promote"
+    )
+    assert "core/user/" in body, "the procedure does not name the page the promotion happens on"
+    assert "is instance admin" in body.lower()
+    assert "no add" in body.lower() or 'no "add"' in body.lower(), (
+        "the procedure does not say there is no add button, which is the thing a reader "
+        "goes looking for first"
+    )
+
+
+def test_the_discord_client_secret_is_in_the_rotation_section() -> None:
+    """It is the fifth secret in `.env` and the only one issued by somebody
+    else, and the rotation section listed four."""
+    body = section(DEPLOYMENT, "## Secrets, and what rotating one costs")
+    assert "DISCORD_CLIENT_SECRET" in body, (
+        "docs/DEPLOYMENT.md's rotation section does not cover DISCORD_CLIENT_SECRET"
+    )
+    after = body.split("DISCORD_CLIENT_SECRET", 1)[1]
+    assert "up -d" in after and "restart" in after, (
+        "the DISCORD_CLIENT_SECRET rotation does not say `up -d` rather than `restart`; "
+        "a restarted container keeps the secret it was created with"
+    )
+
+
+def test_the_postgis_bump_covers_both_kinds() -> None:
+    """A patch bump of a floating tag is a pull and one SQL statement; a
+    PostgreSQL major bump is a dump and restore, because PGDATA's on-disk format
+    is major-version-specific."""
+    body = section(DEPLOYMENT, "## Bumping the `postgis` image")
+    assert "ALTER EXTENSION postgis UPDATE" in body, (
+        "the procedure does not name ALTER EXTENSION postgis UPDATE, so the extension "
+        "stays at the version it was created with while the library moves"
+    )
+    assert "pg_dump" in body and "pg_restore" in body, (
+        "the major-version half of the procedure does not name the dump and restore"
+    )
+    assert "postgresql-client" in body, (
+        "the procedure does not mention the pinned client major in docker/api.Dockerfile, "
+        "which is what takes the nightly dump"
+    )
+    major = re.search(r"ARG PG_MAJOR=(\d+)", (REPO / "docker" / "api.Dockerfile").read_text())
+    assert major, "docker/api.Dockerfile no longer pins a client major"
+    assert major.group(1) in SERVICES["postgis"]["image"], (
+        f"the api image pins postgresql-client-{major.group(1)} and the postgis service "
+        f"runs {SERVICES['postgis']['image']}; the nightly pg_dump is the thing between them"
+    )
+
+
+def test_moving_the_data_root_says_to_stop_the_stack_first() -> None:
+    """`${DATA_ROOT}/postgres` is PGDATA, bound straight into the running
+    postgis container. Copying it out from under a live server produces a copy
+    that is neither a backup nor a consistent snapshot."""
+    body = section(DEPLOYMENT, "## Moving `${DATA_ROOT}` to a bigger disk")
+    assert "PGDATA" in body, "the procedure does not say what makes the live case dangerous"
+    lines = body.splitlines()
+    down = next((i for i, line in enumerate(lines) if "docker compose down" in line), None)
+    copy = next((i for i, line in enumerate(lines) if line.strip().startswith("sudo cp")), None)
+    assert down is not None, "the procedure never stops the stack"
+    assert copy is not None, "the procedure never copies anything"
+    assert down < copy, "the procedure copies the data volume before stopping the stack"
+    assert "cp -a" in body, (
+        "the copy is not `cp -a`; ownership and modes are the point - uid 10001 on seven "
+        "directories, the postgis uid on PGDATA, and a private key under caddy/"
+    )
+
+
+@pytest.mark.parametrize("name", ["docs/OPERATIONS.md", "docs/DEPLOYMENT.md"])
+def test_the_sigkill_warnings_cover_the_worker_too(name: str) -> None:
+    """`worker` has the same grace period and the same Procrastinate worker, so
+    a nightly dump or a sweep killed mid-run leaves the same `doing` row. Both
+    documents warned about `rebuild` alone."""
+    body = DOCUMENTS[name]
+    grace = SERVICES["worker"]["stop_grace_period"]
+    quoted = f"stop_grace_period: {grace}"
+    windows = [
+        " ".join(body.split())[max(0, m.start() - 600) : m.end() + 600]
+        for m in re.finditer(re.escape(quoted), body)
+    ]
+    assert windows, f"{name} does not quote `{quoted}` anywhere"
+    assert any("worker" in window and "rebuild" in window for window in windows), (
+        f"{name} explains the grace period against `rebuild` alone; `worker` carries the "
+        "same one and wedges the same way"
+    )

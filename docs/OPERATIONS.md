@@ -19,8 +19,8 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   404 the rest of the admin gives an unadmitted request.
 - **`./manage.py check_operations`**, for anything that cannot log in. It prints
   one line per stale task, per wedged job, per failed job and per volume short
-  of room for the next rebuild, and exits 1 if there is anything to print, 0
-  otherwise. A cron entry is the intended caller:
+  of room for the next rebuild — or that it could not measure — and exits 1 if
+  there is anything to print, 0 otherwise. A cron entry is the intended caller:
 
   ```sh
   */10 * * * * cd /srv/routemaker && docker compose exec -T worker ./manage.py check_operations || mail-the-ops-channel
@@ -29,11 +29,11 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   **It runs in `worker`.** Three of the four checks read the database only; the
   fourth is a `statvfs` on `TILES_DIR`, so the container has to be able to see
   the tiles — `worker` binds `${DATA_ROOT}/tiles` at `/data/tiles` read-only
-  for exactly this caller. In a container without that mount the same call
-  measures the container's own writable layer and reports room the rebuild does
-  not have; the line names the path it measured, so a check run in the wrong
-  container is visibly about the wrong filesystem rather than silently
-  reassuring.
+  for exactly this caller. In a container with no tiles volume that path does
+  not exist at all, and the check does not guess: it prints `not measured`,
+  names the path that is missing and exits 1, rather than measuring the
+  container's own writable layer and reporting room the rebuild does not have.
+  A check that cannot see the volume is not a check that passed.
 
   `rebuild` also has the tiles and is the wrong container for a different
   reason. This entry fires every ten minutes, and `docker compose exec` runs
@@ -85,12 +85,18 @@ computed, and it is visible.
 success, and neither is a run that is still going.
 
 A task that has never succeeded at all is measured from the deployment's own
-first run row instead — the oldest `ScheduledRun` of any task — and on a
-database with no rows at all nothing is stale. **So the cron entry pages once a
-window has genuinely passed and not before.** It used to page immediately: on a
-fresh deployment `check_operations` exited 1 with all five tasks named in its
-first minute, because "has never run" and "has not run for long enough to
-matter" were the same missing row. The first alert an operator ever saw was
+**epoch** instead: the earlier of its oldest `ScheduledRun` row and its last
+applied migration (`MAX(django_migrations.applied)`). `migrate` runs before any
+worker starts, so that epoch exists on a stack where no job has ever been
+dequeued — which is exactly the outage (a `--queues` typo, a worker in a crash
+loop) that the rule this replaced reported as healthy for ever. There is no
+longer any state in which nothing is stale: a database with no run rows at all
+still has migrations, and the windows run from when they were applied.
+
+**So the cron entry pages once a window has genuinely passed and not before.**
+It used to page immediately: on a fresh deployment `check_operations` exited 1
+with all five tasks named in its first minute, because "has never run" and "has
+not run for long enough to matter" were the same missing row. The first alert an operator ever saw was
 therefore a false one, on the morning of the install, from the entry they had
 just added — and an alert that is wrong the first time it fires is an alert
 that gets muted. The windows are unchanged: a task that is genuinely never
@@ -237,7 +243,85 @@ carrying the very rows the exclusion exists to keep off the disk. A stray
 Local only, and that is the gap to close next: the plan's S3 upload with SSE-KMS
 and 30-day remote retention is **not built**, so today every copy of the database
 sits on the same volume as the database. The nightly EBS snapshot of the data
-volume is what stands between this deployment and a lost host until that lands.
+volume is what stands between this deployment and a lost host until that lands,
+and it is in the deployment actions below because nothing in this repository
+takes it.
+
+## Restoring one
+
+**Restore into an empty database, before the rest of the stack is up.** That is
+the whole runbook, and the ordering is the only part of it that is difficult to
+get right afterwards.
+
+```sh
+export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
+
+docker compose down                     # 1. nothing else talking to it
+sudo rm -rf "$DATA_ROOT/postgres"       # 2. an EMPTY PGDATA
+sudo sh scripts/prepare_data_root.sh --env-file ./.env
+docker compose up -d postgis            # 3. postgis alone: no migrate, no worker
+docker compose exec -T postgis \
+  pg_restore --no-owner -U routemaker -d routemaker \
+  < "$DATA_ROOT/backups/routemaker-<instant>.dump"
+docker compose up -d                    # 4. now the rest
+docker compose run --rm api ./manage.py collectstatic --noinput
+```
+
+`routemaker` twice over is `PGUSER` and `PGDATABASE` from `.env`, which ship as
+that and are the compose defaults; substitute your own if you changed them. The
+redirection is on the host because the dump is not visible inside `postgis` —
+that service binds `postgres/` and nothing else, and `backups/` is bound into
+`worker` — so `exec -T` and standard input is how the archive gets there.
+
+Step 3 is `up -d postgis` and not `up -d`, and the difference is measured
+rather than stylistic. A restore run into a database that a full `up` had
+already migrated produced **169 errors and exit 0** — `pg_restore` continues
+past a failing statement and reports success at the end, so the errors scroll
+past and the exit code says nothing happened. What collides is everything
+`migrate` creates and the dump also carries: `django_content_type`,
+`auth_permission` and `django_migrations` all have their rows twice over, and
+the `COPY` for each fails on the unique index while the rest of the archive
+goes in around it. The same dump into an empty database gave **0 errors**.
+`--no-owner` because the role in the dump and the role in this deployment need
+not be the same name.
+
+There is no `docker compose down -v` in that list on purpose: every stateful
+path here is a host bind mount and `-v` has nothing of this deployment's to
+remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
+
+### What the restored deployment actually has
+
+- **No standing, until the membership cache is rebuilt.** The dump excludes the
+  cached membership table and the session table, and phase 1 has no bot, so
+  nothing refills the cache — the sweep that would is unbuilt (handoff.md
+  section 7). Until it exists, a restored deployment grants **no** guild-derived
+  standing at all: everyone is signed out (sessions went with the dump's
+  exclusion) and signs in to an account with no memberships behind it. Instance
+  admins are unaffected: `is_instance_admin` is a column on the user row and it
+  is in the dump.
+- **No tiles.** `${DATA_ROOT}/tiles` is not in the database and not in the dump.
+  If the volume survived, the routers come back on the build they were serving;
+  if the host did not, there are no tiles until the first rebuild finishes, and
+  `valhalla_upstream` will name a build id that is not on disk. Fire one by hand
+  (`run_rebuild_now`, below) rather than waiting for Tuesday.
+- **Collected static assets** are on the data volume too and not in the dump,
+  which is why `collectstatic` is the last line above.
+
+### It will page for the first few hours, and that is the restore
+
+**After a restore, expect the operations page to be red for a while, and check
+the clock before acting on it.** A dump is taken from inside `nightly_backup`'s
+own run row, which is opened before `pg_dump` starts and closed after it
+finishes — so the dump never contains the success of the run that produced it.
+A database restored from last night's dump therefore comes up with
+`nightly_backup`'s last success a day and a bit old, and with
+`worker_heartbeat`, `degraded_guild_sweep` and `membership_sweep` stale by
+however long the outage and the restore together took. All four clear
+themselves on their own schedule once the worker is up: the heartbeat and the
+degraded-guild sweep within five minutes, the membership sweep within six
+hours, and **`nightly_backup` not until the next 07:00 UTC**. A
+`check_operations` that names only `nightly_backup` in the hours after a
+restore is the restore, not a second fault.
 
 ## The rebuild's own budget
 
@@ -489,6 +573,19 @@ the first host to run it is the first test of it.
    can cover it, so the answer is to wait or to accept the unwedge, not to
    lengthen the grace.
 
+   **The command will also take a minute to return**, and that is the grace
+   period being spent rather than something hanging. `down` and `up -d` send
+   the SIGTERM, wait the full `stop_grace_period: 60s` because the worker is
+   waiting for its job, and only then kill it. `worker` carries the same 60s
+   and is stopped in the same pass, so a `down` of a busy stack is about a
+   minute in total and not two.
+
+   **`worker` wedges the same way**, for less time and with the same repair. A
+   `nightly_backup` or a sweep killed mid-run leaves its row `doing` too; its
+   tasks are bounded at thirty minutes rather than six hours, so the odds of
+   catching one are lower, but `unwedge_job` is still what clears it and the
+   wedged-job surface still reports it.
+
    If this first `up` reports that `migrate` failed, run `docker compose up -d`
    again before debugging anything. The health check gates `migrate` on a
    database answering on TCP, and its start period is 60 seconds; a slow host
@@ -652,6 +749,13 @@ built here.
 ## Deployment actions
 
 - Add a `check_operations` cron entry, or point an existing monitor at it.
+- **Schedule a nightly EBS snapshot of the data volume.** Nothing in this
+  repository takes one, and until the plan's S3 upload is built the nightly
+  `pg_dump` lives on the same volume as the database it dumps — so a lost
+  volume is a lost deployment, dumps included. The snapshot is also the only
+  thing that covers the tiles, the certificates and the collected assets, none
+  of which are in any dump. "Restoring one" above is the database half;
+  restoring the volume is the host's own procedure.
 - The operations page is at `<DJANGO_ADMIN_PATH>core/scheduledrun/`; it is not
   linked from anywhere public and the admin path is not advertised.
 
@@ -698,6 +802,15 @@ For the rebuild that is not a cosmetic leftover. Both single-flight checks read
 that row: `run_rebuild_now` refuses with "a rebuild is already in flight", and
 `weekly_rebuild` refuses to start every Tuesday. **A deployment whose rebuild
 was killed once never rebuilds again** until the row is cleared.
+
+It is not only the rebuild. `worker` runs the same Procrastinate worker on the
+maintenance queue and takes the same SIGKILL at the end of the same 60-second
+grace, so a `nightly_backup`, a `membership_sweep` or a
+`degraded_guild_sweep` killed mid-run leaves a `doing` row of its own. Each of
+those carries a queueing lock, so the wedged row blocks that task's next tick
+the same way the rebuild's blocks Tuesday's — and the task goes stale on its
+own window (26 hours for the backup, 12 for the membership sweep) with nothing
+else to say why. The repair below is the same command with the same argument.
 
 The operations page and `manage.py check_operations` both name it — a job
 `doing` for longer than the budget its own task enforces
