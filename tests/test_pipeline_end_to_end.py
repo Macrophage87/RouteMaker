@@ -1105,10 +1105,17 @@ def test_elevation_tiles_land_where_the_configs_say_the_build_reads(workspace, s
     container_path = configured["additional_data"]["elevation"]
     compose = yaml.safe_load((REPO / "compose.yaml").read_text())
     mounts = dict(m.split(":")[1::-1] for m in compose["services"]["rebuild"]["volumes"])
-    host_root = mounts["/data"]
-    assert host_root == "${DATA_ROOT}", "the rebuild mounts the whole data volume at /data"
     assert container_path.startswith("/data/")
-    on_host = Path(host_root) / container_path[len("/data/") :]
+    # The rebuild binds the five directories it writes rather than the whole
+    # volume, so the mount that covers this path is the elevation one. Found by
+    # longest prefix, which is how the container resolves it too.
+    covering = max(
+        (c for c in mounts if container_path == c or container_path.startswith(c + "/")),
+        key=len,
+        default=None,
+    )
+    assert covering, f"no mount in the rebuild container covers {container_path}: {mounts}"
+    on_host = Path(mounts[covering] + container_path[len(covering) :])
     assert on_host == Path("${DATA_ROOT}") / settings.ELEVATION_DIR.relative_to(settings.DATA_ROOT)
 
 

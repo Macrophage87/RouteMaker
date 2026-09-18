@@ -81,6 +81,15 @@ before the first start:
 BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID=123456789012345678
 ```
 
+Before the first `docker compose up`, and in `.env` rather than in a shell:
+compose reads the environment file when it *creates* a container, so an id
+added to `.env` afterwards reaches the running api only on
+`docker compose up -d api`, which recreates it. `docker compose restart api`
+does not — it restarts the process with the environment the container was
+created with, and the sign-in that follows gets the admin's ordinary 404 with
+nothing anywhere to say why. docs/OPERATIONS.md, "First rebuild on a fresh
+host", puts it in the sequence.
+
 That id grants standing **only while the instance-admin list is empty**. Sign in
 with that Discord account and open the admin once: the first admitted request
 writes the id into the instance-admin list, records a `bootstrap_instance_admin`
@@ -202,8 +211,8 @@ ordinary migrations and the worker is a management command:
 Compose runs two workers from the same task module: `worker` on the
 `maintenance` queue (the backup and the membership sweep, in the API image) and
 `rebuild` on the `rebuild` queue (the weekly rebuild, in the pipeline image that
-carries the Valhalla and GDAL binaries, with the data volume mounted at
-`/data`). The queue split is what puts the six-hour build in the container with
+carries the Valhalla and GDAL binaries, with the five data directories it
+writes bound under `/data`). The queue split is what puts the six-hour build in the container with
 the binaries and the 8 GB limit rather than in the API's.
 
 A worker started any other way does not work. `procrastinate --app=... worker`
@@ -226,16 +235,26 @@ merge to the coverage region, leaving two files under `<DATA_ROOT>/extracts/`:
 
 ```sh
 curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
-osmium merge --overwrite dc.osm.pbf md.osm.pbf va.osm.pbf -o merged.osm.pbf.part
-osmium extract --overwrite -s smart -S types=any --bbox -78.0,38.2,-76.3,39.5 \
-    -o source.osm.pbf.part merged.osm.pbf
+osmium merge --overwrite -f pbf dc.osm.pbf md.osm.pbf va.osm.pbf \
+    -o merged.osm.pbf.part
+osmium extract --overwrite -f pbf -s smart -S types=any \
+    --bbox -78.0,38.2,-76.3,39.5 -o source.osm.pbf.part merged.osm.pbf
 ```
 
 `-s smart -S types=any` is PLAN:13's, and the `-S` half is the one that is easy
 to lose: without it the strategy keeps multipolygon relations complete and cuts
-every other type, which is exactly the administrative boundaries. Every command
-writes a `.part` and moves it into place on success, so a killed download is
-never mistaken for a small region.
+every other type, which is exactly the administrative boundaries.
+
+Every command writes a `.part` and moves it into place on success, so a killed
+download is never mistaken for a small region — and `-f pbf` is what that
+costs. osmium takes the output format from the output file's suffix, and
+`.osm.pbf.part` has the wrong one: without the flag it exits during argument
+setup with "unknown format", so the whole staging scheme depends on naming the
+format explicitly. `tests/test_source.py` holds every one of these arguments
+against `pipeline.source.merge_command` and `clip_command`, and
+`tests/test_deploy_docs.py` holds the lines restated here against the same two
+functions, because a runbook that prints a command osmium refuses is worse than
+one that prints none.
 
 It is not downloaded every run. The extract is rebuilt only when either file is
 missing or older than `SOURCE_EXTRACT_MAX_AGE` (six days, just under the weekly
@@ -264,18 +283,36 @@ them:
 ```sh
 python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --extract "$DATA_ROOT/extracts/source.osm.pbf" \
-    --urban-areas tl_2024_us_uac20.geojson \
-    --volume vdot-aadt.geojson --volume-source vdot --volume-year 2024
+    --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
+    --volume "$DATA_ROOT/reference/inputs/vdot-aadt-2024.geojson" \
+        --volume-source vdot --volume-year 2024 \
+    --volume "$DATA_ROOT/reference/inputs/ddot-aadt-2024.geojson" \
+        --volume-source ddot --volume-year 2024
 ```
+
+Two agencies rather than one, because a single one is the case the conflation
+step has nothing to arbitrate — `--volume` and its two companions repeat and
+are matched up in order. And every input path is absolute: on the deployment
+this runs inside the `rebuild` container, whose working directory is `/app`, so
+a bare file name resolves somewhere the file is not. Put the GeoJSON files
+under `$DATA_ROOT/reference/inputs/`, which that container binds; nothing
+outside the five directories it binds is visible to it at all.
 
 - `crossings.json` is `fixtures/crossings/potomac-anacostia.json`, copied. Its
   content is community knowledge maintained under the fixture's own README;
   the rebuild logs every row it cannot match against the extract.
-- `urban-areas.json` is the list of OSM way ids that intersect a Census urban
-  area. The input is the Census TIGER/Line urban-areas layer
+- `urban-areas.json` is the list of OSM way ids with **at least half their
+  length** inside a Census urban area (`MIN_URBAN_FRACTION = 0.5` in the
+  installer). The input is the Census TIGER/Line urban-areas layer
   (`tl_<year>_us_uac20`), converted to GeoJSON with `ogr2ogr -f GeoJSON
-  -t_srs EPSG:4326`. Intersection rather than containment, so a street that
-  leaves the boundary is still graded against urban speeds.
+  -t_srs EPSG:4326`. A majority of length rather than either extreme, and the
+  two errors it sits between are both real: bare intersection graded a Loudoun
+  through road urban end to end because a hundred metres of it clipped
+  Leesburg's polygon, which is the *lower*-stress reading of an ambiguous input
+  on every mile of that road, and containment would grade a District street
+  rural because its last block leaves the boundary. The switch is binary — it
+  chooses the default speed table, 30 mph urban against 50 rural — so it should
+  describe the way rather than its ends.
 - `volume.json` is every agency count line with a bidirectional AADT, in the
   shape `conflation.AgencyFeature` loads. The Virginia layer is VDOT's traffic
   volume export from the Virginia Roads portal (`--volume-source vdot`, AADT
@@ -292,7 +329,7 @@ clips it, and `LOAD_REFERENCE_DATA` is the one after it. So the first rebuild on
 a fresh host is run knowing it will stop at stage two, and this script is run
 against the extract that run left behind. docs/OPERATIONS.md, "First rebuild on
 a fresh host", has the whole sequence; the script runs in the `rebuild`
-container, which is the one with the data volume mounted.
+container, which is the one that binds `reference` and `extracts`.
 
 ## Tiles and the swap
 
@@ -300,7 +337,8 @@ Each variant's tiles live under `<DATA_ROOT>/tiles/<variant>/`: a dated build
 directory per rebuild (`20260917T080000Z/`, holding `tiles/`, `tiles.tar` and
 the build config), and a `current` symlink the serving container mounts. The
 checked-in configs name `/data/tiles/<variant>/current/...`, which resolves to
-the same host file inside the rebuild container (data volume at `/data`) and
+the same host file inside the rebuild container (`${DATA_ROOT}/tiles` at
+`/data/tiles`) and
 the serving one (that directory at the same path). The rebuild builds through
 a derived config with `current` replaced by the dated directory, promotes by
 replacing the symlink, keeps `previous` for rollback, and repoints the

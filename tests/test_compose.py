@@ -213,9 +213,15 @@ def test_the_maintenance_worker_has_more_than_one_slot() -> None:
     )
 
 
-def test_the_rebuild_sees_the_whole_data_volume_at_the_path_its_settings_assume() -> None:
+def test_the_rebuild_sees_every_directory_it_writes_at_the_path_its_settings_assume() -> None:
+    """Five binds rather than `${DATA_ROOT}:/data`, and the difference is what
+    the whole volume also carries: Caddy's TLS private key, PGDATA and the
+    nightly dumps, none of which a six-hour tile build has any business
+    reading. The paths are unchanged, because `DATA_ROOT` inside the container
+    is still `/data` and each directory is bound at its own name under it."""
     volumes = SERVICES["rebuild"]["volumes"]
-    assert "${DATA_ROOT}:/data" in volumes
+    for directory in ("tiles", "elevation", "extracts", "reference", "rebuild"):
+        assert f"${{DATA_ROOT}}/{directory}:/data/{directory}" in volumes, directory
     assert SERVICES["rebuild"]["environment"]["DATA_ROOT"] == "/data"
     assert "./lua:/conf/lua:ro" in volumes and "./valhalla:/conf:ro" in volumes
 

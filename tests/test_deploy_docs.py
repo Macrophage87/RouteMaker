@@ -34,6 +34,12 @@ SERVICES: dict = COMPOSE["services"]
 
 OPERATIONS = (REPO / "docs" / "OPERATIONS.md").read_text()
 DEPLOYMENT = (REPO / "docs" / "DEPLOYMENT.md").read_text()
+DEVELOPMENT = (REPO / "docs" / "DEVELOPMENT.md").read_text()
+DOCUMENTS = {
+    "docs/OPERATIONS.md": OPERATIONS,
+    "docs/DEPLOYMENT.md": DEPLOYMENT,
+    "docs/DEVELOPMENT.md": DEVELOPMENT,
+}
 # Prose wraps at eighty columns in these files, so a sentence to look for is
 # almost always split across a newline. Matched against the unwrapped form.
 DEPLOYMENT_PROSE = " ".join(DEPLOYMENT.split())
@@ -59,7 +65,8 @@ def test_the_services_this_file_reasons_about_still_mount_what_it_says() -> None
     has the whole volume and `api` has none of it. A stack that gave the api a
     data mount would make these tests wrong rather than failing."""
     rebuild_volumes = SERVICES["rebuild"]["volumes"]
-    assert "${DATA_ROOT}:/data" in rebuild_volumes
+    assert "${DATA_ROOT}/tiles:/data/tiles" in rebuild_volumes
+    assert "${DATA_ROOT}/reference:/data/reference" in rebuild_volumes
     assert SERVICES["rebuild"]["environment"]["DATA_ROOT"] == "/data"
     assert not SERVICES["api"].get("volumes"), (
         f"the api now mounts {SERVICES['api']['volumes']}; docs/DEPLOYMENT.md says it "
@@ -164,17 +171,116 @@ def test_the_prepare_script_creates_every_directory_compose_binds() -> None:
     )
 
 
-def test_the_script_also_creates_what_the_rebuild_writes_inside_its_whole_mount() -> None:
-    """`rebuild` mounts `${DATA_ROOT}` whole, so these are not mappings of their
-    own and the derivation above cannot see them. They are named in settings and
-    the rebuild writes all three."""
+def test_the_script_also_creates_what_the_rebuild_writes() -> None:
+    """Named in settings - REBUILD_SOURCE_PBF, REBUILD_REFERENCE_DIR and
+    REBUILD_WORK_DIR - and bound by the rebuild service, so the derivation above
+    sees them too. Stated separately anyway: they are the three the script
+    carried before the rebuild's mount was narrowed to name them, and a mount
+    list that lost one would otherwise take this list with it."""
     assert {"extracts", "reference", "rebuild"} <= prepared_directories()
 
 
+# --- Who owns what under ${DATA_ROOT} -----------------------------------------
+
+# The services that run this project's own images, which run as uid 10001.
+OUR_SERVICES = {"api", "worker", "migrate", "rebuild"}
+
+# ...and the one directory they write that no such service binds: `static` is
+# bound read-only into Caddy, and written by the `collectstatic` deploy step,
+# which runs the api image with that directory mounted (docs/DEPLOYMENT.md).
+ALSO_OURS = {"static"}
+
+
+def owned_directories() -> set[str]:
+    """The OWNED list in scripts/prepare_data_root.sh - what it chowns."""
+    body = PREPARE.read_text()
+    listed = re.search(r'OWNED="\n(.*?)\n"', body, re.DOTALL)
+    assert listed, "scripts/prepare_data_root.sh no longer declares an OWNED list"
+    return {line.strip() for line in listed.group(1).splitlines() if line.strip()}
+
+
+def ours_by_mount() -> set[str]:
+    """Every `${DATA_ROOT}` path bound by a service running as uid 10001."""
+    prefix = "${DATA_ROOT}"
+    paths = set()
+    for name in OUR_SERVICES:
+        for volume in SERVICES[name].get("volumes") or []:
+            source = volume.split(":", 1)[0]
+            if source.startswith(prefix + "/"):
+                paths.add(source[len(prefix) + 1 :])
+    return paths
+
+
+def test_the_script_chowns_what_our_own_images_write_and_nothing_else() -> None:
+    """Derived from the mounts, in both directions, because both directions have
+    been wrong.
+
+    The script used to end in `chown -R 10001:10001 "$DATA_ROOT"`, and the
+    documented remedy for a stack already started was the same command. On a
+    live host that hands `caddy/` - the ACME account key and the deployment's
+    TLS private key - and `postgres/` and the nightly dumps in `backups/` to the
+    uid every container of ours runs as, which is the opposite of what
+    compose.yaml's header says this stack does with secrets. So: every
+    directory a 10001 service binds must be chowned, and the three nobody of
+    ours writes must not be.
+    """
+    owned = owned_directories()
+    expected = ours_by_mount() | ALSO_OURS
+
+    uncovered = sorted(
+        path
+        for path in expected
+        if path not in owned and not any(path.startswith(o + "/") for o in owned)
+    )
+    assert not uncovered, (
+        f"a service running as uid 10001 binds these and the script does not chown them, "
+        f"so the daemon's root-owned directory is what the container finds: {uncovered}"
+    )
+
+    foreign = {"postgres", "caddy", "photon"}
+    assert not (owned & foreign), (
+        f"the script chowns {sorted(owned & foreign)}. postgres is PGDATA, caddy holds the "
+        "ACME account key and the TLS private key, and photon belongs to an image that is "
+        "not ours; none of the three is written by anything running as 10001"
+    )
+    assert foreign <= prepared_directories(), (
+        "the script must still create them - a bind-mount source that does not exist is "
+        "manufactured by the daemon as root, which is the defect this script is about"
+    )
+
+
+def test_nothing_runs_a_recursive_chown_over_the_whole_data_root() -> None:
+    """The command, wherever it would actually be executed: a shell block in a
+    document an operator copies from, or a line in the script itself.
+
+    Mentioning it in prose is fine and two paragraphs do - that is how the
+    hazard gets explained. Running it is the thing: `${DATA_ROOT}` holds
+    `caddy/`, and `caddy/` holds the deployment's TLS private key.
+    """
+    recursive = re.compile(r"chown\s+-R\s+\S+\s+\"?\$(?:DATA_ROOT|\{DATA_ROOT\})\"?\s*$")
+
+    for name, body in DOCUMENTS.items():
+        for block in re.findall(r"```sh\n(.*?)```", body, re.DOTALL):
+            for line in block.replace("\\\n", " ").splitlines():
+                assert not recursive.search(line), (
+                    f"{name} tells an operator to run `{line.strip()}`, which chowns the TLS "
+                    "private key and PGDATA along with everything else"
+                )
+
+    for line in PREPARE.read_text().splitlines():
+        if line.lstrip().startswith("#"):
+            continue
+        assert not recursive.match(line.strip()), (
+            f"scripts/prepare_data_root.sh runs `{line.strip()}`: one recursive chown over "
+            "the root of the volume, PGDATA and the ACME account key included"
+        )
+
+
 def test_the_script_refuses_to_run_without_an_absolute_data_root() -> None:
-    """`chown -R` is the last line of that script. With `DATA_ROOT` unset or
-    empty the argument that reaches `chown` can be `/`, which ends the host -
-    which is why the guard is in the script and not only in the document."""
+    """The script ends in a `chown` per directory it owns. With `DATA_ROOT`
+    unset or empty the argument that reaches each one is rooted at `/`, which
+    ends the host - which is why the guard is in the script and not only in the
+    document."""
     body = PREPARE.read_text()
     assert "${DATA_ROOT:?" in body, "the script no longer refuses an unset DATA_ROOT"
     assert "must be an absolute path" in body, "the script no longer refuses a relative path"
@@ -267,3 +373,163 @@ def test_the_api_dockerfile_does_not_still_say_there_is_no_static_root() -> None
     lines = (REPO / "docker" / "api.Dockerfile").read_text().splitlines()
     prose = " ".join(" ".join(line.lstrip().lstrip("#").split()) for line in lines)
     assert "cannot run yet because settings.py defines no STATIC_ROOT" not in prose
+
+
+# --- The osmium commands, as the documents print them ------------------------
+
+
+def documented_osmium_commands() -> list[tuple[str, list[str]]]:
+    """(document, argv) for every osmium command line in docs/*.md.
+
+    Shell blocks only, with the eighty-column continuations folded back in, so
+    what is checked is what an operator would paste.
+    """
+    found = []
+    for name, body in DOCUMENTS.items():
+        for block in re.findall(r"```sh\n(.*?)```", body, re.DOTALL):
+            for line in block.replace("\\\n", " ").splitlines():
+                if line.strip().startswith("osmium "):
+                    found.append((name, line.split()))
+    return found
+
+
+def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> None:
+    """The flags are not decoration and one of them was missing from a document
+    while the code had it right.
+
+    `-f pbf` is what makes the `.part` staging scheme work at all: osmium takes
+    the output format from the output file's suffix, `merged.osm.pbf.part` has
+    the wrong one, and without the flag osmium exits during argument setup. A
+    runbook that prints the command without it prints a command that cannot
+    run, which costs an operator an afternoon rather than costing the code a
+    bug. `--overwrite` is the weekly re-run into the same directory, and
+    `-s smart -S types=any` is PLAN:13's clip strategy - without the `-S` half
+    the administrative boundaries are exactly the relations the clip cuts.
+
+    Derived from `pipeline.source`, so the code is the authority and a document
+    that restates it cannot quietly disagree.
+    """
+    from pipeline import source
+
+    commands = documented_osmium_commands()
+    assert commands, "no osmium command lines in docs/*.md any more"
+
+    produced = {
+        "merge": source.merge_command([Path("dc.osm.pbf")], Path("merged.osm.pbf.part")),
+        "extract": source.clip_command(
+            Path("merged.osm.pbf"), Path("source.osm.pbf.part"), (-78.0, 38.2, -76.3, 39.5)
+        ),
+    }
+    # Read back out of the real commands rather than restated, so this cannot
+    # outlive a change to either one.
+    required = {
+        name: [
+            flag
+            for flag in ("--overwrite", "-f", "pbf", "-s", "smart", "-S", "types=any")
+            if flag in argv
+        ]
+        for name, argv in produced.items()
+    }
+    assert required["merge"] == ["--overwrite", "-f", "pbf"], f"merge_command: {produced['merge']}"
+    assert required["extract"] == ["--overwrite", "-f", "pbf", "-s", "smart", "-S", "types=any"], (
+        f"clip_command: {produced['extract']}"
+    )
+
+    for document, argv in commands:
+        subcommand = argv[1]
+        missing = [flag for flag in required[subcommand] if flag not in argv]
+        assert not missing, (
+            f"{document} prints `{' '.join(argv)}`, which is missing {missing}; "
+            f"pipeline.source.{subcommand}_command produces them"
+        )
+        assert argv[argv.index("-f") + 1] == "pbf", (
+            f"{document} names an output format that is not pbf: {' '.join(argv)}"
+        )
+
+
+# --- Rolling a release back ---------------------------------------------------
+
+
+def test_no_document_calls_a_tag_rollback_a_restart() -> None:
+    """`docker compose restart` restarts the containers that exist, on the
+    image they were created from. A rollback moves `TAG`, which changes which
+    image the service should run, and only `up -d` acts on that: it re-reads
+    `.env`, sees the image has changed and recreates the container. Documented
+    as a restart, the rollback is a stack that reports success and goes on
+    serving the release it was rolling back from.
+    """
+    for name, body in DOCUMENTS.items():
+        prose = " ".join(body.split())
+        for sentence in re.split(r"(?<=[.:]) ", prose):
+            if "TAG" not in sentence or "rollback" not in sentence.lower():
+                continue
+            assert "restart" not in sentence.lower(), (
+                f"{name} gives a TAG rollback as a restart: {sentence!r}. It is "
+                "`docker compose up -d`; a restart reuses the image the container was "
+                "created from"
+            )
+            assert "up -d" in sentence, (
+                f"{name} describes a TAG rollback without naming `docker compose up -d`: "
+                f"{sentence!r}"
+            )
+
+
+# --- Numbers and inputs the documents share with the code ---------------------
+
+
+def test_the_documented_urban_fraction_is_the_installers_own_constant() -> None:
+    """The rule changed in wave 5 - from "any intersection" to a majority of the
+    way's length - and docs/DEVELOPMENT.md kept describing the old one. Not a
+    cosmetic difference: the switch chooses the default speed table, 30 mph
+    urban against 50 rural, so under the documented rule a Loudoun through road
+    with a hundred metres inside Leesburg's polygon reads urban end to end,
+    which is the lower-stress reading of an ambiguous input on every mile of it.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "install_reference_data", REPO / "scripts" / "install_reference_data.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    fraction = module.MIN_URBAN_FRACTION
+    assert f"MIN_URBAN_FRACTION = {fraction}" in DEVELOPMENT, (
+        f"docs/DEVELOPMENT.md does not name the constant it is describing ({fraction})"
+    )
+    assert "at least half their" in DEVELOPMENT, (
+        "docs/DEVELOPMENT.md no longer states the majority-of-length rule in words"
+    )
+    assert "Intersection rather than containment" not in DEVELOPMENT, (
+        "docs/DEVELOPMENT.md still states the pre-wave-5 intersection rule"
+    )
+
+
+def test_the_first_host_procedure_installs_both_agencies_volume_files() -> None:
+    """`scripts/install_reference_data.py`'s own docstring: a single agency
+    leaves the precedence rule nothing to arbitrate, which is the whole reason
+    `--volume` and its two companions repeat. The procedure installed VDOT
+    alone.
+    """
+    step = OPERATIONS.split("First rebuild on a fresh host", 1)[1].split("\n## ", 1)[0]
+    sources = re.findall(r"--volume-source\s+(\S+)", step)
+    assert len(sources) >= 2, (
+        f"the first-host procedure installs {sources or 'no'} agency volume file(s); with "
+        "one agency the conflation step has nothing to arbitrate"
+    )
+    assert len(set(sources)) == len(sources), f"the same agency twice: {sources}"
+    assert {"vdot", "ddot"} <= set(sources), f"the two the docstring's example installs: {sources}"
+
+
+def test_the_reference_inputs_are_named_by_a_path_the_container_can_resolve() -> None:
+    """The image's WORKDIR is `/app`, so a bare `tl_2024_us_uac20.geojson` in a
+    `docker compose exec` line names a file that is not there and cannot be: the
+    inputs come from outside the stack and live on the data volume, which the
+    api does not mount at all and the rebuild mounts five directories of.
+    """
+    for name, body in DOCUMENTS.items():
+        for flag, value in re.findall(r"--(urban-areas|volume)\s+(\S+)", body):
+            assert value.startswith(("/data/", '"$DATA_ROOT/', "$DATA_ROOT/", "<")), (
+                f"{name} passes --{flag} {value}, a relative name that resolves under the "
+                "image's /app rather than on the data volume"
+            )

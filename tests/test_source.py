@@ -322,14 +322,21 @@ def test_the_extract_and_the_tiles_share_the_volume_the_disk_gate_measures() -> 
     *extract* will fit, which is only an honest question while `/data/tiles` and
     `/data/extracts` are on one filesystem.
 
-    They are because the rebuild service has exactly one mount anywhere under
-    `/data` - `${DATA_ROOT}:/data`, the whole volume - and `DATA_ROOT` inside it
-    is `/data`, so `TILES_DIR` is `/data/tiles` and the extract lands at
-    `/data/extracts` on that same filesystem. (Its other mounts, the config and
-    the Lua at `/conf`, are read-only and nothing writes to them.) Bind a second
-    volume at `/data/extracts` and the gate would be measuring free space on a
-    volume the 1-2 GB download never touches: the rebuild that filled the other
-    one would pass the gate on its way to ENOSPC.
+    They are because every mount the rebuild service has under `/data` is
+    sourced from `${DATA_ROOT}` - one host volume, however many directories of
+    it are bound - and `DATA_ROOT` inside the container is `/data`, so
+    `TILES_DIR` is `/data/tiles` and the extract lands at `/data/extracts` on
+    that same filesystem. (Its other mounts, the config and the Lua at `/conf`,
+    are read-only and nothing writes to them.)
+
+    The service used to bind the whole volume at `/data` and now binds the five
+    directories it writes, which is the same filesystem and a narrower reach -
+    `${DATA_ROOT}` also holds Caddy's TLS private key, PGDATA and the nightly
+    dumps. What this test is about is unchanged by that and is what the
+    narrowing must not break: bind any of these from somewhere that is not
+    `${DATA_ROOT}` and the gate would be measuring free space on a volume the
+    1-2 GB download never touches, so the rebuild that filled the other one
+    would pass the gate on its way to ENOSPC.
     """
     # Read from the *rendered* configuration rather than from the YAML, which
     # is what `tests/test_compose_render.py` exists for. Every value in
@@ -344,11 +351,25 @@ def test_the_extract_and_the_tiles_share_the_volume_the_disk_gate_measures() -> 
     rebuild = render(ENV_EXAMPLE)["services"]["rebuild"]
     assert rebuild["environment"]["DATA_ROOT"] == "/data"
 
-    targets = [volume["target"] for volume in rebuild["volumes"]]
-    under_data = [t for t in targets if t == "/data" or t.startswith("/data/")]
-    assert under_data == ["/data"], (
-        "the rebuild service mounts something other than the one volume at /data, so the "
-        f"disk gate on TILES_DIR no longer speaks for the extracts directory: {under_data}"
+    data_root = next(
+        line.split("=", 1)[1].strip().rstrip("/")
+        for line in ENV_EXAMPLE.read_text().splitlines()
+        if line.startswith("DATA_ROOT=")
+    )
+    under_data = [
+        volume
+        for volume in rebuild["volumes"]
+        if volume["target"] == "/data" or volume["target"].startswith("/data/")
+    ]
+    assert under_data, "the rebuild service binds nothing under /data at all"
+    foreign = [v for v in under_data if not str(v["source"]).startswith(data_root)]
+    assert not foreign, (
+        "the rebuild service binds something under /data from outside ${DATA_ROOT}, so the "
+        f"disk gate on TILES_DIR no longer speaks for the extracts directory: {foreign}"
+    )
+    targets = {v["target"] for v in under_data}
+    assert {"/data/tiles", "/data/extracts"} <= targets or targets == {"/data"}, (
+        f"neither the whole volume nor both of the directories the gate compares: {targets}"
     )
 
 
