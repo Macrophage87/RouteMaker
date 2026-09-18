@@ -209,14 +209,32 @@ GDAL binaries; a rebuild on an image without them fails at stage one with a
 `FileNotFoundError` naming the binary.
 
 The commands are `curl -fsSL --retry 3 -o <file>.part <url>`, then
-`osmium merge --overwrite <three files> -o merged.osm.pbf.part`, then
-`osmium extract --overwrite -s smart -S types=any --bbox W,S,E,N -o
+`osmium merge --overwrite -f pbf <three files> -o merged.osm.pbf.part`, then
+`osmium extract --overwrite -f pbf -s smart -S types=any --bbox W,S,E,N -o
 source.osm.pbf.part merged.osm.pbf`. Everything is written to a `.part` name and
 moved into place only on success: a 1–2 GB transfer killed partway would
 otherwise leave a truncated file under the real name, and nothing downstream can
 tell a truncated PBF from a smaller region — osmium reads what is there and the
 rebuild carries on with part of Virginia missing. A `.part` found on disk is
 deleted and re-fetched, never resumed or renamed into place.
+
+**`-f pbf` is what makes the `.part` names usable.** osmium takes the output
+format from the file name’s last dot-separated element, and `part` names no
+format, so both commands exited non-zero during argument setup — before reading
+a byte — with *Could not detect file format for filename*. `-f`
+(`--output-format`) is the documented override for exactly that case and both
+subcommands accept it. A rebuild that fails at the merge with that message on an
+image that has `osmium`, having already downloaded all three state extracts, is
+this flag having gone missing.
+
+The merge assumes the three downloads are the same day’s data, which is what
+Geofabrik publishes: `osmium merge` is not for files from different points in
+time, and given them it keeps every version of an object rather than one. It
+says so itself — a merge of mismatched snapshots warns about multiple versions
+of the same object, in the rebuild’s own build log. That warning after a
+refresh is the thing to look for when geometry or admin polygons come out wrong,
+and it usually means `SOURCE_EXTRACT_URLS` points at mirrors that are out of
+step with each other.
 
 **The freshness rule.** The extract is rebuilt when either file is missing or
 more than `SOURCE_EXTRACT_MAX_AGE` old, which defaults to **six days** —

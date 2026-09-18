@@ -30,6 +30,24 @@ boundary was truncated. `pipeline/tiles.py` already said the admin build must
 not read a variant extract; it read the clipped one instead, and cited PLAN:13
 as endorsing that.
 
+ONE POINT IN TIME, ASSUMED. `osmium merge` is for files from the same moment:
+its man page says "Do not use this command to merge non-history files with data
+from different points in time. It will not work correctly", because two files
+carrying different versions of the same object both survive into the output and
+the result is a small history file rather than a snapshot. Geofabrik's three
+state extracts are three separate files, and they are three separate daily
+*runs* of the extractor - but all three are cut from the same daily planet
+snapshot, so an object that spans the Potomac carries the same version in the DC
+file and the Virginia file and osmium sees one object, not two. That is the
+assumption this stage makes, and it is Geofabrik's published arrangement rather
+than anything this code enforces. It is acceptable because the three downloads
+happen minutes apart in one rebuild, so they are the same day's build; a
+deployment pointing `SOURCE_EXTRACT_URLS` at mirrors that are days out of step
+with each other would break it. A mismatch is not silent: osmium warns on
+multiple versions of an object unless it is given `-H/--with-history` (which
+this does not pass), so it lands in the rebuild's own build log, which is the
+place to look when admin polygons or geometry come out wrong after a refresh.
+
 Nothing here has been executed: this environment has neither `osmium` nor
 `curl` on PATH nor any route to Geofabrik, so the command lines are from the
 osmium-tool and curl documentation and the first real rebuild is what confirms
@@ -63,6 +81,37 @@ GEOFABRIK_EXTRACTS = tuple(
 MERGED_NAME = "merged.osm.pbf"
 CLIPPED_NAME = "source.osm.pbf"
 
+# Every osmium output here is written to `<name>.part` and renamed on success,
+# and osmium cannot guess a format from that name - so each one says `-f pbf`.
+#
+# osmium normally takes the format from the output file's suffix. libosmium's
+# `detect_format_from_suffix` (include/osmium/io/file.hpp) splits the name on
+# dots and looks at the *last* element only: it strips `gz`/`bz2`, then matches
+# `pbf`/`xml`/`opl`/..., then `osm`/`osh`/`osc`. `part` is none of those, so the
+# format stays `unknown`, and `File::check()` throws "Could not detect file
+# format for filename". osmium-tool calls that during argument setup, before it
+# reads a byte - `with_osm_output::check_output_file` (src/io.cpp:157-171),
+# reached from `setup_output_file` in both command_merge.cpp and
+# command_extract.cpp - so `merge` and `extract` both exited non-zero on the
+# very first rebuild, at the merge, with three freshly downloaded state files
+# on disk and nothing to show for them.
+#
+# `-f, --output-format=FORMAT` is documented for exactly this: "Can be used to
+# set the output file format if it can't be autodetected from the output file
+# name" (osmium-tool man/output-options.md, the OUTPUT OPTIONS block that
+# `osmium-merge.md` and `osmium-extract.md` both include as
+# @MAN_OUTPUT_OPTIONS@, and `src/io.cpp:182` registers `output-format,f` for
+# every command that writes an OSM file). It is *ignored* by `osmium extract`
+# only when `--config/-c` names an extract config (osmium-extract.md, the -c
+# entry), which this clip does not use: it passes `--bbox` or `--polygon` and
+# one `-o`.
+#
+# The alternative - dropping the `.part` discipline and writing straight to the
+# final name - is the one this cannot do: a killed merge would leave a
+# truncated `merged.osm.pbf` that the next week's freshness check accepts and
+# `valhalla_build_admins` reads.
+OUTPUT_FORMAT_FLAG = ("-f", "pbf")
+
 # How old the extract may be before it is rebuilt.
 #
 # Six days rather than seven: the rebuild is weekly (Tuesdays 08:00 UTC), so a
@@ -80,6 +129,14 @@ DEFAULT_MAX_AGE = timedelta(days=6)
 # three variant extracts the build writes plus scratch - so charging four times
 # this covers the production's own files as well. Approximate by construction:
 # it is a pre-flight for a file that does not exist yet, not a measurement.
+#
+# The gate measures `TILES_DIR` while the extract lands in `<DATA_ROOT>/extracts`,
+# which is only the same free-space figure because they are the same volume: the
+# rebuild service's one mount under /data is `${DATA_ROOT}:/data` (compose.yaml,
+# the whole volume), so `/data/tiles` and `/data/extracts` are two directories
+# on one filesystem.
+# Split them across two mounts and the gate would be measuring a volume the
+# download does not touch. `tests/test_source.py` holds compose to that.
 ESTIMATED_BYTES = 2 * 1024**3
 
 
@@ -155,11 +212,14 @@ def merge_command(inputs: Sequence[Path], output: Path) -> list[str]:
     `--overwrite` because osmium refuses to write a file that exists
     (`pipeline/extract.py:152` is the same refusal met from the Python
     bindings), and this runs every week into the same directory.
+
+    `-f pbf` because the output name is a `.part`. See `OUTPUT_FORMAT_FLAG`.
     """
     return [
         "osmium",
         "merge",
         "--overwrite",
+        *OUTPUT_FORMAT_FLAG,
         *[str(path) for path in inputs],
         "-o",
         str(output),
@@ -193,6 +253,8 @@ def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> 
     Fredericksburg and Frederick. The repository carries no polygon file yet,
     so `settings.COVERAGE_POLYGON` is None and `settings.COVERAGE_BBOX` is what
     is clipped to.
+
+    `-f pbf` because the output name is a `.part`. See `OUTPUT_FORMAT_FLAG`.
     """
     if isinstance(region, (str, Path)):
         bounds = ["--polygon", str(region)]
@@ -203,6 +265,7 @@ def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> 
         "osmium",
         "extract",
         "--overwrite",
+        *OUTPUT_FORMAT_FLAG,
         "-s",
         "smart",
         "-S",
