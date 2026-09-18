@@ -79,6 +79,34 @@ REVISIT_CELL_LON_MARGIN = 1.01
 # above, reproduce their recorded counts exactly.
 TURN_MIN_TRACE_SPACING_M = 20.0
 
+# The share of a trace's points that must carry an elevation before `max_grade`
+# means anything. Complete coverage, and the figure is 1.0 rather than a
+# tolerance because of what kind of measurement a maximum is: gain is a sum and
+# a missing sample dilutes it a little, while a maximum is not diluted by a gap
+# at all - it is lost outright if the gap falls on the steepest pitch, and
+# unaffected if it falls anywhere else. So the error is not proportional to the
+# missing fraction and there is no fraction at which the figure is merely
+# slightly low.
+#
+# Measured on the reference set by dropping elevations at random and taking the
+# worst of twelve seeds, as a percentage under-report of the steepest pitch:
+#
+#     missing   loco-30   two-bridges   2025-12-dcbp   blow-off-steam
+#        1%      10.6%          0.0%           0.0%             0.0%
+#        5%      11.6%         25.2%          44.8%            18.0%
+#       30%      14.8%         30.2%          62.0%            22.6%
+#
+# One percent of `rural-group-loco-30`'s samples is already a tenth of its
+# grade, and the reviewer's case - 30 percent missing on
+# `rural-group-two-bridges` - takes 18.99 percent to 13.43. A 5 percent
+# threshold would have called all four of the middle row reliable.
+#
+# Reported rather than corrected, exactly as `turns_reliable` is. Interpolating
+# the missing elevations would invent the one sample the measurement turns on,
+# and refusing to measure at all would leave a saved route with no stats block;
+# what the reader needs is to know that the number is a floor.
+GRADE_MIN_ELEVATION_COVERAGE = 1.0
+
 
 def elevation_gain(points: Sequence[Point], hysteresis: float = GAIN_HYSTERESIS_M) -> float:
     """Cumulative gain in metres, counting only moves larger than the hysteresis.
@@ -232,6 +260,14 @@ def max_grade(points: Sequence[Point], min_run_m: float = GRADE_MIN_RUN_M) -> fl
 
     The minimum run is what keeps a one-metre elevation wobble between two
     adjacent samples from reporting a 40 percent pitch.
+
+    A run with an elevation missing at either end is skipped, and the anchor
+    still advances past it, so a trace with gaps reports the steepest pitch
+    among the runs that survived rather than the steepest pitch on the route.
+    That is the right thing to do with a missing sample - the alternatives are
+    to invent it or to raise - but it is silent, and silently low. What says so
+    is `max_grade_is_reliable`, which every caller that reports this number
+    should report beside it.
     """
     steepest = 0.0
     anchor = 0
@@ -259,6 +295,32 @@ def turn_count_is_reliable(points: Sequence[Point]) -> bool:
     return (cum[-1] / (len(points) - 1)) >= TURN_MIN_TRACE_SPACING_M
 
 
+def elevation_coverage(points: Sequence[Point]) -> float:
+    """The fraction of a trace's points that carry an elevation.
+
+    The quantity rather than the verdict, because the two are read by different
+    people: `max_grade_is_reliable` is what a stats block puts beside the
+    number, and the fraction is what somebody deciding whether a GPX file is
+    worth re-exporting from the device wants to see.
+    """
+    if not points:
+        return 0.0
+    return sum(1 for point in points if point.ele is not None) / len(points)
+
+
+def max_grade_is_reliable(points: Sequence[Point]) -> bool:
+    """Whether this trace carries enough elevation for `max_grade` to mean anything.
+
+    `turn_count_is_reliable`'s shape, for the other measurement that a trace can
+    silently defeat, and reported for the same reason: the number is still
+    produced, and it is a floor rather than an answer. See
+    `GRADE_MIN_ELEVATION_COVERAGE` for why the threshold is complete coverage.
+    """
+    if len(points) < 2:
+        return False
+    return elevation_coverage(points) >= GRADE_MIN_ELEVATION_COVERAGE
+
+
 @dataclass(frozen=True)
 class RouteStats:
     """The measured properties of a route, in the units the README tables use."""
@@ -272,6 +334,8 @@ class RouteStats:
     point_count: int
     mean_spacing_m: float
     turns_reliable: bool
+    elevation_coverage: float
+    grade_reliable: bool
 
     @classmethod
     def measure(cls, points: Sequence[Point]) -> RouteStats:
@@ -289,4 +353,6 @@ class RouteStats:
             point_count=len(points),
             mean_spacing_m=distance_m / (len(points) - 1) if len(points) > 1 else 0.0,
             turns_reliable=turn_count_is_reliable(points),
+            elevation_coverage=elevation_coverage(points),
+            grade_reliable=max_grade_is_reliable(points),
         )

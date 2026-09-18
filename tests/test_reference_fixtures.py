@@ -9,6 +9,7 @@ grade column was replaced rather than matched.
 from __future__ import annotations
 
 import math
+import random
 from pathlib import Path
 
 import pytest
@@ -25,6 +26,7 @@ from routemaker.geo import (
 from routemaker.gpx import read_track_points
 from routemaker.measure import (
     DEGREE_OF_LATITUDE_M,
+    GRADE_MIN_ELEVATION_COVERAGE,
     GRADE_MIN_RUN_M,
     REVISIT_ALONG_ROUTE_M,
     REVISIT_CELL_LON_MARGIN,
@@ -32,7 +34,9 @@ from routemaker.measure import (
     TURN_MIN_BEARING_DEG,
     TURN_MIN_TRACE_SPACING_M,
     RouteStats,
+    elevation_coverage,
     max_grade,
+    max_grade_is_reliable,
     revisit_cell_degrees,
     revisits,
     turn_count_is_reliable,
@@ -423,6 +427,87 @@ def test_a_partial_elevation_column_is_skipped_rather_than_raised_on() -> None:
     # short to reach the comparison at all.
     filled = [partial[0], Point(-77.0, DC_LAT + step, ele=15.0), partial[2]]
     assert max_grade(filled) > 0.0
+
+
+def drop_elevations(points: list[Point], fraction: float, seed: int) -> list[Point]:
+    """The reviewer's method: a reference trace with a share of its elevation
+    column removed, deterministically, so the same seed gives the same trace."""
+    rng = random.Random(seed)
+    return [Point(p.lon, p.lat, ele=None) if rng.random() < fraction else p for p in points]
+
+
+def test_a_gap_in_the_elevation_column_makes_the_grade_a_floor() -> None:
+    """The measured case, on the trace it was measured on.
+
+    `max_grade` skips a run with an elevation missing at either end and advances
+    the anchor past it, so a trace with gaps reports the steepest pitch among
+    the runs that survived. That is the right thing to do with a missing sample
+    and it is silent: 30 percent of `rural-group-two-bridges`' elevations
+    removed takes its steepest pitch from 18.99 percent to 13.43, and nothing in
+    the stats block said the number had moved. `elevation_gain` over the same
+    trace stays within half a percent, which is why the flag is on the grade and
+    not on the whole elevation column.
+    """
+    points = read_track_points(FIXTURES / "rural-group-two-bridges.gpx")
+    full = RouteStats.measure(points)
+    assert full.grade_reliable
+    assert full.elevation_coverage == 1.0
+    assert full.max_grade_pct == pytest.approx(18.99, abs=0.01)
+
+    gapped = RouteStats.measure(drop_elevations(points, 0.30, seed=7))
+    assert not gapped.grade_reliable, "a trace this gapped must not claim a grade"
+    assert gapped.elevation_coverage == pytest.approx(0.70, abs=0.05)
+    assert gapped.max_grade_pct < full.max_grade_pct, "the measured under-report"
+    assert gapped.max_grade_pct == pytest.approx(13.43, abs=0.5)
+    # And the gain is nearly untouched over the same trace - a sum loses a
+    # little to a gap where a maximum loses everything - so the flag is narrower
+    # than "this file has holes in it".
+    assert gapped.gain_ft == pytest.approx(full.gain_ft, rel=0.01)
+
+
+def test_the_grade_threshold_is_complete_coverage_and_why() -> None:
+    """A maximum is not diluted by a missing sample, it is lost if the sample
+    falls on the steepest pitch - so the error is not proportional to the gap
+    and no tolerance is safe. One percent of `rural-group-loco-30`'s elevations
+    is already a tenth of its grade, which is the measurement that chose 1.0
+    over a 5 percent tolerance."""
+    assert GRADE_MIN_ELEVATION_COVERAGE == 1.0
+
+    points = read_track_points(FIXTURES / "rural-group-loco-30.gpx")
+    full = max_grade(points)
+    worst = min(max_grade(drop_elevations(points, 0.01, seed=s)) for s in range(12))
+    assert worst < full * 0.95, "one percent missing already moves this trace"
+    # And every one of those traces is called unreliable, which a tolerance of
+    # 0.05 would not have done.
+    assert not max_grade_is_reliable(drop_elevations(points, 0.01, seed=0))
+    assert elevation_coverage(drop_elevations(points, 0.01, seed=0)) > 0.95
+
+
+def test_the_reliability_flag_answers_for_the_ends_of_its_range() -> None:
+    """A trace with no elevation at all is not reliable, and neither is a trace
+    too short to have a run in it - the same two ends `turn_count_is_reliable`
+    answers for."""
+    step = 50.0 / DEGREE_OF_LATITUDE_M
+    bare = [Point(-77.0, DC_LAT + i * step) for i in range(4)]
+    assert elevation_coverage(bare) == 0.0
+    assert not max_grade_is_reliable(bare)
+    assert elevation_coverage([]) == 0.0
+    assert not max_grade_is_reliable([])
+    assert not max_grade_is_reliable([Point(-77.0, DC_LAT, ele=10.0)])
+    full = [Point(-77.0, DC_LAT + i * step, ele=float(i)) for i in range(4)]
+    assert max_grade_is_reliable(full)
+    # One missing sample out of four is enough, because one is enough to lose
+    # the steepest run.
+    assert not max_grade_is_reliable([*full[:3], Point(-77.0, DC_LAT + 3 * step)])
+
+
+@pytest.mark.parametrize("name", sorted(RECORDED_GRADE_PCT))
+def test_every_reference_trace_carries_a_complete_elevation_column(name: str) -> None:
+    """Which is why the recorded grade column means what it says, and is the
+    baseline the gapped cases above are measured against."""
+    stats = stats_for(name)
+    assert stats.elevation_coverage == 1.0
+    assert stats.grade_reliable
 
 
 def brute_force_revisits(
