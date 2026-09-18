@@ -2048,3 +2048,125 @@ def test_a_missing_handler_is_refused_before_any_stage_runs() -> None:
     with pytest.raises(StageNotImplemented, match="swap"):
         run_rebuild({Stage.FETCH_EXTRACT: lambda: ran.append(Stage.FETCH_EXTRACT)})
     assert ran == [], "nothing runs until every stage is accounted for"
+
+
+# --- The e-bike bar against the crossings fixture --------------------------------
+
+EBIKE_BARRED_BRIDGE = 800
+ORDINARY_BRIDGE = 801
+RESTRICTED_BRIDGE = 802
+
+
+def _write_ebike_bridge_extract(path: Path) -> None:
+    """Two bike-legal bridge roadways, one of which bars electric bicycles.
+
+    `electric_bicycle=no` on a roadway is what the e-bike variant is built from:
+    `variants.inject` writes `bicycle=no` onto those ways, because Valhalla's
+    bicycle costing is what reads the bicycle tag and there is no e-bike access
+    mask to write to. The other two are controls: the same structure with no
+    e-bike restriction, and one tagged `electric_bicycle=private`, which
+    restricts who may ride rather than what may - the variant does not bar it,
+    so nothing may be withheld on it either. A suppression that is not scoped to
+    the bar shows up as the fixture's row going missing on one of them.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            1: (-77.045, 38.905),
+            2: (-77.030, 38.905),
+            3: (-77.045, 38.9060),
+            4: (-77.030, 38.9060),
+            5: (-77.045, 38.9070),
+            6: (-77.030, 38.9070),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=EBIKE_BARRED_BRIDGE,
+                nodes=[1, 2],
+                version=1,
+                tags={
+                    "highway": "trunk",
+                    "bridge": "yes",
+                    "name": "E-bike Barred Bridge",
+                    "electric_bicycle": "no",
+                },
+            )
+        )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=ORDINARY_BRIDGE,
+                nodes=[3, 4],
+                version=1,
+                tags={"highway": "trunk", "bridge": "yes", "name": "Ordinary Bridge"},
+            )
+        )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=RESTRICTED_BRIDGE,
+                nodes=[5, 6],
+                version=1,
+                tags={
+                    "highway": "trunk",
+                    "bridge": "yes",
+                    "name": "Restricted Bridge",
+                    "electric_bicycle": "private",
+                },
+            )
+        )
+    finally:
+        writer.close()
+
+
+def test_the_ebike_bar_is_not_granted_back_by_the_crossings_fixture(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The e-bike variant's own decision, and the one class of way the transform
+    is allowed to widen.
+
+    The variant bars this bridge by writing `bicycle=no`. The transform then
+    reads the fixture's `rm:bridge_bicycle=yes` over the same extract, sees a
+    roadway whose `bicycle=no` looks exactly like OSM's own tagging on a barred
+    bridge, and grants `bicycle=yes` back: the variant's whole decision reverted.
+
+    Declined here rather than in the Lua, and only here, because this loop knows
+    which variant it is writing and the transform cannot: one script serves all
+    three extracts, so the guard it can write reads the `electric_bicycle` tag
+    and therefore declines the fixture's row on the standard and no-trail
+    variants too, where no e-bike rule applies and the row should stand. Read
+    back from the written PBFs, which are the only thing the tile build sees.
+    """
+    from pipeline.extract import read_ways
+
+    source = install_source_extract(tmp_path, _write_ebike_bridge_extract)
+    context, _ = run_pipeline(
+        source,
+        tmp_path,
+        urban=(EBIKE_BARRED_BRIDGE, ORDINARY_BRIDGE, RESTRICTED_BRIDGE),
+        legality={EBIKE_BARRED_BRIDGE: True, ORDINARY_BRIDGE: True, RESTRICTED_BRIDGE: True},
+        skip=NOT_SWAPPED,
+    )
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        for control in (ORDINARY_BRIDGE, RESTRICTED_BRIDGE):
+            assert tags[control].get("rm:bridge_bicycle") == "yes", (
+                f"the {variant.value} variant lost a legality row on way {control}, which "
+                "the e-bike bar does not cover"
+            )
+            assert "bicycle" not in tags[control], f"and nothing bars way {control}"
+        if variant is Variant.EBIKE:
+            assert "rm:bridge_bicycle" not in tags[EBIKE_BARRED_BRIDGE], (
+                "the transform is handed the fixture's grant over the e-bike bar"
+            )
+            assert tags[EBIKE_BARRED_BRIDGE]["bicycle"] == "no", "and the bar itself is there"
+        else:
+            assert tags[EBIKE_BARRED_BRIDGE].get("rm:bridge_bicycle") == "yes", (
+                f"the {variant.value} variant, where no e-bike rule applies, lost the "
+                "fixture's row to a way tagged for a restriction it does not enforce"
+            )
+            assert "bicycle" not in tags[EBIKE_BARRED_BRIDGE], "and nothing bars it here"

@@ -34,9 +34,12 @@ def test_an_access_override_rewrites_the_tag_before_the_transform() -> None:
     """Applied before the extract is written, so Valhalla derives its access
     attributes from the corrected value rather than from the original."""
     way = Way(1, highway="secondary", bicycle="no")
-    applied, unmatched = apply_access([way], [Override("access", 1, {"bicycle": "yes"})])
+    applied, unmatched, superseding = apply_access(
+        [way], [Override("access", 1, {"bicycle": "yes"})]
+    )
     assert (applied, unmatched) == (1, [])
     assert way.tags["bicycle"] == "yes"
+    assert superseding == [1], "and the way is reported as one the crossings fixture loses"
 
 
 def test_an_access_override_may_not_write_outside_the_access_keys() -> None:
@@ -84,8 +87,10 @@ def test_an_override_matching_no_way_is_reported_rather_than_dropped() -> None:
     """An approved correction that reaches nothing is a correction that is not in
     force. The clip moved, or the way was replaced upstream, and either way
     someone needs told."""
-    applied, unmatched = apply_access([Way(1)], [Override("access", 999, {"bicycle": "yes"})])
-    assert (applied, unmatched) == (0, [999])
+    applied, unmatched, superseding = apply_access(
+        [Way(1)], [Override("access", 999, {"bicycle": "yes"})]
+    )
+    assert (applied, unmatched, superseding) == (0, [999], [])
 
 
 def test_each_kind_only_applies_to_its_own_stage() -> None:
@@ -223,7 +228,7 @@ def _write_access_extract(path: Path) -> None:
         writer.close()
 
 
-def _inject_through_the_real_stages(tmp_path, rows):
+def _inject_through_the_real_stages(tmp_path, rows, legality=(), context_out=None):
     """APPLY_OVERRIDES then INJECT_TAGS, from the production handler set, and
     the variant extracts they leave on disk read back with the real reader."""
     from pipeline.extract import read_ways
@@ -233,7 +238,7 @@ def _inject_through_the_real_stages(tmp_path, rows):
 
     source_pbf = tmp_path / "source.osm.pbf"
     _write_access_extract(source_pbf)
-    reference_dir = write_reference_data(tmp_path)
+    reference_dir = write_reference_data(tmp_path, legality=legality)
 
     context = RebuildContext(
         source_pbf=source_pbf,
@@ -249,6 +254,8 @@ def _inject_through_the_real_stages(tmp_path, rows):
     handlers[Stage.APPLY_OVERRIDES]()
     handlers[Stage.INJECT_TAGS]()
 
+    if context_out is not None:
+        context_out.append(context)
     return {
         variant: {way.osm_id: way.tags for way in read_ways(context.variant_pbf(variant))}
         for variant in Variant
@@ -323,3 +330,166 @@ def test_an_extract_never_carries_an_underscore_key(tmp_path) -> None:
         assert tags[OPEN_WAY]["bicycle"] == "no", (
             "and the filter has not swallowed the correction it sits next to"
         )
+
+
+# --- The audited table against the checked-in fixture ------------------------------
+
+
+def test_only_a_bicycle_key_is_reported_as_superseding_the_fixture() -> None:
+    """The report is of a collision, not of an override.
+
+    `rm:bridge_bicycle` decides the `bicycle` key and nothing else, and
+    `bridge_may_be_granted` already refuses to widen over an `access`
+    restriction, so a row writing only `access` collides with nothing and the
+    fixture keeps its say. Reporting it anyway would withhold a checked-in
+    legality row on the strength of a correction that never touched it.
+    """
+    ways = [Way(1, highway="secondary"), Way(2, highway="secondary"), Way(3, highway="secondary")]
+    applied, _unmatched, superseding = apply_access(
+        ways,
+        [
+            Override("access", 1, {"access": "no"}),
+            Override("access", 2, {"bicycle:forward": "no", "oneway:bicycle": "yes"}),
+            Override("access", 3, {"oneway:bicycle": "no"}),
+        ],
+    )
+    assert applied == 3
+    assert superseding == [2], f"only the row that wrote a bicycle key: {superseding}"
+
+
+@pytest.mark.django_db
+def test_an_access_override_outranks_the_crossings_fixture_on_the_same_way(tmp_path) -> None:
+    """Both directions of the collision the fixture used to win.
+
+    `inject_tags` emitted `rm:bridge_bicycle` for every way the fixture has an
+    opinion about, whatever the override table said, and the transform writes
+    the `bicycle` key from that tag: `bicycle=no` (legality false) and, through
+    `bridge_may_be_granted`, `bicycle=yes` (legality true). That guard reads
+    `access` and `vehicle` and never the bicycle keys - correctly, because a
+    legality row is itself a correction to OSM's `bicycle` tagging - so on all
+    eighteen fixture rows the checked-in file overwrote the approved,
+    cross-guild-reviewed row in whichever direction it ran. The audited table is
+    the plan's sole path for an access correction (PLAN:18, :28), so the tag is
+    withheld on exactly those ways, on every variant.
+    """
+    from pipeline.variants import Variant
+
+    contexts: list = []
+    by_variant = _inject_through_the_real_stages(
+        tmp_path,
+        [
+            # Fixture-legal, reviewer bars it: without the fix the extract
+            # carried bicycle=no *and* rm:bridge_bicycle=yes, and the transform
+            # granted bicycle=yes back over the row.
+            Override("access", OPEN_WAY, {"bicycle": "no"}),
+            # Fixture-illegal, reviewer opens it: the `false` half writes
+            # bicycle=no unconditionally, with no guard at all.
+            Override("access", BARRED_WAY, {"bicycle": "yes"}),
+        ],
+        legality={OPEN_WAY: True, BARRED_WAY: False},
+        context_out=contexts,
+    )
+
+    for variant, tags in by_variant.items():
+        for way_id, expected in ((OPEN_WAY, "no"), (BARRED_WAY, "yes")):
+            assert "rm:bridge_bicycle" not in tags[way_id], (
+                f"the {variant.value} extract still hands the transform the fixture's "
+                f"legality on way {way_id}, which is what overwrites the approved row"
+            )
+            assert tags[way_id]["bicycle"] == expected, (
+                f"the {variant.value} extract does not carry the approved value on {way_id}"
+            )
+    assert set(by_variant) == set(Variant)
+
+    report = contexts[0].override_report
+    assert report.access == 2
+    assert report.fixture_rows_superseded == 2, (
+        "an operator reading the rebuild log is told a checked-in row was overruled"
+    )
+    assert contexts[0].bicycle_override_way_ids == frozenset({OPEN_WAY, BARRED_WAY})
+
+
+@pytest.mark.django_db
+def test_an_override_with_nothing_to_supersede_leaves_the_fixture_alone(tmp_path) -> None:
+    """The withholding is scoped to the collision.
+
+    A row writing only `access=no` says nothing about the bicycle key, and
+    `bridge_may_be_granted` refuses to widen over an `access` restriction
+    anyway, so the fixture's legality still reaches the transform; and a way the
+    fixture has no opinion about was never a collision at all. Without this the
+    fix would silently disable the crossings fixture on any bridge carrying any
+    access row.
+    """
+    contexts: list = []
+    by_variant = _inject_through_the_real_stages(
+        tmp_path,
+        [
+            Override("access", OPEN_WAY, {"access": "no"}),
+            Override("access", BARRED_WAY, {"bicycle": "yes"}),
+        ],
+        legality={OPEN_WAY: True},
+        context_out=contexts,
+    )
+
+    for variant, tags in by_variant.items():
+        assert tags[OPEN_WAY]["rm:bridge_bicycle"] == "yes", (
+            f"the {variant.value} extract lost a legality row nothing overruled"
+        )
+        assert tags[OPEN_WAY]["access"] == "no", "and the correction itself is still there"
+        assert "rm:bridge_bicycle" not in tags[BARRED_WAY], "the fixture has no opinion here"
+
+    report = contexts[0].override_report
+    assert report.fixture_rows_superseded == 0, (
+        "a bicycle key on a way the fixture says nothing about supersedes nothing"
+    )
+
+
+@pytest.mark.django_db
+def test_the_superseded_way_is_named_in_one_info_line(tmp_path, caplog) -> None:
+    """A checked-in row being overruled is a thing an operator reading the
+    rebuild log should be able to see per way, not only as a count."""
+    import logging
+
+    with caplog.at_level(logging.INFO, logger="pipeline.run"):
+        _inject_through_the_real_stages(
+            tmp_path,
+            [Override("access", OPEN_WAY, {"bicycle": "no"})],
+            legality={OPEN_WAY: True},
+        )
+
+    lines = [
+        record.getMessage()
+        for record in caplog.records
+        if "crossings fixture" in record.getMessage()
+    ]
+    assert len(lines) == 1, lines
+    assert str(OPEN_WAY) in lines[0] and "Open Road" in lines[0]
+
+
+@pytest.mark.django_db
+def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> None:
+    """A kind outside the three is a row that was written, reviewed and approved
+    and then did nothing at all - the failure this stage exists to end, arriving
+    a second way. The model's `Kind` choices are a form-level guard, not a column
+    constraint, so a fourth kind added there without an applier here would be
+    inert rather than refused. Terminal, not retried: a fifth attempt applies it
+    no more than the first.
+    """
+    from config.procrastinate import terminal_causes
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ValidationFailed, build_handlers
+
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+    )
+    context.ways = [Way(1, highway="secondary")]
+    rows = [Override("surface", 1, {"surface": "asphalt"})]
+    handlers = build_handlers(context, load_overrides=lambda: rows)
+
+    with pytest.raises(ValidationFailed, match="surface") as raised:
+        handlers[Stage.APPLY_OVERRIDES]()
+    assert "way 1" in str(raised.value), "the row is named, not only the kind"
+    assert isinstance(raised.value, terminal_causes()), "and a retry cannot fix it"
+    assert context.override_report is None, "nothing was applied on the way past it"

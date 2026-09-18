@@ -9,6 +9,7 @@ import pytest
 from pipeline.variants import (
     DuplicateCrossingName,
     Variant,
+    bars_electric_bicycle,
     check_crossing_names_unique,
     crossing_names,
     inject,
@@ -82,6 +83,24 @@ def test_ebike_bars_only_where_electric_bicycles_are_barred() -> None:
     allowed = inject(Variant.EBIKE, {"highway": "path"})
     assert barred["bicycle"] == "no"
     assert "bicycle" not in allowed
+
+
+def test_the_ebike_bar_is_the_no_value_and_not_every_restriction() -> None:
+    """`private`, `destination` and `customers` restrict who may ride a way, not
+    whether an e-bike is a vehicle it admits, and the variant does not bar them.
+
+    Pinned because a second reader of this rule now has to agree with it
+    exactly: `run.inject_tags` withholds the crossings fixture's roadway
+    legality from the e-bike variant on the ways this bar covers, so that the
+    transform cannot grant the access back. A rule spelled `!= "yes"` in either
+    place would take a checked-in legality row off a bridge nothing barred.
+    """
+    for value in ("private", "destination", "customers", "yes", "designated"):
+        tags = {"highway": "trunk", "electric_bicycle": value}
+        assert not bars_electric_bicycle(tags), value
+        assert "bicycle" not in inject(Variant.EBIKE, tags), value
+    assert bars_electric_bicycle({"highway": "trunk", "electric_bicycle": "no"})
+    assert not bars_electric_bicycle({"highway": "trunk"})
 
 
 def test_variant_selection_from_toggles() -> None:

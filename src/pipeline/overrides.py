@@ -12,6 +12,21 @@ classifier's tier after classification, because re-deriving from a corrected tie
 would mean inventing the tags that would have produced it. A jurisdiction
 override replaces the authority assignment, which is not a routing input at all.
 
+"Valhalla derives from the corrected value" is true of the tag as written and
+was not true of what the graph ended up saying, on the one class of way where
+something else writes the same key. The crossings fixture's per-way legality
+column reaches the extract as `rm:bridge_bicycle`, and the transform turns it
+into `bicycle=no` (legality false) or `bicycle=yes` (legality true, through
+`bridge_may_be_granted`, which reads `access` and `vehicle` and never the
+bicycle keys - by design, since a legality row *is* a correction to OSM's own
+`bicycle` tagging). So on an eighteen-row fixture bridge, whichever value an
+approved row wrote was overwritten by the checked-in file. The audited table is
+the plan's sole path for an access correction and it outranks the fixture, so
+`apply_access` reports the ways it wrote a bicycle key onto and `run.inject_tags`
+withholds `rm:bridge_bicycle` on exactly those ways, on every variant: the
+fixture keeps its say wherever no reviewer has overruled it, and loses it where
+one has.
+
 Unapproved rows are inert rather than applied-and-flagged. Approval crosses
 guilds - a correction to a Virginia parkway is not Arlington's to make alone -
 so an unapproved row is a proposal, and a proposal that changed the graph while
@@ -30,6 +45,26 @@ from dataclasses import dataclass
 ACCESS_KEYS = frozenset(
     {"bicycle", "bicycle:forward", "bicycle:backward", "access", "oneway:bicycle"}
 )
+
+# The subset of those keys that states whether a bicycle may use the way at all,
+# and so the subset the crossings fixture's legality column competes with: the
+# transform writes `bicycle` from `rm:bridge_bicycle` and reads none of these in
+# deciding whether it may. A row writing one of them on a fixture bridge is a
+# reviewer overruling the checked-in file, which is what supersedes it.
+#
+# `access` and `oneway:bicycle` are deliberately not here. `access=no` is not a
+# claim about the bicycle key - the transform's grant already refuses to widen
+# over it, so the two do not collide - and `oneway:bicycle` says which direction
+# may be ridden, not whether the way may be.
+BICYCLE_ACCESS_KEYS = frozenset({"bicycle", "bicycle:forward", "bicycle:backward"})
+
+# The kinds the three appliers below handle, which is what `run.apply_overrides`
+# refuses an approved row outside of. A kind no applier handles is a row that was
+# written, reviewed and approved and then quietly did nothing - the exact failure
+# the whole stage exists to end - and the model's `Kind` choices are not a guard:
+# they are enforced on a form, not by the column, and a fourth kind added there
+# without an applier here would be inert rather than refused.
+HANDLED_KINDS = frozenset({"access", "stress", "jurisdiction"})
 
 
 class OverrideRefused(ValueError):
@@ -53,6 +88,14 @@ class OverrideReport:
     stress: int = 0
     jurisdiction: int = 0
     unmatched_way_ids: tuple[int, ...] = ()
+    # Ways where an approved access override wrote a bicycle key onto a way the
+    # crossings fixture also has a legality opinion about, so the fixture's
+    # `rm:bridge_bicycle` was withheld and the reviewed row is what the graph
+    # carries. Counted separately from `access` rather than folded into it,
+    # because it is not another correction applied: it is the same correction
+    # taking effect over a checked-in file, which is the thing an operator
+    # reading this report wants named.
+    fixture_rows_superseded: int = 0
 
     @property
     def total(self) -> int:
@@ -75,7 +118,7 @@ def load_approved(model=None) -> list[Override]:
     ]
 
 
-def apply_access(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, list[int]]:
+def apply_access(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, list[int], list[int]]:
     """Rewrite tags on the ways an access override names.
 
     Written onto the way's working copy (`Way.tags`), which is not by itself
@@ -90,10 +133,19 @@ def apply_access(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, li
     `variants.inject` handed the same tags back, and no variant extract carried
     the key at all. An approved, reviewed, cross-guild correction changed
     nothing about the graph.
+
+    Returns (applied, unmatched way ids, ways a bicycle key was written onto).
+    The third list is what lets `run.inject_tags` withhold the crossings
+    fixture's `rm:bridge_bicycle` on those ways: the transform writes `bicycle`
+    from that tag without consulting the bicycle keys, so on a fixture bridge
+    the checked-in file overwrote whatever a reviewer had approved, in both
+    directions. Recorded here rather than recomputed there because this is the
+    only place that knows which keys a row actually wrote.
     """
     by_id = {way.osm_id: way for way in ways}
     applied = 0
     unmatched: list[int] = []
+    superseding: list[int] = []
 
     for override in overrides:
         if override.kind != "access":
@@ -112,9 +164,11 @@ def apply_access(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, li
                     f"an access key; permitted keys are {sorted(ACCESS_KEYS)}"
                 )
             way.tags[key] = str(value)
+            if key in BICYCLE_ACCESS_KEYS and override.osm_way_id not in superseding:
+                superseding.append(override.osm_way_id)
         applied += 1
 
-    return applied, unmatched
+    return applied, unmatched, superseding
 
 
 def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[int, list[int]]:
