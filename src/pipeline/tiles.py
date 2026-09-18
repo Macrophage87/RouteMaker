@@ -155,14 +155,23 @@ def tile_build_commands(
     valhalla_build_admins takes `-c <config>` and the PBFs positionally
     (src/mjolnir/valhalla_build_admins.cc:31-37) and writes the database named
     by `mjolnir.admin`, which it reads out of the config's mjolnir subtree
-    (src/mjolnir/adminbuilder.cc:373, opened for write at :403). It is handed
-    the *source* extract rather than this variant's. Boundary relations are
-    copied into every variant extract, but a variant also drops ways, and a
-    dropped way that is a member of a boundary relation is a broken admin
-    polygon and a country-crossing cost charged in the wrong place. Which
-    administrative area a point is in is a fact about the region, not about
-    which trails a variant keeps; PLAN:13 says the same thing by building admin
-    data from the merged extract before clipping.
+    (src/mjolnir/adminbuilder.cc:373, opened for write at :403). `admin_pbf` is
+    the *merged, unclipped* extract - `pipeline.source`'s `merged.osm.pbf`, the
+    three state files put together before the clip - which is what PLAN:13 says
+    in as many words: "Admin data is built with valhalla_build_admins from the
+    merged extract before clipping."
+
+    Two separate things are being kept out. Not this variant's extract: boundary
+    relations are copied into every variant extract, but a variant also drops
+    ways, and a dropped way that is a member of a boundary relation is a broken
+    admin polygon and a country-crossing cost charged in the wrong place. And
+    not the clipped source extract either, which is what this stage was handed
+    before `pipeline.source` existed and what this comment used to describe as
+    agreeing with PLAN:13: the clip cuts at the coverage boundary, so the admin
+    polygons built from it stop where the region does and every edge near that
+    line is graded against an administrative area with a false edge in it. Which
+    administrative area a point is in is a fact about the region, not about which
+    trails a variant keeps or where this deployment drew its box.
 
     valhalla_build_timezones is a POSIX shell script, not a binary. It takes no
     arguments, writes its progress to stderr, and writes the finished SQLite

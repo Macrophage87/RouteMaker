@@ -12,13 +12,16 @@ from __future__ import annotations
 
 import json
 import shutil
-from collections.abc import Sequence
+import sqlite3
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import osmium
 from django.contrib.gis.geos import MultiPolygon, Polygon
 
+from pipeline import source as source_module
 from pipeline.elevation import HGT_1ARCSEC_SIDE, TileName
+from pipeline.run import ADMIN_AND_TIMEZONE_TABLES
 from pipeline.tiles import CommandOutput
 
 REPO = Path(__file__).resolve().parents[1]
@@ -277,6 +280,62 @@ PARALLEL_COUNT = {
 }
 
 
+def fake_download(destination: Path) -> None:
+    """One regional Geofabrik extract, minus the network.
+
+    Written under a name osmium's writer recognises and then moved onto the
+    `.part` the pipeline asked for, because that writer picks the file format
+    from the name. That move is what `curl -o <name>.part` does for real, and
+    the point of writing a readable extract here rather than any bytes at all is
+    that a rebuild which produces its own extract goes on to read it.
+    """
+    destination = Path(destination)
+    built = destination.with_name("download.osm.pbf")
+    build_toy_extract(built)
+    built.replace(destination)
+
+
+def write_sqlite_database(path: Path, table: str, rows: bool = True) -> None:
+    """A minimal valid SQLite database with one table in it.
+
+    What `valhalla_build_admins` and `valhalla_build_timezones` leave behind, as
+    far as anything here reads it: the build validation opens the file and counts
+    rows in the table, so the fake has to write a file `sqlite3` can open rather
+    than bytes that begin with the magic number.
+    """
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+    Path(path).unlink(missing_ok=True)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(f"CREATE TABLE {table} (id INTEGER PRIMARY KEY, name TEXT)")
+        if rows:
+            connection.execute(f"INSERT INTO {table} (name) VALUES ('District of Columbia')")
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -> Path:
+    """A deployment whose extract stage has already run this week.
+
+    Both files FETCH_EXTRACT produces, under the names it produces them under:
+    the merged extract `valhalla_build_admins` reads and the clipped one the
+    rest of the rebuild reads. Both are new, so the freshness rule reuses them
+    and no test that is about a later stage downloads anything.
+
+    The merged file is a copy rather than a different map. What the tests need
+    from it is that it is the file the admin build is handed and that it is not
+    the clipped one; what osmium would really have taken out of it is osmium's
+    business.
+    """
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    clipped = directory / source_module.CLIPPED_NAME
+    build(clipped, **kwargs)
+    shutil.copyfile(clipped, directory / source_module.MERGED_NAME)
+    return clipped
+
+
 def fake_fetch(tile: TileName, into: Path) -> Path:
     """The 3DEP download, minus the network."""
     into.mkdir(parents=True, exist_ok=True)
@@ -318,8 +377,9 @@ class FakeBinaries:
         log: str = LUA_LOADED_LOG,
         hgt_side: int = HGT_1ARCSEC_SIDE,
         violations: str = "",
-        build_admin: bool = True,
-        build_timezone: bool = True,
+        admin: str = "built",
+        timezone: str = "built",
+        download: Callable[[Path], None] | None = None,
     ) -> None:
         self.grade = grade
         self.cycle_lane = cycle_lane
@@ -329,8 +389,20 @@ class FakeBinaries:
         # lines go to stdout under `mjolnir.logging.type: std_out`; the remap's
         # refusals are `io.stderr:write` from inside the Lua.
         self.violations = violations
-        self.build_admin = build_admin
-        self.build_timezone = build_timezone
+        # How each database build ends: "built" leaves a SQLite file with a row
+        # in the table validation reads, "missing" writes nothing at all,
+        # "empty-file" leaves a zero-byte file where the config says the
+        # database is - which is what a redirect into a script that died
+        # produces - and "no-rows" leaves a valid database whose table is empty,
+        # which is what an admin build over an extract with no boundary
+        # relations produces. The last two are the cases a size check cannot
+        # tell from a built database.
+        self.admin = admin
+        self.timezone = timezone
+        # What a "download" leaves behind. The regional Geofabrik files are toy
+        # extracts here, so a rebuild that produces its own extract goes on to
+        # read something a real reader can read.
+        self.download = download or fake_download
         self.calls: list[list[str]] = []
 
     def __call__(self, command: Sequence[str]) -> CommandOutput:
@@ -340,10 +412,29 @@ class FakeBinaries:
         if name == "gdalwarp":
             Path(command[-1]).write_bytes(b"\0" * (self.hgt_side * self.hgt_side * 2))
             return CommandOutput("", "")
+        if name == "curl":
+            # `curl -fsSL --retry 3 -o <dest>.part <url>`: the regional extract
+            # download, minus the network.
+            self.download(Path(command[command.index("-o") + 1]))
+            return CommandOutput("", "")
+        if name == "osmium":
+            # `merge` puts the regional files together and `extract` clips the
+            # result; both write the file named by `-o`. Copying the first input
+            # is enough here - what these commands do to OSM data is osmium's
+            # business, and what the pipeline has to get right is which file
+            # each one reads and writes.
+            destination = Path(command[command.index("-o") + 1])
+            inputs = [
+                Path(argument)
+                for argument in command[2:]
+                if argument.endswith(".osm.pbf") and Path(argument) != destination
+            ]
+            assert inputs, command
+            shutil.copyfile(inputs[0], destination)
+            return CommandOutput("", "")
         if name == "valhalla_build_admins":
             config = json.loads(Path(command[2]).read_text())
-            if self.build_admin:
-                Path(config["mjolnir"]["admin"]).write_bytes(b"SQLite format 3\0admins")
+            self.make_database(Path(config["mjolnir"]["admin"]), "admin", self.admin)
             return CommandOutput("", "")
         if name == "sh":
             # The timezone build: a shell script with no arguments whose output
@@ -352,8 +443,7 @@ class FakeBinaries:
             # pipeline's own way of not leaving a truncated file behind.
             assert "valhalla_build_timezones" in command[-1], command
             destination = command[-1].rsplit(" ", 1)[-1]
-            if self.build_timezone:
-                Path(destination).write_bytes(b"SQLite format 3\0timezones")
+            self.make_database(Path(destination), "timezone", self.timezone)
             return CommandOutput("", "downloading timezone polygon file.\n")
         if name == "cp":
             source, destination = Path(command[1]), Path(command[2])
@@ -392,6 +482,21 @@ class FakeBinaries:
                 "2026/09/17 [WARN] Traffic tile extract could not be loaded\n",
             )
         raise AssertionError(f"the pipeline ran a binary the tests do not stand in for: {command}")
+
+    def make_database(self, path: Path, key: str, state: str) -> None:
+        """Leave what this instance was told the database build leaves.
+
+        A real SQLite file, because validation queries the table upstream's
+        builders create rather than weighing the file: `sqlite3` is what reads
+        it, and a fake writing a magic-number prefix would pass a size check and
+        fail every real one.
+        """
+        if state == "missing":
+            return
+        if state == "empty-file":
+            path.write_bytes(b"")
+            return
+        write_sqlite_database(path, ADMIN_AND_TIMEZONE_TABLES[key], rows=state != "no-rows")
 
     def commands(self, name: str) -> list[list[str]]:
         return [c for c in self.calls if Path(c[0]).name == name]

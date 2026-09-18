@@ -275,7 +275,7 @@ def test_the_admin_and_timezone_databases_are_built_before_the_tiles(tmp_path) -
     commands = tiles.tile_build_commands(
         config_path,
         tmp_path / "standard.osm.pbf",
-        admin_pbf=tmp_path / "source.osm.pbf",
+        admin_pbf=tmp_path / "merged.osm.pbf",
         timezone_db=Path(config["mjolnir"]["timezone"]),
     )
     programs = [Path(c[0]).name for c in commands]
@@ -291,10 +291,13 @@ def test_the_admin_and_timezone_databases_are_built_before_the_tiles(tmp_path) -
         "valhalla_build_admins",
         "-c",
         str(config_path),
-        str(tmp_path / "source.osm.pbf"),
+        str(tmp_path / "merged.osm.pbf"),
     ]
-    # And the *source* extract, not the variant's: a variant drops ways, and a
-    # dropped boundary member is a broken admin polygon.
+    # And the *merged* extract, which is neither the variant's nor the clip.
+    # Not the variant's, because a variant drops ways and a dropped boundary
+    # member is a broken admin polygon; not the clip, because the clip cuts
+    # boundary relations at the coverage edge, which PLAN:13 says in as many
+    # words by building admin data from the merged extract before clipping.
     assert str(tmp_path / "standard.osm.pbf") not in admins
 
 

@@ -16,6 +16,12 @@ from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
 
+# The one project import these settings make. `pipeline.source` is the module
+# that downloads the extract and it owns the list of what is downloaded; a
+# second copy of three URLs here would be the copy that goes stale. It imports
+# nothing from Django, so there is no cycle.
+from pipeline.source import GEOFABRIK_EXTRACTS
+
 BASE_DIR = Path(__file__).resolve().parents[2]
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-development-key")
@@ -110,8 +116,45 @@ VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 # The coverage polygon's bounding box, west, south, east, north: roughly
 # Frederick and Leesburg to the north-west, Annapolis to the east and
 # Fredericksburg to the south. The elevation stage fetches every one-degree HGT
-# tile this box touches.
+# tile this box touches, and the extract stage clips to it.
 COVERAGE_BBOX = (-78.0, 38.2, -76.3, 39.5)
+
+# The coverage polygon itself, which `osmium extract --polygon` would take in
+# preference to the box. PLAN:13's region is a polygon and the box around it
+# reaches past Fredericksburg and Frederick, so clipping to the box carries more
+# map than the plan asks for - a size question, not a correctness one. There is
+# no polygon file in the repository yet, so this is None and the box is what the
+# clip is given; drawing that file and pointing this at it is the whole change.
+_coverage_polygon = os.environ.get("COVERAGE_POLYGON", "").strip()
+COVERAGE_POLYGON = Path(_coverage_polygon) if _coverage_polygon else None
+
+# The source extract, which the rebuild's first stage now produces rather than
+# expecting to find. PLAN:13: the three Geofabrik state extracts, merged, then
+# clipped with `osmium extract -s smart -S types=any`, with the admin database
+# built from the merged file before the clip. `pipeline.source` is the stage and
+# carries the reasoning; these are the three knobs a deployment has.
+#
+# The URLs come from that module rather than being restated here, so there is
+# one list of what this project downloads. A deployment behind a mirror sets
+# SOURCE_EXTRACT_URLS to a comma-separated list of its own.
+SOURCE_EXTRACT_URLS = (
+    tuple(
+        url.strip() for url in os.environ.get("SOURCE_EXTRACT_URLS", "").split(",") if url.strip()
+    )
+    or GEOFABRIK_EXTRACTS
+)
+
+# Six days, just under the weekly rebuild cadence: at or above seven the
+# ordinary weekly run would accept last week's snapshot and the map would age a
+# week every week, while below it a retry or a hand-fired rebuild in the same
+# week reuses the extract instead of pulling 1-2 GB again. `pipeline.source`
+# holds the same figure as its default and this is what the rebuild passes.
+SOURCE_EXTRACT_MAX_AGE = timedelta(days=int(os.environ.get("SOURCE_EXTRACT_MAX_AGE_DAYS", "6")))
+
+# The operator's override, for a rebuild that must start from today's Geofabrik
+# build whatever is on disk. Deleting either extract file does the same thing;
+# this exists so it can be done without a shell on the data volume.
+SOURCE_EXTRACT_FORCE_REFRESH = os.environ.get("SOURCE_EXTRACT_FORCE_REFRESH", "") == "1"
 
 # Where the API's routing client finds each variant's Valhalla. The swap
 # repoints these rows (core.models.ValhallaUpstream) before it renames the
