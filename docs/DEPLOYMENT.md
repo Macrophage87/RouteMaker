@@ -366,6 +366,38 @@ module and its test, with no React application, no bundler and no build script,
 so there is nothing to build into the volume yet. Only the admin's and Ninja's
 assets reach the volume today.
 
+## The admin map widget
+
+The jurisdiction pages in the admin edit a polygon by drawing on a map, which is
+PLAN.md:52's reason for choosing Django. GeoDjango's default widget builds that
+map out of two things this deployment will not have: OpenLayers loaded from
+`cdn.jsdelivr.net` — a third party's script running in an instance admin's
+authenticated session — and tiles from the public OpenStreetMap servers, which
+PLAN.md:15 rules out in as many words.
+
+So OpenLayers is vendored. `src/core/static/core/ol/` holds the build the
+installed Django's widget expects, with the release URL and the sha256 of each
+file in the `SOURCE` file beside them; it reaches the browser through the same
+`collectstatic` step as the rest of the admin's assets, from the same
+`/srv/static` Caddy already serves. Nothing else is needed at deploy time, and
+the admin makes no request off this deployment's origin.
+
+The basemap under the polygon is a separate question, and in phase 1 the answer
+is that there is not one. The PMTiles extract and the renderer are unbuilt, so
+the widget draws the geometry over a plain background and requests no tiles at
+all. That is the shipped configuration rather than a broken one: the draw,
+modify and delete controls are OpenLayers' own and an instance admin can edit a
+boundary without any imagery under it.
+
+A deployment that does have tiles — its own renderer once there is one, or a
+server the operator has chosen and is entitled to use — sets
+`ADMIN_BASEMAP_TILE_URL` to a standard XYZ template, for example
+`https://tiles.example.org/basemap/{z}/{x}/{y}.png`, and the widget draws one
+XYZ layer from it. The variable is optional, has no default, is read by the
+`api` service alone, and is commented out in `.env.example`. `compose.yaml` does
+not pass it through to `api` yet — `tests/test_compose.py` records that in its
+allow-list — so a deployment that needs it adds that line at the same time.
+
 ## The edge: `Caddyfile` and `CADDY_SITE_ADDRESS`
 
 `compose.yaml` bind-mounts `./Caddyfile` at `/etc/caddy/Caddyfile:ro`. The file

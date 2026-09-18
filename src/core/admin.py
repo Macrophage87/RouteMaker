@@ -56,6 +56,7 @@ from .models import (
     schedule_instance_admin_removal,
 )
 from .revocation import revoke_guild
+from .widgets import SelfHostedOpenLayersWidget
 
 
 class RouteMakerAdminSite(admin.AdminSite):
@@ -350,7 +351,20 @@ class InstanceAdminOnly(AuditedAdmin):
 @admin.register(Jurisdiction, site=site)
 class JurisdictionAdmin(InstanceAdminOnly, GISModelAdmin):
     """Deployment-wide content: polygons are global and editing one changes what
-    every guild sees, which is why this is instance-admin territory."""
+    every guild sees, which is why this is instance-admin territory.
+
+    `GISModelAdmin` is what makes the polygon editable by drawing rather than by
+    typing WKT into a textarea, which is the whole reason PLAN.md:52 chose
+    Django here - "jurisdiction overrides, closures, and way-level corrections
+    are edited by drawing on a map in the admin rather than in a second bespoke
+    editor". It stays. What does not stay is its default widget: `gis_widget`
+    defaults to `OSMWidget`, whose media loads OpenLayers from jsdelivr into an
+    instance admin's authenticated session and whose template emits
+    `ol.source.OSM()` - the public tile servers PLAN.md:15 rules out. See
+    core/widgets.py.
+    """
+
+    gis_widget = SelfHostedOpenLayersWidget
 
     list_display = ("name", "layer", "state", "is_federal_enclave")
     list_filter = ("layer", "state", "is_federal_enclave")
@@ -565,6 +579,12 @@ class BorderCrossingAdmin(AuditedAdmin, GISModelAdmin):
     """Derived state, displayed only. The pipeline owns these rows and a rebuild
     reassigns their ids; editing one by hand would be overwritten next Tuesday
     and would desynchronise the graph from the crossings table in the meantime."""
+
+    # Read-only pages still build the form, and a form still carries its
+    # widget's media, so this page loaded the CDN script too. "No CDN reference
+    # anywhere in the rendered admin" means every GIS surface, not just the one
+    # the finding named.
+    gis_widget = SelfHostedOpenLayersWidget
 
     list_display = ("node_id", "osm_way_id", "state_a", "state_b")
     search_fields = ("osm_way_id",)

@@ -95,6 +95,27 @@ AUTHENTICATION_BACKENDS = ["core.auth_backend.DiscordStandingBackend"]
 # protects it - the disabled login, derived staff and per-object checks are.
 ADMIN_PATH = os.environ.get("DJANGO_ADMIN_PATH", "internal-8f3a/")
 
+# The XYZ tile template the admin's map widget draws under a jurisdiction
+# polygon. Optional, and deliberately empty by default.
+#
+# PLAN.md:15 ends "Do not use the public OpenStreetMap tile servers", and
+# PLAN.md:52 names the GeoDjango map widget as one "configured against the
+# self-hosted basemap rather than its default, which would otherwise call the
+# public OpenStreetMap tile servers this plan rules out". The self-hosted
+# basemap does not exist yet - the PMTiles extract and the renderer are unbuilt
+# - so there is nothing honest to default this to. A default that named any
+# public server would be the finding this setting exists to close, and one that
+# named a path this deployment does not serve would be a broken map plus a 404
+# per tile. Empty means the widget draws the geometry over a plain background
+# and issues no tile request at all, which is enough to edit a polygon; see
+# core/widgets.py.
+#
+# Nothing in the compose stack delivers it, on purpose: a deployment that does
+# have tiles, whether its own renderer or an operator-chosen server, sets it in
+# its own environment file. Recorded in tests/test_compose.py's allow-list and
+# commented out in .env.example.
+ADMIN_BASEMAP_TILE_URL = os.environ.get("ADMIN_BASEMAP_TILE_URL", "").strip()
+
 # Everything with state in it lives on the separate data volume, so nothing
 # durable sits on the root volume and the code directory holds no data. The
 # scheduled tasks resolve their paths from here rather than from their own

@@ -351,6 +351,21 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     "SOURCE_EXTRACT_MAX_AGE_DAYS": ("rebuild",),
     "SOURCE_EXTRACT_FORCE_REFRESH": ("rebuild",),
     "COVERAGE_POLYGON": ("rebuild",),
+    # The admin map widget's optional tile template. Read by the api - the admin
+    # is the only surface that renders a map - and delivered by nothing, because
+    # phase 1 has nothing to deliver: the PMTiles extract and the renderer are
+    # unbuilt, so there is no self-hosted basemap to point it at and no public
+    # one it is allowed to point at (PLAN:15). Unset, the widget draws the
+    # polygon over a plain background and requests no tiles, which is the
+    # shipped configuration rather than a degraded one.
+    #
+    # It is parked here rather than declared on the api because a declared
+    # `${ADMIN_BASEMAP_TILE_URL}` with no compose-side default would make
+    # .env.example owe it a value, and the value it owes does not exist yet.
+    # When the renderer lands, this entry comes out and the api declares it with
+    # an empty default - and until then a deployment that has its own tiles
+    # reaches the container the same way any other unlisted variable does.
+    "ADMIN_BASEMAP_TILE_URL": None,
 }
 
 

@@ -1,0 +1,53 @@
+{% comment %}
+The admin map widget's markup. See core/widgets.py for why this exists.
+
+Written out rather than extending "gis/openlayers.html". That template's
+`base_layer` block is NASA Worldview over HTTPS and "gis/openlayers-osm.html"
+overrides it with the public OpenStreetMap tile source; both are a request off
+this deployment's origin, and a subclass that only overrode the block would
+still inherit whichever one a future Django changed it to. A file under this
+app's own name also leaves Django's two templates untouched, so nothing else
+that renders a geometry field silently changes shape.
+
+Two branches below, and the empty one is the shipped configuration: phase 1 has
+no basemap to point at, so the polygon is drawn over a plain background and the
+page issues no tile request at all. The draw, modify and clear controls are
+OpenLayers' own and work either way.
+
+ADMIN_BASEMAP_TILE_URL set
+    One XYZ layer, from that template and nothing else.
+
+ADMIN_BASEMAP_TILE_URL empty
+    An empty vector layer rather than no layer at all. Handed a falsy
+    base_layer, Django's own MapWidget builds one from the public
+    OpenStreetMap tile source - the single thing PLAN.md:15 rules out - so the
+    layer has to be present and harmless rather than absent.
+
+Every note about this file lives in this block, which the template engine drops
+rather than renders. A JavaScript comment would put these names into the served
+body, where tests/test_admin_map_widget.py asserts that none of them appears.
+{% endcomment %}{% load i18n l10n %}
+
+<div id="{{ id }}_div_map" class="dj_map_wrapper">
+    <div id="{{ id }}_map" class="dj_map"></div>
+    {% if not disabled %}<span class="clear_features"><a href="">{% translate "Delete all Features" %}</a></span>{% endif %}
+    {% if display_raw %}<p>{% translate "Debugging window (serialized value)" %}</p>{% endif %}
+    <textarea id="{{ id }}" class="vSerializedField required" cols="150" rows="10" name="{{ name }}"
+              {% if not display_raw %} hidden{% endif %}>{{ serialized }}</textarea>
+    <script>
+        {% if basemap_tile_url %}var base_layer = new ol.layer.Tile({
+            source: new ol.source.XYZ({url: {{ basemap_tile_url_js }}})
+        });
+        {% else %}var base_layer = new ol.layer.Vector({source: new ol.source.Vector()});
+        {% endif %}
+        var options = {
+            base_layer: base_layer,
+            geom_name: '{{ geom_type }}',
+            id: '{{ id }}',
+            map_id: '{{ id }}_map',
+            map_srid: {{ map_srid|unlocalize }},
+            name: '{{ name }}'
+        };
+        var {{ module }} = new MapWidget(options);
+    </script>
+</div>
