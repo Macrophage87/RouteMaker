@@ -15,7 +15,7 @@ heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
 no-trail (mass ride) variant drops, and `resolve_bridge_bicycle_legality`
 decides what `rm:bridge_bicycle` carries into `graph.lua` on every variant.
 Memorial Bridge is one authority end to end; the "14th Street Bridge" is
-**six** parallel structures with different answers (three highway spans, the
+**five** parallel structures with different answers (three highway spans, the
 Long Bridge carrying rail, and the Charles R. Fenwick Bridge carrying Metro's
 Yellow Line); the "11th Street Bridge" is **three** (one local span that
 carries bikes and two I-695 freeway spans that do not); and the Wilson Bridge
