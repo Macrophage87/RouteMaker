@@ -36,11 +36,14 @@ class DiscordStandingBackend:
         attach_standing(user)
         return user
 
-    # Models only an instance admin may write. A guild admin may reach the admin
-    # and see their own guild's rows, but the configured guild list is the
-    # deployment's admission control: adding a row self-onboards a server, and
-    # editing guild_id is an unaudited remap of the snowflake that every standing
-    # check matches against.
+    # Models a guild admin holds no model-level write permission on. A guild
+    # admin may reach the admin and see their own guild's rows, and
+    # ConfiguredGuildAdmin grants them an object-level change of their own
+    # guild's name and contact address (PLAN.md:206) - but never the model
+    # permission, because the configured guild list is the deployment's
+    # admission control: adding a row self-onboards a server, and editing
+    # guild_id is an unaudited remap of the snowflake that every standing check
+    # matches against.
     INSTANCE_ADMIN_ONLY_MODELS = frozenset(
         {
             "configuredguild",
