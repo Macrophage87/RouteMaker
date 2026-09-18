@@ -29,6 +29,7 @@ from pathlib import Path
 
 from procrastinate import RetryStrategy
 from procrastinate.contrib.django import app
+from procrastinate.exceptions import JobAborted
 
 # Cron schedules. The rebuild runs in a low-traffic window because it takes half
 # the host's cores and widens the latency alerts while it does.
@@ -124,14 +125,27 @@ ROUTER_RESTART_NOTICE = (
 )
 
 
-class RebuildAlreadyRunning(RuntimeError):
+class RebuildAlreadyRunning(JobAborted):
     """Another `weekly_rebuild` job is already `doing`, so this one will not start.
 
-    Not retried, and it is a subclass of nothing that is: the reason this job
-    cannot run is that another one is running, and by the time a retry came
-    round the thing to do would be to look at that one rather than to start a
-    third. `RebuildAbandoned` carries the same meaning for every other terminal
-    cause; this is a class of its own only so the message reads as what it is.
+    Not retried: the reason this job cannot run is that another one is running,
+    and by the time a retry came round the thing to do would be to look at that
+    one rather than to start a third. `RebuildAbandoned` carries the same
+    meaning for every other terminal cause; this is a class of its own so that
+    the message reads as what it is - and so that the job lands in a status
+    that reads as what it is.
+
+    That is what `JobAborted` buys, and it is not cosmetic. A task body that
+    raises anything else is finished `failed` by the worker
+    (`procrastinate.worker.Worker._process_job`), and `failed` is what both
+    alert surfaces count: a Tuesday tick that correctly declined to start a
+    second rebuild left a failed job on the operations page and a non-zero
+    `check_operations` for the thirty days `prune_job_rows` keeps it, with
+    nothing an operator could do to clear it and nothing wrong. `JobAborted`
+    finishes the job `aborted` instead - a terminal status, pruned on the same
+    schedule, counted by neither alert - and the worker deliberately computes no
+    retry decision for it, so "not retried" is the class's own doing rather than
+    a line in the retry strategy.
     """
 
 
@@ -255,6 +269,13 @@ def weekly_rebuild(context=None, *, timestamp: int) -> None:
             # Only a timeout that names no stage reaches this, which `run_rebuild`
             # does not raise today. Kept so that the class is terminal however it
             # arrives rather than retried by default.
+            #
+            # It is therefore unreachable defensive code, deliberately, and it is
+            # written down here because the suite cannot say so: no test can
+            # construct the call that lands in this arm, so deleting the arm
+            # breaks nothing and a mutation that removes it cannot be killed.
+            # The line it costs is the price of `RebuildTimedOut` staying
+            # terminal if `run_rebuild` ever raises one without a stage.
             raise RebuildAbandoned(str(error)) from error
         finally:
             # On every path, not only the successful one. A rebuild that died
@@ -410,8 +431,19 @@ def nightly_backup(timestamp: int) -> None:
     The pruning rides here rather than on a schedule of its own for the same
     reason the session sweep rides with the membership sweep: it is the same
     shape of work, it is cheap, and a second schedule is a second thing to
-    notice had stopped. It runs after the dump has been written and verified, so
-    a night on which the backup fails keeps every old dump it has.
+    notice had stopped.
+
+    It runs in a `finally`, which is the difference between "rides here" and
+    "rides on the dump succeeding". Every prune was downstream of `pg_dump`, so
+    a dump that failed - a lock, a full volume, the thirty-minute timeout -
+    stopped the run-row and job-row pruning as well, and those two are what
+    keep `procrastinate_jobs` and `scheduled_run` from growing without bound.
+    The one failure mode that fills a volume therefore also switched off the
+    mechanism that reclaims space on it, and it stayed off for as many nights
+    as the dump kept failing. Only the *dump* retention is still conditional,
+    and only in the direction that is safe: `prune_backups` runs on the failure
+    path too, but with nothing new written it has one fewer dump to count, so a
+    failed night keeps the oldest dump it would otherwise have dropped.
     """
     from django.conf import settings
 
@@ -419,11 +451,19 @@ def nightly_backup(timestamp: int) -> None:
     from pipeline import retention
 
     with record("nightly_backup") as run:
-        destination = perform_backup()
-        pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
+        try:
+            destination = perform_backup()
+        finally:
+            # Counted into locals rather than into the f-string below, because
+            # the f-string is on the success path and these have to run on
+            # both. `record` re-raises whatever `perform_backup` raised, so a
+            # failed night still fails - it just fails having pruned.
+            pruned_dumps = retention.prune_backups(settings.BACKUP_DIR, keep=BACKUP_KEEP)
+            pruned_runs = prune_run_rows()
+            pruned_jobs = prune_job_rows()
         run.detail = (
             f"{destination}; pruned {len(pruned_dumps)} old dumps, "
-            f"{prune_run_rows()} run rows, {prune_job_rows()} finished job rows"
+            f"{pruned_runs} run rows, {pruned_jobs} finished job rows"
         )
         run.save(update_fields=["detail"])
 
