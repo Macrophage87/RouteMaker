@@ -30,6 +30,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import TypeVar
 
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
@@ -52,6 +53,9 @@ from . import (
 from .rebuild import RebuildTimedOut, Stage
 
 logger = logging.getLogger(__name__)
+
+# What one of the two validation reads answers with; see `_read_back`.
+_Read = TypeVar("_Read")
 
 LUA_LOADED_PATTERN = re.compile(r"Using LUA script:\s*(\S+)")
 
@@ -116,6 +120,19 @@ LIT_BY_OSM_VALUE = {
 # separated cycle lane; nothing but this project's transform produces that on a
 # plain residential street.
 DERIVED_SENTINEL_EXPECTED = "separated"
+
+# The way id the tier-1 sentinel edge lies on, when a deployment knows it. The
+# read is narrowed to that way, so that a neighbouring way's own OSM-tagged
+# separated lane cannot answer for a transform that derived nothing.
+#
+# None here, and that is not a placeholder for a value this repository could
+# supply: `REBUILD_SENTINEL_TIER1_EDGE` is a pair of coordinates picked off a
+# map and never confirmed against a real extract, so no id can honestly be
+# written down beside it until a rebuild has run and named the way it matched.
+# With none, `tiles.sample_cycle_lane` still refuses a trace that spans more
+# than one way, which is the part of the defect that does not need the id.
+# Recorded in section 7 as the narrower check a first real rebuild unlocks.
+DERIVED_SENTINEL_WAY_ID: int | None = None
 
 # A way is tagged with an authority only if at least this share of its length
 # lies inside it; the dominant authority on each layer is always kept. Below a
@@ -1083,12 +1100,45 @@ def authorities_for(assignments, minimum_fraction: float) -> set[str]:
     return chosen
 
 
+def _read_back(sample: Callable[[], _Read]) -> _Read:
+    """Run one of the validation reads, with a refusal by the service told from
+    a failure of the command.
+
+    `valhalla_service` in one-shot mode answers a request it cannot satisfy by
+    writing a `valhalla_exception_t` body to stdout and exiting 1 - "No suitable
+    edges near location" is the one this pipeline will meet, because both
+    sentinels are coordinates nobody has confirmed against a real extract. The
+    exit status is all `_run_command` sees, so that arrived as `CommandFailed`,
+    which is deliberately retryable, and the weekly job answered a sentinel that
+    had moved by rebuilding every tile five times over.
+
+    A refusal carrying an error code is terminal: the next attempt sends the
+    same shape to the same graph. Everything else keeps the class it had - a
+    mirror that dropped, a binary killed - because that is the failure a retry
+    does fix.
+    """
+    try:
+        return sample()
+    except CommandFailed as failure:
+        refusal = tiles.valhalla_exception(failure.output.stdout)
+        if refusal is None:
+            raise
+        raise ValidationFailed(
+            "valhalla_service refused a validation read of the built tiles: "
+            f"error_code {refusal['error_code']}: {refusal.get('error', '(no message)')}. "
+            "A refused request is answered no differently by a rebuilt graph, so this "
+            "is not retried; the sentinel edges in settings are what to check first."
+        ) from failure
+
+
 def _least_grade_across_variants(context: RebuildContext, run) -> float:
     """Every variant's build must have baked elevation, so the check is the
     smallest grade any of them reports on the known steep edge."""
     steep = _setting("REBUILD_SENTINEL_STEEP_EDGE")
     grades = [
-        tiles.sample_grade(run, context.build_configs[variant], steep)
+        _read_back(
+            functools.partial(tiles.sample_grade, run, context.build_configs[variant], steep)
+        )
         for variant in variants.Variant
         if variant in context.build_configs
     ]
@@ -1101,7 +1151,15 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
     config_path = context.build_configs.get(variants.Variant.STANDARD)
     if config_path is None:
         raise ValidationFailed("the standard variant has no build config to read back")
-    return tiles.sample_cycle_lane(run, config_path, _setting("REBUILD_SENTINEL_TIER1_EDGE"))
+    return _read_back(
+        functools.partial(
+            tiles.sample_cycle_lane,
+            run,
+            config_path,
+            _setting("REBUILD_SENTINEL_TIER1_EDGE"),
+            DERIVED_SENTINEL_WAY_ID,
+        )
+    )
 
 
 def _run_command(
