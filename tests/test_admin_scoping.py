@@ -1681,6 +1681,42 @@ class TestTheAdminLogoutEndsTheApplicationSession:
         assert response.status_code in (200, 302)
         assert not Session.objects.exists()
 
+    def test_a_get_signs_nobody_out(self, as_instance_admin) -> None:
+        """Django 5's admin logout is `LogoutView`, which is POST-only and
+        answers a GET with 405. The override ran before that dispatch and
+        deleted the `core.Session` row first, so the 405 arrived after the row
+        was already gone: an `<img src="<admin>/logout/">` on any page anywhere
+        signed an admin out, with no CSRF token, no audit row and nothing
+        checking the origin. The row must survive the refusal, and the admin
+        must still be signed in afterwards.
+        """
+        from core.models import Session
+
+        assert Session.objects.count() == 1
+        response = as_instance_admin.get(f"/{settings.ADMIN_PATH}logout/")
+        assert response.status_code == 405, (
+            "Django's own POST-only dispatch is the gate; a different status means "
+            "something answered ahead of it"
+        )
+        assert Session.objects.count() == 1, "a refused request signed them out anyway"
+        assert as_instance_admin.get(f"/{settings.ADMIN_PATH}").status_code == 200
+
+    def test_a_cross_origin_get_signs_nobody_out_either(self, as_instance_admin) -> None:
+        """The same request as it actually arrives from an attacker's page: a
+        third-party Referer on a tag the browser sends with cookies and without
+        a token. Nothing here is allowed to depend on the Referer - the point is
+        that the shape a CSRF would take gets the same 405 and leaves the row.
+        """
+        from core.models import Session
+
+        response = as_instance_admin.get(
+            f"/{settings.ADMIN_PATH}logout/",
+            HTTP_REFERER="https://evil.example/post",
+        )
+        assert response.status_code == 405
+        assert Session.objects.count() == 1
+        assert as_instance_admin.get(f"/{settings.ADMIN_PATH}").status_code == 200
+
 
 @db
 class TestTheCrossingsPageBeforeTheFirstRebuild:
