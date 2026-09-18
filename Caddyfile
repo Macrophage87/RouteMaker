@@ -12,6 +12,24 @@
 # certificate, and `:80` serves a local stack over plain HTTP. compose passes
 # CADDY_SITE_ADDRESS to this service and nothing else; it is not a secret.
 {$CADDY_SITE_ADDRESS} {
+	# HSTS, on every response this site makes - the static files as much as the
+	# proxied ones, which is why it is here and not inside a `handle`.
+	#
+	# It costs nothing under the `:80` posture and is not wrong there: RFC 6797
+	# section 8.1 says a user agent MUST ignore this header when the response
+	# did not arrive over a secure transport, so a local plain-HTTP stack
+	# neither pins anything nor breaks. Under the hostname posture it is what
+	# stops the one request that matters - a browser that has been here before
+	# typing the bare name, or following an `http://` link - from leaving on
+	# the wire before Caddy's redirect answers it.
+	#
+	# A year, and deliberately without `includeSubDomains` or `preload`. Both
+	# commit names this deployment does not serve: `includeSubDomains` makes
+	# every sibling under the same name HTTPS-only for a year, and `preload`
+	# is a submission to a browser-shipped list that is slow to leave. Neither
+	# is a decision this file can make for whoever runs it.
+	header Strict-Transport-Security "max-age=31536000"
+
 	# Django's collected assets, from the volume `collectstatic` writes and this
 	# service mounts read-only (${DATA_ROOT}/static -> /srv/static). STATIC_URL
 	# is "static/", so /static/admin/css/base.css has to resolve to

@@ -56,11 +56,36 @@ fi
 # Sync workers, which is the right class here and not a default left alone:
 # PLAN.md:64 - "Views are synchronous, since the request path is a single
 # routing call plus database queries".
+#
+# The access-log format is set rather than defaulted, and what it leaves out is
+# the point. gunicorn's default is
+#
+#     %(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s"
+#
+# and two of those fields carry a Discord id into the container log - which
+# compose's json-file driver keeps on disk under /var/lib/docker/containers,
+# and which is read by whoever can read the host rather than by whoever the
+# admin lets in.
+#
+#   %(r)s is the request line, "GET /internal-8f3a/core/user/?q=1234... HTTP/1.1".
+#         The admin's user and instance-admin listings search by Discord id, so
+#         every such search writes the id it searched for.
+#   %(f)s is the Referer, and settings.SECURE_REFERRER_POLICY is "same-origin",
+#         so the browser sends the full previous URL - query string included -
+#         on every link followed away from that search.
+#
+# %(U)s is the path with no query string, which is the substitution that fixes
+# it, and %(m)s the method: together they are the half of %(r)s worth keeping.
+# %(h)s is dropped as well, for a different reason - behind Caddy it is the
+# proxy's address on the compose network, the same value on every line.
+# Duration (%(D)s, microseconds) is in because a slow request is the thing
+# these logs are actually read for.
 exec gunicorn config.wsgi:application \
     --bind "${GUNICORN_BIND:-0.0.0.0:8000}" \
     --workers "${WEB_CONCURRENCY}" \
     --timeout "${GUNICORN_TIMEOUT:-60}" \
     --graceful-timeout "${GUNICORN_GRACEFUL_TIMEOUT:-30}" \
     --access-logfile - \
+    --access-logformat '%(t)s "%(m)s %(U)s" %(s)s %(b)s %(D)s "%(a)s"' \
     --error-logfile - \
     --capture-output

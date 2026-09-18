@@ -712,6 +712,29 @@ this pair going missing would be a silent `request.is_secure()` of false, and
 Caddy can reach the API, which is exactly what the no-published-ports rule
 enforces.
 
+It sets one header on everything it serves:
+`Strict-Transport-Security: max-age=31536000`. Under the hostname posture Caddy
+already redirects `http` to `https`, and HSTS is what removes the plaintext
+round trip that redirect *is* — for a browser that has been here before and
+whose user types the bare name or follows an old `http://` link. It is at the
+site level, so it covers the static responses as much as the proxied ones, and
+it is harmless under the `:80` posture: RFC 6797 section 8.1 requires a browser
+to ignore this header on a response that did not arrive over a secure
+transport, so a local plain-HTTP stack neither pins anything nor breaks.
+
+Deliberately without `includeSubDomains` and without `preload`. The first makes
+every sibling name under the same domain HTTPS-only for a year; the second is a
+submission to a list browsers ship and which is slow to leave. Neither is a
+commitment this repository can make on behalf of whoever runs it — add them in
+your own deployment if the domain is yours alone.
+
+**This one was executed.** Caddy 2.8.4 — the minor the `caddy:2.8-alpine` image
+tracks — was run against this file on both postures: `caddy validate` accepts
+it, and a live server started from it returned
+`Strict-Transport-Security: max-age=31536000` on a static file and on a proxied
+path (a 502, with the api absent, which is the point: the header is the site's
+and not the upstream's). Everything else below is still read as text.
+
 The file routes two things and no more:
 
 - `handle_path /static/*` → `file_server` rooted at `/srv/static`, matching

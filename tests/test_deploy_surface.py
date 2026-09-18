@@ -287,3 +287,59 @@ def test_the_caddyfile_names_no_other_service_at_all() -> None:
     body = "\n".join(line for line in CADDY_TEXT.splitlines() if not line.strip().startswith("#"))
     named = sorted(name for name in set(SERVICES) - {"caddy", "api"} if name in body)
     assert not named, f"the Caddyfile names internal services: {named}"
+
+
+# --- 5. HSTS -----------------------------------------------------------------
+
+
+def test_the_edge_sets_hsts_on_every_response() -> None:
+    """The one header a TLS-terminating edge owes a browser that has been here
+    before.
+
+    Neither `settings.py` nor this file had it. Under the shipped hostname
+    posture the site is HTTPS-only - Caddy redirects `http` to `https` for a
+    named site - and without HSTS the redirect is still a plaintext round trip
+    for anyone who types the bare name or follows an old `http://` link.
+
+    At the site level rather than inside a `handle`, so it is on the static
+    responses as much as the proxied ones. It is harmless under the `:80`
+    posture: RFC 6797 section 8.1 requires a user agent to ignore this header
+    when the response did not arrive over a secure transport.
+    """
+    headers = caddy_directives("header")
+    hsts = [value for value in headers if "Strict-Transport-Security" in value]
+    assert hsts, f"the Caddyfile sets no Strict-Transport-Security: {headers}"
+    assert len(hsts) == 1, f"more than one HSTS header: {hsts}"
+    value = hsts[0]
+    age = re.search(r"max-age=(\d+)", value)
+    assert age, f"the HSTS header declares no max-age: {value!r}"
+    assert int(age.group(1)) >= 31536000, (
+        f"the HSTS max-age is {age.group(1)}s; a year is the figure worth pinning a "
+        "browser to, and anything much shorter is a header without an effect"
+    )
+    # Both of these commit names this deployment does not serve, and `preload`
+    # is a submission to a list that is slow to leave. Neither is a decision
+    # this file can make for whoever runs it.
+    for opt in ("includeSubDomains", "preload"):
+        assert opt.lower() not in value.lower(), (
+            f"the HSTS header carries {opt}, which binds more than the one name this "
+            f"stack serves: {value!r}"
+        )
+
+
+def test_the_hsts_header_is_not_scoped_to_one_route() -> None:
+    """Inside a `handle` it would cover that route's responses and no others -
+    including, on the static route, none of the proxied ones. The check is
+    positional: the directive sits at the site's own indentation level."""
+    lines = CADDY_TEXT.splitlines()
+    index = next(
+        i for i, line in enumerate(lines) if line.strip().startswith("header Strict-Transport")
+    )
+    depth = 0
+    for line in lines[:index]:
+        stripped = line.split("#", 1)[0]
+        depth += stripped.count("{") - stripped.count("}")
+    assert depth == 1, (
+        f"the HSTS header is {depth} blocks deep; at the site level it is one, and "
+        "anywhere deeper it covers a subset of the responses"
+    )
