@@ -39,6 +39,28 @@ def empty_job_tables(transactional_db):
     yield
 
 
+def deployment_up_since(ago: timedelta, now=None):
+    """A `ScheduledRun` row old enough that every alert window has passed since.
+
+    A task that has never succeeded is measured from this deployment's *first*
+    run row rather than from now (`core.runs.stale_task_details`), so a test
+    about a task that is genuinely late needs the deployment to have a history
+    at all. Without one it is describing a stack that came up a moment ago,
+    where nothing is late yet - which is the case
+    `test_a_fresh_deployment_has_nothing_to_alert_about` covers.
+
+    The row is a *failed* `weekly_rebuild`, so it is a first moment and nothing
+    else: it makes no task look successful.
+    """
+    from core.models import ScheduledRun
+
+    now = now or timezone.now()
+    started = now - ago
+    return ScheduledRun.objects.create(
+        task="weekly_rebuild", started_at=started, finished_at=started, succeeded=False
+    )
+
+
 def sign_in(client, user):
     """A session the epoch middleware will accept, as the Discord callback makes
     one. Without the row, the middleware logs the request straight back out and
@@ -142,6 +164,7 @@ def test_an_instance_admin_sees_the_stale_tasks_and_the_failed_jobs(client) -> N
     from core.models import ScheduledRun, User
 
     now = timezone.now()
+    deployment_up_since(timedelta(days=90), now)
     # Everything but the backup has succeeded recently, so the page has exactly
     # one stale task to name rather than the whole list.
     for task in ("weekly_rebuild", "membership_sweep", "degraded_guild_sweep", "worker_heartbeat"):
@@ -203,6 +226,7 @@ def test_the_page_marks_the_stale_task_and_only_the_stale_task(client) -> None:
     from core.runs import STALE_AFTER
 
     now = timezone.now()
+    deployment_up_since(timedelta(days=90), now)
     for task in STALE_AFTER:
         if task != "nightly_backup":
             ScheduledRun.objects.create(
@@ -259,6 +283,7 @@ def test_check_operations_exits_non_zero_when_something_is_stale() -> None:
 
     from django.core.management import call_command
 
+    deployment_up_since(timedelta(days=90))
     out = StringIO()
     with pytest.raises(SystemExit) as exit_code:
         call_command("check_operations", stdout=out)
@@ -368,6 +393,94 @@ def test_check_operations_ignores_a_job_that_merely_finished() -> None:
     with pytest.raises(SystemExit) as exit_code:
         call_command("check_operations", stdout=out)
     assert exit_code.value.code == 0
+
+
+# --- A deployment's first minutes ------------------------------------------------------
+
+
+@db
+def test_a_fresh_deployment_has_nothing_to_alert_about() -> None:
+    """The cron entry docs/OPERATIONS.md gives is `check_operations` every ten
+    minutes, and on a host that had just run `docker compose up -d` it exited 1
+    with all five tasks named. Nothing was wrong: `weekly_rebuild` had not
+    missed eight days, it had existed for a minute. "Has never run" and "has not
+    run for long enough to matter" were the same missing row.
+
+    The first alert an operator ever sees being a false one, on the morning of
+    the install, from the entry they have just added, is how a monitor gets
+    muted - which costs the alert that fires six weeks later for a real reason.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.runs import stale_task_details, stale_tasks
+
+    assert stale_tasks() == [], f"a database with no runs at all reports {stale_task_details()}"
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    assert exit_code.value.code == 0, (
+        f"check_operations pages on a deployment that has just started: {out.getvalue()}"
+    )
+
+
+@db
+def test_a_task_that_has_never_run_is_stale_once_its_window_has_passed() -> None:
+    """The other half, and the one the change must not cost: a task that is
+    never scheduled at all is still an alert. Its clock starts at the
+    deployment's first run row - the only evidence in the database of when this
+    stack started running - so the rebuild is named eight days later and the
+    heartbeat ten minutes later, which is the same lateness every other silent
+    failure here gets.
+    """
+    from core.runs import STALE_AFTER, stale_task_details, stale_tasks
+
+    now = timezone.now()
+    window = STALE_AFTER["weekly_rebuild"]
+    first = deployment_up_since(timedelta(seconds=window - 60), now)
+
+    assert "weekly_rebuild" not in stale_tasks(now), (
+        "a minute inside the window measured from the deployment's first row"
+    )
+    assert "nightly_backup" in stale_tasks(now), (
+        "the backup's 26-hour window passed days ago on this deployment and it has never succeeded"
+    )
+
+    first.started_at = now - timedelta(seconds=window + 60)
+    first.save(update_fields=["started_at"])
+    stale = {entry["task"]: entry for entry in stale_task_details(now)}
+    assert "weekly_rebuild" in stale, "a minute past it, and no success anywhere, is stale"
+    assert stale["weekly_rebuild"]["last_success_at"] is None
+    assert stale["weekly_rebuild"]["age_s"] is None, (
+        "there is no age to report for a task that has never succeeded; the surfaces print "
+        "'never' from this"
+    )
+
+
+@db
+def test_the_first_row_is_the_deployments_and_not_the_tasks_own() -> None:
+    """One clock for every task that has never succeeded, and it is the oldest
+    row in the table whatever wrote it. A per-task first row would be no clock
+    at all - a task that has never run has no row of its own, which is the
+    whole condition being measured.
+    """
+    from core.models import ScheduledRun
+    from core.runs import first_run_at, stale_tasks
+
+    now = timezone.now()
+    assert first_run_at() is None
+
+    # One task succeeding is what starts every other task's window.
+    started = now - timedelta(hours=27)
+    ScheduledRun.objects.create(
+        task="worker_heartbeat", started_at=started, finished_at=started, succeeded=True
+    )
+    assert first_run_at() == started
+    stale = stale_tasks(now)
+    assert "nightly_backup" in stale, "26 hours have passed since this deployment's first row"
+    assert "weekly_rebuild" not in stale, "eight days have not"
 
 
 # --- Pruning the history ---------------------------------------------------------------

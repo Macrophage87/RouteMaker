@@ -94,6 +94,25 @@ def last_success(task: str):
     return ScheduledRun.objects.filter(task=task, succeeded=True).order_by("-started_at").first()
 
 
+def first_run_at():
+    """When this deployment first recorded a scheduled run, or None.
+
+    The oldest `ScheduledRun` row of any task and any outcome, which is the
+    closest thing the database has to "when did this deployment start
+    running". It is what a task that has never succeeded is measured against,
+    for the reason in `stale_task_details`.
+
+    It is a proxy and it is the honest one available: the row is written by the
+    first periodic task to fire, so on a stack that came up a minute ago it is
+    a minute old, and on one that has been running for a year it is a year old
+    however many rows have since been pruned - `prune_run_rows` keeps the
+    newest row per task whatever its age, so this cannot be pruned down to
+    "nothing has ever run" while any task has a history.
+    """
+    row = ScheduledRun.objects.order_by("started_at").first()
+    return None if row is None else row.started_at
+
+
 def stale_tasks(now=None) -> list[str]:
     """Tasks with no success inside their window. What the alert reads."""
     return [entry["task"] for entry in stale_task_details(now)]
@@ -105,21 +124,50 @@ def stale_task_details(now=None) -> list[dict]:
     One predicate, used by both, because two copies of "is this task stale"
     drift: an operations page that disagrees with the alert about which task is
     broken is worse than not having the page.
+
+    Two cases, and the second is the one that used to be wrong:
+
+    - A task that has succeeded is stale once that success is older than its
+      window. Unchanged, and it is the whole of the steady-state rule.
+    - A task that has never succeeded is stale once its window has elapsed
+      *since this deployment's first run row* - not immediately. "Never" and
+      "not yet" are the same absence of a row and they are not the same
+      condition: every window on this list is measured from a moment, and on a
+      minute-old deployment no moment has passed. The old predicate called all
+      five stale from the first `up`, so `check_operations` - the documented
+      cron entry - exited 1 on a deployment where nothing at all was wrong, and
+      a monitor that pages on the first morning of every install is a monitor
+      that gets muted. With no rows at all the deployment has no first moment
+      either, so nothing is stale; the first task to run writes the row that
+      starts every other task's clock.
+
+    What this does not do is excuse a task that is never registered at all. The
+    windows keep running from that first row, so a task missing from the
+    worker's schedule is stale as soon as its own window has passed - eight
+    days for the rebuild, ten minutes for the heartbeat - which is the same
+    lateness any other silent failure gets.
     """
     now = now or timezone.now()
+    started = first_run_at()
     stale = []
     for task, window in STALE_AFTER.items():
         run = last_success(task)
-        age = None if run is None else (now - run.started_at).total_seconds()
-        if age is None or age >= window:
-            stale.append(
-                {
-                    "task": task,
-                    "window_s": window,
-                    "last_success_at": None if run is None else run.started_at,
-                    "age_s": age,
-                }
-            )
+        if run is not None:
+            age = (now - run.started_at).total_seconds()
+            if age < window:
+                continue
+        else:
+            age = None
+            if started is None or (now - started).total_seconds() < window:
+                continue
+        stale.append(
+            {
+                "task": task,
+                "window_s": window,
+                "last_success_at": None if run is None else run.started_at,
+                "age_s": age,
+            }
+        )
     return stale
 
 

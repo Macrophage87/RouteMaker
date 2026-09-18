@@ -23,6 +23,7 @@ development environment does not have.
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -36,11 +37,14 @@ ENV_EXAMPLE = REPO / ".env.example"
 # The services that import Django settings and open a database connection.
 DJANGO_SERVICES = ("api", "worker", "migrate", "rebuild")
 
-# The services with no source in this repository, which therefore have no image
-# anywhere and must not be in a default `up`. docs/DEPLOYMENT.md and
-# handoff.md section 7 carry the same two names.
+# The services a default `up` must not start, for two different reasons.
+# `bot` and `renderer` have no source in this repository and therefore no image
+# anywhere; `photon` has an image and a pin, and what that image does on a
+# fresh host is the reason it is here (see the photon tests below).
+# docs/DEPLOYMENT.md and handoff.md section 7 carry the same three names.
 UNBUILT_PROFILE = "unbuilt"
-UNBUILT_SERVICES = {"bot", "renderer"}
+UNBUILT_SERVICES = {"bot", "renderer", "photon"}
+NO_IMAGE_ANYWHERE = {"bot", "renderer"}
 
 # Scheme to the port a browser uses when the URL names none. A redirect URI is
 # written without a port on a real deployment, and "no port" is a port.
@@ -146,7 +150,7 @@ def test_the_default_up_does_not_reach_for_an_image_that_exists_nowhere(rendered
     docs/DEPLOYMENT.md tells an operator to run - stopped at a pull that cannot
     succeed. Behind a profile they are skipped and the rest of the stack starts.
     """
-    present = UNBUILT_SERVICES & set(rendered["services"])
+    present = NO_IMAGE_ANYWHERE & set(rendered["services"])
     assert not present, (
         f"the default configuration still includes {sorted(present)}, which have no image; "
         f"they belong behind `profiles: [{UNBUILT_PROFILE!r}]`"
@@ -169,6 +173,135 @@ def test_the_profile_is_how_those_services_come_back(env_file) -> None:
         )
 
 
+# --- Photon: what the pinned image does on a fresh host -----------------------
+
+
+def test_the_default_up_does_not_start_the_planet_downloader(rendered) -> None:
+    """The first `up` on every new deployment, which is the whole of this.
+
+    `rtuszik/photon-docker:2.4.0` defaults INITIAL_DOWNLOAD to True
+    (`src/utils/config.py:23` in that tag) and this stack sets no REGION, so the
+    entrypoint's first act is to fetch the whole-planet index: ~61 GB
+    compressed, ~104 GB free needed to unpack. It kept its data at
+    `/photon/data` (`config.py:36`) while compose bound `${DATA_ROOT}/photon` at
+    the 1.x `/photon/photon_data`, so the mount was inert and the download would
+    have landed on the container's writable layer - the *root* volume, which
+    PLAN:293 sizes small. Short of the space the entrypoint exits 75, and
+    `restart: unless-stopped` makes that a crash loop from the first `up`.
+
+    Nothing in phase 1 calls Photon and PLAN:60's index import is unbuilt, so
+    the service is parked rather than repaired into usefulness.
+    """
+    assert "photon" not in rendered["services"], (
+        "a default `docker compose up -d` starts photon again, which on a fresh host is a "
+        "61 GB planet download onto the root volume"
+    )
+
+
+def test_enabling_the_profile_gets_an_index_mount_that_the_image_uses(env_file) -> None:
+    """The profile has to be safe to turn on, or it is only a deferral.
+
+    Two corrections, both read off the pinned tag's own source: the index lands
+    at `/photon/data`, where 2.4.0 keeps it, so it goes on the data volume
+    rather than the container's writable layer; and INITIAL_DOWNLOAD is off, so
+    enabling the profile starts a geocoder with an empty index instead of a
+    61 GB download.
+    """
+    photon = render(env_file, UNBUILT_PROFILE)["services"]["photon"]
+
+    targets = {volume["target"] for volume in photon["volumes"]}
+    assert "/photon/data" in targets, (
+        f"photon binds {sorted(targets)}; 2.4.0 reads its index from /photon/data "
+        "(src/utils/config.py:36), and a mount anywhere else is inert"
+    )
+    assert "/photon/photon_data" not in targets, "that is the 1.x path; nothing reads it in 2.4.0"
+
+    initial = str(photon.get("environment", {}).get("INITIAL_DOWNLOAD", "")).lower()
+    assert initial in {"false", "0", "no"}, (
+        f"photon renders INITIAL_DOWNLOAD={initial!r}; the image defaults it to True "
+        "(src/utils/config.py:23) and with REGION unset that is the planet"
+    )
+
+
+# --- The data volume, scoped per service -------------------------------------
+
+
+def data_root(env_file: Path) -> str:
+    values = {}
+    for line in env_file.read_text().splitlines():
+        if not line.lstrip().startswith("#") and "=" in line:
+            name, _, value = line.partition("=")
+            values[name.strip()] = value.strip()
+    return values["DATA_ROOT"]
+
+
+def mounters(rendered: dict, root: str, directory: str) -> set[str]:
+    """Every service binding `${DATA_ROOT}/<directory>`, at any target."""
+    prefix = f"{root}/{directory}"
+    return {
+        name
+        for name, service in rendered["services"].items()
+        for volume in service.get("volumes", [])
+        if volume.get("source") == prefix or str(volume.get("source", "")).startswith(prefix + "/")
+    }
+
+
+def test_the_database_files_and_the_tls_key_reach_one_service_each(env_file) -> None:
+    """`${DATA_ROOT}` is one volume and it holds three things no other service
+    has any business reading: PGDATA, Caddy's ACME account key and TLS private
+    key, and the nightly dumps. The `rebuild` service used to bind the whole of
+    it at `/data` - so the container that shells out to six Valhalla binaries
+    for six hours could read the edge's private key and the database's files.
+    That contradicts this file's own header rule, which scopes secrets per
+    service precisely so that what one container can reach is readable at a
+    glance.
+
+    Rendered rather than read out of the YAML, and with the profile on, so a
+    service that came back from behind a profile is counted too.
+    """
+    rendered = render(env_file, UNBUILT_PROFILE)
+    root = data_root(env_file)
+
+    assert mounters(rendered, root, "postgres") == {"postgis"}, (
+        "something other than the database binds PGDATA"
+    )
+    assert mounters(rendered, root, "caddy") == {"caddy"}, (
+        "something other than the edge binds the ACME account key and the TLS private key"
+    )
+    assert mounters(rendered, root, "backups") == {"worker"}, (
+        "something other than the backup worker binds the nightly dumps"
+    )
+    assert not any(
+        volume.get("source") == root
+        for service in rendered["services"].values()
+        for volume in service.get("volumes", [])
+    ), "a service binds the whole data volume again, which is all three of the above at once"
+
+
+def test_the_rebuild_still_reaches_everything_it_writes(env_file) -> None:
+    """The other half of the narrowing: five directories, at the paths
+    `settings.DATA_ROOT` derives, or the rebuild fails on a path it cannot see
+    rather than on anything it did.
+    """
+    rendered = render(env_file, UNBUILT_PROFILE)
+    targets = {
+        volume["target"]
+        for volume in rendered["services"]["rebuild"]["volumes"]
+        if str(volume["target"]).startswith("/data")
+    }
+    assert targets == {
+        "/data/tiles",
+        "/data/elevation",
+        "/data/extracts",
+        "/data/reference",
+        "/data/rebuild",
+    }, f"the rebuild binds {sorted(targets)} under /data"
+    assert environment(rendered, "rebuild")["DATA_ROOT"] == "/data", (
+        "DATA_ROOT moved, so TILES_DIR, REBUILD_SOURCE_PBF, REBUILD_REFERENCE_DIR and "
+        "REBUILD_WORK_DIR no longer land in the mounts above"
+    )
+
+
 # --- Start-up ordering, rendered ---------------------------------------------
 
 
@@ -182,6 +315,14 @@ def test_the_database_declares_a_health_check(rendered) -> None:
     assert check, "the postgis service declares no healthcheck"
     probe = " ".join(check["test"])
     assert "pg_isready" in probe, f"the health check is not pg_isready: {check['test']}"
+    assert "-h 127.0.0.1" in probe, (
+        f"the health check is `{probe}`, which has no host and so probes the unix socket. "
+        "That is exactly what the image's init-phase server listens on - its entrypoint "
+        "runs initdb and the extension scripts against a temporary server started with "
+        "listen_addresses='' - so the probe answers PQPING_OK through the whole first-boot "
+        "window this gate exists to cover, while a TCP connect is still refused. migrate "
+        "connects over TCP; the gate has to measure the same thing"
+    )
     expected = environment(rendered, "migrate")
     assert f"-U {expected['PGUSER']}" in probe, (
         f"the health check probes a different role than migrate connects as: {probe}"
@@ -321,4 +462,83 @@ def test_the_shipped_example_does_not_serve_secure_cookies_over_plain_http() -> 
     assert not (plain_http and "https://" in origins), (
         f"CADDY_SITE_ADDRESS={address!r} is plain HTTP and DJANGO_CSRF_TRUSTED_ORIGINS is "
         f"{origins!r}; the origin a browser sends is the one it used"
+    )
+
+
+# --- The example file's own claims about itself -------------------------------
+
+# The alternative posture at the end of `.env.example`: a commented assignment
+# per line, which an operator uncomments in place of the four above it.
+LOCAL_BLOCK_HEADER = "--- Local plain-HTTP stack"
+NUMBER_WORDS = {
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+}
+
+
+def local_block_assignments() -> list[str]:
+    """The commented `NAME=value` lines after the local block's header."""
+    _, _, block = ENV_EXAMPLE.read_text().partition(LOCAL_BLOCK_HEADER)
+    assert block, f".env.example no longer has a {LOCAL_BLOCK_HEADER!r} section"
+    return [
+        line.lstrip("# ").partition("=")[0]
+        for line in block.splitlines()
+        if re.match(r"^#\s*[A-Z][A-Z0-9_]*=", line)
+    ]
+
+
+def test_the_example_counts_its_own_local_block_correctly() -> None:
+    """The file said four and the block is five, and the fifth is the one that
+    matters: `DJANGO_DEBUG=1`. It is the only line in the block with no
+    counterpart among the uncommented values above, so it is the one an
+    operator working from the count drops - and dropping it is round 6's B-5
+    exactly, a `:80` stack issuing Secure cookies that no plain-HTTP browser
+    keeps, where the Discord round-trip completes and every request after it is
+    anonymous.
+
+    Counted rather than restated, and every claim in the file is checked, so
+    the count and the prose cannot drift apart again.
+    """
+    assignments = local_block_assignments()
+    assert "DJANGO_DEBUG" in assignments, (
+        "the local block no longer sets DJANGO_DEBUG, which is what makes a plain-HTTP "
+        "stack able to keep a session cookie at all"
+    )
+
+    claimed = [
+        NUMBER_WORDS[word]
+        for word in re.findall(r"\b([a-z]+) lines\b", ENV_EXAMPLE.read_text())
+        if word in NUMBER_WORDS
+    ]
+    assert claimed, ".env.example no longer states how many lines its local block is"
+    assert set(claimed) == {len(assignments)}, (
+        f".env.example says its local block is {sorted(set(claimed))} lines and it is "
+        f"{len(assignments)}: {assignments}"
+    )
+
+
+def test_the_admin_path_is_offered_in_the_example_and_reaches_the_api(tmp_path) -> None:
+    """`settings.ADMIN_PATH` defaults to `internal-8f3a/`, which is in this
+    repository and therefore public. The default is fine and the point is that
+    an operator should know it is a default: the line is in `.env.example`,
+    commented, with what it is for - and it has to be a line compose carries, or
+    setting it would change nothing at all.
+    """
+    body = ENV_EXAMPLE.read_text()
+    assert re.search(r"^#\s*DJANGO_ADMIN_PATH=", body, re.M), (
+        ".env.example does not offer DJANGO_ADMIN_PATH, so the published default is the "
+        "only path anyone knows to set"
+    )
+
+    mutated = tmp_path / "env"
+    mutated.write_text(body + "\nDJANGO_ADMIN_PATH=somewhere-else/\n")
+    assert environment(render(mutated), "api")["DJANGO_ADMIN_PATH"] == "somewhere-else/", (
+        "a DJANGO_ADMIN_PATH set in the environment file does not reach the api, so the "
+        "admin stays on the path this repository publishes"
     )

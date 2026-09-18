@@ -208,14 +208,32 @@ services:
       POSTGRES_DB: ${PGDATABASE:-routemaker}
       POSTGRES_USER: ${PGUSER:-routemaker}
       POSTGRES_PASSWORD: ${PGPASSWORD}
-    # What `migrate` waits for. `pg_isready` against this database and this role
-    # rather than a bare TCP connect: the entrypoint of this image starts a
-    # temporary server on a unix socket to run initdb and the extension scripts,
-    # so a port that answers is not yet a database that will accept a client.
+    # What `migrate` waits for, and the `-h 127.0.0.1` is the whole of it.
+    #
+    # `pg_isready` with no host probes the unix socket, which is exactly what
+    # the image's init-phase server listens on: docker-entrypoint.sh starts a
+    # temporary server with `listen_addresses=''` while initdb, the PostGIS
+    # extension scripts and anything in /docker-entrypoint-initdb.d run. So the
+    # socket answers PQPING_OK through the entire first-boot window this check
+    # was added to cover - measured, not reasoned: socket probe rc=0 while a
+    # TCP connect is still refused. The health gate opened early, migrate
+    # started against a server that would not accept it, and the three services
+    # held on `service_completed_successfully` never started at all.
+    #
+    # 127.0.0.1 over TCP is how every client outside this container connects,
+    # migrate included, so it is what the gate has to measure. `-d` is not a
+    # check that the database exists - PQPING_OK never touches it - it only
+    # keeps the probe's parameters the same as the application's; what proves
+    # the database and role are there is the first migration.
+    #
     # The start period covers that first-boot work on an empty volume, and the
     # retries cover an ordinary restart.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-routemaker} -d ${PGDATABASE:-routemaker}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -U ${PGUSER:-routemaker} -d ${PGDATABASE:-routemaker}",
+        ]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -232,12 +250,41 @@ services:
   # (rtuszik/photon-docker, pushed 2026-08-17); `latest`, `2` and `2.4` all
   # resolve to the same digest today, which is how the tag was chosen.
   #
-  # Nothing in phase 1 calls this service: the index it serves from is empty
-  # and populating it (PLAN:60) is unbuilt. See docs/DEPLOYMENT.md, "Photon".
+  # Behind the same profile as the renderer and the bot, for a different
+  # reason: this one has an image, and what that image does on a fresh host is
+  # download the planet. Read out of the pinned tag's own source
+  # (github.com/rtuszik/photon-docker at 2.4.0):
+  #
+  #   - `src/utils/config.py:36` puts the index at `/photon/data`.
+  #     `/photon/photon_data` is the 1.x path, so the mount this service used to
+  #     carry was inert - it bound a host directory the process never opened.
+  #   - `src/utils/config.py:23` defaults INITIAL_DOWNLOAD to True, and REGION
+  #     is unset, which means the whole-planet index: about 61 GB compressed,
+  #     around 104 GB free needed to unpack it, and - with the mount pointing
+  #     somewhere the image does not use - written to the container's writable
+  #     layer on the *root* volume, which PLAN:293 sizes small on purpose.
+  #     Short of that the entrypoint exits 75 and `restart: unless-stopped`
+  #     crash-loops it from the first `up` on every new deployment.
+  #
+  # Nothing in phase 1 calls this service and PLAN:60's index import is
+  # unbuilt (handoff.md section 7), so the profile is the honest place for it.
+  # The two corrections below are what make enabling the profile safe rather
+  # than a 61 GB surprise: the index lands under ${DATA_ROOT} on the data
+  # volume, and nothing is fetched until someone populates it deliberately.
+  # See docs/DEPLOYMENT.md, "Photon".
+  #
+  #     docker compose --profile unbuilt up -d   # once there is an index to serve
   photon:
     <<: *restart
+    profiles: ["unbuilt"]
     image: rtuszik/photon-docker:2.4.0
-    volumes: ["${DATA_ROOT}/photon:/photon/photon_data"]
+    environment:
+      # No planet download on first boot. PLAN:60's filtered country dump is
+      # what fills this index and it is unbuilt, so the only thing an initial
+      # download could do here is fill the root volume. config.py:23.
+      INITIAL_DOWNLOAD: "False"
+    # config.py:36, not the 1.x `/photon/photon_data`.
+    volumes: ["${DATA_ROOT}/photon:/photon/data"]
     deploy:
       resources:
         limits: { memory: 3G, cpus: "2" }
@@ -418,8 +465,28 @@ services:
       VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
       VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
       VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
+    # The five directories this service writes, each bound on its own, rather
+    # than `${DATA_ROOT}:/data` - which is the same volume and also carries
+    # `caddy/` (the ACME account key and the deployment's TLS private key),
+    # `postgres/` (PGDATA) and `backups/` (a dump of the whole database). A
+    # rebuild has no business reading any of the three, and handing them to it
+    # is the same rule this file's header states about secrets: scoped per
+    # service, so that what one container can reach is readable at a glance.
+    #
+    # `DATA_ROOT: /data` above is unchanged and so is every path derived from
+    # it - settings.TILES_DIR is /data/tiles, REBUILD_SOURCE_PBF is
+    # /data/extracts/source.osm.pbf, REBUILD_REFERENCE_DIR is /data/reference,
+    # REBUILD_WORK_DIR is /data/rebuild - because each now resolves into its
+    # own mount at the same path. The five sources are all under ${DATA_ROOT},
+    # so they remain one filesystem and the rebuild's disk gate, which measures
+    # TILES_DIR and is asked whether the extract will fit, still speaks for
+    # both (tests/test_source.py holds that).
     volumes:
-      - ${DATA_ROOT}:/data
+      - ${DATA_ROOT}/tiles:/data/tiles
+      - ${DATA_ROOT}/elevation:/data/elevation
+      - ${DATA_ROOT}/extracts:/data/extracts
+      - ${DATA_ROOT}/reference:/data/reference
+      - ${DATA_ROOT}/rebuild:/data/rebuild
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
     depends_on:

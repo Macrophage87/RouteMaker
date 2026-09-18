@@ -1395,6 +1395,12 @@ def test_the_heartbeat_task_writes_a_row_that_the_alert_reads() -> None:
     from core.runs import stale_tasks
 
     now = timezone.now()
+    # A deployment old enough for the heartbeat's ten-minute window to have
+    # passed: a task that has never run is stale from the deployment's first
+    # run row, not from `up` (core.runs.stale_task_details).
+    ScheduledRun.objects.create(
+        task="nightly_backup", started_at=now - timedelta(days=2), finished_at=now, succeeded=True
+    )
     assert "worker_heartbeat" in stale_tasks(now)
 
     app.tasks["worker_heartbeat"].func(timestamp=0)
@@ -1434,6 +1440,16 @@ def test_an_alert_reads_the_absence_of_a_recent_success() -> None:
     from core.runs import STALE_AFTER, stale_tasks
 
     now = timezone.now()
+    # A deployment that has been up long enough for every window to have
+    # passed. Without a row this database is a stack that came up a moment ago,
+    # where nothing is late yet - see `test_a_fresh_deployment_has_nothing_to
+    # _alert_about` in tests/test_operations.py.
+    ScheduledRun.objects.create(
+        task="weekly_rebuild",
+        started_at=now - timedelta(days=90),
+        finished_at=now - timedelta(days=90),
+        succeeded=False,
+    )
     assert set(stale_tasks(now)) == set(STALE_AFTER)
 
     for task in STALE_AFTER:

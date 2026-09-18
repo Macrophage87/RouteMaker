@@ -34,6 +34,20 @@ computed, and it is visible.
 **successful** run started longer ago than its window; a failure is not a
 success, and neither is a run that is still going.
 
+A task that has never succeeded at all is measured from the deployment's own
+first run row instead — the oldest `ScheduledRun` of any task — and on a
+database with no rows at all nothing is stale. **So the cron entry pages once a
+window has genuinely passed and not before.** It used to page immediately: on a
+fresh deployment `check_operations` exited 1 with all five tasks named in its
+first minute, because "has never run" and "has not run for long enough to
+matter" were the same missing row. The first alert an operator ever saw was
+therefore a false one, on the morning of the install, from the entry they had
+just added — and an alert that is wrong the first time it fires is an alert
+that gets muted. The windows are unchanged: a task that is genuinely never
+scheduled is still named, eight days later for the rebuild and ten minutes
+later for the heartbeat, which is the same lateness every other silent failure
+here gets.
+
 | Task | Schedule | Window | Why |
 | --- | --- | --- | --- |
 | `weekly_rebuild` | Tuesdays 08:00 UTC | 8 days | One missed run is not an alert; two are. |
@@ -330,27 +344,59 @@ the first host to run it is the first test of it.
    a root-owned directory, and both images run as uid 10001. See
    docs/DEPLOYMENT.md, "`${DATA_ROOT}` and the order it has to be prepared in".
 
-2. **Build and start.**
+2. **Set the bootstrap admin id, then build and start.**
+
+   ```sh
+   # in .env, before the first up:
+   BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID=<your Discord id>
+   ```
 
    ```sh
    docker compose build
    docker compose up -d
    ```
 
-   `bot` and `renderer` are behind the `unbuilt` profile and are skipped; they
-   have no source and no image. `migrate` waits for the database's health check
-   and runs every migration, and `api`, `worker` and `rebuild` wait for it to
-   have completed.
+   The id goes in **before** the first `up` because compose reads `.env` when
+   it creates a container and not afterwards: a value added later reaches the
+   running `api` only when that container is recreated, which is
+   `docker compose up -d api` and specifically not `docker compose restart api`
+   — a restart restarts the process with the environment it was created with,
+   and the sign-in that follows it gets a 404 from the admin with nothing in
+   any log to explain it. Step 4 is the rest of that bootstrap; what it needs
+   from here is the id already in the container's environment.
+
+   `bot`, `renderer` and `photon` are behind the `unbuilt` profile and are
+   skipped: the first two have no source and no image, and photon's pinned
+   image would download a 61 GB planet index onto the root volume on first boot
+   (docs/DEPLOYMENT.md, "Photon"). `migrate` waits for the database's health
+   check and runs every migration, and `api`, `worker` and `rebuild` wait for
+   it to have completed.
+
+   If this first `up` reports that `migrate` failed, run `docker compose up -d`
+   again before debugging anything. The health check gates `migrate` on a
+   database answering on TCP, and its start period is 60 seconds; a slow host
+   doing initdb, the PostGIS extension scripts and the first start on an empty
+   volume can take longer than the retries allow. The second `up` starts
+   `migrate` against a database that is by then up, and the three services
+   gated on it having completed follow. Nothing is left half-applied by the
+   first attempt: `migrate` either connects or does not.
 
 3. **Collect the static assets**, the deploy step in docs/DEPLOYMENT.md. Until
    this runs the admin renders unstyled, which is the surface the next step
    uses.
 
-4. **Bootstrap the first instance admin.** There is no `createsuperuser` here
-   and no password login: set `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` to your own
-   Discord id, sign in at `/auth/login`, and open the admin. The first admin
-   request under that id writes it into the instance-admin list and disables the
-   path; unset it afterwards. docs/DEVELOPMENT.md has the whole mechanism.
+4. **Claim the first instance admin.** There is no `createsuperuser` here and
+   no password login. With the id from step 2 already in the `api` container's
+   environment, sign in at `/auth/login` with that Discord account and open the
+   admin: the first admin request under that id writes it into the
+   instance-admin list, audits the claim and spends the path for good. Unset it
+   afterwards, at your leisure — it is inert once claimed.
+
+   If you skipped step 2 and are editing `.env` now, the container has to be
+   recreated for the new value to reach it: `docker compose up -d api`.
+   `docker compose restart api` does not re-read `.env` and leaves you signing
+   in against the environment the container was created with.
+   docs/DEVELOPMENT.md has the whole mechanism.
 
 5. **Fetch the extract by running the rebuild once, and expect it to stop.**
 
@@ -373,22 +419,52 @@ the first host to run it is the first test of it.
 
 6. **Install the reference data, pointed at the extract step 5 just wrote.**
 
+   The GeoJSON inputs are not in this repository and the stack cannot download
+   them, so put them on the host first, under a directory the `rebuild`
+   container actually binds — it binds five, not the whole volume, so a file
+   dropped anywhere else under `${DATA_ROOT}` is not visible to it.
+   `${DATA_ROOT}/reference/inputs/` is the one this document uses, and the
+   container sees it at `/data/reference/inputs`:
+
+   ```sh
+   set -a; . ./.env; set +a
+   sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs"
+   # then copy tl_2024_us_uac20.geojson, vdot-aadt-2024.geojson and
+   # ddot-aadt-2024.geojson into "$DATA_ROOT/reference/inputs"
+   ```
+
    ```sh
    docker compose exec -T rebuild python3 scripts/install_reference_data.py \
        --data-root /data --extract /data/extracts/source.osm.pbf \
-       --urban-areas tl_2024_us_uac20.geojson \
-       --volume vdot-aadt-2024.geojson --volume-source vdot --volume-year 2024
+       --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson \
+       --volume /data/reference/inputs/vdot-aadt-2024.geojson \
+           --volume-source vdot --volume-year 2024 \
+       --volume /data/reference/inputs/ddot-aadt-2024.geojson \
+           --volume-source ddot --volume-year 2024
    ```
+
+   **Every input path is absolute and inside the container.** A bare
+   `tl_2024_us_uac20.geojson` resolves against the image's working directory,
+   `/app`, where the file is not and cannot be: the script would exit on a
+   missing file, and the only thing to debug would be a name that looks right.
+
+   **Both agencies, not one.** `--volume` and its two companions repeat and are
+   matched up in order, and installing a single agency is the case the
+   conflation step has nothing to do: its whole job is to arbitrate between two
+   publishers on a road they both cover, and with one file in the input the
+   locality-over-state precedence rule has nothing to choose between. VDOT's is
+   the traffic-volume export from the Virginia Roads portal; the District's is
+   DDOT's AADT layer from the District's open-data portal. Maryland's arrives
+   the same way and can be added as a third pair. docs/DEVELOPMENT.md,
+   "Reference data", has what each one is and how the counts have to be
+   normalised before they get here.
 
    `--extract` is the clipped `source.osm.pbf`, and the clipped one is right:
    the script reads ways out of it to decide which way ids fall inside a Census
    urban area, and a way outside the coverage box is a way this deployment does
    not route over. (`merged.osm.pbf`, the unclipped file kept beside it, exists
    for `valhalla_build_admins`, which needs boundary relations the clip cuts.)
-   The two GeoJSON inputs are not in this repository and not downloadable by the
-   stack — where each comes from is in docs/DEVELOPMENT.md, "Reference data" —
-   so they have to be put somewhere the container can read, such as under
-   `${DATA_ROOT}`. The crossings fixture is in the image and is copied for you.
+   The crossings fixture is in the image and is copied for you.
 
    Run with `--data-root` alone it installs the crossings and exits non-zero
    naming whichever of the other two is still missing, which is the cheap way to
@@ -506,9 +582,10 @@ that container `DATA_ROOT` is the module's fallback `BASE_DIR / "data"` and
 with nothing in it. Run there, `rollback_target` finds no `previous` link for
 any variant and the command refuses with "no previous tiles", which reads like
 a deployment that has never rebuilt rather than like a command in the wrong
-container. `rebuild` is the service that mounts `${DATA_ROOT}` whole at `/data`
-and sets `DATA_ROOT=/data`, so the paths it resolves are the ones the swap
-wrote. (`worker` sets `DATA_ROOT=/data` too, but mounts only `backups`, so the
+container. `rebuild` is the service that binds the tile directory — along
+with `elevation`, `extracts`, `reference` and its own work directory — under
+`/data` and sets `DATA_ROOT=/data`, so the paths it resolves are the ones the
+swap wrote. (`worker` sets `DATA_ROOT=/data` too, but mounts only `backups`, so the
 tiles are equally absent there.)
 
 The restart is part of the procedure, not an afterthought: `valhalla_service`

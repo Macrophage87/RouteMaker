@@ -47,21 +47,28 @@ docker compose build               # builds api and pipeline
 docker compose up -d               # bot and renderer are skipped: they have no image
 ```
 
-`docker compose up -d` starts everything except `bot` and `renderer`, which sit
-behind the `unbuilt` profile because neither has a source in this repository
-and so neither has an image in any registry. Without that profile this command
-was a pull of `routemaker/bot:${TAG}` that could not succeed, on a stack where
-every other service was ready to start. `docker compose --profile unbuilt up -d`
-is how they come back the day either one exists; until then their absence is
-what handoff.md section 7 says it is — no membership sweep from a gateway
-connection, no thumbnails.
+`docker compose up -d` starts everything except `bot`, `renderer` and `photon`,
+which sit behind the `unbuilt` profile. `bot` and `renderer` are there because
+neither has a source in this repository and so neither has an image in any
+registry: without the profile this command was a pull of
+`routemaker/bot:${TAG}` that could not succeed, on a stack where every other
+service was ready to start. `photon` is there because the pinned image's first
+act on a fresh host is to download a 61 GB planet index onto the root volume —
+see "Photon" below, which has the arithmetic and the two lines that make
+enabling the profile safe. `docker compose --profile unbuilt up -d` is how all
+three come back; until then their absence is what handoff.md section 7 says it
+is — no membership sweep from a gateway connection, no thumbnails, no geocoder.
 
 `TAG` is the image tag, read from `.env` (`TAG=dev` in `.env.example`). It names
 the built image, not a registry: `build:` sits beside `image:` in every service
 that builds, so `docker compose build` tags the result `routemaker/api:${TAG}`
 and `routemaker/pipeline:${TAG}` locally and the `worker`, `migrate` and
 `rebuild` services find it there. Bump it per release so a rollback is a `TAG`
-change and a restart rather than a rebuild.
+change and `docker compose up -d` rather than a rebuild — and `up -d`
+specifically, because the tag is baked into each container at creation:
+`docker compose restart` restarts the containers that exist, on the image they
+were created from, and so rolls nothing back. `up -d` re-reads `.env`, sees the
+service's image has changed and recreates it, leaving everything else alone.
 
 The `api` image builds three services. They differ only in the command compose
 gives them: `api` takes the image's default (`gunicorn`), `worker` and `migrate`
@@ -169,8 +176,10 @@ lands, that test fails, the row leaves the list, and the test above it demands a
 
 Both images run as uid 10001. `${DATA_ROOT}` is a host bind mount, and the
 processes write into it: the nightly dump into `${DATA_ROOT}/backups`, the
-rebuild into the whole of `/data` (tiles, extracts, the elevation cache, the
-timezone database `valhalla_build_timezones` writes beside them).
+rebuild into the five directories it binds under `/data` (tiles, extracts,
+reference, its own work directory, and the elevation cache — the timezone
+database `valhalla_build_timezones` writes goes into the work directory beside
+them).
 
 **Every shell snippet in this document that uses `$DATA_ROOT` needs the
 deployment's environment loaded first.** It is not exported by anything; it
@@ -207,22 +216,46 @@ So on a fresh host the sequence was
    `${DATA_ROOT}/tiles/{standard,no-trail,ebike}/current` as `root:root`;
 3. every container that runs as 10001 finds a directory it cannot write.
 
-The script creates all of them first, plus `extracts`, `reference` and `rebuild`
-— which compose does not name as mappings of their own, because the `rebuild`
-service mounts the volume whole, but which the rebuild writes into all the same.
-`tests/test_deploy_docs.py` reads the `${DATA_ROOT}` bind mappings out of
-`compose.yaml` and fails if the script's list stops covering them, so a mount
-added to the stack cannot be forgotten here.
+The script creates all of them first. `tests/test_deploy_docs.py` reads the
+`${DATA_ROOT}` bind mappings out of `compose.yaml` and fails if the script's
+list stops covering them, so a mount added to the stack cannot be forgotten
+here.
 
-Two of those directories end up owned by somebody else and that is correct: the
-postgres image's entrypoint chowns its own `PGDATA` to its own uid on every
-start, and Caddy runs as root and owns the certificates it obtains. 10001 is the
-right owner for everything this project's own images write.
+**It creates every one of them and chowns only the seven this project's own
+images write** — `static`, `backups`, `elevation`, `tiles`, `extracts`,
+`reference` and `rebuild`. Three are left as they are, and that is the point
+rather than an omission:
+
+- `postgres/` is PGDATA. The postgis image's entrypoint chowns it to its own
+  uid on every start, so a chown here is undone at best.
+- `caddy/` holds the ACME account key and the deployment's TLS private key.
+  Caddy runs as root and obtains them itself.
+- `photon/` belongs to an image that is not ours and to a service parked behind
+  the `unbuilt` profile.
+
+The script used to end in `chown -R 10001:10001 "$DATA_ROOT"`, which swept all
+three into the uid that every container of ours runs as — including, until this
+wave, a `rebuild` service that bound the whole volume and could therefore read
+the private key and the database's files. Both halves of that are now narrowed:
+the mount is five directories and the chown is seven.
+
+`docker compose down -v` destroys nothing durable here. Every stateful path in
+`compose.yaml` is a host bind mount under `${DATA_ROOT}` and there are no named
+volumes at all, so `-v` has nothing of this deployment's to remove — the
+database, the certificates, the tiles and the dumps are files on the data
+volume and outlive any `down`. What removes them is `rm`.
 
 **If you have already run `up` without doing this**, the remedy is the obvious
-one and it is worth knowing it is that simple: stop the stack, re-run
-`sudo chown -R 10001:10001 "$DATA_ROOT"` now that the directories exist, and
-start it again. What makes this worth a section is not the difficulty of the fix
+one and it is worth knowing it is that simple: stop the stack, run the same
+script again now that the directories exist, and start it again. It is
+idempotent, and it is the remedy rather than
+`sudo chown -R 10001:10001 "$DATA_ROOT"`, which is what this section used to
+give: `${DATA_ROOT}` also holds `caddy/` — the ACME account key and the
+deployment's TLS private key — along with `postgres/` and the nightly dumps in
+`backups/`, and a recursive chown of the root hands all three to the uid every
+one of this project's containers runs as. The script chowns the seven
+directories those containers write and leaves `postgres/`, `caddy/` and
+`photon/` alone. What makes this worth a section is not the difficulty of the fix
 but how the failure presents — a permission error from a Valhalla binary six
 hours into a rebuild, or a nightly dump that fails on a file it cannot create,
 neither of which reads as an ownership problem to whoever is paged for it.
@@ -265,16 +298,50 @@ resolved to the same digest, which is how the tag was chosen). It was on
 `docker compose pull` would otherwise bring in whatever that repository's
 maintainer had pushed since, with no change in this repository to point at.
 
+**It is behind the `unbuilt` profile, so a default `up` does not start it**, and
+the reason is not that it is idle. It is what the pinned image does on a fresh
+host, read out of that tag's own source (github.com/rtuszik/photon-docker at
+2.4.0):
+
+- `src/utils/config.py:23` defaults `INITIAL_DOWNLOAD` to `True`, and `REGION`
+  is unset in this stack, so the entrypoint's first act is to fetch the
+  **whole-planet index** — about 61 GB compressed, and around 104 GB free
+  needed to unpack it.
+- `src/utils/config.py:36` puts that index at `/photon/data`. This stack mounted
+  `${DATA_ROOT}/photon` at `/photon/photon_data`, which is the 1.x path, so the
+  mount was **inert**: the download would have landed on the container's
+  writable layer, on the *root* volume, which the host requirements above size
+  small on purpose and which carries the OS, the images and the checkout.
+- Short of that space the entrypoint exits 75, and `restart: unless-stopped`
+  turns that into a crash loop starting with the operator's first `up` on every
+  new deployment.
+
+So the profile is the fix for the first `up`, and two corrections beside it are
+what make enabling the profile safe rather than a 61 GB surprise: the mount
+target is now `/photon/data`, so an index lands on the data volume where it was
+always meant to, and `INITIAL_DOWNLOAD: "False"` means nothing is fetched until
+somebody populates the index deliberately.
+
 **Nothing in phase 1 calls Photon, and its index is empty.** PLAN:60 populates
 it "from GraphHopper's per-country Photon dump filtered to the coverage bounding
 box or from a one-off Nominatim import of the clipped extract, documented as the
 heavier option" — neither is built here, there is no script for either, and
-nothing in the repository writes into `${DATA_ROOT}/photon`. The service is in
-the stack, with its 3 GB limit, because the sizing arithmetic and the
-no-published-ports rule count it; it will start and it will answer queries about
-nothing. There is also no API route to it yet: the geocoding proxy PLAN:65
-describes — Photon behind session authentication and a per-user rate limit — is
-not built either, so the empty index is not currently reachable by anybody.
+nothing in the repository writes into `${DATA_ROOT}/photon`. There is also no
+API route to it: the geocoding proxy PLAN:65 describes — Photon behind session
+authentication and a per-user rate limit — is not built either. handoff.md
+section 7 carries the row. `docker compose --profile unbuilt up -d` starts it
+the day there is an index to serve, alongside the bot and the renderer, which
+sit behind the same profile for the simpler reason that they have no image at
+all.
+
+`scripts/check_compose_limits.py` still counts its 3 GB, and that is deliberate:
+the script reads `compose.yaml` rather than a rendered configuration, and it
+answers "does this stack fit in 32 GB", not "does today's `up` fit". A profile
+is a service that is one flag away from being resident — `renderer` and `bot`
+are counted on the same reasoning — so charging all three keeps the sizing
+answer true for the day somebody enables them, at the cost of 4.5 GB of
+pessimism in a total that has room for it (27.0 GB resident, 25.0 GB at the
+blue/green swap peak, against the 32 GB the script fails at).
 
 ## What the deployment serves
 
@@ -351,8 +418,9 @@ it is the reason `collectstatic` above is a `run --rm` with an explicit mount
 rather than an `exec` into the running api.
 
 Every management command that reads or writes the data volume therefore runs in
-`rebuild`, which mounts `${DATA_ROOT}` whole at `/data`, or in `worker`, which
-mounts `${DATA_ROOT}/backups` there:
+`rebuild`, which binds `tiles`, `elevation`, `extracts`, `reference` and
+`rebuild` under `/data`, or in `worker`, which binds `${DATA_ROOT}/backups`
+there:
 
 | Command | Container | Because |
 | --- | --- | --- |

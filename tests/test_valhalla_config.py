@@ -449,7 +449,7 @@ def test_every_configured_path_is_mounted_for_the_service_that_uses_it() -> None
 def test_the_build_writes_where_the_serving_container_reads() -> None:
     """The same container path in the rebuild and in a serving container has to
     be the same host file, or the build writes a graph nothing serves. The
-    rebuild mounts the whole data volume; each server mounts its variant's
+    rebuild binds the tile directory whole; each server binds its variant's
     `current` directory at the identical container path."""
     import yaml
 
@@ -457,7 +457,10 @@ def test_the_build_writes_where_the_serving_container_reads() -> None:
     services = compose["services"]
     assert services["rebuild"]["environment"]["DATA_ROOT"] == "/data"
     rebuild = mounts_of(services["rebuild"])
-    assert rebuild.get("/data") == "${DATA_ROOT}"
+    assert rebuild.get("/data/tiles") == "${DATA_ROOT}/tiles", (
+        "the rebuild binds the directories it writes rather than the whole volume; the "
+        f"tile directory has to be one of them: {rebuild}"
+    )
 
     for path in CONFIGS:
         variant = path.stem.removeprefix("valhalla-")
