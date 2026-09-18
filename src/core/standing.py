@@ -245,9 +245,23 @@ def resolve(
     # 2. Guild state and membership row age, before any per-route consideration.
     usable = usable_guild_ids(viewer, guilds, now)
 
-    # Instance admin is a mapped Discord role like any other, so it is subject to
-    # the same guild state and row age. A lapsed admin loses the admin along with
-    # everything else, because one answer serves both.
+    # Instance admin is NOT a mapped Discord role, and it is deliberately not
+    # subject to the guild state and row age computed just above. PLAN:212 makes
+    # it "independent of every guild, deriving from the instance-admin list
+    # alone and never from guild membership, role mapping, the bot, or the
+    # membership cache, so the people who can fix a broken bot can still sign in
+    # when every guild is degraded" - so it outlives a revoked guild, a lapsed
+    # degraded window and a stale membership row, which is the whole point of
+    # having it. `attach_standing` says the same thing from the other end: the
+    # INSTANCE_ADMIN branch of the role mapping deliberately grants nothing.
+    #
+    # `instance_admin_guild_ids` is assigned by nothing - it is the dataclass
+    # default, the empty set - so the second conjunct is always true and this
+    # branch is `is_instance_admin` alone. The field is the seam a guild-scoped
+    # instance admin would need if the owner ever decides the `instance_admin`
+    # role mapping should grant: that decision is open and is recorded in
+    # handoff.md §7 ("Admin standing against the private tier / `instance_admin`
+    # role mapping"). Until it is made, nothing narrows the role.
     if viewer.is_instance_admin and (
         not viewer.instance_admin_guild_ids or (viewer.instance_admin_guild_ids & usable)
     ):

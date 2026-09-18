@@ -248,12 +248,34 @@ def test_the_forwarded_proto_header_django_reads_is_set() -> None:
     derived from it rather than written out, so changing one without the other
     fails here instead of silently disabling `request.is_secure()` - which
     decides the CSRF origin check on every https form post."""
-    key, _ = settings.SECURE_PROXY_SSL_HEADER
+    key, expected_value = settings.SECURE_PROXY_SSL_HEADER
     header = key.removeprefix("HTTP_").replace("_", "-").title()
-    set_headers = [d.split()[0] for d in caddy_directives("header_up")]
+    set_headers = {
+        directive.split(maxsplit=1)[0]: directive.split(maxsplit=1)[1].strip()
+        for directive in caddy_directives("header_up")
+        if len(directive.split(maxsplit=1)) == 2
+    }
     assert header in set_headers, (
         f"settings.SECURE_PROXY_SSL_HEADER reads {key}, so the proxy must set {header}; "
-        f"it sets: {set_headers}"
+        f"it sets: {sorted(set_headers)}"
+    )
+    # The name alone was all this pinned, and the name alone is the half that
+    # cannot go wrong quietly. `{scheme}` is Caddy's placeholder for the scheme
+    # the *client* used; hardcoding the value settings expects - `https` - would
+    # also satisfy a name-only assertion, and would make Django call every
+    # request secure, including the plain-HTTP ones a stack fronted by an
+    # http:// site block or reached directly on the edge's port 80 still serves.
+    # `request.is_secure()` would then be true on a connection that is not, so
+    # the CSRF origin check would compare against https:// and `Secure` cookies
+    # would be set on a cleartext connection.
+    assert set_headers[header] == "{scheme}", (
+        f"the proxy sets {header} to {set_headers[header]!r} rather than Caddy's "
+        f"{{scheme}} placeholder; a literal value makes request.is_secure() report the "
+        f"proxy's opinion instead of the client's connection"
+    )
+    assert expected_value == "https", (
+        "settings expects a value this Caddyfile only produces over TLS; if that "
+        f"changes, {header} has to change with it"
     )
 
 
