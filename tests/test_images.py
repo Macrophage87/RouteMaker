@@ -451,6 +451,49 @@ def test_the_api_default_command_is_the_wsgi_application_settings_names() -> Non
     )
 
 
+def test_the_api_image_puts_the_source_tree_on_pythonpath_under_its_workdir() -> None:
+    """The layout is part of the settings contract, and it is spelled in two
+    places that have to agree.
+
+    `settings.py` computes `BASE_DIR = Path(__file__).resolve().parents[2]`, so
+    `config` has to be imported from the repository layout under `<WORKDIR>/src`
+    and not from site-packages. Both halves are written as absolutes in the
+    Dockerfile - `WORKDIR /app` and `ENV PYTHONPATH=/app/src` - with nothing
+    holding the second to the first, so moving the WORKDIR leaves PYTHONPATH
+    naming a directory the COPY no longer writes to, and every import of
+    `config` or `core` fails at container start.
+
+    Both sides are read out of the Dockerfile, so this asserts the agreement
+    rather than the literal `/app/src`.
+    """
+    dockerfile = Dockerfile(REPO / "docker" / "api.Dockerfile")
+
+    environment: dict[str, str] = {}
+    for _, rest in dockerfile.of("ENV"):
+        for token in dockerfile.expand(rest).split():
+            name, sep, value = token.partition("=")
+            if sep:
+                environment[name] = value
+
+    workdir = dockerfile.final_workdir
+    assert workdir != "/", "the api image sets no WORKDIR"
+    assert "PYTHONPATH" in environment, "the api image sets no PYTHONPATH"
+    assert environment["PYTHONPATH"] == f"{workdir.rstrip('/')}/src", (
+        f"PYTHONPATH is {environment['PYTHONPATH']!r} but WORKDIR is {workdir!r}: "
+        "the source tree is copied under the WORKDIR, so PYTHONPATH has to name it there"
+    )
+
+    # And the directory it names is the one `COPY src` actually writes to,
+    # rather than a path with nothing at it.
+    destinations = {destination for sources, destination in dockerfile.copies() if "src" in sources}
+    landed = {
+        d if d.startswith("/") else f"{workdir.rstrip('/')}/{d.lstrip('./')}" for d in destinations
+    }
+    assert environment["PYTHONPATH"] in landed, (
+        f"nothing copies the source tree to {environment['PYTHONPATH']}; copies land at {landed}"
+    )
+
+
 def test_the_dockerignore_keeps_the_host_virtualenv_and_env_out_of_the_context() -> None:
     """.venv carries host-absolute shebangs and .env carries the deployment's
     real secrets. Everything else in the file is weight."""

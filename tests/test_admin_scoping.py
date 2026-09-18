@@ -1670,6 +1670,15 @@ class TestTheInstanceAdminListIsVisibleToGuildAdmins:
             ("session_epoch__gt", "how many times their sessions have been revoked"),
             ("last_login__isnull", "whether they have ever signed in"),
             ("date_joined__year", "when the account was created"),
+            # The bare field names, which are the lookups an allow-list entry
+            # would spell. Every case above carries a `__suffix`, so widening
+            # `ALLOWED_LOOKUPS` by one plain column name left them all passing
+            # while `?session_epoch=7` and `?session_epoch=3` answered 200 with
+            # different row sets - an exact oracle over the revocation counter.
+            ("is_banned", "whether an instance admin is banned"),
+            ("is_deleted", "whether an instance admin has deleted their account"),
+            ("session_epoch", "how many times their sessions have been revoked"),
+            ("last_login", "when they last signed in"),
         ],
     )
     def test_a_filter_on_any_other_column_is_refused(
@@ -1700,6 +1709,18 @@ class TestTheInstanceAdminListIsVisibleToGuildAdmins:
         # And the list itself is unchanged by the attempt.
         again = as_guild_admin.get(url)
         assert set(again.context["cl"].queryset.values_list("pk", flat=True)) == rows
+
+    def test_the_allow_list_is_the_one_column_and_nothing_else(self) -> None:
+        """Flat, because the allow-list is the whole of the refusal.
+
+        The cases above are all `field__lookup`, so adding a bare `is_banned` or
+        `session_epoch` to the set passed every one of them - and `?is_banned=1`
+        or `?session_epoch=7` then answered 200 with the non-matching admins
+        gone. The set is small enough to name exactly, so it is named exactly.
+        """
+        from core.admin import InstanceAdminListingAdmin
+
+        assert InstanceAdminListingAdmin.ALLOWED_LOOKUPS == frozenset({"discord_user_id"})
 
     def test_the_one_lookup_it_does_answer_is_the_column_it_draws(
         self, as_guild_admin, instance_admin
