@@ -150,6 +150,65 @@ check("an access=yes residential street still gets the write", open_out.cycleway
 check("and is kept", open_filter == 0, open_filter)
 
 -- ---------------------------------------------------------------------------
+-- `rm:bridge_bicycle` reaches the graph as the bicycle tag it names.
+--
+-- The two halves of the join were each pinned and the join itself was not: the
+-- pipeline's side asserts that the tag is injected, and test_remap.lua asserts
+-- what `remap_way` does with `derived.bridge_bicycle_legal`, but nothing ran a
+-- way carrying the tag through `derived_from`. Inverting that one comparison -
+-- `== "yes"` to `~= "yes"` - left both suites and the whole Python suite green
+-- while every fixture-legal bridge in the region (Memorial, Sousa, the 11th
+-- Street local span, Douglass, Whitney Young, Benning) arrived in the graph
+-- barred to bicycles, on all three variants.
+--
+-- Read at upstream's own derived attributes rather than at the tag alone:
+-- `bike_tag` is upstream's record that a bicycle key was read at all, so it
+-- tells a way this remap wrote nothing to apart from one it wrote `no` onto.
+-- ---------------------------------------------------------------------------
+
+local bridge = { highway = "secondary", bridge = "yes", name = "Memorial Bridge", bicycle = "no" }
+
+local _, legal_out = transform_way({
+  highway = "secondary", bridge = "yes", name = "Memorial Bridge",
+  bicycle = "no", ["rm:bridge_bicycle"] = "yes",
+})
+check("a fixture-legal roadway bridge is granted bicycle access",
+  legal_out.bicycle == "yes", legal_out.bicycle)
+check("and upstream reads the grant in both directions",
+  legal_out.bike_forward == "true" and legal_out.bike_backward == "true",
+  tostring(legal_out.bike_forward) .. "/" .. tostring(legal_out.bike_backward))
+check("the derived tag itself never reaches the tile build",
+  legal_out["rm:bridge_bicycle"] == nil)
+
+local _, illegal_out = transform_way({
+  highway = "secondary", bridge = "yes", name = "Memorial Bridge",
+  ["rm:bridge_bicycle"] = "no",
+})
+check("a fixture-illegal roadway bridge is barred",
+  illegal_out.bicycle == "no", illegal_out.bicycle)
+check("and upstream reads the bar in both directions",
+  illegal_out.bike_forward == "false" and illegal_out.bike_backward == "false",
+  tostring(illegal_out.bike_forward) .. "/" .. tostring(illegal_out.bike_backward))
+
+-- The third case is what tells an inverted comparison from a merely wrong one:
+-- a way the fixture has no opinion about must arrive exactly as OSM tagged it,
+-- with no bicycle key read at all.
+local _, silent_out = transform_way({
+  highway = "secondary", bridge = "yes", name = "Memorial Bridge",
+})
+check("a bridge with no fixture row keeps upstream's own reading",
+  silent_out.bicycle == nil and silent_out.bike_tag == nil,
+  tostring(silent_out.bicycle) .. "/" .. tostring(silent_out.bike_tag))
+check("and stays routable on upstream's defaults", silent_out.bike_forward == "true",
+  silent_out.bike_forward)
+
+-- The untouched case is the base tagging the two writes above are measured
+-- against: without the fixture row this bridge is barred by its own `bicycle=no`.
+local _, base_out = transform_way(bridge)
+check("the bridge's own bicycle=no bars it without a fixture row",
+  base_out.bike_forward == "false", base_out.bike_forward)
+
+-- ---------------------------------------------------------------------------
 -- gate_cost applies only where tagged_access is 0.
 -- ---------------------------------------------------------------------------
 

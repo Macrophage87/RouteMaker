@@ -142,6 +142,32 @@ M.MOTOR_ONLY_HIGHWAY = { motorway = true, motorway_link = true }
 -- already bars it costs nothing.
 function M.bridge_may_be_granted(tags)
   if M.MOTOR_ONLY_HIGHWAY[tags.highway] then return false end
+
+  -- Nor over an `electric_bicycle` restriction, which is the one key here that
+  -- is not read for what it says about the roadway.
+  --
+  -- The e-bike variant is built by writing `bicycle=no` onto every way tagged
+  -- `electric_bicycle=no` (`variants.inject`), because Valhalla's bicycle
+  -- costing is what reads the bicycle tag and there is no e-bike access mask to
+  -- write to. That change is made in the extract; this transform then runs over
+  -- the extract, sees a bridge whose roadway the fixture calls legal and whose
+  -- `bicycle=no` looks exactly like OSM's own tagging on a barred bridge, and
+  -- overrides it back to `yes`. The variant's whole decision is reverted on the
+  -- one class of way this file is allowed to widen.
+  --
+  -- Guarded on the tag rather than on the variant because one Lua script serves
+  -- all three extracts - `mjolnir.graph_lua_name` is a single path in every
+  -- build config - and nothing in the tag table says which extract is being
+  -- parsed. The cost of reading the tag instead is that a bridge tagged
+  -- `electric_bicycle=no` declines its legality row on the standard and
+  -- no-trail variants too, where the row would have applied. That is the
+  -- conservative direction: a bridge the fixture calls legal keeps whatever
+  -- OSM's own `bicycle` tagging says rather than gaining a grant, and the
+  -- combination is rare - `electric_bicycle` is tagged on a handful of ways in
+  -- this region and on no bridge roadway carrying a fixture row today.
+  local electric = tags.electric_bicycle
+  if electric ~= nil and not M.PERMISSIVE_ACCESS[electric] then return false end
+
   for _, key in ipairs(M.WAY_ACCESS_KEYS) do
     local value = tags[key]
     if value ~= nil and not M.PERMISSIVE_ACCESS[value] then

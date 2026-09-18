@@ -196,6 +196,47 @@ class TestLanesPerDirection:
         assert lanes_per_direction({"lanes": "4", "lanes:forward": "1", "lanes:backward": "3"}) == 3
         assert lanes_per_direction({"lanes": "4", "lanes:forward": "3", "lanes:backward": "1"}) == 3
 
+    def test_a_direction_tagged_with_no_lanes_still_has_one(self) -> None:
+        """The floor under the directional read, which had nothing holding it.
+
+        `lanes:backward=0` is ordinary OSM: it is how a mapper says a signed
+        one-way carries nothing the other way, and it arrives beside a `lanes`
+        count that does not agree with it. Without the floor the function
+        returns zero lanes in the direction of travel, which is not a road -
+        and every Furth comparison downstream is written as `lanes > 1` or
+        `lanes <= 1`, so a zero reads as the *quietest* possible road and the
+        classifier says so with no assumption recorded.
+
+        The same floor is on both `lanes` branches below, where it is exercised
+        by `lanes=1` on a two-way street (1 // 2 == 0). Only the directional
+        branch had no case at all, so `max(1, max(directional))` could lose its
+        `max(1, ...)` with the suite green.
+        """
+        assert lanes_per_direction({"lanes": "1", "oneway": "yes", "lanes:backward": "0"}) == 1
+        assert lanes_per_direction({"lanes": "2", "lanes:forward": "0", "lanes:backward": "0"}) == 1
+        # And the tier that follows from it: one lane per direction, not none.
+        result = classify(
+            {
+                "highway": "residential",
+                "maxspeed": "25 mph",
+                "lanes": "2",
+                "lanes:forward": "0",
+                "lanes:backward": "0",
+                "parking:both": "no",
+            }
+        )
+        assert result.tier is Stress.LTS2
+        assert "single lane" in result.rule, result.rule
+        assert "lanes" not in result.assumed, "the count was tagged; it is the floor that applies"
+
+    def test_the_two_way_halving_is_floored_at_one_lane(self) -> None:
+        """The other side of the same floor: `lanes=1` on a two-way street.
+
+        A single-lane two-way street - an alley, a narrow residential block -
+        halves to zero without it.
+        """
+        assert lanes_per_direction({"lanes": "1"}) == 1
+
     def test_a_road_and_its_mirror_image_take_the_same_tier(self) -> None:
         """Stated as the tier, because that is where it was visible: at 30 mph
         the mixed-traffic table turns on single lane against multilane, so the
@@ -617,6 +658,35 @@ class TestTheProvisionHierarchy:
         assert shoulder <= bare, f"a shoulder rated the road {shoulder!r}, worse than {bare!r}"
         if painted <= bare:
             assert shoulder >= painted, "a shoulder outranking a bike lane is the inversion"
+        else:
+            # The 280 of 1440 combinations the condition above excludes, given
+            # their own assertion rather than passed over in silence.
+            #
+            # `painted > bare` is Furth's table rating a bike lane worse than no
+            # provision at all - a lane narrower than his criterion is LTS2 at
+            # any speed, while a calm street with nothing on it is LTS1 - and
+            # the shoulder branch does not follow it there, because a shoulder
+            # is floored against the bare road and a bike lane is not. That
+            # floor is this module's own rule and not Furth's; it is an owner
+            # decision, argued in the module docstring and pinned by name in
+            # `test_a_bike_lane_is_scored_on_furths_table_without_the_shoulders_floor`.
+            #
+            # So the two provisions genuinely part here, and what has to hold is
+            # the shape of the parting: the shoulder sits at the bare tier, the
+            # bike lane exactly one tier above it, and never at the top tier
+            # that Beginner's invariant and the road-exposure report key on.
+            # Without these three the branch is an open door - the same gap the
+            # volume modifier's inversion lived in through round 4.
+            assert shoulder == bare, (
+                f"the shoulder floor did not hold: shoulder {shoulder!r}, bare {bare!r}"
+            )
+            assert int(painted) == int(bare) + 1, (
+                f"the bike lane parted from the bare road by more than one tier: "
+                f"painted {painted!r}, bare {bare!r}"
+            )
+            assert painted is not Stress.LTS4, (
+                f"the unfloored reading reached the top tier: {painted!r}"
+            )
         # And the other direction, which is how the same gap read above
         # `VOLUME_BUSY`: MacArthur Boulevard at 35 mph with an 8 ft shoulder and
         # AADT 12,000 came out LTS4 - `is_top_tier`, a well-shouldered arterial
@@ -721,6 +791,60 @@ class TestTheProvisionHierarchy:
         assert classify({**untagged, "shoulder": "both", "shoulder:width": "2.4"}).tier is (
             Stress.LTS1
         )
+
+    def test_a_bike_lane_is_scored_on_furths_table_without_the_shoulders_floor(self) -> None:
+        """The asymmetry between the two provisions, pinned as a decision.
+
+        A shoulder is floored against the bare road - it may never rate a road
+        worse than the same road with no shoulder at all - and a bike lane is
+        not. So on a calm street the ordering the module keeps in every other
+        band reverses: a 20 mph two-lane residential street that declares its
+        parking absent is LTS1 bare, LTS1 with a 1.3 m shoulder, and LTS2 with
+        1.3 m of paint. No unknown separates these three roads; they are the
+        same road read three ways.
+
+        This is Furth followed rather than a defect. His table rates a lane
+        narrower than his criterion LTS2 at every speed, and mixed traffic at
+        20 mph on a single lane per direction is LTS1; the deviation from the
+        published tables is the shoulder's floor, which wave 5 adopted
+        deliberately, on the argument that a strip of asphalt at the edge of a
+        quiet street cannot make it more hostile than no strip would. Paint is
+        the case where that argument runs out: a narrow lane invites traffic
+        past at the width it claims.
+
+        So the floor stays on the weaker provision only, and this test is what
+        an attempt to make the two symmetric has to argue with. Adding the same
+        `if lane_tier < mixed_tier` floor to the painted-lane branch of
+        `classify` fails the last assertion here. The divergence is bounded -
+        one tier, and never into `is_top_tier`, which the ordering property
+        asserts across all 1440 of its combinations - and it is recorded as an
+        owner decision rather than closed.
+        """
+        street = {
+            "highway": "residential",
+            "maxspeed": "20 mph",
+            "lanes": "2",
+            "parking:both": "no",
+        }
+        bare = classify(street)
+        shoulder = classify({**street, "shoulder": "both", "shoulder:width": "1.3"})
+        painted = classify({**street, "cycleway": "lane", "cycleway:width": "1.3"})
+
+        assert bare.tier is Stress.LTS1
+        # The floor, not the table: 1.3 m is rideable but under Furth's
+        # criterion, so the table would have said LTS2 here too and the shoulder
+        # declined it. Declining it also means the shoulder earned no credit at
+        # all, which is why the rule text is still the mixed-traffic one.
+        assert shoulder.tier is Stress.LTS1
+        assert "paved shoulder" not in shoulder.rule, shoulder.rule
+        # And the bike lane, read on the same table with the same width and the
+        # same declared parking, takes what Furth's table says.
+        assert painted.tier is Stress.LTS2
+        assert painted.rule == "bike lane, narrow at 25 mph or below", painted.rule
+        assert painted.tier > shoulder.tier, (
+            "the floor is what separates them here, and it is on the shoulder branch only"
+        )
+        assert not painted.is_top_tier
 
     def test_a_shoulder_that_ties_with_mixed_traffic_earns_nothing(self) -> None:
         """F_STR8: the adoption test is `<`, and `<=` is not the same rule.

@@ -10,18 +10,23 @@ passed on the one case the code got right and nothing exercised the rest.
 
 from __future__ import annotations
 
+import math
+
 import pytest
 
 from pipeline.conflation import (
+    BEARING_TOLERANCE_DEG,
     MAX_SEPARATION_M,
     MAX_SPAN_REUSE,
     MIN_OVERLAP_FRACTION,
     AgencyFeature,
     _claim,
+    _mean_bearing,
     _overlap,
     _overlap_fraction,
     conflate,
 )
+from routemaker.geo import bearing_delta
 
 # An east-west road at 38.90, and its northbound twin about 14 m away.
 ROAD = [(-77.02, 38.9000), (-77.00, 38.9000)]
@@ -156,6 +161,80 @@ class TestMatching:
             [(1, ROAD)], [feature("f1", CROSS_STREET)], bearing_tolerance_deg=90.0, **wide_open
         )
         assert 1 in permissive.matched
+
+    def test_the_bearing_tolerance_is_twenty_five_degrees(self) -> None:
+        """The tolerance in degrees, rather than as a property of a cross street.
+
+        The only bearing case here is a cross street at ninety degrees, which
+        every tolerance from one degree to eighty-nine refuses alike - so the
+        constant could be half or double what it is with this file green. The
+        figure is a real trade: generous enough for survey noise and for a road
+        that curves across a block, tight enough that a diagonal - and the
+        District is full of them, the avenues cut across the grid at every angle
+        - is not read as the street it crosses.
+
+        Both cases run with the overlap and separation gates opened all the way,
+        so bearing is the only thing left deciding them.
+        """
+        assert BEARING_TOLERANCE_DEG == 25.0
+
+        def rotated(degrees: float) -> list[tuple[float, float]]:
+            """A line through the middle of ROAD, turned this far off its bearing."""
+            reach = 0.004
+            dx = reach * math.cos(math.radians(degrees))
+            dy = reach * math.sin(math.radians(degrees)) * math.cos(math.radians(38.9))
+            return [(-77.01 - dx, 38.90 - dy), (-77.01 + dx, 38.90 + dy)]
+
+        wide_open = {"min_overlap": 0.0, "max_separation_m": 5000.0}
+        inside, outside = rotated(20.0), rotated(30.0)
+
+        # The premise: the two lines really are twenty and thirty degrees off.
+        road_bearing = _mean_bearing(ROAD)
+        for line, expected in ((inside, 20.0), (outside, 30.0)):
+            delta = bearing_delta(road_bearing, _mean_bearing(line))
+            assert min(delta, 180.0 - delta) == pytest.approx(expected, abs=0.01)
+
+        assert 1 in conflate([(1, ROAD)], [feature("f1", inside)], **wide_open).matched
+        assert conflate([(1, ROAD)], [feature("f1", outside)], **wide_open).matched == {}
+
+    def test_the_minimum_overlap_is_half_the_way(self) -> None:
+        """The fraction itself, and the tie at it.
+
+        The two overlap cases here are a twenty-metre stub on a two-kilometre
+        road (0.01 of the way) and a corridor running well past a short block
+        (1.0), so any threshold strictly between them passes this file - the
+        constant could be a third and nothing would say otherwise. Half is the
+        claim that a count describes a way when it covers most of it, and a
+        feature covering 41 percent of a road is a count for the part of it that
+        was surveyed rather than for the road.
+
+        The comparison is `<`, so a way covered by exactly the threshold is
+        matched. Widened to `<=` it is refused, and a count that covers exactly
+        half a block would silently fall out - the distinction the stub and the
+        corridor are far too far apart to see. Taken against the case's own
+        measured fraction, because the measure is a ratio of probe counts and
+        will not land on 0.500000 by construction.
+        """
+        assert MIN_OVERLAP_FRACTION == 0.5
+
+        # Covers the western 41 percent of ROAD: over a third, under a half.
+        part = [(-77.0200, 38.90001), (-77.0120, 38.89999)]
+        measured = _overlap_fraction(ROAD, part, MAX_SEPARATION_M)
+        assert 0.3 < measured < 0.5, measured
+        assert conflate([(1, ROAD)], [feature("f1", part)]).matched == {}, (
+            "41 percent of a road is not a count for the road"
+        )
+
+        # The tie: the same feature, with the threshold set to what it measures.
+        assert 1 in conflate([(1, ROAD)], [feature("f1", part)], min_overlap=measured).matched
+        assert (
+            conflate(
+                [(1, ROAD)],
+                [feature("f1", part)],
+                min_overlap=math.nextafter(measured, 1.0),
+            ).matched
+            == {}
+        ), "and a hair above it is not, so the pin cannot be met by matching everything"
 
     def test_a_one_way_pair_still_matches_against_a_reversed_feature(self) -> None:
         """The halves of a one-way pair run in opposite directions along the same

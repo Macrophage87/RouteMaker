@@ -23,8 +23,24 @@ from routemaker.geo import Point, haversine
 
 from .crossings import Crossing
 
-# Ways whose centreline *is* the boundary. Treated as District with both
-# authorities flagged, rather than flickering between them along their length.
+# Ways whose centreline *is* the District boundary.
+#
+# What this set does, stated as the code does it rather than as an earlier
+# comment claimed: it has exactly one consumer, `borders.find_state_crossings`,
+# which returns immediately for a way whose name is in it, so no border node is
+# minted along one of these streets. That is all. It does not assign the way to
+# the District, it does not flag a second authority, and it is not read by
+# `assign_way` or `route_crossings` at all.
+#
+# Both authorities really are named on a ride down Eastern Avenue, and the
+# crossing report really does say so - but that comes from the jurisdiction
+# polygons, where a centreline lying between two of them puts both names on the
+# vertex and `Crossing.also_authority` carries the second. It happens for any
+# way on a shared edge, whether or not its name is in this set, and it would
+# happen on these three streets if the set were empty. Conflating the two read
+# as though this set were what produced the second authority, which would make
+# deleting it look cosmetic; what deleting it actually does is fragment each of
+# these streets into a string of barrier nodes.
 BOUNDARY_STREETS = frozenset({"western avenue", "eastern avenue", "southern avenue"})
 
 # OSM names these with a quadrant on the District side and without one on the
@@ -288,13 +304,26 @@ def _length_m(geometry: LineString) -> float:
 
 
 def is_boundary_street(name: str | None) -> bool:
-    """Whether a way's centreline is itself the District line.
+    """Whether a way's name is one the District line runs along.
 
     Normalised before matching, in both of the ways OSM varies here: "Western
     Avenue Northwest", "Western Avenue", "Western Ave NW" and "Western Ave" are
     one street, and every one of those spellings is carried somewhere along it.
-    Not surfaced in UI copy as a legal statement; it decides how the way is
-    tagged, and the crossing list notes both authorities.
+
+    The match is on the name alone - there is no geometry test and no bounding
+    box - so any way in the extract carrying one of these three names answers
+    true, wherever it is. Baltimore's Eastern Avenue is inside the coverage box
+    and is such a way. The consequence is bounded and is the harmless direction:
+    the only consumer is `borders.find_state_crossings`, so what a false match
+    costs is a border node not inserted on a street that does not cross a state
+    line anyway. A false *negative* is the expensive one - it fragments a
+    boundary street into stubs - which is why the normalisation is generous.
+    Narrowing this to the District's own three would mean a geometry test here,
+    and there is nothing yet that needs one.
+
+    Not surfaced in UI copy as a legal statement; it decides only whether a
+    border node is minted. The second authority on a boundary street comes from
+    the jurisdiction polygons, not from here; see `BOUNDARY_STREETS`.
     """
     if not name:
         return False

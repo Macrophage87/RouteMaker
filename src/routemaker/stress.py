@@ -23,16 +23,34 @@ stated here as well as at the code that implements them.
 
 A painted bike lane and a rideable paved shoulder are the same provision and are
 scored on the same table, which is what keeps a shoulder from ever rating a road
-safer than a bike lane read the same way. The one thing that separates them is
-the door zone, and it separates them only where nobody has said whether the road
-has parking: a road with no parking tags cannot have a parking lane beside its
-shoulder, so the shoulder is measured against Furth's no-parking width while a
-bike lane on the same road is measured, conservatively, against the wider one.
-That is a difference in what is known about the road, not a difference in the
-credit the provision earns - and it lasts exactly as long as the ignorance does.
-A road that *declares* a parking lane has said that its outermost strip is
-occupied, so the shoulder there is measured against the beside-parking width
-like any other provision on it.
+*worse* than a bike lane read the same way, at any speed or lane count. It does
+not keep a shoulder from rating one better, and two things separate them.
+
+The first is the door zone, and it separates them only where nobody has said
+whether the road has parking: a road with no parking tags cannot have a parking
+lane beside its shoulder, so the shoulder is measured against Furth's no-parking
+width while a bike lane on the same road is measured, conservatively, against
+the wider one. That is a difference in what is known about the road, not a
+difference in the credit the provision earns - and it lasts exactly as long as
+the ignorance does. A road that *declares* a parking lane has said that its
+outermost strip is occupied, so the shoulder there is measured against the
+beside-parking width like any other provision on it.
+
+The second is a floor, and it is this module's own rule rather than Furth's: a
+shoulder is never scored worse than the same road with no provision at all,
+while a bike lane is scored on Furth's table without that floor. So on a calm
+street the two can genuinely part - a 20 mph two-lane residential street with
+`parking:both=no` is LTS1 bare, LTS1 with a 1.3 m shoulder and LTS2 with 1.3 m
+of paint, because Furth's table rates a lane narrower than his criterion LTS2 at
+any speed while mixed traffic at 20 mph is LTS1. The floor is deliberate and the
+asymmetry with it: a strip of asphalt at the edge of a quiet street cannot make
+it more hostile than no strip would, and painted lanes are not given the same
+relief because a narrow lane really does put a rider in a worse place than an
+unmarked calm street does - it invites traffic past at the width the paint
+claims. `test_a_bike_lane_is_scored_on_furths_table_without_the_shoulders_floor`
+pins the case; the divergence is one tier, never reaches `is_top_tier`, and is
+recorded as an owner decision in the review log rather than closed by putting
+the floor on both branches.
 
 One provision earns one credit. Volume is a modifier on roads with *no*
 provision, so a road that has taken the bike-lane table's credit does not also
@@ -288,6 +306,12 @@ def _bike_lane_tier(
     two identically, and giving a shoulder its own ladder is what inverted the
     provision hierarchy (see `classify`).
 
+    What this function returns is Furth's reading and nothing else - in
+    particular it is not floored against the mixed-traffic tier for the same
+    road, so it can and does rate a narrow lane on a calm street a tier worse
+    than no provision at all. That floor exists on the shoulder call only, and
+    it is applied by the caller rather than here; see `classify`.
+
     `parking` is whether a parking lane runs alongside *this provision*, which is
     the question Furth's two width criteria turn on and not quite the question
     "does this road have parking on it". The shoulder call passes False only
@@ -421,11 +445,11 @@ def classify(
         #
         # Scoring it on the one table is what makes the hierarchy hold by
         # construction rather than by a floor bolted on beside it: the shoulder
-        # tier can never come out below the tier the same road would get with a
-        # painted lane of the same width read the same way, at any speed or lane
-        # count. "Read the same way" is not a hedge - it is the door zone, and it
-        # is the one thing that separates the two provisions; see the comment on
-        # the `parking=False` argument below.
+        # tier can never come out *above* the tier the same road would get with
+        # a painted lane of the same width read the same way, at any speed or
+        # lane count. "Read the same way" is not a hedge - it is the door zone,
+        # and it is one of the two things that separate the two provisions; see
+        # the comment on the `parking=False` argument below.
         #
         # Two conditions survive from the old credit. The width has to be one a
         # rider can actually sit in, since a six-inch shoulder is not a refuge
@@ -435,6 +459,16 @@ def classify(
         # scores LTS2 on the table while a 20 mph street with nothing at all
         # scores LTS1, and a strip of asphalt at the edge of a quiet street does
         # not make it more hostile than no strip of asphalt would.
+        #
+        # That floor is the other thing that separates the two, and it is the
+        # one this module adds rather than reads out of Furth: the bike-lane
+        # branch above has no such floor, so on that same 20 mph street a 1.3 m
+        # painted lane comes out LTS2 where a 1.3 m shoulder comes out LTS1.
+        # Furth's table really does score a narrow lane at LTS2 where calm mixed
+        # traffic is LTS1, and the deviation here is the floor, kept on the
+        # weaker provision only. Adding it to the bike-lane branch as well is
+        # what `test_a_bike_lane_is_scored_on_furths_table_without_the_shoulders_floor`
+        # refuses.
         if shoulder_present:
             if shoulder_width is None:
                 assumed.append("shoulder width")

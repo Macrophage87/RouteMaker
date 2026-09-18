@@ -30,9 +30,12 @@ from routemaker.measure import (
     REVISIT_CELL_LON_MARGIN,
     REVISIT_PROXIMITY_M,
     TURN_MIN_BEARING_DEG,
+    TURN_MIN_TRACE_SPACING_M,
     RouteStats,
+    max_grade,
     revisit_cell_degrees,
     revisits,
+    turn_count_is_reliable,
     turns,
 )
 
@@ -240,20 +243,23 @@ REVISIT_SPACING_M = 25.0
 DC_LAT = 38.9
 
 
-def parallel_offset_route(base_lon: float, offset_m: float = REVISIT_OFFSET_M) -> list[Point]:
+def parallel_offset_route(
+    base_lon: float, offset_m: float = REVISIT_OFFSET_M, leg_m: float = REVISIT_LEG_M
+) -> list[Point]:
     """An out-and-back whose return leg is `offset_m` east of its outbound.
 
-    At the default it is one revisit by the definition: the two legs run 22.5 m
+    At the defaults it is one revisit by the definition: the two legs run 22.5 m
     apart, which is inside the 25 m proximity radius, and the ends of the route
     are 1000 m apart along it, which is outside the 400 m along-route minimum.
-    The separation is a parameter so the radius itself can be stated in metres
-    rather than only as a fraction of the constant under test.
+    Both the separation and the leg length are parameters so that each of the
+    two constants can be stated in metres rather than only as a fraction of
+    itself.
     """
     degrees_per_m_lat = 1.0 / 111_320.0
     degrees_per_m_lon = degrees_per_m_lat / math.cos(math.radians(DC_LAT))
     offset = offset_m * degrees_per_m_lon
     step = REVISIT_SPACING_M * degrees_per_m_lat
-    count = int(REVISIT_LEG_M / REVISIT_SPACING_M) + 1
+    count = int(leg_m / REVISIT_SPACING_M) + 1
 
     north = [Point(base_lon, DC_LAT + i * step) for i in range(count)]
     south = [Point(base_lon + offset, DC_LAT + i * step) for i in reversed(range(count))]
@@ -297,6 +303,126 @@ def test_the_proximity_radius_is_twenty_five_metres() -> None:
     a_block_over = parallel_offset_route(-77.0, offset_m=27.0)
     assert revisits(a_block_over) == 0, "27 m apart is a parallel street, not a revisit"
     assert revisits(a_block_over, proximity_m=30.0) == 1, "and the radius is what decides it"
+
+
+def test_the_along_route_minimum_is_four_hundred_metres() -> None:
+    """The other half of the revisit definition, stated in metres.
+
+    The radius says how close the two stretches have to come; this says how far
+    apart they have to be *along the route* before coming back is a revisit
+    rather than simply being on the same road a moment later. Every other case
+    in this section clears it by a wide margin - the default out-and-back is a
+    kilometre long - so the whole section passed unchanged at 400 m and at 600.
+
+    Two out-and-backs, both 22.5 m apart and so both inside the radius, sized so
+    that the 400 m sits between them: one 422 m long end to end, which is a
+    revisit, and one 372 m long, which is not. The second becomes one at a 300 m
+    minimum, which is what says the length is what decided it and not the
+    geometry.
+
+    The figure is a property of what a mass ride is: a field of hundreds strung
+    out over a few hundred metres meets its own tail continuously at every bend,
+    so a minimum shorter than the peloton reports every corner in the District
+    grid as a crowding hazard.
+    """
+    assert REVISIT_ALONG_ROUTE_M == 400.0
+
+    over = parallel_offset_route(-77.0, leg_m=200.0)
+    under = parallel_offset_route(-77.0, leg_m=175.0)
+    assert cumulative_distances(over)[-1] == pytest.approx(422.0, abs=1.0)
+    assert cumulative_distances(under)[-1] == pytest.approx(372.0, abs=1.0)
+
+    assert revisits(over) == 1, "422 m apart along the route is a revisit"
+    assert revisits(under) == 0, "372 m apart is the same stretch of road, not a revisit"
+    assert revisits(under, along_route_m=300.0) == 1, "and the minimum is what decides it"
+
+
+def test_the_reliable_sampling_floor_is_twenty_metres() -> None:
+    """The spacing below which `turns` stops meaning anything, in metres.
+
+    The reference set brackets the figure loosely and no closer: the one trace
+    that is flagged is sampled at 6.4 m and the fourteen that are not start at
+    39 m, so every value from 7 to 39 reproduces all fifteen answers and nothing
+    said which of them the constant is. Two synthetic traces inside that gap are
+    what pin it - 25 m is trusted, 15 m is not - and the flag is what a route's
+    stats block reports instead of a turn count it cannot stand behind.
+    """
+    assert TURN_MIN_TRACE_SPACING_M == 20.0
+
+    def straight_trace(spacing_m: float) -> list[Point]:
+        step = spacing_m / DEGREE_OF_LATITUDE_M
+        return [Point(-77.0, DC_LAT + i * step) for i in range(40)]
+
+    coarse = straight_trace(25.0)
+    fine = straight_trace(15.0)
+    assert RouteStats.measure(coarse).mean_spacing_m == pytest.approx(25.0, abs=0.01)
+    assert RouteStats.measure(fine).mean_spacing_m == pytest.approx(15.0, abs=0.01)
+
+    assert turn_count_is_reliable(coarse), "25 m spacing is inside the reliable range"
+    assert not turn_count_is_reliable(fine), "15 m spacing is not"
+
+
+def test_a_segment_exactly_at_the_minimum_length_carries_its_own_bearing() -> None:
+    """The tie in `_resampled_bearings`, on the boundary rather than beside it.
+
+    The comparison is `>=`, so a segment of exactly `min_segment_m` is long
+    enough to carry a bearing of its own; narrowed to `>` it is absorbed into
+    the following one instead, and the corner at its far end stops being a
+    corner because there is no longer a pair of bearings to compare. Nothing
+    pinned it: no reference trace carries a segment within a whisker of 5 m, so
+    `>` reproduced all fifteen recorded turn counts.
+
+    Taken against the leg's own measured length rather than a coordinate pair
+    contrived to land on 5.000, which the sphere will not do exactly - it is the
+    same tie either way.
+    """
+    corner = [
+        Point(-77.0, 38.9000),
+        Point(-77.0, 38.9010),
+        Point(-76.99800, 38.9010),
+    ]
+    first_leg = haversine(corner[0], corner[1])
+    second_leg = haversine(corner[1], corner[2])
+    assert second_leg > first_leg, "the second leg must clear the threshold either way"
+    assert (
+        bearing_delta(bearing(corner[0], corner[1]), bearing(corner[1], corner[2]))
+        > TURN_MIN_BEARING_DEG
+    ), "and the corner between them is a turn by the definition"
+
+    assert turns(corner, min_segment_m=first_leg) == 1, "a segment of exactly the minimum counts"
+    assert turns(corner, min_segment_m=math.nextafter(first_leg, math.inf)) == 0, (
+        "and one a hair under it is absorbed into the next, taking the corner with it"
+    )
+
+
+def test_a_partial_elevation_column_is_skipped_rather_than_raised_on() -> None:
+    """`max_grade` needs both ends of a run to carry elevation, not either one.
+
+    Read as `or`, the pair with one end missing reaches the subtraction and
+    raises `TypeError` on a trace the parser produces routinely: GPX files come
+    out of devices and editors with elevation on some points and not others, and
+    a stats block that raises is a saved route that cannot be measured at all.
+    Nothing covered it - every reference trace carries elevation on every point
+    or on none - so the conjunction was free to be either.
+
+    The run lengths matter as much as the elevations: the anchor only advances
+    once a run clears `GRADE_MIN_RUN_M`, so the points are 50 m apart to make
+    both of the pairs below real pairs rather than skipped ones.
+    """
+    step = 50.0 / DEGREE_OF_LATITUDE_M
+    partial = [
+        Point(-77.0, DC_LAT, ele=10.0),
+        Point(-77.0, DC_LAT + step),
+        Point(-77.0, DC_LAT + 2 * step, ele=20.0),
+    ]
+    assert haversine(partial[0], partial[1]) > GRADE_MIN_RUN_M, "both runs are real runs"
+    assert max_grade(partial) == 0.0
+
+    # And the same trace with the middle elevation filled in does report a grade,
+    # so the zero above is the pair being skipped and not the runs being too
+    # short to reach the comparison at all.
+    filled = [partial[0], Point(-77.0, DC_LAT + step, ele=15.0), partial[2]]
+    assert max_grade(filled) > 0.0
 
 
 def brute_force_revisits(
@@ -361,8 +487,22 @@ NEAR_RADIUS_OFFSET_M = 24.93  # inside the 25 m radius, and outside an unpadded 
 
 # Imported rather than restated: the grid divides by this and so does every
 # route built here, so a test that carried its own copy would go on passing if
-# the two stopped agreeing - which is half of what this section is about.
-assert DEGREE_OF_LATITUDE_M == math.pi * EARTH_RADIUS_M / 180.0
+# the two stopped agreeing - which is half of what this section is about. What
+# it is, rather than merely where it comes from, is asserted in
+# `test_the_degree_of_latitude_is_the_spheres_own`.
+
+
+def test_the_degree_of_latitude_is_the_spheres_own() -> None:
+    """The degree every cell in this section is measured in, on `haversine`'s
+    own sphere rather than on the 111,320 m figure the grid used to divide by.
+
+    This was a module-level `assert` for three waves. That is not a test: it ran
+    at import, so a failure was a *collection error* on this whole file rather
+    than one named failure - eighty-odd tests reported as an error with no name
+    among them - and under `-O` it would not have run at all. The assertion is
+    the same; what changes is that it now fails as itself.
+    """
+    assert DEGREE_OF_LATITUDE_M == math.pi * EARTH_RADIUS_M / 180.0
 
 
 def region_spanning_revisit_route(base_lon: float) -> list[Point]:
@@ -551,7 +691,17 @@ def test_the_cell_is_at_least_the_radius_across_at_every_latitude_on_the_route(p
         cell_lon * DEGREE_OF_LATITUDE_M * math.cos(math.radians(point.lat))
         for point in (min(points, key=lambda p: p.lat), max(points, key=lambda p: p.lat))
     ]
-    assert min(widths) >= REVISIT_PROXIMITY_M
+    # Strictly wider than the radius, and by a real amount. At the binding
+    # latitude the cell is exactly `REVISIT_CELL_LON_MARGIN` radii across, so a
+    # margin of 1.0 leaves it exactly the radius wide - which satisfies ">= the
+    # radius" while paying the floating-point edge the margin exists for out of
+    # nothing. That is the failure this whole section is the record of, arrived
+    # at from the other end, so the margin is asserted as left over rather than
+    # as reached.
+    assert min(widths) > REVISIT_PROXIMITY_M
+    assert min(widths) >= REVISIT_PROXIMITY_M * 1.001, (
+        "the margin has to survive to the binding latitude, not be spent reaching it"
+    )
     assert min(widths) == pytest.approx(REVISIT_CELL_LON_MARGIN * REVISIT_PROXIMITY_M, abs=0.01)
 
 
