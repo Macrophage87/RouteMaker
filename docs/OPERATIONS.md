@@ -599,7 +599,83 @@ A collision that gets past all that is still caught rather than silently
 merged: `tiles.write_build_config` refuses a build directory that already
 exists.
 
+## Wedged jobs
+
+A job stuck in `doing` with nothing running it. Procrastinate marks a job
+`doing` when a worker picks it up and writes its terminal status from that
+worker's own process, so a worker killed with **SIGKILL** — `docker compose
+down`, an `up -d` that recreates the container, a host reboot, the OOM killer —
+leaves the row `doing` for ever. Nothing in the library repairs it:
+`prune_stalled_workers` deletes stalled *worker* rows and the job's `worker_id`
+is `ON DELETE SET NULL`, so the job is disowned rather than requeued, and
+`get_stalled_jobs` reports such jobs and is called by nothing.
+
+For the rebuild that is not a cosmetic leftover. Both single-flight checks read
+that row: `run_rebuild_now` refuses with "a rebuild is already in flight", and
+`weekly_rebuild` refuses to start every Tuesday. **A deployment whose rebuild
+was killed once never rebuilds again** until the row is cleared.
+
+The operations page and `manage.py check_operations` both name it — a job
+`doing` for longer than the budget its own task enforces
+(`core.runs.job_budgets`) is reported as wedged, and `check_operations` exits
+non-zero on it. Each line carries the job id and the remedy:
+
+```sh
+docker compose exec -T worker ./manage.py unwedge_job <job id>
+```
+
+`unwedge_job` puts the job back to `todo` through `procrastinate_retry_job`,
+which is the same function the retry strategy calls, and writes an audit row
+with a null actor — the convention for the worker or the host operator, the
+same as `run_rebuild_now` and `rollback_rebuild --confirm`. It refuses in three
+cases, all of them by design:
+
+- **The job is not `doing`.** A `todo` job is already queued and a terminal one
+  is finished; neither is wedged, and a fresh run is `run_rebuild_now`.
+- **The worker is still alive.** A running worker updates
+  `procrastinate_workers.last_heartbeat` every 10 seconds from its own asyncio
+  task, and a sync task body runs in a thread, so a worker six hours into a
+  rebuild is still beating. Procrastinate's own stalled threshold is 30
+  seconds and that is the number used here. Requeueing a job that is genuinely
+  running is how two rebuilds end up writing the same staging schema.
+- **Another job already holds the same queueing lock in `todo`.** Procrastinate
+  allows one `todo` job per lock, so moving this row back would be a unique
+  violation inside the retry function. The queued job is the next run; let it
+  run.
+
+After it succeeds the rebuild service picks the job up within seconds while it
+is running (`docker compose logs -f rebuild`). If that service is not up, start
+it, or queue a fresh rebuild with `run_rebuild_now` once the row has cleared.
+
+**The fallback, if the command is not available** — an older image, a container
+that will not start — is Procrastinate's own shell, which is what this
+procedure was before there was a command and is documented here so it is
+written down somewhere:
+
+```sh
+docker compose exec -T worker ./manage.py procrastinate shell
+> retry <job id>
+```
+
+It does the same UPDATE and none of the checks: it will happily requeue a job
+whose worker is alive, so confirm the worker is gone first.
+
 ## Rolling back a rebuild
+
+**Not while a rebuild is in flight.** The command refuses, by job id and
+status, if any `weekly_rebuild` is `todo` or `doing` — on the dry run as well
+as on `--confirm`, because the dry run's whole output is advice about an action
+that is not safe to take yet. A rollback drops any staging schema `CASCADE`,
+which is the schema a running rebuild is writing into, and repoints the
+`ValhallaUpstream` rows the swap is about to repoint itself; neither collision
+raises at the time. The rebuild fails hours later as an ordinary
+`RebuildFailed` and is retried five times, or — if the rollback lands between
+the swap's repoint and its schema rename — it succeeds having left the tiles
+naming one build and the live schema another, with no error anywhere. To tell
+what is in flight: `docker compose logs -f rebuild` shows a running one, and
+the operations page or `manage.py check_operations` names a queued one, a
+running one and a wedged one. Let it finish, stop it, or clear it with
+`unwedge_job` (above), then run this again.
 
 `./manage.py rollback_rebuild` puts the previous deployment back: the retired
 schema becomes live again, each variant's `previous` tiles become `current`,

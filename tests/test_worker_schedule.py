@@ -1819,3 +1819,167 @@ def test_the_weekly_rebuild_fires_once_a_week_on_a_tuesday() -> None:
         7,
         7,
     ], "once a week, not once a day"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_task_does_not_refuse_itself_behind_a_job_that_is_merely_queued(
+    rebuild_environment, no_jobs_left_over
+) -> None:
+    """The in-task pre-flight reads `doing` and only `doing`, and widening it to
+    `todo` as well would make the Tuesday tick refuse itself.
+
+    Procrastinate defers the periodic job and *then* a worker picks it up, so
+    on the rebuild queue's single slot a tick fired while another rebuild is
+    queued sits `todo` behind it - and with `todo` in the pre-flight's statuses
+    every such rebuild would raise `RebuildAlreadyRunning` on a queue where
+    nothing is running at all. The queued job is not a second rebuild writing
+    the same staging schema; it is this one, waiting.
+
+    `run_rebuild_now` is the caller that does refuse on `todo`, and correctly:
+    it is about to add a *second* row, which the queueing lock would then
+    collide with on the running job's retry.
+    """
+    from django.db import connection
+
+    from core.models import ScheduledRun
+
+    queued = app.tasks["weekly_rebuild"].defer(timestamp=0)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT status FROM procrastinate_jobs WHERE id = %s", [queued])
+        assert cursor.fetchone()[0] == "todo"
+
+    # It runs rather than refusing. The environment fixture stands the binaries
+    # in, so this is the real handler set reaching a real run row.
+    app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert run.succeeded, (
+        "a rebuild queued behind this one is not another rebuild running; refusing here "
+        "would make every tick that lands on a busy single-slot queue fail"
+    )
+
+
+def test_a_refused_rebuild_is_aborted_rather_than_failed() -> None:
+    """What the refusal costs on the alert surfaces, which was thirty days.
+
+    A task body that raises anything ordinary is finished `failed` by the
+    worker, and `failed` is what `failed_job_count` counts and what the
+    operations page lists. So a Tuesday tick that correctly declined to start a
+    second rebuild left a red operations page and a non-zero `check_operations`
+    until `prune_job_rows` removed the row a month later - for a deployment
+    where nothing had gone wrong and with nothing an operator could do about it.
+
+    `procrastinate.exceptions.JobAborted` is the status Procrastinate finishes
+    a job with when the body raises it (`Worker._process_job`), and it is a
+    terminal status neither alert counts. The retry decision comes with it: the
+    worker computes none at all for an aborted job, so "not retried" stops
+    depending on the retry strategy's exception list.
+    """
+    from procrastinate.exceptions import JobAborted
+
+    from config.procrastinate import RebuildAlreadyRunning
+    from core.runs import TERMINAL_JOB_STATUSES
+
+    assert issubclass(RebuildAlreadyRunning, JobAborted)
+    assert "aborted" in TERMINAL_JOB_STATUSES, "so the row is still pruned on the same schedule"
+    assert "aborted" != "failed"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_refused_rebuild_is_on_neither_alert_surface(
+    rebuild_environment, monkeypatch, no_jobs_left_over
+) -> None:
+    """The same thing seen from the surfaces, with the status written the way
+    the worker writes it."""
+    from django.db import connection
+
+    from config.procrastinate import RebuildAlreadyRunning
+    from core.runs import failed_job_count, wedged_jobs
+
+    other = app.tasks["weekly_rebuild"].defer(timestamp=0)
+    with connection.cursor() as cursor:
+        # Before the second deferral: the queueing lock's index is partial on
+        # `WHERE status = 'todo'`, so two rebuilds can only coexist once the
+        # first has left that state - which is the whole reason the in-task
+        # check has to read `doing` itself.
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET status = 'doing'::procrastinate_job_status "
+            "WHERE id = %s",
+            [other],
+        )
+    refused_id = app.tasks["weekly_rebuild"].defer(timestamp=1)
+    with pytest.raises(RebuildAlreadyRunning):
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    # The status the worker would write for a body that raised JobAborted.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET status = 'aborted'::procrastinate_job_status "
+            "WHERE id = %s",
+            [refused_id],
+        )
+
+    assert failed_job_count() == 0, (
+        "a refusal is not a failure, and it used to page for the thirty days the job row is kept"
+    )
+    assert [entry["id"] for entry in wedged_jobs()] == [], "and it is not wedged either"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failing_dump_still_prunes_the_row_tables(tmp_path, monkeypatch) -> None:
+    """The prunes moved into a `finally`, and the reason is the shape of the
+    failure they were downstream of.
+
+    `prune_run_rows` and `prune_job_rows` are the only things that bound
+    `scheduled_run` and `procrastinate_jobs`, and both ran after `pg_dump` had
+    written and verified its archive. A dump that fails - a lock, a full
+    volume, the thirty-minute timeout - therefore switched off the two
+    mechanisms that reclaim space, and left them off for as many nights as it
+    kept failing: the one failure mode that fills a volume also stopped the
+    tidying.
+    """
+    from django.db import connection
+
+    from config import procrastinate as worker
+    from core.models import ScheduledRun
+    from core.runs import RUN_ROW_RETENTION_S
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path)
+    old = timezone.now() - timedelta(seconds=RUN_ROW_RETENTION_S + 86_400)
+    for index in range(3):
+        ScheduledRun.objects.create(
+            task="nightly_backup",
+            started_at=old - timedelta(seconds=index),
+            finished_at=old,
+            succeeded=True,
+        )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO procrastinate_jobs
+                (queue_name, task_name, priority, args, status, attempts, abort_requested)
+            VALUES ('maintenance', 'nightly_backup', 0, '{}'::jsonb, 'succeeded', 1, false)
+            RETURNING id
+            """
+        )
+        stale_job = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO procrastinate_events (job_id, type, at) VALUES (%s, 'succeeded', %s)",
+            [stale_job, old],
+        )
+
+    def dump_that_fails():
+        raise RuntimeError("pg_dump: error: connection to server was lost")
+
+    monkeypatch.setattr(worker, "perform_backup", dump_that_fails)
+
+    with pytest.raises(RuntimeError):
+        app.tasks["nightly_backup"].func(timestamp=0)
+
+    assert ScheduledRun.objects.filter(started_at__lt=old + timedelta(seconds=1)).count() == 1, (
+        "the newest row per task is kept by design; the rest of the aged ones go, and they "
+        "used to survive every night the dump failed"
+    )
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT count(*) FROM procrastinate_jobs WHERE id = %s", [stale_job])
+        assert cursor.fetchone()[0] == 0, "the finished job row past its retention goes too"

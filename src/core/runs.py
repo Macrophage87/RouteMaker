@@ -97,20 +97,70 @@ def last_success(task: str):
 def first_run_at():
     """When this deployment first recorded a scheduled run, or None.
 
-    The oldest `ScheduledRun` row of any task and any outcome, which is the
-    closest thing the database has to "when did this deployment start
-    running". It is what a task that has never succeeded is measured against,
-    for the reason in `stale_task_details`.
-
-    It is a proxy and it is the honest one available: the row is written by the
-    first periodic task to fire, so on a stack that came up a minute ago it is
-    a minute old, and on one that has been running for a year it is a year old
-    however many rows have since been pruned - `prune_run_rows` keeps the
-    newest row per task whatever its age, so this cannot be pruned down to
-    "nothing has ever run" while any task has a history.
+    The oldest `ScheduledRun` row of any task and any outcome. It is half of
+    `deployment_epoch`, and the half that only exists once something has run.
     """
     row = ScheduledRun.objects.order_by("started_at").first()
     return None if row is None else row.started_at
+
+
+def migrations_applied_at():
+    """When this deployment last applied a migration, or None.
+
+    `MAX(django_migrations.applied)`, which is written by `migrate` and by
+    nothing else. Every deployment procedure in docs/DEPLOYMENT.md runs
+    `migrate` before it starts a worker, so this row exists on a stack where no
+    job has ever been dequeued - which is the case the run-row epoch could not
+    see. Nothing in this project prunes `django_migrations`, so unlike the run
+    rows it does not move once written.
+
+    Read with SQL rather than through `MigrationRecorder`, which would build a
+    model and a table check on a path that runs on every alert tick.
+    """
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT MAX(applied) FROM django_migrations")
+        row = cursor.fetchone()
+    return None if row is None else row[0]
+
+
+def deployment_epoch():
+    """The moment every never-succeeded task's window is measured from.
+
+    The earlier of the deployment's first run row and its last migration, and
+    None only when there is neither - which on a database Django can read
+    cannot happen, because `migrate` is what created the table this query runs
+    against.
+
+    Two reasons it is not `first_run_at` alone, and both are outages the old
+    predicate reported as "ok":
+
+    - **A worker that never dequeued anything writes no run row at all.** A
+      `--queues` typo, a crash loop, a maintenance container that never came
+      up: jobs pile up `todo`, no row is ever written, `first_run_at` is None,
+      and with no epoch nothing is ever stale. `check_operations` printed "ok"
+      for ever on a deployment whose scheduler had never run once - the exact
+      deployment the ten-minute heartbeat alert exists for. The migration row
+      exists from the first `migrate`, so the heartbeat's window starts when the
+      deployment does rather than when its first job finishes.
+    - **The run-row epoch drifts.** `prune_run_rows` keeps the newest row per
+      task and drops the rest past `RUN_ROW_RETENTION_S`, so on a deployment
+      older than that retention `first_run_at` is not "when this stack started
+      running", it is "thirty days ago", and it walks forward every night. The
+      migration timestamp is written once and pruned by nothing, so taking the
+      earlier of the two pins the epoch to it on any deployment older than the
+      retention and the alert's own reference stops moving.
+
+    A fresh deployment still does not page in its first minute: `migrate` ran a
+    moment ago, no run row is older, so the epoch is a moment ago and every
+    window is still open. What it does not do is give a task *newly added* to
+    `STALE_AFTER` a grace period of its own on an old deployment - it is named
+    on the first tick until it succeeds once, which is one alert that clears
+    itself rather than a silence.
+    """
+    candidates = [moment for moment in (first_run_at(), migrations_applied_at()) if moment]
+    return min(candidates) if candidates else None
 
 
 def stale_tasks(now=None) -> list[str]:
@@ -130,25 +180,30 @@ def stale_task_details(now=None) -> list[dict]:
     - A task that has succeeded is stale once that success is older than its
       window. Unchanged, and it is the whole of the steady-state rule.
     - A task that has never succeeded is stale once its window has elapsed
-      *since this deployment's first run row* - not immediately. "Never" and
-      "not yet" are the same absence of a row and they are not the same
-      condition: every window on this list is measured from a moment, and on a
-      minute-old deployment no moment has passed. The old predicate called all
-      five stale from the first `up`, so `check_operations` - the documented
-      cron entry - exited 1 on a deployment where nothing at all was wrong, and
-      a monitor that pages on the first morning of every install is a monitor
-      that gets muted. With no rows at all the deployment has no first moment
-      either, so nothing is stale; the first task to run writes the row that
-      starts every other task's clock.
+      *since this deployment's epoch* - not immediately. "Never" and "not yet"
+      are the same absence of a row and they are not the same condition: every
+      window on this list is measured from a moment, and on a minute-old
+      deployment no moment has passed. The old predicate called all five stale
+      from the first `up`, so `check_operations` - the documented cron entry -
+      exited 1 on a deployment where nothing at all was wrong, and a monitor
+      that pages on the first morning of every install is a monitor that gets
+      muted.
+
+    The epoch is `deployment_epoch`, and it used to be the first run row alone.
+    That reads None on a deployment whose worker never dequeued a single job -
+    a `--queues` typo, a crash loop - so nothing was ever stale and this
+    function returned an empty list for ever on exactly the outage the
+    ten-minute heartbeat window exists to name. See `deployment_epoch` for what
+    replaced it and why it does not drift.
 
     What this does not do is excuse a task that is never registered at all. The
-    windows keep running from that first row, so a task missing from the
-    worker's schedule is stale as soon as its own window has passed - eight
-    days for the rebuild, ten minutes for the heartbeat - which is the same
-    lateness any other silent failure gets.
+    windows keep running from the epoch, so a task missing from the worker's
+    schedule is stale as soon as its own window has passed - eight days for the
+    rebuild, ten minutes for the heartbeat - which is the same lateness any
+    other silent failure gets.
     """
     now = now or timezone.now()
-    started = first_run_at()
+    started = deployment_epoch()
     stale = []
     for task, window in STALE_AFTER.items():
         run = last_success(task)
@@ -429,6 +484,15 @@ def job_budgets() -> dict[str, float]:
     }
 
 
+# What an operator does about a wedged job, named here rather than in each
+# surface's own string: the page, the command and the runbook must all send the
+# operator to the same place, and the whole point of the row is that there is
+# something to do about it.
+WEDGED_JOB_REMEDY = (
+    "if its worker is gone, `manage.py unwedge_job <id>` puts the job back on the queue"
+)
+
+
 def wedged_jobs(now=None) -> list[dict]:
     """Jobs still `doing` long past the budget of the task they are running.
 
@@ -472,6 +536,11 @@ def wedged_jobs(now=None) -> list[dict]:
                     "budget_s": budget,
                     "age_s": age,
                     "started_at": started,
+                    # Carried on the row rather than composed by each surface,
+                    # so the page and the command cannot end up naming
+                    # different remedies - and so that a report of a wedged job
+                    # is never just a statement that something is broken.
+                    "remedy": WEDGED_JOB_REMEDY,
                 }
             )
     return wedged
@@ -511,3 +580,81 @@ def failed_jobs(limit: int = 50):
         .annotate(last_event_at=Max("procrastinateevent__at"))
         .order_by("-id")[:limit]
     )
+
+
+def disk_headroom(disk_usage=None) -> dict | None:
+    """The tiles volume, when it is close enough to the rebuild's own gate to say so.
+
+    The fourth thing the alerts watch, and the one that used to be reported by
+    nothing until it was already a refusal. `pipeline.tiles.check_disk_gate` is
+    a hard gate: a rebuild that cannot fit a second full tile set beside the
+    served one, without taking the volume past `DISK_GATE_FRACTION`, does not
+    start at all - and the only remedy it offers is "grow the volume, which is
+    an online resize". An operator who learns that from a failed Tuesday
+    rebuild learns it a week late, on a volume that also carries `PGDATA` and
+    the nightly dumps.
+
+    So this measures the same two things the gate does, minus the part that
+    cannot be known cheaply. The gate reserves `max(current tile set + four
+    times the source extract, REBUILD_MIN_FREE_BYTES)`; walking the tile tree
+    on every alert tick is not something to do from a health probe, so what is
+    checked here is the floor alone:
+
+    - free space below `REBUILD_MIN_FREE_BYTES`, and
+    - the volume already past `DISK_GATE_FRACTION` full once that floor is
+      added to what is used.
+
+    Both are weaker than the gate by construction - the gate's reservation is
+    never smaller than the floor - so this is the alert that fires *before* the
+    refusal rather than with it. Returning None means there is nothing to say.
+
+    The path is `settings.TILES_DIR`, and it is measured at its nearest
+    existing ancestor: `check_disk_gate` creates the directory before it calls
+    `disk_usage`, so the filesystem it measures is the one the ancestor is on,
+    and a probe that raised `FileNotFoundError` on a host whose first rebuild
+    has not run would be an alert that fails on a new deployment. The path
+    actually measured is reported, because `check_operations` is documented as
+    a cron entry in `api` - a container that mounts no part of the data volume
+    - and a free-space line that does not say which filesystem it read is a
+    line that can be quietly about the wrong one.
+    """
+    import shutil
+
+    from django.conf import settings
+
+    disk_usage = disk_usage or shutil.disk_usage
+    measured = _nearest_existing(settings.TILES_DIR)
+    usage = disk_usage(str(measured))
+    minimum_free = settings.REBUILD_MIN_FREE_BYTES
+    fraction = settings.DISK_GATE_FRACTION
+    fraction_after = (usage.used + minimum_free) / usage.total if usage.total else 1.0
+    if usage.free >= minimum_free and fraction_after <= fraction:
+        return None
+    return {
+        "path": str(measured),
+        "free_bytes": usage.free,
+        "total_bytes": usage.total,
+        "minimum_free_bytes": minimum_free,
+        "fraction": fraction,
+        "fraction_after": fraction_after,
+        # Percentages as well as ratios, because the template renders these and
+        # Django's `floatformat` cannot turn 0.8 into 80 without arithmetic in
+        # the page. One conversion, in the one place that knows what the
+        # numbers mean.
+        "fraction_pct": fraction * 100,
+        "fraction_after_pct": fraction_after * 100,
+    }
+
+
+def _nearest_existing(path):
+    """`path` if it exists, else the closest parent that does.
+
+    Never raises and never returns something outside the path's own chain: the
+    root always exists, so the walk terminates.
+    """
+    from pathlib import Path
+
+    candidate = Path(path)
+    while not candidate.exists() and candidate != candidate.parent:
+        candidate = candidate.parent
+    return candidate

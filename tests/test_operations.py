@@ -39,6 +39,55 @@ def empty_job_tables(transactional_db):
     yield
 
 
+@pytest.fixture(autouse=True)
+def ample_free_space(monkeypatch):
+    """Take the free-space check out of every test that is not about it.
+
+    `check_operations` and the operations page report a tiles volume that is
+    close to the rebuild's disk gate, and the gate's numbers are real ones -
+    20 GiB free and 80 percent full. A test asserting "nothing is wrong" would
+    otherwise be asserting something about the machine the suite is running on,
+    and would start failing on a busy CI box for a reason that has nothing to
+    do with the code under test.
+
+    Neutralised rather than mocked out, so the code path still runs: with no
+    floor to reserve and a gate at 100 percent there is genuinely nothing to
+    report, and a test that wants the alert sets its own numbers.
+    """
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 1.0)
+
+
+@pytest.fixture
+def real_deployment_epoch():
+    """Requested by a test that wants the real `migrations_applied_at`.
+
+    Its presence in a test's fixture list is what switches the autouse patch
+    below off, which keeps the opt-out inside this file rather than in a
+    project-wide pytest marker.
+    """
+    return True
+
+
+@pytest.fixture(autouse=True)
+def migrations_applied_now(request, monkeypatch):
+    """Pin the deployment epoch's other half to "a moment ago".
+
+    `core.runs.deployment_epoch` is the earlier of the oldest run row and
+    `MAX(django_migrations.applied)`, and the second half is a real column in
+    the test database whose value is whenever pytest-django built it. Left
+    alone, every test here that asserts something about a deployment with no
+    run rows would quietly depend on how long this suite has been running -
+    ten minutes in, the heartbeat window has passed and a "fresh deployment"
+    test fails. The tests that are about the epoch set their own value.
+    """
+    if "real_deployment_epoch" in request.fixturenames:
+        return
+    from core import runs
+
+    monkeypatch.setattr(runs, "migrations_applied_at", lambda: timezone.now())
+
+
 def deployment_up_since(ago: timedelta, now=None):
     """A `ScheduledRun` row old enough that every alert window has passed since.
 
@@ -775,3 +824,497 @@ def test_the_first_row_is_the_deployments_and_not_the_tasks_own() -> None:
     stale = stale_tasks(now)
     assert "nightly_backup" in stale, "26 hours have passed since this deployment's first row"
     assert "weekly_rebuild" not in stale, "eight days have not"
+
+
+# --- A deployment whose worker never dequeued anything ----------------------------------
+#
+# The case the run-row epoch could not see at all. `first_run_at` is written by
+# the first periodic task to *finish*, so a worker that never dequeued a job -
+# a `--queues` typo, a crash loop, a maintenance container that never came up -
+# leaves the table empty, the epoch None, and nothing stale for ever. The
+# deployment that needed the ten-minute heartbeat alert most was the one it
+# could not fire on.
+
+
+@db
+def test_a_worker_that_never_dequeued_anything_is_an_alert_once_its_window_passes(
+    monkeypatch,
+) -> None:
+    """Jobs `todo`, no run row anywhere, and `check_operations` said "ok".
+
+    The epoch is now the earlier of the first run row and the deployment's last
+    migration, and `migrate` runs before any worker does, so the heartbeat's
+    ten-minute window starts when the deployment does rather than when its
+    first job finishes. Both sides of that window are asserted, because the
+    half that must not regress is the fresh install: an alert that fires in the
+    first minute of every deployment is an alert that gets muted.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core import runs
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER
+
+    make_job("worker_heartbeat", "todo", timedelta(minutes=30))
+    assert not ScheduledRun.objects.exists(), "no task has ever finished on this deployment"
+
+    window = STALE_AFTER["worker_heartbeat"]
+    monkeypatch.setattr(
+        runs, "migrations_applied_at", lambda: timezone.now() - timedelta(seconds=window - 60)
+    )
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    assert exit_code.value.code == 0, (
+        f"a minute inside the heartbeat window is not an alert yet: {out.getvalue()}"
+    )
+
+    monkeypatch.setattr(
+        runs, "migrations_applied_at", lambda: timezone.now() - timedelta(seconds=window + 60)
+    )
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    assert exit_code.value.code == 1, (
+        "a deployment whose worker has never dequeued a job reported ok for ever"
+    )
+    assert "stale: worker_heartbeat" in out.getvalue()
+
+
+@db
+def test_the_epoch_exists_as_soon_as_migrate_has_run(real_deployment_epoch) -> None:
+    """The real column, not a stand-in: `MAX(django_migrations.applied)`.
+
+    Every deployment procedure runs `migrate` before it starts a worker, and
+    nothing in this project prunes `django_migrations`, so this is the one
+    timestamp that is there on a stack where no job has ever been dequeued.
+    The test database was built by running the migrations, so it has one.
+    """
+    from core.models import ScheduledRun
+    from core.runs import deployment_epoch, migrations_applied_at
+
+    applied = migrations_applied_at()
+    assert applied is not None, "the test database was built by `migrate` and has the rows"
+    assert not ScheduledRun.objects.exists()
+    assert deployment_epoch() == applied, "with no run row, the migration is the whole epoch"
+
+
+@db
+def test_the_epoch_is_the_earlier_of_the_two_and_does_not_drift(real_deployment_epoch) -> None:
+    """`prune_run_rows` keeps the newest row per task and drops the rest past
+    thirty days, so on an old deployment `first_run_at` is not "when this stack
+    started running" - it is "thirty days ago", and it walks forward every
+    night. The migration timestamp is written once and pruned by nothing, so
+    taking the earlier of the two pins the epoch to it and the reference the
+    alert measures against stops moving.
+    """
+    from core.models import ScheduledRun
+    from core.runs import deployment_epoch, first_run_at, migrations_applied_at
+
+    applied = migrations_applied_at()
+    older = applied - timedelta(days=400)
+    ScheduledRun.objects.create(
+        task="worker_heartbeat", started_at=older, finished_at=older, succeeded=True
+    )
+    assert deployment_epoch() == older, "a run row older than the migration is the epoch"
+
+    ScheduledRun.objects.all().delete()
+    newer = applied + timedelta(days=400)
+    ScheduledRun.objects.create(
+        task="worker_heartbeat", started_at=newer, finished_at=newer, succeeded=True
+    )
+    assert first_run_at() == newer
+    assert deployment_epoch() == applied, (
+        "the oldest surviving run row has drifted past the migration, so the migration is "
+        "the epoch and the windows stop moving with the pruning"
+    )
+
+
+@db
+def test_a_success_exactly_its_window_old_is_stale() -> None:
+    """The edge itself, which nothing pinned: with `age < window` widened to
+    `age <= window` every test still passed, because no test ever wrote a
+    success exactly one window old. The window is "no success inside the last
+    N seconds", so the instant the window closes is outside it.
+    """
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, stale_tasks
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        started = now - timedelta(seconds=STALE_AFTER[task])
+        ScheduledRun.objects.create(
+            task=task, started_at=started, finished_at=started, succeeded=True
+        )
+    assert sorted(stale_tasks(now)) == sorted(STALE_AFTER), (
+        "a success exactly one window old is outside the window, not on its edge"
+    )
+
+
+# --- Free space on the tiles volume ----------------------------------------------------
+#
+# The disk gate is a hard refusal whose only remedy is growing the volume, and
+# nothing reported the volume until that refusal arrived - so the first an
+# operator heard of it was a rebuild that did not run, a week after it could
+# have been fixed.
+
+
+def fake_usage(total: int, used: int):
+    """A `shutil.disk_usage` stand-in, so the assertion is about the numbers
+    rather than about the machine the suite happens to run on."""
+    from collections import namedtuple
+
+    usage = namedtuple("usage", "total used free")
+    return lambda path: usage(total, used, total - used)
+
+
+@db
+def test_a_volume_too_full_for_the_next_rebuild_is_an_alert(monkeypatch) -> None:
+    """Below the floor the gate reserves, which is `REBUILD_MIN_FREE_BYTES`."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, disk_headroom
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+    short = disk_headroom(disk_usage=fake_usage(200 * 1024**3, 190 * 1024**3))
+    assert short is not None and short["free_bytes"] == 10 * 1024**3
+
+    # The command through its own code path, with a floor no filesystem can
+    # satisfy rather than a stubbed check: what is asserted is that the fourth
+    # check reaches the exit code, not that a stand-in was called.
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 1 << 62)
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+    assert exit_code.value.code == 1, f"nothing else is wrong, so this is the disk: {printed}"
+    assert "disk:" in printed
+    assert "1 volume(s) short of room for a rebuild" in printed
+
+
+@db
+def test_a_volume_over_the_gate_fraction_is_an_alert_before_the_gate_refuses(
+    monkeypatch,
+) -> None:
+    """Free space alone is not the gate. The gate also refuses a build that
+    would take the volume past `DISK_GATE_FRACTION`, and it charges the floor
+    at minimum - so a volume with room for the floor in absolute terms, but not
+    without crossing 80 percent, is one the next rebuild refuses.
+    """
+    from core.runs import disk_headroom
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+
+    # 30 GiB free of 100, floor 20: the floor fits, but using it leaves the
+    # volume 90 percent full.
+    tight = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 70 * 1024**3))
+    assert tight is not None, "free space alone said this volume was fine"
+    assert tight["free_bytes"] > tight["minimum_free_bytes"]
+    assert tight["fraction_after"] > tight["fraction"]
+
+    roomy = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 40 * 1024**3))
+    assert roomy is None, "60 GiB free of 100 and 60 percent full after the floor is fine"
+
+
+@db
+def test_the_free_space_line_names_the_path_it_measured(monkeypatch) -> None:
+    """`check_operations` is documented as a cron entry in `api`, which mounts
+    no part of the data volume: there `TILES_DIR` is a path on the container's
+    own writable layer and the number is about the wrong filesystem. A line
+    that does not say which path it read is a line that can be quietly about
+    the wrong one.
+    """
+    from pathlib import Path
+
+    from core.runs import disk_headroom
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 1 << 62)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+    monkeypatch.setattr(settings, "TILES_DIR", Path(settings.TILES_DIR) / "nowhere" / "at" / "all")
+
+    reported = disk_headroom()
+    assert reported is not None
+    assert Path(reported["path"]).exists(), (
+        "a missing tiles directory is measured at its nearest existing ancestor, which is "
+        "the filesystem check_disk_gate measures after it creates the directory - rather "
+        "than raising FileNotFoundError on every deployment whose first rebuild has not run"
+    )
+
+
+@db
+def test_the_operations_page_shows_a_volume_with_no_room(client, monkeypatch) -> None:
+    from core.models import User
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 1 << 62)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+    admin = User.objects.create(discord_user_id=9101, is_instance_admin=True)
+    sign_in(client, admin)
+
+    body = client.get(operations_url()).content.decode()
+    assert "disk-headroom" in body
+    assert "disk-has-room" not in body
+
+
+@db
+def test_the_operations_page_says_so_when_there_is_room(client) -> None:
+    from core.models import User
+
+    admin = User.objects.create(discord_user_id=9102, is_instance_admin=True)
+    sign_in(client, admin)
+
+    body = client.get(operations_url()).content.decode()
+    assert "disk-has-room" in body
+
+
+# --- Putting a wedged job back ----------------------------------------------------------
+
+
+@db
+def test_both_surfaces_name_the_command_that_clears_a_wedged_job(client) -> None:
+    """A wedged job was reported and nothing said what to do about it, and
+    there was nothing to do: Procrastinate prunes stalled *workers*, not their
+    jobs, so a rebuild whose worker was SIGKILLed stayed `doing` for ever and
+    both single-flight checks refused every rebuild after it. The remedy is one
+    command, and it is named on the row rather than composed by each surface so
+    the page and the monitor cannot send an operator to different places.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun, User
+    from core.runs import STALE_AFTER, wedged_jobs
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    make_job("weekly_rebuild", "doing", timedelta(hours=9))
+
+    assert all("unwedge_job" in entry["remedy"] for entry in wedged_jobs())
+
+    out = StringIO()
+    with pytest.raises(SystemExit):
+        call_command("check_operations", stdout=out)
+    assert "unwedge_job" in out.getvalue()
+
+    admin = User.objects.create(discord_user_id=9103, is_instance_admin=True)
+    sign_in(client, admin)
+    assert "unwedge_job" in client.get(operations_url()).content.decode()
+
+
+def wedged_rebuild(minutes: int = 600, worker_id=None) -> int:
+    """A `weekly_rebuild` job `doing` for longer than its own budget, owned by
+    `worker_id` or by nobody."""
+    at = timezone.now() - timedelta(minutes=minutes)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO procrastinate_jobs
+                (queue_name, task_name, priority, args, status, attempts,
+                 abort_requested, queueing_lock, worker_id)
+            VALUES ('rebuild', 'weekly_rebuild', 0, '{}'::jsonb, 'doing', 0,
+                    false, 'weekly_rebuild', %s)
+            RETURNING id
+            """,
+            [worker_id],
+        )
+        job_id = cursor.fetchone()[0]
+        cursor.execute(
+            "INSERT INTO procrastinate_events (job_id, type, at) VALUES (%s, 'started', %s)",
+            [job_id, at],
+        )
+    return job_id
+
+
+def register_worker(last_heartbeat) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO procrastinate_workers (last_heartbeat) VALUES (%s) RETURNING id",
+            [last_heartbeat],
+        )
+        return cursor.fetchone()[0]
+
+
+def job_status(job_id: int) -> str:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT status FROM procrastinate_jobs WHERE id = %s", [job_id])
+        return cursor.fetchone()[0]
+
+
+@db
+def test_unwedge_job_puts_a_disowned_job_back_on_its_queue() -> None:
+    """The whole point. A worker killed with SIGKILL writes no terminal status,
+    and the next worker's startup prunes the stalled worker row - which sets
+    this job's `worker_id` NULL through the foreign key and leaves the job
+    `doing` for ever. `run_rebuild_now` and the in-task check both read that
+    row, so the deployment never rebuilds again.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import AuditLogEntry
+
+    job_id = wedged_rebuild()
+
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+
+    assert job_status(job_id) == "todo"
+    printed = out.getvalue()
+    assert f"job {job_id}" in printed and "queued again" in printed
+    assert "rebuild service" in printed, "it says what happens next"
+    assert "run_rebuild_now" in printed
+
+    entry = AuditLogEntry.objects.get(action="unwedge_job")
+    assert entry.actor is None and entry.actor_user_id is None, (
+        "a shell in a container has no actor, the same as run_rebuild_now"
+    )
+    assert entry.model == "procrastinatejob"
+    assert entry.object_id == str(job_id)
+    assert entry.outcome == AuditLogEntry.Outcome.ALLOWED
+
+
+@db
+def test_unwedge_job_refuses_while_the_worker_is_still_beating() -> None:
+    """The refusal that makes the command safe to hand an operator. A worker
+    running a six-hour rebuild updates `procrastinate_workers.last_heartbeat`
+    every ten seconds from its own asyncio task - the sync task body runs in a
+    thread, so the loop keeps beating - and requeueing a job that is genuinely
+    running is how two rebuilds end up writing the same staging schema.
+    """
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    from core.models import AuditLogEntry
+
+    worker = register_worker(timezone.now())
+    job_id = wedged_rebuild(worker_id=worker)
+
+    with pytest.raises(CommandError) as refused:
+        call_command("unwedge_job", str(job_id))
+
+    assert f"worker {worker}" in str(refused.value)
+    assert job_status(job_id) == "doing", "the refused call requeued it anyway"
+    assert not AuditLogEntry.objects.filter(action="unwedge_job").exists()
+
+
+@db
+def test_unwedge_job_accepts_a_worker_that_has_stopped_reporting() -> None:
+    """The worker row outliving the process: `prune_stalled_workers` runs at
+    the *next* worker's startup, so between the kill and that startup the row
+    is still there with a heartbeat that has stopped. Procrastinate's own
+    definition of stalled is the number used here.
+    """
+    from django.core.management import call_command
+
+    from core.management.commands.unwedge_job import STALLED_WORKER_TIMEOUT_S
+
+    silent = timezone.now() - timedelta(seconds=STALLED_WORKER_TIMEOUT_S + 30)
+    job_id = wedged_rebuild(worker_id=register_worker(silent))
+
+    call_command("unwedge_job", str(job_id))
+
+    assert job_status(job_id) == "todo"
+
+
+@db
+def test_unwedge_job_refuses_a_job_that_is_not_doing() -> None:
+    """`todo` is already queued and a terminal status is finished. Neither is
+    wedged, and moving either would be this command inventing work."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    queued = make_job("weekly_rebuild", "todo", timedelta(minutes=1))
+    with pytest.raises(CommandError) as refused:
+        call_command("unwedge_job", str(queued))
+    assert "not doing" in str(refused.value)
+
+    with pytest.raises(CommandError) as missing:
+        call_command("unwedge_job", str(queued + 10_000))
+    assert "no job" in str(missing.value)
+
+
+@db
+def test_unwedge_job_refuses_when_the_queueing_lock_is_already_taken() -> None:
+    """The collision `run_rebuild_now` exists to avoid, from the other side.
+    Procrastinate's queueing-lock index is partial on `WHERE status = 'todo'`,
+    so moving this row back to `todo` while another job holds the same lock
+    there is a unique violation inside the retry function - a traceback out of
+    a command an operator is running at three in the morning, rather than a
+    sentence telling them the next run is already queued.
+    """
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    wedged = wedged_rebuild()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO procrastinate_jobs
+                (queue_name, task_name, priority, args, status, attempts,
+                 abort_requested, queueing_lock)
+            VALUES ('rebuild', 'weekly_rebuild', 0, '{}'::jsonb, 'todo', 0, false,
+                    'weekly_rebuild')
+            RETURNING id
+            """
+        )
+        queued = cursor.fetchone()[0]
+
+    with pytest.raises(CommandError) as refused:
+        call_command("unwedge_job", str(wedged))
+
+    assert f"job {queued}" in str(refused.value)
+    assert "queueing lock" in str(refused.value)
+    assert job_status(wedged) == "doing"
+
+
+# --- The budget table, read from the constants rather than beside them ------------------
+
+
+def test_the_sweeps_budget_follows_the_constant_the_task_enforces(monkeypatch) -> None:
+    """`SWEEP_TIMEOUT_S` and `DEFAULT_JOB_BUDGET_S` are both thirty minutes
+    today, so every assertion comparing the sweep's budget to a number passes
+    whichever of the two `job_budgets` reads. That is not a test of the table,
+    it is a coincidence: the sweep's half hour is `run_with_deadline`'s own
+    argument and the default is the maintenance queue's bound for a task that
+    enforces nothing, and the day one of them moves the wedged-job alert would
+    silently judge the sweep by the wrong one.
+
+    So the constant is moved and the table is read again.
+    """
+    from config import procrastinate as worker
+    from core.runs import job_budgets
+
+    monkeypatch.setattr(worker, "SWEEP_TIMEOUT_S", 1234)
+    assert job_budgets()["membership_sweep"] == 1234, (
+        "the sweep's budget is the number the sweep enforces on itself, not the default"
+    )
+
+
+def test_the_default_job_budget_is_the_maintenance_queues_bound() -> None:
+    """Half an hour, which is what the backup and the sweep are each held to on
+    that one-slot queue - so a task that enforces nothing of its own is judged
+    by the same number as everything beside it. An hour would put the two
+    five-minute tasks 720 ticks late before anything said so."""
+    from config.procrastinate import BACKUP_TIMEOUT_S, SWEEP_TIMEOUT_S
+    from core.runs import DEFAULT_JOB_BUDGET_S
+
+    assert DEFAULT_JOB_BUDGET_S == 30 * 60
+    assert DEFAULT_JOB_BUDGET_S == BACKUP_TIMEOUT_S == SWEEP_TIMEOUT_S, (
+        "it is the queue's bound, and these three being equal is the reason it is that number"
+    )

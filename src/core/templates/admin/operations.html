@@ -37,7 +37,9 @@ list is an alert.</p>
 <p>Each of these has been running for longer than the budget its task enforces
 on itself, which means nothing enforced it: a worker killed mid-job leaves its
 row <code>doing</code> for ever, because the process that would have finished it
-is gone. Everything on this list is an alert.</p>
+is gone. Everything on this list is an alert: once the worker that held the job
+is gone, <code>manage.py unwedge_job &lt;id&gt;</code> puts it back on the
+queue.</p>
 <table>
   <thead><tr><th>Job</th><th>Task</th><th>Queue</th><th>Running for</th><th>Budget</th><th>Started</th></tr></thead>
   <tbody>
@@ -55,6 +57,20 @@ is gone. Everything on this list is an alert.</p>
 </table>
 {% else %}
 <p id="no-wedged-jobs">No job has outlived the budget of the task it is running.</p>
+{% endif %}
+
+<h2>Free space</h2>
+{% if disk_headroom %}
+<p class="disk-headroom">The rebuild's disk gate refuses a build that cannot fit
+a second full tile set without taking the volume past
+{{ disk_headroom.fraction_pct|floatformat:0 }}&nbsp;%, and its only remedy is
+growing the volume. <strong>{{ disk_headroom.path }}</strong> has
+{{ disk_headroom.free_bytes|filesizeformat }} free of
+{{ disk_headroom.total_bytes|filesizeformat }}; a rebuild reserving the
+{{ disk_headroom.minimum_free_bytes|filesizeformat }} floor alone would leave it
+{{ disk_headroom.fraction_after_pct|floatformat:0 }}&nbsp;% full. This is an alert.</p>
+{% else %}
+<p id="disk-has-room">The tiles volume has room for the next rebuild.</p>
 {% endif %}
 
 <h2>Failed jobs</h2>

@@ -288,3 +288,33 @@ def test_the_command_tells_the_operator_to_restart_the_routers() -> None:
     assert "docker compose restart" in printed
     for variant in ("valhalla-standard", "valhalla-no-trail", "valhalla-ebike"):
         assert variant in printed, variant
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_refusal_names_the_oldest_job_in_flight() -> None:
+    """`jobs_in_flight` is ordered oldest first and the refusal takes the first
+    row, which is the one an operator should go and look at: the rebuild that
+    is actually running, not whatever was queued behind it afterwards.
+
+    Reversed, the message would name a job that has not started - and the
+    remedy it offers, `docker compose logs -f rebuild`, would show nothing
+    about it. Two rows are needed to tell the two orderings apart, and the only
+    way to have two is one `doing` and one `todo`: the queueing lock's index is
+    partial on `WHERE status = 'todo'`.
+    """
+    from core.runs import jobs_in_flight
+
+    running = app.tasks["weekly_rebuild"].defer(timestamp=0)
+    set_status(running, "doing")
+    queued = app.tasks["weekly_rebuild"].defer(timestamp=1)
+    assert queued > running
+
+    assert [job.id for job in jobs_in_flight("weekly_rebuild")] == [running, queued]
+
+    with pytest.raises(CommandError) as refused:
+        call_command("run_rebuild_now")
+
+    message = str(refused.value)
+    assert f"job {running} is doing" in message, (
+        f"the refusal names the rebuild that is running, not the one queued behind it: {message}"
+    )

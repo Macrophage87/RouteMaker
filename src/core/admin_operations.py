@@ -30,7 +30,7 @@ from django.template.response import TemplateResponse
 
 from .admin import site
 from .models import ScheduledRun
-from .runs import STALE_AFTER, failed_jobs, stale_task_details, wedged_jobs
+from .runs import STALE_AFTER, disk_headroom, failed_jobs, stale_task_details, wedged_jobs
 
 # How many of each list the page shows. Enough to see a pattern, few enough that
 # the page stays one screen.
@@ -80,6 +80,11 @@ class ScheduledRunAdmin(admin.ModelAdmin):
             # mid-job never writes `failed`, so the failed-jobs list below is
             # empty for exactly the outage that has stopped the queue.
             "wedged_jobs": wedged_jobs(),
+            # The volume, before the disk gate turns it into a refused
+            # rebuild. `check_operations` prints the same thing from the same
+            # function, so the page and the monitor cannot disagree about how
+            # much room is left either.
+            "disk_headroom": disk_headroom(),
             "failed_jobs": failed_jobs(RECENT_FAILURES),
             "recent_runs": ScheduledRun.objects.order_by("-started_at")[:RECENT_RUNS],
             **(extra_context or {}),

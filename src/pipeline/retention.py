@@ -51,6 +51,13 @@ BUILD_ID_FORMAT = "%Y%m%dT%H%M%SZ"
 # The dumps `perform_backup` writes, by name.
 DUMP_NAME = re.compile(r"^routemaker-\d{8}T\d{6}Z\.dump$")
 
+# The staging name `perform_backup` writes into before it renames. Its own
+# `finally` removes it on every path the process survives; what it cannot clean
+# up is a SIGKILL, which is the one failure that leaves a part file behind - and
+# a part file is a full-sized archive, on the volume the rebuild's disk gate
+# measures.
+PART_NAME = re.compile(r"^(routemaker-\d{8}T\d{6}Z\.dump)\.part$")
+
 
 def unique_build_id(now: datetime, existing: object = ()) -> str:
     """A build id that is not already taken.
@@ -173,6 +180,11 @@ def prune_backups(backup_dir: Path | str, keep: int) -> list[Path]:
     copy, and a volume snapshot being brought back - all of which rewrite mtime
     and none of which should change which dump is the newest. Files that are not
     dumps this task wrote are not touched.
+
+    Returns the finished dumps it removed. The abandoned `.dump.part` files it
+    also reclaims are not in that list and are logged instead: they are not
+    backups and never were, so counting them into "pruned N old dumps" would
+    report a retention decision that was not made. See `_prune_dump_parts`.
     """
     directory = Path(backup_dir)
     if not directory.is_dir():
@@ -186,7 +198,51 @@ def prune_backups(backup_dir: Path | str, keep: int) -> list[Path]:
         dump.unlink()
     if doomed:
         logger.info("pruned %d old dumps from %s", len(doomed), directory)
+    _prune_dump_parts(directory, kept=dumps[len(doomed) :])
     return doomed
+
+
+def _prune_dump_parts(directory: Path, kept: list[Path]) -> list[Path]:
+    """Remove abandoned `.dump.part` files, which nothing else ever reclaims.
+
+    `perform_backup` writes `<name>.dump.part` and renames it to `<name>.dump`
+    only once `pg_restore --list` has proved the archive is what was asked for,
+    and its own `finally` removes the part file on every path its process lives
+    through - a failed dump, a rejected listing, the thirty-minute timeout. The
+    path it cannot cover is the one the part file exists for: a SIGKILL, from a
+    `docker compose down`, a host reboot or the OOM killer. That leaves a
+    full-sized archive under a name `prune_backups` matched none of, on the
+    volume the rebuild's disk gate measures and the dumps share with PGDATA, and
+    nothing in this project has ever removed one.
+
+    The rule is "older than the newest dump still being kept", by the instant in
+    the name, and it is deliberately not "older than an hour". A part file whose
+    instant is newer than every kept dump is the dump being written right now -
+    this function runs from `nightly_backup`, in the same task - and deleting it
+    would be this module reaching into a live write. With no kept dump at all
+    there is nothing to compare against and nothing is removed, which is the
+    same case seen from the other side: the only part file that can exist beside
+    no dump at all is the first one, in flight.
+    """
+    if not kept:
+        return []
+    newest_kept = kept[-1].name
+    removed = []
+    for entry in sorted(directory.iterdir(), key=lambda entry: entry.name):
+        match = PART_NAME.match(entry.name)
+        if match is None or not entry.is_file():
+            continue
+        if match.group(1) < newest_kept:
+            entry.unlink()
+            removed.append(entry)
+    if removed:
+        logger.info(
+            "removed %d abandoned dump part files from %s: %s",
+            len(removed),
+            directory,
+            [entry.name for entry in removed],
+        )
+    return removed
 
 
 def _link_target(root: Path, link: str) -> str | None:
