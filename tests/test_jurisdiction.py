@@ -69,6 +69,43 @@ def test_all_three_layers_are_assigned(authorities) -> None:
     assert {a.layer for a in assign_way(way)} == {"police", "manager", "row"}
 
 
+@pytest.mark.parametrize(
+    "order", [("Aqueduct Trust", "Zenith Trust"), ("Zenith Trust", "Aqueduct Trust")]
+)
+def test_assignments_tied_on_share_are_ordered_by_name(order, authorities) -> None:
+    """The tiebreaker `route_crossings` has, which this query did not.
+
+    Two polygons covering a way equally is not exotic - a boundary running down
+    the middle of a block puts two agencies on half of it each - and the order
+    the rows come back in is not cosmetic. `authorities_for` keeps the largest
+    share on each layer *whatever* its size, so where the tie is below
+    `MIN_JURISDICTION_FRACTION` the first row back is the one authority the way
+    is tagged with and the other is dropped. Without `j.name` that was whatever
+    the plan produced, which here follows the order the rows were inserted in -
+    so the same extract clipped twice could tag the same way with a different
+    agency, and the parametrisation is the two insertion orders.
+    """
+    from core.models import Jurisdiction
+    from pipeline.jurisdiction import assign_way
+    from pipeline.run import MIN_JURISDICTION_FRACTION, authorities_for
+
+    for name in order:
+        Jurisdiction.objects.create(
+            layer="manager", name=name, state="MD", geometry=box(-77.05, -77.00, 38.70, 38.74)
+        )
+
+    # A way whose ends sit in neither polygon: it runs south out of both, with a
+    # twentieth of its length inside each - equal shares, both well under the
+    # tenth `authorities_for` needs before it keeps a second authority.
+    way = LineString((-77.03, 38.7002), (-77.01, 38.7002), (-77.01, 38.30), srid=4326)
+    manager = [a for a in assign_way(way) if a.layer == "manager"]
+
+    assert [a.authority for a in manager] == ["Aqueduct Trust", "Zenith Trust"]
+    assert manager[0].fraction == pytest.approx(manager[1].fraction, abs=1e-9)
+    assert manager[0].fraction < MIN_JURISDICTION_FRACTION, "the tie is below the threshold"
+    assert authorities_for(manager, MIN_JURISDICTION_FRACTION) == {"Aqueduct Trust"}
+
+
 def test_crossings_are_ordered_along_the_route(authorities) -> None:
     """Re-entering the District after a mile in Virginia is a second crossing,
     not a footnote on the first."""

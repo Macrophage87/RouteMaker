@@ -11,10 +11,12 @@ the result with the production loader.
 from __future__ import annotations
 
 import json
+import math
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from rebuild_fixtures import REPO, build_toy_extract
 
 SCRIPT = REPO / "scripts" / "install_reference_data.py"
@@ -542,3 +544,183 @@ class TestTheUrbanLengthFraction:
         # Half the way inside, and it is urban - the District street whose last
         # block leaves the boundary is why this is a fraction and not containment.
         assert 100 in module.urban_way_ids(extract, urban_polygon_to(tmp_path, -77.00))
+
+
+# --- The length ratio's units ----------------------------------------------
+
+L_SHAPED_LAT = 39.0  # the northern half of the coverage box, where the bias is 13 percent
+L_SHAPED_DLON = 0.02  # the east-west leg
+L_SHAPED_DLAT = L_SHAPED_DLON * math.cos(math.radians(L_SHAPED_LAT))  # the same ground length
+L_SHAPED_LON = -77.60
+
+
+def build_l_shaped_extract(path: Path) -> None:
+    """One way that runs east and then turns north, its two legs the same length
+    on the ground and therefore *not* the same length in degrees.
+
+    A degree of longitude is 0.777 of a degree of latitude at 39 N, so measuring
+    the ratio in degrees weighs the east-west leg 1.29 times the north-south one
+    and the answer depends on which way the covered part of the way happens to
+    point. A street that turns a corner is the ordinary shape here, not a
+    contrived one.
+    """
+    import osmium
+
+    Path(path).unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            1: (L_SHAPED_LON, L_SHAPED_LAT),
+            2: (L_SHAPED_LON + L_SHAPED_DLON, L_SHAPED_LAT),
+            3: (L_SHAPED_LON + L_SHAPED_DLON, L_SHAPED_LAT + L_SHAPED_DLAT),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=100,
+                nodes=[1, 2, 3],
+                version=1,
+                tags={"highway": "secondary", "name": "Corner Road"},
+            )
+        )
+    finally:
+        writer.close()
+
+
+def polygon_file(tmp_path: Path, name: str, west: float, east: float, south: float, north: float):
+    path = tmp_path / f"{name}.geojson"
+    path.write_text(
+        json.dumps(
+            geojson(
+                [
+                    {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [west, south],
+                                    [east, south],
+                                    [east, north],
+                                    [west, north],
+                                    [west, south],
+                                ]
+                            ],
+                        },
+                    }
+                ]
+            )
+        )
+    )
+    return path
+
+
+def install_module():
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestTheLengthRatioIsAGroundRatio:
+    """The urban switch may not turn on which way the way points.
+
+    The ratio was measured in degrees, on the reasoning that the local scale
+    factor cancels between two lengths of the same way. It cancels only while
+    both lengths run in the same direction: a degree of longitude is 0.777 of a
+    degree of latitude at 39 N, so on an L-shaped way the two legs are weighed
+    differently and a way exactly half inside an urban area reads 0.44 or 0.56
+    depending on which of its legs the polygon covers. At the threshold that is
+    the difference between assuming 30 mph along the whole way and assuming 50.
+    """
+
+    def test_a_corners_two_legs_are_the_same_length_on_the_ground(self, tmp_path) -> None:
+        """The premise, so a failure below says which half moved: the two legs
+        are equal in metres and 1.29 apart in degrees."""
+        from routemaker.geo import Point, haversine
+
+        corner = Point(L_SHAPED_LON + L_SHAPED_DLON, L_SHAPED_LAT)
+        west = Point(L_SHAPED_LON, L_SHAPED_LAT)
+        north = Point(L_SHAPED_LON + L_SHAPED_DLON, L_SHAPED_LAT + L_SHAPED_DLAT)
+        assert haversine(west, corner) == pytest.approx(haversine(corner, north), rel=0.001)
+        assert L_SHAPED_DLON / L_SHAPED_DLAT == pytest.approx(1.287, abs=0.005)
+
+    def test_a_majority_of_the_north_south_leg_is_urban(self, tmp_path) -> None:
+        """52 percent of the way's length, all of it on the leg that degrees
+        under-weigh: 0.46 measured in degrees, so the way was graded rural.
+        """
+        extract = tmp_path / "corner.osm.pbf"
+        build_l_shaped_extract(extract)
+        # The whole north-south leg plus 4 percent of the east-west one.
+        urban = polygon_file(
+            tmp_path,
+            "north-leg",
+            L_SHAPED_LON + 0.96 * L_SHAPED_DLON,
+            L_SHAPED_LON + L_SHAPED_DLON + 0.001,
+            L_SHAPED_LAT - 0.001,
+            L_SHAPED_LAT + L_SHAPED_DLAT + 0.001,
+        )
+        assert 100 in install_module().urban_way_ids(extract, urban)
+
+    def test_a_minority_of_the_east_west_leg_is_rural(self, tmp_path) -> None:
+        """The mirror image: 48 percent of the way, all of it on the leg degrees
+        over-weigh, which read 0.54 and graded the way urban. Both halves are
+        needed - a measure that simply ran high or low would pass one of them.
+        """
+        extract = tmp_path / "corner.osm.pbf"
+        build_l_shaped_extract(extract)
+        urban = polygon_file(
+            tmp_path,
+            "east-west-leg",
+            L_SHAPED_LON - 0.001,
+            L_SHAPED_LON + 0.96 * L_SHAPED_DLON,
+            L_SHAPED_LAT - 0.001,
+            L_SHAPED_LAT + 0.001,
+        )
+        assert 100 not in install_module().urban_way_ids(extract, urban)
+
+    def test_overlapping_urban_areas_are_unioned_rather_than_summed(self, tmp_path) -> None:
+        """The guard the comment at the union describes, which nothing asserted.
+
+        Two Census urban areas can overlap, and a way lying in the overlap is
+        not inside twice. Summing each polygon's intersection separately double
+        counts the shared stretch: these two cover 45 percent of the way between
+        them and 65 percent if the overlap is counted twice, which is the
+        difference between rural and urban at the threshold.
+        """
+        extract = tmp_path / "source.osm.pbf"
+        build_toy_extract(extract)  # way 100 runs from -77.02 to -76.98 at 38.90
+
+        path = tmp_path / "overlapping.geojson"
+        path.write_text(
+            json.dumps(
+                geojson(
+                    [
+                        {
+                            "type": "Feature",
+                            "properties": {},
+                            "geometry": {
+                                "type": "Polygon",
+                                "coordinates": [
+                                    [
+                                        [west, 38.895],
+                                        [east, 38.895],
+                                        [east, 38.905],
+                                        [west, 38.905],
+                                        [west, 38.895],
+                                    ]
+                                ],
+                            },
+                        }
+                        for west, east in ((-77.03, -77.006), (-77.014, -77.002))
+                    ]
+                )
+            )
+        )
+        assert 100 not in install_module().urban_way_ids(extract, path)

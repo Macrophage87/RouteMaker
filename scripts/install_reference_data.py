@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import shutil
 import sys
@@ -148,11 +149,27 @@ def urban_way_ids(
     off, and the asymmetry that puts it there rather than at
     `MIN_JURISDICTION_FRACTION`'s figure is written at the constant.
 
-    Length is measured in degrees rather than on the geography. The comparison
-    is a ratio of two lengths of the *same* way over a span of a few kilometres,
-    where the local scale factor cancels; the threshold is a judgement call at
-    one significant figure, and nothing downstream reads the length itself.
+    Length is measured with the two axes weighed against each other by
+    cos(latitude), which is the cheapest thing that makes the ratio a ratio of
+    ground lengths. Raw degrees do not cancel the way the earlier comment
+    claimed they do: they cancel only while the covered stretch and the whole
+    way run in the same direction, because a degree of longitude is 0.78 of a
+    degree of latitude at 39 N and the two axes therefore weigh differently. On
+    an L-shaped way with one leg east-west and one north-south - a street that
+    turns a corner, which is most of them - that bias runs to 13 percent either
+    way at the threshold: a way exactly half inside read 0.46 when the inside
+    half was the north-south leg and 0.54 when it was the east-west one, so
+    which way the covered part happened to point decided whether the road was
+    graded at the urban 30 mph default or the rural 50.
+
+    The latitude axis is divided by the cosine rather than the longitude axis
+    multiplied by it, which is the same ratio in different units - degrees of
+    longitude at this way's latitude instead of metres - and leaves an
+    east-west way's coordinates untouched rather than rounding every one of
+    them. The scaling is affine, so it commutes with the intersection and can be
+    applied to the result rather than to every polygon.
     """
+    from shapely.affinity import scale
     from shapely.geometry import LineString
     from shapely.ops import unary_union
     from shapely.strtree import STRtree
@@ -171,12 +188,20 @@ def urban_way_ids(
         nearby = [polygons[i] for i in index.query(line)]
         if not nearby:
             continue
+        # A way spans a few kilometres, so one cosine for the whole of it is
+        # exact to far better than the threshold's one significant figure.
+        cosine = math.cos(math.radians(line.centroid.y))
+
+        def metric_length(geometry, cosine=cosine) -> float:
+            return scale(geometry, xfact=1.0, yfact=1.0 / cosine, origin=(0, 0)).length
+
         # Unioned before the intersection is measured: two adjacent urban areas
         # each covering a third of a way describe a way two thirds urban, and
         # summing the pieces separately would double-count any overlap between
         # them.
-        inside = line.intersection(unary_union(nearby)).length
-        if line.length > 0 and inside / line.length >= min_fraction:
+        inside = metric_length(line.intersection(unary_union(nearby)))
+        total = metric_length(line)
+        if total > 0 and inside / total >= min_fraction:
             ids.append(way.osm_id)
     return sorted(ids)
 

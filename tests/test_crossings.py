@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from pipeline.crossings import (
     DEFAULT_MIN_CROSSING_M,
     Crossing,
@@ -27,6 +29,29 @@ def crossing(authority: str, length: float, **kwargs) -> Crossing:
 def test_short_crossings_collapse() -> None:
     kept = collapse_short_crossings([crossing("MPD", LONG), crossing("USPP", SHORT)])
     assert [c.authority for c in kept] == ["MPD"]
+
+
+def test_a_crossing_exactly_at_the_minimum_is_kept() -> None:
+    """The tie, pinned on the boundary rather than beside it.
+
+    `LONG` and `SHORT` are three times and a quarter of the threshold, so the
+    comparison could be `>` instead of `>=` - or the threshold could move by a
+    factor of two in either direction - with every other test here green. What
+    a tenth of a mile means is the shortest stretch worth putting on a permit
+    application, and a crossing that is exactly that long is one of them.
+    """
+    exact = Crossing(layer="police", authority="USPP", start_m=0.0, end_m=DEFAULT_MIN_CROSSING_M)
+    assert exact.length_m == DEFAULT_MIN_CROSSING_M
+    assert collapse_short_crossings([exact]) == [exact]
+
+    # And a hair under it is not, so the pin cannot be met by keeping everything.
+    under = Crossing(
+        layer="police",
+        authority="USPP",
+        start_m=0.0,
+        end_m=math.nextafter(DEFAULT_MIN_CROSSING_M, 0.0),
+    )
+    assert collapse_short_crossings([under]) == []
 
 
 def test_federal_enclave_survives_at_any_length() -> None:

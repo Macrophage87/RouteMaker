@@ -62,6 +62,16 @@ def assign_way(geometry: LineString) -> list[LayerAssignment]:
     A way can straddle a boundary, so this returns every authority it touches
     with the fraction of the way inside each rather than picking a winner. The
     caller decides what to do with a way that is 3 percent inside a park.
+
+    Ordered by `j.name` where the fractions tie, the way `route_crossings` is.
+    Without it the order of two equally-covered authorities is whatever the plan
+    produced, and that order is not cosmetic here: `authorities_for` keeps the
+    largest share on each layer *whatever* its size, so where two polygons clip
+    a way equally and both fall under `MIN_JURISDICTION_FRACTION`, the first row
+    back is the one authority the way is tagged with and the other is dropped.
+    The same extract clipped twice could then tag the same way with different
+    agencies. The name is an arbitrary tiebreak, but it is the same arbitrary
+    answer on every rebuild.
     """
     with connection.cursor() as cursor:
         cursor.execute(
@@ -72,7 +82,7 @@ def assign_way(geometry: LineString) -> list[LayerAssignment]:
                      / NULLIF(ST_Length(%s::geometry::geography), 0) AS fraction
             FROM jurisdiction j
             WHERE ST_Intersects(%s::geometry, j.geometry)
-            ORDER BY j.layer, fraction DESC
+            ORDER BY j.layer, fraction DESC, j.name
             """,
             [geometry.ewkb, geometry.ewkb, geometry.ewkb],
         )

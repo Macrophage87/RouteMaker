@@ -15,6 +15,7 @@ import pytest
 from pipeline.conflation import (
     MAX_SEPARATION_M,
     MAX_SPAN_REUSE,
+    MIN_OVERLAP_FRACTION,
     AgencyFeature,
     _claim,
     _overlap_fraction,
@@ -70,6 +71,22 @@ class TestOverlapMeasure:
         bearing - the discrimination the module exists for."""
         assert _overlap_fraction(ROAD, shifted(ROAD, 5.0), MAX_SEPARATION_M) == pytest.approx(1.0)
         assert _overlap_fraction(ROAD, shifted(ROAD, 60.0), MAX_SEPARATION_M) == 0.0
+
+    def test_the_fraction_is_over_the_way_and_not_over_the_shorter_line(self) -> None:
+        """Which is what `MIN_OVERLAP_FRACTION`'s comment used to say it was not.
+
+        The measure is asymmetric on purpose: the question is whether this count
+        describes this way, so the denominator is the way. A twenty-metre stub
+        lying on a two-kilometre road covers all of itself and one percent of
+        the road, and the two numbers come out of the same call with the
+        arguments swapped. The threshold is read against the first of them.
+        """
+        stub = [(-77.0101, 38.9000), (-77.0099, 38.9000)]
+        as_fraction_of_the_way = _overlap_fraction(ROAD, stub, MAX_SEPARATION_M)
+        as_fraction_of_the_stub = _overlap_fraction(stub, ROAD, MAX_SEPARATION_M)
+        assert as_fraction_of_the_stub == pytest.approx(1.0)
+        assert as_fraction_of_the_way < 0.05
+        assert as_fraction_of_the_way < MIN_OVERLAP_FRACTION <= as_fraction_of_the_stub
 
     def test_the_measure_does_not_depend_on_how_finely_a_line_is_drawn(self) -> None:
         """A two-vertex agency line and a forty-vertex OSM way describe the same
