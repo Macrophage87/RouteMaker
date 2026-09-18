@@ -11,6 +11,20 @@
 #    exist during a swap; the CPU limit on the rebuild is what stops a six-hour
 #    build from saturating every core and destroying the latency target.
 #
+# 3. Every `image:` names a registry. An unqualified name is a Docker Hub
+#    reference, so `routemaker/api:dev` - which is what the four images in this
+#    file used to be called - is `docker.io/routemaker/api:dev`: a namespace
+#    this project does not own, which exists on Hub today with zero repos. A
+#    `docker compose pull`, or an `up` on a host where the local build is
+#    missing, would fetch whatever a stranger pushes there next and hand it
+#    PGPASSWORD, KEY_ENCRYPTION_KEY and DJANGO_SECRET_KEY. The four are now
+#    `ghcr.io/macrophage87/routemaker-<name>` - the namespace of this
+#    repository's own owner - and `pull_policy: build` on the services that
+#    `build:` keeps a missing image a build rather than a pull at all. The
+#    three third-party images are written `docker.io/...` for the same reason:
+#    Hub is where they really come from, and saying so is what makes the
+#    rendered reference unambiguous rather than a default.
+#
 # Secrets are scoped per service rather than handed to every container by a
 # shared env_file, which would put the key-encryption key in Photon and Valhalla
 # and contradict the claim that one component alone holds the bot token.
@@ -75,7 +89,7 @@ x-django-env: &django-env
 services:
   caddy:
     <<: [*restart, *logging]
-    image: caddy:2.8-alpine
+    image: docker.io/library/caddy:2.8-alpine
     ports: ["80:80", "443:443"]
     volumes:
       - ${DATA_ROOT}/caddy:/data
@@ -96,10 +110,18 @@ services:
 
   api:
     <<: [*restart, *logging]
-    image: routemaker/api:${TAG}
+    image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+    # Header rule 3: this image is built here and never pulled. Without it
+    # compose's default policy for a service that also declares `build:` is
+    # `missing` - a pull is attempted first on any host where the tag is not in
+    # the local store, which is every host after a `docker system prune` and
+    # every host that was given a `TAG` it has not built. `build` makes that a
+    # build instead, so the only way an image with these secrets in its
+    # environment gets here is from this repository.
+    pull_policy: build
     environment:
       <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -148,6 +170,63 @@ services:
       VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
       VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
       VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
+      # The same /data this service's two mounts below are under, so
+      # settings.TILES_DIR is /data/tiles and settings.STATIC_ROOT is
+      # /data/static - both of them paths that exist in this container.
+      # Without it settings.DATA_ROOT fell back to BASE_DIR/"data" and the
+      # operations page's free-space block measured /app/data/tiles, which no
+      # process ever creates: statvfs walked up to `/` and reported the
+      # container's own writable layer as the room the next rebuild has.
+      DATA_ROOT: /data
+    # Two directories, and the api writes neither at request time.
+    #
+    # `tiles` is read-only and is there for one reader: the operations page's
+    # free-space block, which is a statvfs on settings.TILES_DIR. The page is
+    # rendered by *this* service, so the filesystem it reports on has to be one
+    # this service can see; bound `:ro` because a statvfs is all it does with
+    # it, and the promotion symlinks under it belong to `rebuild`.
+    #
+    # `static` is the collectstatic target, and it is writable because that is
+    # the one deploy step that runs in this image (docs/DEPLOYMENT.md, "Static
+    # assets"). Declaring it here is what lets that step be a plain
+    # `docker compose run --rm api ./manage.py collectstatic --noinput` with no
+    # `-v` built out of a shell variable - which is what the guide used to give,
+    # and it needed `.env` sourced into the shell to fill it in.
+    volumes:
+      - ${DATA_ROOT}/tiles:/data/tiles:ro
+      - ${DATA_ROOT}/static:/data/static
+    # Liveness, against the view that does the cheapest thing that proves this
+    # process can still answer: `/healthz` runs `SELECT 1` and returns 200 with
+    # no body details.
+    #
+    # `python -c` and not `curl`: the runtime stage of docker/api.Dockerfile
+    # installs no curl, and urllib is in the image by construction - it is the
+    # interpreter gunicorn runs under.
+    #
+    # The `Host:` header is the whole reason this is not a one-liner.
+    # settings.ALLOWED_HOSTS is DJANGO_ALLOWED_HOSTS, which on a real
+    # deployment is the public name; a request to 127.0.0.1 with the matching
+    # Host would be a DisallowedHost 400 and this check would be red for ever
+    # on a healthy stack. So it sends the first name in that list, which is the
+    # same string the deployment already had to get right for Caddy.
+    #
+    # Nothing is gated on this condition - `depends_on` here waits on migrate,
+    # not on api - so a red healthcheck is a `docker compose ps` an operator
+    # can read and not a stack that refuses to come up.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import os,urllib.request as u; h=os.environ['DJANGO_ALLOWED_HOSTS'].split(',')[0].strip(); r=u.urlopen(u.Request('http://127.0.0.1:8000/healthz', headers={'Host': h}), timeout=5); raise SystemExit(0 if r.status == 200 else 1)",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      # gunicorn forks WEB_CONCURRENCY full Django processes, and each one
+      # imports the application before it accepts anything.
+      start_period: 30s
     depends_on:
       postgis: { condition: service_started }
       migrate: { condition: service_completed_successfully }
@@ -164,10 +243,11 @@ services:
   # binaries and the data mounts.
   worker:
     <<: [*restart, *logging]
-    image: routemaker/api:${TAG}
+    image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+    pull_policy: build  # header rule 3, as on `api`.
     # Four slots, not the default one: every periodic task except the rebuild
     # queues here, and Procrastinate drops a periodic tick whose predecessor is
     # still running rather than delaying it. With one slot a nightly dump held
@@ -187,6 +267,31 @@ services:
       DATA_ROOT: /data
     volumes:
       - ${DATA_ROOT}/backups:/data/backups
+      # Read-only, and for one caller: `check_operations`. Its fourth check is
+      # a statvfs on settings.TILES_DIR, and this is the service the cron entry
+      # runs it in (docs/OPERATIONS.md, "Where the alerts are") - `worker` is
+      # up whenever the stack is, including while `rebuild` is the container
+      # being recreated. Without the bind the check measured this container's
+      # writable layer and reported room the rebuild does not have.
+      - ${DATA_ROOT}/tiles:/data/tiles:ro
+    # The same sixty seconds, for the same reason, as the `rebuild` service
+    # below: on SIGTERM Procrastinate cancels its side tasks and then calls
+    # `unregister_worker`, which is a database round trip, and compose's
+    # default is ten seconds between the SIGTERM and the SIGKILL.
+    #
+    # What it buys here is narrower than on the rebuild and still worth having.
+    # Every task on this queue is bounded at thirty minutes
+    # (config/procrastinate.py: BACKUP_TIMEOUT_S, SWEEP_TIMEOUT_S), so no grace
+    # period anyone would accept on a `down` covers a running one either -
+    # `shutdown_graceful_timeout` is unset, so the worker waits for the job
+    # without a bound and reaches the SIGKILL. A SIGKILLed nightly_backup
+    # leaves its row `doing` with no worker behind it, which the wedged-job
+    # surface reports and `./manage.py unwedge_job <job_id>` clears. Sixty
+    # seconds is what makes the *idle* case - which is the overwhelming
+    # majority of `down`s and `up -d`s, since these tasks run for seconds a day
+    # between them - a clean unregister rather than a race with the ten-second
+    # default.
+    stop_grace_period: 60s
     depends_on:
       postgis: { condition: service_started }
       migrate: { condition: service_completed_successfully }
@@ -199,10 +304,11 @@ services:
   # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
     <<: *logging
-    image: routemaker/api:${TAG}
+    image: ghcr.io/macrophage87/routemaker-api:${TAG}
     build:
       context: .
       dockerfile: docker/api.Dockerfile
+    pull_policy: build  # header rule 3, as on `api`.
     command: ["./manage.py", "migrate", "--noinput"]
     restart: "no"
     environment:
@@ -235,7 +341,7 @@ services:
 
   postgis:
     <<: [*restart, *logging]
-    image: postgis/postgis:16-3.4
+    image: docker.io/postgis/postgis:16-3.4
     # The same two names Django connects with, from the same variables and the
     # same defaults. They were literals here while every Django service read
     # ${PGUSER}/${PGDATABASE}, so a deployment that set either one in `.env`
@@ -315,7 +421,7 @@ services:
   photon:
     <<: [*restart, *logging]
     profiles: ["unbuilt"]
-    image: rtuszik/photon-docker:2.4.0
+    image: docker.io/rtuszik/photon-docker:2.4.0
     environment:
       # No planet download on first boot. PLAN:60's filtered country dump is
       # what fills this index and it is unbuilt, so the only thing an initial
@@ -431,7 +537,7 @@ services:
   renderer:
     <<: [*restart, *logging]
     profiles: ["unbuilt"]
-    image: routemaker/renderer:${TAG}
+    image: ghcr.io/macrophage87/routemaker-renderer:${TAG}
     deploy:
       resources:
         limits: { memory: 1G, cpus: "1" }
@@ -447,7 +553,7 @@ services:
   bot:
     <<: [*restart, *logging]
     profiles: ["unbuilt"]
-    image: routemaker/bot:${TAG}
+    image: ghcr.io/macrophage87/routemaker-bot:${TAG}
     environment:
       DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
       BOT_INTERNAL_SECRET: ${BOT_INTERNAL_SECRET}
@@ -481,10 +587,11 @@ services:
   # scripts/check_compose_limits.py, which asserts both figures.
   rebuild:
     <<: [*restart, *logging]
-    image: routemaker/pipeline:${TAG}
+    image: ghcr.io/macrophage87/routemaker-pipeline:${TAG}
     build:
       context: .
       dockerfile: docker/pipeline.Dockerfile
+    pull_policy: build  # header rule 3, as on `api`.
     command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
     # Compose's default is 10 seconds between the SIGTERM and the SIGKILL, and
     # what this worker owes the database on the way out is a real shutdown:

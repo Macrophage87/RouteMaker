@@ -39,10 +39,15 @@ SERVICES: dict = COMPOSE["services"]
 # repository's maintainer had pushed last would arrive on the next
 # `docker compose pull`, with no change in this repository to point at. It is
 # 2.4.0 now, the newest release tag on Docker Hub when that was written.
+#
+# Every one also names its registry. An unqualified reference is a Docker Hub
+# one, so the registry was always there - it was just the default rather than
+# something this file said, and a default is what a registry mirror or a
+# namespace somebody else registers gets to reinterpret.
 EXTERNAL_IMAGES = {
-    "caddy:2.8-alpine",
-    "postgis/postgis:16-3.4",
-    "rtuszik/photon-docker:2.4.0",
+    "docker.io/library/caddy:2.8-alpine",
+    "docker.io/postgis/postgis:16-3.4",
+    "docker.io/rtuszik/photon-docker:2.4.0",
     "ghcr.io/valhalla/valhalla:3.5.1",
 }
 
@@ -61,8 +66,8 @@ EXTERNAL_IMAGES = {
 # a `build:` for it. That is the point of the set: an unbuilt image is recorded,
 # not tolerated silently.
 UNBUILT_IMAGES = {
-    "routemaker/renderer:${TAG}",
-    "routemaker/bot:${TAG}",
+    "ghcr.io/macrophage87/routemaker-renderer:${TAG}",
+    "ghcr.io/macrophage87/routemaker-bot:${TAG}",
 }
 
 SECRET_ENV_NAMES = {

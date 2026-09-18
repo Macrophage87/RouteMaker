@@ -23,15 +23,26 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   otherwise. A cron entry is the intended caller:
 
   ```sh
-  */10 * * * * cd /srv/routemaker && docker compose exec -T rebuild ./manage.py check_operations || mail-the-ops-channel
+  */10 * * * * cd /srv/routemaker && docker compose exec -T worker ./manage.py check_operations || mail-the-ops-channel
   ```
 
-  It runs in `rebuild` and not `api` because of the fourth line: the free-space
-  check is a `statvfs` on `TILES_DIR`, and `rebuild` is the one container that
-  mounts the tiles. In `api` the same call would measure the container's own
-  writable layer and report room that the rebuild does not have. The line names
-  the path it measured, so a check run in the wrong container is visibly about
-  the wrong filesystem rather than silently reassuring.
+  **It runs in `worker`.** Three of the four checks read the database only; the
+  fourth is a `statvfs` on `TILES_DIR`, so the container has to be able to see
+  the tiles — `worker` binds `${DATA_ROOT}/tiles` at `/data/tiles` read-only
+  for exactly this caller. In a container without that mount the same call
+  measures the container's own writable layer and reports room the rebuild does
+  not have; the line names the path it measured, so a check run in the wrong
+  container is visibly about the wrong filesystem rather than silently
+  reassuring.
+
+  `rebuild` also has the tiles and is the wrong container for a different
+  reason. This entry fires every ten minutes, and `docker compose exec` runs
+  the process **inside the target container's cgroup**: in `rebuild` that is
+  144 spawns a day of a ~95 MiB Django process inside the 8 GB limit the
+  six-hour build is sized against, and six of them land inside every hour of
+  that build. `worker` is a 2 GB service whose own tasks run for seconds a day,
+  and it is up whenever the stack is — including while `rebuild` is the
+  container an `up -d` is recreating.
 
   **The `cd` is the entry, not decoration.** `docker compose` finds its project
   by looking for a compose file in the working directory and then upwards, and
@@ -40,10 +51,17 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   and exit 1 on every tick — which the `||` turns into a page every ten
   minutes, from the monitor, saying nothing about the stack it is monitoring.
   The path is wherever this repository is checked out on the host;
-  `docker compose --project-directory /srv/routemaker exec -T api ...` does the
-  same job without changing directory. And the `&&` is deliberate: a `cd` that
-  fails — a checkout moved, a volume not mounted — pages too, rather than
+  `docker compose --project-directory /srv/routemaker exec -T worker ...` does
+  the same job without changing directory. And the `&&` is deliberate: a `cd`
+  that fails — a checkout moved, a volume not mounted — pages too, rather than
   silently running nothing.
+
+  **Expect one page per `docker compose up -d`.** The entry runs against a
+  named container, and an `up -d` that recreates `worker` — a `TAG` bump, an
+  edit to `compose.yaml`, a changed environment value — leaves a window of a
+  few seconds in which `docker compose exec -T worker` has nothing to attach
+  to and exits non-zero. That is one tick's `||`, from a deploy, and it is
+  cheaper to know about than to design around.
 
 **Wedged jobs** are the third row because the first two miss the same outage.
 Both lists are built from `status="failed"`, and a worker killed mid-job never

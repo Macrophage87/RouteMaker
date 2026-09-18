@@ -1,6 +1,6 @@
 # Deployment: building the stack's images
 
-`compose.yaml` names four images under `routemaker/`. Until this document's
+`compose.yaml` names four images of this project's own. Until this document's
 commit, nothing in the repository built any of them: there was no Dockerfile
 anywhere and no `build:` stanza, so `docker compose up` on a host with a working
 daemon stopped at the first pull of an image that exists in no registry. Five
@@ -10,10 +10,50 @@ Two of the four are built now. Two are not, because they have no source.
 
 | Image | Built by | State |
 | --- | --- | --- |
-| `routemaker/api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Written, never built |
-| `routemaker/pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Written, never built |
-| `routemaker/renderer:${TAG}` | — | No source in the repository |
-| `routemaker/bot:${TAG}` | — | No source in the repository |
+| `ghcr.io/macrophage87/routemaker-api:${TAG}` (services `api`, `worker`, `migrate`) | `docker/api.Dockerfile` | Written, never built |
+| `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` (service `rebuild`) | `docker/pipeline.Dockerfile` | Written, never built |
+| `ghcr.io/macrophage87/routemaker-renderer:${TAG}` | — | No source in the repository |
+| `ghcr.io/macrophage87/routemaker-bot:${TAG}` | — | No source in the repository |
+
+### Why every image name carries a registry
+
+The four used to be `routemaker/api:${TAG}` and so on. An unqualified image
+reference is a Docker Hub one, so that name is `docker.io/routemaker/api:dev` —
+a namespace nobody here controls, and one that exists on Hub today with zero
+repositories in it. Nothing stops the next person who registers it from pushing
+a `routemaker/api:dev`, and the first host that does not already hold a locally
+built image with that tag — after a `docker system prune`, or on a `TAG` it has
+never built — would pull it and start it with `PGPASSWORD`,
+`KEY_ENCRYPTION_KEY`, `DJANGO_SECRET_KEY` and `DISCORD_CLIENT_SECRET` in its
+environment.
+
+Two changes, and they are one decision:
+
+- the four are `ghcr.io/macrophage87/routemaker-<name>`, the GitHub Container
+  Registry namespace of this repository's own owner, so the name resolves to a
+  place this project controls rather than to a Hub default;
+- the four services that declare a `build:` also declare `pull_policy: build`,
+  which makes a missing image a build rather than a pull. Compose's default for
+  a service with both `image:` and `build:` is `missing`, which pulls first.
+
+The three third-party images are written out the same way —
+`docker.io/library/caddy:2.8-alpine`, `docker.io/postgis/postgis:16-3.4`,
+`docker.io/rtuszik/photon-docker:2.4.0`. Nothing about where they come from
+changes; what changes is that the registry is stated rather than defaulted.
+`tests/test_compose_render.py` asserts that no `image:` in the rendered stack is
+an unqualified reference.
+
+**A `TAG` rollback is a pull unless the host still has the image.** `TAG=v3` and
+`docker compose up -d` recreates `api`, `worker`, `migrate` and `rebuild` on
+`ghcr.io/macrophage87/routemaker-api:v3` — and `pull_policy: build` means a host
+that no longer holds that tag *builds* it from the working tree, which is the
+current tree and not v3. So a rollback needs one of two things to be true: the
+previous image is still in the host's local store (it is, until something prunes
+it), or it was pushed to that ghcr namespace and the host can pull it. Nothing
+in this repository pushes images anywhere; until something does, the rollback
+path is the local store, and `docker image prune -a` on this host is what takes
+it away. Check with `docker image ls ghcr.io/macrophage87/routemaker-api` before
+relying on a tag being there to go back to.
 
 ## Not built here — read this first
 
@@ -51,7 +91,7 @@ docker compose up -d               # bot and renderer are skipped: they have no 
 which sit behind the `unbuilt` profile. `bot` and `renderer` are there because
 neither has a source in this repository and so neither has an image in any
 registry: without the profile this command was a pull of
-`routemaker/bot:${TAG}` that could not succeed, on a stack where every other
+`ghcr.io/macrophage87/routemaker-bot:${TAG}` that could not succeed, on a stack where every other
 service was ready to start. `photon` is there because the pinned image's first
 act on a fresh host is to download a 61 GB planet index onto the root volume —
 see "Photon" below, which has the arithmetic and the two lines that make
@@ -61,8 +101,10 @@ is — no membership sweep from a gateway connection, no thumbnails, no geocoder
 
 `TAG` is the image tag, read from `.env` (`TAG=dev` in `.env.example`). It names
 the built image, not a registry: `build:` sits beside `image:` in every service
-that builds, so `docker compose build` tags the result `routemaker/api:${TAG}`
-and `routemaker/pipeline:${TAG}` locally and the `worker`, `migrate` and
+that builds, so `docker compose build` tags the result
+`ghcr.io/macrophage87/routemaker-api:${TAG}` and
+`ghcr.io/macrophage87/routemaker-pipeline:${TAG}` locally and the `worker`,
+`migrate` and
 `rebuild` services find it there. Bump it per release so a rollback is a `TAG`
 change and `docker compose up -d` rather than a rebuild — and `up -d`
 specifically, because the tag is baked into each container at creation:
@@ -256,11 +298,12 @@ Runs as uid 10001, non-root.
 
 ### The two images with no source
 
-`routemaker/renderer:${TAG}` is PLAN.md:63's thumbnail renderer, "a small Node
+`ghcr.io/macrophage87/routemaker-renderer:${TAG}` is PLAN.md:63's thumbnail
+renderer, "a small Node
 sidecar using `@maplibre/maplibre-gl-native`". There is no Node service source
 in the repository: `frontend/` holds one stress-style module and its test, and
-`scripts/` holds five Python scripts and a shell script. `routemaker/bot:${TAG}`
-is handoff.md section 7's first row — no bot source, no gateway handler, no
+`scripts/` holds five Python scripts and a shell script.
+`ghcr.io/macrophage87/routemaker-bot:${TAG}` is handoff.md section 7's first row — no bot source, no gateway handler, no
 ingest route.
 
 Neither has a Dockerfile and neither has a `build:`, because writing one would
@@ -388,7 +431,8 @@ in the repository that assumes it:
 
 ## Photon
 
-`photon` is pinned to `rtuszik/photon-docker:2.4.0` — the newest release tag on
+`photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0` — the newest release
+tag on
 Docker Hub when this was written (pushed 2026-08-17; `latest`, `2` and `2.4` all
 resolved to the same digest, which is how the tag was chosen). It was on
 `latest`, which is not a pin: PLAN:293 says all images pinned, and a
@@ -476,17 +520,32 @@ secret in the image's metadata. `collectstatic` is a deploy step, run after ever
 `docker compose build` and after a restore:
 
 ```sh
-set -a; . ./.env; set +a        # $DATA_ROOT is in .env, not in your shell
-docker compose run --rm \
-  -e DATA_ROOT=/data \
-  -v "$DATA_ROOT/static:/data/static" \
+docker compose run --rm api ./manage.py collectstatic --noinput
+```
+
+That is the whole command, and the reason it has no flags is that `compose.yaml`
+carries what it needs: the `api` service declares `DATA_ROOT: /data` and binds
+`${DATA_ROOT}/static` at `/data/static`, so `settings.STATIC_ROOT` inside the
+container is `/data/static` and that is the host directory Caddy serves from.
+`docker compose run` gives the one-off container the service's own environment
+and mounts, and compose fills `${DATA_ROOT}` in from `.env` itself.
+
+It used to be three lines longer, and every one of the three was a way to get
+this wrong:
+
+```sh
+set -a; . ./.env; set +a        # do not do this - see below
+docker compose run --rm -e DATA_ROOT=/data -v "$DATA_ROOT/static:/data/static" \
   api ./manage.py collectstatic --noinput
 ```
 
-Without the first line `$DATA_ROOT` expands to nothing and the `-v` argument
-becomes `/static:/data/static`, which mounts a directory at the *host's* root
-rather than the data volume: the command succeeds, reports the files it copied,
-and Caddy still serves nothing.
+`$DATA_ROOT` had to come from somewhere, so the guide sourced `.env` into the
+shell — which is the thing this document no longer does anywhere, because it
+hands every value in that file to the shell on the way to compose (see
+"`.env` is compose's input, not the shell's" below). And if the sourcing was
+skipped, `$DATA_ROOT` expanded to nothing, the `-v` argument became
+`/static:/data/static` — a directory at the **host's** root — and the command
+reported the files it copied while Caddy went on serving nothing.
 
 `settings.STATIC_ROOT` is now `DATA_ROOT / "static"` — the same host directory
 Caddy mounts at `/srv/static`, so the assets land where the edge serves them from
@@ -498,33 +557,44 @@ The two flags are both load-bearing, and the earlier version of this command had
 neither right. `-v` alone mounted the host directory at `/srv/static`, which is
 **Caddy's** path and not this container's: **the api service mounts no part of
 the data volume and sets no `DATA_ROOT`**, so inside the image
-`settings.DATA_ROOT` falls back to `BASE_DIR / "data"` and `STATIC_ROOT` with it — `/app/data/static`, on the
-container's writable layer, discarded when `run --rm` exits. `-e DATA_ROOT=/data`
-puts it at `/data/static`, which is what the bind mount covers, and matches the
-`rebuild` service's own `DATA_ROOT: /data`. Drop the `-e` and the mount has to
-move to `/app/data/static` instead; what must not happen is the two disagreeing,
-because that failure is silent — the command reports the files it copied and the
-volume stays empty.
+`settings.DATA_ROOT` fell back to `BASE_DIR / "data"` and `STATIC_ROOT` with it — `/app/data/static`, on the
+container's writable layer, discarded when `run --rm` exits. The service's own
+`DATA_ROOT: /data` and its `${DATA_ROOT}/static:/data/static` bind are what make
+the two agree by construction now, which matters because the failure was silent:
+the command reported the files it copied and the volume stayed empty.
 
-### The api is not the container to run data commands in
+### What the api mounts, and why it is still not where data commands run
 
-That the api mounts no data is not a blocker and is not being fixed: the api
-serves requests and writes nothing durable, so a `DATA_ROOT` on it would name a
-path that does not exist inside it. It is a rule about where a command runs, and
-it is the reason `collectstatic` above is a `run --rm` with an explicit mount
-rather than an `exec` into the running api.
+The api binds two directories and writes one of them:
 
-Every management command that reads or writes the data volume therefore runs in
-`rebuild`, which binds `tiles`, `elevation`, `extracts`, `reference` and
-`rebuild` under `/data`, or in `worker`, which binds `${DATA_ROOT}/backups`
-there:
+| Path | Mode | Who reads it |
+| --- | --- | --- |
+| `${DATA_ROOT}/static` → `/data/static` | read-write | `collectstatic`, as the deploy step above. Caddy mounts the same directory `:ro` and serves it. |
+| `${DATA_ROOT}/tiles` → `/data/tiles` | **read-only** | the operations page's free-space line, which is a `statvfs` on `settings.TILES_DIR`. |
+
+The tiles bind is read-only and it is there for one reader. The operations page
+is rendered by the `api` service, and its free-space block measures
+`settings.TILES_DIR` — so without the mount it measured `/app/data/tiles`, a
+path nothing creates, `statvfs` walked up to `/`, and the page reported the
+**container's own writable layer** as the room the next rebuild has. A positive
+statement about a filesystem the process could not see. Read-only because a
+`statvfs` is the whole of what it does with it; the promotion symlinks under
+that directory belong to `rebuild`.
+
+Neither of those makes the api the place to run a data command, and that has
+not changed. It holds none of the other four directories the rebuild writes —
+`elevation`, `extracts`, `reference`, `rebuild` — and it has no Valhalla or
+GDAL binaries at all. Every management command that reads or writes the data
+volume therefore runs in `rebuild`, which binds all five under `/data`, or in
+`worker`, which binds `${DATA_ROOT}/backups` there and `${DATA_ROOT}/tiles`
+read-only beside it:
 
 | Command | Container | Because |
 | --- | --- | --- |
 | `rollback_rebuild` | `rebuild` | Reads and rewrites the promotion symlinks under `<DATA_ROOT>/tiles`. In `api` those resolve to `/app/data/tiles`, which is empty, and the command refuses on every variant with "no previous tiles" — a refusal that reads like a deployment that has never rebuilt. |
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
-| `check_operations` | `rebuild` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which only `rebuild` mounts — in `api` it would measure the container's own layer. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
+| `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container without it the call measures its own writable layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
 | `unwedge_job` | `worker` | Reads and updates the job table only, so any Django container works; `worker` is the one that is up whenever the stack is, including while `rebuild` is the container being restarted. |
 
 The frontend half of that sentence has no source either: `frontend/` is a single
@@ -707,8 +777,8 @@ rendered: the YAML was right and the deployment was not.
    against a copy of `.env.example` and asserts the rendered value, which is the
    level the YAML-only test could not see.
 5. ~~**`bot` and `renderer` had no image and no profile.**~~ **Fixed.** Neither
-   has a source, neither has a `build:`, and `routemaker/bot:${TAG}` is in no
-   registry, so the documented `docker compose up -d` stopped at a pull that
+   has a source, neither has a `build:`, and
+   `ghcr.io/macrophage87/routemaker-bot:${TAG}` is in no registry, so the documented `docker compose up -d` stopped at a pull that
    cannot succeed. Both are behind `profiles: ["unbuilt"]` now and the default
    `up` skips them.
 6. ~~**`${DATA_ROOT}`'s writable subdirectories were root-owned.**~~ **Fixed**,

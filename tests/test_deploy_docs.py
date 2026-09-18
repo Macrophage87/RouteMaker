@@ -61,18 +61,160 @@ def documented_exec_invocations(text: str) -> list[tuple[str, str]]:
 
 
 def test_the_services_this_file_reasons_about_still_mount_what_it_says() -> None:
-    """The premise of everything below, asserted rather than assumed: `rebuild`
-    has the whole volume and `api` has none of it. A stack that gave the api a
-    data mount would make these tests wrong rather than failing."""
+    """The premise of everything below, asserted rather than assumed.
+
+    `rebuild` writes the five directories under `/data`. `api` holds two of
+    them and neither makes it a place to run a data command: `static`, which is
+    the `collectstatic` target, and `tiles` **read-only**, which exists for the
+    operations page's `statvfs`. A stack that gave the api `extracts` or
+    `reference` would make the table of which command runs where wrong rather
+    than failing.
+    """
     rebuild_volumes = SERVICES["rebuild"]["volumes"]
     assert "${DATA_ROOT}/tiles:/data/tiles" in rebuild_volumes
     assert "${DATA_ROOT}/reference:/data/reference" in rebuild_volumes
     assert SERVICES["rebuild"]["environment"]["DATA_ROOT"] == "/data"
-    assert not SERVICES["api"].get("volumes"), (
-        f"the api now mounts {SERVICES['api']['volumes']}; docs/DEPLOYMENT.md says it "
-        "mounts nothing durable and the table of which command runs where follows from that"
+    api_volumes = set(SERVICES["api"].get("volumes") or [])
+    assert api_volumes == {
+        "${DATA_ROOT}/static:/data/static",
+        "${DATA_ROOT}/tiles:/data/tiles:ro",
+    }, (
+        f"the api mounts {sorted(api_volumes)}; docs/DEPLOYMENT.md's table of what it "
+        "binds, and the rule about where data commands run, both follow from this set"
     )
-    assert "DATA_ROOT" not in (SERVICES["api"].get("environment") or {})
+    assert SERVICES["api"]["environment"]["DATA_ROOT"] == "/data", (
+        "the api binds /data/static and /data/tiles but does not set DATA_ROOT, so "
+        "settings.STATIC_ROOT and settings.TILES_DIR are under /app/data and neither "
+        "mount is reached by anything"
+    )
+
+
+@pytest.mark.parametrize("service", ["api", "worker"])
+def test_the_tiles_are_bound_read_only_into_the_services_that_only_measure_them(
+    service: str,
+) -> None:
+    """The free-space figure, on both surfaces that carry it.
+
+    `core.operations` reports the room left for the next rebuild as a `statvfs`
+    on `settings.TILES_DIR`. The operations page runs that in `api`; the
+    `check_operations` cron entry runs it in `worker`. Neither mounted the
+    tiles, so both resolved `/data/tiles` (or `/app/data/tiles`) to a path that
+    does not exist, `statvfs` walked up to the nearest one that does, and the
+    figure reported was the container's own writable layer - a positive
+    statement about a filesystem the process could not see.
+
+    Read-only, because measuring is all either of them does: the build
+    directories and the `current` symlinks under it belong to `rebuild`.
+    """
+    volumes = SERVICES[service]["volumes"]
+    assert "${DATA_ROOT}/tiles:/data/tiles:ro" in volumes, (
+        f"the {service} service binds {volumes}; without the tiles it reports the room "
+        "left on its own layer as the room left for a rebuild"
+    )
+    assert SERVICES[service]["environment"]["DATA_ROOT"] == "/data", (
+        f"the {service} service mounts the tiles at /data/tiles but DATA_ROOT does not "
+        "point there, so settings.TILES_DIR is somewhere else"
+    )
+
+
+def test_the_free_space_check_is_documented_against_the_container_that_runs_it() -> None:
+    """The cron entry, `docs/DEPLOYMENT.md`'s table and the mount are three
+    statements of one decision, and the review before this one found them two
+    versions apart."""
+    rows = [line for line in DEPLOYMENT.splitlines() if line.startswith("| `check_operations`")]
+    assert len(rows) == 1, f"expected one check_operations row, found {len(rows)}"
+    documented = rows[0].split("|")[2].strip().strip("`")
+    cron = [
+        line
+        for line in OPERATIONS.splitlines()
+        if "check_operations" in line and "docker compose exec" in line
+    ]
+    assert cron, "docs/OPERATIONS.md no longer shows check_operations as a compose exec"
+    for line in cron:
+        service = documented_exec_invocations(line)[0][0]
+        assert service == documented, (
+            f"docs/DEPLOYMENT.md says check_operations runs in {documented!r} and "
+            f"docs/OPERATIONS.md runs it in {service!r}"
+        )
+    assert "${DATA_ROOT}/tiles:/data/tiles:ro" in SERVICES[documented]["volumes"], (
+        f"check_operations is documented against {documented!r}, which does not mount "
+        "the tiles its free-space check measures"
+    )
+
+
+@pytest.mark.parametrize("service", ["rebuild", "worker"])
+def test_both_procrastinate_workers_get_longer_than_the_ten_second_default(
+    service: str,
+) -> None:
+    """A SIGKILLed worker leaves whatever it was running `doing` for ever, and
+    the repair is a hand-run `unwedge_job`.
+
+    Compose's default is ten seconds between the SIGTERM and the SIGKILL, and
+    what a Procrastinate worker owes the database on the way out is a real
+    shutdown: it cancels its side tasks and then calls `unregister_worker`,
+    which is a round trip. Neither value saves a *running* job - nothing does,
+    since `shutdown_graceful_timeout` is unset and the wait is unbounded - so
+    what the grace period buys is that the idle case, which is almost every
+    `down` and `up -d`, is a clean unregister rather than a race.
+
+    `rebuild` had one and `worker` did not, and the difference was never a
+    decision: a nightly dump or a sweep killed at second ten leaves exactly the
+    same wedged row a killed rebuild does.
+    """
+    grace = SERVICES[service].get("stop_grace_period")
+    assert grace, (
+        f"the {service} service declares no stop_grace_period, so compose kills its "
+        "Procrastinate worker ten seconds after the SIGTERM"
+    )
+    assert grace == "60s", f"the {service} service's grace period is {grace!r}, not 60s"
+
+
+def test_the_api_declares_a_healthcheck_the_image_can_actually_run() -> None:
+    """`/healthz`, probed with the interpreter gunicorn already runs under.
+
+    Two things make this more than a line of YAML. The runtime stage of
+    `docker/api.Dockerfile` installs no `curl` in the image that runs, so a
+    `CMD curl ...` healthcheck is a check that reports unhealthy on a healthy
+    container. And Django refuses a request whose `Host` is not in
+    `ALLOWED_HOSTS` with a 400, so a probe of `http://127.0.0.1:8000/` on a
+    deployment whose `DJANGO_ALLOWED_HOSTS` is its public name is red for ever
+    - which is why the check sends the first name out of that variable.
+    """
+    check = SERVICES["api"].get("healthcheck")
+    assert check, "the api service declares no healthcheck"
+    test = check["test"]
+    assert test[0] == "CMD", f"the healthcheck is {test!r}; CMD runs it without a shell"
+    assert test[1] == "python", (
+        f"the healthcheck runs {test[1]!r}; the api image's runtime stage installs no "
+        "curl, and python is the interpreter gunicorn is already running under"
+    )
+    body = test[-1]
+    assert "/healthz" in body, f"the healthcheck does not probe /healthz: {body!r}"
+    assert "DJANGO_ALLOWED_HOSTS" in body, (
+        "the healthcheck sends no Host header derived from DJANGO_ALLOWED_HOSTS, so on "
+        "a deployment with a real hostname every probe is a DisallowedHost 400"
+    )
+    assert "urllib" in body, f"the healthcheck does not use urllib: {body!r}"
+    port = re.search(r"127\.0\.0\.1:(\d+)", body)
+    assert port, f"the healthcheck names no loopback port: {body!r}"
+    entrypoint = (REPO / "docker" / "api-entrypoint.sh").read_text()
+    assert f"0.0.0.0:{port.group(1)}" in entrypoint, (
+        f"the healthcheck probes port {port.group(1)} and the entrypoint binds gunicorn "
+        "somewhere else"
+    )
+    # `depends_on` is either a mapping of conditions or a plain list of names.
+    gated = [
+        name
+        for name, service in SERVICES.items()
+        if isinstance(service.get("depends_on"), dict)
+        and service["depends_on"].get("api", {}).get("condition") == "service_healthy"
+    ]
+    assert not gated, (
+        f"{gated} now wait on the api being healthy; this check is a `docker compose ps` "
+        "an operator reads, not a condition the stack refuses to come up without - and "
+        "a /healthz that 404s on a release that has not added the view yet would then "
+        "hold the whole stack down"
+    )
 
 
 @pytest.mark.parametrize("command", ["rollback_rebuild", "run_rebuild_now"])
