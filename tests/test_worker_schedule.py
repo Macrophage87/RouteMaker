@@ -583,6 +583,98 @@ def test_a_budget_that_lapses_after_the_swap_names_the_swap_and_the_restart(
     assert not run.succeeded
 
 
+@pytest.mark.django_db(transaction=True)
+def test_a_swap_whose_undo_did_not_finish_is_abandoned_rather_than_retried(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The half-restored deployment, which was retryable and silent.
+
+    A swap that fails and undoes itself cleanly is an ordinary retryable
+    failure and should be: the deployment is back on the build it was serving,
+    and the next attempt starts where the last one did. A swap whose *undo*
+    could not finish is a different deployment - one variant on this week's
+    tiles and two on last week's, or settings rows naming a build no tile
+    directory describes - and it was classified identically. The stage is SWAP
+    rather than after it, so the stage-after-swap branch did not cover it, and
+    the cause was whatever ordinary error the swap had hit (a read-only volume
+    raises `OSError`), so `terminal_causes` did not either. Five more rebuilds
+    ran on top of it, at six hours a go.
+
+    And the one sentence saying so - the note `_note_undo_failures` attaches -
+    existed only in the container's log. `str(error)` does not include notes,
+    so the run row, the operations page and the alert all said the swap had
+    failed and said nothing about the deployment being half-restored.
+    """
+    from core.models import ScheduledRun
+    from pipeline import promotion, tiles
+    from pipeline.variants import Variant
+
+    real_restore = tiles.restore_links
+
+    def restore_that_fails_on_the_first_variant(tiles_dir, variant, state):
+        if variant is Variant.STANDARD:
+            raise OSError("the data volume is read-only")
+        return real_restore(tiles_dir, variant, state)
+
+    def swap_that_cannot_take_the_lock(*args, **kwargs):
+        raise RuntimeError("could not take the swap lock")
+
+    monkeypatch.setattr(promotion, "swap_schemas", swap_that_cannot_take_the_lock)
+    monkeypatch.setattr(tiles, "restore_links", restore_that_fails_on_the_first_variant)
+
+    with pytest.raises(RebuildAbandoned) as abandoned:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    message = str(abandoned.value)
+    assert "half-restored" in message, f"the alert has to say what state this left: {message}"
+    assert "not retried" in message, message
+    assert "standard's tile links" in message, f"and name what could not be put back: {message}"
+    assert "could not take the swap lock" in message, (
+        f"without losing what went wrong first: {message}"
+    )
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None, (
+        "a retry would promote over a deployment nothing has a consistent picture of"
+    )
+
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert not run.succeeded
+    # The note, on the row an operator reads after the fact rather than in a
+    # log line they would have to have been watching.
+    assert "the swap's undo could not restore" in run.detail, (
+        f"the note never reached the run row: {run.detail}"
+    )
+    assert "standard's tile links" in run.detail, run.detail
+
+
+def test_a_swap_undo_that_did_finish_leaves_the_rebuild_retryable() -> None:
+    """The other side of it, and the reason this is not just "swaps are terminal".
+
+    `SwapUndoIncomplete` is raised only when `restore_everything` reports
+    something it could not put back. An undo that ran to the end leaves the
+    deployment on the build it was serving, so the swap's own error goes back
+    to Procrastinate as it did before and a transient one is retried.
+    """
+    from config.procrastinate import terminal_causes
+    from pipeline.promotion import SwapUndoIncomplete
+
+    assert SwapUndoIncomplete in terminal_causes(), (
+        "an undo that did not complete is not something a retry can fix"
+    )
+    assert not issubclass(RuntimeError, SwapUndoIncomplete), (
+        "and it is a class of its own, so an ordinary swap failure stays retryable"
+    )
+
+    from pipeline.rebuild import RebuildFailed, Stage
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    ordinary = RebuildFailed(Stage.SWAP, RuntimeError("could not take the swap lock"))
+    assert strategy.get_retry_decision(exception=ordinary, job=job(0)) is not None, (
+        "a swap that undid itself is the transient failure retries exist for"
+    )
+
+
 def test_a_timeout_between_stages_carries_the_stage_it_stopped_before() -> None:
     """The attribute the classification turns on, asserted where it is set, so
     that removing it fails here rather than three hours into a swapped rebuild

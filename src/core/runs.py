@@ -73,6 +73,10 @@ def record(task: str) -> Iterator[ScheduledRun]:
     dead-job handling are what should see it. This row is for the alert that
     notices nothing has succeeded lately, which is a different question from
     whether this attempt failed.
+
+    What the row records about the failure is `failure_detail`, not `str`: the
+    notes a failure carries are where this project puts the sentences an
+    operator has to act on, and `str` drops them.
     """
     run = ScheduledRun.objects.create(task=task, started_at=timezone.now())
     try:
@@ -80,13 +84,55 @@ def record(task: str) -> Iterator[ScheduledRun]:
     except Exception as error:
         run.finished_at = timezone.now()
         run.succeeded = False
-        run.detail = f"{type(error).__name__}: {error}"[:4000]
+        run.detail = failure_detail(error)[:4000]
         run.save(update_fields=["finished_at", "succeeded", "detail"])
         logger.exception("scheduled task %s failed", task)
         raise
     run.finished_at = timezone.now()
     run.succeeded = True
     run.save(update_fields=["finished_at", "succeeded", "detail"])
+
+
+# How the pieces of a failure are separated in a run row's detail. Visible in
+# the admin's table cell, where a newline would collapse into a space and the
+# note would read as part of the message it is about.
+DETAIL_SEPARATOR = " | "
+
+
+def failure_detail(error: BaseException) -> str:
+    """`Type: message`, plus every note attached anywhere down the cause chain.
+
+    The notes are the point. `pipeline.promotion` reports what a failed undo
+    could not put back with `BaseException.add_note` - "the swap's undo could
+    not restore standard's tile links" - on the error it is re-raising, because
+    the caller classifies on that error and a report about the undo is not what
+    it classifies on. The run row then wrote `str(error)`, which does not
+    include notes, so the one sentence saying this deployment is half-restored
+    existed only in the container's log: not on the operations page, not in the
+    detail column, not in anything an operator reads after the fact.
+
+    The walk is over `__cause__` rather than the error alone, because by the
+    time a rebuild failure reaches this context manager it has been wrapped
+    twice - the note is on the error `run_rebuild` caught, that is
+    `RebuildFailed.cause`, and `RebuildFailed` is in turn `RebuildAbandoned`'s
+    cause. Every one of those links is an explicit `raise ... from ...`, so
+    `__cause__` is the chain the code actually built; `__context__` is not
+    followed, since that would drag in whatever unrelated exception happened to
+    be in flight.
+
+    Bounded by the caller's slice, and duplicate notes are dropped: the same
+    sentence attached at two levels is one fact.
+    """
+    parts = [f"{type(error).__name__}: {error}"]
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        for note in getattr(current, "__notes__", ()):
+            if note not in parts:
+                parts.append(note)
+        current = current.__cause__
+    return DETAIL_SEPARATOR.join(parts)
 
 
 def last_success(task: str):

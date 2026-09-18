@@ -1561,3 +1561,82 @@ def test_unwedging_a_rebuild_still_names_the_rebuild_service() -> None:
     printed = out.getvalue()
     assert "rebuild service" in printed and "run_rebuild_now" in printed, printed
     assert "worker service" not in printed, printed
+
+
+@db
+def test_what_a_failure_could_not_put_back_reaches_the_row_and_the_page(client) -> None:
+    """`add_note` is how this project says "and here is what is still broken".
+
+    `pipeline.promotion` attaches what a failed undo could not restore to the
+    error it re-raises, because the caller classifies on that error and a
+    report about the undo is not what it classifies on. The run row then wrote
+    `str(error)`, which does not include notes, so the sentence saying the
+    deployment was half-restored lived in the container's log and nowhere
+    else: not in the detail column, not on the operations page, not in
+    anything read after the fact.
+
+    The note is also two `raise ... from ...` levels below the exception this
+    context manager sees by the time a rebuild failure arrives - wrapped into
+    `RebuildFailed` and then into `RebuildAbandoned` - so the walk is over the
+    cause chain rather than over the error alone.
+    """
+    from core.models import ScheduledRun, User
+    from core.runs import record
+
+    note = "the swap's undo could not restore standard's tile links (read-only file system)"
+
+    with pytest.raises(ValueError):
+        with record("weekly_rebuild"):
+            try:
+                inner = OSError("the data volume is read-only")
+                inner.add_note(note)
+                raise inner
+            except OSError as error:
+                try:
+                    raise RuntimeError("rebuild failed at stage swap") from error
+                except RuntimeError as wrapped:
+                    raise ValueError("this rebuild is not retried") from wrapped
+
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert run.detail.startswith("ValueError: this rebuild is not retried"), run.detail
+    assert note in run.detail, f"the note two causes down never reached the row: {run.detail}"
+
+    admin = User.objects.create(discord_user_id=9105, is_instance_admin=True)
+    sign_in(client, admin)
+    body = client.get(operations_url()).content.decode()
+    assert "could not restore standard" in body, "and the page shows the row it is written on"
+
+
+@db
+def test_a_run_rows_detail_is_bounded_and_says_each_thing_once() -> None:
+    """Two things the note walk has to keep doing.
+
+    An undo can attach one note per variant plus the settings rows, so the
+    detail is not a fixed length any more and the 4000-character slice is what
+    keeps it out of the way. And the same sentence can sit at two levels of the
+    cause chain - `SwapUndoIncomplete` carries the notes of the error it
+    wraps - which is one fact and not two.
+    """
+    from core.models import ScheduledRun
+    from core.runs import record
+
+    note = "could not restore the settings rows"
+    with pytest.raises(RuntimeError):
+        with record("weekly_rebuild"):
+            inner = OSError("the data volume is read-only")
+            inner.add_note(note)
+            try:
+                raise inner
+            except OSError as error:
+                wrapper = RuntimeError("the swap failed")
+                wrapper.add_note(note)
+                raise wrapper from error
+
+    detail = ScheduledRun.objects.get(task="weekly_rebuild").detail
+    assert detail.count(note) == 1, f"the same note at two levels is one fact: {detail}"
+
+    with pytest.raises(RuntimeError):
+        with record("membership_sweep"):
+            raise RuntimeError("x" * 9000)
+
+    assert len(ScheduledRun.objects.get(task="membership_sweep").detail) == 4000

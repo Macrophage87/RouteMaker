@@ -360,10 +360,22 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     the stage-after-swap branch cover a timeout as well, so a budget that lapses
     at the SWAP -> RECONCILE boundary is abandoned with the router-restart
     notice rather than with "the time budget ran out" and nothing else.
+
+    `SwapUndoIncomplete` is here for a third reason again, and it is about what
+    a retry would be running *on*. A swap that failed and undid itself is
+    retryable and should be - the deployment is back on the build it was
+    serving. A swap whose undo did not finish leaves one variant on this week's
+    tiles and two on last week's, or settings rows naming a build no tile
+    directory describes, and the stage is SWAP rather than after it, so nothing
+    else in this function's sight made it terminal: the ordinary shape of that
+    failure, a symlink write refused by a read-only volume, was retried five
+    times over a deployment no component had a consistent picture of. The undo
+    reporting a failure is the signal, not the cause of the original error.
     """
     import subprocess
 
     from pipeline.elevation import ElevationTileInvalid
+    from pipeline.promotion import SwapUndoIncomplete
     from pipeline.rebuild import RebuildTimedOut, StageNotImplemented
     from pipeline.run import ReferenceDataMissing, ValidationFailed
     from pipeline.tiles import DiskGateRefused, TilePathsNotPerVariant
@@ -377,6 +389,7 @@ def terminal_causes() -> tuple[type[Exception], ...]:
         TilePathsNotPerVariant,
         RebuildTimedOut,
         subprocess.TimeoutExpired,
+        SwapUndoIncomplete,
     )
 
 
