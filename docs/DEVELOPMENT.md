@@ -352,9 +352,25 @@ the failure this produced.
 - `volume.json` is every agency count line with a bidirectional AADT, in the
   shape `conflation.AgencyFeature` loads. The Virginia layer is VDOT's traffic
   volume export from the Virginia Roads portal (`--volume-source vdot`, AADT
-  property `AADT`); Maryland's and the District's arrive the same way with
-  their own source names. Directional counts are summed before they reach
-  here, which is why the property name is an argument rather than guessed.
+  property `AADT`); the District's is DDOT's AADT layer (`--volume-source
+  ddot`) and arrives the same way. Directional counts are summed before they
+  reach here, which is why the property name is an argument rather than
+  guessed.
+
+  **Phase 1 installs VDOT and DDOT, and deliberately not Maryland.** MDOT SHA's
+  layer is conditionally licensed, and while the pipeline can say which agency
+  touched a way it cannot yet withhold those ways from the published
+  derivative — identifiable, not excludable — so installing it today would mean
+  publishing something that source influenced. PLAN.md:31-34's waiver mechanism
+  is what closes that; handoff.md section 7 carries the row.
+
+  One `--volume-source` flag sets two things, through `SOURCE_TIERS`. `source`
+  is the **precedence tier** — `locality`, `state`, `osm` — and it is the only
+  vocabulary `conflation.conflate` ranks on. `agency` is the **publisher** —
+  `ddot`, `vdot`, `mdot-sha` — and it is the one that travels into the segment
+  table's `volume_source` column. The distinction is load-bearing because VDOT
+  and MDOT SHA both rank at `state`: a tier in that column could not tell the
+  two apart, which is precisely the question a licence asks.
 
 Run with only `--data-root`, the script installs the crossings and exits
 non-zero naming whichever of the other two is still missing.

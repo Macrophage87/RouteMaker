@@ -674,10 +674,17 @@ the first host to run it is the first test of it.
    publishers on a road they both cover, and with one file in the input the
    locality-over-state precedence rule has nothing to choose between. VDOT's is
    the traffic-volume export from the Virginia Roads portal; the District's is
-   DDOT's AADT layer from the District's open-data portal. Maryland's arrives
-   the same way and can be added as a third pair. docs/DEVELOPMENT.md,
-   "Reference data", has what each one is and how the counts have to be
-   normalised before they get here.
+   DDOT's AADT layer from the District's open-data portal. **Maryland's arrives
+   the same way, and phase 1 does not install it.** The pipeline records which
+   agency published every count that reached a way — the segment table's
+   `volume_source`, `volume_aadt` and `volume_year` columns — so a Maryland
+   layer's influence on the published map is identifiable. It is not yet
+   *excludable*: nothing in the export can withhold the segments a
+   conditionally licensed source touched, so installing Maryland today means
+   publishing a derivative that is influenced by it. Add the third pair once
+   the waiver mechanism PLAN.md:31-34 describes exists; handoff.md section 7
+   carries the row. docs/DEVELOPMENT.md, "Reference data", has what each one is
+   and how the counts have to be normalised before they get here.
 
    `--extract` is the clipped `source.osm.pbf`, and the clipped one is right:
    the script reads ways out of it to decide which way ids fall inside a Census
