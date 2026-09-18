@@ -38,7 +38,16 @@ Max grade is the steepest rise over a run of at least 30 metres, the minimum run
 being what stops a one-metre elevation wobble between adjacent samples from
 reporting a 40 percent pitch. Treat this column as provisional: it is computed
 from the GPX elevation these files carry, while the application derives
-elevation from 3DEP, so the two will not agree exactly.
+elevation from 3DEP, so the two will not agree exactly. It is also a maximum,
+and a maximum is not diluted by a gap in the elevation column: a run with an
+elevation missing at either end is skipped, so on a trace with elevation on
+some points and not others the figure is a floor rather than the steepest
+pitch (30 percent of `rural-group-two-bridges`' elevations removed takes 18.99
+percent to 13.43). The measurement reports `elevation_coverage` and
+`grade_reliable` beside `max_grade_pct`, the way turn density is reported with
+`turns_reliable`, and anything printing the one should print the other. Every
+trace in this set carries elevation on every point, so no figure here is
+affected.
 
 A revisit is a place where the route comes back within 25 metres of its own line
 more than 400 metres apart along the route, counted as occurrences rather than

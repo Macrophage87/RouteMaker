@@ -523,3 +523,24 @@ def test_a_row_the_appliers_refuse_stops_the_rebuild_rather_than_retrying_it(tmp
         handlers[Stage.APPLY_OVERRIDES]()
     assert isinstance(raised.value, terminal_causes())
     assert context.ways[0].tags["highway"] == "secondary", "and nothing was written"
+
+
+def test_a_stress_override_keeps_the_counts_provenance_beside_the_agency():
+    """The override replaces the tier and the rule; the count that reached the
+    way, its year and its agency are facts about the way that the override does
+    not change, and the published derivative asks which segments a source
+    touched. Dropping any of the three here would make an overridden segment
+    look untouched by the agency whose count it carries."""
+    current = StressResult(
+        Stress.LTS3, "x", (), volume_source="mdot-sha", volume_aadt=12_000, volume_year=2022
+    )
+    rows = [Override("stress", 1, {"tier": 1, "reason": "field check"})]
+    stress_by_way = {1: current}
+    assert apply_stress(stress_by_way, rows)[0] == 1
+    result = stress_by_way[1]
+    assert result.tier is Stress.LTS1
+    assert (result.volume_source, result.volume_aadt, result.volume_year) == (
+        "mdot-sha",
+        12_000,
+        2022,
+    )

@@ -372,6 +372,22 @@ the failure this produced.
   and MDOT SHA both rank at `state`: a tier in that column could not tell the
   two apart, which is precisely the question a licence asks.
 
+  The three columns that carry a count's provenance on the segment table, none
+  of them with a Django migration because `create_segment_schema` creates the
+  whole schema on every rebuild and the swap promotes it by rename:
+
+  | column | type | meaning |
+  |---|---|---|
+  | `volume_source` | text | the publishing agency, e.g. `ddot`, `vdot`, `mdot-sha`; null where no count reached the way |
+  | `volume_aadt` | integer | the bidirectional count itself, as normalised at install time |
+  | `volume_year` | smallint | the count's vintage, nullable: a count nobody can date is a different claim from a current one |
+
+  All three are set whenever a count was in hand, whether or not the volume
+  modifier moved the tier, and a stress override keeps them: the question the
+  derivative asks is which segments a source touched, not which ones it changed.
+  `core.models.Segment` does not declare the last two yet, so they are read by
+  SQL and not through the ORM.
+
 Run with only `--data-root`, the script installs the crossings and exits
 non-zero naming whichever of the other two is still missing.
 

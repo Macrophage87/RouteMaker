@@ -198,7 +198,13 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             # classifier reached it from the tags.
             rule=f"override: {override.value.get('reason', 'approved correction')}",
             assumed=getattr(current, "assumed", ()),
+            # The count's provenance travels with the way, not with the tier:
+            # an overridden segment was still touched by whichever agency's
+            # count reached it, and the published derivative asks which
+            # segments a source touched, not which ones it decided.
             volume_source=getattr(current, "volume_source", None),
+            volume_aadt=getattr(current, "volume_aadt", None),
+            volume_year=getattr(current, "volume_year", None),
         )
         applied += 1
 
