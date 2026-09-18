@@ -1,28 +1,26 @@
 # RouteMaker phase 1 — handoff
 
 **Repository:** `github.com/Macrophage87/RouteMaker` · **Branch:** `claude/beautiful-mayer-4f7gg9`
-(284 commits, all pushed — 283 plus this wave-8 merge) · **Suite:** 3293 tests, green
+(285 commits, all pushed — 284 plus this round-10 record) · **Suite:** 3293 tests, green
 
-**Phase 1 is not accepted.** It has been through nine rounds of independent review. Round 9
-returned **six REVISE** with eight blockers — one each in routing, the database, deployability and
-test quality, two each in the domain and access control — ending the domain's three-round run of
-acceptances on two findings no round had reached. One blocker was a direct consequence of wave 7's
-own fix (access overrides, once they reached the extract, collided there with the crossings fixture)
-and one was a wave-7 claimed kill that did not reproduce; the other six were pre-existing. Every
-round-3 through round-9 finding is closed on this tree, each fix carrying a mutation confirmed to
-fail, and each panel has verified the previous round's findings closed by reverting the fix rather
-than by reading. **A round-10 panel has not run.** No area is accepted on this tree; **nobody has
-accepted the phase**, and the next step is that panel.
+**Phase 1 is not accepted, and the loop is on hold.** It has been through ten rounds of
+independent review. Round 10 returned **one ACCEPT** — access control, sign-in and privacy, for the
+first time — and five REVISE with one blocker each, **four of them wave 8's own**: a compose pull
+policy read as a fallback that is unconditional, the side rule not applied within a side, a
+documented rollback refusal made false by a new mount with a half-swapped state reachable behind
+it, and a directional override withholding the fixture's bidirectional grant. The fifth is a test
+hole. Every round-3 through round-9 finding is closed on this tree; round 10's five are **open**,
+recorded in `docs/review/round-10/` and in §3 below, and **no wave 9 has run**: the owner asked for
+a hold after round 10 and for a retrospective over the whole review history, which is at
+`docs/review/retrospective.md`. Its conclusion in one line: the loop's exit condition cannot be met
+by a loop whose brief mandates fresh reach, the last two waves seeded the next round's blockers, and
+the one thing that genuinely blocks the phase — the stack has never been built or run — is not
+something a review round can close. It proposes an executable acceptance checklist, one scoped
+consolidation wave on three hot spots, and a first run on a host with a Docker daemon.
 
-The blocker count per round has been 10, 14, 9, 5, 6, 8 across rounds 4 to 9. Round 9 rose because
-its brief sent every reviewer after the second month and the seams between areas, and because two
-of its blockers were made or missed by wave 7 itself — the first regressions in six rounds. The
-findings are still small in mechanism (a comment satisfying a text assertion, a set union where a
-minimum was meant) and large in consequence (a wrong LTS on every two-way road with one provision;
-a rebuild that cannot be told from a comment). Acceptance needs six reviewers to report zero
-blockers in the same round; whether a pre-existing, non-regression find should keep withholding it,
-or be recorded in §7 and fixed in the next wave without doing so, is the owner's call, and the loop
-as run holds the strict rule.
+The blocker count per round has been 10, 14, 9, 5, 6, 8, 5 across rounds 4 to 10; the composition
+moved from things that did not exist, to pre-existing defects reached by fresh review, to
+regressions from the fix waves. The retrospective classifies all 77.
 
 Read §3 first if you only read one section.
 
@@ -500,6 +498,17 @@ One line per branch; the full text is in `docs/review/round-6/`.
 | 71 | **The documented way to fill in and use `.env` could leave four services unable to start, and the guide blamed a rotated password.** Two defects composing: `.env.example`'s `$` guidance was wrong in its example and false about quoting (the reviewer's stronger claim, that `$$` reaches the container verbatim, was a misreading of `docker compose config`'s re-escaped output — wave 8 measured through the process environment: `$$` correct, `pa$w0rd` → `pa`, quotes stripped); and `docs/DEPLOYMENT.md` ran `set -a; . ./.env; set +a` and then `docker compose` in the same shell, so every value reached compose through the shell, where `$$` is the PID — measured: `pa$$w0rd` → `pa19137w0rd`. Two runs of the procedure, two passwords; `pg_isready` green, `migrate` fails auth, `api`/`worker`/`rebuild` never start. | Verified | Closed: `.env.example` rewritten from a fourteen-row measurement (single quotes as the rule that needs no bookkeeping; the generator first), pinned by a render test; `prepare_data_root.sh --env-file` reads the one line without evaluating the file; `collectstatic` is a bare `docker compose run`; a doc test refuses any line in `docs/` that sources `.env`; the outage section names both causes. |
 | 72 | **The api entrypoint's cgroup cpu-quota read was pinned by its own comment.** The wave-7 test asserted that `/sys/fs/cgroup/cpu.max` appears before `$(nproc)` in the raw file text, and the comment block describing the mechanism satisfies it after the mechanism is deleted: the whole `if cores=$(cgroup_cpus) … else cores=$(nproc)` block → `cores=$(nproc)` left the suite green, and so did deleting the function. The two tests that execute the script took the `nproc` fallback in both the mutant and the original, because the box has no `cpu.max`. Reverted, a hand-run container falls back to 17 workers in a 2 GB cgroup — row SF-5's outage, and the first wave-7 claimed kill that did not reproduce. | Verified | Closed on the wave-8 test-quality branch: the entrypoint's cgroup file is overridable, and a test executes the branch under `sh` with a stub `cpu.max` in the shapes that pin the ceiling division and the floor of one as well as the `max` fallback. See the wave-8 table. |
 
+### Open after round 10 (no wave has run)
+
+| Area | Finding | State |
+|---|---|---|
+| Deployability | `pull_policy: build` is unconditional in Compose v5.1.1, so `TAG=<previous> && up -d` builds the current tree under the old tag and orphans the real previous image; the compose header, the deployment guide and the §7 images row all state the fallback reading. | **Open.** `pull_policy: never` on the four built services, plus the three passages. |
+| Domain | The worst-side rule is not applied within a side: `_side_values` unions the general keys with the side key and takes the best, so `cycleway=track` + `cycleway:right=no` on a 35 mph arterial is LTS1; the shoulder's width fallback reads `shoulder:width` for a side tagged `no`. `is_oneway` accepts any `oneway` value (test quality). | **Open.** Specific-wins within a side, per-side widths, `oneway=no` read as two-way; a grid test. |
+| Database | `rollback_rebuild` in `api` (now mounting the tiles read-only) swaps the schemas before the tile demotion, fails on the mount, and can lose the re-swap lock to the api's own readers; end state reproduced: last week's rows served under this week's tiles, no rollback target, the served rows in `staging` for the next rebuild to drop. Both guides and a doc test still say `api` mounts nothing. | **Open.** Demote tiles before the schema swap or write-probe `TILES_DIR` in the pre-flight; correct both guides and the test. |
+| Routing | A directional-only approved override (`bicycle:forward=no`) on a fixture bridge withholds the fixture's bidirectional grant wholesale, so the bridge is served barred both ways. | **Open.** Scope the withholding to the keys the row wrote. |
+| Test quality | `sample_cycle_lane`'s "one and the same way" guard is deletable with the suite green; the covering test's edges also disagree about the lane. | **Open.** One assertion with edges that agree. |
+| Access control (should-fix) | A pending instance-admin removal survives the target's stand-down and later strips a re-appointment. | **Open.** Clear the pending row on re-appointment. |
+
 ### Round 7 should-fixes and nits that were built
 
 One line per branch; the full text is in `docs/review/round-7/`. Every branch's fixes carry a
@@ -807,7 +816,7 @@ needs the same reading.
 ## 8. Review record
 
 The reports are in `docs/review/round-4/`, `docs/review/round-5/`, `docs/review/round-6/`,
-`docs/review/round-7/`, `docs/review/round-8/` and `docs/review/round-9/`, one per reviewer, each directory's README carrying the verdict table and
+`docs/review/round-7/`, `docs/review/round-8/`, `docs/review/round-9/` and `docs/review/round-10/`, one per reviewer, each directory's README carrying the verdict table and
 the kill-rate numbers. Each report states which of the previous round's findings its reviewer
 re-verified closed and how, and its own findings are numbered as the reports number them — the mapping to §3 is by the parenthetical
 labels in the row text (rows 19–27 from round 4, rows 28–41 from round 5's five reports, rows 42–45
@@ -847,8 +856,11 @@ pair so nobody reinstates the clause. Round 9 also corrected one of its own revi
 wave that closed it: the `$$` escape in an env file was right, and `docker compose config`'s
 re-escaped output had been read as the container's value.
 
-**The next step is the round-10 panel**, on this tree, with the same **six reviewers**. No area is
-accepted on it. Round 9's lesson for the brief: two of eight blockers were wave 7's own, one made
-and one missed, so the next panel verifies wave 8's items by reversion *and* by executing what the
-fix claims (the cgroup branch, the override precedence, the side rule) rather than by reading the
-test that claims it.
+Round 10 ran under a tightened standard — every wave-8 item verified by reversion and by executing
+the fix's claim — and every wave-8 item held; what it found was beside them. Its record is in
+`docs/review/round-10/`, its five open findings in the table above §4, and **no wave followed it**:
+the owner asked for a hold and for a retrospective, which is `docs/review/retrospective.md`. The
+next step is the owner's decision on that document's proposal: an executable acceptance checklist
+in place of six simultaneous ACCEPTs, one scoped consolidation wave on the three hot spots (the
+LTS side model, the extract's precedence table, the rollback's ordering and its one container),
+and a first run of the stack on a host with a Docker daemon.
