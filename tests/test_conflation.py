@@ -18,6 +18,7 @@ from pipeline.conflation import (
     MIN_OVERLAP_FRACTION,
     AgencyFeature,
     _claim,
+    _overlap,
     _overlap_fraction,
     conflate,
 )
@@ -45,6 +46,37 @@ def feature(fid: str, coords, aadt: int = 5000, source: str = "state") -> Agency
 def shifted(coords, metres: float):
     """The same line moved north by roughly `metres`."""
     return [(lon, lat + metres / 111_320.0) for lon, lat in coords]
+
+
+# The ranking fixtures. A single straight survey line, and ways lying parallel
+# to it at a chosen offset, so the mean distance of a way's near probes is that
+# offset exactly and the terms of the ranking key can be varied one at a time.
+SURVEY_LINE = [(-77.020, 38.9000), (-77.000, 38.9000)]
+
+# Lies on the survey line for its whole length: overlap 1.0 at 5 m.
+WHOLE_LENGTH = shifted(SURVEY_LINE, 5.0)
+
+# The same road as far as the midpoint, where it steps 45 m north and runs on
+# out of range: the near stretch is closer than `WHOLE_LENGTH` (4.5 m against
+# 5 m), but only about 0.59 of the way is near the line at all.
+PART_LENGTH = [
+    (-77.020, 38.9000 + 4.5 / 111_320.0),
+    (-77.008, 38.9000 + 4.5 / 111_320.0),
+    (-77.008, 38.9000 + 45.0 / 111_320.0),
+    (-77.000, 38.9000 + 45.0 / 111_320.0),
+]
+
+# The reviewer's pair, and the shape the ranking exists to get right: an
+# arterial the count was surveyed along, drawn 12 m off the survey line the way
+# a digitised centreline is, and a frontage road that happens to run nearer the
+# line but leaves it at the ramp two thirds of the way along.
+ARTERIAL = [(-77.0200, 38.9000 + 12.2 / 111_320.0), (-77.0000, 38.9000 + 12.2 / 111_320.0)]
+FRONTAGE_ROAD = [
+    (-77.0200, 38.9000 - 2.8 / 111_320.0),
+    (-77.0055, 38.9000 - 2.8 / 111_320.0),
+    (-77.0055, 38.9000 - 45.0 / 111_320.0),
+    (-77.0000, 38.9000 - 45.0 / 111_320.0),
+]
 
 
 class TestOverlapMeasure:
@@ -284,6 +316,108 @@ class TestGeometricTieBreak:
         assert list(forward.matched) == [1], forward
         assert list(backward.matched) == [1], backward
         assert len(forward.rejected) == len(backward.rejected) == 2
+
+
+class TestRankingTerms:
+    """One term of `rank` at a time.
+
+    Every other ranking test here builds its candidates with equal precedence
+    *and* equal overlap and then asserts the tie-break, so the overlap and
+    distance terms themselves were never stated: dropping `-overlap` from the
+    key, or flipping its sign, or dropping `mean_distance`, left the suite
+    green. Each test below varies one term and hands the losing candidate every
+    other advantage in the key, so it wins if and only if that term is gone.
+    """
+
+    def test_more_of_the_way_on_the_line_wins_over_less(self) -> None:
+        """Overlap outranks both of the terms under it.
+
+        The candidate covering only part of the line is also the closer of the
+        two (4.5 m against 5 m) and has the lower way id, so it takes the
+        remaining key outright. It still loses, because how much of the way the
+        count actually describes is asked first.
+        """
+        part_overlap, _span, part_distance = _overlap(PART_LENGTH, SURVEY_LINE, MAX_SEPARATION_M)
+        whole_overlap, _span, whole_distance = _overlap(WHOLE_LENGTH, SURVEY_LINE, MAX_SEPARATION_M)
+        assert MIN_OVERLAP_FRACTION <= part_overlap < whole_overlap
+        assert part_distance < whole_distance
+
+        agency = feature("f1", SURVEY_LINE)
+        result = conflate([(1, PART_LENGTH), (2, WHOLE_LENGTH)], [agency])
+
+        assert list(result.matched) == [2], result
+        assert [way_id for way_id, _ in result.rejected] == [1]
+
+    def test_the_closer_of_two_equal_overlaps_wins(self) -> None:
+        """Distance decides once overlap cannot, and it is asked before the ids.
+
+        Both ways lie along the whole survey line, so both score 1.0 and the
+        overlap term is exhausted; the farther of the two is given the lower way
+        id, which is what the key falls through to if the distance term goes.
+        """
+        far = shifted(SURVEY_LINE, 12.0)
+        near = shifted(SURVEY_LINE, 3.0)
+        far_overlap, _span, far_distance = _overlap(far, SURVEY_LINE, MAX_SEPARATION_M)
+        near_overlap, _span, near_distance = _overlap(near, SURVEY_LINE, MAX_SEPARATION_M)
+        assert far_overlap == near_overlap == pytest.approx(1.0)
+        assert near_distance < far_distance
+
+        agency = feature("f1", SURVEY_LINE)
+        result = conflate([(1, far), (2, near)], [agency])
+
+        assert list(result.matched) == [2], result
+        assert [way_id for way_id, _ in result.rejected] == [1]
+
+    def test_the_arterial_takes_the_count_over_the_nearer_frontage_road(self) -> None:
+        """The two terms together, on the geometry the reviewer ran.
+
+        A surveyed corridor count, an arterial lying along the survey line for
+        98% of its length at about 12 m, and a frontage road that runs nearer
+        the line - under 4 m - but peels off at the ramp, so only about 71% of
+        it is on the corridor at all. The count belongs to the arterial: the
+        survey line is a digitised centreline and being a metre or two nearer it
+        than the road beside you is not evidence of anything, while covering the
+        corridor end to end is. Ranking on distance first, or ranking low
+        overlap above high, hands an arterial's 18 000 vehicles to a frontage
+        road and leaves the arterial unmeasured.
+        """
+        arterial_overlap, _span, arterial_distance = _overlap(
+            ARTERIAL, SURVEYED_ROAD, MAX_SEPARATION_M
+        )
+        frontage_overlap, _span, frontage_distance = _overlap(
+            FRONTAGE_ROAD, SURVEYED_ROAD, MAX_SEPARATION_M
+        )
+        assert frontage_overlap == pytest.approx(0.71, abs=0.02)
+        assert arterial_overlap == pytest.approx(0.98, abs=0.02)
+        assert frontage_overlap < arterial_overlap
+        assert frontage_distance < 4.0 < 12.0 < arterial_distance
+
+        count = feature("corridor-count", SURVEYED_ROAD, aadt=18_000)
+        result = conflate([(11, ARTERIAL), (12, FRONTAGE_ROAD)], [count])
+
+        assert list(result.matched) == [11], result
+        assert result.matched[11].aadt == 18_000
+        assert [way_id for way_id, _ in result.rejected] == [12]
+
+    def test_two_features_alike_on_geometry_are_decided_by_feature_id(self) -> None:
+        """The last term of the key, and the reason it is there.
+
+        Two agency lines of the same source describing the same road - the same
+        count exported twice under different ids, which happens every time a
+        layer is republished - give one way two candidates alike on precedence,
+        overlap, distance and way id. With the key ending at the way id the sort
+        falls through to the order `features` arrived in, so re-running the same
+        rebuild against a layer read in a different order attaches a different
+        feature id to the segment and the audit trail disagrees with itself.
+        """
+        first = feature("aaa-0001", SURVEYED_ROAD, aadt=5000)
+        second = feature("zzz-9999", SURVEYED_ROAD, aadt=5000)
+
+        forward = conflate([(1, ROAD)], [first, second])
+        backward = conflate([(1, ROAD)], [second, first])
+
+        assert forward.matched[1].feature_id == "aaa-0001", forward
+        assert backward.matched[1].feature_id == "aaa-0001", backward
 
 
 class TestSpanReuseThreshold:

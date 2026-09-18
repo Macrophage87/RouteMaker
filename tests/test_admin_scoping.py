@@ -1840,6 +1840,49 @@ class TestTheAuditLogTellsADeletedActorFromNoActor:
 
 
 @db
+class TestTheAuditDetailIsBounded:
+    """`detail` is a TextField, so the 2000-character bound is this project's
+    rule and not the column's.
+
+    Nothing in the model would refuse a longer one, and the writers do not all
+    control what they pass: `models.py` records `str(error)` from a failed
+    revocation sweep, which is whatever exception text arrived - a database
+    error carries the failing statement, and a statement can carry a whole
+    membership payload. The row is meant to say who acted on what and whether
+    it was allowed, never to become the place a stack trace lands, and the
+    changelist an instance admin reads renders this column inline.
+    """
+
+    def test_a_runaway_detail_is_truncated_at_two_thousand(self) -> None:
+        from core.audit import record
+        from core.models import AuditLogEntry
+
+        entry = record(
+            None,
+            "probe",
+            "core.Guild",
+            1,
+            AuditLogEntry.Outcome.REFUSED,
+            detail="x" * 5000,
+        )
+
+        assert len(entry.detail) == 2000
+        entry.refresh_from_db()
+        assert len(entry.detail) == 2000, "the bound is applied before the write, not after"
+
+    def test_a_detail_within_the_bound_is_written_whole(self) -> None:
+        """The truncation is a ceiling, not a fixed width: an ordinary reason
+        must not come back padded or clipped."""
+        from core.audit import record
+        from core.models import AuditLogEntry
+
+        entry = record(
+            None, "probe", "core.Guild", 1, AuditLogEntry.Outcome.REFUSED, detail="by hand"
+        )
+        assert entry.detail == "by hand"
+
+
+@db
 class TestTheInstanceAdminListIsVisibleToGuildAdmins:
     """ "It is visible to the clubs it holds power over: the current instance
     admins are listed to every guild admin."
@@ -2098,24 +2141,39 @@ class TestTheAdminLogoutEndsTheApplicationSession:
         assert response.status_code in (200, 302)
         assert not Session.objects.exists()
 
-    def test_a_get_signs_nobody_out(self, as_instance_admin) -> None:
-        """Django 5's admin logout is `LogoutView`, which is POST-only and
+    # The method, and the status Django's own dispatch owes it. `LogoutView`
+    # accepts POST and OPTIONS, so OPTIONS is answered rather than refused -
+    # and answering it is still not signing anyone out.
+    OTHER_METHODS = [("get", 405), ("head", 405), ("put", 405), ("delete", 405), ("options", 200)]
+
+    @pytest.mark.parametrize(("method", "status"), OTHER_METHODS)
+    def test_only_a_post_signs_anybody_out(self, as_instance_admin, method, status) -> None:
+        """Django 5's admin logout is `LogoutView`, which accepts POST and
         answers a GET with 405. The override ran before that dispatch and
         deleted the `core.Session` row first, so the 405 arrived after the row
         was already gone: an `<img src="<admin>/logout/">` on any page anywhere
         signed an admin out, with no CSRF token, no audit row and nothing
-        checking the origin. The row must survive the refusal, and the admin
-        must still be signed in afterwards.
+        checking the origin. The row must survive, and the admin must still be
+        signed in afterwards.
+
+        Stated over every method that is not POST rather than over GET alone,
+        because the deletion is guarded by a positive test for POST and the
+        near miss - refusing everything *except* GET - reads as if it were the
+        same rule. It is not: HEAD and OPTIONS are CORS-safelisted, so a
+        cross-origin page reaches this endpoint with them and with cookies.
+        Under that guard a HEAD from an attacker's page takes its 405 and
+        deletes the row on the way through, and an OPTIONS takes a 200 and
+        deletes it.
         """
         from core.models import Session
 
         assert Session.objects.count() == 1
-        response = as_instance_admin.get(f"/{settings.ADMIN_PATH}logout/")
-        assert response.status_code == 405, (
-            "Django's own POST-only dispatch is the gate; a different status means "
+        response = getattr(as_instance_admin, method)(f"/{settings.ADMIN_PATH}logout/")
+        assert response.status_code == status, (
+            "Django's own dispatch is the gate; a different status means "
             "something answered ahead of it"
         )
-        assert Session.objects.count() == 1, "a refused request signed them out anyway"
+        assert Session.objects.count() == 1, f"a {method.upper()} signed them out anyway"
         assert as_instance_admin.get(f"/{settings.ADMIN_PATH}").status_code == 200
 
     def test_a_cross_origin_get_signs_nobody_out_either(self, as_instance_admin) -> None:
