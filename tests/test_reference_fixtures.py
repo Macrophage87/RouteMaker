@@ -394,7 +394,10 @@ def test_a_pair_just_inside_the_radius_is_found_at_the_regions_northern_edge() -
     alignment can do it.
     """
     unpadded_cell_lon = (REVISIT_PROXIMITY_M / 111_320.0) / math.cos(
-        math.radians(sum(p.lat for p in region_spanning_revisit_route(-77.0)) / 330)
+        math.radians(
+            sum(p.lat for p in region_spanning_revisit_route(-77.0))
+            / len(region_spanning_revisit_route(-77.0))
+        )
     )
     boundary = (math.floor(-77.0 / unpadded_cell_lon) + 1) * unpadded_cell_lon
     points = region_spanning_revisit_route(boundary - 1e-12)
