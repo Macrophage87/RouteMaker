@@ -41,18 +41,44 @@ from __future__ import annotations
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-# Procrastinate's own number: `procrastinate.worker.Worker.stalled_worker_timeout`
-# defaults to 30 seconds against an `update_heartbeat_interval` of 10, so a
-# worker three missed beats behind is what the library itself deletes as
-# stalled. Taking a different number here would mean this command and the
-# worker disagreed about which workers exist.
+# Procrastinate's own number. The default lives on the keyword argument
+# `procrastinate.worker.Worker.__init__(stalled_worker_timeout=...)` - there is
+# no module constant to import - and it is 30 seconds against an
+# `update_heartbeat_interval` of 10, so a worker three missed beats behind is
+# what the library itself deletes as stalled. Taking a different number here
+# would mean this command and the worker disagreed about which workers exist,
+# and the suite reads the signature and asserts this equals it rather than
+# asserting the literal against itself.
 STALLED_WORKER_TIMEOUT_S = 30.0
 
-NEXT_STEPS = (
+# What the operator does next, which is not the same sentence for every job.
+# It used to be: every unwedged job, on every queue, was told to watch the
+# rebuild service and to queue a fresh run with `manage.py run_rebuild_now` -
+# advice that on a `nightly_backup` names a service that does not run it and a
+# command that does not queue it. The requeued row is picked up by whichever
+# worker serves its queue, and only the rebuild has a hand-fire command at all.
+REBUILD_NEXT_STEPS = (
     "The rebuild service picks a `todo` weekly_rebuild up within seconds while it is "
     "running (`docker compose logs -f rebuild`). If it is not running, start it, or "
     "queue a fresh one with `manage.py run_rebuild_now` once this row has cleared."
 )
+MAINTENANCE_NEXT_STEPS = (
+    "The worker service picks a `todo` job off the {queue} queue within seconds while it "
+    "is running (`docker compose logs -f worker`). If it is not running, start it. There "
+    "is nothing to queue by hand: {task} is periodic, so if this row is not worth running "
+    "again you can leave it and the next tick will write its own job."
+)
+
+
+def next_steps(task_name: str, queue_name: str) -> str:
+    """The sentence that fits the job that was just put back.
+
+    Keyed on the task rather than on the queue because what differs is the
+    hand-fire command, and `run_rebuild_now` is the only one there is.
+    """
+    if task_name == "weekly_rebuild":
+        return REBUILD_NEXT_STEPS
+    return MAINTENANCE_NEXT_STEPS.format(task=task_name, queue=queue_name)
 
 
 class Command(BaseCommand):
@@ -151,7 +177,7 @@ class Command(BaseCommand):
 
         what = "is queued again" if landed == "todo" else f"is now {landed}"
         self.stdout.write(f"job {job_id} ({job.task_name} on the {job.queue_name} queue) {what}.")
-        self.stdout.write(NEXT_STEPS)
+        self.stdout.write(next_steps(job.task_name, job.queue_name))
 
     def _live_worker(self, job):
         """The job's worker if it is still beating, else None.

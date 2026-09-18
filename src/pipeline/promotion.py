@@ -103,6 +103,43 @@ class RollbackUnavailable(RuntimeError):
     """There is no complete previous deployment to roll back to."""
 
 
+class SwapUndoIncomplete(RuntimeError):
+    """The swap failed *and* its undo could not put everything back.
+
+    A class of its own because it is the one swap failure a retry must not be
+    allowed to run on top of. An ordinary `RebuildFailed` at the SWAP stage is
+    retryable by design and should be: the undo ran, the deployment is back on
+    the build it was serving, and the next attempt starts from the same place
+    the last one did. When the undo itself could not finish, none of that is
+    true - one variant is on this week's tiles and two on last week's, or the
+    settings rows name a build no tile directory describes - and a retry then
+    promotes over a deployment nothing has a consistent picture of, five times,
+    at six hours a go. `config.procrastinate.terminal_causes` names this class,
+    so the rebuild is abandoned and the alert is what the operator gets.
+
+    It carries the original failure as `cause` as well as `__cause__`: the
+    rebuild's own classification reads `RebuildFailed.cause`, and what went
+    wrong first is still the thing to fix. What could not be restored is in
+    `failures` and in the message, because the operator has to put it back by
+    hand before anything is re-run.
+
+    The notes `_note_undo_failures` attached to the original are carried over
+    rather than left behind on it. They are the same sentences, written for the
+    error an operator reads, and this is now that error.
+    """
+
+    def __init__(self, cause: BaseException, failures: list[str]) -> None:
+        super().__init__(
+            f"the swap failed and its undo did not complete, so this deployment is "
+            f"half-restored and is not retried: {cause}. Still to put back by hand: "
+            + "; ".join(failures)
+        )
+        self.cause = cause
+        self.failures = list(failures)
+        for note in getattr(cause, "__notes__", ()):
+            self.add_note(note)
+
+
 def upstream_states(upstreams: Mapping[str, str]) -> dict[str, UpstreamState]:
     """What every variant's row says now, read before anything is written.
 
@@ -243,9 +280,18 @@ def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -
         # Every variant, not only the ones `promote` returned for: a promotion
         # that failed between its own two links is in neither set, and its
         # `previous` is the link that moved.
-        _note_undo_failures(
-            error, restore_everything(tiles_dir, links_before, rows_before), "the swap's undo"
-        )
+        failures = restore_everything(tiles_dir, links_before, rows_before)
+        _note_undo_failures(error, failures, "the swap's undo")
+        if failures:
+            # Not the original error, and this is the one place that is right.
+            # Everything downstream classifies on the exception it is handed -
+            # `terminal_causes` asks what `RebuildFailed.cause` is - and an
+            # undo that did not finish changes the answer whatever the original
+            # failure was: there is no consistent deployment left for a retry
+            # to start from. The original is `cause` and `__cause__`, so the
+            # message still names what went wrong first and the traceback still
+            # shows it.
+            raise SwapUndoIncomplete(error, failures) from error
         raise
     return outcome
 

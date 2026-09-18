@@ -60,7 +60,7 @@ queue.</p>
 {% endif %}
 
 <h2>Free space</h2>
-{% if disk_headroom %}
+{% if disk_headroom.status == "short" %}
 <p class="disk-headroom">The rebuild's disk gate refuses a build that cannot fit
 a second full tile set without taking the volume past
 {{ disk_headroom.fraction_pct|floatformat:0 }}&nbsp;%, and its only remedy is
@@ -69,8 +69,13 @@ growing the volume. <strong>{{ disk_headroom.path }}</strong> has
 {{ disk_headroom.total_bytes|filesizeformat }}; a rebuild reserving the
 {{ disk_headroom.minimum_free_bytes|filesizeformat }} floor alone would leave it
 {{ disk_headroom.fraction_after_pct|floatformat:0 }}&nbsp;% full. This is an alert.</p>
+{% elif disk_headroom.status == "unmeasured" %}
+<p id="disk-not-measured">{{ disk_headroom_message }}</p>
 {% else %}
-<p id="disk-has-room">The tiles volume has room for the next rebuild.</p>
+<p id="disk-has-room"><strong>{{ disk_headroom.path }}</strong> has
+{{ disk_headroom.free_bytes|filesizeformat }} free of
+{{ disk_headroom.total_bytes|filesizeformat }}, which is
+room for the next rebuild.</p>
 {% endif %}
 
 <h2>Failed jobs</h2>
