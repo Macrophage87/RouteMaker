@@ -6,9 +6,10 @@ suite as everything else, rather than only on push.
 
 from __future__ import annotations
 
-import re
+import ast
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO = Path(__file__).resolve().parents[1]
@@ -227,12 +228,64 @@ def test_the_backup_lands_on_the_data_volume() -> None:
 
 SETTINGS_SOURCE = REPO / "src" / "config" / "settings.py"
 
-# Every `os.environ[...]` and `os.environ.get(...)` in the settings module,
-# derived from the source rather than restated here. A list written out by hand
-# is a list that stops matching the module the day somebody adds a lookup, which
-# is exactly how six declared variables came to stand against twenty-four read
-# ones.
-ENVIRONMENT_LOOKUP = re.compile(r"""os\.environ(?:\.get)?\(\s*["']([A-Z0-9_]+)["']""")
+# Every environment lookup in the settings module, derived from the source
+# rather than restated here. A list written out by hand is a list that stops
+# matching the module the day somebody adds a lookup, which is exactly how six
+# declared variables came to stand against twenty-four read ones.
+#
+# Parsed rather than matched. The regex this replaces required a literal `(`
+# after `os.environ`, so it saw `os.environ.get("X")` and nothing else:
+# `os.environ["X"]` - the bracket form, which is the one with no default and so
+# the one that hard-fails a container that is missing the variable - was
+# invisible to it, as were `os.getenv("X")` and every `from os import environ`
+# form. Two undeclared reads in those shapes left this file passing, which made
+# the claim below false in exactly the direction that matters.
+ENVIRON_NAMES = frozenset({"environ"})
+GETENV_NAMES = frozenset({"getenv"})
+
+
+def _is_environ(node: ast.AST) -> bool:
+    """`os.environ`, or a bare `environ` from `from os import environ`."""
+    if isinstance(node, ast.Attribute):
+        return node.attr in ENVIRON_NAMES
+    return isinstance(node, ast.Name) and node.id in ENVIRON_NAMES
+
+
+def _is_getenv(node: ast.AST) -> bool:
+    """`os.getenv`, or a bare `getenv` from `from os import getenv`."""
+    if isinstance(node, ast.Attribute):
+        return node.attr in GETENV_NAMES
+    return isinstance(node, ast.Name) and node.id in GETENV_NAMES
+
+
+def _literal_key(node: ast.AST | None) -> str | None:
+    return node.value if isinstance(node, ast.Constant) and isinstance(node.value, str) else None
+
+
+def environment_names_in(source: str) -> set[str]:
+    """The string key of every environment read in `source`.
+
+    Covered: `environ["X"]`, `environ.get("X")`, `environ.setdefault("X", ...)`
+    and `getenv("X")`, each whether reached through `os.` or imported bare. A
+    lookup whose key is not a literal string is not collected - there is none in
+    settings.py, and one would have to be declared by hand anyway.
+    """
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Subscript) and _is_environ(node.value):
+            if (key := _literal_key(node.slice)) is not None:
+                names.add(key)
+        elif isinstance(node, ast.Call) and node.args:
+            function = node.func
+            reads_environment = _is_getenv(function) or (
+                isinstance(function, ast.Attribute)
+                and function.attr in ("get", "setdefault")
+                and _is_environ(function.value)
+            )
+            if reads_environment and (key := _literal_key(node.args[0])) is not None:
+                names.add(key)
+    return names
+
 
 # The names settings.py reads that the `api` service deliberately does not
 # declare, each with the services that do - or None where nothing in the stack
@@ -267,18 +320,18 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
 
 
 def environment_names_read_by_settings() -> set[str]:
-    return set(ENVIRONMENT_LOOKUP.findall(SETTINGS_SOURCE.read_text()))
+    return environment_names_in(SETTINGS_SOURCE.read_text())
 
 
 def declared_by(service: str) -> set[str]:
     return set(SERVICES[service].get("environment") or {})
 
 
-def test_the_regex_finds_the_lookups_settings_actually_has() -> None:
+def test_the_derivation_finds_the_lookups_settings_actually_has() -> None:
     """The derivation is the load-bearing part of the test below, so it is
     checked against a handful of names that are certainly in the module - one
     from each shape of lookup, including the bracket form that has no default.
-    A regex that silently matched nothing would make the next test vacuous."""
+    A derivation that silently found nothing would make the next test vacuous."""
     names = environment_names_read_by_settings()
     assert {
         "DJANGO_SECRET_KEY",  # os.environ.get with a string default
@@ -288,6 +341,27 @@ def test_the_regex_finds_the_lookups_settings_actually_has() -> None:
         "KEY_ENCRYPTION_KEY",
     } <= names
     assert len(names) >= 20, f"the lookups stopped being found: {sorted(names)}"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'X = os.environ["SHAPE_UNDER_TEST"]',
+        'X = os.environ.get("SHAPE_UNDER_TEST", "")',
+        'X = os.getenv("SHAPE_UNDER_TEST")',
+        'from os import environ\nX = environ["SHAPE_UNDER_TEST"]',
+        'from os import environ\nX = environ.get("SHAPE_UNDER_TEST", "")',
+        'from os import getenv\nX = getenv("SHAPE_UNDER_TEST", "")',
+        'X = int(os.environ.get("SHAPE_UNDER_TEST", "1"))',
+        'X = [h for h in os.getenv("SHAPE_UNDER_TEST", "").split(",") if h]',
+    ],
+)
+def test_every_shape_of_lookup_is_seen(source: str) -> None:
+    """The shapes the regex missed, each on its own, so a derivation that
+    regresses to matching one syntax says which one it stopped seeing. The
+    bracket form is the important one: it has no default, so a container missing
+    that variable does not start at all."""
+    assert "SHAPE_UNDER_TEST" in environment_names_in(source)
 
 
 def test_the_api_declares_every_setting_it_reads_from_the_environment() -> None:
