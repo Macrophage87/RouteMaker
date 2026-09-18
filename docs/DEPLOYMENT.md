@@ -273,8 +273,8 @@ request. The tests read it as text.
 ## Known blockers on `docker compose up`
 
 Building the images is necessary and not sufficient. Three things in the
-repository stopped or silently misconfigured the stack; two are fixed, and the
-third is still open.
+repository stopped or silently misconfigured the stack; all three are fixed on
+this tree, and each is pinned by a test that fails if it comes back.
 
 1. ~~**`config.wsgi` does not exist.**~~ **Fixed.** `settings.py` declares
    `WSGI_APPLICATION = "config.wsgi.application"` and there was no `wsgi.py`
@@ -290,11 +290,12 @@ third is still open.
    edge" above. Docker creates a *directory* at a missing bind-mount source, so
    the absence was never a startup error: Caddy ran against a directory and
    served nothing.
-3. **The `worker` service has no `DATA_ROOT`.** Still open. Its environment
-   block sets `DJANGO_SETTINGS_MODULE`, `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY` and
-   `PGPASSWORD` but not `DATA_ROOT`, so `settings.DATA_ROOT` falls back to
-   `BASE_DIR / "data"` — `/app/data` in the image — and `BACKUP_DIR` with it.
-   The service mounts `${DATA_ROOT}/backups` at `/data/backups`, which nothing
-   then writes to: the nightly dump lands on the container's own writable layer
-   and is lost on the next `docker compose up`. `rebuild` sets `DATA_ROOT: /data`
-   and is correct.
+3. ~~**The `worker` service has no `DATA_ROOT`.**~~ **Fixed.** Its environment
+   block set `DJANGO_SETTINGS_MODULE`, `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY`
+   and `PGPASSWORD` but not `DATA_ROOT`, so `settings.DATA_ROOT` fell back to
+   `BASE_DIR / "data"` — `/app/data` in the image — and `BACKUP_DIR` with it:
+   the nightly dump landed on the container's own writable layer and was lost
+   on the next `docker compose up` while the mounted `${DATA_ROOT}/backups`
+   stayed empty. `worker` now sets `DATA_ROOT: /data` like `rebuild`, and
+   `tests/test_compose.py` asserts every name `settings.py` reads is delivered
+   to the service that reads it.
