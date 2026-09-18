@@ -132,21 +132,6 @@ def is_sidepath_only(row: dict) -> bool:
     return bool(row.get("sidepath_only"))
 
 
-def load_sidepath_bridge_ids(rows: Iterable[dict]) -> frozenset[int]:
-    """The explicitly recorded way ids among the crossing rows.
-
-    Most rows carry no id. See `resolve_sidepath_bridge_ids` for why, and for the
-    path that actually populates the set.
-    """
-    return frozenset(
-        int(row["osm_way_id"])
-        for row in rows
-        # Way id 0 means no id has been recorded for this crossing. Skipped
-        # rather than matched against way 0, which exists and is not a bridge.
-        if int(row.get("osm_way_id") or 0) != 0 and is_sidepath_only(row)
-    )
-
-
 def resolve_sidepath_bridge_ids(
     rows: Iterable[dict], ways: Iterable
 ) -> tuple[frozenset[int], list[str]]:
@@ -163,7 +148,20 @@ def resolve_sidepath_bridge_ids(
     of the map, which is also how the authority columns in this fixture work.
 
     Restricted to ways tagged as bridges, so a street approaching a crossing and
-    named after it does not inherit the crossing's legality.
+    named after it does not inherit the crossing's legality. And to *roadway*
+    bridges: a trail-class way carrying the bridge's name is the sidepath on it,
+    which is the thing this rule routes a mass ride onto and can never be the
+    thing it drops.
+
+    That guard is the one `resolve_bridge_bicycle_legality` has had, for the
+    same reason and on the same OSM shape - a shared-use path on a bridge is its
+    own `highway=cycleway` or `footway` way, tagged `bridge=yes` and named after
+    the structure. Without it here the match was satisfied by the wrong ways and
+    said nothing: the two footways named "Francis Scott Key Bridge" matched, so
+    the name came off the `unmatched` list, so nothing warned - and the Key
+    Bridge *roadway*, the way the whole rule exists to keep a field of hundreds
+    off, stayed in the no-trail graph while the sidewalk it should have routed
+    onto was dropped from it as trail class.
 
     Unmatched names are returned rather than swallowed. A crossing this
     deployment has an opinion about and cannot find in the extract is a thing an
@@ -188,6 +186,10 @@ def resolve_sidepath_bridge_ids(
     seen: set[str] = set()
     for way in ways:
         if way.tags.get("bridge") in (None, "no"):
+            continue
+        # The roadway only; see the docstring. The sidepath is what this rule
+        # routes onto, so it is never what the rule matches.
+        if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
             continue
         name = (way.tags.get("name") or "").casefold()
         if name and name in by_name:

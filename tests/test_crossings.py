@@ -91,3 +91,40 @@ def test_state_crossings_ignore_a_non_state_layer_even_with_a_foreign_authority(
         crossing("NOVA Parks", LONG, layer="manager"),
     ]
     assert [c.authority for c in state_line_crossings(crossings, "DC")] == ["VA"]
+
+
+def test_a_boundary_street_names_both_authorities() -> None:
+    """Eastern Avenue's centreline is the District line, so a ride along it is
+    in the District and in Prince George's County at once.
+
+    `also_authority` is the field `Crossing` carries that in, and until round 5
+    nothing anywhere read it: the report named the first authority and dropped
+    the second, so the one case the field exists for - a boundary street - was
+    exactly the case it could not report. An organizer applying for a permit
+    needs both names.
+    """
+    authorities = distinct_authorities(
+        [crossing("MPD", LONG, also_authority="Prince George's County Police")]
+    )
+    assert authorities["police"] == ["MPD", "Prince George's County Police"]
+
+
+def test_the_second_authority_is_deduplicated_with_the_first() -> None:
+    """One flat list per layer, in encounter order. A boundary street followed
+    by a stretch wholly inside the county it borders names that county once."""
+    authorities = distinct_authorities(
+        [
+            crossing("MPD", LONG, also_authority="Prince George's County Police"),
+            crossing("Prince George's County Police", LONG),
+            crossing("MPD", LONG),
+        ]
+    )
+    assert authorities["police"] == ["MPD", "Prince George's County Police"]
+
+
+def test_a_crossing_with_no_second_authority_reports_one() -> None:
+    """The ordinary case: `also_authority` is None on every crossing that is not
+    a boundary centreline, and None is not an authority name."""
+    authorities = distinct_authorities([crossing("MPD", LONG), crossing("USPP", LONG)])
+    assert authorities["police"] == ["MPD", "USPP"]
+    assert None not in authorities["police"]

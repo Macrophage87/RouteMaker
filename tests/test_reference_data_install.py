@@ -257,6 +257,54 @@ class TestTwoAgenciesCoveringTheSameRoad:
         assert "unknown --volume-source" in result.stderr
         assert "ddot" in result.stderr and "vdot" in result.stderr
 
+    def test_the_agency_has_no_default_and_is_refused_when_omitted(self, tmp_path) -> None:
+        """`--volume-source` used to default to "vdot".
+
+        The agency decides the precedence tier and the precedence tier decides
+        which of two agencies wins on a road they both cover, so a default made
+        that decision silently - and made it wrong in the common case. A DDOT
+        file installed without the flag was filed as state-tier counts and then
+        lost the arbitration to VDOT on every District road it shared, which is
+        the exact inversion the locality tier exists to prevent. Refused, and
+        the refusal names the agencies, the same way an unknown one is.
+        """
+        volume = tmp_path / "counts.geojson"
+        volume.write_text(json.dumps(geojson([line_feature([[0, 0], [1, 1]], "100")])))
+        result = install(tmp_path, "--volume", str(volume))
+        assert result.returncode == 2
+        assert "--volume needs --volume-source" in result.stderr
+        assert "ddot" in result.stderr and "vdot" in result.stderr
+        assert not (tmp_path / "data" / "reference" / "volume.json").exists()
+
+    def test_the_feature_id_separates_two_files_that_share_an_object_id(self, tmp_path) -> None:
+        """F_IRD5: the file stem is in the id, and it is load-bearing.
+
+        One agency publishing one file per county restarts its object ids in
+        each of them, and `conflate` keys exclusivity on this id - so two
+        counties' counts sharing an id would have one claiming the other's span
+        and the other reporting no count at all. Both files here come from the
+        same agency and both carry OBJECTID 1, which is exactly the shape that
+        collides: the agency prefix cannot separate them and only the stem can.
+        Dropping it does not fail quietly - the install refuses on the duplicate
+        id backstop - but the backstop is the last line and this is the rule.
+        """
+        first = tmp_path / "north.geojson"
+        first.write_text(json.dumps(geojson([line_feature([[0, 0], [1, 1]], "100", 1)])))
+        second = tmp_path / "south.geojson"
+        second.write_text(json.dumps(geojson([line_feature([[2, 2], [3, 3]], "200", 1)])))
+
+        result = install(
+            tmp_path,
+            "--volume", str(first), "--volume", str(second),
+            "--volume-source", "montgomery",
+        )  # fmt: skip
+        assert "two count lines share a feature id" not in result.stderr
+        rows = json.loads((tmp_path / "data" / "reference" / "volume.json").read_text())
+        ids = [row["id"] for row in rows]
+        assert len(set(ids)) == len(ids) == 2, ids
+        assert "north" in ids[0] and "south" in ids[1]
+        assert [row["aadt"] for row in rows] == [100, 200]
+
     def test_one_companion_value_covers_every_file(self, tmp_path) -> None:
         """Two files from one agency is the ordinary case and does not have to
         repeat the agency twice; a count that matches neither shape is refused

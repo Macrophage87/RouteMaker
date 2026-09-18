@@ -267,7 +267,10 @@ def main(argv: list[str] | None = None) -> int:
         "--volume-source",
         action="append",
         default=[],
-        help=f"the publishing agency, one per --volume ({', '.join(sorted(SOURCE_TIERS))})",
+        help=(
+            "the publishing agency, required with --volume, once or one per file "
+            f"({', '.join(sorted(SOURCE_TIERS))})"
+        ),
     )
     parser.add_argument("--volume-year", type=int, action="append", default=[])
     parser.add_argument("--aadt-property", action="append", default=[])
@@ -286,7 +289,20 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {reference / 'urban-areas.json'}: {len(ids)} urban ways")
 
     if args.volume:
-        sources = _per_volume(parser, "--volume-source", args.volume_source, args.volume, "vdot")
+        # Refused rather than defaulted, for the reason `source_tier` refuses an
+        # agency it does not know: the agency name decides the precedence tier,
+        # and the precedence tier decides which of two agencies wins on a road
+        # they both cover. A default made that decision silently and made it
+        # wrong in the common case - the default was `vdot`, so a DDOT file
+        # installed without the flag was filed as state-tier counts and lost the
+        # arbitration to VDOT on every District road, which is the exact
+        # inversion the locality tier exists to prevent.
+        if not args.volume_source:
+            parser.error(
+                "--volume needs --volume-source: the agency decides the precedence tier, "
+                f"and there is no safe default. Known agencies: {', '.join(sorted(SOURCE_TIERS))}"
+            )
+        sources = _per_volume(parser, "--volume-source", args.volume_source, args.volume, None)
         years = _per_volume(parser, "--volume-year", args.volume_year, args.volume, None)
         properties = _per_volume(parser, "--aadt-property", args.aadt_property, args.volume, "AADT")
         rows: list[dict] = []

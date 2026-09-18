@@ -71,12 +71,22 @@ def distinct_authorities(crossings: Sequence[Crossing]) -> dict[str, list[str]]:
     Crescent and Sligo Creek are M-NCPPC, the towpath and the Mount Vernon Trail
     are the Park Service as land manager, and public space in the District is
     DDOT.
+
+    Both authorities on a boundary street, not just the first. `also_authority`
+    is what `Crossing` carries a boundary centreline in - a ride on Eastern
+    Avenue really is in the District and in Prince George's County at once - and
+    until now nothing anywhere read it, so the one field that exists to stop the
+    report silently calling a boundary street DC was inert on every consumer.
+    The pair is emitted in the order it is encountered, `authority` first,
+    because that is the order the row states them in and neither is the
+    "primary" one; a permit application needs both names, not a winner.
     """
     out: dict[str, list[str]] = {}
     for crossing in crossings:
         names = out.setdefault(crossing.layer, [])
-        if crossing.authority not in names:
-            names.append(crossing.authority)
+        for authority in (crossing.authority, crossing.also_authority):
+            if authority and authority not in names:
+                names.append(authority)
     return out
 
 

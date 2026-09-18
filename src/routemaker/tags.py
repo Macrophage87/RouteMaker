@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import re
 
+from .geo import METRES_PER_FOOT
+
 MPH_PER_KMH = 0.621371
 
 # Posted speeds that OSM expresses as a country default rather than a number.
@@ -76,20 +78,55 @@ def parse_int(value: str | None) -> int | None:
         return None
 
 
+# The width forms OSM actually carries here, and the one place they are read.
+# Whitespace is stripped first, as in the Lua, so "3 ft" and "3ft" are one case.
+_WIDTH_COMMA = re.compile(r"^(\d+),(\d+)$")
+_WIDTH_FEET_INCHES = re.compile(r"^(\d+\.?\d*)'(\d+\.?\d*)\"?$")
+_WIDTH_FEET = re.compile(r"^(\d+\.?\d*)(?:'|ft|feet)$")
+_WIDTH_METRES = re.compile(r"^(\d+\.?\d*)m?$")
+
+
 def parse_width_m(value: str | None) -> float | None:
-    """Width in metres. Accepts bare metres and explicit feet."""
+    """Width in metres, or None when the value cannot be read.
+
+    Deliberately the same grammar as `M.parse_width_m` in
+    `lua/routemaker_remap.lua`, value for value, and pinned against the same
+    table of cases that the Lua suite uses. The two parsers read the same OSM
+    tags on the same extract - this one for `shoulder:*:width` and
+    `cycleway:*:width`, the Lua one for a bollard's `maxwidth` - and while they
+    disagreed the disagreement ran in the dangerous direction both ways:
+    `"8 feet"` came back as 8.0 *metres* here, a twenty-six-foot shoulder, which
+    clears Furth's widest criterion and rates a road low-stress on a tag that
+    says nothing of the kind; while `"2.4m"`, `"1,5"` and `5'6"` came back as
+    None here and parsed correctly in the Lua, so a surveyed width was silently
+    an unsurveyed one on this side of the pipeline.
+
+    The module's rule holds: anything this cannot read is None, never a guess.
+    A bare number is metres, which is OSM's convention for `width` and is the
+    opposite of the `maxspeed` decision one function up - `maxspeed` has a US
+    sign behind it and width does not.
+    """
     if not value:
         return None
-    text = str(value).strip().lower()
-    if text.endswith("'") or text.endswith("ft"):
-        try:
-            return float(text.rstrip("ft'").strip()) * 0.3048
-        except ValueError:
-            return None
-    try:
-        return float(text.split()[0])
-    except (ValueError, IndexError):
-        return None
+    text = "".join(str(value).lower().split())
+
+    # Comma as the decimal separator: "1,5" is one and a half metres. Only when
+    # it separates digits and appears once, so a list like "1,5,2" is refused
+    # rather than guessed at.
+    if comma := _WIDTH_COMMA.match(text):
+        text = f"{comma.group(1)}.{comma.group(2)}"
+
+    # Feet, with or without inches: 5'6", 3', 3ft, 3feet.
+    if match := _WIDTH_FEET_INCHES.match(text):
+        return (
+            float(match.group(1)) * METRES_PER_FOOT + float(match.group(2)) * METRES_PER_FOOT / 12
+        )
+    if match := _WIDTH_FEET.match(text):
+        return float(match.group(1)) * METRES_PER_FOOT
+
+    # Metres, with or without the unit spelled out.
+    match = _WIDTH_METRES.match(text)
+    return float(match.group(1)) if match else None
 
 
 def is_oneway(tags: dict[str, str]) -> bool:

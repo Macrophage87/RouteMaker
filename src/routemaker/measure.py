@@ -13,6 +13,7 @@ both sides the same way; see the Quality bar.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
@@ -112,18 +113,38 @@ def revisits(
     """
     cum = cumulative_distances(points)
     flagged = [False] * len(points)
+    if not points:
+        return 0
 
     # Bucket points into a lat/lon grid roughly `proximity_m` on a side and compare
     # only against the nine neighbouring cells. The pairwise form is O(n^2) and a
     # dense trace here runs to 7,538 points, which is 28 million comparisons for a
     # measurement that belongs in the stats block of every saved route.
-    cell = proximity_m / 111_320.0  # degrees of latitude per proximity radius
+    #
+    # Two cell sizes, not one, and the second is the whole correctness of the
+    # index. A degree of latitude is 111.32 km everywhere; a degree of longitude
+    # is that times cos(latitude), which at this region's 38.9 N is 0.778 of it.
+    # Dividing both axes by the latitude figure therefore made every cell 22
+    # percent *narrower* than `proximity_m` in ground distance, so a pair 22.5 m
+    # apart on an east-west offset could sit two cells apart in x and never be
+    # compared: the nine-cell scan silently stopped covering the radius it is
+    # the index for. A parallel street a block over - which is what a revisit on
+    # a city grid looks like - was the case it lost.
+    #
+    # The cosine is taken once, at the route's mean latitude, rather than per
+    # point: over a route's span it varies by far less than the cell margin, and
+    # a per-point cell size would put the same ground position in different
+    # cells depending on which point asked.
+    cell_lat = proximity_m / 111_320.0  # degrees of latitude per proximity radius
+    mean_lat = sum(p.lat for p in points) / len(points)
+    cell_lon = cell_lat / max(math.cos(math.radians(mean_lat)), 0.01)
+
     grid: dict[tuple[int, int], list[int]] = {}
     for i, p in enumerate(points):
-        grid.setdefault((int(p.lat / cell), int(p.lon / cell)), []).append(i)
+        grid.setdefault((int(p.lat / cell_lat), int(p.lon / cell_lon)), []).append(i)
 
     for i, p in enumerate(points):
-        gy, gx = int(p.lat / cell), int(p.lon / cell)
+        gy, gx = int(p.lat / cell_lat), int(p.lon / cell_lon)
         for dy in (-1, 0, 1):
             for dx in (-1, 0, 1):
                 for j in grid.get((gy + dy, gx + dx), ()):
