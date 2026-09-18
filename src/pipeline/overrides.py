@@ -78,8 +78,18 @@ def load_approved(model=None) -> list[Override]:
 def apply_access(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, list[int]]:
     """Rewrite tags on the ways an access override names.
 
-    Applied before the tag transform, so Valhalla derives its access attributes
-    from the corrected value rather than from the original.
+    Written onto the way's working copy (`Way.tags`), which is not by itself
+    what reaches Valhalla: `write_extract` rebuilds every way's tags from the
+    source PBF, so what lands in a variant extract is the diff `run.inject_tags`
+    hands it. That diff is taken against `Way.source_tags` - the tags the source
+    carried - which is what carries the correction into all three variants and
+    into the tag transform that derives access from it.
+
+    Taken against the working copy instead, as it was until the diff moved, the
+    correction cancelled against itself: this function wrote `bicycle=yes`,
+    `variants.inject` handed the same tags back, and no variant extract carried
+    the key at all. An approved, reviewed, cross-guild correction changed
+    nothing about the graph.
     """
     by_id = {way.osm_id: way for way in ways}
     applied = 0
@@ -142,7 +152,22 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
 
 
 def apply_jurisdiction(ways: Sequence, overrides: Iterable[Override]) -> tuple[int, list[int]]:
-    """Replace the authority assignment on the ways a jurisdiction override names."""
+    """Replace the authority assignment on the ways a jurisdiction override names.
+
+    In memory and no further, today. The `_jurisdictions` key this writes has no
+    reader: it is deliberately excluded from the variant extracts (an underscore
+    key is not an OSM key and `run.inject_tags` filters the whole prefix out),
+    the tag transform never sees it, and the segment table has no jurisdiction
+    column for it to be written into. So an approved jurisdiction override is
+    counted, logged and applied to this process's copy of the way, and nothing
+    downstream of the rebuild can observe it.
+
+    Kept rather than removed because the assignment itself - `jurisdiction.assign_way`
+    and `run.authorities_for` - is real and tested, and what is missing is the
+    consumer: a column on the segment table, which the permit workflow reads.
+    Recorded in handoff.md section 7 against PLAN.md:28 and :151 so it is a
+    named gap rather than a stage that looks wired.
+    """
     by_id = {way.osm_id: way for way in ways}
     applied = 0
     unmatched: list[int] = []

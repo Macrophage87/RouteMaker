@@ -8,7 +8,10 @@ exactly as if it were not there.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
+from rebuild_fixtures import write_reference_data
 
 from pipeline.overrides import (
     Override,
@@ -168,3 +171,155 @@ def test_the_stage_runs_after_jurisdiction_tagging_and_before_the_extract_is_wri
     assert order.index(Stage.TAG_JURISDICTIONS) < order.index(Stage.APPLY_OVERRIDES)
     assert order.index(Stage.CLASSIFY_STRESS) < order.index(Stage.APPLY_OVERRIDES)
     assert order.index(Stage.APPLY_OVERRIDES) < order.index(Stage.INJECT_TAGS)
+
+
+# --- The corrected value reaching the graph -------------------------------------
+
+# The way the source leaves open and the way the source bars.
+OPEN_WAY = 100
+BARRED_WAY = 200
+
+
+def _write_access_extract(path: Path) -> None:
+    """Two roads: one the source says nothing about, one the source bars.
+
+    The two directions an access correction runs in. A row that bars a way the
+    tags leave open has to add a key the source PBF does not carry, and a row
+    that opens a way the tags bar has to overwrite one it does. Both are
+    written from the source file by `write_extract`, so both are only in the
+    variant extracts if `inject_tags` says so.
+    """
+    import osmium
+
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        for node_id, (lon, lat) in {
+            1: (-77.02, 38.90),
+            2: (-77.01, 38.90),
+            3: (-77.02, 38.91),
+            4: (-77.01, 38.91),
+        }.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=OPEN_WAY,
+                nodes=[1, 2],
+                version=1,
+                tags={"highway": "secondary", "name": "Open Road"},
+            )
+        )
+        writer.add_way(
+            osmium.osm.mutable.Way(
+                id=BARRED_WAY,
+                nodes=[3, 4],
+                version=1,
+                tags={"highway": "residential", "name": "Barred Road", "bicycle": "no"},
+            )
+        )
+    finally:
+        writer.close()
+
+
+def _inject_through_the_real_stages(tmp_path, rows):
+    """APPLY_OVERRIDES then INJECT_TAGS, from the production handler set, and
+    the variant extracts they leave on disk read back with the real reader."""
+    from pipeline.extract import read_ways
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ReferenceData, build_handlers
+    from pipeline.variants import Variant
+
+    source_pbf = tmp_path / "source.osm.pbf"
+    _write_access_extract(source_pbf)
+    reference_dir = write_reference_data(tmp_path)
+
+    context = RebuildContext(
+        source_pbf=source_pbf,
+        work_dir=tmp_path / "work",
+        reference_dir=reference_dir,
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = read_ways(source_pbf)
+    context.ways_by_id = {way.osm_id: way for way in context.ways}
+    context.reference = ReferenceData.load(reference_dir, context.ways)
+
+    handlers = build_handlers(context, load_overrides=lambda: rows)
+    handlers[Stage.APPLY_OVERRIDES]()
+    handlers[Stage.INJECT_TAGS]()
+
+    return {
+        variant: {way.osm_id: way.tags for way in read_ways(context.variant_pbf(variant))}
+        for variant in Variant
+    }
+
+
+@pytest.mark.django_db
+def test_an_approved_access_override_reaches_every_variants_extract(tmp_path) -> None:
+    """The override table is the plan's sole audited path for access
+    corrections, and until this passed it changed nothing about the graph.
+
+    `apply_access` rewrote `Way.tags` in memory; `inject_tags` then wrote out
+    only the keys where the variant's tags differed from `way.tags` - which is
+    the object the override had just been written onto - so for the standard
+    and no-trail variants, whose `inject` hands the same tags straight back, the
+    correction diffed away against itself. `write_extract` rebuilds each way's
+    tags from the source PBF, so a key that never reaches that diff never
+    reaches the file, the transform, or Valhalla. A row could be written,
+    reviewed and approved across guilds and the graph was built exactly as if
+    it were not there.
+
+    Both directions, because they fail differently: barring a way the source
+    leaves open means adding a key the source PBF does not carry, and opening a
+    way the source bars means overwriting one it does.
+    """
+    from pipeline.variants import Variant
+
+    by_variant = _inject_through_the_real_stages(
+        tmp_path,
+        [
+            Override("access", OPEN_WAY, {"bicycle": "no"}),
+            Override("access", BARRED_WAY, {"bicycle": "yes"}),
+        ],
+    )
+
+    assert set(by_variant) == set(Variant), "every variant is built from the same correction"
+    for variant, tags in by_variant.items():
+        assert tags[OPEN_WAY]["bicycle"] == "no", (
+            f"the {variant.value} extract does not carry the approved bar on {OPEN_WAY}"
+        )
+        assert tags[BARRED_WAY]["bicycle"] == "yes", (
+            f"the {variant.value} extract still carries the source's bar on {BARRED_WAY}"
+        )
+        assert tags[OPEN_WAY]["highway"] == "secondary", "and the rest of the way is untouched"
+        assert tags[BARRED_WAY]["name"] == "Barred Road"
+
+
+@pytest.mark.django_db
+def test_an_extract_never_carries_an_underscore_key(tmp_path) -> None:
+    """`_jurisdictions` is an annotation for this process, not an OSM key.
+
+    It reaches `Way.tags` from two places - the jurisdiction stage and an
+    approved jurisdiction override - and once the tag diff is taken against the
+    source's tags rather than against the working copy, anything written onto
+    that copy is a candidate for the file. An invented key on a real way in a
+    PBF is a thing every later reader of that file has to trip over, so the
+    whole prefix is filtered out of the diff.
+    """
+    by_variant = _inject_through_the_real_stages(
+        tmp_path,
+        [
+            Override("access", OPEN_WAY, {"bicycle": "no"}),
+            Override("jurisdiction", OPEN_WAY, {"authorities": ["DDOT", "National Park Service"]}),
+        ],
+    )
+
+    for variant, tags in by_variant.items():
+        written = sorted(key for way_tags in tags.values() for key in way_tags)
+        assert not [key for key in written if key.startswith("_")], (
+            f"the {variant.value} extract carries an internal key: {written}"
+        )
+        assert tags[OPEN_WAY]["bicycle"] == "no", (
+            "and the filter has not swallowed the correction it sits next to"
+        )

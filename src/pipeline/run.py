@@ -703,8 +703,22 @@ def build_handlers(
             )
 
     def tag_jurisdictions() -> None:
-        # Segments carry their authority so the permit workflow can read it
-        # without re-running a spatial query per route.
+        """Annotate each way with the authorities its geometry falls under.
+
+        In memory and no further, today. `_jurisdictions` is an underscore key,
+        which is not an OSM key and must never be written into a PBF, so
+        `inject_tags` filters the whole prefix out of the diff it writes; the
+        tag transform therefore never sees it, and the segment table has no
+        jurisdiction column for it either. Nothing downstream of this process
+        can read what this stage computes.
+
+        Kept, and kept here, because the assignment is the real work and the
+        position is the one the override stage needs: `apply_jurisdiction` has
+        to land after this and a consumer will read the same annotation. What
+        is missing is that consumer - a column on the segment table, which the
+        permit workflow reads without re-running a spatial query per route.
+        Recorded in handoff.md section 7 against PLAN.md:28 and :151.
+        """
         from django.contrib.gis.geos import LineString
 
         from .jurisdiction import assign_way
@@ -776,11 +790,33 @@ def build_handlers(
                     dropped.add(way.osm_id)
                     continue
 
-                # The variant's own changes, which the first version computed and
-                # then threw away - so the e-bike extract was identical to the
-                # standard one and an e-bike route could run where e-bikes are
-                # barred.
-                changes = {k: v for k, v in injected.items() if way.tags.get(k) != v}
+                # Everything this rebuild has to say about the way's own OSM
+                # tags, which the first version computed and then threw away -
+                # so the e-bike extract was identical to the standard one and
+                # an e-bike route could run where e-bikes are barred.
+                #
+                # Diffed against the tags the *source* carried, not against
+                # `way.tags`. `write_extract` rebuilds every way's tags from
+                # the source PBF and applies this mapping over them, so a key
+                # that is not in here is the source's value whatever
+                # `way.tags` says - and `way.tags` is the working copy the
+                # override stage has already corrected. Against it an approved
+                # `access` override diffed away against itself on every
+                # variant: `apply_access` wrote `bicycle=yes`, `variants.inject`
+                # handed back those same tags for STANDARD and NO_TRAIL, the
+                # comparison found no change, and the graph was built exactly
+                # as if the row had never been approved.
+                #
+                # Internal keys are dropped here rather than at the writer,
+                # because this diff is the only thing that puts a key the
+                # source did not carry into a variant extract. `_jurisdictions`
+                # is an annotation for this process, not a tag for a PBF.
+                changes = {
+                    key: value
+                    for key, value in injected.items()
+                    if way.source_tags.get(key) != value
+                    and not key.startswith(extract.INTERNAL_PREFIX)
+                }
 
                 stress = context.stress_by_way.get(way.osm_id)
                 derived = {

@@ -20,6 +20,14 @@ import osmium
 
 DERIVED_PREFIX = "rm:"
 
+# Keys the pipeline writes onto a `Way` for its own use, which must never be
+# written into an extract. `_jurisdictions` is the only one today: it is an
+# in-memory annotation with no consumer in the graph, and an underscore key in
+# a PBF would be an invented OSM key sitting on a real way for every later
+# reader of that file to trip over. `run.inject_tags` filters them out of the
+# tag diff it hands `write_extract`.
+INTERNAL_PREFIX = "_"
+
 
 @dataclass
 class Way:
@@ -39,6 +47,25 @@ class Way:
     coordinates: list[tuple[float, float]] = field(default_factory=list)
     # Index into node_ids for each entry in coordinates, in the same order.
     located: list[int] = field(default_factory=list)
+    # What the source PBF carried, snapshotted at construction and never
+    # written to again.
+    #
+    # `tags` is the working copy: the override stage rewrites access keys on
+    # it, the jurisdiction stage annotates it, and the variants derive from it.
+    # `write_extract` rebuilds each way's tags from the source file, so the
+    # only tags that reach a variant extract are the ones `inject_tags` hands
+    # it as a diff - and diffing the working copy against itself is how an
+    # approved access override reached no extract at all: `apply_access` wrote
+    # `bicycle=yes` onto `tags`, the variant returned those same tags, and the
+    # comparison found nothing to change. Diffed against this snapshot it is a
+    # change, which is what it is.
+    #
+    # Not settable by the caller and not part of equality: it is a snapshot of
+    # `tags` as the way was built, which is the one thing it can honestly be.
+    source_tags: dict[str, str] = field(init=False, repr=False, compare=False, default_factory=dict)
+
+    def __post_init__(self) -> None:
+        self.source_tags = dict(self.tags)
 
     @property
     def name(self) -> str | None:
