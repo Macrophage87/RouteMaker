@@ -1306,6 +1306,83 @@ class TestTheInstanceAdminRemovalWindow:
         assert entry.actor_id is None and entry.actor_user_id is None, "no request, no actor"
         assert entry.object_id == str(peer.pk)
 
+    def test_a_run_skips_the_rows_another_run_is_already_applying(
+        self, instance_admin, peer
+    ) -> None:
+        """Two tasks call this - the five-minute degraded sweep and the six-hourly
+        membership sweep - onto a worker with four slots, and there was no lock
+        between them. Both read the same due row, both cleared the same flag, and
+        both wrote an `apply_removal` entry into the audit log: the outcome is
+        right and the deployment's account of who lost what and when says it
+        happened twice.
+
+        The concurrent run is real here rather than simulated - a second
+        connection holding `FOR UPDATE` on the row, which is exactly what the
+        other sweep holds while it is applying it. `SKIP LOCKED` is what makes
+        this run pass over the row instead of queueing behind it; the
+        `lock_timeout` is so that a version without it fails this test in two
+        seconds rather than parking a worker slot until the suite is killed.
+        """
+        import threading
+
+        from django.db import connection, connections, transaction
+
+        from core.models import (
+            AuditLogEntry,
+            PendingInstanceAdminRemoval,
+            apply_due_instance_admin_removals,
+            schedule_instance_admin_removal,
+        )
+
+        pending = schedule_instance_admin_removal(peer, actor=instance_admin)
+        held = threading.Event()
+        release = threading.Event()
+        trouble: list[BaseException] = []
+
+        def the_other_sweep() -> None:
+            try:
+                with transaction.atomic():
+                    list(
+                        PendingInstanceAdminRemoval.objects.select_for_update().filter(
+                            pk=pending.pk
+                        )
+                    )
+                    held.set()
+                    release.wait(30)
+            except BaseException as error:  # noqa: BLE001 - reported on the main thread
+                trouble.append(error)
+            finally:
+                held.set()
+                connections.close_all()
+
+        other = threading.Thread(target=the_other_sweep, daemon=True)
+        other.start()
+        try:
+            assert held.wait(30), "the other sweep never took its lock"
+            with connection.cursor() as cursor:
+                cursor.execute("SET lock_timeout = '2s'")
+            applied = apply_due_instance_admin_removals(now=pending.effective_at)
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("RESET lock_timeout")
+            release.set()
+            other.join(30)
+        assert not trouble, trouble
+
+        assert applied == 0, "the row belongs to the run holding it"
+        peer.refresh_from_db()
+        assert peer.is_instance_admin, "which has not finished applying it yet"
+        assert not AuditLogEntry.objects.filter(action="apply_removal").exists(), (
+            "and no second audit entry was written for a removal this run did not apply"
+        )
+
+        # Once the other run has let go, the removal is applied and audited -
+        # once. Skipping is deferral, not a drop: the next sweep is minutes away.
+        assert apply_due_instance_admin_removals(now=pending.effective_at) == 1
+        peer.refresh_from_db()
+        assert not peer.is_instance_admin
+        assert AuditLogEntry.objects.filter(action="apply_removal").count() == 1
+
     def test_the_last_instance_admin_is_still_refused_when_it_comes_due(
         self, instance_admin, peer
     ) -> None:

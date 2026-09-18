@@ -836,41 +836,58 @@ def apply_due_instance_admin_removals(now=None) -> int:
     lockout guard and the delay does not get to walk past it, and a row still
     sitting there is visible in the admin, where an instance admin can cancel it
     or appoint a successor.
+
+    Two tasks call this - the five-minute degraded sweep, which is the applier,
+    and the six-hourly membership sweep, which is the backstop - onto a worker
+    with four slots and no lock between them. Unlocked, both runs read the same
+    due row, both clear the same flag and both write an `apply_removal` audit
+    entry for it: the outcome is right and the record says the removal was
+    applied twice, in an append-only log that is the deployment's account of who
+    lost what and when. So the due rows are taken `FOR UPDATE SKIP LOCKED`
+    inside the transaction that applies them - skipped rather than waited on,
+    because a concurrent run is already applying them and a sweep should not
+    hold a worker slot behind one. `of=("self",)` keeps the lock on the pending
+    rows; `select_related` would otherwise lock the user rows the admin is
+    editing too.
     """
     from .audit import record
 
     now = now or timezone.now()
     applied = 0
-    for pending in PendingInstanceAdminRemoval.objects.select_related("user").filter(
-        effective_at__lte=now
-    ):
-        user = pending.user
-        user.is_instance_admin = False
-        try:
-            user.save(update_fields=["is_instance_admin"])
-        except LastInstanceAdmin as error:
+    with transaction.atomic():
+        due = (
+            PendingInstanceAdminRemoval.objects.select_related("user")
+            .select_for_update(skip_locked=True, of=("self",))
+            .filter(effective_at__lte=now)
+        )
+        for pending in due:
+            user = pending.user
+            user.is_instance_admin = False
+            try:
+                user.save(update_fields=["is_instance_admin"])
+            except LastInstanceAdmin as error:
+                record(
+                    None,
+                    "apply_removal",
+                    "user",
+                    user.pk,
+                    AuditLogEntry.Outcome.REFUSED,
+                    detail=str(error),
+                )
+                continue
+            pending.delete()
             record(
                 None,
                 "apply_removal",
                 "user",
                 user.pk,
-                AuditLogEntry.Outcome.REFUSED,
-                detail=str(error),
+                AuditLogEntry.Outcome.ALLOWED,
+                detail=(
+                    "instance admin removed; requested by "
+                    f"{pending.requested_by_user_id} at {pending.requested_at.isoformat()}"
+                ),
             )
-            continue
-        pending.delete()
-        record(
-            None,
-            "apply_removal",
-            "user",
-            user.pk,
-            AuditLogEntry.Outcome.ALLOWED,
-            detail=(
-                "instance admin removed; requested by "
-                f"{pending.requested_by_user_id} at {pending.requested_at.isoformat()}"
-            ),
-        )
-        applied += 1
+            applied += 1
     return applied
 
 

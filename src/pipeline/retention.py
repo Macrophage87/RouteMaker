@@ -122,7 +122,11 @@ def prune_builds(
     if not root.is_dir():
         return []
 
-    protected = {target for target in (_link_target(root, CURRENT), _link_target(root, PREVIOUS))}
+    # `- {None}` rather than a comprehension: `_link_target` returns None where
+    # there is no link, and a directory with neither promotion symlink - a
+    # variant whose first rebuild has not been promoted - otherwise put None
+    # into the protected set, which protects nothing and reads as if it might.
+    protected = {_link_target(root, CURRENT), _link_target(root, PREVIOUS)} - {None}
     protected |= set(protect)
     builds = sorted(
         entry.name
