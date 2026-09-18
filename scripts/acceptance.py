@@ -415,23 +415,48 @@ print(json.dumps({
 
 def a4_first_rebuild(ctx: Context, out: list[str], *, second: bool = False) -> None:
     """A4 — a weekly rebuild runs to promotion against the real Valhalla, the
-    routers restart onto it, and each variant answers a canary route."""
-    before = _latest_rebuild(ctx)
-    proc = ctx.exec_in("rebuild", "./manage.py", "run_rebuild_now", check=False, timeout=120)
-    if not ctx.args.dry_run:
-        text = proc.stdout + proc.stderr
-        if proc.returncode != 0 and "already in flight" not in text:
-            raise Fail("run_rebuild_now: " + text.strip().splitlines()[-1])
-        out.append(
-            "queued" if proc.returncode == 0 else "a rebuild was already in flight; waiting on it"
-        )
-    run = _wait_for_rebuild(ctx, after_id=(before or {}).get("id"))
+    routers restart onto it, and each variant answers a canary route.
+
+    On a fresh host this is the runbook's two-phase first rebuild
+    (docs/OPERATIONS.md, "First rebuild on a fresh host", steps 5 to 7): the
+    first run downloads the extract and stops at LOAD_REFERENCE_DATA, the
+    operator installs the reference data against that extract, and the second
+    run goes to promotion. The item follows that shape when it meets it.
+    """
+    installed = _reference_data_installed(ctx)
+    run = _fire_and_wait(ctx, out)
     if ctx.args.dry_run:
+        _print_install_instructions(ctx)
+        ctx.exec_in("rebuild", "./manage.py", "run_rebuild_now", check=False)
         ctx.compose("restart", *ROUTERS)
         for variant in VARIANTS:
             _canary(ctx, variant)
         ctx.exec_in("worker", "./manage.py", "check_operations", check=False)
         return
+    if not run.get("succeeded") and "reference data" in run.get("detail", "").lower():
+        if installed:
+            raise Fail(
+                f"run {run.get('id')} stopped for missing reference data although the "
+                f"installer reports it present: {run.get('detail', '')[:300]}"
+            )
+        extract = ctx.data_root / "extracts" / "source.osm.pbf"
+        if not extract.is_file():
+            raise Fail(f"the first run stopped at the reference stage but wrote no {extract}")
+        out.append(
+            f"first run {run['id']} stopped at LOAD_REFERENCE_DATA as the runbook says; "
+            f"extract written ({extract.stat().st_size // 2**20} MiB)"
+        )
+        if ctx.args.skip_manual:
+            raise Fail(
+                "reference data is not installed; run docs/OPERATIONS.md step 6 "
+                "(scripts/install_reference_data.py) and re-run A4"
+            )
+        _print_install_instructions(ctx)
+        input("Press Enter once the reference data is installed… ")
+        if not _reference_data_installed(ctx):
+            raise Fail("the installer still reports reference data missing")
+        out.append("reference data installed")
+        run = _fire_and_wait(ctx, out)
     if not run.get("succeeded"):
         raise Fail(f"weekly_rebuild run {run.get('id')} failed: {run.get('detail', '')[:300]}")
     out.append(f"weekly_rebuild run {run['id']} succeeded in {run.get('minutes', '?')} min")
@@ -454,6 +479,56 @@ def a4_first_rebuild(ctx: Context, out: list[str], *, second: bool = False) -> N
     out.append("check_operations ok")
     if second:
         out.append("(second rebuild)")
+
+
+def _fire_and_wait(ctx: Context, out: list[str]) -> dict:
+    before = _latest_rebuild(ctx)
+    proc = ctx.exec_in("rebuild", "./manage.py", "run_rebuild_now", check=False, timeout=120)
+    if not ctx.args.dry_run:
+        text = proc.stdout + proc.stderr
+        if proc.returncode != 0 and "already in flight" not in text:
+            raise Fail("run_rebuild_now: " + text.strip().splitlines()[-1])
+        out.append(
+            "queued" if proc.returncode == 0 else "a rebuild was already in flight; waiting on it"
+        )
+    return _wait_for_rebuild(ctx, after_id=(before or {}).get("id"))
+
+
+def _reference_data_installed(ctx: Context) -> bool:
+    """The installer run with `--data-root` alone installs the crossings and
+    exits non-zero naming whatever else is missing — the runbook's cheap check."""
+    proc = ctx.exec_in(
+        "rebuild",
+        "python3",
+        "scripts/install_reference_data.py",
+        "--data-root",
+        "/data",
+        check=False,
+        timeout=600,
+    )
+    return ctx.args.dry_run or proc.returncode == 0
+
+
+def _print_install_instructions(ctx: Context) -> None:
+    print(MANUAL_A4.format(data_root=ctx.data_root))
+
+
+MANUAL_A4 = """
+--- A4, by hand: install the reference data (docs/OPERATIONS.md step 6) ----------
+1. Put the three GeoJSON inputs under {data_root}/reference/inputs/ (owned by
+   10001): tl_2024_us_uac20.geojson (Census urban areas), vdot-aadt-2024.geojson,
+   ddot-aadt-2024.geojson. docs/DEVELOPMENT.md "Reference data" says how each is
+   made. Maryland is not installed in phase 1.
+2. Install, pointed at the extract the first run just wrote:
+   docker compose exec -T rebuild python3 scripts/install_reference_data.py \
+       --data-root /data --extract /data/extracts/source.osm.pbf \
+       --urban-areas /data/reference/inputs/tl_2024_us_uac20.geojson \
+       --volume /data/reference/inputs/vdot-aadt-2024.geojson \
+           --volume-source vdot --volume-year 2024 \
+       --volume /data/reference/inputs/ddot-aadt-2024.geojson \
+           --volume-source ddot --volume-year 2024
+This script then re-checks the installer and fires the rebuild again.
+-------------------------------------------------------------------------------"""
 
 
 LATEST_RUN = """
