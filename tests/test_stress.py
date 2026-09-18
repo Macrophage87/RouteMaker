@@ -282,6 +282,39 @@ class TestRulesThatHadNoTest:
         assert narrow.tier is Stress.LTS4
         assert "rideable shoulder" not in narrow.rule
 
+    def test_a_shoulder_of_exactly_the_threshold_width_is_rideable(self) -> None:
+        """The boundary, which is where a surveyed width most often lands: 1.2 m
+        is the metric figure a shoulder is tagged with when somebody has
+        measured it, so the tie is the common case rather than the corner one.
+
+        `>` instead of `>=` moves every such road from LTS3 to LTS4 and the
+        suite above stays green, because 1.8 and 0.4 are both away from the
+        line. Named alongside the constant so the pair moves together.
+        """
+        assert RIDEABLE_SHOULDER_M == 1.2
+
+        at_the_line = classify(
+            {
+                "highway": "secondary",
+                "maxspeed": "35 mph",
+                "shoulder": "both",
+                "shoulder:width": str(RIDEABLE_SHOULDER_M),
+            }
+        )
+        assert at_the_line.tier is Stress.LTS3
+        assert "paved shoulder" in at_the_line.rule
+
+        # And a hair under it is not, so the threshold is a threshold.
+        just_under = classify(
+            {
+                "highway": "secondary",
+                "maxspeed": "35 mph",
+                "shoulder": "both",
+                "shoulder:width": "1.19",
+            }
+        )
+        assert just_under.tier is Stress.LTS4
+
     def test_an_untagged_shoulder_width_earns_no_credit(self) -> None:
         """Read as narrow, and recorded as an assumption so a reviewer can see
         the tier rested on one."""

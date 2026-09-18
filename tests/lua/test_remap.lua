@@ -34,6 +34,15 @@ local capped = M.remap_way({ highway = "unclassified", surface = "paved" },
                            { reviewer_surface_penalty = "impassable" })
 check("surface downgrade is capped at the strictest ridable threshold",
   M.SURFACE_ORDER[capped.surface] <= M.REVIEWER_PENALTY_FLOOR)
+-- Against `REVIEWER_PENALTY_FLOOR` the check above is self-referential: it
+-- holds for whatever the floor is set to, including a floor loosened past the
+-- threshold Valhalla actually refuses at. So the threshold itself is named, and
+-- so is the surface a maximum penalty on a paved way lands on.
+check("Road's minimum ridable surface is compacted", M.MIN_RIDABLE.Road == 4)
+check("which is the rank `compacted` holds", M.SURFACE_ORDER.compacted == 4)
+check("and the cap is that threshold", M.REVIEWER_PENALTY_FLOOR == M.MIN_RIDABLE.Road)
+check("so the worst a reviewer can make a paved way is compacted",
+  capped.surface == "compacted")
 
 check("surface downgrade never improves a surface",
   M.SURFACE_ORDER[M.bounded_surface("gravel", "paved_smooth")] >= M.SURFACE_ORDER.gravel)
@@ -134,6 +143,24 @@ check("border control node denies no bicycle access",
   not M.denies_bicycle_at_border(border, M.remap_node(border)))
 check("a mapping that denied access would be caught",
   M.denies_bicycle_at_border(border, { bicycle = "no" }))
+
+-- `bicycle=no` is not the only way to deny it. PLAN:72 says the Lua mapping is
+-- verified not to deny bicycle access at those nodes, and a blanket `access=no`
+-- denies it to everyone - so the guard reads both keys, on the merged tags.
+check("a blanket access=no at a border node is a denial too",
+  M.denies_bicycle_at_border(border, { access = "no" }))
+check("and an access=no the node arrived with counts, since the merge keeps it",
+  M.denies_bicycle_at_border({ barrier = "border_control", access = "no" }, {}))
+check("a write that does not clear it leaves it denied",
+  M.denies_bicycle_at_border(
+    { barrier = "border_control", access = "no" },
+    { barrier = "gate" }))
+check("but clearing it lifts the denial",
+  not M.denies_bicycle_at_border(
+    { barrier = "border_control", access = "no" },
+    { access = M.REMOVE }))
+check("a permissive access value is no denial at all",
+  not M.denies_bicycle_at_border({ barrier = "border_control", access = "yes" }, {}))
 
 -- Bridge legality is expressed through access, which is what it actually is.
 check("bridge legality sets bicycle access",
@@ -269,6 +296,23 @@ check("a conditional granting only customers changes nothing",
   M.least_restrictive("no", "customers @ (Mo-Su 08:00-20:00)") == nil)
 check("a conditional granting customers and yes still opens on yes",
   M.least_restrictive("no", "customers @ (Mo-Fr); yes @ (Sa,Su)") == "yes")
+
+-- "Less restrictive" is strict. A branch at the base's own rank grants nothing
+-- the way does not already grant, so writing it turns a time-limited sign into
+-- a permanent tag for no gain - and on a way with no base tag at all the
+-- comparison is against fully permissive, where a tie is every `designated @`
+-- and `yes @` conditional in the extract being written as unconditional.
+check("a conditional at the base's own rank is not a relaxation",
+  M.least_restrictive("destination", "destination @ (Mo-Fr 07:00-19:00)") == nil)
+check("nor is a same-rank value under another name",
+  M.least_restrictive("yes", "designated @ (Sa,Su)") == nil)
+check("an absent base counts as permissive, so designated ties with it",
+  M.least_restrictive(nil, "designated @ (Sa,Su 07:00-19:00)") == nil)
+check("and nothing is written onto a way with no base tag",
+  next(M.remap_conditional_access(
+    { highway = "residential", ["bicycle:conditional"] = "designated @ (Sa,Su)" })) == nil)
+check("a genuinely less restrictive branch still opens",
+  M.least_restrictive("destination", "yes @ (Sa,Su)") == "yes")
 
 -- ---------------------------------------------------------------------------
 -- Access restrictions the cycleway write must not talk over.

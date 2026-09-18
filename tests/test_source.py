@@ -122,6 +122,50 @@ def test_a_download_that_leaves_nothing_is_a_failure_rather_than_an_empty_file(
     assert not destination.exists()
 
 
+def test_a_zero_byte_part_is_not_renamed_into_place(tmp_path) -> None:
+    """The other shape of curl writing nothing: it creates the `-o` file and
+    then exits zero having put no bytes in it, which is what a proxy answering
+    200 with an empty body and a volume that filled at the first write both
+    look like from here.
+
+    The `.part` exists, so the file check alone passes it, and the rename then
+    puts a zero-byte extract under the real name - which osmium reads as a
+    region with no ways in it and the next rebuild reads as fresh. So the size
+    is checked as well as the name, and the empty `.part` is cleaned up.
+    """
+    destination = tmp_path / "virginia-latest.osm.pbf"
+
+    def touch_and_exit_zero(command) -> CommandOutput:
+        Path(command[command.index("-o") + 1]).write_bytes(b"")
+        return CommandOutput("", "")
+
+    with pytest.raises(source.SourceExtractFailed, match="curl left nothing"):
+        source.download(source.GEOFABRIK_EXTRACTS[2], destination, touch_and_exit_zero)
+
+    assert not destination.exists(), "a zero-byte extract is not a download"
+    assert not Path(f"{destination}.part").exists(), "and the empty partial is gone"
+
+
+def test_a_stale_part_is_removed_before_curl_runs_not_after_it(tmp_path) -> None:
+    """The removal is what makes the `.part` this run's own work.
+
+    Left in place, last week's half-fetched Maryland is still sitting under the
+    partial name when curl exits - and a curl that wrote nothing at all (the
+    empty-body and full-volume cases above, or a `--retry` that gave up after
+    creating no file) then finds a large, non-empty `.part` and renames half of
+    Maryland into place as this week's extract. Resuming it is not available
+    either: how much of it is good is unknown.
+    """
+    destination = tmp_path / "maryland-latest.osm.pbf"
+    Path(f"{destination}.part").write_text("half of last week's maryland")
+
+    with pytest.raises(source.SourceExtractFailed, match="curl left nothing"):
+        source.download(source.GEOFABRIK_EXTRACTS[1], destination, FakeOsmium(write=False))
+
+    assert not destination.exists(), "last week's partial is not this week's extract"
+    assert not Path(f"{destination}.part").exists()
+
+
 def test_a_part_file_left_by_a_killed_download_is_not_treated_as_a_download(
     tmp_path,
 ) -> None:

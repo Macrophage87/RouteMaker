@@ -730,6 +730,38 @@ def test_an_abandoned_connection_is_only_closed_when_libpq_is_not_using_it(
         assert raw.closes == 1, "an idle connection is the caller's to give back"
 
 
+def test_the_abandon_grace_is_half_a_second() -> None:
+    """Named, because the docstring above reasons from the figure and nothing
+    asserted it.
+
+    Only ever paid on the timeout path, so it costs nothing in the ordinary
+    case - but it is bounded on both sides. Long enough for a cancelled
+    statement to raise and a `finally` to run; short enough that a worker
+    already past its budget is not held for another turn of the schedule by
+    every abandoned task in the queue.
+    """
+    from core.runs import ABANDON_GRACE_S
+
+    assert ABANDON_GRACE_S == 0.5
+
+
+def test_a_run_row_is_kept_for_thirty_days() -> None:
+    """The figure the plan retains request logs for, and the only thing between
+    a table nothing pruned and 105,000 rows a year from the five-minute tasks
+    alone.
+
+    Flat, in seconds and as a `timedelta`: the pruning tests all derive their
+    ancient timestamps from this constant, so they hold for any value it takes -
+    including one small enough to delete the history the morning after a bad
+    week is read from.
+    """
+    from core.runs import JOB_ROW_RETENTION_S, RUN_ROW_RETENTION_S
+
+    assert RUN_ROW_RETENTION_S == 30 * 24 * 60 * 60
+    assert timedelta(seconds=RUN_ROW_RETENTION_S) == timedelta(days=30)
+    assert JOB_ROW_RETENTION_S == RUN_ROW_RETENTION_S, "same reasoning, same number"
+
+
 def test_an_unreadable_connection_is_left_to_the_thread_that_owns_it() -> None:
     """Anything that is not a psycopg connection with a live PGconn behind it
     is not something to call PQfinish on from another thread on a guess: a
@@ -1507,6 +1539,37 @@ def test_each_alert_window_is_wider_than_its_schedule() -> None:
 
 def test_rebuild_is_scheduled_off_peak() -> None:
     """It takes half the cores and widens the latency alerts while it runs."""
-    minute, hour, _dom, _month, _dow = WEEKLY_REBUILD_CRON.split()
+    minute, hour, dom, month, dow = WEEKLY_REBUILD_CRON.split()
     assert minute == "0"
     assert 6 <= int(hour) <= 10, "08:00 UTC is early morning locally"
+
+    # The day was discarded, which is the field that decides whether this is a
+    # weekly rebuild at all: `* * *` here is the same off-peak hour every single
+    # day, seven 1-2 GB downloads and seven full tile builds a week, and the
+    # assertions above hold throughout. Tuesday specifically, so a rebuild that
+    # goes wrong has the working week in front of it rather than a weekend.
+    assert dow == "2", "Tuesday"
+    assert (dom, month) == ("*", "*"), "every week, not a day of the month"
+    assert WEEKLY_REBUILD_CRON == "0 8 * * 2"
+
+
+def test_the_weekly_rebuild_fires_once_a_week_on_a_tuesday() -> None:
+    """The schedule read the way procrastinate reads it, rather than as five
+    strings: a cron whose day field stopped naming a day would still have a
+    minute of 0 and an hour of 8."""
+    from datetime import UTC, datetime
+
+    from croniter import croniter
+
+    fires = []
+    iterator = croniter(WEEKLY_REBUILD_CRON, datetime(2026, 9, 1, tzinfo=UTC))
+    for _ in range(4):
+        fires.append(iterator.get_next(datetime))
+
+    assert [fire.weekday() for fire in fires] == [1, 1, 1, 1], "Tuesday, every time"
+    assert {(fire.hour, fire.minute) for fire in fires} == {(8, 0)}
+    assert [(second - first).days for first, second in zip(fires, fires[1:], strict=False)] == [
+        7,
+        7,
+        7,
+    ], "once a week, not once a day"

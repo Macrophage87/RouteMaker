@@ -181,6 +181,79 @@ class TestEveryAuthDurationAgainstThePlansOwnFigure:
         assert DEGRADED_WINDOW == MAX_STALE_GRANT
 
 
+class TestTheSourceExtractsThreeKnobs:
+    """The three settings `pipeline.source` is driven by, and the box it clips
+    to. Every one of them was reachable only through a test that passed the
+    figure in itself, so the deployment's own value was never asserted.
+    """
+
+    def test_the_coverage_box_is_the_region_this_deployment_clips_to(self) -> None:
+        """West, south, east, north, named corner by corner rather than against
+        a constant read out of the same module.
+
+        The box is not decoration: the elevation stage fetches every one-degree
+        HGT tile it touches and the extract stage clips the merged PBF to it, so
+        a corner moved inward silently drops map - Frederick and Leesburg to the
+        north-west, Annapolis to the east, Fredericksburg to the south - out of
+        a graph that still builds, still validates and still routes.
+        """
+        assert settings.COVERAGE_BBOX == (-78.0, 38.2, -76.3, 39.5)
+
+        west, south, east, north = settings.COVERAGE_BBOX
+        assert west == -78.0, "Frederick and Leesburg to the north-west"
+        assert south == 38.2, "Fredericksburg to the south"
+        assert east == -76.3, "Annapolis to the east"
+        assert north == 39.5
+        assert west < east and south < north, "and it is a box, in that order"
+
+    def test_the_extract_is_stale_at_six_days_not_seven(self) -> None:
+        """Just under the weekly cadence, and the difference between the two
+        figures is the whole behaviour: at seven the ordinary weekly run accepts
+        last week's snapshot and the map ages a week every week, while below six
+        a retry in the same week pulls 1-2 GB again.
+
+        The settings value, not only `source.DEFAULT_MAX_AGE`: the rebuild
+        passes this one, and the module default it is meant to agree with is
+        asserted separately in `tests/test_source.py`.
+        """
+        assert settings.SOURCE_EXTRACT_MAX_AGE == timedelta(days=6)
+
+        from pipeline import source
+
+        assert source.DEFAULT_MAX_AGE == settings.SOURCE_EXTRACT_MAX_AGE, (
+            "the module default and the setting the rebuild passes are one figure"
+        )
+
+    def test_the_six_day_figure_is_the_default_and_not_this_environment(self, monkeypatch) -> None:
+        """Read back through a fresh import with the variable unset, so the
+        assertion above is about the literal in `config/settings.py` rather than
+        about whatever the test runner happens to export."""
+        monkeypatch.delenv("SOURCE_EXTRACT_MAX_AGE_DAYS", raising=False)
+        assert load_settings_module("settings_default_max_age").SOURCE_EXTRACT_MAX_AGE == timedelta(
+            days=6
+        )
+
+    @pytest.mark.parametrize(
+        ("value", "forced"),
+        [("1", True), ("", False), ("0", False), ("true", False), ("yes", False)],
+    )
+    def test_a_forced_refresh_is_the_one_value(self, monkeypatch, value, forced) -> None:
+        """A rebuild that ignores the extract on disk downloads 1-2 GB, so the
+        override is one exact value rather than anything truthy: a variable left
+        at `0` or `false` by an operator who meant to turn it off must not force
+        a refresh every week.
+        """
+        monkeypatch.setenv("SOURCE_EXTRACT_FORCE_REFRESH", value)
+        module = load_settings_module(f"settings_force_refresh_{value or 'empty'}")
+        assert module.SOURCE_EXTRACT_FORCE_REFRESH is forced
+
+    def test_nothing_forces_a_refresh_when_the_variable_is_absent(self, monkeypatch) -> None:
+        monkeypatch.delenv("SOURCE_EXTRACT_FORCE_REFRESH", raising=False)
+        module = load_settings_module("settings_force_refresh_absent")
+        assert module.SOURCE_EXTRACT_FORCE_REFRESH is False
+        assert settings.SOURCE_EXTRACT_FORCE_REFRESH is False, "and not in this deployment either"
+
+
 def load_settings_module(module_name: str = "config_settings_under_test"):
     """Execute `config/settings.py` again, under another name.
 

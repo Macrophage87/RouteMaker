@@ -123,9 +123,17 @@ end
 
 function nodes_proc(kv, nokeys)
   local changes = remap.remap_node(kv)
-  -- Only this remap's own writes are checked. Upstream OSM carries genuinely
-  -- closed border crossings tagged access=no, and refusing a whole tile build on
-  -- one of those would be a bug, not a guard.
+  -- The guard reads the *merged* tags - what the node would carry once the
+  -- change set is applied - and not the change set alone, because a write that
+  -- clears the tag holding a denial off denies access just as surely as one
+  -- that spells `bicycle=no`.
+  --
+  -- What keeps a genuinely closed upstream crossing from failing a whole tile
+  -- build is the second half of the condition, not the first: OSM tags those
+  -- `access=no`, and a node this remap wrote nothing to is passed through
+  -- untouched however it is tagged. So the guard only ever fires on a change
+  -- set of this remap's own making, which is a bug; upstream's own closures
+  -- are not.
   --
   -- The node keeps every tag it arrived with and none of the remap's changes:
   -- upstream's own reading of a border-control node is the one this project

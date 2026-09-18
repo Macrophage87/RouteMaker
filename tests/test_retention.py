@@ -170,6 +170,28 @@ def test_every_variant_under_the_tiles_root_is_pruned(tmp_path) -> None:
     assert names(tiles / "retired-variant") == BUILDS[3:]
 
 
+def test_a_symlinked_variant_directory_is_not_walked(tmp_path) -> None:
+    """A link under the tiles root names a directory somewhere else, and
+    `is_dir()` is true through it. Left in, the prune walks into whatever the
+    link points at and `rmtree`s dated directories out of it - an operator's
+    hand-made `latest -> standard` alias makes the standard variant pruned
+    twice in one pass, and a link to another volume's tiles deletes builds this
+    task was never given.
+
+    Only real variant directories are pruned, so the linked-to directory is
+    untouched and the link itself is not a variant in the report.
+    """
+    tiles = tmp_path / "tiles"
+    variant_with_builds(tiles / "standard", current=BUILDS[4], previous=BUILDS[3])
+    elsewhere = variant_with_builds(tmp_path / "somewhere-else")
+    os.symlink(elsewhere, tiles / "alias")
+
+    removed = prune_tile_builds(tiles, keep=KEEP_BUILDS)
+
+    assert removed == {"standard": BUILDS[:3]}, "the link is not a variant of its own"
+    assert names(elsewhere) == BUILDS, "and nothing was deleted through it"
+
+
 # --- Backups ---------------------------------------------------------------------------
 
 
@@ -216,6 +238,30 @@ def test_a_part_file_is_neither_pruned_nor_counted_as_a_kept_dump(tmp_path) -> N
     )
     assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted([*dumps[1:], part.name])
     assert part.exists(), "and the part file is left where it is, for its own owner to clean up"
+
+
+def test_the_newest_real_dump_survives_a_part_file_taking_the_last_kept_slot(tmp_path) -> None:
+    """The property stated when the part file was excluded, asserted as a
+    property rather than as one arithmetic outcome.
+
+    The part file carries the current instant, so it sorts newest of all - which
+    means that if it is counted as a dump it takes the slot the newest finished
+    dump would have had, and at the tightest retention that is the *only* slot.
+    The restore-worthy archive is deleted and what remains is a half-written
+    file. So: whatever else prune_backups does, the newest name matching a
+    finished dump is still on disk afterwards.
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 4)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    part = tmp_path / "routemaker-20260915T070000Z.dump.part"
+    part.write_bytes(b"half a dump")
+
+    prune_backups(tmp_path, keep=1)
+
+    assert (tmp_path / dumps[-1]).exists(), "the newest finished dump is the one that is kept"
+    assert sorted(path.name for path in tmp_path.glob("*.dump")) == [dumps[-1]]
+    assert part.exists(), "and the part file was never a candidate either way"
 
 
 def test_backup_pruning_of_fewer_dumps_than_it_keeps_removes_nothing(tmp_path) -> None:

@@ -745,6 +745,35 @@ def test_the_violation_prefix_is_searched_on_the_streams_the_lua_writes_to(
         assert_no_rule_violations(output.log, "standard")
 
 
+def test_the_violation_report_says_and_more_only_when_there_is_more() -> None:
+    """The boundary of the quote, which is the count that actually happens.
+
+    A systematic violation writes one line per element and there is no sense
+    putting a million in an exception, so five are quoted and the rest are
+    counted. At exactly five there is no rest: `< REPORTED_VIOLATIONS` instead
+    of `<=` appends "(and 0 more)" to a message that has already quoted every
+    line there was, which sends an operator looking through a build log for
+    lines that are all in front of them.
+    """
+    from pipeline.run import REPORTED_VIOLATIONS, VIOLATION_LOG_PREFIX, assert_no_rule_violations
+
+    assert REPORTED_VIOLATIONS == 5
+
+    def message_for(count: int) -> str:
+        log = "\n".join(f"{VIOLATION_LOG_PREFIX}: way {n} wrote highway" for n in range(count))
+        with pytest.raises(Exception) as caught:
+            assert_no_rule_violations(log, "standard")
+        return str(caught.value)
+
+    exactly = message_for(REPORTED_VIOLATIONS)
+    assert "more)" not in exactly, "every line is quoted, so there is nothing more to count"
+    assert f"logged {REPORTED_VIOLATIONS} {VIOLATION_LOG_PREFIX} line(s)" in exactly
+    assert "way 4 wrote highway" in exactly, "the fifth line is one of the quoted ones"
+
+    assert "(and 1 more)" in message_for(REPORTED_VIOLATIONS + 1)
+    assert "more)" not in message_for(REPORTED_VIOLATIONS - 1)
+
+
 def test_a_build_that_leaves_no_admin_database_fails_the_build(workspace, states) -> None:
     """PLAN:13 commits to valhalla_build_admins and valhalla_build_timezones and
     nothing ran either. Both paths are retargeted into the dated build directory
@@ -1843,6 +1872,40 @@ def test_validate_refuses_when_a_variant_produced_no_build_log(tmp_path) -> None
 
     assert "not every variant produced a build log" in str(caught.value)
     assert "'no-trail', 'standard'" in str(caught.value), "it says which it has"
+
+
+def test_validate_refuses_when_a_variant_has_no_build_config(workspace, states) -> None:
+    """The same guard, one field over. The elevation check reads back every
+    variant's build through that variant's own config, and it iterated the
+    configs that were there - so a rebuild in which two variants never got a
+    config was a rebuild in which the grade of one graph stood in for three,
+    and the two unchecked ones could have been built with no elevation at all.
+
+    Run against a real, completed build so every other VALIDATE check has its
+    artefacts; the only thing taken away is the other two configs.
+    """
+    from pipeline.run import ValidationFailed, _least_grade_across_variants
+
+    source, root = workspace
+    binaries = FakeBinaries()
+    context, _ = run_pipeline(source, root, binaries=binaries, skip=NOT_SWAPPED)
+    assert set(context.build_configs) == set(Variant), "the build really produced all three"
+
+    context.build_configs = {Variant.STANDARD: context.build_configs[Variant.STANDARD]}
+    handlers = build_handlers(
+        context, run=binaries, fetch_elevation=fake_fetch, disk_usage=roomy_disk
+    )
+
+    with pytest.raises(ValidationFailed) as caught:
+        handlers[Stage.VALIDATE]()
+    assert "build config" in str(caught.value)
+
+    # And the elevation read-back refuses on its own account, not only because
+    # the admin-database check happens to run first and notice the same gap.
+    # Left to `min()` over whatever configs were present, two variants built
+    # with no elevation at all would have been validated by the third's grade.
+    with pytest.raises(ValidationFailed, match="not every variant has a build config"):
+        _least_grade_across_variants(context, binaries)
 
 
 def test_a_missing_handler_is_refused_before_any_stage_runs() -> None:
