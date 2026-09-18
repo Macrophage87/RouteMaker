@@ -176,8 +176,10 @@ class ReferenceData:
     volume_features: tuple[conflation.AgencyFeature, ...]
 
     # Crossing names the fixture has an opinion about and the extract does not
-    # carry. Empty on a healthy rebuild; anything here means the sidepath rule is
-    # not biting on that bridge and an operator needs told which.
+    # carry, from both resolvers: a sidepath-only row nothing matched and a
+    # legality row nothing matched. Empty on a healthy rebuild; anything here
+    # means the sidepath rule or the bridge-legality column is inert on that
+    # bridge and an operator needs told which.
     unmatched_crossings: tuple[str, ...]
 
     # Per-way roadway bicycle legality from the crossing fixture, for the ways it
