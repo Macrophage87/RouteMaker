@@ -82,20 +82,38 @@ SOURCE_TIERS = {
     "osm": "osm",
 }
 
-# A way is graded urban only if at least this share of its length lies inside a
-# Census urban area. Deliberately the same figure as `pipeline.run`'s
-# `MIN_JURISDICTION_FRACTION`, and pinned equal to it by a test: both answer the
-# same question - how much of a way has to be inside a polygon before the
-# polygon describes the way - and two different answers to it would be two
-# different definitions of "mostly outside" in one build.
+# A way is graded urban only if a majority of its length lies inside a Census
+# urban area.
 #
-# Bare intersection was the rule, with no length at all. A Loudoun through road
-# whose last hundred metres clip Leesburg's urban area was graded urban along
-# its whole length, which is the 30 mph urban default standing in for the 50 mph
-# rural one on every mile of it - erring *low* on stress, against the
-# classifier's own rule of taking the higher-stress reading of an ambiguous
-# input, and on exactly the roads the rural references ride.
-MIN_URBAN_FRACTION = 0.10
+# Deliberately *not* `pipeline.run`'s `MIN_JURISDICTION_FRACTION`, which it was
+# pinned equal to. The two thresholds look like one question - how much of a way
+# has to be inside a polygon before the polygon describes the way - and they are
+# not, because what each answer costs when it is wrong runs in opposite
+# directions.
+#
+# `MIN_JURISDICTION_FRACTION` is inclusive and its output is a list: a way ten
+# percent inside Arlington names Arlington *as well as* whoever else it touches,
+# and the organizer reading the jurisdiction report hears about one more agency
+# than the ride strictly needs a permit from. Over-reporting is the safe
+# direction there, so a low figure is the right one.
+#
+# This one is a binary switch, and it switches the default speed table: urban
+# assumes 30 mph where nothing is posted, rural assumes 50. Ten percent
+# therefore meant a Loudoun through road with a hundred metres inside
+# Leesburg's urban polygon was graded urban end to end - the *lower*-stress
+# reading of an ambiguous input on every mile of it, which is precisely what
+# `stress.py`'s defaults exist to refuse ("each erring toward the higher-stress
+# reading"), and it takes such a road out of `is_top_tier`, which is what
+# Beginner's zero-top-tier-distance invariant and the road-exposure report key
+# on. A majority is the figure that makes the switch describe the way rather
+# than its end: below half, the rural reading stands, which is the conservative
+# one.
+#
+# The error in the other direction is real too and is why this is a fraction
+# rather than containment: a District street whose last block leaves the
+# boundary is an urban street, and containment would grade it rural. Half is
+# where the two trade off.
+MIN_URBAN_FRACTION = 0.5
 
 
 def install_crossings(reference: Path) -> Path:
@@ -126,9 +144,9 @@ def urban_way_ids(
     street as rural. And not bare intersection either, which is what this was:
     a way was urban if it touched a polygon anywhere, so a Loudoun through road
     whose end clips Leesburg's urban area was graded at the 30 mph urban default
-    along its whole length. Both errors are real; the threshold is where they
-    trade off, and it is `MIN_JURISDICTION_FRACTION`'s figure because it is
-    `MIN_JURISDICTION_FRACTION`'s question.
+    along its whole length. Both errors are real; a majority is where they trade
+    off, and the asymmetry that puts it there rather than at
+    `MIN_JURISDICTION_FRACTION`'s figure is written at the constant.
 
     Length is measured in degrees rather than on the geography. The comparison
     is a ratio of two lengths of the *same* way over a span of a few kilometres,

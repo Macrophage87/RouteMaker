@@ -132,8 +132,8 @@ def test_without_inputs_the_script_installs_the_fixture_and_names_what_is_missin
 
 
 def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path, caplog) -> None:
-    """Two warnings, not one. "Not found in the extract" means the sidepath rule
-    is inert on that bridge - the clip moved, or the name changed. "Found, but
+    """Two warnings, not one. "Not found in the extract" means the fixture's
+    rules are inert on that bridge - the clip moved, or the name changed. "Found, but
     nobody has confirmed the spelling" means the match is believed rather than
     checked, which is the state every row in the shipped fixture is in while
     Overpass is blocked. An operator can act on the first and can only queue the
@@ -144,7 +144,7 @@ def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path
     """
     import logging
 
-    from pipeline.extract import read_ways
+    from pipeline.extract import Way, read_ways
     from pipeline.run import ReferenceData
 
     extract = tmp_path / "source.osm.pbf"
@@ -167,12 +167,107 @@ def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path
     assert len(unmatched) == 1, messages
     assert len(unverified) == 1, messages
     assert unmatched[0] != unverified[0]
-    # Arlington Memorial Bridge is not sidepath-only, so it is never in the
-    # unmatched list whatever the extract carries - and it is unverified like
-    # every other row. The two lists answer different questions and this is the
-    # row that shows it.
-    assert "Arlington Memorial Bridge" not in unmatched[0]
-    assert "Arlington Memorial Bridge" in unverified[0]
+
+    # And the row that shows the two lists answer different questions: one the
+    # extract does carry, under a spelling nobody has checked. It is off the
+    # unmatched list and still on the unverified one.
+    #
+    # It used to be Arlington Memorial Bridge, on the reasoning that a row with
+    # no `sidepath_only` flag could never be reported unmatched - which was
+    # SF-D1 stated as an expectation: the legality half, which every row of the
+    # fixture feeds, reported nothing at all, so "not sidepath-only" and "never
+    # unmatched" were the same sentence. They are not any more, and a row that
+    # genuinely resolves is what the distinction needs.
+    (reference / "crossings.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Toy Bridge",
+                    "osm_names": ["Toy Bridge"],
+                    "osm_names_verified": False,
+                    "sidepath_only": True,
+                    "roadway_bicycle_legal": True,
+                }
+            ]
+        )
+    )
+    resolvable = [
+        Way(
+            osm_id=9000,
+            tags={"highway": "secondary", "bridge": "yes", "name": "Toy Bridge"},
+            node_ids=[],
+        )
+    ]
+    caplog.clear()
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        loaded = ReferenceData.load(reference, resolvable)
+
+    messages = [record.getMessage() for record in caplog.records]
+    assert not [m for m in messages if "not found in the extract" in m], messages
+    assert loaded.unmatched_crossings == ()
+    assert loaded.sidepath_bridge_ids == frozenset({9000})
+    assert "Toy Bridge" in [m for m in messages if "not yet verified" in m][0]
+
+
+def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path, caplog) -> None:
+    """SF-D1: the warning covers both resolvers, not just the sidepath half.
+
+    `resolve_sidepath_bridge_ids` reported its misses and
+    `resolve_bridge_bicycle_legality` reported nothing at all, so the only
+    crossings a rebuild ever named were the four `sidepath_only` rows. The other
+    fourteen - every row whose whole effect on the graph is `rm:bridge_bicycle`,
+    the Theodore Roosevelt Bridge included, whose note says the no-trail variant
+    depends entirely on that column - could resolve against nothing and reach no
+    log anywhere.
+
+    The reviewer's scenario, run here: an extract carrying only the four
+    sidepath bridges. The sidepath half has nothing to report, and the fourteen
+    legality rows must still be named.
+    """
+    import logging
+
+    from pipeline.extract import Way
+    from pipeline.run import ReferenceData
+    from pipeline.variants import crossing_names
+
+    rows = json.loads((REPO / "fixtures" / "crossings" / "potomac-anacostia.json").read_text())
+    sidepath_rows = [row for row in rows if row["sidepath_only"]]
+    legality_only = sorted(
+        row["name"]
+        for row in rows
+        if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
+    )
+    assert len(sidepath_rows) == 4 and len(legality_only) == 14, "the fixture's two halves"
+
+    ways = [
+        Way(
+            osm_id=7000 + index,
+            tags={"highway": "secondary", "bridge": "yes", "name": crossing_names(row)[0]},
+            node_ids=[],
+        )
+        for index, row in enumerate(sidepath_rows)
+    ]
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "urban-areas.json").write_text("[]")
+    (reference / "volume.json").write_text("[]")
+    (reference / "crossings.json").write_bytes(
+        (REPO / "fixtures" / "crossings" / "potomac-anacostia.json").read_bytes()
+    )
+
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        loaded = ReferenceData.load(reference, ways)
+
+    unmatched = [m for m in (r.getMessage() for r in caplog.records) if "not found in" in m]
+    assert len(unmatched) == 1, "one warning over the union of both resolvers"
+    for name in legality_only:
+        assert name in unmatched[0], f"{name} resolved against nothing and was reported nowhere"
+    assert "Theodore Roosevelt Bridge" in unmatched[0]
+    # And the sidepath half has nothing to add: every one of its rows is here.
+    for row in sidepath_rows:
+        assert row["name"] not in loaded.unmatched_crossings
+    assert sorted(loaded.unmatched_crossings) == legality_only
 
 
 def line_feature(coordinates: list[list[float]], aadt: str, object_id: int = 1) -> dict:
@@ -330,6 +425,41 @@ class TestTwoAgenciesCoveringTheSameRoad:
         assert "once per file in the same order" in mismatched.stderr
 
 
+def urban_polygon_to(tmp_path: Path, east: float) -> Path:
+    """An urban area covering the toy extract's road from its west end to `east`.
+
+    Way 100 runs from -77.02 to -76.98 at 38.90, so the fraction of it inside is
+    (east + 77.02) / 0.04 - which is how these tests put a stated share of one
+    way inside a polygon without depending on anything else in the extract.
+    """
+    path = tmp_path / f"urban-{east}.geojson"
+    path.write_text(
+        json.dumps(
+            geojson(
+                [
+                    {
+                        "type": "Feature",
+                        "properties": {},
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [
+                                [
+                                    [-77.03, 38.895],
+                                    [east, 38.895],
+                                    [east, 38.905],
+                                    [-77.03, 38.905],
+                                    [-77.03, 38.895],
+                                ]
+                            ],
+                        },
+                    }
+                ]
+            )
+        )
+    )
+    return path
+
+
 class TestTheUrbanLengthFraction:
     """A way is urban when enough of it is inside an urban area, not when it
     touches one.
@@ -340,11 +470,25 @@ class TestTheUrbanLengthFraction:
     classifier's rule, on exactly the roads the rural references ride.
     """
 
-    def test_the_threshold_is_the_jurisdiction_fraction(self) -> None:
-        """Pinned equal rather than merely similar: both answer the same
-        question - how much of a way has to be inside a polygon before the
-        polygon describes the way - and two answers to it in one build would be
-        two definitions of "mostly outside"."""
+    def test_the_threshold_is_a_majority_of_the_ways_length(self) -> None:
+        """SF-D3: half, pinned flat, and deliberately not
+        `MIN_JURISDICTION_FRACTION`'s 0.10 - which it was pinned equal to, on
+        the reasoning that both ask how much of a way has to be inside a polygon
+        before the polygon describes it.
+
+        They ask that, and the answers differ, because what a wrong answer costs
+        runs in opposite directions. Jurisdiction is inclusive and its output is
+        a list of agencies, so over-reporting is the safe direction and a low
+        figure is right. Urban is a binary switch onto the *lower*-stress speed
+        default - 30 mph assumed instead of 50 - so at a tenth, a Loudoun
+        through road with a hundred metres inside Leesburg's urban polygon was
+        graded urban end to end and taken out of `is_top_tier`, which is the
+        opposite of `stress.py`'s rule of erring toward the higher-stress
+        reading of an ambiguous input.
+
+        Pinned against a literal rather than against the other constant, so that
+        re-coupling them has to fail here.
+        """
         import importlib.util
 
         from pipeline.run import MIN_JURISDICTION_FRACTION
@@ -352,8 +496,33 @@ class TestTheUrbanLengthFraction:
         spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        assert module.MIN_URBAN_FRACTION == MIN_JURISDICTION_FRACTION
-        assert module.MIN_URBAN_FRACTION == 0.10
+        assert module.MIN_URBAN_FRACTION == 0.5
+        assert module.MIN_URBAN_FRACTION != MIN_JURISDICTION_FRACTION
+
+    def test_a_minority_inside_is_rural_and_a_majority_is_urban(self, tmp_path) -> None:
+        """The switch, either side of the line, through the real producer over a
+        real PBF. Way 100 runs from -77.02 to -76.98, so a polygon reaching
+        -77.004 covers two fifths of it and one reaching -76.996 covers three
+        fifths.
+
+        Two fifths of a Loudoun through road inside Leesburg's urban area is a
+        rural road that ends in a town, and grading it urban assumes 30 mph on
+        every mile of it. Three fifths is a town road that runs out into the
+        country, and grading it rural assumes 50.
+        """
+        import importlib.util
+
+        extract = tmp_path / "source.osm.pbf"
+        build_toy_extract(extract)
+
+        spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+
+        two_fifths = urban_polygon_to(tmp_path, -77.004)
+        three_fifths = urban_polygon_to(tmp_path, -76.996)
+        assert 100 not in module.urban_way_ids(extract, two_fifths), "40 percent inside is rural"
+        assert 100 in module.urban_way_ids(extract, three_fifths), "60 percent inside is urban"
 
     def test_a_way_that_clips_an_urban_area_by_its_end_is_not_urban(self, tmp_path) -> None:
         """Through the real producer over a real PBF. Way 100 runs from
@@ -364,40 +533,12 @@ class TestTheUrbanLengthFraction:
         extract = tmp_path / "source.osm.pbf"
         build_toy_extract(extract)
 
-        def polygon(east: float) -> Path:
-            path = tmp_path / f"urban-{east}.geojson"
-            path.write_text(
-                json.dumps(
-                    geojson(
-                        [
-                            {
-                                "type": "Feature",
-                                "properties": {},
-                                "geometry": {
-                                    "type": "Polygon",
-                                    "coordinates": [
-                                        [
-                                            [-77.03, 38.895],
-                                            [east, 38.895],
-                                            [east, 38.905],
-                                            [-77.03, 38.905],
-                                            [-77.03, 38.895],
-                                        ]
-                                    ],
-                                },
-                            }
-                        ]
-                    )
-                )
-            )
-            return path
-
         spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-        clipped = module.urban_way_ids(extract, polygon(-77.018))
+        clipped = module.urban_way_ids(extract, urban_polygon_to(tmp_path, -77.018))
         assert 100 not in clipped, "a fiftieth of its length inside is not an urban road"
         # Half the way inside, and it is urban - the District street whose last
         # block leaves the boundary is why this is a fraction and not containment.
-        assert 100 in module.urban_way_ids(extract, polygon(-77.00))
+        assert 100 in module.urban_way_ids(extract, urban_polygon_to(tmp_path, -77.00))

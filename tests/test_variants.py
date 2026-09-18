@@ -373,7 +373,8 @@ class TestTheFixtureSaysWhatItIsExpectedToSay:
 
         bridge_ids, unmatched = resolve_sidepath_bridge_ids(rows, ways)
         assert not unmatched
-        legality = resolve_bridge_bicycle_legality(rows, ways)
+        legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, ways)
+        assert not legality_unmatched
 
         for way, (name, expected) in zip(ways, EXPECTED_CROSSINGS.items(), strict=True):
             assert (way.osm_id in bridge_ids) is expected.sidepath, f"{name}: sidepath_only"
@@ -506,8 +507,9 @@ class TestBridgeBicycleLegality:
         way = FakeWay(
             500, {"highway": "trunk", "bridge": "yes", "name": "Theodore Roosevelt Bridge"}
         )
-        legality = resolve_bridge_bicycle_legality([row], [way])
+        legality, unmatched = resolve_bridge_bicycle_legality([row], [way])
         assert legality == {500: False}
+        assert unmatched == []
 
     def test_a_legal_roadway_resolves_to_true_even_when_sidepath_only(self) -> None:
         """Key Bridge: legal roadway, sidepath-only for mass rides. The two
@@ -520,14 +522,14 @@ class TestBridgeBicycleLegality:
             "sidepath_only": True,
         }
         way = FakeWay(501, {"highway": "primary", "bridge": "yes", "name": "Key Bridge"})
-        assert resolve_bridge_bicycle_legality([row], [way]) == {501: True}
+        assert resolve_bridge_bicycle_legality([row], [way])[0] == {501: True}
 
     def test_a_row_with_no_opinion_is_left_out_entirely(self) -> None:
         """A row that never mentions `roadway_bicycle_legal` must not inject a
         tag the fixture has no backing for - OSM's own tagging stands."""
         row = {"name": "Untracked Bridge", "osm_way_id": 0}
         way = FakeWay(502, {"highway": "secondary", "bridge": "yes", "name": "Untracked Bridge"})
-        assert resolve_bridge_bicycle_legality([row], [way]) == {}
+        assert resolve_bridge_bicycle_legality([row], [way])[0] == {}
 
     @pytest.mark.parametrize("highway", ["cycleway", "path", "footway"])
     def test_the_sidepath_on_a_bridge_is_not_the_bridges_roadway(self, highway: str) -> None:
@@ -556,7 +558,7 @@ class TestBridgeBicycleLegality:
         roadway = FakeWay(
             601, {"highway": "motorway", "bridge": "yes", "name": "Woodrow Wilson Memorial Bridge"}
         )
-        legality = resolve_bridge_bicycle_legality([row], [path, roadway])
+        legality, _unmatched = resolve_bridge_bicycle_legality([row], [path, roadway])
         assert 600 not in legality, "the path is not the roadway this column describes"
         assert legality == {601: False}, "and the roadway still resolves"
 
@@ -565,12 +567,12 @@ class TestBridgeBicycleLegality:
         guess about which way a name means. An id someone pinned by hand against
         the clipped extract is not a guess, so it is honoured as written."""
         row = {"name": "Pinned Bridge", "osm_way_id": 4242, "roadway_bicycle_legal": False}
-        assert resolve_bridge_bicycle_legality([row], []) == {4242: False}
+        assert resolve_bridge_bicycle_legality([row], []) == ({4242: False}, [])
 
     def test_a_street_named_after_a_bridge_is_not_matched(self) -> None:
         row = {"name": "Key Bridge", "osm_way_id": 0, "roadway_bicycle_legal": True}
         approach = FakeWay(503, {"highway": "secondary", "name": "Key Bridge"})
-        assert resolve_bridge_bicycle_legality([row], [approach]) == {}
+        assert resolve_bridge_bicycle_legality([row], [approach]) == ({}, ["Key Bridge"])
 
     def test_the_fixture_resolves_cleanly_against_the_expected_names(self) -> None:
         """Every row that states an opinion resolves against a same-named
@@ -579,10 +581,144 @@ class TestBridgeBicycleLegality:
         drifted stops resolving instead of resolving against itself."""
         rows = crossing_rows()
         ways = expected_extract()
-        legality = resolve_bridge_bicycle_legality(rows, ways)
+        legality, unmatched = resolve_bridge_bicycle_legality(rows, ways)
+        assert not unmatched
         opinionated = [row for row in rows if row.get("roadway_bicycle_legal") is not None]
         assert len(legality) == len(opinionated)
         assert set(legality.values()) == {True, False}, "the fixture must exercise both values"
+
+
+class TestTheLegalityHalfReportsItsOwnMisses:
+    """SF-D1: both resolvers report unmatched names, not just the sidepath one.
+
+    Only `resolve_sidepath_bridge_ids` returned an `unmatched` list, so the only
+    crossings a rebuild ever named were the four `sidepath_only` rows. The other
+    fourteen - every row whose whole effect on the graph is the
+    `roadway_bicycle_legal` column, the Theodore Roosevelt Bridge included -
+    could resolve against nothing at all and reach no log anywhere: the mapping
+    simply came back short, and nothing counts it.
+
+    A reviewer measured it exactly: with an extract carrying only the four
+    sidepath bridges, `unmatched` was empty while fourteen legality rows
+    resolved against nothing.
+    """
+
+    def sidepath_extract(self) -> list[FakeWay]:
+        """Bridge ways for the fixture's `sidepath_only` rows, and nothing else."""
+        return [
+            FakeWay(
+                7000 + index,
+                {"highway": "secondary", "bridge": "yes", "name": crossing_names(row)[0]},
+            )
+            for index, row in enumerate(row for row in crossing_rows() if row["sidepath_only"])
+        ]
+
+    def test_the_rows_the_sidepath_half_says_nothing_about_are_reported(self) -> None:
+        rows = crossing_rows()
+        ways = self.sidepath_extract()
+
+        _ids, sidepath_unmatched = resolve_sidepath_bridge_ids(rows, ways)
+        assert sidepath_unmatched == [], "every sidepath row is in this extract"
+
+        _legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, ways)
+        expected = [
+            row["name"]
+            for row in rows
+            if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
+        ]
+        assert len(expected) == 14, "the fixture's legality-only rows"
+        assert sorted(expected) == legality_unmatched
+        # The one the fixture's own note calls out: the no-trail variant's
+        # treatment of this bridge rests entirely on `rm:bridge_bicycle`.
+        assert "Theodore Roosevelt Bridge" in legality_unmatched
+
+    def test_a_row_that_resolves_is_not_reported(self) -> None:
+        row = {"name": "Some Bridge", "roadway_bicycle_legal": False}
+        way = FakeWay(7100, {"highway": "trunk", "bridge": "yes", "name": "Some Bridge"})
+        assert resolve_bridge_bicycle_legality([row], [way]) == ({7100: False}, [])
+
+    def test_a_row_with_no_opinion_is_neither_resolved_nor_reported(self) -> None:
+        """It is not a miss: the fixture never asked. A row with no
+        `roadway_bicycle_legal` deliberately leaves OSM's own tagging standing,
+        so naming it in a warning would send an operator after a crossing the
+        file has nothing to say about."""
+        row = {"name": "Untracked Bridge"}
+        assert resolve_bridge_bicycle_legality([row], []) == ({}, [])
+
+
+class TestABridgesNameCanLiveInBridgeName:
+    """SF-D2: `bridge:name` is where OSM keeps a *structure's* name on a road way.
+
+    The `name` tag on a road carries the street. The way over the Anacostia at
+    Pennsylvania Avenue SE is named "Pennsylvania Avenue Southeast" - that is
+    what the road is called - and "John Philip Sousa Bridge" appears on it only
+    in `bridge:name`. Both resolvers matched `name` alone, so a row named after
+    the structure rather than after the street could never resolve, and the miss
+    was silent in the same way a stale way id was: the name reported unmatched
+    and the rule was inert.
+
+    Widening which *names* a way answers to is not widening which ways answer:
+    the bridge guard and the trail-class guard are unchanged, and are checked
+    here on `bridge:name` too.
+    """
+
+    SOUSA = {
+        "highway": "primary",
+        "bridge": "yes",
+        "name": "Pennsylvania Avenue Southeast",
+        "bridge:name": "John Philip Sousa Bridge",
+    }
+
+    def test_the_legality_half_resolves_the_sousa_row(self) -> None:
+        """The checked-in row, against the shape the real way carries."""
+        way = FakeWay(5001, dict(self.SOUSA))
+        legality, unmatched = resolve_bridge_bicycle_legality(crossing_rows(), [way])
+        assert legality == {5001: True}
+        assert "Sousa Bridge (Pennsylvania Avenue SE)" not in unmatched
+
+    def test_the_sidepath_half_resolves_the_same_way(self) -> None:
+        """One definition of "which names does this way carry", shared by both
+        resolvers, so the two halves of the fixture can never disagree about
+        which OSM way a row reaches."""
+        row = {"name": "Sousa Bridge", "osm_names": ["John Philip Sousa Bridge"]}
+        row["sidepath_only"] = True
+        way = FakeWay(5002, dict(self.SOUSA))
+        ids, unmatched = resolve_sidepath_bridge_ids([row], [way])
+        assert ids == frozenset({5002})
+        assert unmatched == []
+
+    def test_the_street_name_is_still_read(self) -> None:
+        """`bridge:name` is read *alongside* `name`, not instead of it: most of
+        the fixture's crossings are streets named after the structure and
+        resolve on `name` alone."""
+        way = FakeWay(5003, {"highway": "trunk", "bridge": "yes", "name": "Some Bridge"})
+        row = {"name": "Some Bridge", "roadway_bicycle_legal": False, "sidepath_only": True}
+        assert resolve_bridge_bicycle_legality([row], [way]) == ({5003: False}, [])
+        assert resolve_sidepath_bridge_ids([row], [way])[0] == frozenset({5003})
+
+    def test_a_bridge_name_on_a_trail_class_way_is_still_the_sidepath(self) -> None:
+        """The sidepath on a bridge carries the structure's name in whichever
+        tag - the guard is about what the way *is*, not about which tag named
+        it."""
+        path = FakeWay(
+            5004,
+            {"highway": "cycleway", "bridge": "yes", "bridge:name": "John Philip Sousa Bridge"},
+        )
+        row = {
+            "name": "Sousa",
+            "osm_names": ["John Philip Sousa Bridge"],
+            "roadway_bicycle_legal": False,
+            "sidepath_only": True,
+        }
+        assert resolve_bridge_bicycle_legality([row], [path]) == ({}, ["Sousa"])
+        assert resolve_sidepath_bridge_ids([row], [path]) == (frozenset(), ["Sousa"])
+
+    def test_a_street_carrying_a_bridge_name_off_the_bridge_is_not_matched(self) -> None:
+        """An approach way is not the structure, whichever tag names it."""
+        approach = FakeWay(
+            5005, {"highway": "secondary", "bridge:name": "John Philip Sousa Bridge"}
+        )
+        assert resolve_bridge_bicycle_legality(crossing_rows(), [approach])[0] == {}
 
 
 class TestUnverifiedCrossingNames:
