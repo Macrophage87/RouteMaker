@@ -781,9 +781,19 @@ def build_handlers(
                 f"approved override rows carry kinds no applier handles: {unhandled}; "
                 f"the handled kinds are {sorted(overrides.HANDLED_KINDS)} ({rows_named})"
             )
-        access, access_missing, superseding = overrides.apply_access(context.ways, rows)
-        stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
-        jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+        try:
+            access, access_missing, superseding = overrides.apply_access(context.ways, rows)
+            stress, stress_missing = overrides.apply_stress(context.stress_by_way, rows)
+            jurisdiction, jurisdiction_missing = overrides.apply_jurisdiction(context.ways, rows)
+        except overrides.OverrideRefused as refused:
+            # The same door as the unhandled kind above and it has to close the
+            # same way: an approved row asking for something an override may not
+            # do - a write outside the access keys, an authority list with
+            # nothing in it - is answered by editing the row, never by running
+            # the rebuild again. `OverrideRefused` is a ValueError and nothing
+            # made it terminal, so each one cost five full rebuilds before the
+            # alert said anything an operator could act on.
+            raise ValidationFailed(f"an approved override row was refused: {refused}") from refused
 
         missing = tuple(sorted({*access_missing, *stress_missing, *jurisdiction_missing}))
         if missing:

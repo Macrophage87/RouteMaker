@@ -493,3 +493,33 @@ def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> No
     assert "way 1" in str(raised.value), "the row is named, not only the kind"
     assert isinstance(raised.value, terminal_causes()), "and a retry cannot fix it"
     assert context.override_report is None, "nothing was applied on the way past it"
+
+
+@pytest.mark.django_db
+def test_a_row_the_appliers_refuse_stops_the_rebuild_rather_than_retrying_it(tmp_path) -> None:
+    """The other refusal, through the same door.
+
+    An approved row that writes outside the access keys, or a jurisdiction row
+    naming no authority, is answered by editing the row. `OverrideRefused` is a
+    plain ValueError and nothing listed it as terminal, so each one was retried
+    five times - five full rebuilds, hours apiece - before the alert said
+    anything an operator could act on.
+    """
+    from config.procrastinate import terminal_causes
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ValidationFailed, build_handlers
+
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+    )
+    context.ways = [Way(1, highway="secondary")]
+    handlers = build_handlers(
+        context, load_overrides=lambda: [Override("access", 1, {"highway": "residential"})]
+    )
+
+    with pytest.raises(ValidationFailed, match="not an access key") as raised:
+        handlers[Stage.APPLY_OVERRIDES]()
+    assert isinstance(raised.value, terminal_causes())
+    assert context.ways[0].tags["highway"] == "secondary", "and nothing was written"
