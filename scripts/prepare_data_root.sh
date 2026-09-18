@@ -27,17 +27,72 @@
 #
 # Usage, from the repository root on the deployment host:
 #
-#     set -a; . ./.env; set +a
-#     sudo -E sh scripts/prepare_data_root.sh
+#     sudo sh scripts/prepare_data_root.sh --env-file ./.env
 #
 # Re-running it is safe: it creates nothing that already exists and sets no
 # ownership that is already right, and it never touches the three directories
 # above - so running it on a live host cannot move the database's files or the
 # edge's private key to another uid.
+#
+# `--env-file` reads one name out of that file. It does NOT source it, and that
+# is the reason the option exists rather than the caller doing
+# `set -a; . ./.env; set +a` as this script used to tell them to. `.env` is
+# compose's input, not the shell's: `$$` there is a literal escape and in a
+# shell it is the pid, backticks in a value would run as commands, and an
+# exported value takes precedence over the file when compose reads it - so a
+# shell that has sourced `.env` is a shell that hands compose different values
+# than the file holds. The one thing this script needs from it is a path, so it
+# takes that one line and leaves every secret in the file untouched.
+#
+# DATA_ROOT already in the environment still works, for a caller who exported
+# it deliberately; `--env-file` overrides it, since naming a file is the more
+# specific instruction.
 
 set -eu
 
-: "${DATA_ROOT:?DATA_ROOT is not set. Load the deployment's environment first: set -a; . ./.env; set +a}"
+usage() {
+	echo "usage: prepare_data_root.sh [--env-file <path>]" >&2
+	echo "       or with DATA_ROOT set in the environment" >&2
+	exit 2
+}
+
+env_file=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--env-file)
+			[ $# -ge 2 ] || usage
+			env_file="$2"
+			shift 2
+			;;
+		--env-file=*)
+			env_file="${1#--env-file=}"
+			shift
+			;;
+		*) usage ;;
+	esac
+done
+
+if [ -n "$env_file" ]; then
+	[ -r "$env_file" ] || { echo "cannot read env file '$env_file'" >&2; exit 2; }
+	# The last uncommented DATA_ROOT assignment in the file, which is the one
+	# compose's own reader would use. `sed` and not `.`: nothing in the file is
+	# evaluated, so a value containing `$`, a backtick or a semicolon is a
+	# string here exactly as it is to compose.
+	value=$(sed -n 's/^[[:space:]]*DATA_ROOT[[:space:]]*=//p' "$env_file" | tail -n 1)
+	# Strip a trailing CR, for a file edited on Windows, and then a matching
+	# pair of quotes - which compose's dotenv reader removes and which are
+	# therefore not part of the value. (Measured, and written down in
+	# .env.example: quotes there are the parser's, not the value's.)
+	value=$(printf '%s' "$value" | tr -d '\r')
+	case "$value" in
+		\'*\') value=$(printf '%s' "$value" | sed "s/^'//; s/'\$//") ;;
+		'"'*'"') value=$(printf '%s' "$value" | sed 's/^"//; s/"$//') ;;
+	esac
+	[ -n "$value" ] || { echo "no DATA_ROOT= line in '$env_file'" >&2; exit 2; }
+	DATA_ROOT="$value"
+fi
+
+: "${DATA_ROOT:?DATA_ROOT is not set. Pass --env-file ./.env, or export DATA_ROOT yourself}"
 
 # An unset or relative DATA_ROOT would make the chowns below chowns of the
 # working directory - or, empty, of /. The check above catches unset; this

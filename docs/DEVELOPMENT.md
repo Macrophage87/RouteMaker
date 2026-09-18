@@ -309,6 +309,7 @@ plausible, wrong map when empty. `scripts/install_reference_data.py` installs
 them:
 
 ```sh
+export DATA_ROOT=/srv/routemaker/data   # a checkout's own path here; see below
 python scripts/install_reference_data.py --data-root "$DATA_ROOT" \
     --extract "$DATA_ROOT/extracts/source.osm.pbf" \
     --urban-areas "$DATA_ROOT/reference/inputs/tl_2024_us_uac20.geojson" \
@@ -325,6 +326,13 @@ this runs inside the `rebuild` container, whose working directory is `/app`, so
 a bare file name resolves somewhere the file is not. Put the GeoJSON files
 under `$DATA_ROOT/reference/inputs/`, which that container binds; nothing
 outside the five directories it binds is visible to it at all.
+
+`export DATA_ROOT=...` by hand, and never `set -a; . ./.env; set +a`. That file
+is compose's input: sourcing it puts every secret in it through a shell, where
+`$$` is the pid rather than a literal `$` and a backtick in a value runs a
+command, and an exported value then takes precedence over the file when compose
+reads it. docs/DEPLOYMENT.md, "`.env` is compose's input, not the shell's", has
+the failure this produced.
 
 - `crossings.json` is `fixtures/crossings/potomac-anacostia.json`, copied. Its
   content is community knowledge maintained under the fixture's own README;

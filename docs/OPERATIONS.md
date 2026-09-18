@@ -439,8 +439,7 @@ the first host to run it is the first test of it.
 1. **Prepare the data volume, before the first `up`.**
 
    ```sh
-   set -a; . ./.env; set +a
-   sudo -E sh scripts/prepare_data_root.sh
+   sudo sh scripts/prepare_data_root.sh --env-file ./.env
    ```
 
    Ordering, not hygiene: Docker creates a missing bind-mount source itself, as
@@ -545,11 +544,17 @@ the first host to run it is the first test of it.
    container sees it at `/data/reference/inputs`:
 
    ```sh
-   set -a; . ./.env; set +a
+   export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
    sudo install -d -o 10001 -g 10001 "$DATA_ROOT/reference/inputs"
    # then copy tl_2024_us_uac20.geojson, vdot-aadt-2024.geojson and
    # ddot-aadt-2024.geojson into "$DATA_ROOT/reference/inputs"
    ```
+
+   The one variable by hand rather than `set -a; . ./.env; set +a`: sourcing
+   that file puts every secret in it through the shell, where `$$` is the pid
+   and a backtick runs a command, and an exported value then beats the file
+   when compose reads it (docs/DEPLOYMENT.md, "`.env` is compose's input, not
+   the shell's").
 
    ```sh
    docker compose exec -T rebuild python3 scripts/install_reference_data.py \

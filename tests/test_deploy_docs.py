@@ -428,24 +428,88 @@ def test_the_script_refuses_to_run_without_an_absolute_data_root() -> None:
     assert "must be an absolute path" in body, "the script no longer refuses a relative path"
 
 
-def test_every_documented_data_root_snippet_loads_the_environment_first() -> None:
-    """`$DATA_ROOT` lives in `.env`, which is compose's input and not the
-    shell's, so a snippet that uses it without `set -a; . ./.env; set +a` is a
-    snippet that runs with it empty. In the `chown -R` case that is a chown of
-    `/`; in the `collectstatic` case it is a mount of the host's root that
-    reports success and leaves the volume empty."""
-    blocks = re.findall(r"```sh\n(.*?)```", DEPLOYMENT, re.DOTALL)
-    using = [block for block in blocks if "$DATA_ROOT" in block]
-    assert using, "docs/DEPLOYMENT.md has no shell snippet using $DATA_ROOT any more"
-    unguarded = [
-        block
-        for block in using
-        if ". ./.env" not in block and not re.search(r"^\s*export DATA_ROOT=", block, re.M)
-    ]
-    assert not unguarded, (
-        "these snippets use $DATA_ROOT without loading the environment file first: "
-        + "\n---\n".join(unguarded)
+# Sourcing `.env` into a shell, in any of the spellings that do it. Prose is
+# allowed to name them - both documents explain at length why not to - so this
+# is matched against the shell snippets only.
+SOURCES_ENV = re.compile(r"(?:^|\s)(?:set -a\b|\.\s+\S*\.env\b|source\s+\S*\.env\b)")
+
+
+def shell_snippets(text: str) -> list[str]:
+    return re.findall(r"```sh\n(.*?)```", text, re.DOTALL)
+
+
+@pytest.mark.parametrize("name", sorted(DOCUMENTS))
+def test_no_documented_command_sources_the_environment_file(name: str) -> None:
+    """`.env` is compose's input and it must not reach a shell.
+
+    Every snippet in these documents used to open with
+    `set -a; . ./.env; set +a` and then run `docker compose` in the same shell,
+    which put every value in the file through `sh` on the way: `$$` is a
+    literal-`$` escape to compose's parser and the shell's pid to `sh`,
+    backticks and `$(...)` in a value are commands, and an exported variable
+    beats the env file when compose reads it. So the first `up` initialised
+    PGDATA with `hunter47112`, the next `up -d` from a different shell sent
+    `hunter81330`, `pg_isready` went green on both, `migrate` failed
+    authentication and the three services gated on it never started - an outage
+    with the shape of a rotated password that nobody had rotated.
+
+    The two snippets that genuinely needed `$DATA_ROOT` get it another way now:
+    `scripts/prepare_data_root.sh --env-file ./.env` reads the one line it
+    wants without evaluating the file, and `collectstatic` runs under
+    `docker compose run`, which gives the container the service's own
+    environment.
+    """
+    offenders = [block for block in shell_snippets(DOCUMENTS[name]) if SOURCES_ENV.search(block)]
+    assert not offenders, (
+        f"{name} has shell snippets that source the environment file:\n" + "\n---\n".join(offenders)
     )
+
+
+def test_the_prepare_script_reads_the_env_file_rather_than_sourcing_it() -> None:
+    """The option that let the guide stop sourcing, and the property that makes
+    it worth having: it never evaluates the file, so a `$`, a backtick or a
+    semicolon in a password beside the `DATA_ROOT=` line is a string it does not
+    touch."""
+    script = PREPARE.read_text()
+    assert "--env-file" in script, "scripts/prepare_data_root.sh takes no --env-file"
+    assert not SOURCES_ENV.search(script.split("set -eu", 1)[1]), (
+        "scripts/prepare_data_root.sh sources the file it was given instead of reading "
+        "one line out of it"
+    )
+    assert "sed -n" in script, (
+        "the script no longer extracts DATA_ROOT with sed; anything that evaluates the "
+        "file runs whatever is in the other values"
+    )
+    for name, body in DOCUMENTS.items():
+        for line in body.splitlines():
+            stripped = line.strip()
+            if "prepare_data_root.sh" in stripped and stripped.startswith(("sudo ", "sh ", "./")):
+                assert "--env-file" in stripped, (
+                    f"{name} runs the script without naming an env file: {stripped}"
+                )
+
+
+def test_every_documented_data_root_snippet_has_the_value_from_somewhere() -> None:
+    """`$DATA_ROOT` is not exported by anything, so a snippet that uses it
+    without setting it runs with it empty. In the `chown -R` case that is a
+    chown of `/`; in the `install -d` case it is a directory at the host's root
+    that the rebuild container cannot see.
+
+    The permitted source is now an explicit `export DATA_ROOT=<path>` - one
+    variable, typed out, a path and not a secret - rather than the whole file.
+    """
+    used = 0
+    for name, body in DOCUMENTS.items():
+        using = [block for block in shell_snippets(body) if "$DATA_ROOT" in block]
+        used += len(using)
+        unguarded = [
+            block for block in using if not re.search(r"^\s*export DATA_ROOT=", block, re.M)
+        ]
+        assert not unguarded, (
+            f"these {name} snippets use $DATA_ROOT without setting it first: "
+            + "\n---\n".join(unguarded)
+        )
+    assert used, "no snippet uses $DATA_ROOT any more, so this test is vacuous"
 
 
 # --- The figures the host is sized from --------------------------------------

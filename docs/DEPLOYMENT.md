@@ -81,8 +81,7 @@ its image runs. **Nothing here is a claim that either image builds.** The first
 
 ```sh
 cp .env.example .env               # then fill it in; see docs/DEVELOPMENT.md
-set -a; . ./.env; set +a           # DATA_ROOT, for the step below and nothing else
-sudo -E sh scripts/prepare_data_root.sh   # BEFORE the first up; see below for why
+sudo sh scripts/prepare_data_root.sh --env-file ./.env   # BEFORE the first up
 docker compose build               # builds api and pipeline
 docker compose up -d               # bot and renderer are skipped: they have no image
 ```
@@ -163,6 +162,22 @@ therefore goes green, `migrate` fails authentication, and `api`, `worker` and
 `rebuild` — all held on `service_completed_successfully` — never start at all.
 The stack comes up as Caddy and three routers, exactly the shape a wrong
 `PGHOST` used to produce.
+
+**That shape has two causes and this is only one of them.** The other needs
+nobody to have rotated anything: a password that reaches compose through a
+shell. `set -a; . ./.env; set +a` before a `docker compose` command — which is
+what every snippet in this document used to open with — makes `$$` in a
+password the shell's own process id rather than compose's literal-`$` escape,
+so `hunter$$2` is `hunter47112` from the shell that ran the first `up` and
+`hunter81330` from the next one, and an exported value beats the env file when
+compose reads it. PGDATA keeps the first, the second fails authentication, and
+what an operator sees is identical to the paragraph above: `pg_isready` green,
+`migrate` refused, three services that never start. If you are reading this
+because that happened, check whether the shell you ran `up` in had sourced
+`.env` before you go looking for a rotation — see "`.env` is compose's input,
+not the shell's" below, and use `docker compose config` to see the value
+compose is actually about to send (it prints a literal `$` doubled, so decode
+`$$` back to `$`).
 
 The order that works:
 
@@ -329,27 +344,64 @@ reference, its own work directory, and the elevation cache — the timezone
 database `valhalla_build_timezones` writes goes into the work directory beside
 them).
 
-**Every shell snippet in this document that uses `$DATA_ROOT` needs the
-deployment's environment loaded first.** It is not exported by anything; it
-lives in `.env`, which is compose's input and not the shell's:
+### `.env` is compose's input, not the shell's
+
+**Nothing in this document sources `.env`, and nothing you run before
+`docker compose` should either.** It used to open with
+`set -a; . ./.env; set +a`, on the reasoning that `$DATA_ROOT` had to come from
+somewhere, and the cost of that was every *other* value in the file going
+through a shell on its way to compose:
+
+- `$$` is a literal-`$` escape to compose's parser and the shell's own process
+  id to `sh`, so `PGPASSWORD=hunter$$2` becomes `hunter47112` in one shell and
+  `hunter81330` in the next;
+- backticks and `$(...)` in a value are commands the shell runs;
+- and an exported variable **wins over the env file**, so whatever the shell
+  made of the value is what compose uses.
+
+The way that lands is an outage that does not look like one. The first
+`up` initialises PGDATA with whatever this shell produced; the next `up -d`,
+from a different shell, sends a different string; `pg_isready` reports
+PQPING_OK either way, `migrate` fails authentication, and `api`, `worker` and
+`rebuild` — all held on `service_completed_successfully` — never start. That is
+the same stack-comes-up-as-Caddy-and-three-routers shape described under
+`PGPASSWORD` above, and it happens without anybody having rotated anything.
+
+So the two places that genuinely needed `$DATA_ROOT` each get it another way:
+
+- `scripts/prepare_data_root.sh` takes `--env-file ./.env` and reads the one
+  `DATA_ROOT=` line out of it with `sed`. It does not evaluate the file, so a
+  password containing `$` or a backtick is a string it never touches.
+- `collectstatic` runs under `docker compose run`, which gives the container
+  the `api` service's own environment and mounts — no `-v` built out of a shell
+  variable at all.
+
+For the handful of host-side snippets that still want the path (creating
+`reference/inputs`, copying GeoJSON in), export **that one variable** by hand:
 
 ```sh
-set -a; . ./.env; set +a          # or: export DATA_ROOT=/srv/routemaker/data
+export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 ```
 
-Do not skip it and do not guess. `sudo chown -R 10001:10001 "$DATA_ROOT"` with
-`DATA_ROOT` unset is `chown -R 10001:10001 ""`, and with a stray trailing slash
-or an empty value in a shell that word-splits it, the argument that reaches
-`chown` can be `/`. Recursively chowning the root filesystem ends the host.
-`scripts/prepare_data_root.sh` refuses to run without `DATA_ROOT` set to an
-absolute path for exactly this reason; the manual form has no such guard.
+It is a path rather than a secret, and typing it is what keeps the rest of the
+file out of the shell. Do not skip it and do not guess.
+`sudo chown -R 10001:10001 "$DATA_ROOT"` with `DATA_ROOT` unset is
+`chown -R 10001:10001 ""`, and with a stray trailing slash or an empty value in
+a shell that word-splits it, the argument that reaches `chown` can be `/`.
+Recursively chowning the root filesystem ends the host.
+`scripts/prepare_data_root.sh` refuses to run without `DATA_ROOT` resolving to
+an absolute path for exactly this reason; the manual form has no such guard.
 
 ### The directories have to exist, as 10001, before the first `up`
 
 ```sh
-set -a; . ./.env; set +a
-sudo -E sh scripts/prepare_data_root.sh
+sudo sh scripts/prepare_data_root.sh --env-file ./.env
 ```
+
+`--env-file` rather than `sudo -E` with a sourced `.env`, for the reason above:
+the script wants one path out of that file and has no business receiving the
+deployment's secrets to get it. `DATA_ROOT` already exported also works, and
+`--env-file` wins if both are given.
 
 The `chown -R` this replaced was correct and useless, because of when it ran. A
 bind mount whose source does not exist on the host is not an error: **the Docker
@@ -538,22 +590,15 @@ container is `/data/static` and that is the host directory Caddy serves from.
 `docker compose run` gives the one-off container the service's own environment
 and mounts, and compose fills `${DATA_ROOT}` in from `.env` itself.
 
-It used to be three lines longer, and every one of the three was a way to get
-this wrong:
-
-```sh
-set -a; . ./.env; set +a        # do not do this - see below
-docker compose run --rm -e DATA_ROOT=/data -v "$DATA_ROOT/static:/data/static" \
-  api ./manage.py collectstatic --noinput
-```
-
-`$DATA_ROOT` had to come from somewhere, so the guide sourced `.env` into the
-shell — which is the thing this document no longer does anywhere, because it
-hands every value in that file to the shell on the way to compose (see
-"`.env` is compose's input, not the shell's" below). And if the sourcing was
-skipped, `$DATA_ROOT` expanded to nothing, the `-v` argument became
-`/static:/data/static` — a directory at the **host's** root — and the command
-reported the files it copied while Caddy went on serving nothing.
+It used to carry `-e DATA_ROOT=/data` and a `-v` mount of
+`"$DATA_ROOT/static"`, preceded by a line that sourced `.env` into the shell to
+fill that variable in. Both halves were a way to get this wrong. Sourcing the
+file hands every value in it to the shell on the way to compose, which is the
+thing this document no longer does anywhere (see "`.env` is compose's input,
+not the shell's" above). And skipping the sourcing left `$DATA_ROOT` empty, so
+the `-v` argument became `/static:/data/static` — a directory at the **host's**
+root — and the command reported the files it copied while Caddy went on serving
+nothing.
 
 `settings.STATIC_ROOT` is now `DATA_ROOT / "static"` — the same host directory
 Caddy mounts at `/srv/static`, so the assets land where the edge serves them from
