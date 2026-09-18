@@ -192,6 +192,32 @@ def test_backup_pruning_keeps_the_newest_by_name(tmp_path) -> None:
     assert (tmp_path / "notes.txt").exists(), "only the dumps this task wrote are pruned"
 
 
+def test_a_part_file_is_neither_pruned_nor_counted_as_a_kept_dump(tmp_path) -> None:
+    """The half of the staging name that lives here rather than in the backup.
+
+    `perform_backup` writes `<name>.dump.part` and renames it only once the
+    archive has been read back, so a part file is either in flight or the
+    wreckage of a failed run. Either way it is not a backup, and counting it as
+    one is not a cosmetic error: it sorts newest - the part file carries the
+    current instant - so with `keep=2` it would take a kept slot and a real dump
+    would be deleted to make room for an archive no restore may use.
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 4)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    # Newest by name, which is the position that does the damage.
+    part = tmp_path / "routemaker-20260914T070000Z.dump.part"
+    part.write_bytes(b"half a dump")
+
+    removed = prune_backups(tmp_path, keep=2)
+
+    assert [path.name for path in removed] == dumps[:1], (
+        "two real dumps are kept and the oldest goes; the part file is not one of the three"
+    )
+    assert sorted(entry.name for entry in tmp_path.iterdir()) == sorted([*dumps[1:], part.name])
+    assert part.exists(), "and the part file is left where it is, for its own owner to clean up"
+
+
 def test_backup_pruning_of_fewer_dumps_than_it_keeps_removes_nothing(tmp_path) -> None:
     (tmp_path / "routemaker-20260917T070000Z.dump").write_bytes(b"dump")
     assert prune_backups(tmp_path, keep=7) == []

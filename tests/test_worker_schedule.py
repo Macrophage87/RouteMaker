@@ -45,6 +45,7 @@ from config.procrastinate import (
     MEMBERSHIP_SWEEP_CRON,
     NIGHTLY_BACKUP_CRON,
     REBUILD_TIMEOUT_S,
+    ROUTER_RESTART_NOTICE,
     SWEEP_TIMEOUT_S,
     WEEKLY_REBUILD_CRON,
     WORKER_HEARTBEAT_CRON,
@@ -419,6 +420,8 @@ def test_a_failure_after_the_swap_is_not_retried_and_the_retired_schema_survives
 
     app.tasks["weekly_rebuild"].func(timestamp=0)
     assert schema_exists(settings.SEGMENT_SCHEMA_RETIRED)
+    succeeded = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert ROUTER_RESTART_NOTICE in succeeded.detail
 
     def dropped_connection(*args, **kwargs):
         raise RuntimeError("the connection dropped while reading the retired schema")
@@ -426,8 +429,26 @@ def test_a_failure_after_the_swap_is_not_retried_and_the_retired_schema_survives
     monkeypatch.setattr("pipeline.reconcile.drift_report", dropped_connection)
     with pytest.raises(RebuildAbandoned) as abandoned:
         app.tasks["weekly_rebuild"].func(timestamp=0)
-    assert "swap completed" in str(abandoned.value)
-    assert settings.SEGMENT_SCHEMA_RETIRED in str(abandoned.value)
+    message = str(abandoned.value)
+    assert "swap completed" in message
+    assert settings.SEGMENT_SCHEMA_RETIRED in message
+    # What the operator has to do, in the alert that is the only thing they see.
+    # The message used to say "the new build is being served" and stop there,
+    # which is false at the moment it is written: the schema rename is instant
+    # and the tile directories are not, so the three routers are still serving
+    # last week's graph against this week's segment rows until somebody restarts
+    # them - and an operator told the new build is being served has no reason to.
+    # The same sentence as the success detail, from the same constant, so the
+    # two cannot drift apart.
+    assert ROUTER_RESTART_NOTICE in message, (
+        f"the abandoned rebuild must name the router restart: {message}"
+    )
+    assert "being served" not in message, (
+        f"and must not say the new build is already being served: {message}"
+    )
+    assert "reconciliation by hand" in message, (
+        f"the reconcile does not happen on its own either: {message}"
+    )
 
     strategy = app.tasks["weekly_rebuild"].retry_strategy
     assert strategy.get_retry_decision(exception=abandoned.value, job=job(0)) is None, (
@@ -1028,6 +1049,55 @@ def test_a_verified_dump_is_the_only_thing_the_successful_path_leaves(
 
     assert left_behind(tmp_path / "backups") == [destination.name]
     assert destination.name.endswith(".dump") and destination.is_file()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_archive_carries_the_part_name_until_the_verification_has_passed(
+    monkeypatch, tmp_path
+) -> None:
+    """Where the staging name matters, which is while the dump is unverified.
+
+    Every other test here looks at the directory once the task has finished, and
+    at that point a backup written straight to its final name is indistinguishable
+    from one renamed into it: `part = destination` passes all of them. This looks
+    from inside the window - `verify_dump_listing` is reached with the archive
+    written and not yet accepted - and that is the whole of the promise the
+    restore procedure rests on. Under the final name from the start, an operator
+    restoring "last night's" during the nightly job's own half-minute picks up a
+    half-written archive, and `prune_backups` counts it as one of the kept dumps
+    and drops a good one to make room.
+    """
+    from django.utils import timezone
+
+    from config.procrastinate import perform_backup
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    now = timezone.now()
+    final = tmp_path / "backups" / f"routemaker-{now:%Y%m%dT%H%M%SZ}.dump"
+    part = final.with_name(final.name + ".part")
+    seen: dict[str, object] = {}
+
+    def verify(listing):
+        seen["reached"] = True
+        seen["under the final name"] = final.exists()
+        seen["under the part name"] = part.exists()
+        seen["everything there"] = left_behind(tmp_path / "backups")
+        return ["public.app_user"]
+
+    monkeypatch.setattr("config.procrastinate.verify_dump_listing", verify)
+
+    destination = perform_backup(now=now)
+
+    assert seen["reached"], "the verification is what the rename waits for"
+    assert seen["under the final name"] is False, (
+        "an unverified archive must not sit under the name a restore trusts, "
+        f"but the directory held {seen['everything there']}"
+    )
+    assert seen["under the part name"] is True
+    assert seen["everything there"] == [part.name], "and nothing else beside it"
+    # And afterwards, the rename has happened and the part name is gone.
+    assert destination == final
+    assert left_behind(tmp_path / "backups") == [final.name]
 
 
 @pytest.mark.django_db(transaction=True)
