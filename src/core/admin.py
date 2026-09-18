@@ -154,6 +154,21 @@ class RouteMakerAdminSite(admin.AdminSite):
         have one."""
         raise Http404
 
+    def password_change_done(self, request, extra_context=None):
+        """And nor its confirmation page, which is a separate URL.
+
+        `AdminSite.get_urls` registers `password_change/` and
+        `password_change/done/` as two views, and only the first was overridden.
+        Measured: a signed-in instance admin got 404 from `password_change/` and
+        200 from `password_change/done/` - a page reading "Your password was
+        changed" on a deployment where no account has a password and none was
+        changed. It is not a way to set one, so this is not an escalation; it is
+        a surface that contradicts the rule the line above it states, and the
+        first person to reach it would reasonably conclude the password path is
+        live. Both halves answer the same 404.
+        """
+        raise Http404
+
 
 site = RouteMakerAdminSite(name="routemaker_admin")
 

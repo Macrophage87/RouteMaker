@@ -91,6 +91,15 @@ def test_there_is_no_admin_password_change() -> None:
         site.password_change(Request(None))
 
 
+def test_there_is_no_password_change_done_page_either() -> None:
+    """`AdminSite.get_urls` registers two views, not one, and only the first was
+    overridden."""
+    from core.admin import site
+
+    with pytest.raises(Http404):
+        site.password_change_done(Request(None))
+
+
 def test_derived_state_is_not_editable_in_the_admin() -> None:
     """The pipeline owns border crossings and a rebuild reassigns their ids. A
     hand edit would be overwritten next Tuesday and would desynchronise the graph
@@ -853,6 +862,23 @@ class TestTheAdminPathDoesNotAnnounceItself:
 
     def test_the_login_page_does_not_answer(self, client) -> None:
         assert client.get(f"/{settings.ADMIN_PATH}login/").status_code == 404
+
+    @pytest.mark.parametrize("path", ["password_change/", "password_change/done/"])
+    def test_neither_half_of_the_password_change_flow_answers(
+        self, as_instance_admin, path
+    ) -> None:
+        """Both, because `AdminSite.get_urls` registers them as two views and
+        only one was closed.
+
+        Measured on a signed-in instance admin: `password_change/` 404 and
+        `password_change/done/` 200 - a page reading "Your password was changed
+        successfully" on a deployment where no account has a password and none
+        was changed. It sets nothing, so it is not an escalation; it is a
+        surface contradicting the rule beside it, and the next person to find it
+        would reasonably conclude the password path is live and go looking for
+        the credential it implies.
+        """
+        assert as_instance_admin.get(f"/{settings.ADMIN_PATH}{path}").status_code == 404
 
     def test_an_admin_still_reaches_it(self, as_instance_admin) -> None:
         assert as_instance_admin.get(f"/{settings.ADMIN_PATH}").status_code == 200
