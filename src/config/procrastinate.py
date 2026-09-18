@@ -190,10 +190,14 @@ def weekly_rebuild(timestamp: int) -> None:
             # after BUILD_TILES left a third tile set on the volume that
             # nothing removed until the *second* following success, because
             # the prune ran after `run_rebuild` returned and a failure never
-            # returns. This run's own build is kept - promoted, so protected,
-            # if it swapped, and for diagnosis if it did not - and everything
-            # else no symlink names goes now rather than a week from now.
-            reclaimed += _prune_tile_builds(context.tiles_dir, THIS_RUNS_BUILD, "after the run")
+            # returns. What survives here is what the promotion symlinks name -
+            # the served graph and the rollback target - plus this run's own
+            # build, which is `current` if it swapped and something to look at
+            # if it did not. Everything else goes now rather than a week from
+            # now, so a second failed week does not leave a fourth tile set.
+            reclaimed += _prune_tile_builds(
+                context.tiles_dir, 0, "after the run", protect=[context.build_id]
+            )
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
             f"pruned {reclaimed} old build directories. The routers serve the previous "
@@ -203,21 +207,7 @@ def weekly_rebuild(timestamp: int) -> None:
         run.save(update_fields=["detail"])
 
 
-# What the prune *after* a run keeps beyond the promotion symlinks, which
-# protect the served graph and the rollback target whatever is asked for here.
-# One: the newest dated directory, which is always the build this run just
-# wrote. If the run swapped, that directory is `current` and protected anyway;
-# if it failed, this is what keeps its tiles on the volume to be looked at
-# until the next attempt has finished. Everything else goes, which is what
-# makes a failed rebuild's directory a guest for one week rather than a third
-# tile set nothing would remove until the second following success. The prune
-# before the gate is the ordinary two-set rule instead, because a run that is
-# about to write a set must not be made to fit beside directories this one is
-# going to reclaim on its way out. The whole rule is in docs/OPERATIONS.md.
-THIS_RUNS_BUILD = 1
-
-
-def _prune_tile_builds(tiles_dir, keep: int, what: str) -> int:
+def _prune_tile_builds(tiles_dir, keep: int, what: str, protect=()) -> int:
     """`retention.prune_tile_builds`, counted, and never the reason a rebuild fails.
 
     It runs in a `finally` that is on the path of every failure the rebuild can
@@ -231,7 +221,7 @@ def _prune_tile_builds(tiles_dir, keep: int, what: str) -> int:
     from pipeline import retention
 
     try:
-        pruned = retention.prune_tile_builds(tiles_dir, keep=keep)
+        pruned = retention.prune_tile_builds(tiles_dir, keep=keep, protect=protect)
     except Exception:  # noqa: BLE001 - cleanup must not replace the failure it follows
         logging.getLogger(__name__).exception("could not prune old build directories %s", what)
         return 0

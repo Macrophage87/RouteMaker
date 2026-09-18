@@ -26,6 +26,7 @@ import logging
 import os
 import re
 import shutil
+from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
 
@@ -96,7 +97,9 @@ def taken_build_ids(tiles_dir: Path | str) -> set[str]:
     }
 
 
-def prune_builds(variant_root: Path | str, keep: int = KEEP_BUILDS) -> list[str]:
+def prune_builds(
+    variant_root: Path | str, keep: int = KEEP_BUILDS, protect: Iterable[str] = ()
+) -> list[str]:
     """Remove all but the newest `keep` dated builds under one variant.
 
     What `current` and `previous` point at is never removed, whatever its age
@@ -105,6 +108,14 @@ def prune_builds(variant_root: Path | str, keep: int = KEEP_BUILDS) -> list[str]
     build back makes `current` the *older* directory, and a newest-N rule would
     delete the graph being served on the next rebuild.
 
+    `protect` names build ids kept for a reason of the caller's own. The
+    rebuild names the build it has just written, which no symlink points at
+    when the run failed - and which is not always the newest directory either,
+    because `unique_build_id` hands out the first free suffix inside a second
+    and a freed one can be handed out again. "Keep the newest as well" was the
+    first form of that rule and it kept the wrong directory the moment a
+    suffix was reused.
+
     Returns the build ids removed, oldest first, so a caller can record them.
     """
     root = Path(variant_root)
@@ -112,6 +123,7 @@ def prune_builds(variant_root: Path | str, keep: int = KEEP_BUILDS) -> list[str]
         return []
 
     protected = {target for target in (_link_target(root, CURRENT), _link_target(root, PREVIOUS))}
+    protected |= set(protect)
     builds = sorted(
         entry.name
         for entry in root.iterdir()
@@ -129,7 +141,9 @@ def prune_builds(variant_root: Path | str, keep: int = KEEP_BUILDS) -> list[str]
     return removed
 
 
-def prune_tile_builds(tiles_dir: Path | str, keep: int = KEEP_BUILDS) -> dict[str, list[str]]:
+def prune_tile_builds(
+    tiles_dir: Path | str, keep: int = KEEP_BUILDS, protect: Iterable[str] = ()
+) -> dict[str, list[str]]:
     """`prune_builds` for every variant directory under the tiles root.
 
     Variants are read off the filesystem rather than from the variant enum, so a
@@ -139,8 +153,9 @@ def prune_tile_builds(tiles_dir: Path | str, keep: int = KEEP_BUILDS) -> dict[st
     root = Path(tiles_dir)
     if not root.is_dir():
         return {}
+    protect = set(protect)
     return {
-        variant.name: prune_builds(variant, keep=keep)
+        variant.name: prune_builds(variant, keep=keep, protect=protect)
         for variant in sorted(root.iterdir())
         if variant.is_dir() and not variant.is_symlink()
     }

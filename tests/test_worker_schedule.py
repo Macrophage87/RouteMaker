@@ -638,6 +638,88 @@ def test_an_abandoned_task_gives_its_connection_back(blocked_in) -> None:
     assert backend_count() <= before, "the abandoned thread is still holding a backend"
 
 
+def finished_thread():
+    """A thread that has already run, so `join` returns at once."""
+    import threading
+
+    thread = threading.Thread(target=lambda: None)
+    thread.start()
+    thread.join()
+    return thread
+
+
+class StubConnection:
+    """What `_release_abandoned_connection` reads off a raw psycopg connection."""
+
+    def __init__(self, status) -> None:
+        from types import SimpleNamespace
+
+        self.closed = False
+        self.closes = 0
+        self.cancels = 0
+        self.pgconn = SimpleNamespace(transaction_status=status)
+
+    def cancel(self) -> None:
+        self.cancels += 1
+
+    def close(self) -> None:
+        self.closes += 1
+        self.closed = True
+
+
+@pytest.mark.parametrize("status_name", ["ACTIVE", "IDLE", "INTRANS"])
+def test_an_abandoned_connection_is_only_closed_when_libpq_is_not_using_it(
+    status_name, caplog
+) -> None:
+    """`close()` is PQfinish, and psycopg 3.3.5 calls it without the
+    connection's lock.
+
+    So closing a connection whose thread is still inside libpq - between
+    PQsendQuery and PQgetResult, which is exactly where a thread blocked on a
+    statement sits - frees a PGconn another thread is reading, and takes the
+    worker down to reclaim one backend. The grace before the close is half a
+    second, which is a guess about how long a cancelled statement takes to
+    raise rather than a guarantee, so the close is gated on the connection
+    being idle and the leak that gate accepts is logged by name.
+    """
+    import logging
+    from types import SimpleNamespace
+
+    from psycopg import pq
+
+    from core.runs import _release_abandoned_connection
+
+    raw = StubConnection(getattr(pq.TransactionStatus, status_name))
+    with caplog.at_level(logging.WARNING, logger="core.runs"):
+        _release_abandoned_connection(SimpleNamespace(connection=raw), finished_thread(), "sweep")
+
+    assert raw.cancels == 1, "the cancel is safe from another thread and always runs"
+    if status_name == "ACTIVE":
+        assert raw.closes == 0, "PQfinish under a thread that is inside libpq is a segfault"
+        assert "leaving the abandoned sweep connection open" in caplog.text
+        assert "One backend stays held" in caplog.text, "the leak is named, not hidden"
+    else:
+        assert raw.closes == 1, "an idle connection is the caller's to give back"
+
+
+def test_an_unreadable_connection_is_left_to_the_thread_that_owns_it() -> None:
+    """Anything that is not a psycopg connection with a live PGconn behind it
+    is not something to call PQfinish on from another thread on a guess: a
+    leaked backend is recoverable and a segfaulted worker is not."""
+    from types import SimpleNamespace
+
+    from core.runs import _release_abandoned_connection
+
+    class NoPgconn(StubConnection):
+        def __init__(self) -> None:
+            super().__init__(None)
+            del self.pgconn
+
+    raw = NoPgconn()
+    _release_abandoned_connection(SimpleNamespace(connection=raw), finished_thread(), "sweep")
+    assert raw.closes == 0
+
+
 # --- The degraded-guild mark, and the sweep it rides beside ---------------------------
 
 

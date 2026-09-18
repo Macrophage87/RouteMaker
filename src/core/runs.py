@@ -192,7 +192,25 @@ def run_with_deadline(function: Callable[[], T], timeout_s: float, name: str = "
 
 
 def _release_abandoned_connection(wrapper, thread: threading.Thread, name: str) -> None:
-    """Give an abandoned thread's database connection back to the server."""
+    """Give an abandoned thread's database connection back to the server.
+
+    The close at the end is the one thing here that can take the process with
+    it. `close()` is PQfinish, and psycopg 3.3.5 calls it without holding the
+    connection's lock, so closing while the abandoned thread is still inside
+    libpq - between `PQsendQuery` and `PQgetResult`, which is where a thread
+    blocked on a statement sits - frees a `PGconn` another thread is reading:
+    a segfault of the whole worker, to reclaim one backend. The grace above is
+    half a second, and half a second is a guess about how long a cancelled
+    statement takes to raise, not a guarantee.
+
+    So the close is gated on the connection being idle. `transaction_status`
+    is read from `PGconn` itself rather than from any bookkeeping of ours, and
+    ACTIVE means exactly "a command is in progress on this connection". A
+    connection still ACTIVE after the grace is left to the thread's own
+    `finally`, which is the only place that can close it safely, and the leak
+    is logged by name so an operator reading about a wedged sweep is told the
+    backend is still there.
+    """
     raw = getattr(wrapper, "connection", None)
     if raw is None or getattr(raw, "closed", False):
         return
@@ -203,10 +221,35 @@ def _release_abandoned_connection(wrapper, thread: threading.Thread, name: str) 
     thread.join(ABANDON_GRACE_S)
     if getattr(raw, "closed", False):
         return
+    if _is_busy(raw):
+        logger.warning(
+            "leaving the abandoned %s connection open: it is still executing a command, "
+            "and closing it under the thread that owns it can take the worker down. "
+            "One backend stays held until that thread unwinds or the process ends",
+            name,
+        )
+        return
     try:
         raw.close()
     except Exception:  # noqa: BLE001 - same
         logger.exception("could not close the abandoned %s connection", name)
+
+
+def _is_busy(raw) -> bool:
+    """Whether libpq is in the middle of a command on this connection.
+
+    Unreadable counts as busy. Anything that is not a psycopg connection with a
+    live `PGconn` behind it is not something to call PQfinish on from another
+    thread on a guess: a leaked backend is recoverable and a segfaulted worker
+    is not.
+    """
+    from psycopg import pq
+
+    try:
+        return raw.pgconn.transaction_status == pq.TransactionStatus.ACTIVE
+    except Exception:  # noqa: BLE001 - see the docstring
+        logger.exception("could not read the abandoned connection's transaction status")
+        return True
 
 
 def prune_run_rows(now=None) -> int:

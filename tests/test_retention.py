@@ -90,6 +90,42 @@ def test_pruning_a_directory_that_was_never_promoted_keeps_the_newest(tmp_path) 
     assert names(root) == BUILDS[3:]
 
 
+def test_a_protected_build_survives_whatever_its_place_in_the_order(tmp_path) -> None:
+    """The rebuild protects the build it has just written, by name.
+
+    Not "the newest as well": `unique_build_id` hands out the first free
+    suffix inside a second, so a directory this run wrote can sort *before* one
+    a failed run left, and a newest-N rule would then keep the wrong one and
+    delete the build that had just been made. Here the protected build is the
+    oldest of the five and no symlink names it.
+    """
+    root = variant_with_builds(tmp_path / "standard", current=BUILDS[4], previous=BUILDS[3])
+
+    removed = prune_builds(root, keep=0, protect=[BUILDS[0]])
+
+    assert removed == BUILDS[1:3]
+    assert names(root) == [BUILDS[0], BUILDS[3], BUILDS[4]]
+    assert (root / BUILDS[0] / "tiles.tar").is_file(), "the run's own build is still there"
+
+
+def test_a_protected_build_is_protected_under_every_variant(tmp_path) -> None:
+    """One build id names one rebuild, which wrote a directory under each
+    variant; protecting it under one of them only would be half a build."""
+    from pipeline.retention import prune_tile_builds
+
+    tiles = tmp_path / "tiles"
+    for variant in ("standard", "no-trail", "ebike"):
+        variant_with_builds(tiles / variant, current=BUILDS[4], previous=BUILDS[3])
+
+    pruned = prune_tile_builds(tiles, keep=0, protect=[BUILDS[0]])
+
+    assert {variant: removed for variant, removed in pruned.items()} == {
+        variant: BUILDS[1:3] for variant in ("standard", "no-trail", "ebike")
+    }
+    for variant in ("standard", "no-trail", "ebike"):
+        assert names(tiles / variant) == [BUILDS[0], BUILDS[3], BUILDS[4]]
+
+
 def test_pruning_touches_nothing_it_does_not_recognise(tmp_path) -> None:
     """It deletes trees, so it does so only where it is certain what it is
     looking at: a dated build directory and nothing else.
