@@ -18,6 +18,31 @@
 x-restart: &restart
   restart: unless-stopped
 
+# Log rotation, on every service, because Docker's default has none.
+#
+# The default `json-file` driver writes an unbounded file under
+# /var/lib/docker/containers on the *root* volume - the one PLAN:293 sizes
+# small on purpose, and the one nothing in this stack binds. Nothing here is a
+# quiet logger: gunicorn runs with `--access-logfile -`, so every request is a
+# line; valhalla_service logs per request on three containers; the weekly
+# rebuild runs for six hours and prints a stage at a time. There is no
+# /etc/docker/daemon.json in this repository and none of it is a host this
+# repository configures, so the rotation has to be declared per service, which
+# is what this anchor is for.
+#
+# 10 MB x 5 files is a 50 MB ceiling per container and around 600 MB for the
+# whole stack, which is the figure that has to fit beside the OS and the images
+# rather than one chosen for how much history it keeps. A container's logs are
+# for the last incident, not for the last month; what is kept deliberately is
+# the ScheduledRun rows and the nightly dump, both of which are on the data
+# volume.
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "5"
+
 # Everything `config/settings.py` reads from the environment that is not a
 # secret and that every Django process needs the same value of. The four
 # services that import Django settings - api, worker, migrate and rebuild - all
@@ -49,7 +74,7 @@ x-django-env: &django-env
 
 services:
   caddy:
-    <<: *restart
+    <<: [*restart, *logging]
     image: caddy:2.8-alpine
     ports: ["80:80", "443:443"]
     volumes:
@@ -70,7 +95,7 @@ services:
         limits: { memory: 256M, cpus: "0.5" }
 
   api:
-    <<: *restart
+    <<: [*restart, *logging]
     image: routemaker/api:${TAG}
     build:
       context: .
@@ -89,6 +114,18 @@ services:
       DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS}
       DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS}
       DJANGO_ADMIN_PATH: ${DJANGO_ADMIN_PATH:-internal-8f3a/}
+      # gunicorn's own worker count, and the default is this service's cpu
+      # limit and not the host's cores. `docker/api-entrypoint.sh` derives one
+      # when this is unset, and what it had to derive it from was `nproc`,
+      # which reports the *host* - a cgroup cpu quota does not change it. On
+      # PLAN:293's 8-vCPU host that was `8 * 2 + 1` = 17 sync gunicorn workers
+      # inside the 2G/2-cpu limit below, each one a full Django process: an
+      # arrangement that is memory-bound long before it is cpu-bound, and the
+      # limit it hits is the one that gets a container OOM-killed. 5 is
+      # `2 * 2 + 1` against the two cpus this service is actually given, which
+      # is the same formula read off the right number. Raise it here if the
+      # `cpus:` limit below is raised; the two are one decision.
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-5}
       # Discord sign-in, identify scope only. The client id and the redirect are
       # not secrets - they are in every authorize URL - but without them the URL
       # this service builds names an empty application and sends the browser back
@@ -126,7 +163,7 @@ services:
   # belongs to the rebuild service, which is the container with the Valhalla
   # binaries and the data mounts.
   worker:
-    <<: *restart
+    <<: [*restart, *logging]
     image: routemaker/api:${TAG}
     build:
       context: .
@@ -161,6 +198,7 @@ services:
   # Django integration ships its schema as migrations, so this one step both
   # creates the schema on a fresh box and upgrades it on an existing one.
   migrate:
+    <<: *logging
     image: routemaker/api:${TAG}
     build:
       context: .
@@ -196,7 +234,7 @@ services:
         limits: { memory: 256M, cpus: "1" }
 
   postgis:
-    <<: *restart
+    <<: [*restart, *logging]
     image: postgis/postgis:16-3.4
     # The same two names Django connects with, from the same variables and the
     # same defaults. They were literals here while every Django service read
@@ -275,7 +313,7 @@ services:
   #
   #     docker compose --profile unbuilt up -d   # once there is an index to serve
   photon:
-    <<: *restart
+    <<: [*restart, *logging]
     profiles: ["unbuilt"]
     image: rtuszik/photon-docker:2.4.0
     environment:
@@ -293,7 +331,7 @@ services:
   # candidate set is issued concurrently under a per-modality latency bound, and
   # a single thor worker would serialise it.
   valhalla-standard:
-    <<: *restart
+    <<: [*restart, *logging]
     image: ghcr.io/valhalla/valhalla:3.5.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
@@ -311,7 +349,8 @@ services:
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
     # next one. The same path resolves to the same file inside the rebuild
-    # container, which mounts the whole data volume.
+    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
+    # directory this line binds one variant's `current` out of.
     volumes:
       - ${DATA_ROOT}/tiles/standard/current:/data/tiles/standard/current:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
@@ -322,7 +361,7 @@ services:
         limits: { memory: 2G, cpus: "2" }
 
   valhalla-no-trail:
-    <<: *restart
+    <<: [*restart, *logging]
     image: ghcr.io/valhalla/valhalla:3.5.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
@@ -340,7 +379,8 @@ services:
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
     # next one. The same path resolves to the same file inside the rebuild
-    # container, which mounts the whole data volume.
+    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
+    # directory this line binds one variant's `current` out of.
     volumes:
       - ${DATA_ROOT}/tiles/no-trail/current:/data/tiles/no-trail/current:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
@@ -351,7 +391,7 @@ services:
         limits: { memory: 2G, cpus: "2" }
 
   valhalla-ebike:
-    <<: *restart
+    <<: [*restart, *logging]
     image: ghcr.io/valhalla/valhalla:3.5.1
     # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
     # not a service image - so it inherits the base image's shell and exits
@@ -369,7 +409,8 @@ services:
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
     # next one. The same path resolves to the same file inside the rebuild
-    # container, which mounts the whole data volume.
+    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
+    # directory this line binds one variant's `current` out of.
     volumes:
       - ${DATA_ROOT}/tiles/ebike/current:/data/tiles/ebike/current:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
@@ -388,7 +429,7 @@ services:
   #
   #     docker compose --profile unbuilt up -d   # once there is something to run
   renderer:
-    <<: *restart
+    <<: [*restart, *logging]
     profiles: ["unbuilt"]
     image: routemaker/renderer:${TAG}
     deploy:
@@ -404,7 +445,7 @@ services:
   # down rather than discovered - the membership cache is only as fresh as the
   # last hand-run sweep, and nothing answers the API's membership queries.
   bot:
-    <<: *restart
+    <<: [*restart, *logging]
     profiles: ["unbuilt"]
     image: routemaker/bot:${TAG}
     environment:
@@ -423,12 +464,14 @@ services:
   # this is the container with the binaries, the mounts and the limits. Takes
   # half the cores.
   #
-  # It mounts the whole data volume at /data, so DATA_ROOT inside it is /data
-  # and every path the generated Valhalla configs name - the tile directories
-  # under /data/tiles, the elevation cache at /data/elevation - resolves to the
-  # same host file the serving containers mount. The earlier version mounted
-  # /tiles and /extracts, neither of which any configured path named, so tiles
-  # landed on ephemeral container storage and vanished with it.
+  # DATA_ROOT inside it is /data, and the five directories it writes are bound
+  # one by one under that path - see the note on `volumes:` below for why it is
+  # five binds and not the whole of ${DATA_ROOT}. Every path the generated
+  # Valhalla configs name - the tile directories under /data/tiles, the
+  # elevation cache at /data/elevation - therefore resolves to the same host
+  # file the serving containers mount. The earlier version mounted /tiles and
+  # /extracts, neither of which any configured path named, so tiles landed on
+  # ephemeral container storage and vanished with it.
   #
   # Phase 1 validates a build by reading it back with valhalla_service in
   # one-shot mode inside this container; it starts no duplicate serving
@@ -437,12 +480,33 @@ services:
   # out of the way for the plan's swap-time arithmetic to hold - see
   # scripts/check_compose_limits.py, which asserts both figures.
   rebuild:
-    <<: *restart
+    <<: [*restart, *logging]
     image: routemaker/pipeline:${TAG}
     build:
       context: .
       dockerfile: docker/pipeline.Dockerfile
     command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
+    # Compose's default is 10 seconds between the SIGTERM and the SIGKILL, and
+    # what this worker owes the database on the way out is a real shutdown:
+    # Procrastinate cancels its side tasks (the periodic deferrer, the
+    # heartbeat) and then calls `unregister_worker`, which is a database round
+    # trip on the same PostgreSQL the rebuild has had four cores' worth of load
+    # on. A minute is what makes that the ordinary outcome of `down`, `up -d`
+    # and `restart` rather than a race, and it is short enough that a `down` is
+    # still a `down`.
+    #
+    # What it does *not* do is save a rebuild that is mid-build, and the reason
+    # is in procrastinate 3.9.0's worker.py: on SIGTERM the worker stops
+    # fetching and then `_shutdown` awaits the running jobs with
+    # `shutdown_graceful_timeout`, which is unset here and therefore None - it
+    # waits for the job, with no bound. `weekly_rebuild` is a synchronous task
+    # that polls nothing, so even the post-timeout abort path would only log
+    # ("Job is responsible for aborting by checking context.should_abort") and
+    # keep waiting. A six-hour build reaches the SIGKILL whatever this value
+    # is, and a SIGKILL leaves the job row `doing` with no worker behind it:
+    # `./manage.py unwedge_job <job_id>` is what moves it back to `todo`. Only
+    # a run that *finishes* inside the grace ends marked by itself.
+    stop_grace_period: 60s
     environment:
       <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}

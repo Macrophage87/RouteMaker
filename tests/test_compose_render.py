@@ -602,7 +602,128 @@ def test_the_admin_path_is_offered_in_the_example_and_reaches_the_api(tmp_path) 
     )
 
 
-# --- the three constants these tests are written against ----------------------
+# --- Stopping, logging, and the worker count ----------------------------------
+
+
+def duration_seconds(value: str) -> float:
+    """A Go duration as compose renders it ("60s", "1m0s", "1h30m0s")."""
+    match = re.fullmatch(r"(?:(\d+)h)?(?:(\d+)m)?(?:(\d+(?:\.\d+)?)s)?", str(value).strip())
+    assert match and any(match.groups()), f"not a duration compose would render: {value!r}"
+    hours, minutes, secs = match.groups()
+    return int(hours or 0) * 3600 + int(minutes or 0) * 60 + float(secs or 0)
+
+
+def test_the_rebuild_is_given_time_to_stop_rather_than_being_killed(rendered) -> None:
+    """Compose's default is ten seconds between the SIGTERM and the SIGKILL.
+
+    This is the one service whose shutdown competes with its own build for the
+    database: procrastinate cancels its side tasks and then calls
+    `unregister_worker`, which is a round trip to the PostgreSQL the rebuild has
+    had four cores' worth of load on. A grace period is what makes a clean stop
+    the ordinary outcome of `down`, `up -d` and `restart`.
+
+    It is bounded on both sides and the upper bound is the point: no value here
+    saves a build that is running, because procrastinate 3.9.0 leaves
+    `shutdown_graceful_timeout` unset and therefore waits for the running job
+    without limit, and `weekly_rebuild` is a synchronous task that polls
+    `should_abort` nowhere. A stop mid-build ends at the SIGKILL whatever this
+    says, with the job row left `doing` for `unwedge_job`. A grace period long
+    enough to pretend otherwise would only make `docker compose down` hang.
+    """
+    grace = rendered["services"]["rebuild"].get("stop_grace_period")
+    assert grace, (
+        "the rebuild service declares no stop_grace_period, so compose kills its worker "
+        "ten seconds after the SIGTERM and the shutdown that unregisters it from the "
+        "database is a race"
+    )
+    seconds = duration_seconds(grace)
+    assert 30 <= seconds <= 300, (
+        f"stop_grace_period is {grace}; under 30s is the race this exists to remove, and "
+        "over 300s is a `docker compose down` that appears to hang while no value here "
+        "can outlast a six-hour build anyway"
+    )
+
+
+def test_every_service_rotates_its_logs(env_file) -> None:
+    """Docker's default `json-file` driver has no rotation at all, and the file
+    it writes is on the root volume, which PLAN:293 sizes small and nothing in
+    this stack binds. gunicorn logs a line per request, three valhalla
+    containers log per request, and the rebuild prints its way through six
+    hours; a full root volume stops the daemon rather than one container.
+
+    Every service, with the profile on, because a service parked behind a
+    profile still writes logs the day it is turned on.
+    """
+    services = render(env_file, UNBUILT_PROFILE)["services"]
+    missing = sorted(name for name, service in services.items() if not service.get("logging"))
+    assert not missing, f"services with no logging configuration: {missing}"
+    for name, service in sorted(services.items()):
+        logging = service["logging"]
+        assert logging.get("driver") == "json-file", (
+            f"{name} logs through {logging.get('driver')!r}; the rotation options below are "
+            "json-file's and mean nothing to another driver"
+        )
+        options = logging.get("options") or {}
+        assert {"max-size", "max-file"} <= set(options), (
+            f"{name} sets {sorted(options)}; both are needed - a max-size with no max-file "
+            f"keeps every rotated file, and a max-file with no max-size never rotates"
+        )
+        assert re.fullmatch(r"\d+[kmg]", str(options["max-size"]), re.I), options
+        assert int(options["max-file"]) >= 2, (
+            f"{name} keeps {options['max-file']} file(s); one file is a truncation, not a "
+            "rotation, and the last thing before an incident is what gets dropped"
+        )
+
+
+def test_the_api_worker_count_is_the_one_its_cpu_limit_can_pay_for(rendered) -> None:
+    """`docker/api-entrypoint.sh` derives a count when compose hands it none,
+    and what it had to derive it from was `nproc` - which reports the *host*,
+    because a compose `cpus:` limit is a cgroup quota and does not change it.
+    On PLAN:293's 8-vCPU host that was 17 sync gunicorn workers, each a full
+    Django process, inside this service's 2 GB limit.
+
+    So compose delivers the value, and the assertion is against the service's
+    own cpu limit rather than a number written twice: `2 * cpus + 1`, the same
+    formula, read off the right figure.
+    """
+    api = rendered["services"]["api"]
+    workers = api["environment"].get("WEB_CONCURRENCY")
+    assert workers, (
+        "compose hands the api no WEB_CONCURRENCY, so the entrypoint falls back to "
+        "deriving one inside the container"
+    )
+    cpus = float(api["deploy"]["resources"]["limits"]["cpus"])
+    assert int(workers) == int(2 * cpus + 1), (
+        f"the api renders WEB_CONCURRENCY={workers} against a {cpus:g}-cpu limit; "
+        f"gunicorn's own arithmetic on that limit is {int(2 * cpus + 1)}"
+    )
+
+
+def test_the_health_gate_has_a_start_period_as_well_as_retries(rendered) -> None:
+    """Two windows, not one budget spent twice.
+
+    `retries x interval` is the ordinary restart: a server that is already
+    initialised and answers in seconds. The start period is the *first* boot on
+    an empty volume - initdb, the PostGIS extension scripts, the first start -
+    during which a failing probe does not count against the retries at all.
+    Without it those two are the same sixty seconds, and a slow host doing
+    first-boot work is a `postgis` marked unhealthy, a `migrate` whose
+    dependency never opens, and `api`, `worker` and `rebuild` - all held on
+    `service_completed_successfully` - that never start.
+    """
+    check = rendered["services"]["postgis"]["healthcheck"]
+    assert "start_period" in check, (
+        "the database health check has no start period, so the first boot on an empty "
+        "volume spends the restart budget on initdb"
+    )
+    restart_window = duration_seconds(check["interval"]) * int(check["retries"])
+    assert duration_seconds(check["start_period"]) >= restart_window, (
+        f"the start period is {check['start_period']} against a restart budget of "
+        f"{restart_window:g}s; first boot on an empty volume is the longer of the two"
+    )
+
+
+# --- the four constants these tests are written against -----------------------
 #
 # A canary, in the manner of tests/test_compose.py's derivation checks. Each of
 # these sets is typed out by hand at the top of this file and stands between
@@ -612,7 +733,9 @@ def test_the_admin_path_is_offered_in_the_example_and_reaches_the_api(tmp_path) 
 # can reach the database at all; drop `photon` from UNBUILT_SERVICES and the
 # heaviest image in the stack quietly goes back to starting on a default `up`;
 # drop `http` from DEFAULT_PORTS and a redirect URI written without a port is
-# checked against nothing.
+# checked against nothing; drop `renderer` from NO_IMAGE_ANYWHERE and the test
+# that a default `up` reaches for no image that exists nowhere goes on passing
+# with the renderer back in the default stack.
 #
 # So each is asserted equal to a derivation from the rendered configuration.
 # The lists stay hand-written - they are what this file claims the stack is,
@@ -677,3 +800,34 @@ def test_the_default_ports_are_the_ports_the_stack_publishes(rendered) -> None:
         f"defaults are {sorted(DEFAULT_PORTS.values())}"
     )
     assert set(DEFAULT_PORTS) == {"http", "https"}
+
+
+def test_the_imageless_services_are_the_ones_nothing_builds(env_file) -> None:
+    """`NO_IMAGE_ANYWHERE`, derived.
+
+    An image under `routemaker/` is one this repository is the source of: there
+    is no such organisation on any registry and nothing pulls one. So a service
+    whose image is in that namespace and which declares no `build:` is a
+    service whose image exists nowhere at all - `api`, `worker`, `migrate` and
+    `rebuild` name the same namespace and each carries a `build:` stanza, and
+    `photon`, `caddy` and the three routers are pulled from real registries
+    under their own names.
+
+    Read with the profile on, because the services this names are absent from
+    the default render - which is the property the tests above check.
+    """
+    services = render(env_file, UNBUILT_PROFILE)["services"]
+    imageless = {
+        name
+        for name, service in services.items()
+        if str(service.get("image", "")).startswith("routemaker/") and not service.get("build")
+    }
+    assert NO_IMAGE_ANYWHERE == imageless, (
+        f"NO_IMAGE_ANYWHERE names {sorted(NO_IMAGE_ANYWHERE)} and the stack declares "
+        f"{sorted(imageless)} with an image nothing builds and no registry holds"
+    )
+    assert NO_IMAGE_ANYWHERE < UNBUILT_SERVICES, (
+        "every service with no image anywhere has to be behind the profile, and there "
+        "has to be something else behind it too - photon, which has an image and is "
+        "parked for a different reason"
+    )
