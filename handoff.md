@@ -1,14 +1,15 @@
 # RouteMaker phase 1 — handoff
 
 **Repository:** `github.com/Macrophage87/RouteMaker` · **Branch:** `claude/beautiful-mayer-4f7gg9`
-(152 commits, all pushed) · **Suite:** 1590 tests, green
+(179 commits, all pushed) · **Suite:** 2590 tests, green
 
-**Phase 1 is not accepted.** It has been through four rounds of independent review. Rounds 1, 2, 3
-and 4 all returned REVISE; round 4 returned REVISE from all five reviewers, with ten blocking
-findings across the five areas. Every round-3 and every round-4 finding is closed on this tree,
-each fix carrying a mutation confirmed to fail, and the round-4 panel verified every round-3 finding
-closed by reverting the fix rather than by reading. **A round-5 panel has not run.** Nothing here has
-been accepted by anyone; the next step is that panel.
+**Phase 1 is not accepted.** It has been through five rounds of independent review. All five
+returned REVISE; round 5 returned REVISE from all five reviewers, with fourteen blocking findings
+across the five areas — and the wave-4 agents found four more outside the panel, because no round
+had asked whether the stack could start. Every round-3, round-4 and round-5 finding is closed on
+this tree, each fix carrying a mutation confirmed to fail, and each panel has verified the previous
+round's findings closed by reverting the fix rather than by reading. **A round-6 panel has not
+run.** Nothing here has been accepted by anyone; the next step is that panel.
 
 Read §3 first if you only read one section.
 
@@ -35,6 +36,32 @@ Three environment variables decide whether a *deployment* works at all; `docs/DE
 | `KEY_ENCRYPTION_KEY` | **Yes, no default** | Settings refuse to import without it. `TOMBSTONE_KEY` is derived from it by one HMAC over a fixed label, so the encryption key and the tombstone key are two values from one delivered secret. The suite gets its value from `config.test_settings` (`config.settings` plus that one default), which `pyproject.toml` sets as `DJANGO_SETTINGS_MODULE` — it cannot come from `tests/conftest.py`, because pytest-django sets Django up while it loads the initial conftests. |
 | `BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` | Optional, but a fresh deployment needs it once | There is no password login and no `createsuperuser`, so this is how a new deployment appoints its first instance admin. The id grants standing **only while the instance-admin list is empty**; the first admitted request writes it into the list, audits that as `bootstrap_instance_admin`, and the variable is inert from then on. `api` only. |
 | `INSTANCE_ADMIN_REMOVAL_DELAY_SECONDS` | Optional, default 3600 | How long removing *another* instance admin waits before taking effect, during which any instance admin can cancel it. Standing down yourself is immediate; the last instance admin cannot be removed by either path. |
+
+### Deploying it
+
+As of wave 4 the repository carries the things the stack starts against, none of which existed
+before: `docker/api.Dockerfile` and `docker/pipeline.Dockerfile`, with `build:` stanzas on `api`,
+`worker`, `migrate` and `rebuild`; `src/config/wsgi.py`, the module `WSGI_APPLICATION` has always
+named; `STATIC_ROOT = DATA_ROOT / "static"`, without which `collectstatic` refuses to run at all;
+and a `Caddyfile` at the path `compose.yaml` bind-mounts. `compose.yaml` now delivers every
+variable `config/settings.py` reads, per service, with a test that derives the list of names from
+the settings source rather than restating it. `docs/DEPLOYMENT.md` is the long form: build, `TAG`,
+the `collectstatic` deploy step and the two flags it needs, TLS at the edge, and the uid-10001
+ownership `${DATA_ROOT}` has to have.
+
+**No image has been built and no container has been started in this environment.** There is no
+Docker daemon here and the registries are blocked (§2a), so every claim about the images is a claim
+about their text, checked by `tests/test_images.py` and `tests/test_deploy_surface.py` and nothing
+more. The first `docker compose build` on a host with a daemon is the first real test.
+
+Variables a deployment gained in wave 4, on top of the three above. `.env.example` carries all of
+them with the reasoning.
+
+| Variable | Required | What it does |
+|---|---|---|
+| `CADDY_SITE_ADDRESS` | Optional, default `:80` | The address Caddy serves on, read by the `Caddyfile` through Caddy's own `{$VAR}` substitution when the config loads, so one file serves a deployment and a local stack. A hostname commits Caddy to obtaining a Let's Encrypt certificate for it, so it must resolve to the host first; `:80` is plain HTTP with no certificate. `caddy` alone. |
+| `DISCORD_CLIENT_ID`, `DISCORD_REDIRECT_URI` | **Yes for sign-in** | Neither is a secret — both appear in every authorize URL the browser follows — and without them the login path builds a URL naming an empty application and sends the browser back to `localhost`. The redirect must match one registered on the Discord application exactly. `compose.yaml` delivered neither until wave 4 (row 28). `api` only. |
+| `SOURCE_EXTRACT_URLS`, `SOURCE_EXTRACT_MAX_AGE_DAYS`, `SOURCE_EXTRACT_FORCE_REFRESH`, `COVERAGE_POLYGON` | All optional | The four knobs on the source extract the rebuild now produces for itself (row 31): a comma-separated mirror list for the three Geofabrik files, the age in days past which they are downloaded again (default 6, just under the weekly cadence), a force flag for a rebuild that must start from today's Geofabrik build, and a polygon file to clip to instead of the bounding box in settings. There is no polygon file in the repository. `rebuild` only; `docs/OPERATIONS.md`, "The source extract". |
 
 Native deps: PostgreSQL 16 + PostGIS 3.4, GDAL/PROJ/GEOS, Node 22, **LuaJIT** (not lua5.4 —
 Valhalla 3.5.1 requires LuaJIT and its transform calls `bit.bor`). `CI=1` turns missing-interpreter
@@ -67,7 +94,7 @@ in wave 3 the routing agent fetched three of Valhalla's 3.5.1 source files from 
 behaviour out of them directly. So source can be checked against upstream at any time; what cannot
 be reached is `ghcr.io`'s blob host and Overpass.
 
-**Why this matters more than it sounds.** Nothing in four rounds has ever run Valhalla. Round 3's
+**Why this matters more than it sounds.** Nothing in five rounds has ever run Valhalla. Round 3's
 "could not have run at all" cluster (items 6–11) and round 4's `trace_attributes` blocker (item 21)
 are the same class of defect: a single real `valhalla_build_tiles` or `valhalla_service` invocation
 would have surfaced each in minutes. The guards are written — `assert_lua_script_was_loaded`,
@@ -95,13 +122,33 @@ docker run --rm -v "$PWD/valhalla:/conf:ro" -v "$PWD/lua:/conf/lua:ro" \
 here, and round 4's items 25 and 26 are the third and fourth findings on the same file. Every row
 still carries `osm_names_verified: false`; the names remain the one thing nobody here can check.
 
+### 2c. Two more hosts the policy denies, and one it allows
+
+Wave 4 found two more, both with the same `CONNECT tunnel failed, response 403` from the proxy:
+
+- **Geofabrik** (`download.geofabrik.de`). The source-extract stage written in wave 4 (row 31)
+  downloads the three state extracts from it, so that stage has never fetched a byte here; its
+  tests drive it against fakes and a local file tree. Nothing suggests a *deployment* cannot reach
+  it — it is an ordinary public download host, and PLAN:13 names it — but that is presumed here,
+  not observed. The first real rebuild is the first time anyone finds out.
+- **The Debian package index** (`packages.debian.org` and `deb.debian.org`). So the apt package
+  names in `docker/api.Dockerfile`, which is Debian bookworm, are knowledge-based. The pipeline
+  image is Ubuntu noble and `packages.ubuntu.com` *is* reachable, so those names were checked one
+  by one.
+
+**GitHub raw content is reachable**, and has now been used in two waves to read pinned upstream
+source directly (§2a). Overpass and `ghcr.io`'s blob host remain the two denials that cost the most.
+
 ---
 
 ## 3. The fix list
 
 Rows 1–18 are round 3's findings, with how each closed. Rows 19–27 are round 4's, found on the tree
-that closed rows 1–18. **"Mine"** marks a defect I introduced or blessed. **"Verified"** marks one
-reproduced by the orchestrator rather than taken on report.
+that closed rows 1–18. Rows 28–45 are round 5's, found on the tree that closed rows 19–27: rows
+28–41 are the panel's fourteen blockers, and rows 42–45 are the deployability gaps the wave-4
+agents found outside the panel and were given in the same wave. **"Mine"** marks a defect I
+introduced or blessed. **"Verified"** marks one reproduced by the orchestrator rather than taken on
+report.
 
 ### Round 3 — security-critical
 
@@ -185,6 +232,66 @@ Not built, by decision rather than oversight: the measured size table (needs a r
 backup's remote half, `rm:reviewer_surface`'s producer, the instance-admin removal notification, and
 Mass Ride's crossing report. All five are in §7.
 
+### Round 5 — security-critical
+
+| # | Finding | | State |
+|---|---|---|---|
+| 28 | **`compose.yaml` delivers none of the settings the sign-in path reads.** `api` got six variables; `settings.py` reads 24, and there is no `env_file`. Missing were `DISCORD_CLIENT_ID`, `DISCORD_REDIRECT_URI`, `DJANGO_ALLOWED_HOSTS`, `DJANGO_CSRF_TRUSTED_ORIGINS`, `DJANGO_ADMIN_PATH`, `PGHOST`, `PGUSER`, `PGDATABASE` and the three `VALHALLA_*_URL`. Under the declared environment `ALLOWED_HOSTS` is `['localhost']` and the client id is the empty string: `DisallowedHost` 400 behind Caddy, and an authorize URL Discord refuses. PLAN:299 puts Discord login in phase 1; §7 did not record it missing, and round 4's B-1 had it inverted. | Verified | Closed: a shared `x-django-env` anchor merged into `api`, `worker`, `migrate` and `rebuild`, with the secrets and the sign-in settings on `api` alone, `DATA_ROOT` on `worker` and `rebuild` (row 32), and `REBUILD_MIN_FREE_BYTES` and the `VALHALLA_*_URL` on `rebuild`. Three tests hold it: every name `settings.py` reads is derived from the settings source and must be declared on `api` unless it is in a commented `NOT_DELIVERED_TO_THE_API` allow-list, every allow-listed name must reach the services named for it, and every `${VAR}` without a default must be in `.env.example`. |
+
+### Round 5 — domain
+
+| # | Finding | | State |
+|---|---|---|---|
+| 29 | **`cycleway=separate` in `SEPARATED_CYCLEWAY` rates the ROADWAY LTS1.** `separate` means the facility is mapped as its own way, so the sidepath already carries LTS1 as trail class and the provision is counted twice — the second time on the arterial. A 45 mph six-lane primary with `cycleway=separate` came out LTS1 "separated track alongside" where the bare road is LTS4, and it shut the volume gate as well. MacArthur, Rockville Pike and Georgia Ave are the corridors that carry the tag. `tags.py:133` reads the same value the opposite, correct, way for parking. Removing `"separate"` left 1590 passed. | Verified | Closed: `SEPARATED_CYCLEWAY = {track, opposite_track}`, with the argument written at the constant rather than in the orphaned comment block that let the value in. The 45 mph primary is LTS4 again, and both sets are now enumerated member by member so a value cannot be added without a test. |
+| 30 | **Shoulder credit where parking is DECLARED present.** `stress.py:414` passed `parking=False` unconditionally, so a residential 25 mph street with `parking:both=parallel` and a 2.4 m shoulder came out LTS1 while the same street with a painted lane of the same width came out LTS2 — the provision hierarchy inverted again, one round after item 23, on the parameter the round-4 sweep held fixed. Beside declared parking the strip is occupied or it is a door zone. In a sweep over AADT ∈ {None, 900, 1500, 8000, 12000} with parking present, the shoulder beat the painted lane in 80 of 640 cases; and the property that was meant to compare them forced `parking:both=no` onto the painted side for every parameter, including `parking="parallel"`. | Verified | Closed: the call passes `parking if parking is True else False`, so beside declared parking the shoulder is measured against Furth's beside-parking width and a 4.5 m strip still earns the table; unknown parking keeps the wave-3 reading, which the reviewer would not overturn. The property forces `parking:both=no` only for the `parking=None` parameter, and the sweep is zero-failure over the five AADT values × widths {1.3, 1.4, 2.4, 4.5}. |
+
+### Round 5 — routing
+
+| # | Finding | | State |
+|---|---|---|---|
+| 31 | **Nothing produces the source extract; `FETCH_EXTRACT` only checks that one exists.** No Geofabrik fetch, no `osmium merge`, no `osmium extract` anywhere in the repository; `extract.py` only reads a PBF with pyosmium. So the first rebuild on a new deployment stops at stage one with "source extract missing" and no document says how to make the file, and wherever somebody made one by hand every weekly rebuild re-derived the whole map from that frozen snapshot — the drift report reading near-zero and calling it healthy. `tiles.py:164-165` also cited PLAN:13 as endorsing admins from `context.source_pbf`, which is the *clipped* extract. Round-3 domain S8's "no osmium extract" half, which never got a §3 row. | Verified | Closed: `src/pipeline/source.py` downloads the three Geofabrik `-latest.osm.pbf` files with `curl -fsSL --retry 3` to a `.part`, merges them, and clips with `osmium extract -s smart -S types=any --bbox`, taking `--polygon` instead when `COVERAGE_POLYGON` is set. Both results are kept: `merged.osm.pbf` is what `valhalla_build_admins` reads, per PLAN:13, and `source.osm.pbf` is what every other stage reads. A `.part` is never resumed. The disk gate runs before the download, sized from `source.ESTIMATED_BYTES` when nothing is on disk, and `SourceExtractFailed` is retryable because a dropped download is what a retry fixes. `docs/OPERATIONS.md` "The source extract" and a `docs/DEVELOPMENT.md` section carry the operator half. |
+
+### Round 5 — database, scheduler, operations
+
+| # | Finding | | State |
+|---|---|---|---|
+| 32 | **The `worker` service has no `DATA_ROOT`.** So `settings.DATA_ROOT` falls back to `BASE_DIR / "data"` inside the image and `BACKUP_DIR` with it: the nightly dump lands on the container's writable layer, `prune_backups` prunes a directory nobody writes to, the `${DATA_ROOT}/backups` mount stays empty, and the run row says success. The backup is the one job whose whole purpose is to be trusted. | | Closed on the security branch with the rest of row 28: `DATA_ROOT: /data` on `worker` and on `rebuild`, pinned by the compose test. |
+| 33 | **A dump that fails without timing out, or that the verifier rejects, stays on disk under the ordinary name.** Only the `TimeoutExpired` branch unlinked, so a non-zero `pg_dump` exit left the partial archive, and an archive the `pg_restore --list` verification rejected was kept — and, being the newest by name, is what a restore picks. A rejected archive may still carry `cached_membership` rows. | Verified (structurally) | Closed: `perform_backup` writes a `.part` and renames only after verification passes, and every failure path unlinks. Three tests drive it against a real `pg_dump`. |
+| 34 | **`prune_tile_builds` runs only after a successful `run_rebuild`, and downstream of the disk gate.** `DiskGateRefused` is terminal, so a refusal is self-perpetuating even with prunable builds sitting there, and a failure after `BUILD_TILES` leaves a third tile set until the second following success. | Verified (structurally) | Closed: retention now brackets the rebuild — `prune_tile_builds(keep=KEEP_BUILDS)` before the disk gate, and in a `finally` after the run `prune_tile_builds(keep=0, protect=[this build])`, so a failed build's directory survives its own run for diagnosis and is reclaimed at the end of the next one. Prune errors are logged, never raised. |
+
+### Round 5 — test quality by mutation
+
+| # | Finding | | State |
+|---|---|---|---|
+| 35 | **F_LUA3: the Lua remap's tier gate `stress_tier == 1` → `<= 2` survives.** The Lua tests cover tiers 1 and 4 only, so nothing holds the boundary the whole remap turns on. | | Closed: `tests/lua/test_remap.lua` pins the `cycleway=track` gate at tiers 2 and 3 as well. |
+| 36 | **F_STR7: `SEPARATED_CYCLEWAY` can drop `opposite_track` with the suite green** — the value appears nowhere in the tests — and neither the separated nor the painted set is enumerated the way `classes.py`'s sets are. | | Closed: both sets are pinned member by member, which is also what removed the inert `"left"`/`"right"` entries from `PAINTED_CYCLEWAY`. Same fix as row 29 seen from the test side. |
+| 37 | **F_STR8: `if shoulder_tier < tier` → `<=` survives.** On a tie `shoulder_credited` flips, which makes `has_facility` true, which exempts the road from the volume gate. The 648-case sweep never lands on the tie. | | Closed: the tie at the shoulder's adoption is pinned by name, `<` and not `<=`. |
+| 38 | **F_VAR3: the `bridge in (None, "no"): continue` guard in `resolve_sidepath_bridge_ids` is deletable** — Key Bridge Road and its like then resolve sidepath-only. The identical guard in `resolve_bridge_bicycle_legality` *is* caught, which is how the gap is visible at all. Round-5 domain SF-1 is the same function from the other side: it had no trail-class guard either, so two footways named "Francis Scott Key Bridge" satisfied the match and the Key Bridge roadway stayed in the no-trail graph. | | Closed: the trail-class guard is added and the bridge guard is pinned. §7's "harmless today" row is retired with it. |
+| 39 | **F_AOP2: `admin_operations.changelist_view`'s `PermissionDenied` is deletable, and a guild admin gets the operations page.** `admin_view` raises 404 on `has_permission`, which a guild admin satisfies as staff, and the override never calls `super()` — so that one statement is the whole gate. | | Closed: the gate is pinned over HTTP, along with the stale-task row, the nightly prune wiring, the newest-successful keep set and the `"doing"` exclusion (round-5 SF-5, SF-6, F_RNS1 and F_RNS4). |
+| 40 | **F_TIL2: the disk gate drops its `usage.free < required` clause with the suite green.** The fraction clause alone passes with 2 GB free on a 10 TB volume. | | Closed: the free-space clause is pinned on its own. |
+| 41 | **Three of `rollback_target`'s four preconditions are individually deletable.** Both refusal tests are satisfied by the fourth and assert only `"previous" in str(...)`; the deletable ones include the clause that reopens item 22's "live 5 → 0 segments". | | Closed: the four clauses each have a test that isolates them, and `_retired_holds_a_graph` uses `EXISTS` rather than a full `count(*)`. |
+
+### Round 5 — deployability (found by the wave-4 agents, outside the panel)
+
+| # | Finding | | State |
+|---|---|---|---|
+| 42 | **No image in the repository had a Dockerfile.** `compose.yaml` names four images under `routemaker/` and there was no Dockerfile anywhere and no `build:` stanza, so `docker compose up` on a host with a working daemon stops at the first pull of an image that exists in no registry. | Verified | Closed for the two that have source: `docker/api.Dockerfile` (python:3.11-slim-bookworm, two stages, `gdal-bin`, `postgresql-client-16` pinned to major 16 to match the server, non-root uid 10001) and `docker/pipeline.Dockerfile` (`FROM ghcr.io/valhalla/valhalla:3.5.1`, the tag the serving containers run, read out of `compose.yaml` by the test; `gdal-bin`, `osmium-tool`, `sqlite3`, `curl`, `unzip`, `spatialite-bin`, with a build-time `command -v` loop over every binary the rebuild shells out to). `routemaker/renderer` and `routemaker/bot` have no source, so neither has a Dockerfile; that is recorded in the test and in §7. `tests/test_images.py`, 25 cases, 12 break-it confirmations. Never built — §1. |
+| 43 | **`config.wsgi` did not exist.** `settings.py` declares `WSGI_APPLICATION = "config.wsgi.application"` and the api entrypoint names the same path, so the api container exits at start with `ModuleNotFoundError` while every other service comes up — `worker`, `migrate` and `rebuild` run `./manage.py` and never load it. | Verified | Closed: `src/config/wsgi.py`, the standard four lines. The api command is held to the settings value by `tests/test_images.py` rather than written twice, and `tests/test_deploy_surface.py` imports that dotted path and checks what it resolves to is callable. |
+| 44 | **There was no `STATIC_ROOT`, so `collectstatic` could not run.** PLAN:64 has the admin and Ninja assets collected into the volume Caddy serves; the command refuses without a `STATIC_ROOT` and it is not overridable from the command line, so the admin rendered unstyled and there was no way to fix it from the deploy side. | Verified | Closed: `STATIC_ROOT = DATA_ROOT / "static"` — the same host directory Caddy mounts at `/srv/static` — with a real `collectstatic` test. It stays a deploy step rather than a build step because `settings.py` refuses to import without `KEY_ENCRYPTION_KEY`, and a secret in a build argument is a secret in the image metadata; `docs/DEPLOYMENT.md` carries the command and the two flags it needs. |
+| 45 | **There was no `Caddyfile`, though `compose.yaml` bind-mounts one.** Docker creates a *directory* at a missing bind-mount source, so this was never a startup error: Caddy came up against a directory where its config should be and served nothing. | Verified | Closed: a `Caddyfile` with `{$CADDY_SITE_ADDRESS}` as the site, `handle_path /static/*` to a file server rooted at `/srv/static`, and everything else reverse-proxied to `api:8000` with `X-Forwarded-Proto` — the header `SECURE_PROXY_SSL_HEADER` reads, and the reason Django sees https form posts as secure. Photon, Valhalla and the renderer are deliberately not proxied (PLAN:65) and the suite fails if one appears. Caddy has never run here. |
+
+### Round 5 should-fixes and nits that were built
+
+One line per branch; the full text is in `docs/review/round-5/`.
+
+| Branch | Built in wave 4 |
+|---|---|
+| Security | `InstanceAdminListing.lookup_allowed` is `discord_user_id` only (a filter on any other column is a 400) and its queryset excludes banned and deleted holders; the `ban_tombstone`-in-dump decision is pinned; due removals are also applied by the 5-minute `degraded_guild_sweep` rather than only by the 6-hourly membership sweep, which was the 1–7 hour effective delay; a `BootstrapClaim` singleton row (migration 0007) written in the same transaction as the flag makes the bootstrap one-shot and race-safe, counting admins the way `check_last_instance_admin` does; `LOGGING` covers `config`; `test_settings` is pinned to relax nothing but the key. |
+| Domain | `resolve_sidepath_bridge_ids` gets the trail-class guard; the `bicycle=yes` half of the bridge write gets `M.bridge_may_be_granted` (never past an access or vehicle restriction, never on motorway or motorway_link, and may override an explicit OSM `bicycle=no` on an ordinary roadway per PLAN:68); the Purple Line re-enters at Silver Spring/Takoma, so four District-line crossings but **five** jurisdiction transitions (PLAN:322 and the README corrected, measured from the GPX against the 1791 cornerstones); `distinct_authorities` includes `also_authority`; Python's `parse_width_m` grammar matches the Lua parser's; `measure.revisits` divides the longitude cell by `cos(lat)`; the fixture pins authority columns in `EXPECTED_CROSSINGS`, gives Sousa its OSM name, splits 11th Street into the legal local span and the two I-695 freeway spans, adds Long Bridge under one rule with Fenwick, and corrects American Legion and the Williams / George Mason directions; `--volume-source` has no default and feature ids keep the file stem; `load_sidepath_bridge_ids` deleted as dead code. |
+| Routing | `_least_grade_across_variants`' `min` pinned with a per-variant grade fake; `_run_command`'s stream split pinned with a real `sh -c`; `validate()`'s build-log completeness pinned; the admin and timezone databases checked by row count (`admins`, `tz_world`) instead of file size, with the fakes writing real SQLite; the `traffic_extract` reasoning written down — the file must never exist, so never pass `-t`; `docs/OPERATIONS.md` gains "After a rebuild: restart the routers"; two masked schema leaks in `test_pipeline_end_to_end.py` fixed. |
+| Database / operations | `perform_swap`'s undo is best-effort, each step wrapped and failures attached with `add_note`; `rollback()` captures links and upstream states before `rollback_swap` and restores and re-swaps on a per-variant failure; failures after a completed swap are terminal, derived from the stage order, and the message says the swap completed and reconcile must be re-run by hand; `run_with_deadline` closes the abandoned connection only when `pgconn.transaction_status` is not ACTIVE and otherwise leaves it to the thread with a WARNING, because `PQfinish` under a thread still inside libpq segfaults the worker; `manage.py rollback_rebuild` (dry by default, `--confirm` performs it) with `docs/OPERATIONS.md` "Rolling back a rebuild"; the "Build ids" and queue-slot text corrected; `check_operations` prints the total; `new_build_id` takes the tiles root from the context. |
+| Images and deploy | Covered by rows 42–45. `docker/requirements*.txt` are exact pins read out of the venv, since `pyproject.toml` declares no dependencies; every pinned version was confirmed on PyPI with a manylinux wheel for its interpreter. `docs/DEPLOYMENT.md` is new. |
+
 ---
 
 ## 4. The pattern worth carrying forward
@@ -212,6 +319,17 @@ Round 4 added two more, both from the fix work itself:
   fixes masked the other. One test per fix is not one mutation per fix; the two were split apart
   and given a test each before the branch merged.
 
+Round 5 added two more, both out of wave 4 rather than out of the panel:
+
+- The security branch's compose-completeness test — which derives the variable names from
+  `settings.py` instead of listing them — **failed at merge on the routing branch's four new
+  environment reads**. The six branches were disjoint by file and collided anyway. A test that
+  reads the source catches that; a test that carries a list somebody maintains does not.
+- The database agent's first design for row 34 put the prune in a `finally` that could not run in
+  the cases it existed for, and **two mutations survived it**. It was redesigned rather than given
+  more tests. That is round 4's masking lesson one step earlier: a mutation that survives is a
+  statement about the code, not only about the test.
+
 **The practice that works** is to write the mutation *after* the test and confirm it fails. Do it
 before committing, not in review.
 
@@ -220,7 +338,7 @@ before committing, not in review.
 ## 5. Standing conventions
 
 - **A phase is finished when an independent panel accepts it, not when tests pass.** Send a review
-  panel after each phase and revise until acceptance. Four rounds so far; none accepted.
+  panel after each phase and revise until acceptance. Five rounds so far; none accepted.
 - **An agent's fix reaches the merged tree only after the orchestrator has re-run at least one of
   its claimed mutations.** Wave 3 merged five branches on that rule, one blocker mutation per
   branch reproduced by hand before the merge.
@@ -229,6 +347,11 @@ before committing, not in review.
   owner decisions and flagged the places where a decision is *missing* — whether a guild admin may
   read a private route, the `instance_admin` role mapping, audit before/after, and the fixture's
   factual content versus the rule governing how it may be presented.)
+- **A panel reviews what it is asked to review, and nothing else.** Five rounds read the code for
+  correctness and not one asked whether the stack could start; the four gaps in rows 42–45 were
+  found by the agents fixing other findings. **The round-6 panel therefore gains a sixth reviewer,
+  for deployment** — images, compose, the edge, and whether `docker compose up` produces a running
+  system.
 - **`PLAN.md` is the authority on scope.** Owner decisions include: mass rides are too large for
   bike trails; DC mass rides have legal protections subject to nuances and the UI must never present
   jurisdiction, permit or access information as a legal statement; the Mass Ride preset is tuned on
@@ -238,8 +361,10 @@ before committing, not in review.
 
 ## 6. What is genuinely solid
 
-Recorded so it is not re-litigated. Everything here was verified by the round-4 panel by execution,
-most of it by reverting the fix and confirming a named test fails:
+Recorded so it is not re-litigated. Everything here was verified by a panel by execution, most of
+it by reverting the fix and confirming a named test fails; the round-5 panel re-verified every
+round-4 finding closed the same way, and the test-quality reviewer re-ran all 26 round-4 survivors
+as literal edits and killed all 26:
 
 - The vendored Valhalla files are byte-identical to upstream 3.5.1 (md5-checked), the Lua wrapper
   runs end to end under LuaJIT, and the design claims about `barrier=border_control`,
@@ -259,19 +384,22 @@ most of it by reverting the fix and confirming a named test fails:
   speed split; boundary-street handling; lanes normalised per direction before the Furth tables;
   reference-route measurements reproducing the README tables exactly, including the Purple Line's
   four county crossings measured from the GPX.
-- Mutation kill rate **71% → 85.6%** (187 mutants, 160 killed) with coverage at 96%, and 46 of the
-  54 reconstructed round-3 survivors killed. Wave 3 added 104 further mutations across the five
-  branches and the wiring commit, each one confirmed to fail before its fix was accepted.
+- Mutation kill rate **71% → 85.6% → 86.5%** — round 5 ran 157 mutants and killed 135 — with
+  coverage at **97%**. Wave 3 added 104 confirmed-failing mutations across five branches; wave 4
+  added its own on six, every fix carrying one, and the orchestrator re-ran at least one per branch
+  before merging.
 
-**The caveat that has not changed in four rounds: none of this has run against a real Valhalla
-binary or a real OSM extract.** Every tile-pipeline claim above is a claim about our code and about
-upstream's source, not about a graph that exists. See §2.
+**The caveat has not changed in five rounds, and wave 4 lengthened it. None of this has run against
+a real Valhalla binary or a real OSM extract, no image has been built, no container has been
+started, and Caddy has never parsed the `Caddyfile`.** Every tile-pipeline and deployment claim
+above is a claim about our code, about upstream's source and about the text of a Dockerfile — not
+about a graph or a running stack that exists. See §1 and §2.
 
 ---
 
 ## 7. Known phase-1 gaps
 
-Recorded rather than left for a round-5 reviewer to discover. None of these is a defect in shipped
+Recorded rather than left for a round-6 reviewer to discover. None of these is a defect in shipped
 code: each is a plan-named behaviour with no implementation, a decision the owner has to make, or a
 measurement that cannot be taken here.
 
@@ -288,10 +416,18 @@ measurement that cannot be taken here.
 | **Measured size table** - tile, extract and schema sizes per variant, the numbers the disk gate's threshold and the volume sizing rest on. | PLAN.md:290 | Cannot be produced before a real build; the first full-access rebuild is the measurement. |
 | **Audit rows: before/after and retention** - `AuditLogEntry` carries no before/after and has no archival; the model docstring argues the narrowing on privacy grounds (a before/after of a membership row is a membership history). PLAN.md:247 says the opposite. | PLAN.md:247 | **Owner decision needed**: amend the plan or widen the model. Not changed in wave 3. |
 | **Admin standing against the private tier / `instance_admin` role mapping** - recorded as open owner decisions in PLAN.md; the security reviewer's view is recorded in `docs/review/round-4/security.md`. | PLAN.md (open decisions) | Recorded owner decisions. Pinned as-is by `TestAdminStandingAgainstThePrivateTier`. |
-| **`resolve_sidepath_bridge_ids` has no trail-class guard** - the sibling of item 24, noted by the domain agent while fixing it. Harmless today: a path in the sidepath set is dropped from the no-trail variant anyway. | - | Left as is, deliberately. Revisit if the sidepath set gains another consumer. |
-| **The bootstrap claim is check-then-update, not `select_for_update`** - two simultaneous first requests from the bootstrap id could both pass the empty-list check. | PLAN.md:212 | Accepted: the write is idempotent (same id, same flag), so the race writes the same row twice. |
+| ~~**`resolve_sidepath_bridge_ids` has no trail-class guard**~~ - the sibling of item 24, recorded here as harmless. It was not: round 5 found two footways named "Francis Scott Key Bridge" satisfying the match while the Key Bridge roadway stayed in the no-trail graph. | - | **Closed in wave 4** (row 38). Kept here as the record of a gap that was accepted on a reading that did not hold. |
+| **Bootstrap claim is one-shot and race-safe as of wave 4** (`BootstrapClaim` singleton row written in the same transaction as the flag; a concurrent second claim loses on the unique index). An emptied instance-admin list is recoverable only by the raw-SQL break-glass in `docs/DEVELOPMENT.md`. | PLAN.md:212 | Built. |
 | **The crossings fixture's OSM names are unverified** - every row carries `osm_names_verified: false`; Overpass is blocked here (§2b). The content is now pinned by an independent table (item 26), which pins what we *believe*, not what OSM *says*. | PLAN.md:68 | Needs one Overpass query per structure from a machine that can reach it. |
 | **`routemaker/cards.py`** has no production caller (phase-4 surface). | - | Recorded; not ranked. |
+| **Instance-admin removal: the target can cancel their own removal.** PLAN.md:212's words "any instance admin can cancel it" permit it literally; the effect is that the delay is unenforceable against a peer who is watching. Pinned by name in `test_the_target_can_cancel_their_own_removal_pending_the_owner_decision`. | PLAN.md:212 | **Owner decision needed**: exclude the target, require a second admin, or accept. Behaviour unchanged in wave 4. |
+| **Blue/green Valhalla validation and the post-swap restart.** `valhalla_service` does not reload tiles; after a promotion the three routers serve the previous build until their containers restart. The restart is documented in `docs/OPERATIONS.md` and named in the rebuild's run detail; nothing performs it. | PLAN.md:290 | Not built. Phase 2 owes the second-container arrangement; until then the restart is an operator step. |
+| **Renderer and bot images.** `compose.yaml` names `routemaker/renderer` and `routemaker/bot`; neither has source in the repository, so neither has a Dockerfile (the api and pipeline images do, as of wave 4, unbuilt in this environment). | PLAN.md:63, :270 | Not built; follows the bot and the thumbnail renderer. |
+| **Round-4 nits declined, not missed:** N-5 (`cycle_key()` redundant with `login()`, harmless) and N-7 (a bot whose heartbeats never succeed gets a fresh 72-hour window; `mark_degraded_guilds` only touches `active` guilds so the window is not re-opened per tick). | - | Declined on the record. |
+| **The fixture's two least-confident claims** are the two 11th Street freeway spans' `osm_names` and the Long Bridge authority columns. Both were written in wave 4 from knowledge, both say so in the file, and both are the rows an Overpass check should start with. | PLAN.md:68 | Needs §2b, ahead of the rest of the fixture. |
+| **`config/settings.py` imports `pipeline.source`** for the Geofabrik URL list, so that one list is not restated. The module imports nothing from Django and is stdlib-only, so there is no cycle - but it is the settings module's only project import, and a reviewer's eye on that was asked for by the agent that wrote it. | - | Deliberate; flagged for round 6 rather than defended. |
+| **No management command re-runs a post-swap reconciliation.** A rebuild that fails after a completed swap is terminal as of wave 4 - a retry would re-run the swap, which begins by dropping the schema a rollback needs - and its message says the new build is being served and the drift report must be re-run by hand. There is nothing to run it with. | PLAN.md:290 | Not built. A `reconcile` command is the obvious next step. |
+| **The api image's apt package names are knowledge-based.** Debian bookworm names, written without the package index, which is blocked here (§2c). The pipeline image's Ubuntu noble names were checked one by one against `packages.ubuntu.com`. | - | Cannot be checked here; the first `docker compose build` checks them. |
 
 The Mass Ride crossing report is listed with the bot-dependent rows for one reason and not the
 others: it is router behaviour, not pipeline behaviour. It lives where a no-route result is turned
@@ -318,15 +454,21 @@ needs the same reading.
 
 ---
 
-## 8. Round-4 record
+## 8. Review record
 
-The five round-4 reports are in `docs/review/round-4/`, one per reviewer, with the README carrying
-the verdict table and the kill-rate numbers. Each report states which round-3 findings its reviewer
-re-verified closed and how, and its own findings are numbered as the reports number them — the
-mapping to §3's rows 19–27 is by the parenthetical labels there (database B1, routing B1/B2, domain
-B1–B4, security B-1/B-2, the test-quality cluster).
+The reports are in `docs/review/round-4/` and `docs/review/round-5/`, one per reviewer, each
+directory's README carrying the verdict table and the kill-rate numbers. Each report states which
+of the previous round's findings its reviewer re-verified closed and how, and its own findings are
+numbered as the reports number them — the mapping to §3 is by the parenthetical labels in the row
+text (rows 19–27 from round 4, rows 28–41 from round 5's five reports, rows 42–45 from the wave-4
+agents' own finds, recorded in round 5's README).
 
-Wave 3 closed all of them on five disjoint branches, merged into `phase1/wave3-merge`. What each
-agent changed is summarised per finding in §3; what was deliberately left unbuilt is in §7.
+Wave 3 closed round 4's findings on five disjoint branches; wave 4 closed round 5's on six, merged
+into `phase1/wave4-merge`. What each agent changed is summarised per finding in §3 and per branch
+in the should-fix table above; what was deliberately left unbuilt is in §7.
 
-**The next step is the round-5 panel**, on this tree.
+From round 5 on, the exact mutation text is recorded beside every verdict: round 4's catalogue was
+never committed, so two of its "equivalent" acceptances could not be re-derived a round later.
+
+**The next step is the round-6 panel**, on this tree, with **six reviewers** — the five areas and,
+for the first time, deployment.
