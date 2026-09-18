@@ -70,9 +70,106 @@ specifically, because the tag is baked into each container at creation:
 were created from, and so rolls nothing back. `up -d` re-reads `.env`, sees the
 service's image has changed and recreates it, leaving everything else alone.
 
+**Do not move `TAG` while a rebuild is running.** `up -d` recreates every
+service whose image changed, `rebuild` among them, and recreating it stops the
+running container: the worker takes a SIGTERM, Procrastinate waits for the job
+rather than abandoning it (its `shutdown_graceful_timeout` is unset, so the
+wait is unbounded), and the `stop_grace_period: 60s` on that service expires
+into a SIGKILL. What is left is a `weekly_rebuild` row still `doing` with no
+worker behind it — nothing retries it, the next Tuesday's tick refuses on it,
+and the staleness alert is eight days out. No grace period covers a six-hour
+build, so the rule is the schedule: release outside Tuesday 08:00 UTC and the
+hours after it, check `docker compose ps rebuild` first, and if it has already
+happened, `docker compose exec -T rebuild ./manage.py unwedge_job <job_id>`
+moves the row back to `todo` (docs/OPERATIONS.md, "Wedged jobs").
+
+**Moving `TAG` back does not undo a migration.** Migrations are applied by the
+`migrate` one-shot at every `up`, and nothing runs them backwards: `TAG` set to
+the previous release and `docker compose up -d` puts the old code in front of
+the new schema. That is
+survivable only because every migration in this repository is required to be
+backwards-compatible with the release before it (PLAN.md:65) — additive
+columns, nullable or defaulted, no rename and no drop in the same release that
+stops writing a column. The rule is stated and not enforced: nothing in the
+suite reads a migration and refuses a `DROP COLUMN`, so it holds exactly as far
+as whoever writes the migration honours it, and a release that breaks it cannot
+be put back by moving the tag at all. handoff.md section 7 carries that as an
+open row. Going back a release is also a deploy like any other: re-run
+`collectstatic` after it, exactly as after a build, or Caddy keeps serving the
+assets the newer release collected.
+
 The `api` image builds three services. They differ only in the command compose
 gives them: `api` takes the image's default (`gunicorn`), `worker` and `migrate`
 override it with `./manage.py`.
+
+## Secrets, and what rotating one costs
+
+The four random values in `.env` — `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY`,
+`PGPASSWORD` and `BOT_INTERNAL_SECRET` — are not interchangeable in how they
+can be changed after the first `up`. Each of the three below is a procedure
+rather than an edit.
+
+**`PGPASSWORD`: change it inside the database first, then in `.env`.** The
+postgis image only reads `POSTGRES_PASSWORD` when it initialises an empty
+PGDATA. On every later start the directory is already there, the variable is
+ignored, and the role keeps the password it was created with — so editing
+`.env` alone leaves the file and the database disagreeing. The failure is worse
+than a plain outage because the health gate does not see it: `pg_isready`
+answers PQPING_OK for a server that is accepting connections, and it reports
+the same for a connection the server would reject on the password. The gate
+therefore goes green, `migrate` fails authentication, and `api`, `worker` and
+`rebuild` — all held on `service_completed_successfully` — never start at all.
+The stack comes up as Caddy and three routers, exactly the shape a wrong
+`PGHOST` used to produce.
+
+The order that works:
+
+```sh
+docker compose exec -T postgis \
+  psql -U "$PGUSER" -d "$PGDATABASE" \
+  -c "ALTER ROLE $PGUSER WITH PASSWORD 'the-new-value';"   # 1. the database
+# 2. then PGPASSWORD=the-new-value in .env
+docker compose up -d                                       # 3. recreate
+```
+
+Step 1 runs under the *old* password, which the running container still holds
+in its own environment, so it has to happen before step 2. `up -d` and not
+`restart`: compose reads `.env` when it creates a container, so a restarted
+container keeps the environment it was created with and the new value never
+reaches it. Write the value with the same rules as any other in that file —
+no quotes, and a literal `$` doubled.
+
+**`DJANGO_SECRET_KEY`: rotating it signs every user out.** Sessions are
+database-backed and their payload is signed with this key; `settings.py` sets
+no `SECRET_KEY_FALLBACKS`, so every existing session fails to decode and is
+discarded on the next request. Nothing is corrupted and nothing needs
+repairing — every signed-in user is simply anonymous and signs in through
+Discord again. Do it deliberately, at a quiet hour, and expect the support
+question rather than being surprised by it.
+
+**`KEY_ENCRYPTION_KEY`: not rotatable in phase 1.** It keys the ban
+tombstones, the stored tombstone is the HMAC and nothing else, and there is no
+second key path. See docs/DEVELOPMENT.md, "`KEY_ENCRYPTION_KEY` — required, no
+default", for what a rotation would silently do.
+
+## Log rotation
+
+Every service in `compose.yaml` merges the `x-logging` anchor: the `json-file`
+driver with `max-size: 10m` and `max-file: 5`. Docker's default for that driver
+is no rotation at all, and the file it writes lives under
+`/var/lib/docker/containers` on the **root** volume — the small one, the one
+nothing in this stack binds and the one whose filling stops the daemon rather
+than one container. The stack has no quiet logger: gunicorn runs with
+`--access-logfile -`, so each request is a line; three `valhalla_service`
+containers log per request; the weekly rebuild prints its way through six
+hours. The ceiling is 50 MB per container and roughly 600 MB for the stack,
+which is a figure chosen to fit beside the OS and the images rather than to
+keep a month of history. What is kept deliberately is on the data volume: the
+`ScheduledRun` rows behind the operations page, and the nightly dump.
+
+Setting it per service rather than in `/etc/docker/daemon.json` is deliberate:
+this repository configures the stack and not the host, and a daemon default is
+a file that a rebuilt host does not have.
 
 ## What each image installs, and why
 
@@ -427,7 +524,7 @@ there:
 | `rollback_rebuild` | `rebuild` | Reads and rewrites the promotion symlinks under `<DATA_ROOT>/tiles`. In `api` those resolve to `/app/data/tiles`, which is empty, and the command refuses on every variant with "no previous tiles" — a refusal that reads like a deployment that has never rebuilt. |
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
-| `check_operations` | `api` | Reads the database only. This one is right where it is, and the cron entry in docs/OPERATIONS.md stays as written. |
+| `check_operations` | `api` | Reads the database only, so the container with no data mount is the right one. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
 
 The frontend half of that sentence has no source either: `frontend/` is a single
 module and its test, with no React application, no bundler and no build script,

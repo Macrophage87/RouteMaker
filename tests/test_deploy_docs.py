@@ -50,8 +50,8 @@ PREPARE = REPO / "scripts" / "prepare_data_root.sh"
 EXEC = re.compile(r"docker compose exec\s+((?:-\S+\s+)*)(\S+)\s+([^\n`]*)")
 
 # The services that can run a management command against the data volume at all:
-# `rebuild` mounts ${DATA_ROOT} whole at /data, `worker` mounts the backups
-# directory there. The api mounts nothing.
+# `rebuild` binds the five directories it writes under /data, `worker` binds the
+# backups directory there. The api mounts nothing.
 DATA_SERVICES = {"rebuild", "worker"}
 
 
@@ -393,6 +393,24 @@ def documented_osmium_commands() -> list[tuple[str, list[str]]]:
     return found
 
 
+def osmium_line_count() -> int:
+    """How many osmium lines the documents' shell blocks hold, counted a
+    different way from the collector above.
+
+    The collector is the thing between every flag assertion and the runbook,
+    and narrowing it - `startswith("osmium merge")` in place of
+    `startswith("osmium ")` - leaves every remaining assertion passing while
+    the `osmium extract` line, which carries `-s smart -S types=any` and the
+    bounding box, is checked by nothing. So the count is taken again here with
+    a regular expression rather than the same predicate.
+    """
+    total = 0
+    for body in DOCUMENTS.values():
+        for block in re.findall(r"```sh\n(.*?)```", body, re.DOTALL):
+            total += len(re.findall(r"(?m)^[ \t]*osmium\b", block.replace("\\\n", " ")))
+    return total
+
+
 def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> None:
     """The flags are not decoration and one of them was missing from a document
     while the code had it right.
@@ -413,6 +431,11 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
 
     commands = documented_osmium_commands()
     assert commands, "no osmium command lines in docs/*.md any more"
+    assert len(commands) == osmium_line_count(), (
+        f"the collector found {len(commands)} osmium lines and the documents' shell "
+        f"blocks hold {osmium_line_count()}; a line it does not see is a command in a "
+        "runbook that nothing checks"
+    )
 
     produced = {
         "merge": source.merge_command([Path("dc.osm.pbf")], Path("merged.osm.pbf.part")),
@@ -433,6 +456,12 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
     assert required["merge"] == ["--overwrite", "-f", "pbf"], f"merge_command: {produced['merge']}"
     assert required["extract"] == ["--overwrite", "-f", "pbf", "-s", "smart", "-S", "types=any"], (
         f"clip_command: {produced['extract']}"
+    )
+
+    assert {argv[1] for _, argv in commands} == set(produced), (
+        f"the documents print {sorted({argv[1] for _, argv in commands})} and the "
+        f"pipeline produces {sorted(produced)}; the extract line carries the clip "
+        "strategy and the bounding box and is the one worth checking"
     )
 
     for document, argv in commands:
@@ -533,3 +562,244 @@ def test_the_reference_inputs_are_named_by_a_path_the_container_can_resolve() ->
                 f"{name} passes --{flag} {value}, a relative name that resolves under the "
                 "image's /app rather than on the data volume"
             )
+
+
+# --- The runbook's own commands, and the stack they are run against ----------
+
+# A crontab line: five schedule fields of digits, `*`, `/`, `,` and `-`, then
+# the command. Narrower than "five whitespace-separated tokens", which matched
+# the prose sentence above the block as well.
+CRON_SCHEDULE = re.compile(r"^(?:[\d*/,\-]+\s+){5}\S")
+
+OPERATIONS_PROSE = " ".join(OPERATIONS.split())
+DEVELOPMENT_PROSE = " ".join(DEVELOPMENT.split())
+ENV_EXAMPLE = (REPO / ".env.example").read_text()
+
+
+def test_the_cron_entry_finds_the_compose_project() -> None:
+    """The entry ran from cron and not from a shell in the checkout.
+
+    `docker compose` finds its project by looking for a compose file in the
+    working directory and upwards, and cron runs a job from the owner's home
+    directory. The documented line had neither a `cd` nor a
+    `--project-directory`, so every tick was `no configuration file provided`
+    and exit 1 - which the `|| mail-the-ops-channel` turns into a page every
+    ten minutes, from the monitor, about nothing.
+    """
+    lines = [
+        line
+        for line in OPERATIONS.splitlines()
+        if "check_operations" in line and CRON_SCHEDULE.match(line.strip())
+    ]
+    assert lines, "docs/OPERATIONS.md no longer shows a cron entry for check_operations"
+    for line in lines:
+        assert "cd " in line or "--project-directory" in line, (
+            f"the cron entry is `{line.strip()}`; run from cron's working directory "
+            "`docker compose` finds no project and exits 1 on every tick"
+        )
+        if "cd " in line:
+            assert line.index("cd ") < line.index("docker compose"), line
+
+
+def test_the_deployment_doc_does_not_bless_a_cron_entry_that_cannot_run() -> None:
+    """docs/DEPLOYMENT.md's table of which command runs where used to end the
+    `check_operations` row with "the cron entry in docs/OPERATIONS.md stays as
+    written", which was a second document vouching for the broken line."""
+    rows = [line for line in DEPLOYMENT.splitlines() if line.startswith("| `check_operations`")]
+    assert len(rows) == 1, f"expected one check_operations row, found {len(rows)}"
+    assert "stays as written" not in rows[0], rows[0]
+    assert "cd" in rows[0], (
+        f"the row says nothing about the working directory the entry needs: {rows[0]}"
+    )
+
+
+def test_the_documents_quote_the_grace_period_the_stack_actually_gives(tmp_path) -> None:
+    """Both documents explain what a `down` or an `up -d` does to a running
+    rebuild in terms of a number that lives in `compose.yaml`. Quoted, not
+    restated: a grace period changed in one place and described in two is a
+    runbook that is wrong about the thing it is warning you of."""
+    grace = SERVICES["rebuild"].get("stop_grace_period")
+    assert grace, "the rebuild service no longer declares a stop_grace_period"
+    quoted = f"stop_grace_period: {grace}"
+    for name, body in (("docs/OPERATIONS.md", OPERATIONS), ("docs/DEPLOYMENT.md", DEPLOYMENT)):
+        assert quoted in body, f"{name} does not quote `{quoted}`"
+
+
+def test_both_documents_point_a_wedged_rebuild_at_the_command_that_frees_it() -> None:
+    """A SIGKILL mid-build leaves the `weekly_rebuild` row `doing` with no
+    worker behind it, and no grace period covers a six-hour build - so the
+    residual is a documented repair rather than a fix. Every place that warns
+    about the stop has to name it, or the warning ends in a shrug."""
+    assert OPERATIONS.count("unwedge_job") >= 2, (
+        "docs/OPERATIONS.md names unwedge_job fewer than twice: the wedged-job surface "
+        "and the warning against stopping a running rebuild both need it"
+    )
+    assert "unwedge_job" in DEPLOYMENT, (
+        "docs/DEPLOYMENT.md warns that moving TAG recreates the rebuild container "
+        "without saying what frees the job that leaves behind"
+    )
+
+
+def test_the_dropped_tick_is_documented_with_procrastinates_own_number() -> None:
+    """A stack down across Tuesday 08:00 UTC loses that week's rebuild rather
+    than catching it up: the periodic deferrer ignores any tick further in the
+    past than `procrastinate.periodic.MAX_DELAY`. Read from the library, so the
+    figure in the runbook cannot outlive an upgrade that changes it."""
+    from procrastinate import periodic
+
+    assert "MAX_DELAY" in OPERATIONS, (
+        "docs/OPERATIONS.md does not say that a missed tick is dropped rather than deferred late"
+    )
+    minutes = periodic.MAX_DELAY // 60
+    paragraph = OPERATIONS_PROSE.split("MAX_DELAY", 1)[1][:900]
+    assert f"{minutes} minutes" in paragraph, (
+        f"procrastinate drops a tick more than {minutes} minutes late and the paragraph "
+        f"that names MAX_DELAY states a different figure: {paragraph[:200]!r}"
+    )
+    catch_up = paragraph
+    assert "run_rebuild_now" in catch_up, (
+        "the dropped-tick paragraph does not name the hand-fired rebuild that is the "
+        "catch-up for it"
+    )
+
+
+def test_the_first_boot_window_is_the_one_the_health_check_declares() -> None:
+    """docs/OPERATIONS.md tells an operator to re-run a first `up` whose
+    `migrate` failed, and quotes the start period as the reason. The start
+    period is what makes first-boot probe failures not count against the
+    retries; deleted, a slow initdb is a `postgis` marked unhealthy and three
+    services that never start."""
+    start = SERVICES["postgis"]["healthcheck"].get("start_period")
+    assert start, "the database health check has no start period"
+    seconds = int(str(start).rstrip("s"))
+    assert f"start period is {seconds} seconds" in OPERATIONS_PROSE, (
+        f"the health check declares a {start} start period and the runbook states something else"
+    )
+
+
+# --- Rotating a secret --------------------------------------------------------
+
+
+def test_the_password_rotation_alters_the_role_before_it_edits_the_file() -> None:
+    """The postgis image reads POSTGRES_PASSWORD only when it initialises an
+    empty PGDATA, so on an existing volume a new value in `.env` changes
+    nothing in the database. `pg_isready` does not authenticate, so the health
+    gate still goes green; `migrate` fails on the password and `api`, `worker`
+    and `rebuild` - held on `service_completed_successfully` - never start."""
+    assert "ALTER ROLE" in DEPLOYMENT, (
+        "docs/DEPLOYMENT.md documents no way to rotate the database password"
+    )
+    blocks = [b for b in re.findall(r"```sh\n(.*?)```", DEPLOYMENT, re.DOTALL) if "ALTER ROLE" in b]
+    assert len(blocks) == 1, f"expected one password-rotation snippet, found {len(blocks)}"
+    block = blocks[0]
+    assert "docker compose exec" in block and "postgis" in block, (
+        f"the ALTER ROLE is not shown inside the database container: {block!r}"
+    )
+    assert block.index("ALTER ROLE") < block.index(".env"), (
+        "the snippet edits .env before it alters the role; the ALTER has to run under "
+        f"the old password, which only the running container still has: {block!r}"
+    )
+    assert "up -d" in block and "restart" not in block, (
+        f"a restarted container keeps the environment it was created with: {block!r}"
+    )
+    assert "ALTER ROLE" in ENV_EXAMPLE, (
+        ".env.example lets an operator edit PGPASSWORD with no note that the database "
+        "will not follow it"
+    )
+
+
+def test_the_tombstone_key_is_documented_as_what_the_table_makes_it() -> None:
+    """docs/DEVELOPMENT.md called a KEY_ENCRYPTION_KEY rotation "a
+    re-tombstoning job", which implies there is something to re-tombstone
+    from. A `BanTombstone` row is the HMAC, a timestamp and a free-text reason:
+    the Discord id the digest was taken over is stored nowhere, so a rotation
+    cannot be undone and it silently re-admits every banned account.
+
+    The claim is checked against the model rather than restated, so the day a
+    column is added that *would* make a rotation possible, this fails and the
+    paragraph gets rewritten rather than staying pessimistic."""
+    from core.models import BanTombstone
+
+    fields = {field.name for field in BanTombstone._meta.fields}
+    assert fields == {"id", "tombstone", "created_at", "reason"}, (
+        f"BanTombstone now stores {sorted(fields)}; docs/DEVELOPMENT.md says a rotation "
+        "is unrecoverable because the id the digest covers is kept nowhere"
+    )
+    assert "which is a re-tombstoning job and not a restart" not in DEVELOPMENT_PROSE, (
+        "docs/DEVELOPMENT.md still claims the rotation is a job that could be run"
+    )
+    assert "not rotatable in phase 1" in DEVELOPMENT_PROSE, (
+        "docs/DEVELOPMENT.md does not say plainly that the key cannot be rotated"
+    )
+    assert "re-admit every banned account" in DEVELOPMENT_PROSE, (
+        "the paragraph does not say what a rotation actually does"
+    )
+
+
+def test_the_secret_key_rotation_is_documented_as_signing_everyone_out() -> None:
+    """Sessions are database-backed and signed with `SECRET_KEY`, and
+    `settings.py` declares no `SECRET_KEY_FALLBACKS`, so every session fails to
+    decode after a rotation. Derived from the settings source, because a
+    fallback list added later would make the sentence wrong."""
+    settings_source = (REPO / "src" / "config" / "settings.py").read_text()
+    assert "SECRET_KEY_FALLBACKS" not in settings_source, (
+        "settings.py now declares SECRET_KEY_FALLBACKS, so a rotation no longer ends "
+        "every session and both documents say it does"
+    )
+    for name, prose in (
+        ("docs/DEPLOYMENT.md", DEPLOYMENT_PROSE),
+        ("docs/DEVELOPMENT.md", DEVELOPMENT_PROSE),
+    ):
+        assert "SECRET_KEY_FALLBACKS" in prose, (
+            f"{name} does not say why a rotation ends every session"
+        )
+
+
+# --- Log rotation -------------------------------------------------------------
+
+
+def test_the_log_ceiling_in_the_document_is_the_one_compose_sets() -> None:
+    """A per-container ceiling written down in one place and configured in
+    another is a figure that drifts. Both options are quoted from
+    `compose.yaml`'s own anchor."""
+    options = SERVICES["rebuild"]["logging"]["options"]
+    assert "Log rotation" in DEPLOYMENT, "docs/DEPLOYMENT.md has no log-rotation section"
+    for option, value in sorted(options.items()):
+        assert f"{option}: {value}" in DEPLOYMENT, (
+            f"docs/DEPLOYMENT.md does not state `{option}: {value}`, which is what "
+            "compose.yaml configures"
+        )
+
+
+# --- Going back a release -----------------------------------------------------
+
+
+def test_the_migration_rule_the_rollback_depends_on_is_written_down() -> None:
+    """Moving `TAG` back puts the old code in front of the new schema, and
+    nothing runs a migration backwards. That is survivable only under PLAN:65's
+    backwards-compatible-migration rule, which lived in PLAN.md alone - so the
+    document that tells an operator to roll back by moving a tag never said
+    what makes it safe, or that the safety is a convention nothing enforces.
+
+    The plan line is read rather than cited blind."""
+    plan = (REPO / "PLAN.md").read_text().splitlines()
+    rule = plan[64]
+    assert "backwards-compatible" in rule.lower() or "backward-compatible" in rule.lower(), (
+        f"PLAN.md:65 is no longer the migration rule: {rule!r}"
+    )
+    upgrade = DEPLOYMENT_PROSE.split("Moving `TAG` back does not undo a migration", 1)
+    assert len(upgrade) == 2, "docs/DEPLOYMENT.md no longer has the migration paragraph"
+    paragraph = upgrade[1][:1400]
+    # In the paragraph, not merely somewhere in the document: PLAN.md:65 is one
+    # long line and four other claims here cite it.
+    assert "PLAN.md:65" in paragraph, (
+        "the paragraph does not tie the rollback to the migration rule that makes it survivable"
+    )
+    assert "collectstatic" in paragraph, (
+        "the paragraph does not say that a rollback needs collectstatic re-run, which is "
+        "the same deploy step a build needs"
+    )
+    assert "not enforced" in paragraph or "stated and not enforced" in paragraph, (
+        "the paragraph presents the rule as something the suite checks; nothing reads a "
+        "migration and refuses a DROP COLUMN"
+    )
