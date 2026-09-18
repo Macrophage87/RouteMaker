@@ -219,3 +219,50 @@ def test_an_absent_derived_value_never_reaches_the_extract(tmp_path) -> None:
     assert written["rm:stress"] == "1"
     assert "rm:aadt" not in written
     assert "None" not in written.values()
+
+
+# --- the source-tag snapshot ----------------------------------------------------
+
+
+def test_the_source_tag_snapshot_is_the_tags_the_way_was_built_with() -> None:
+    """`Way.source_tags` is what the source PBF carried, and `Way.tags` is the
+    working copy every later stage writes on.
+
+    `run.inject_tags` diffs the variant's tags against the snapshot, so the
+    snapshot being the source's tags is the whole of what carries an approved
+    access correction into an extract: taken against an empty dict every key
+    the way carries reads as a change, and taken against the working copy the
+    correction cancels against itself, which is the defect this field exists to
+    close. Both are stated here - the content, and that writing the working copy
+    leaves the snapshot alone.
+    """
+    tags = {"highway": "residential", "bicycle": "no"}
+    way = Way(osm_id=1, tags=tags, node_ids=[1, 2])
+
+    assert way.source_tags == tags, "the snapshot is not what the source carried"
+    assert way.source_tags is not way.tags, "the snapshot aliases the working copy"
+
+    way.tags["bicycle"] = "yes"
+    way.tags["_jurisdictions"] = "NPS"
+    assert way.source_tags == {"highway": "residential", "bicycle": "no"}, (
+        "a write to the working copy reached the snapshot; the override stage writes "
+        "`tags`, and a snapshot that follows it diffs the correction away"
+    )
+
+
+def test_the_source_snapshot_is_not_part_of_a_ways_equality() -> None:
+    """Two ways that now carry the same tags are the same way however each got
+    there. The snapshot is provenance, not identity - it is set by
+    `__post_init__` and never by a caller - and folding it into `__eq__` would
+    make a way stop comparing equal to itself as soon as a stage corrected a
+    tag on it.
+    """
+    corrected = Way(osm_id=1, tags={"highway": "residential", "bicycle": "no"}, node_ids=[1, 2])
+    corrected.tags["bicycle"] = "yes"
+    as_built = Way(osm_id=1, tags={"highway": "residential", "bicycle": "yes"}, node_ids=[1, 2])
+
+    assert corrected.source_tags != as_built.source_tags, "the two arrived differently"
+    assert corrected == as_built, (
+        "the source snapshot is being compared; it is a record of where the way came "
+        "from and two ways with the same tags are the same way"
+    )

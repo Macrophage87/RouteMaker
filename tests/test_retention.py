@@ -456,3 +456,92 @@ def test_only_the_part_files_this_task_wrote_are_reclaimed(tmp_path) -> None:
         for entry in tmp_path.iterdir()
         if entry.name != "routemaker-20260912T070000Z.dump"
     ) == sorted(others)
+
+
+def test_a_part_file_is_measured_against_the_dumps_that_survive_the_prune(tmp_path) -> None:
+    """ "Older than the newest dump still being kept" means the dumps that are
+    still there when this returns, not every dump the directory started with.
+
+    The two agree on every call that keeps at least one dump - the newest kept
+    dump is the newest dump - and they part company where retention keeps none.
+    Measured against the dumps on the way in, a part file older than an archive
+    this very call has just deleted reads as wreckage; measured against what
+    survives, there is no kept dump to compare it against at all, which is the
+    case the rule declines to act on.
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 4)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    part = tmp_path / "routemaker-20260910T070000Z.dump.part"
+    part.write_bytes(b"half a dump")
+
+    removed = prune_backups(tmp_path, keep=0)
+
+    assert [path.name for path in removed] == dumps, "keeping none means keeping none"
+    assert part.exists(), (
+        "with every dump gone there is no kept instant to measure the part file against, "
+        "and the part file was compared against a dump this call had already deleted"
+    )
+
+
+def test_a_part_file_at_the_newest_kept_instant_is_left_alone(tmp_path) -> None:
+    """The boundary of "older than", which is the live write seen at its own
+    instant: `perform_backup` writes `<name>.dump.part` and renames it to
+    `<name>.dump`, so a part file carrying the same instant as a kept dump is
+    that dump's own staging file, still open. Removing it is retention reaching
+    into the write it is running beside.
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 4)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    alongside = tmp_path / "routemaker-20260913T070000Z.dump.part"
+    alongside.write_bytes(b"half a dump")
+
+    prune_backups(tmp_path, keep=2)
+
+    assert alongside.exists(), (
+        "a part file at the same instant as the newest kept dump was reclaimed; the rule "
+        "is strictly older, and equal is the archive being written right now"
+    )
+
+
+def test_a_part_file_older_than_the_newest_kept_dump_goes_even_beside_older_ones(
+    tmp_path,
+) -> None:
+    """Newest kept, not oldest kept. The comparison is against the last of the
+    sorted list; read off the front it is the oldest surviving dump, and every
+    part file abandoned since then - which is every one a SIGKILL can have left
+    while the retention window still had room - is measured as if it were in
+    flight and kept for ever.
+    """
+    dumps = [f"routemaker-2026091{day}T070000Z.dump" for day in range(1, 5)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+    abandoned = tmp_path / "routemaker-20260913T060000Z.dump.part"
+    abandoned.write_bytes(b"half a dump")
+
+    prune_backups(tmp_path, keep=3)
+
+    assert not abandoned.exists(), (
+        "a part file older than the newest kept dump - but newer than the oldest - "
+        "survived; it is wreckage, and it is a full-sized archive"
+    )
+
+
+def test_a_directory_shaped_like_a_part_file_is_not_unlinked(tmp_path) -> None:
+    """This module deletes things, and it does so only where it is certain what
+    it is looking at. `unlink` on a directory raises, out of `nightly_backup`,
+    after the dump has already been written and proved - so the backup that
+    succeeded is reported as a failure, and the next night's run hits the same
+    directory again.
+    """
+    for day in range(1, 4):
+        (tmp_path / f"routemaker-2026091{day}T070000Z.dump").write_bytes(b"dump")
+    impostor = tmp_path / "routemaker-20260910T070000Z.dump.part"
+    impostor.mkdir()
+    (impostor / "inside").write_bytes(b"not a dump")
+
+    prune_backups(tmp_path, keep=2)
+
+    assert impostor.is_dir(), "the directory was removed rather than left alone"
+    assert (impostor / "inside").exists()

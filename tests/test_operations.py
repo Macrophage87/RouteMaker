@@ -1640,3 +1640,155 @@ def test_a_run_rows_detail_is_bounded_and_says_each_thing_once() -> None:
             raise RuntimeError("x" * 9000)
 
     assert len(ScheduledRun.objects.get(task="membership_sweep").detail) == 4000
+
+
+@db
+def test_the_migration_epoch_is_the_last_migration_and_not_the_first(
+    real_deployment_epoch,
+) -> None:
+    """`MAX(applied)`, because what this dates is *this* deployment.
+
+    `django_migrations` is append-only and nothing in this project prunes it,
+    so the first row in it is the day the project's first migration was applied
+    to this database and never moves again. Read that way the "deployment
+    epoch" is the age of the database rather than the age of the running
+    stack - every never-succeeded task's window would be measured from a point
+    months in the past, every one of them would be outside its window from the
+    first tick, and a deployment that had just been rolled out would page for
+    four tasks that had simply not run yet.
+    """
+    from core.runs import migrations_applied_at
+
+    now = timezone.now()
+    oldest = now - timedelta(days=400)
+    newest = now + timedelta(days=400)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO django_migrations (app, name, applied) VALUES (%s, %s, %s), (%s, %s, %s)",
+            ["tq_probe", "0001_oldest", oldest, "tq_probe", "0002_newest", newest],
+        )
+    try:
+        applied = migrations_applied_at()
+        assert applied == newest, (
+            "the epoch is not the most recent migration; read as MIN it is the day this "
+            f"database was first migrated ({oldest}), which never moves again"
+        )
+    finally:
+        with connection.cursor() as cursor:
+            cursor.execute("DELETE FROM django_migrations WHERE app = %s", ["tq_probe"])
+
+
+@db
+def test_free_space_exactly_at_the_floor_is_room(monkeypatch) -> None:
+    """The floor is what a rebuild reserves, so a volume carrying exactly that
+    much is a volume the reservation fits in. Refused at equality this alert
+    fires one byte before the gate it is supposed to precede would, and it
+    fires on the volume the plan sizes to that number exactly."""
+    from core.runs import disk_headroom
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 1.0)
+
+    at_the_floor = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 80 * 1024**3))
+    assert at_the_floor["free_bytes"] == at_the_floor["minimum_free_bytes"]
+    assert at_the_floor["status"] == "ok", "exactly the floor is the floor, not below it"
+    assert not at_the_floor["alert"]
+
+    one_short = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 80 * 1024**3 + 1))
+    assert one_short["status"] == "short", "and a byte below it is short"
+
+
+@db
+def test_a_volume_exactly_at_the_gate_fraction_is_room(monkeypatch) -> None:
+    """`check_disk_gate` refuses a build that would take the volume *past*
+    `DISK_GATE_FRACTION`. Landing on it is not past it, and an alert that
+    disagrees with the gate about its own boundary is an alert an operator
+    learns to discount."""
+    from core.runs import disk_headroom
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+
+    # 60 used of 100, plus the 20 GiB floor, is exactly 80 percent.
+    on_the_line = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 60 * 1024**3))
+    assert on_the_line["fraction_after"] == on_the_line["fraction"]
+    assert on_the_line["status"] == "ok", "exactly at the gate fraction is not past it"
+
+    over = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 60 * 1024**3 + 1024**3))
+    assert over["status"] == "short", "and a gibibyte past it is"
+
+
+@db
+def test_a_volume_below_the_floor_is_short_even_where_the_fraction_is_content(
+    monkeypatch,
+) -> None:
+    """Two halves, and either one on its own is a refusal.
+
+    They are not the same question, because `free` is not `total - used`:
+    ext4 reserves blocks for root, and a thin or quota'd volume can report a
+    great deal of unused space that this process may not have. Here the
+    fraction is comfortable - ten percent used, thirty with the floor charged
+    against an eighty percent gate - and the rebuild still cannot reserve what
+    it needs, because only a gibibyte of that room is actually available.
+    """
+    from collections import namedtuple
+
+    from core.runs import disk_headroom
+
+    usage = namedtuple("usage", "total used free")
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+
+    reserved = disk_headroom(disk_usage=lambda path: usage(100 * 1024**3, 10 * 1024**3, 1024**3))
+    assert reserved["fraction_after"] <= reserved["fraction"], (
+        "the fraction half of the check is content here, so only the free-space half "
+        "can be what refuses"
+    )
+    assert reserved["free_bytes"] < reserved["minimum_free_bytes"]
+    assert reserved["status"] == "short" and reserved["alert"], (
+        "a volume with a gibibyte available and a 20 GiB floor to reserve reported room "
+        "for the next rebuild"
+    )
+
+
+@db
+def test_a_volume_that_reports_no_size_at_all_reads_as_full(monkeypatch) -> None:
+    """A total of zero is a filesystem that cannot be measured - a stub mount,
+    a pseudo-filesystem, a driver that answers with nothing. There is no
+    honest fraction to compute, and the two directions are not symmetric: read
+    as empty it is a volume nothing will ever report on, and read as full it is
+    one alert that names the path and clears as soon as the mount is real."""
+    from core.runs import disk_headroom
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+
+    unsized = disk_headroom(disk_usage=fake_usage(0, 0))
+    assert unsized["fraction_after"] == 1.0, "an unmeasurable volume is treated as full"
+    assert unsized["status"] == "short" and unsized["alert"]
+
+
+@db
+def test_the_percentages_the_page_renders_are_percentages(monkeypatch) -> None:
+    """The template renders these straight - `{{ ... |floatformat:0 }}` - because
+    `floatformat` cannot turn 0.8 into 80 without arithmetic in the page. A
+    ratio left in the percent field reads as "the volume is past 1 % full", on
+    the alert whose whole job is to be believed before the gate refuses.
+
+    Both dicts, because the unmeasured answer renders the same field.
+    """
+    from pathlib import Path
+
+    from core.runs import disk_headroom
+
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+
+    measured = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 70 * 1024**3))
+    assert measured["fraction_pct"] == 80.0, measured
+    assert measured["fraction_after_pct"] == pytest.approx(90.0), measured
+
+    monkeypatch.setattr(settings, "TILES_DIR", Path(settings.TILES_DIR) / "not" / "mounted")
+    unmeasured = disk_headroom()
+    assert unmeasured["status"] == "unmeasured"
+    assert unmeasured["fraction_pct"] == 80.0, unmeasured

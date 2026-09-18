@@ -487,3 +487,58 @@ def test_the_minimum_run_separates_a_boundary_street_from_a_crossing(
         run_m,
         [(c.authority, c.also_authority, round(c.end_m - c.start_m)) for c in crossings],
     )
+
+
+def test_the_tagging_stage_owns_its_own_annotation_key(authorities, tmp_path) -> None:
+    """`_jurisdictions` is the pipeline's key, not the source's.
+
+    `read_ways` hands back whatever the PBF carried, and OSM accepts any key at
+    all - so a way tagged `_jurisdictions=...` upstream arrives at this stage
+    with the annotation already occupied. Defaulted rather than assigned, the
+    stage kept the string the file carried and its own spatial assignment was
+    dropped on the floor with nothing logged: the authority list a permit
+    question is answered from would be a stranger's text.
+
+    The other writer of this key, `apply_jurisdiction`, runs in a later stage
+    (`Stage.APPLY_OVERRIDES` follows `Stage.TAG_JURISDICTIONS`), so an approved
+    override is applied over this and is not what the guard protected.
+    """
+    from pipeline.extract import Way
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, build_handlers
+
+    way = Way(
+        osm_id=1,
+        tags={"highway": "residential", "_jurisdictions": "Somewhere Else"},
+        node_ids=[1, 2],
+    )
+    way.coordinates = [(-77.04, 38.90), (-77.02, 38.90)]
+    way.located = [0, 1]
+
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = [way]
+    context.ways_by_id = {way.osm_id: way}
+
+    build_handlers(context, load_overrides=lambda: [])[Stage.TAG_JURISDICTIONS]()
+
+    assigned = set(way.tags["_jurisdictions"].split(","))
+    assert "Somewhere Else" not in assigned, (
+        "a `_jurisdictions` key the source PBF carried survived the stage whose job is "
+        "to compute it"
+    )
+    assert "MPD" in assigned, assigned
+
+
+def test_the_stages_that_write_the_jurisdiction_annotation_are_in_this_order() -> None:
+    """Stated because the assignment above depends on it: the override is the
+    last word on an authority, and it is the last word by being applied after
+    the stage that computes one."""
+    from pipeline.rebuild import Stage
+
+    order = list(Stage)
+    assert order.index(Stage.TAG_JURISDICTIONS) < order.index(Stage.APPLY_OVERRIDES)

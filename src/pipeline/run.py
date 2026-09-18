@@ -764,9 +764,16 @@ def build_handlers(
             if len(way.coordinates) < 2:
                 continue
             assignments = assign_way(LineString(way.coordinates, srid=4326))
-            way.tags.setdefault(
-                "_jurisdictions",
-                ",".join(sorted(authorities_for(assignments, MIN_JURISDICTION_FRACTION))),
+            # Assigned, not defaulted. `_jurisdictions` is this pipeline's own
+            # key (`extract.INTERNAL_PREFIX`), and the only thing that can have
+            # put one on a way before this stage runs is the source PBF: OSM
+            # accepts any key, so a way tagged `_jurisdictions=...` upstream
+            # would keep whatever string it carried and this stage's spatial
+            # assignment would be discarded without a word. `apply_jurisdiction`
+            # is the other writer and it runs after this stage, so it is not
+            # what the guard was protecting.
+            way.tags["_jurisdictions"] = ",".join(
+                sorted(authorities_for(assignments, MIN_JURISDICTION_FRACTION))
             )
 
     def apply_overrides() -> None:

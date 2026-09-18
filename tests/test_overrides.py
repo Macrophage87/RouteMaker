@@ -544,3 +544,125 @@ def test_a_stress_override_keeps_the_counts_provenance_beside_the_agency():
         12_000,
         2022,
     )
+
+
+# --- what the variant extracts are diffed against -------------------------------
+
+
+def _per_way_tags_for(tmp_path, monkeypatch, rows) -> dict:
+    """The mapping `inject_tags` hands `write_extract`, for the standard variant.
+
+    Captured rather than read back off the file, because the file cannot tell
+    the two apart: `write_extract` rebuilds every way's tags from the source
+    PBF and lays this mapping over them, so a mapping that restates a tag the
+    source already carries produces a byte-identical way. The mapping is the
+    diff, and whether it is a diff at all is what this checks.
+    """
+    from pipeline import extract as extract_module
+    from pipeline.extract import read_ways
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ReferenceData, build_handlers
+    from pipeline.variants import Variant
+
+    source_pbf = tmp_path / "source.osm.pbf"
+    _write_access_extract(source_pbf)
+    reference_dir = write_reference_data(tmp_path)
+
+    context = RebuildContext(
+        source_pbf=source_pbf,
+        work_dir=tmp_path / "work",
+        reference_dir=reference_dir,
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = read_ways(source_pbf)
+    context.ways_by_id = {way.osm_id: way for way in context.ways}
+    context.reference = ReferenceData.load(reference_dir, context.ways)
+
+    seen: dict = {}
+    real = extract_module.write_extract
+
+    def capture(source, destination, way_tags, *args, **kwargs):
+        if destination == context.variant_pbf(Variant.STANDARD):
+            seen.update({way_id: dict(tags) for way_id, tags in way_tags.items()})
+        return real(source, destination, way_tags, *args, **kwargs)
+
+    monkeypatch.setattr(extract_module, "write_extract", capture)
+    handlers = build_handlers(context, load_overrides=lambda: rows)
+    handlers[Stage.APPLY_OVERRIDES]()
+    handlers[Stage.INJECT_TAGS]()
+    return seen
+
+
+@pytest.mark.django_db
+def test_a_way_nothing_corrected_contributes_no_osm_tags_to_the_diff(tmp_path, monkeypatch) -> None:
+    """The diff is against the tags the source carried, so a way no stage wrote
+    on has nothing to say about its own OSM keys.
+
+    Diffed against an empty snapshot instead, every key the way carries reads as
+    a change and the mapping becomes a restatement of the whole extract - which
+    is byte-identical on the way out and so invisible in the file, but means the
+    diff has stopped being a diff and an override is no longer distinguishable
+    from the source's own tagging.
+    """
+    from pipeline.extract import DERIVED_PREFIX
+
+    per_way = _per_way_tags_for(tmp_path, monkeypatch, rows=[])
+
+    assert set(per_way) == {OPEN_WAY, BARRED_WAY}, per_way
+    for way_id, tags in per_way.items():
+        source_keys = {
+            key: value for key, value in tags.items() if not key.startswith(DERIVED_PREFIX)
+        }
+        assert source_keys == {}, (
+            f"way {way_id} is unchanged by every stage and still contributes "
+            f"{source_keys} to the variant extract's tag diff"
+        )
+
+
+@pytest.mark.django_db
+def test_an_approved_correction_is_the_only_osm_key_in_the_diff(tmp_path, monkeypatch) -> None:
+    """And the other side of it: the one key a reviewer corrected is exactly
+    what the diff carries, so what the extract gains over the source is the
+    correction and nothing else."""
+    from pipeline.extract import DERIVED_PREFIX
+
+    per_way = _per_way_tags_for(
+        tmp_path, monkeypatch, rows=[Override("access", OPEN_WAY, {"bicycle": "no"})]
+    )
+
+    corrected = {
+        key: value for key, value in per_way[OPEN_WAY].items() if not key.startswith(DERIVED_PREFIX)
+    }
+    assert corrected == {"bicycle": "no"}, corrected
+    untouched = {
+        key: value
+        for key, value in per_way[BARRED_WAY].items()
+        if not key.startswith(DERIVED_PREFIX)
+    }
+    assert untouched == {}, untouched
+
+
+def test_an_override_can_never_write_a_derived_key() -> None:
+    """Why `inject_tags` can merge the derived tags over the corrections without
+    choosing between them: the two key spaces do not meet.
+
+    Every tag this pipeline derives is written under `rm:` (`extract.derived_tags`),
+    and the only keys that reach the diff from the tag side are the ones a stage
+    wrote - `apply_access`, which refuses anything outside `ACCESS_KEYS`, and
+    `variants.inject`. A source key the source itself still carries is equal to
+    the snapshot and never reaches the diff at all. So the merge order of
+    `{**changes, **derived}` is unobservable, and it is unobservable because of
+    this refusal rather than by luck - which is what makes it worth stating.
+    """
+    from pipeline.extract import DERIVED_PREFIX
+    from pipeline.overrides import ACCESS_KEYS
+
+    assert not any(key.startswith(DERIVED_PREFIX) for key in ACCESS_KEYS), (
+        f"an access override may write a {DERIVED_PREFIX} key, so a correction and a "
+        "derived value can now collide and the merge order in `inject_tags` decides "
+        "which one the graph is built from"
+    )
+    way = Way(OPEN_WAY, highway="secondary")
+    with pytest.raises(OverrideRefused, match="not an access key"):
+        apply_access([way], [Override("access", OPEN_WAY, {f"{DERIVED_PREFIX}stress_tier": "1"})])
+    assert way.tags == {"highway": "secondary"}, "and nothing was written"
