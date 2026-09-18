@@ -61,6 +61,24 @@ check("the narrow-gap threshold is the one the dial was reasoned about at",
 check("a gap just under it converts and one just over it does not",
   M.remap_node({ barrier = "bollard", maxwidth = "1.49" }).barrier == "gate"
     and M.remap_node({ barrier = "bollard", maxwidth = "1.51" }).barrier == nil)
+-- And the tie itself, which is the half of the threshold the pair above cannot
+-- see: the comparison is `<`, so a gap of exactly the threshold is the wide
+-- side. A metre and a half is stated as the gap a loaded cargo bike clears, so
+-- a bollard leaving exactly that is not furniture to charge for.
+check("a gap of exactly the threshold is on the wide side of it",
+  M.remap_node({ barrier = "bollard", maxwidth = "1.5" }).barrier == nil,
+  M.remap_node({ barrier = "bollard", maxwidth = "1.5" }).barrier)
+
+-- The conjunction that selects the branch at all. `maxwidth` appears on plenty
+-- of nodes that are not bollards - height and width restrictions on gates,
+-- lift gates and tunnel portals - and reading the two conditions as an
+-- alternative converts every one of them into a gate, which both moves the
+-- barrier type Valhalla reads and clears the access tags beside it.
+check("a narrow node that is not a bollard is not converted",
+  M.remap_node({ maxwidth = "1.2" }).barrier == nil,
+  M.remap_node({ maxwidth = "1.2" }).barrier)
+check("and a lift gate keeps the barrier type it was tagged with",
+  next(M.remap_node({ barrier = "lift_gate", maxwidth = "1.2" })) == nil)
 
 -- maxwidth is not always metres written with a full stop, and the forms it is
 -- not written in used to be read as a *different number* rather than refused:
@@ -209,6 +227,53 @@ check("a permissively tagged bridge still takes the grant",
 check("trunk is not motor-only here - US-1 and New York Avenue are trunk and bike-legal",
   M.remap_way({ highway = "trunk", bridge = "yes" },
               { bridge_bicycle_legal = true }).bicycle == "yes")
+
+-- The e-bike variant's own decision is not the fixture's to revert.
+--
+-- That variant is built by writing `bicycle=no` onto every way tagged
+-- `electric_bicycle=no`, in the extract, before this transform ever sees it. A
+-- bridge whose roadway the fixture calls legal then arrives here carrying a
+-- `bicycle=no` indistinguishable from OSM's own, and the grant put it back to
+-- `yes` - undoing the variant on exactly the ways this file may widen. One Lua
+-- script serves all three extracts, so the guard reads the tag the variant
+-- keyed on rather than the variant; see `bridge_may_be_granted`.
+check("a way barred to e-bikes is never granted by a legality row",
+  M.remap_way({ highway = "secondary", bridge = "yes", bicycle = "no",
+                electric_bicycle = "no" },
+              { bridge_bicycle_legal = true }).bicycle == nil)
+check("and the barring half of the row still applies there",
+  M.remap_way({ highway = "secondary", bridge = "yes", electric_bicycle = "no" },
+              { bridge_bicycle_legal = false }).bicycle == "no")
+check("a permissive electric_bicycle value is no restriction",
+  M.remap_way({ highway = "secondary", bridge = "yes", bicycle = "no",
+                electric_bicycle = "designated" },
+              { bridge_bicycle_legal = true }).bicycle == "yes")
+check("and an untagged way is unaffected by the clause",
+  M.bridge_may_be_granted({ highway = "secondary", bridge = "yes" }))
+
+-- ---------------------------------------------------------------------------
+-- The lit write, which is the derived value with no Lua-side test at all.
+--
+-- The Python producer of `rm:lit` was pinned and this consumer was not: with
+-- `derived.lit ~= nil` inverted to `== nil`, and with either of the two
+-- and/or operators swapped, all three Lua suites stayed green. Valhalla reads
+-- `lit` on a way, so the difference is the night-riding signal on every way the
+-- reference data lights or declares unlit.
+-- ---------------------------------------------------------------------------
+local lit_yes = M.remap_way({ highway = "residential" }, { lit = true })
+check("a lit way is written lit=yes", lit_yes.lit == "yes", tostring(lit_yes.lit))
+check("and as the string Valhalla reads, not a boolean",
+  type(lit_yes.lit) == "string", type(lit_yes.lit))
+
+local lit_no = M.remap_way({ highway = "residential" }, { lit = false })
+check("a way declared unlit is written lit=no", lit_no.lit == "no", tostring(lit_no.lit))
+check("also as a string", type(lit_no.lit) == "string", type(lit_no.lit))
+
+-- `false` and `nil` are the two readings that must not collapse into one: no
+-- opinion leaves OSM's own `lit` tagging standing, while `false` overwrites it.
+local lit_absent = M.remap_way({ highway = "residential", lit = "yes" }, {})
+check("a way with no lit opinion keeps its own tagging",
+  lit_absent.lit == nil, tostring(lit_absent.lit))
 
 -- Directional conditional access, for the parkway reversal. Valhalla reads
 -- bicycle:forward and bicycle:backward and reads no *:conditional key at all -
