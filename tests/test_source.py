@@ -96,6 +96,24 @@ def test_the_three_geofabrik_extracts_are_the_plans_three_states() -> None:
     )
 
 
+def test_the_pre_flight_size_is_two_gibibytes() -> None:
+    """Flat, because nothing else can say what it is.
+
+    `ESTIMATED_BYTES` stands in for a file that does not exist yet: the gate
+    runs before the download, so there is nothing to measure and every test
+    that reaches this number reaches it through the constant. It is the whole
+    of the pre-flight - `check_disk_gate` reserves four times it - so at a
+    tenth of the figure a volume with 1 GiB free passes the gate and the
+    rebuild fails partway through a 2 GB transfer with ENOSPC, having already
+    taken the volume down, and at ten times it every ordinary deployment is
+    refused a rebuild it could have completed.
+
+    Two gibibytes: Geofabrik's three state extracts are on the order of 1-2 GB
+    together today and the merge is about that again.
+    """
+    assert source.ESTIMATED_BYTES == 2 * 1024**3
+
+
 def test_a_download_is_written_to_a_part_name_and_moved_into_place(tmp_path) -> None:
     """A 1-2 GB transfer that dies partway must not leave a file under the name
     the next rebuild's freshness check reads: a truncated PBF is not an error

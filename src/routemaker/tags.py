@@ -229,10 +229,15 @@ def cycleway_width_m(tags: dict[str, str]) -> float | None:
 
 SHOULDER_PRESENCE_KEYS = ("shoulder", "shoulder:both", "shoulder:left", "shoulder:right")
 
-# One width key per presence key, in the same order. The two lists disagreeing is
-# not cosmetic: a way tagged `shoulder:right=yes` + `shoulder:right:width=2.4`
-# read as a shoulder of unknown width, which is read as narrow, so a surveyed
-# eight-foot shoulder earned nothing.
+# The width key for every side named above, spelled as OSM spells it. Nothing
+# walks the two lists in step any more - `has_shoulder` reads every presence key
+# before it answers and `shoulder_width_m` takes the smallest width on the way,
+# whichever key carries it - so the order is arbitrary and what matters is that
+# no side is missing its width key. A missing one is not cosmetic: while
+# `shoulder:right:width` was absent from this list a way tagged
+# `shoulder:right=yes` + `shoulder:right:width=2.4` read as a shoulder of
+# unknown width, which is read as narrow, so a surveyed eight-foot shoulder
+# earned nothing.
 SHOULDER_WIDTH_KEYS = (
     "shoulder:width",
     "shoulder:both:width",

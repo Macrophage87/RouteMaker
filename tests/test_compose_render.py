@@ -23,6 +23,7 @@ development environment does not have.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -56,6 +57,12 @@ def render(env_file: Path, *profiles: str) -> dict:
 
     `--env-file` replaces compose's own default lookup, so a developer's `.env`
     sitting in the repository cannot change what this renders.
+
+    The *shell* still can, and does: compose gives an inherited variable
+    precedence over the env file, and this suite runs with `PGDATABASE` set to
+    its own test database. So the `PG*` names are dropped from the subprocess
+    environment - what these tests ask is what an operator's env file renders,
+    which cannot be allowed to depend on who is running them.
     """
     if shutil.which("docker") is None:
         pytest.skip(
@@ -67,7 +74,10 @@ def render(env_file: Path, *profiles: str) -> dict:
     for profile in profiles:
         command += ["--profile", profile]
     command += ["config", "--format", "json"]
-    finished = subprocess.run(command, cwd=REPO, capture_output=True, text=True, timeout=120)
+    environ = {key: value for key, value in os.environ.items() if not key.startswith("PG")}
+    finished = subprocess.run(
+        command, cwd=REPO, capture_output=True, text=True, timeout=120, env=environ
+    )
     if finished.returncode != 0:
         if "compose" in finished.stderr and "is not a docker command" in finished.stderr:
             pytest.skip("the docker CLI has no compose plugin")
@@ -139,6 +149,54 @@ def test_the_example_does_not_override_the_compose_default_for_the_database_host
     assert set(hosts.values()) == {"127.0.0.1"}, (
         "this test's premise is wrong: an env file no longer overrides the compose default"
     )
+
+
+def test_the_database_service_is_created_with_the_names_django_connects_with(
+    tmp_path,
+) -> None:
+    """The names travel together, or the stack has a database nobody uses.
+
+    `POSTGRES_DB` and `POSTGRES_USER` are what the postgis image's first boot
+    calls `initdb` with, and `PGDATABASE`/`PGUSER` are what every Django
+    service connects as. They were literals on one side and variables on the
+    other, so a deployment that set either name in `.env` got a database and a
+    role created under one pair of names and four services asking for another -
+    and `migrate` fails on a role that does not exist, taking the three
+    services gated on it with it.
+
+    Rendered from an env file that sets both to something other than the
+    default, because the default is `routemaker` and `.env.example` sets
+    `routemaker`: against that file a hardcoded literal renders identically to
+    the substitution and nothing can tell them apart.
+    """
+    text = ENV_EXAMPLE.read_text()
+    text = re.sub(r"^PGDATABASE=.*$", "PGDATABASE=atlas", text, flags=re.M)
+    text = re.sub(r"^PGUSER=.*$", "PGUSER=surveyor", text, flags=re.M)
+    assert "PGDATABASE=atlas" in text and "PGUSER=surveyor" in text, (
+        "this test's premise is wrong: .env.example no longer sets these names"
+    )
+    mutated = tmp_path / "env"
+    mutated.write_text(text)
+    rendered = render(mutated)
+
+    postgis = environment(rendered, "postgis")
+    assert postgis["POSTGRES_DB"] == "atlas", (
+        "the database the image creates does not follow PGDATABASE, so a deployment "
+        f"that sets it gets a database nothing connects to: {postgis!r}"
+    )
+    assert postgis["POSTGRES_USER"] == "surveyor", postgis
+
+    # And the other half of the pairing: what the image creates is what Django
+    # asks for. Asserted against the rendered services rather than restated, so
+    # the two cannot drift apart under a variable either.
+    for service in DJANGO_SERVICES:
+        assert environment(rendered, service)["PGDATABASE"] == postgis["POSTGRES_DB"]
+        assert environment(rendered, service)["PGUSER"] == postgis["POSTGRES_USER"]
+
+    # The health gate probes the database the application uses, which is the
+    # same substitution a third time.
+    probe = " ".join(rendered["services"]["postgis"]["healthcheck"]["test"])
+    assert "-U surveyor" in probe and "-d atlas" in probe, probe
 
 
 # --- The two services with no image ------------------------------------------
@@ -542,3 +600,80 @@ def test_the_admin_path_is_offered_in_the_example_and_reaches_the_api(tmp_path) 
         "a DJANGO_ADMIN_PATH set in the environment file does not reach the api, so the "
         "admin stays on the path this repository publishes"
     )
+
+
+# --- the three constants these tests are written against ----------------------
+#
+# A canary, in the manner of tests/test_compose.py's derivation checks. Each of
+# these sets is typed out by hand at the top of this file and stands between
+# every test below and the stack, so each can be narrowed with the suite still
+# green and nothing anywhere would say so: drop `rebuild` from DJANGO_SERVICES
+# and the service that runs the six-hour rebuild stops being asked whether it
+# can reach the database at all; drop `photon` from UNBUILT_SERVICES and the
+# heaviest image in the stack quietly goes back to starting on a default `up`;
+# drop `http` from DEFAULT_PORTS and a redirect URI written without a port is
+# checked against nothing.
+#
+# So each is asserted equal to a derivation from the rendered configuration.
+# The lists stay hand-written - they are what this file claims the stack is,
+# and a test that only ever asked the stack about itself would pass on any
+# stack at all - and these three say when the claim and the stack part company.
+
+
+def test_the_django_services_are_the_ones_compose_hands_a_database_to(rendered) -> None:
+    """`DJANGO_SERVICES`, derived.
+
+    A Django service here is one compose gives the libpq variables to: PGHOST
+    and PGDATABASE are how `settings.DATABASES` is filled in, so a service that
+    carries them is a service that opens a connection, and one that does not
+    cannot. `postgis` is the server and carries `POSTGRES_*` instead.
+    """
+    connect = {
+        name
+        for name, service in rendered["services"].items()
+        if {"PGHOST", "PGDATABASE", "PGUSER"} <= set(service.get("environment") or {})
+    }
+    assert set(DJANGO_SERVICES) == connect, (
+        f"DJANGO_SERVICES names {sorted(DJANGO_SERVICES)} and the rendered stack "
+        f"connects from {sorted(connect)}"
+    )
+    # And they are this repository's own images rather than anything pulled,
+    # which is the other half of what makes them Django services.
+    assert all(rendered["services"][name].get("build") for name in DJANGO_SERVICES)
+
+
+def test_the_unbuilt_services_are_the_ones_behind_a_profile(env_file) -> None:
+    """`UNBUILT_SERVICES`, derived.
+
+    A service behind a profile is a service a default `up` does not start,
+    which is the whole property the name records. Read from the render that
+    names the profile, because the ones under test are absent from the other.
+    """
+    with_profile = render(env_file, UNBUILT_PROFILE)["services"]
+    profiled = {name for name, service in with_profile.items() if service.get("profiles")}
+    assert UNBUILT_SERVICES == profiled, (
+        f"UNBUILT_SERVICES names {sorted(UNBUILT_SERVICES)} and the stack parks "
+        f"{sorted(profiled)} behind a profile"
+    )
+    for name in sorted(profiled):
+        assert with_profile[name]["profiles"] == [UNBUILT_PROFILE], (
+            f"{name} is behind {with_profile[name]['profiles']}, and the tests above "
+            f"only ever ask for --profile {UNBUILT_PROFILE}"
+        )
+
+
+def test_the_default_ports_are_the_ports_the_stack_publishes(rendered) -> None:
+    """`DEFAULT_PORTS`, derived.
+
+    The two schemes are only worth mapping because the edge proxy publishes
+    exactly the two ports a browser assumes when a URL names none: that is what
+    makes "no port" answerable at all. A scheme dropped from the mapping raises
+    KeyError in the sign-in check rather than passing it - but a *port* changed
+    to one nothing publishes would make that check assert against a number the
+    stack never listens on, and the mapping is where it would come from.
+    """
+    assert set(DEFAULT_PORTS.values()) == published_ports(rendered), (
+        f"the stack publishes {sorted(published_ports(rendered))} and the browser "
+        f"defaults are {sorted(DEFAULT_PORTS.values())}"
+    )
+    assert set(DEFAULT_PORTS) == {"http", "https"}

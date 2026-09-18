@@ -120,6 +120,11 @@ def test_the_script_installs_every_file_the_loader_requires(tmp_path) -> None:
     assert feature.feature_id.startswith("vdot-"), "the agency survives in the feature id"
     assert feature.coordinates == [(-77.02, 38.90), (-76.98, 38.90)]
     assert loaded.unmatched_crossings, "the toy extract has none of the real bridges"
+    # Named, not just counted, and named from both halves of the union: a
+    # `sidepath_only` row and a legality-only row, so neither resolver can go
+    # quiet without this failing.
+    assert "Key Bridge" in loaded.unmatched_crossings, "the sidepath half reports its misses"
+    assert "Theodore Roosevelt Bridge" in loaded.unmatched_crossings, "and the legality half"
 
 
 def test_without_inputs_the_script_installs_the_fixture_and_names_what_is_missing(tmp_path) -> None:
@@ -270,6 +275,69 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     for row in sidepath_rows:
         assert row["name"] not in loaded.unmatched_crossings
     assert sorted(loaded.unmatched_crossings) == legality_only
+
+
+def test_the_loader_names_a_crossing_only_the_sidepath_column_asks_about(tmp_path) -> None:
+    """The other half of the union, which nothing stated.
+
+    The union was added for the legality half, and every row of the shipped
+    fixture carries a legality opinion - so in every test that uses it the
+    legality half already names all eighteen crossings and the sidepath half
+    adds nothing a reviewer could see. Dropping `unmatched_sidepath` from the
+    union left the whole suite green.
+
+    It is not the same list. A row is read by the sidepath half when
+    `sidepath_only` is set and by the legality half when
+    `roadway_bicycle_legal` is not None, and a bridge can be reached only by
+    its sidepath while nobody has yet recorded whether the roadway itself bars
+    bicycles - which is exactly the row whose `null` keeps the pipeline from
+    injecting a legality tag it has no backing for. Miss that row and the
+    no-trail variant treats the bridge as a roadway, which is the defect the
+    sidepath column exists to prevent, and nothing says so.
+    """
+    from pipeline.extract import Way
+    from pipeline.run import ReferenceData
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "urban-areas.json").write_text("[]")
+    (reference / "volume.json").write_text("[]")
+    (reference / "crossings.json").write_text(
+        json.dumps(
+            [
+                {
+                    "name": "Sidepath Bridge",
+                    "osm_names": ["Sidepath Bridge"],
+                    "osm_names_verified": True,
+                    "sidepath_only": True,
+                    "roadway_bicycle_legal": None,
+                },
+                {
+                    "name": "Roadway Bridge",
+                    "osm_names": ["Roadway Bridge"],
+                    "osm_names_verified": True,
+                    "sidepath_only": False,
+                    "roadway_bicycle_legal": True,
+                },
+            ]
+        )
+    )
+    # The extract carries the legality row's bridge and not the sidepath row's,
+    # so the legality half has nothing to report and the sidepath half has one
+    # thing to report.
+    ways = [
+        Way(
+            osm_id=8100,
+            tags={"highway": "secondary", "bridge": "yes", "name": "Roadway Bridge"},
+            node_ids=[],
+        )
+    ]
+
+    loaded = ReferenceData.load(reference, ways)
+
+    assert loaded.unmatched_crossings == ("Sidepath Bridge",)
+    assert loaded.bridge_bicycle_legal == {8100: True}, "the legality half resolved"
+    assert loaded.sidepath_bridge_ids == frozenset(), "and the sidepath row matched nothing"
 
 
 def line_feature(coordinates: list[list[float]], aadt: str, object_id: int = 1) -> dict:

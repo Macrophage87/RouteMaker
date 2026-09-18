@@ -168,6 +168,42 @@ def test_the_gate_is_the_eighty_percent_alert_made_hard(tmp_path) -> None:
     )
 
 
+def test_a_build_landing_exactly_on_the_gate_is_allowed(tmp_path) -> None:
+    """The boundary itself, which the cases above stand a long way from.
+
+    "The build may not take the volume *past* it" - so a build that would leave
+    the volume at exactly the configured fraction is inside the gate and runs,
+    and the comparison is `>` rather than `>=`. The difference is not academic:
+    the gate is configured at the alert threshold, so the two readings that
+    matter most are the one at it and the one a byte over it, and between them
+    lies "the rebuild refuses to start" against "the rebuild starts and the
+    alert fires when it finishes".
+
+    Chosen so the arithmetic is exact rather than nearly so: a 100 GiB volume
+    20 GiB used, and a required 60 GiB, is 80 percent after, in floating point
+    as well as on paper.
+    """
+    at_the_gate = tiles.check_disk_gate(
+        tmp_path,
+        source_bytes=15 * GIB,
+        minimum_free=0,
+        fraction=0.8,
+        disk_usage=usage(100 * GIB, 20 * GIB),
+    )
+    assert at_the_gate.required == 60 * GIB
+    assert at_the_gate.fraction_after == 0.8, "the case is the boundary, not near it"
+
+    # And a byte past it is past it.
+    with pytest.raises(tiles.DiskGateRefused):
+        tiles.check_disk_gate(
+            tmp_path,
+            source_bytes=15 * GIB,
+            minimum_free=0,
+            fraction=0.8,
+            disk_usage=usage(100 * GIB, 20 * GIB + 1),
+        )
+
+
 def test_trace_attributes_parses_stdout_and_never_the_log_on_stderr(tmp_path) -> None:
     """`valhalla_service <config> <action> <json>` answers one request without
     starting the server, and in that mode it forces logging to stderr so that

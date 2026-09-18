@@ -242,6 +242,31 @@ check("the denying change is refused rather than applied", border_out.bicycle ==
 check("bicycle access at the border survives", bike_allowed(border_out))
 check("the violation is recorded and logged", #remap.violations == before + 1 and #logged == 1)
 
+-- And the node the guard must not catch, which is what the second half of its
+-- condition is for: a border control this remap wrote nothing to. OSM tags a
+-- genuinely closed crossing `access=no`, so the merged tags deny bicycle access
+-- on their own - and denying it is upstream's reading, not a change of this
+-- project's making. Testing `denies_bicycle_at_border` alone cannot see the
+-- difference: it answers true here either way. Drop `next(changes) ~= nil` and
+-- every closed border crossing in the extract raises a violation, tags the node
+-- with the sentinel and puts a line under the searched prefix into the build
+-- log, which the validation stage fails the rebuild on.
+logged = {}
+before = #remap.violations
+local closed_border_ok, _, closed_border_out =
+  pcall(nodes_proc, { barrier = "border_control", access = "no", name = "Closed Crossing" }, 3)
+
+check("a closed border crossing does not raise", closed_border_ok)
+check("upstream's own closure is not this remap's violation",
+  #remap.violations == before, #remap.violations - before)
+check("and nothing reaches the build log for it", #logged == 0, logged[1])
+check("the node carries no violation sentinel",
+  closed_border_out and closed_border_out[remap.VIOLATION_TAG] == nil,
+  closed_border_out and closed_border_out[remap.VIOLATION_TAG])
+check("and passes through to upstream as the border control it is",
+  closed_border_out and closed_border_out.border_control == "true",
+  closed_border_out and closed_border_out.border_control)
+
 io.stderr = real_stderr
 
 -- ---------------------------------------------------------------------------

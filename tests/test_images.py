@@ -519,3 +519,37 @@ def test_no_pulled_image_floats() -> None:
     assert EXTERNAL_IMAGES <= named, (
         f"this list has drifted from compose.yaml: {sorted(EXTERNAL_IMAGES - named)}"
     )
+
+
+def test_the_data_root_is_prepared_for_the_uid_the_images_run_as() -> None:
+    """One number, written in three files, and nothing held them together.
+
+    `scripts/prepare_data_root.sh` chowns the bind-mount sources to a uid by
+    number - the account exists inside the images and need not exist on the
+    host - and both Dockerfiles declare that account with `USER`. Get them out
+    of step and the script runs clean, the stack comes up, and every write into
+    a bound directory fails with EACCES: the rebuild cannot stage tiles, the
+    api cannot collect static, and the failure surfaces as a permission error
+    from inside a container rather than as anything naming this script.
+
+    Read from all three files rather than restated here, so the uid can be
+    changed in one place only by changing it in all of them.
+    """
+    users = set()
+    for path in sorted(set(BUILT.values())):
+        declared = Dockerfile(path).of("USER")
+        assert declared, f"{path.name} declares no USER and would run as root"
+        users.add(declared[-1][1].strip())
+    assert len(users) == 1, f"the images run as different accounts: {sorted(users)}"
+
+    uid, _, gid = users.pop().partition(":")
+    assert uid.isdigit() and gid.isdigit(), "USER is by number, as the script's comment says"
+
+    script = (REPO / "scripts" / "prepare_data_root.sh").read_text()
+    chowned = set(re.findall(r"^\s*chown\s+-R\s+(\d+):(\d+)\s", script, re.MULTILINE))
+    assert chowned, "prepare_data_root.sh no longer chowns anything"
+    assert chowned == {(uid, gid)}, (
+        f"prepare_data_root.sh chowns to {sorted(chowned)} while the images run as "
+        f"{uid}:{gid}; every write into a bound directory would fail with EACCES"
+    )
+    assert f"uid {uid}" in script, "the message it prints names a different uid than it sets"

@@ -569,6 +569,40 @@ class TestBridgeBicycleLegality:
         row = {"name": "Pinned Bridge", "osm_way_id": 4242, "roadway_bicycle_legal": False}
         assert resolve_bridge_bicycle_legality([row], []) == ({4242: False}, [])
 
+    def test_a_hand_pinned_way_still_answers_for_the_names_it_carries(self) -> None:
+        """A name found in the extract is found, whichever row got to the way
+        first.
+
+        `unmatched` answers one question - does the extract carry this crossing
+        at all - and the mapping answers another, which row's opinion the way
+        ends up with. An operator who pinned a way by id has already answered
+        the second for that way, so a later row whose name is on the same way
+        writes nothing; the name is still *there*, and recording the match only
+        when the write lands reports the crossing as missing from an extract
+        that plainly carries it. The operator would then be told the fixture
+        cannot find a bridge they pinned by hand, and the rule they pinned it
+        for is the thing that is working.
+
+        The shape is ordinary OSM: one bridge way carrying the structure's name
+        under `bridge:name` and the roadway's under `name`.
+        """
+        pinned = {"name": "Pinned Bridge", "osm_way_id": 4242, "roadway_bicycle_legal": False}
+        by_name = {"name": "Sousa Bridge", "osm_way_id": 0, "roadway_bicycle_legal": True}
+        way = FakeWay(
+            4242,
+            {
+                "highway": "secondary",
+                "bridge": "yes",
+                "name": "Pinned Bridge",
+                "bridge:name": "Sousa Bridge",
+            },
+        )
+
+        legality, unmatched = resolve_bridge_bicycle_legality([pinned, by_name], [way])
+
+        assert unmatched == [], "the extract carries Sousa Bridge under bridge:name"
+        assert legality == {4242: False}, "and the operator's own claim still stands"
+
     def test_a_street_named_after_a_bridge_is_not_matched(self) -> None:
         row = {"name": "Key Bridge", "osm_way_id": 0, "roadway_bicycle_legal": True}
         approach = FakeWay(503, {"highway": "secondary", "name": "Key Bridge"})

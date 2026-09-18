@@ -240,16 +240,18 @@ REVISIT_SPACING_M = 25.0
 DC_LAT = 38.9
 
 
-def parallel_offset_route(base_lon: float) -> list[Point]:
-    """An out-and-back whose return leg is `REVISIT_OFFSET_M` east of its outbound.
+def parallel_offset_route(base_lon: float, offset_m: float = REVISIT_OFFSET_M) -> list[Point]:
+    """An out-and-back whose return leg is `offset_m` east of its outbound.
 
-    One revisit by the definition: the two legs run 22.5 m apart, which is inside
-    the 25 m proximity radius, and the ends of the route are 1000 m apart along
-    it, which is outside the 400 m along-route minimum.
+    At the default it is one revisit by the definition: the two legs run 22.5 m
+    apart, which is inside the 25 m proximity radius, and the ends of the route
+    are 1000 m apart along it, which is outside the 400 m along-route minimum.
+    The separation is a parameter so the radius itself can be stated in metres
+    rather than only as a fraction of the constant under test.
     """
     degrees_per_m_lat = 1.0 / 111_320.0
     degrees_per_m_lon = degrees_per_m_lat / math.cos(math.radians(DC_LAT))
-    offset = REVISIT_OFFSET_M * degrees_per_m_lon
+    offset = offset_m * degrees_per_m_lon
     step = REVISIT_SPACING_M * degrees_per_m_lat
     count = int(REVISIT_LEG_M / REVISIT_SPACING_M) + 1
 
@@ -272,6 +274,29 @@ def test_a_parallel_return_leg_inside_the_radius_is_a_revisit(sample: int) -> No
     cell = REVISIT_PROXIMITY_M / 111_320.0
     base_lon = -77.0 + sample * cell / 20.0
     assert revisits(parallel_offset_route(base_lon)) == 1
+
+
+def test_the_proximity_radius_is_twenty_five_metres() -> None:
+    """Flat, and then stated in metres rather than in itself.
+
+    Every other case in this section reaches the radius through
+    `REVISIT_PROXIMITY_M`: the offsets are written as fractions of it, the cell
+    width is measured against it, and the brute-force definition takes it as a
+    default. So the whole section moves with the constant and none of it says
+    what the constant is - it would pass unchanged at 25 m, at 30 m, or at 100.
+
+    The figure is the definition of a revisit, and a revisit is what Mass Ride
+    refuses a route for. The District's blocks put parallel one-way pairs about
+    27 m apart, so a route out on one and back on the other is two streets, not
+    a route meeting its own line; at 30 m it becomes a revisit and an ordinary
+    out-and-back through the grid is rejected for a crowding hazard that is not
+    there.
+    """
+    assert REVISIT_PROXIMITY_M == 25.0
+
+    a_block_over = parallel_offset_route(-77.0, offset_m=27.0)
+    assert revisits(a_block_over) == 0, "27 m apart is a parallel street, not a revisit"
+    assert revisits(a_block_over, proximity_m=30.0) == 1, "and the radius is what decides it"
 
 
 def brute_force_revisits(
