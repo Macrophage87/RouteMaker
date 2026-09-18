@@ -36,6 +36,21 @@ what each step happened to return:
   promoted the empty schema that swap had created over the served graph, in
   silence.
 
+Round 5 found the undo itself able to leave one, and the emergency path with
+no undo at all:
+
+- every step of the undo is attempted whatever the step before it did. One
+  `restore_links` raising used to skip the other two variants and the settings
+  rows, so the undo left the half-swapped deployment it exists to prevent. What
+  it could not put back is attached to the error being re-raised rather than
+  raised in place of it.
+- `rollback` captures the links and the rows before it renames anything, and a
+  failure partway through its per-variant loop restores them and re-swaps the
+  schemas. Before that, a rollback that died on the second variant left one
+  variant on last week's tiles and two on this week's, with the schemas already
+  rolled back - a state reached by the one command whose purpose is to get out
+  of one.
+
 What this does not do, because no phase-1 component can: start the Valhalla
 processes against the promoted extract or stop the old ones. valhalla_service
 does not reload tiles at runtime, so after a promotion the serving containers
@@ -160,6 +175,59 @@ def restore_upstreams(before: Mapping[str, UpstreamState]) -> None:
             )
 
 
+def restore_everything(
+    tiles_dir: Path,
+    links_before: Mapping[Variant, tiles.TileLinks],
+    rows_before: Mapping[str, UpstreamState],
+) -> list[str]:
+    """Put the tile links and the settings rows back, every step of it.
+
+    Returns what could not be restored, so the caller can say so on top of the
+    failure it is already reporting rather than in place of it. Every variant
+    the caller captured is put back, which has to be every variant there is: a
+    `promote` that failed between its own two links returned nothing, so that
+    variant is in neither the promoted set nor the untouched one, and its
+    `previous` is the link that moved.
+
+    Each step is attempted whatever the step before it did. Written as one
+    unguarded sequence, the first `restore_links` to raise - a read-only
+    volume, a link somebody had replaced with a directory - skipped the other
+    two variants and the settings rows with them, which is the half-swapped
+    deployment the undo exists to prevent, reached by the undo itself. A
+    partial undo is worth having: two variants back on the served build is
+    better than none, and the rows are what the API reads.
+    """
+    failures: list[str] = []
+    for variant, state in links_before.items():
+        try:
+            tiles.restore_links(tiles_dir, variant, state)
+        except Exception as error:  # noqa: BLE001 - collected, never swallowed
+            failures.append(f"{variant.value}'s tile links ({error})")
+            logger.exception("could not restore %s's tile links", variant.value)
+    try:
+        restore_upstreams(rows_before)
+    except Exception as error:  # noqa: BLE001 - same
+        failures.append(f"the settings rows ({error})")
+        logger.exception("could not restore the settings rows")
+    return failures
+
+
+def _note_undo_failures(error: BaseException, failures: list[str], what: str) -> None:
+    """Attach what the undo could not put back to the error being re-raised.
+
+    The original error is what the caller classifies on - the rebuild's retry
+    decision reads it, and `RebuildFailed` carries it - so it is raised as
+    itself rather than replaced by a report about the undo. The note is how the
+    operator finds out that this deployment needs a hand before the next
+    attempt.
+    """
+    if not failures:
+        return
+    message = f"{what} could not restore " + "; ".join(failures)
+    logger.error("%s", message)
+    error.add_note(message)
+
+
 def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -> SwapOutcome:
     """Promote, repoint, rename - and undo whatever was done if a later step fails."""
     outcome = SwapOutcome(build_id=build_id)
@@ -170,13 +238,14 @@ def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -
             outcome.promoted[variant] = tiles.promote(tiles_dir, variant, build_id)
         repoint_upstreams(build_id, upstreams)
         outcome.schema = swap_schemas()
-    except Exception:
+    except Exception as error:
         logger.error("swap failed after promoting %s; undoing", list(outcome.promoted))
         # Every variant, not only the ones `promote` returned for: a promotion
-        # that failed between its own two links is in neither set.
-        for variant in Variant:
-            tiles.restore_links(tiles_dir, variant, links_before[variant])
-        restore_upstreams(rows_before)
+        # that failed between its own two links is in neither set, and its
+        # `previous` is the link that moved.
+        _note_undo_failures(
+            error, restore_everything(tiles_dir, links_before, rows_before), "the swap's undo"
+        )
         raise
     return outcome
 
@@ -194,8 +263,11 @@ def _retired_holds_a_graph(retired: str) -> bool:
         cursor.execute("SELECT to_regclass(%s)", [f"{retired}.segment"])
         if cursor.fetchone()[0] is None:
             return False
-        cursor.execute(f"SELECT count(*) FROM {retired}.segment")
-        return cursor.fetchone()[0] > 0
+        # Whether there is a row, not how many: counting a retired graph is a
+        # sequential scan over a few million rows to answer a question the
+        # first one settles.
+        cursor.execute(f"SELECT EXISTS (SELECT 1 FROM {retired}.segment LIMIT 1)")
+        return cursor.fetchone()[0]
 
 
 def rollback_target(tiles_dir: Path) -> dict[Variant, str]:
@@ -263,13 +335,44 @@ def rollback(tiles_dir: Path) -> None:
     Runs the schema rename first of the three, because it is the step most
     likely to be refused by something this process cannot see, and being
     refused there leaves everything consistent.
+
+    And it has the same undo the forward path has, built the same way, out of
+    state captured before the first write. `rollback_target` pre-validates
+    everything about the deployment that can be pre-validated - the rows, the
+    links, the retired schema - but a symlink write on a full or read-only
+    volume cannot be, and a rollback that died on the second variant left the
+    schemas rolled back, one variant on last week's tiles and two on this
+    week's, and one settings row rewritten: a deployment in a state no rollback
+    and no rebuild can reason about, reached by the command whose whole purpose
+    is to get out of one. So a failure in the loop puts the links and the rows
+    back and re-swaps the schemas, which returns the deployment to the state
+    the operator ran this from.
     """
+    from django.conf import settings
+
     from core.models import ValhallaUpstream
 
     target = rollback_target(tiles_dir)
+    links_before = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
+    rows_before = upstream_states(settings.VALHALLA_UPSTREAMS)
     rollback_swap()
-    for variant in Variant:
-        tiles.demote(tiles_dir, variant)
-        ValhallaUpstream.objects.filter(variant=variant.value).update(
-            build_id=target[variant], previous_build_id="", updated_at=timezone.now()
-        )
+    try:
+        for variant in Variant:
+            tiles.demote(tiles_dir, variant)
+            ValhallaUpstream.objects.filter(variant=variant.value).update(
+                build_id=target[variant], previous_build_id="", updated_at=timezone.now()
+            )
+    except Exception as error:
+        logger.error("the rollback failed partway; putting the deployment back")
+        failures = restore_everything(tiles_dir, links_before, rows_before)
+        try:
+            # The exact reverse of `rollback_swap`: it renamed live to staging
+            # and the retired schema to live, and this renames live back to
+            # retired and staging back to live. The deployment is serving the
+            # build it was serving before the command was run.
+            swap_schemas()
+        except Exception as schema_error:  # noqa: BLE001 - collected, never swallowed
+            failures.append(f"the schemas ({schema_error})")
+            logger.exception("could not put the schemas back after a failed rollback")
+        _note_undo_failures(error, failures, "the rollback's undo")
+        raise
