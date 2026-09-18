@@ -2566,3 +2566,171 @@ class TestTheRevokeNowSelectionSurvivesPadding:
         other_guild.refresh_from_db()
         guild.refresh_from_db()
         assert (other_guild.state, guild.state) == ("active", "active")
+
+
+# Which posted `action` the refusal check reads, against which one Django runs.
+#
+# A changelist draws the action form twice, above and below the list, so `action`
+# is posted once per form and `index` names the button that was pushed.
+# `response_action` therefore resolves `getlist("action")[index]`, while
+# `QueryDict.get("action")` returns the *last* value. `_refuse_unpermitted_action`
+# read the second and Django ran the first, and a hand-built POST chooses both
+# freely.
+#
+# So `action=["delete_selected", ""]` with `index=0` left the check reading the
+# empty string - no named action, nothing refused - and Django went on to act on
+# `delete_selected`. Measured on every table a guild admin can read: 200, or a
+# redirect back to the changelist where the model has actions at all, and no audit
+# row. Nothing was deleted, because `get_actions` still filters the choices by
+# permission, but the plan's "refused and audited" and this class's own measured
+# defect were both back.
+#
+# The fix resolves the action exactly as Django does, including both of Django's
+# fallbacks, and these are the tests for that - in both directions, since a check
+# that refuses an action the viewer *does* hold is the same defect pointing the
+# other way.
+
+
+# Every model a guild admin holds a view permission on, which is every
+# changelist they can post an action form at. Parametrized rather than written
+# out because the defect was uniform across all of them and a new readable
+# surface must not quietly be the one that is not covered.
+GUILD_READABLE = [
+    "configuredguild",
+    "rolemapping",
+    "cachedmembership",
+    "bordercrossing",
+    "jurisdiction",
+    "override",
+    "instanceadminlisting",
+]
+
+
+@db
+class TestTheDuplicateActionPost:
+    """The POST shape itself, on each readable table."""
+
+    @pytest.mark.parametrize("model", GUILD_READABLE)
+    def test_it_is_refused(self, as_guild_admin, rows, model) -> None:
+        response = as_guild_admin.post(
+            admin_url(f"core_{model}_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": ["1"],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        assert response.status_code == 403, (
+            "200 or a redirect here is Django resolving a different action from "
+            "the one the check read"
+        )
+
+    @pytest.mark.parametrize("model", GUILD_READABLE)
+    def test_it_leaves_exactly_one_refused_row(self, as_guild_admin, rows, model) -> None:
+        as_guild_admin.post(
+            admin_url(f"core_{model}_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": ["1"],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        entry = refusals().get()
+        assert (entry.model, entry.action) == (model, "action")
+        assert entry.actor.discord_user_id == 9002
+
+    def test_the_last_value_alone_is_not_what_is_read(self, as_guild_admin, rows) -> None:
+        """The mirror image, which is what makes the test above about the
+        resolution rather than about there being two values.
+
+        `index=1` names the empty string, and the empty string is what Django
+        will resolve too, so nothing is being attempted and nothing may be
+        refused. A check that simply refused whenever any posted value was
+        unpermitted would fail here - and would refuse the bottom form's button
+        on an ordinary page with two forms on it.
+        """
+        response = as_guild_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": ["1"],
+                "index": "1",
+                "post": "yes",
+            },
+        )
+        assert response.status_code != 403
+        assert not refusals().exists()
+
+
+@db
+class TestDjangosOwnFallbacksAreMirrored:
+    """Both of them, because the defect being fixed is the check and the view
+    disagreeing - in whichever direction they disagree."""
+
+    def post(self, client, *, index):
+        return client.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": ["", "delete_selected"],
+                "_selected_action": ["1"],
+                "index": index,
+                "post": "yes",
+            },
+        )
+
+    def test_a_non_numeric_index_is_index_zero(self, as_guild_admin, rows) -> None:
+        """`response_action` maps `ValueError` to 0, so index 0 is the action
+        that runs and the empty string there is genuinely nothing attempted."""
+        assert self.post(as_guild_admin, index="not-a-number").status_code != 403
+        assert not refusals().exists()
+
+    def test_an_out_of_range_index_falls_back_to_the_last_value(self, as_guild_admin, rows) -> None:
+        """Django's `IndexError` branch leaves `data["action"]` as the QueryDict's
+        last value rather than clearing it, so that is the action it will run.
+
+        Answering "nothing was named" here instead would have handed back the
+        very hole this file exists for, reachable with `index=9`.
+        """
+        assert self.post(as_guild_admin, index="9").status_code == 403
+        assert refusals().get().action == "action"
+
+
+@db
+class TestAPermittedActionStillRuns:
+    """The over-refusal side. A resolution that is merely stricter is not a fix:
+    it would break the ordinary two-form changelist for everybody."""
+
+    def test_a_guild_admins_own_action_is_not_refused(self, as_guild_admin, guild) -> None:
+        """`revoke_now` is theirs on their own guild, posted in the same
+        duplicated shape."""
+        response = as_guild_admin.post(
+            admin_url("core_configuredguild_changelist"),
+            {
+                "action": ["revoke_now", ""],
+                "_selected_action": [str(guild.pk)],
+                "index": "0",
+            },
+        )
+        assert response.status_code == 302
+        guild.refresh_from_db()
+        assert guild.state == "revoked"
+        assert not refusals().exists()
+
+    def test_an_instance_admins_bulk_delete_is_not_refused(self, as_instance_admin, rows) -> None:
+        from core.models import RoleMapping
+
+        mapping = rows["rolemapping"]
+        response = as_instance_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": ["delete_selected", ""],
+                "_selected_action": [str(mapping.pk)],
+                "index": "0",
+                "post": "yes",
+            },
+        )
+        assert response.status_code == 302
+        assert not RoleMapping.objects.filter(pk=mapping.pk).exists()
+        assert not refusals().exists()

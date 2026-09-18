@@ -292,9 +292,46 @@ class AuditedAdmin(admin.ModelAdmin):
         above records like every other refusal. An action they do hold is not
         touched here and goes through the action's own per-object checks.
         """
-        requested = request.POST.get("action", "")
+        requested = self._posted_action(request)
         if requested and requested not in self.get_actions(request):
             raise PermissionDenied
+
+    @staticmethod
+    def _posted_action(request) -> str:
+        """The action Django is about to run, resolved exactly as Django does.
+
+        Not `request.POST.get("action")`, which is where this check was looking
+        and which is a different value. A changelist draws the action form twice,
+        above and below the list, so `action` is posted once per form and
+        `index` says which button was pushed; `response_action` therefore reads
+        `getlist("action")[index]` while `QueryDict.get` returns the *last*
+        value. The two disagree the moment the values differ, and a hand-built
+        POST chooses them freely: `action=["delete_selected", ""]` with
+        `index=0` left this check reading the empty string - no named action, so
+        nothing refused - while Django went on to act on `delete_selected`.
+        Measured on every table a guild admin can read: 200 or a redirect back
+        to the changelist, and no audit row, which is the exact silence this
+        method exists to end.
+
+        Django's own two fallbacks are mirrored rather than improved on, because
+        a check that resolves a *different* action from the one that runs is the
+        defect being fixed, in whichever direction it disagrees. A non-numeric
+        `index` is index 0. An out-of-range one leaves Django reading the
+        QueryDict's last value, so that is what is returned here - answering
+        "nothing was named" instead would hand back the same hole with
+        `index=9`.
+        """
+        posted = request.POST.getlist("action")
+        if not posted:
+            return ""
+        try:
+            index = int(request.POST.get("index", 0))
+        except (TypeError, ValueError):
+            index = 0
+        try:
+            return posted[index]
+        except IndexError:
+            return posted[-1]
 
     def save_model(self, request, obj, form, change) -> None:
         super().save_model(request, obj, form, change)
