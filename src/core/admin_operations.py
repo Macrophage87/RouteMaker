@@ -30,7 +30,15 @@ from django.template.response import TemplateResponse
 
 from .admin import site
 from .models import ScheduledRun
-from .runs import STALE_AFTER, disk_headroom, failed_jobs, stale_task_details, wedged_jobs
+from .runs import (
+    DISK_UNMEASURED,
+    STALE_AFTER,
+    disk_headroom,
+    failed_jobs,
+    stale_task_details,
+    unmeasured_disk_message,
+    wedged_jobs,
+)
 
 # How many of each list the page shows. Enough to see a pattern, few enough that
 # the page stays one screen.
@@ -70,6 +78,7 @@ class ScheduledRunAdmin(admin.ModelAdmin):
         and this replaces it."""
         if not self.has_view_permission(request):
             raise PermissionDenied
+        headroom = disk_headroom()
         context = {
             **site.each_context(request),
             "title": "Operations",
@@ -83,8 +92,13 @@ class ScheduledRunAdmin(admin.ModelAdmin):
             # The volume, before the disk gate turns it into a refused
             # rebuild. `check_operations` prints the same thing from the same
             # function, so the page and the monitor cannot disagree about how
-            # much room is left either.
-            "disk_headroom": disk_headroom(),
+            # much room is left either - including when the answer is that
+            # this container cannot see the volume at all, which the page used
+            # to render as "the tiles volume has room for the next rebuild".
+            "disk_headroom": headroom,
+            "disk_headroom_message": (
+                unmeasured_disk_message(headroom) if headroom["status"] == DISK_UNMEASURED else ""
+            ),
             "failed_jobs": failed_jobs(RECENT_FAILURES),
             "recent_runs": ScheduledRun.objects.order_by("-started_at")[:RECENT_RUNS],
             **(extra_context or {}),

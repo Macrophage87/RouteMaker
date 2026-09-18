@@ -40,7 +40,7 @@ def empty_job_tables(transactional_db):
 
 
 @pytest.fixture(autouse=True)
-def ample_free_space(monkeypatch):
+def ample_free_space(monkeypatch, tmp_path_factory):
     """Take the free-space check out of every test that is not about it.
 
     `check_operations` and the operations page report a tiles volume that is
@@ -53,9 +53,18 @@ def ample_free_space(monkeypatch):
     Neutralised rather than mocked out, so the code path still runs: with no
     floor to reserve and a gate at 100 percent there is genuinely nothing to
     report, and a test that wants the alert sets its own numbers.
+
+    `TILES_DIR` is pointed at a directory that exists for the same reason and
+    it is not cosmetic. A checkout has no `data/` directory, so in the suite
+    `settings.TILES_DIR` is exactly the shape of a container with no data
+    volume mounted - which is now its own answer, `DISK_UNMEASURED`, and its
+    own alert. Every test here that is not about the mount says so by taking
+    this fixture; the ones that are about it point `TILES_DIR` somewhere
+    missing themselves.
     """
     monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
     monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 1.0)
+    monkeypatch.setattr(settings, "TILES_DIR", tmp_path_factory.mktemp("tiles"))
 
 
 @pytest.fixture
@@ -988,7 +997,8 @@ def test_a_volume_too_full_for_the_next_rebuild_is_an_alert(monkeypatch) -> None
     monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
     monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
     short = disk_headroom(disk_usage=fake_usage(200 * 1024**3, 190 * 1024**3))
-    assert short is not None and short["free_bytes"] == 10 * 1024**3
+    assert short["status"] == "short" and short["alert"]
+    assert short["free_bytes"] == 10 * 1024**3
 
     # The command through its own code path, with a floor no filesystem can
     # satisfy rather than a stubbed check: what is asserted is that the fourth
@@ -1020,37 +1030,116 @@ def test_a_volume_over_the_gate_fraction_is_an_alert_before_the_gate_refuses(
     # 30 GiB free of 100, floor 20: the floor fits, but using it leaves the
     # volume 90 percent full.
     tight = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 70 * 1024**3))
-    assert tight is not None, "free space alone said this volume was fine"
+    assert tight["status"] == "short", "free space alone said this volume was fine"
     assert tight["free_bytes"] > tight["minimum_free_bytes"]
     assert tight["fraction_after"] > tight["fraction"]
 
     roomy = disk_headroom(disk_usage=fake_usage(100 * 1024**3, 40 * 1024**3))
-    assert roomy is None, "60 GiB free of 100 and 60 percent full after the floor is fine"
+    assert roomy["status"] == "ok", "60 GiB free of 100 and 60 percent full after the floor is fine"
+    assert not roomy["alert"]
+    # The ok answer carries the evidence too, because the surfaces render it:
+    # "there is room" with no path and no figure behind it is the sentence a
+    # container that had measured the wrong filesystem printed.
+    assert roomy["free_bytes"] == 60 * 1024**3
+    assert roomy["path"] == str(settings.TILES_DIR)
 
 
 @db
 def test_the_free_space_line_names_the_path_it_measured(monkeypatch) -> None:
-    """`check_operations` is documented as a cron entry in `api`, which mounts
-    no part of the data volume: there `TILES_DIR` is a path on the container's
-    own writable layer and the number is about the wrong filesystem. A line
-    that does not say which path it read is a line that can be quietly about
-    the wrong one.
+    """The check runs wherever the runbook's cron entry puts it, and only one
+    container mounts the data volume. A line that does not say which path it
+    read is a line that can be quietly about the wrong one.
     """
-    from pathlib import Path
-
     from core.runs import disk_headroom
 
     monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 1 << 62)
     monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
-    monkeypatch.setattr(settings, "TILES_DIR", Path(settings.TILES_DIR) / "nowhere" / "at" / "all")
 
     reported = disk_headroom()
-    assert reported is not None
-    assert Path(reported["path"]).exists(), (
-        "a missing tiles directory is measured at its nearest existing ancestor, which is "
-        "the filesystem check_disk_gate measures after it creates the directory - rather "
-        "than raising FileNotFoundError on every deployment whose first rebuild has not run"
+    assert reported["status"] == "short"
+    assert reported["path"] == str(settings.TILES_DIR), (
+        "the path reported is the tiles directory itself, which is the filesystem "
+        "check_disk_gate measures after it has created it"
     )
+
+
+@db
+def test_a_container_with_no_tiles_volume_says_so_rather_than_reassuring(monkeypatch) -> None:
+    """The finding this replaced a reassurance for.
+
+    `settings.TILES_DIR` is `DATA_ROOT / "tiles"` and `DATA_ROOT` falls back to
+    a path inside the image, so in a container with no data volume mounted the
+    directory is simply not there. The probe used to walk up to the nearest
+    existing ancestor - `/` - measure the container's own root filesystem, find
+    it roomy, and let both surfaces say "the tiles volume has room for the next
+    rebuild": a positive claim about a filesystem neither of them had ever
+    seen, on the one check whose whole job is to be read before the rebuild's
+    disk gate refuses.
+
+    So a missing `TILES_DIR` is its own answer and its own alert. It is an
+    alert rather than a silence because it is the outcome where the check has
+    no coverage at all, and a monitor that exits 0 while a quarter of it is
+    blind is the silence the check was added to break; it clears for good by
+    mounting the volume, so it costs one page rather than a recurring one.
+    """
+    from io import StringIO
+    from pathlib import Path
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, disk_headroom
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    unmounted = Path(settings.TILES_DIR) / "no" / "data" / "volume" / "here"
+    monkeypatch.setattr(settings, "TILES_DIR", unmounted)
+
+    reported = disk_headroom()
+    assert reported["status"] == "unmeasured"
+    assert reported["alert"], "a container that cannot see the volume is not a container with room"
+    assert reported["path"] is None
+    assert reported["tiles_dir"] == str(unmounted)
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+    assert exit_code.value.code == 1, f"a blind check exited 0: {printed}"
+    assert "not measured" in printed, printed
+    assert str(unmounted) in printed, "the line names the path that is missing"
+    assert "is not present in this container" in printed, printed
+    assert "1 volume(s) not measured" in printed, printed
+    assert "room for a rebuild" not in printed, (
+        f"nothing may claim there is room for a rebuild here: {printed}"
+    )
+
+
+@db
+def test_the_operations_page_does_not_reassure_about_a_volume_it_cannot_see(
+    client, monkeypatch
+) -> None:
+    """The same, on the page: the block that rendered "The tiles volume has
+    room for the next rebuild" over a filesystem the container never mounted.
+    """
+    from pathlib import Path
+
+    from core.models import User
+
+    unmounted = Path(settings.TILES_DIR) / "no" / "data" / "volume" / "here"
+    monkeypatch.setattr(settings, "TILES_DIR", unmounted)
+    admin = User.objects.create(discord_user_id=9104, is_instance_admin=True)
+    sign_in(client, admin)
+
+    body = client.get(operations_url()).content.decode()
+    assert "disk-not-measured" in body
+    assert "disk-has-room" not in body, "the page reassured about a volume it cannot see"
+    assert str(unmounted) in body, "the page names the path that is missing"
+    assert "is not present in this container" in body
+    assert "room for the next rebuild" not in body, "the reassurance is still rendered"
 
 
 @db
@@ -1068,14 +1157,57 @@ def test_the_operations_page_shows_a_volume_with_no_room(client, monkeypatch) ->
 
 
 @db
-def test_the_operations_page_says_so_when_there_is_room(client) -> None:
+def test_the_operations_page_says_so_when_there_is_room(client, monkeypatch) -> None:
+    """And says it with the path and the free bytes in it.
+
+    The sentence used to be "The tiles volume has room for the next rebuild" -
+    no path, no figure - which is a claim that reads the same whether the
+    number behind it came from the tiles volume or from the container's root
+    filesystem. A reassurance that cannot be checked against anything is what
+    let the unmounted container look healthy.
+    """
     from core.models import User
 
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
     admin = User.objects.create(discord_user_id=9102, is_instance_admin=True)
     sign_in(client, admin)
 
     body = client.get(operations_url()).content.decode()
     assert "disk-has-room" in body
+    assert str(settings.TILES_DIR) in body, "the page names the path it measured"
+    assert "free of" in body, "and the free space it found there"
+    assert "room for the next rebuild" in body, "and still says what that means"
+
+
+@db
+def test_the_ok_line_names_the_path_and_the_free_space(monkeypatch) -> None:
+    """`check_operations`' ok line, same reason as the page's.
+
+    "ok: ... room for a rebuild" was printed by a container measuring its own
+    root filesystem, and a reassurance with no path and no number in it cannot
+    be read against the volume it is supposed to be about.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER
+
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+
+    out = StringIO()
+    with pytest.raises(SystemExit) as exit_code:
+        call_command("check_operations", stdout=out)
+    printed = out.getvalue()
+    assert exit_code.value.code == 0, printed
+    assert printed.startswith("ok:"), printed
+    assert str(settings.TILES_DIR) in printed, f"the ok line names the path it measured: {printed}"
+    assert "GiB free for a rebuild" in printed, printed
 
 
 # --- Putting a wedged job back ----------------------------------------------------------

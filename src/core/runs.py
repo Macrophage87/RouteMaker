@@ -582,8 +582,17 @@ def failed_jobs(limit: int = 50):
     )
 
 
-def disk_headroom(disk_usage=None) -> dict | None:
-    """The tiles volume, when it is close enough to the rebuild's own gate to say so.
+# What `disk_headroom` found, as a word rather than as the presence or absence
+# of a dict. The three are not two: "there is room", "there is not enough room"
+# and "this container cannot see the volume at all" are different answers, and
+# the last one used to be reported as the first.
+DISK_OK = "ok"
+DISK_SHORT = "short"
+DISK_UNMEASURED = "unmeasured"
+
+
+def disk_headroom(disk_usage=None) -> dict:
+    """The tiles volume, measured where the rebuild's own gate measures it.
 
     The fourth thing the alerts watch, and the one that used to be reported by
     nothing until it was already a refusal. `pipeline.tiles.check_disk_gate` is
@@ -606,32 +615,54 @@ def disk_headroom(disk_usage=None) -> dict | None:
 
     Both are weaker than the gate by construction - the gate's reservation is
     never smaller than the floor - so this is the alert that fires *before* the
-    refusal rather than with it. Returning None means there is nothing to say.
+    refusal rather than with it.
 
-    The path is `settings.TILES_DIR`, and it is measured at its nearest
-    existing ancestor: `check_disk_gate` creates the directory before it calls
-    `disk_usage`, so the filesystem it measures is the one the ancestor is on,
-    and a probe that raised `FileNotFoundError` on a host whose first rebuild
-    has not run would be an alert that fails on a new deployment. The path
-    actually measured is reported, because `check_operations` is documented as
-    a cron entry in `api` - a container that mounts no part of the data volume
-    - and a free-space line that does not say which filesystem it read is a
-    line that can be quietly about the wrong one.
+    The return is always a dict and its `status` is the whole answer. It used
+    to be a dict or None, "None" meaning "nothing to say", and the surfaces
+    turned that into "the tiles volume has room for the next rebuild" - a
+    positive claim about a filesystem the container may never have mounted.
+    `settings.TILES_DIR` is `DATA_ROOT / "tiles"` and `DATA_ROOT` falls back to
+    a path inside the image, so in a container with no data volume the
+    directory simply does not exist; the probe used to walk up to the nearest
+    existing ancestor, land on `/`, measure the container's own root
+    filesystem, find it roomy and report that the tiles volume was fine. The
+    number was about the wrong filesystem and the reassurance was about no
+    filesystem at all.
+
+    So the walk is gone and its case is named instead: `DISK_UNMEASURED` when
+    `TILES_DIR` itself is not there, carrying the path that is missing, and
+    `DISK_OK` / `DISK_SHORT` carry the path that was measured and what was
+    found on it. Nothing infers the volume's state from the shape of this
+    value any more, and no surface can say "there is room" without a free-byte
+    figure and the path it came from beside it.
     """
     import shutil
+    from pathlib import Path
 
     from django.conf import settings
 
     disk_usage = disk_usage or shutil.disk_usage
-    measured = _nearest_existing(settings.TILES_DIR)
-    usage = disk_usage(str(measured))
+    tiles_dir = Path(settings.TILES_DIR)
     minimum_free = settings.REBUILD_MIN_FREE_BYTES
     fraction = settings.DISK_GATE_FRACTION
+    if not tiles_dir.exists():
+        return {
+            "status": DISK_UNMEASURED,
+            "alert": True,
+            "tiles_dir": str(tiles_dir),
+            "path": None,
+            "minimum_free_bytes": minimum_free,
+            "fraction": fraction,
+            "fraction_pct": fraction * 100,
+        }
+    usage = disk_usage(str(tiles_dir))
     fraction_after = (usage.used + minimum_free) / usage.total if usage.total else 1.0
-    if usage.free >= minimum_free and fraction_after <= fraction:
-        return None
+    short = usage.free < minimum_free or fraction_after > fraction
     return {
-        "path": str(measured),
+        "status": DISK_SHORT if short else DISK_OK,
+        "alert": short,
+        "tiles_dir": str(tiles_dir),
+        "path": str(tiles_dir),
         "free_bytes": usage.free,
         "total_bytes": usage.total,
         "minimum_free_bytes": minimum_free,
@@ -646,15 +677,15 @@ def disk_headroom(disk_usage=None) -> dict | None:
     }
 
 
-def _nearest_existing(path):
-    """`path` if it exists, else the closest parent that does.
+def unmeasured_disk_message(headroom: dict) -> str:
+    """What a container that cannot see the volume says, in one place.
 
-    Never raises and never returns something outside the path's own chain: the
-    root always exists, so the walk terminates.
+    Written here rather than in each surface: the page and the command must
+    name the same missing path and offer the same remedy, and this is the
+    sentence that replaced a reassurance.
     """
-    from pathlib import Path
-
-    candidate = Path(path)
-    while not candidate.exists() and candidate != candidate.parent:
-        candidate = candidate.parent
-    return candidate
+    return (
+        f"not measured: {headroom['tiles_dir']} is not present in this container, so the "
+        "free space the rebuild's disk gate will refuse on was not checked. Run this "
+        "where the tiles volume is mounted, or mount it here."
+    )

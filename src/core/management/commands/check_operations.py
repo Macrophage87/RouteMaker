@@ -11,6 +11,15 @@ It is read-only and it opens one database connection, so it is safe to run from
 a health check every minute. The fourth check - free space on the tiles volume -
 is a `statvfs` on the path the rebuild's disk gate measures, which costs the
 same nothing.
+
+That fourth check only means anything in a container that has the tiles volume
+mounted, and this command is a cron entry whose container is a deployment
+choice. So a missing `TILES_DIR` is an alert rather than a silence: it is the
+one outcome where the check has no coverage at all, and a monitor that exits 0
+while a quarter of it is structurally blind is the same silence the check was
+added to break. It is also the cheapest alert there is to clear - mount the
+volume, or run the entry where it is mounted - and it clears for good, so it
+costs one page rather than a recurring one.
 """
 
 from __future__ import annotations
@@ -20,10 +29,13 @@ import sys
 from django.core.management.base import BaseCommand
 
 from core.runs import (
+    DISK_SHORT,
+    DISK_UNMEASURED,
     disk_headroom,
     failed_job_count,
     failed_jobs,
     stale_task_details,
+    unmeasured_disk_message,
     wedged_jobs,
 )
 
@@ -84,7 +96,9 @@ class Command(BaseCommand):
                 f"failed job: {job.id} {job.task_name} on {job.queue_name} "
                 f"after {job.attempts} attempts (last event: {job.last_event_at or 'unknown'})"
             )
-        if headroom is not None:
+        if headroom["status"] == DISK_UNMEASURED:
+            self.stdout.write(f"disk: {unmeasured_disk_message(headroom)}")
+        elif headroom["status"] == DISK_SHORT:
             self.stdout.write(
                 f"disk: {headroom['path']} has "
                 f"{headroom['free_bytes'] / 1024**3:.1f} GiB free of "
@@ -99,18 +113,31 @@ class Command(BaseCommand):
                 f"(listing the {len(jobs)} newest of {failed_total} failed jobs; "
                 "--failed-job-limit lists more)"
             )
-        if not stale and not wedged and not failed_total and headroom is None:
+        if not stale and not wedged and not failed_total and not headroom["alert"]:
+            # The free-space clause names the path and the figure rather than
+            # asserting room in the abstract. "room for a rebuild" was printed
+            # on a container that had measured its own root filesystem, and a
+            # reassurance with no path and no number in it cannot be read
+            # against the volume it is supposed to be about.
             self.stdout.write(
-                "ok: no stale tasks, no wedged jobs, no failed jobs, room for a rebuild"
+                "ok: no stale tasks, no wedged jobs, no failed jobs, "
+                f"{headroom['path']} has {headroom['free_bytes'] / 1024**3:.1f} GiB free "
+                "for a rebuild"
             )
             sys.exit(EXIT_OK)
         # The total rather than the length of the list above it. Reporting the
         # length reported the limit: 400 failed jobs and a limit of 25 printed
         # "25 failed job(s)" every run, which reads as a number that has
         # stopped moving rather than one that is off the end of the page.
+        volumes = (
+            "0 volume(s) short of room for a rebuild"
+            if not headroom["alert"]
+            else "1 volume(s) short of room for a rebuild"
+            if headroom["status"] == DISK_SHORT
+            else "1 volume(s) not measured"
+        )
         self.stdout.write(
             f"{len(stale)} stale task(s), {len(wedged)} wedged job(s), "
-            f"{failed_total} failed job(s), "
-            f"{0 if headroom is None else 1} volume(s) short of room for a rebuild"
+            f"{failed_total} failed job(s), {volumes}"
         )
         sys.exit(EXIT_ALERT)
