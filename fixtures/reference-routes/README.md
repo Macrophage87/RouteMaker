@@ -67,22 +67,53 @@ between them.
 | Purple Line | 35.25 mi | 985 ft | 10.4% | 3.3 | loop | 2 |
 
 City examples; the rural set below covers the other setting. Four of the five
-stay inside the District. **Purple Line does not**: it is 51% in Maryland and
-crosses the District line **four** times, into **two** different Maryland
-counties - out at mile 8.84 into Prince George's County, back in at 18.90, out
-again at 20.20 into Montgomery County, back in at 28.16. It was recorded here
-as "twice, out and back", which is the shape of a route that leaves once and
-returns; this one leaves twice, on opposite sides of the District, and the
-jurisdiction report a permit application is drawn from has to name both
-counties and all four transitions. PLAN's "all five city group rides stay
-inside the District" claim does not survive either, and that correction belongs
-wherever else it is repeated.
+stay inside the District. **Purple Line does not**: it crosses the District line
+**four** times, into **two** different Maryland counties, and runs through
+**five** jurisdiction transitions doing it.
+
+| # | Mile | Transition | Where |
+|---|---|---|---|
+| 1 | 8.84 | DC to Prince George's | northeast side, out past Cheverly |
+| 2 | - | Prince George's to Montgomery | inside Maryland; no District line crossed |
+| 3 | 18.89 | Montgomery to DC | Eastern Avenue at Silver Spring and Takoma |
+| 4 | 20.25 | DC to Montgomery | near the north cornerstone |
+| 5 | 28.16 | Montgomery to DC | west side, near Little Falls |
+
+Row 2 is the one that keeps being lost, and it is the reason the two counts
+differ: the route leaves the District into Prince George's and comes back out of
+Montgomery, so it handed over between the two counties somewhere in Maryland
+without crossing a District line at all. A report that names the county the
+route left into for the whole excursion names the wrong agency for half of it,
+which is not a rounding error on a permit application.
+
+This has now been recorded four ways. First as staying inside the District;
+then as "twice, out and back", which is the shape of a route that leaves once
+and returns, where this one leaves twice on opposite sides; then as four
+crossings into two counties with the 18.89 re-entry attributed to Prince
+George's, which is the error above. The mileages moved too - 18.90 and 20.20
+were carried here against 18.89 and 20.25 measured.
+
+So the numbers are no longer recorded from memory.
+`TestThePurpleLineJurisdictionSequence` in `tests/test_reference_fixtures.py`
+measures all four District-line crossings from the GPX against a polygon built
+from the District's four 1791 cornerstones - a matter of record, and
+reproducible without the PostGIS jurisdiction layers, which tests do not have.
+The county attribution is measured the only way this repository can measure it
+with Overpass blocked: the first excursion leaves at longitude -76.94 and
+returns at -77.03, either side of the whole stretch of Eastern Avenue the
+Montgomery / Prince George's line could meet the District boundary in, so the
+two ends are in different counties however that point is placed. That the exact
+point is community knowledge rather than record is why the test pins a band and
+not a coordinate.
 
 The count matters beyond the arithmetic. It is the reference route the
 `route_crossings` re-entry behaviour is grounded in - a route that visits an
 area twice must report two crossings and not one averaged pair - and a fixture
-that says "twice" makes the two-county, four-transition case look like an
+that says "twice" makes the two-county, five-transition case look like an
 untested edge rather than the one real route this set has for it.
+
+PLAN's "all five city group rides stay inside the District" claim did not
+survive this either, and the sentence there now carries the same five.
 
 Two of these matter more than their numbers.
 
