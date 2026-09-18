@@ -257,6 +257,12 @@ NOT_DELIVERED_TO_THE_API: dict[str, tuple[str, ...] | None] = {
     "DATA_ROOT": ("rebuild", "worker"),
     # The rebuild's disk gate, read by the rebuild alone.
     "REBUILD_MIN_FREE_BYTES": ("rebuild",),
+    # The source extract the rebuild downloads, merges and clips for itself
+    # (pipeline.source). Read at FETCH_EXTRACT and nowhere the api runs.
+    "SOURCE_EXTRACT_URLS": ("rebuild",),
+    "SOURCE_EXTRACT_MAX_AGE_DAYS": ("rebuild",),
+    "SOURCE_EXTRACT_FORCE_REFRESH": ("rebuild",),
+    "COVERAGE_POLYGON": ("rebuild",),
 }
 
 
