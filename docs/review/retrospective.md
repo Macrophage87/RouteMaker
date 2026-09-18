@@ -145,7 +145,8 @@ first month.
 The recommendation, in order. Steps 1 and 2 are independent of each other.
 
 **Step 0 — change the exit condition, once, on the record.** Replace "six ACCEPTs in one round"
-with an acceptance checklist that can be executed:
+with an acceptance checklist that can be executed — built as `scripts/acceptance.py`, described in
+`docs/ACCEPTANCE.md`:
 
 1. `docker compose build` and `docker compose up -d` on a host with a Docker daemon, from
    `.env.example` filled in;

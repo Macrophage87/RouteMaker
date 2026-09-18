@@ -16,7 +16,11 @@ a hold after round 10 and for a retrospective over the whole review history, whi
 by a loop whose brief mandates fresh reach, the last two waves seeded the next round's blockers, and
 the one thing that genuinely blocks the phase — the stack has never been built or run — is not
 something a review round can close. It proposes an executable acceptance checklist, one scoped
-consolidation wave on three hot spots, and a first run on a host with a Docker daemon.
+consolidation wave on three hot spots, and a first run on a host with a Docker daemon. **The
+checklist exists**: `scripts/acceptance.py` (`docs/ACCEPTANCE.md`), six items A1–A6 answering
+PASS/FAIL/SKIP with evidence and a report, standard-library only so it runs on the deploy host;
+its dry run is the one part that has run here. Whether it replaces the six-ACCEPT rule is still
+the owner's decision.
 
 The blocker count per round has been 10, 14, 9, 5, 6, 8, 5 across rounds 4 to 10; the composition
 moved from things that did not exist, to pre-existing defects reached by fresh review, to
