@@ -138,10 +138,10 @@ DEFAULT_MAX_AGE = timedelta(days=6)
 #
 # The gate measures `TILES_DIR` while the extract lands in `<DATA_ROOT>/extracts`,
 # which is only the same free-space figure because they are the same volume: the
-# rebuild service's one mount under /data is `${DATA_ROOT}:/data` (compose.yaml,
-# the whole volume), so `/data/tiles` and `/data/extracts` are two directories
-# on one filesystem.
-# Split them across two mounts and the gate would be measuring a volume the
+# rebuild service binds `/data/tiles` and `/data/extracts` (and the other
+# directories it writes) each from a subdirectory of the one `${DATA_ROOT}`
+# (compose.yaml), so they are two directories on one filesystem.
+# Bind either from somewhere else and the gate would be measuring a volume the
 # download does not touch. `tests/test_source.py` holds compose to that.
 ESTIMATED_BYTES = 2 * 1024**3
 
