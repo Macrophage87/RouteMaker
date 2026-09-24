@@ -298,3 +298,45 @@ def test_the_violation_prefix_the_pipeline_greps_for_is_the_one_the_lua_writes()
     declared = re.search(r'M\.VIOLATION_LOG_PREFIX\s*=\s*"([^"]+)"', source)
     assert declared, "the remap no longer declares a violation prefix"
     assert declared.group(1) == VIOLATION_LOG_PREFIX
+
+
+def test_the_remap_reads_each_side_as_the_classifier_does() -> None:
+    """`declares_cycleway` and the classifier's side record, over every
+    combination of the four key forms.
+
+    The two files cannot share the precedence table, and the guard exists to
+    keep the remap's `cycleway=track` write off a way whose sides somebody has
+    already spoken for - the same sides `tags.cycleway_sides` resolves before
+    the classifier scores the way. So the Lua is driven over the whole grid and
+    has to give the answer Python gives, side by side.
+    """
+    import itertools
+
+    from routemaker.tags import CYCLEWAY_KEYS, cycleway_sides
+
+    values = (None, "", "no", "lane", "track")
+    cases = [
+        {key: value for key, value in zip(CYCLEWAY_KEYS, combo, strict=True) if value is not None}
+        for combo in itertools.product(values, repeat=len(CYCLEWAY_KEYS))
+    ]
+    lua_cases = ",\n".join(
+        "{" + ", ".join(f'["{k}"] = "{v}"' for k, v in case.items()) + "}" for case in cases
+    )
+    result = _lua_driver(
+        'package.path = "lua/?.lua;" .. package.path\n'
+        'local M = require("routemaker_remap")\n'
+        f"local cases = {{\n{lua_cases}\n}}\n"
+        "for _, tags in ipairs(cases) do\n"
+        '  io.stdout:write(tostring(M.cycleway_on_side(tags, "left")), " ",\n'
+        '    tostring(M.cycleway_on_side(tags, "right")), " ",\n'
+        '    tostring(M.declares_cycleway(tags)), "\\n")\n'
+        "end\n"
+    )
+    assert result.returncode == 0, result.stderr
+    lines = result.stdout.splitlines()
+    assert len(lines) == len(cases)
+    for case, line in zip(cases, lines, strict=True):
+        sides = cycleway_sides(case)
+        left, right = (str(sides[s].value) if sides[s].value else "nil" for s in ("left", "right"))
+        declared = "true" if sides["left"].value or sides["right"].value else "false"
+        assert line.split() == [left, right, declared], case

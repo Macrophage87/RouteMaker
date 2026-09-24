@@ -471,6 +471,27 @@ check("a cycleway width alone does not block the write",
 check("and declares_cycleway says so",
   not M.declares_cycleway({ highway = "residential", ["cycleway:left:width"] = "2.0" }))
 
+-- The side precedence, case by case: the side key over `:both` over the bare
+-- key, one answer per side. The same cases Python's side record is held to.
+local precedence_cases = {
+  { { cycleway = "track", ["cycleway:right"] = "no" }, "track", "no" },
+  { { cycleway = "track", ["cycleway:both"] = "lane" }, "lane", "lane" },
+  { { ["cycleway:both"] = "lane", ["cycleway:left"] = "track" }, "track", "lane" },
+  { { cycleway = "no", ["cycleway:left"] = "lane" }, "lane", "no" },
+  { { ["cycleway:right"] = "lane" }, nil, "lane" },
+  { { cycleway = "" }, nil, nil },
+  { {}, nil, nil },
+}
+for index, case in ipairs(precedence_cases) do
+  local tags, left, right = case[1], case[2], case[3]
+  check("precedence case " .. index .. " left",
+    M.cycleway_on_side(tags, "left") == left)
+  check("precedence case " .. index .. " right",
+    M.cycleway_on_side(tags, "right") == right)
+  check("precedence case " .. index .. " guard",
+    M.declares_cycleway(tags) == (left ~= nil or right ~= nil))
+end
+
 -- ---------------------------------------------------------------------------
 -- The barrier conversion, and what it may and may not clear.
 -- ---------------------------------------------------------------------------

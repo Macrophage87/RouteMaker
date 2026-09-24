@@ -98,9 +98,32 @@ function M.access_is_unrestricted(tags)
 end
 
 -- The four key forms a cycleway tag arrives in, and the same list Python's
--- `tags.cycleway_values` reads. `cycleway` and `cycleway:both` speak for both
+-- `tags.CYCLEWAY_KEYS` holds. `cycleway` and `cycleway:both` speak for both
 -- sides of the road, `cycleway:left` and `cycleway:right` for one side each.
 M.CYCLEWAY_KEYS = { "cycleway", "cycleway:both", "cycleway:left", "cycleway:right" }
+
+-- The precedence within one side, most specific first: the side key answers for
+-- its side, `:both` for a side the side key leaves unsaid, and the bare key for
+-- whatever is left. The same table as Python's `tags.CYCLEWAY_SIDE_KEYS`, which
+-- the classifier reads, and `tests/test_lua_remap.py` holds the two together:
+-- this file and the classifier have to agree about what a side says, or the
+-- guard below and the tier it is guarding would be reading different roads.
+M.CYCLEWAY_SIDE_KEYS = {
+  left = { "cycleway:left", "cycleway:both", "cycleway" },
+  right = { "cycleway:right", "cycleway:both", "cycleway" },
+}
+
+--- What one side of the road says about a cycleway, or nil if nothing does.
+--
+-- The value of the most specific key present, as Python's `_first` reads it:
+-- an empty value is no value.
+function M.cycleway_on_side(tags, side)
+  for _, key in ipairs(M.CYCLEWAY_SIDE_KEYS[side]) do
+    local value = tags[key]
+    if value ~= nil and value ~= "" then return value end
+  end
+  return nil
+end
 
 --- Whether the way already says something about a cycleway on any side.
 --
@@ -111,9 +134,16 @@ M.CYCLEWAY_KEYS = { "cycleway", "cycleway:both", "cycleway:left", "cycleway:righ
 -- what they did tag. The guard read the bare `cycleway` key alone, so both of
 -- those passed straight through it - and a one-sided lane is how most of the
 -- District's network is written.
+--
+-- Read side by side, through the classifier's precedence, rather than key by
+-- key: the question is whether either side of the road has been spoken for,
+-- which is the question the classifier's side record answers before it scores
+-- the way. The bare `cycleway=track` this file writes is, by the same
+-- precedence, a statement about any side nobody has spoken for - so it may be
+-- written only where neither side has been.
 function M.declares_cycleway(tags)
-  for _, key in ipairs(M.CYCLEWAY_KEYS) do
-    if tags[key] ~= nil then return true end
+  for _, side in ipairs({ "left", "right" }) do
+    if M.cycleway_on_side(tags, side) ~= nil then return true end
   end
   return false
 end
