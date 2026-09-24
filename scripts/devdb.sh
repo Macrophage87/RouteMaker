@@ -8,16 +8,17 @@
 # fails with "connection refused" rather than something about the code.
 set -eu
 
-pg_isready >/dev/null 2>&1 && { echo "database already up"; exit 0; }
-
-pg_ctlcluster 16 main start
+# Start the cluster only if it is down, then fall through: a cluster that a
+# service manager already started (systemd under WSL or a desktop) still needs
+# the role, the database and the extension below, all of which are idempotent.
+pg_isready >/dev/null 2>&1 || pg_ctlcluster 16 main start
 until pg_isready >/dev/null 2>&1; do sleep 1; done
 
 su postgres -c "psql -tAc \"SELECT 1 FROM pg_roles WHERE rolname='routemaker'\"" \
   | grep -q 1 || su postgres -c \
   "psql -c \"CREATE ROLE routemaker LOGIN PASSWORD 'routemaker' SUPERUSER\""
 
-su postgres -c "psql -tAlc \"SELECT 1 FROM pg_database WHERE datname='routemaker'\"" \
+su postgres -c "psql -tAc \"SELECT 1 FROM pg_database WHERE datname='routemaker'\"" \
   | grep -q 1 || su postgres -c "createdb -O routemaker routemaker"
 
 PGPASSWORD=routemaker psql -h 127.0.0.1 -U routemaker -d routemaker \
