@@ -1413,6 +1413,65 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
 
 
 @pytest.mark.django_db(transaction=True)
+def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_full_one(
+    monkeypatch, tmp_path
+) -> None:
+    """What the restore runbook's ordering rests on, measured with its own command.
+
+    The runbook said a restore into a database `migrate` had already populated
+    gives "169 errors and exit 0"; measured, it is 169 errors and exit 1. The
+    ordering was right and its reason was not. So the property is asserted
+    rather than the sentence: this deployment's own dump, restored with the
+    runbook's exact `pg_restore --no-owner -d <db> < <dump>`, goes into an empty
+    database with no error and exit 0, and into one that already holds the
+    tables and rows - here, the same restore a second time - with errors
+    counted, the rest of the archive applied around them, and exit 1.
+    """
+    import shutil
+
+    from config.procrastinate import perform_backup
+
+    for binary in ("pg_restore", "createdb", "dropdb"):
+        if shutil.which(binary) is None:
+            pytest.skip(f"{binary} is not installed")
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
+    dump = perform_backup()
+
+    database = settings.DATABASES["default"]
+    target = f"{database['NAME']}_restore"
+    env = {
+        **os.environ,
+        "PGHOST": str(database["HOST"]),
+        "PGPORT": str(database["PORT"]),
+        "PGUSER": str(database["USER"]),
+        "PGPASSWORD": str(database["PASSWORD"]),
+    }
+
+    def restore() -> subprocess.CompletedProcess:
+        with dump.open("rb") as archive:
+            return subprocess.run(
+                ["pg_restore", "--no-owner", "-d", target],
+                stdin=archive,
+                capture_output=True,
+                env=env,
+            )
+
+    subprocess.run(["dropdb", "--if-exists", target], env=env, check=True, capture_output=True)
+    subprocess.run(["createdb", target], env=env, check=True, capture_output=True)
+    try:
+        into_empty = restore()
+        assert into_empty.returncode == 0, into_empty.stderr.decode()
+        assert b"error" not in into_empty.stderr.lower(), into_empty.stderr.decode()
+
+        into_full = restore()
+        errors = into_full.stderr.decode()
+        assert into_full.returncode == 1, (into_full.returncode, errors)
+        assert "errors ignored on restore" in errors, errors
+    finally:
+        subprocess.run(["dropdb", "--if-exists", target], env=env, capture_output=True)
+
+
+@pytest.mark.django_db(transaction=True)
 def test_the_task_itself_refuses_a_dump_whose_listing_leaks(monkeypatch, tmp_path) -> None:
     """Verification is production behaviour, not a test-side check: handed a
     table of contents that carries session data, perform_backup raises and

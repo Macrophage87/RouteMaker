@@ -275,13 +275,19 @@ that service binds `postgres/` and nothing else, and `backups/` is bound into
 
 Step 3 is `up -d postgis` and not `up -d`, and the difference is measured
 rather than stylistic. A restore run into a database that a full `up` had
-already migrated produced **169 errors and exit 0** — `pg_restore` continues
-past a failing statement and reports success at the end, so the errors scroll
-past and the exit code says nothing happened. What collides is everything
+already migrated produced **169 errors and exit 1** (PostgreSQL 16, measured
+both ways round). The exit status is honest and it arrives too late:
+`pg_restore` does not stop at a failing statement, it carries on, puts the rest
+of the archive in around every failure, and only then prints `errors ignored on
+restore: 169` and exits 1. By the time the status says something went wrong the
+database is a mixture of the dump and what `migrate` wrote, with nothing to undo
+it; the repair is to start again from step 1. What collides is everything
 `migrate` creates and the dump also carries: `django_content_type`,
 `auth_permission` and `django_migrations` all have their rows twice over, and
 the `COPY` for each fails on the unique index while the rest of the archive
-goes in around it. The same dump into an empty database gave **0 errors**.
+goes in around it. The same dump into an empty database gave **0 errors and
+exit 0** — so a non-zero exit from step 3 is never noise, and the thing to do
+with one is to stop.
 `--no-owner` because the role in the dump and the role in this deployment need
 not be the same name.
 

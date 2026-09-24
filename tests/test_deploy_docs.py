@@ -1081,11 +1081,14 @@ def test_the_restore_runbook_restores_into_an_empty_database() -> None:
     afterwards.
 
     A `pg_restore` into a database a full `up` had already migrated gave 169
-    errors and exit 0 - `pg_restore` continues past a failing statement and
-    reports success, so what an operator sees is a restore that worked.
-    `django_content_type`, `auth_permission` and `django_migrations` are all
-    created by `migrate` and all carried by the dump. The same archive into an
-    empty database gave 0 errors.
+    errors and exit 1 - `pg_restore` carries on past each failing statement and
+    applies the rest of the archive around it, so the non-zero exit arrives
+    after the damage is done. `django_content_type`, `auth_permission` and
+    `django_migrations` are all created by `migrate` and all carried by the
+    dump. The same archive into an empty database gave 0 errors. The exit
+    codes themselves are measured, not read, by
+    tests/test_worker_schedule.py::test_the_runbooks_restore_is_clean_into_an_
+    empty_database_and_fails_into_a_full_one.
     """
     body = section(OPERATIONS, "## Restoring one")
     commanded = "\n".join(shell_snippets(body))
@@ -1099,7 +1102,8 @@ def test_the_restore_runbook_restores_into_an_empty_database() -> None:
     assert "postgis" in first, (
         f"the first `up -d` in the restore runbook is {first.strip()!r}; restoring into "
         "a database `migrate` has already run against collides on every table both it "
-        "and the dump create, and pg_restore exits 0 anyway"
+        "and the dump create, and pg_restore applies the rest of the archive around "
+        "every collision before it exits 1"
     )
     assert rest, "the runbook never brings the rest of the stack up after the restore"
     assert all("postgis" not in line for line in rest), rest
