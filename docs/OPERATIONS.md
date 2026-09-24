@@ -915,19 +915,29 @@ docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
 ```
 
-**In `rebuild`, not in `api`.** This command reads and rewrites the promotion
-symlinks under `settings.TILES_DIR`, which is `<DATA_ROOT>/tiles`. The `api`
-service mounts no part of the data volume and sets no `DATA_ROOT`, so inside
-that container `DATA_ROOT` is the module's fallback `BASE_DIR / "data"` and
-`TILES_DIR` is `/app/data/tiles` — a path on the container's own writable layer
-with nothing in it. Run there, `rollback_target` finds no `previous` link for
-any variant and the command refuses with "no previous tiles", which reads like
-a deployment that has never rebuilt rather than like a command in the wrong
-container. `rebuild` is the service that binds the tile directory — along
-with `elevation`, `extracts`, `reference` and its own work directory — under
-`/data` and sets `DATA_ROOT=/data`, so the paths it resolves are the ones the
-swap wrote. (`worker` sets `DATA_ROOT=/data` too, but mounts only `backups`, so the
-tiles are equally absent there.)
+**In `rebuild`, not in `api` or `worker`.** The command rewrites the promotion
+symlinks under `settings.TILES_DIR`, which is `/data/tiles` in all three Django
+services, and only `rebuild` binds it read-write. `api` binds
+`${DATA_ROOT}/tiles` there read-only for the operations page's free-space line,
+and `worker` does the same for `check_operations`. Run in either, the command
+refuses — on the dry run as well as on `--confirm` — with a write probe of every
+variant's directory, naming the directory it could not write and the container
+to use, and nothing is renamed or moved. (A deployment with no previous build
+to go back to says that first: it is true in every container.) `rebuild` binds
+the tiles read-write, along with `elevation`, `extracts`, `reference` and its
+own work directory, under `/data` with `DATA_ROOT=/data`, so the paths it
+resolves are the ones the swap wrote.
+
+**The order is tiles, settings rows, schema.** Every variant's `previous`
+becomes `current`, then the settings rows are rewritten in one transaction, and
+the schema rename comes last. The rename takes `ACCESS EXCLUSIVE` on the live
+segment table, and any API request reading segments can hold that off; if it
+cannot get the lock in its five attempts the command raises `SwapLockTimeout`
+having put the tile links and the rows back, the schemas never moved, and the
+deployment is exactly as it was. Run it again at a quieter moment. (It used to
+rename first, which made a later failure the expensive kind: the undo then had
+to rename back, under the same lock, and losing that race left last week's rows
+live under this week's tiles.)
 
 The restart is part of the procedure, not an afterthought: `valhalla_service`
 does not reload tiles at runtime, so until the containers restart they are

@@ -6,12 +6,11 @@ reader could see, and a wrong runbook is not a documentation problem when it is
 the only description of a procedure nobody has executed.
 
 - `docs/OPERATIONS.md` told an operator to roll a rebuild back with
-  `docker compose exec -T api`. The `api` service mounts no part of the data
-  volume and sets no `DATA_ROOT`, so `settings.TILES_DIR` inside it is
-  `/app/data/tiles` on the container's own writable layer: `rollback_rebuild`
-  finds no `previous` link for any variant and refuses, which reads like a
-  deployment that has never rebuilt rather than like a command in the wrong
-  container.
+  `docker compose exec -T api`. The `api` service then mounted no part of the
+  data volume, so `rollback_rebuild` there found no `previous` link and
+  refused as if the deployment had never rebuilt. Since wave 8 it binds the
+  tiles read-only, and the command refuses there on a write probe instead
+  (round 10) - either way, `rebuild` is where it runs.
 - The `chown -R` in `docs/DEPLOYMENT.md` ran before the first `up`, and Docker
   creates a missing bind-mount source as a root-owned directory, so it chowned
   a tree that did not yet contain the directories the problem is about. The fix
@@ -51,7 +50,8 @@ EXEC = re.compile(r"docker compose exec\s+((?:-\S+\s+)*)(\S+)\s+([^\n`]*)")
 
 # The services that can run a management command against the data volume at all:
 # `rebuild` binds the five directories it writes under /data, `worker` binds the
-# backups directory there. The api mounts nothing.
+# backups directory there. The api binds `static` and, read-only, `tiles`, and
+# is not one of them.
 DATA_SERVICES = {"rebuild", "worker"}
 
 
@@ -248,17 +248,70 @@ def test_the_rollback_procedure_names_the_rebuild_service_specifically() -> None
     assert len(invocations) >= 2, f"the dry run and the --confirm are not both shown: {lines}"
     for line in invocations:
         assert "exec -T rebuild " in line, (
-            f"the rollback is documented as `{line.strip()}`; the api has no data mount "
-            "and would refuse on every tile link"
+            f"the rollback is documented as `{line.strip()}`; only rebuild can write the "
+            "tile links it moves"
         )
 
 
-def test_the_deployment_doc_says_plainly_that_the_api_mounts_no_data() -> None:
-    """It used to point at "the blocker below", which was about the *worker*
-    having no DATA_ROOT - a fixed defect, and a different service. The api
-    having no data mount is not a blocker and is not going to be fixed; it is a
-    rule about where a command runs."""
-    assert "mounts no part of the data volume" in DEPLOYMENT_PROSE
+def rendered_tiles_binds() -> dict[str, bool]:
+    """Service -> read-only, for every service whose `settings.TILES_DIR` is a
+    bind of `${DATA_ROOT}/tiles`, in the configuration compose renders from the
+    shipped `.env.example`.
+
+    `TILES_DIR` is `DATA_ROOT / "tiles"`, so the target is derived from each
+    service's own rendered `DATA_ROOT` rather than written out here.
+    """
+    import tempfile
+
+    from test_compose_render import ENV_EXAMPLE, data_root, render
+
+    with tempfile.TemporaryDirectory() as tmp:
+        env_file = Path(tmp) / "env"
+        env_file.write_text(ENV_EXAMPLE.read_text())
+        rendered = render(env_file)
+        source = f"{data_root(env_file)}/tiles"
+    binds: dict[str, bool] = {}
+    for name, service in rendered["services"].items():
+        root = (service.get("environment") or {}).get("DATA_ROOT")
+        if not root:
+            continue
+        for volume in service.get("volumes", []):
+            if volume.get("source") == source and volume.get("target") == f"{root}/tiles":
+                binds[name] = bool(volume.get("read_only"))
+    return binds
+
+
+def test_rollback_rebuild_is_documented_where_the_tiles_are_writable() -> None:
+    """The rollback rewrites the promotion links under `TILES_DIR`, so the
+    container both guides name for it has to bind that directory read-write -
+    read off the rendered configuration, not off a sentence about it. This
+    replaces a test that pinned "mounts no part of the data volume", which
+    wave 8 made false and which went on defending the sentence for two rounds.
+
+    And the other half of the property: a service that binds the tiles
+    read-only exists (`api`, for its free-space line), which is why the
+    command's write probe is what an operator meets there rather than a
+    rollback that stops halfway.
+    """
+    binds = rendered_tiles_binds()
+    writable = {name for name, read_only in binds.items() if not read_only}
+    assert writable, f"no service binds the tiles read-write: {binds}"
+    assert binds.get("api") is True, f"the api's tiles bind is not read-only: {binds}"
+
+    documented = {
+        service
+        for document in (OPERATIONS, DEPLOYMENT)
+        for service, line in documented_exec_invocations(document)
+        if "rollback_rebuild" in line
+    }
+    assert documented, "neither guide shows how to run rollback_rebuild"
+    rows = [line for line in DEPLOYMENT.splitlines() if line.startswith("| `rollback_rebuild`")]
+    assert len(rows) == 1, f"expected one rollback_rebuild row in the table, found {len(rows)}"
+    documented.add(rows[0].split("|")[2].strip().strip("`"))
+    assert documented <= writable, (
+        f"rollback_rebuild is documented in {sorted(documented - writable)}, which cannot "
+        f"write the tiles; the services that can are {sorted(writable)}"
+    )
     for command in ("rollback_rebuild", "run_rebuild_now", "install_reference_data"):
         assert command in DEPLOYMENT, f"the table of what runs where omits {command}"
 

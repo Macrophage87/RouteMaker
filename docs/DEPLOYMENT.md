@@ -843,8 +843,8 @@ the command line, so the admin rendered unstyled.
 
 The two flags are both load-bearing, and the earlier version of this command had
 neither right. `-v` alone mounted the host directory at `/srv/static`, which is
-**Caddy's** path and not this container's: **the api service mounts no part of
-the data volume and sets no `DATA_ROOT`**, so inside the image
+**Caddy's** path and not this container's: the api service then mounted no part
+of the data volume and set no `DATA_ROOT`, so inside the image
 `settings.DATA_ROOT` fell back to `BASE_DIR / "data"` and `STATIC_ROOT` with it — `/app/data/static`, on the
 container's writable layer, discarded when `run --rm` exits. The service's own
 `DATA_ROOT: /data` and its `${DATA_ROOT}/static:/data/static` bind are what make
@@ -879,7 +879,7 @@ read-only beside it:
 
 | Command | Container | Because |
 | --- | --- | --- |
-| `rollback_rebuild` | `rebuild` | Reads and rewrites the promotion symlinks under `<DATA_ROOT>/tiles`. In `api` those resolve to `/app/data/tiles`, which is empty, and the command refuses on every variant with "no previous tiles" — a refusal that reads like a deployment that has never rebuilt. |
+| `rollback_rebuild` | `rebuild` | Rewrites the promotion symlinks under `/data/tiles`, which only `rebuild` binds read-write. `api` and `worker` bind the same directory read-only, and there the command refuses on a write probe of every variant's directory — dry run included — naming the directory and the container to use, before anything is renamed or moved. |
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
 | `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container that does not mount it, the check reports `not measured` and exits 1 rather than measuring the container's own layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
