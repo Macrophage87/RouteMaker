@@ -443,15 +443,29 @@ def valhalla_exception(stdout: str) -> dict | None:
     None when the stream carries no such body, which is the ordinary failure -
     a binary that is not installed, a config it cannot read, a kill - and must
     stay retryable.
+
+    The body is looked for after whatever precedes it rather than only at the
+    first brace. One-shot mode forces logging to stderr, but anything that does
+    not honour that - a library warning, a line from the shell - lands on
+    stdout ahead of the body, and a brace in such a line (a JSON-ish log field,
+    a `{}` placeholder) used to be where decoding started and stopped: the
+    refusal behind it read as an ordinary, retryable failure. So every brace is
+    a candidate until one decodes to an exception body; a candidate that
+    decodes to some other object is stepped over whole, so a key inside an
+    ordinary response is never mistaken for a refusal.
     """
-    start = stdout.find("{")
-    if start < 0:
-        return None
-    try:
-        body, _end = json.JSONDecoder().raw_decode(stdout[start:])
-    except json.JSONDecodeError:
-        return None
-    return body if isinstance(body, dict) and "error_code" in body else None
+    decoder = json.JSONDecoder()
+    position = 0
+    while (start := stdout.find("{", position)) >= 0:
+        try:
+            body, end = decoder.raw_decode(stdout, start)
+        except json.JSONDecodeError:
+            position = start + 1
+            continue
+        if isinstance(body, dict) and "error_code" in body:
+            return body
+        position = end
+    return None
 
 
 def trace_attributes(

@@ -741,6 +741,33 @@ def test_a_refusal_by_the_service_is_told_from_a_failure_of_the_command() -> Non
     assert tiles.valhalla_exception('{"error_code": 17') is None
 
 
+@pytest.mark.parametrize(
+    "leading",
+    [
+        "2026/09/24 12:00:00.000 [WARN] a line that ignored the logging configuration\n",
+        "warning: {} is deprecated\n",
+        '{"edges": []}\n',
+        '{"truncated": \n',
+    ],
+    ids=["plain line", "a brace in a log line", "another object", "a broken object"],
+)
+def test_a_refusal_behind_leading_output_is_still_a_refusal(leading) -> None:
+    """The body is not always the first thing on stdout. Whatever precedes it -
+    a plain line, a line with a brace in it, an object that is not an exception,
+    or one that does not parse - must not hide it, or the refusal is retried
+    five times as an ordinary failure."""
+    refusal = json.dumps({"error_code": 171, "error": "No suitable edges near location"})
+    body = tiles.valhalla_exception(leading + refusal + "\n")
+    assert body is not None and body["error_code"] == 171, leading
+
+
+def test_an_error_code_inside_an_ordinary_response_is_not_a_refusal() -> None:
+    """Stepped over whole: a key nested in a response that is not an exception
+    body does not make the response one."""
+    response = json.dumps({"edges": [{"way_id": 1, "error_code": 171}]})
+    assert tiles.valhalla_exception(response) is None
+
+
 def test_the_tile_extract_is_packed_verbosely(tmp_path) -> None:
     """`-v` is a log level and nothing else (valhalla_build_extract's own
     argument parsing), and it is the only record of which tiles went into the
