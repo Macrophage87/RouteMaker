@@ -652,11 +652,23 @@ class TestHasPerm:
 
         from core import auth_backend
 
-        source = inspect.getsource(auth_backend)
-        head, _, tail = source.partition('"rolemapping",')
-        assert tail, "the entry itself must still be in the set"
-        reason = head[-1400:]
-        assert "privilege escalation" not in reason
+        source = inspect.getsource(auth_backend).splitlines()
+        entry = next(
+            (number for number, line in enumerate(source) if line.strip() == '"rolemapping",'),
+            None,
+        )
+        assert entry is not None, "the entry itself must still be in the set"
+        # The comment block directly above the entry, read as the sentence it is.
+        # Searched as raw source, the claim this pins against was invisible: the
+        # original comment wrapped as "privilege" / "# escalation." across two
+        # lines, so a phrase search passed against the very text it was written
+        # to keep out.
+        start = entry
+        while start > 0 and source[start - 1].strip().startswith("#"):
+            start -= 1
+        reason = " ".join(line.strip().lstrip("#").strip() for line in source[start:entry])
+        assert reason, "the entry has no comment giving its reason"
+        assert "escalation" not in reason.casefold(), reason
         assert "PLAN:272" in reason
         assert "read-only" in reason
 
