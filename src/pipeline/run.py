@@ -364,12 +364,15 @@ class RebuildContext:
     stress_by_way: dict[int, object] = field(default_factory=dict)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
-    # Ways an approved access override wrote a `bicycle`, `bicycle:forward` or
-    # `bicycle:backward` key onto, which `inject_tags` reads: the crossings
-    # fixture's legality column is withheld on them, so the audited table
-    # outranks the checked-in file rather than the other way round. Set by the
-    # override stage and empty until it runs.
-    bicycle_override_way_ids: frozenset[int] = frozenset()
+    # The fixture ways an approved access override wrote a `bicycle`,
+    # `bicycle:forward` or `bicycle:backward` key onto, and the directions it
+    # wrote them for, which `inject_tags` reads: the crossings fixture's
+    # legality column is withheld where a row overruled it in both directions,
+    # so the audited table outranks the checked-in file rather than the other
+    # way round, and kept where a row overruled one, so the fixture still
+    # decides the direction no reviewer spoke to. Set by the override stage and
+    # empty until it runs.
+    bicycle_override_directions: dict[int, frozenset[str]] = field(default_factory=dict)
     rows: list[dict] = field(default_factory=list)
     # Per variant, not one concatenation of the three. A single `.search` over
     # the three logs joined together is satisfied by whichever variant logged
@@ -827,21 +830,33 @@ def build_handlers(
         # written on any other way supersedes nothing, and counting it would
         # turn an ordinary access correction into a report that a checked-in row
         # had been overruled.
-        superseded = frozenset(
-            way_id
-            for way_id in superseding
+        superseded = {
+            way_id: directions
+            for way_id, directions in superseding.items()
             if reference is not None and way_id in reference.bridge_bicycle_legal
-        )
-        context.bicycle_override_way_ids = superseded
+        }
+        context.bicycle_override_directions = superseded
         for way_id in sorted(superseded):
             way = context.ways_by_id.get(way_id)
-            logger.info(
-                "way %s (%s) carries an approved bicycle access override, so the crossings "
-                "fixture's roadway legality is withheld on it and the reviewed value is what "
-                "the graph carries",
-                way_id,
-                getattr(way, "name", None) or "unnamed",
-            )
+            directions = superseded[way_id]
+            if directions == overrides.BOTH_DIRECTIONS:
+                logger.info(
+                    "way %s (%s) carries an approved bicycle access override in both "
+                    "directions, so the crossings fixture's roadway legality is withheld on it "
+                    "and the reviewed value is what the graph carries",
+                    way_id,
+                    getattr(way, "name", None) or "unnamed",
+                )
+            else:
+                (direction,) = directions
+                logger.info(
+                    "way %s (%s) carries an approved bicycle access override for the %s "
+                    "direction only, so the reviewed value overrules the crossings fixture's "
+                    "roadway legality that way and the fixture still decides the other",
+                    way_id,
+                    getattr(way, "name", None) or "unnamed",
+                    direction,
+                )
         context.override_report = overrides.OverrideReport(
             access=access,
             stress=stress,
@@ -930,13 +945,15 @@ def build_handlers(
                 # it, so wherever it is emitted it is the last word on that
                 # key, and something else has already had the first.
                 legal = reference.bridge_bicycle_legal.get(way.osm_id)
-                if way.osm_id in context.bicycle_override_way_ids:
+                overruled = context.bicycle_override_directions.get(way.osm_id, frozenset())
+                if overruled == overrides.BOTH_DIRECTIONS:
                     # An approved access override wrote a bicycle key onto this
-                    # way. `bridge_may_be_granted` reads `access` and `vehicle`
-                    # and never the bicycle keys - correctly, since a legality
-                    # row is itself a correction to OSM's `bicycle` tagging -
-                    # so with the tag emitted the checked-in fixture overwrote
-                    # the reviewed row in whichever direction it ran:
+                    # way for both directions. `bridge_may_be_granted` reads
+                    # `access` and `vehicle` and never the bicycle keys -
+                    # correctly, since a legality row is itself a correction to
+                    # OSM's `bicycle` tagging - so with the tag emitted the
+                    # checked-in fixture overwrote the reviewed row in whichever
+                    # direction it ran:
                     # `bicycle=no` over a legality of true came back as
                     # `bicycle=yes`, and `bicycle=yes` over a legality of false
                     # was flattened to `no`. The override table is the plan's
@@ -944,6 +961,16 @@ def build_handlers(
                     # and the fixture is a checked-in file, so the fixture is
                     # what gives way - on every variant, since the row is a
                     # legal fact and not a variant's opinion.
+                    #
+                    # Only where the row overruled it both ways. The fixture
+                    # writes the plain `bicycle` key, and Valhalla's transform
+                    # lets `bicycle:forward`/`bicycle:backward` override that
+                    # one direction at a time, so a row writing one of them
+                    # already wins its own direction with the tag emitted.
+                    # Withheld there too, the fixture's grant was lost in the
+                    # direction the row never mentioned: `bicycle:forward=no`
+                    # on a bridge the fixture opens over OSM's `bicycle=no`
+                    # served it barred both ways.
                     legal = None
                 elif variant is variants.Variant.EBIKE and variants.bars_electric_bicycle(way.tags):
                     # The e-bike variant bars this way by writing `bicycle=no`

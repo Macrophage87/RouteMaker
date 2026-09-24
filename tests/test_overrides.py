@@ -39,7 +39,9 @@ def test_an_access_override_rewrites_the_tag_before_the_transform() -> None:
     )
     assert (applied, unmatched) == (1, [])
     assert way.tags["bicycle"] == "yes"
-    assert superseding == [1], "and the way is reported as one the crossings fixture loses"
+    assert superseding == {1: frozenset({"forward", "backward"})}, (
+        "and the way is reported as one the crossings fixture loses in both directions"
+    )
 
 
 def test_an_access_override_may_not_write_outside_the_access_keys() -> None:
@@ -90,7 +92,7 @@ def test_an_override_matching_no_way_is_reported_rather_than_dropped() -> None:
     applied, unmatched, superseding = apply_access(
         [Way(1)], [Override("access", 999, {"bicycle": "yes"})]
     )
-    assert (applied, unmatched, superseding) == (0, [999], [])
+    assert (applied, unmatched, superseding) == (0, [999], {})
 
 
 def test_each_kind_only_applies_to_its_own_stage() -> None:
@@ -354,7 +356,9 @@ def test_only_a_bicycle_key_is_reported_as_superseding_the_fixture() -> None:
         ],
     )
     assert applied == 3
-    assert superseding == [2], f"only the row that wrote a bicycle key: {superseding}"
+    assert superseding == {2: frozenset({"forward"})}, (
+        f"only the row that wrote a bicycle key, for the direction it wrote: {superseding}"
+    )
 
 
 @pytest.mark.django_db
@@ -406,7 +410,8 @@ def test_an_access_override_outranks_the_crossings_fixture_on_the_same_way(tmp_p
     assert report.fixture_rows_superseded == 2, (
         "an operator reading the rebuild log is told a checked-in row was overruled"
     )
-    assert contexts[0].bicycle_override_way_ids == frozenset({OPEN_WAY, BARRED_WAY})
+    both = frozenset({"forward", "backward"})
+    assert contexts[0].bicycle_override_directions == {OPEN_WAY: both, BARRED_WAY: both}
 
 
 @pytest.mark.django_db
