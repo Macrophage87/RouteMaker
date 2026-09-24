@@ -447,10 +447,11 @@ def classify(
         # four-lane arterial *lower* stress the moment someone surveyed its
         # carriageway, which is backwards.
         #
-        # And the narrowest of the cycleway's own width keys, not the first one
-        # present - `shoulder_width_m`'s rule, for the reason written at
+        # And the narrowest width among the sides the provision is on, each
+        # side's own - `shoulder_width_m`'s rule, for the reason written at
         # `cycleway_width_m`: the left and right keys are two sides of one road
-        # and the tile build does not know which side the route uses.
+        # and the tile build does not know which side the route uses, while a
+        # width on a side without the painted lane is not the lane's.
         width = cycleway_width_m(tags)
         if width is None:
             assumed.append("cycleway width")

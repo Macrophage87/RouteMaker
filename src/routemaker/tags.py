@@ -9,6 +9,7 @@ hide which values were measured and which were assumed.
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 
 from .geo import METRES_PER_FOOT
 
@@ -190,7 +191,7 @@ def has_parking_lane(tags: dict[str, str]) -> bool | None:
 
 # The `cycleway` values that describe a facility *on this way*, split by how much
 # separation the facility gives, because the two sets score on different tables.
-# They live here rather than in `stress` because `cycleway_values` has to rank
+# They live here rather than in `stress` because `cycleway_provision` has to rank
 # one side of a road against the other before the classifier sees either, and
 # ranking needs to know which values are facilities and how much they give;
 # `stress` imports both names and reads them at the facility step.
@@ -213,181 +214,262 @@ def has_parking_lane(tags: dict[str, str]) -> bool | None:
 # elsewhere", not "present here".
 #
 # `left` and `right` are absent for a related reason: they are key suffixes
-# (`cycleway:left=lane`), never values, and `cycleway_values` only ever yields
-# the value half of a tag. Listing them here could only ever match a way tagged
+# (`cycleway:left=lane`), never values, and the side record only ever holds the
+# value half of a tag. Listing them here could only ever match a way tagged
 # `cycleway=left`, which is not a thing a mapper writes.
 SEPARATED_CYCLEWAY = frozenset({"track", "opposite_track"})
 PAINTED_CYCLEWAY = frozenset({"lane", "opposite_lane", "buffered_lane"})
 
-# The two key forms that speak for both sides of the road at once, and the two
-# that speak for one side each. `cycleway=X` and `cycleway:both=X` are not a
-# third and fourth side; each says that *each* side carries X.
-CYCLEWAY_BOTH_SIDES_KEYS = ("cycleway", "cycleway:both")
-CYCLEWAY_KEYS = (*CYCLEWAY_BOTH_SIDES_KEYS, "cycleway:left", "cycleway:right")
+SIDES = ("left", "right")
+
+# The key forms that speak for one side of the road, most specific first. The
+# order is the precedence and it is the whole of the side model: a side key
+# answers for its side alone, `:both` answers for each side the side key leaves
+# unsaid, and the bare key answers for whatever is left. `cycleway=track` with
+# `cycleway:right=no` is therefore a track on the left and nothing on the right
+# - the mapper's refinement of the general tag - and never "a track, somewhere".
+#
+# `lua/routemaker_remap.lua` carries the same table as `M.CYCLEWAY_SIDE_KEYS`,
+# and `tests/test_lua_remap.py` holds the two to one another.
+CYCLEWAY_SIDE_KEYS = {side: (f"cycleway:{side}", "cycleway:both", "cycleway") for side in SIDES}
+CYCLEWAY_SIDE_WIDTH_KEYS = {
+    side: (f"cycleway:{side}:width", "cycleway:both:width", "cycleway:width") for side in SIDES
+}
+# Every key form a cycleway value arrives in, for readers that ask about the
+# way as a whole rather than about one side of it.
+CYCLEWAY_KEYS = ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
 
 
-def _facility_rank(values: set[str]) -> int:
-    """How much separation the best value in `values` gives. Higher is better."""
-    if values & SEPARATED_CYCLEWAY:
+def _first(tags: dict[str, str], keys: tuple[str, ...]) -> str | None:
+    """The value of the most specific key present, read in precedence order."""
+    for key in keys:
+        if value := tags.get(key):
+            return value
+    return None
+
+
+def _first_width(tags: dict[str, str], keys: tuple[str, ...]) -> float | None:
+    """The most specific surveyed width, read in precedence order."""
+    for key in keys:
+        if (width := parse_width_m(tags.get(key))) is not None:
+            return width
+    return None
+
+
+def _facility_rank(value: str | None) -> int:
+    """How much separation one side's value gives. Higher is better."""
+    if value in SEPARATED_CYCLEWAY:
         return 2
-    if values & PAINTED_CYCLEWAY:
+    if value in PAINTED_CYCLEWAY:
         return 1
     return 0
 
 
-def _side_values(tags: dict[str, str], side: str) -> set[str]:
-    """Every cycleway value that speaks for one side of the road."""
-    keys = (*CYCLEWAY_BOTH_SIDES_KEYS, f"cycleway:{side}")
-    return {tags[k] for k in keys if tags.get(k)}
+@dataclass(frozen=True)
+class CyclewaySide:
+    """What one side of the road carries: one value and one width.
+
+    `value` is the tag value the precedence settles on, or None when no key
+    speaks for the side. `width_m` is the side's own surveyed width, read with
+    the same precedence, and it is dropped when the side declares something that
+    is not a facility: a side saying `no` has nothing, so it has no lane to be
+    wide. A side nobody has spoken for keeps a width somebody surveyed, since the
+    survey is the only fact about it.
+    """
+
+    value: str | None
+    width_m: float | None
+
+    @property
+    def rank(self) -> int:
+        return _facility_rank(self.value)
+
+
+def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
+    """The two sides of the road, each resolved on its own by the precedence."""
+    sides = {}
+    for side in SIDES:
+        value = _first(tags, CYCLEWAY_SIDE_KEYS[side])
+        width = _first_width(tags, CYCLEWAY_SIDE_WIDTH_KEYS[side])
+        if value is not None and _facility_rank(value) == 0:
+            width = None
+        sides[side] = CyclewaySide(value, width)
+    return sides
+
+
+@dataclass(frozen=True)
+class Provision:
+    """The facility on the worst direction a rider may be made to use.
+
+    `values` are the resolved values of the sides that set it and `width_m` the
+    narrowest surveyed width among those sides, or None if none is surveyed.
+    """
+
+    rank: int
+    values: frozenset[str]
+    width_m: float | None
+
+
+def _directions(tags: dict[str, str], sides: dict[str, CyclewaySide]) -> list[list[CyclewaySide]]:
+    """The directions of bicycle travel, each as the sides that can serve it.
+
+    On a two-way street each side is one direction. On a one-way street there
+    is one direction and either side serves it.
+    """
+    left, right = sides["left"], sides["right"]
+    if not is_oneway(tags):
+        return [[left], [right]]
+    return [[left, right]]
+
+
+def cycleway_provision(tags: dict[str, str]) -> Provision:
+    """The cycleway provision the way is scored on: **the worst direction**.
+
+    Each direction takes the best facility among the sides that serve it, and
+    the way takes the weakest direction, because one tier is stored per way and
+    a rider uses it either way round. The width is the narrowest surveyed width
+    among the sides that set the provision - the sides the rider is on - so a
+    track's width on one side never rates the painted lane on the other.
+
+    Measured, before this, on a 35 mph four-lane two-way secondary where the
+    bare road is LTS4: `cycleway=track` with `cycleway:right=no` came out LTS1,
+    because the general key was unioned into the right side and the best value
+    kept. The right side says `no`, and the side key is the more specific tag.
+    """
+    ranked = []
+    for candidates in _directions(tags, cycleway_sides(tags)):
+        best = max((s.rank for s in candidates), default=0)
+        ranked.append((best, [s for s in candidates if s.rank == best]))
+    rank = min(best for best, _ in ranked)
+    used = [s for best, candidates in ranked if best == rank for s in candidates]
+    widths = [s.width_m for s in used if s.width_m is not None]
+    return Provision(
+        rank,
+        frozenset(s.value for s in used if s.value is not None),
+        min(widths) if widths else None,
+    )
 
 
 def cycleway_values(tags: dict[str, str]) -> set[str]:
     """The cycleway values describing the provision a rider may be made to use.
 
-    Not the union of the four key forms, which is what this was and which made
-    provisioning the second side of a road a penalty. The union asked "is there
-    a facility anywhere on this way" while `cycleway_width_m` right below asks
-    "how wide is the worst side" - so `cycleway:left=lane` at 2.0 m beside
-    `cycleway:right=no` scored LTS1 on a 25 mph secondary, the same street with
-    `cycleway:both=lane` at 2.0 m and 1.2 m scored LTS2, and the same street
-    bare scored LTS2. Building the lane on the second side raised the stress of
-    the road. Worse, `cycleway:left=track` with `cycleway:right=no` on a 35 mph
-    four-lane two-way secondary came out LTS1, three tiers below the bare road,
-    because the `no` was discarded by the union while the `track` was kept.
-
-    One rule, the same one `cycleway_width_m` and `shoulder_width_m` keep:
-    **score the worst side a rider may be made to use.**
+    One rule, the same one `cycleway_width_m`, `has_shoulder` and
+    `shoulder_width_m` keep: **score the worst side a rider may be made to use.**
 
     On a two-way street each side is a direction. A rider heading one way is on
     the left-hand side and heading the other way is on the right, and one tier
     is stored per way, so the way's provision is the *weaker* of its two sides.
-    A side with no facility - the key absent, or present and saying `no` - is no
-    facility, and a one-sided lane on a two-way street is therefore mixed
-    traffic for the direction that does not have it. That is the road as Furth
-    scores it: a rider riding away from the lane is in the traffic lane.
+    A side with no facility - no key speaking for it, or the most specific key
+    that does saying `no` - is no facility, and a one-sided lane on a two-way
+    street is therefore mixed traffic for the direction that does not have it.
 
     On a one-way street there is only one direction of travel, so a facility on
-    either side is the facility of the only trip anyone makes on the way, and
-    the union is the right reading. That is not a carve-out for symmetry's sake
-    - it is most of the District's protected network, where `cycleway:left=
+    either side is the facility of the only trip anyone makes on the way. That
+    is most of the District's protected network, where `cycleway:left=
     opposite_lane` and `cycleway:left=track` on a one-way street are how a
-    contraflow lane is tagged, and the one-sided reading is the correct one
-    there because there is no second direction to strand.
+    contraflow lane is tagged.
 
-    Returns the weaker side's values, so an absent or `no` side answers with
-    what it says rather than with the other side's facility.
+    Returns the weaker direction's values, so an absent or `no` side answers
+    with what it says rather than with the other side's facility.
     """
-    if is_oneway(tags):
-        return {tags[k] for k in CYCLEWAY_KEYS if tags.get(k)}
-    sides = (_side_values(tags, "left"), _side_values(tags, "right"))
-    return min(sides, key=_facility_rank)
-
-
-# One width key per cycleway key form, in the same order as `cycleway_values`
-# reads them.
-CYCLEWAY_WIDTH_KEYS = (
-    "cycleway:width",
-    "cycleway:both:width",
-    "cycleway:left:width",
-    "cycleway:right:width",
-)
+    return set(cycleway_provision(tags).values)
 
 
 def cycleway_width_m(tags: dict[str, str]) -> float | None:
-    """The narrowest surveyed painted-lane width, or None if none is tagged.
+    """The narrowest surveyed width on the sides the provision is scored on.
 
-    `shoulder_width_m`'s rule, for the same reason and with the same shape. The
-    four keys are not a fallback chain to be walked until one of them answers:
-    `cycleway:left:width` and `cycleway:right:width` are the two sides of the
-    road, a rider is on whichever side the route uses, and the tile build does
-    not know which - one tier is stored per way. Taking the first key present
-    made a road with `cycleway:left:width=2.0` and `cycleway:right:width=1.2`
-    read as a 2.0 m lane, LTS1 and "adequate", while the same road carrying only
-    the 1.2 m right-hand lane read LTS2 - so surveying the wider side *lowered*
-    the stress of a road whose narrow side had not changed. The narrower of the
-    two is the higher-stress reading and the one a rider can be made to use.
-
-    `cycleway:width` and `cycleway:both:width` are not a third and fourth side.
-    Each states the width of the lane on *each* side, so such a value enters the
-    comparison as itself and no key outranks another: whichever surveyed width
-    is smallest is the answer, whatever key carries it.
+    A width belongs to its side: `cycleway:left:width` is the left lane's,
+    `cycleway:both:width` each side's unless that side has its own, and
+    `cycleway:width` whatever is left. The sides compared are the ones that set
+    the provision, so the narrower of two painted lanes is the answer - a rider
+    is on whichever side the route uses, and the tile build does not know which
+    - while a track's width never stands in for the painted lane opposite it.
+    A side with no surveyed width does not enter the comparison.
     """
-    widths = [w for key in CYCLEWAY_WIDTH_KEYS if (w := parse_width_m(tags.get(key))) is not None]
-    return min(widths) if widths else None
+    return cycleway_provision(tags).width_m
 
 
-# The shoulder keys, split the way the cycleway keys above are: two that speak
-# for both sides of the road and two that speak for one side each.
-SHOULDER_BOTH_SIDES_KEYS = ("shoulder", "shoulder:both")
-SHOULDER_PRESENCE_KEYS = (*SHOULDER_BOTH_SIDES_KEYS, "shoulder:left", "shoulder:right")
-
-# The width key for every side named above, spelled as OSM spells it. Nothing
-# walks the two lists in step any more - `has_shoulder` reads every presence key
-# before it answers and `shoulder_width_m` takes the smallest width on the way,
-# whichever key carries it - so the order is arbitrary and what matters is that
-# no side is missing its width key. A missing one is not cosmetic: while
-# `shoulder:right:width` was absent from this list a way tagged
-# `shoulder:right=yes` + `shoulder:right:width=2.4` read as a shoulder of
-# unknown width, which is read as narrow, so a surveyed eight-foot shoulder
-# earned nothing.
-SHOULDER_BOTH_SIDES_WIDTH_KEYS = ("shoulder:width", "shoulder:both:width")
-SHOULDER_WIDTH_KEYS = (
-    *SHOULDER_BOTH_SIDES_WIDTH_KEYS,
-    "shoulder:left:width",
-    "shoulder:right:width",
-)
-
+# The shoulder keys, split into levels the way the cycleway keys are, most
+# specific first: each level is a presence key and its width key.
+SHOULDER_SIDE_LEVELS = {
+    side: (
+        (f"shoulder:{side}", f"shoulder:{side}:width"),
+        ("shoulder:both", "shoulder:both:width"),
+        ("shoulder", "shoulder:width"),
+    )
+    for side in SIDES
+}
 
 SHOULDER_ABSENT = frozenset({"no", "none"})
 
 
-def _shoulder_on_side(tags: dict[str, str], side: str) -> bool | None:
-    """Whether one named side of the road has a shoulder, or None if untagged.
+def _shoulder_levels(tags: dict[str, str], side: str) -> list[tuple[str | None, float | None]]:
+    """One side's (presence, width) at each level, most specific first.
 
-    Every rule `has_shoulder` describes, applied to the keys that speak for this
-    side: the general keys (`shoulder`, `shoulder:both`) say something about
-    every side, the side key says something about this one, and a surveyed width
-    on any of them is presence on its own.
+    The bare `shoulder` key also takes a side as its value (`shoulder=right`),
+    and then it speaks for the named side only, and says `no` for the other.
     """
-    presence = [
-        value
-        for key in (*SHOULDER_BOTH_SIDES_KEYS, f"shoulder:{side}")
-        if (value := tags.get(key)) is not None
-    ]
-    if any(value not in SHOULDER_ABSENT for value in presence):
-        return True
-    widths = (*SHOULDER_BOTH_SIDES_WIDTH_KEYS, f"shoulder:{side}:width")
-    if any(parse_width_m(tags.get(key)) is not None for key in widths):
-        return True
-    return False if presence else None
+    levels = []
+    for presence_key, width_key in SHOULDER_SIDE_LEVELS[side]:
+        value, width = tags.get(presence_key) or None, parse_width_m(tags.get(width_key))
+        if presence_key == "shoulder" and value in SIDES and value != side:
+            value, width = "no", None
+        levels.append((value, width))
+    return levels
+
+
+def _shoulder_on_side(tags: dict[str, str], side: str) -> tuple[bool | None, float | None]:
+    """Whether one side of the road has a shoulder, and how wide it is.
+
+    The first level that says anything about the side answers for it - a
+    presence key or a surveyed width, and the width is presence on its own. So
+    `shoulder=yes` + `shoulder:width=2.4` + `shoulder:right=no` has no shoulder
+    on the right: the side key is the more specific tag, and the general width
+    measured the shoulder that exists, on the left. Within one level a width
+    beats a `no`; see `has_shoulder`. A side found present takes the most
+    specific width surveyed for it at that level or below.
+
+    Returns (None, None) when nothing speaks for the side.
+    """
+    levels = _shoulder_levels(tags, side)
+    for index, (value, width) in enumerate(levels):
+        if width is None and value is None:
+            continue
+        if width is None and value in SHOULDER_ABSENT:
+            return False, None
+        below = [w for _, w in levels[index:] if w is not None]
+        return True, below[0] if below else None
+    return None, None
+
+
+def _shoulder_directions(tags: dict[str, str]) -> list[list[tuple[bool | None, float | None]]]:
+    left, right = (_shoulder_on_side(tags, side) for side in SIDES)
+    if is_oneway(tags):
+        return [[left, right]]
+    return [[left], [right]]
 
 
 def has_shoulder(tags: dict[str, str]) -> bool | None:
     """Whether a rider going either way along the road has a shoulder to sit in.
 
     Each side is read on its own and the sides are then combined by
-    `cycleway_values`' rule, which is this module's one rule for a provision
+    `cycleway_provision`'s rule, which is this module's one rule for a provision
     that can be tagged per side: **score the worst side a rider may be made to
     use.** On a two-way street the two sides are the two directions of travel,
     one tier is stored per way, and a shoulder on the right only is nothing at
     all to a rider heading the other way - so both sides have to have one. On a
     one-way street there is one direction and one side in use, so either side
-    answers for the way. Measured, before this: a two-way 30 mph secondary with
-    a 2.4 m shoulder on one side scored LTS2 while the same road with 2.4 m on
-    one side and 1.3 m on the other scored LTS3, because presence was "any side"
-    while `shoulder_width_m` was "the worst side" - surfacing the second
-    shoulder raised the road's stress.
+    answers for the way.
 
     Returns None only when nothing in the tags speaks to shoulders at all, since
     absence of a `shoulder:*` tag is not evidence that shoulders are absent. A
     way that says something about one side and nothing about the other has
     spoken, and the answer for the way is False.
 
-    Within a side the keys are not alternatives, they are a general tag and a
-    refinement of it: a way carrying `shoulder=no` *and* `shoulder:right=yes`
-    has a shoulder on the right, because the more specific tag is the later one
-    and the more general one is what a mapper writes first. Every presence key
-    for the side is read before any answer is returned.
+    Within a side the keys are a general tag and refinements of it, and the most
+    specific one that speaks answers: a way carrying `shoulder=no` *and*
+    `shoulder:right=yes` has a shoulder on the right, and a way carrying
+    `shoulder=yes` and `shoulder:right=no` has none there.
 
     A surveyed width counts as presence on its own. `shoulder:width=2.4` with no
     presence key is a mapper who measured the shoulder and did not separately
@@ -395,39 +477,34 @@ def has_shoulder(tags: dict[str, str]) -> bool | None:
     only measurement on the way, and it is the measurement, not the presence
     key, that the bike-lane table needs.
 
-    That includes the contradictory pair, and deliberately: `shoulder=no`
-    together with a `shoulder:width` reads as **present**. The two tags
-    disagree, and the width is the survey - somebody went and measured a
-    shoulder, which is not a thing to do to a road that has none, while
-    `shoulder=no` is the value a mapper leaves behind after refining the way
-    with a more specific tag (the same order of events the side keys above
-    describe). Believing the width also keeps this function's answer consistent
-    with `shoulder_width_m`, which reads the width whatever the presence keys
-    say: the alternative is a way that has no shoulder and a shoulder width,
-    which the classifier cannot score. It errs toward the lower-stress reading
-    on a contradiction, which is the one place in this module that happens, and
-    it is bounded - the width still has to clear `RIDEABLE_SHOULDER_M` before
-    `stress` credits anything for it.
+    That includes the contradictory pair at one level, and deliberately:
+    `shoulder=no` together with `shoulder:width` reads as **present**. The two
+    tags disagree, and the width is the survey - somebody went and measured a
+    shoulder, which is not a thing to do to a road that has none. It errs toward
+    the lower-stress reading on a contradiction, which is the one place in this
+    module that happens, and it is bounded - the width still has to clear
+    `RIDEABLE_SHOULDER_M` before `stress` credits anything for it. A `no` on a
+    *more specific* key than the width is not a contradiction but a refinement,
+    and the side has nothing.
     """
-    left = _shoulder_on_side(tags, "left")
-    right = _shoulder_on_side(tags, "right")
-    if is_oneway(tags):
-        if left or right:
-            return True
-        return False if (left is not None or right is not None) else None
-    if left and right:
-        return True
-    if left is None and right is None:
+    directions = _shoulder_directions(tags)
+    if all(present is None for sides in directions for present, _ in sides):
         return None
-    return False
+    return all(any(present for present, _ in sides) for sides in directions)
 
 
 def shoulder_width_m(tags: dict[str, str]) -> float | None:
-    """The narrowest surveyed shoulder width, or None if none is tagged.
+    """The narrowest surveyed width among the shoulders the way is scored on.
 
-    The narrowest rather than the first: a way carrying both
-    `shoulder:left:width` and `shoulder:right:width` has a rider on whichever
-    side the route uses, and the tile build does not know which.
+    The narrowest rather than the first: a way with a shoulder on each side has
+    a rider on whichever side the route uses, and the tile build does not know
+    which. A width belongs to its side, so a side with no shoulder contributes
+    none, and a side with no surveyed width does not enter the comparison.
     """
-    widths = [w for key in SHOULDER_WIDTH_KEYS if (w := parse_width_m(tags.get(key))) is not None]
+    widths = [
+        width
+        for sides in _shoulder_directions(tags)
+        for present, width in sides
+        if present and width is not None
+    ]
     return min(widths) if widths else None
