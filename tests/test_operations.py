@@ -1881,6 +1881,67 @@ def test_unwedge_job_reports_the_status_the_retry_actually_left(tmp_path) -> Non
     assert "is now failed" in entry.detail, entry.detail
 
 
+def aborted(job_id: int) -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "UPDATE procrastinate_jobs SET abort_requested = true WHERE id = %s", [job_id]
+        )
+    return job_id
+
+
+@db
+@pytest.mark.parametrize("make", [wedged_rebuild, wedged_backup], ids=["rebuild", "backup"])
+def test_a_job_the_retry_finished_is_not_followed_by_pickup_advice(make) -> None:
+    """The status line was corrected and the paragraph after it was not.
+
+    Having said the job is now `failed`, the command went on to say the service
+    picks a `todo` job up within seconds - the advice for a row that went back
+    on the queue, printed under one that did not. Whatever it says next, it must
+    not send the operator to watch for a pickup that cannot happen, and on both
+    queues.
+    """
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    from core.management.commands.unwedge_job import next_steps
+
+    job_id = aborted(make())
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+    assert job_status(job_id) == "failed", "the premise, as above"
+
+    printed = out.getvalue()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT task_name, queue_name FROM procrastinate_jobs WHERE id = %s", [job_id]
+        )
+        task_name, queue_name = cursor.fetchone()
+    assert next_steps(task_name, queue_name, "todo") not in printed, (
+        f"a finished job was given the advice for a requeued one: {printed}"
+    )
+    assert "`todo`" not in printed and "logs -f" not in printed, printed
+
+
+@db
+def test_the_rebuild_a_finished_unwedge_points_to_can_be_queued() -> None:
+    """The advice after a finished rebuild names `run_rebuild_now`, and it is
+    only advice if the command then works: with the row finished nothing is in
+    flight, so the fresh run queues."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    job_id = aborted(wedged_rebuild())
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+    assert "run_rebuild_now" in out.getvalue(), out.getvalue()
+
+    queued = StringIO()
+    call_command("run_rebuild_now", stdout=queued)
+    assert "queued weekly_rebuild as job" in queued.getvalue(), queued.getvalue()
+
+
 @db
 def test_unwedge_job_is_not_blocked_by_the_lock_its_own_row_holds() -> None:
     """The queueing-lock check is about *another* job.

@@ -68,14 +68,40 @@ MAINTENANCE_NEXT_STEPS = (
     "is nothing to queue by hand: {task} is periodic, so if this row is not worth running "
     "again you can leave it and the next tick will write its own job."
 )
+# And for a job the retry did not put back. `procrastinate_retry_job_v2`
+# finishes a `doing` job with an abort requested on it instead of requeueing it,
+# so the row is terminal: no worker will pick it up, and telling the operator to
+# watch for one sends them to wait on nothing. What is left to do is start a new
+# run, if one is still wanted, and with this row finished nothing is in flight
+# to refuse it.
+FINISHED_PREAMBLE = (
+    "An abort had been requested on it, so Procrastinate finished it as {landed} "
+    "instead of requeueing it, and no worker will pick it up."
+)
+REBUILD_FINISHED_NEXT_STEPS = (
+    " If a rebuild is still wanted, queue a fresh one with `manage.py run_rebuild_now`; "
+    "nothing is in flight to refuse it now."
+)
+MAINTENANCE_FINISHED_NEXT_STEPS = (
+    " There is nothing to queue by hand: {task} is periodic, and the next tick writes its own job."
+)
 
 
-def next_steps(task_name: str, queue_name: str) -> str:
-    """The sentence that fits the job that was just put back.
+def next_steps(task_name: str, queue_name: str, landed: str = "todo") -> str:
+    """The sentence that fits the job that was just put back, or was not.
 
     Keyed on the task rather than on the queue because what differs is the
-    hand-fire command, and `run_rebuild_now` is the only one there is.
+    hand-fire command, and `run_rebuild_now` is the only one there is; and on
+    where the row landed, because a job that is `todo` again is waited for and
+    one that was finished instead is replaced.
     """
+    if landed != "todo":
+        tail = (
+            REBUILD_FINISHED_NEXT_STEPS
+            if task_name == "weekly_rebuild"
+            else MAINTENANCE_FINISHED_NEXT_STEPS.format(task=task_name)
+        )
+        return FINISHED_PREAMBLE.format(landed=landed) + tail
     if task_name == "weekly_rebuild":
         return REBUILD_NEXT_STEPS
     return MAINTENANCE_NEXT_STEPS.format(task=task_name, queue=queue_name)
@@ -177,7 +203,7 @@ class Command(BaseCommand):
 
         what = "is queued again" if landed == "todo" else f"is now {landed}"
         self.stdout.write(f"job {job_id} ({job.task_name} on the {job.queue_name} queue) {what}.")
-        self.stdout.write(next_steps(job.task_name, job.queue_name))
+        self.stdout.write(next_steps(job.task_name, job.queue_name, landed))
 
     def _live_worker(self, job):
         """The job's worker if it is still beating, else None.
