@@ -257,8 +257,9 @@ reserves is scaled to their toy extract, and its fullness fraction is set to
 100 percent, the way `tests/test_operations.py` already did. The gate's own
 refusals are tested with a stand-in `disk_usage`. A `/tmp` that genuinely runs
 out still fails the suite, and can abort it outright: a pyosmium writer that
-hits ENOSPC can raise from its destructor, which ends the process. Pass
-`--basetemp` on a real disk when `/tmp` is short.
+hits ENOSPC can raise from its destructor, which ends the process. When `/tmp`
+is short, point `TMPDIR` at a real disk: pytest's `tmp_path` and the tests that
+call `tempfile` directly both follow it, where `--basetemp` moves only the first.
 
 ## What migrations do and do not create
 
