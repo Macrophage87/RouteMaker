@@ -532,6 +532,29 @@ def test_the_summary_names_the_rows_that_matched_nothing_and_bounds_the_list() -
     assert "5 more" in text, "saying how many it left out"
 
 
+@pytest.mark.parametrize("extra", [-20, -1, 0, 1, 5, 1000])
+def test_the_summary_names_exactly_the_first_ids_and_counts_the_rest(extra) -> None:
+    """Read back, the line gives the ids it names and the count it left out, and
+    both are the report's own: no id past the bound, no "and 0 more" at exactly
+    the bound, the true remainder past it, and no empty list when nothing was
+    unmatched. A substring check could not tell "5 more" from "25 more"."""
+    import re
+
+    from pipeline.overrides import OverrideReport
+
+    limit = OverrideReport.SUMMARY_WAY_IDS
+    ids = tuple(range(9_000_000, 9_000_000 + limit + extra))
+    text = OverrideReport(unmatched_way_ids=ids).summary()
+
+    counts = [int(n) for n in re.findall(r"(\d+) approved rows matched no way", text)]
+    assert counts == [len(ids)], text
+    named = [int(n) for n in re.findall(r"\b9\d{6}\b", text)]
+    assert named == list(ids[:limit]), text
+    left_out = [int(n) for n in re.findall(r"\b(\d+) more\b", text)]
+    assert left_out == ([len(ids) - limit] if len(ids) > limit else []), text
+    assert ("(" in text) == bool(ids), text
+
+
 @pytest.mark.django_db
 def test_the_override_stage_logs_its_report(tmp_path, caplog) -> None:
     """The per-way lines were the whole trail; the report is logged whole too."""
