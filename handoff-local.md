@@ -106,6 +106,7 @@ sudo apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts 
 
 # Python 3.11 and the images' exact package pins, through uv
 curl -LsSf https://astral.sh/uv/install.sh | sh
+. "$HOME/.local/bin/env"   # the installer does not change the running shell's PATH
 uv python install 3.11
 uv venv --python 3.11 .venv
 uv pip install -r docker/requirements.txt -r requirements-dev.txt
