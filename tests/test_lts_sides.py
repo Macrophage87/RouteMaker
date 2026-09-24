@@ -16,11 +16,14 @@ import pytest
 
 from routemaker.stress import Stress, classify
 from routemaker.tags import (
+    ONEWAY_VALUES,
     cycleway_provision,
     cycleway_sides,
     cycleway_values,
     cycleway_width_m,
     has_shoulder,
+    is_oneway,
+    lanes_per_direction,
     shoulder_width_m,
 )
 
@@ -231,3 +234,39 @@ class TestAWidthBelongsToItsSide:
         }
         assert cycleway_width_m(tags) == pytest.approx(2.0)
         assert classify(tags).tier is Stress.LTS2
+
+
+class TestOnlyTheseOnewayValuesMakeAWayOneWay:
+    """Round 10 test quality: widening `is_oneway` to any `oneway` value left the
+    suite green, and `oneway=no` then read as one-way - so the side rule fell
+    back to the one-way union on exactly the streets that state they are
+    two-way."""
+
+    ONE_WAY = ("yes", "1", "-1", "true")
+    TWO_WAY = ("no", "false", "0", "reversible", "alternating", "")
+
+    def test_the_set_is_exactly_these(self) -> None:
+        assert frozenset(self.ONE_WAY) == ONEWAY_VALUES
+
+    @pytest.mark.parametrize("value", ONE_WAY)
+    def test_one_way(self, value: str) -> None:
+        assert is_oneway({"oneway": value}) is True
+
+    @pytest.mark.parametrize("value", TWO_WAY)
+    def test_two_way(self, value: str) -> None:
+        assert is_oneway({"oneway": value}) is False
+        assert is_oneway({}) is False
+
+    @pytest.mark.parametrize("value", TWO_WAY)
+    def test_a_street_that_says_it_is_two_way_is_scored_on_both_sides(self, value: str) -> None:
+        """Through `classify`: a one-sided track on a street tagged two-way is
+        the bare road, and so is its lane count."""
+        tagged = {**ARTERIAL, "oneway": value, "cycleway:left": "track", "cycleway:right": "no"}
+        assert classify(tagged).tier is classify(ARTERIAL).tier
+        assert lanes_per_direction({"lanes": "4", "oneway": value}) == 2
+
+    @pytest.mark.parametrize("value", ONE_WAY)
+    def test_a_one_way_street_is_scored_on_the_side_it_has(self, value: str) -> None:
+        tagged = {**ARTERIAL, "oneway": value, "cycleway:left": "track", "cycleway:right": "no"}
+        assert classify(tagged).tier is Stress.LTS1
+        assert lanes_per_direction({"lanes": "4", "oneway": value}) == 4

@@ -130,8 +130,14 @@ def parse_width_m(value: str | None) -> float | None:
     return float(match.group(1)) if match else None
 
 
+# `oneway` values that make a way one-way. Exactly these: `oneway=no` is a
+# mapper stating the street is two-way, and `reversible` and `alternating` are
+# streets whose direction changes, where both sides are in use over a day.
+ONEWAY_VALUES = frozenset({"yes", "1", "-1", "true"})
+
+
 def is_oneway(tags: dict[str, str]) -> bool:
-    return tags.get("oneway") in {"yes", "1", "-1", "true"}
+    return tags.get("oneway") in ONEWAY_VALUES
 
 
 DIRECTIONAL_LANE_KEYS = ("lanes:forward", "lanes:backward")
