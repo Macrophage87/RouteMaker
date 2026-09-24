@@ -145,9 +145,11 @@ ELEVATION_DIR = DATA_ROOT / "elevation"
 VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 
 # The coverage polygon's bounding box, west, south, east, north: roughly
-# Frederick and Leesburg to the north-west, Annapolis to the east and
-# Fredericksburg to the south. The elevation stage fetches every one-degree HGT
-# tile this box touches, and the extract stage clips to it.
+# Frederick and Leesburg to the north-west, Baltimore to the north-east,
+# Annapolis to the east and Fredericksburg to the south. The elevation stage
+# fetches every one-degree HGT tile this box touches, and the extract stage
+# clips to it. Baltimore City already lay inside these numbers before the plan
+# named it; tests/test_source.py holds that it still does.
 COVERAGE_BBOX = (-78.0, 38.2, -76.3, 39.5)
 
 # The coverage polygon itself, which `osmium extract --polygon` would take in

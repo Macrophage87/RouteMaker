@@ -96,6 +96,21 @@ def test_the_three_geofabrik_extracts_are_the_plans_three_states() -> None:
     )
 
 
+def test_the_coverage_box_contains_baltimore_city() -> None:
+    """PLAN:13 names Baltimore as inside the coverage polygon: it is a common
+    riding destination from the area. The box the extract is clipped to and the
+    elevation tiles are fetched for must therefore contain the whole city, with
+    room for the approaches. Baltimore City's extent from the Census TIGER
+    county layer (it is a county equivalent), rounded outward to a hundredth of
+    a degree."""
+    from django.conf import settings
+
+    city_west, city_south, city_east, city_north = (-76.72, 39.19, -76.52, 39.38)
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < city_west and east > city_east, settings.COVERAGE_BBOX
+    assert south < city_south and north > city_north, settings.COVERAGE_BBOX
+
+
 def test_the_pre_flight_size_is_two_gibibytes() -> None:
     """Flat, because nothing else can say what it is.
 
