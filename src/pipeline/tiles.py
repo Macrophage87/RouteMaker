@@ -541,7 +541,9 @@ def sample_cycle_lane(
     about the lane all read as "nothing to attribute to the sentinel" and come
     back as None, which VALIDATE turns into a refusal. Disagreement is not a
     tie to be broken by position: the sentinel is one block, and a transform
-    that reached half of it is the failure this read exists to catch.
+    that reached half of it is the failure this read exists to catch. So
+    agreement is checked over all of the way's edges, `none` and absent
+    included, before `none` is read as no lane.
     """
     edges = trace_attributes(
         run, config_path, trace_attributes_request(edge, ["edge.cycle_lane", "edge.way_id"])
@@ -551,12 +553,17 @@ def sample_cycle_lane(
     way_ids = {e.get("way_id") for e in edges}
     if len(way_ids) != 1 or None in way_ids:
         return None
-    lanes = {
-        e.get("cycle_lane")
-        for e in edges
-        if e.get("cycle_lane") and e.get("cycle_lane") != NO_CYCLE_LANE
-    }
-    return lanes.pop() if len(lanes) == 1 else None
+    # Agreement is taken over every edge on the way, and only then is "no lane"
+    # read as nothing. Filtering `none` first let a block the transform reached
+    # half of - one edge "separated", the next "none" - answer "separated". An
+    # edge with no cycle_lane attribute at all says no more than `none` does,
+    # so it counts as `none` here: it disagrees with a lane rather than being
+    # dropped.
+    lanes = {e.get("cycle_lane") or NO_CYCLE_LANE for e in edges}
+    if len(lanes) != 1:
+        return None
+    lane = lanes.pop()
+    return None if lane == NO_CYCLE_LANE else lane
 
 
 # --- The disk gate ---------------------------------------------------------------

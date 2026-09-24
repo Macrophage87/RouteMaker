@@ -667,6 +667,42 @@ def test_no_cycle_lane_reads_as_no_lane_rather_than_as_a_value(tmp_path) -> None
     assert tiles.sample_cycle_lane(run, tmp_path / "c.json", SENTINEL_EDGE, SENTINEL_WAY) is None
 
 
+def test_a_half_transformed_block_answers_nothing(tmp_path) -> None:
+    """Agreement is over every edge on the way, `none` included.
+
+    Reading `none` as no lane before asking whether the edges agree dropped the
+    edges the transform had not reached, so a block with a derived lane on one
+    edge and nothing on the next answered "separated" - the half-done transform
+    this read exists to refuse. An edge that carries no cycle_lane attribute at
+    all says no more than `none` does and is not dropped either. Every edge
+    here is on the sentinel's way and carries its id, so disagreement is the
+    only reason left to refuse; and each is checked with and without the way id
+    the deployment may pass.
+    """
+    config = tmp_path / "c.json"
+    for other in ({"cycle_lane": tiles.NO_CYCLE_LANE}, {}):
+        for order in (1, -1):
+            half = [
+                {"way_id": SENTINEL_WAY, "cycle_lane": "separated"},
+                {"way_id": SENTINEL_WAY, **other},
+            ]
+            run = trace_returning(half[::order])
+            assert tiles.sample_cycle_lane(run, config, SENTINEL_EDGE) is None, (other, order)
+            assert tiles.sample_cycle_lane(run, config, SENTINEL_EDGE, SENTINEL_WAY) is None, (
+                other,
+                order,
+            )
+    # Two edges with no lane, one saying so and one silent, agree: no lane.
+    neither = trace_returning(
+        [{"way_id": SENTINEL_WAY, "cycle_lane": tiles.NO_CYCLE_LANE}, {"way_id": SENTINEL_WAY}]
+    )
+    assert tiles.sample_cycle_lane(neither, config, SENTINEL_EDGE, SENTINEL_WAY) is None
+    # And an empty or missing lane on its own is no lane, not a value.
+    for silent in ({"cycle_lane": ""}, {"cycle_lane": None}, {}):
+        run = trace_returning([{"way_id": SENTINEL_WAY, **silent}])
+        assert tiles.sample_cycle_lane(run, config, SENTINEL_EDGE, SENTINEL_WAY) is None, silent
+
+
 def test_the_request_asks_for_the_way_id_the_filter_needs(tmp_path) -> None:
     """The filter is only as good as the attribute list: an answer with no way
     ids in it cannot be narrowed to anything."""
