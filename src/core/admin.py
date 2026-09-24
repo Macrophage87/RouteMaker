@@ -53,6 +53,7 @@ from .models import (
     cancel_instance_admin_removal,
     check_last_instance_admin,
     claim_bootstrap_instance_admin,
+    clear_instance_admin_removal_on_appointment,
     schedule_instance_admin_removal,
 )
 from .revocation import revoke_guild
@@ -973,6 +974,13 @@ class UserAdmin(InstanceAdminOnly):
                 level=messages.WARNING,
             )
             return
+        appointing = (
+            previous is not None and not previous.is_instance_admin and obj.is_instance_admin
+        )
+        if appointing:
+            # A removal a peer requested before this account stood down would
+            # otherwise come due and strip the appointment being made now.
+            clear_instance_admin_removal_on_appointment(previous, actor=request.user)
         super().save_model(request, obj, form, change)
 
 

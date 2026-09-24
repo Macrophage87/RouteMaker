@@ -828,6 +828,46 @@ def cancel_instance_admin_removal(pending: PendingInstanceAdminRemoval, actor=No
     )
 
 
+def clear_instance_admin_removal_on_appointment(user: User, actor=None) -> int:
+    """Drop a removal still pending against an account being appointed, audited.
+
+    A removal requested by a peer outlives the target's own stand-down, which is
+    immediate and does not come through the window. Left there, the row comes
+    due after a fresh appointment and strips it - a removal nobody requested of
+    this appointment, with no window of its own and nothing on the pending page
+    anyone would think to cancel. Round 10 reproduced it end to end.
+
+    Called only on the transition from not holding the flag to holding it, so it
+    never touches a removal pending against somebody who still holds it: that
+    is the window working, and who may cancel it is not decided here.
+
+    The rows are taken `FOR UPDATE`, waited on rather than skipped, so an
+    `apply_due_instance_admin_removals` run already applying this row finishes
+    before the appointment is written over it, and the appointment is what
+    stands. Returns the number cleared.
+    """
+    from .audit import record
+
+    cleared = 0
+    with transaction.atomic():
+        for pending in PendingInstanceAdminRemoval.objects.select_for_update().filter(user=user):
+            requested_by, requested_at = pending.requested_by_user_id, pending.requested_at
+            pending.delete()
+            record(
+                actor,
+                "cancel_removal",
+                "user",
+                user.pk,
+                AuditLogEntry.Outcome.ALLOWED,
+                detail=(
+                    "pending instance admin removal cleared on re-appointment; requested by "
+                    f"{requested_by} at {requested_at.isoformat()}"
+                ),
+            )
+            cleared += 1
+    return cleared
+
+
 def apply_due_instance_admin_removals(now=None) -> int:
     """Clear the flag for every removal whose delay has run out, and audit each.
 
@@ -1022,6 +1062,9 @@ def claim_bootstrap_instance_admin(user: User) -> bool:
     try:
         with transaction.atomic():
             BootstrapClaim.objects.create(discord_user_id=user.discord_user_id, user=user)
+            # An appointment like the admin's, so a removal left pending from
+            # before an emptied list must not come due and strip it.
+            clear_instance_admin_removal_on_appointment(user, actor=user)
             User.objects.filter(pk=user.pk).update(is_instance_admin=True)
     except IntegrityError:
         logger.warning(

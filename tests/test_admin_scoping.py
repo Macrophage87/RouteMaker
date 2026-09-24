@@ -1357,6 +1357,39 @@ class TestTheBootstrapInstanceAdmin:
         assert entry.actor_id == user.pk
         assert (entry.model, entry.object_id) == ("user", str(user.pk))
 
+    def test_the_claim_clears_a_removal_left_pending_against_the_claimant(
+        self, client, monkeypatch
+    ) -> None:
+        """The other appointment path. A removal left from before the list
+        emptied must not come due and strip the bootstrap admin."""
+        from datetime import timedelta
+
+        from core.models import (
+            AuditLogEntry,
+            PendingInstanceAdminRemoval,
+            apply_due_instance_admin_removals,
+        )
+
+        User = get_user_model()
+        user = User.objects.create(discord_user_id=7781)
+        effective_at = timezone.now() + timedelta(hours=1)
+        PendingInstanceAdminRemoval.objects.create(user=user, effective_at=effective_at)
+        self.bootstrap(monkeypatch, 7781)
+        signed_in = sign_in(client, monkeypatch, user)
+
+        assert signed_in.get(f"/{settings.ADMIN_PATH}").status_code == 200
+        assert not PendingInstanceAdminRemoval.objects.exists()
+        # Somebody else appointed later, so the lockout guard is no longer
+        # what would keep the claimant in place when the old row came due.
+        User.objects.create(discord_user_id=7782, is_instance_admin=True)
+        assert apply_due_instance_admin_removals(now=effective_at) == 0
+        user.refresh_from_db()
+        assert user.is_instance_admin
+
+        entry = AuditLogEntry.objects.get(action="cancel_removal")
+        assert entry.actor_id == user.pk
+        assert entry.object_id == str(user.pk)
+
     def test_the_variable_grants_nothing_once_the_list_is_not_empty(
         self, client, monkeypatch, instance_admin
     ) -> None:
@@ -1926,6 +1959,65 @@ class TestTheInstanceAdminRemovalWindow:
         assert longer.effective_at == now + timedelta(days=1)
 
         assert PendingInstanceAdminRemoval.objects.filter(user=peer).count() == 1
+
+    def test_a_removal_left_by_a_stand_down_does_not_strip_a_re_appointment(
+        self, as_instance_admin, instance_admin, peer, monkeypatch
+    ) -> None:
+        """Round 10's reproduction, end to end over the admin: a peer's removal
+        is requested, the peer stands down themselves, is appointed afresh, and
+        the old removal must not come due against the new appointment."""
+        from django.test import Client
+
+        from core.models import (
+            AuditLogEntry,
+            PendingInstanceAdminRemoval,
+            apply_due_instance_admin_removals,
+        )
+
+        response = as_instance_admin.post(admin_url("core_user_change", peer.pk), {})
+        assert response.status_code == 302
+        pending = PendingInstanceAdminRemoval.objects.get(user=peer)
+
+        as_the_peer = sign_in(Client(), monkeypatch, peer)
+        response = as_the_peer.post(admin_url("core_user_change", peer.pk), {})
+        assert response.status_code == 302
+        peer.refresh_from_db()
+        assert not peer.is_instance_admin, "standing down is immediate"
+        assert PendingInstanceAdminRemoval.objects.filter(user=peer).exists(), (
+            "the precondition: the removal outlives the stand-down"
+        )
+
+        response = as_instance_admin.post(
+            admin_url("core_user_change", peer.pk), {"is_instance_admin": "on"}
+        )
+        assert response.status_code == 302
+        assert not PendingInstanceAdminRemoval.objects.filter(user=peer).exists()
+
+        assert apply_due_instance_admin_removals(now=pending.effective_at) == 0
+        peer.refresh_from_db()
+        assert peer.is_instance_admin, "the re-appointment stands"
+
+        entry = AuditLogEntry.objects.get(action="cancel_removal")
+        assert entry.outcome == AuditLogEntry.Outcome.ALLOWED
+        assert (entry.model, entry.object_id) == ("user", str(peer.pk))
+        assert entry.actor_id == instance_admin.pk, "the log names who re-appointed"
+
+    def test_a_save_that_keeps_the_flag_leaves_a_pending_removal_alone(
+        self, as_instance_admin, instance_admin, peer
+    ) -> None:
+        """Only the appointment clears it. Saving a current holder's page with
+        the box still ticked is not an appointment, and clearing there would be
+        a cancel by another route - including by the target, whose right to
+        cancel is an open owner decision this does not settle."""
+        from core.models import AuditLogEntry, PendingInstanceAdminRemoval
+
+        schedule_removal(peer, actor=instance_admin)
+        response = as_instance_admin.post(
+            admin_url("core_user_change", peer.pk), {"is_instance_admin": "on"}
+        )
+        assert response.status_code == 302
+        assert PendingInstanceAdminRemoval.objects.filter(user=peer).exists()
+        assert not AuditLogEntry.objects.filter(action="cancel_removal").exists()
 
     def test_a_guild_admin_sees_no_pending_removals_page(self, as_guild_admin) -> None:
         assert (
