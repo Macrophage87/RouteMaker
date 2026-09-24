@@ -603,21 +603,36 @@ def test_only_the_sentinel_ways_edges_answer_the_cycle_lane_read(tmp_path) -> No
     ), "the neighbour's lane answered for the sentinel"
 
 
-def test_a_cycle_lane_read_that_cannot_be_attributed_to_one_way_answers_nothing(tmp_path) -> None:
-    """Three ways of not knowing, all of which used to produce a value.
-
-    Without the way id the trace has to lie along one way for the answer to
-    belong to the sentinel at all; an edge with no way id means the attribute
-    was not asked for or the build does not carry it, and every edge then looks
-    alike; and edges of one way that disagree mean the transform reached part of
-    the block, which is exactly the failure this read exists to catch and not a
-    tie to be broken by taking the first or the last.
-    """
+def test_two_ways_that_agree_about_the_lane_still_answer_nothing(tmp_path) -> None:
+    """Without the way id, the trace has to lie along one way for the answer to
+    belong to the sentinel at all. A trace that also snapped onto a neighbouring
+    way carrying its own OSM `cycleway=track` agrees with a transformed
+    sentinel, and agreement is no evidence that the transform ran: the lane may
+    be the neighbour's alone. The edges here differ only in their way ids, so
+    the one-way guard is the only thing that can refuse them."""
     config = tmp_path / "c.json"
     spanning = trace_returning(
-        [{"way_id": 1, "cycle_lane": "separated"}, {"way_id": 2, "cycle_lane": "shared"}]
+        [{"way_id": 1, "cycle_lane": "separated"}, {"way_id": 2, "cycle_lane": "separated"}]
     )
     assert tiles.sample_cycle_lane(spanning, config, SENTINEL_EDGE) is None
+    # The same two edges on one way are an answer, so it is the second way id
+    # and nothing else in the input that the refusal above turns on.
+    one_way = trace_returning(
+        [{"way_id": 1, "cycle_lane": "separated"}, {"way_id": 1, "cycle_lane": "separated"}]
+    )
+    assert tiles.sample_cycle_lane(one_way, config, SENTINEL_EDGE) == "separated"
+
+
+def test_a_cycle_lane_read_that_cannot_be_attributed_to_one_way_answers_nothing(tmp_path) -> None:
+    """Two more ways of not knowing, both of which used to produce a value.
+
+    An edge with no way id means the attribute was not asked for or the build
+    does not carry it, and every edge then looks alike; and edges of one way
+    that disagree mean the transform reached part of the block, which is
+    exactly the failure this read exists to catch and not a tie to be broken by
+    taking the first or the last.
+    """
+    config = tmp_path / "c.json"
 
     # What dropping "edge.way_id" from the request produces: Valhalla answers
     # with the attributes it was asked for and no others.
