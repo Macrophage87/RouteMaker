@@ -1721,6 +1721,169 @@ def test_a_rollback_that_fails_partway_puts_the_deployment_back(
         assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
 
 
+def assert_served_as_the_second_rebuild_left_it(root: Path) -> None:
+    """Every part of the deployment `two_rebuilds` leaves, read back.
+
+    The newer graph live, the older one retired, no staging schema, every
+    variant's `current` on the newer build with `previous` on the older, and
+    every settings row saying the same. A rollback that refused or undid
+    itself has to leave exactly this.
+    """
+    from core.models import ValhallaUpstream
+    from pipeline.schema import schema_exists
+
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4, "the newer graph is live"
+    assert count(settings.SEGMENT_SCHEMA_RETIRED) == 5, "the rollback target is retired"
+    assert not schema_exists(settings.SEGMENT_SCHEMA_STAGING), "and nothing sits in staging"
+    for variant in Variant:
+        variant_dir = root / "tiles" / variant.value
+        assert os.readlink(variant_dir / "current") == "20260917T080000Z", variant.value
+        assert os.readlink(variant_dir / "previous") == "20260910T080000Z", variant.value
+    rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
+    assert set(rows) == {variant.value for variant in Variant}
+    for variant, row in rows.items():
+        assert (row.build_id, row.previous_build_id) == (
+            "20260917T080000Z",
+            "20260910T080000Z",
+        ), variant
+
+
+def a_reader():
+    """A separate backend, standing in for the API process reading segments.
+
+    Django's test connection is the one the rollback runs on, so a lock taken
+    through it would conflict with nothing.
+    """
+    from psycopg2 import connect
+
+    db = connection.settings_dict
+    return connect(
+        host=db["HOST"] or "127.0.0.1",
+        port=db["PORT"] or 5432,
+        dbname=db["NAME"],
+        user=db["USER"],
+        password=db["PASSWORD"],
+    )
+
+
+def quick_lock_attempts(monkeypatch) -> None:
+    """Both renames, as `promotion` calls them, giving up in a fraction of a
+    second instead of the thirty-odd the defaults take to lose to a reader."""
+    import functools
+
+    from pipeline import promotion, swap
+
+    quick = {"lock_timeout_ms": 150, "attempts": 2, "backoff_s": 0.0}
+    monkeypatch.setattr(promotion, "swap_schemas", functools.partial(swap.swap_schemas, **quick))
+    monkeypatch.setattr(promotion, "rollback_swap", functools.partial(swap.rollback_swap, **quick))
+
+
+def test_a_rollback_refused_by_the_tiles_renames_no_schema_even_with_a_reader(
+    workspace, states, monkeypatch
+) -> None:
+    """Round 10's blocker, as the reviewer ran it.
+
+    The tiles are read-only where `api` and `worker` mount them. `rollback` used
+    to rename the schemas first, fail on the first `demote`, and then have to
+    rename them back - taking ACCESS EXCLUSIVE on the segment table an ordinary
+    API reader holds ACCESS SHARE on all day. The re-swap lost its attempts,
+    raised, and left last week's rows live under this week's tiles with the
+    served build's rows in `staging`. Here a reader takes its lock the moment
+    the tiles refuse, which is the interleaving that produced it: nothing may
+    need that lock to put the deployment back.
+    """
+    from pipeline import promotion, tiles
+
+    source, root = workspace
+    two_rebuilds(source, root)
+    quick_lock_attempts(monkeypatch)
+
+    holder = a_reader()
+    real_demote = tiles.demote
+
+    def demote_on_a_read_only_mount(tiles_dir, variant):
+        if variant is Variant.NO_TRAIL:
+            with holder.cursor() as cursor:
+                cursor.execute(
+                    f"LOCK TABLE {settings.SEGMENT_SCHEMA_LIVE}.segment IN ACCESS SHARE MODE"
+                )
+            raise OSError(30, "Read-only file system")
+        return real_demote(tiles_dir, variant)
+
+    monkeypatch.setattr(promotion.tiles, "demote", demote_on_a_read_only_mount)
+    try:
+        with pytest.raises(OSError, match="Read-only"):
+            promotion.rollback(root / "tiles")
+    finally:
+        holder.rollback()
+        holder.close()
+
+    assert_served_as_the_second_rebuild_left_it(root)
+
+
+def test_a_rollback_whose_rename_loses_to_a_reader_puts_the_tiles_and_rows_back(
+    workspace, states, monkeypatch
+) -> None:
+    """The rename is the last step now, so it is the one a reader can still
+    refuse - and by then the tiles and the rows have moved. Its refusal has to
+    put both back: one transaction renamed nothing, so the links and the rows
+    are the whole of the undo. Then, with the reader gone, the same rollback
+    goes through, which is what an operator will do next."""
+    from pipeline import promotion
+    from pipeline.swap import SwapLockTimeout
+
+    source, root = workspace
+    two_rebuilds(source, root)
+    quick_lock_attempts(monkeypatch)
+
+    holder = a_reader()
+    try:
+        with holder.cursor() as cursor:
+            cursor.execute(
+                f"LOCK TABLE {settings.SEGMENT_SCHEMA_LIVE}.segment IN ACCESS SHARE MODE"
+            )
+        with pytest.raises(SwapLockTimeout):
+            promotion.rollback(root / "tiles")
+        assert_served_as_the_second_rebuild_left_it(root)
+    finally:
+        holder.rollback()
+        holder.close()
+
+    promotion.rollback(root / "tiles")
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    for variant in Variant:
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+
+
+def test_a_rollback_inside_a_transaction_is_refused_before_anything_moves(
+    workspace, states, monkeypatch
+) -> None:
+    """`rollback_swap` refuses an enclosing transaction, and it used to be the
+    first thing `rollback` ran. It is the last now, so the refusal is made up
+    front - otherwise the tiles and the rows would move and be put back for a
+    refusal that was always going to happen."""
+    from django.db import transaction
+
+    from pipeline import promotion
+    from pipeline.swap import SwapInsideTransaction
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    moved: list[Variant] = []
+    real_demote = promotion.tiles.demote
+
+    def watched_demote(tiles_dir, variant):
+        moved.append(variant)
+        return real_demote(tiles_dir, variant)
+
+    monkeypatch.setattr(promotion.tiles, "demote", watched_demote)
+    with pytest.raises(SwapInsideTransaction), transaction.atomic():
+        promotion.rollback(root / "tiles")
+    assert not moved, f"the tiles moved before the refusal: {moved}"
+    assert_served_as_the_second_rebuild_left_it(root)
+
+
 def test_the_rollback_command_is_dry_until_it_is_confirmed(workspace, states, monkeypatch) -> None:
     """`promotion.rollback` had no caller: the one procedure the plan names for
     a bad promotion could only be run by importing the module in a shell. It is

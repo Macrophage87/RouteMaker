@@ -51,6 +51,10 @@ no undo at all:
   rolled back - a state reached by the one command whose purpose is to get out
   of one.
 
+Round 10 found that undo's re-swap losing its lock to the API's own readers, so
+`rollback` now moves the tiles and the rows first and renames last: nothing it
+can fail on comes after a committed rename, and its undo never renames.
+
 What this does not do, because no phase-1 component can: start the Valhalla
 processes against the promoted extract or stop the old ones. valhalla_service
 does not reload tiles at runtime, so after a promotion the serving containers
@@ -71,7 +75,7 @@ from django.utils import timezone
 
 from . import tiles
 from .schema import schema_exists, validate_schema_name
-from .swap import SwapResult, rollback_swap, swap_schemas
+from .swap import SwapInsideTransaction, SwapResult, rollback_swap, swap_schemas
 from .variants import Variant
 
 logger = logging.getLogger(__name__)
@@ -378,47 +382,55 @@ def rollback(tiles_dir: Path) -> None:
     where they were, and nothing was raised - while a rollback after a rebuild
     that failed at the swap died halfway through the rename.
 
-    Runs the schema rename first of the three, because it is the step most
-    likely to be refused by something this process cannot see, and being
-    refused there leaves everything consistent.
+    The tiles move first and the schema last - round 10's blocker was the
+    other order. This used to run `rollback_swap` first, on the argument that
+    the rename is the step most likely to be refused and being refused there
+    leaves everything consistent. True of the rename, and it made every later
+    failure the expensive kind: a `demote` refused by a read-only tiles mount
+    (the `api` and `worker` services bind them `:ro`) came after both renames
+    had committed, so the undo had to re-swap the schemas - and that re-swap
+    takes `ACCESS EXCLUSIVE` on the segment table the API reads all day. It
+    lost five attempts to an ordinary reader, raised `SwapLockTimeout`, and
+    left last week's rows live under this week's tiles, with the served build's
+    rows in `staging` for the next rebuild's first stage to drop.
 
-    And it has the same undo the forward path has, built the same way, out of
-    state captured before the first write. `rollback_target` pre-validates
-    everything about the deployment that can be pre-validated - the rows, the
-    links, the retired schema - but a symlink write on a full or read-only
-    volume cannot be, and a rollback that died on the second variant left the
-    schemas rolled back, one variant on last week's tiles and two on this
-    week's, and one settings row rewritten: a deployment in a state no rollback
-    and no rebuild can reason about, reached by the command whose whole purpose
-    is to get out of one. So a failure in the loop puts the links and the rows
-    back and re-swaps the schemas, which returns the deployment to the state
-    the operator ran this from.
+    So the writes that can be undone without a lock go first: every variant's
+    links, then the settings rows in one transaction, then the rename. A
+    failure before the rename leaves the schemas untouched and puts the links
+    and rows back from state captured before the first write; the rename
+    itself is one transaction, so a refused rename moved no schema and the same
+    undo is the whole of the repair. There is no path left on which this has to
+    rename a schema to undo itself. The inconsistency window is the forward
+    path's in reverse - tiles naming last week's build over a live table still
+    describing this week's - and the routers go on serving what they started
+    against until they are restarted either way.
+
+    The enclosing-transaction refusal `rollback_swap` makes is made here too,
+    before anything moves: it used to be the first thing that ran, and after
+    the reorder the tiles would have moved before it could refuse.
     """
     from django.conf import settings
 
     from core.models import ValhallaUpstream
 
+    if connection.in_atomic_block:
+        raise SwapInsideTransaction("rollback must not run inside an enclosing transaction")
     target = rollback_target(tiles_dir)
     links_before = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
     rows_before = upstream_states(settings.VALHALLA_UPSTREAMS)
-    rollback_swap()
     try:
         for variant in Variant:
             tiles.demote(tiles_dir, variant)
-            ValhallaUpstream.objects.filter(variant=variant.value).update(
-                build_id=target[variant], previous_build_id="", updated_at=timezone.now()
-            )
+        with transaction.atomic():
+            for variant in Variant:
+                ValhallaUpstream.objects.filter(variant=variant.value).update(
+                    build_id=target[variant], previous_build_id="", updated_at=timezone.now()
+                )
+        rollback_swap()
     except Exception as error:
-        logger.error("the rollback failed partway; putting the deployment back")
+        logger.error("the rollback failed before its rename committed; putting the deployment back")
+        # No schema to put back: `rollback_swap` is the last step and its rename
+        # is one transaction, so if anything here raised, it renamed nothing.
         failures = restore_everything(tiles_dir, links_before, rows_before)
-        try:
-            # The exact reverse of `rollback_swap`: it renamed live to staging
-            # and the retired schema to live, and this renames live back to
-            # retired and staging back to live. The deployment is serving the
-            # build it was serving before the command was run.
-            swap_schemas()
-        except Exception as schema_error:  # noqa: BLE001 - collected, never swallowed
-            failures.append(f"the schemas ({schema_error})")
-            logger.exception("could not put the schemas back after a failed rollback")
         _note_undo_failures(error, failures, "the rollback's undo")
         raise
