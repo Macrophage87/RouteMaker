@@ -1,7 +1,7 @@
 # RouteMaker — handoff to the local implementer (Windows, Docker)
 
 **For:** whoever picks this up next on a Windows machine with Docker, working with Claude Code.
-**Branch:** `claude/beautiful-mayer-4f7gg9` · **Suite:** 3312 tests, no failures (one skip on this host) · **Written:** 2026-09-24.
+**Branch:** `claude/beautiful-mayer-4f7gg9` · **Suite:** 3313 tests, no failures (one skip on this host) · **Written:** 2026-09-24.
 
 This is the short handoff. `handoff.md` is the full record of ten review rounds and stays as the
 reference (its §7 is the list of known gaps, 49 rows); read this one first and that one when a task
