@@ -271,8 +271,14 @@ class AuditedAdmin(admin.ModelAdmin):
             self._refuse_unpermitted_action(request)
             return super().changelist_view(request, extra_context)
         except PermissionDenied:
+            # The action that was attempted, resolved the way the refusal check
+            # and Django both resolve it, so the row says what was refused and
+            # not only that some action was. The name is the poster's to choose;
+            # the writer bounds it to the column. "action" is left only for a
+            # changelist POST that named none.
+            attempted = self._posted_action(request) or "action"
             self._audit_refused_selection(
-                request, "action", request.POST.getlist("_selected_action")
+                request, attempted, request.POST.getlist("_selected_action")
             )
             raise
 

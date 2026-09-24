@@ -42,6 +42,10 @@ from __future__ import annotations
 # spelled inline so the two cannot drift apart silently; the model asserts the
 # same number in tests/test_admin_scoping.py.
 OBJECT_ID_MAX = 64
+# And `AuditLogEntry.action` of this one. A refused bulk action records the
+# action's name as posted, which the poster chooses, so it is bounded at the
+# writer for the same reason the object id is.
+ACTION_MAX = 32
 
 
 def record(
@@ -76,6 +80,10 @@ def record(
     the log. Truncating at the writer is what makes "refused and audited"
     unconditional, because no caller can be relied on to have measured its own
     identifier - the bulk paths join a whole selection into it.
+
+    `action` is bounded the same way, because a refused bulk action records the
+    posted action name and the poster chooses it: an unbounded name was the
+    same 500-and-no-row, through the other narrow column.
     """
     from .models import AuditLogEntry
 
@@ -83,7 +91,7 @@ def record(
     return AuditLogEntry.objects.create(
         actor=actor if actor_pk else None,
         actor_user_id=actor_pk,
-        action=action,
+        action=str(action)[:ACTION_MAX],
         model=model,
         object_id=str(object_id or "")[:OBJECT_ID_MAX],
         outcome=outcome,
@@ -91,4 +99,4 @@ def record(
     )
 
 
-__all__ = ["OBJECT_ID_MAX", "record"]
+__all__ = ["ACTION_MAX", "OBJECT_ID_MAX", "record"]

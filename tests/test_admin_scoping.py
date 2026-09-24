@@ -543,7 +543,7 @@ class TestTheAuditLogRecordsAttemptsAndNotProbes:
         assert response.status_code == 403
 
         entry = refusals().get()
-        assert (entry.model, entry.action) == ("rolemapping", "action")
+        assert (entry.model, entry.action) == ("rolemapping", "delete_selected")
         assert entry.object_id == str(rows["rolemapping"].pk)
         assert entry.actor.discord_user_id == 9002
 
@@ -677,7 +677,7 @@ class TestEveryWriteVerbOnEveryAuthorizationTable:
         assert response.status_code == 403
 
         entry = refusals().get()
-        assert (entry.model, entry.action) == ("auditlogentry", "action")
+        assert (entry.model, entry.action) == ("auditlogentry", "delete_selected")
         assert entry.object_id == str(rows["auditlogentry"].pk)
 
     def test_derived_state_is_not_writable_by_an_instance_admin_either(
@@ -2535,6 +2535,53 @@ class TestTheWriterBoundsWhatTheColumnBounds:
         entry.refresh_from_db()
         assert entry.object_id == ""
 
+    def test_the_action_bound_is_its_column_too(self) -> None:
+        from core.audit import ACTION_MAX
+        from core.models import AuditLogEntry
+
+        assert ACTION_MAX == AuditLogEntry._meta.get_field("action").max_length
+
+
+@db
+class TestARefusedBulkActionNamesTheActionAttempted:
+    """A refused bulk action's row recorded `action="action"`: that some action
+    was refused, never which (round 10 security SF10-1). The row now carries
+    the action Django would have run, resolved as the refusal check resolves
+    it, and the poster-chosen name cannot overflow the column."""
+
+    @pytest.mark.parametrize("attempted", ["delete_selected", "revoke_now", "cancel_removal"])
+    def test_the_row_carries_the_attempted_name(self, as_guild_admin, rows, attempted) -> None:
+        response = as_guild_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": attempted,
+                "_selected_action": [str(rows["rolemapping"].pk)],
+                "index": "0",
+            },
+        )
+        assert response.status_code == 403
+        entry = refusals().get()
+        assert entry.action == attempted
+        assert attempted in entry.detail
+
+    def test_an_overlong_name_is_still_refused_and_recorded(self, as_guild_admin, rows) -> None:
+        from core.models import AuditLogEntry
+
+        width = AuditLogEntry._meta.get_field("action").max_length
+        attempted = "x" * (width * 4)
+        response = as_guild_admin.post(
+            admin_url("core_rolemapping_changelist"),
+            {
+                "action": attempted,
+                "_selected_action": [str(rows["rolemapping"].pk)],
+                "index": "0",
+            },
+        )
+        assert response.status_code == 403, "a 500 here is the refusal row failing to write"
+        entry = refusals().get()
+        assert entry.action == attempted[:width]
+        assert attempted in entry.detail, "the full name survives in the detail"
+
 
 @db
 class TestAPaddedUrlCannotSuppressTheRefusalRow:
@@ -2612,7 +2659,7 @@ class TestABulkSelectionIsRecordedReadably:
         assert self.post_bulk(as_guild_admin, self.SELECTION).status_code == 403
 
         entry = refusals().get()
-        assert (entry.model, entry.action) == ("rolemapping", "action")
+        assert (entry.model, entry.action) == ("rolemapping", "delete_selected")
         assert len(entry.object_id) <= column_width()
 
     def test_the_row_is_keyed_on_a_single_id_and_not_a_cut_off_join(
@@ -2759,7 +2806,7 @@ class TestTheDuplicateActionPost:
             },
         )
         entry = refusals().get()
-        assert (entry.model, entry.action) == (model, "action")
+        assert (entry.model, entry.action) == (model, "delete_selected")
         assert entry.actor.discord_user_id == 9002
 
     def test_the_last_value_alone_is_not_what_is_read(self, as_guild_admin, rows) -> None:
@@ -2815,7 +2862,7 @@ class TestDjangosOwnFallbacksAreMirrored:
         very hole this file exists for, reachable with `index=9`.
         """
         assert self.post(as_guild_admin, index="9").status_code == 403
-        assert refusals().get().action == "action"
+        assert refusals().get().action == "delete_selected", "the last value is what runs"
 
 
 @db
