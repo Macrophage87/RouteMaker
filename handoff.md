@@ -1,5 +1,8 @@
 # RouteMaker phase 1 — handoff
 
+> **Next implementer: start with `handoff-local.md`** — the short handoff for a local machine with
+> Docker (written for Windows/WSL2), with the task list. This file is the full record of rounds 3–10.
+
 **Repository:** `github.com/Macrophage87/RouteMaker` · **Branch:** `claude/beautiful-mayer-4f7gg9`
 (285 commits, all pushed — 284 plus this round-10 record) · **Suite:** 3293 tests, green
 
