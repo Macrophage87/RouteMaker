@@ -103,7 +103,10 @@ def test_the_maintenance_tasks_share_a_queue_away_from_the_rebuild() -> None:
 def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
     """What the weekly task finds on a deployed box, in a temporary directory,
     with only the binaries and the 3DEP download stood in for. The disk gate
-    measures the real volume; its floor is lowered so a developer's disk passes."""
+    measures the real volume; what it reserves is scaled to the toy extract, so
+    the answer does not depend on the host. Both inputs matter: the floor, and
+    the download estimate the gate sizes a refresh from, which reserves four
+    times 2 GiB - more than a tmpfs /tmp holds (Ubuntu 26.04's default)."""
     source = tmp_path / "extracts" / "source.osm.pbf"
     source.parent.mkdir()
     build_toy_extract(source)
@@ -114,6 +117,7 @@ def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
     monkeypatch.setattr(settings, "TILES_DIR", tmp_path / "tiles")
     monkeypatch.setattr(settings, "ELEVATION_DIR", tmp_path / "elevation")
     monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
+    monkeypatch.setattr("pipeline.source.ESTIMATED_BYTES", source.stat().st_size)
 
     binaries = FakeBinaries()
     monkeypatch.setattr(
