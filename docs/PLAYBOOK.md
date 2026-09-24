@@ -23,6 +23,36 @@ resumed across that (`--resume`).
 | Your own Discord user id | The account that becomes the first instance admin. In Discord: Settings → Advanced → Developer Mode, then right-click your name → Copy User ID. | §3 |
 | The three reference inputs | `tl_2024_us_uac20.geojson` (Census TIGER/Line urban areas, converted with `ogr2ogr -f GeoJSON -t_srs EPSG:4326`), `vdot-aadt-2024.geojson` (VDOT's traffic-volume export from the Virginia Roads portal) and `ddot-aadt-2024.geojson` (DDOT's AADT layer from the District's open-data portal). `docs/DEVELOPMENT.md` "Reference data" says how the counts are normalised. **Maryland is not installed in phase 1.** | §6 |
 
+## 0b. Running it on a local computer first
+
+The stack is a compose stack and runs wherever Docker runs, so the cheapest place to execute this
+checklist for the first time is a machine you already have. A web server is needed for the real
+deployment and for the one thing a local run cannot reproduce: a public name with a certificate.
+Run it locally first — the first build and the first rebuild will fail on things no review could
+see, and a desktop is where that costs least — then again on the server, where A1 to A3 take
+minutes and A4 is the only long item.
+
+What changes locally:
+
+- **Posture.** Uncomment the five-line local block at the end of `.env.example` (`:80`,
+  `DJANGO_DEBUG=1`, `localhost` hosts, an `http://localhost/auth/callback` redirect) and register
+  that redirect on the Discord application; Discord permits `localhost`. The checklist reads the
+  `:80` posture, talks to `http://127.0.0.1`, and skips the HSTS check, which exists only under
+  https.
+- **Machine.** Linux is what these steps were written against. Docker Desktop on macOS or Windows
+  (WSL2) runs the stack, but its file sharing makes the data-root ownership step a no-op, so A1
+  proves less there. Memory is the real constraint: the rebuild's container is capped at 8 GB and
+  its true peak for a DC-region build is unmeasured (`handoff.md` §7), which is why the plan sizes
+  the host at 32 GB; 16 GB will probably do, less is a gamble. Disk: 50 GB free for the extract,
+  the elevation tiles and two tile sets, and the rebuild refuses to start under 20 GiB.
+- **Time.** The same as on a server; the elevation download and the three tile builds take hours
+  wherever they run.
+- **What it cannot tell you.** Whether the certificate is issued, the name resolves, the firewall
+  is right, or the sizing holds under real traffic. Everything else in A1 to A6 is the same path.
+
+Skip §1's provisioning and §2's `https` redirect; do everything else as written, with `DATA_ROOT`
+pointing at a directory on a disk with room.
+
 ## 1. The host
 
 ```sh
