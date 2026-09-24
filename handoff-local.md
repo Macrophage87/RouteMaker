@@ -48,13 +48,14 @@ around them — if a task below touches one, stop and ask.
 ## 3. Setting up on Windows
 
 **Work inside WSL2, not in Windows paths.** Everything here — the checkout, the data root, Claude
-Code, the native test loop — lives in an Ubuntu 24.04 distribution under WSL2, and Docker Desktop
-reaches into it. Three reasons, each of which breaks something if ignored:
+Code, the native test loop — lives in an Ubuntu 26.04 distribution under WSL2 (26.04 because it is
+the production host's OS), and Docker Desktop reaches into it. Three reasons, each of which breaks
+something if ignored:
 
-- **Line endings.** Git for Windows converts text files to CRLF by default, and the repository has
-  no `.gitattributes` yet (task T0). A CRLF `docker/api-entrypoint.sh` fails inside the container
-  with `/bin/sh^M: not found`; a CRLF `scripts/prepare_data_root.sh` fails on the host. Git inside
-  WSL does not convert.
+- **Line endings.** Git for Windows converts text files to CRLF by default. `.gitattributes`
+  (`* text=auto eol=lf`, task T0) now makes every clone check out LF, which a Git-for-Windows
+  default clone was shown to do: 98 CRs in `docker/api-entrypoint.sh` before, none after, and the
+  api image built from that clone started gunicorn. Clone inside WSL anyway, for the next two.
 - **Ownership.** The images run as uid 10001 and `prepare_data_root.sh` hands the data directories
   to it with `chown`. On the WSL ext4 filesystem that works; on a `/mnt/c/...` path it is silently a
   no-op and the containers cannot write their volumes.
@@ -63,7 +64,7 @@ reaches into it. Three reasons, each of which breaks something if ignored:
 
 ```powershell
 # PowerShell, once
-wsl --install -d Ubuntu-24.04
+wsl --install -d Ubuntu-26.04
 ```
 
 Then give the WSL VM enough memory — Docker Desktop's WSL backend lives inside that VM, and WSL's
@@ -76,30 +77,49 @@ memory=24GB      # or as much as the machine can spare; 16GB is the floor worth 
 processors=8
 ```
 
-and `wsl --shutdown` to apply it. Install Docker Desktop, and under Settings → Resources → WSL
-integration enable it for the Ubuntu-24.04 distribution. Free ports 80 and 443 on Windows (in
-PowerShell, `netstat -ano | findstr ":80 "`; IIS or another web server is the usual holder). Leave
-about 60 GB free on the Windows drive: the WSL disk image grows to hold the extract, the elevation
-tiles and two tile sets.
+and `wsl --shutdown` to apply it. The machine this was first set up on has 16 GB, so it runs with
+`memory=12GB`: below the floor above, enough for the suite and the images, and not yet shown to be
+enough for a rebuild (`handoff.md` §7 carries it). Install Docker Desktop, and under Settings →
+Resources → WSL integration enable it for the Ubuntu-26.04 distribution — the switch is per
+distribution, so a distribution added later starts without `docker`. Free ports 80 and 443 on
+Windows (in PowerShell, `netstat -ano | findstr ":80 "`; IIS or another web server is the usual
+holder). Leave about 60 GB free on the Windows drive: the WSL disk image grows to hold the extract,
+the elevation tiles and two tile sets.
 
-Everything from here runs in the Ubuntu shell:
+Everything from here runs in the Ubuntu shell. `docs/DEVELOPMENT.md`, "The native loop", explains
+each step; in short, 26.04 packages neither PostgreSQL 16 nor Python 3.11, so both are pinned back to
+what the stack runs:
 
 ```sh
+# git inside WSL, signing in through the Windows credential manager (Git for Windows installed)
+git config --global credential.helper "/mnt/c/Program\ Files/Git/mingw64/bin/git-credential-manager.exe"
+
 # the checkout, in the Linux filesystem
 mkdir -p ~/src && cd ~/src
 git clone https://github.com/Macrophage87/RouteMaker.git && cd RouteMaker
 git checkout claude/beautiful-mayer-4f7gg9
-git config core.autocrlf false
 
-# the native test loop (unchanged from the cloud container)
-sudo apt-get update
-sudo apt-get install -y python3-venv postgresql-16-postgis-3 postgresql-16-postgis-3-scripts luajit lua5.4
-python3 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
+# PostgreSQL 16 + PostGIS from the PostgreSQL project's repository, and the Lua interpreters
+sudo apt-get update && sudo apt-get install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+sudo apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts luajit lua5.4 python3-venv
+
+# Python 3.11 and the images' exact package pins, through uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.11
+uv venv --python 3.11 .venv
+uv pip install -r docker/requirements.txt -r requirements-dev.txt
+
 sudo sh scripts/devdb.sh
-PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly   # expect 3309 passed
+PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly   # expect every test to pass
 
 # Claude Code, installed inside WSL per Anthropic's current Claude Code install docs, run from this directory
 ```
+
+Install from both requirement files: from the loose `requirements-dev.txt` alone, on 26.04's Python
+3.14, pip chose Django 6.1 and an admin-scoping test failed that passes on the pinned 5.2.17.
+`tests/test_native_environment.py` now fails first when the venv's packages differ from
+`docker/requirements.txt`.
 
 **The test database and the stack do not collide.** The suite uses the native Postgres on
 `127.0.0.1:5432` inside WSL; the stack's PostGIS lives on the compose network and publishes no

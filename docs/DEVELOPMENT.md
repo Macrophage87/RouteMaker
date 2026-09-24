@@ -20,8 +20,8 @@ because `:80` on its own does not work: `settings.py` derives
 session away without saying anything. Take the five lines together or take the
 hostname. `tests/test_compose_render.py` refuses any other combination.
 
-Nothing on this page needs the compose stack: the native loop under "Database"
-below is what to develop against. If you are standing up a real host, the order
+Nothing on this page needs the compose stack: "The native loop" below is what
+to develop against. If you are standing up a real host, the order
 the code forces is in docs/OPERATIONS.md, "First rebuild on a fresh host" —
 notably that the reference data below cannot be installed until a first rebuild
 has fetched the extract it is checked against.
@@ -185,18 +185,66 @@ hours; it is now the hour plus at most five minutes. Notification of the removed
 and the remaining admins is **not** implemented: phase 1 has no Discord DM path
 and no email path, so the window and the cancel exist and the notice does not.
 
-## Database
+## The native loop
 
-PostgreSQL 16 with PostGIS 3.4, GEOS, GDAL and PROJ. GeoDjango needs all four.
+The host this is written for is Ubuntu 26.04, which is also the production
+host's OS; under Windows it is the same distribution in WSL2 (handoff-local.md
+section 3 has the Windows side). Two things on it differ from what the stack
+runs, and each is pinned back by hand below.
+
+**PostgreSQL 16 does not come from Ubuntu.** 26.04 packages PostgreSQL 18 and
+not 16, while the stack runs `postgis/postgis:16-3.4` and `scripts/devdb.sh`
+starts cluster 16. The PostgreSQL project's own repository (PGDG) carries 16:
 
 ```sh
-apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts
-pg_ctlcluster 16 main start
-su postgres -c "psql -c \"CREATE ROLE routemaker LOGIN PASSWORD 'routemaker' SUPERUSER;\""
-su postgres -c "createdb -O routemaker routemaker"
-psql -h 127.0.0.1 -U routemaker -d routemaker -c "CREATE EXTENSION postgis;"
-./manage.py migrate
+sudo apt-get update && sudo apt-get install -y postgresql-common
+sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+sudo apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts \
+    luajit lua5.4 python3-venv
 ```
+
+GeoDjango also needs GEOS, GDAL and PROJ; the PostGIS package pulls all three
+in. PGDG's PostGIS for 16 is the current 3.x (3.6 at the time of writing), not
+the image's 3.4, so the native loop runs one PostGIS minor ahead of the stack.
+
+**Python 3.11 does not come from Ubuntu either.** 26.04 ships 3.14; the api
+image runs 3.11 (`PYTHON_VERSION` in `docker/api.Dockerfile`). `uv` installs
+the interpreter and builds the venv; it is not an Ubuntu package, so it comes
+from its own installer:
+
+```sh
+curl -LsSf https://astral.sh/uv/install.sh | sh
+uv python install 3.11
+uv venv --python 3.11 .venv
+uv pip install -r docker/requirements.txt -r requirements-dev.txt
+```
+
+Both requirement files, always. `requirements-dev.txt` is loose and
+`docker/requirements.txt` is the exact pin the images install; from the loose
+file alone, on 3.14, pip picked Django 6.1, and the admin's guild scoping
+answered a guild admin's write to another guild's row with a 302 rather than a
+403 or 404 - a test failure caused by a Django the stack does not run.
+`tests/test_native_environment.py` fails first in that case, naming each pin the
+interpreter does not have.
+
+Then the database and the suite, from the checkout:
+
+```sh
+sudo sh scripts/devdb.sh
+PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly
+```
+
+`devdb.sh` starts cluster 16 if it is down, and creates the `routemaker` role,
+the `routemaker` database and the PostGIS extension if any is missing; under
+systemd (a desktop, or WSL with systemd enabled) the cluster is already up at
+boot and the script only does the second half. It runs as root because it
+switches to the `postgres` account. The suite creates and drops schemas, so give
+each concurrent run its own `PGDATABASE` (below, "Running the suite twice at
+once").
+
+`/tmp` on 26.04 is a tmpfs, sized from RAM, so a test that measures free space
+under `tmp_path` sees a few gigabytes rather than a disk; the rebuild tests
+scale what the disk gate reserves to their toy extract for that reason.
 
 ## What migrations do and do not create
 
@@ -421,15 +469,16 @@ a completed swap: schema, tiles and settings table together.
 
 ## Container notes
 
-Docker's daemon runs in this development container, but image layer pulls are
-blocked by the egress proxy, so the Compose stack cannot be brought up here. It
-is written to be validated on the deployment host. The native database above is
-the loop to develop against in the meantime.
+This page was first written in a cloud container whose egress proxy blocked
+image pulls, so the Compose stack could not be brought up there. On a
+workstation with Docker (Docker Desktop's WSL integration, handoff-local.md
+section 3) it can; the native loop above is still the faster one to develop
+against, and the stack is where a change to an image, `compose.yaml` or the
+pipeline is run (`scripts/acceptance.py --only A1 A2` is the short gate).
 
 `docs/DEPLOYMENT.md` is what the images are: what `docker compose build` builds,
 what each image installs and why, the `collectstatic` deploy step, and the list
-of things that still stop a `docker compose up`. No image in this repository has
-been built in any environment yet, which that document says plainly.
+of things that still stop a `docker compose up`.
 
 ## Lua
 
