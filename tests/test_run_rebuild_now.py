@@ -235,7 +235,7 @@ def test_a_refused_call_writes_no_audit_row() -> None:
 
 
 @pytest.mark.django_db(transaction=True)
-def test_a_confirmed_rollback_is_audited_and_a_dry_run_is_not(monkeypatch) -> None:
+def test_a_confirmed_rollback_is_audited_and_a_dry_run_is_not(monkeypatch, tmp_path) -> None:
     """`rollback_rebuild --confirm` repoints every ValhallaUpstream row and
     retires the graph being served, and it wrote no audit row at all: the
     settings rows changed and the log had no account of when, or of the fact
@@ -249,6 +249,11 @@ def test_a_confirmed_rollback_is_audited_and_a_dry_run_is_not(monkeypatch) -> No
     from core.models import AuditLogEntry
     from pipeline.variants import Variant
 
+    # A writable tiles directory, one per variant, for the command's real
+    # write probe; this test is about the audit row, not about the container.
+    for variant in Variant:
+        (tmp_path / variant.value).mkdir()
+    monkeypatch.setattr(settings, "TILES_DIR", tmp_path)
     target = {variant: f"2026091{index}T080000Z" for index, variant in enumerate(Variant)}
     monkeypatch.setattr(
         "core.management.commands.rollback_rebuild.rollback_target", lambda tiles_dir: target

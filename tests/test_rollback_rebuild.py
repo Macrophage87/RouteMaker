@@ -55,10 +55,21 @@ def no_jobs_left_over(django_db_setup, django_db_blocker):
 
 
 @pytest.fixture
-def stubbed_rollback(monkeypatch):
+def stubbed_rollback(monkeypatch, tmp_path):
     """`rollback_target` answering with a build per variant, and `rollback`
-    recording that it was called. Returns the list of calls."""
+    recording that it was called. Returns the list of calls.
+
+    `TILES_DIR` is a real, writable directory with one per variant, because
+    the command's write probe is real: these tests are about the in-flight
+    refusal, and a tiles directory this process cannot write is the other one.
+    """
+    from django.conf import settings
+
     from pipeline.variants import Variant
+
+    for variant in Variant:
+        (tmp_path / variant.value).mkdir()
+    monkeypatch.setattr(settings, "TILES_DIR", tmp_path)
 
     target = {variant: f"2026091{index}T080000Z" for index, variant in enumerate(Variant)}
     monkeypatch.setattr(

@@ -339,6 +339,12 @@ def restore_links(tiles_dir: Path, variant: Variant, state: TileLinks) -> None:
     """
     variant_dir = Path(tiles_dir) / variant.value
     for name, target in ((CURRENT, state.current), (PREVIOUS, state.previous)):
+        if promoted_build_id(tiles_dir, variant, name) == target:
+            # Already as it was, which is every link a failure never reached.
+            # Rewriting it anyway was a write on the volume that had just
+            # refused one, so an undo with nothing to undo reported that it
+            # could not restore links nothing had moved.
+            continue
         if target is None:
             _remove_link(variant_dir / name)
         else:
@@ -385,6 +391,39 @@ def demote(tiles_dir: Path, variant: Variant) -> str | None:
     _replace_symlink(variant_dir / CURRENT, previous)
     _remove_link(variant_dir / PREVIOUS)
     return previous
+
+
+# A name no build id can take (`retention.BUILD_ID`) and no link is called, so a
+# probe left behind by a process killed between its two syscalls is never read
+# as a build or a promotion link.
+WRITE_PROBE = ".write-probe"
+
+
+def unwritable_link_dirs(tiles_dir: Path) -> list[str]:
+    """Every variant directory this process cannot write a promotion link in.
+
+    A real write - a symlink made and removed where `demote` would make its
+    own - rather than `os.access`, which answers for the permission bits and
+    the mount flags as this process sees them and not for what the filesystem
+    will do. Every variant, not the first: a mount that is read-only for one
+    of them fails the rollback on that one, with the others already moved.
+    Returns one line per directory, naming it and the error; empty when every
+    link can be written.
+    """
+    problems: list[str] = []
+    for variant in Variant:
+        variant_dir = Path(tiles_dir) / variant.value
+        probe = variant_dir / f"{WRITE_PROBE}-{os.getpid()}"
+        try:
+            os.symlink(CURRENT, probe)
+        except OSError as error:
+            problems.append(f"{variant_dir} ({error.strerror or error})")
+            continue
+        try:
+            probe.unlink()
+        except OSError as error:
+            problems.append(f"{variant_dir}: its write probe could not be removed ({error})")
+    return problems
 
 
 # --- Reading a build back -------------------------------------------------------

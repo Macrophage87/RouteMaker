@@ -1884,6 +1884,96 @@ def test_a_rollback_inside_a_transaction_is_refused_before_anything_moves(
     assert_served_as_the_second_rebuild_left_it(root)
 
 
+needs_permissions = pytest.mark.skipif(
+    hasattr(os, "geteuid") and os.geteuid() == 0,
+    reason="root writes through a read-only mode bit; the container proof covers a :ro mount",
+)
+
+
+class read_only:
+    """One directory made unwritable for the length of a `with` block.
+
+    Mode bits rather than a mount, which a test cannot make: the symlink call
+    fails with the same `OSError` either way, and a real `:ro` bind is proved
+    in the running stack instead (docs/OPERATIONS.md, "Rolling back a
+    rebuild").
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+
+    def __enter__(self) -> Path:
+        self.mode = self.path.stat().st_mode
+        self.path.chmod(0o555)
+        return self.path
+
+    def __exit__(self, *exc) -> None:
+        self.path.chmod(self.mode)
+
+
+@needs_permissions
+@pytest.mark.parametrize("variant", list(Variant), ids=lambda variant: variant.value)
+@pytest.mark.parametrize("confirm", [False, True], ids=["dry-run", "confirm"])
+def test_the_rollback_command_refuses_where_it_cannot_write_the_tiles(
+    workspace, states, monkeypatch, variant, confirm
+) -> None:
+    """`api` and `worker` bind the tiles read-only, and in either the command
+    used to get as far as the first `demote`. A deployment with a complete
+    rollback target, so the directory it cannot write is the only reason to
+    refuse; each variant in turn, because a probe of the first directory alone
+    would miss a mount that is read-only for the last."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+    two_rebuilds(source, root)
+
+    args = ["--confirm"] if confirm else []
+    with read_only(root / "tiles" / variant.value) as blocked:
+        with pytest.raises(CommandError) as refused:
+            call_command("rollback_rebuild", *args)
+    message = str(refused.value)
+    assert str(blocked) in message, f"the refusal does not name the directory: {message}"
+    assert "rebuild" in message, f"the refusal does not name where to run it: {message}"
+    assert_served_as_the_second_rebuild_left_it(root)
+
+
+@needs_permissions
+def test_rollback_itself_refuses_where_it_cannot_write_the_tiles(workspace, states) -> None:
+    """The same refusal from the function, for a caller that is not the
+    command - a shell, the acceptance checklist. Nothing moves, so nothing has
+    to be put back and no undo note is attached."""
+    from pipeline.promotion import TilesNotWritable, rollback
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    with read_only(root / "tiles" / Variant.EBIKE.value):
+        with pytest.raises(TilesNotWritable) as refused:
+            rollback(root / "tiles")
+    assert not getattr(refused.value, "__notes__", None), refused.value.__notes__
+    assert_served_as_the_second_rebuild_left_it(root)
+
+
+def test_the_write_probe_leaves_nothing_behind(workspace, states, monkeypatch) -> None:
+    """A dry run in `rebuild` writes and removes one link per variant; what the
+    tile directories hold afterwards is exactly what they held before."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+    two_rebuilds(source, root)
+    before = {path: sorted(path.iterdir()) for path in (root / "tiles").iterdir()}
+
+    call_command("rollback_rebuild", stdout=StringIO())
+
+    after = {path: sorted(path.iterdir()) for path in (root / "tiles").iterdir()}
+    assert after == before
+
+
 def test_the_rollback_command_is_dry_until_it_is_confirmed(workspace, states, monkeypatch) -> None:
     """`promotion.rollback` had no caller: the one procedure the plan names for
     a bad promotion could only be run by importing the module in a shell. It is

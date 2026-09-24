@@ -587,6 +587,36 @@ def test_the_links_a_promotion_found_are_what_restoring_puts_back(tmp_path) -> N
     assert not (tmp_path / "standard" / "previous").exists(), "b1 was never anyone's previous"
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root writes through a read-only mode bit")
+def test_restoring_links_nothing_moved_writes_nothing(tmp_path) -> None:
+    """The undo runs over every variant, including the ones the failure never
+    reached - on the volume that has just refused a write. Links already as
+    they were are left alone, so that undo reports nothing it could not do."""
+    for build in ("b1", "b2"):
+        (tmp_path / "standard" / build).mkdir(parents=True)
+        (tmp_path / "standard" / build / "tiles.tar").write_bytes(b"")
+        tiles.promote(tmp_path, Variant.STANDARD, build)
+    state = tiles.links(tmp_path, Variant.STANDARD)
+
+    (tmp_path / "standard").chmod(0o555)
+    try:
+        tiles.restore_links(tmp_path, Variant.STANDARD, state)
+    finally:
+        (tmp_path / "standard").chmod(0o755)
+    assert tiles.links(tmp_path, Variant.STANDARD) == state
+
+
+def test_the_write_probe_reports_a_variant_directory_that_is_not_there(tmp_path) -> None:
+    """Every variant is probed, and one with no directory at all cannot take a
+    link either: reported, by path, alongside the ones that can."""
+    for variant in (Variant.STANDARD, Variant.EBIKE):
+        (tmp_path / variant.value).mkdir()
+    problems = tiles.unwritable_link_dirs(tmp_path)
+    assert len(problems) == 1, problems
+    assert str(tmp_path / Variant.NO_TRAIL.value) in problems[0]
+    assert sorted(path.name for path in (tmp_path / "standard").iterdir()) == []
+
+
 def test_a_build_refuses_to_write_into_a_build_directory_that_exists(tmp_path) -> None:
     """Build ids are second-resolution. Two fires inside one second took the
     same id, and the second build wrote its tiles into the directory the first

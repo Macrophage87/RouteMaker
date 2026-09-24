@@ -107,6 +107,28 @@ class RollbackUnavailable(RuntimeError):
     """There is no complete previous deployment to roll back to."""
 
 
+class TilesNotWritable(RollbackUnavailable):
+    """This process cannot write the promotion links a rollback moves.
+
+    A kind of "there is nothing to roll back to *from here*": the refusal
+    `api` and `worker` give, because both bind the tiles read-only. Before
+    this existed the rollback there got as far as the first `demote`; see
+    `rollback` for what that cost.
+    """
+
+
+def refuse_unwritable_tiles(tiles_dir: Path) -> None:
+    """Refuse, before anything moves, where the tile links cannot be written."""
+    problems = tiles.unwritable_link_dirs(tiles_dir)
+    if problems:
+        raise TilesNotWritable(
+            "refusing to roll back: this container cannot write the promotion links "
+            f"under {tiles_dir}, so nothing was moved - " + "; ".join(problems) + ". "
+            "The rollback moves them, so it runs where the tiles are mounted read-write: "
+            "docker compose exec -T rebuild ./manage.py rollback_rebuild"
+        )
+
+
 class SwapUndoIncomplete(RuntimeError):
     """The swap failed *and* its undo could not put everything back.
 
@@ -408,6 +430,11 @@ def rollback(tiles_dir: Path) -> None:
     The enclosing-transaction refusal `rollback_swap` makes is made here too,
     before anything moves: it used to be the first thing that ran, and after
     the reorder the tiles would have moved before it could refuse.
+
+    And a tiles directory it cannot write is refused before anything moves,
+    by a real write probe of every variant's directory. The reorder makes that
+    failure cheap; the probe makes it a refusal, naming the container, rather
+    than an undo.
     """
     from django.conf import settings
 
@@ -416,6 +443,7 @@ def rollback(tiles_dir: Path) -> None:
     if connection.in_atomic_block:
         raise SwapInsideTransaction("rollback must not run inside an enclosing transaction")
     target = rollback_target(tiles_dir)
+    refuse_unwritable_tiles(tiles_dir)
     links_before = {variant: tiles.links(tiles_dir, variant) for variant in Variant}
     rows_before = upstream_states(settings.VALHALLA_UPSTREAMS)
     try:

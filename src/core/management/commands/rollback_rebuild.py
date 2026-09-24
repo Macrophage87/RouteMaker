@@ -26,6 +26,11 @@ another, with nothing raising anywhere. So the pre-flight is first, before
 `rollback_target` and on the dry run as well: an operator reading "would go
 back to build X" while a rebuild runs is being told about a plan that is not
 safe to carry out.
+
+The second pre-flight is the container. The rollback rewrites the promotion
+links under `TILES_DIR`, which `rebuild` binds read-write and `api` and
+`worker` bind read-only, so anywhere but `rebuild` it refuses - dry run
+included - on a real write probe, before anything is renamed or moved.
 """
 
 from __future__ import annotations
@@ -33,7 +38,12 @@ from __future__ import annotations
 from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 
-from pipeline.promotion import RollbackUnavailable, rollback, rollback_target
+from pipeline.promotion import (
+    RollbackUnavailable,
+    refuse_unwritable_tiles,
+    rollback,
+    rollback_target,
+)
 from pipeline.variants import Variant
 
 RESTART_HINT = (
@@ -94,6 +104,14 @@ class Command(BaseCommand):
             # gate is "a retired schema exists", which is true forever after the
             # first swap and says nothing about what is in it.
             target = rollback_target(tiles_dir)
+            # A write probe of every variant's tile directory, and on the dry
+            # run as well. `api` and `worker` bind the tiles read-only, and in
+            # either the dry run used to report "would go back to build X" for
+            # a rollback whose first `demote` was going to fail - after, until
+            # round 10, the schemas had already been renamed. After
+            # `rollback_target`, so a deployment with nothing to go back to
+            # says that first: it is true in every container.
+            refuse_unwritable_tiles(tiles_dir)
         except RollbackUnavailable as unavailable:
             raise CommandError(str(unavailable)) from unavailable
 
