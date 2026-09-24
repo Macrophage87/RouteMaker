@@ -1663,14 +1663,76 @@ def test_a_half_restored_swap_says_what_to_put_back(workspace, states, monkeypat
     assert len(undo.before) == len(Variant)
     for variant, line in zip(Variant, undo.before, strict=True):
         assert line.startswith(variant.value), line
-        assert line.count("20260917T080000Z") == 2, f"current and the row's build: {line}"
-        assert line.count("20260910T080000Z") == 2, f"previous and the row's previous: {line}"
+        # Which build is in which field, not how often each appears: the
+        # runbook has the operator write these back one field at a time.
+        assert described_fields(line) == {
+            "current": "20260917T080000Z",
+            "previous": "20260910T080000Z",
+            "build_id": "20260917T080000Z",
+            "previous_build_id": "20260910T080000Z",
+        }, line
         assert "20260924T080000Z" not in line, f"the failed build is not the target: {line}"
         assert line in str(undo), "and it is on the message the run row records"
     # What the undo did put back agrees with what it says it found.
     variant_dir = root / "tiles" / Variant.EBIKE.value
     assert os.readlink(variant_dir / "current") == "20260917T080000Z"
     assert os.readlink(variant_dir / "previous") == "20260910T080000Z"
+
+
+def described_fields(line: str) -> dict[str, str | None]:
+    """The four fields of one `SwapUndoIncomplete.before` line, by name.
+
+    A link or a row column that was not there reads as None, so a test can
+    say which field holds which build without depending on the wording around
+    them.
+    """
+    import re
+
+    fields: dict[str, str | None] = {}
+    for name, pattern in {
+        "current": r"\bcurrent -> (\S+?),",
+        "previous": r"\bprevious -> (\S+?),",
+        "build_id": r"\bbuild_id=(\S+)",
+        "previous_build_id": r"\bprevious_build_id=(\S+)",
+    }.items():
+        match = re.search(pattern, line)
+        fields[name] = match.group(1) if match and match.group(1) != "no" else None
+    return fields
+
+
+def test_a_half_restored_first_swap_says_there_was_nothing_to_put_back(
+    workspace, states, monkeypatch
+) -> None:
+    """Before the first-ever swap no variant has a link or a settings row, and
+    the runbook reads that off these lines: remove the link, delete the row.
+    Described as a row with empty build ids instead, the hand repair would
+    leave a row naming no build for the API to read."""
+    from core.models import ValhallaUpstream
+    from pipeline import promotion, tiles
+    from pipeline.promotion import SwapUndoIncomplete
+
+    source, root = workspace
+    real_restore = tiles.restore_links
+
+    def restore_that_fails_on_the_first_variant(tiles_dir, variant, state):
+        if variant is Variant.STANDARD:
+            raise OSError("the data volume is read-only")
+        return real_restore(tiles_dir, variant, state)
+
+    monkeypatch.setattr(promotion, "swap_schemas", refusing_swap)
+    monkeypatch.setattr(tiles, "restore_links", restore_that_fails_on_the_first_variant)
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260910T080000Z")
+
+    undo = caught.value.cause
+    assert isinstance(undo, SwapUndoIncomplete), type(undo)
+    for variant, line in zip(Variant, undo.before, strict=True):
+        assert line.startswith(variant.value), line
+        assert described_fields(line) == dict.fromkeys(
+            ("current", "previous", "build_id", "previous_build_id")
+        ), line
+        assert "no row" in line, f"the row that was not there is said not to be: {line}"
+    assert ValhallaUpstream.objects.count() == 0, "and the undo deleted the rows it had written"
 
 
 def test_a_promotion_that_dies_between_its_own_two_links_is_undone(
@@ -1759,6 +1821,137 @@ def test_a_rollback_that_fails_partway_puts_the_deployment_back(
     assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
     for variant in Variant:
         assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+
+
+def refuse_rollback_row_writes(monkeypatch, on_call: int) -> list[dict]:
+    """Make the rollback's `on_call`-th settings-row write raise (0: none do).
+
+    The rollback's writes are the only `ValhallaUpstream` updates that blank
+    `previous_build_id`; the undo's writes put a build id back, so they go
+    through. Returns the list the rollback's writes are recorded in.
+    """
+    from django.db.models import QuerySet
+
+    from core.models import ValhallaUpstream
+
+    real_update = QuerySet.update
+    calls = []
+
+    def update(self, **kwargs):
+        if self.model is ValhallaUpstream and kwargs.get("previous_build_id") == "":
+            calls.append(kwargs)
+            if len(calls) == on_call:
+                raise RuntimeError("row write refused")
+        return real_update(self, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "update", update)
+    return calls
+
+
+def test_a_rollback_refused_by_the_tiles_writes_no_row(workspace, states, monkeypatch) -> None:
+    """The tiles move before the rows: the tile links are the step a mount
+    refuses, and refused there the rollback has written nothing the API reads,
+    so the rows never name last week's build even for the length of the undo."""
+    from pipeline import promotion, tiles
+
+    source, root = workspace
+    two_rebuilds(source, root)
+    row_writes = refuse_rollback_row_writes(monkeypatch, on_call=0)
+
+    real_demote = tiles.demote
+
+    def demote_that_fails_on_the_last_variant(tiles_dir, variant):
+        if variant is list(Variant)[-1]:
+            raise OSError("the data volume went read-only")
+        return real_demote(tiles_dir, variant)
+
+    monkeypatch.setattr(tiles, "demote", demote_that_fails_on_the_last_variant)
+    with pytest.raises(OSError, match="went read-only"):
+        promotion.rollback(root / "tiles")
+    assert row_writes == [], f"the rows were rewritten before the tiles moved: {row_writes}"
+    assert_served_as_the_second_rebuild_left_it(root)
+
+
+def test_a_rollback_whose_row_write_is_refused_renames_no_schema(
+    workspace, states, monkeypatch
+) -> None:
+    """The other half of the order: the rows are written before the rename,
+    not after. A row write refused after a committed rename left the schemas
+    rolled back under restored tiles and rows - round 10's end state, reached
+    from the other step - because the undo never renames a schema."""
+    from pipeline import promotion
+
+    source, root = workspace
+    two_rebuilds(source, root)
+    refuse_rollback_row_writes(monkeypatch, on_call=1)
+
+    with pytest.raises(RuntimeError, match="row write refused"):
+        promotion.rollback(root / "tiles")
+    assert_served_as_the_second_rebuild_left_it(root)
+
+
+def test_a_rollback_whose_undo_fails_says_what_it_could_not_put_back(
+    workspace, states, monkeypatch
+) -> None:
+    """The rollback re-raises its own failure, so what its undo could not
+    restore is attached to that error; without the note the operator reads a
+    `demote` error and is not told a variant's links are still moved."""
+    from pipeline import promotion, tiles
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    real_demote = tiles.demote
+
+    def demote_that_fails_on_the_second_variant(tiles_dir, variant):
+        if variant is Variant.NO_TRAIL:
+            raise OSError("the data volume went read-only")
+        return real_demote(tiles_dir, variant)
+
+    def restore_that_fails_on_the_first_variant(tiles_dir, variant, state):
+        if variant is Variant.STANDARD:
+            raise OSError("the data volume is read-only")
+        return real_restore(tiles_dir, variant, state)
+
+    real_restore = tiles.restore_links
+    monkeypatch.setattr(tiles, "demote", demote_that_fails_on_the_second_variant)
+    monkeypatch.setattr(tiles, "restore_links", restore_that_fails_on_the_first_variant)
+
+    with pytest.raises(OSError, match="went read-only") as caught:
+        promotion.rollback(root / "tiles")
+    notes = getattr(caught.value, "__notes__", [])
+    assert any(Variant.STANDARD.value in note for note in notes), notes
+    assert not any(Variant.EBIKE.value in note for note in notes), (
+        f"a variant the undo did put back is not reported: {notes}"
+    )
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4, "no schema moved"
+
+
+def test_a_rollback_rewrites_every_row_or_none(workspace, states, monkeypatch) -> None:
+    """The rows are rewritten in one transaction. That matters when the undo
+    cannot put rows back: a refusal on the second variant's row must not leave
+    the first variant's row naming last week's build under this week's graph."""
+    from core.models import ValhallaUpstream
+    from pipeline import promotion
+
+    source, root = workspace
+    two_rebuilds(source, root)
+    refuse_rollback_row_writes(monkeypatch, on_call=2)
+
+    def restore_upstreams_that_fails(before):
+        raise RuntimeError("the settings rows could not be restored")
+
+    monkeypatch.setattr(promotion, "restore_upstreams", restore_upstreams_that_fails)
+
+    with pytest.raises(RuntimeError, match="row write refused") as caught:
+        promotion.rollback(root / "tiles")
+    assert any("settings rows" in note for note in caught.value.__notes__)
+    for row in ValhallaUpstream.objects.all():
+        assert (row.build_id, row.previous_build_id) == (
+            "20260917T080000Z",
+            "20260910T080000Z",
+        ), row.variant
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 4, "no schema moved"
 
 
 def assert_served_as_the_second_rebuild_left_it(root: Path) -> None:
@@ -1975,7 +2168,7 @@ def test_the_rollback_command_refuses_where_it_cannot_write_the_tiles(
             call_command("rollback_rebuild", *args)
     message = str(refused.value)
     assert str(blocked) in message, f"the refusal does not name the directory: {message}"
-    assert "rebuild" in message, f"the refusal does not name where to run it: {message}"
+    assert "exec -T rebuild " in message, f"the refusal does not name where to run it: {message}"
     assert_served_as_the_second_rebuild_left_it(root)
 
 
