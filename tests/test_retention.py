@@ -268,9 +268,26 @@ def test_the_newest_real_dump_survives_a_part_file_taking_the_last_kept_slot(tmp
     assert part.exists(), "and the part file was never a candidate either way"
 
 
-def test_backup_pruning_of_fewer_dumps_than_it_keeps_removes_nothing(tmp_path) -> None:
-    (tmp_path / "routemaker-20260917T070000Z.dump").write_bytes(b"dump")
+@pytest.mark.parametrize("count", range(1, 8))
+def test_backup_pruning_of_no_more_dumps_than_it_keeps_removes_nothing(tmp_path, count) -> None:
+    """Every count up to `keep`, not one.
+
+    With a single dump the clamp on `len(dumps) - keep` is invisible: the slice
+    `dumps[:-6]` of a one-element list is empty either way. From four dumps
+    under `keep=7` it is not - `dumps[:-3]` is the oldest - so an unclamped
+    subtraction deletes the oldest dump from a deployment that has not yet
+    written a week of them, which is the week a restore is most likely to need
+    it.
+    """
+    dumps = [f"routemaker-202609{day:02d}T070000Z.dump" for day in range(10, 10 + count)]
+    for name in dumps:
+        (tmp_path / name).write_bytes(b"dump")
+
     assert prune_backups(tmp_path, keep=7) == []
+    assert sorted(path.name for path in tmp_path.glob("*.dump")) == dumps
+
+
+def test_backup_pruning_of_an_absent_directory_removes_nothing(tmp_path) -> None:
     assert prune_backups(tmp_path / "absent", keep=7) == []
 
 
