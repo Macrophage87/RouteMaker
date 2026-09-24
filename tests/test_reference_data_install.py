@@ -432,6 +432,42 @@ class TestTwoAgenciesCoveringTheSameRoad:
         assert "unknown --volume-source" in result.stderr
         assert "ddot" in result.stderr and "vdot" in result.stderr
 
+    @pytest.mark.parametrize(
+        ("typed", "recorded"),
+        [("VDOT", "vdot"), (" vdot ", "vdot"), ("mdsha", "mdot-sha"), ("MDSHA", "mdot-sha")],
+    )
+    def test_one_agency_is_recorded_under_one_name_however_it_was_typed(
+        self, tmp_path, typed, recorded
+    ) -> None:
+        """The tier lookup was casefolded and the recorded agency was the raw
+        argument, and `mdsha` was a second key for the agency `mdot-sha` names.
+        So one agency's counts reached `volume_source` as several strings - the
+        text column has no vocabulary to catch it - and a query for the segments
+        a conditionally licensed source influenced found some of them."""
+        volume = tmp_path / "counts.geojson"
+        volume.write_text(json.dumps(geojson([line_feature([[0, 0], [1, 1]], "100")])))
+        result = install(tmp_path, "--volume", str(volume), "--volume-source", typed)
+        assert "unknown --volume-source" not in result.stderr, result.stderr
+        (row,) = json.loads((tmp_path / "data" / "reference" / "volume.json").read_text())
+        assert row["agency"] == recorded, row
+        assert row["id"].startswith(f"{recorded}-"), row["id"]
+        assert row["source"] == "state"
+
+    def test_every_accepted_spelling_names_an_agency_the_tiers_place(self) -> None:
+        """The alias table and the tier table agree: an alias resolves to an
+        agency with a tier, and no agency is also an alias of another."""
+        import importlib.util
+
+        spec = importlib.util.spec_from_file_location("install_reference_data", SCRIPT)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for alias, agency in module.AGENCY_ALIASES.items():
+            assert agency in module.SOURCE_TIERS, (alias, agency)
+            assert alias not in module.SOURCE_TIERS, f"{alias} is both an alias and an agency"
+        for spelling in [*module.SOURCE_TIERS, *module.AGENCY_ALIASES]:
+            for typed in (spelling, spelling.upper(), f" {spelling}\t"):
+                assert module.canonical_agency(typed) in module.SOURCE_TIERS, typed
+
     def test_the_agency_has_no_default_and_is_refused_when_omitted(self, tmp_path) -> None:
         """`--volume-source` used to default to "vdot".
 

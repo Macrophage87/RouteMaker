@@ -433,7 +433,9 @@ the failure this produced.
   `ddot`, `vdot`, `mdot-sha` — and it is the one that travels into the segment
   table's `volume_source` column. The distinction is load-bearing because VDOT
   and MDOT SHA both rank at `state`: a tier in that column could not tell the
-  two apart, which is precisely the question a licence asks.
+  two apart, which is precisely the question a licence asks. The flag is
+  casefolded and `mdsha` is accepted for `mdot-sha` (`AGENCY_ALIASES`), and the
+  agency is recorded under its one canonical name however it was typed.
 
   The three columns that carry a count's provenance on the segment table, none
   of them with a Django migration because `create_segment_schema` creates the

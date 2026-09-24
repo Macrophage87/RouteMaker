@@ -81,10 +81,30 @@ SOURCE_TIERS = {
     # State DOTs.
     "vdot": "state",
     "mdot-sha": "state",
-    "mdsha": "state",
     # Derived from OSM's own tagging rather than surveyed by anyone.
     "osm": "osm",
 }
+
+# Other spellings of an agency in SOURCE_TIERS, accepted on the command line and
+# written as the one name. Not a second key in SOURCE_TIERS: that ranked both
+# spellings alike and then wrote whichever one was typed into the `agency`
+# field, so one agency's counts reached the segment table's `volume_source` as
+# two different strings and a query for the segments it influenced found half.
+AGENCY_ALIASES = {"mdsha": "mdot-sha"}
+
+
+def canonical_agency(source: str) -> str:
+    """The one name an agency is recorded under, whatever the flag said.
+
+    Casefolded and stripped as the tier lookup always was - the tier already
+    came from `VDOT` and `vdot` alike while the `agency` field kept the raw
+    argument, so the two spellings ranked the same and published as two
+    agencies - and then put through the aliases. An agency this does not know
+    is returned in the same normal form and left for `source_tier` to refuse.
+    """
+    folded = source.strip().casefold()
+    return AGENCY_ALIASES.get(folded, folded)
+
 
 # A way is graded urban only if a majority of its length lies inside a Census
 # urban area.
@@ -230,6 +250,7 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
     layer influenced.
     """
     tier = source_tier(source)
+    agency = canonical_agency(source)
     rows = []
     for number, (geometry, properties) in enumerate(_geometries(volume)):
         value = properties.get(aadt_property)
@@ -251,11 +272,11 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                     # restarts its object ids in each of them, and `conflate`
                     # keys exclusivity on this id, so two counties' counts
                     # sharing an id would have one claiming the other's span.
-                    "id": f"{source}-{volume.stem}-{properties.get('OBJECTID', number)}-{part}",
+                    "id": f"{agency}-{volume.stem}-{properties.get('OBJECTID', number)}-{part}",
                     "coordinates": [[x, y] for x, y in line.coords],
                     "aadt": int(float(value)),
                     "source": tier,
-                    "agency": source,
+                    "agency": agency,
                     "year": year,
                 }
             )
@@ -270,7 +291,7 @@ def source_tier(source: str) -> str:
     cover, which is the one decision this vocabulary exists to make.
     """
     try:
-        return SOURCE_TIERS[source.strip().casefold()]
+        return SOURCE_TIERS[canonical_agency(source)]
     except KeyError:
         known = ", ".join(sorted(SOURCE_TIERS))
         raise SystemExit(
