@@ -105,7 +105,13 @@ class Override:
 
 @dataclass(frozen=True)
 class OverrideReport:
-    """What was applied, for the rebuild log and the drift report."""
+    """What was applied, for the rebuild log and the run row's detail.
+
+    It was written by the override stage and read by nothing: the per-way INFO
+    lines were the whole trail, and the run row an operator reads first said
+    nothing about whether a single reviewed correction was in force. `summary`
+    is what reaches both, from `run.apply_overrides` and the weekly task.
+    """
 
     access: int = 0
     stress: int = 0
@@ -124,6 +130,30 @@ class OverrideReport:
     @property
     def total(self) -> int:
         return self.access + self.stress + self.jurisdiction
+
+    # How many unmatched way ids the summary names before it says how many more.
+    # The run row's detail is what the operations page shows in a table cell,
+    # and the full list is already in the warning `run.apply_overrides` logs.
+    SUMMARY_WAY_IDS = 20
+
+    def summary(self) -> str:
+        """One line for the rebuild log and the run row's detail.
+
+        Every field, because each answers a different question an operator has
+        after a rebuild: whether the reviewed corrections are in force at all,
+        which kind, which approved rows reached no way in this week's extract,
+        and whether any overruled the checked-in crossings fixture.
+        """
+        unmatched = self.unmatched_way_ids
+        named = ", ".join(str(way_id) for way_id in unmatched[: self.SUMMARY_WAY_IDS])
+        if len(unmatched) > self.SUMMARY_WAY_IDS:
+            named += f" and {len(unmatched) - self.SUMMARY_WAY_IDS} more"
+        return (
+            f"overrides applied: {self.access} access, {self.stress} stress, "
+            f"{self.jurisdiction} jurisdiction; {self.fixture_rows_superseded} checked-in "
+            f"crossing rows superseded; {len(unmatched)} approved rows matched no way"
+            + (f" ({named})" if unmatched else "")
+        )
 
 
 def load_approved(model=None) -> list[Override]:

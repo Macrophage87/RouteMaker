@@ -500,6 +500,64 @@ def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> No
     assert context.override_report is None, "nothing was applied on the way past it"
 
 
+@pytest.mark.parametrize(
+    "field", ["access", "stress", "jurisdiction", "fixture_rows_superseded", "unmatched_way_ids"]
+)
+def test_every_field_of_the_override_report_reaches_its_summary(field) -> None:
+    """The summary is the report as anything outside the stage sees it, so a
+    field it drops is a field nobody reads again. Each one, changed alone,
+    changes the line."""
+    from dataclasses import replace
+
+    from pipeline.overrides import OverrideReport
+
+    base = OverrideReport(access=2, stress=3, jurisdiction=4, fixture_rows_superseded=5)
+    changed = replace(
+        base, **{field: (77,) if field == "unmatched_way_ids" else getattr(base, field) + 10}
+    )
+    assert changed.summary() != base.summary(), field
+
+
+def test_the_summary_names_the_rows_that_matched_nothing_and_bounds_the_list() -> None:
+    from pipeline.overrides import OverrideReport
+
+    few = OverrideReport(unmatched_way_ids=(11, 22))
+    assert "11" in few.summary() and "22" in few.summary()
+
+    limit = OverrideReport.SUMMARY_WAY_IDS
+    many = OverrideReport(unmatched_way_ids=tuple(range(1000, 1000 + limit + 5)))
+    text = many.summary()
+    assert str(1000 + limit - 1) in text, "the first ones are named"
+    assert str(1000 + limit) not in text, "and the list stops at the bound"
+    assert "5 more" in text, "saying how many it left out"
+
+
+@pytest.mark.django_db
+def test_the_override_stage_logs_its_report(tmp_path, caplog) -> None:
+    """The per-way lines were the whole trail; the report is logged whole too."""
+    import logging
+
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, build_handlers
+
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+    )
+    context.ways = [Way(1, highway="secondary", bicycle="no")]
+    context.ways_by_id = {1: context.ways[0]}
+    rows = [Override("access", 1, {"bicycle": "yes"}), Override("access", 9, {"bicycle": "no"})]
+    handlers = build_handlers(context, load_overrides=lambda: rows)
+
+    with caplog.at_level(logging.INFO, logger="pipeline.run"):
+        handlers[Stage.APPLY_OVERRIDES]()
+
+    report = context.override_report
+    assert (report.access, report.unmatched_way_ids) == (1, (9,))
+    assert report.summary() in caplog.messages, caplog.messages
+
+
 def test_the_handled_kinds_are_the_three_the_appliers_implement_and_the_model_offers() -> None:
     """Enumerated, not only read by name.
 

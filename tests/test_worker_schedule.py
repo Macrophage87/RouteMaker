@@ -165,6 +165,43 @@ def test_the_rebuild_task_runs_the_real_handler_set(rebuild_environment, states)
 
 
 @pytest.mark.django_db(transaction=True)
+def test_the_run_row_says_which_approved_overrides_were_in_force(
+    rebuild_environment, states, caplog
+) -> None:
+    """The override report reaches the row an operator reads first, and the log.
+
+    It was assigned every week and read by nothing, so a rebuild in which an
+    approved correction matched no way in the new extract - an OSM edit split
+    or renumbered the way - succeeded with a run row that said nothing about
+    it. Two approved rows, one matching a toy-extract way and one matching
+    none, and an unapproved row that must not count at all.
+    """
+    import logging
+
+    from core.models import Override, ScheduledRun
+    from pipeline.overrides import OverrideReport
+
+    for way_id, approved in ((100, True), (424242, True), (200, False)):
+        Override.objects.create(
+            kind="stress",
+            osm_way_id=way_id,
+            value={"tier": 1, "reason": "field check"},
+            reason="field check",
+            evidence="surveyed",
+            approved=approved,
+        )
+
+    with caplog.at_level(logging.INFO, logger="pipeline.run"):
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    expected = OverrideReport(stress=1, unmatched_way_ids=(424242,)).summary()
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert run.succeeded
+    assert expected in run.detail, run.detail
+    assert expected in caplog.messages, "and the rebuild log carries the same line"
+
+
+@pytest.mark.django_db(transaction=True)
 def test_a_rebuild_that_cannot_start_records_the_failure_and_is_not_retried(
     rebuild_environment, monkeypatch
 ) -> None:

@@ -290,9 +290,16 @@ def weekly_rebuild(context=None, *, timestamp: int) -> None:
             reclaimed += _prune_tile_builds(
                 context.tiles_dir, 0, "after the run", protect=[context.build_id]
             )
+        # The override report rides on the row an operator reads first. It was
+        # computed every week and read by nothing, so whether a reviewed
+        # correction was in force - or had matched no way in this week's
+        # extract - was findable only in the log.
+        overridden = (
+            f" {context.override_report.summary()}." if context.override_report is not None else ""
+        )
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
-            f"pruned {reclaimed} old build directories. {ROUTER_RESTART_NOTICE}"
+            f"pruned {reclaimed} old build directories.{overridden} {ROUTER_RESTART_NOTICE}"
         )
         run.save(update_fields=["detail"])
 

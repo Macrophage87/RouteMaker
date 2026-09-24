@@ -864,6 +864,7 @@ def build_handlers(
             unmatched_way_ids=missing,
             fixture_rows_superseded=len(superseded),
         )
+        logger.info("%s", context.override_report.summary())
 
     def insert_border_nodes() -> None:
         allocator = borders.SyntheticNodeIds()
