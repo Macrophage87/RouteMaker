@@ -248,9 +248,16 @@ switches to the `postgres` account. The suite creates and drops schemas, so give
 each concurrent run its own `PGDATABASE` (below, "Running the suite twice at
 once").
 
-`/tmp` on 26.04 is a tmpfs, sized from RAM, so a test that measures free space
-under `tmp_path` sees a few gigabytes rather than a disk; the rebuild tests
-scale what the disk gate reserves to their toy extract for that reason.
+`/tmp` on 26.04 is a tmpfs, sized from RAM and shared by every process on the
+host, so a test that measures free space under `tmp_path` sees a few gigabytes
+rather than a disk, and how full they are depends on whatever else is running.
+The rebuild tests therefore neutralise both halves of the disk gate: what it
+reserves is scaled to their toy extract, and its fullness fraction is set to
+100 percent, the way `tests/test_operations.py` already did. The gate's own
+refusals are tested with a stand-in `disk_usage`. A `/tmp` that genuinely runs
+out still fails the suite, and can abort it outright: a pyosmium writer that
+hits ENOSPC can raise from its destructor, which ends the process. Pass
+`--basetemp` on a real disk when `/tmp` is short.
 
 ## What migrations do and do not create
 
