@@ -235,6 +235,27 @@ class TestAWidthBelongsToItsSide:
         assert cycleway_width_m(tags) == pytest.approx(2.0)
         assert classify(tags).tier is Stress.LTS2
 
+    def test_a_narrower_second_lane_on_a_one_way_street_takes_nothing_away(self) -> None:
+        """Found by the grid in `test_lts_side_grid.py`: one rider has both
+        sides of a one-way street, so adding a 1.2 m lane beside a 2.0 m one
+        read the pair as 1.2 m and raised the tier. Within a direction the
+        rider has the wider; across the directions of a two-way street the
+        narrower still decides."""
+        lane = {**self.ROAD, "cycleway:left": "lane", "cycleway:left:width": "2.0"}
+        second = {"cycleway:right": "lane", "cycleway:right:width": "1.2"}
+        oneway = {**lane, "oneway": "yes"}
+        assert classify({**oneway, **second}).tier is classify(oneway).tier
+        assert cycleway_width_m({**oneway, **second}) == pytest.approx(2.0)
+        assert cycleway_width_m({**lane, **second}) == pytest.approx(1.2)
+
+    def test_a_narrower_second_shoulder_on_a_one_way_street_takes_nothing_away(self) -> None:
+        shoulder = {**self.ROAD, "oneway": "yes", "shoulder:left:width": "2.4"}
+        second = {**shoulder, "shoulder:right:width": "1.3"}
+        assert shoulder_width_m(second) == pytest.approx(2.4)
+        assert classify(second).tier is classify(shoulder).tier
+        two_way = {**self.ROAD, "shoulder:left:width": "2.4", "shoulder:right:width": "1.3"}
+        assert shoulder_width_m(two_way) == pytest.approx(1.3)
+
 
 class TestOnlyTheseOnewayValuesMakeAWayOneWay:
     """Round 10 test quality: widening `is_oneway` to any `oneway` value left the

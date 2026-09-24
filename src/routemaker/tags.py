@@ -349,9 +349,12 @@ def cycleway_provision(tags: dict[str, str]) -> Provision:
 
     Each direction takes the best facility among the sides that serve it, and
     the way takes the weakest direction, because one tier is stored per way and
-    a rider uses it either way round. The width is the narrowest surveyed width
-    among the sides that set the provision - the sides the rider is on - so a
-    track's width on one side never rates the painted lane on the other.
+    a rider uses it either way round. The width follows the same shape: within
+    a direction the widest surveyed lane among the sides that give its best
+    facility, since one rider has the choice of both, and across directions the
+    narrowest, since a rider may be made to use either. Only the sides that set
+    the provision enter it, so a track's width on one side never rates the
+    painted lane on the other.
 
     Measured, before this, on a 35 mph four-lane two-way secondary where the
     bare road is LTS4: `cycleway=track` with `cycleway:right=no` came out LTS1,
@@ -361,13 +364,15 @@ def cycleway_provision(tags: dict[str, str]) -> Provision:
     ranked = []
     for candidates in _directions(tags, cycleway_sides(tags)):
         best = max((s.rank for s in candidates), default=0)
-        ranked.append((best, [s for s in candidates if s.rank == best]))
-    rank = min(best for best, _ in ranked)
-    used = [s for best, candidates in ranked if best == rank for s in candidates]
-    widths = [s.width_m for s in used if s.width_m is not None]
+        at_best = [s for s in candidates if s.rank == best]
+        surveyed = [s.width_m for s in at_best if s.width_m is not None]
+        ranked.append((best, at_best, max(surveyed) if surveyed else None))
+    rank = min(best for best, _, _ in ranked)
+    used = [(sides, width) for best, sides, width in ranked if best == rank]
+    widths = [width for _, width in used if width is not None]
     return Provision(
         rank,
-        frozenset(s.value for s in used if s.value is not None),
+        frozenset(s.value for sides, _ in used for s in sides if s.value is not None),
         min(widths) if widths else None,
     )
 
@@ -400,15 +405,17 @@ def cycleway_values(tags: dict[str, str]) -> set[str]:
 
 
 def cycleway_width_m(tags: dict[str, str]) -> float | None:
-    """The narrowest surveyed width on the sides the provision is scored on.
+    """The surveyed width of the provision the way is scored on.
 
     A width belongs to its side: `cycleway:left:width` is the left lane's,
     `cycleway:both:width` each side's unless that side has its own, and
     `cycleway:width` whatever is left. The sides compared are the ones that set
-    the provision, so the narrower of two painted lanes is the answer - a rider
-    is on whichever side the route uses, and the tile build does not know which
-    - while a track's width never stands in for the painted lane opposite it.
-    A side with no surveyed width does not enter the comparison.
+    the provision. On a two-way street with a lane each side the narrower is
+    the answer - a rider is on whichever side the route uses, and the tile
+    build does not know which - while a track's width never stands in for the
+    painted lane opposite it. On a one-way street with a lane each side the one
+    rider has the wider. A side with no surveyed width does not enter either
+    comparison.
     """
     return cycleway_provision(tags).width_m
 
@@ -518,17 +525,19 @@ def has_shoulder(tags: dict[str, str]) -> bool | None:
 
 
 def shoulder_width_m(tags: dict[str, str]) -> float | None:
-    """The narrowest surveyed width among the shoulders the way is scored on.
+    """The surveyed width of the shoulder on the worst direction.
 
-    The narrowest rather than the first: a way with a shoulder on each side has
-    a rider on whichever side the route uses, and the tile build does not know
-    which. A width belongs to its side, so a side with no shoulder contributes
-    none, and a side with no surveyed width does not enter the comparison.
+    The narrowest across directions rather than the first: on a two-way street
+    with a shoulder on each side a rider is on whichever side the route uses,
+    and the tile build does not know which. Within one direction - both sides
+    of a one-way street - the rider has the wider of the two, so adding a
+    narrower second shoulder never takes the first one away. A width belongs to
+    its side, so a side with no shoulder contributes none, and a side with no
+    surveyed width does not enter the comparison.
     """
-    widths = [
-        width
-        for sides in _shoulder_directions(tags)
-        for present, width in sides
-        if present and width is not None
-    ]
+    widths = []
+    for sides in _shoulder_directions(tags):
+        surveyed = [width for present, width in sides if present and width is not None]
+        if surveyed:
+            widths.append(max(surveyed))
     return min(widths) if widths else None
