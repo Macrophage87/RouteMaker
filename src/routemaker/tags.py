@@ -290,6 +290,11 @@ class CyclewaySide:
     def rank(self) -> int:
         return _facility_rank(self.value)
 
+    @property
+    def contraflow(self) -> bool:
+        """An `opposite*` value: the facility runs against a one-way's traffic."""
+        return bool(self.value and self.value.startswith("opposite"))
+
 
 def cycleway_sides(tags: dict[str, str]) -> dict[str, CyclewaySide]:
     """The two sides of the road, each resolved on its own by the precedence."""
@@ -321,10 +326,21 @@ def _directions(tags: dict[str, str], sides: dict[str, CyclewaySide]) -> list[li
 
     On a two-way street each side is one direction. On a one-way street there
     is one direction and either side serves it.
+
+    Unless `oneway:bicycle=no` lets bicycles ride it both ways. Then an
+    `opposite*` facility is the contraflow rider's alone, and the with-flow
+    rider has only what the other sides carry - the contraflow rider can use
+    that and the `opposite*` facility besides, so the with-flow direction is the
+    weaker of the two and the one scored. Measured, before this:
+    `oneway=yes` + `oneway:bicycle=no` + `cycleway:left=opposite_lane` took the
+    one-way union and rated the painted lane, though the rider travelling with
+    the traffic has no lane at all.
     """
     left, right = sides["left"], sides["right"]
     if not is_oneway(tags):
         return [[left], [right]]
+    if tags.get("oneway:bicycle") == "no":
+        return [[s for s in (left, right) if not s.contraflow]]
     return [[left, right]]
 
 
@@ -373,7 +389,9 @@ def cycleway_values(tags: dict[str, str]) -> set[str]:
     either side is the facility of the only trip anyone makes on the way. That
     is most of the District's protected network, where `cycleway:left=
     opposite_lane` and `cycleway:left=track` on a one-way street are how a
-    contraflow lane is tagged.
+    contraflow lane is tagged. The carve-out declines where `oneway:bicycle=no`
+    brings the second direction back: there an `opposite*` facility is the
+    contraflow rider's alone, and the with-flow rider is scored on what is left.
 
     Returns the weaker direction's values, so an absent or `no` side answers
     with what it says rather than with the other side's facility.

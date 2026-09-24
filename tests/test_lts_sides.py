@@ -270,3 +270,63 @@ class TestOnlyTheseOnewayValuesMakeAWayOneWay:
         tagged = {**ARTERIAL, "oneway": value, "cycleway:left": "track", "cycleway:right": "no"}
         assert classify(tagged).tier is Stress.LTS1
         assert lanes_per_direction({"lanes": "4", "oneway": value}) == 4
+
+
+class TestAContraflowOnlyFacilityIsNotTheWithFlowRiders:
+    """Round 10 SF-2: the one-way carve-out was keyed on `oneway` alone, so
+    `oneway:bicycle=no` with `cycleway:left=opposite_lane` took the union though
+    the rider travelling with the traffic has no facility."""
+
+    STREET = {
+        "highway": "secondary",
+        "maxspeed": "25 mph",
+        "lanes": "1",
+        "oneway": "yes",
+        "parking:both": "no",
+    }
+
+    @pytest.mark.parametrize("oneway", ("yes", "-1"))
+    @pytest.mark.parametrize(
+        "key", ("cycleway", "cycleway:both", "cycleway:left", "cycleway:right")
+    )
+    @pytest.mark.parametrize("value", ("opposite_lane", "opposite_track"))
+    def test_the_carve_out_declines_for_a_contraflow_only_facility(
+        self, value: str, key: str, oneway: str
+    ) -> None:
+        street = {**self.STREET, "oneway": oneway}
+        facility = {key: value, f"{key}:width": "2.0"}
+        # Without `oneway:bicycle=no` the carve-out stands - the District's
+        # contraflow tagging, pinned in `test_stress.py` - and the facility is
+        # the road's.
+        assert classify({**street, **facility}).tier is Stress.LTS1
+        both_ways = classify({**street, **facility, "oneway:bicycle": "no"})
+        assert both_ways == classify({**street, "oneway:bicycle": "no"})
+
+    @pytest.mark.parametrize("with_flow", ("lane", "track"))
+    def test_a_with_flow_facility_beside_the_contraflow_one_is_the_roads(
+        self, with_flow: str
+    ) -> None:
+        """The with-flow rider's own facility is what the road is scored on."""
+        tags = {
+            **self.STREET,
+            "oneway:bicycle": "no",
+            "cycleway:left": "opposite_track",
+            "cycleway:right": with_flow,
+            "cycleway:right:width": "2.0",
+        }
+        assert cycleway_values(tags) == {with_flow}
+        alone = {**self.STREET, "cycleway:right": with_flow, "cycleway:right:width": "2.0"}
+        assert classify(tags) == classify(alone)
+
+    @pytest.mark.parametrize("value", ("yes", "-1", "dismount"))
+    def test_only_oneway_bicycle_no_brings_the_second_direction_back(self, value: str) -> None:
+        tags = {**self.STREET, "oneway:bicycle": value, "cycleway:left": "opposite_lane"}
+        assert cycleway_values(tags) == {"opposite_lane"}
+
+    def test_a_two_way_street_is_unaffected(self) -> None:
+        """`oneway:bicycle=no` on a street that is two-way already changes
+        nothing: each side is a direction there either way."""
+        road = {**self.STREET, "oneway": "no"}
+        tagged = {**road, "cycleway:both": "opposite_lane", "cycleway:both:width": "2.0"}
+        assert classify({**tagged, "oneway:bicycle": "no"}) == classify(tagged)
+        assert classify(tagged).tier is Stress.LTS1
