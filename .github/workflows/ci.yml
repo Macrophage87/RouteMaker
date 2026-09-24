@@ -51,7 +51,11 @@ jobs:
         # runs a real pg_dump against the service container, which needs a
         # client of the server's major version.
         run: sudo apt-get update && sudo apt-get install -y binutils libproj-dev gdal-bin libgeos-dev luajit lua5.4 postgresql-client-16
-      - run: pip install -e . -r requirements-dev.txt
+      # docker/requirements.txt first: it is the exact pin both images build
+      # from, and requirements-dev.txt alone resolves newer packages
+      # (tests/test_native_environment.py fails when it does). Green here is
+      # then evidence about the images' versions.
+      - run: pip install -e . -r docker/requirements.txt -r requirements-dev.txt
       - run: ruff check src tests
       - run: ruff format --check src tests
       # The reference-route assertions are the quality bar's ground truth, not a
