@@ -316,6 +316,24 @@ def test_rollback_rebuild_is_documented_where_the_tiles_are_writable() -> None:
         assert command in DEPLOYMENT, f"the table of what runs where omits {command}"
 
 
+def test_a_half_restored_swap_has_a_repair_run_where_the_tiles_are_writable() -> None:
+    """`SwapUndoIncomplete` is terminal and `rollback_rebuild` refuses on the
+    state it leaves, so the runbook's section for it is the only repair there
+    is. Its presence, and that every command in it runs in a container that
+    can write the tile links it puts back."""
+    sections = [
+        chunk
+        for chunk in OPERATIONS.split("\n## ")[1:]
+        if "SwapUndoIncomplete" in chunk.splitlines()[0]
+    ]
+    assert len(sections) == 1, "docs/OPERATIONS.md has no section for a SwapUndoIncomplete alert"
+    invocations = documented_exec_invocations(sections[0])
+    assert invocations, "the section names no command to run"
+    binds = rendered_tiles_binds()
+    wrong = [(service, line) for service, line in invocations if binds.get(service) is not False]
+    assert not wrong, f"these run where the tiles cannot be written: {wrong}"
+
+
 # --- The data-root directories, derived from the mounts ----------------------
 
 

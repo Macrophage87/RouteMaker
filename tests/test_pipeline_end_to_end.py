@@ -1633,6 +1633,46 @@ def test_an_undo_that_fails_on_one_variant_still_undoes_the_others(
     assert count(settings.SEGMENT_SCHEMA_LIVE) == 5, "last week's graph is still served"
 
 
+def test_a_half_restored_swap_says_what_to_put_back(workspace, states, monkeypatch) -> None:
+    """`SwapUndoIncomplete` is the one swap failure an operator repairs by hand,
+    and the state to repair it to was held only by the undo: the repoint
+    overwrites `previous_build_id` and `promote` overwrites `previous`. So the
+    error carries every variant's links and row as the swap found them - here
+    a third build over two, where both links and both row columns are set and
+    none of them is the build that failed."""
+    from pipeline import promotion, tiles
+    from pipeline.promotion import SwapUndoIncomplete
+
+    source, root = workspace
+    two_rebuilds(source, root)
+
+    real_restore = tiles.restore_links
+
+    def restore_that_fails_on_the_first_variant(tiles_dir, variant, state):
+        if variant is Variant.STANDARD:
+            raise OSError("the data volume is read-only")
+        return real_restore(tiles_dir, variant, state)
+
+    monkeypatch.setattr(promotion, "swap_schemas", refusing_swap)
+    monkeypatch.setattr(tiles, "restore_links", restore_that_fails_on_the_first_variant)
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, build_id="20260924T080000Z")
+
+    undo = caught.value.cause
+    assert isinstance(undo, SwapUndoIncomplete), type(undo)
+    assert len(undo.before) == len(Variant)
+    for variant, line in zip(Variant, undo.before, strict=True):
+        assert line.startswith(variant.value), line
+        assert line.count("20260917T080000Z") == 2, f"current and the row's build: {line}"
+        assert line.count("20260910T080000Z") == 2, f"previous and the row's previous: {line}"
+        assert "20260924T080000Z" not in line, f"the failed build is not the target: {line}"
+        assert line in str(undo), "and it is on the message the run row records"
+    # What the undo did put back agrees with what it says it found.
+    variant_dir = root / "tiles" / Variant.EBIKE.value
+    assert os.readlink(variant_dir / "current") == "20260917T080000Z"
+    assert os.readlink(variant_dir / "previous") == "20260910T080000Z"
+
+
 def test_a_promotion_that_dies_between_its_own_two_links_is_undone(
     workspace, states, monkeypatch
 ) -> None:

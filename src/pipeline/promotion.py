@@ -152,16 +152,29 @@ class SwapUndoIncomplete(RuntimeError):
     The notes `_note_undo_failures` attached to the original are carried over
     rather than left behind on it. They are the same sentences, written for the
     error an operator reads, and this is now that error.
+
+    And it says what to put back *to*: `before` is every variant's links and
+    settings row as the swap found them, one line each. The undo had that state
+    and nothing else did - the repoint overwrites `previous_build_id` and
+    `promote` overwrites `previous` - so without it the hand repair
+    docs/OPERATIONS.md describes would be reconstructing a deployment from
+    directory names.
     """
 
-    def __init__(self, cause: BaseException, failures: list[str]) -> None:
-        super().__init__(
+    def __init__(
+        self, cause: BaseException, failures: list[str], before: list[str] | None = None
+    ) -> None:
+        message = (
             f"the swap failed and its undo did not complete, so this deployment is "
             f"half-restored and is not retried: {cause}. Still to put back by hand: "
             + "; ".join(failures)
         )
+        if before:
+            message += ". As the swap found it: " + "; ".join(before)
+        super().__init__(message)
         self.cause = cause
         self.failures = list(failures)
+        self.before = list(before or ())
         for note in getattr(cause, "__notes__", ()):
             self.add_note(note)
 
@@ -291,6 +304,34 @@ def _note_undo_failures(error: BaseException, failures: list[str], what: str) ->
     error.add_note(message)
 
 
+def describe_state(
+    links_before: Mapping[Variant, tiles.TileLinks],
+    rows_before: Mapping[str, UpstreamState],
+) -> list[str]:
+    """One line per variant: its two links and its settings row, as captured.
+
+    What a half-restored deployment has to be put back to by hand, in the
+    terms the repair uses - a link's target build or "no link", a row's two
+    build ids or "no row".
+    """
+    lines = []
+    for variant in Variant:
+        link = links_before[variant]
+        row = rows_before[variant.value]
+        if row.existed:
+            described_row = (
+                f"row build_id={row.build_id or '(empty)'} "
+                f"previous_build_id={row.previous_build_id or '(empty)'}"
+            )
+        else:
+            described_row = "no row"
+        lines.append(
+            f"{variant.value}: current -> {link.current or 'no link'}, "
+            f"previous -> {link.previous or 'no link'}, {described_row}"
+        )
+    return lines
+
+
 def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -> SwapOutcome:
     """Promote, repoint, rename - and undo whatever was done if a later step fails."""
     outcome = SwapOutcome(build_id=build_id)
@@ -317,7 +358,9 @@ def perform_swap(tiles_dir: Path, build_id: str, upstreams: Mapping[str, str]) -
             # to start from. The original is `cause` and `__cause__`, so the
             # message still names what went wrong first and the traceback still
             # shows it.
-            raise SwapUndoIncomplete(error, failures) from error
+            raise SwapUndoIncomplete(
+                error, failures, describe_state(links_before, rows_before)
+            ) from error
         raise
     return outcome
 

@@ -965,3 +965,88 @@ What keeps that rollback target there:
 After a rollback there is no build before the one being served: `previous` is
 removed and `previous_build_id` is cleared, so a second rollback refuses. The
 way forward from there is a rebuild.
+
+## A `SwapUndoIncomplete` alert: a half-restored swap
+
+**What it looks like.** A failed `weekly_rebuild` whose message begins "the swap
+failed and its undo did not complete, so this deployment is half-restored and
+is not retried", on the operations page's run row, as a failed job there and in
+`check_operations`. It is terminal on purpose: nothing retries it, because a
+retry would promote over a deployment no component has a consistent picture
+of. Nothing fixes it on its own either, and `rollback_rebuild` is not the tool —
+see below.
+
+**What state the deployment is in.** The swap is three steps — each variant's
+tile links, then the settings rows, then the schema rename — and the rename is
+the last step and one transaction. The undo only runs when a step failed, so
+the rename either failed and moved nothing or never ran: **the schemas are as
+they were.** `live` is still the build that was being served, the retired
+schema (`live_old`) is still the one before it, and `staging` holds the build
+that failed to swap. What may be wrong is only what the message lists after
+"Still to put back by hand":
+
+- *`<variant>`'s tile links* — that variant's `current` may name the new build,
+  and its `previous` the build `live` describes.
+- *the settings rows* — the `ValhallaUpstream` rows may name the new build.
+
+After that, "As the swap found it" gives one line per variant — its `current`
+and `previous` link targets and its row's two build ids, or `no link` / `no
+row` — and that is the state to put back. It is the only record of it: the
+swap overwrote `previous` and `previous_build_id` on the way through, so it
+cannot be reconstructed from directory names.
+
+The routers were not restarted by the swap, so unless one of them restarted
+since, they are still serving the old build and the damage is in what the
+*next* restart would load and in what the API believes it is serving.
+
+**Why not `rollback_rebuild`.** It rolls back a *completed* swap: it would
+retire the graph being served and promote `live_old`, two builds back. Its
+pre-flight refuses anyway on a variant whose `previous` link and settings row
+disagree — which is what a half-restored variant looks like — and that refusal
+is correct.
+
+**The repair, by hand, in `rebuild`** (the one container that can write the
+tiles):
+
+1. **Fix what failed first.** The message names the original error (a
+   read-only or full volume is the usual one) and the reason each restore
+   failed. A repair written onto the same broken volume fails the same way.
+2. **Put each listed variant's links back** as "As the swap found it" says.
+   Atomically, the way the swap writes them — a new link renamed over the old
+   one:
+
+   ```sh
+   # current -> <build>        (and the same with `previous`)
+   docker compose exec -T rebuild sh -c \
+     'cd /data/tiles/<variant> && ln -sfn <build> current.new && mv -T current.new current'
+   # previous -> no link
+   docker compose exec -T rebuild rm /data/tiles/<variant>/previous
+   ```
+
+3. **Put the settings rows back**, if the message lists them, to the build ids
+   the same lines give (`(empty)` is the empty string; `no row` means delete
+   that variant's row):
+
+   ```sh
+   docker compose exec -T rebuild ./manage.py shell -c "from core.models import ValhallaUpstream as U; U.objects.filter(variant='<variant>').update(build_id='<build>', previous_build_id='<previous or empty>')"
+   ```
+
+4. **Check it agrees with itself.** The first command shows the links; the
+   dry run reads the links, the rows and the retired schema together:
+
+   ```sh
+   docker compose exec -T rebuild sh -c 'ls -l /data/tiles/*/'
+   docker compose exec -T rebuild ./manage.py rollback_rebuild
+   ```
+
+   After a repair it prints a target per variant — the `previous` build — or,
+   on a deployment whose first rebuild this was, refuses with "no previous
+   build to go back to". A refusal naming a variant whose links and row
+   disagree means that variant is not back yet.
+5. **Restart the routers** if any of them restarted while the links were
+   wrong — it will have loaded the build that failed to swap:
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike`
+   (see "After a rebuild: restart the routers"). Harmless if none did.
+6. **Leave `staging` alone.** It is the failed build's output and the next
+   rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait
+   for the weekly one.
