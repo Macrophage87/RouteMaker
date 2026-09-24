@@ -2173,6 +2173,32 @@ def test_the_rollback_command_refuses_where_it_cannot_write_the_tiles(
 
 
 @needs_permissions
+def test_nothing_to_go_back_to_is_said_before_the_tiles_are_probed(
+    workspace, states, monkeypatch
+) -> None:
+    """Both refusals at once: a first-ever rebuild, so there is no previous
+    build, in a container that cannot write the tiles. The missing target is
+    the one to report, because it is true in every container - an operator
+    told to move to `rebuild` would get there and be refused again for a
+    different reason."""
+    from django.core.management import call_command
+    from django.core.management.base import CommandError
+
+    source, root = workspace
+    monkeypatch.setattr(settings, "TILES_DIR", root / "tiles")
+    run_pipeline(source, root, build_id="20260917T080000Z")
+
+    with read_only(root / "tiles" / Variant.EBIKE.value) as blocked:
+        with pytest.raises(CommandError) as refused:
+            call_command("rollback_rebuild")
+    message = str(refused.value)
+    assert "previous" in message, (
+        f"the refusal does not say there is nothing to go back to: {message}"
+    )
+    assert str(blocked) not in message, f"the tile probe answered first: {message}"
+
+
+@needs_permissions
 def test_rollback_itself_refuses_where_it_cannot_write_the_tiles(workspace, states) -> None:
     """The same refusal from the function, for a caller that is not the
     command - a shell, the acceptance checklist. Nothing moves, so nothing has
