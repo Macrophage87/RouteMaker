@@ -115,6 +115,34 @@ def test_the_unset_variable_is_still_localhost(monkeypatch) -> None:
     assert settings_under(monkeypatch, None).ALLOWED_HOSTS == ["localhost"]
 
 
+@pytest.mark.parametrize(
+    "value",
+    [
+        "https://routes.example.org",
+        "http://localhost, http://127.0.0.1",
+        "  https://routes.example.org  ",
+        "http://localhost,,http://127.0.0.1",
+        ", http://localhost",
+        "http://localhost, , http://127.0.0.1",
+        " ",
+        "",
+    ],
+)
+def test_every_trusted_origin_written_is_trusted(monkeypatch, value) -> None:
+    """The neighbouring variable, parsed the same way and with the same defect:
+    the CSRF middleware matches an Origin header exactly, so an unstripped
+    `" http://127.0.0.1"` trusted nothing and every POST from it was refused."""
+    from django.middleware.csrf import CsrfViewMiddleware
+
+    monkeypatch.setenv("DJANGO_CSRF_TRUSTED_ORIGINS", value)
+    origins = settings_under(monkeypatch, "localhost").CSRF_TRUSTED_ORIGINS
+    with override_settings(CSRF_TRUSTED_ORIGINS=origins):
+        trusted = CsrfViewMiddleware(lambda request: None).allowed_origins_exact
+    written = {part.strip() for part in value.split(",") if part.strip()}
+    assert written <= trusted, (value, origins)
+    assert all(origin == origin.strip() and origin for origin in origins), origins
+
+
 @pytest.mark.parametrize("debug", [False, True])
 @pytest.mark.parametrize("value", [*WRITTEN, None])
 def test_the_healthcheck_sends_a_host_the_application_accepts(monkeypatch, value, debug) -> None:
