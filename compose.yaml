@@ -19,8 +19,8 @@
 #    missing, would fetch whatever a stranger pushes there next and hand it
 #    PGPASSWORD, KEY_ENCRYPTION_KEY and DJANGO_SECRET_KEY. The four are now
 #    `ghcr.io/macrophage87/routemaker-<name>` - the namespace of this
-#    repository's own owner - and `pull_policy: build` on the services that
-#    `build:` keeps a missing image a build rather than a pull at all. The
+#    repository's own owner - and `pull_policy: never` on the services that
+#    `build:` takes the pull out of their path entirely. The
 #    three third-party images are written `docker.io/...` for the same reason:
 #    Hub is where they really come from, and saying so is what makes the
 #    rendered reference unambiguous rather than a default.
@@ -118,10 +118,22 @@ services:
     # compose's default policy for a service that also declares `build:` is
     # `missing` - a pull is attempted first on any host where the tag is not in
     # the local store, which is every host after a `docker system prune` and
-    # every host that was given a `TAG` it has not built. `build` makes that a
-    # build instead, so the only way an image with these secrets in its
-    # environment gets here is from this repository.
-    pull_policy: build
+    # every host that was given a `TAG` it has not built. As measured on
+    # Compose v5.3.1, `up` under each policy:
+    #
+    #   policy                      tag in the store     tag absent
+    #   missing / if_not_present    runs it              pulls, then builds
+    #   build                       BUILDS, retags       builds
+    #   never                       runs it              builds (no pull)
+    #   always                      pulls first          pulls, then builds
+    #
+    # `build` is not a fallback: it rebuilds the working tree on every `up`,
+    # so `TAG=<previous> up -d` would build today's code under yesterday's tag
+    # and orphan the real previous image. `never` runs what the store holds
+    # and pulls nothing; `docker compose build` is what makes a new image, and
+    # `up -d --no-build` is the rollback form that refuses a tag the store has
+    # lost instead of building the current tree under it (docs/DEPLOYMENT.md).
+    pull_policy: never
     environment:
       <<: *django-env
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -247,7 +259,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    pull_policy: build  # header rule 3, as on `api`.
+    pull_policy: never  # header rule 3, as on `api`.
     # Four slots, not the default one: every periodic task except the rebuild
     # queues here, and Procrastinate drops a periodic tick whose predecessor is
     # still running rather than delaying it. With one slot a nightly dump held
@@ -308,7 +320,7 @@ services:
     build:
       context: .
       dockerfile: docker/api.Dockerfile
-    pull_policy: build  # header rule 3, as on `api`.
+    pull_policy: never  # header rule 3, as on `api`.
     command: ["./manage.py", "migrate", "--noinput"]
     restart: "no"
     environment:
@@ -591,7 +603,7 @@ services:
     build:
       context: .
       dockerfile: docker/pipeline.Dockerfile
-    pull_policy: build  # header rule 3, as on `api`.
+    pull_policy: never  # header rule 3, as on `api`.
     command: ["./manage.py", "procrastinate", "worker", "--queues=rebuild", "--concurrency=1"]
     # Compose's default is 10 seconds between the SIGTERM and the SIGKILL, and
     # what this worker owes the database on the way out is a real shutdown:

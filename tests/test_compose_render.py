@@ -893,21 +893,27 @@ def test_our_own_images_are_under_a_namespace_this_project_controls(env_file) ->
 
 
 def test_the_services_that_build_never_pull(env_file) -> None:
-    """`pull_policy: build`, on each of the four.
+    """`pull_policy: never`, on each of the four.
 
     Compose's default policy for a service that declares both `image:` and
     `build:` is `missing`, which is a pull attempt first and a build only if
     that fails. These four are built from this working tree and pushed nowhere,
     so a pull of one of them can only fetch somebody else's image under a name
-    that looks like ours. `build` removes the pull from the path entirely.
+    that looks like ours. `if_not_present` is `missing` under another name and
+    `always` pulls on every `up`. `build` pulls nothing but rebuilds the working
+    tree on every `up`, present tag or not, so a `TAG` rollback would run the
+    current code under the previous tag. `never` is the one value that neither
+    pulls nor replaces an image the local store already holds (measured under
+    Compose v5.3.1; compose.yaml's `api` service carries the table).
     """
     services = render(env_file, UNBUILT_PROFILE)["services"]
     building = {name for name, service in services.items() if service.get("build")}
     assert building == {"api", "worker", "migrate", "rebuild"}
     for name in sorted(building):
-        assert services[name].get("pull_policy") == "build", (
+        assert services[name].get("pull_policy") == "never", (
             f"the {name} service builds its image but renders pull_policy="
-            f"{services[name].get('pull_policy')!r}, so a host without the tag pulls it"
+            f"{services[name].get('pull_policy')!r}: anything but `never` either "
+            "pulls a missing tag or rebuilds a present one on `up`"
         )
 
 

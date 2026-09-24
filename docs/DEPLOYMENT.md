@@ -32,9 +32,12 @@ Two changes, and they are one decision:
 - the four are `ghcr.io/macrophage87/routemaker-<name>`, the GitHub Container
   Registry namespace of this repository's own owner, so the name resolves to a
   place this project controls rather than to a Hub default;
-- the four services that declare a `build:` also declare `pull_policy: build`,
-  which makes a missing image a build rather than a pull. Compose's default for
-  a service with both `image:` and `build:` is `missing`, which pulls first.
+- the four services that declare a `build:` also declare `pull_policy: never`,
+  so compose never pulls them. Compose's default for a service with both
+  `image:` and `build:` is `missing`, which pulls first. (`build`, which this
+  file used to say, is not a fallback: measured on Compose v5.3.1 it rebuilds
+  the working tree on every `up` even when the tag is already in the store.
+  `compose.yaml`'s `api` service has the measured table for all five values.)
 
 The three third-party images are written out the same way —
 `docker.io/library/caddy:2.8-alpine`, `docker.io/postgis/postgis:16-3.4`,
@@ -43,17 +46,29 @@ changes; what changes is that the registry is stated rather than defaulted.
 `tests/test_compose_render.py` asserts that no `image:` in the rendered stack is
 an unqualified reference.
 
-**A `TAG` rollback is a pull unless the host still has the image.** `TAG=v3` and
-`docker compose up -d` recreates `api`, `worker`, `migrate` and `rebuild` on
-`ghcr.io/macrophage87/routemaker-api:v3` — and `pull_policy: build` means a host
-that no longer holds that tag *builds* it from the working tree, which is the
-current tree and not v3. So a rollback needs one of two things to be true: the
-previous image is still in the host's local store (it is, until something prunes
-it), or it was pushed to that ghcr namespace and the host can pull it. Nothing
-in this repository pushes images anywhere; until something does, the rollback
-path is the local store, and `docker image prune -a` on this host is what takes
-it away. Check with `docker image ls ghcr.io/macrophage87/routemaker-api` before
-relying on a tag being there to go back to.
+**A `TAG` rollback runs what the local store holds, and nothing else.** Roll
+back with
+
+```sh
+docker image ls ghcr.io/macrophage87/routemaker-api   # is the tag still here?
+TAG=v3 docker compose up -d --no-build                # or set TAG=v3 in .env
+```
+
+which recreates `api`, `worker`, `migrate` and `rebuild` on
+`ghcr.io/macrophage87/routemaker-api:v3` (and the pipeline image's `v3`) as the
+store holds it: `pull_policy: never` builds nothing and pulls nothing for a tag
+that is present. `--no-build` is for the other case. A plain `up -d` on a host
+that no longer holds the tag does not pull it — it *builds* it, from the working
+tree, which is the current code and not v3, and tags the result v3. With
+`--no-build` the same command refuses with `No such image` instead. Nothing in
+this repository pushes images anywhere, so the rollback path is the local store,
+and `docker image prune -a` on this host is what takes it away; an image pushed
+to that ghcr namespace some day would come back with an explicit `docker pull`,
+never from compose.
+
+A deploy is the other way round: `docker compose build`, then `up -d`. `up`
+under `never` does not rebuild a tag that is already in the store, so a source
+change reaches the containers only through `build` (or `up -d --build`).
 
 ## Not built here — read this first
 
@@ -105,7 +120,8 @@ that builds, so `docker compose build` tags the result
 `ghcr.io/macrophage87/routemaker-pipeline:${TAG}` locally and the `worker`,
 `migrate` and
 `rebuild` services find it there. Bump it per release so a rollback is a `TAG`
-change and `docker compose up -d` rather than a rebuild — and `up -d`
+change and `docker compose up -d --no-build` rather than a rebuild (see "A `TAG`
+rollback runs what the local store holds" above) — and `up -d`
 specifically, because the tag is baked into each container at creation:
 `docker compose restart` restarts the containers that exist, on the image they
 were created from, and so rolls nothing back. `up -d` re-reads `.env`, sees the
