@@ -556,6 +556,58 @@ def local_block_assignments() -> list[str]:
     ]
 
 
+def redirect_uris() -> dict[str, str]:
+    """Every redirect URI an operator can end up running with: the shipped
+    value, the local block's commented alternative, and the settings default
+    for a process started with neither."""
+    from django.conf import settings
+
+    local = [
+        line.lstrip("# ").partition("=")[2].strip()
+        for line in ENV_EXAMPLE.read_text().partition(LOCAL_BLOCK_HEADER)[2].splitlines()
+        if re.match(r"^#\s*DISCORD_REDIRECT_URI=", line)
+    ]
+    assert len(local) == 1, f"the local block carries {len(local)} redirect URIs"
+    return {
+        "shipped": example_values()["DISCORD_REDIRECT_URI"],
+        "local block": local[0],
+        # Read from the module rather than from `settings`, which the test run
+        # may have overridden: the default is what a bare process gets.
+        "settings default": re.search(
+            r'DISCORD_REDIRECT_URI = os\.environ\.get\("DISCORD_REDIRECT_URI", "([^"]+)"\)',
+            (REPO / "src" / "config" / "settings.py").read_text(),
+        ).group(1),
+        "running": settings.DISCORD_REDIRECT_URI,
+    }
+
+
+@pytest.mark.parametrize("which", ["shipped", "local block", "settings default", "running"])
+def test_every_redirect_uri_lands_on_the_sign_in_callback(which) -> None:
+    """The fourth part of the URI, and the one the sign-in test did not pin.
+
+    Scheme, host, origin and port are checked above against the stack; the
+    path was not checked against anything, so a redirect URI naming
+    `/auth/callbak` - or a callback route moved without the example following
+    it - rendered and started cleanly and failed at the first sign-in, with
+    Discord sending the browser back to a 404. Resolved through the URLconf
+    rather than compared with a literal, so it follows the route wherever it
+    is mounted.
+    """
+    from django.urls import Resolver404, resolve
+
+    from core import auth_views
+
+    uri = redirect_uris()[which]
+    path = urlsplit(uri).path
+    try:
+        match = resolve(path)
+    except Resolver404:
+        pytest.fail(f"the {which} redirect URI {uri!r} names {path!r}, which nothing serves")
+    assert match.func is auth_views.login_callback, (
+        f"the {which} redirect URI {uri!r} lands on {match.view_name}, not the sign-in callback"
+    )
+
+
 def test_the_example_counts_its_own_local_block_correctly() -> None:
     """The file said four and the block is five, and the fifth is the one that
     matters: `DJANGO_DEBUG=1`. It is the only line in the block with no
