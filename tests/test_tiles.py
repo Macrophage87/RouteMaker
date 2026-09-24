@@ -9,6 +9,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from rebuild_fixtures import write_sqlite_database
 
 from pipeline import tiles
 from pipeline.variants import Variant
@@ -399,11 +400,13 @@ def test_the_timezone_script_writes_to_stdout_so_the_pipeline_redirects_it(tmp_p
     stub_dir = tmp_path / "bin"
     stub_dir.mkdir()
     stub = stub_dir / "valhalla_build_timezones"
+    built = tmp_path / "built-tz.sqlite"
+    write_sqlite_database(built, tiles.TIMEZONE_TABLE)
     stub.write_text(
         "#!/bin/sh\n"
         'echo "downloading timezone polygon file." 1>&2\n'
         "touch ./dist-marker\n"
-        "printf 'SQLite format 3'\n"
+        f"cat {built}\n"
     )
     stub.chmod(0o755)
 
@@ -416,7 +419,7 @@ def test_the_timezone_script_writes_to_stdout_so_the_pipeline_redirects_it(tmp_p
         env={**os.environ, "PATH": f"{stub_dir}:{os.environ['PATH']}"},
     )
 
-    assert timezone_db.read_bytes() == b"SQLite format 3"
+    assert timezone_db.read_bytes() == built.read_bytes()
     assert not (timezone_db.parent / f"{timezone_db.name}.part").exists(), "moved, not left behind"
     assert (timezone_db.parent / "dist-marker").exists(), "the script ran in the build directory"
     assert not (elsewhere / "dist-marker").exists(), "and not in the rebuild's own directory"
@@ -454,6 +457,68 @@ def test_a_failed_timezone_build_leaves_no_database_behind(tmp_path) -> None:
     )
     assert result.returncode != 0, "the rebuild has to see this fail"
     assert not timezone_db.exists()
+
+
+def _timezone_shell(tmp_path: Path) -> tuple[list[str], Path]:
+    config_path, config = write_config(tmp_path)
+    timezone_db = Path(config["mjolnir"]["timezone"])
+    commands = tiles.tile_build_commands(
+        config_path,
+        tmp_path / "standard.osm.pbf",
+        admin_pbf=tmp_path / "source.osm.pbf",
+        admin_db=Path(config["mjolnir"]["admin"]),
+        timezone_db=timezone_db,
+    )
+    return next(c for c in commands if c[0] == "sh"), timezone_db
+
+
+def _unusable_output(tmp_path: Path, kind: str) -> str:
+    """The stub's stdout line, for each way the output can be wrong while the
+    script still exits 0."""
+    if kind == "nothing":
+        return ""
+    if kind == "not a database":
+        return "printf 'curl: (22) The requested URL returned error: 404'\n"
+    database = tmp_path / "output.sqlite"
+    if kind == "no tz_world table":
+        write_sqlite_database(database, "admins")
+    else:
+        write_sqlite_database(database, tiles.TIMEZONE_TABLE, rows=False)
+    return f"cat {database}\n"
+
+
+@pytest.mark.parametrize(
+    "kind", ["nothing", "not a database", "no tz_world table", "an empty tz_world table"]
+)
+def test_a_timezone_script_that_exits_0_over_unusable_output_is_not_promoted(
+    tmp_path, kind
+) -> None:
+    """The 3.5.1 script's `error_exit` exits only when GEOS is 3.9, so on any
+    other version a failed download or import runs on to `cat` whatever is
+    there and exits 0. The exit status alone let `&& mv` put an empty or broken
+    file where the build config names the database, and the build validation
+    found it only after all three tile builds. Each output here is wrong in one
+    way and the script exits 0 over all of them: the command must fail, and
+    nothing must be at the configured path."""
+    shell, timezone_db = _timezone_shell(tmp_path)
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "valhalla_build_timezones"
+    stub.write_text("#!/bin/sh\n" + _unusable_output(tmp_path, kind) + "exit 0\n")
+    stub.chmod(0o755)
+
+    result = subprocess.run(
+        shell,
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "PATH": f"{stub_dir}:{os.environ['PATH']}"},
+    )
+    assert result.returncode != 0, f"{kind}: the unusable output was accepted"
+    assert not timezone_db.exists(), f"{kind}: and moved into place"
+    assert timezone_db.name in result.stderr, (
+        f"{kind}: the failure names the file it refused: {result.stderr}"
+    )
 
 
 def test_the_timezone_database_is_downloaded_once_and_copied(tmp_path) -> None:

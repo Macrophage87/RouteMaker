@@ -483,7 +483,7 @@ def assert_no_rule_violations(build_log: str, where: str) -> None:
 # NOT CONFIRMED AGAINST A REAL BUILD - no Valhalla binary has run here - which
 # is why a table that cannot be read is reported with the error SQLite gave
 # rather than swallowed.
-ADMIN_AND_TIMEZONE_TABLES = {"admin": "admins", "timezone": "tz_world"}
+ADMIN_AND_TIMEZONE_TABLES = {"admin": "admins", "timezone": tiles.TIMEZONE_TABLE}
 
 
 def _sqlite_row_count(path: Path, table: str) -> int:

@@ -24,6 +24,7 @@ import logging
 import os
 import shlex
 import shutil
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -45,6 +46,28 @@ TILE_PATH_KEYS = (
     ("mjolnir", "admin"),
     ("mjolnir", "timezone"),
 )
+
+# The table `valhalla_build_timezones` fills, which the build validation also
+# counts (`pipeline.run.ADMIN_AND_TIMEZONE_TABLES` reads it from here).
+TIMEZONE_TABLE = "tz_world"
+
+# Run against the timezone script's `.part` output before it is moved into
+# place: the file must open as SQLite, carry the table, and have a row in it.
+# Standalone, with nothing imported from this project, because it runs in a
+# fresh interpreter whose working directory is the build directory; it is run
+# with this process's own interpreter, so it needs nothing the rebuild image
+# does not already have.
+TIMEZONE_PART_CHECK = f"""\
+import pathlib, sqlite3, sys
+part = pathlib.Path(sys.argv[1]).resolve()
+try:
+    connection = sqlite3.connect(part.as_uri() + "?mode=ro", uri=True)
+    rows = connection.execute("SELECT count(*) FROM {TIMEZONE_TABLE}").fetchone()[0]
+except sqlite3.Error as error:
+    sys.exit(f"valhalla_build_timezones wrote {{part}}, not a timezone database: {{error}}")
+if rows <= 0:
+    sys.exit(f"valhalla_build_timezones wrote {{part}} with no {TIMEZONE_TABLE} rows in it")
+"""
 
 
 class TilePathsNotPerVariant(ValueError):
@@ -188,6 +211,21 @@ def tile_build_commands(
     because `>` truncates before the script runs and a failed run would
     otherwise leave an empty file where the build config says the database is.
 
+    And the move waits on the `.part` being a timezone database, not only on the
+    script's exit status. The 3.5.1 script's `error_exit` decides whether to
+    exit from `pkg-config geos --modversion | grep -cvF 3.9`, and it exits only
+    when that count is 0: when GEOS is 3.9, or when there is no pkg-config to
+    ask. Measured in ghcr.io/valhalla/valhalla:3.5.1 with the network cut off:
+    as shipped (no pkg-config) the failed download exits 1; with a pkg-config
+    reporting GEOS 3.12 on PATH the same failure runs on, the shapefile import
+    fails, and the script exits 0 having written a 7 MB SpatiaLite file with no
+    `tz_world` table in it - which the `&& mv` promoted into place, and which
+    nothing noticed until the build validation counted rows after all three
+    variants' tile builds. So the exit status is not the contract, and neither
+    is the size. `TIMEZONE_PART_CHECK` opens the part file read-only and
+    requires a row in the table; anything else stops the command here, before
+    `valhalla_build_tiles` is started against it.
+
     It also downloads roughly a hundred megabytes from GitHub each time, and the
     database is identical for all three variants - it is a function of the
     world, not of the extract. So the first variant of a rebuild builds it and
@@ -222,6 +260,8 @@ def tile_build_commands(
             "-c",
             f"cd {shlex.quote(str(timezone_db.parent))} && "
             f"valhalla_build_timezones > {shlex.quote(partial)} && "
+            f"{shlex.quote(sys.executable)} -c {shlex.quote(TIMEZONE_PART_CHECK)} "
+            f"{shlex.quote(partial)} && "
             f"mv {shlex.quote(partial)} {shlex.quote(str(timezone_db))}",
         ]
     return [
