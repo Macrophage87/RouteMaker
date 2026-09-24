@@ -332,6 +332,14 @@ def test_a_half_restored_swap_has_a_repair_run_where_the_tiles_are_writable() ->
     binds = rendered_tiles_binds()
     wrong = [(service, line) for service, line in invocations if binds.get(service) is not False]
     assert not wrong, f"these run where the tiles cannot be written: {wrong}"
+    # The swap's own undo deletes a row the swap created, so the hand repair
+    # has both halves too: an update for a row that existed, a delete for one
+    # that did not.
+    row_repairs = [line for _service, line in invocations if "ValhallaUpstream" in line]
+    for operation in (".update(", ".delete()"):
+        assert any(operation in line for line in row_repairs), (
+            f"no command in the section repairs a settings row with {operation}: {row_repairs}"
+        )
 
 
 # --- The data-root directories, derived from the mounts ----------------------

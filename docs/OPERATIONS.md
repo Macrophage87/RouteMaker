@@ -937,10 +937,10 @@ having put the tile links and the rows back, and neither the live nor the
 retired schema moved. The one thing it may have changed is a `staging` schema
 left behind by a rebuild that failed at its swap: the rename needs that name,
 so it drops that schema before it asks for the lock. That schema is the failed
-rebuild's own output, and the next rebuild drops it anyway. Run it again at a quieter moment. (It used to
-rename first, which made a later failure the expensive kind: the undo then had
-to rename back, under the same lock, and losing that race left last week's rows
-live under this week's tiles.)
+rebuild's own output, and the next rebuild drops it anyway. Run it again at a
+quieter moment. (It used to rename first, which made a later failure the
+expensive kind: the undo then had to rename back, under the same lock, and
+losing that race left last week's rows live under this week's tiles.)
 
 The restart is part of the procedure, not an afterthought: `valhalla_service`
 does not reload tiles at runtime, so until the containers restart they are
@@ -1027,11 +1027,17 @@ tiles):
    ```
 
 3. **Put the settings rows back**, if the message lists them, to the build ids
-   the same lines give (`(empty)` is the empty string; `no row` means delete
-   that variant's row):
+   the same lines give (`(empty)` is the empty string):
 
    ```sh
    docker compose exec -T rebuild ./manage.py shell -c "from core.models import ValhallaUpstream as U; U.objects.filter(variant='<variant>').update(build_id='<build>', previous_build_id='<previous or empty>')"
+   ```
+
+   A line that says `no row` means that variant had no settings row before
+   the swap, so the one the swap wrote is deleted rather than updated:
+
+   ```sh
+   docker compose exec -T rebuild ./manage.py shell -c "from core.models import ValhallaUpstream as U; U.objects.filter(variant='<variant>').delete()"
    ```
 
 4. **Check it agrees with itself.** The first command shows the links; the
