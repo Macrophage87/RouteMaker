@@ -23,9 +23,15 @@ Early. Phase 1 of 6; no application yet. What exists:
 
 ## Development
 
+The suite needs PostgreSQL 16 with PostGIS, LuaJIT and a Python 3.11 venv
+carrying the images' exact pins; docs/DEVELOPMENT.md, "The native loop", has
+the commands. In short, once those are installed:
+
 ```sh
-python3 -m venv .venv && .venv/bin/pip install -e . pytest defusedxml ruff
-.venv/bin/pytest -q
+uv venv --python 3.11 .venv
+uv pip install -r docker/requirements.txt -r requirements-dev.txt
+sudo sh scripts/devdb.sh
+PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly
 ```
 
 The reference-route tests are the quality bar rather than a smoke test: they
