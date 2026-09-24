@@ -1,4 +1,4 @@
-"""The interpreter running the suite has the packages the images install.
+"""The interpreter running the suite has the pins both images share.
 
 `requirements-dev.txt` is loose on purpose and `docker/requirements.txt` is the
 exact pin both images build from. A native venv made from the loose file alone
@@ -8,6 +8,10 @@ under which a guild admin's write to another guild's row in the admin answered
 run, reported as a failure of the code. The suite is only evidence about the
 images when it runs against their versions, so this file fails, naming each pin
 the interpreter does not have, alongside whatever else fails because of it.
+
+Only `docker/requirements.txt` is checked: the per-image files add one pin
+each (gunicorn for the api, shapely for the pipeline), and the pipeline image
+runs the valhalla base's Python 3.12 while the api image and CI run 3.11.
 """
 
 from __future__ import annotations
@@ -19,7 +23,13 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 IMAGE_PINS = REPO / "docker" / "requirements.txt"
 
+
 # `name==version` or `name[extras]==version`, with an optional `; marker`.
+def canonical(name: str) -> str:
+    """A distribution name as pip compares it (PEP 503)."""
+    return re.sub(r"[-_.]+", "-", name).lower()
+
+
 PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*==\s*([^\s;,]+)\s*(?:;.*)?$")
 
 
@@ -46,7 +56,16 @@ def test_the_image_pins_are_read() -> None:
     """The check below is vacuous if the parser finds nothing, or skips a line."""
     pins, unread = read_pins(IMAGE_PINS.read_text())
     assert not unread, f"lines in {IMAGE_PINS.name} that are not name==version: {unread}"
-    assert "Django" in pins, f"no Django pin found in {IMAGE_PINS.name}: {pins}"
+    assert "django" in {canonical(name) for name in pins}, (
+        f"no Django pin found in {IMAGE_PINS.name}: {pins}"
+    )
+
+
+def test_names_compare_as_pip_compares_them() -> None:
+    assert {canonical(n) for n in ("Django", "django", "DJANGO")} == {"django"}
+    assert {canonical(n) for n in ("django-ninja", "Django_Ninja", "django.ninja")} == {
+        "django-ninja"
+    }
 
 
 def test_the_parser_reports_what_it_cannot_read() -> None:

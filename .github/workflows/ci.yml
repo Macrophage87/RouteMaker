@@ -54,7 +54,9 @@ jobs:
       # docker/requirements.txt first: it is the exact pin both images build
       # from, and requirements-dev.txt alone resolves newer packages
       # (tests/test_native_environment.py fails when it does). Green here is
-      # then evidence about the images' versions.
+      # then evidence about the versions both images share; the per-image
+      # extras (gunicorn, shapely) and the pipeline image's Python 3.12 are
+      # not checked.
       - run: pip install -e . -r docker/requirements.txt -r requirements-dev.txt
       - run: ruff check src tests
       - run: ruff format --check src tests
