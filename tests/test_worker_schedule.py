@@ -466,6 +466,53 @@ def test_a_failure_after_the_swap_is_not_retried_and_the_retired_schema_survives
     )
 
 
+def test_the_stages_after_the_swap_are_the_ones_after_it_and_not_the_swap_itself() -> None:
+    """Enumerated from the stage order, with SWAP on the outside.
+
+    A failure *at* SWAP is a rename that did not commit - the transaction rolled
+    back, or the undo put the old build back - so the deployment is still on
+    last week's build and a retry is exactly right. Counted among the stages
+    after it, that failure would be abandoned with "the swap completed", which
+    is false, and the next week's rebuild would be the first retry.
+    """
+    from config.procrastinate import stages_after_swap
+    from pipeline.rebuild import Stage
+
+    ordered = list(Stage)
+    assert Stage.SWAP not in stages_after_swap()
+    assert stages_after_swap() == frozenset(ordered[ordered.index(Stage.SWAP) + 1 :])
+    assert stages_after_swap(), "there is a stage after the swap for this to be about"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_failure_at_the_swap_itself_is_retried_rather_than_reported_as_swapped(
+    rebuild_environment, monkeypatch
+) -> None:
+    """The other side of the post-swap rule, through the task body.
+
+    A swap that raised before its renames committed leaves nothing renamed, so
+    the retired schema a rollback needs is untouched and re-running the whole
+    rebuild is safe. It has to come out as the ordinary retryable failure, and
+    not as the abandonment that says the swap completed.
+    """
+    from pipeline.rebuild import RebuildFailed, Stage
+
+    def refused(*args, **kwargs):
+        raise RuntimeError("could not take the lock on the segment relation")
+
+    monkeypatch.setattr("pipeline.promotion.perform_swap", refused)
+    with pytest.raises(RebuildFailed) as failed:
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+    assert not isinstance(failed.value, RebuildAbandoned), str(failed.value)
+    assert failed.value.stage is Stage.SWAP
+    assert "swap completed" not in str(failed.value)
+
+    strategy = app.tasks["weekly_rebuild"].retry_strategy
+    assert strategy.get_retry_decision(exception=failed.value, job=job(0)) is not None, (
+        "a swap that did not happen is the one failure here a retry can fix"
+    )
+
+
 @pytest.mark.django_db(transaction=True)
 @pytest.mark.parametrize("kind", ["binary_killed", "no_budget_left"])
 def test_a_rebuild_killed_by_its_own_deadline_is_abandoned_rather_than_retried(
