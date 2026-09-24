@@ -500,6 +500,26 @@ def test_an_approved_row_of_a_kind_no_applier_handles_is_refused(tmp_path) -> No
     assert context.override_report is None, "nothing was applied on the way past it"
 
 
+def test_the_handled_kinds_are_the_three_the_appliers_implement_and_the_model_offers() -> None:
+    """Enumerated, not only read by name.
+
+    The refusal above pins what happens to a kind outside the set; it cannot see
+    the set growing. A fourth member added here without an applier is the same
+    inert row arriving through the other door - approved, accepted by the stage,
+    and applied by nothing - and the refusal test stays green because its kind
+    is still outside. So the set is asserted whole, against the model's own
+    choices, which are what the admin lets a reviewer write.
+    """
+    from core.models import Override as OverrideRow
+    from pipeline.overrides import HANDLED_KINDS
+
+    assert HANDLED_KINDS == {"access", "stress", "jurisdiction"}
+    assert set(OverrideRow.Kind.values) == HANDLED_KINDS, (
+        "the admin offers a kind the stage does not handle, or the stage handles one "
+        "nobody can write"
+    )
+
+
 @pytest.mark.django_db
 def test_a_row_the_appliers_refuse_stops_the_rebuild_rather_than_retrying_it(tmp_path) -> None:
     """The other refusal, through the same door.
