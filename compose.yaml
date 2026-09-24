@@ -222,6 +222,11 @@ services:
     # on a healthy stack. So it sends the first name in that list, which is the
     # same string the deployment already had to get right for Caddy.
     #
+    # Parsed as settings.py parses it - entries stripped, empty ones dropped -
+    # and the first entry is not always a name a Host header can carry: `*`
+    # (any host) and an empty list send 127.0.0.1 instead, which `*` accepts
+    # and which DEBUG's empty-list default accepts.
+    #
     # Nothing is gated on this condition - `depends_on` here waits on migrate,
     # not on api - so a red healthcheck is a `docker compose ps` an operator
     # can read and not a stack that refuses to come up.
@@ -231,7 +236,7 @@ services:
           "CMD",
           "python",
           "-c",
-          "import os,urllib.request as u; h=os.environ['DJANGO_ALLOWED_HOSTS'].split(',')[0].strip(); r=u.urlopen(u.Request('http://127.0.0.1:8000/healthz', headers={'Host': h}), timeout=5); raise SystemExit(0 if r.status == 200 else 1)",
+          "import os,urllib.request as u; hs=[h.strip() for h in os.environ.get('DJANGO_ALLOWED_HOSTS','localhost').split(',') if h.strip()]; h=hs[0] if hs and hs[0] != '*' else '127.0.0.1'; r=u.urlopen(u.Request('http://127.0.0.1:8000/healthz', headers={'Host': h}), timeout=5); raise SystemExit(0 if r.status == 200 else 1)",
         ]
       interval: 30s
       timeout: 10s

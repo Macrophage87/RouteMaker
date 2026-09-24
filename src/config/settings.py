@@ -26,7 +26,12 @@ BASE_DIR = Path(__file__).resolve().parents[2]
 
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "insecure-development-key")
 DEBUG = os.environ.get("DJANGO_DEBUG", "") == "1"
-ALLOWED_HOSTS = [h for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(",") if h]
+# Stripped, because `a, b` is how a person writes a list: unstripped, the
+# second entry was " b", which no Host header matches, so every request for b
+# was a 400. The api healthcheck in compose.yaml parses the same way.
+ALLOWED_HOSTS = [
+    h.strip() for h in os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost").split(",") if h.strip()
+]
 
 INSTALLED_APPS = [
     "django.contrib.contenttypes",
