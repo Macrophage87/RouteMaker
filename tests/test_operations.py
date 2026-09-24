@@ -1924,6 +1924,39 @@ def test_a_job_the_retry_finished_is_not_followed_by_pickup_advice(make) -> None
 
 
 @db
+@pytest.mark.parametrize("make", [wedged_rebuild, wedged_backup], ids=["rebuild", "backup"])
+def test_a_job_the_retry_finished_is_told_what_happened_and_what_is_next(make) -> None:
+    """What the paragraph after a finished job does say, not only what it
+    leaves out: that the job was finished as `failed` and no worker will take
+    it, and then the way forward for that task - `run_rebuild_now` for the
+    rebuild, and for a periodic task that it is periodic, by name, and the next
+    tick replaces it. Read from the paragraph alone, so the status line above
+    it cannot answer for it."""
+    from io import StringIO
+
+    from django.core.management import call_command
+
+    job_id = aborted(make())
+    out = StringIO()
+    call_command("unwedge_job", str(job_id), stdout=out)
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT task_name FROM procrastinate_jobs WHERE id = %s", [job_id])
+        (task_name,) = cursor.fetchone()
+
+    lines = [line for line in out.getvalue().splitlines() if line.strip()]
+    assert len(lines) >= 2, out.getvalue()
+    paragraph = lines[-1].lower()
+    assert "failed" in paragraph, paragraph
+    assert "no worker" in paragraph, paragraph
+    if task_name == "weekly_rebuild":
+        assert "run_rebuild_now" in paragraph, paragraph
+    else:
+        assert task_name in paragraph and "periodic" in paragraph, paragraph
+        assert "next tick" in paragraph, paragraph
+        assert "run_rebuild_now" not in paragraph, paragraph
+
+
+@db
 def test_the_rebuild_a_finished_unwedge_points_to_can_be_queued() -> None:
     """The advice after a finished rebuild names `run_rebuild_now`, and it is
     only advice if the command then works: with the row finished nothing is in
