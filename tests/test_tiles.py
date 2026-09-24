@@ -617,6 +617,24 @@ def test_the_write_probe_reports_a_variant_directory_that_is_not_there(tmp_path)
     assert sorted(path.name for path in (tmp_path / "standard").iterdir()) == []
 
 
+def test_the_write_probe_reports_a_probe_it_could_not_remove(tmp_path, monkeypatch) -> None:
+    """A directory that takes a link but will not give it back is reported
+    too: `demote` replaces links, so the rollback would fail there."""
+    for variant in Variant:
+        (tmp_path / variant.value).mkdir()
+    real_unlink = Path.unlink
+
+    def unlink(self, *args, **kwargs):
+        if self.parent.name == Variant.EBIKE.value and self.name.startswith(tiles.WRITE_PROBE):
+            raise PermissionError("unlink refused")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", unlink)
+    problems = tiles.unwritable_link_dirs(tmp_path)
+    assert len(problems) == 1, problems
+    assert str(tmp_path / Variant.EBIKE.value) in problems[0]
+
+
 def test_a_build_refuses_to_write_into_a_build_directory_that_exists(tmp_path) -> None:
     """Build ids are second-resolution. Two fires inside one second took the
     same id, and the second build wrote its tiles into the directory the first

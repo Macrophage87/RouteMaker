@@ -933,8 +933,11 @@ becomes `current`, then the settings rows are rewritten in one transaction, and
 the schema rename comes last. The rename takes `ACCESS EXCLUSIVE` on the live
 segment table, and any API request reading segments can hold that off; if it
 cannot get the lock in its five attempts the command raises `SwapLockTimeout`
-having put the tile links and the rows back, the schemas never moved, and the
-deployment is exactly as it was. Run it again at a quieter moment. (It used to
+having put the tile links and the rows back, and neither the live nor the
+retired schema moved. The one thing it may have changed is a `staging` schema
+left behind by a rebuild that failed at its swap: the rename needs that name,
+so it drops that schema before it asks for the lock. That schema is the failed
+rebuild's own output, and the next rebuild drops it anyway. Run it again at a quieter moment. (It used to
 rename first, which made a later failure the expensive kind: the undo then had
 to rename back, under the same lock, and losing that race left last week's rows
 live under this week's tiles.)
