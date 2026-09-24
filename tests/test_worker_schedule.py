@@ -1453,29 +1453,31 @@ def test_the_backup_excludes_the_sessions_and_the_membership_cache(monkeypatch, 
 def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_full_one(
     monkeypatch, tmp_path
 ) -> None:
-    """What the restore runbook's ordering rests on, measured with its own command.
+    """What the restore runbook's step 3 rests on, measured with its own commands.
 
-    The runbook said a restore into a database `migrate` had already populated
-    gives "169 errors and exit 0"; measured, it is 169 errors and exit 1. The
-    ordering was right and its reason was not. So the property is asserted
-    rather than the sentence: this deployment's own dump, restored with the
-    runbook's exact `pg_restore --no-owner -d <db> < <dump>`, goes into an empty
-    database with no error and exit 0, and into one that already holds the
-    tables and rows - here, the same restore a second time - with errors
-    counted, the rest of the archive applied around them, and exit 1.
+    Into a database the compose stack's image initialised - postgis,
+    postgis_topology, fuzzystrmatch and postgis_tiger_geocoder created on first
+    boot, which is what an empty PGDATA gives - a dump of a database the image
+    initialised, restored straight in, fails on the tiger, tiger_data and
+    topology schemas and exits 1 (3 errors on postgis/postgis:16-3.4). Dropped
+    and created from template0 first, as the runbook now does, the same dump
+    goes in with no error and exit 0. Into one that already holds the tables
+    and rows - here, the same restore a second time - errors are counted, the
+    rest of the archive is applied around them, and the exit is 1. The
+    database here is initialised the way the image's
+    /docker-entrypoint-initdb.d/10_postgis.sh does it, and the dump is taken by
+    perform_backup() itself, from such a database.
     """
     import shutil
 
     from config.procrastinate import perform_backup
 
-    for binary in ("pg_restore", "createdb", "dropdb"):
+    for binary in ("pg_restore", "createdb", "dropdb", "psql"):
         if shutil.which(binary) is None:
             pytest.skip(f"{binary} is not installed")
-    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "backups")
-    dump = perform_backup()
 
     database = settings.DATABASES["default"]
-    target = f"{database['NAME']}_restore"
+    source, target = f"{database['NAME']}_rsrc", f"{database['NAME']}_restore"
     env = {
         **os.environ,
         "PGHOST": str(database["HOST"]),
@@ -1484,28 +1486,75 @@ def test_the_runbooks_restore_is_clean_into_an_empty_database_and_fails_into_a_f
         "PGPASSWORD": str(database["PASSWORD"]),
     }
 
-    def restore() -> subprocess.CompletedProcess:
-        with dump.open("rb") as archive:
-            return subprocess.run(
-                ["pg_restore", "--no-owner", "-d", target],
-                stdin=archive,
-                capture_output=True,
-                env=env,
-            )
+    def run(*argv: str, stdin=None) -> subprocess.CompletedProcess:
+        return subprocess.run(argv, stdin=stdin, capture_output=True, env=env)
 
-    subprocess.run(["dropdb", "--if-exists", target], env=env, check=True, capture_output=True)
-    subprocess.run(["createdb", target], env=env, check=True, capture_output=True)
+    def image_initialised(name: str) -> None:
+        run("dropdb", "--if-exists", name)
+        assert run("createdb", name).returncode == 0
+        for extension in IMAGE_INIT_EXTENSIONS:
+            made = run(
+                "psql",
+                "-v",
+                "ON_ERROR_STOP=1",
+                "-d",
+                name,
+                "-c",
+                f"CREATE EXTENSION IF NOT EXISTS {extension}",
+            )
+            assert made.returncode == 0, made.stderr.decode()
+
+    def restore(dump: Path, name: str) -> subprocess.CompletedProcess:
+        with dump.open("rb") as archive:
+            return run("pg_restore", "--no-owner", "-d", name, stdin=archive)
+
+    monkeypatch.setattr(settings, "BACKUP_DIR", tmp_path / "app")
+    app_dump = perform_backup()
     try:
-        into_empty = restore()
+        image_initialised(source)
+        seeded = restore(app_dump, source)
+        assert seeded.returncode == 0, seeded.stderr.decode()
+        with monkeypatch.context() as scoped:
+            scoped.setattr(settings, "BACKUP_DIR", tmp_path / "image")
+            scoped.setattr(settings, "DATABASES", {"default": {**database, "NAME": source}})
+            dump = perform_backup()
+
+        image_initialised(target)
+        straight_in = restore(dump, target)
+        errors = straight_in.stderr.decode()
+        assert straight_in.returncode == 1, (straight_in.returncode, errors)
+        assert "already exists" in errors, errors
+
+        # The runbook's step 3: dropdb, createdb -T template0, then the restore.
+        assert run("dropdb", target).returncode == 0
+        assert run("createdb", "-T", "template0", target).returncode == 0
+        into_empty = restore(dump, target)
         assert into_empty.returncode == 0, into_empty.stderr.decode()
         assert b"error" not in into_empty.stderr.lower(), into_empty.stderr.decode()
+        listed = run(
+            "psql",
+            "-At",
+            "-d",
+            target,
+            "-c",
+            "SELECT string_agg(extname, ',' ORDER BY extname) FROM pg_extension",
+        )
+        assert set(listed.stdout.decode().strip().split(",")) >= set(IMAGE_INIT_EXTENSIONS), (
+            listed.stdout.decode()
+        )
 
-        into_full = restore()
+        into_full = restore(dump, target)
         errors = into_full.stderr.decode()
         assert into_full.returncode == 1, (into_full.returncode, errors)
         assert "errors ignored on restore" in errors, errors
     finally:
-        subprocess.run(["dropdb", "--if-exists", target], env=env, capture_output=True)
+        run("dropdb", "--if-exists", target)
+        run("dropdb", "--if-exists", source)
+
+
+# What postgis/postgis:16-3.4's first boot creates in POSTGRES_DB
+# (/docker-entrypoint-initdb.d/10_postgis.sh, read from the image).
+IMAGE_INIT_EXTENSIONS = ("postgis", "postgis_topology", "fuzzystrmatch", "postgis_tiger_geocoder")
 
 
 @pytest.mark.django_db(transaction=True)

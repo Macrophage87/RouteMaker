@@ -1080,13 +1080,14 @@ def test_the_restore_runbook_restores_into_an_empty_database() -> None:
     """The ordering is the runbook, and it is the part that cannot be fixed
     afterwards.
 
-    A `pg_restore` into a database a full `up` had already migrated gave 169
-    errors and exit 1 - `pg_restore` carries on past each failing statement and
-    applies the rest of the archive around it, so the non-zero exit arrives
-    after the damage is done. `django_content_type`, `auth_permission` and
-    `django_migrations` are all created by `migrate` and all carried by the
-    dump. The same archive into an empty database gave 0 errors. The exit
-    codes themselves are measured, not read, by
+    On the stack's postgis image, a `pg_restore` into a database `migrate` had
+    already populated gave 172 errors and exit 1 - `pg_restore` carries on past
+    each failing statement and applies the rest of the archive around it, so
+    the non-zero exit arrives after the damage is done. `django_content_type`,
+    `auth_permission` and `django_migrations` are all created by `migrate` and
+    all carried by the dump. The same archive into a database dropped and
+    recreated from template0 gave 0 errors. The exit codes themselves are
+    measured, not read, by
     tests/test_worker_schedule.py::test_the_runbooks_restore_is_clean_into_an_
     empty_database_and_fails_into_a_full_one.
     """
@@ -1107,11 +1108,62 @@ def test_the_restore_runbook_restores_into_an_empty_database() -> None:
     )
     assert rest, "the runbook never brings the rest of the stack up after the restore"
     assert all("postgis" not in line for line in rest), rest
-    for expected in ("empty", "0 errors", "169"):
+    for expected in ("empty", "0 errors", "172"):
         assert expected in body, (
             f"the restore runbook does not say {expected!r}, which is what makes the "
             "ordering an instruction rather than a preference"
         )
+
+
+# What the restore runbook does to the database between starting postgis and
+# restoring into it, in order: each tuple's tokens all on one command line.
+# tests/test_worker_schedule.py runs the drop and the create for real.
+RESTORE_DATABASE_STEPS = (
+    ("up", "-d", "--wait", "postgis"),
+    ("exec", "-T", "postgis", "dropdb", "routemaker"),
+    ("exec", "-T", "postgis", "createdb", "-T", "template0", "routemaker"),
+    ("exec", "-T", "postgis", "pg_restore", "-d", "routemaker"),
+)
+
+
+def snippet_commands(text: str) -> list[list[str]]:
+    """Every command line in the text's `sh` blocks, continuations joined and
+    comments dropped, as tokens."""
+    commands = []
+    for block in shell_snippets(text):
+        for line in block.replace("\\\n", " ").splitlines():
+            tokens = line.split("#", 1)[0].split()
+            if tokens:
+                commands.append(tokens)
+    return commands
+
+
+def test_the_restore_runbook_empties_the_images_database_before_restoring() -> None:
+    """An empty PGDATA is not an empty database on this image: its first boot
+    creates postgis, postgis_topology, fuzzystrmatch and postgis_tiger_geocoder
+    in PGDATABASE, and the dump carries the tiger, tiger_data and topology
+    schemas, so a restore straight in exits 1 (3 errors, measured on
+    postgis/postgis:16-3.4). The runbook drops the database and creates it from
+    template0 first, after waiting for the health gate - without `--wait` the
+    first command ran before the server's socket existed."""
+    commands = snippet_commands(section(OPERATIONS, "## Restoring one"))
+    position = -1
+    for step in RESTORE_DATABASE_STEPS:
+        found = next(
+            (
+                i
+                for i, tokens in enumerate(commands)
+                if i > position
+                and tokens[:2] == ["docker", "compose"]
+                and all(token in tokens for token in step)
+            ),
+            None,
+        )
+        assert found is not None, (
+            f"the restore runbook has no {' '.join(step)!r} after command {position}: "
+            f"{[' '.join(tokens) for tokens in commands]}"
+        )
+        position = found
 
 
 def test_the_restore_runbook_says_what_the_deployment_has_afterwards() -> None:

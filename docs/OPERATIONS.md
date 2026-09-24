@@ -259,7 +259,9 @@ export DATA_ROOT=/srv/routemaker/data   # the same value as DATA_ROOT in .env
 docker compose down                     # 1. nothing else talking to it
 sudo rm -rf "$DATA_ROOT/postgres"       # 2. an EMPTY PGDATA
 sudo sh scripts/prepare_data_root.sh --env-file ./.env
-docker compose up -d postgis            # 3. postgis alone: no migrate, no worker
+docker compose up -d --wait postgis     # 3. postgis alone, healthy: no migrate, no worker
+docker compose exec -T postgis dropdb -U routemaker routemaker
+docker compose exec -T postgis createdb -U routemaker -T template0 routemaker
 docker compose exec -T postgis \
   pg_restore --no-owner -U routemaker -d routemaker \
   < "$DATA_ROOT/backups/routemaker-<instant>.dump"
@@ -267,29 +269,43 @@ docker compose up -d                    # 4. now the rest
 docker compose run --rm api ./manage.py collectstatic --noinput
 ```
 
-`routemaker` twice over is `PGUSER` and `PGDATABASE` from `.env`, which ship as
-that and are the compose defaults; substitute your own if you changed them. The
-redirection is on the host because the dump is not visible inside `postgis` —
-that service binds `postgres/` and nothing else, and `backups/` is bound into
-`worker` — so `exec -T` and standard input is how the archive gets there.
+`routemaker` everywhere after `-U` and `-d`, and as the database name, is
+`PGUSER` and `PGDATABASE` from `.env`, which ship as that and are the compose
+defaults; substitute your own if you changed them. The redirection is on the
+host because the dump is not visible inside `postgis` — that service binds
+`postgres/` and nothing else, and `backups/` is bound into `worker` — so
+`exec -T` and standard input is how the archive gets there.
 
 Step 3 is `up -d postgis` and not `up -d`, and the difference is measured
-rather than stylistic. A restore run into a database that a full `up` had
-already migrated produced **169 errors and exit 1** (PostgreSQL 16, measured
-both ways round). The exit status is honest and it arrives too late:
-`pg_restore` does not stop at a failing statement, it carries on, puts the rest
-of the archive in around every failure, and only then prints `errors ignored on
-restore: 169` and exits 1. By the time the status says something went wrong the
-database is a mixture of the dump and what `migrate` wrote, with nothing to undo
-it; the repair is to start again from step 1. What collides is everything
-`migrate` creates and the dump also carries: `django_content_type`,
-`auth_permission` and `django_migrations` all have their rows twice over, and
-the `COPY` for each fails on the unique index while the rest of the archive
-goes in around it. The same dump into an empty database gave **0 errors and
-exit 0** — so a non-zero exit from step 3 is never noise, and the thing to do
-with one is to stop.
-`--no-owner` because the role in the dump and the role in this deployment need
-not be the same name.
+rather than stylistic. Every figure here was measured on this stack's own
+`postgis/postgis:16-3.4` image with a dump in the backup's form. A restore run
+into a database that `migrate` had already populated produced **172 errors and
+exit 1**. The exit status is honest and it arrives too late: `pg_restore` does
+not stop at a failing statement, it carries on, puts the rest of the archive in
+around every failure, and only then prints `errors ignored on restore: 172` and
+exits 1. By the time the status says something went wrong the database is a
+mixture of the dump and what `migrate` wrote, with nothing to undo it; the
+repair is to start again from step 1. What collides is everything `migrate`
+creates and the dump also carries: `django_content_type`, `auth_permission` and
+`django_migrations` all have their rows twice over, and the `COPY` for each
+fails on the unique index while the rest of the archive goes in around it.
+
+An empty PGDATA does not give an empty database, which is why step 3 drops and
+recreates it. On a first boot the image creates `postgis`, `postgis_topology`,
+`fuzzystrmatch` and `postgis_tiger_geocoder` in `PGDATABASE`, and the dump
+carries the `tiger`, `tiger_data` and `topology` schemas those made; restored
+straight into the image's database it gave **3 errors** (each of those schemas
+"already exists") **and exit 1**. Dropped and recreated from `template0` first,
+the same dump gave **0 errors and exit 0**, with the same five extensions, every
+table and row count equal to the source database's, and an identical schema
+dump. (The one difference is the order of `tiger` and `topology` in the
+database's default `search_path`, which the extension scripts set; the
+application sets its own on every connection.) So with step 3 as written a
+non-zero exit is never noise, and the thing to do with one is to stop.
+`--wait` because the image's first boot runs its init scripts before the server
+takes connections: without it, measured, `dropdb` ran while the socket did not
+exist yet and every command after it failed. `--no-owner` because the role in
+the dump and the role in this deployment need not be the same name.
 
 There is no `docker compose down -v` in that list on purpose: every stateful
 path here is a host bind mount and `-v` has nothing of this deployment's to
