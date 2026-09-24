@@ -197,7 +197,7 @@ not 16, while the stack runs `postgis/postgis:16-3.4` and `scripts/devdb.sh`
 starts cluster 16. The PostgreSQL project's own repository (PGDG) carries 16:
 
 ```sh
-sudo apt-get update && sudo apt-get install -y postgresql-common
+sudo apt-get update && sudo apt-get install -y postgresql-common ca-certificates curl
 sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 sudo apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts \
     luajit lua5.4 python3-venv
@@ -205,7 +205,11 @@ sudo apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts 
 
 GeoDjango also needs GEOS, GDAL and PROJ; the PostGIS package pulls all three
 in. PGDG's PostGIS for 16 is the current 3.x (3.6 at the time of writing), not
-the image's 3.4, so the native loop runs one PostGIS minor ahead of the stack.
+the image's 3.4, so the native loop runs two PostGIS minors ahead of the stack.
+`ca-certificates` is on the first line because the PGDG script fetches over
+HTTPS: without it (a minimal image lacks it) the script prints a certificate
+error, still reports success, and the next line cannot find the packages.
+`curl` is for uv's installer below.
 
 **Python 3.11 does not come from Ubuntu either.** 26.04 ships 3.14; the api
 image runs 3.11 (`PYTHON_VERSION` in `docker/api.Dockerfile`). `uv` installs
@@ -221,11 +225,13 @@ uv pip install -r docker/requirements.txt -r requirements-dev.txt
 
 Both requirement files, always. `requirements-dev.txt` is loose and
 `docker/requirements.txt` is the exact pin the images install; from the loose
-file alone, on 3.14, pip picked Django 6.1, and the admin's guild scoping
-answered a guild admin's write to another guild's row with a 302 rather than a
-403 or 404 - a test failure caused by a Django the stack does not run.
-`tests/test_native_environment.py` fails first in that case, naming each pin the
-interpreter does not have.
+file alone, on 3.14, pip picked Django 6.1 (it resolves 6.1 on 3.12 to 3.14 and
+5.2.17 on 3.11), and the admin's guild scoping answered a guild admin's write
+to another guild's row with a 302 rather than a 403 or 404 - a test failure
+caused by a Django the stack does not run.
+In that case `tests/test_native_environment.py` also fails, naming each pin the
+interpreter does not have; it does not run first, so read its failure before
+the others. CI installs the same two files.
 
 Then the database and the suite, from the checkout:
 

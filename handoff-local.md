@@ -1,7 +1,7 @@
 # RouteMaker — handoff to the local implementer (Windows, Docker)
 
 **For:** whoever picks this up next on a Windows machine with Docker, working with Claude Code.
-**Branch:** `claude/beautiful-mayer-4f7gg9` · **Suite:** 3309 tests, green · **Written:** 2026-09-24.
+**Branch:** `claude/beautiful-mayer-4f7gg9` · **Suite:** 3312 tests, no failures (one skip on this host) · **Written:** 2026-09-24.
 
 This is the short handoff. `handoff.md` is the full record of ten review rounds and stays as the
 reference (its §7 is the list of known gaps, 49 rows); read this one first and that one when a task
@@ -100,7 +100,7 @@ git clone https://github.com/Macrophage87/RouteMaker.git && cd RouteMaker
 git checkout claude/beautiful-mayer-4f7gg9
 
 # PostgreSQL 16 + PostGIS from the PostgreSQL project's repository, and the Lua interpreters
-sudo apt-get update && sudo apt-get install -y postgresql-common
+sudo apt-get update && sudo apt-get install -y postgresql-common ca-certificates curl
 sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
 sudo apt-get install -y postgresql-16-postgis-3 postgresql-16-postgis-3-scripts luajit lua5.4 python3-venv
 
@@ -111,15 +111,15 @@ uv venv --python 3.11 .venv
 uv pip install -r docker/requirements.txt -r requirements-dev.txt
 
 sudo sh scripts/devdb.sh
-PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly   # expect every test to pass
+PGDATABASE=routemaker_dev .venv/bin/python -m pytest tests/ -q -p no:randomly   # expect no failures
 
 # Claude Code, installed inside WSL per Anthropic's current Claude Code install docs, run from this directory
 ```
 
 Install from both requirement files: from the loose `requirements-dev.txt` alone, on 26.04's Python
 3.14, pip chose Django 6.1 and an admin-scoping test failed that passes on the pinned 5.2.17.
-`tests/test_native_environment.py` now fails first when the venv's packages differ from
-`docker/requirements.txt`.
+When the venv's packages differ from `docker/requirements.txt`, `tests/test_native_environment.py`
+also fails, naming each pin the venv does not have. CI installs the same two files.
 
 **The test database and the stack do not collide.** The suite uses the native Postgres on
 `127.0.0.1:5432` inside WSL; the stack's PostGIS lives on the compose network and publishes no
