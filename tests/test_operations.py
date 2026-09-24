@@ -1762,6 +1762,43 @@ def test_a_volume_below_the_floor_is_short_even_where_the_fraction_is_content(
 
 
 @db
+def test_the_headroom_is_measured_on_the_tiles_directory_itself(monkeypatch, tmp_path) -> None:
+    """Measured there, not only reported as there.
+
+    Every other headroom test hands in a `disk_usage` that answers the same
+    numbers whatever path it is asked about, so `disk_usage("/")` in place of
+    `disk_usage(tiles_dir)` passed them all while the dict went on naming
+    `TILES_DIR` as the path it measured. Here the two filesystems disagree: the
+    tiles volume is short and everything else is roomy, and only a measurement
+    of the tiles directory can come back short.
+    """
+    from collections import namedtuple
+
+    from core.runs import disk_headroom
+
+    usage = namedtuple("usage", "total used free")
+    tiles_dir = tmp_path / "tiles"
+    tiles_dir.mkdir()
+    monkeypatch.setattr(settings, "TILES_DIR", tiles_dir)
+    monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 20 * 1024**3)
+    monkeypatch.setattr(settings, "DISK_GATE_FRACTION", 0.8)
+
+    asked: list[str] = []
+
+    def by_path(path):
+        asked.append(str(path))
+        if str(path) == str(tiles_dir):
+            return usage(200 * 1024**3, 195 * 1024**3, 5 * 1024**3)
+        return usage(1000 * 1024**3, 10 * 1024**3, 990 * 1024**3)
+
+    measured = disk_headroom(disk_usage=by_path)
+    assert asked == [str(tiles_dir)], asked
+    assert measured["status"] == "short" and measured["alert"], measured
+    assert measured["free_bytes"] == 5 * 1024**3
+    assert measured["path"] == str(tiles_dir)
+
+
+@db
 def test_a_volume_that_reports_no_size_at_all_reads_as_full(monkeypatch) -> None:
     """A total of zero is a filesystem that cannot be measured - a stub mount,
     a pseudo-filesystem, a driver that answers with nothing. There is no
