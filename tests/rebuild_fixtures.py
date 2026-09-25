@@ -465,7 +465,11 @@ class FakeBinaries:
             _config, action, request = command[1:4]
             assert action == "trace_attributes", action
             wanted = json.loads(request)["filters"]["attributes"]
-            edge: dict = {"way_id": 100}
+            # The edge a real trace along the sentinel returns lies on the
+            # sentinel's own way, which the cycle-lane read is narrowed to.
+            from pipeline.run import DERIVED_SENTINEL_WAY_ID
+
+            edge: dict = {"way_id": DERIVED_SENTINEL_WAY_ID}
             if "edge.weighted_grade" in wanted:
                 edge["weighted_grade"] = self.grade
                 edge["max_upward_grade"] = self.grade

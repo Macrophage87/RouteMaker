@@ -99,11 +99,10 @@ def test_the_sentinels_own_way_is_what_the_cycle_lane_read_is_narrowed_to(
 ) -> None:
     """The way id is threaded from the caller, which is the only place that
     knows which way the sentinel edge lies on. With it, a neighbouring way in
-    the same trace cannot answer; without it - the state this repository ships,
-    because the sentinel coordinates have never been confirmed against a real
-    extract and no id can honestly be written beside them - a trace spanning
-    more than one way answers nothing at all rather than answering from
-    whichever edge came back first."""
+    the same trace cannot answer; without it a trace spanning more than one
+    way answers nothing at all rather than answering from whichever edge came
+    back first. The repository ships an id since the first real rebuild named
+    the sentinel's way; both states are exercised here."""
     context = context_with_build_configs(tmp_path)
 
     def run(command):
@@ -119,7 +118,10 @@ def test_the_sentinels_own_way_is_what_the_cycle_lane_read_is_narrowed_to(
             "",
         )
 
-    assert run_module.DERIVED_SENTINEL_WAY_ID is None
+    assert isinstance(run_module.DERIVED_SENTINEL_WAY_ID, int), "the shipped sentinel is pinned"
+    assert run_module._standard_cycle_lane(context, run) is None, "neither edge is on the sentinel"
+
+    monkeypatch.setattr(run_module, "DERIVED_SENTINEL_WAY_ID", None)
     assert run_module._standard_cycle_lane(context, run) is None
 
     monkeypatch.setattr(run_module, "DERIVED_SENTINEL_WAY_ID", 222)
@@ -137,7 +139,14 @@ def test_the_read_uses_the_standard_variants_own_build_config(tmp_path) -> None:
     def run(command):
         seen.append(list(command))
         return tiles.CommandOutput(
-            json.dumps({"edges": [{"way_id": 7, "cycle_lane": "separated"}]}), ""
+            json.dumps(
+                {
+                    "edges": [
+                        {"way_id": run_module.DERIVED_SENTINEL_WAY_ID, "cycle_lane": "separated"}
+                    ]
+                }
+            ),
+            "",
         )
 
     assert run_module._standard_cycle_lane(context, run) == "separated"

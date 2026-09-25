@@ -229,13 +229,18 @@ REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024*
 # the graph, because a residential street with no cycleway tag in OSM only
 # reports a separated cycle lane if this project's remap ran. Both are read
 # through valhalla_service in one-shot mode against the freshly built tiles.
-# NEITHER HAS BEEN CONFIRMED AGAINST A REAL BUILD: no Valhalla binary has run
-# in this environment. The first real rebuild will either pass or name the
-# sentinel that needs moving; both are overridable here for that reason.
-# Steep: the climb of Chain Bridge Road NW out of the Potomac gorge.
-# Tier 1: a 20 mph residential block in Petworth with no bicycle facility.
+# Both were confirmed by the first real rebuild (Geofabrik DC+MD+VA of
+# 2026-09-24, Valhalla 3.5.1), where VALIDATE ran against real tiles.
+# Steep: the climb of Chain Bridge Road NW out of the Potomac gorge; its grade
+# read back non-zero from all three variants.
+# Tier 1: the middle third of a 373 m block of Decatur Street NW, OSM
+# way 87471599 - highway=residential, no cycleway key of any form, classified
+# tier 1 - whose seven edges in the standard tiles all belong to that way and
+# all read "separated". The first pick, a Petworth point taken off a map,
+# snapped onto three alleys and a stretch of Buchanan Street NW - four ways -
+# and the read refused it, as it is written to.
 REBUILD_SENTINEL_STEEP_EDGE = ((-77.1050, 38.9318), (-77.1032, 38.9339))
-REBUILD_SENTINEL_TIER1_EDGE = ((-77.0247, 38.9455), (-77.0247, 38.9468))
+REBUILD_SENTINEL_TIER1_EDGE = ((-77.036016, 38.948268), (-77.037306, 38.948269))
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

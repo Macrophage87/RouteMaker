@@ -125,14 +125,13 @@ DERIVED_SENTINEL_EXPECTED = "separated"
 # read is narrowed to that way, so that a neighbouring way's own OSM-tagged
 # separated lane cannot answer for a transform that derived nothing.
 #
-# None here, and that is not a placeholder for a value this repository could
-# supply: `REBUILD_SENTINEL_TIER1_EDGE` is a pair of coordinates picked off a
-# map and never confirmed against a real extract, so no id can honestly be
-# written down beside it until a rebuild has run and named the way it matched.
-# With none, `tiles.sample_cycle_lane` still refuses a trace that spans more
-# than one way, which is the part of the defect that does not need the id.
-# Recorded in section 7 as the narrower check a first real rebuild unlocks.
-DERIVED_SENTINEL_WAY_ID: int | None = None
+# Named by the first real rebuild: Decatur Street NW, the way
+# `settings.REBUILD_SENTINEL_TIER1_EDGE` lies on (see the evidence there). If a
+# later extract splits or replaces the way, the read finds no edge on it and
+# VALIDATE refuses, naming this check - move the sentinel then, don't drop the
+# id. With none, `tiles.sample_cycle_lane` still refuses a trace that spans
+# more than one way.
+DERIVED_SENTINEL_WAY_ID: int | None = 87471599
 
 # A way is tagged with an authority only if at least this share of its length
 # lies inside it; the dominant authority on each layer is always kept. Below a
