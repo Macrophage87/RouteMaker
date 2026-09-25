@@ -838,3 +838,122 @@ class TestTheLengthRatioIsAGroundRatio:
             )
         )
         assert 100 not in install_module().urban_way_ids(extract, path)
+
+
+def jagged_polygon(vertices: int = 4000):
+    """A star around the toy extract's ways with far more boundary than one
+    piece may hold, so the split has to recurse several levels."""
+    from shapely.geometry import Polygon
+
+    centre_x, centre_y = -77.0, 38.90
+    ring = []
+    for k in range(vertices):
+        angle = 2 * math.pi * k / vertices
+        radius = 0.03 if k % 2 else 0.018
+        ring.append((centre_x + radius * math.cos(angle), centre_y + radius * math.sin(angle)))
+    return Polygon(ring)
+
+
+class TestTheSplitMeasuresWhatTheWholePolygonMeasures:
+    """The installer splits the unioned urban area into small pieces so that a
+    way is intersected with a few hundred vertices rather than a boundary
+    hundreds of thousands long, which is what took hours on the real extract.
+    The split may change the cost and nothing else."""
+
+    def test_the_pieces_tile_the_area_and_each_is_small(self) -> None:
+        from shapely.ops import unary_union
+
+        module = install_module()
+        area = jagged_polygon()
+        pieces = module._small_pieces(area, max_vertices=64)
+        assert len(pieces) > 16, "the star is large enough to force several levels"
+        assert all(
+            len(piece.exterior.coords) + sum(len(r.coords) for r in piece.interiors) <= 64
+            for piece in pieces
+        )
+        assert math.isclose(sum(piece.area for piece in pieces), area.area, rel_tol=1e-9), (
+            "no area lost or doubled"
+        )
+        assert unary_union(pieces).symmetric_difference(area).area < 1e-12
+
+    def test_a_line_measures_the_same_against_the_pieces_as_against_the_whole(self) -> None:
+        """Including lines that run exactly along a cut, which a sum over the
+        pieces would count twice and the re-union counts once."""
+        from shapely.geometry import LineString
+        from shapely.ops import unary_union
+        from shapely.strtree import STRtree
+
+        module = install_module()
+        area = jagged_polygon()
+        pieces = module._small_pieces(area, max_vertices=64)
+        index = STRtree(pieces)
+        west, south, east, north = area.bounds
+        middle_x, middle_y = (west + east) / 2, (south + north) / 2
+        lines = [
+            LineString([(west - 0.01, middle_y), (east + 0.01, middle_y)]),  # along the first cut
+            LineString([(middle_x, south - 0.01), (middle_x, north + 0.01)]),  # along the other
+            LineString([(west, south), (east, north)]),
+            LineString([(-77.02, 38.90), (-76.98, 38.90), (-76.98, 38.93)]),
+            LineString([(-77.001, 38.899), (-77.0005, 38.8995)]),  # wholly inside one piece
+        ]
+        for line in lines:
+            nearby = [pieces[i] for i in index.query(line, predicate="intersects")]
+            split = line.intersection(unary_union(nearby)).length if nearby else 0.0
+            assert math.isclose(
+                split, line.intersection(area).length, rel_tol=1e-9, abs_tol=1e-12
+            ), line.wkt
+
+    def test_the_installer_grades_the_ways_the_whole_polygon_grades(self, tmp_path) -> None:
+        from shapely.geometry import LineString, mapping
+
+        from pipeline.extract import read_ways
+
+        extract = tmp_path / "source.osm.pbf"
+        build_toy_extract(extract)
+        area = jagged_polygon()
+        path = tmp_path / "jagged.geojson"
+        path.write_text(
+            json.dumps(geojson([{"type": "Feature", "properties": {}, "geometry": mapping(area)}]))
+        )
+        expected = []
+        for way in read_ways(extract):
+            if len(way.coordinates) < 2:
+                continue
+            line = LineString(way.coordinates)
+            cosine = math.cos(math.radians(line.centroid.y))
+            from shapely.affinity import scale
+
+            inside = scale(line.intersection(area), yfact=1 / cosine, origin=(0, 0)).length
+            total = scale(line, yfact=1 / cosine, origin=(0, 0)).length
+            if total and inside / total >= install_module().MIN_URBAN_FRACTION:
+                expected.append(way.osm_id)
+        assert install_module().urban_way_ids(extract, path) == sorted(expected)
+
+    def test_a_way_along_a_cut_is_counted_once(self, tmp_path, monkeypatch) -> None:
+        """A way lying exactly on the first cut touches the pieces on both sides
+        of it. Measured against their re-union it is inside once; summed piece
+        by piece it would be inside twice, and a way about a third urban would
+        read two thirds and flip to the urban speed table."""
+        from types import SimpleNamespace
+
+        from shapely.geometry import LineString, mapping
+
+        area = jagged_polygon()
+        west, south, east, north = area.bounds
+        cut = (west + east) / 2  # the x of the split's first cut, as _small_pieces computes it
+        centre_y = (south + north) / 2
+        line = LineString([(cut, centre_y), (cut, centre_y + 0.05)])
+        fraction = line.intersection(area).length / line.length
+        assert 0.25 < fraction < 0.5, (
+            f"the premise: about a third inside, so doubling crosses half ({fraction:.2f})"
+        )
+
+        monkeypatch.setattr(
+            "pipeline.extract.read_ways",
+            lambda extract: iter([SimpleNamespace(osm_id=7, coordinates=list(line.coords))]),
+        )
+        path = tmp_path / "jagged.geojson"
+        path.write_text(
+            json.dumps(geojson([{"type": "Feature", "properties": {}, "geometry": mapping(area)}]))
+        )
+        assert install_module().urban_way_ids(tmp_path / "unused.osm.pbf", path) == []

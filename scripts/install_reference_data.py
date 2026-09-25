@@ -158,6 +158,40 @@ def _geometries(geojson: Path):
             yield shape(geometry), feature.get("properties") or {}
 
 
+# A piece's boundary is at most this many vertices, so measuring a way against
+# the pieces near it costs a few hundred vertices rather than the whole urban
+# area's boundary.
+URBAN_PIECE_VERTICES = 256
+
+
+def _small_pieces(area, max_vertices: int = URBAN_PIECE_VERTICES) -> list:
+    """`area` split into quadrants, recursively, until no piece's boundary has
+    more than `max_vertices` vertices. The pieces tile `area` exactly: they
+    share edges and no area."""
+    import shapely
+
+    pieces = []
+    pending = [part for part in getattr(area, "geoms", [area]) if part.area > 0]
+    while pending:
+        piece = pending.pop()
+        if shapely.get_num_coordinates(piece) <= max_vertices:
+            pieces.append(piece)
+            continue
+        west, south, east, north = piece.bounds
+        middle_x, middle_y = (west + east) / 2, (south + north) / 2
+        for quadrant in (
+            (west, south, middle_x, middle_y),
+            (middle_x, south, east, middle_y),
+            (west, middle_y, middle_x, north),
+            (middle_x, middle_y, east, north),
+        ):
+            clipped = shapely.clip_by_rect(piece, *quadrant)
+            for part in getattr(clipped, "geoms", [clipped]):
+                if part.geom_type == "Polygon" and part.area > 0:
+                    pending.append(part)
+    return pieces
+
+
 def urban_way_ids(
     extract: Path, urban_areas: Path, min_fraction: float = MIN_URBAN_FRACTION
 ) -> list[int]:
@@ -202,14 +236,27 @@ def urban_way_ids(
     polygons = [geometry for geometry, _ in _geometries(urban_areas)]
     if not polygons:
         raise SystemExit(f"{urban_areas} holds no polygons")
-    index = STRtree(polygons)
+    # Cut once, measured per way. The Washington--Arlington urban area is one
+    # polygon with a boundary hundreds of thousands of vertices long, nearly
+    # every way in the region touches it, and an intersection costs the whole
+    # boundary: intersecting each way with the polygons themselves took hours on
+    # the real extract. So the union is taken once and split into small pieces,
+    # and a way is measured against the union of only the pieces it touches -
+    # re-unioned so that a way running along a cut is not counted twice. The
+    # union and the split change no area, so the fraction is the one the whole
+    # polygons give (tests/test_reference_data_install.py).
+    pieces = _small_pieces(unary_union(polygons))
+    index = STRtree(pieces)
     ids = []
     for way in read_ways(extract):
         if len(way.coordinates) < 2:
             continue
         line = LineString(way.coordinates)
-        nearby = [polygons[i] for i in index.query(line)]
+        nearby = [pieces[i] for i in index.query(line, predicate="intersects")]
         if not nearby:
+            continue
+        if len(nearby) == 1 and nearby[0].contains(line):
+            ids.append(way.osm_id)
             continue
         # A way spans a few kilometres, so one cosine for the whole of it is
         # exact to far better than the threshold's one significant figure.
