@@ -283,7 +283,10 @@ class ReferenceData:
         legality, unmatched_legality = variants.resolve_bridge_bicycle_legality(crossing_rows, ways)
         # One warning over the union of both resolvers, because a crossing the
         # extract does not carry is one fact about one bridge however many of
-        # the fixture's columns it silences. Only the sidepath half used to
+        # the fixture's columns it silences. It covers a row pinned to an
+        # `osm_way_id` the extract no longer carries as well as a name that
+        # matched nothing (owner decision, 2026-09-25): a warning, not a
+        # refusal, so the rebuild still runs. Only the sidepath half used to
         # report, so the fourteen rows that carry a legality opinion and no
         # sidepath flag - every row the `rm:bridge_bicycle` tag exists for,
         # including the Theodore Roosevelt Bridge - could resolve against

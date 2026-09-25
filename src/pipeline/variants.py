@@ -203,6 +203,42 @@ def is_crossing_candidate(way) -> bool:
     return in_crossing_scope(way)
 
 
+def pinned_way_id(row: dict) -> int:
+    """The way id a row is pinned to by hand, or 0 for a row matched by name."""
+    return int(row.get("osm_way_id") or 0)
+
+
+def crossing_misses(
+    wanted: dict[str, list[str]],
+    seen: set[str],
+    pinned: dict[str, int],
+    present: set[int],
+) -> list[str]:
+    """The rows a resolver could not find in the extract, by label.
+
+    Two kinds of miss, one list, and one definition for both resolvers so that
+    they cannot disagree about a row they both read:
+
+    * a row matched by name none of whose names any eligible way carries;
+    * a row pinned to an `osm_way_id` the given ways do not include at all.
+
+    The second is the owner's decision of 2026-09-25. A pin is honoured as
+    written - outside `CROSSINGS_SCOPE`, on any way - and still is; but a pin
+    the map has since split or replaced wrote its answer onto a way no longer
+    in the graph, and nothing said so, which is the silent failure matching by
+    name was introduced to end. It is reported, not refused: the row's answer
+    still goes out for the id, and the rebuild runs.
+    """
+    missed = {label for label, names in wanted.items() if not any(name in seen for name in names)}
+    missed |= {label for label, way_id in pinned.items() if way_id not in present}
+    return sorted(missed)
+
+
+def crossing_label(row: dict) -> str:
+    """How an operator is told about a row: its name, or its pin if it has none."""
+    return row.get("name") or f"osm_way_id {pinned_way_id(row)}"
+
+
 def is_sidepath_only(row: dict) -> bool:
     """Whether a crossing row's *routing-relevant* provision is a sidepath.
 
@@ -261,17 +297,20 @@ def resolve_sidepath_bridge_ids(
     Unmatched names are returned rather than swallowed. A crossing this
     deployment has an opinion about and cannot find in the extract is a thing an
     operator needs told - it means either the clip moved or the name changed, and
-    either way the sidepath rule is not biting on that bridge.
+    either way the sidepath rule is not biting on that bridge. So is a row
+    pinned to an `osm_way_id` the given ways do not carry (`crossing_misses`).
     """
     rows = list(rows)
     check_crossing_names_unique(rows)
     wanted: dict[str, list[str]] = {}
     explicit: set[int] = set()
+    pinned: dict[str, int] = {}
     for row in rows:
         if not is_sidepath_only(row):
             continue
-        if int(row.get("osm_way_id") or 0) != 0:
-            explicit.add(int(row["osm_way_id"]))
+        if way_id := pinned_way_id(row):
+            explicit.add(way_id)
+            pinned[crossing_label(row)] = way_id
             continue
         if names := crossing_names(row):
             wanted[row["name"]] = [name.casefold() for name in names]
@@ -279,7 +318,11 @@ def resolve_sidepath_bridge_ids(
     by_name = {name for names in wanted.values() for name in names}
     matched_ids: set[int] = set()
     seen: set[str] = set()
+    present: set[int] = set()
     for way in ways:
+        # Every way, before any guard: a pin bypasses them, so the question
+        # for a pin is only whether the extract carries its way at all.
+        present.add(way.osm_id)
         # A bridge, the roadway only (the sidepath is what this rule routes
         # onto, so it is never what the rule matches; see the docstring), and
         # inside the fixture's region.
@@ -290,10 +333,7 @@ def resolve_sidepath_bridge_ids(
                 matched_ids.add(way.osm_id)
                 seen.add(name)
 
-    unmatched = [
-        label for label, names in wanted.items() if not any(name in seen for name in names)
-    ]
-    return frozenset(matched_ids | explicit), sorted(unmatched)
+    return frozenset(matched_ids | explicit), crossing_misses(wanted, seen, pinned, present)
 
 
 def resolve_bridge_bicycle_legality(
@@ -337,12 +377,14 @@ def resolve_bridge_bicycle_legality(
     by_name: dict[str, bool] = {}
     explicit: dict[int, bool] = {}
     wanted: dict[str, list[str]] = {}
+    pinned: dict[str, int] = {}
     for row in rows:
         legal = row.get("roadway_bicycle_legal")
         if legal is None:
             continue
-        if int(row.get("osm_way_id") or 0) != 0:
-            explicit[int(row["osm_way_id"])] = bool(legal)
+        if way_id := pinned_way_id(row):
+            explicit[way_id] = bool(legal)
+            pinned[crossing_label(row)] = way_id
             continue
         if names := crossing_names(row):
             wanted[row["name"]] = [name.casefold() for name in names]
@@ -351,7 +393,10 @@ def resolve_bridge_bicycle_legality(
 
     out: dict[int, bool] = dict(explicit)
     seen: set[str] = set()
+    present: set[int] = set()
     for way in ways:
+        # Every way, before any guard; see `resolve_sidepath_bridge_ids`.
+        present.add(way.osm_id)
         # A bridge, inside the fixture's region, and the roadway only. A
         # trail-class way carrying the bridge's name is the sidepath on it, not
         # the roadway this column describes, and it is the ordinary OSM shape
@@ -381,10 +426,7 @@ def resolve_bridge_bicycle_legality(
             if way.osm_id not in out:
                 out[way.osm_id] = by_name[name]
 
-    unmatched = [
-        label for label, names in wanted.items() if not any(name in seen for name in names)
-    ]
-    return out, sorted(unmatched)
+    return out, crossing_misses(wanted, seen, pinned, present)
 
 
 def unverified_crossing_names(rows: Iterable[dict]) -> list[str]:

@@ -542,7 +542,9 @@ def test_an_explicitly_recorded_way_id_is_still_honoured() -> None:
     """Name matching is the default, not the only path: where someone has pinned
     an id against the clipped extract, that id is used."""
     row = {"name": "Some Bridge", "osm_way_id": 4242, "sidepath_only": True}
-    ids, unmatched = resolve_sidepath_bridge_ids([row], [])
+    # Not a bridge and nowhere near the region: a pin bypasses both guards.
+    pinned = FakeWay(4242, {"highway": "secondary"}, ((-76.52, 39.22),))
+    ids, unmatched = resolve_sidepath_bridge_ids([row], [pinned])
     assert ids == frozenset({4242})
     assert unmatched == []
 
@@ -625,7 +627,8 @@ class TestBridgeBicycleLegality:
         guess about which way a name means. An id someone pinned by hand against
         the clipped extract is not a guess, so it is honoured as written."""
         row = {"name": "Pinned Bridge", "osm_way_id": 4242, "roadway_bicycle_legal": False}
-        assert resolve_bridge_bicycle_legality([row], []) == ({4242: False}, [])
+        pinned = FakeWay(4242, {"highway": "cycleway", "bridge": "yes"}, ((-76.52, 39.22),))
+        assert resolve_bridge_bicycle_legality([row], [pinned]) == ({4242: False}, [])
 
     def test_a_hand_pinned_way_still_answers_for_the_names_it_carries(self) -> None:
         """A name found in the extract is found, whichever row got to the way
@@ -716,13 +719,11 @@ class TestTheLegalityHalfReportsItsOwnMisses:
         expected = [
             row["name"]
             for row in rows
-            if not row["sidepath_only"]
-            and row["roadway_bicycle_legal"] is not None
-            and not row["osm_way_id"]
+            if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
         ]
-        # Fourteen legality-only rows, two of them pinned by way id - a pin is
-        # honoured as written, so a pinned row is never a name miss.
-        assert len(expected) == 12, "the fixture's unpinned legality-only rows"
+        # Two of the fourteen are pinned by way id, and are named here because
+        # this extract does not carry the ways they are pinned to.
+        assert len(expected) == 14, "the fixture's legality-only rows"
         assert sorted(expected) == legality_unmatched
         # The row whose miss was the one first noticed, when its note still
         # said (wrongly - the 2026-09-24 extract has it motorway class) that
@@ -1282,6 +1283,79 @@ PINNED_WAY_IDS = {
     "11th Street Bridge (local span)": 546096009,
     "11th Street Bridge (I-695 inbound)": 546095934,
 }
+
+
+class TestAPinTheExtractDoesNotCarryIsReported:
+    """Owner decision, 2026-09-25: a pinned `osm_way_id` the extract does not
+    carry is named in the unmatched list, by both resolvers alike.
+
+    A pin is honoured as written - outside the region, on any way - and that is
+    unchanged. What was missing is the one thing the name match was introduced
+    to guarantee: a rule that is not biting says so. A pin the map has since
+    split or replaced wrote its answer onto a way no longer in the graph, and
+    nothing in the rebuild noticed.
+    """
+
+    ROWS = (
+        {"name": "Pinned Sidepath", "osm_way_id": 7301, "sidepath_only": True},
+        {"name": "Pinned Legality", "osm_way_id": 7302, "roadway_bicycle_legal": False},
+        {
+            "name": "Pinned Both",
+            "osm_way_id": 7303,
+            "sidepath_only": True,
+            "roadway_bicycle_legal": True,
+        },
+    )
+
+    def resolve(self, ways):
+        rows = [dict(row) for row in self.ROWS]
+        ids, sidepath_unmatched = resolve_sidepath_bridge_ids(rows, ways)
+        legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, ways)
+        return ids, sidepath_unmatched, legality, legality_unmatched
+
+    def test_an_absent_pin_is_named_and_still_honoured(self) -> None:
+        ids, sidepath_unmatched, legality, legality_unmatched = self.resolve([])
+        assert sidepath_unmatched == ["Pinned Both", "Pinned Sidepath"]
+        assert legality_unmatched == ["Pinned Both", "Pinned Legality"]
+        # A warning, not a refusal: the pin still answers for its way.
+        assert ids == frozenset({7301, 7303})
+        assert legality == {7302: False, 7303: True}
+
+    def test_a_present_pin_is_not_named(self) -> None:
+        # Out of the region and not a bridge, as a pin is allowed to be.
+        ways = [FakeWay(i, {"highway": "service"}, ((-76.52, 39.22),)) for i in (7301, 7302, 7303)]
+        ids, sidepath_unmatched, legality, legality_unmatched = self.resolve(ways)
+        assert sidepath_unmatched == [] and legality_unmatched == []
+        assert ids == frozenset({7301, 7303})
+        assert legality == {7302: False, 7303: True}
+
+    def test_the_two_resolvers_agree_about_a_row_both_read(self) -> None:
+        for present in ((), (7301,), (7303,), (7301, 7302, 7303)):
+            ways = [FakeWay(i, {"highway": "service"}) for i in present]
+            _ids, sidepath_unmatched, _legality, legality_unmatched = self.resolve(ways)
+            assert ("Pinned Both" in sidepath_unmatched) is ("Pinned Both" in legality_unmatched)
+            assert ("Pinned Both" in sidepath_unmatched) is (7303 not in present)
+
+    def test_only_the_pinned_way_counts(self) -> None:
+        """A pin is a claim about one way; another way carrying the row's name
+        does not stand in for it."""
+        row = {"name": "Key Bridge", "osm_way_id": 7304, "roadway_bicycle_legal": True}
+        named = FakeWay(7305, dict(DC_KEY_BRIDGE.tags))
+        assert resolve_bridge_bicycle_legality([row], [named])[1] == ["Key Bridge"]
+
+    def test_a_pinned_row_with_no_name_is_named_by_its_pin(self) -> None:
+        row = {"osm_way_id": 7306, "roadway_bicycle_legal": False}
+        assert resolve_bridge_bicycle_legality([row], [])[1] == ["osm_way_id 7306"]
+
+    def test_the_shipped_pins_are_named_when_the_extract_lacks_them(self) -> None:
+        _legality, unmatched = resolve_bridge_bicycle_legality(crossing_rows(), [])
+        assert {"11th Street Bridge (local span)", "11th Street Bridge (I-695 inbound)"} <= set(
+            unmatched
+        )
+        ways = [*ELEVENTH_STREET_WAYS, *FREEWAY_WAYS]
+        _legality, unmatched = resolve_bridge_bicycle_legality(crossing_rows(), ways)
+        assert "11th Street Bridge (local span)" not in unmatched
+        assert "11th Street Bridge (I-695 inbound)" not in unmatched
 
 
 class TestTheEleventhStreetCrossingIsPinnedByGeometry:

@@ -254,13 +254,11 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     legality_only = sorted(
         row["name"]
         for row in rows
-        if not row["sidepath_only"]
-        and row["roadway_bicycle_legal"] is not None
-        and not row["osm_way_id"]
+        if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
     )
-    # Fourteen legality-only rows, two of them pinned by way id; a pin is
-    # honoured as written, so a pinned row is never reported as a name miss.
-    assert len(sidepath_rows) == 4 and len(legality_only) == 12, "the fixture's two halves"
+    # Two of the fourteen are pinned by way id; this extract carries neither
+    # pinned way, so they are named in the same warning as the name misses.
+    assert len(sidepath_rows) == 4 and len(legality_only) == 14, "the fixture's two halves"
 
     ways = [
         Way(
@@ -292,6 +290,45 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     for row in sidepath_rows:
         assert row["name"] not in loaded.unmatched_crossings
     assert sorted(loaded.unmatched_crossings) == legality_only
+
+
+def test_a_pinned_way_the_extract_lacks_joins_the_one_warning(tmp_path, caplog) -> None:
+    """Owner decision, 2026-09-25: the rebuild warns when a pinned `osm_way_id`
+    is not in the extract - in the one union warning, not a line of its own,
+    and without refusing the rebuild."""
+    import logging
+
+    from pipeline.extract import Way
+    from pipeline.run import ReferenceData
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "urban-areas.json").write_text("[]")
+    (reference / "volume.json").write_text("[]")
+    (reference / "crossings.json").write_text(
+        json.dumps(
+            [
+                {"name": "Pinned Present", "osm_way_id": 8201, "roadway_bicycle_legal": False},
+                {"name": "Pinned Absent", "osm_way_id": 8202, "roadway_bicycle_legal": False},
+                {
+                    "name": "Named Absent",
+                    "osm_names": ["Nowhere Bridge"],
+                    "roadway_bicycle_legal": True,
+                },
+            ]
+        )
+    )
+    ways = [Way(osm_id=8201, tags={"highway": "service"}, node_ids=[])]
+
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        loaded = ReferenceData.load(reference, ways)
+
+    warnings = [m for m in (r.getMessage() for r in caplog.records) if "not found in" in m]
+    assert len(warnings) == 1, "one warning over every miss"
+    assert "Pinned Absent" in warnings[0] and "Named Absent" in warnings[0]
+    assert "Pinned Present" not in warnings[0]
+    assert loaded.unmatched_crossings == ("Named Absent", "Pinned Absent")
+    assert loaded.bridge_bicycle_legal == {8201: False, 8202: False}, "still honoured"
 
 
 def test_the_loader_names_a_crossing_only_the_sidepath_column_asks_about(tmp_path) -> None:

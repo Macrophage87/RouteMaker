@@ -285,10 +285,14 @@ the clipped extract by hand. It is ignored when 0 rather than matched against
 way 0, which exists and is not a bridge. Two rows carry one: the 11th Street
 local span (546096009) and inbound freeway span (546095934), both chosen by
 where the ways cross the river on the 2026-09-24 extract. A pin is honoured as
-written, outside the region check and whether or not the extract still carries
-the way — so a pin the map has since split or replaced goes inert **without a
-warning**, which is the failure the name match was introduced to end. Re-check
-the pins when the extract is refreshed.
+written, outside the region check, and it goes out for its id even when the
+extract no longer carries that way — but since the owner's decision of
+2026-09-25 that case is **reported**: both resolvers name a row whose pinned way
+is not among the ways they were given (`variants.crossing_misses`, shared by
+the two), and it joins the one "crossings not found in the extract" warning
+`ReferenceData.load` logs. A warning, not a refusal; the rebuild still runs. A
+pin the map has split or replaced therefore shows up in the rebuild log on the
+first rebuild after it happens, and is re-pinned from there.
 
 ## The authority columns
 
