@@ -254,9 +254,13 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     legality_only = sorted(
         row["name"]
         for row in rows
-        if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
+        if not row["sidepath_only"]
+        and row["roadway_bicycle_legal"] is not None
+        and not row["osm_way_id"]
     )
-    assert len(sidepath_rows) == 4 and len(legality_only) == 14, "the fixture's two halves"
+    # Fourteen legality-only rows, two of them pinned by way id; a pin is
+    # honoured as written, so a pinned row is never reported as a name miss.
+    assert len(sidepath_rows) == 4 and len(legality_only) == 12, "the fixture's two halves"
 
     ways = [
         Way(

@@ -173,6 +173,17 @@ class FakeWay:
         self.coordinates = list(coordinates)
 
 
+def by_name(legality: dict[int, bool]) -> dict[int, bool]:
+    """What the name match produced, without the fixture's `osm_way_id` pins.
+
+    A pinned row's way is in every legality result whatever the extract holds,
+    because a pin is honoured as written; the tests below that are about the
+    name match compare what is left.
+    """
+    pinned = {int(row.get("osm_way_id") or 0) for row in crossing_rows()} - {0}
+    return {osm_id: legal for osm_id, legal in legality.items() if osm_id not in pinned}
+
+
 # --- What the fixture is expected to say ------------------------------------
 #
 # Every value below is typed in here, by hand, and read from nothing. That is
@@ -341,8 +352,11 @@ def expected_extract() -> list[FakeWay]:
     resolved perfectly.
     """
     return [
-        FakeWay(1000 + index, {"highway": "secondary", "bridge": "yes", "name": expected.names[0]})
-        for index, expected in enumerate(EXPECTED_CROSSINGS.values())
+        FakeWay(
+            PINNED_WAY_IDS.get(name, 1000 + index),
+            {"highway": "secondary", "bridge": "yes", "name": expected.names[0]},
+        )
+        for index, (name, expected) in enumerate(EXPECTED_CROSSINGS.items())
     ]
 
 
@@ -702,9 +716,13 @@ class TestTheLegalityHalfReportsItsOwnMisses:
         expected = [
             row["name"]
             for row in rows
-            if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
+            if not row["sidepath_only"]
+            and row["roadway_bicycle_legal"] is not None
+            and not row["osm_way_id"]
         ]
-        assert len(expected) == 14, "the fixture's legality-only rows"
+        # Fourteen legality-only rows, two of them pinned by way id - a pin is
+        # honoured as written, so a pinned row is never a name miss.
+        assert len(expected) == 12, "the fixture's unpinned legality-only rows"
         assert sorted(expected) == legality_unmatched
         # The row whose miss was the one first noticed, when its note still
         # said (wrongly - the 2026-09-24 extract has it motorway class) that
@@ -752,7 +770,7 @@ class TestABridgesNameCanLiveInBridgeName:
         """The checked-in row, against the shape the real way carries."""
         way = FakeWay(5001, dict(self.SOUSA))
         legality, unmatched = resolve_bridge_bicycle_legality(crossing_rows(), [way])
-        assert legality == {5001: True}
+        assert by_name(legality) == {5001: True}
         assert "Sousa Bridge (Pennsylvania Avenue SE)" not in unmatched
 
     def test_the_sidepath_half_resolves_the_same_way(self) -> None:
@@ -797,7 +815,7 @@ class TestABridgesNameCanLiveInBridgeName:
         approach = FakeWay(
             5005, {"highway": "secondary", "bridge:name": "John Philip Sousa Bridge"}
         )
-        assert resolve_bridge_bicycle_legality(crossing_rows(), [approach])[0] == {}
+        assert by_name(resolve_bridge_bicycle_legality(crossing_rows(), [approach])[0]) == {}
 
 
 # The rows checked against the Geofabrik DC+MD+VA extract of 2026-09-24 and
@@ -990,7 +1008,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
         assert ids == frozenset()
         assert "Key Bridge" in unmatched
         legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, [BALTIMORE_KEY_BRIDGE])
-        assert legality == {}
+        assert by_name(legality) == {}
         assert "Key Bridge" in legality_unmatched
 
     def test_the_district_key_bridge_still_matches_beside_it(self) -> None:
@@ -1000,7 +1018,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
         assert ids == frozenset({DC_KEY_BRIDGE.osm_id})
         assert "Key Bridge" not in unmatched
         legality, _unmatched = resolve_bridge_bicycle_legality(rows, both)
-        assert legality == {DC_KEY_BRIDGE.osm_id: True}
+        assert by_name(legality) == {DC_KEY_BRIDGE.osm_id: True}
 
     def test_a_way_with_no_location_cannot_be_placed_and_matches_nothing(self) -> None:
         """A way the extract gives no coordinate for cannot be shown to be
@@ -1008,7 +1026,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
         nowhere = FakeWay(9100, dict(DC_KEY_BRIDGE.tags), ())
         rows = crossing_rows()
         assert resolve_sidepath_bridge_ids(rows, [nowhere])[0] == frozenset()
-        assert resolve_bridge_bicycle_legality(rows, [nowhere])[0] == {}
+        assert by_name(resolve_bridge_bicycle_legality(rows, [nowhere])[0]) == {}
 
     def test_a_way_leaving_the_region_is_not_inside_it(self) -> None:
         """Every located point, not any: a way with one end in the region and
@@ -1019,7 +1037,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
         straddling = FakeWay(
             9101, dict(DC_KEY_BRIDGE.tags), ((west + 0.001, south + 0.001), (west - 0.001, south))
         )
-        assert resolve_bridge_bicycle_legality(crossing_rows(), [straddling])[0] == {}
+        assert by_name(resolve_bridge_bicycle_legality(crossing_rows(), [straddling])[0]) == {}
 
     def test_the_region_holds_the_fixtures_ends_and_not_baltimore(self) -> None:
         for point in (
@@ -1060,7 +1078,9 @@ class TestTheMatchIsScopedToTheFixturesRegion:
 
         sidepath_ids, _ = resolve_sidepath_bridge_ids(rows, ways)
         legality, _ = resolve_bridge_bicycle_legality(rows, ways)
-        matched = set(sidepath_ids) | set(legality)
+        # Pins bypass the region by design - an id pinned by hand is honoured
+        # as written - so the property is about what the name match reached.
+        matched = set(sidepath_ids) | set(by_name(legality))
 
         assert matched, "nothing matched, so the property says nothing"
         for osm_id in matched:
@@ -1105,4 +1125,246 @@ class TestTheMatchIsScopedToTheFixturesRegion:
         assert ids == frozenset({roadway.osm_id})
         assert "Woodrow Wilson Bridge path" not in unmatched
         legality, _ = resolve_bridge_bicycle_legality(rows, [roadway, path])
-        assert legality == {roadway.osm_id: False}
+        assert by_name(legality) == {roadway.osm_id: False}
+
+
+# --- The 11th Street crossing, pinned by geometry ----------------------------
+#
+# Every bridge way at the crossing, and the Anacostia's centreline where it
+# passes under them, typed in by hand from the real extract
+# (/home/steph/routemaker-data/extracts/source.osm.pbf, the Geofabrik DC+MD+VA
+# extract of 2026-09-24): ids, the tags that decide the question, and node
+# coordinates to 1e-6 degrees. The river line is waterway=river "Anacostia
+# River", ways 1211474183 and 1211474184, which meet at (-76.990043, 38.871519).
+
+ANACOSTIA_CENTRELINE = (
+    (-76.987055, 38.873045),
+    (-76.989763, 38.871679),
+    (-76.990043, 38.871519),
+    (-76.991807, 38.870508),
+)
+
+ELEVENTH_STREET_SE = {"highway": "secondary", "bridge": "yes", "name": "11th Street Southeast"}
+ELEVENTH_STREET_WAYS = [
+    # The four ways the name "11th Street Southeast" reaches on a bridge.
+    FakeWay(
+        546096009,
+        {**ELEVENTH_STREET_SE, "bicycle": "no", "foot": "no", "sidewalk:right": "separate"},
+        (
+            (-76.990992, 38.872628),
+            (-76.990954, 38.872562),
+            (-76.990914, 38.872499),
+            (-76.990872, 38.872433),
+            (-76.990827, 38.872365),
+            (-76.990768, 38.872279),
+            (-76.990691, 38.872176),
+            (-76.990617, 38.872077),
+            (-76.990545, 38.871981),
+            (-76.990473, 38.871887),
+            (-76.989337, 38.870457),
+        ),
+    ),
+    FakeWay(
+        546095991,
+        {**ELEVENTH_STREET_SE, "bicycle": "no", "foot": "no"},
+        ((-76.988417, 38.869171), (-76.988285, 38.868977)),
+    ),
+    FakeWay(
+        546095992,
+        {**ELEVENTH_STREET_SE, "bicycle": "no", "foot": "no"},
+        ((-76.988568, 38.869396), (-76.988417, 38.869171)),
+    ),
+    FakeWay(
+        546095994,
+        {**ELEVENTH_STREET_SE, "bicycle": "no", "foot": "no"},
+        ((-76.988718, 38.869617), (-76.988568, 38.869396)),
+    ),
+]
+I695 = {"highway": "motorway", "bridge": "yes", "oneway": "yes", "ref": "I 695"}
+FREEWAY_WAYS = [
+    # Drawn south-east to north-west: toward the Southeast Freeway, inbound.
+    FakeWay(
+        546095934,
+        {**I695, "name": "Southeast Freeway", "bridge:name": "11th Street Bridge", "lanes": "4"},
+        ((-76.988912, 38.871114), (-76.990327, 38.87282)),
+    ),
+    # Drawn north-west to south-east: outbound. One four-lane way that splits
+    # at node 5277494650, north of the centreline, into the I-295 mainline and
+    # the DC-295 ramp - so two ways cross the river on this side, not one.
+    FakeWay(
+        546095944,
+        {**I695, "name": "Southeast Freeway", "lanes": "4"},
+        ((-76.990486, 38.872737), (-76.990045, 38.87221)),
+    ),
+    FakeWay(
+        546095942,
+        {**I695, "name": "Southeast Freeway", "lanes": "2"},
+        (
+            (-76.990045, 38.87221),
+            (-76.989268, 38.871298),
+            (-76.989193, 38.871206),
+            (-76.98912, 38.871114),
+            (-76.989047, 38.87102),
+            (-76.988975, 38.870926),
+            (-76.988921, 38.870856),
+            (-76.98887, 38.870785),
+        ),
+    ),
+    FakeWay(
+        546095943,
+        {"highway": "motorway_link", "bridge": "yes", "oneway": "yes", "lanes": "2"},
+        ((-76.990045, 38.87221), (-76.989276, 38.870982), (-76.987494, 38.87016)),
+    ),
+]
+# The shared-use path: its own way, trail class, with no access restriction.
+RIVERWALK_ON_THE_LOCAL_SPAN = FakeWay(
+    546096004,
+    {
+        "highway": "cycleway",
+        "bridge": "yes",
+        "name": "Anacostia Riverwalk Trail",
+        "bicycle": "designated",
+        "foot": "designated",
+        "oneway": "no",
+    },
+    (
+        (-76.991106, 38.872588),
+        (-76.990952, 38.872351),
+        (-76.99066, 38.871979),
+        (-76.990358, 38.871584),
+        (-76.990065, 38.871214),
+        (-76.989818, 38.870906),
+        (-76.98944, 38.870405),
+    ),
+)
+
+# Metres per degree at 38.87 N, near enough for comparing positions tens of
+# metres apart.
+M_PER_DEG_LON, M_PER_DEG_LAT = 86_700.0, 111_000.0
+
+
+def centreline_crossing(way: FakeWay) -> tuple[float, float] | None:
+    """Where the way crosses the river's centreline, or None if it does not."""
+
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+
+    for p, q in zip(way.coordinates, way.coordinates[1:], strict=False):
+        for r, s in zip(ANACOSTIA_CENTRELINE, ANACOSTIA_CENTRELINE[1:], strict=False):
+            d1, d2 = cross(r, s, p), cross(r, s, q)
+            d3, d4 = cross(p, q, r), cross(p, q, s)
+            if d1 * d2 < 0 and d3 * d4 < 0:
+                t = d1 / (d1 - d2)
+                return (p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1]))
+    return None
+
+
+def south_westward(point: tuple[float, float]) -> float:
+    """Distance in metres along the river toward the south-west.
+
+    The river runs north-east to south-west under the three spans, which run
+    across it, so the order of their crossing points along this axis is their
+    order across the crossing, north-east to south-west.
+    """
+    (x0, y0), (x1, y1) = ANACOSTIA_CENTRELINE[0], ANACOSTIA_CENTRELINE[-1]
+    ux, uy = (x1 - x0) * M_PER_DEG_LON, (y1 - y0) * M_PER_DEG_LAT
+    norm = (ux * ux + uy * uy) ** 0.5
+    return ((point[0] - x0) * M_PER_DEG_LON * ux + (point[1] - y0) * M_PER_DEG_LAT * uy) / norm
+
+
+def row_named(name: str) -> dict:
+    return next(row for row in crossing_rows() if row["name"] == name)
+
+
+# Pins are claims about the map, so they are typed in here like every other
+# column the fixture carries.
+PINNED_WAY_IDS = {
+    "11th Street Bridge (local span)": 546096009,
+    "11th Street Bridge (I-695 inbound)": 546095934,
+}
+
+
+class TestTheEleventhStreetCrossingIsPinnedByGeometry:
+    """The local span and the inbound freeway span, pinned by `osm_way_id`.
+
+    By name the local span can only be reached as "11th Street Southeast", which
+    four bridge ways carry and only one of which crosses the river, and the
+    freeway spans carry no name of their own. So the pins are chosen by where
+    the ways cross the Anacostia, and cross-checked against the owner's
+    statement of 2026-09-25: the south-westernmost of the three spans is the
+    ordinary roadway, carrying the shared-use path on its south-west side, and
+    the other two are I-695.
+    """
+
+    def test_only_the_pinned_way_named_for_the_street_crosses_the_river(self) -> None:
+        crossing = {w.osm_id for w in ELEVENTH_STREET_WAYS if centreline_crossing(w)}
+        assert crossing == {PINNED_WAY_IDS["11th Street Bridge (local span)"]}
+
+    def test_the_pinned_local_span_is_the_south_westernmost_road_span(self) -> None:
+        local = next(w for w in ELEVENTH_STREET_WAYS if centreline_crossing(w))
+        local_at = south_westward(centreline_crossing(local))
+        freeway = [w for w in FREEWAY_WAYS if centreline_crossing(w)]
+        assert freeway, "the freeway spans must cross the river too"
+        for way in freeway:
+            assert south_westward(centreline_crossing(way)) < local_at, way.osm_id
+
+    def test_the_path_lies_on_the_local_spans_south_west_edge(self) -> None:
+        local = next(w for w in ELEVENTH_STREET_WAYS if centreline_crossing(w))
+        path_at = centreline_crossing(RIVERWALK_ON_THE_LOCAL_SPAN)
+        assert path_at is not None, "the path crosses the river"
+        gap = south_westward(path_at) - south_westward(centreline_crossing(local))
+        assert 0 < gap < 30, f"the path is {gap:.0f} m south-west of the roadway"
+
+    def test_the_path_is_a_routable_trail_class_way(self) -> None:
+        tags = RIVERWALK_ON_THE_LOCAL_SPAN.tags
+        assert is_trail_class(tags)
+        assert tags["bicycle"] in ("yes", "designated")
+        assert not {"access", "vehicle"} & set(tags)
+
+    def test_the_inbound_pin_is_the_one_freeway_way_drawn_north_west_across_the_river(
+        self,
+    ) -> None:
+        """Oneway ways are drawn in their direction of travel, so the way that
+        crosses the river running north-west is the inbound span; it is one
+        way. The outbound side is two ways across the centreline, which one
+        `osm_way_id` cannot say, so that row stays unpinned."""
+
+        def north_westward(way: FakeWay) -> bool:
+            (x0, y0), (x1, y1) = way.coordinates[0], way.coordinates[-1]
+            return x1 < x0 and y1 > y0
+
+        crossing = [w for w in FREEWAY_WAYS if centreline_crossing(w)]
+        inbound = {w.osm_id for w in crossing if north_westward(w)}
+        outbound = {w.osm_id for w in crossing if not north_westward(w)}
+        assert inbound == {PINNED_WAY_IDS["11th Street Bridge (I-695 inbound)"]}
+        assert len(outbound) > 1
+
+    def test_the_fixture_carries_exactly_these_pins(self) -> None:
+        for row in crossing_rows():
+            assert int(row.get("osm_way_id") or 0) == PINNED_WAY_IDS.get(row["name"], 0), row[
+                "name"
+            ]
+
+    def test_the_resolvers_land_the_rows_on_the_pinned_ways_and_nowhere_else(self) -> None:
+        ways = [*ELEVENTH_STREET_WAYS, *FREEWAY_WAYS, RIVERWALK_ON_THE_LOCAL_SPAN]
+        rows = crossing_rows()
+        legality, unmatched = resolve_bridge_bicycle_legality(rows, ways)
+        on_these = {w.osm_id for w in ways}
+        assert {k: v for k, v in legality.items() if k in on_these} == {
+            546096009: True,
+            546095934: False,
+        }
+        assert "11th Street Bridge (local span)" not in unmatched
+        assert "11th Street Bridge (I-695 inbound)" not in unmatched
+        assert "11th Street Bridge (I-695 outbound)" in unmatched
+        ids, _ = resolve_sidepath_bridge_ids(rows, ways)
+        assert not ids & on_these, "no 11th Street row is sidepath-only"
+
+    def test_the_owners_legality_answers_stand(self) -> None:
+        """Owner, 2026-09-25: the local span's roadway and its path are legal to
+        ride, and the I-695 spans restrict bicycles. Pinning moved no column."""
+        local = row_named("11th Street Bridge (local span)")
+        assert (local["roadway_bicycle_legal"], local["sidepath_only"]) == (True, False)
+        for name in ("11th Street Bridge (I-695 inbound)", "11th Street Bridge (I-695 outbound)"):
+            row = row_named(name)
+            assert (row["roadway_bicycle_legal"], row["sidepath_only"]) == (False, False)

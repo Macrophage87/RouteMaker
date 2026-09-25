@@ -101,27 +101,36 @@ two columns the pipeline reads, written where nothing reads them:
 
 * **11th Street Bridge (local span)** — 11th Street SE, a bike-legal roadway
   with Anacostia Riverwalk connections at either end. Neither barred nor
-  sidepath-only, and the span the old single row's values described. **It
-  resolves against nothing, deliberately.** It claimed the plain name "11th
+  sidepath-only, and the span the old single row's values described. **It is
+  pinned by `osm_way_id` to way 546096009.** It claimed the plain name "11th
   Street Bridge", and on the 2026-09-24 extract that name is on one way only:
   the `bridge:name` of way 546095934, an I-695 motorway span named Southeast
-  Freeway. The row's `true` landed on an interstate (the remap's motor-only
-  guard refused to grant it, but the row's columns described the wrong
-  structure and the real span got nothing). The claim is removed. The local
-  span's candidates in that extract are four bridge ways named "11th Street
-  Southeast", `highway=secondary`, and every one carries `bicycle=no` and
-  `foot=no`; claiming that name would write `bicycle=yes` over OSM's own tag on
-  all four, one of which is the span and three of which are short ways at its
-  south end. Which way is the span, and whether this row's legality claim
-  should stand against OSM's tag, are a reviewer's to settle — an `osm_way_id`
-  pin is how to record the first.
+  Freeway, so the row's `true` landed on an interstate (the remap's motor-only
+  guard refused to grant it, but the real span got nothing). That claim is
+  removed. By name the span could only be reached as "11th Street Southeast",
+  which four bridge ways carry; only 546096009 crosses the Anacostia (178 m of
+  its 238 m over the river's water area, and across the `waterway=river`
+  centreline), and the other three are short ways south of the water. The
+  owner's statement of 2026-09-25 is the cross-check: the south-westernmost of
+  the three spans is the local one and carries the shared-use path on its
+  south-west side. The geometry agrees — 546096009 crosses the centreline
+  south-west of every I-695 way, and the path, way 546096004 (`cycleway`,
+  Anacostia Riverwalk Trail, `bicycle=designated`, no access restriction), runs
+  about 12 m south-west of it. The owner also confirmed that the roadway is
+  legal to ride, against OSM's `bicycle=no` on it, so the remap writing
+  `bicycle=yes` there is intended.
 * **11th Street Bridge (I-695 inbound)** and **(I-695 outbound)** — the two
-  freeway spans, barred outright. Their OSM spellings are the least confident
-  claim in this file, and on the 2026-09-24 extract neither resolves: no way
-  carries either. They are motorway class, so a ride is kept off them by highway
-  class even when the name misses. The one freeway way named for the crossing
-  is 546095934 above, oneway toward the Southeast Freeway; nothing in this file
-  decides which of the two rows it is. A miss is said out loud: neither row is
+  freeway spans, barred outright, which the owner confirmed on 2026-09-25.
+  Their OSM spellings are the least confident claim in this file, and on the
+  2026-09-24 extract neither resolves: no way carries either. They are
+  motorway class, so a ride is kept off them by highway class whatever the
+  name does. **The inbound row is pinned to way 546095934**, the only freeway
+  way that crosses the river drawn — and, being oneway, travelled — north-west
+  toward the Southeast Freeway. **The outbound row is not pinned:** that side
+  splits north of the river into the I-295 mainline (546095942) and the DC-295
+  ramp (546095943), both crossing the centreline, and one `osm_way_id` cannot
+  name two ways. It needs a list of ids, or stays unmatched, which it does
+  today. A miss is said out loud: neither row is
   `sidepath_only`, and until `resolve_bridge_bicycle_legality` started returning
   its own unmatched names, only the sidepath resolver reported anything — so
   these two, and the twelve other legality-only rows, could resolve against
@@ -249,15 +258,17 @@ else. What the check found and changed:
 * The Key Bridge roadway (all four ways) carries `bicycle=no` and `foot=no`,
   and the Frederick Douglass roadway `bicycle=use_sidepath`. Both rows say
   `roadway_bicycle_legal: true`, and the remap writes `bicycle=yes` over those
-  tags. The columns are this file's community claims and were not changed by
-  the check; the notes now say what the map says.
+  tags. The check did not change the columns; the owner confirmed both claims
+  on 2026-09-25, so the override is intended, and each row's note records it.
 * Not verified: the three 11th Street spans (above), and the two rail
-  structures. The Fenwick Bridge's spelling is right — it is the `bridge:name`
+  structures. Two of the 11th Street rows are pinned by way id, and a pin is
+  checked by geometry rather than by name, so their `osm_names_verified` stays
+  `false`: it describes the names, which are still unconfirmed. The Fenwick Bridge's spelling is right — it is the `bridge:name`
   of two `railway=subway` ways — and Long Bridge's name is on no way; neither
   can ever match, because `extract.read_ways` keeps highway ways only.
 
-`variants.unverified_crossing_names` returns the rows still `false`; the loader (`ReferenceData.load` in `run.py`) logs it at
-rebuild time, alongside the unmatched-name warning the two resolvers produce
+`variants.unverified_crossing_names` returns the rows still `false`; the loader
+(`ReferenceData.load` in `run.py`) logs it at rebuild time, alongside the unmatched-name warning the two resolvers produce
 between them — one line over the union of what
 `resolve_sidepath_bridge_ids` and `resolve_bridge_bicycle_legality` each failed
 to find, because a crossing the extract does not carry is one fact about one
@@ -271,7 +282,13 @@ of a fixture edit that merely looks confident.
 
 `osm_way_id` remains as an override for a crossing someone has pinned against
 the clipped extract by hand. It is ignored when 0 rather than matched against
-way 0, which exists and is not a bridge.
+way 0, which exists and is not a bridge. Two rows carry one: the 11th Street
+local span (546096009) and inbound freeway span (546095934), both chosen by
+where the ways cross the river on the 2026-09-24 extract. A pin is honoured as
+written, outside the region check and whether or not the extract still carries
+the way — so a pin the map has since split or replaced goes inert **without a
+warning**, which is the failure the name match was introduced to end. Re-check
+the pins when the extract is refreshed.
 
 ## The authority columns
 
