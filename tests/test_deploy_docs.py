@@ -1116,14 +1116,35 @@ def test_the_restore_runbook_restores_into_an_empty_database() -> None:
 
 
 # What the restore runbook does to the database between starting postgis and
-# restoring into it, in order: each tuple's tokens all on one command line.
-# tests/test_worker_schedule.py runs the drop and the create for real.
+# restoring into it, in order. Each step is the command as it must start after
+# `docker compose`, the option-and-value pairs it must carry after that, and
+# the positional argument it must end on (before any `<` redirect), or None.
+# Pairs and the positional are read by place, not by membership: `-U
+# routemaker` holds the same word as the database name, and `exec -T` the same
+# flag as `createdb -T`. tests/test_worker_schedule.py runs the drop and the
+# create for real.
 RESTORE_DATABASE_STEPS = (
-    ("up", "-d", "--wait", "postgis"),
-    ("exec", "-T", "postgis", "dropdb", "routemaker"),
-    ("exec", "-T", "postgis", "createdb", "-T", "template0", "routemaker"),
-    ("exec", "-T", "postgis", "pg_restore", "-d", "routemaker"),
+    (("up", "-d", "--wait"), (), "postgis"),
+    (("exec", "-T", "postgis", "dropdb"), (), "routemaker"),
+    (("exec", "-T", "postgis", "createdb"), (("-T", "template0"),), "routemaker"),
+    (("exec", "-T", "postgis", "pg_restore"), (("-d", "routemaker"),), None),
 )
+
+
+def command_matches(tokens: list[str], start, pairs, last) -> bool:
+    """Whether one `docker compose` command line is this restore step."""
+    if tokens[:2] != ["docker", "compose"]:
+        return False
+    head = tuple(tokens[2 : 2 + len(start)])
+    arguments = tokens[2 + len(start) :]
+    if "<" in arguments:
+        arguments = arguments[: arguments.index("<")]
+    adjacent = set(zip(arguments, arguments[1:], strict=False))
+    return (
+        head == start
+        and all(pair in adjacent for pair in pairs)
+        and (last is None or arguments[-1:] == [last])
+    )
 
 
 def snippet_commands(text: str) -> list[list[str]]:
@@ -1153,14 +1174,12 @@ def test_the_restore_runbook_empties_the_images_database_before_restoring() -> N
             (
                 i
                 for i, tokens in enumerate(commands)
-                if i > position
-                and tokens[:2] == ["docker", "compose"]
-                and all(token in tokens for token in step)
+                if i > position and command_matches(tokens, *step)
             ),
             None,
         )
         assert found is not None, (
-            f"the restore runbook has no {' '.join(step)!r} after command {position}: "
+            f"the restore runbook has no {step!r} after command {position}: "
             f"{[' '.join(tokens) for tokens in commands]}"
         )
         position = found
