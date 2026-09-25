@@ -320,7 +320,7 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
                     # keys exclusivity on this id, so two counties' counts
                     # sharing an id would have one claiming the other's span.
                     "id": f"{agency}-{volume.stem}-{properties.get('OBJECTID', number)}-{part}",
-                    "coordinates": [[x, y] for x, y in line.coords],
+                    "coordinates": [[x, y] for x, y, *_ in line.coords],
                     "aadt": int(float(value)),
                     "source": tier,
                     "agency": agency,

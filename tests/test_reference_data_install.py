@@ -957,3 +957,30 @@ class TestTheSplitMeasuresWhatTheWholePolygonMeasures:
             json.dumps(geojson([{"type": "Feature", "properties": {}, "geometry": mapping(area)}]))
         )
         assert install_module().urban_way_ids(tmp_path / "unused.osm.pbf", path) == []
+
+
+def test_a_count_line_with_elevations_installs_as_a_flat_line(tmp_path) -> None:
+    """DDOT's 2024 layer from Open Data DC carries a third ordinate on every
+    vertex ([x, y, 0.0]) and the installer unpacked each vertex as (x, y), so
+    the real file failed the install outright with "too many values to
+    unpack". GeoJSON allows the third position; the count's line is flat."""
+    counts = tmp_path / "ddot.geojson"
+    counts.write_text(
+        json.dumps(
+            geojson(
+                [
+                    line_feature([[-77.02, 38.90, 0.0], [-76.98, 38.90, 12.5]], "9000"),
+                    line_feature([[-77.02, 38.91], [-76.98, 38.91]], "4000", 2),
+                ]
+            )
+        )
+    )
+    result = install(
+        tmp_path, "--volume", str(counts), "--volume-source", "ddot", "--volume-year", "2024"
+    )
+    assert "Traceback" not in result.stderr, result.stderr
+    rows = json.loads((tmp_path / "data" / "reference" / "volume.json").read_text())
+    assert sorted(row["coordinates"] for row in rows) == [
+        [[-77.02, 38.90], [-76.98, 38.90]],
+        [[-77.02, 38.91], [-76.98, 38.91]],
+    ]
