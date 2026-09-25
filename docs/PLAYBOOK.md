@@ -54,6 +54,15 @@ On Windows, work inside WSL2 — `handoff-local.md` §3 has the setup and the th
 Skip §1's provisioning and §2's `https` redirect; do everything else as written, with `DATA_ROOT`
 pointing at a directory on a disk with room.
 
+- **The project name.** Every command here and in the checklist is a bare `docker compose`, and
+  compose names the project after the checkout's directory. A checkout that is not called
+  `RouteMaker` (a git worktree, `/srv/routemaker/app`) gets a different project from the one an
+  earlier `up` in another directory created, and `docker compose exec` then finds no containers.
+  Put `COMPOSE_PROJECT_NAME=routemaker` in `.env`; compose reads it from there.
+- **No `sudo`?** `scripts/prepare_data_root.sh` only needs root for its `chown`, and a container
+  can do that: `docker run --rm -v "$DATA_ROOT:$DATA_ROOT" -v "$PWD:/app" -w /app
+  debian:bookworm-slim sh scripts/prepare_data_root.sh --env-file .env`.
+
 ## 1. The host
 
 ```sh
