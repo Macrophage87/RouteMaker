@@ -1031,19 +1031,15 @@ def test_the_forms_that_file_warns_against_really_do_lose_the_dollar(
     assert render_password(tmp_path, 'PGPASSWORD="pa$w0rd"') == "pa"
 
 
-def test_the_example_recommends_the_form_it_was_measured_to_need(tmp_path) -> None:
-    """And says so in the file an operator is reading while they paste the
-    value, rather than only in a test."""
+def test_the_example_shows_the_form_it_was_measured_to_need(tmp_path) -> None:
+    """And shows it in the file an operator is reading while they paste the
+    value, rather than only in a test: the value the render above proves
+    delivers a `$` intact is one the file prints. The file's explanation of
+    why is prose and is not pinned here; two phrase pins of it are gone."""
     body = ENV_EXAMPLE.read_text()
     assert DOLLAR_LINE.replace("PGPASSWORD=", "") in body, (
         f"`.env.example` no longer shows {DOLLAR_LINE!r} as the form to use for a value "
         "containing a dollar sign"
-    )
-    assert "single quotes" in body
-    assert "strips a matching pair" in " ".join(body.split()), (
-        "`.env.example` no longer says compose's dotenv reader strips the quotes, which "
-        "is what makes the single-quoted form above work - it used to claim the "
-        "opposite, and the single-quoted form would be meaningless under that claim"
     )
 
 

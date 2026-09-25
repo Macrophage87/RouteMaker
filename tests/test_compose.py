@@ -227,26 +227,21 @@ def test_the_rebuild_sees_every_directory_it_writes_at_the_path_its_settings_ass
     assert "./lua:/conf/lua:ro" in volumes and "./valhalla:/conf:ro" in volumes
 
 
-def test_no_comment_in_the_file_still_says_the_rebuild_takes_the_whole_volume() -> None:
-    """The file's own prose, checked against the file's own mounts.
-
-    `rebuild` bound `${DATA_ROOT}` whole at /data until wave 6 - so the
+def test_no_service_binds_the_whole_data_volume() -> None:
+    """`rebuild` bound `${DATA_ROOT}` whole at /data until wave 6 - so the
     container that shells out to six Valhalla binaries for six hours could read
     Caddy's TLS private key, PGDATA and the nightly dumps. It binds five
-    directories now, and four comments went on describing the old arrangement:
-    three on the Valhalla services explaining where `current` resolves, and the
-    rebuild service's own header. A comment that describes a mount the file no
-    longer has is read as documentation of what is there.
+    directories now. Asserted of every service, not only the one that did it.
+    (A pin that no comment in the file said "mounts the whole data volume" is
+    gone: it guarded one wording of a comment, not the mount.)
     """
-    sources = {volume.split(":", 1)[0] for volume in SERVICES["rebuild"]["volumes"]}
-    assert "${DATA_ROOT}" not in sources, (
-        f"the rebuild binds the whole data volume again: {sorted(sources)}"
-    )
-    text = (REPO / "compose.yaml").read_text()
-    assert "mounts the whole data volume" not in text, (
-        "a comment in compose.yaml still says a service mounts the whole data volume, "
-        f"while the rebuild binds {sorted(sources)}"
-    )
+    whole = [
+        name
+        for name, service in SERVICES.items()
+        for volume in service.get("volumes") or []
+        if volume.split(":", 1)[0].rstrip("/") == "${DATA_ROOT}"
+    ]
+    assert not whole, f"these bind the whole data volume: {whole}"
 
 
 def test_the_backup_lands_on_the_data_volume() -> None:
