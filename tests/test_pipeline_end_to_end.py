@@ -2202,15 +2202,23 @@ def test_nothing_to_go_back_to_is_said_before_the_tiles_are_probed(
 def test_rollback_itself_refuses_where_it_cannot_write_the_tiles(workspace, states) -> None:
     """The same refusal from the function, for a caller that is not the
     command - a shell, the acceptance checklist. Nothing moves, so nothing has
-    to be put back and no undo note is attached."""
+    to be put back and no undo note is attached.
+
+    Nor is anything written back. A refusal that ran the undo would rewrite
+    every settings row to the values it already had - the same builds, a new
+    `updated_at` on the table the API watches - so the rows are compared
+    whole, timestamp included."""
+    from core.models import ValhallaUpstream
     from pipeline.promotion import TilesNotWritable, rollback
 
     source, root = workspace
     two_rebuilds(source, root)
+    rows_before = list(ValhallaUpstream.objects.order_by("variant").values())
 
     with read_only(root / "tiles" / Variant.EBIKE.value):
         with pytest.raises(TilesNotWritable) as refused:
             rollback(root / "tiles")
+    assert list(ValhallaUpstream.objects.order_by("variant").values()) == rows_before
     assert not getattr(refused.value, "__notes__", None), refused.value.__notes__
     assert_served_as_the_second_rebuild_left_it(root)
 
