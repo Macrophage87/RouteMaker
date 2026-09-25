@@ -552,3 +552,75 @@ def test_the_stages_that_write_the_jurisdiction_annotation_are_in_this_order() -
 
     order = list(Stage)
     assert order.index(Stage.TAG_JURISDICTIONS) < order.index(Stage.APPLY_OVERRIDES)
+
+
+def test_with_no_polygon_loaded_the_stage_asks_nothing_and_says_so(
+    tmp_path, monkeypatch, caplog
+) -> None:
+    """A fresh deployment has no jurisdiction polygon until an admin enters
+    one, and the first rebuild on a real host spent 35 minutes issuing a
+    spatial query per way - 1.3 million of them - that could only return
+    nothing. The answer is the empty assignment for every way, known without
+    asking; and the stage says why every way came out with no authority."""
+    import logging
+
+    from pipeline import jurisdiction
+    from pipeline.extract import Way
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, build_handlers
+
+    assert not jurisdiction.has_polygons(), "the premise: an empty table"
+
+    def refuse(geometry):
+        raise AssertionError("assign_way was queried with no polygon loaded")
+
+    monkeypatch.setattr(jurisdiction, "assign_way", refuse)
+    way = Way(
+        osm_id=1,
+        tags={"highway": "residential", "_jurisdictions": "Somewhere Else"},
+        node_ids=[1, 2],
+    )
+    way.coordinates = [(-77.04, 38.90), (-77.02, 38.90)]
+    way.located = [0, 1]
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = [way]
+    context.ways_by_id = {way.osm_id: way}
+
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        build_handlers(context, load_overrides=lambda: [])[Stage.TAG_JURISDICTIONS]()
+
+    from pipeline.run import MIN_JURISDICTION_FRACTION, authorities_for
+
+    expected = ",".join(sorted(authorities_for([], MIN_JURISDICTION_FRACTION)))
+    assert way.tags["_jurisdictions"] == expected, "the source's key is still replaced"
+    assert any("no jurisdiction polygons" in r.getMessage() for r in caplog.records)
+
+
+def test_with_a_polygon_loaded_the_stage_still_asks(authorities, tmp_path, monkeypatch) -> None:
+    from pipeline import jurisdiction
+    from pipeline.extract import Way
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, build_handlers
+
+    asked = []
+    real = jurisdiction.assign_way
+    monkeypatch.setattr(jurisdiction, "assign_way", lambda g: asked.append(g) or real(g))
+    way = Way(osm_id=1, tags={"highway": "residential"}, node_ids=[1, 2])
+    way.coordinates = [(-77.04, 38.90), (-77.02, 38.90)]
+    way.located = [0, 1]
+    context = RebuildContext(
+        source_pbf=tmp_path / "source.osm.pbf",
+        work_dir=tmp_path / "work",
+        reference_dir=tmp_path / "reference",
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = [way]
+    context.ways_by_id = {way.osm_id: way}
+    build_handlers(context, load_overrides=lambda: [])[Stage.TAG_JURISDICTIONS]()
+    assert len(asked) == 1
+    assert "MPD" in way.tags["_jurisdictions"].split(",")

@@ -760,12 +760,25 @@ def build_handlers(
         """
         from django.contrib.gis.geos import LineString
 
-        from .jurisdiction import assign_way
+        from .jurisdiction import assign_way, has_polygons
+
+        # With no polygon loaded every way's answer is known before asking:
+        # the empty assignment. A fresh deployment has none until an instance
+        # admin enters them (PLAN.md phase 3 is the layer work), and the first
+        # rebuild on a real host spent 35 minutes here on 1.3 million queries
+        # that could only return nothing - and said nothing about why every
+        # way came out with no authority.
+        loaded = has_polygons()
+        if not loaded:
+            logger.warning(
+                "no jurisdiction polygons are loaded, so every way is assigned no police, "
+                "right-of-way or park authority; enter them in the admin's Jurisdiction page"
+            )
 
         for way in context.ways:
             if len(way.coordinates) < 2:
                 continue
-            assignments = assign_way(LineString(way.coordinates, srid=4326))
+            assignments = assign_way(LineString(way.coordinates, srid=4326)) if loaded else []
             # Assigned, not defaulted. `_jurisdictions` is this pipeline's own
             # key (`extract.INTERNAL_PREFIX`), and the only thing that can have
             # put one on a way before this stage runs is the source PBF: OSM

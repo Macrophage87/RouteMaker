@@ -72,6 +72,13 @@ class LayerAssignment:
     fraction: float
 
 
+def has_polygons() -> bool:
+    """Whether any jurisdiction polygon is loaded at all."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT EXISTS (SELECT 1 FROM jurisdiction)")
+        return bool(cursor.fetchone()[0])
+
+
 def assign_way(geometry: LineString) -> list[LayerAssignment]:
     """Which authority covers this way, per layer, by share of its length.
 
