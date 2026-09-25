@@ -2629,6 +2629,22 @@ class TestARefusedBulkActionNamesTheActionAttempted:
         assert entry.action == attempted[:width]
         assert attempted in entry.detail, "the full name survives in the detail"
 
+    def test_a_refusal_that_named_no_action_still_names_something(
+        self, as_guild_admin, rows
+    ) -> None:
+        """A POST with a selection and no action at a changelist the viewer
+        cannot read is refused all the same. Its row must not come out with an
+        empty action - "refused  over POST" is the SF10-1 row again, for the case
+        where nothing was named."""
+        response = as_guild_admin.post(
+            admin_url("core_auditlogentry_changelist"),
+            {"_selected_action": [str(rows["auditlogentry"].pk)], "index": "0"},
+        )
+        assert response.status_code == 403
+        entry = refusals().get()
+        assert entry.action
+        assert f"refused {entry.action} over" in entry.detail
+
 
 @db
 class TestAPaddedUrlCannotSuppressTheRefusalRow:
