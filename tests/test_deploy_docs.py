@@ -17,6 +17,15 @@ the only description of a procedure nobody has executed.
   is a script, and the thing worth testing about a list of directories is that
   it has not fallen behind the mounts it was derived from - so the list is
   checked against `compose.yaml`'s own mappings rather than restated here.
+
+What these tests may assert about a document, since round 10 found two of
+them defending sentences the code had made false: a command's argv (which
+service it runs in, which flags it passes, the order the commands come in), a
+value the document quotes that is read here from where it is configured, a
+path or a route that has to exist, and that a section is there at all. Never a
+phrase. A test that pins wording holds the guide to the state it was in when
+the test was written; when the code moves, it fails the correction rather than
+the defect.
 """
 
 from __future__ import annotations
@@ -39,9 +48,11 @@ DOCUMENTS = {
     "docs/DEPLOYMENT.md": DEPLOYMENT,
     "docs/DEVELOPMENT.md": DEVELOPMENT,
 }
-# Prose wraps at eighty columns in these files, so a sentence to look for is
-# almost always split across a newline. Matched against the unwrapped form.
-DEPLOYMENT_PROSE = " ".join(DEPLOYMENT.split())
+# Every guide, for the checks that hold for any command an operator is shown:
+# the playbook and the acceptance notes run the same commands as the three above.
+ALL_DOCUMENTS = {
+    f"docs/{path.name}": path.read_text() for path in sorted((REPO / "docs").glob("*.md"))
+}
 PREPARE = REPO / "scripts" / "prepare_data_root.sh"
 
 # `docker compose exec [-flags] <service> ...`, which is the shape every
@@ -237,20 +248,30 @@ def test_the_data_volume_commands_are_documented_against_a_container_that_has_on
     )
 
 
-def test_the_rollback_procedure_names_the_rebuild_service_specifically() -> None:
-    """The regressed line itself, pinned. It is the command an operator reaches
-    for at three in the morning after a bad promotion, and the dry run and the
-    `--confirm` are two separate lines that both have to be right."""
-    section = OPERATIONS.split("## Rolling back a rebuild", 1)
-    assert len(section) == 2, "docs/OPERATIONS.md has no rollback section"
-    lines = [line for line in section[1].splitlines() if "rollback_rebuild" in line]
-    invocations = [line for line in lines if "docker compose exec" in line]
-    assert len(invocations) >= 2, f"the dry run and the --confirm are not both shown: {lines}"
-    for line in invocations:
-        assert "exec -T rebuild " in line, (
-            f"the rollback is documented as `{line.strip()}`; only rebuild can write the "
-            "tile links it moves"
+def test_the_rollback_procedure_shows_the_dry_run_and_the_confirm_where_they_can_run() -> None:
+    """The command an operator reaches for at three in the morning after a bad
+    promotion, and the dry run and the `--confirm` are two separate commands
+    that both have to be right: both shown, and both in a service whose tiles
+    bind is read-write in the rendered configuration. That service used to be
+    written into this test by name."""
+    invocations = [
+        (service, line.split())
+        for service, line in documented_exec_invocations(
+            section(OPERATIONS, "## Rolling back a rebuild")
         )
+        if "rollback_rebuild" in line.split()
+    ]
+    confirms = [argv for _service, argv in invocations if "--confirm" in argv]
+    dry_runs = [argv for _service, argv in invocations if "--confirm" not in argv]
+    assert confirms and dry_runs, (
+        f"the rollback section does not show both the dry run and the --confirm: {invocations}"
+    )
+    binds = rendered_tiles_binds()
+    wrong = [(service, argv) for service, argv in invocations if binds.get(service) is not False]
+    assert not wrong, (
+        f"the rollback is documented in a service that cannot write the tile links it moves: "
+        f"{wrong}; the tiles binds are {binds}"
+    )
 
 
 def rendered_tiles_binds() -> dict[str, bool]:
@@ -312,8 +333,46 @@ def test_rollback_rebuild_is_documented_where_the_tiles_are_writable() -> None:
         f"rollback_rebuild is documented in {sorted(documented - writable)}, which cannot "
         f"write the tiles; the services that can are {sorted(writable)}"
     )
-    for command in ("rollback_rebuild", "run_rebuild_now", "install_reference_data"):
-        assert command in DEPLOYMENT, f"the table of what runs where omits {command}"
+
+
+def where_commands_run() -> dict[str, str]:
+    """docs/DEPLOYMENT.md's table of which command runs in which container, as
+    command -> service."""
+    lines = DEPLOYMENT.splitlines()
+    header = next(
+        (i for i, line in enumerate(lines) if line.startswith("| Command | Container |")), None
+    )
+    assert header is not None, "docs/DEPLOYMENT.md has no table of where each command runs"
+    rows = {}
+    for line in lines[header + 2 :]:
+        if not line.startswith("|"):
+            break
+        cells = [cell.strip().strip("`") for cell in line.split("|")[1:3]]
+        rows[cells[0]] = cells[1]
+    return rows
+
+
+def test_the_table_of_where_commands_run_names_real_commands_and_real_services() -> None:
+    """Each row is a command an operator will type and a container they will
+    type it into, so both halves have to exist: a management command Django
+    loads or a script in the repository, and a service in `compose.yaml` that
+    runs this project's own code. This replaces a check that three command
+    names appeared somewhere in the document."""
+    from django.core.management import get_commands
+
+    rows = where_commands_run()
+    assert rows, "the table of where each command runs is empty"
+    commands = get_commands()
+    ours = {name for name, service in SERVICES.items() if "build" in service}
+    for command, service in rows.items():
+        assert command in commands or (REPO / "scripts" / command).is_file(), (
+            f"the table names {command!r}, which is neither a management command nor a "
+            "script in scripts/"
+        )
+        assert service in ours, (
+            f"the table runs {command} in {service!r}, which is not one of the services "
+            f"built from this repository: {sorted(ours)}"
+        )
 
 
 def test_a_half_restored_swap_has_a_repair_run_where_the_tiles_are_writable() -> None:
@@ -497,16 +556,6 @@ def test_nothing_runs_a_recursive_chown_over_the_whole_data_root() -> None:
         )
 
 
-def test_the_script_refuses_to_run_without_an_absolute_data_root() -> None:
-    """The script ends in a `chown` per directory it owns. With `DATA_ROOT`
-    unset or empty the argument that reaches each one is rooted at `/`, which
-    ends the host - which is why the guard is in the script and not only in the
-    document."""
-    body = PREPARE.read_text()
-    assert "${DATA_ROOT:?" in body, "the script no longer refuses an unset DATA_ROOT"
-    assert "must be an absolute path" in body, "the script no longer refuses a relative path"
-
-
 # Sourcing `.env` into a shell, in any of the spellings that do it. Prose is
 # allowed to name them - both documents explain at length why not to - so this
 # is matched against the shell snippets only.
@@ -544,28 +593,29 @@ def test_no_documented_command_sources_the_environment_file(name: str) -> None:
     )
 
 
-def test_the_prepare_script_reads_the_env_file_rather_than_sourcing_it() -> None:
-    """The option that let the guide stop sourcing, and the property that makes
-    it worth having: it never evaluates the file, so a `$`, a backtick or a
-    semicolon in a password beside the `DATA_ROOT=` line is a string it does not
-    touch."""
-    script = PREPARE.read_text()
-    assert "--env-file" in script, "scripts/prepare_data_root.sh takes no --env-file"
-    assert not SOURCES_ENV.search(script.split("set -eu", 1)[1]), (
-        "scripts/prepare_data_root.sh sources the file it was given instead of reading "
-        "one line out of it"
-    )
-    assert "sed -n" in script, (
-        "the script no longer extracts DATA_ROOT with sed; anything that evaluates the "
-        "file runs whatever is in the other values"
-    )
-    for name, body in DOCUMENTS.items():
-        for line in body.splitlines():
-            stripped = line.strip()
-            if "prepare_data_root.sh" in stripped and stripped.startswith(("sudo ", "sh ", "./")):
-                assert "--env-file" in stripped, (
-                    f"{name} runs the script without naming an env file: {stripped}"
-                )
+def test_every_documented_run_of_the_prepare_script_names_the_env_file() -> None:
+    """The option that let the guides stop sourcing `.env`, on every command
+    that runs the script, read as argv. That the script reads the file without
+    evaluating it is run, not read, in tests/test_prepare_data_root.py; this
+    used to grep the script for `sed -n`."""
+    runs = [
+        (name, tokens)
+        for name, body in ALL_DOCUMENTS.items()
+        for tokens in snippet_commands(body) + inline_commands(body)
+        if tokens[0] in {"sudo", "sh"}
+        and any(token.endswith("prepare_data_root.sh") for token in tokens)
+    ]
+    assert runs, "no guide runs scripts/prepare_data_root.sh any more"
+    for name, tokens in runs:
+        script = next(i for i, token in enumerate(tokens) if token.endswith("prepare_data_root.sh"))
+        arguments = tokens[script + 1 :]
+        named = (arguments[:1] == ["--env-file"] and len(arguments) >= 2) or (
+            bool(arguments) and arguments[0].startswith("--env-file=")
+        )
+        assert named, (
+            f"{name} runs the script without naming an env file: {' '.join(tokens)}; with "
+            "DATA_ROOT unset it refuses, and the way round that is sourcing .env"
+        )
 
 
 def test_every_documented_data_root_snippet_has_the_value_from_somewhere() -> None:
@@ -594,25 +644,35 @@ def test_every_documented_data_root_snippet_has_the_value_from_somewhere() -> No
 # --- The figures the host is sized from --------------------------------------
 
 
-def test_the_deployment_doc_carries_the_plans_host_and_the_gate_it_implies() -> None:
-    """Three numbers that are assumptions in the repository rather than
-    aspirations: the RAM figure `scripts/check_compose_limits.py` fails against,
-    the core count the CPU limits are written for, and the volume the rebuild's
-    disk gate is sized against."""
-    for figure in ("8 vCPU", "32 GB", "200 GB"):
-        assert figure in DEPLOYMENT, f"the host requirements omit {figure}"
-    assert "HOST_RAM_GB = 32" in DEPLOYMENT, (
-        "the 32 GB figure is not tied to the script that enforces it"
-    )
+def load_script(name: str):
+    """A module out of scripts/, which is not a package."""
+    import importlib.util
 
-    script = (REPO / "scripts" / "check_compose_limits.py").read_text()
-    assert "HOST_RAM_GB = 32" in script, (
-        "scripts/check_compose_limits.py no longer assumes 32 GB; docs/DEPLOYMENT.md says it does"
+    spec = importlib.util.spec_from_file_location(name, REPO / "scripts" / f"{name}.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_the_host_requirements_quote_the_figures_the_repository_enforces() -> None:
+    """Two numbers in the host requirements are enforced by something here, and
+    both are read from where they are enforced: the RAM figure
+    `scripts/check_compose_limits.py` fails against, and the free-space gate
+    compose gives the rebuild. The plan's vCPU and volume figures are the
+    plan's and are not checked by anything, so this no longer pins them as
+    strings."""
+    body = section(DEPLOYMENT, "## Host requirements")
+    ram = load_script("check_compose_limits").HOST_RAM_GB
+    assert f"HOST_RAM_GB = {ram}" in body, (
+        f"scripts/check_compose_limits.py fails a stack above {ram} GB and the host "
+        "requirements quote a different figure, or none"
     )
+    assert f"{ram} GB" in body, f"the host requirements do not state {ram} GB of RAM"
 
     default = SERVICES["rebuild"]["environment"]["REBUILD_MIN_FREE_BYTES"]
     documented = default.removeprefix("${REBUILD_MIN_FREE_BYTES:-").removesuffix("}")
-    assert documented in DEPLOYMENT, (
+    assert documented.isdigit(), f"compose's REBUILD_MIN_FREE_BYTES is not a default: {default}"
+    assert documented in body, (
         f"compose defaults REBUILD_MIN_FREE_BYTES to {documented} and the host requirements "
         "section names a different number"
     )
@@ -624,40 +684,32 @@ def test_the_photon_pin_and_what_it_is_serving_are_both_written_down() -> None:
     stack should find that out here rather than by querying it."""
     image = SERVICES["photon"]["image"]
     assert not image.endswith(":latest"), "the photon image is unpinned again"
-    assert image in DEPLOYMENT, f"docs/DEPLOYMENT.md does not record the pin {image}"
-    assert "PLAN:60" in DEPLOYMENT, "the unbuilt index is not tied to the plan line"
+    assert image in section(DEPLOYMENT, "## Photon"), (
+        f"docs/DEPLOYMENT.md's Photon section does not record the pin {image}"
+    )
+    # The citation, resolved: the plan line it names has to be the geocoder's.
+    cited = {int(n) for n in re.findall(r"PLAN(?:\.md)?:(\d+)\b", section(DEPLOYMENT, "## Photon"))}
+    plan = (REPO / "PLAN.md").read_text().splitlines()
+    assert cited, "the Photon section cites no plan line for the unbuilt index"
+    for line in cited:
+        assert "Photon" in plan[line - 1], (
+            f"the Photon section cites PLAN.md:{line}, which is not about Photon: "
+            f"{plan[line - 1][:120]!r}"
+        )
 
 
-def test_the_entry_points_are_documented_because_the_root_path_is_a_404() -> None:
-    """`config/urls.py` routes the admin and three auth paths and nothing else,
-    so a first deployment that checks `/` sees a 404 on a stack that is working.
-    Derived from the URLconf so this cannot quietly become untrue."""
-    urls = (REPO / "src" / "config" / "urls.py").read_text()
-    assert 'path("", ' not in urls, "there is a root route now; the 404 note is stale"
-    assert "/auth/login" in DEPLOYMENT and "404" in DEPLOYMENT
-    assert "DJANGO_ADMIN_PATH" in DEPLOYMENT
+def test_the_root_path_is_a_404_as_the_entry_points_section_says() -> None:
+    """`config/urls.py` routes the admin, the health check and three auth paths
+    and nothing else, so a first deployment that checks `/` sees a 404 on a
+    stack that is working, and docs/DEPLOYMENT.md says where to look instead.
+    Resolved through the URLconf, which is the thing that would change; the
+    paths the section sends a reader to are resolved by
+    `test_every_path_the_guides_send_an_operator_to_is_routed`."""
+    from django.urls import Resolver404, resolve
 
-
-def test_the_pipeline_image_is_not_described_as_debian() -> None:
-    """It is `FROM ghcr.io/valhalla/valhalla:3.5.1`, whose runner stage is
-    ubuntu:24.04, and `osmium-tool` is a noble package there. The api image is
-    the Debian one."""
-    assert "Debian's `osmium-tool`" not in OPERATIONS
-    assert "Ubuntu's `osmium-tool`" in OPERATIONS
-
-
-def test_the_api_dockerfile_does_not_still_say_there_is_no_static_root() -> None:
-    """A comment describing a fixed defect as a current one, which is worse than
-    no comment: `settings.STATIC_ROOT` is `DATA_ROOT / "static"` and the
-    `collectstatic` deploy step runs. Read from settings rather than trusted."""
-    from django.conf import settings
-
-    assert settings.STATIC_ROOT, "settings defines no STATIC_ROOT; the comment was right"
-    # Comment markers stripped before the lines are joined, so a claim wrapped
-    # across two `#` lines is still found as one sentence.
-    lines = (REPO / "docker" / "api.Dockerfile").read_text().splitlines()
-    prose = " ".join(" ".join(line.lstrip().lstrip("#").split()) for line in lines)
-    assert "cannot run yet because settings.py defines no STATIC_ROOT" not in prose
+    with pytest.raises(Resolver404):
+        resolve("/")
+    section(DEPLOYMENT, "## What the deployment serves")
 
 
 # --- The osmium commands, as the documents print them ------------------------
@@ -802,28 +854,64 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
 # --- Rolling a release back ---------------------------------------------------
 
 
-def test_no_document_calls_a_tag_rollback_a_restart() -> None:
+def test_every_documented_tag_change_is_applied_with_up() -> None:
     """`docker compose restart` restarts the containers that exist, on the
     image they were created from. A rollback moves `TAG`, which changes which
     image the service should run, and only `up -d` acts on that: it re-reads
     `.env`, sees the image has changed and recreates the container. Documented
     as a restart, the rollback is a stack that reports success and goes on
     serving the release it was rolling back from.
+
+    Read off the commands rather than the sentences around them: every command
+    in a guide that sets `TAG` is an `up -d`. This used to split the prose into
+    sentences and look for the words "TAG", "rollback" and "restart" together.
     """
-    for name, body in DOCUMENTS.items():
-        prose = " ".join(body.split())
-        for sentence in re.split(r"(?<=[.:]) ", prose):
-            if "TAG" not in sentence or "rollback" not in sentence.lower():
-                continue
-            assert "restart" not in sentence.lower(), (
-                f"{name} gives a TAG rollback as a restart: {sentence!r}. It is "
-                "`docker compose up -d`; a restart reuses the image the container was "
-                "created from"
-            )
-            assert "up -d" in sentence, (
-                f"{name} describes a TAG rollback without naming `docker compose up -d`: "
-                f"{sentence!r}"
-            )
+    tagged = [
+        (name, tokens)
+        for name, body in ALL_DOCUMENTS.items()
+        for tokens in snippet_commands(body) + inline_commands(body)
+        if tokens[0].startswith("TAG=") and len(tokens) > 1
+    ]
+    assert tagged, "no guide shows a command that sets TAG, so this checks nothing"
+    for name, tokens in tagged:
+        command = [token for token in tokens if not re.match(r"^[A-Z_]+=", token)]
+        assert command[:4] == ["docker", "compose", "up", "-d"], (
+            f"{name} applies a TAG change with `{' '.join(tokens)}`; only `docker compose "
+            "up -d` recreates a container on the image the new tag names"
+        )
+
+
+def test_every_documented_restart_is_of_the_routers_that_load_tiles_at_start() -> None:
+    """A restart is right for exactly one thing in this stack: the three
+    `valhalla_service` containers open the promoted tiles once, at start, so
+    after a rebuild or a rollback they have to be restarted to see the new
+    build - all three, or one variant keeps serving the old graph. For anything
+    that reads `.env`, a restart keeps the environment the container was
+    created with, which is the mistake the guides warn about in prose.
+
+    Derived from `compose.yaml`: the services that bind a promoted `current`
+    tile directory are the ones a restart is for, and every documented
+    `docker compose restart` names exactly that set."""
+    routers = {
+        name
+        for name, service in SERVICES.items()
+        for volume in service.get("volumes") or []
+        if re.match(r"^\$\{DATA_ROOT\}/tiles/[^/]+/current:", volume)
+    }
+    assert routers, "no service binds a promoted tile directory"
+    restarts = [
+        (name, tokens)
+        for name, body in ALL_DOCUMENTS.items()
+        for tokens in snippet_commands(body)
+        if tokens[:3] == ["docker", "compose", "restart"]
+    ]
+    assert restarts, "no guide restarts the routers after a rebuild"
+    for name, tokens in restarts:
+        named = {token for token in tokens[3:] if not token.startswith("-")}
+        assert named == routers, (
+            f"{name} runs `{' '.join(tokens)}`; the services that load tiles at start, "
+            f"which are the only ones a restart is for, are {sorted(routers)}"
+        )
 
 
 # --- Numbers and inputs the documents share with the code ---------------------
@@ -836,25 +924,25 @@ def test_the_documented_urban_fraction_is_the_installers_own_constant() -> None:
     urban against 50 rural, so under the documented rule a Loudoun through road
     with a hundred metres inside Leesburg's polygon reads urban end to end,
     which is the lower-stress reading of an ambiguous input on every mile of it.
+
+    The constant is quoted with its value, read from the installer; what the
+    words around it say is the reader's to judge, and two phrase pins about
+    them are gone.
     """
-    import importlib.util
+    fraction = load_script("install_reference_data").MIN_URBAN_FRACTION
+    quoted = re.findall(
+        r"MIN_URBAN_FRACTION = ([0-9.]+)", section(DEVELOPMENT, "## Reference data")
+    )
+    assert quoted, "docs/DEVELOPMENT.md's reference-data section does not quote MIN_URBAN_FRACTION"
+    assert {float(value) for value in quoted} == {fraction}, (
+        f"docs/DEVELOPMENT.md quotes MIN_URBAN_FRACTION as {quoted} and the installer's "
+        f"constant is {fraction}"
+    )
 
-    spec = importlib.util.spec_from_file_location(
-        "install_reference_data", REPO / "scripts" / "install_reference_data.py"
-    )
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
 
-    fraction = module.MIN_URBAN_FRACTION
-    assert f"MIN_URBAN_FRACTION = {fraction}" in DEVELOPMENT, (
-        f"docs/DEVELOPMENT.md does not name the constant it is describing ({fraction})"
-    )
-    assert "at least half their" in DEVELOPMENT, (
-        "docs/DEVELOPMENT.md no longer states the majority-of-length rule in words"
-    )
-    assert "Intersection rather than containment" not in DEVELOPMENT, (
-        "docs/DEVELOPMENT.md still states the pre-wave-5 intersection rule"
-    )
+def flag_values(tokens: list[str], flag: str) -> list[str]:
+    """Every value given to a repeated option, in order."""
+    return [tokens[i + 1] for i, token in enumerate(tokens[:-1]) if token == flag]
 
 
 def test_the_first_host_procedure_installs_both_agencies_volume_files() -> None:
@@ -862,15 +950,41 @@ def test_the_first_host_procedure_installs_both_agencies_volume_files() -> None:
     leaves the precedence rule nothing to arbitrate, which is the whole reason
     `--volume` and its two companions repeat. The procedure installed VDOT
     alone.
+
+    Read as argv, from every guide that runs the installer: at least two
+    distinct agencies, each one the installer knows (`SOURCE_TIERS`, which is
+    what it refuses an unknown agency against), one `--volume-source` per
+    `--volume`, and a `--volume-year` once or once per file, which is how it
+    pairs them up.
     """
-    step = OPERATIONS.split("First rebuild on a fresh host", 1)[1].split("\n## ", 1)[0]
-    sources = re.findall(r"--volume-source\s+(\S+)", step)
-    assert len(sources) >= 2, (
-        f"the first-host procedure installs {sources or 'no'} agency volume file(s); with "
-        "one agency the conflation step has nothing to arbitrate"
+    known = set(load_script("install_reference_data").SOURCE_TIERS)
+    runs = [
+        (name, tokens)
+        for name, body in ALL_DOCUMENTS.items()
+        for tokens in snippet_commands(body)
+        if "scripts/install_reference_data.py" in tokens and "--volume" in tokens
+    ]
+    assert any(name == "docs/OPERATIONS.md" for name, _ in runs), (
+        "the first-host procedure in docs/OPERATIONS.md installs no volume files"
     )
-    assert len(set(sources)) == len(sources), f"the same agency twice: {sources}"
-    assert {"vdot", "ddot"} <= set(sources), f"the two the docstring's example installs: {sources}"
+    for name, tokens in runs:
+        volumes, sources, years = (
+            flag_values(tokens, "--volume"),
+            flag_values(tokens, "--volume-source"),
+            flag_values(tokens, "--volume-year"),
+        )
+        assert len(set(sources)) >= 2 and len(set(sources)) == len(sources), (
+            f"{name} installs the agencies {sources}; with one agency, or one twice, the "
+            "conflation step has nothing to arbitrate"
+        )
+        assert set(sources) <= known, (
+            f"{name} names agencies the installer refuses: {sorted(set(sources) - known)}"
+        )
+        assert len(sources) == len(volumes) and len(years) in {0, 1, len(volumes)}, (
+            f"{name} passes {len(volumes)} --volume, {len(sources)} --volume-source and "
+            f"{len(years)} --volume-year; the installer takes a companion once or once "
+            "per file, and distinct agencies are once per file"
+        )
 
 
 def test_the_reference_inputs_are_named_by_a_path_the_container_can_resolve() -> None:
@@ -894,9 +1008,9 @@ def test_the_reference_inputs_are_named_by_a_path_the_container_can_resolve() ->
 # the prose sentence above the block as well.
 CRON_SCHEDULE = re.compile(r"^(?:[\d*/,\-]+\s+){5}\S")
 
+# Prose wraps at eighty columns in these files, so a figure the text attaches
+# to a name can sit on the next line. Matched against the unwrapped form.
 OPERATIONS_PROSE = " ".join(OPERATIONS.split())
-DEVELOPMENT_PROSE = " ".join(DEVELOPMENT.split())
-ENV_EXAMPLE = (REPO / ".env.example").read_text()
 
 
 def test_the_cron_entry_finds_the_compose_project() -> None:
@@ -924,18 +1038,6 @@ def test_the_cron_entry_finds_the_compose_project() -> None:
             assert line.index("cd ") < line.index("docker compose"), line
 
 
-def test_the_deployment_doc_does_not_bless_a_cron_entry_that_cannot_run() -> None:
-    """docs/DEPLOYMENT.md's table of which command runs where used to end the
-    `check_operations` row with "the cron entry in docs/OPERATIONS.md stays as
-    written", which was a second document vouching for the broken line."""
-    rows = [line for line in DEPLOYMENT.splitlines() if line.startswith("| `check_operations`")]
-    assert len(rows) == 1, f"expected one check_operations row, found {len(rows)}"
-    assert "stays as written" not in rows[0], rows[0]
-    assert "cd" in rows[0], (
-        f"the row says nothing about the working directory the entry needs: {rows[0]}"
-    )
-
-
 def test_the_documents_quote_the_grace_period_the_stack_actually_gives(tmp_path) -> None:
     """Both documents explain what a `down` or an `up -d` does to a running
     rebuild in terms of a number that lives in `compose.yaml`. Quoted, not
@@ -948,41 +1050,23 @@ def test_the_documents_quote_the_grace_period_the_stack_actually_gives(tmp_path)
         assert quoted in body, f"{name} does not quote `{quoted}`"
 
 
-def test_both_documents_point_a_wedged_rebuild_at_the_command_that_frees_it() -> None:
-    """A SIGKILL mid-build leaves the `weekly_rebuild` row `doing` with no
-    worker behind it, and no grace period covers a six-hour build - so the
-    residual is a documented repair rather than a fix. Every place that warns
-    about the stop has to name it, or the warning ends in a shrug."""
-    assert OPERATIONS.count("unwedge_job") >= 2, (
-        "docs/OPERATIONS.md names unwedge_job fewer than twice: the wedged-job surface "
-        "and the warning against stopping a running rebuild both need it"
-    )
-    assert "unwedge_job" in DEPLOYMENT, (
-        "docs/DEPLOYMENT.md warns that moving TAG recreates the rebuild container "
-        "without saying what frees the job that leaves behind"
-    )
-
-
 def test_the_dropped_tick_is_documented_with_procrastinates_own_number() -> None:
     """A stack down across Tuesday 08:00 UTC loses that week's rebuild rather
     than catching it up: the periodic deferrer ignores any tick further in the
     past than `procrastinate.periodic.MAX_DELAY`. Read from the library, so the
-    figure in the runbook cannot outlive an upgrade that changes it."""
+    figure in the runbook cannot outlive an upgrade that changes it.
+
+    The figure is the one after the name, wherever the runbook gives it; the
+    paragraph's other words, and a pin that it named `run_rebuild_now`, are
+    not this test's business."""
     from procrastinate import periodic
 
-    assert "MAX_DELAY" in OPERATIONS, (
-        "docs/OPERATIONS.md does not say that a missed tick is dropped rather than deferred late"
-    )
     minutes = periodic.MAX_DELAY // 60
-    paragraph = OPERATIONS_PROSE.split("MAX_DELAY", 1)[1][:900]
-    assert f"{minutes} minutes" in paragraph, (
-        f"procrastinate drops a tick more than {minutes} minutes late and the paragraph "
-        f"that names MAX_DELAY states a different figure: {paragraph[:200]!r}"
-    )
-    catch_up = paragraph
-    assert "run_rebuild_now" in catch_up, (
-        "the dropped-tick paragraph does not name the hand-fired rebuild that is the "
-        "catch-up for it"
+    quoted = re.findall(r"MAX_DELAY\b[^\d.]{0,30}?(\d+) minutes", OPERATIONS_PROSE)
+    assert quoted, "docs/OPERATIONS.md does not give procrastinate's MAX_DELAY as a figure"
+    assert {int(value) for value in quoted} == {minutes}, (
+        f"procrastinate drops a tick more than {minutes} minutes late and docs/OPERATIONS.md "
+        f"gives MAX_DELAY as {quoted} minutes"
     )
 
 
@@ -991,12 +1075,24 @@ def test_the_first_boot_window_is_the_one_the_health_check_declares() -> None:
     `migrate` failed, and quotes the start period as the reason. The start
     period is what makes first-boot probe failures not count against the
     retries; deleted, a slow initdb is a `postgis` marked unhealthy and three
-    services that never start."""
+    services that never start.
+
+    Every figure a guide attaches to a start period is compose's, however the
+    sentence around it is worded."""
     start = SERVICES["postgis"]["healthcheck"].get("start_period")
     assert start, "the database health check has no start period"
     seconds = int(str(start).rstrip("s"))
-    assert f"start period is {seconds} seconds" in OPERATIONS_PROSE, (
-        f"the health check declares a {start} start period and the runbook states something else"
+    quoted = [
+        (name, int(value))
+        for name, body in ALL_DOCUMENTS.items()
+        for value in re.findall(
+            r"start[ _]period\b\D{0,20}?(\d+)\s*(?:s\b|seconds)", " ".join(body.split())
+        )
+    ]
+    assert quoted, "no guide gives the database's start period as a figure"
+    wrong = [(name, value) for name, value in quoted if value != seconds]
+    assert not wrong, (
+        f"the health check declares a {start} start period and the guides give {wrong}"
     )
 
 
@@ -1022,12 +1118,12 @@ def test_the_password_rotation_alters_the_role_before_it_edits_the_file() -> Non
         "the snippet edits .env before it alters the role; the ALTER has to run under "
         f"the old password, which only the running container still has: {block!r}"
     )
-    assert "up -d" in block and "restart" not in block, (
-        f"a restarted container keeps the environment it was created with: {block!r}"
+    commands = snippet_commands(f"```sh\n{block}```")
+    assert any(tokens[:4] == ["docker", "compose", "up", "-d"] for tokens in commands), (
+        f"the snippet never recreates the containers with `up -d`: {block!r}"
     )
-    assert "ALTER ROLE" in ENV_EXAMPLE, (
-        ".env.example lets an operator edit PGPASSWORD with no note that the database "
-        "will not follow it"
+    assert not any(tokens[:3] == ["docker", "compose", "restart"] for tokens in commands), (
+        f"a restarted container keeps the environment it was created with: {block!r}"
     )
 
 
@@ -1040,7 +1136,9 @@ def test_the_tombstone_key_is_documented_as_what_the_table_makes_it() -> None:
 
     The claim is checked against the model rather than restated, so the day a
     column is added that *would* make a rotation possible, this fails and the
-    paragraph gets rewritten rather than staying pessimistic."""
+    paragraph gets rewritten rather than staying pessimistic. (Whether to add
+    one is the owner's decision; this only holds the paragraph to the table.)
+    Three pins of the paragraph's wording are gone."""
     from core.models import BanTombstone
 
     fields = {field.name for field in BanTombstone._meta.fields}
@@ -1048,34 +1146,56 @@ def test_the_tombstone_key_is_documented_as_what_the_table_makes_it() -> None:
         f"BanTombstone now stores {sorted(fields)}; docs/DEVELOPMENT.md says a rotation "
         "is unrecoverable because the id the digest covers is kept nowhere"
     )
-    assert "which is a re-tombstoning job and not a restart" not in DEVELOPMENT_PROSE, (
-        "docs/DEVELOPMENT.md still claims the rotation is a job that could be run"
-    )
-    assert "not rotatable in phase 1" in DEVELOPMENT_PROSE, (
-        "docs/DEVELOPMENT.md does not say plainly that the key cannot be rotated"
-    )
-    assert "re-admit every banned account" in DEVELOPMENT_PROSE, (
-        "the paragraph does not say what a rotation actually does"
-    )
+    section(DEVELOPMENT, "### `KEY_ENCRYPTION_KEY` — required, no default")
 
 
 def test_the_secret_key_rotation_is_documented_as_signing_everyone_out() -> None:
     """Sessions are database-backed and signed with `SECRET_KEY`, and
     `settings.py` declares no `SECRET_KEY_FALLBACKS`, so every session fails to
-    decode after a rotation. Derived from the settings source, because a
-    fallback list added later would make the sentence wrong."""
-    settings_source = (REPO / "src" / "config" / "settings.py").read_text()
-    assert "SECRET_KEY_FALLBACKS" not in settings_source, (
-        "settings.py now declares SECRET_KEY_FALLBACKS, so a rotation no longer ends "
-        "every session and both documents say it does"
+    decode after a rotation. Read from the loaded settings, because a fallback
+    list added later would make both guides' paragraph wrong; it used to grep
+    the settings source and pin the setting's name in both guides."""
+    from django.conf import settings
+
+    assert not settings.SECRET_KEY_FALLBACKS, (
+        f"settings declare SECRET_KEY_FALLBACKS {settings.SECRET_KEY_FALLBACKS!r}, so a "
+        "rotation no longer ends every session and docs/DEPLOYMENT.md and "
+        "docs/DEVELOPMENT.md both say it does"
     )
-    for name, prose in (
-        ("docs/DEPLOYMENT.md", DEPLOYMENT_PROSE),
-        ("docs/DEVELOPMENT.md", DEVELOPMENT_PROSE),
-    ):
-        assert "SECRET_KEY_FALLBACKS" in prose, (
-            f"{name} does not say why a rotation ends every session"
-        )
+
+
+def secrets_a_running_service_holds() -> set[str]:
+    """Every `.env` variable that a service outside the `unbuilt` profile
+    receives and whose name says it is a secret."""
+    held = set()
+    for service in SERVICES.values():
+        if "unbuilt" in (service.get("profiles") or []):
+            continue
+        for value in (service.get("environment") or {}).values():
+            for name in re.findall(r"\$\{([A-Z][A-Z0-9_]*)", str(value)):
+                if re.search(r"SECRET|PASSWORD|TOKEN|_KEY$", name):
+                    held.add(name)
+    return held
+
+
+def test_the_rotation_section_covers_every_secret_a_running_service_holds() -> None:
+    """`DISCORD_CLIENT_SECRET` is the fifth secret in `.env` and the only one
+    issued by somebody else, and the rotation section listed four. Derived now
+    from what compose hands the services that run, so the next secret added to
+    the stack is missing from the section until someone writes down what
+    rotating it costs. This used to pin that one name and the words `up -d`
+    and `restart` after it."""
+    held = secrets_a_running_service_holds()
+    assert {"PGPASSWORD", "DJANGO_SECRET_KEY"} <= held, (
+        f"the derivation stopped finding secrets: {sorted(held)}"
+    )
+    body = section(DEPLOYMENT, "## Secrets, and what rotating one costs")
+    named = set(re.findall(r"`([A-Z][A-Z0-9_]*)`", body))
+    missing = sorted(held - named)
+    assert not missing, (
+        f"these reach a running container and docs/DEPLOYMENT.md's rotation section says "
+        f"nothing about rotating them: {missing}"
+    )
 
 
 # --- Log rotation -------------------------------------------------------------
@@ -1084,47 +1204,34 @@ def test_the_secret_key_rotation_is_documented_as_signing_everyone_out() -> None
 def test_the_log_ceiling_in_the_document_is_the_one_compose_sets() -> None:
     """A per-container ceiling written down in one place and configured in
     another is a figure that drifts. Both options are quoted from
-    `compose.yaml`'s own anchor."""
+    `compose.yaml`'s own anchor, in the section about them."""
     options = SERVICES["rebuild"]["logging"]["options"]
-    assert "Log rotation" in DEPLOYMENT, "docs/DEPLOYMENT.md has no log-rotation section"
+    body = section(DEPLOYMENT, "## Log rotation")
     for option, value in sorted(options.items()):
-        assert f"{option}: {value}" in DEPLOYMENT, (
-            f"docs/DEPLOYMENT.md does not state `{option}: {value}`, which is what "
-            "compose.yaml configures"
+        assert f"{option}: {value}" in body, (
+            f"docs/DEPLOYMENT.md's log-rotation section does not state `{option}: {value}`, "
+            "which is what compose.yaml configures"
         )
 
 
 # --- Going back a release -----------------------------------------------------
 
 
-def test_the_migration_rule_the_rollback_depends_on_is_written_down() -> None:
+def test_the_migration_rule_the_rollback_depends_on_is_the_plan_line_cited() -> None:
     """Moving `TAG` back puts the old code in front of the new schema, and
     nothing runs a migration backwards. That is survivable only under PLAN:65's
-    backwards-compatible-migration rule, which lived in PLAN.md alone - so the
-    document that tells an operator to roll back by moving a tag never said
-    what makes it safe, or that the safety is a convention nothing enforces.
-
-    The plan line is read rather than cited blind."""
+    backwards-compatible-migration rule, and docs/DEPLOYMENT.md cites that line
+    as the reason: the citation is resolved here, so a plan edit that moves the
+    rule leaves the guide pointing at the wrong line and this fails. Three pins
+    of the paragraph's opening sentence and its words are gone."""
     plan = (REPO / "PLAN.md").read_text().splitlines()
     rule = plan[64]
     assert "backwards-compatible" in rule.lower() or "backward-compatible" in rule.lower(), (
         f"PLAN.md:65 is no longer the migration rule: {rule!r}"
     )
-    upgrade = DEPLOYMENT_PROSE.split("Moving `TAG` back does not undo a migration", 1)
-    assert len(upgrade) == 2, "docs/DEPLOYMENT.md no longer has the migration paragraph"
-    paragraph = upgrade[1][:1400]
-    # In the paragraph, not merely somewhere in the document: PLAN.md:65 is one
-    # long line and four other claims here cite it.
-    assert "PLAN.md:65" in paragraph, (
-        "the paragraph does not tie the rollback to the migration rule that makes it survivable"
-    )
-    assert "collectstatic" in paragraph, (
-        "the paragraph does not say that a rollback needs collectstatic re-run, which is "
-        "the same deploy step a build needs"
-    )
-    assert "not enforced" in paragraph or "stated and not enforced" in paragraph, (
-        "the paragraph presents the rule as something the suite checks; nothing reads a "
-        "migration and refuses a DROP COLUMN"
+    build = section(DEPLOYMENT, "## Build")
+    assert "PLAN.md:65" in build, (
+        "the build section's rollback paragraph no longer cites the migration rule"
     )
 
 
@@ -1155,43 +1262,52 @@ def section(text: str, heading: str) -> str:
     return "\n".join(lines[start:])
 
 
-def test_the_restore_runbook_restores_into_an_empty_database() -> None:
+def is_up(tokens: list[str]) -> bool:
+    return tokens[:4] == ["docker", "compose", "up", "-d"]
+
+
+def up_services(tokens: list[str]) -> list[str]:
+    """The services an `up -d` names; empty is the whole stack."""
+    return [token for token in tokens[4:] if not token.startswith("-")]
+
+
+def test_the_restore_runbook_restores_before_the_rest_of_the_stack_is_up() -> None:
     """The ordering is the runbook, and it is the part that cannot be fixed
     afterwards.
 
     On the stack's postgis image, a `pg_restore` into a database `migrate` had
-    already populated gave 172 errors and exit 1 - `pg_restore` carries on past
+    already populated gave errors and exit 1 - `pg_restore` carries on past
     each failing statement and applies the rest of the archive around it, so
-    the non-zero exit arrives after the damage is done. `django_content_type`,
-    `auth_permission` and `django_migrations` are all created by `migrate` and
-    all carried by the dump. The same archive into a database dropped and
-    recreated from template0 gave 0 errors. The exit codes themselves are
+    the non-zero exit arrives after the damage is done. The exit codes are
     measured, not read, by
     tests/test_worker_schedule.py::test_the_runbooks_restore_is_clean_into_an_
     empty_database_and_fails_into_a_full_one.
+
+    Read as argv: the first `up -d` names postgis alone, the `pg_restore` comes
+    before any `up -d` of the rest, and `collectstatic` - the assets are on the
+    volume and not in the dump - comes after it. This used to pin the error
+    counts the prose quotes, which round 10 re-measured as different.
     """
-    body = section(OPERATIONS, "## Restoring one")
-    commanded = "\n".join(shell_snippets(body))
-    assert "pg_restore" in commanded, (
-        "no command in the restore runbook runs pg_restore; the prose may mention it, "
-        "but the runbook is the snippet"
+    commands = snippet_commands(section(OPERATIONS, "## Restoring one"))
+    ups = [i for i, tokens in enumerate(commands) if is_up(tokens)]
+    assert ups, "the restore runbook never starts the stack"
+    assert up_services(commands[ups[0]]) == ["postgis"], (
+        f"the first `up -d` in the restore runbook is {' '.join(commands[ups[0]])!r}; "
+        "restoring into a database `migrate` has already run against collides on every "
+        "table both it and the dump create"
     )
-    commands = [line for line in body.splitlines() if "docker compose up -d" in line]
-    assert commands, "the restore runbook never starts the stack"
-    first, rest = commands[0], commands[1:]
-    assert "postgis" in first, (
-        f"the first `up -d` in the restore runbook is {first.strip()!r}; restoring into "
-        "a database `migrate` has already run against collides on every table both it "
-        "and the dump create, and pg_restore applies the rest of the archive around "
-        "every collision before it exits 1"
-    )
+    restore = next((i for i, tokens in enumerate(commands) if "pg_restore" in tokens), None)
+    assert restore is not None, "no command in the restore runbook runs pg_restore"
+    rest = [i for i in ups if not up_services(commands[i])]
     assert rest, "the runbook never brings the rest of the stack up after the restore"
-    assert all("postgis" not in line for line in rest), rest
-    for expected in ("empty", "0 errors", "172"):
-        assert expected in body, (
-            f"the restore runbook does not say {expected!r}, which is what makes the "
-            "ordering an instruction rather than a preference"
-        )
+    assert all(i > restore for i in ups[1:]), (
+        "the runbook starts more than postgis before the restore has run"
+    )
+    collect = [i for i, tokens in enumerate(commands) if "collectstatic" in tokens]
+    assert collect and collect[-1] > rest[-1], (
+        "the restore runbook does not re-run collectstatic once the stack is up; the "
+        "collected assets are on the volume and not in the dump"
+    )
 
 
 # What the restore runbook does to the database between starting postgis and
@@ -1264,159 +1380,304 @@ def test_the_restore_runbook_empties_the_images_database_before_restoring() -> N
         position = found
 
 
-def test_the_restore_runbook_says_what_the_deployment_has_afterwards() -> None:
-    """A restore is not a rollback: the membership cache and the sessions are
-    excluded from the dump and nothing in phase 1 refills the cache, the tiles
-    are not in the database at all, and `nightly_backup` is stale until the next
-    07:00 UTC because the dump is taken from inside its own run row."""
-    body = section(OPERATIONS, "## Restoring one")
-    for expected in ("membership", "tiles", "nightly_backup", "collectstatic"):
-        assert expected in body, f"the restore runbook says nothing about {expected}"
-
-
-def test_the_snapshot_is_in_the_action_list_and_not_only_in_a_sentence() -> None:
-    """It was named as the thing standing between this deployment and a lost
-    host, in a paragraph, and appeared in no list of things to do."""
-    body = section(OPERATIONS, "## Deployment actions")
-    assert "snapshot" in body.lower(), (
-        "docs/OPERATIONS.md's deployment actions do not include the volume snapshot, "
-        "which is the only copy of the database that is not on the volume itself"
-    )
-
-
-def test_the_epoch_rule_is_the_one_the_code_computes() -> None:
-    """`core.runs.deployment_epoch` is the earlier of the oldest run row and
-    `MAX(django_migrations.applied)`. The document still carried the rule from
-    before that - "on a database with no rows at all nothing is stale" - which
-    is the state a `--queues` typo or a crash-looping worker leaves, and it was
-    being described as the reason the alerts are trustworthy."""
-    body = section(OPERATIONS, "## What is watched, and for how long")
-    assert "django_migrations" in body, (
-        "the staleness section does not mention the migration half of the epoch, so it "
-        "is still describing the run-row-only rule"
-    )
-    assert "with no rows at all nothing is stale" not in " ".join(body.split()), (
-        "the pre-wave-7 epoch rule is back in docs/OPERATIONS.md"
-    )
-    source = REPO / "src" / "core" / "runs.py"
-    assert "MAX(applied) FROM django_migrations" in source.read_text(), (
-        "core.runs no longer reads django_migrations, so the documented rule is now the "
-        "one that is wrong"
-    )
-
-
-def test_the_posture_change_is_documented_as_five_values_and_an_up() -> None:
+def test_the_posture_change_edits_every_value_the_local_block_sets() -> None:
     """Changing `CADDY_SITE_ADDRESS` alone half-works, which is the worst
     shape: Caddy gets its certificate and serves the name, and every request is
-    a DisallowedHost 400 because ALLOWED_HOSTS still says localhost."""
+    a DisallowedHost 400 because ALLOWED_HOSTS still says localhost.
+
+    The values that make up a posture are the ones `.env.example`'s local
+    block sets, so that is where the list is read from: the block of `.env`
+    lines the procedure gives has to name each of them - `DJANGO_DEBUG`, the
+    one that is easy to leave behind, included - and the procedure has to
+    apply them with `up -d`. This used to pin the five names by hand, and the
+    words "DNS", "Discord" and "not `restart`".
+    """
+    from test_compose_render import local_block_assignments
+
+    posture = set(local_block_assignments())
+    assert "CADDY_SITE_ADDRESS" in posture, f"the local block stopped being found: {posture}"
     body = section(DEPLOYMENT, "## Changing posture on a running stack: `:80` to a hostname")
     # In a snippet, not in prose: the point of the section is the block an
     # operator copies, and a value explained in a paragraph and missing from
-    # the block is the one that gets left behind. `DJANGO_DEBUG` is that value.
-    edited = "\n".join(shell_snippets(body))
-    for name in (
-        "CADDY_SITE_ADDRESS",
-        "DJANGO_ALLOWED_HOSTS",
-        "DJANGO_CSRF_TRUSTED_ORIGINS",
-        "DISCORD_REDIRECT_URI",
-        "DJANGO_DEBUG",
-    ):
-        assert name in edited, f"the block of `.env` lines the posture change asks for omits {name}"
-    assert "DNS" in body, "the procedure does not say the name has to resolve here first"
-    assert "Discord" in body, "the procedure does not say to register the new redirect URI"
-    assert "not `restart`" in body or "not\n`restart`" in body, (
-        "the procedure does not say `up -d` rather than `restart`, which is the "
-        "difference between the new values reaching a container and not"
+    # the block is the one that gets left behind.
+    edited = set(re.findall(r"\b[A-Z][A-Z0-9_]+\b", "\n".join(shell_snippets(body))))
+    missing = sorted(posture - edited)
+    assert not missing, f"the block of `.env` lines the posture change asks for omits {missing}"
+    commands = snippet_commands(body)
+    assert any(is_up(tokens) for tokens in commands), "the procedure never runs `up -d`"
+    assert not any(tokens[:3] == ["docker", "compose", "restart"] for tokens in commands), (
+        "the procedure restarts containers, which keeps the environment they were created with"
     )
 
 
-def test_the_second_instance_admin_procedure_names_the_page_that_exists() -> None:
+def documented_paths() -> list[tuple[str, str]]:
+    """(document, path) for every URL path a guide sends a reader to: the
+    admin's, written `<DJANGO_ADMIN_PATH>...` or under the default prefix,
+    and the application's own
+    `/auth/...` and `/healthz`, wherever they appear."""
+    from django.conf import settings
+
+    found = []
+    for name, body in ALL_DOCUMENTS.items():
+        for rest in re.findall(r"<DJANGO_ADMIN_PATH>([A-Za-z0-9_/.-]*)", body):
+            found.append((name, f"/{settings.ADMIN_PATH}{rest}"))
+        # ...and the same pages written out under the default prefix.
+        for rest in re.findall(rf"/{re.escape(settings.ADMIN_PATH)}([A-Za-z0-9_/.-]*)", body):
+            found.append((name, f"/{settings.ADMIN_PATH}{rest}"))
+        for path in re.findall(r"(?<![\w/.-])(/(?:auth/[a-z]+|healthz))\b", body):
+            found.append((name, path))
+    return found
+
+
+def test_every_path_the_guides_send_an_operator_to_is_routed() -> None:
+    """The second-admin procedure sends a reader to `<DJANGO_ADMIN_PATH>core/user/`,
+    the pending-removal page and `/auth/login`; the deployment actions send
+    them to the operations page. Each is resolved through the URLconf, so a
+    model renamed, an admin unregistered or a route moved fails here rather
+    than on an operator's screen. This replaces pins of `core/user/` and
+    `/auth/login` as substrings."""
+    from django.urls import Resolver404, resolve
+
+    paths = documented_paths()
+    admin = [path for _name, path in paths if "/auth/" not in path and path != "/healthz"]
+    assert len(admin) >= 3, f"the admin pages the guides name stopped being found: {paths}"
+    unrouted = []
+    for name, path in paths:
+        try:
+            match = resolve(path)
+        except Resolver404:
+            unrouted.append((name, path))
+            continue
+        # The admin ends in a catch-all that resolves anything under its
+        # prefix and answers it with a redirect or a 404; it has no name.
+        if not match.url_name:
+            unrouted.append((name, path))
+    assert not unrouted, f"the guides send a reader to paths nothing routes: {unrouted}"
+
+
+def test_the_second_instance_admin_is_promoted_on_a_page_with_no_add() -> None:
     """There is no add on the user admin - accounts are created by signing in -
-    so the procedure is sign in, then promote, and the page it happens on is
-    derived here rather than restated."""
+    so the procedure is sign in, then promote. What that rests on is checked
+    where it lives: the user admin refuses an add even to an instance admin,
+    and the flag the procedure says to tick is the model field's own label.
+    This used to pin "no add" and "is instance admin" in the prose."""
+    from django.test import RequestFactory
+
+    from core.admin import site
+    from core.models import User
+
     body = section(DEPLOYMENT, "## Adding a second instance admin")
-    assert "/auth/login" in body, (
-        "the procedure does not say the new admin signs in first; without the account "
-        "row there is nothing on the page to promote"
+    request = RequestFactory().get("/")
+    request.user = User(is_instance_admin=True)
+    admin = site._registry[User]
+    assert not admin.has_add_permission(request), (
+        "the user admin offers an add to an instance admin; the procedure says accounts "
+        "are created only by signing in"
     )
-    assert "core/user/" in body, "the procedure does not name the page the promotion happens on"
-    assert "is instance admin" in body.lower()
-    assert "no add" in body.lower() or 'no "add"' in body.lower(), (
-        "the procedure does not say there is no add button, which is the thing a reader "
-        "goes looking for first"
+    label = str(User._meta.get_field("is_instance_admin").verbose_name)
+    assert label in body.lower(), (
+        f"the procedure does not name the field it has an operator tick ({label!r})"
     )
-
-
-def test_the_discord_client_secret_is_in_the_rotation_section() -> None:
-    """It is the fifth secret in `.env` and the only one issued by somebody
-    else, and the rotation section listed four."""
-    body = section(DEPLOYMENT, "## Secrets, and what rotating one costs")
-    assert "DISCORD_CLIENT_SECRET" in body, (
-        "docs/DEPLOYMENT.md's rotation section does not cover DISCORD_CLIENT_SECRET"
-    )
-    after = body.split("DISCORD_CLIENT_SECRET", 1)[1]
-    assert "up -d" in after and "restart" in after, (
-        "the DISCORD_CLIENT_SECRET rotation does not say `up -d` rather than `restart`; "
-        "a restarted container keeps the secret it was created with"
+    assert any("/auth/login" in path for path in re.findall(r"`([^`]+)`", body)), (
+        "the procedure does not send the new admin to sign in first"
     )
 
 
-def test_the_postgis_bump_covers_both_kinds() -> None:
-    """A patch bump of a floating tag is a pull and one SQL statement; a
-    PostgreSQL major bump is a dump and restore, because PGDATA's on-disk format
-    is major-version-specific."""
-    body = section(DEPLOYMENT, "## Bumping the `postgis` image")
-    assert "ALTER EXTENSION postgis UPDATE" in body, (
-        "the procedure does not name ALTER EXTENSION postgis UPDATE, so the extension "
-        "stays at the version it was created with while the library moves"
-    )
-    assert "pg_dump" in body and "pg_restore" in body, (
-        "the major-version half of the procedure does not name the dump and restore"
-    )
-    assert "postgresql-client" in body, (
-        "the procedure does not mention the pinned client major in docker/api.Dockerfile, "
-        "which is what takes the nightly dump"
-    )
+def test_the_postgis_bump_keeps_the_dump_client_on_the_servers_major() -> None:
+    """A PostgreSQL major bump is a dump and restore, and the dump is taken by
+    the api image's pinned client, so the pin and the server have to move
+    together. Checked between `docker/api.Dockerfile` and `compose.yaml`, and
+    the procedure's own command - `ALTER EXTENSION postgis UPDATE` inside the
+    database container - read as argv. Three word pins are gone."""
     major = re.search(r"ARG PG_MAJOR=(\d+)", (REPO / "docker" / "api.Dockerfile").read_text())
     assert major, "docker/api.Dockerfile no longer pins a client major"
-    assert major.group(1) in SERVICES["postgis"]["image"], (
+    assert re.search(rf":{major.group(1)}(?:\D|$)", SERVICES["postgis"]["image"]), (
         f"the api image pins postgresql-client-{major.group(1)} and the postgis service "
         f"runs {SERVICES['postgis']['image']}; the nightly pg_dump is the thing between them"
     )
+    commands = [
+        " ".join(tokens)
+        for tokens in snippet_commands(section(DEPLOYMENT, "## Bumping the `postgis` image"))
+    ]
+    updates = [line for line in commands if "ALTER EXTENSION postgis UPDATE" in line]
+    assert updates, "the procedure does not update the extension after a bump"
+    assert all(line.startswith("docker compose exec -T postgis psql ") for line in updates), (
+        f"the extension update does not run in the database container: {updates}"
+    )
 
 
-def test_moving_the_data_root_says_to_stop_the_stack_first() -> None:
+def test_moving_the_data_root_stops_the_stack_before_it_copies() -> None:
     """`${DATA_ROOT}/postgres` is PGDATA, bound straight into the running
     postgis container. Copying it out from under a live server produces a copy
-    that is neither a backup nor a consistent snapshot."""
-    body = section(DEPLOYMENT, "## Moving `${DATA_ROOT}` to a bigger disk")
-    assert "PGDATA" in body, "the procedure does not say what makes the live case dangerous"
-    lines = body.splitlines()
-    down = next((i for i, line in enumerate(lines) if "docker compose down" in line), None)
-    copy = next((i for i, line in enumerate(lines) if line.strip().startswith("sudo cp")), None)
+    that is neither a backup nor a consistent snapshot. Read as argv: a
+    `docker compose down` before the copy, the copy a `cp -a` (ownership and
+    modes are the point - uid 10001, the postgis uid, a private key under
+    caddy/), and the prepare script and an `up -d` after it."""
+    commands = snippet_commands(section(DEPLOYMENT, "## Moving `${DATA_ROOT}` to a bigger disk"))
+    down = next((i for i, t in enumerate(commands) if t[:3] == ["docker", "compose", "down"]), None)
+    copy = next((i for i, t in enumerate(commands) if "cp" in t), None)
     assert down is not None, "the procedure never stops the stack"
     assert copy is not None, "the procedure never copies anything"
     assert down < copy, "the procedure copies the data volume before stopping the stack"
-    assert "cp -a" in body, (
-        "the copy is not `cp -a`; ownership and modes are the point - uid 10001 on seven "
-        "directories, the postgis uid on PGDATA, and a private key under caddy/"
+    tokens = commands[copy]
+    assert tokens[tokens.index("cp") + 1] == "-a", (
+        f"the copy is `{' '.join(tokens)}`, not `cp -a`; ownership and modes are the point"
     )
+    after = commands[copy + 1 :]
+    assert any(any(t.endswith("prepare_data_root.sh") for t in c) for c in after), (
+        "the procedure does not re-run the prepare script on the new root"
+    )
+    assert any(is_up(c) for c in after), "the procedure never starts the stack again"
 
 
-@pytest.mark.parametrize("name", ["docs/OPERATIONS.md", "docs/DEPLOYMENT.md"])
-def test_the_sigkill_warnings_cover_the_worker_too(name: str) -> None:
-    """`worker` has the same grace period and the same Procrastinate worker, so
-    a nightly dump or a sweep killed mid-run leaves the same `doing` row. Both
-    documents warned about `rebuild` alone."""
-    body = DOCUMENTS[name]
-    grace = SERVICES["worker"]["stop_grace_period"]
-    quoted = f"stop_grace_period: {grace}"
-    windows = [
-        " ".join(body.split())[max(0, m.start() - 600) : m.end() + 600]
-        for m in re.finditer(re.escape(quoted), body)
+# --- Every command a guide shows, against the thing it runs ------------------
+
+PLACEHOLDER = re.compile(r"<[^>]*>")
+
+
+def inline_code(text: str) -> list[str]:
+    """The inline code spans outside fenced blocks, wrapped lines joined."""
+    prose = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    return re.findall(r"`([^`]+)`", " ".join(prose.split()))
+
+
+def inline_commands(text: str) -> list[list[str]]:
+    """The inline code spans, as tokens: a command written into a sentence is
+    still one an operator types."""
+    return [span.split() for span in inline_code(text) if span.split()]
+
+
+def documented_manage_commands(documents=None) -> list[tuple[str, str | None, list[str]]]:
+    """(document, service, argv after `manage.py`) for every `manage.py`
+    command a guide shows, in a shell block or inline. `service` is the
+    compose service a `docker compose exec`/`run` puts it in, or None.
+    Placeholders such as `<job_id>` become `1`, which every argument the
+    commands take accepts."""
+    import shlex
+
+    found = []
+    for name, body in (documents if documents is not None else ALL_DOCUMENTS).items():
+        lines = [
+            line.split(" #", 1)[0]
+            for block in shell_snippets(body)
+            for line in block.replace("\\\n", " ").splitlines()
+        ] + inline_code(body)
+        for line in lines:
+            match = re.search(r"(?:^|\s)(?:\./)?manage\.py\s+(.+)", line)
+            if not match:
+                continue
+            command = re.split(r"\s(?:\|\||&&|;|\|)\s", PLACEHOLDER.sub("1", match.group(1)))[0]
+            service = re.search(
+                r"docker compose (?:exec|run)\s+(?:-\S+\s+)*(\S+)\s+(?:\./)?manage\.py", line
+            )
+            found.append((name, service.group(1) if service else None, shlex.split(command)))
+    return found
+
+
+def test_every_documented_management_command_is_one_django_would_run() -> None:
+    """The guides describe flags a command no longer has - round 10 found
+    `rollback_rebuild` documented with two - and nothing noticed, because a
+    runbook is read and not executed. Each documented invocation is handed to
+    the command's own parser here: the command has to exist, and its arguments
+    have to parse. A `docker compose exec`/`run` has to name a service built
+    from this repository, the only images with a `manage.py` in them. This is
+    what the counts of how often `unwedge_job` was mentioned stood in for."""
+    from django.core.management import CommandError, get_commands, load_command_class
+
+    commands = get_commands()
+    ours = {name for name, service in SERVICES.items() if "build" in service}
+    found = documented_manage_commands()
+    assert {"rollback_rebuild", "unwedge_job", "run_rebuild_now", "check_operations"} <= {
+        argv[0] for _name, _service, argv in found
+    }, f"the collector stopped finding the runbook's commands: {found}"
+    for name, service, argv in found:
+        assert argv[0] in commands, f"{name} runs `manage.py {' '.join(argv)}`: no such command"
+        assert service is None or service in ours, (
+            f"{name} runs `manage.py {argv[0]}` in {service!r}, which has no manage.py; the "
+            f"services built from this repository are {sorted(ours)}"
+        )
+        parser = load_command_class(commands[argv[0]], argv[0]).create_parser("manage.py", argv[0])
+        try:
+            parser.parse_args(argv[1:])
+        except CommandError as refused:
+            raise AssertionError(
+                f"{name} runs `manage.py {' '.join(argv)}`, which the command refuses: {refused}"
+            ) from None
+
+
+@pytest.mark.django_db
+def test_the_documented_repairs_run_against_the_real_models() -> None:
+    """The half-restored-swap repair is two `manage.py shell -c` one-liners that
+    rewrite or delete a `ValhallaUpstream` row. Executed here, against the test
+    database with the placeholders filled in, so a renamed model or field makes
+    the runbook's repair fail in the suite rather than on the night. They match
+    no row, so they change nothing."""
+    snippets = [
+        argv[argv.index("-c") + 1]
+        for _name, _service, argv in documented_manage_commands()
+        if argv[0] == "shell" and "-c" in argv
     ]
-    assert windows, f"{name} does not quote `{quoted}` anywhere"
-    assert any("worker" in window and "rebuild" in window for window in windows), (
-        f"{name} explains the grace period against `rebuild` alone; `worker` carries the "
-        "same one and wedges the same way"
-    )
+    assert len(snippets) >= 2, f"the repair's shell one-liners stopped being found: {snippets}"
+    for code in snippets:
+        exec(compile(code, "<documented repair>", "exec"), {})
+
+
+def test_every_repository_file_a_documented_command_runs_exists() -> None:
+    """A command that runs `scripts/<name>` or reads `docker/<file>` is a path
+    that has to be in the repository the operator is standing in."""
+    missing = []
+    checked = 0
+    for name, body in ALL_DOCUMENTS.items():
+        for tokens in snippet_commands(body):
+            for token in tokens:
+                token = token.strip("\"'")
+                if PLACEHOLDER.search(token) or not re.match(
+                    r"^(?:scripts|docker|src|tests|lua|fixtures)/", token
+                ):
+                    continue
+                checked += 1
+                if not (REPO / token).exists():
+                    missing.append((name, token))
+    assert checked, "no documented command names a repository file, so this checks nothing"
+    assert not missing, f"documented commands run files that are not in the repository: {missing}"
+
+
+def test_every_documented_run_of_the_reference_installer_parses() -> None:
+    """The installer is run by hand on the first host, from a command in the
+    runbook and the playbook. Its own parser is handed each documented argv -
+    stopped as soon as it has parsed, before anything is installed - so a flag
+    renamed in the script fails here rather than at step 6 of a first
+    deployment."""
+    import argparse
+
+    installer = load_script("install_reference_data")
+    runs = [
+        (name, tokens[tokens.index("scripts/install_reference_data.py") + 1 :])
+        for name, body in ALL_DOCUMENTS.items()
+        for tokens in snippet_commands(body)
+        if "scripts/install_reference_data.py" in tokens
+    ]
+    assert runs, "no guide runs the reference installer"
+
+    class Parsed(Exception):
+        pass
+
+    original = argparse.ArgumentParser.parse_args
+
+    def parse_then_stop(parser, args=None, namespace=None):
+        original(parser, args, namespace)
+        raise Parsed
+
+    for name, argv in runs:
+        argparse.ArgumentParser.parse_args = parse_then_stop
+        try:
+            installer.main([PLACEHOLDER.sub("1", token) for token in argv])
+        except Parsed:
+            continue
+        except SystemExit as refused:
+            raise AssertionError(
+                f"{name} runs the installer with {argv}, which its parser refuses ({refused})"
+            ) from None
+        finally:
+            argparse.ArgumentParser.parse_args = original
+        raise AssertionError(f"the installer returned without parsing {argv}")
