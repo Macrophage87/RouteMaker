@@ -152,6 +152,38 @@ def test_the_stage_puts_every_tile_the_box_touches_in_the_band_layout(tmp_path) 
     assert all(p.stat().st_size == 3601 * 3601 * 2 for p in ready)
 
 
+def test_the_deployments_region_fetches_the_same_four_tiles_it_always_did(tmp_path) -> None:
+    """The region grew to Baltimore and the Mason-Dixon line (PLAN:13, the
+    owner's amendment of 2026-09-24) and the elevation stage's download did not.
+
+    Read through the stage itself with the deployment's own box, so what is
+    pinned is what a first rebuild fetches: the N38 and N39 bands by the W078
+    and W077 columns, as before the amendment. 39.72 N is still in the N39 band.
+    The east edge is what could have moved it - see the next test."""
+    from django.conf import settings
+
+    seen: list = []
+    ensure_tiles(tmp_path, settings.COVERAGE_BBOX, fetch_recording(seen), warp_writing(3601))
+    assert sorted(seen) == ["N38W077", "N38W078", "N39W077", "N39W078"]
+
+
+def test_an_east_edge_on_the_tile_line_would_fetch_a_column_of_the_eastern_shore() -> None:
+    """Why the box's east edge is -76.02 rather than the round -76.0.
+
+    `tiles_covering` is inclusive of its edges, so a box ending exactly on
+    -76.0 touches the W076 column: two more 26 MB tiles, of Cecil County and
+    the Eastern Shore, which the region does not include. Havre de Grace, the
+    easternmost place the amendment names, is at -76.09."""
+    from django.conf import settings
+
+    west, south, east, north = settings.COVERAGE_BBOX
+    round_east = {t.stem for t in tiles_covering(west, south, -76.0, north)}
+    assert round_east - {t.stem for t in tiles_covering(west, south, east, north)} == {
+        "N38W076",
+        "N39W076",
+    }
+
+
 def test_a_valid_cached_tile_is_kept_and_not_fetched_again(tmp_path) -> None:
     """Built once and cached on the tiles volume; the weekly rebuild reuses it."""
     seen: list = []

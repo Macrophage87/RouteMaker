@@ -136,6 +136,18 @@ DEFAULT_MAX_AGE = timedelta(days=6)
 # this covers the production's own files as well. Approximate by construction:
 # it is a pre-flight for a file that does not exist yet, not a measurement.
 #
+# Widening the region to Baltimore and the Mason-Dixon line (PLAN:13, the
+# owner's amendment of 2026-09-24) does not move it, by construction rather than
+# by a new estimate. What it stands in for is the clip (run.py sizes the gate
+# from `source.osm.pbf` once there is one), and the clip is a subset of the
+# merge whatever the box is, while the merge is at most the three downloads
+# together, which are whole states and do not depend on the box at all. A
+# larger box can only bring the clip closer to the merged file, never past it.
+# The assumption is the one above - the three states at 1-2 GB together - and
+# it is a state-size question: the figure needs revisiting when Geofabrik's DC,
+# Maryland and Virginia files approach 2 GiB between them, not when the region
+# moves inside them.
+#
 # The gate measures `TILES_DIR` while the extract lands in `<DATA_ROOT>/extracts`,
 # which is only the same free-space figure because they are the same volume: the
 # rebuild service binds `/data/tiles` and `/data/extracts` (and the other
@@ -305,8 +317,9 @@ def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> 
     exactly the relations that get cut.
 
     A coverage polygon is preferred over the bounding box when there is one:
-    the plan's region is a polygon - Frederick and Leesburg, Baltimore,
-    Annapolis, Fredericksburg - and the box around it reaches well past them.
+    the plan's region is a polygon - Frederick and Leesburg, Baltimore and the
+    Mason-Dixon line, Annapolis, Fredericksburg - and the box around it reaches
+    past them.
     The repository carries no polygon file yet, so `settings.COVERAGE_POLYGON`
     is None and `settings.COVERAGE_BBOX` is what is clipped to.
 
