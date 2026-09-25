@@ -101,19 +101,31 @@ two columns the pipeline reads, written where nothing reads them:
 
 * **11th Street Bridge (local span)** — 11th Street SE, a bike-legal roadway
   with Anacostia Riverwalk connections at either end. Neither barred nor
-  sidepath-only, and the span the old single row's values described.
+  sidepath-only, and the span the old single row's values described. **It
+  resolves against nothing, deliberately.** It claimed the plain name "11th
+  Street Bridge", and on the 2026-09-24 extract that name is on one way only:
+  the `bridge:name` of way 546095934, an I-695 motorway span named Southeast
+  Freeway. The row's `true` landed on an interstate (the remap's motor-only
+  guard refused to grant it, but the row's columns described the wrong
+  structure and the real span got nothing). The claim is removed. The local
+  span's candidates in that extract are four bridge ways named "11th Street
+  Southeast", `highway=secondary`, and every one carries `bicycle=no` and
+  `foot=no`; claiming that name would write `bicycle=yes` over OSM's own tag on
+  all four, one of which is the span and three of which are short ways at its
+  south end. Which way is the span, and whether this row's legality claim
+  should stand against OSM's tag, are a reviewer's to settle — an `osm_way_id`
+  pin is how to record the first.
 * **11th Street Bridge (I-695 inbound)** and **(I-695 outbound)** — the two
   freeway spans, barred outright. Their OSM spellings are the least confident
-  claim in this file and may well resolve against nothing; unlike the Theodore
-  Roosevelt Bridge, which is `trunk`, these are motorway class, so a ride is
-  kept off them by highway class even when the name misses. A miss is now said
-  out loud, which it was not when this paragraph was written: neither row is
+  claim in this file, and on the 2026-09-24 extract neither resolves: no way
+  carries either. They are motorway class, so a ride is kept off them by highway
+  class even when the name misses. The one freeway way named for the crossing
+  is 546095934 above, oneway toward the Southeast Freeway; nothing in this file
+  decides which of the two rows it is. A miss is said out loud: neither row is
   `sidepath_only`, and until `resolve_bridge_bicycle_legality` started returning
   its own unmatched names, only the sidepath resolver reported anything — so
   these two, and the twelve other legality-only rows, could resolve against
-  nothing on every rebuild and appear in no log at all. That mattered most for
-  the Theodore Roosevelt Bridge, whose row *is* the whole of what keeps a ride
-  off it.
+  nothing on every rebuild and appear in no log at all.
 
 And it supplies two independent sets to the tile build, from two different
 columns. Do not OR them together; a rebuild that did once passed its own test
@@ -130,7 +142,9 @@ while being inert, because every row where it mattered happened to agree.
   legality and must never be treated as a legal claim.
 * `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
   variant alike, because access is not a request-time dial. False means OSM
-  carries `bicycle=no` on the roadway itself, or that there is no roadway at
+  carries `bicycle=no` on the roadway itself, or that the roadway is a class
+  bicycles are barred from (the Rochambeau and Theodore Roosevelt spans are
+  `motorway` with no `bicycle` tag at all), or that there is no roadway at
   all: the three 14th Street highway spans, the two 11th Street freeway spans,
   the Wilson Bridge roadway, the Theodore Roosevelt and American Legion
   bridges, and the two rail structures. True
@@ -168,6 +182,27 @@ name in this file differs from the `name` tag on the bridge in OSM, add an
 `osm_names` array listing the tagged spellings; the row's `name` is used when it
 is absent.
 
+**Matching is also restricted to the region this file is about**, because a
+name is not a place. `variants.CROSSINGS_SCOPE` is a box, west/south/east/north
+(-77.20, 38.77, -76.94, 38.99), and a row's names reach only a way whose every
+located point lies inside it; a way the extract cannot locate at all is refused.
+It exists because the coverage region grew: when the owner extended it to
+Baltimore and the Mason-Dixon line on 2026-09-24, the "Key Bridge" row began
+matching Baltimore's Francis Scott Key Bridge — four I-695 motorway ways that
+carry the name in `bridge:name` — as well as the four US 29 trunk ways across
+the Potomac. The box is the extent of the ways this file's rows correctly reach
+on the 2026-09-24 extract (-77.1800 to -76.9607, 38.7924 to 38.9711: the
+American Legion Bridge to the Benning Road Bridge, and the Wilson Bridge's
+roadway) rounded out by 0.02 degrees on every side. One box for the whole file,
+not a point per row: it answers "is this way about these two rivers at all",
+which is one question for every row, and which structure *within* the region a
+name means is still the name's job — the box cannot stop a row landing on the
+wrong span of the same crossing, as the 11th Street local span did. Both
+resolvers take it from one function, `variants.is_crossing_candidate`, with the
+bridge and trail-class guards, so they cannot disagree about which ways are
+eligible. A row added for a crossing outside the box will never match until the
+box is widened, and says so in the unmatched log.
+
 A row's names are matched against **both `name` and `bridge:name`** on the way.
 `name` on a road way is the *street*: the way across the Anacostia at
 Pennsylvania Avenue SE carries `name=Pennsylvania Avenue Southeast`, because
@@ -187,15 +222,41 @@ reasoning is why the unplaceable alias "George Kennan Memorial Bridge" has been
 removed from the American Legion row: an alias nothing places can only ever
 match the wrong way.
 
-**Every `osm_names` entry in this file is `osm_names_verified: false`, without
-exception, including the ones a round-3 reviewer supplied by name (Francis
-Scott Key Bridge; George Mason Memorial Bridge, Rochambeau Bridge, Arland D.
-Williams Jr. Memorial Bridge; Woodrow Wilson Memorial Bridge) and the ones
-round 5 added (John Philip Sousa Bridge; the three 11th Street spans; Long
-Bridge).** Overpass is
-blocked in this environment, so nothing here has been checked against a real
-extract, regardless of how confident the source. `variants.unverified_crossing_names`
-returns this list; the loader (`ReferenceData.load` in `run.py`) logs it at
+**Thirteen rows are `osm_names_verified: true`, checked against the Geofabrik
+DC+MD+VA extract of 2026-09-24 clipped to COVERAGE_BBOX; five are not.** Overpass
+is blocked in this environment, so the check was made on the extract itself:
+every bridge-tagged way in it carrying any of the file's names was read with
+`extract.read_ways` and put through `variants.is_crossing_candidate` and
+`variants.way_names`, exactly as the resolvers do, and each row's matches were
+compared by highway class, `ref`, `name`, `bridge:name`, `bicycle`, oneway
+direction and location against the structure the row's note describes. A row
+is `true` only where every name it claims lands on that structure and nothing
+else. What the check found and changed:
+
+* Three rows matched nothing on the spelling they claimed, and now claim what
+  the extract carries: "Theodore Roosevelt Memorial Bridge" (seventeen
+  motorway ways — not `trunk`, as this file and the row's note said),
+  "Arland D. Williams Junior Memorial Bridge" (six motorway ways, Junior
+  written out) and, for the Wilson Bridge path row, the four spellings its
+  twenty I-95/I-495 roadway ways carry across `name` and `bridge:name`.
+  "Woodrow Wilson Bridge" is also the `name` of the path itself, which is
+  trail class and so never reached.
+* The Whitney Young row's second alias, "Whitney M. Young Jr. Memorial
+  Bridge", is on no way and is removed; the first matches.
+* The Rochambeau row's note said the span carries the US-1 local lanes; the
+  extract has it as I-395's express lanes (`ref=I 395 EXPR`), with US 1 on the
+  Williams and George Mason spans.
+* The Key Bridge roadway (all four ways) carries `bicycle=no` and `foot=no`,
+  and the Frederick Douglass roadway `bicycle=use_sidepath`. Both rows say
+  `roadway_bicycle_legal: true`, and the remap writes `bicycle=yes` over those
+  tags. The columns are this file's community claims and were not changed by
+  the check; the notes now say what the map says.
+* Not verified: the three 11th Street spans (above), and the two rail
+  structures. The Fenwick Bridge's spelling is right — it is the `bridge:name`
+  of two `railway=subway` ways — and Long Bridge's name is on no way; neither
+  can ever match, because `extract.read_ways` keeps highway ways only.
+
+`variants.unverified_crossing_names` returns the rows still `false`; the loader (`ReferenceData.load` in `run.py`) logs it at
 rebuild time, alongside the unmatched-name warning the two resolvers produce
 between them — one line over the union of what
 `resolve_sidepath_bridge_ids` and `resolve_bridge_bicycle_legality` each failed

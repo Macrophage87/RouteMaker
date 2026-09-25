@@ -154,10 +154,23 @@ def crossing_rows() -> list[dict]:
     return json.loads(FIXTURE.read_text())
 
 
+# Where a synthetic way sits when a test is not about where it sits: on the Key
+# Bridge, inside the region the crossings fixture is about. A way has to be
+# somewhere now, because the resolvers match a row only against ways inside that
+# region (`variants.CROSSINGS_SCOPE`), and a way with no location is refused.
+DC_POTOMAC = ((-77.0707, 38.9006), (-77.0694, 38.9035))
+
+
 class FakeWay:
-    def __init__(self, osm_id: int, tags: dict[str, str]) -> None:
+    def __init__(
+        self,
+        osm_id: int,
+        tags: dict[str, str],
+        coordinates: tuple[tuple[float, float], ...] = DC_POTOMAC,
+    ) -> None:
         self.osm_id = osm_id
         self.tags = tags
+        self.coordinates = list(coordinates)
 
 
 # --- What the fixture is expected to say ------------------------------------
@@ -227,8 +240,10 @@ EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
     "Rochambeau Bridge": ExpectedCrossing(
         ("Rochambeau Bridge",), False, False, "US Park Police", "National Park Service / VDOT"
     ),
+    # OSM writes Junior out; the row's label abbreviates it, and the label's
+    # spelling matched nothing on the 2026-09-24 extract.
     "Arland D. Williams Jr. Memorial Bridge": ExpectedCrossing(
-        ("Arland D. Williams Jr. Memorial Bridge",),
+        ("Arland D. Williams Junior Memorial Bridge",),
         False,
         False,
         "US Park Police",
@@ -245,9 +260,16 @@ EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
     ),
     # Three authorities, not two: the one Potomac crossing that touches all
     # three jurisdictions. And MDOT SHA, not MDTA - MDTA is Maryland's toll
-    # authority and this bridge is toll-free.
+    # authority and this bridge is toll-free. The names are the roadway's, as
+    # the 2026-09-24 extract spells them across its twenty I-95/I-495 ways;
+    # "Woodrow Wilson Memorial Bridge" alone is on none of them.
     "Woodrow Wilson Bridge path": ExpectedCrossing(
-        ("Woodrow Wilson Memorial Bridge",),
+        (
+            "Woodrow Wilson Memorial Bridge (Local)",
+            "Woodrow Wilson Memorial Bridge (Thru)",
+            "Woodrow Wilson Bridge",
+            "Woodrow Wilson Bridge (Thru)",
+        ),
         True,
         False,
         "Alexandria PD / Prince George's County Police / MPD",
@@ -261,9 +283,12 @@ EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
     ),
     # The 11th Street crossing, split for the reason the 14th Street one is:
     # the local span carries bikes and the two I-695 freeway spans do not, which
-    # is three answers and was one row.
+    # is three answers and was one row. The local span claims no OSM name, so
+    # its label is its only spelling: "11th Street Bridge", which it claimed,
+    # is the `bridge:name` of an I-695 freeway span on the 2026-09-24 extract,
+    # and the row's `true` landed there.
     "11th Street Bridge (local span)": ExpectedCrossing(
-        ("11th Street Bridge",), False, True, "MPD", "DDOT"
+        ("11th Street Bridge (local span)",), False, True, "MPD", "DDOT"
     ),
     "11th Street Bridge (I-695 inbound)": ExpectedCrossing(
         ("11th Street Bridges (inbound)",), False, False, "MPD", "DDOT"
@@ -275,7 +300,7 @@ EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
         ("Frederick Douglass Memorial Bridge",), False, True, "MPD", "DDOT"
     ),
     "Whitney Young Memorial Bridge": ExpectedCrossing(
-        ("Whitney Young Memorial Bridge", "Whitney M. Young Jr. Memorial Bridge"),
+        ("Whitney Young Memorial Bridge",),
         False,
         True,
         "MPD",
@@ -283,7 +308,7 @@ EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
     ),
     "Benning Road Bridge": ExpectedCrossing(("Benning Road Bridge",), False, True, "MPD", "DDOT"),
     "Theodore Roosevelt Bridge": ExpectedCrossing(
-        ("Theodore Roosevelt Bridge",),
+        ("Theodore Roosevelt Memorial Bridge",),
         False,
         False,
         "US Park Police",
@@ -681,8 +706,9 @@ class TestTheLegalityHalfReportsItsOwnMisses:
         ]
         assert len(expected) == 14, "the fixture's legality-only rows"
         assert sorted(expected) == legality_unmatched
-        # The one the fixture's own note calls out: the no-trail variant's
-        # treatment of this bridge rests entirely on `rm:bridge_bicycle`.
+        # The row whose miss was the one first noticed, when its note still
+        # said (wrongly - the 2026-09-24 extract has it motorway class) that
+        # nothing but `rm:bridge_bicycle` kept a ride off it.
         assert "Theodore Roosevelt Bridge" in legality_unmatched
 
     def test_a_row_that_resolves_is_not_reported(self) -> None:
@@ -774,12 +800,41 @@ class TestABridgesNameCanLiveInBridgeName:
         assert resolve_bridge_bicycle_legality(crossing_rows(), [approach])[0] == {}
 
 
+# The rows checked against the Geofabrik DC+MD+VA extract of 2026-09-24 and
+# found to land, every name of them, on the structure the row describes. Typed
+# in by hand like the table above, because clearing `osm_names_verified` is a
+# claim about the map and should take a deliberate edit here as well as there.
+# The five left out are the three 11th Street spans, whose names reach no way
+# or reached the wrong one, and the two rail structures, which the pipeline
+# never reads.
+VERIFIED_ON_2026_09_24 = {
+    "Arlington Memorial Bridge",
+    "Key Bridge",
+    "Chain Bridge",
+    "George Mason Memorial Bridge",
+    "Rochambeau Bridge",
+    "Arland D. Williams Jr. Memorial Bridge",
+    "Woodrow Wilson Bridge path",
+    "Sousa Bridge (Pennsylvania Avenue SE)",
+    "Frederick Douglass Memorial Bridge",
+    "Whitney Young Memorial Bridge",
+    "Benning Road Bridge",
+    "Theodore Roosevelt Bridge",
+    "American Legion Bridge",
+}
+
+
 class TestUnverifiedCrossingNames:
-    def test_every_row_in_the_shipped_fixture_is_unverified(self) -> None:
-        """Overpass is blocked in this environment, so every row - including
-        the ones a round-3 reviewer supplied by name - is unverified today."""
+    def test_the_shipped_fixture_is_verified_exactly_where_it_was_checked(self) -> None:
+        """Every row outside the checked set is reported unverified, and every
+        row in it is not."""
         rows = crossing_rows()
-        assert unverified_crossing_names(rows) == sorted(row["name"] for row in rows)
+        assert set(EXPECTED_CROSSINGS) >= VERIFIED_ON_2026_09_24
+        assert unverified_crossing_names(rows) == sorted(
+            row["name"] for row in rows if row["name"] not in VERIFIED_ON_2026_09_24
+        )
+        for row in rows:
+            assert isinstance(row["osm_names_verified"], bool), row["name"]
 
     def test_a_row_marked_verified_is_not_reported(self) -> None:
         rows = [
@@ -852,3 +907,202 @@ def test_a_street_named_after_a_bridge_is_not_a_bridge() -> None:
     assert {"Key Bridge", "Chain Bridge"} <= set(unmatched)
     for way in approaches:
         assert inject(Variant.NO_TRAIL, way.tags, way.osm_id, ids) is not None
+
+
+# --- The match is scoped to the region the fixture is about -----------------
+#
+# Real ways, typed in by hand from the Geofabrik DC+MD+VA extract of 2026-09-24
+# clipped to COVERAGE_BBOX: ids, tags and end points as that extract carries
+# them. Two structures in it are called the Francis Scott Key Bridge. One is the
+# Potomac crossing this fixture's "Key Bridge" row is about; the other is
+# Baltimore's, sixty kilometres away, which came into the extract when the owner
+# extended the coverage region to Baltimore and the Mason-Dixon line on
+# 2026-09-24 (PLAN.md, Region and data).
+
+DC_KEY_BRIDGE = FakeWay(
+    6059971,
+    {
+        "highway": "trunk",
+        "bridge": "yes",
+        "name": "Francis Scott Key Bridge",
+        "ref": "US 29",
+        "bicycle": "no",
+    },
+    ((-77.0707, 38.9006), (-77.0694, 38.9035)),
+)
+BALTIMORE_KEY_BRIDGE = FakeWay(
+    1266435590,
+    {
+        "highway": "motorway",
+        "bridge": "viaduct",
+        "name": "Baltimore Beltway",
+        "bridge:name": "Francis Scott Key Bridge",
+        "ref": "I 695",
+    },
+    ((-76.5205, 39.2231), (-76.5227, 39.2213)),
+)
+# The one way in that extract carrying the name the "11th Street Bridge (local
+# span)" row used to claim: an I-695 freeway span, inside the region, so no
+# geographic scope can keep a row off it.
+SOUTHEAST_FREEWAY_SPAN = FakeWay(
+    546095934,
+    {
+        "highway": "motorway",
+        "bridge": "yes",
+        "name": "Southeast Freeway",
+        "bridge:name": "11th Street Bridge",
+        "ref": "I 695",
+    },
+    ((-76.9889, 38.8711), (-76.9903, 38.8728)),
+)
+
+# The ends of the region, from the same extract: the American Legion Bridge's
+# upstream end, the Woodrow Wilson Bridge's downstream path, and the Benning
+# Road Bridge's eastern abutment.
+AMERICAN_LEGION_NORTH_END = (-77.1793, 38.9711)
+WILSON_BRIDGE_SOUTH_EDGE = (-77.0216, 38.7922)
+BENNING_ROAD_EAST_END = (-76.9607, 38.8969)
+COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)  # settings.COVERAGE_BBOX, 2026-09-24
+
+
+def inside_scope(point: tuple[float, float]) -> bool:
+    from pipeline import variants
+
+    west, south, east, north = variants.CROSSINGS_SCOPE
+    lon, lat = point
+    return west <= lon <= east and south <= lat <= north
+
+
+class TestTheMatchIsScopedToTheFixturesRegion:
+    """A crossing row matches only ways inside the region the fixture is about.
+
+    Rows are matched by name, and a name is not a place. The fixture is about
+    the Potomac from the American Legion Bridge to the Woodrow Wilson Bridge and
+    the Anacostia below the Benning Road Bridge; the extract it is matched
+    against is the whole coverage region, which since 2026-09-24 runs to
+    Baltimore. On that extract the "Key Bridge" row matched four trunk ways of
+    US 29 across the Potomac and four motorway ways of I-695 across the Patapsco.
+    """
+
+    def test_baltimores_key_bridge_matches_nothing(self) -> None:
+        rows = crossing_rows()
+        ids, unmatched = resolve_sidepath_bridge_ids(rows, [BALTIMORE_KEY_BRIDGE])
+        assert ids == frozenset()
+        assert "Key Bridge" in unmatched
+        legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, [BALTIMORE_KEY_BRIDGE])
+        assert legality == {}
+        assert "Key Bridge" in legality_unmatched
+
+    def test_the_district_key_bridge_still_matches_beside_it(self) -> None:
+        rows = crossing_rows()
+        both = [DC_KEY_BRIDGE, BALTIMORE_KEY_BRIDGE]
+        ids, unmatched = resolve_sidepath_bridge_ids(rows, both)
+        assert ids == frozenset({DC_KEY_BRIDGE.osm_id})
+        assert "Key Bridge" not in unmatched
+        legality, _unmatched = resolve_bridge_bicycle_legality(rows, both)
+        assert legality == {DC_KEY_BRIDGE.osm_id: True}
+
+    def test_a_way_with_no_location_cannot_be_placed_and_matches_nothing(self) -> None:
+        """A way the extract gives no coordinate for cannot be shown to be
+        inside the region, so it is refused rather than assumed to be."""
+        nowhere = FakeWay(9100, dict(DC_KEY_BRIDGE.tags), ())
+        rows = crossing_rows()
+        assert resolve_sidepath_bridge_ids(rows, [nowhere])[0] == frozenset()
+        assert resolve_bridge_bicycle_legality(rows, [nowhere])[0] == {}
+
+    def test_a_way_leaving_the_region_is_not_inside_it(self) -> None:
+        """Every located point, not any: a way with one end in the region and
+        the other outside it is not a crossing of these two rivers."""
+        from pipeline import variants
+
+        west, south, _east, _north = variants.CROSSINGS_SCOPE
+        straddling = FakeWay(
+            9101, dict(DC_KEY_BRIDGE.tags), ((west + 0.001, south + 0.001), (west - 0.001, south))
+        )
+        assert resolve_bridge_bicycle_legality(crossing_rows(), [straddling])[0] == {}
+
+    def test_the_region_holds_the_fixtures_ends_and_not_baltimore(self) -> None:
+        for point in (
+            AMERICAN_LEGION_NORTH_END,
+            WILSON_BRIDGE_SOUTH_EDGE,
+            BENNING_ROAD_EAST_END,
+            *DC_KEY_BRIDGE.coordinates,
+            *SOUTHEAST_FREEWAY_SPAN.coordinates,
+        ):
+            assert inside_scope(point), point
+        for point in BALTIMORE_KEY_BRIDGE.coordinates:
+            assert not inside_scope(point), point
+
+    def test_every_way_either_resolver_matches_lies_inside_the_region(self) -> None:
+        """The property, over every name the fixture claims, placed across the
+        whole coverage region: whatever either resolver matches is inside the
+        region, and it is not vacuous - ways inside it do match, and ways
+        outside it carrying the same names do not."""
+        west, south, east, north = COVERAGE_BBOX
+        rows = crossing_rows()
+        names = sorted({name for row in rows for name in crossing_names(row)})
+        steps = 24
+        ways: list[FakeWay] = []
+        for i in range(steps + 1):
+            for j in range(steps + 1):
+                lon = west + (east - west) * i / steps
+                lat = south + (north - south) * j / steps
+                name = names[(i * (steps + 1) + j) % len(names)]
+                tags = {"highway": "primary", "bridge": "yes", "bridge:name": name}
+                ways.append(FakeWay(len(ways) + 1, tags, ((lon, lat), (lon + 0.004, lat + 0.003))))
+        # And every name at each end of the region, so every name is tried
+        # inside it as well as across the whole coverage area.
+        for point in (AMERICAN_LEGION_NORTH_END, WILSON_BRIDGE_SOUTH_EDGE, BENNING_ROAD_EAST_END):
+            for name in names:
+                tags = {"highway": "primary", "bridge": "yes", "name": name}
+                ways.append(FakeWay(len(ways) + 1, tags, (point,)))
+        by_id = {way.osm_id: way for way in ways}
+
+        sidepath_ids, _ = resolve_sidepath_bridge_ids(rows, ways)
+        legality, _ = resolve_bridge_bicycle_legality(rows, ways)
+        matched = set(sidepath_ids) | set(legality)
+
+        assert matched, "nothing matched, so the property says nothing"
+        for osm_id in matched:
+            assert all(inside_scope(p) for p in by_id[osm_id].coordinates), osm_id
+        outside = {w.osm_id for w in ways if not all(inside_scope(p) for p in w.coordinates)}
+        assert outside, "nothing was outside the region, so the property says nothing"
+        assert not outside & matched
+
+    def test_the_local_span_row_does_not_land_on_the_freeway_span(self) -> None:
+        """Inside the region, so the scope cannot help: the row claiming a
+        bike-legal roadway had claimed the name an I-695 span carries in
+        `bridge:name`, and its `true` landed on an interstate."""
+        legality, _unmatched = resolve_bridge_bicycle_legality(
+            crossing_rows(), [SOUTHEAST_FREEWAY_SPAN]
+        )
+        assert legality.get(SOUTHEAST_FREEWAY_SPAN.osm_id) is not True
+
+    def test_the_wilson_path_is_not_barred_by_the_alias_it_shares(self) -> None:
+        """`Woodrow Wilson Bridge` is the `bridge:name` of the Beltway's local
+        lanes and the `name` of the shared-use path beside them in the same
+        extract. The row claims it for the roadway; the path must still neither
+        inherit the roadway's bar nor be taken for the sidepath-only roadway."""
+        roadway = FakeWay(
+            93187657,
+            {
+                "highway": "motorway",
+                "bridge": "yes",
+                "name": "Capital Beltway (Local)",
+                "bridge:name": "Woodrow Wilson Bridge",
+                "ref": "I 95;I 495",
+                "bicycle": "no",
+            },
+            ((-77.0464, 38.7924), (-77.039, 38.7929)),
+        )
+        path = FakeWay(
+            50601887,
+            {"highway": "cycleway", "bridge": "yes", "name": "Woodrow Wilson Bridge"},
+            ((-77.0463, 38.793), (-77.0386, 38.7936)),
+        )
+        rows = crossing_rows()
+        ids, unmatched = resolve_sidepath_bridge_ids(rows, [roadway, path])
+        assert ids == frozenset({roadway.osm_id})
+        assert "Woodrow Wilson Bridge path" not in unmatched
+        legality, _ = resolve_bridge_bicycle_legality(rows, [roadway, path])
+        assert legality == {roadway.osm_id: False}

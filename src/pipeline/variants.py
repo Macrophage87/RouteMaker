@@ -121,9 +121,9 @@ def check_crossing_names_unique(rows: Sequence[dict]) -> None:
 # either side of the fixture, and the miss was silent in the same way a stale
 # way id was: the name simply reported unmatched.
 #
-# Both keys are read, and both are still filtered by the bridge and trail-class
-# guards below - `bridge:name` widens which *names* a bridge way answers to, not
-# which ways are eligible to answer.
+# Both keys are read, and both are still filtered by the bridge, trail-class
+# and region guards below (`is_crossing_candidate`) - `bridge:name` widens which
+# *names* a bridge way answers to, not which ways are eligible to answer.
 NAME_KEYS = ("name", "bridge:name")
 
 
@@ -135,6 +135,72 @@ def way_names(way) -> list[str]:
     legality half must never disagree about which OSM ways a row's names reach.
     """
     return [value.casefold() for key in NAME_KEYS if (value := way.tags.get(key))]
+
+
+# The region the crossings fixture is about, as (west, south, east, north): the
+# Potomac from the American Legion Bridge down to the Woodrow Wilson Bridge, and
+# the Anacostia from the Benning Road Bridge down to the confluence. A row is
+# matched by name, and a name is not a place - when the owner extended the
+# coverage region to Baltimore and the Mason-Dixon line on 2026-09-24, the
+# "Key Bridge" row began matching Baltimore's Francis Scott Key Bridge (I-695,
+# `bridge:name`) as well as the District's (US 29), sixty kilometres apart.
+#
+# Derived from the real extract, not from a map: on the Geofabrik DC+MD+VA
+# extract of 2026-09-24, clipped to COVERAGE_BBOX, the ways the fixture's rows
+# correctly reach span -77.1800 (American Legion Bridge, west end) to -76.9607
+# (Benning Road and Whitney Young bridges, east ends) and 38.7924 (Woodrow Wilson
+# Bridge roadway, south edge) to 38.9711 (American Legion Bridge, north end).
+# Rounded out by 0.02 degrees on every side - about 1.7 km east-west and 2.2 km
+# north-south - so a remapped abutment or a split way does not fall out of it,
+# while every other structure sharing a fixture name in that extract lies far
+# outside it.
+#
+# One box for the whole fixture rather than a point per row, because the
+# question it answers is "is this way about these two rivers at all", which is
+# one question for every row; which structure *within* the region a name means
+# is the name's job, and a box drawn per row would be a second, weaker way of
+# saying it.
+CROSSINGS_SCOPE = (-77.20, 38.77, -76.94, 38.99)
+
+
+def in_crossing_scope(way) -> bool:
+    """Whether every located point of this way lies inside `CROSSINGS_SCOPE`.
+
+    Every point rather than any: a way with one end in the region and the other
+    outside it is not a crossing of these two rivers. And a way with no located
+    point is refused rather than assumed to be inside - a clipped extract gives
+    no location for nodes beyond the clip, so such a way is one the extract
+    cannot place, and a row's legality written onto it would be a guess.
+    """
+    west, south, east, north = CROSSINGS_SCOPE
+    points = way.coordinates
+    return bool(points) and all(
+        west <= lon <= east and south <= lat <= north for lon, lat in points
+    )
+
+
+def is_crossing_candidate(way) -> bool:
+    """Whether a crossing row's names may reach this way at all.
+
+    Three guards, in one function so that the two resolvers cannot disagree
+    about which ways are eligible:
+
+    * a bridge - a street approaching a crossing and named after it does not
+      inherit the crossing's answers;
+    * not trail class - a trail-class way carrying the bridge's name is the
+      sidepath on it, which is what the sidepath rule routes a mass ride onto
+      and what the legality column says nothing about (see each resolver);
+    * inside `CROSSINGS_SCOPE` - a structure elsewhere in the coverage region
+      that shares a crossing's name is not that crossing.
+
+    An explicit `osm_way_id` on a row bypasses this: it is a pin someone made
+    against the clipped extract by hand, and it is honoured as written.
+    """
+    if way.tags.get("bridge") in (None, "no"):
+        return False
+    if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
+        return False
+    return in_crossing_scope(way)
 
 
 def is_sidepath_only(row: dict) -> bool:
@@ -177,7 +243,10 @@ def resolve_sidepath_bridge_ids(
     named after it does not inherit the crossing's legality. And to *roadway*
     bridges: a trail-class way carrying the bridge's name is the sidepath on it,
     which is the thing this rule routes a mass ride onto and can never be the
-    thing it drops.
+    thing it drops. And to ways inside `CROSSINGS_SCOPE`, the region the fixture
+    is about, because a name is not a place: Baltimore has a Francis Scott Key
+    Bridge too. All three guards are `is_crossing_candidate`, shared with
+    `resolve_bridge_bicycle_legality` so the two cannot disagree.
 
     That guard is the one `resolve_bridge_bicycle_legality` has had, for the
     same reason and on the same OSM shape - a shared-use path on a bridge is its
@@ -211,11 +280,10 @@ def resolve_sidepath_bridge_ids(
     matched_ids: set[int] = set()
     seen: set[str] = set()
     for way in ways:
-        if way.tags.get("bridge") in (None, "no"):
-            continue
-        # The roadway only; see the docstring. The sidepath is what this rule
-        # routes onto, so it is never what the rule matches.
-        if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
+        # A bridge, the roadway only (the sidepath is what this rule routes
+        # onto, so it is never what the rule matches; see the docstring), and
+        # inside the fixture's region.
+        if not is_crossing_candidate(way):
             continue
         for name in way_names(way):
             if name in by_name:
@@ -257,9 +325,8 @@ def resolve_bridge_bicycle_legality(
     `resolve_sidepath_bridge_ids` does, and for the same reason. Only that one
     reported its misses, so the only crossings an operator ever heard about were
     the four `sidepath_only` rows; the fourteen rows that carry a legality
-    opinion and no sidepath flag - the Theodore Roosevelt Bridge among them,
-    whose whole effect on the no-trail variant is this column - resolved against
-    nothing and said nothing. A reviewer ran it: with an extract carrying only
+    opinion and no sidepath flag - the Theodore Roosevelt Bridge among them -
+    resolved against nothing and said nothing. A reviewer ran it: with an extract carrying only
     the four sidepath bridges, `unmatched` was empty and fourteen legality rows
     were inert, reported nowhere. The two lists are logged as one union by
     `ReferenceData.load`, because "this crossing is not in the extract" is one
@@ -285,11 +352,10 @@ def resolve_bridge_bicycle_legality(
     out: dict[int, bool] = dict(explicit)
     seen: set[str] = set()
     for way in ways:
-        if way.tags.get("bridge") in (None, "no"):
-            continue
-        # The roadway only. A trail-class way carrying the bridge's name is the
-        # sidepath on it, not the roadway this column describes, and it is the
-        # ordinary OSM shape for a shared-use path on a bridge: the Woodrow
+        # A bridge, inside the fixture's region, and the roadway only. A
+        # trail-class way carrying the bridge's name is the sidepath on it, not
+        # the roadway this column describes, and it is the ordinary OSM shape
+        # for a shared-use path on a bridge: the Woodrow
         # Wilson path, the 14th Street path and the Key Bridge sidewalk are all
         # `highway=cycleway` or `footway` ways tagged `bridge=yes` and named
         # after the structure they run on.
@@ -302,7 +368,7 @@ def resolve_bridge_bicycle_legality(
         # takes on the same geometry (a trail beside a road is not the road) and
         # the one the `cycleway=track` write already has for the same reason (a
         # derived tag written onto a trail-class way changes its access).
-        if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
+        if not is_crossing_candidate(way):
             continue
         for name in way_names(way):
             if name not in by_name:

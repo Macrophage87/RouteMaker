@@ -21,6 +21,12 @@ from rebuild_fixtures import REPO, build_toy_extract
 
 SCRIPT = REPO / "scripts" / "install_reference_data.py"
 
+# Where a hand-built bridge way sits: on the Key Bridge, inside the region the
+# crossings fixture is about. The resolvers match a row only against ways inside
+# `variants.CROSSINGS_SCOPE`, and refuse a way with no location at all, so a way
+# these tests expect to resolve has to be somewhere.
+ON_THE_POTOMAC = [(-77.0707, 38.9006), (-77.0694, 38.9035)]
+
 
 def geojson(features: list[dict]) -> dict:
     return {"type": "FeatureCollection", "features": features}
@@ -209,6 +215,7 @@ def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path
             osm_id=9000,
             tags={"highway": "secondary", "bridge": "yes", "name": "Toy Bridge"},
             node_ids=[],
+            coordinates=ON_THE_POTOMAC,
         )
     ]
     caplog.clear()
@@ -229,9 +236,8 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     `resolve_bridge_bicycle_legality` reported nothing at all, so the only
     crossings a rebuild ever named were the four `sidepath_only` rows. The other
     fourteen - every row whose whole effect on the graph is `rm:bridge_bicycle`,
-    the Theodore Roosevelt Bridge included, whose note says the no-trail variant
-    depends entirely on that column - could resolve against nothing and reach no
-    log anywhere.
+    the Theodore Roosevelt Bridge included - could resolve against nothing and
+    reach no log anywhere.
 
     The reviewer's scenario, run here: an extract carrying only the four
     sidepath bridges. The sidepath half has nothing to report, and the fourteen
@@ -257,6 +263,7 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
             osm_id=7000 + index,
             tags={"highway": "secondary", "bridge": "yes", "name": crossing_names(row)[0]},
             node_ids=[],
+            coordinates=ON_THE_POTOMAC,
         )
         for index, row in enumerate(sidepath_rows)
     ]
@@ -336,6 +343,7 @@ def test_the_loader_names_a_crossing_only_the_sidepath_column_asks_about(tmp_pat
             osm_id=8100,
             tags={"highway": "secondary", "bridge": "yes", "name": "Roadway Bridge"},
             node_ids=[],
+            coordinates=ON_THE_POTOMAC,
         )
     ]
 

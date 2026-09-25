@@ -286,9 +286,8 @@ class ReferenceData:
         # the fixture's columns it silences. Only the sidepath half used to
         # report, so the fourteen rows that carry a legality opinion and no
         # sidepath flag - every row the `rm:bridge_bicycle` tag exists for,
-        # including the Theodore Roosevelt Bridge, whose entire effect on the
-        # no-trail variant is that column - could resolve against nothing and
-        # reach no log at all.
+        # including the Theodore Roosevelt Bridge - could resolve against
+        # nothing and reach no log at all.
         unmatched = sorted(set(unmatched_sidepath) | set(unmatched_legality))
         if unmatched:
             logger.warning(

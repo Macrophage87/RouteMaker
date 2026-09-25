@@ -2,13 +2,13 @@
   {
     "name": "Arlington Memorial Bridge",
     "osm_way_id": 0,
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "US Park Police",
     "row_owner": "National Park Service",
     "manager": "National Park Service",
-    "note": "Roadway is bike-legal end to end and one authority throughout; the midpoint heuristic must not split it."
+    "note": "Roadway is bike-legal end to end and one authority throughout; the midpoint heuristic must not split it. Checked against the Geofabrik DC+MD+VA extract of 2026-09-24: one highway=primary way of that name, two-way."
   },
   {
     "name": "Key Bridge",
@@ -16,24 +16,24 @@
     "osm_names": [
       "Francis Scott Key Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": true,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "The roadway is a legal, ordinary climb, not barred - riders use it every day. sidepath_only marks it anyway: it is a narrow bridge with no shoulder and no way off mid-span, so a mass ride still has to be kept to the sidewalk provision rather than the traffic lane. Do not read sidepath_only as a legality claim; roadway_bicycle_legal is the legality claim. The DC-Virginia boundary on the Potomac is the 1791 Virginia shoreline, not the channel, so this span lies within the District along essentially its whole length and MPD's jurisdiction runs end to end - the same shape as the Arlington Memorial Bridge row, which is the right shape for every Potomac span. The earlier split down the middle was the midpoint heuristic written into the data. Boundary is a matter of record; the policing that follows from it is community working knowledge, not a legal statement. The Virginia approach ramps beyond the abutment are VDOT's and Arlington County's; the structure is not."
+    "note": "The roadway is a legal, ordinary climb, not barred - riders use it every day. sidepath_only marks it anyway: it is a narrow bridge with no shoulder and no way off mid-span, so a mass ride still has to be kept to the sidewalk provision rather than the traffic lane. Do not read sidepath_only as a legality claim; roadway_bicycle_legal is the legality claim. The DC-Virginia boundary on the Potomac is the 1791 Virginia shoreline, not the channel, so this span lies within the District along essentially its whole length and MPD's jurisdiction runs end to end - the same shape as the Arlington Memorial Bridge row, which is the right shape for every Potomac span. The earlier split down the middle was the midpoint heuristic written into the data. Boundary is a matter of record; the policing that follows from it is community working knowledge, not a legal statement. The Virginia approach ramps beyond the abutment are VDOT's and Arlington County's; the structure is not. Checked against the Geofabrik DC+MD+VA extract of 2026-09-24: inside this file's region the name reaches four highway=trunk ways, ref US 29, and nothing else; Baltimore's Francis Scott Key Bridge (I-695, the name in bridge:name) is the other structure of that name in the coverage area and is outside it. All four roadway ways carry bicycle=no and foot=no in that extract, so this row's roadway_bicycle_legal true is a claim against OSM's own tag, and the remap writes bicycle=yes over it."
   },
   {
     "name": "Chain Bridge",
     "osm_way_id": 0,
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": true,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "A standard, bike-legal climb out of Georgetown - not barred. Five-foot sidewalk with no way off mid-span is why sidepath_only is still set: a mass ride cannot use the roadway safely even though an individual rider legally can. The DC-Virginia boundary on the Potomac is the 1791 Virginia shoreline, not the channel, so this span lies within the District along essentially its whole length and MPD's jurisdiction runs end to end - the same shape as the Arlington Memorial Bridge row, which is the right shape for every Potomac span. The earlier split down the middle was the midpoint heuristic written into the data. Boundary is a matter of record; the policing that follows from it is community working knowledge, not a legal statement. The row previously named Fairfax County Police for the Virginia end, which was wrong twice over: the Virginia abutment is in Arlington County, not Fairfax, and on the boundary above it is not a Virginia authority's to police at all."
+    "note": "A standard, bike-legal climb out of Georgetown - not barred. Five-foot sidewalk with no way off mid-span is why sidepath_only is still set: a mass ride cannot use the roadway safely even though an individual rider legally can. The DC-Virginia boundary on the Potomac is the 1791 Virginia shoreline, not the channel, so this span lies within the District along essentially its whole length and MPD's jurisdiction runs end to end - the same shape as the Arlington Memorial Bridge row, which is the right shape for every Potomac span. The earlier split down the middle was the midpoint heuristic written into the data. Boundary is a matter of record; the policing that follows from it is community working knowledge, not a legal statement. The row previously named Fairfax County Police for the Virginia end, which was wrong twice over: the Virginia abutment is in Arlington County, not Fairfax, and on the boundary above it is not a Virginia authority's to police at all. Checked against the Geofabrik DC+MD+VA extract of 2026-09-24: two highway=primary ways of that name, two-way, one of them carrying ref VA 123."
   },
   {
     "name": "George Mason Memorial Bridge",
@@ -41,13 +41,13 @@
     "osm_names": [
       "George Mason Memorial Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": false,
     "sidepath_only": true,
     "police": "US Park Police / MPD",
     "row_owner": "National Park Service / VDOT",
     "manager": "National Park Service",
-    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. This one carries I-395's southbound lanes out of the District, and it is where the shared-use path is: the Mount Vernon Trail connection that ramps to Columbia Island on the Virginia side and Ohio Drive SW on the District side is a sidewalk on this highway span, not a structure of its own and not on the Metro bridge. The roadway carries bicycle=no, so roadway_bicycle_legal is false; the path is the only and the intended crossing, so sidepath_only is true. Two claims here are community knowledge rather than record and they are not held at the same confidence. That this span is the one carrying the path is medium-high, from the reviewer who rides it, and it is the one claim a survey could move. The direction is medium-high too and was recorded backwards until round 5: the 1950 Williams span carries the northbound lanes into the District - it is the span Air Florida flight 90 struck - so this 1962 span carries the southbound lanes out of it. Unverified against a real extract."
+    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. This one carries I-395's southbound lanes out of the District, and it is where the shared-use path is: the Mount Vernon Trail connection that ramps to Columbia Island on the Virginia side and Ohio Drive SW on the District side is a sidewalk on this highway span, not a structure of its own and not on the Metro bridge. The roadway carries bicycle=no, so roadway_bicycle_legal is false; the path is the only and the intended crossing, so sidepath_only is true. Two claims here are community knowledge rather than record and they are not held at the same confidence. That this span is the one carrying the path is medium-high, from the reviewer who rides it, and it is the one claim a survey could move. The direction is medium-high too and was recorded backwards until round 5: the 1950 Williams span carries the northbound lanes into the District - it is the span Air Florida flight 90 struck - so this 1962 span carries the southbound lanes out of it. Names checked against the Geofabrik DC+MD+VA extract of 2026-09-24: two highway=motorway ways, ref I 395;US 1, bicycle=no, oneway and drawn from the District end toward Virginia, which agrees with the southbound direction above. Which span carries the path is not something that check can see."
   },
   {
     "name": "Rochambeau Bridge",
@@ -55,27 +55,27 @@
     "osm_names": [
       "Rochambeau Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": false,
     "sidepath_only": false,
     "police": "US Park Police",
     "row_owner": "National Park Service / VDOT",
     "manager": "National Park Service",
-    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. The 1972 span, carrying the US-1 local lanes rather than the I-395 freeway lanes. bicycle=no on the roadway and no sidepath on this structure, so it is barred outright rather than sidepath-only. Community working knowledge, unverified against a real extract."
+    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. The 1972 span. This note said it carried the US-1 local lanes rather than the I-395 freeway lanes, and the Geofabrik DC+MD+VA extract of 2026-09-24 has it the other way round: its two ways are highway=motorway, ref I 395 EXPR - the express lanes - one each way, with the name in bridge:name, while US 1 is on the Williams and George Mason spans (ref I 395;US 1). This note also said bicycle=no on the roadway; neither way carries a bicycle tag, and motorway class is what bars it. There is no sidepath on this structure, so it is barred outright rather than sidepath-only. Names checked against that extract; the authority columns remain community working knowledge."
   },
   {
     "name": "Arland D. Williams Jr. Memorial Bridge",
     "osm_way_id": 0,
     "osm_names": [
-      "Arland D. Williams Jr. Memorial Bridge"
+      "Arland D. Williams Junior Memorial Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": false,
     "sidepath_only": false,
     "police": "US Park Police",
     "row_owner": "National Park Service / VDOT",
     "manager": "National Park Service",
-    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. This row said this was the Metrorail bridge and that it carried the Mount Vernon Trail connection. It is neither. It is the 1950 highway span carrying I-395's northbound lanes into the District - the one Air Florida flight 90 struck in January 1982, renamed in 1985 for the passenger who passed the rescue line to others and drowned. That it is the 1950 span and that it is the span flight 90 struck are matters of record, not OSM questions; which direction it carries is community knowledge at medium-high confidence and was recorded backwards until round 5, as southbound. The Metro crossing is the Charles R. Fenwick Bridge, a separate structure with its own row, and the shared-use path is on the George Mason Memorial Bridge. So this span is bicycle=no on the roadway with no sidepath on it: barred outright, not sidepath-only. Community working knowledge for the OSM spelling, unverified against a real extract."
+    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. This row said this was the Metrorail bridge and that it carried the Mount Vernon Trail connection. It is neither. It is the 1950 highway span carrying I-395's northbound lanes into the District - the one Air Florida flight 90 struck in January 1982, renamed in 1985 for the passenger who passed the rescue line to others and drowned. That it is the 1950 span and that it is the span flight 90 struck are matters of record, not OSM questions; which direction it carries is community knowledge at medium-high confidence and was recorded backwards until round 5, as southbound. The Metro crossing is the Charles R. Fenwick Bridge, a separate structure with its own row, and the shared-use path is on the George Mason Memorial Bridge. So this span is bicycle=no on the roadway with no sidepath on it: barred outright, not sidepath-only. The OSM spelling writes Junior out - \"Arland D. Williams Junior Memorial Bridge\" - so the row matched nothing until osm_names said so. On the Geofabrik DC+MD+VA extract of 2026-09-24 that name is on six highway=motorway ways, ref I 395;US 1, bicycle=no, oneway and drawn from the Virginia end toward the District, which agrees with the northbound direction above; the direction is still community knowledge that the map happens to agree with."
   },
   {
     "name": "Charles R. Fenwick Bridge",
@@ -89,7 +89,7 @@
     "police": "Metro Transit Police",
     "row_owner": "WMATA",
     "manager": "WMATA",
-    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. This is the Metro crossing - the Yellow Line between Pentagon and L'Enfant Plaza - and it was missing from this file entirely while its name sat on the Williams row's note. A Metro bridge carries no roadway and no path: there is no bicycle access of any kind, which is why roadway_bicycle_legal is false and sidepath_only is false together. It is recorded so the structure has a row of its own rather than being rediscovered as somebody else's identity. Community working knowledge, unverified against a real extract."
+    "note": "One of the five parallel structures at the 14th Street crossing, which this file used to record as three. The five are three highway spans - Arland D. Williams Jr. Memorial (1950), George Mason Memorial (1962), Rochambeau (1972) - plus the Long Bridge carrying freight and commuter rail and the Charles R. Fenwick Bridge carrying Metro's Yellow Line. Not one bridge and not one answer, which is why they are separate rows. This is the Metro crossing - the Yellow Line between Pentagon and L'Enfant Plaza - and it was missing from this file entirely while its name sat on the Williams row's note. A Metro bridge carries no roadway and no path: there is no bicycle access of any kind, which is why roadway_bicycle_legal is false and sidepath_only is false together. It is recorded so the structure has a row of its own rather than being rediscovered as somebody else's identity. The spelling is right and still cannot match: the Geofabrik DC+MD+VA extract of 2026-09-24 carries \"Charles R. Fenwick Bridge\" in bridge:name on two railway=subway ways named Washington Metro - Yellow Line, and the pipeline reads highway ways only (extract.read_ways), so no rail way ever reaches the resolvers. The row reports itself unmatched on every rebuild for that reason rather than because the name is wrong, and osm_names_verified stays false because nothing the pipeline reads can confirm it."
   },
   {
     "name": "Long Bridge",
@@ -104,33 +104,36 @@
     "row_owner": "CSX Transportation",
     "row_owner_verified": false,
     "manager": "CSX Transportation",
-    "note": "The fifth of the five structures at the 14th Street crossing, and the rail one: freight, and the commuter and intercity trains that share it. No roadway and no path. It has a row for exactly the reason the Charles R. Fenwick Bridge has one, and until round 5 it did not - this file stated a rule, \"no row for anything rail-only\", and then broke it for Fenwick one paragraph later. One rule for both: a structure at a crossing this deployment has an opinion about gets a row, whatever it carries, so that its identity is recorded here rather than rediscovered on somebody else's row. roadway_bicycle_legal and sidepath_only are false together, which is what \"no bicycle access of any kind\" looks like in these two columns. The name is the most collidable in this file - Arlington has a Long Bridge Park and a Long Bridge Drive - but the match is exact and restricted to bridge-tagged, non-trail-class ways, so a park path or a street named after the bridge is not reachable by it. Ownership is CSX's and row_owner_verified is false: the structure is CSX's, the trains on it are not all CSX's, and this file has not checked which entity holds the right-of-way at either abutment. Community working knowledge, unverified against a real extract."
+    "note": "The fifth of the five structures at the 14th Street crossing, and the rail one: freight, and the commuter and intercity trains that share it. No roadway and no path. It has a row for exactly the reason the Charles R. Fenwick Bridge has one, and until round 5 it did not - this file stated a rule, \"no row for anything rail-only\", and then broke it for Fenwick one paragraph later. One rule for both: a structure at a crossing this deployment has an opinion about gets a row, whatever it carries, so that its identity is recorded here rather than rediscovered on somebody else's row. roadway_bicycle_legal and sidepath_only are false together, which is what \"no bicycle access of any kind\" looks like in these two columns. The name is the most collidable in this file - Arlington has a Long Bridge Park and a Long Bridge Drive - but the match is exact and restricted to bridge-tagged, non-trail-class ways, so a park path or a street named after the bridge is not reachable by it. Ownership is CSX's and row_owner_verified is false: the structure is CSX's, the trains on it are not all CSX's, and this file has not checked which entity holds the right-of-way at either abutment. Unmatched on the Geofabrik DC+MD+VA extract of 2026-09-24 for two reasons at once: no way in it carries the name \"Long Bridge\", and the structure is rail, which the pipeline never reads (extract.read_ways keeps highway ways only). Community working knowledge, unverified against a real extract."
   },
   {
     "name": "Woodrow Wilson Bridge path",
     "osm_way_id": 0,
     "osm_names": [
-      "Woodrow Wilson Memorial Bridge"
+      "Woodrow Wilson Memorial Bridge (Local)",
+      "Woodrow Wilson Memorial Bridge (Thru)",
+      "Woodrow Wilson Bridge",
+      "Woodrow Wilson Bridge (Thru)"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": false,
     "sidepath_only": true,
     "police": "Alexandria PD / Prince George's County Police / MPD",
     "row_owner": "MDOT SHA",
     "row_owner_verified": false,
     "manager": null,
-    "note": "The roadway carries I-95/I-495 and bicycle=no in OSM; the shared-use path is a separate structure and the only crossing. Three authorities, not two: the Maryland end is in Prince George's County, and the span clips the District itself - the Wilson Bridge is the one Potomac crossing that touches all three - so MPD belongs here alongside Alexandria and Prince George's. row_owner was MDTA and is now MDOT SHA: MDTA is Maryland's toll authority and this bridge is toll-free, which is the tell; MDOT SHA operates it. Medium confidence, and row_owner_verified stays false - ownership of the connecting right-of-way on the Virginia side (the Jones Point sliver, the short-crossing case) may sit with VDOT again."
+    "note": "The roadway carries I-95/I-495 and bicycle=no in OSM; the shared-use path is a separate structure and the only crossing. Three authorities, not two: the Maryland end is in Prince George's County, and the span clips the District itself - the Wilson Bridge is the one Potomac crossing that touches all three - so MPD belongs here alongside Alexandria and Prince George's. row_owner was MDTA and is now MDOT SHA: MDTA is Maryland's toll authority and this bridge is toll-free, which is the tell; MDOT SHA operates it. Medium confidence, and row_owner_verified stays false - ownership of the connecting right-of-way on the Virginia side (the Jones Point sliver, the short-crossing case) may sit with VDOT again. The name this row claimed, \"Woodrow Wilson Memorial Bridge\", is on no way in the Geofabrik DC+MD+VA extract of 2026-09-24, so the row matched nothing. There the roadway is twenty highway=motorway ways, ref I 95;I 495, bicycle=no: the western ways named \"Capital Beltway (Local)\" and \"Capital Beltway (Thru)\" with bridge:name \"Woodrow Wilson Bridge\" and \"Woodrow Wilson Bridge (Thru)\", the eastern ways named \"Woodrow Wilson Memorial Bridge (Local)\", some with bridge:name \"Woodrow Wilson Memorial Bridge (Thru)\". Those four spellings are what osm_names claims. The path is separate highway=cycleway ways named \"Woodrow Wilson Bridge\" and \"Woodrow Wilson Bridge Trail\"; the first shares a spelling with the roadway's bridge:name, and the trail-class guard is what keeps this row off it. Names checked against that extract."
   },
   {
     "name": "Sousa Bridge (Pennsylvania Avenue SE)",
     "osm_way_id": 0,
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "Pennsylvania Avenue SE's Anacostia crossing, and one a mass ride can use: a bike-legal roadway, neither barred nor sidepath-only. The row's `name` is this file's own label, written to say which street the bridge carries; OSM's name is the full \"John Philip Sousa Bridge\", which is what `osm_names` now claims. Until round 5 the row carried no `osm_names` at all, so the label was what the resolver matched on - a string with a parenthesis in it that no OSM way carries, which could only ever miss, and a miss here is silent except in the unmatched log. Community working knowledge, unverified against a real extract.",
+    "note": "Pennsylvania Avenue SE's Anacostia crossing, and one a mass ride can use: a bike-legal roadway, neither barred nor sidepath-only. The row's `name` is this file's own label, written to say which street the bridge carries; OSM's name is the full \"John Philip Sousa Bridge\", which is what `osm_names` now claims. Until round 5 the row carried no `osm_names` at all, so the label was what the resolver matched on - a string with a parenthesis in it that no OSM way carries, which could only ever miss, and a miss here is silent except in the unmatched log. Checked against the Geofabrik DC+MD+VA extract of 2026-09-24: the bridge:name is on the two highway=primary ways of Pennsylvania Avenue Southeast across the Anacostia, one each way.",
     "osm_names": [
       "John Philip Sousa Bridge"
     ]
@@ -138,16 +141,13 @@
   {
     "name": "11th Street Bridge (local span)",
     "osm_way_id": 0,
-    "osm_names": [
-      "11th Street Bridge"
-    ],
     "osm_names_verified": false,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "One of the three parallel structures at the 11th Street crossing, which this file used to record as one row. That row said in its note that the local span carries bikes and the freeway spans do not - two different answers to the two columns the pipeline reads, written where nothing reads them, with one set of values standing for all three structures. Split the way the 14th Street crossing is split and for the same reason: \"may a bicycle use the 11th Street Bridge\" has no single answer. The local span, carrying 11th Street SE between Capitol Hill and Anacostia. A bike-legal roadway with its own provision and a connection to the Anacostia Riverwalk Trail at either end, so it is neither barred nor sidepath-only: this is the row that makes the 11th Street crossing usable by a ride, and the one the old single row's values described. It is also the span most likely to carry the plain name \"11th Street Bridge\" in OSM, which is what `osm_names` claims. Community working knowledge, unverified against a real extract."
+    "note": "One of the three parallel structures at the 11th Street crossing, which this file used to record as one row. That row said in its note that the local span carries bikes and the freeway spans do not - two different answers to the two columns the pipeline reads, written where nothing reads them, with one set of values standing for all three structures. Split the way the 14th Street crossing is split and for the same reason: \"may a bicycle use the 11th Street Bridge\" has no single answer. The local span, carrying 11th Street SE between Capitol Hill and Anacostia. A bike-legal roadway with its own provision and a connection to the Anacostia Riverwalk Trail at either end, so it is neither barred nor sidepath-only: this is the row that makes the 11th Street crossing usable by a ride, and the one the old single row's values described. This row claimed the plain name \"11th Street Bridge\" as the local span's, and the Geofabrik DC+MD+VA extract of 2026-09-24 has that name on exactly one way, which is not this span: bridge:name on way 546095934, highway=motorway, name Southeast Freeway, ref I 695 - a freeway span, where this row's true landed. The claim is removed, so the row now matches on its own label, which no way carries, and reports itself unmatched. The candidates for the local span in that extract are four bridge ways named \"11th Street Southeast\", highway=secondary, one about 270 m long beside the freeway span and three short ones at its south end, and every one of them carries bicycle=no and foot=no. Claiming that name would put this row's true on all four and write bicycle=yes over OSM's bicycle=no on each, so it is not claimed: which way is the span, and whether this row's legality claim should stand against that tag, are for a reviewer to settle. Community working knowledge, unverified against a real extract."
   },
   {
     "name": "11th Street Bridge (I-695 inbound)",
@@ -161,7 +161,7 @@
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "One of the three parallel structures at the 11th Street crossing, which this file used to record as one row. That row said in its note that the local span carries bikes and the freeway spans do not - two different answers to the two columns the pipeline reads, written where nothing reads them, with one set of values standing for all three structures. Split the way the 14th Street crossing is split and for the same reason: \"may a bicycle use the 11th Street Bridge\" has no single answer. One of the two freeway spans, carrying I-695 inbound toward the Southeast Freeway. bicycle=no on the roadway and no sidepath on the structure, so it is barred outright rather than sidepath-only. The OSM spelling is the least confident claim in this file: freeway spans are frequently unnamed in OSM, and this is a guess at a plausible name, so the row may well land in the unmatched log - which is where a rule that is not biting is supposed to appear, and is why that log exists. That is tolerable here in a way it would not be on the Theodore Roosevelt Bridge, whose row says so: I-695 is motorway class, which MOTOR_ONLY does catch, so a ride is kept off these two spans by highway class even when the name resolves against nothing. Community working knowledge, unverified against a real extract."
+    "note": "One of the three parallel structures at the 11th Street crossing, which this file used to record as one row. That row said in its note that the local span carries bikes and the freeway spans do not - two different answers to the two columns the pipeline reads, written where nothing reads them, with one set of values standing for all three structures. Split the way the 14th Street crossing is split and for the same reason: \"may a bicycle use the 11th Street Bridge\" has no single answer. One of the two freeway spans, carrying I-695 inbound toward the Southeast Freeway. bicycle=no on the roadway and no sidepath on the structure, so it is barred outright rather than sidepath-only. The OSM spelling is the least confident claim in this file: freeway spans are frequently unnamed in OSM, and this is a guess at a plausible name, so the row may well land in the unmatched log - which is where a rule that is not biting is supposed to appear, and is why that log exists. That is tolerable here because I-695 is motorway class, which MOTOR_ONLY does catch, so a ride is kept off these two spans by highway class even when the name resolves against nothing. On the Geofabrik DC+MD+VA extract of 2026-09-24 no way carries this spelling. The one freeway way there named for the crossing is 546095934 - bridge:name \"11th Street Bridge\", name Southeast Freeway, ref I 695, oneway, drawn from the Anacostia end north-west toward the Southeast Freeway - and nothing here decides which of the two freeway rows it belongs to. Community working knowledge, unverified against a real extract."
   },
   {
     "name": "11th Street Bridge (I-695 outbound)",
@@ -175,7 +175,7 @@
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "One of the three parallel structures at the 11th Street crossing, which this file used to record as one row. That row said in its note that the local span carries bikes and the freeway spans do not - two different answers to the two columns the pipeline reads, written where nothing reads them, with one set of values standing for all three structures. Split the way the 14th Street crossing is split and for the same reason: \"may a bicycle use the 11th Street Bridge\" has no single answer. One of the two freeway spans, carrying I-695 outbound toward the Anacostia Freeway. bicycle=no on the roadway and no sidepath on the structure, so it is barred outright rather than sidepath-only. The OSM spelling is the least confident claim in this file: freeway spans are frequently unnamed in OSM, and this is a guess at a plausible name, so the row may well land in the unmatched log - which is where a rule that is not biting is supposed to appear, and is why that log exists. That is tolerable here in a way it would not be on the Theodore Roosevelt Bridge, whose row says so: I-695 is motorway class, which MOTOR_ONLY does catch, so a ride is kept off these two spans by highway class even when the name resolves against nothing. Community working knowledge, unverified against a real extract."
+    "note": "One of the three parallel structures at the 11th Street crossing, which this file used to record as one row. That row said in its note that the local span carries bikes and the freeway spans do not - two different answers to the two columns the pipeline reads, written where nothing reads them, with one set of values standing for all three structures. Split the way the 14th Street crossing is split and for the same reason: \"may a bicycle use the 11th Street Bridge\" has no single answer. One of the two freeway spans, carrying I-695 outbound toward the Anacostia Freeway. bicycle=no on the roadway and no sidepath on the structure, so it is barred outright rather than sidepath-only. The OSM spelling is the least confident claim in this file: freeway spans are frequently unnamed in OSM, and this is a guess at a plausible name, so the row may well land in the unmatched log - which is where a rule that is not biting is supposed to appear, and is why that log exists. That is tolerable here because I-695 is motorway class, which MOTOR_ONLY does catch, so a ride is kept off these two spans by highway class even when the name resolves against nothing. On the Geofabrik DC+MD+VA extract of 2026-09-24 no way carries this spelling. The one freeway way there named for the crossing is 546095934 - bridge:name \"11th Street Bridge\", name Southeast Freeway, ref I 695, oneway, drawn from the Anacostia end north-west toward the Southeast Freeway - and nothing here decides which of the two freeway rows it belongs to. Community working knowledge, unverified against a real extract."
   },
   {
     "name": "Frederick Douglass Memorial Bridge",
@@ -183,28 +183,27 @@
     "osm_names": [
       "Frederick Douglass Memorial Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "South Capitol Street's Anacostia crossing; a bike-legal roadway with its own protected provision, not a sidepath-only case. Community working knowledge, unverified against a real extract."
+    "note": "South Capitol Street's Anacostia crossing; a bike-legal roadway with its own protected provision, not a sidepath-only case. Checked against the Geofabrik DC+MD+VA extract of 2026-09-24: the bridge:name is on the two highway=primary ways of South Capitol Street across the Anacostia, one each way. Both carry bicycle=use_sidepath, so this row's roadway_bicycle_legal true is a claim against OSM's own tag, and the remap writes bicycle=yes over it."
   },
   {
     "name": "Whitney Young Memorial Bridge",
     "osm_way_id": 0,
     "osm_names": [
-      "Whitney Young Memorial Bridge",
-      "Whitney M. Young Jr. Memorial Bridge"
+      "Whitney Young Memorial Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "A bike-legal roadway. Community working knowledge, unverified against a real extract - included on the reviewer's word that it belongs in this set, without an independently confirmed location or spelling."
+    "note": "A bike-legal roadway. Included on a reviewer's word that it belongs in this set, and the Geofabrik DC+MD+VA extract of 2026-09-24 confirms the location and the spelling: three highway=primary ways named \"Whitney Young Memorial Bridge\" at East Capitol Street's crossing of the Anacostia, one of them bicycle=yes. The alias \"Whitney M. Young Jr. Memorial Bridge\" is removed from osm_names because no way in that extract carries it. The authority columns remain community working knowledge."
   },
   {
     "name": "Benning Road Bridge",
@@ -212,27 +211,27 @@
     "osm_names": [
       "Benning Road Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": true,
     "sidepath_only": false,
     "police": "MPD",
     "row_owner": "DDOT",
     "manager": null,
-    "note": "Benning Road's Anacostia crossing; a bike-legal roadway. Community working knowledge, unverified against a real extract."
+    "note": "Benning Road's Anacostia crossing; a bike-legal roadway. Checked against the Geofabrik DC+MD+VA extract of 2026-09-24: the bridge:name is on the two highway=primary ways of Benning Road Northeast across the Anacostia, one each way."
   },
   {
     "name": "Theodore Roosevelt Bridge",
     "osm_way_id": 0,
     "osm_names": [
-      "Theodore Roosevelt Bridge"
+      "Theodore Roosevelt Memorial Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": false,
     "sidepath_only": false,
     "police": "US Park Police",
     "row_owner": "National Park Service / VDOT",
     "manager": "National Park Service",
-    "note": "Carries I-66 across the Potomac; bicycle=no in OSM and no sidepath on the structure, so this is barred outright rather than sidepath-only. Tagged highway=trunk, which MOTOR_ONLY does not catch, so the no-trail variant depends entirely on the rm:bridge_bicycle mechanism (resolve_bridge_bicycle_legality) to keep a mass ride off it - there is no highway-class fallback here. Community working knowledge, unverified against a real extract."
+    "note": "Carries I-66 and US-50 across the Potomac, with no sidepath on the structure, so this is barred outright rather than sidepath-only. This note said the bridge was tagged highway=trunk, which MOTOR_ONLY does not catch, so that the no-trail variant depended entirely on the rm:bridge_bicycle mechanism to keep a mass ride off it; it also said bicycle=no in OSM. The Geofabrik DC+MD+VA extract of 2026-09-24 disproves both: OSM names the structure \"Theodore Roosevelt Memorial Bridge\" - which is why this row matched nothing until osm_names said so - and all seventeen of its bridge ways are highway=motorway, refs I 66, US 50 and I 66;US 50, with no bicycle tag at all. Highway class keeps a ride off it, and this row's false agrees with that rather than standing alone. Names checked against that extract; the authority columns remain community working knowledge."
   },
   {
     "name": "American Legion Bridge",
@@ -240,12 +239,12 @@
     "osm_names": [
       "American Legion Bridge"
     ],
-    "osm_names_verified": false,
+    "osm_names_verified": true,
     "roadway_bicycle_legal": false,
     "sidepath_only": false,
     "police": "Montgomery County Police / Maryland State Police",
     "row_owner": "MDOT SHA / VDOT",
     "manager": null,
-    "note": "Carries the Capital Beltway (I-495) across the Potomac near Cabin John. No bicycle or pedestrian provision of any kind - not sidepath-only, no access. The police column was a split down the middle, Montgomery County and Fairfax County, which is the midpoint heuristic this file exists to override, written into the data. The shoreline reasoning that puts every District span under one authority applies here with the line in a different place: above Washington the Potomac is Maryland's to the Virginia bank, which Virginia v. Maryland (2003) left undisturbed as to the boundary itself while deciding what Virginia may do from its own shore, so this span lies essentially in Maryland along its whole length. Montgomery County Police and the Maryland State Police, then, with Fairfax County reached only at the Virginia approach beyond the abutment - the same shape the Key Bridge row gives VDOT and Arlington County. Boundary is a matter of record; the policing that follows from it is community working knowledge at medium confidence, not a legal statement. row_owner reads MDOT SHA rather than \"Maryland SHA\", which is the same agency under a spelling this file no longer uses. The alias \"George Kennan Memorial Bridge\" has been removed: nothing places that name on this structure or on any other crossing in the coverage area, and an unplaceable alias in this file is a name that can only ever match the wrong way. Community working knowledge, unverified against a real extract."
+    "note": "Carries the Capital Beltway (I-495) across the Potomac near Cabin John. No bicycle or pedestrian provision of any kind - not sidepath-only, no access. The police column was a split down the middle, Montgomery County and Fairfax County, which is the midpoint heuristic this file exists to override, written into the data. The shoreline reasoning that puts every District span under one authority applies here with the line in a different place: above Washington the Potomac is Maryland's to the Virginia bank, which Virginia v. Maryland (2003) left undisturbed as to the boundary itself while deciding what Virginia may do from its own shore, so this span lies essentially in Maryland along its whole length. Montgomery County Police and the Maryland State Police, then, with Fairfax County reached only at the Virginia approach beyond the abutment - the same shape the Key Bridge row gives VDOT and Arlington County. Boundary is a matter of record; the policing that follows from it is community working knowledge at medium confidence, not a legal statement. row_owner reads MDOT SHA rather than \"Maryland SHA\", which is the same agency under a spelling this file no longer uses. The alias \"George Kennan Memorial Bridge\" has been removed: nothing places that name on this structure or on any other crossing in the coverage area, and an unplaceable alias in this file is a name that can only ever match the wrong way. Names checked against the Geofabrik DC+MD+VA extract of 2026-09-24: the bridge:name is on the two highway=motorway ways of the Capital Beltway, ref I 495, bicycle=no, one each way. The authority columns remain community working knowledge."
   }
 ]
