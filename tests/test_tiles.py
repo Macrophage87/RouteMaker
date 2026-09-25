@@ -617,6 +617,20 @@ def test_the_write_probe_reports_a_variant_directory_that_is_not_there(tmp_path)
     assert sorted(path.name for path in (tmp_path / "standard").iterdir()) == []
 
 
+def test_the_write_probe_reports_every_directory_it_cannot_write(tmp_path) -> None:
+    """Not just the first: an operator told about one directory fixes that one
+    and meets the next refusal. The first and the last variant are missing,
+    so a probe that stopped at its first failure would name only one."""
+    (tmp_path / Variant.NO_TRAIL.value).mkdir()
+    problems = tiles.unwritable_link_dirs(tmp_path)
+    for variant in (Variant.STANDARD, Variant.EBIKE):
+        assert any(str(tmp_path / variant.value) in problem for problem in problems), (
+            variant.value,
+            problems,
+        )
+    assert not any(str(tmp_path / Variant.NO_TRAIL.value) in problem for problem in problems)
+
+
 def test_the_write_probe_reports_a_probe_it_could_not_remove(tmp_path, monkeypatch) -> None:
     """A directory that takes a link but will not give it back is reported
     too: `demote` replaces links, so the rollback would fail there."""
