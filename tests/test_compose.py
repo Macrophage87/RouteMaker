@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import math
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -225,6 +226,45 @@ def test_the_rebuild_sees_every_directory_it_writes_at_the_path_its_settings_ass
         assert f"${{DATA_ROOT}}/{directory}:/data/{directory}" in volumes, directory
     assert SERVICES["rebuild"]["environment"]["DATA_ROOT"] == "/data"
     assert "./lua:/conf/lua:ro" in volumes and "./valhalla:/conf:ro" in volumes
+
+
+def _repo_binds(service: dict) -> list[tuple[str, str, bool]]:
+    """(repository-relative source, container target, read-only) for each
+    short-syntax bind of a path in this checkout."""
+    binds = []
+    for volume in service.get("volumes") or []:
+        parts = volume.split(":")
+        if parts[0].startswith("./"):
+            binds.append((parts[0][2:], parts[1], len(parts) > 2 and "ro" in parts[2].split(",")))
+    return binds
+
+
+def test_a_bind_nested_in_a_read_only_bind_has_its_mountpoint_in_the_checkout() -> None:
+    """Docker creates a nested bind's mountpoint inside the parent bind's
+    source, and a read-only parent refuses the mkdir: `./lua:/conf/lua` under
+    `./valhalla:/conf:ro` failed every `up` on a fresh checkout with "make
+    mountpoint /conf/lua: read-only file system", and took the api, worker and
+    all three routers down with it because compose aborts the whole `up`. The
+    mountpoint has to exist in the parent's source, tracked by git, since a
+    clone is where the stack starts."""
+    tracked = subprocess.run(
+        ["git", "ls-files"], cwd=REPO, capture_output=True, text=True, check=True
+    ).stdout.splitlines()
+    nested = []
+    for name, service in SERVICES.items():
+        binds = _repo_binds(service)
+        for parent_source, parent_target, read_only in binds:
+            if not read_only:
+                continue
+            for _, target, _ in binds:
+                if target.startswith(parent_target.rstrip("/") + "/"):
+                    mountpoint = f"{parent_source}/{target[len(parent_target):].strip('/')}"
+                    nested.append(name)
+                    assert any(path.startswith(mountpoint + "/") for path in tracked), (
+                        f"{name}: {target} is bound inside read-only {parent_target}, so "
+                        f"{mountpoint}/ must be a tracked directory in the checkout"
+                    )
+    assert nested, "the routers and the rebuild each nest ./lua inside ./valhalla"
 
 
 def test_no_service_binds_the_whole_data_volume() -> None:
