@@ -305,10 +305,10 @@ def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> 
     exactly the relations that get cut.
 
     A coverage polygon is preferred over the bounding box when there is one:
-    the plan's region is a polygon and the box around it reaches well past
-    Fredericksburg and Frederick. The repository carries no polygon file yet,
-    so `settings.COVERAGE_POLYGON` is None and `settings.COVERAGE_BBOX` is what
-    is clipped to.
+    the plan's region is a polygon - Frederick and Leesburg, Baltimore,
+    Annapolis, Fredericksburg - and the box around it reaches well past them.
+    The repository carries no polygon file yet, so `settings.COVERAGE_POLYGON`
+    is None and `settings.COVERAGE_BBOX` is what is clipped to.
 
     `-f pbf` because the output name is a `.part`. See `OUTPUT_FORMAT_FLAG`.
     """

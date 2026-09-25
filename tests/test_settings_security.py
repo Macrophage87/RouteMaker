@@ -359,16 +359,17 @@ class TestTheSourceExtractsThreeKnobs:
         The box is not decoration: the elevation stage fetches every one-degree
         HGT tile it touches and the extract stage clips the merged PBF to it, so
         a corner moved inward silently drops map - Frederick and Leesburg to the
-        north-west, Annapolis to the east, Fredericksburg to the south - out of
-        a graph that still builds, still validates and still routes.
+        north-west, Baltimore to the north-east, Annapolis to the east,
+        Fredericksburg to the south - out of a graph that still builds, still
+        validates and still routes.
         """
         assert settings.COVERAGE_BBOX == (-78.0, 38.2, -76.3, 39.5)
 
         west, south, east, north = settings.COVERAGE_BBOX
         assert west == -78.0, "Frederick and Leesburg to the north-west"
         assert south == 38.2, "Fredericksburg to the south"
-        assert east == -76.3, "Annapolis to the east"
-        assert north == 39.5
+        assert east == -76.3, "Annapolis to the east, and Baltimore to the north-east"
+        assert north == 39.5, "Frederick, and Baltimore to the north-east"
         assert west < east and south < north, "and it is a box, in that order"
 
     def test_the_extract_is_stale_at_six_days_not_seven(self) -> None:
