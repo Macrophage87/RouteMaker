@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -519,6 +520,24 @@ def test_a_timezone_script_that_exits_0_over_unusable_output_is_not_promoted(
     assert timezone_db.name in result.stderr, (
         f"{kind}: the failure names the file it refused: {result.stderr}"
     )
+
+
+def test_the_part_check_only_reads_the_file_it_checks(tmp_path) -> None:
+    """The check opens the part file read-only: it never creates one where the
+    build left none, and it leaves a good one byte for byte as it found it."""
+    check = [sys.executable, "-c", tiles.TIMEZONE_PART_CHECK]
+
+    missing = tmp_path / "missing.sqlite.part"
+    result = subprocess.run([*check, str(missing)], capture_output=True, text=True)
+    assert result.returncode != 0, "a part file that is not there is not a database"
+    assert not missing.exists(), "and checking it did not create one"
+
+    good = tmp_path / "good.sqlite.part"
+    write_sqlite_database(good, tiles.TIMEZONE_TABLE)
+    before = good.read_bytes()
+    result = subprocess.run([*check, str(good)], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert good.read_bytes() == before
 
 
 def test_the_timezone_database_is_downloaded_once_and_copied(tmp_path) -> None:
