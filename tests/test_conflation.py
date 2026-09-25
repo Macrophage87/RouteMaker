@@ -10,6 +10,7 @@ passed on the one case the code got right and nothing exercised the rest.
 
 from __future__ import annotations
 
+import functools
 import math
 
 import pytest
@@ -681,11 +682,352 @@ class TestTheSpatialIndexChangesTheCostAndNothingElse:
         from pipeline import conflation
 
         measured = []
-        real = conflation._overlap
+        real = conflation._PreparedFeature.overlap
         monkeypatch.setattr(
-            conflation, "_overlap", lambda *a, **k: measured.append(a[1]) or real(*a, **k)
+            conflation._PreparedFeature,
+            "overlap",
+            lambda self, *a, **k: measured.append(self) or real(self, *a, **k),
         )
         way = (5, [(-77.03, 38.90), (-77.02, 38.90)])
         far = feature("far", [(-76.03, 38.90), (-76.02, 38.90)])
+        near = feature("near", [(-77.03, 38.90001), (-77.02, 38.90001)])
         conflation.conflate([way], [far])
         assert measured == [], "a count a degree away is not a candidate"
+        # And the probe does see a measurement when there is one to make, so
+        # the assertion above cannot pass by watching the wrong function.
+        conflation.conflate([way], [near])
+        assert len(measured) == 1
+
+
+# The measure as it stood before `_PreparedFeature`: every probe against every
+# segment of the feature through `distance_to_line`. Kept here as the oracle
+# the prepared measure is held to, value for value.
+def reference_overlap(way, feature_coordinates, tolerance_m):
+    from pipeline.conflation import _densify
+    from routemaker.geo import Point, distance_to_line
+
+    if len(way) < 2 or len(feature_coordinates) < 2:
+        return 0.0, None, float("inf")
+    feature_points = [Point(*point) for point in feature_coordinates]
+    probes = _densify(way, tolerance_m)
+    positions, distances = [], []
+    for point in probes:
+        distance, along = distance_to_line(Point(*point), feature_points)
+        if distance <= tolerance_m:
+            positions.append(along)
+            distances.append(distance)
+    fraction = len(positions) / len(probes)
+    span = (min(positions), max(positions)) if positions else None
+    mean_distance = sum(distances) / len(distances) if distances else float("inf")
+    return fraction, span, mean_distance
+
+
+def reference_conflate(ways, features):
+    """`conflate` as it stood before the grid index and the prepared measure:
+    every way against every feature, measured by `reference_overlap`."""
+    from pipeline.conflation import SOURCE_PRECEDENCE, Match, _claim
+
+    candidates = []
+    for way_id, coordinates, *rest in ways:
+        if rest and rest[0]:
+            continue
+        way_bearing = _mean_bearing(coordinates)
+        if way_bearing is None:
+            continue
+        for item in features:
+            if not within(coordinates, item.coordinates, 200.0):
+                continue
+            feature_bearing = _mean_bearing(item.coordinates)
+            if feature_bearing is None:
+                continue
+            delta = bearing_delta(way_bearing, feature_bearing)
+            if min(delta, 180.0 - delta) > BEARING_TOLERANCE_DEG:
+                continue
+            overlap, span, mean_distance = reference_overlap(
+                coordinates, item.coordinates, MAX_SEPARATION_M
+            )
+            if overlap < MIN_OVERLAP_FRACTION:
+                continue
+            candidates.append((overlap, way_id, item, span, mean_distance))
+
+    def rank(candidate):
+        overlap, way_id, item, _span, mean_distance = candidate
+        precedence = (
+            SOURCE_PRECEDENCE.index(item.source)
+            if item.source in SOURCE_PRECEDENCE
+            else len(SOURCE_PRECEDENCE)
+        )
+        return (precedence, -overlap, mean_distance, way_id, item.feature_id)
+
+    matched, rejected, used, claimed = {}, [], set(), {}
+    for overlap, way_id, item, span, _mean in sorted(candidates, key=rank):
+        match = Match(
+            way_id, item.feature_id, item.aadt, item.source, item.year, overlap, item.agency
+        )
+        if way_id in matched or not _claim(claimed, item.feature_id, span):
+            rejected.append((way_id, match))
+            continue
+        matched[way_id] = match
+        used.add(item.feature_id)
+    unmatched = [f.feature_id for f in features if f.feature_id not in used]
+    return matched, rejected, unmatched
+
+
+METRE_LAT = 1 / 111_195.0
+
+
+def within(a, b, metres: float) -> bool:
+    """Whether two lines' boxes come within `metres` of each other - ten times
+    the tolerance, so it only spares the oracle pairs that are trivially apart;
+    it is not the index under test, and far more generous than it."""
+    margin_lat = metres * METRE_LAT
+    margin_lon = east(metres, 60.0)
+    return not (
+        max(x for x, _ in a) + margin_lon < min(x for x, _ in b)
+        or max(x for x, _ in b) + margin_lon < min(x for x, _ in a)
+        or max(y for _, y in a) + margin_lat < min(y for _, y in b)
+        or max(y for _, y in b) + margin_lat < min(y for _, y in a)
+    )
+
+
+def east(metres: float, lat: float) -> float:
+    """Degrees of longitude in `metres` at `lat`."""
+    return metres * METRE_LAT / math.cos(math.radians(lat))
+
+
+def wiggly_line(x0, y0, length_m, vertices, amplitude_m, rng):
+    """A long agency line with many vertices: eastward, meandering, noisy."""
+    out = []
+    for k in range(vertices):
+        along = length_m * k / (vertices - 1)
+        north = amplitude_m * math.sin(along / 400.0) + rng.uniform(-1.5, 1.5)
+        out.append((x0 + east(along, y0), y0 + north * METRE_LAT))
+    return out
+
+
+def hairpin(x0, y0, leg_m, gap_m, vertices_per_leg):
+    """Out east and back west `gap_m` further north: a line doubling back on
+    itself, so a way along one leg can lie within the tolerance of both."""
+    out = [(x0 + east(leg_m * k / vertices_per_leg, y0), y0) for k in range(vertices_per_leg + 1)]
+    for k in range(1, 12):
+        angle = math.pi * k / 12
+        out.append(
+            (
+                x0 + east(leg_m + gap_m / 2 * math.sin(angle), y0),
+                y0 + gap_m / 2 * (1 - math.cos(angle)) * METRE_LAT,
+            )
+        )
+    out += [
+        (x0 + east(leg_m * (1 - k / vertices_per_leg), y0), y0 + gap_m * METRE_LAT)
+        for k in range(vertices_per_leg + 1)
+    ]
+    return out
+
+
+def resampled(line, first, last, north_m, rng, reverse=False, jitter_m=1.0):
+    """A way drawn along `line[first:last]`: its own vertices, halfway between
+    the feature's, moved `north_m` and jittered - never one shared vertex."""
+    points = line[first:last]
+    out = []
+    for a, b in zip(points, points[1:], strict=False):
+        out.append(
+            (
+                (a[0] + b[0]) / 2 + east(rng.uniform(-jitter_m, jitter_m), a[1]),
+                (a[1] + b[1]) / 2 + (north_m + rng.uniform(-jitter_m, jitter_m)) * METRE_LAT,
+            )
+        )
+    return out[::-1] if reverse else out
+
+
+class TestThePreparedMeasureChangesTheCostAndNothingElse:
+    """After the grid index the stage still did not finish on a real slice of
+    the region: every candidate pair ran `distance_to_line`, which recomputes
+    the feature's cumulative length and projects each probe onto every one of
+    its segments - hundreds, on a VDOT line kilometres long - to find the few
+    within twenty metres. `_PreparedFeature` measures each probe only against
+    the segments that can be within the tolerance of it, and computes each
+    feature's lengths once. The oracle is the measure as it stood."""
+
+    @staticmethod
+    @functools.cache
+    def region():
+        import random
+
+        rng = random.Random(20260925)
+        y0 = 38.95
+        x0 = -77.10
+        features, ways = [], []
+
+        long_line = wiggly_line(x0, y0, 3_000.0, 120, 30.0, rng)
+        features.append(feature("long", long_line, source="state"))
+        # A locality line over part of the same corridor, so precedence and
+        # exclusivity both have work to do on it.
+        features.append(feature("long-local", long_line[40:81], source="locality", aadt=4200))
+        way_id = 1
+        # Blocks strung along the long line at assorted offsets, including
+        # either side of the tolerance.
+        for block, start in enumerate(range(0, 114, 4)):
+            offset = (0.0, 6.0, -11.0, 18.5, 19.6, -19.8, 20.4, 23.0)[block % 8]
+            ways.append((way_id, resampled(long_line, start, start + 5, offset, rng)))
+            way_id += 1
+        # One-way pairs: two ways 7 m either side, drawn in opposite directions.
+        for start in (20, 60, 100):
+            ways.append((way_id, resampled(long_line, start, start + 6, 7.0, rng)))
+            ways.append(
+                (way_id + 1, resampled(long_line, start, start + 6, -7.0, rng, reverse=True))
+            )
+            way_id += 2
+        # A way much longer than the stub lying on it, and one no longer than
+        # the stub, running off its end.
+        ways.append((way_id, resampled(long_line, 5, 55, 3.0, rng)))
+        features.append(feature("stub", long_line[30:32]))
+        ways.append((way_id + 1, resampled(long_line, 30, 33, 2.0, rng, jitter_m=0.3)))
+        way_id += 2
+
+        # The line that doubles back, 18 m between its legs.
+        y1 = y0 + 600 * METRE_LAT
+        bend = hairpin(x0, y1, 900.0, 18.0, 45)
+        features.append(feature("hairpin", bend))
+        for start in range(0, 95, 7):
+            for offset in (-4.0, 9.0, 22.0):
+                ways.append((way_id, resampled(bend, start, start + 5, offset, rng)))
+                way_id += 1
+
+        # Near-tolerance parallels to a straight many-vertex line: probes a
+        # hair either side of the twenty metres.
+        y2 = y0 + 1_200 * METRE_LAT
+        straight = [(x0 + east(12.5 * k, y2), y2) for k in range(121)]
+        features.append(feature("straight", straight))
+        for k, offset in enumerate((19.9, 19.99, 20.0, 20.01, 20.1, -19.95, -20.05)):
+            lon0 = x0 + east(100.0 * k, y2)
+            lat = y2 + offset * METRE_LAT
+            ways.append((way_id, [(lon0, lat), (lon0 + east(90.0, y2), lat)]))
+            way_id += 1
+
+        # And a random tangle: meandering features of 2 to 40 vertices, and
+        # ways drawn along pieces of them, some reversed, some off to the side.
+        y3 = y0 + 1_800 * METRE_LAT
+        for n in range(40):
+            vertices = rng.choice((2, 3, 5, 12, 25, 40))
+            heading = rng.uniform(0, 2 * math.pi)
+            x = x0 + east(rng.uniform(0, 3_000), y3)
+            y = y3 + rng.uniform(0, 1_500) * METRE_LAT
+            line = [(x, y)]
+            for _ in range(vertices - 1):
+                heading += rng.uniform(-0.5, 0.5)
+                step = rng.uniform(5.0, 60.0)
+                x += east(step * math.sin(heading), y)
+                y += step * math.cos(heading) * METRE_LAT
+                line.append((x, y))
+            features.append(feature(f"random{n}", line, source=rng.choice(("state", "locality"))))
+            for _ in range(4):
+                if len(line) < 3:
+                    way = [(lon, lat + rng.uniform(-15, 15) * METRE_LAT) for lon, lat in line]
+                else:
+                    first = rng.randrange(0, len(line) - 2)
+                    last = min(len(line), first + rng.randint(3, 12))
+                    way = resampled(
+                        line, first, last, rng.uniform(-25, 25), rng, reverse=rng.random() < 0.3
+                    )
+                if len(way) >= 2:
+                    ways.append((way_id, way))
+                    way_id += 1
+
+        # Short counts overrun by ways at both ends, in eight directions, the
+        # probes falling at every distance up to the tolerance beyond the
+        # count's last vertex - where only that vertex answers, and a probe
+        # window too narrow on any side loses it.
+        y4 = y0 + 3_600 * METRE_LAT
+        for k in range(8):
+            heading = math.radians(45.0 * k)
+            cx, cy = x0 + east(400.0 * k, y4), y4
+
+            def at(metres, side, cx=cx, cy=cy, heading=heading):
+                return (
+                    cx + east(metres * math.sin(heading) + side * math.cos(heading), cy),
+                    cy + (metres * math.cos(heading) - side * math.sin(heading)) * METRE_LAT,
+                )
+
+            features.append(feature(f"short{k}", [at(-30.0, 0.0), at(0.0, 1.0), at(30.0, 0.0)]))
+            for phase in range(0, 20, 2):
+                for side in (0.5, 11.0):
+                    ways.append((way_id, [at(-52.0 - phase, side), at(48.0 - phase, side)]))
+                    way_id += 1
+
+        # A count digitised twice over the same road, start to end and then
+        # start to end again: every probe is exactly as near the second pass
+        # as the first, and the first is the one `distance_to_line` reports.
+        y5 = y0 + 4_000 * METRE_LAT
+        once = [(x0 + east(15.0 * k, y5), y5 + (k % 3) * 0.5 * METRE_LAT) for k in range(9)]
+        features.append(feature("twice", once + once))
+        ways.append((way_id, resampled(once, 0, 9, 3.0, rng)))
+        return ways, features
+
+    def test_every_pair_measures_exactly_what_the_old_measure_did(self) -> None:
+        ways, features = self.region()
+        compared = partial = 0
+        for _way_id, way in ways:
+            for item in features:
+                if not within(way, item.coordinates, 200.0):
+                    continue
+                expected = reference_overlap(way, item.coordinates, MAX_SEPARATION_M)
+                assert _overlap(way, item.coordinates, MAX_SEPARATION_M) == expected
+                compared += 1
+                partial += 0.0 < expected[0] < 1.0
+        assert compared > 800 and partial > 50, "the region exercises partial overlaps"
+
+    def test_conflate_equals_the_exhaustive_computation(self) -> None:
+        ways, features = self.region()
+        result = conflate(ways, features)
+        matched, rejected, unmatched = reference_conflate(ways, features)
+        assert len(matched) > 80 and len(rejected) > 60
+        assert result.matched == matched
+        assert result.rejected == rejected
+        assert result.unmatched_features == unmatched
+
+    def test_a_probe_is_measured_against_the_segments_near_it_only(self, monkeypatch) -> None:
+        """A 100 m way lying on the middle of a 500-vertex line: each probe
+        needs the one or two segments beside it, not five hundred."""
+        from pipeline import conflation
+        from routemaker import geo
+
+        projections = []
+        real = geo.project_onto_segment
+
+        def counting(*args):
+            projections.append(1)
+            return real(*args)
+
+        monkeypatch.setattr(geo, "project_onto_segment", counting)
+        monkeypatch.setattr(conflation, "project_onto_segment", counting, raising=False)
+        y = 38.9
+        line = [(-77.0 + east(10.0 * k, y), y) for k in range(501)]
+        lat = y + 5 * METRE_LAT
+        way = [(-77.0 + east(2_500.0, y), lat), (-77.0 + east(2_600.0, y), lat)]
+        probes = len(conflation._densify(way, MAX_SEPARATION_M))
+        result = conflate([(1, way)], [feature("long", line)])
+        assert result.matched[1].feature_id == "long"
+        assert len(projections) <= 12 * probes
+
+    def test_a_feature_is_prepared_once_for_all_its_ways(self, monkeypatch) -> None:
+        from pipeline import conflation
+        from routemaker import geo
+
+        computed = []
+        real = geo.cumulative_distances
+
+        def counting(points):
+            computed.append(len(points))
+            return real(points)
+
+        monkeypatch.setattr(geo, "cumulative_distances", counting)
+        monkeypatch.setattr(conflation, "cumulative_distances", counting, raising=False)
+        y = 38.9
+        line = [(-77.0 + east(10.0 * k, y), y) for k in range(101)]
+        ways = [
+            (k, [(-77.0 + east(100.0 * k, y), y), (-77.0 + east(100.0 * k + 90, y), y)])
+            for k in range(10)
+        ]
+        result = conflate(ways, [feature("long", line)])
+        assert len(result.matched) == 10
+        assert computed.count(101) == 1

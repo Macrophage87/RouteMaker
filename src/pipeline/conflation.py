@@ -39,8 +39,9 @@ from routemaker.geo import (
     Point,
     bearing,
     bearing_delta,
-    distance_to_line,
+    cumulative_distances,
     haversine,
+    project_onto_segment,
 )
 
 # A match must run within this many degrees of the OSM way. Generous enough for
@@ -186,23 +187,9 @@ def _overlap(
     if len(way) < 2 or len(feature) < 2:
         return 0.0, None, float("inf")
 
-    feature_points = [Point(*point) for point in feature]
-    probes = _densify(way, tolerance_m)
-
-    positions = []
-    distances = []
-    near = 0
-    for point in probes:
-        distance, along = distance_to_line(Point(*point), feature_points)
-        if distance <= tolerance_m:
-            near += 1
-            positions.append(along)
-            distances.append(distance)
-
-    fraction = near / len(probes)
-    span = (min(positions), max(positions)) if positions else None
-    mean_distance = sum(distances) / len(distances) if distances else float("inf")
-    return fraction, span, mean_distance
+    return _PreparedFeature(feature, tolerance_m).overlap(
+        _probes(way, tolerance_m), _bounds(way), tolerance_m
+    )
 
 
 def _overlap_fraction(
@@ -271,6 +258,117 @@ def _bounds(coordinates: Sequence[tuple[float, float]]) -> tuple[float, float, f
     return min(xs), min(ys), max(xs), max(ys)
 
 
+def _margins(south: float, north: float, tolerance_m: float) -> tuple[float, float]:
+    """How far to widen a box, in degrees of (longitude, latitude), so that
+    anything within `tolerance_m` of it lies inside: in latitude the tolerance
+    in degrees, in longitude that divided by the cosine of the box's latitude
+    furthest from the equator, where a degree of longitude is shortest - both
+    times `_INDEX_SLACK`."""
+    margin_lat = _INDEX_SLACK * tolerance_m / _METRES_PER_DEGREE
+    widest = max(abs(south), abs(north)) + margin_lat
+    margin_lon = margin_lat / max(math.cos(math.radians(min(widest, 89.0))), 1e-6)
+    return margin_lon, margin_lat
+
+
+def _probes(coordinates: Sequence[tuple[float, float]], tolerance_m: float) -> list[Point]:
+    """The points along a way that `_overlap` measures, every `tolerance_m`."""
+    return [Point(*point) for point in _densify(coordinates, tolerance_m)]
+
+
+class _PreparedFeature:
+    """An agency line made ready to be measured against many ways.
+
+    `distance_to_line` is the measure, and on the real data it was the whole
+    cost of the stage: it recomputes the line's cumulative length on every
+    call - hundreds of haversines for a many-vertex VDOT line, once per probe
+    of every candidate way - and then projects the probe onto every segment,
+    kilometres of them, to find the few within the tolerance.
+
+    This computes the same answer. The cumulative lengths are computed once,
+    by the same function. And a probe is projected only onto the segments
+    whose box, widened by `_margins`, contains it. The distance measured is a
+    haversine from the probe to a point inside the segment's own box, and a
+    haversine is never less than the latitude between its two points in
+    metres, nor - to well inside the doubled margin - the longitude scaled by
+    the cosine of the latitude. So a segment outside that widened box is
+    further than the tolerance from the probe, and can never be the
+    probe's nearest segment *and* within the tolerance. If the nearest segment
+    is within the tolerance it is therefore among those measured, with every
+    other segment that ties it, in the same order - so the first nearest is the
+    same segment, measured by the same `project_onto_segment`, giving the same
+    distance and the same position along the line. If it is not within the
+    tolerance, the nearest of the measured segments is no nearer, and the
+    probe is not near either way. Which is the only thing `_overlap` asks.
+    """
+
+    __slots__ = ("cumulative", "segments", "total")
+
+    def __init__(self, coordinates: Sequence[tuple[float, float]], tolerance_m: float) -> None:
+        points = [Point(*point) for point in coordinates]
+        self.cumulative = cumulative_distances(points)
+        self.total = self.cumulative[-1]
+        self.segments = []
+        for position, (a, b) in enumerate(zip(points, points[1:], strict=False)):
+            south, north = min(a.lat, b.lat), max(a.lat, b.lat)
+            margin_lon, margin_lat = _margins(south, north, tolerance_m)
+            self.segments.append(
+                (
+                    min(a.lon, b.lon) - margin_lon,
+                    south - margin_lat,
+                    max(a.lon, b.lon) + margin_lon,
+                    north + margin_lat,
+                    position,
+                    a,
+                    b,
+                )
+            )
+
+    def overlap(
+        self,
+        probes: Sequence[Point],
+        box: tuple[float, float, float, float],
+        tolerance_m: float,
+    ) -> tuple[float, tuple[float, float] | None, float]:
+        """`_overlap` of the way whose probes these are and whose box `box` is."""
+        west, south, east, north = box
+        # The segments that can be near any probe at all: every probe lies in
+        # the way's box, so a segment whose widened box misses it is out.
+        segments = [
+            segment
+            for segment in self.segments
+            if segment[0] <= east
+            and segment[2] >= west
+            and segment[1] <= north
+            and segment[3] >= south
+        ]
+        if not segments:
+            return 0.0, None, float("inf")
+
+        cumulative, total = self.cumulative, self.total
+        positions = []
+        distances = []
+        near = 0
+        for probe in probes:
+            lon, lat = probe[0], probe[1]
+            best, best_along = float("inf"), 0.0
+            for seg_west, seg_south, seg_east, seg_north, index, a, b in segments:
+                if lon < seg_west or lon > seg_east or lat < seg_south or lat > seg_north:
+                    continue
+                distance, t = project_onto_segment(probe, a, b)
+                if distance < best:
+                    along = cumulative[index] + (cumulative[index + 1] - cumulative[index]) * t
+                    best, best_along = distance, along / total if total else 0.0
+            if best <= tolerance_m:
+                near += 1
+                positions.append(best_along)
+                distances.append(best)
+
+        fraction = near / len(probes)
+        span = (min(positions), max(positions)) if positions else None
+        mean_distance = sum(distances) / len(distances) if distances else float("inf")
+        return fraction, span, mean_distance
+
+
 class _FeatureIndex:
     """Which features lie within a distance of a line's bounding box.
 
@@ -284,13 +382,11 @@ class _FeatureIndex:
 
     def __init__(self, features: Sequence[AgencyFeature], tolerance_m: float) -> None:
         self._cells: dict[tuple[int, int], list[int]] = {}
-        margin_lat = _INDEX_SLACK * tolerance_m / _METRES_PER_DEGREE
         for position, feature in enumerate(features):
             if len(feature.coordinates) < 2:
                 continue
             west, south, east, north = _bounds(feature.coordinates)
-            widest = max(abs(south), abs(north)) + margin_lat
-            margin_lon = margin_lat / max(math.cos(math.radians(min(widest, 89.0))), 1e-6)
+            margin_lon, margin_lat = _margins(south, north, tolerance_m)
             for cell in self._covered(
                 west - margin_lon, south - margin_lat, east + margin_lon, north + margin_lat
             ):
@@ -367,6 +463,10 @@ def conflate(
     # the index returns them in cannot matter either.
     bearings = [_mean_bearing(feature.coordinates) for feature in features]
     index = _FeatureIndex(features, max_separation_m)
+    # Built on first use and kept: a feature is a candidate for every way along
+    # it, and a way's probes are the same whichever feature they are measured
+    # against. What `_PreparedFeature` saves is described there.
+    prepared: list[_PreparedFeature | None] = [None] * len(features)
 
     for entry in ways:
         way_id, coordinates, *rest = entry
@@ -376,6 +476,7 @@ def conflate(
         way_bearing = _mean_bearing(coordinates)
         if way_bearing is None:
             continue
+        probes = box = None
         for position in index.near(coordinates):
             feature = features[position]
             feature_bearing = bearings[position]
@@ -386,9 +487,12 @@ def conflate(
             delta = bearing_delta(way_bearing, feature_bearing)
             if min(delta, 180.0 - delta) > bearing_tolerance_deg:
                 continue
-            overlap, span, mean_distance = _overlap(
-                coordinates, feature.coordinates, max_separation_m
-            )
+            if prepared[position] is None:
+                prepared[position] = _PreparedFeature(feature.coordinates, max_separation_m)
+            if probes is None:
+                probes = _probes(coordinates, max_separation_m)
+                box = _bounds(coordinates)
+            overlap, span, mean_distance = prepared[position].overlap(probes, box, max_separation_m)
             if overlap < min_overlap:
                 continue
             candidates.append((overlap, way_id, feature, span, mean_distance))
