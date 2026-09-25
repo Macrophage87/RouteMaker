@@ -13,6 +13,7 @@ import random
 from pathlib import Path
 
 import pytest
+from django.conf import settings
 
 from routemaker.geo import (
     EARTH_RADIUS_M,
@@ -566,8 +567,10 @@ def test_the_grid_index_agrees_with_the_pairwise_definition(name: str) -> None:
 # route's smallest cosine and the sphere's own degree; these cases are what say
 # so, and they fail against either of the two figures it replaced.
 
-COVERAGE_LAT_SOUTH = 38.2  # settings.COVERAGE_BBOX, the region this deployment clips to
-COVERAGE_LAT_NORTH = 39.5
+# The region this deployment clips to, read rather than restated: the one flat
+# pin of the corners is in tests/test_settings_security.py.
+COVERAGE_LAT_SOUTH = settings.COVERAGE_BBOX[1]
+COVERAGE_LAT_NORTH = settings.COVERAGE_BBOX[3]
 NEAR_RADIUS_OFFSET_M = 24.93  # inside the 25 m radius, and outside an unpadded cell
 
 # Imported rather than restated: the grid divides by this and so does every
@@ -606,7 +609,7 @@ def region_spanning_revisit_route(base_lon: float) -> list[Point]:
     """
     east = NEAR_RADIUS_OFFSET_M / DEGREE_OF_LATITUDE_M / math.cos(math.radians(COVERAGE_LAT_NORTH))
     span = COVERAGE_LAT_NORTH - COVERAGE_LAT_SOUTH
-    stem_points = 289  # the region's 1.3 degrees at roughly 500 m spacing
+    stem_points = 289  # the region's span, at 500-600 m spacing
     top = COVERAGE_LAT_NORTH
 
     points = [
@@ -667,17 +670,18 @@ def test_a_pair_just_inside_the_radius_is_found_at_the_regions_northern_edge() -
 # route's minimum rather than its mean: the mean is not a property of where the
 # points are that have to be compared.
 
-BULK_LAT = 38.2  # the southern end of the coverage box, where the ride is
+BULK_LAT = COVERAGE_LAT_SOUTH  # the southern end of the coverage box, where the ride is
 BULK_POINTS = 600  # 15 km of it at the 25 m spacing these traces carry
-STEM_POINTS = 289  # the spur north, at roughly 500 m
+STEM_POINTS = 289  # the spur north, at 500-600 m
 
 
 def bulk_south_revisit_route(base_lon: float) -> list[Point]:
     """A ride at the bottom of the coverage box with a spur to the top of it.
 
-    600 points running east along 38.2 N, a spur north to 39.5 N, and the same
-    500 m out-and-back at the top that `region_spanning_revisit_route` uses, its
-    two legs `NEAR_RADIUS_OFFSET_M` apart and so inside the proximity radius.
+    600 points running east along the box's southern edge, a spur north to its
+    northern edge, and the same 500 m out-and-back at the top that
+    `region_spanning_revisit_route` uses, its two legs `NEAR_RADIUS_OFFSET_M`
+    apart and so inside the proximity radius.
     Nothing but the northernmost 81 points is anywhere near the pair; the rest
     is what the mean latitude is made of.
     """

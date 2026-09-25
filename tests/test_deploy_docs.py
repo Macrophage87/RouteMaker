@@ -772,7 +772,7 @@ def test_the_osmium_collector_reads_an_indented_command_line() -> None:
             "Under a step:\n\n```sh\n"
             "  osmium merge dc.osm.pbf md.osm.pbf --overwrite -f pbf -o merged.osm.pbf\n"
             "\tosmium extract -s smart -S types=any --overwrite -f pbf \\\n"
-            "    -b -78.0,38.2,-76.3,39.5 merged.osm.pbf -o source.osm.pbf\n"
+            "    -b -78.0,38.2,-76.02,39.72 merged.osm.pbf -o source.osm.pbf\n"
             "```\n"
         )
     }
@@ -802,6 +802,8 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
     Derived from `pipeline.source`, so the code is the authority and a document
     that restates it cannot quietly disagree.
     """
+    from django.conf import settings
+
     from pipeline import source
 
     commands = documented_osmium_commands()
@@ -815,7 +817,7 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
     produced = {
         "merge": source.merge_command([Path("dc.osm.pbf")], Path("merged.osm.pbf.part")),
         "extract": source.clip_command(
-            Path("merged.osm.pbf"), Path("source.osm.pbf.part"), (-78.0, 38.2, -76.3, 39.5)
+            Path("merged.osm.pbf"), Path("source.osm.pbf.part"), settings.COVERAGE_BBOX
         ),
     }
     # Read back out of the real commands rather than restated, so this cannot
@@ -849,6 +851,15 @@ def test_every_osmium_command_in_the_documents_is_one_osmium_would_accept() -> N
         assert argv[argv.index("-f") + 1] == "pbf", (
             f"{document} names an output format that is not pbf: {' '.join(argv)}"
         )
+        # The box too, where a line prints one: a runbook clipping to last
+        # season's region is a map that silently stops short of the plan's.
+        for flag in ("--bbox", "-b"):
+            if flag in argv:
+                printed = tuple(float(v) for v in argv[argv.index(flag) + 1].split(","))
+                assert printed == tuple(settings.COVERAGE_BBOX), (
+                    f"{document} clips to {printed}; settings.COVERAGE_BBOX is "
+                    f"{settings.COVERAGE_BBOX}"
+                )
 
 
 # --- Rolling a release back ---------------------------------------------------

@@ -359,17 +359,22 @@ class TestTheSourceExtractsThreeKnobs:
         The box is not decoration: the elevation stage fetches every one-degree
         HGT tile it touches and the extract stage clips the merged PBF to it, so
         a corner moved inward silently drops map - Frederick and Leesburg to the
-        north-west, Baltimore to the north-east, Annapolis to the east,
-        Fredericksburg to the south - out of a graph that still builds, still
-        validates and still routes.
+        north-west, the Mason-Dixon line to the north, Baltimore and eastern
+        Harford County to the north-east, Annapolis to the east, Fredericksburg
+        to the south - out of a graph that still builds, still validates and
+        still routes.
+
+        This is the one flat pin of the four numbers. Every other test that
+        needs the region reads it from settings; what the corners must contain
+        is asserted as places in `tests/test_source.py`.
         """
-        assert settings.COVERAGE_BBOX == (-78.0, 38.2, -76.3, 39.5)
+        assert settings.COVERAGE_BBOX == (-78.0, 38.2, -76.02, 39.72)
 
         west, south, east, north = settings.COVERAGE_BBOX
         assert west == -78.0, "Frederick and Leesburg to the north-west"
         assert south == 38.2, "Fredericksburg to the south"
-        assert east == -76.3, "Annapolis to the east, and Baltimore to the north-east"
-        assert north == 39.5, "Frederick, and Baltimore to the north-east"
+        assert east == -76.02, "Havre de Grace, without the W076 tile column"
+        assert north == 39.72, "the owner's figure for the Mason-Dixon line"
         assert west < east and south < north, "and it is a box, in that order"
 
     def test_the_extract_is_stale_at_six_days_not_seven(self) -> None:

@@ -116,7 +116,7 @@ def test_the_free_space_floor_is_the_disk_gates(acceptance):
 
 def test_the_canary_is_two_points_inside_the_coverage_polygon(acceptance):
     (lon1, lat1), (lon2, lat2) = acceptance.CANARY
-    west, south, east, north = -78.0, 38.2, -76.3, 39.5
+    west, south, east, north = settings.COVERAGE_BBOX
     for lon, lat in ((lon1, lat1), (lon2, lat2)):
         assert west < lon < east and south < lat < north
 

@@ -22,11 +22,14 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from django.conf import settings
 
 from pipeline import source
 from pipeline.tiles import CommandOutput
 
-BBOX = (-78.0, 38.2, -76.3, 39.5)
+# The deployment's own region rather than a copy of its numbers: the one flat pin
+# of the corners is in tests/test_settings_security.py.
+BBOX = tuple(settings.COVERAGE_BBOX)
 
 
 class FakeOsmium:
@@ -97,18 +100,62 @@ def test_the_three_geofabrik_extracts_are_the_plans_three_states() -> None:
 
 
 def test_the_coverage_box_contains_baltimore_city() -> None:
-    """PLAN:13 names Baltimore as inside the coverage polygon: it is a common
+    """PLAN:13 names Baltimore as inside the coverage region: it is a common
     riding destination from the area. The box the extract is clipped to and the
     elevation tiles are fetched for must therefore contain the whole city, with
     room for the approaches. Baltimore City's extent from the Census TIGER
-    county layer (it is a county equivalent), rounded outward to a hundredth of
-    a degree."""
-    from django.conf import settings
-
+    county layer (it is an independent city and so a county equivalent, FIPS
+    24510), rounded outward to a hundredth of a degree."""
     city_west, city_south, city_east, city_north = (-76.72, 39.19, -76.52, 39.38)
     west, south, east, north = settings.COVERAGE_BBOX
     assert west < city_west and east > city_east, settings.COVERAGE_BBOX
     assert south < city_south and north > city_north, settings.COVERAGE_BBOX
+
+
+# The places the owner's amendment of 2026-09-24 brings in, as lon, lat: north to
+# the Mason-Dixon line, east to take in Baltimore City and eastern Baltimore and
+# Harford counties. Town centres and unit headquarters rather than extents,
+# rounded to a thousandth; each is a place the region was widened to reach.
+AMENDMENT_PLACES = {
+    "Havre de Grace": (-76.092, 39.549),
+    "Aberdeen": (-76.164, 39.510),
+    "Aberdeen Proving Ground": (-76.141, 39.466),
+    "Bel Air": (-76.348, 39.536),
+    "Westminster": (-76.996, 39.575),
+    "Fort McHenry": (-76.580, 39.263),
+    "Hampton National Historic Site": (-76.588, 39.416),
+    "Martin State Airport": (-76.414, 39.326),
+    # The unincorporated community on the line itself, in Baltimore County.
+    "Maryland Line": (-76.656, 39.716),
+}
+
+
+@pytest.mark.parametrize("place", sorted(AMENDMENT_PLACES))
+def test_the_places_the_amendment_names_are_inside_the_box(place: str) -> None:
+    lon, lat = AMENDMENT_PLACES[place]
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
+
+
+# Maryland's northern extent in the Census TIGER state layer, which is the
+# Mason-Dixon line along Carroll, Baltimore and Harford counties.
+MASON_DIXON_LAT = 39.723
+
+
+def test_the_box_reaches_the_mason_dixon_line() -> None:
+    """To within a few hundred metres, not past it.
+
+    The owner's figure is 39.72, which is about 0.003 degrees - roughly 330 m -
+    short of the line as TIGER draws it, so the northernmost strip of the three
+    counties is outside the box. `-s smart` keeps a way that crosses the edge
+    whole, so what falls out is only map lying wholly in that strip. Recorded
+    for the owner rather than rounded here: 39.73 would reach the line and
+    fetch no further elevation tile, since both are in the N39 band. What this
+    holds is that the edge stays at the line and does not drift back south.
+    """
+    north = settings.COVERAGE_BBOX[3]
+    assert MASON_DIXON_LAT - 0.005 < north, "the box stops short of the Mason-Dixon line"
+    assert north < 39.8, "and it is not reaching into Pennsylvania"
 
 
 def test_the_pre_flight_size_is_two_gibibytes() -> None:
@@ -267,7 +314,7 @@ def test_the_clip_command_is_the_plans_strategy_and_its_option(tmp_path) -> None
         "-S",
         "types=any",
         "--bbox",
-        "-78.0,38.2,-76.3,39.5",
+        "{},{},{},{}".format(*BBOX),  # osmium's order: left, bottom, right, top
         "-o",
         str(tmp_path / "source.osm.pbf.part"),
         str(tmp_path / "merged.osm.pbf"),

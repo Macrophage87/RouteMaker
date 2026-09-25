@@ -329,7 +329,7 @@ curl -fsSL --retry 3 -o district-of-columbia-latest.osm.pbf.part <url>
 osmium merge --overwrite -f pbf dc.osm.pbf md.osm.pbf va.osm.pbf \
     -o merged.osm.pbf.part
 osmium extract --overwrite -f pbf -s smart -S types=any \
-    --bbox -78.0,38.2,-76.3,39.5 -o source.osm.pbf.part merged.osm.pbf
+    --bbox -78.0,38.2,-76.02,39.72 -o source.osm.pbf.part merged.osm.pbf
 ```
 
 `-s smart -S types=any` is PLAN:13's, and the `-S` half is the one that is easy

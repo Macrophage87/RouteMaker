@@ -145,12 +145,21 @@ ELEVATION_DIR = DATA_ROOT / "elevation"
 VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 
 # The coverage polygon's bounding box, west, south, east, north: roughly
-# Frederick and Leesburg to the north-west, Baltimore to the north-east,
-# Annapolis to the east and Fredericksburg to the south. The elevation stage
-# fetches every one-degree HGT tile this box touches, and the extract stage
-# clips to it. Baltimore City already lay inside these numbers before the plan
-# named it; tests/test_source.py holds that it still does.
-COVERAGE_BBOX = (-78.0, 38.2, -76.3, 39.5)
+# Frederick and Leesburg to the north-west, north to the Mason-Dixon line,
+# Baltimore City with eastern Baltimore and Harford counties to the north-east,
+# Annapolis to the east and Fredericksburg to the south. The north and east
+# edges are the owner's amendment of 2026-09-24 (PLAN:13): Baltimore is a common
+# riding destination from the District, so the region reaches it rather than
+# stopping short. The elevation stage fetches every one-degree HGT tile this box
+# touches, and the extract stage clips to it.
+#
+# East is -76.02 and not the owner's round -76.0 on purpose. -76.0 lies exactly
+# on a tile edge, and `elevation.tiles_covering` is inclusive of its edges, so
+# -76.0 would fetch the W076 column - two more 3DEP tiles, 26 MB of HGT each,
+# of Cecil County and the Eastern Shore, which the region does not include.
+# Havre de Grace, the easternmost town the amendment names, is at -76.09.
+# tests/test_source.py holds the tile set and the places both.
+COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)
 
 # The coverage polygon itself, which `osmium extract --polygon` would take in
 # preference to the box. PLAN:13's region is a polygon and the box around it
