@@ -30,10 +30,18 @@ between two agencies about the same road is a thing a reviewer needs to see.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from routemaker.geo import Point, bearing, bearing_delta, distance_to_line, haversine
+from routemaker.geo import (
+    EARTH_RADIUS_M,
+    Point,
+    bearing,
+    bearing_delta,
+    distance_to_line,
+    haversine,
+)
 
 # A match must run within this many degrees of the OSM way. Generous enough for
 # survey noise and a curving road, tight enough to exclude a cross street.
@@ -244,6 +252,69 @@ def _claim(
     return True
 
 
+# The index's cell, about a kilometre: small against the region, large
+# against the forty-metre tolerance, so a way falls in a handful of cells.
+INDEX_CELL_DEG = 0.01
+
+# Metres per degree of latitude on the sphere `routemaker.geo` measures on.
+_METRES_PER_DEGREE = EARTH_RADIUS_M * math.pi / 180.0
+
+# The widening is doubled. It only has to be at least the tolerance; a
+# generous one costs a few extra exact measurements and a tight one would
+# silently drop a real match, so the error is put on the cheap side.
+_INDEX_SLACK = 2.0
+
+
+def _bounds(coordinates: Sequence[tuple[float, float]]) -> tuple[float, float, float, float]:
+    xs = [x for x, _ in coordinates]
+    ys = [y for _, y in coordinates]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+class _FeatureIndex:
+    """Which features lie within a distance of a line's bounding box.
+
+    A grid of `INDEX_CELL_DEG` cells. Each feature is entered in every cell
+    its bounding box covers once widened by the tolerance: in latitude by the
+    tolerance in degrees, in longitude by that divided by the cosine of the
+    box's latitude furthest from the equator, where a degree of longitude is
+    shortest. `near` returns the features entered in any cell the line's box
+    covers, in input order.
+    """
+
+    def __init__(self, features: Sequence[AgencyFeature], tolerance_m: float) -> None:
+        self._cells: dict[tuple[int, int], list[int]] = {}
+        margin_lat = _INDEX_SLACK * tolerance_m / _METRES_PER_DEGREE
+        for position, feature in enumerate(features):
+            if len(feature.coordinates) < 2:
+                continue
+            west, south, east, north = _bounds(feature.coordinates)
+            widest = max(abs(south), abs(north)) + margin_lat
+            margin_lon = margin_lat / max(math.cos(math.radians(min(widest, 89.0))), 1e-6)
+            for cell in self._covered(
+                west - margin_lon, south - margin_lat, east + margin_lon, north + margin_lat
+            ):
+                self._cells.setdefault(cell, []).append(position)
+
+    @staticmethod
+    def _covered(west: float, south: float, east: float, north: float):
+        for column in range(
+            math.floor(west / INDEX_CELL_DEG), math.floor(east / INDEX_CELL_DEG) + 1
+        ):
+            for row in range(
+                math.floor(south / INDEX_CELL_DEG), math.floor(north / INDEX_CELL_DEG) + 1
+            ):
+                yield column, row
+
+    def near(self, coordinates: Sequence[tuple[float, float]]) -> list[int]:
+        if len(coordinates) < 2:
+            return []
+        found: set[int] = set()
+        for cell in self._covered(*_bounds(coordinates)):
+            found.update(self._cells.get(cell, ()))
+        return sorted(found)
+
+
 WayEntry = (
     tuple[int, Sequence[tuple[float, float]]] | tuple[int, Sequence[tuple[float, float]], bool]
 )
@@ -285,6 +356,18 @@ def conflate(
     """
     candidates: list[tuple[float, int, AgencyFeature, tuple[float, float] | None, float]] = []
 
+    # Every way was measured against every feature, which on the real region is
+    # a million ways by forty-five thousand count lines: the first rebuild on a
+    # real host spent hours here and would have spent weeks. A pair can only
+    # score if some probe on the way lies within `max_separation_m` of the
+    # feature, so a feature whose box, widened by that distance, misses the
+    # way's box cannot be a candidate. The index answers exactly that question
+    # and only ever answers it generously, so the candidates are the ones the
+    # exhaustive loop found; they are sorted by a total key below, so the order
+    # the index returns them in cannot matter either.
+    bearings = [_mean_bearing(feature.coordinates) for feature in features]
+    index = _FeatureIndex(features, max_separation_m)
+
     for entry in ways:
         way_id, coordinates, *rest = entry
         is_trail = rest[0] if rest else False
@@ -293,8 +376,9 @@ def conflate(
         way_bearing = _mean_bearing(coordinates)
         if way_bearing is None:
             continue
-        for feature in features:
-            feature_bearing = _mean_bearing(feature.coordinates)
+        for position in index.near(coordinates):
+            feature = features[position]
+            feature_bearing = bearings[position]
             if feature_bearing is None:
                 continue
             # A one-way pair runs in opposite directions along the same road, so

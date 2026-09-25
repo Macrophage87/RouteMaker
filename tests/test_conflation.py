@@ -595,3 +595,97 @@ class TestPrecedence:
             ],
         )
         assert [m.feature_id for _, m in result.rejected] == ["state"]
+
+
+class TestTheSpatialIndexChangesTheCostAndNothingElse:
+    """`conflate` measured every way against every feature - a million ways by
+    forty-five thousand count lines on the real region, which the first
+    rebuild on a real host spent hours in. It now asks a grid index which
+    features can be within `MAX_SEPARATION_M` of a way at all."""
+
+    @staticmethod
+    def corridor():
+        """Ways and counts over a few kilometres: parallel roads 10 to 60 m
+        apart, one-way pairs, a diagonal, counts split into pieces and a count
+        out on its own. Deterministic, so a failure reproduces."""
+        from pipeline.conflation import MAX_SEPARATION_M
+
+        metre = 1 / 111_195.0
+        ways, features = [], []
+        way_id = 1
+        for row in range(6):
+            y = 38.90 + row * 0.004
+            for column in range(5):
+                x = -77.05 + column * 0.006
+                ways.append((way_id, [(x, y), (x + 0.005, y + 0.0001 * (column % 2))]))
+                way_id += 1
+            for k, offset_m in enumerate(
+                (0.0, 10.0, MAX_SEPARATION_M - 1.0, MAX_SEPARATION_M + 5.0, 60.0)
+            ):
+                y_feature = y + offset_m * metre
+                x0 = -77.05 + k * 0.0045
+                features.append(
+                    feature(
+                        f"r{row}k{k}",
+                        [(x0, y_feature), (x0 + 0.009, y_feature)],
+                        aadt=1000 + row * 10 + k,
+                        source=("locality", "state")[k % 2],
+                    )
+                )
+        ways.append((way_id, [(-77.05, 38.90), (-77.02, 38.92)]))
+        features.append(feature("diag", [(-77.0499, 38.90003), (-77.0201, 38.92003)]))
+        features.append(feature("alone", [(-76.5, 39.5), (-76.49, 39.5)]))
+        return ways, features
+
+    def test_the_index_finds_the_matches_the_exhaustive_loop_finds(self, monkeypatch) -> None:
+        from pipeline import conflation
+
+        ways, features = self.corridor()
+        indexed = conflation.conflate(ways, features)
+        monkeypatch.setattr(
+            conflation._FeatureIndex, "near", lambda self, coordinates: list(range(len(features)))
+        )
+        exhaustive = conflation.conflate(ways, features)
+        assert indexed.matched, "the corridor has matches to compare"
+        assert indexed.matched == exhaustive.matched
+        assert indexed.rejected == exhaustive.rejected
+        assert indexed.unmatched_features == exhaustive.unmatched_features
+
+    def test_a_count_across_a_row_edge_is_found_within_the_tolerance(self) -> None:
+        """An east-west way just south of a cell row's edge and a count drawn
+        parallel 19 m north of it, on the far side of the edge: their boxes are
+        disjoint and in different rows, and only the widening in latitude puts
+        the count in the way's cells."""
+        from pipeline.conflation import INDEX_CELL_DEG, MAX_SEPARATION_M, conflate
+
+        edge = 3890 * INDEX_CELL_DEG
+        step = (MAX_SEPARATION_M - 1.0) / 111_195.0
+        south, north = edge - step / 4, edge + 3 * step / 4
+        way = (5, [(-77.03, south), (-77.02, south)])
+        count = feature("parallel", [(-77.03, north), (-77.02, north)])
+        assert conflate([way], [count]).matched[5].feature_id == "parallel"
+
+    def test_a_count_across_a_column_edge_is_found_within_the_tolerance(self) -> None:
+        """The same in longitude, where a metre is more of a degree: a
+        north-south way just west of a column edge and a count 19 m east."""
+        from pipeline.conflation import INDEX_CELL_DEG, MAX_SEPARATION_M, conflate
+
+        edge = -7700 * INDEX_CELL_DEG
+        step = (MAX_SEPARATION_M - 1.0) / (111_195.0 * math.cos(math.radians(38.9)))
+        west, east = edge - step / 4, edge + 3 * step / 4
+        way = (5, [(west, 38.90), (west, 38.91)])
+        count = feature("parallel", [(east, 38.90), (east, 38.91)])
+        assert conflate([way], [count]).matched[5].feature_id == "parallel"
+
+    def test_a_count_well_away_is_never_measured(self, monkeypatch) -> None:
+        from pipeline import conflation
+
+        measured = []
+        real = conflation._overlap
+        monkeypatch.setattr(
+            conflation, "_overlap", lambda *a, **k: measured.append(a[1]) or real(*a, **k)
+        )
+        way = (5, [(-77.03, 38.90), (-77.02, 38.90)])
+        far = feature("far", [(-76.03, 38.90), (-76.02, 38.90)])
+        conflation.conflate([way], [far])
+        assert measured == [], "a count a degree away is not a candidate"
