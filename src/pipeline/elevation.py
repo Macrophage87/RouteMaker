@@ -222,6 +222,16 @@ def ensure_tiles(
     west, south, east, north = bbox
     directory = Path(directory)
     scratch = directory / ".fetch"
+    # The resample's destination, which has to carry the tile's own name:
+    # GDAL's SRTMHGT driver reads the tile's corner from the file name and
+    # refuses anything else, `N38W078.hgt.part` included ("not recognized as a
+    # supported file format", after a full warp). So the temporary name is a
+    # directory rather than a suffix. It stays inside `directory`, which is
+    # its own bind mount in the rebuild container, so the move into place is a
+    # rename on one filesystem; and it is cleared before and after, because a
+    # warp killed half way leaves a file named like a tile.
+    staging = directory / ".part"
+    shutil.rmtree(staging, ignore_errors=True)
     ready: list[Path] = []
 
     for tile in tiles_covering(west, south, east, north):
@@ -236,7 +246,8 @@ def ensure_tiles(
 
         destination.parent.mkdir(parents=True, exist_ok=True)
         source = fetch(tile, scratch)
-        partial = destination.with_name(destination.name + ".part")
+        partial = staging / destination.name
+        partial.parent.mkdir(parents=True, exist_ok=True)
         run(gdalwarp_command(str(source), str(partial), tile))
         if not partial.exists():
             raise ElevationTileInvalid(f"gdalwarp produced nothing at {partial}")
@@ -248,4 +259,5 @@ def ensure_tiles(
         partial.replace(destination)
         ready.append(destination)
 
+    shutil.rmtree(staging, ignore_errors=True)
     return ready

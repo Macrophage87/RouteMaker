@@ -113,14 +113,28 @@ def test_a_three_arcsecond_tile_is_rejected_because_skadi_reads_one_dimension() 
 # --- The stage -------------------------------------------------------------------
 
 
+class CommandFailedLikeGdal(RuntimeError):
+    pass
+
+
 def warp_writing(side: int):
-    """A gdalwarp that leaves a grid of the given side on disk."""
+    """A gdalwarp that leaves a grid of the given side on disk - and, like
+    GDAL's SRTMHGT driver, refuses a destination not named for its tile. The
+    real driver reads the tile's corner from the file name, so writing to
+    `N38W078.hgt.part` exits 1 with "not recognized as a supported file
+    format", which is how the first rebuild on a real host died."""
+    import re
 
     def run(command):
         assert command[0] == "gdalwarp"
         from pathlib import Path
 
-        Path(command[-1]).write_bytes(b"\0" * (side * side * 2))
+        destination = Path(command[-1])
+        if not re.fullmatch(r"[NS]\d\d[EW]\d\d\d\.hgt", destination.name, re.IGNORECASE):
+            raise CommandFailedLikeGdal(
+                f"`{destination}' not recognized as a supported file format."
+            )
+        destination.write_bytes(b"\0" * (side * side * 2))
         return ""
 
     return run
@@ -209,7 +223,22 @@ def test_a_resample_that_produces_a_bad_grid_leaves_no_tile_behind(tmp_path) -> 
     with pytest.raises(ElevationTileInvalid, match="matches no supported HGT grid"):
         ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording([]), warp_writing(3600))
     assert not (tmp_path / "N38" / "N38W078.hgt").exists()
-    assert not (tmp_path / "N38" / "N38W078.hgt.part").exists()
+    assert not any(tmp_path.rglob("*.hgt*")), "no partial tile left anywhere under the directory"
+
+
+def test_a_partial_left_by_a_killed_build_is_cleared_before_the_next(tmp_path) -> None:
+    """The staging copy has to carry the tile's own name, so a build killed
+    mid-warp leaves a file named like a tile under the elevation directory.
+    The next build clears the staging directory before it starts, so a reader
+    scanning the directory never meets it."""
+    stale = tmp_path / ".part" / "N39W077.hgt"
+    stale.parent.mkdir()
+    stale.write_bytes(b"\0" * 10)
+    ensure_tiles(tmp_path, (-77.5, 38.5, -77.5, 38.5), fetch_recording([]), warp_writing(3601))
+    assert not stale.exists()
+    assert sorted(p.relative_to(tmp_path).as_posix() for p in tmp_path.rglob("*.hgt")) == [
+        "N38/N38W078.hgt"
+    ]
 
 
 def test_the_stage_refuses_a_three_arcsecond_tile_rather_than_calling_it_ready(tmp_path) -> None:
