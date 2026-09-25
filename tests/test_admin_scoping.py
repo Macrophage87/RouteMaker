@@ -1374,11 +1374,18 @@ class TestTheBootstrapInstanceAdmin:
         user = User.objects.create(discord_user_id=7781)
         effective_at = timezone.now() + timedelta(hours=1)
         PendingInstanceAdminRemoval.objects.create(user=user, effective_at=effective_at)
+        # Another account's leftover row, due later: not the claimant's, so
+        # not the claim's to clear.
+        other = User.objects.create(discord_user_id=7783)
+        PendingInstanceAdminRemoval.objects.create(
+            user=other, effective_at=effective_at + timedelta(days=1)
+        )
         self.bootstrap(monkeypatch, 7781)
         signed_in = sign_in(client, monkeypatch, user)
 
         assert signed_in.get(f"/{settings.ADMIN_PATH}").status_code == 200
-        assert not PendingInstanceAdminRemoval.objects.exists()
+        assert not PendingInstanceAdminRemoval.objects.filter(user=user).exists()
+        assert PendingInstanceAdminRemoval.objects.filter(user=other).exists()
         # Somebody else appointed later, so the lockout guard is no longer
         # what would keep the claimant in place when the old row came due.
         User.objects.create(discord_user_id=7782, is_instance_admin=True)
@@ -1987,11 +1994,28 @@ class TestTheInstanceAdminRemovalWindow:
             "the precondition: the removal outlives the stand-down"
         )
 
+        # A save of the stood-down account that leaves it stood down is not an
+        # appointment and clears nothing.
+        response = as_instance_admin.post(admin_url("core_user_change", peer.pk), {})
+        assert response.status_code == 302
+        peer.refresh_from_db()
+        assert not peer.is_instance_admin
+        assert PendingInstanceAdminRemoval.objects.filter(user=peer).exists()
+        assert not AuditLogEntry.objects.filter(action="cancel_removal").exists()
+
+        # A third admin's removal, pending while the peer is re-appointed: it
+        # is the window working and is not the appointment's to clear.
+        third = get_user_model().objects.create(discord_user_id=9401, is_instance_admin=True)
+        schedule_removal(third, actor=instance_admin)
+
         response = as_instance_admin.post(
             admin_url("core_user_change", peer.pk), {"is_instance_admin": "on"}
         )
         assert response.status_code == 302
         assert not PendingInstanceAdminRemoval.objects.filter(user=peer).exists()
+        assert PendingInstanceAdminRemoval.objects.filter(user=third).exists(), (
+            "re-appointing one account leaves another's removal window alone"
+        )
 
         assert apply_due_instance_admin_removals(now=pending.effective_at) == 0
         peer.refresh_from_db()
@@ -2018,6 +2042,29 @@ class TestTheInstanceAdminRemovalWindow:
         assert response.status_code == 302
         assert PendingInstanceAdminRemoval.objects.filter(user=peer).exists()
         assert not AuditLogEntry.objects.filter(action="cancel_removal").exists()
+
+    def test_the_re_appointment_clear_waits_on_the_row_lock(self, instance_admin, peer) -> None:
+        """The clear takes the pending row `FOR UPDATE` and waits for it, so an
+        applier already holding the row finishes first and the appointment is
+        written over its result. Skipping a locked row, or not locking at all,
+        would let both proceed. Pinned on the SQL issued, since the suite runs
+        on one connection."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        from core.models import clear_instance_admin_removal_on_appointment
+
+        schedule_removal(peer, actor=instance_admin)
+        with CaptureQueriesContext(connection) as queries:
+            assert clear_instance_admin_removal_on_appointment(peer, actor=instance_admin) == 1
+        reads = [
+            q["sql"]
+            for q in queries.captured_queries
+            if q["sql"].lstrip().upper().startswith("SELECT")
+            and "pending_instance_admin_removal" in q["sql"]
+        ]
+        assert reads, "the pending row is read before it is deleted"
+        assert all(sql.rstrip().upper().endswith("FOR UPDATE") for sql in reads), reads
 
     def test_a_guild_admin_sees_no_pending_removals_page(self, as_guild_admin) -> None:
         assert (
