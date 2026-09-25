@@ -145,12 +145,15 @@ ELEVATION_DIR = DATA_ROOT / "elevation"
 VALHALLA_CONFIG_DIR = BASE_DIR / "valhalla"
 
 # The coverage polygon's bounding box, west, south, east, north: roughly
-# Frederick and Leesburg to the north-west, north to the Mason-Dixon line,
-# Baltimore City with eastern Baltimore and Harford counties to the north-east,
-# Annapolis to the east and Fredericksburg to the south. The north and east
-# edges are the owner's amendment of 2026-09-24 (PLAN:13): Baltimore is a common
-# riding destination from the District, so the region reaches it rather than
-# stopping short. The elevation stage fetches every one-degree HGT tile this box
+# Frederick and all of Loudoun County to the north-west, north to the
+# Mason-Dixon line, Baltimore City with eastern Baltimore and Harford counties
+# to the north-east, Annapolis to the east and Fredericksburg to the south. The
+# north and east edges are the owner's amendment of 2026-09-24 (PLAN:13):
+# Baltimore is a common riding destination from the District, so the region
+# reaches it rather than stopping short. A second amendment of the same date
+# takes in western Loudoun to the Blue Ridge rather than stopping at Leesburg;
+# the west edge already contained it, and tests/test_source.py holds that it
+# still does. The elevation stage fetches every one-degree HGT tile this box
 # touches, and the extract stage clips to it.
 #
 # East is -76.02 and not the owner's round -76.0 on purpose. -76.0 lies exactly
@@ -167,6 +170,11 @@ COVERAGE_BBOX = (-78.0, 38.2, -76.02, 39.72)
 # map than the plan asks for - a size question, not a correctness one. There is
 # no polygon file in the repository yet, so this is None and the box is what the
 # clip is given; drawing that file and pointing this at it is the whole change.
+# Whoever draws it must keep what the owner's amendments of 2026-09-24 added
+# (PLAN:13): western Loudoun to the Blue Ridge, Purcellville and the W&OD's
+# western terminus with it, the north to the Mason-Dixon line, and Baltimore
+# with eastern Baltimore and Harford counties. The places tests/test_source.py
+# holds inside the box are the ones to hold inside the polygon.
 _coverage_polygon = os.environ.get("COVERAGE_POLYGON", "").strip()
 COVERAGE_POLYGON = Path(_coverage_polygon) if _coverage_polygon else None
 

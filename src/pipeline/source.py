@@ -317,7 +317,7 @@ def clip_command(merged: Path, output: Path, region: Path | Sequence[float]) -> 
     exactly the relations that get cut.
 
     A coverage polygon is preferred over the bounding box when there is one:
-    the plan's region is a polygon - Frederick and Leesburg, Baltimore and the
+    the plan's region is a polygon - Frederick and western Loudoun, Baltimore and the
     Mason-Dixon line, Annapolis, Fredericksburg - and the box around it reaches
     past them.
     The repository carries no polygon file yet, so `settings.COVERAGE_POLYGON`

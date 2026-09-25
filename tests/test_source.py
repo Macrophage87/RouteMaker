@@ -137,6 +137,43 @@ def test_the_places_the_amendment_names_are_inside_the_box(place: str) -> None:
     assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
 
 
+# The second amendment of the same date: all, or nearly all, of Loudoun County,
+# not a region that stops at Leesburg. Its extent in the Census TIGER county
+# layer (FIPS 51107), rounded outward to a hundredth: the western edge is the
+# Blue Ridge and the West Virginia line, reaching about -77.96 at the county's
+# south-western corner.
+LOUDOUN_EXTENT = (-77.97, 38.84, -77.32, 39.33)
+
+LOUDOUN_PLACES = {
+    "Purcellville": (-77.715, 39.137),
+    # Where the trail ends, at the old Purcellville station on 21st Street.
+    "W&OD western terminus": (-77.717, 39.136),
+    "Round Hill": (-77.770, 39.133),
+    "Bluemont": (-77.832, 39.110),
+    "Hillsboro": (-77.721, 39.200),
+    "Lovettsville": (-77.637, 39.273),
+    "Middleburg": (-77.735, 38.969),
+}
+
+
+def test_the_box_contains_all_of_loudoun_county() -> None:
+    """Western Loudoun's gravel is a regular destination and the W&OD runs to
+    Purcellville (PLAN:13), so the west edge must clear the Blue Ridge rather
+    than Leesburg. -78.0 did before the amendment; this holds that it still
+    does, with the county's own extent rather than a town."""
+    loudoun_west, loudoun_south, loudoun_east, loudoun_north = LOUDOUN_EXTENT
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < loudoun_west and east > loudoun_east, settings.COVERAGE_BBOX
+    assert south < loudoun_south and north > loudoun_north, settings.COVERAGE_BBOX
+
+
+@pytest.mark.parametrize("place", sorted(LOUDOUN_PLACES))
+def test_western_loudoun_is_inside_the_box(place: str) -> None:
+    lon, lat = LOUDOUN_PLACES[place]
+    west, south, east, north = settings.COVERAGE_BBOX
+    assert west < lon < east and south < lat < north, (place, settings.COVERAGE_BBOX)
+
+
 # Maryland's northern extent in the Census TIGER state layer, which is the
 # Mason-Dixon line along Carroll, Baltimore and Harford counties.
 MASON_DIXON_LAT = 39.723

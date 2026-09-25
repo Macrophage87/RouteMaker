@@ -358,8 +358,8 @@ class TestTheSourceExtractsThreeKnobs:
 
         The box is not decoration: the elevation stage fetches every one-degree
         HGT tile it touches and the extract stage clips the merged PBF to it, so
-        a corner moved inward silently drops map - Frederick and Leesburg to the
-        north-west, the Mason-Dixon line to the north, Baltimore and eastern
+        a corner moved inward silently drops map - Frederick and western Loudoun
+        to the north-west, the Mason-Dixon line to the north, Baltimore and eastern
         Harford County to the north-east, Annapolis to the east, Fredericksburg
         to the south - out of a graph that still builds, still validates and
         still routes.
@@ -371,7 +371,7 @@ class TestTheSourceExtractsThreeKnobs:
         assert settings.COVERAGE_BBOX == (-78.0, 38.2, -76.02, 39.72)
 
         west, south, east, north = settings.COVERAGE_BBOX
-        assert west == -78.0, "Frederick and Leesburg to the north-west"
+        assert west == -78.0, "Frederick, and Loudoun to the Blue Ridge"
         assert south == 38.2, "Fredericksburg to the south"
         assert east == -76.02, "Havre de Grace, without the W076 tile column"
         assert north == 39.72, "the owner's figure for the Mason-Dixon line"
