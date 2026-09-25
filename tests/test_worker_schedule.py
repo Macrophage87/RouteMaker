@@ -177,6 +177,7 @@ def test_the_run_row_says_which_approved_overrides_were_in_force(
     none, and an unapproved row that must not count at all.
     """
     import logging
+    import re
 
     from core.models import Override, ScheduledRun
     from pipeline.overrides import OverrideReport
@@ -199,6 +200,18 @@ def test_the_run_row_says_which_approved_overrides_were_in_force(
     assert run.succeeded
     assert expected in run.detail, run.detail
     assert expected in caplog.messages, "and the rebuild log carries the same line"
+    # Read back from the row itself, not only compared with summary(): the one
+    # override in force was a stress one, and the row must say so.
+    read_back = {
+        label: [int(n) for n in re.findall(rf"(\d+) {label}\b", run.detail)]
+        for label in ("access", "stress", "jurisdiction", "approved rows matched no way")
+    }
+    assert read_back == {
+        "access": [0],
+        "stress": [1],
+        "jurisdiction": [0],
+        "approved rows matched no way": [1],
+    }, run.detail
 
 
 @pytest.mark.django_db(transaction=True)

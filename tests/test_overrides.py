@@ -518,6 +518,44 @@ def test_every_field_of_the_override_report_reaches_its_summary(field) -> None:
     assert changed.summary() != base.summary(), field
 
 
+# Each count's label in the summary, as the pattern that reads it back.
+SUMMARY_COUNT_LABELS = {
+    "access": r"(\d+) access\b",
+    "stress": r"(\d+) stress\b",
+    "jurisdiction": r"(\d+) jurisdiction\b",
+    "fixture_rows_superseded": r"(\d+) checked-in crossing rows superseded\b",
+}
+
+
+def summary_counts(text: str) -> dict[str, list[int]]:
+    """Every number the summary puts in front of each count's label."""
+    import re
+
+    return {
+        field: [int(n) for n in re.findall(pattern, text)]
+        for field, pattern in SUMMARY_COUNT_LABELS.items()
+    }
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        {"access": 2, "stress": 3, "jurisdiction": 4, "fixture_rows_superseded": 5},
+        {"access": 0, "stress": 1, "jurisdiction": 0, "fixture_rows_superseded": 0},
+        {"access": 7, "stress": 0, "jurisdiction": 11, "fixture_rows_superseded": 13},
+    ],
+)
+def test_each_count_in_the_summary_sits_under_its_own_label(counts) -> None:
+    """Which kind was in force is one of the questions the line answers, so a
+    count must be read back next to its own label: a stress override reported
+    as an access one is a wrong answer that a changes-when-changed check still
+    passes. The values are distinct so a swap or a total cannot match."""
+    from pipeline.overrides import OverrideReport
+
+    text = OverrideReport(**counts).summary()
+    assert summary_counts(text) == {field: [n] for field, n in counts.items()}, text
+
+
 def test_the_summary_names_the_rows_that_matched_nothing_and_bounds_the_list() -> None:
     from pipeline.overrides import OverrideReport
 
