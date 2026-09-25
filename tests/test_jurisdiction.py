@@ -194,17 +194,27 @@ def test_the_match_is_on_the_name_alone_and_says_so() -> None:
     """Baltimore's Eastern Avenue answers true, and that is the accepted reading.
 
     There is no geometry test and no bounding box in `is_boundary_street`: any
-    way in the extract carrying one of the three names matches, and Baltimore is
-    inside the coverage box. Recorded as a test rather than only as a comment,
-    because the cost is asymmetric and the asymmetry is the argument. The one
-    consumer is `borders.find_state_crossings`, so a false match costs a border
-    node not inserted on a street that crosses no state line; a false negative
-    fragments a District boundary street into a string of stubs. Narrowing it
-    would mean a geometry test here, and nothing needs one yet.
+    way in the extract carrying one of the three names matches. This used to be
+    argued as incidental map, Baltimore lying inside the box but outside the
+    region. Since the owner's amendment of 2026-09-24 Baltimore is in the
+    region (PLAN:13), so the argument has to stand on what the match does
+    rather than on where the street is, and it does.
 
-    If that changes - if a second consumer appears that acts on the name in a
-    way a Baltimore street should not reach - this is the test that should stop
-    it, by being rewritten rather than by silently continuing to pass.
+    The one consumer is `borders.find_state_crossings`, and a match there can
+    only withhold border nodes, never add one. Baltimore's Eastern Avenue runs
+    from Fells Point to Essex inside Maryland, so there is nothing to withhold:
+    `tests/test_borders.py::test_baltimores_eastern_avenue_mints_nothing_named_or_not`
+    runs it through that function and gets the same empty answer named and
+    unnamed. What a false match could cost is a real state crossing not minted
+    on a way carrying one of these names away from the District, and no such
+    way is known inside the region. A false negative, by contrast, fragments a
+    District boundary street into a string of stubs. Narrowing the match would
+    mean a geometry test here, and nothing needs one yet.
+
+    If that changes - a second consumer that acts on the name in a way a
+    Baltimore street should not reach, or a same-named way found crossing the
+    Potomac or the Mason-Dixon line - this is the test that should stop it, by
+    being rewritten rather than by silently continuing to pass.
     """
     from pipeline.jurisdiction import is_boundary_street
 

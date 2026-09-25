@@ -177,6 +177,82 @@ def test_a_boundary_street_yields_no_border_nodes_at_all() -> None:
         assert nodes == [], name
 
 
+# A cruder map of the region than the meridian above, for the one case that needs
+# the District to have a shape: DC as its diamond (the four corner stones,
+# rounded), Maryland to the north and east of it, Virginia to the south-west.
+DC_CORNERS = ((-77.041, 38.995), (-76.909, 38.893), (-77.039, 38.791), (-77.120, 38.934))
+
+
+def _inside(lon: float, lat: float, polygon) -> bool:
+    inside = False
+    for (x1, y1), (x2, y2) in zip(polygon, polygon[1:] + polygon[:1], strict=True):
+        if (y1 > lat) != (y2 > lat) and lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def region_state_at(lon: float, lat: float) -> str | None:
+    if lat > 39.723:
+        return None  # Pennsylvania, which no extract here carries
+    if _inside(lon, lat, DC_CORNERS):
+        return "DC"
+    return "MD" if lat > 38.95 or lon > -77.0 else "VA"
+
+
+# Baltimore's Eastern Avenue, Fells Point to Essex: Baltimore City, then
+# Baltimore County. The same name as the District's boundary street, forty
+# kilometres from any state line.
+BALTIMORE_EASTERN_AVENUE = (
+    (-76.595, 39.2845),
+    (-76.568, 39.2855),
+    (-76.545, 39.2890),
+    (-76.505, 39.2980),
+    (-76.475, 39.3050),
+)
+
+
+def test_baltimores_eastern_avenue_mints_nothing_named_or_not() -> None:
+    """The region reaches Baltimore since the owner's amendment of 2026-09-24,
+    so the name-only match in `is_boundary_street` now fires on a street that
+    is in the region rather than on incidental map. Run through the one
+    consumer of that match, it changes nothing: the avenue is Maryland end to
+    end, so there is no crossing for the carve-out to suppress and none for it
+    to invent - the carve-out can only ever withhold a node, never mint one.
+
+    The District's own Eastern Avenue is run through the same map beside it so
+    this is not vacuous: there the geometry does weave across the line, and
+    the name is what stops the fragmenting."""
+    baltimore = points(*BALTIMORE_EASTERN_AVENUE)
+    assert {region_state_at(lon, lat) for _, lon, lat in baltimore} == {"MD"}
+
+    named = list(
+        find_state_crossings(
+            7, baltimore, region_state_at, SyntheticNodeIds(), way_name="Eastern Avenue"
+        )
+    )
+    unnamed = list(find_state_crossings(7, baltimore, region_state_at, SyntheticNodeIds()))
+    assert named == unnamed == []
+
+    # The District's Eastern Avenue NE, along the diamond's north-east side,
+    # its centreline a few metres either side of the line.
+    (x1, y1), (x2, y2) = DC_CORNERS[0], DC_CORNERS[1]
+    weave = []
+    for step in range(7):
+        t = 0.3 + 0.05 * step
+        side = 0.0002 if step % 2 else -0.0002
+        weave.append((x1 + (x2 - x1) * t + side, y1 + (y2 - y1) * t + side))
+    district = points(*weave)
+    assert len(list(find_state_crossings(8, district, region_state_at, SyntheticNodeIds()))) == 6
+    assert (
+        list(
+            find_state_crossings(
+                8, district, region_state_at, SyntheticNodeIds(), way_name="Eastern Ave NE"
+            )
+        )
+        == []
+    )
+
+
 def test_an_ordinary_street_is_not_carved_out() -> None:
     """The guard keys on the street, not on the shape of the geometry."""
     weaving = points((-76.99, 38.9), (-77.01, 38.9), (-76.99, 38.9))

@@ -312,12 +312,15 @@ def is_boundary_street(name: str | None) -> bool:
 
     The match is on the name alone - there is no geometry test and no bounding
     box - so any way in the extract carrying one of these three names answers
-    true, wherever it is. Baltimore's Eastern Avenue is inside the coverage box
-    and is such a way. The consequence is bounded and is the harmless direction:
-    the only consumer is `borders.find_state_crossings`, so what a false match
-    costs is a border node not inserted on a street that does not cross a state
-    line anyway. A false *negative* is the expensive one - it fragments a
-    boundary street into stubs - which is why the normalisation is generous.
+    true, wherever it is. Baltimore's Eastern Avenue has been inside the
+    coverage region since the owner's amendment of 2026-09-24 and is such a way.
+    The consequence is bounded and is the harmless direction: the only consumer
+    is `borders.find_state_crossings`, which the match can only stop from
+    minting, so what a false match costs is a border node not inserted on a
+    street that does not cross a state line anyway (tests/test_borders.py runs
+    Baltimore's through it). A false *negative* is the expensive one - it
+    fragments a boundary street into stubs - which is why the normalisation is
+    generous.
     Narrowing this to the District's own three would mean a geometry test here,
     and there is nothing yet that needs one.
 
