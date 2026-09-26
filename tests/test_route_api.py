@@ -14,7 +14,6 @@ import http.server
 import json
 import logging
 import math
-import os
 import socket
 import threading
 from datetime import datetime, timedelta
@@ -1446,16 +1445,18 @@ class TestInFlight:
         assert third_from_a_holder.status_code == 429
         assert third_from_a_new_address.status_code == 200
 
-    @override_settings(ROUTING_CONCURRENCY=6)
+    @pytest.mark.parametrize("total", [4, 6])
     def test_a_second_route_is_granted_while_the_pool_is_roomy(
-        self, client, segments, router
+        self, total, client, segments, router
     ) -> None:
+        """On a pool of four, a second route leaves exactly two free: enough."""
         router(standard_router())
-        other = hold_slots(self.client_slots("198.51.100.51")[:1] + self.deployment_slots()[:1])
-        try:
-            response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.51")
-        finally:
-            other.close()
+        with override_settings(ROUTING_CONCURRENCY=total):
+            other = hold_slots(self.client_slots("198.51.100.51")[:1] + self.deployment_slots()[:1])
+            try:
+                response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.51")
+            finally:
+                other.close()
         assert response.status_code == 200
 
     @pytest.mark.parametrize(
@@ -1468,12 +1469,15 @@ class TestInFlight:
 
         assert routing_concurrency(None if workers is None else str(workers)) == slots
 
-    def test_the_setting_is_read_from_the_environment(self) -> None:
-        from config.settings import routing_concurrency
+    def test_the_setting_is_read_from_the_environment(self, monkeypatch) -> None:
+        """The settings module run afresh with WEB_CONCURRENCY set, since the
+        suite's own environment usually leaves it unset."""
+        import runpy
 
-        assert settings.ROUTING_CONCURRENCY == routing_concurrency(
-            os.environ.get("WEB_CONCURRENCY")
-        )
+        import config.settings as module
+
+        monkeypatch.setenv("WEB_CONCURRENCY", "9")
+        assert runpy.run_path(module.__file__)["ROUTING_CONCURRENCY"] == 7
 
     @pytest.mark.parametrize(("total", "held", "status"), [(1, 1, 503), (4, 3, 200)])
     def test_the_pool_follows_the_setting(
