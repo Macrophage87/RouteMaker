@@ -991,8 +991,13 @@ What the edge does with it (Caddyfile, `@frontend`):
   `worker-src 'self' blob:`, `object-src 'none'`, `base-uri 'self'`,
   `form-action 'self'` and `frame-ancestors 'none'`. Every request the app
   makes is to this site, which is what lets it be that tight; the operations
-  review ran it against the built app with no violation, and
-  `tests/test_frontend_edge.py` holds its main directives.
+  review ran it against the built app with no violation.
+  `tests/test_frontend.py` holds the Caddyfile's line to `default-src 'self'`
+  and `frame-ancestors 'none'`, with no directive naming `*` or another host,
+  where CI runs (PLAN.md:246); `tests/test_frontend_edge.py` checks the header
+  a live response carries, and skips where the Caddy image is absent. It is
+  set on the app's paths only: responses from Django (`/api/*`, `/auth/*`,
+  the admin) carry none.
 - `Referrer-Policy: same-origin`. MapLibre fetches the archive, the glyphs and
   the sprites on the page's own thread, and `/basemap/*` answers only a request
   whose `Origin` or `Referer` is this site (docs/OPERATIONS.md, "What the edge

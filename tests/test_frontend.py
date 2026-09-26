@@ -106,3 +106,52 @@ def test_the_built_licence_notices_leave_no_package_without_text() -> None:
             if not rest or heading.match(rest[0]):
                 empty.append(line)
     assert not empty, empty
+
+
+def caddyfile_csp() -> dict[str, list[str]]:
+    """The app's Content-Security-Policy as the Caddyfile sets it, by directive."""
+    text = (REPO / "Caddyfile").read_text()
+    found = re.findall(r'^\s*header\s+Content-Security-Policy\s+"([^"]*)"', text, re.M)
+    assert len(found) == 1, found
+    return {part.split()[0]: part.split()[1:] for part in found[0].split(";") if part.strip()}
+
+
+def test_the_apps_content_security_policy_is_asserted_where_ci_runs() -> None:
+    """PLAN.md:246: default-src 'self', asserted in CI. The Caddy-run edge
+    test reads the header off a live response but skips where the image is
+    absent, which is CI; this reads the one line that sets it."""
+    policy = caddyfile_csp()
+    assert policy.get("default-src") == ["'self'"], policy
+    assert policy.get("frame-ancestors") == ["'none'"], policy
+    assert policy.get("object-src") == ["'none'"], policy
+    for directive in ("script-src", "connect-src"):
+        assert policy.get(directive) == ["'self'"], policy
+
+
+def test_no_directive_lets_in_a_wildcard_or_another_host() -> None:
+    """Every request the app makes is to this site (PLAN.md:15), so no source
+    list names a host, a scheme that reaches one, or `*`. `data:` and `blob:`
+    are local; `'unsafe-inline'` is for MapLibre's inline styles only."""
+    allowed = {"'self'", "'none'", "data:", "blob:"}
+    for directive, sources in caddyfile_csp().items():
+        inline = {"'unsafe-inline'"} if directive == "style-src" else set()
+        extra = set(sources) - allowed - inline
+        assert not extra, f"{directive} allows {sorted(extra)}"
+
+
+def test_ci_typechecks_tests_and_builds_the_front_end_before_pytest() -> None:
+    """The front-end step in CI, read from ci.yml: removing it, or its
+    typecheck or build, would leave the bundle unchecked with CI green."""
+    import yaml
+
+    steps = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())["jobs"]["test"][
+        "steps"
+    ]
+    front = [i for i, s in enumerate(steps) if s.get("working-directory") == "frontend"]
+    assert len(front) == 1, steps
+    commands = [part.strip() for part in steps[front[0]]["run"].split("&&")]
+    assert commands == ["npm ci", "npm run typecheck", "npm test", "npm run build"], commands
+    pytest_at = [i for i, s in enumerate(steps) if str(s.get("run", "")).startswith("pytest")]
+    assert pytest_at and front[0] < pytest_at[0], "the front end is built after pytest reads it"
+    node = [s for s in steps if str(s.get("uses", "")).startswith("actions/setup-node")]
+    assert node and str(node[0]["with"]["node-version"]).split(".")[0] == "22", node

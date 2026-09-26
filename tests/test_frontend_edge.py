@@ -149,6 +149,8 @@ def test_the_app_carries_its_content_security_policy(edge) -> None:
     assert directives.get("connect-src") == ["'self'"], policy
     assert directives.get("frame-ancestors") == ["'none'"], policy
     assert directives.get("object-src") == ["'none'"], policy
+    for directive, sources in directives.items():
+        assert "*" not in " ".join(sources), f"{directive} allows a wildcard: {policy}"
 
 
 def test_the_app_is_compressed_for_a_client_that_asks(edge) -> None:
