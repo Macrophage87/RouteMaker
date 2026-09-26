@@ -1079,6 +1079,13 @@ class TestLongRide:
         client.cookies[settings.SESSION_COOKIE_NAME] = "forged0123456789abcdefghijklmnop"
         assert post(client, long_body(160)).status_code == 409
 
+    def test_the_figures_are_the_contracts(self) -> None:
+        """Written as numbers, because every other test here reads them from
+        the module and so moves with them."""
+        from core.api import CONFIRM_SPAN_M, MAX_SPAN_M
+
+        assert (CONFIRM_SPAN_M, MAX_SPAN_M) == (150_000, 300_000)
+
     def test_the_409_is_in_the_schema(self, client) -> None:
         operation = client.get("/api/openapi.json").json()["paths"][ROUTE_PATH]["post"]
         assert "409" in operation["responses"]
@@ -1305,6 +1312,17 @@ class TestInFlight:
         finally:
             other.close()
 
+    def test_a_long_ride_is_not_held_up_by_ordinary_ones(self, client, segments, router) -> None:
+        """The long slots are a separate pool: ordinary routes holding most of
+        the ordinary slots leave the long slot free."""
+        router(long_router())
+        other = hold_slots(self.deployment_slots()[:-1])
+        try:
+            response = post(client, long_body(160, confirm_long=True))
+        finally:
+            other.close()
+        assert response.status_code == 200
+
     def test_the_long_slots_are_released(self, client, segments, router) -> None:
         router(long_router())
         assert post(client, long_body(160, confirm_long=True)).status_code == 200
@@ -1338,6 +1356,7 @@ class TestInFlight:
             other.close()
         assert settings.ROUTING_CONCURRENCY == 3
         assert response.status_code == 429
+        assert our_advisory_locks() == 0, "a refused request holds nothing"
 
     def test_filling_the_default_pool_takes_three_addresses(self, client, segments, router) -> None:
         """Hold one slot per address, as three long requests would: the fourth
