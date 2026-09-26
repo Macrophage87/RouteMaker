@@ -168,7 +168,44 @@ agree.
   to use, which the rows' notes name. A row may not combine it with
   `sidepath_only` or with `roadway_bicycle_legal: false` — the roadway would
   be in no graph — and `variants.check_crossing_rows_consistent` refuses
-  either at load. It is a routing rule, not a legal claim.
+  either at load. It is a routing rule, not a legal claim, and for that reason
+  it stands over an approved `bicycle=yes` access override on the same way:
+  the override says the roadway is legal, which `roadway_bicycle_legal`
+  already says, and not that ordinary riders are routed onto it. The bar also
+  sets any `bicycle:conditional`, `bicycle:forward:conditional` or
+  `bicycle:backward:conditional` present to a bare `no`, because
+  `routemaker_remap.remap_conditional_access` would otherwise reopen a
+  direction from a conditional's least restrictive branch.
+
+### The approaches: owner decisions of 2026-09-26
+
+A crossing is only as usable as the roads at either end of it, and those are
+not this file's to open. The owner answered, for each Potomac and Anacostia
+roadway a mass ride was given that day, what happens at its ends:
+
+* **Key Bridge**, the Virginia approaches (North Fort Myer Drive and North Lynn
+  Street, US 29, `bicycle=no` in OSM): "Bikes are legal, but there's a side
+  path that's a better option for most." Opened for every variant by approved
+  access overrides; ordinary riders keep to the sidewalk because the bridge's
+  roadway is `roadway_mass_ride_only`.
+* **Chain Bridge**, the District approach (Canal Road NW and the Clara Barton
+  Parkway, `bicycle=no`): "No". Left barred, so a mass ride cannot use Chain
+  Bridge from the District.
+* **Arlington Memorial Bridge**, the Virginia landing on Columbia Island
+  (motorway or `bicycle=no` exits only): "Turn at Memorial Circle". An
+  out-and-back for a mass ride; no access change.
+* **11th Street local span**, the south landing (11th Street SE,
+  `bicycle=no`): "Yes, legal for all". The four ways named in the question are
+  opened for every variant by approved access overrides; the landing runs on
+  through three more 11th Street SE ways and three Martin Luther King Jr
+  Avenue SE ways, also `bicycle=no`, before a bicycle may leave it, and those
+  six are an open question for the owner (see the row's note).
+
+Access corrections go through the override table, the plan's one audited path
+for them, never through this file: the rows are checked in at
+`fixtures/overrides/2026-09-26-owner-bicycle-access.json` and loaded as
+approved, audited `Override` rows by `manage.py load_access_overrides` (see
+`fixtures/overrides/README.md`).
 * `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
   variant alike, because access is not a request-time dial. False means OSM
   carries `bicycle=no` on the roadway itself, or that the roadway is a class
