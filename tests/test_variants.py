@@ -610,6 +610,34 @@ class TestARoadwayForMassRidesOnly:
         kept = inject(Variant.NO_TRAIL, tags, 7, frozenset(), frozenset({7}))
         assert kept == tags
 
+    def test_the_bar_covers_a_conditional_grant_too(self) -> None:
+        """The remap opens a direction from a conditional's least restrictive
+        branch (`remap_conditional_access`), so a weekend `yes` would reopen a
+        barred roadway at every hour. Each conditional key present is set to a
+        bare `no`, which the remap never reads as a widening."""
+        tags = {
+            "highway": "trunk",
+            "bicycle:conditional": "yes @ (Sa,Su)",
+            "bicycle:forward:conditional": "yes @ (Su)",
+            "bicycle:backward:conditional": "designated @ (Sa)",
+        }
+        for variant in (Variant.STANDARD, Variant.EBIKE):
+            built = inject(variant, tags, 7, frozenset(), frozenset({7}))
+            for key in tags:
+                if key.endswith(":conditional"):
+                    assert built[key] == "no", (variant.value, key)
+        assert inject(Variant.NO_TRAIL, tags, 7, frozenset(), frozenset({7})) == tags
+
+    def test_the_bar_stands_over_an_approved_bicycle_grant(self) -> None:
+        """An approved `bicycle=yes` override reaches `inject` in the way's tags.
+        It says the roadway is legal, which the fixture already says; it does
+        not say ordinary riders are routed there, so the bar stands on the
+        standard and e-bike variants and the no-trail variant keeps the grant."""
+        tags = {"highway": "trunk", "bicycle": "yes"}
+        for variant in (Variant.STANDARD, Variant.EBIKE):
+            assert inject(variant, tags, 7, frozenset(), frozenset({7}))["bicycle"] == "no"
+        assert inject(Variant.NO_TRAIL, tags, 7, frozenset(), frozenset({7}))["bicycle"] == "yes"
+
     def test_only_the_listed_ways_are_barred(self) -> None:
         tags = {"highway": "trunk"}
         for variant in (Variant.STANDARD, Variant.EBIKE):

@@ -315,6 +315,21 @@ check("an undirected conditional applies to both directions",
     { bicycle = "no", ["bicycle:conditional"] = "designated @ (Sa,Su 07:00-19:00)" }),
     "bicycle:backward") == "designated")
 
+-- The mass-ride-only bar (`variants.bar_mass_ride_only_roadway`, owner rule of
+-- 2026-09-26) sets every conditional key present to a bare "no" on the standard
+-- and e-bike extracts, and relies on this: a bare "no" over a base of "no"
+-- opens nothing in either direction.
+do
+  local barred = M.remap_conditional_access({
+    bicycle = "no",
+    ["bicycle:conditional"] = "no",
+    ["bicycle:forward:conditional"] = "no",
+    ["bicycle:backward:conditional"] = "no",
+  })
+  check("a bare no conditional over a barred way opens neither direction",
+    barred["bicycle:forward"] == nil and barred["bicycle:backward"] == nil)
+end
+
 -- A static graph cannot represent time, so a time-limited restriction must not
 -- be written as a permanent one. An unroutable edge is also the answer that
 -- tells the rider nothing: the route goes another way and nothing can say why.

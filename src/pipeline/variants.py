@@ -539,11 +539,31 @@ def bars_electric_bicycle(tags: dict[str, str]) -> bool:
 # `bicycle:backward` override the plain key one direction at a time.
 BICYCLE_KEYS = ("bicycle", "bicycle:forward", "bicycle:backward")
 
+# And the conditional keys, where present. Valhalla reads none of them, but
+# `routemaker_remap.remap_conditional_access` does: it writes the least
+# restrictive branch of a conditional onto `bicycle:forward`/`:backward`, so a
+# `bicycle:conditional=yes @ (Sa,Su)` would reopen the roadway the bar closed.
+# A bare `no` parses as an unconditional `no`, which is never less restrictive
+# than the base, so the remap writes nothing.
+BICYCLE_CONDITIONAL_KEYS = (
+    "bicycle:conditional",
+    "bicycle:forward:conditional",
+    "bicycle:backward:conditional",
+)
+
 
 def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
-    """Bar a `roadway_mass_ride_only` roadway to the variant being built, in place."""
+    """Bar a `roadway_mass_ride_only` roadway to the variant being built, in place.
+
+    The bar wins over an approved `bicycle=yes` access override on the same
+    way, deliberately. The override says bicycles are *legal* there, which the
+    fixture's `roadway_bicycle_legal: true` already says of both such roadways;
+    the bar says ordinary riders are not *routed* there (owner, 2026-09-26),
+    which is a different question the override does not answer. The no-trail
+    variant is untouched by the bar and carries the override as written.
+    """
     tags["bicycle"] = "no"
-    for key in BICYCLE_KEYS[1:]:
+    for key in (*BICYCLE_KEYS[1:], *BICYCLE_CONDITIONAL_KEYS):
         if key in tags:
             tags[key] = "no"
 
