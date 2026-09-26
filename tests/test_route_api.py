@@ -1163,3 +1163,53 @@ def test_a_failure_in_the_limits_is_a_fixed_500_too(debug, client, monkeypatch) 
     assert response.status_code == 500
     assert set(response.json()) == {"error"}
     assert b"secret" not in response.content
+
+
+@db
+def test_a_piece_is_placed_at_its_middle_not_its_end(client, segments, router) -> None:
+    """One stretch, two segments of one way meeting just past its middle: the
+    piece belongs to the segment its middle lies on, not the one at its end."""
+    a, b = (-77.05, LAT), (-77.04, LAT)
+    boundary = (-77.0448, LAT)
+    with connection.cursor() as cursor:
+        for ordinal, tier, line in ((0, 2, (a, boundary)), (1, 4, (boundary, b))):
+            wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in line) + ")"
+            cursor.execute(
+                f"INSERT INTO {segments}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule) VALUES (808, %s, ST_GeomFromText(%s, 4326), %s, 'test')",
+                [ordinal, wkt, tier],
+            )
+    router(one_edge_router([a, b], [(808, 0, 1, 0.9)], 0.9))
+    stress = post(client, good_body()).json()["stress_m"]
+    assert stress["2"] == pytest.approx(900.0, abs=0.5)
+
+
+@db
+def test_every_failed_leg_adds_its_length(client, segments, router) -> None:
+    legs = [VERTICES[:2], VERTICES[1:3], VERTICES[2:4]]
+    router(
+        FakeRouter(
+            {
+                "route": route_answer(
+                    [(legs[0], 0.9, [1.0]), (legs[1], 0.4, [1.0]), (legs[2], 0.6, [1.0])]
+                ),
+                "trace_attributes": [
+                    trace_answer(legs[0], [(101, 0, 1, 0.9)]),
+                    routing.RouterRefused(400, 443, "no"),
+                    routing.RouterRefused(400, 443, "no"),
+                    routing.RouterRefused(400, 443, "no"),
+                    routing.RouterRefused(400, 443, "no"),
+                ],
+            }
+        )
+    )
+    points = [list(VERTICES[0]), list(VERTICES[1]), list(VERTICES[2]), list(VERTICES[3])]
+    stress = post(client, {"points": points, "preset": "default"}).json()["stress_m"]
+    assert stress["3"] == pytest.approx(900.0, abs=0.5)
+    assert stress["unknown"] == pytest.approx(1000.0, abs=0.5)
+
+
+def test_a_trace_in_miles_is_converted() -> None:
+    trace = trace_answer([VERTICES[0], VERTICES[1]], [(101, 0, 1, 1.0)])
+    trace["units"] = "miles"
+    assert sum(p.metres for p in routing.pieces_of_trace(trace)) == pytest.approx(1609.344)

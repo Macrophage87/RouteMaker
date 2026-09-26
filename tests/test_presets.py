@@ -135,6 +135,11 @@ def test_mass_ride_plans_inside_the_speed_band() -> None:
     assert 5 * MPH_TO_KMH <= speed <= 9 * MPH_TO_KMH
 
 
+def test_mass_ride_plans_at_the_bands_default_of_six() -> None:
+    """ "Planning speed for Mass Ride therefore defaults to 6 miles per hour"."""
+    assert options("mass-ride")["cycling_speed"] == pytest.approx(6 * MPH_TO_KMH, abs=0.1)
+
+
 @pytest.mark.parametrize("name", ["default", "group-ride"])
 def test_the_other_presets_leave_the_speed_to_the_bicycle_type(name: str) -> None:
     """No planning speed is named for them, so the type's own default applies."""

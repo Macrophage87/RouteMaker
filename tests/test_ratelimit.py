@@ -230,7 +230,13 @@ class TestRetention:
             - ratelimit.RETENTION
             - timedelta(seconds=1)
         )
-        assert ratelimit.purge_expired() == 1
+        ratelimit.hit(ratelimit.Limit(scope="other", requests=5, window_s=60), "stale")
+        RateLimitWindow.objects.filter(client="stale").update(
+            window_start=RateLimitWindow.objects.filter(client="stale").first().window_start
+            - ratelimit.RETENTION
+            - timedelta(seconds=1)
+        )
+        assert ratelimit.purge_expired() == 2
         assert set(RateLimitWindow.objects.values_list("client", flat=True)) == {"fresh"}
 
     def test_the_retention_is_inside_the_plans_ceiling(self) -> None:
