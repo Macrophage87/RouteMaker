@@ -51,7 +51,8 @@ it.
 
 The first job is to answer, per structure, the questions the midpoint
 heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
-no-trail (mass ride) variant drops, `resolve_mass_ride_only_bridge_ids` decides
+no-trail variant (Mass Ride's, and PLAN's Group Ride with trails off) drops,
+`resolve_mass_ride_only_bridge_ids` decides
 which roadways the standard and e-bike variants bar because they are for mass
 rides only, and `resolve_bridge_bicycle_legality` decides what
 `rm:bridge_bicycle` carries into `graph.lua` on every variant.
@@ -143,8 +144,8 @@ different columns. Do not OR them together; a rebuild that did once passed its
 own test while being inert, because every row where it mattered happened to
 agree.
 
-* `sidepath_only` — routing-relevant, and read only by the no-trail (mass ride)
-  variant, which drops the roadway of a row that sets it: true means a mass
+* `sidepath_only` — routing-relevant, and read only by the no-trail variant
+  (Mass Ride's layer 1), which drops the roadway of a row that sets it: true means a mass
   ride cannot practically use this crossing's roadway. It is set today on
   Chain Bridge, which the owner decided on 2026-09-26 is "Not a mass-ride
   crossing" (its District approach, Canal Road NW, stays barred; the row's
@@ -160,8 +161,8 @@ agree.
   column. It says nothing about legality and must never be treated as a legal
   claim.
 * `roadway_mass_ride_only` — routing-relevant, the other way round: true means
-  the roadway is for a mass ride and for no one else, so the no-trail variant
-  keeps it and the standard and e-bike variants bar it (`variants.inject()`
+  the owner reserves the roadway for mass rides, so the no-trail variant keeps
+  it and the standard and e-bike variants bar it (`variants.inject()`
   writes `bicycle=no`, and on a directional `bicycle:forward`/`:backward` key
   already present, and `inject_tags` withholds the row's `rm:bridge_bicycle`
   on those two variants so the transform cannot grant the roadway back). An
@@ -182,14 +183,19 @@ agree.
   `routemaker_remap.remap_conditional_access` would otherwise reopen a
   direction from a conditional's least restrictive branch.
 
-  **It is a no-trail-variant rule, and Group Ride shares that variant.** PLAN's
-  Group Ride switches to the no-trail variant when its "Allow bike paths and
-  trails" toggle is off, so a Group Ride with trails off is routed on the Key
-  and Memorial roadways too, although the owner's words are "outside of a
-  mass ride". Nothing here can tell the two presets apart: they read the same
-  tiles, and the column has no request-time dial. Until a separate variant or
-  a routing dial exists this is a known gap, recorded in handoff.md section 7
-  for the owner, not a guarded case.
+  **The no-trail variant is not a mass-ride-only variant.** PLAN.md:99 gives
+  Group Ride's "Allow bike paths and trails" toggle, when off, the no-trail
+  variant as well, and a Group Ride there would be routed on the Key and
+  Memorial roadways, which the owner ruled out: "I wouldn't route someone onto
+  that outside of a mass ride." The two would read the same tiles, so the
+  column cannot tell them apart. `variants.variant_for` therefore refuses
+  trails-off to any ride that is not a mass ride, until Group Ride has its own
+  variant or a request-time exclusion of these roadways. The toggle is not
+  built yet, and the route API's presets (on the branch that builds them)
+  give Group Ride the standard variant, so nothing is exposed today; handoff.md section 7 carries the row.
+  The bar also removes the tags upstream's `graph.lua` would otherwise grant
+  bicycle access from over `bicycle=no` (`cycleway*`, `oneway:bicycle`,
+  `vehicle:forward`/`:backward`; `variants.REOPENING_KEYS`).
 * `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
   variant alike, because access is not a request-time dial. False means OSM
   carries `bicycle=no` on the roadway itself, or that the roadway is a class

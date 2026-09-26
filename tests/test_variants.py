@@ -9,6 +9,7 @@ import pytest
 from pipeline.variants import (
     ContradictoryCrossingRow,
     DuplicateCrossingName,
+    NoTrailIsNotForThisRide,
     Variant,
     bars_electric_bicycle,
     check_crossing_names_unique,
@@ -109,7 +110,25 @@ def test_the_ebike_bar_is_the_no_value_and_not_every_restriction() -> None:
 def test_variant_selection_from_toggles() -> None:
     assert variant_for(allow_trails=True, ebike_rules=False) is Variant.STANDARD
     assert variant_for(allow_trails=True, ebike_rules=True) is Variant.EBIKE
-    assert variant_for(allow_trails=False, ebike_rules=False) is Variant.NO_TRAIL
+    assert variant_for(allow_trails=False, ebike_rules=False, mass_ride=True) is Variant.NO_TRAIL
+    for ebike_rules in (False, True):
+        assert variant_for(allow_trails=True, ebike_rules=ebike_rules, mass_ride=True) in (
+            Variant.STANDARD,
+            Variant.EBIKE,
+        ), "a mass ride with trails allowed is not moved to the no-trail variant"
+
+
+def test_trails_off_is_refused_to_a_ride_that_is_not_a_mass_ride() -> None:
+    """Owner, 2026-09-26, of the Key Bridge roadway: "I wouldn't route someone
+    onto that outside of a mass ride." The no-trail variant keeps it, and PLAN
+    gives that variant to Group Ride's trails-off toggle too, so the toggle is
+    refused until Group Ride has a variant without those roadways."""
+    with pytest.raises(NoTrailIsNotForThisRide):
+        variant_for(allow_trails=False, ebike_rules=False)
+    # The property the refusal protects: the variant it would have handed out
+    # keeps every mass-ride-only roadway.
+    kept = inject(Variant.NO_TRAIL, {"highway": "trunk"}, 7, frozenset(), frozenset({7}))
+    assert kept is not None and kept.get("bicycle") != "no"
 
 
 def test_exclusive_combination_is_refused_not_guessed() -> None:

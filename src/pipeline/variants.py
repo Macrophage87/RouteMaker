@@ -30,10 +30,11 @@ class Variant(Enum):
     assumption that it encodes that preset's other opinions.
 
     One such opinion it does encode: a crossing row's `roadway_mass_ride_only`
-    keeps the roadway in this variant alone, so a Group Ride with trails off is
-    routed on the Key Bridge and Memorial Bridge roadways the owner reserved for
-    mass rides. Recorded as a gap (fixtures/crossings/README.md), not guarded:
-    the two presets read the same tiles.
+    keeps the roadway in this variant alone, so a Group Ride with trails off
+    would be routed on the Key Bridge and Memorial Bridge roadways the owner
+    reserved for mass rides. The two presets would read the same tiles, so
+    nothing here can tell them apart; `variant_for` refuses trails-off to
+    anything but a mass ride instead (fixtures/crossings/README.md).
     """
 
     STANDARD = "standard"
@@ -269,15 +270,17 @@ def is_sidepath_only(row: dict) -> bool:
 
 
 def is_roadway_mass_ride_only(row: dict) -> bool:
-    """Whether a crossing row's roadway is for mass rides and no one else.
+    """Whether a crossing row's roadway is reserved for mass rides.
 
     The owner's rule of 2026-09-26 for Key Bridge and Arlington Memorial Bridge:
     a mass ride takes the roadway, and an ordinary rider is sent by the sidepath
     ("I wouldn't route someone onto that outside of a mass ride"). So the
     no-trail variant keeps the roadway and the standard and e-bike variants bar
-    it, the opposite split to `sidepath_only`. It is a routing rule, not a legal
-    claim: `roadway_bicycle_legal` stays the legality column, and is true on
-    both rows.
+    it, the opposite split to `sidepath_only`. The no-trail variant is not
+    itself mass-ride-only - PLAN gives it to Group Ride with trails off too -
+    which is why `variant_for` refuses trails-off to any other ride. It is a
+    routing rule, not a legal claim: `roadway_bicycle_legal` stays the legality
+    column, and is true on both rows.
     """
     return bool(row.get("roadway_mass_ride_only"))
 
@@ -651,15 +654,37 @@ def inject(
     raise ValueError(f"unknown variant: {variant}")
 
 
-def variant_for(allow_trails: bool, ebike_rules: bool) -> Variant:
+class NoTrailIsNotForThisRide(ValueError):
+    """A ride that is not a mass ride asked for the no-trail variant."""
+
+
+def variant_for(allow_trails: bool, ebike_rules: bool, *, mass_ride: bool = False) -> Variant:
     """Pick the variant for a request's toggles.
 
     The two are mutually exclusive until the phase 6 path-avoidance dial, so the
     UI disables e-bike rules while trails are disallowed and explains why rather
     than silently choosing one.
+
+    And trails off gives the no-trail variant only to a mass ride. That variant
+    keeps the roadways the crossings fixture marks `roadway_mass_ride_only`
+    (Key Bridge and Arlington Memorial Bridge), which the owner reserved for
+    mass rides on 2026-09-26: "I wouldn't route someone onto that outside of a
+    mass ride." PLAN.md:99 gives Group Ride's trails-off toggle the no-trail
+    variant too; built as it stands, that toggle would put a Group Ride on
+    US 29 across Key Bridge. So it is refused here until Group Ride has its own
+    variant or a request-time exclusion of those roadways. A caller that picks
+    `Variant.NO_TRAIL` by name bypasses this - the Mass Ride preset may, and
+    nothing else should.
     """
     if not allow_trails and ebike_rules:
         raise ValueError("no-trail and e-bike variants are mutually exclusive until phase 6")
     if not allow_trails:
+        if not mass_ride:
+            raise NoTrailIsNotForThisRide(
+                "the no-trail variant carries roadways reserved for mass rides "
+                "(roadway_mass_ride_only: Key Bridge, Arlington Memorial Bridge); a ride "
+                "that is not a mass ride needs its own variant or a request-time exclusion "
+                "of those roadways before it can turn trails off"
+            )
         return Variant.NO_TRAIL
     return Variant.EBIKE if ebike_rules else Variant.STANDARD
