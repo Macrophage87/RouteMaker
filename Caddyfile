@@ -86,8 +86,11 @@
 		header /sprites/* Cache-Control "private, max-age=86400"
 		# `header` runs before `respond`, so without this a refused glyph
 		# would carry the day-long max-age above and a page of ours that lost
-		# its Referer once would stay broken for a day. Same-named directives
-		# keep their order, so this one, last, wins on a refusal.
+		# its Referer once would stay broken for a day. It wins on a refusal
+		# not because it is written last but because Caddy sorts same-named
+		# directives with path matchers ahead of those with a named matcher,
+		# so this one runs after the three above; tests/test_basemap_edge.py
+		# checks the header a refusal actually carries.
 		header @foreign Cache-Control "no-store"
 		root * /srv/basemap
 		file_server

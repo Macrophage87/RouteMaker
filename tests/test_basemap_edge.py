@@ -35,6 +35,14 @@ LOCAL_IMAGE = IMAGE.removeprefix("docker.io/library/")
 # range that returns the wrong slice cannot compare equal by accident.
 REGION = bytes((i * 7 + i // 251) % 256 for i in range(64 * 1024))
 FONT = b"glyphs " * 100
+SPRITE = b'{"sprite": "light"}'
+
+# One of each of the contract's three kinds.
+SERVED = (
+    "/basemap/region.pmtiles",
+    "/basemap/fonts/Noto%20Sans%20Regular/0-255.pbf",
+    "/basemap/sprites/v4/light.json",
+)
 
 
 def docker_ready() -> bool:
@@ -76,7 +84,7 @@ def basemap_dir(root: Path) -> Path:
     (basemap / "sprites" / "v4").mkdir(parents=True)
     (basemap / "region.pmtiles").write_bytes(REGION)
     (basemap / "fonts" / "Noto Sans Regular" / "0-255.pbf").write_bytes(FONT)
-    (basemap / "sprites" / "v4" / "light.json").write_text("{}")
+    (basemap / "sprites" / "v4" / "light.json").write_bytes(SPRITE)
     (basemap / ".region.source").write_text("build=20260926\n")
     (basemap / ".work").mkdir()
     (basemap / ".work" / "partial").write_text("half an archive")
@@ -92,23 +100,34 @@ def edge(request, tmp_path_factory):
     name = f"rm-test-basemap-edge-{uuid.uuid4().hex[:8]}"
     port_inside = "80" if scheme == "http" else "443"
     address = ":80" if scheme == "http" else "localhost"
-    subprocess.run(
-        [
-            "docker", "run", "-d", "--name", name, "--label", "rm-test=basemap-edge",
-            "-p", f"127.0.0.1::{port_inside}",
-            "-e", f"CADDY_SITE_ADDRESS={address}",
-            "-v", f"{REPO / 'Caddyfile'}:/etc/caddy/Caddyfile:ro",
-            "-v", f"{basemap}:/srv/basemap:ro",
-            LOCAL_IMAGE,
-        ],
-        check=True, capture_output=True, stdin=subprocess.DEVNULL,
-    )  # fmt: skip
+
+    def logs() -> str:
+        out = subprocess.run(
+            ["docker", "logs", name], capture_output=True, text=True, stdin=subprocess.DEVNULL
+        )
+        return out.stdout + out.stderr
+
     try:
+        # Inside the try: a run that fails after creating the container still
+        # leaves one behind, and the finally removes it.
+        subprocess.run(
+            [
+                "docker", "run", "-d", "--name", name, "--label", "rm-test=basemap-edge",
+                "-p", f"127.0.0.1::{port_inside}",
+                "-e", f"CADDY_SITE_ADDRESS={address}",
+                "-v", f"{REPO / 'Caddyfile'}:/etc/caddy/Caddyfile:ro",
+                "-v", f"{basemap}:/srv/basemap:ro",
+                LOCAL_IMAGE,
+            ],
+            check=True, capture_output=True, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
         mapped = subprocess.run(
             ["docker", "port", name, f"{port_inside}/tcp"],
-            check=True, capture_output=True, text=True, stdin=subprocess.DEVNULL,
-        ).stdout.split()[0]  # fmt: skip
-        port = int(mapped.rsplit(":", 1)[1])
+            capture_output=True, text=True, stdin=subprocess.DEVNULL,
+        )  # fmt: skip
+        if mapped.returncode != 0 or not mapped.stdout.split():
+            pytest.fail(f"caddy published no port ({mapped.stderr.strip()}): {logs()}")
+        port = int(mapped.stdout.split()[0].rsplit(":", 1)[1])
         served = Edge(scheme, "127.0.0.1" if scheme == "http" else "localhost", port)
         deadline = time.monotonic() + 20
         while True:
@@ -117,11 +136,7 @@ def edge(request, tmp_path_factory):
                 break
             except (OSError, ssl.SSLError):
                 if time.monotonic() > deadline:
-                    logs = subprocess.run(
-                        ["docker", "logs", name], capture_output=True, text=True,
-                        stdin=subprocess.DEVNULL,
-                    )  # fmt: skip
-                    pytest.fail(f"caddy never answered: {logs.stdout}{logs.stderr}")
+                    pytest.fail(f"caddy never answered: {logs()}")
                 time.sleep(0.2)
         yield served
     finally:
@@ -166,10 +181,10 @@ def test_a_same_site_referer_gets_the_named_bytes(edge) -> None:
     ],
 )
 def test_anything_else_is_refused_and_not_cached(edge, headers) -> None:
-    for path in ("/basemap/region.pmtiles", "/basemap/fonts/Noto%20Sans%20Regular/0-255.pbf"):
+    for path in SERVED:
         status, response, body = edge.get(path, Range="bytes=0-126", **headers(edge.site))
         assert status == 403, (path, status)
-        assert REGION[:16] not in body and FONT[:16] not in body
+        assert not any(part[:16] in body for part in (REGION, FONT, SPRITE))
         # A refusal cached for a day would leave a page of ours that lost its
         # Referer once broken for that day.
         assert "no-store" in response.get("Cache-Control", ""), (path, response)
@@ -182,12 +197,19 @@ def test_the_scripts_own_files_are_not_served(edge, path) -> None:
     assert b"build=" not in body and b"half an archive" not in body
 
 
-@pytest.mark.parametrize(
-    "path", ["/basemap/region.pmtiles", "/basemap/fonts/Noto%20Sans%20Regular/0-255.pbf"]
-)
+@pytest.mark.parametrize("path", SERVED)
 def test_what_is_served_is_kept_out_of_shared_caches(edge, path) -> None:
     """The answer depends on Origin and Referer, which a shared cache does not
     key on, so it must not hold one."""
     status, headers, _ = edge.get(path, Referer=edge.site + "/")
     assert status == 200
     assert "private" in headers.get("Cache-Control", ""), headers
+
+
+def test_the_archive_is_revalidated_on_every_use(edge) -> None:
+    """A refresh replaces region.pmtiles under the same name. A browser that
+    reused cached ranges of the old archive against a directory read from the
+    new one would decode garbage, so every use revalidates (a 304 is cheap)."""
+    status, headers, _ = edge.get("/basemap/region.pmtiles", Referer=edge.site + "/")
+    assert status == 200
+    assert "no-cache" in headers.get("Cache-Control", ""), headers

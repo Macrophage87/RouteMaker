@@ -46,11 +46,11 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def assets_archive(path: Path, glyph: bytes) -> Path:
+def assets_archive(path: Path, glyph: bytes, glyph_range: str = "0-255") -> Path:
     staging = path.with_suffix(".d")
     top = staging / f"basemaps-assets-{COMMIT}"
     (top / "fonts" / "Noto Sans Regular").mkdir(parents=True)
-    (top / "fonts" / "Noto Sans Regular" / "0-255.pbf").write_bytes(glyph)
+    (top / "fonts" / "Noto Sans Regular" / f"{glyph_range}.pbf").write_bytes(glyph)
     (top / "fonts" / "OFL.txt").write_text("font licence")
     (top / "sprites" / "v4").mkdir(parents=True)
     (top / "sprites" / "v4" / "light.json").write_text("{}")
@@ -157,6 +157,14 @@ class Host:
             stdin=subprocess.DEVNULL,
         )
 
+    def repin(self, name: str, value: str) -> None:
+        """Change one pin in the copy, as a commit bumping it would."""
+        body, count = re.subn(
+            rf'^{name}="[^"\n]*"$', f'{name}="{value}"', self.script.read_text(), flags=re.M
+        )
+        assert count == 1, f"{name} is not pinned exactly once"
+        self.script.write_text(body)
+
     def curl_calls(self) -> str:
         return self.curl_log.read_text() if self.curl_log.exists() else ""
 
@@ -233,6 +241,36 @@ def test_a_new_build_refetches_the_region_and_only_the_region(host) -> None:
     assert "basemaps-assets" not in calls, calls
     assert (host.basemap / "region.pmtiles").read_bytes() == b"newer region"
     assert "20260101" in (host.basemap / ".region.source").read_text()
+
+
+def test_a_changed_bbox_refetches_the_region_over_the_new_box(host) -> None:
+    """COVERAGE_BBOX moving is a new region even on the same build day."""
+    host.installed()
+    wider = "-78.5,38.0,-75.5,40.0"
+    host.repin("BBOX", wider)
+    rerun = host.run(FAKE_REGION="wider region")
+    assert rerun.returncode == 0, rerun.stderr
+    calls = host.curl_calls()
+    assert "go-pmtiles" in calls and "basemaps-assets" not in calls, calls
+    extract = next(
+        line.split() for line in host.pmtiles_log.read_text().splitlines()
+        if line.startswith("extract")
+    )  # fmt: skip
+    assert f"--bbox={wider}" in extract, extract
+    assert (host.basemap / "region.pmtiles").read_bytes() == b"wider region"
+
+
+def test_a_refreshed_assets_commit_leaves_nothing_of_the_old_one(host) -> None:
+    """The directories are replaced, not merged: a glyph the new commit does
+    not have is not left behind to be served."""
+    host.installed()
+    newer = assets_archive(host.tmp / "newer-assets.tar.gz", b"newer", glyph_range="256-511")
+    host.repin("ASSETS_SHA256", sha256(newer))
+    rerun = host.run(FAKE_ASSETS=str(newer))
+    assert rerun.returncode == 0, rerun.stderr
+    fonts = host.basemap / "fonts" / "Noto Sans Regular"
+    assert (fonts / "256-511.pbf").read_bytes() == b"newer"
+    assert not (fonts / "0-255.pbf").exists()
 
 
 def test_a_stale_assets_stamp_refetches_the_assets_and_only_the_assets(host) -> None:
