@@ -1,4 +1,4 @@
-// Run with: node --test frontend/src/
+// Run with: npm test (from frontend/), or node --test frontend/src/stressStyle.test.mjs
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -65,9 +65,20 @@ test("tiers cover exactly the Furth scale", () => {
 test("one layer per tier, each filtered to its own tier", () => {
   const layers = stressLayers();
   assert.equal(layers.length, 4);
-  for (const layer of layers) {
+  layers.forEach((layer, i) => {
     assert.equal(layer.filter[0], "==");
-    assert.equal(layer.filter[1][1], "stress_tier");
+    assert.equal(layer.filter[2], STRESS_TIERS[i].tier);
+  });
+});
+
+test("the layers read the shared contract's tile layer and property", () => {
+  // SHARED API CONTRACT: /tiles/stress/{z}/{x}/{y}.pbf carries one layer named
+  // "stress" whose features have a "tier" property. A layer or property name
+  // the tiles do not carry draws nothing and raises nothing.
+  for (const layer of stressLayers("stress-src")) {
+    assert.equal(layer.source, "stress-src");
+    assert.equal(layer["source-layer"], "stress");
+    assert.deepEqual(layer.filter[1], ["get", "tier"]);
   }
 });
 
@@ -76,6 +87,9 @@ test("the basemap is served from our own disk", () => {
   // some of them are for unpermitted rides.
   assert.ok(BASEMAP.url.startsWith("pmtiles://"));
   assert.ok(!BASEMAP.url.includes("http"));
+  // The path Caddy serves the archive at (docs/OPERATIONS.md, "The base map").
+  assert.equal(BASEMAP.url, "pmtiles://" + BASEMAP.path);
+  assert.equal(BASEMAP.path, "/basemap/region.pmtiles");
 });
 
 test("attribution names OpenStreetMap and the basemap", () => {

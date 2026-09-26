@@ -69,22 +69,37 @@ export function contrastRatio(a, b) {
 }
 
 /** The basemap, served from a local PMTiles file rather than a tile provider. */
+//
+// The path is the one Caddy serves the archive at (Caddyfile, /basemap/*;
+// docs/OPERATIONS.md, "The base map"). It is relative on purpose: the pmtiles
+// protocol fetches it on the page's own thread, so the browser resolves it
+// against the page and sends the same-origin Referer that the edge's hotlinking
+// guard requires. The archive's embedded attribution names OpenStreetMap only,
+// so the credit is stated here rather than read from it.
 export const BASEMAP = {
   // Range requests against one file on our own disk: no third party sees which
   // routes are being looked at, which matters when some of them are for
   // unpermitted rides.
   protocol: "pmtiles",
-  url: "pmtiles:///tiles/dc-metro.pmtiles",
-  attribution: "© OpenStreetMap contributors, © Protomaps",
+  path: "/basemap/region.pmtiles",
+  url: "pmtiles:///basemap/region.pmtiles",
+  attribution:
+    '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> (ODbL)' +
+    ', <a href="https://protomaps.com">© Protomaps</a>',
 };
 
-export function stressLayers(sourceId = "segments") {
+// The stress tiles' layer and property, per the SHARED API CONTRACT for
+// /tiles/stress/{z}/{x}/{y}.pbf: one layer named "stress", a "tier" of 1-4 or
+// null on each feature.
+export const STRESS_TILE_LAYER = "stress";
+
+export function stressLayers(sourceId = "stress") {
   return STRESS_TIERS.map((tier) => ({
     id: `stress-${tier.tier}`,
     type: "line",
     source: sourceId,
-    "source-layer": "segment",
-    filter: ["==", ["get", "stress_tier"], tier.tier],
+    "source-layer": STRESS_TILE_LAYER,
+    filter: ["==", ["get", "tier"], tier.tier],
     paint: {
       "line-color": tier.color,
       "line-width": tier.width,

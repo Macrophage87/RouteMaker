@@ -19,6 +19,7 @@ command looks for it.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
@@ -58,9 +59,10 @@ EXTERNAL_IMAGES = {
 # The bot is handoff.md section 7's first row ("No bot ... there is no bot
 # source, no gateway handler and no ingest route"). The renderer is the same
 # case and belongs beside it: PLAN.md:63 describes "a small Node sidecar using
-# `@maplibre/maplibre-gl-native`", and `frontend/` holds one stress-style module
-# and its test while `scripts/` holds five Python scripts and a shell script -
-# no Node service anywhere.
+# `@maplibre/maplibre-gl-native`", and nothing in the repository is one:
+# `frontend/` is the public map, a browser app built to static files that Caddy
+# serves (no server, no gl-native), and `scripts/` holds Python scripts and
+# shell scripts - no Node service anywhere.
 #
 # A row leaves this set when the source lands, and the test below then requires
 # a `build:` for it. That is the point of the set: an unbuilt image is recorded,
@@ -272,12 +274,24 @@ def test_the_recorded_unbuilt_images_really_have_no_source() -> None:
     If a bot or renderer source ever lands, this fails and the row has to leave
     UNBUILT_IMAGES - at which point the previous test demands a `build:` for it.
     """
+    # frontend/ is the browser app, so TypeScript in it is not a service. What
+    # would be one: a server entry point, or the native renderer as a
+    # dependency. node_modules/ and dist/ are installed and built, not source.
+    frontend = REPO / "frontend"
     node_sources = sorted(
         p.relative_to(REPO).as_posix()
-        for p in (REPO / "frontend").rglob("*")
-        if p.suffix in {".ts", ".tsx"} or p.name in {"index.js", "server.js", "bot.js"}
+        for p in frontend.rglob("*")
+        if not {"node_modules", "dist"} & set(p.relative_to(frontend).parts)
+        and p.stem in {"server", "bot", "renderer"}
+        and p.suffix in {".js", ".mjs", ".ts"}
     )
     assert not node_sources, f"frontend/ now holds service source: {node_sources}"
+    package = json.loads((frontend / "package.json").read_text())
+    dependencies = {**package.get("dependencies", {}), **package.get("devDependencies", {})}
+    assert "@maplibre/maplibre-gl-native" not in dependencies, (
+        "frontend/ depends on the native renderer; that is the renderer's source, "
+        "so give it a Dockerfile"
+    )
     assert not (REPO / "bot").exists(), "a bot/ directory exists; give it a Dockerfile"
     assert not (REPO / "renderer").exists(), "a renderer/ directory exists; give it a Dockerfile"
 
