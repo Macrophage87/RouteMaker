@@ -719,6 +719,20 @@ class TestARoadwayForMassRidesOnly:
             resolve_bridge_bicycle_legality([row], [])
 
 
+def test_the_mass_ride_only_resolver_refuses_a_duplicated_name() -> None:
+    """Each resolver checks the names itself rather than trusting another to
+    have done it first: two rows of one name would each resolve, and the one
+    whose flags lost would be silent."""
+    rows = [
+        {"name": "Twice", "roadway_bicycle_legal": True, "roadway_mass_ride_only": True},
+        {"name": "Twice", "roadway_bicycle_legal": True, "roadway_mass_ride_only": False},
+    ]
+    with pytest.raises(DuplicateCrossingName):
+        resolve_mass_ride_only_bridge_ids(rows, [])
+    with pytest.raises(DuplicateCrossingName):
+        resolve_sidepath_bridge_ids(rows, [])
+
+
 def test_a_crossing_the_extract_does_not_carry_is_reported_rather_than_ignored() -> None:
     """A way id is the wrong thing to check in - OSM ids change whenever a mapper
     splits a bridge - so these resolve by name, and a name that finds nothing

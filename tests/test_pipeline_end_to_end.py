@@ -681,14 +681,32 @@ def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
         assert tags[700].get("rm:bridge_bicycle") == "no", variant.value
 
 
+@pytest.mark.parametrize(
+    ("label", "osm_name", "roadway_tags"),
+    [
+        # Key Bridge: a trunk roadway OSM tags `bicycle=no`, which the fixture's
+        # legality row overrides.
+        (
+            "Key Bridge",
+            "Francis Scott Key Bridge",
+            {"highway": "trunk", "bicycle": "no", "foot": "no"},
+        ),
+        # Arlington Memorial Bridge: a primary roadway with no bicycle tag at
+        # all. Nothing of OSM's own bars it, so only the bar `inject` writes
+        # keeps ordinary riders off - the shape on which a pipeline that never
+        # passed the mass-ride-only ids to `inject` would still pass the Key
+        # case above, OSM's own `bicycle=no` standing in for the missing bar.
+        ("Arlington Memorial Bridge", "Arlington Memorial Bridge", {"highway": "primary"}),
+    ],
+    ids=["key-bridge-shape", "memorial-bridge-shape"],
+)
 def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
-    tmp_path, segment_schemas, states
+    tmp_path, segment_schemas, states, label, osm_name, roadway_tags
 ) -> None:
     """Owner, 2026-09-26, on Key Bridge and Memorial Bridge: the roadway is for
-    a mass ride and no one else. Driven through the real pipeline, on the Key
-    Bridge's own shape - a trunk roadway OSM tags `bicycle=no`, which the
-    fixture's legality row overrides, beside a bike-designated sidewalk named
-    after the same structure - and read back from the written PBFs.
+    a mass ride and no one else. Driven through the real pipeline, on each
+    bridge's own roadway shape beside a bike-designated path named after the
+    same structure, and read back from the written PBFs.
 
     The legality tag is what makes this more than an `inject` change: the
     transform writes `bicycle=yes` wherever `rm:bridge_bicycle=yes` arrives, so
@@ -702,13 +720,13 @@ def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
         build_named_bridge_extract,
         roadway_id=710,
         sidepath_id=711,
-        name="Francis Scott Key Bridge",
-        roadway_tags={"highway": "trunk", "bicycle": "no", "foot": "no"},
+        name=osm_name,
+        roadway_tags=roadway_tags,
     )
     row = {
-        "name": "Key Bridge",
+        "name": label,
         "osm_way_id": 0,
-        "osm_names": ["Francis Scott Key Bridge"],
+        "osm_names": [osm_name],
         "roadway_bicycle_legal": True,
         "sidepath_only": False,
         "roadway_mass_ride_only": True,
