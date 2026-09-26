@@ -18,7 +18,7 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "default",
     label: "Default",
-    description: "A balanced everyday ride that prefers calmer streets and paths.",
+    description: "Everyday riding with normal cycling priorities, balancing directness and comfort.",
   },
   {
     id: "group-ride",

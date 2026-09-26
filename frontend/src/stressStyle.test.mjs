@@ -5,6 +5,7 @@ import {
   STRESS_TIERS,
   BASEMAP,
   stressLayers,
+  stressCasingLayers,
   legend,
   relativeLuminance,
   contrastRatio,
@@ -103,4 +104,19 @@ test("the legend carries what colour alone cannot", () => {
   for (const entry of legend()) {
     assert.ok(entry.label && entry.dash);
   }
+});
+
+test("each tier has a casing layer drawn wider, in its own casing colour, on the same features", () => {
+  const casings = stressCasingLayers("stress-src");
+  const tiers = stressLayers("stress-src");
+  assert.equal(casings.length, tiers.length);
+  casings.forEach((casing, i) => {
+    assert.deepEqual(casing.filter, tiers[i].filter);
+    assert.equal(casing["source-layer"], tiers[i]["source-layer"]);
+    assert.equal(casing.paint["line-color"], STRESS_TIERS[i].casing);
+    assert.notEqual(casing.paint["line-color"], STRESS_TIERS[i].color);
+    assert.ok(casing.paint["line-width"] > tiers[i].paint["line-width"]);
+    assert.equal(casing.paint["line-dasharray"], undefined, "a casing is solid");
+  });
+  assert.equal(new Set([...casings, ...tiers].map((l) => l.id)).size, casings.length * 2);
 });

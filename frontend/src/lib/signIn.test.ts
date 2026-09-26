@@ -1,0 +1,53 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { PLAN_KEY, planToOpen, rememberPlan, type StorageLike } from "./signIn.ts";
+
+function memory(): StorageLike & { data: Map<string, string> } {
+  const data = new Map<string, string>();
+  return {
+    data,
+    getItem: (k) => data.get(k) ?? null,
+    setItem: (k, v) => void data.set(k, v),
+    removeItem: (k) => void data.delete(k),
+  };
+}
+
+const PLAN = "#p=-77.04340,38.90960;-77.00910,38.88990&preset=mass-ride";
+
+test("a plan survives the sign-in round trip, once", () => {
+  const storage = memory();
+  rememberPlan(storage, PLAN);
+  assert.equal(planToOpen(storage, ""), PLAN, "the callback lands on / with no fragment");
+  assert.equal(planToOpen(storage, ""), "", "used once, not on every later visit");
+});
+
+test("a link with its own plan wins over a remembered one", () => {
+  const storage = memory();
+  rememberPlan(storage, PLAN);
+  const other = "#p=-77.06,38.90;-77.07,38.89&preset=default";
+  assert.equal(planToOpen(storage, other), other);
+  assert.equal(storage.data.has(PLAN_KEY), false);
+});
+
+test("nothing is remembered when there is no plan", () => {
+  const storage = memory();
+  rememberPlan(storage, "#preset=default");
+  assert.equal(storage.data.size, 0);
+});
+
+test("storage that refuses is not an error", () => {
+  const refusing: StorageLike = {
+    getItem: () => {
+      throw new Error("denied");
+    },
+    setItem: () => {
+      throw new Error("denied");
+    },
+    removeItem: () => {
+      throw new Error("denied");
+    },
+  };
+  rememberPlan(refusing, PLAN);
+  assert.equal(planToOpen(refusing, ""), "");
+  assert.equal(planToOpen(null, PLAN), PLAN);
+});

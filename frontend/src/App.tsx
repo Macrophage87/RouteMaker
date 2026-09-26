@@ -1,17 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { MapView, type StressAvailability } from "./MapView.tsx";
-import { requestRoute, type RouteError, type RouteResponse } from "./lib/api.ts";
-import { MAX_POINTS, addPoint, detour, insideCoverage, type LonLat } from "./lib/geo.ts";
+import { MapView, type Frame, type StressAvailability } from "./MapView.tsx";
+import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
+import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration } from "./lib/format.ts";
 import { PRESETS, presetLabel, type PresetId } from "./lib/presets.ts";
 import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
+import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
+import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
+import { planToOpen, rememberPlan } from "./lib/signIn.ts";
+import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { STRESS_TIERS } from "./stressStyle.js";
 
-type Status = { kind: "idle" } | { kind: "loading" } | { kind: "ok" } | { kind: "error"; error: RouteError };
+interface Plan {
+  points: LonLat[];
+  preset: PresetId;
+  confirmLong: boolean;
+}
 
-const initialPlan = decodePlan(window.location.hash);
+type Status =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "waiting"; seconds: number }
+  | { kind: "ok" }
+  | { kind: "error"; error: RouteError }
+  | { kind: "confirm"; error: RouteError };
+
+function session(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
+const NARROW = "(max-width: 720px)";
 
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
@@ -23,37 +48,88 @@ export function App() {
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
   const [panelOpen, setPanelOpen] = useState(true);
+  // The span, in km, the rider has said yes to planning (longRide.ts).
+  const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
+  const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
   const mapRef = useRef<MapLibreMap | null>(null);
-  const [retryTick, setRetryTick] = useState(0);
+  const panelRef = useRef<HTMLElement>(null);
+  const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const addRef = useRef<HTMLButtonElement>(null);
+  const planButtonRef = useRef<HTMLButtonElement>(null);
+  const focusAfterRemove = useRef<number | null>(null);
+  const writtenHash = useRef<string>("");
+
+  // One scheduler for the page: one request in flight, the latest plan only,
+  // Retry-After waited out (routeScheduler.ts).
+  const scheduler = useRef<RouteScheduler<Plan> | null>(null);
+  if (scheduler.current === null) {
+    scheduler.current = new RouteScheduler<Plan>({
+      send: (plan) => requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong }),
+      onState: (state: SchedulerState) => {
+        if (state.kind === "in-flight" || state.kind === "pending") setStatus({ kind: "loading" });
+        else if (state.kind === "waiting") setStatus({ kind: "waiting", seconds: state.seconds });
+      },
+      onResult: (plan: Plan, result: RouteResult) => {
+        if (result.ok) {
+          setRoute(result.route);
+          setRoutedPoints(plan.points);
+          setStatus({ kind: "ok" });
+        } else if (result.error.kind === "confirm-long") {
+          setRoute(null);
+          setStatus({ kind: "confirm", error: result.error });
+        } else if (result.error.kind !== "aborted") {
+          setRoute(null);
+          setStatus({ kind: "error", error: result.error });
+        }
+      },
+    });
+  }
 
   // Keep the link in step with the plan, without adding history entries.
   useEffect(() => {
-    window.history.replaceState(null, "", encodePlan(points, preset));
+    const hash = encodePlan(points, preset);
+    writtenHash.current = hash;
+    window.history.replaceState(null, "", hash);
   }, [points, preset]);
 
-  // Route whenever the points or the preset change; a newer request cancels
-  // an older one, so a slow answer never overwrites a newer plan.
+  // A link pasted into this tab, or the back button, changes the fragment
+  // without a reload: open the plan it names.
+  useEffect(() => {
+    const onHash = () => {
+      if (window.location.hash === writtenHash.current) return;
+      const plan = decodePlan(window.location.hash);
+      setConfirmedKm(null);
+      setPoints(plan.points);
+      setPreset(plan.preset);
+    };
+    window.addEventListener("hashchange", onHash);
+    return () => window.removeEventListener("hashchange", onHash);
+  }, []);
+
+  // Route whenever the plan changes.
   useEffect(() => {
     if (points.length < 2) {
+      scheduler.current?.clear();
       setRoute(null);
       setStatus({ kind: "idle" });
       return;
     }
-    const controller = new AbortController();
-    setStatus({ kind: "loading" });
-    requestRoute(points, preset, { signal: controller.signal }).then((result) => {
-      if (controller.signal.aborted) return;
-      if (result.ok) {
-        setRoute(result.route);
-        setRoutedPoints(points);
-        setStatus({ kind: "ok" });
-      } else if (result.error.kind !== "aborted") {
-        setRoute(null);
-        setStatus({ kind: "error", error: result.error });
-      }
-    });
-    return () => controller.abort();
-  }, [points, preset, retryTick]);
+    scheduler.current?.request({ points, preset, confirmLong: sendsConfirmation(points, confirmedKm) });
+  }, [points, preset, confirmedKm]);
+
+  // The long-ride question takes the focus, so a keyboard rider lands on it.
+  useEffect(() => {
+    if (status.kind === "confirm") planButtonRef.current?.focus();
+  }, [status.kind]);
+
+  // After Remove, the focus goes to the next Remove button, or to Add.
+  useEffect(() => {
+    const index = focusAfterRemove.current;
+    if (index === null) return;
+    focusAfterRemove.current = null;
+    const target = removeRefs.current[Math.min(index, points.length - 1)];
+    (target ?? addRef.current)?.focus();
+  }, [points]);
 
   // The latest points, for handlers the map holds on to between renders.
   const pointsRef = useRef(points);
@@ -82,16 +158,54 @@ export function App() {
     setPoints((current) => current.map((p, i) => (i === index ? point : p)));
   }, []);
 
-  const removeAt = (index: number) => setPoints((current) => current.filter((_, i) => i !== index));
+  const removeAt = (index: number) => {
+    focusAfterRemove.current = index;
+    setPoints((current) => current.filter((_, i) => i !== index));
+  };
+  const clearAll = () => {
+    setConfirmedKm(null);
+    setPoints([]);
+  };
   const addAtCentre = () => {
     const map = mapRef.current;
     if (!map) return;
     const { lng, lat } = map.getCenter();
     place([lng, lat]);
   };
+  const retry = () => scheduler.current?.request({ points, preset, confirmLong: sendsConfirmation(points, confirmedKm) });
+  const confirmLong = () => {
+    const asked = status.kind === "confirm" && status.error.spanKm !== undefined ? status.error.spanKm : spanKm(points);
+    const upTo = confirmedUpTo(Math.max(asked, spanKm(points)));
+    setConfirmedKm(upTo);
+    // Sent here as well as by the effect, which does not run again when the
+    // confirmed span is unchanged; the debounce folds the two into one.
+    scheduler.current?.request({ points, preset, confirmLong: true });
+  };
+  const cancelLong = () => {
+    setStatus({ kind: "idle" });
+    setNotice("Not planned. Move or remove points for a shorter ride; any change asks again.");
+  };
 
-  const stale = status.kind === "loading";
-  const shown = status.kind === "error" ? null : route;
+  // The map frames a route in the part the panel does not cover.
+  const framePadding = useCallback((): Frame => {
+    const panel = panelRef.current?.getBoundingClientRect();
+    if (window.matchMedia(NARROW).matches) {
+      // The attribution sits above the sheet on a phone; leave room for it too.
+      return { top: 40, left: 30, right: 30, bottom: (panel?.height ?? 0) + 90 };
+    }
+    return { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
+  }, []);
+
+  const stale = status.kind === "loading" || status.kind === "waiting";
+  const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  const announcement =
+    status.kind === "loading"
+      ? `Planning a ${presetLabel(preset)} route…`
+      : status.kind === "waiting"
+        ? `The planner is busy; trying again in ${status.seconds} seconds.`
+        : status.kind === "ok" && route
+          ? announceRoute(route)
+          : "";
 
   return (
     <div className="app">
@@ -100,14 +214,17 @@ export function App() {
         route={shown}
         stale={stale}
         stressVisible={stressVisible && stress === "available"}
+        framePadding={framePadding}
         onStressAvailability={setStress}
         onMapClick={place}
         onMovePoint={move}
         onReady={(map) => {
           mapRef.current = map;
         }}
+        onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
       />
-      <aside className={`panel ${panelOpen ? "open" : "closed"}`} aria-label="Route planner">
+      {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
+      <aside ref={panelRef} className={`panel ${panelOpen ? "open" : "closed"}`} aria-label="Route planner">
         <header className="panel-header">
           <div>
             <h1>RouteMaker</h1>
@@ -141,6 +258,7 @@ export function App() {
                 </span>
               </label>
             ))}
+            <p className="hint">The ride types differ most on longer and rural routes; in town they often agree.</p>
           </fieldset>
 
           <section aria-labelledby="points-heading">
@@ -148,7 +266,8 @@ export function App() {
             {points.length === 0 ? (
               <p className="hint">
                 Click the map to set a start, then an end. Later clicks add a via point on the
-                nearest leg. Drag any marker to move it.
+                nearest leg. Drag any marker to move it. From the keyboard, move the map with the
+                arrow keys and use "Add point at map centre".
               </p>
             ) : (
               <ol className="points">
@@ -161,7 +280,15 @@ export function App() {
                       <span className="coords">
                         {point[1].toFixed(4)}, {point[0].toFixed(4)}
                       </span>
-                      <button type="button" className="link" onClick={() => removeAt(index)} aria-label={`Remove ${name}`}>
+                      <button
+                        type="button"
+                        className="link"
+                        ref={(el) => {
+                          removeRefs.current[index] = el;
+                        }}
+                        onClick={() => removeAt(index)}
+                        aria-label={`Remove ${name}`}
+                      >
                         Remove
                       </button>
                     </li>
@@ -171,13 +298,22 @@ export function App() {
             )}
             {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
             <div className="actions">
-              <button type="button" onClick={addAtCentre} disabled={points.length >= MAX_POINTS}>
+              <button
+                type="button"
+                ref={addRef}
+                onClick={addAtCentre}
+                onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
+                onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
+                onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
+                onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
+                disabled={points.length >= MAX_POINTS}
+              >
                 Add point at map centre
               </button>
               <button type="button" onClick={() => setPoints((p) => [...p].reverse())} disabled={points.length < 2}>
                 Reverse
               </button>
-              <button type="button" onClick={() => setPoints([])} disabled={points.length === 0}>
+              <button type="button" onClick={clearAll} disabled={points.length === 0}>
                 Clear
               </button>
             </div>
@@ -188,19 +324,37 @@ export function App() {
             )}
           </section>
 
-          <section aria-labelledby="route-heading" aria-busy={status.kind === "loading"}>
+          <section aria-labelledby="route-heading" aria-busy={stale}>
             <h2 id="route-heading">Route</h2>
             <div role="status" aria-live="polite" className="status-line">
-              {status.kind === "loading" && <p className="loading">Planning a {presetLabel(preset)} route…</p>}
+              {status.kind === "loading" && <p className="loading">{announcement}</p>}
+              {status.kind === "waiting" && <p className="loading">{announcement}</p>}
+              {status.kind === "ok" && <p className="visually-hidden">{announcement}</p>}
               {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
             </div>
+            {status.kind === "confirm" && (
+              <div className="confirm" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+                <p id="confirm-title">
+                  <strong>{status.error.title}</strong>
+                </p>
+                <p id="confirm-text">{status.error.message} Plan it?</p>
+                <div className="actions">
+                  <button type="button" ref={planButtonRef} onClick={confirmLong}>
+                    Plan it
+                  </button>
+                  <button type="button" className="secondary" onClick={cancelLong}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             {status.kind === "error" && (
               <div className={`error error-${status.error.kind}`} role="alert">
                 <p>
                   <strong>{status.error.title}.</strong> {status.error.message}
                 </p>
                 {["router-down", "timed-out", "server", "network", "rate-limited"].includes(status.error.kind) && (
-                  <button type="button" onClick={() => setRetryTick((n) => n + 1)}>
+                  <button type="button" onClick={retry}>
                     Try again
                   </button>
                 )}
@@ -219,7 +373,7 @@ export function App() {
                     checked={stressVisible}
                     onChange={(event) => setStressVisible(event.target.checked)}
                   />
-                  Show traffic stress on the map (zoom in to see it)
+                  Show traffic stress on the map
                 </label>
                 <StressLegend />
               </>
@@ -234,8 +388,12 @@ export function App() {
 
           <footer className="panel-footer">
             <p>
-              <a href="/auth/login">Sign in with Discord</a> to save routes and join peer review. Planning works
-              without it, and a plan made signed out is not saved; the link in the address bar reopens it.
+              Planning works without signing in, and a plan made signed out is not saved; the link in the address bar
+              reopens it. Saving routes and peer review are coming for riders who{" "}
+              <a href="/auth/login" onClick={() => rememberPlan(session(), window.location.hash)}>
+                sign in with Discord
+              </a>
+              ; your current plan is kept across the sign-in.
             </p>
           </footer>
         </div>
@@ -246,16 +404,22 @@ export function App() {
 
 function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[] }) {
   const segments = stressSegments(route.stress_m);
-  const long = detour(points, route.distance_m);
+  const detourText = detourNotice(route, points);
+  const pace = paceText(route);
   return (
     <div className="summary">
+      {detourText && (
+        <p className="notice detour" role="note">
+          {detourText}
+        </p>
+      )}
       <dl className="stats">
         <div>
           <dt>Distance</dt>
           <dd>{formatDistance(route.distance_m)}</dd>
         </div>
         <div>
-          <dt>Time</dt>
+          <dt>Moving time</dt>
           <dd>{formatDuration(route.duration_s)}</dd>
         </div>
         <div>
@@ -267,14 +431,7 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
           <dd>{formatClimb(route.descent_m)}</dd>
         </div>
       </dl>
-      {long.flagged && (
-        <p className="notice detour" role="note">
-          This route is about {long.ratio.toFixed(1)}× the straight-line distance.
-          {route.preset === "mass-ride"
-            ? " Mass Ride uses roadways only, so where no roadway crossing is nearby it can go a long way round. Try moving a point, or another ride type."
-            : " There may be no direct connection nearby. Try moving a point."}
-        </p>
-      )}
+      {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
       {segments.length > 0 && (
         <figure className="stress">
           <figcaption>Traffic stress along the route</figcaption>
@@ -302,33 +459,35 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
           </ul>
         </figure>
       )}
-      <p className="route-credit">
-        Route data: {route.attribution.join("; ")}.
-      </p>
+      <p className="route-credit">Route data: {route.attribution.join("; ")}.</p>
     </div>
   );
 }
 
 function StressLegend() {
   return (
-    <ul className="legend" aria-label="Traffic stress legend">
-      {STRESS_TIERS.map((tier) => (
-        <li key={tier.tier}>
-          <svg width="44" height="10" aria-hidden="true">
-            <line
-              x1="2"
-              y1="5"
-              x2="42"
-              y2="5"
-              stroke={tier.color}
-              strokeWidth={tier.width}
-              strokeDasharray={tier.dash.map((d: number) => d * tier.width).join(" ")}
-            />
-          </svg>
-          <span className="stress-name">{tier.short}</span>
-          <span className="stress-label">{tier.label}</span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="legend" aria-label="Traffic stress legend">
+        {STRESS_TIERS.map((tier) => (
+          <li key={tier.tier}>
+            <svg width="44" height="12" aria-hidden="true">
+              <line x1="2" y1="6" x2="42" y2="6" stroke={tier.casing} strokeWidth={tier.width + 2} />
+              <line
+                x1="2"
+                y1="6"
+                x2="42"
+                y2="6"
+                stroke={tier.color}
+                strokeWidth={tier.width}
+                strokeDasharray={tier.dash.map((d: number) => d * tier.width).join(" ")}
+              />
+            </svg>
+            <span className="stress-name">{tier.short}</span>
+            <span className="stress-label">{tier.label}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="hint">Streets with no stress rating are not drawn.</p>
+    </>
   );
 }

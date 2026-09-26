@@ -29,6 +29,18 @@ export const VOLUME_CREDITS: readonly string[] = [
 /** In the order the map shows them: OpenStreetMap first. */
 export const MAP_CREDITS: readonly string[] = [BASEMAP.attribution, ...VOLUME_CREDITS];
 
+/**
+ * The attribution control's one entry. MapLibre sorts separate entries by
+ * length (which put VDOT's first) and drops any entry that is part of a longer
+ * one, so a single combined string keeps OpenStreetMap first and absorbs the
+ * base map source's own copy of its credit. It ends with the third-party
+ * licence notices the build ships (licenses.txt, written by Vite).
+ */
+export const MAP_ATTRIBUTION: string = [
+  ...MAP_CREDITS,
+  '<a href="/licenses.txt">Software licences</a>',
+].join(" | ");
+
 export interface BasemapStyle {
   version: 8;
   glyphs: string;

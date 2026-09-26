@@ -16,6 +16,17 @@
  * passed. It did: LTS4 was the darkest tier of the four and sat eight grey
  * levels from LTS1, so on a marshal's black-and-white sheet "comfortable" and
  * "heavy traffic" printed the same.
+ *
+ * Each tier also carries a casing: a solid line drawn under it, two pixels
+ * wider, in a colour chosen to stand apart from both the tier and whatever the
+ * line is drawn over. The calm tiers are light greens, and on the base map
+ * they are drawn over parkland, woods and scrub that are the same light greens
+ * (LTS 1 against the park fill was 1.00:1), so without the casing the calmest
+ * streets - the ones this map exists to find - were the invisible ones. A dark
+ * casing under LTS 1 and 2 and a white one under LTS 3 and 4 keeps every tier
+ * at least 3:1 from the map (WCAG 1.4.11's figure for graphics) and from both
+ * themes' panel behind the legend; stressContrast.test.ts measures that
+ * against the base map's own fill colours.
  */
 
 export const STRESS_TIERS = [
@@ -26,6 +37,7 @@ export const STRESS_TIERS = [
     color: "#9ed3ac",
     dash: [1],
     width: 3,
+    casing: "#17301f",
   },
   {
     tier: 2,
@@ -34,6 +46,7 @@ export const STRESS_TIERS = [
     color: "#57a06c",
     dash: [4, 1],
     width: 3,
+    casing: "#17301f",
   },
   {
     tier: 3,
@@ -42,6 +55,7 @@ export const STRESS_TIERS = [
     color: "#8a4a10",
     dash: [2, 2],
     width: 3.5,
+    casing: "#ffffff",
   },
   {
     tier: 4,
@@ -50,6 +64,7 @@ export const STRESS_TIERS = [
     color: "#340808",
     dash: [1, 2],
     width: 4,
+    casing: "#ffffff",
   },
 ];
 
@@ -108,13 +123,30 @@ export function stressLayers(sourceId = "stress") {
   }));
 }
 
+/** The casing under each tier's line, drawn first so the tier sits on it. */
+export function stressCasingLayers(sourceId = "stress") {
+  return STRESS_TIERS.map((tier) => ({
+    id: `stress-casing-${tier.tier}`,
+    type: "line",
+    source: sourceId,
+    "source-layer": STRESS_TILE_LAYER,
+    filter: ["==", ["get", "tier"], tier.tier],
+    paint: {
+      "line-color": tier.casing,
+      "line-width": tier.width + 2,
+    },
+  }));
+}
+
 /** Legend entries, which carry the label the colour alone cannot. */
 export function legend() {
-  return STRESS_TIERS.map(({ tier, short, label, color, dash }) => ({
+  return STRESS_TIERS.map(({ tier, short, label, color, dash, width, casing }) => ({
     tier,
     short,
     label,
     color,
     dash,
+    width,
+    casing,
   }));
 }

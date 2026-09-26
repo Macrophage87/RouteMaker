@@ -12,12 +12,15 @@ test("duration reads as minutes, then hours and minutes", () => {
   assert.match(formatDuration(1296), /^22 min$/);
   assert.match(formatDuration(3900), /^1 h 05 min$/);
   assert.match(formatDuration(20), /^1 min$/);
+  assert.match(formatDuration(5400), /^1 h 30 min$/);
+  assert.match(formatDuration(3599), /^1 h 00 min$/);
 });
 
 test("climb shows metres and feet, rounded", () => {
   const text = formatClimb(31.3);
   assert.match(text, /31 m/);
   assert.match(text, /103 ft/);
+  assert.match(formatClimb(0), /^0 m \(0 ft\)$/);
 });
 
 test("nonsense in gives a dash, not NaN", () => {

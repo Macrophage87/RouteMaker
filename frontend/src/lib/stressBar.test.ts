@@ -18,6 +18,7 @@ test("rounded percentages always add up to one hundred", () => {
     { "1": 1, "2": 1, "3": 1, "4": 0, unknown: 0 },
     { "1": 333, "2": 333, "3": 334, "4": 0, unknown: 0 },
     { "1": 0.4, "2": 0.4, "3": 0.2, "4": 99, unknown: 0.1 },
+    { "1": 255, "2": 255, "3": 490, "4": 0, unknown: 0 },
     sample,
   ];
   for (const stress of awkward) {
@@ -57,5 +58,20 @@ test("the tier colours are the overlay's own", async () => {
   for (const tier of STRESS_TIERS) {
     const segment = segments.find((s) => s.key === String(tier.tier));
     assert.equal(segment?.color, tier.color);
+  }
+});
+
+test("each percent is its own share rounded, and an empty tier reads 0%", () => {
+  const cases = [
+    sample,
+    { "1": 255, "2": 255, "3": 490, "4": 0, unknown: 0 },
+    { "1": 1, "2": 1, "3": 1, "4": 0, unknown: 0 },
+    { "1": 994, "2": 3, "3": 3, "4": 0, unknown: 0 },
+  ];
+  for (const stress of cases) {
+    for (const s of stressSegments(stress)) {
+      assert.ok(Math.abs(s.percent - s.fraction * 100) < 1, `${JSON.stringify(stress)} ${s.key}`);
+      if (s.metres === 0) assert.equal(s.percent, 0, `${JSON.stringify(stress)} ${s.key}`);
+    }
   }
 });

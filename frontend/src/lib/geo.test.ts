@@ -50,6 +50,24 @@ test("a later click becomes a via on the leg it adds least to, keeping both ends
   assert.deepEqual(addPoint(withB, nearSecondLeg), [a, b, nearSecondLeg, c]);
 });
 
+test("a via goes where the whole route is shortest, not merely near a point", () => {
+  // The mutation reviewer's probe: points not evenly spaced, the click off the
+  // line. Every insertion position is tried and the chosen one must be the
+  // shortest total path.
+  const a: LonLat = [-77.1, 38.9];
+  const b: LonLat = [-76.9, 38.9];
+  const c: LonLat = [-76.89, 38.9];
+  const p: LonLat = [-76.92, 38.92];
+  const chosen = addPoint([a, b, c], p);
+  const options = [1, 2].map((i) => {
+    const route = [a, b, c];
+    route.splice(i, 0, p);
+    return pathLengthM(route);
+  });
+  assert.equal(pathLengthM(chosen), Math.min(...options));
+  assert.deepEqual(chosen, [a, p, b, c]);
+});
+
 test("adding never mutates the list it was given", () => {
   const route: LonLat[] = [DUPONT, CAPITOL];
   const frozen = JSON.stringify(route);
@@ -68,8 +86,10 @@ test("the coverage box is the settings' one and clicks outside it are refused", 
   assert.deepEqual(COVERAGE_BBOX, [-78.0, 38.2, -76.02, 39.72]);
   assert.equal(insideCoverage(DUPONT), true);
   assert.equal(insideCoverage([-76.61, 39.29]), true); // Baltimore
-  assert.equal(insideCoverage([-75.5, 39.0]), false);
+  assert.equal(insideCoverage([-75.5, 39.0]), false); // east
   assert.equal(insideCoverage([-77.0, 39.8]), false); // north of Mason-Dixon
+  assert.equal(insideCoverage([-78.5, 38.9]), false); // west
+  assert.equal(insideCoverage([-77.0, 38.0]), false); // south
 });
 
 test("a detour is flagged when the route is far longer than the straight line", () => {
@@ -81,6 +101,28 @@ test("a detour is flagged when the route is far longer than the straight line", 
   // A short hop that doubles is not worth a notice.
   const hop: LonLat = [-77.0434, 38.9106];
   assert.equal(detour([DUPONT, hop], haversineM(DUPONT, hop) * 3).flagged, false);
+});
+
+test("the detour thresholds: twice the straight line and 3 km more", () => {
+  const BALTIMORE: LonLat = [-76.6122, 39.2904];
+  const far = haversineM(DUPONT, BALTIMORE);
+  assert.equal(detour([DUPONT, BALTIMORE], far * 1.5).flagged, false, "1.5x on a long trip");
+  assert.equal(detour([DUPONT, BALTIMORE], far * 1.99).flagged, false, "just under 2x");
+  assert.equal(detour([DUPONT, BALTIMORE], far * 2.0).flagged, true, "2x and 60 km more");
+  const near = haversineM(DUPONT, CAPITOL);
+  assert.equal(detour([DUPONT, CAPITOL], near * 4).flagged, true, "4x, about 10.8 km more");
+  // 2.5x but under 3 km more: not worth a notice; 3.1 km more on the same hop is.
+  const hop: LonLat = [-77.0434, 38.9266];
+  const short = haversineM(DUPONT, hop);
+  assert.ok(short * 1.5 < 3000);
+  assert.equal(detour([DUPONT, hop], short * 2.5).flagged, false);
+  assert.equal(detour([DUPONT, hop], short + 3100).flagged, true);
+});
+
+test("a route whose ends coincide is not a detour, and not Infinity times anything", () => {
+  const result = detour([DUPONT, DUPONT], 5000);
+  assert.equal(result.flagged, false);
+  assert.ok(Number.isFinite(result.ratio));
 });
 
 test("tile maths lands a DC point on the tile that contains it", () => {

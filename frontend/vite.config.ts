@@ -24,6 +24,15 @@ export default defineConfig({
   plugins: [react()],
   // MapLibre's worker imports a chunk it shares with the main bundle.
   worker: { format: "es" },
-  build: { outDir: "dist", assetsDir: "assets", sourcemap: false, chunkSizeWarningLimit: 2000 },
+  build: {
+    outDir: "dist",
+    assetsDir: "assets",
+    sourcemap: false,
+    chunkSizeWarningLimit: 2000,
+    // The bundled packages' licences, which MIT, ISC and BSD-3-Clause all ask
+    // to travel with redistributed copies; served at /licenses.txt and linked
+    // from the map's credits.
+    license: { fileName: "licenses.txt" },
+  },
   server: { proxy: { "/api": toStack, "/tiles": toStack, "/basemap": toStack } },
 });

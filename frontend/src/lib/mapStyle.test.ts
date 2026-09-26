@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAP_CREDITS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { MAP_ATTRIBUTION, MAP_CREDITS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
 
 const ORIGIN = "https://routes.example.org";
 
@@ -38,12 +38,32 @@ test("everything the style loads comes from this site", () => {
 test("the stress tiles are the contract's path, absolute, within its zooms", () => {
   const source = stressSource(ORIGIN);
   assert.deepEqual(source.tiles, [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
-  assert.ok(source.minzoom >= 10);
-  assert.ok(source.maxzoom <= 16);
+  // SHARED API CONTRACT: served for z 10-16.
+  assert.equal(source.minzoom, 10);
+  assert.equal(source.maxzoom, 16);
   assert.equal(STRESS_SOURCE_ID.length > 0, true);
 });
 
 test("the base map layers are passed through untouched", () => {
   const layers = [{ id: "background", type: "background" }] as never[];
   assert.deepEqual(buildStyle(ORIGIN, layers).layers, layers);
+});
+
+test("the credits read as one line with OpenStreetMap first", () => {
+  // MapLibre orders separate attribution entries by length, which put VDOT
+  // first; one combined entry keeps the order written here.
+  const order = [
+    "OpenStreetMap",
+    "Protomaps",
+    "District Department of Transportation",
+    "Virginia Department of Transportation",
+  ];
+  const at = order.map((name) => MAP_ATTRIBUTION.indexOf(name));
+  assert.ok(at.every((i) => i >= 0), JSON.stringify(at));
+  assert.deepEqual([...at].sort((x, y) => x - y), at);
+  assert.ok(MAP_ATTRIBUTION.includes(MAP_CREDITS[0]), "the base map's own credit is a part of it");
+});
+
+test("the licence notices are linked from the credits", () => {
+  assert.match(MAP_ATTRIBUTION, /href="\/licenses\.txt"/);
 });

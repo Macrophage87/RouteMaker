@@ -7,12 +7,12 @@ import { Protocol } from "pmtiles";
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { stressLayers } from "./stressStyle.js";
+import { stressCasingLayers, stressLayers } from "./stressStyle.js";
 import { COVERAGE_BBOX, lonLatToTile, type LonLat } from "./lib/geo.ts";
 import {
   BASEMAP_SOURCE_ID,
+  MAP_ATTRIBUTION,
   STRESS_SOURCE_ID,
-  MAP_CREDITS,
   buildStyle,
   stressSource,
 } from "./lib/mapStyle.ts";
@@ -20,15 +20,26 @@ import type { RouteResponse } from "./lib/api.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
+/** Pixels on each side of the map that the panel covers. */
+export interface Frame {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
 interface Props {
   points: LonLat[];
   route: RouteResponse | null;
   stale: boolean;
   stressVisible: boolean;
+  /** Screen space the panel covers, so a route is framed in what is left. */
+  framePadding: () => Frame;
   onStressAvailability: (availability: StressAvailability) => void;
   onMapClick: (point: LonLat) => void;
   onMovePoint: (index: number, point: LonLat) => void;
   onReady: (map: MapLibreMap) => void;
+  onCanvasFocus: (focused: boolean) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -46,6 +57,8 @@ function registerPmtiles(): void {
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
 const MAX_BOUNDS_PAD = 0.4;
+/** How long an unanswered stress endpoint is left before it is asked again. */
+const STRESS_RECHECK_MS = 60_000;
 
 function pointLabel(index: number, count: number): { text: string; name: string; kind: string } {
   if (index === 0) return { text: "A", name: "Start", kind: "start" };
@@ -53,10 +66,17 @@ function pointLabel(index: number, count: number): { text: string; name: string;
   return { text: String(index), name: `Via point ${index}`, kind: "via" };
 }
 
-/** Is the route's extent already on screen? If not, the map moves to it. */
-function routeInView(map: MapLibreMap, coordinates: LonLat[]): boolean {
-  const view = map.getBounds();
-  return coordinates.every(([lon, lat]) => view.contains([lon, lat]));
+/** Is the route's extent already on screen, outside the panel? If not, the map moves to it. */
+function routeInView(map: MapLibreMap, coordinates: LonLat[], padding: Frame): boolean {
+  const canvas = map.getCanvas();
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  return coordinates.every((c) => {
+    const p = map.project(c);
+    return (
+      p.x >= padding.left && p.x <= width - padding.right && p.y >= padding.top && p.y <= height - padding.bottom
+    );
+  });
 }
 
 async function stressTilesAnswer(origin: string): Promise<boolean> {
@@ -72,13 +92,17 @@ async function stressTilesAnswer(origin: string): Promise<boolean> {
   }
 }
 
+function allStressLayerIds(): string[] {
+  return [...stressCasingLayers(STRESS_SOURCE_ID), ...stressLayers(STRESS_SOURCE_ID)].map((l) => l.id);
+}
+
 export function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
   const loaded = useRef(false);
   // The first route shown (a shared link, usually) is framed; after that the
-  // map moves only when a route leaves the screen.
+  // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
   const callbacks = useRef(props);
   callbacks.current = props;
@@ -101,15 +125,19 @@ export function MapView(props: Props) {
         [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD],
         [east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
       ],
-      // Every credit, in order, stated here: the base map source repeats its
-      // own, which MapLibre folds into the same entry.
-      attributionControl: { compact: true, customAttribution: [...MAP_CREDITS] },
+      // One entry, OpenStreetMap first (mapStyle.ts says why).
+      attributionControl: { compact: true, customAttribution: MAP_ATTRIBUTION },
       cooperativeGestures: false,
     });
     mapRef.current = map;
+    let disposed = false;
+    let recheck: ReturnType<typeof setTimeout> | null = null;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
-    map.getCanvas().setAttribute("aria-label", "Map. Use arrow keys to pan and plus or minus to zoom.");
+    const canvas = map.getCanvas();
+    canvas.setAttribute("aria-label", "Map. Use arrow keys to pan and plus or minus to zoom.");
+    canvas.addEventListener("focus", () => callbacks.current.onCanvasFocus(true));
+    canvas.addEventListener("blur", () => callbacks.current.onCanvasFocus(false));
 
     // The style package can name an icon the pinned sprite sheet predates
     // (basemaps-assets is pinned by commit in scripts/fetch_basemap.sh). A
@@ -122,7 +150,38 @@ export function MapView(props: Props) {
       callbacks.current.onMapClick([event.lngLat.lng, event.lngLat.lat]);
     });
 
-    map.on("load", async () => {
+    const addStress = () => {
+      if (map.getSource(STRESS_SOURCE_ID)) return;
+      map.addSource(STRESS_SOURCE_ID, stressSource(origin));
+      // Under the base map's labels and the route, over its roads; each
+      // tier's casing first, so the tier sits on it.
+      const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
+      const visibility = callbacks.current.stressVisible ? "visible" : "none";
+      for (const layer of [...stressCasingLayers(STRESS_SOURCE_ID), ...stressLayers(STRESS_SOURCE_ID)]) {
+        map.addLayer({ ...(layer as maplibregl.LineLayerSpecification), layout: { visibility } }, firstSymbol);
+      }
+    };
+
+    // Ask the endpoint; if it does not answer, say so and ask again later, so
+    // one bad minute does not take the overlay away for the whole visit.
+    const probeStress = async () => {
+      const available = await stressTilesAnswer(origin);
+      if (disposed) return;
+      if (available) {
+        addStress();
+        callbacks.current.onStressAvailability("available");
+      } else {
+        callbacks.current.onStressAvailability("unavailable");
+        if (recheck === null) {
+          recheck = setTimeout(() => {
+            recheck = null;
+            void probeStress();
+          }, STRESS_RECHECK_MS);
+        }
+      }
+    };
+
+    map.on("load", () => {
       loaded.current = true;
       map.addSource(ROUTE_SOURCE, { type: "geojson", data: { type: "FeatureCollection", features: [] } });
       map.addLayer({
@@ -139,39 +198,27 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#1d4ed8", "line-width": 5 },
       });
-      syncRoute(map, callbacks.current.route, callbacks.current.stale, fitted);
+      syncRoute(map, callbacks.current, fitted);
       callbacks.current.onReady(map);
-
       callbacks.current.onStressAvailability("checking");
-      const available = await stressTilesAnswer(origin);
-      if (!mapRef.current) return;
-      if (!available) {
-        callbacks.current.onStressAvailability("unavailable");
-        return;
-      }
-      map.addSource(STRESS_SOURCE_ID, stressSource(origin));
-      // Under the base map's labels and the route, over its roads.
-      const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
-      for (const layer of stressLayers(STRESS_SOURCE_ID)) {
-        map.addLayer(
-          {
-            ...(layer as maplibregl.LineLayerSpecification),
-            layout: { visibility: callbacks.current.stressVisible ? "visible" : "none" },
-          },
-          firstSymbol,
-        );
-      }
-      callbacks.current.onStressAvailability("available");
+      void probeStress();
     });
 
     map.on("error", (event) => {
-      // A stress tile that fails after the probe passed: say so rather than
-      // leave a legend over an empty overlay.
+      // A stress tile that failed after the endpoint had answered: check the
+      // endpoint again rather than trusting one tile's failure either way.
       const source = (event as { sourceId?: string }).sourceId;
-      if (source === STRESS_SOURCE_ID) callbacks.current.onStressAvailability("unavailable");
+      if (source === STRESS_SOURCE_ID && recheck === null) {
+        recheck = setTimeout(() => {
+          recheck = null;
+          void probeStress();
+        }, 5_000);
+      }
     });
 
     return () => {
+      disposed = true;
+      if (recheck !== null) clearTimeout(recheck);
       loaded.current = false;
       markers.current.forEach((m) => m.remove());
       markers.current = [];
@@ -211,29 +258,23 @@ export function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current) return;
-    syncRoute(map, props.route, props.stale, fitted);
+    syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
 
   // The overlay toggle.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current || !map.getSource(STRESS_SOURCE_ID)) return;
-    for (const layer of stressLayers(STRESS_SOURCE_ID)) {
-      if (map.getLayer(layer.id)) {
-        map.setLayoutProperty(layer.id, "visibility", props.stressVisible ? "visible" : "none");
-      }
+    for (const id of allStressLayerIds()) {
+      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", props.stressVisible ? "visible" : "none");
     }
   }, [props.stressVisible]);
 
   return <div ref={container} className="map" role="region" aria-label="Map" />;
 }
 
-function syncRoute(
-  map: MapLibreMap,
-  route: RouteResponse | null,
-  stale: boolean,
-  fitted: { current: boolean },
-): void {
+function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean }): void {
+  const { route, stale } = props;
   const source = map.getSource(ROUTE_SOURCE) as GeoJSONSource | undefined;
   if (!source) return;
   source.setData(
@@ -242,20 +283,11 @@ function syncRoute(
       : { type: "FeatureCollection", features: [] },
   );
   map.setPaintProperty("route-line", "line-opacity", stale ? 0.45 : 1);
-  if (
-    route &&
-    !stale &&
-    route.geometry.coordinates.length > 1 &&
-    (!fitted.current || !routeInView(map, route.geometry.coordinates))
-  ) {
-    fitted.current = true;
-    const bounds = new maplibregl.LngLatBounds();
-    route.geometry.coordinates.forEach((c) => bounds.extend(c));
-    const narrow = window.matchMedia("(max-width: 720px)").matches;
-    map.fitBounds(bounds, {
-      padding: narrow ? { top: 40, bottom: 40, left: 30, right: 30 } : { top: 60, bottom: 60, left: 420, right: 60 },
-      maxZoom: 15,
-      duration: 600,
-    });
-  }
+  if (!route || stale || route.geometry.coordinates.length < 2) return;
+  const padding = props.framePadding();
+  if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;
+  fitted.current = true;
+  const bounds = new maplibregl.LngLatBounds();
+  route.geometry.coordinates.forEach((c) => bounds.extend(c));
+  map.fitBounds(bounds, { padding, maxZoom: 15, duration: 600 });
 }

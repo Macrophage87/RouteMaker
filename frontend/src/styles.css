@@ -388,6 +388,51 @@ a {
   margin: 0;
 }
 
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.confirm {
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+}
+
+.confirm p {
+  margin: 0 0 6px;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.pace {
+  margin-top: 0;
+}
+
+/* The point "Add point at map centre" would place, while it has focus. */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(#111 0 0) center / 2px 100% no-repeat,
+    linear-gradient(#111 0 0) center / 100% 2px no-repeat;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+
 /* Markers. */
 .pin {
   width: 28px;

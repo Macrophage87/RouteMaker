@@ -15,12 +15,14 @@ test("each contract status maps to its own kind", () => {
     [500, { error: "Something went wrong planning this route." }, "server"],
     [502, { error: "The router is not answering; try again shortly." }, "router-down"],
     [503, { error: "Planning this route took too long; try again shortly." }, "timed-out"],
+    [504, null, "timed-out"],
+    [409, { error: "long", code: "confirm_long", span_km: 162 }, "confirm-long"],
   ];
   for (const [status, body, kind] of cases) {
     assert.equal(describeError(status, body, null).kind, kind, `status ${status}`);
   }
   const kinds = new Set(cases.map(([s, b]) => describeError(s, b, null).kind));
-  assert.equal(kinds.size, 7);
+  assert.equal(kinds.size, 8);
 });
 
 test("every mapped error has a title and a message to show", () => {
@@ -37,11 +39,31 @@ test("too long is recognised from the message, not from every 400", () => {
   assert.equal(describeError(400, "not json", null).kind, "bad-input");
 });
 
-test("the server's own explanation reaches the rider for input and no-route errors", () => {
+test("the server's explanation of a missing route reaches the rider", () => {
   const detail = "Mass Ride routes only on roadways, and removing trails can leave no connection.";
   assert.ok(describeError(422, { error: detail }, null).message.includes(detail));
-  const input = "point 1 is outside the area this map covers";
-  assert.ok(describeError(400, { error: input }, null).message.includes(input));
+});
+
+test("an input refusal is said in the rider's words, not the validator's", () => {
+  const raw = "points: Value error, point 1 is outside the area this map covers";
+  const message = describeError(400, { error: raw }, null).message;
+  assert.match(message, /outside the area this map covers/);
+  assert.doesNotMatch(message, /Value error|points:/);
+  const other = describeError(400, { error: "preset: Input should be 'default'" }, null).message;
+  assert.doesNotMatch(other, /preset:/);
+  assert.match(other, /Input should be/);
+  const odd = describeError(400, { error: "points.0: Value error, coordinates must be numbers" }, null).message;
+  assert.match(odd, /coordinates must be numbers/);
+  assert.doesNotMatch(odd, /Value error|points.0/);
+});
+
+test("a 409 is a long-ride question only when the API says so", () => {
+  const asked = describeError(409, { error: "long", code: "confirm_long", span_km: 161.6 }, null);
+  assert.equal(asked.kind, "confirm-long");
+  assert.equal(asked.spanKm, 162);
+  assert.match(asked.message, /162 km/);
+  assert.notEqual(describeError(409, { error: "conflict" }, null).kind, "confirm-long");
+  assert.equal(describeError(409, { code: "confirm_long", span_km: "far" }, null).spanKm, undefined);
 });
 
 test("a proxy's error page is not shown as if it were the API's words", () => {
@@ -101,6 +123,69 @@ test("a route request posts the contract's body as JSON", async () => {
   assert.equal(headers.get("Content-Type"), "application/json");
   assert.deepEqual(JSON.parse(String(calls[0].init.body)), { points, preset: "mass-ride" });
   if (result.ok) assert.equal(result.route.distance_m, 4660);
+});
+
+test("confirm_long is sent only when the rider confirmed", async () => {
+  const bodies: unknown[] = [];
+  const impl = async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return new Response("{}", { status: 500 });
+  };
+  await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
+  await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, confirmLong: true });
+  assert.equal("confirm_long" in (bodies[0] as object), false);
+  assert.equal((bodies[1] as { confirm_long: boolean }).confirm_long, true);
+});
+
+test("the caller's abort signal reaches fetch", async () => {
+  const { impl, calls } = fakeFetch(500, "{}");
+  const controller = new AbortController();
+  await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, signal: controller.signal });
+  assert.equal(calls[0].init.signal, controller.signal);
+});
+
+test("an abort while the body is still arriving is an abort, not a server error", async () => {
+  const impl = async () =>
+    ({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => {
+        throw new DOMException("The operation was aborted.", "AbortError");
+      },
+    }) as unknown as Response;
+  const result = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.error.kind, "aborted");
+});
+
+test("a 200 missing what the panel reads is refused, not rendered", async () => {
+  const good = {
+    preset: "default",
+    variant: "standard",
+    geometry: { type: "LineString", coordinates: [[0, 0], [1, 1]] },
+    distance_m: 1,
+    duration_s: 1,
+    climb_m: 0,
+    descent_m: 0,
+    stress_m: { "1": 1 },
+    attribution: [],
+  };
+  const broken = [
+    { ...good, attribution: undefined },
+    { ...good, geometry: { type: "Point", coordinates: [0, 0] } },
+    { ...good, geometry: { type: "LineString" } },
+    { ...good, stress_m: null },
+    { ...good, distance_m: "5" },
+    { ...good, duration_s: undefined },
+  ];
+  const { impl: goodImpl } = fakeFetch(200, JSON.stringify(good));
+  assert.equal((await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: goodImpl })).ok, true);
+  for (const body of broken) {
+    const { impl } = fakeFetch(200, JSON.stringify(body));
+    const result = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
+    assert.equal(result.ok, false, JSON.stringify(body));
+  }
 });
 
 test("a refusal comes back described, with its Retry-After", async () => {
