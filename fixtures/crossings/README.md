@@ -53,9 +53,11 @@ The first job is to answer, per structure, the questions the midpoint
 heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
 no-trail variant (Mass Ride's, and PLAN's Group Ride with trails off) drops,
 `resolve_mass_ride_only_bridge_ids` decides
-which roadways the standard and e-bike variants bar because they are for mass
-rides only, and `resolve_bridge_bicycle_legality` decides what
-`rm:bridge_bicycle` carries into `graph.lua` on every variant.
+which roadways the standard and e-bike variants bar because they are for a mass
+ride or a trails-off Group Ride only, `resolve_ordinary_ride_penalty_ids`
+decides which ways those two variants carry a penalty on, and
+`resolve_bridge_bicycle_legality` decides what `rm:bridge_bicycle` carries into
+`graph.lua` on every variant.
 Memorial Bridge is one authority end to end; the "14th Street Bridge" is
 **five** parallel structures with different answers (three highway spans, the
 Long Bridge carrying rail, and the Charles R. Fenwick Bridge carrying Metro's
@@ -139,7 +141,7 @@ two columns the pipeline reads, written where nothing reads them:
   these two, and the twelve other legality-only rows, could resolve against
   nothing on every rebuild and appear in no log at all.
 
-And it supplies three independent answers to the tile build, from three
+And it supplies four independent answers to the tile build, from four
 different columns. Do not OR them together; a rebuild that did once passed its
 own test while being inert, because every row where it mattered happened to
 agree.
@@ -223,6 +225,30 @@ agree.
   remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
   those points from all three graphs.
 
+* `ordinary_ride_penalty_way_ids` — routing-relevant, and on the 11th Street
+  local span row only: the OSM way ids of the roadway an ordinary ride is
+  steered off, the span (546096009) and the ten south-landing ways named
+  under the approaches, below. Ids
+  rather than names, because a landing is not a bridge and no name match
+  reaches it; an id the extract no longer carries is reported in the
+  "crossings not found" warning, as a stale pin is. Absent means none, and
+  anything but a list of positive ids is refused at load
+  (`variants.MalformedCrossingRow`). The standard and e-bike variants carry
+  `rm:ordinary_ride_penalty` on those ways, and the transform writes it as
+  Valhalla's own `bicycle=use_sidepath` wherever the way is already open to
+  a bicycle: upstream reads that as bicycle access both ways, like `yes`,
+  and the bicycle costing charges more for it without changing the edge's
+  speed, so it is a cost and not a bar, and a route's duration is unchanged.
+  It is never written over a refusal (OSM's `bicycle=no` before the access
+  rows are loaded, an e-bike or mass-ride-only bar, a legality of false), so
+  it cannot open anything. The no-trail variant does not carry it; it has no
+  path to steer to. On a rebuilt graph of the 2026-09-24 extract with the
+  override rows loaded, Navy Yard to Anacostia goes back to the Riverwalk in
+  both directions at the Default and Group Ride presets' options, while a
+  trip that starts or ends on the landing still uses it. The reviewer
+  surface penalty (`rm:reviewer_surface`, capped at `compacted`) was
+  measured first and moved no route: too weak for this.
+
 ### The approaches: owner decisions of 2026-09-26
 
 A crossing is only as usable as the roads at either end of it, and those are
@@ -250,18 +276,18 @@ roadway a mass ride was given that day, what happens at its ends:
   road". Legal for all, so all ten are opened for every variant by approved
   access overrides; "might be discouraged" is not an access decision. What
   follows is this project's reading, not the owner's words: nothing in the
-  graph discourages those ways today on account of their stress tier. The
-  tier reaches the router only as a comfort tag on tier-1 ways (the remap's
+  graph discourages those ways on account of their stress tier. The tier
+  reaches the router only as a comfort tag on tier-1 ways (the remap's
   `cycleway=track`), and Default is a layer-2 preset with no stress-weighted
-  ranking, so a Default route weighs the road only by Valhalla's own bicycle
-  costing of its road class. Measured on a rebuilt graph of the 2026-09-24
-  extract with the rows loaded: a standard or e-bike route southbound from
-  the Navy Yard (38.8760, -76.9950) to 38.8660, -76.9880 now takes the local
-  span's roadway (546096009) and Martin Luther King Jr Avenue SE, 2.455 km,
-  where without the rows it took the Anacostia Riverwalk Trail (546096004);
-  northbound it stays on the Riverwalk. Nothing in the build discourages the
-  roadway, and whether something should is the owner's question, recorded in
-  handoff.md section 7.
+  ranking. Measured on a rebuilt graph of the 2026-09-24 extract with the
+  rows loaded: a standard or e-bike route southbound from the Navy Yard
+  (38.8760, -76.9950) to 38.8660, -76.9880 took the local span's roadway
+  (546096009) and Martin Luther King Jr Avenue SE, 2.455 km, where without
+  the rows it took the Anacostia Riverwalk Trail (546096004), 2.538 km. The
+  owner was asked whether the planner should steer those riders back to the
+  path, and chose "Steer to the path" ("Keep it legal but add a penalty on
+  that roadway for ordinary rides so the Riverwalk wins when it's close in
+  length."). That is `ordinary_ride_penalty_way_ids`, above.
 
 Access corrections go through the override table, the plan's one audited path
 for them, never through this file: the rows are checked in at

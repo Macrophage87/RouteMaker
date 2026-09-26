@@ -257,6 +257,45 @@ local _, unpenalised = transform_way({ highway = "residential", surface = "paved
 check("a way with no penalty keeps its surveyed surface",
   unpenalised.surface == "paved", unpenalised.surface)
 
+-- `rm:ordinary_ride_penalty` (owner, 2026-09-26: "Steer to the path") reaches
+-- the graph as upstream's own `bicycle=use_sidepath`, which upstream reads as
+-- bicycle access both ways: a cost, not a bar. Read at upstream's output, with
+-- the landing's own shapes: opened by an access override (`bicycle=yes`), and
+-- the span, opened over OSM's `bicycle=no` by the fixture's legality row.
+local landing = { highway = "secondary", bicycle = "yes", foot = "no" }
+local span = { highway = "secondary", bicycle = "no", foot = "no", bridge = "yes",
+  ["rm:bridge_bicycle"] = "yes" }
+for label, tags in pairs({ landing = landing, span = span }) do
+  local marked = {}
+  for k, v in pairs(tags) do marked[k] = v end
+  marked["rm:ordinary_ride_penalty"] = "yes"
+  local _, out = transform_way(marked)
+  check("the penalty reaches the graph on the " .. label,
+    out.bicycle == "use_sidepath", tostring(out.bicycle))
+  check("and the " .. label .. " stays open both ways",
+    out.bike_forward == "true" and out.bike_backward == "true",
+    tostring(out.bike_forward) .. "/" .. tostring(out.bike_backward))
+  check("and the derived tag is stripped from the " .. label,
+    out["rm:ordinary_ride_penalty"] == nil)
+  local plain_tags = {}
+  for k, v in pairs(tags) do plain_tags[k] = v end
+  local _, plain = transform_way(plain_tags)
+  check("without it the " .. label .. " is plain bicycle=yes",
+    plain.bicycle == "yes", tostring(plain.bicycle))
+  local off_tags = {}
+  for k, v in pairs(tags) do off_tags[k] = v end
+  off_tags["rm:ordinary_ride_penalty"] = "no"
+  local _, off = transform_way(off_tags)
+  check("rm:ordinary_ride_penalty=no is no penalty on the " .. label,
+    off.bicycle == "yes", tostring(off.bicycle))
+end
+-- And it opens nothing: the landing as OSM tags it, before the override.
+local _, barred = transform_way({ highway = "secondary", bicycle = "no", foot = "no",
+  ["rm:ordinary_ride_penalty"] = "yes" })
+check("the penalty leaves a barred way barred",
+  barred.bike_forward == "false" and barred.bike_backward == "false",
+  tostring(barred.bike_forward))
+
 -- ---------------------------------------------------------------------------
 -- gate_cost applies only where tagged_access is 0.
 -- ---------------------------------------------------------------------------

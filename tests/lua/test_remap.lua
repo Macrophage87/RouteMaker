@@ -545,6 +545,42 @@ check("nor is a restrictive access tag",
   M.remap_node({ barrier = "cycle_barrier", access = "private" }).access == nil)
 
 -- ---------------------------------------------------------------------------
+-- The ordinary-ride penalty (owner, 2026-09-26: "Steer to the path") is a
+-- cost on a way already open to bicycles, never a grant over a refusal.
+-- ---------------------------------------------------------------------------
+
+local P = M.ORDINARY_RIDE_PENALTY_BICYCLE
+local pen = { ordinary_ride_penalty = true }
+check("the penalty is upstream's sidepath-preferred value", P == "use_sidepath")
+for _, value in ipairs({ "yes", "designated", "permissive" }) do
+  check("the penalty replaces bicycle=" .. value,
+    M.remap_way({ highway = "secondary", bicycle = value }, pen).bicycle == P)
+end
+check("and lands on an untagged, unrestricted road",
+  M.remap_way({ highway = "secondary" }, pen).bicycle == P)
+for label, tags in pairs({
+  ["bicycle=no"] = { highway = "secondary", bicycle = "no" },
+  ["bicycle=private"] = { highway = "secondary", bicycle = "private" },
+  ["access=no"] = { highway = "secondary", access = "no" },
+  ["vehicle=no"] = { highway = "secondary", vehicle = "no" },
+  ["bicycle:forward=no"] = { highway = "secondary", ["bicycle:forward"] = "no" },
+}) do
+  check("the penalty never opens a way that refuses a bicycle (" .. label .. ")",
+    M.remap_way(tags, pen).bicycle == nil)
+end
+check("a fixture legality of false wins over the penalty",
+  M.remap_way({ highway = "secondary", bicycle = "yes" },
+              { ordinary_ride_penalty = true, bridge_bicycle_legal = false }).bicycle == "no")
+check("a fixture legality of true is granted and then penalised",
+  M.remap_way({ highway = "secondary", bicycle = "no" },
+              { ordinary_ride_penalty = true, bridge_bicycle_legal = true }).bicycle == P)
+check("no penalty, no change",
+  M.remap_way({ highway = "secondary", bicycle = "yes" }, {}).bicycle == nil)
+check("an explicit false is no penalty",
+  M.remap_way({ highway = "secondary", bicycle = "yes" },
+              { ordinary_ride_penalty = false }).bicycle == nil)
+
+-- ---------------------------------------------------------------------------
 -- Violations are recorded rather than raised. error() inside the transform
 -- returns an empty tag map and deletes the element; see lua/graph.lua.
 -- ---------------------------------------------------------------------------

@@ -329,6 +329,32 @@ function M.remap_way(tags, derived)
     out.bicycle = "yes"
   end
 
+  -- An ordinary-ride penalty (the crossings fixture's
+  -- `ordinary_ride_penalty_way_ids`; the owner's "Steer to the path" of
+  -- 2026-09-26 for the 11th Street local span: "Keep it legal but add a penalty
+  -- on that roadway for ordinary rides so the Riverwalk wins when it's close in
+  -- length."). Written as `bicycle=use_sidepath`, which upstream's transform
+  -- reads as bicycle access in both directions, exactly as `yes`, and which
+  -- Valhalla's bicycle costing charges more for without changing the edge's
+  -- speed: a cost, not a bar, and no change to a route's reported duration.
+  -- Measured on a rebuilt graph of the 11th Street landing at the Default
+  -- preset's options: the same 269 m of roadway cost 148 plain and 264 with
+  -- it, in the same 58 s. The reviewer surface penalty was measured first and
+  -- is too weak for this: capped at `compacted` (`bounded_surface`), it moved
+  -- no route off the roadway.
+  --
+  -- Only where the way is already open to a bicycle, because `use_sidepath`
+  -- grants access like `yes` and so must never be written over a refusal: not
+  -- over `bicycle=no` (OSM's own, the e-bike variant's bar, a mass-ride-only
+  -- roadway's bar, or a legality of false above), and on a way with no bicycle
+  -- tag only where nothing else restricts it.
+  if derived.ordinary_ride_penalty then
+    local bicycle = out.bicycle or tags.bicycle
+    if M.PENALISABLE_BICYCLE[bicycle] or (bicycle == nil and M.access_is_unrestricted(tags)) then
+      out.bicycle = M.ORDINARY_RIDE_PENALTY_BICYCLE
+    end
+  end
+
   if derived.lit ~= nil then
     out.lit = derived.lit and "yes" or "no"
   end
@@ -597,5 +623,11 @@ end
 M.FORBIDDEN_KEYS = { highway = true, maxspeed = true }
 
 M.NARROW_GAP_M = 1.5
+
+-- The ordinary-ride penalty's value, and the bicycle values it may replace:
+-- the ones upstream's own `bicycle` table maps to plain access, so the swap
+-- changes the cost and nothing about who may ride.
+M.ORDINARY_RIDE_PENALTY_BICYCLE = "use_sidepath"
+M.PENALISABLE_BICYCLE = { yes = true, designated = true, permissive = true }
 
 return M

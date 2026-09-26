@@ -1713,3 +1713,65 @@ class TestTheEleventhStreetCrossingIsPinnedByGeometry:
         for name in ("11th Street Bridge (I-695 inbound)", "11th Street Bridge (I-695 outbound)"):
             row = row_named(name)
             assert (row["roadway_bicycle_legal"], row["sidepath_only"]) == (False, False)
+
+
+OVERRIDE_FILE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "overrides"
+    / "2026-09-26-owner-bicycle-access.json"
+)
+
+
+class TestTheOrdinaryRidePenalty:
+    """`ordinary_ride_penalty_way_ids`: the owner's "Steer to the path" of
+    2026-09-26 ("Keep it legal but add a penalty on that roadway for ordinary
+    rides so the Riverwalk wins when it's close in length.")."""
+
+    def test_the_named_ways_are_returned_and_a_missing_one_reported(self) -> None:
+        from pipeline.variants import resolve_ordinary_ride_penalty_ids
+
+        rows = [
+            {"name": "Span", "osm_way_id": 10, "ordinary_ride_penalty_way_ids": [10, 11, 12]},
+            {"name": "Other", "ordinary_ride_penalty_way_ids": [13]},
+            {"name": "Neither"},
+        ]
+        ways = [FakeWay(10, {}), FakeWay(11, {}), FakeWay(13, {})]
+        ids, misses = resolve_ordinary_ride_penalty_ids(rows, ways)
+        assert ids == frozenset({10, 11, 12, 13})
+        assert len(misses) == 1 and "Span" in misses[0] and "12" in misses[0]
+        ids, misses = resolve_ordinary_ride_penalty_ids(rows, [*ways, FakeWay(12, {})])
+        assert misses == []
+        assert resolve_ordinary_ride_penalty_ids([{"name": "Neither"}], ways) == (frozenset(), [])
+
+    @pytest.mark.parametrize("value", ["546096009", [0], [-1], [True], ["1"], [1.5], {"a": 1}, 7])
+    def test_a_column_that_is_not_a_list_of_way_ids_is_refused(self, value) -> None:
+        from pipeline.variants import MalformedCrossingRow, resolve_ordinary_ride_penalty_ids
+
+        with pytest.raises(MalformedCrossingRow):
+            resolve_ordinary_ride_penalty_ids(
+                [{"name": "Bad", "ordinary_ride_penalty_way_ids": value}], []
+            )
+
+    def test_the_fixture_puts_it_on_the_eleventh_street_roadway_and_nowhere_else(self) -> None:
+        """The roadway ordinary riders switched onto once the landing opened:
+        the pinned local span and every landing way the override file opens,
+        and not the Riverwalk the penalty steers them to."""
+        rows = crossing_rows()
+        carrying = [row for row in rows if row.get("ordinary_ride_penalty_way_ids")]
+        assert [row["name"] for row in carrying] == ["11th Street Bridge (local span)"]
+        (row,) = carrying
+        landing = {
+            r["osm_way_id"]
+            for r in json.loads(OVERRIDE_FILE.read_text())["rows"]
+            if "11th Street" in r["reason"]
+        }
+        assert len(landing) == 10
+        assert set(row["ordinary_ride_penalty_way_ids"]) == {row["osm_way_id"], *landing}
+        assert RIVERWALK_ON_THE_LOCAL_SPAN.osm_id not in row["ordinary_ride_penalty_way_ids"]
+        # A penalty, not a bar: the row still says the roadway is legal and
+        # leaves it in every variant.
+        assert row["roadway_bicycle_legal"] is True
+        assert not row["sidepath_only"] and not row["roadway_mass_ride_only"]
+        assert "Steer to the path" in row["note"]
+        assert "Keep it legal but add a penalty on that roadway for ordinary rides" in row["note"]

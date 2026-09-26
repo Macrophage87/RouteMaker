@@ -373,6 +373,72 @@ def resolve_mass_ride_only_bridge_ids(
     return _resolve_flagged_bridge_ids(list(rows), ways, is_roadway_mass_ride_only)
 
 
+# The column naming the ways an ordinary ride is steered off by a penalty.
+ORDINARY_RIDE_PENALTY_COLUMN = "ordinary_ride_penalty_way_ids"
+
+
+class MalformedCrossingRow(ValueError):
+    """A crossing row whose column cannot be read as the file documents it."""
+
+
+def ordinary_ride_penalty_way_ids(row: dict) -> list[int]:
+    """The ways a row puts an ordinary-ride penalty on, by OSM way id.
+
+    A list of ids rather than names, because the ways it names are not the
+    bridge: they are the roads a rider lands on, which no name match reaches
+    (`is_crossing_candidate` admits bridge ways only, and a street is not named
+    after its landing). The rows are pins, reported when the extract no longer
+    carries them, like a row's `osm_way_id`. Absent means none. Anything but a
+    list of positive integers is refused rather than read as none.
+    """
+    ids = row.get(ORDINARY_RIDE_PENALTY_COLUMN)
+    if ids is None:
+        return []
+    if not isinstance(ids, list) or not all(
+        isinstance(way_id, int) and not isinstance(way_id, bool) and way_id > 0 for way_id in ids
+    ):
+        raise MalformedCrossingRow(
+            f"{crossing_label(row)!r}: {ORDINARY_RIDE_PENALTY_COLUMN} must be a list of "
+            f"positive OSM way ids, not {ids!r}"
+        )
+    return list(ids)
+
+
+def resolve_ordinary_ride_penalty_ids(
+    rows: Iterable[dict], ways: Iterable
+) -> tuple[frozenset[int], list[str]]:
+    """The ways the standard and e-bike variants carry a routing penalty on.
+
+    The owner's answer of 2026-09-26 on the 11th Street local span, asked
+    whether the planner should steer ordinary riders going south from the Navy
+    Yard back to the Anacostia Riverwalk once the span's south landing was open
+    to them: "Steer to the path" - "Keep it legal but add a penalty on that
+    roadway for ordinary rides so the Riverwalk wins when it's close in
+    length." A penalty, not a bar: the ways stay legal and routable, and a
+    route still takes them where they are clearly shorter or the only way. The
+    no-trail variant is left as it was (`run.inject_tags` emits the tag on the
+    other two only), since the owner's question was about ordinary rides.
+
+    Returns the ids and, per row, the ids the given ways do not include, as
+    `crossing_misses` reports a stale pin: the penalty still goes out for the
+    id, and the rebuild runs.
+    """
+    ids: set[int] = set()
+    missing: dict[str, list[int]] = {}
+    rows = list(rows)
+    for row in rows:
+        for way_id in ordinary_ride_penalty_way_ids(row):
+            ids.add(way_id)
+            missing.setdefault(crossing_label(row), []).append(way_id)
+    present = {way.osm_id for way in ways}
+    misses = [
+        f"{label} ({ORDINARY_RIDE_PENALTY_COLUMN}: {', '.join(str(i) for i in absent)})"
+        for label, wanted in sorted(missing.items())
+        if (absent := [way_id for way_id in wanted if way_id not in present])
+    ]
+    return frozenset(ids), misses
+
+
 def resolve_sidepath_bridge_ids(
     rows: Iterable[dict], ways: Iterable
 ) -> tuple[frozenset[int], list[str]]:

@@ -256,6 +256,11 @@ class ReferenceData:
     # and Memorial Bridge), which the standard and e-bike variants bar and the
     # no-trail variant keeps.
     mass_ride_only_bridge_ids: frozenset[int]
+    # Ways an ordinary ride is steered off by a penalty, not a bar
+    # (`ordinary_ride_penalty_way_ids`, the owner's "Steer to the path" of
+    # 2026-09-26 for the 11th Street local span), which the standard and e-bike
+    # variants carry as `rm:ordinary_ride_penalty` and the no-trail one does not.
+    ordinary_ride_penalty_ids: frozenset[int]
     # Agency volume lines, already normalised to one AADT definition.
     volume_features: tuple[conflation.AgencyFeature, ...]
 
@@ -339,6 +344,9 @@ class ReferenceData:
         mass_ride_ids, unmatched_mass_ride = variants.resolve_mass_ride_only_bridge_ids(
             crossing_rows, ways
         )
+        penalty_ids, unmatched_penalty = variants.resolve_ordinary_ride_penalty_ids(
+            crossing_rows, ways
+        )
         # One warning over the union of the three resolvers, because a crossing the
         # extract does not carry is one fact about one bridge however many of
         # the fixture's columns it silences. It covers a row pinned to an
@@ -350,12 +358,16 @@ class ReferenceData:
         # including the Theodore Roosevelt Bridge - could resolve against
         # nothing and reach no log at all.
         unmatched = sorted(
-            set(unmatched_sidepath) | set(unmatched_legality) | set(unmatched_mass_ride)
+            set(unmatched_sidepath)
+            | set(unmatched_legality)
+            | set(unmatched_mass_ride)
+            | set(unmatched_penalty)
         )
         if unmatched:
             logger.warning(
                 "crossings not found in the extract, so the sidepath rule, the "
-                "bridge-legality column and the mass-ride-only rule are inert on them: %s",
+                "bridge-legality column, the mass-ride-only rule and the ordinary-ride "
+                "penalty are inert on them: %s",
                 ", ".join(unmatched),
             )
         # A second, deliberately separate warning. "Not found in the extract" and
@@ -374,6 +386,7 @@ class ReferenceData:
             urban_way_ids=frozenset(json.loads(urban.read_text())),
             sidepath_bridge_ids=bridge_ids,
             mass_ride_only_bridge_ids=mass_ride_ids,
+            ordinary_ride_penalty_ids=penalty_ids,
             volume_features=features,
             unmatched_crossings=tuple(unmatched),
             bridge_bicycle_legal=legality,
@@ -1086,6 +1099,16 @@ def build_handlers(
                     legal = None
                 if legal is not None:
                     derived["bridge_bicycle"] = legal
+                if (
+                    variant is not variants.Variant.NO_TRAIL
+                    and way.osm_id in reference.ordinary_ride_penalty_ids
+                ):
+                    # The owner's "Steer to the path" (2026-09-26): a penalty for
+                    # ordinary rides, which the transform writes as Valhalla's
+                    # own sidepath-preferred flag where the way is already open
+                    # to bicycles (`routemaker_remap.remap_way`). Not on the
+                    # no-trail variant, which has no path to steer to.
+                    derived["ordinary_ride_penalty"] = True
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
                 lit = lit_value(way.tags)

@@ -140,6 +140,15 @@ def test_the_script_installs_every_file_the_loader_requires(tmp_path) -> None:
     )
     assert "Key Bridge" in loaded.unmatched_crossings, "and the mass-ride-only half"
     assert "Theodore Roosevelt Bridge" in loaded.unmatched_crossings, "and the legality half"
+    assert any(
+        name.startswith("11th Street Bridge (local span) (ordinary_ride_penalty_way_ids")
+        for name in loaded.unmatched_crossings
+    ), "and the ordinary-ride penalty's ways"
+    fixture = json.loads((reference / "crossings.json").read_text())
+    assert loaded.ordinary_ride_penalty_ids == {
+        way_id for row in fixture for way_id in row.get("ordinary_ride_penalty_way_ids", [])
+    }, "the penalty's ways go out for their ids even where the extract lacks them"
+    assert loaded.ordinary_ride_penalty_ids
 
 
 def test_without_inputs_the_script_installs_the_fixture_and_names_what_is_missing(tmp_path) -> None:
@@ -372,7 +381,12 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     # And the sidepath half has nothing to add: every one of its rows is here.
     for row in sidepath_rows:
         assert row["name"] not in loaded.unmatched_crossings
-    assert sorted(loaded.unmatched_crossings) == legality_only
+    # The ordinary-ride penalty's ways are pins too, and this extract carries
+    # none of them: one more entry, naming the row and the ids.
+    penalty = [n for n in loaded.unmatched_crossings if "ordinary_ride_penalty_way_ids" in n]
+    assert len(penalty) == 1 and penalty[0].startswith("11th Street Bridge (local span)")
+    assert penalty[0] in unmatched[0]
+    assert sorted(set(loaded.unmatched_crossings) - set(penalty)) == legality_only
 
 
 def test_a_pinned_way_the_extract_lacks_joins_the_one_warning(tmp_path, caplog) -> None:

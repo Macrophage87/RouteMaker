@@ -765,6 +765,47 @@ def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
         assert "rm:bridge_bicycle" not in tags[711], variant.value
 
 
+def test_the_ordinary_ride_penalty_reaches_the_standard_and_ebike_extracts_only(
+    tmp_path, segment_schemas, states
+) -> None:
+    """Owner, 2026-09-26, on the 11th Street local span: "Steer to the path"
+    ("Keep it legal but add a penalty on that roadway for ordinary rides so the
+    Riverwalk wins when it's close in length."). The row names the roadway by
+    way id; the standard and e-bike extracts carry `rm:ordinary_ride_penalty`
+    on it, and the no-trail extract, and the path beside it, do not. Read back
+    from the written PBFs."""
+    from pipeline.extract import read_ways
+
+    source = install_source_extract(
+        tmp_path,
+        build_named_bridge_extract,
+        roadway_id=720,
+        sidepath_id=721,
+        name="11th Street Southeast",
+        roadway_tags={"highway": "secondary", "bicycle": "no", "foot": "no"},
+    )
+    row = {
+        "name": "11th Street Bridge (local span)",
+        "osm_way_id": 720,
+        "roadway_bicycle_legal": True,
+        "sidepath_only": False,
+        "roadway_mass_ride_only": False,
+        "ordinary_ride_penalty_way_ids": [720],
+    }
+    context, _ = run_pipeline(source, tmp_path, urban=(720, 721), crossings=[row], skip=NOT_SWAPPED)
+    assert context.reference.ordinary_ride_penalty_ids == frozenset({720})
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        # Legal on every variant: the penalty is not a bar.
+        assert tags[720].get("rm:bridge_bicycle") == "yes", variant.value
+        if variant is Variant.NO_TRAIL:
+            assert "rm:ordinary_ride_penalty" not in tags[720]
+            continue
+        assert tags[720].get("rm:ordinary_ride_penalty") == "yes", variant.value
+        assert "rm:ordinary_ride_penalty" not in tags[721], variant.value
+
+
 def test_a_way_clipping_an_authority_by_a_sliver_is_not_tagged_with_it(workspace, states) -> None:
     """assign_way returns every authority a way touches with the share inside
     each and says the caller decides. The caller did not decide: a road that
