@@ -3002,3 +3002,22 @@ class TestAnInstanceAdminConfiguresAGuild:
         guild.refresh_from_db()
         assert guild.guild_id == 111, "the remap stays out of the form"
         assert guild.name == "After"
+
+
+class TestTheDiscordIdFieldsExplainThemselves:
+    """The first operator to configure a guild did not know what a "guild id"
+    was: it is Discord's snowflake for a server, entered by hand, and the form
+    said neither. Both snowflake fields carry a collapsed how-to panel, and the
+    server's name is one line, not a paragraph."""
+
+    def test_the_guild_form(self, as_instance_admin) -> None:
+        import re
+
+        page = as_instance_admin.get(admin_url("core_configuredguild_add")).content.decode()
+        assert re.search(r'<input[^>]*name="name"', page), "the name is a one-line input"
+        assert not re.search(r'<textarea[^>]*name="name"', page)
+        assert "<details>" in page and "Copy Server ID" in page
+
+    def test_the_role_mapping_form(self, as_instance_admin) -> None:
+        page = as_instance_admin.get(admin_url("core_rolemapping_add")).content.decode()
+        assert "<details>" in page and "Copy Role ID" in page

@@ -479,6 +479,55 @@ class OverrideAdmin(InstanceAdminOnly):
     readonly_fields = ("approved", "approved_at")
 
 
+def _discord_id_help(what: str, steps: str) -> str:
+    """A collapsed "where do I find this" panel for a Discord snowflake field.
+
+    `<details>` rather than script: the admin serves no JavaScript of its own,
+    and the panel only has to open and close. The admin renders help text
+    unescaped (admin/includes/fieldset.html, `help_text|safe`), and every word
+    here is a constant.
+    """
+    return (
+        f"<details><summary>&#9432; Where do I find the {what}?</summary>"
+        "<ol><li>In Discord, open <b>User Settings &rarr; Advanced</b> and turn on "
+        "<b>Developer Mode</b>.</li>"
+        f"<li>{steps}</li></ol>"
+        "<p>It is a number of 17 to 20 digits. It is Discord's own id for it, not one this "
+        "site makes up, which is why it has to be entered.</p></details>"
+    )
+
+
+class ConfiguredGuildForm(forms.ModelForm):
+    """Plain words for the add form: "guild" is Discord's API term for a server."""
+
+    class Meta:
+        model = ConfiguredGuild
+        fields = "__all__"
+        labels = {"guild_id": "Discord server ID", "name": "Server name"}
+        help_texts = {
+            "guild_id": _discord_id_help(
+                "server ID", "Right-click the server's icon and choose <b>Copy Server ID</b>."
+            ),
+        }
+        # A name, not a paragraph: the model column is TextField, which the admin
+        # would otherwise draw as a textarea.
+        widgets = {"name": forms.TextInput(attrs={"size": 40})}
+
+
+class RoleMappingForm(forms.ModelForm):
+    class Meta:
+        model = RoleMapping
+        fields = "__all__"
+        labels = {"guild": "Discord server", "role_id": "Discord role ID"}
+        help_texts = {
+            "role_id": _discord_id_help(
+                "role ID",
+                "In the server, open <b>Server Settings &rarr; Roles</b>, right-click the role "
+                "and choose <b>Copy Role ID</b>.",
+            ),
+        }
+
+
 @admin.register(ConfiguredGuild, site=site)
 class ConfiguredGuildAdmin(GuildScopedAdmin):
     """A guild admin sees their own guild and may write its two guild-scoped
@@ -506,6 +555,7 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
     into a form would not have one.
     """
 
+    form = ConfiguredGuildForm
     guild_scope_field = "guild_id"
     list_display = ("guild_id", "name", "state", "state_since")
     list_filter = ("state",)
@@ -699,6 +749,7 @@ class RoleMappingAdmin(GuildScopedAdmin):
     A guild admin sees their own guild's rows and nothing else.
     """
 
+    form = RoleMappingForm
     guild_scope_field = "guild__guild_id"
     list_display = ("guild", "role_id", "permission")
     list_filter = ("permission",)
