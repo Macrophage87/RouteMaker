@@ -289,6 +289,30 @@ It is idempotent, creates the role, database and PostGIS extension if they are
 absent, and waits for the socket before returning.
 
 
+## The public API
+
+`POST /api/route` is Django Ninja (`core/api.py`); the presets it offers are
+`core/presets.py`, the router calls and the stress join `core/routing.py`, and
+the limits `core/ratelimit.py`. The schema is at `/api/openapi.json` on any
+running api. A request, against the native loop's `runserver` or the stack:
+
+```sh
+curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/json' \
+    -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "default"}'
+```
+
+It needs the three routers (`VALHALLA_UPSTREAMS`) and a populated live segment
+schema; without the routers the answer is a 502, which is the API working.
+`tests/test_route_api.py` replaces the router at `core.routing._transport`,
+the one function that touches the network, so the suite needs neither.
+
+Two settings worth knowing. `WEB_CONCURRENCY` - gunicorn's worker count - also
+sizes `ROUTING_CONCURRENCY`, the routes the api may run at once (the count less
+two, at least one); `runserver` is one process, and the default of 5 gives it
+3. And the per-client limit keys on the last `X-Forwarded-For` entry, so a
+local client that sets that header chooses its own bucket - harmless here,
+because on the stack only Caddy reaches the api and Caddy overwrites it.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are

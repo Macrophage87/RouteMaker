@@ -196,6 +196,7 @@ declining every week with "grow the volume" as the only remedy.
 | Database dumps | 7 (`BACKUP_KEEP`) | `pipeline.retention.prune_backups`, run by the backup task after a verified dump |
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
+| `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 
 Three rules are load-bearing rather than incidental:
 
@@ -222,10 +223,66 @@ pruned, whatever its age, and neither is a job a `procrastinate_periodic_defers`
 row still points at — that reference is how the scheduler knows it has already
 fired for a tick.
 
+## The public routing API: its limits, and clearing a client
+
+`POST /api/route` plans a route for anyone, signed in or not (the owner's
+amendment of 2026-09-26 in PLAN.md, The anonymous surface); its schema is at
+`/api/openapi.json`, and there is no interactive docs page. What bounds it, in
+the order a request meets it:
+
+| Check | Limit | Answer |
+| --- | --- | --- |
+| Content type, declared body size | `application/json`, at most 8 KB | 400 |
+| Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
+| Routes in flight per client | 2 | 429, `Retry-After: 2` |
+| Routes in flight, whole api | `WEB_CONCURRENCY` less 2 (3 at compose's default of 5 workers) | 503, `Retry-After: 5` |
+| Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
+| Length | 150 km of straight line between consecutive points | 400 "too long" |
+| Time | 20 s per router call, 40 s for the whole request | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out |
+
+The content type is checked before the count on purpose: a page on any site
+can make a visitor's browser send a `text/plain` or form POST here without a
+preflight, and counting those would let it spend that visitor's budget. The
+in-flight limit is what keeps two gunicorn workers free for `/healthz`, the
+tiles, sign-in and the admin however the router is loaded; without it a burst
+of long routes inside one client's per-minute budget held every worker and
+`/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
+PostgreSQL advisory lock held on the worker's connection for the length of the
+request, so a killed worker's slot is released with its connection.
+
+**Who a client is.** The last `X-Forwarded-For` entry, which Caddy writes from
+the peer it saw, replacing whatever the client sent. That is only true while
+Caddy is the one proxy in front of the api. Put a CDN or a load balancer in
+front of it, or give Caddy a `trusted_proxies` list, and the last entry becomes
+that proxy's address: every visitor would then share one budget and one pair of
+in-flight slots. Configure the proxy's real-client header through to the api
+before doing either.
+
+**What is stored.** `rate_limit_window` holds one row per client per limit: a
+keyed digest of the address (HMAC with `SECRET_KEY`), the window's start and
+the count. No address is stored, so a row cannot be looked up by address with
+SQL; compute the key first. To clear one client who has been refused - the
+count resets on its own at the end of the minute, so this is rarely needed:
+
+```sh
+docker compose exec -T api python manage.py shell -c "from core.models import RateLimitWindow; from core.ratelimit import client_key; print(RateLimitWindow.objects.filter(client=client_key('198.51.100.7')).delete())"
+```
+
+An IPv6 client is keyed by its /64, written as the network, for example
+`client_key('2001:db8:1:2::/64')`. Rotating `SECRET_KEY` changes every key, which
+simply starts every client's count afresh. Rows idle for a day are deleted by
+the membership sweep every six hours, and the table's data is not in the
+nightly dump.
+
+The table arrives with migration `core.0008_rate_limit_window`, which the
+`migrate` one-shot applies before the api starts; nothing else is needed on
+deploy.
+
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
-the session table and the cached membership table, verified by reading the
+the data of the session table, the cached membership table and the rate-limit
+table (`BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`), verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
@@ -314,7 +371,8 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
 ### What the restored deployment actually has
 
 - **No standing, until the membership cache is rebuilt.** The dump excludes the
-  cached membership table and the session table, and phase 1 has no bot, so
+  cached membership table, the session table and the rate-limit table (whose
+  counts are worthless after a restore anyway), and phase 1 has no bot, so
   nothing refills the cache — the sweep that would is unbuilt (handoff.md
   section 7). Until it exists, a restored deployment grants **no** guild-derived
   standing at all: everyone is signed out (sessions went with the dump's
