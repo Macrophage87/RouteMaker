@@ -240,7 +240,7 @@ the order a request meets it:
 | Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 429 or 503, `Retry-After` 2 or 5 |
 | Length ceiling | 300 km of straight line, however asked | 400 "too long" |
-| Time | 20 s per router call, 40 s for the whole request | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out |
+| Time | 20 s per router call, 40 s for the whole request; a long ride 45 s and 50 s | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out |
 
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
@@ -264,7 +264,12 @@ session changes nothing about CSRF: the endpoint changes no state, and a
 cross-site page cannot send it `application/json` without a preflight, which is
 never granted. Every long ride, signed in or not, holds one of the long slots
 for as long as it runs, so at most one is planned at a time across the api and
-ordinary plans carry on beside it.
+ordinary plans carry on beside it. A long ride also has longer time limits,
+45 s per router call and 50 s in all, because a single long leg whose graph
+tiles are not yet in the router's cache is one slow search: Culpeper to
+Baltimore took 43.9 s cold on a loaded host and 9.5 s warm, and at the
+ordinary 20 s per call the cold one was a 502. 50 s leaves gunicorn's 60 s
+timeout ten seconds for the rest of the request.
 
 **What the slots do not stop.** They are counted per address, so a few
 coordinated addresses can still fill the pool: three on the default of three

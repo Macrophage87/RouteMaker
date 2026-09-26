@@ -35,8 +35,8 @@ is nearly every piece - the promoted build has 1,357,800 segments on 1,341,939
 ways - and differ only for a piece that straddles a segment boundary, whose
 length all goes to the segment nearer its middle instead of being split there.
 
-Every request has one time budget, `PLAN_BUDGET_S`, across all of its router
-calls. gunicorn kills a worker at its 60 s timeout and Caddy then answers an
+Every request has one time budget, `PLAN_BUDGET_S` (`LONG_PLAN_BUDGET_S` for a
+long ride), across all of its router calls. gunicorn kills a worker at its 60 s timeout and Caddy then answers an
 empty 502; the budget ends the request well before that with an answer the
 contract names (503 with Retry-After), and every call's socket timeout is
 clipped to what is left of it.
@@ -84,6 +84,18 @@ ROUTER_TIMEOUT_S = 20
 # 60 s (docker/api-entrypoint.sh); 40 leaves room for the stress query and the
 # response and is still an answer rather than a killed worker.
 PLAN_BUDGET_S = 40
+
+# A long ride (past 150 km of straight line; owner decision of 2026-09-26) has
+# more of both. A single long leg is one /route search, and on the real
+# routers with the host loaded a cold one - its graph tiles not yet in the
+# router's cache - took 43.9 s for Culpeper to Baltimore, 158 km of straight
+# line, and the same request 9.5 s warm; at 20 s per call the first was a
+# 502, however willing the rider was to wait. Only one long ride runs at a
+# time in the whole api (core.ratelimit.LONG_ROUTING_IN_FLIGHT), so the longer
+# hold is one worker's. 50 s still leaves gunicorn's 60 s kill ten seconds for
+# the stress join and the answer.
+LONG_ROUTER_TIMEOUT_S = 45
+LONG_PLAN_BUDGET_S = 50
 
 # PLAN, Time-dependent behavior: with no planning time set, requests assume the
 # next Saturday at 9:00 local time, so conditional restrictions are evaluated
@@ -167,16 +179,24 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
         raise RouterUnavailable(str(error)) from error
 
 
-def _call(variant: str, endpoint: str, payload: dict, deadline: float) -> dict:
-    """One router call inside the request's budget; `deadline` is monotonic."""
-    remaining = deadline - time.monotonic()
+@dataclass(frozen=True)
+class Deadline:
+    """When the request's budget ends (monotonic), and the most one call may take."""
+
+    at: float
+    per_call_s: float
+
+
+def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
+    """One router call inside the request's budget."""
+    remaining = deadline.at - time.monotonic()
     if remaining <= 0:
         raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
     try:
-        return _transport(url, payload, min(ROUTER_TIMEOUT_S, remaining))
+        return _transport(url, payload, min(deadline.per_call_s, remaining))
     except RouterUnavailable as error:
-        if time.monotonic() >= deadline:
+        if time.monotonic() >= deadline.at:
             raise DeadlineExceeded(f"{endpoint} ran past the budget") from error
         raise
 
@@ -303,7 +323,7 @@ def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
     return totals
 
 
-def trace_leg(variant: str, costing: dict, shape: str, deadline: float) -> dict | None:
+def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
     """The leg's edges, by edge walk and then by map snap; None if neither works."""
     for match in ("edge_walk", "map_snap"):
         payload = {
@@ -329,13 +349,17 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: float) -> dict 
     return None
 
 
-def plan(points: list[list[float]], preset_name: str) -> dict:
+def plan(points: list[list[float]], preset_name: str, long_ride: bool = False) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
-    Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
-    for an unknown preset.
+    `long_ride` gives the request the long-ride time limits. Raises NoRoute,
+    TooLong, RouterUnavailable, DeadlineExceeded, or KeyError for an unknown
+    preset.
     """
-    deadline = time.monotonic() + PLAN_BUDGET_S
+    if long_ride:
+        deadline = Deadline(time.monotonic() + LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S)
+    else:
+        deadline = Deadline(time.monotonic() + PLAN_BUDGET_S, ROUTER_TIMEOUT_S)
     preset = presets.PRESETS[preset_name]
     costing = presets.costing(preset_name)
     request = {

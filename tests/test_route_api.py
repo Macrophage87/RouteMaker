@@ -961,6 +961,74 @@ class TestTimeBudget:
         assert post(client, good_body()).status_code == 502
 
 
+@db
+class TestLongRideTime:
+    """A confirmed long ride has more time than an ordinary plan. Measured on
+    the real routers with the host loaded: a cold single-leg /route for
+    Culpeper to Baltimore (158 km of straight line) took 43.9 s, the same
+    request warm 9.5 s; the ordinary 20 s per call made the first a 502."""
+
+    def recording(self, router):
+        fake = long_router()
+        timeouts = []
+
+        def slow(url, payload, timeout):
+            timeouts.append(timeout)
+            return fake(url, payload, timeout)
+
+        router(slow)
+        return timeouts
+
+    def test_a_long_rides_router_call_may_take_the_long_timeout(
+        self, client, segments, router
+    ) -> None:
+        timeouts = self.recording(router)
+        assert post(client, long_body(160, confirm_long=True)).status_code == 200
+        assert timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
+        assert routing.LONG_ROUTER_TIMEOUT_S > routing.ROUTER_TIMEOUT_S
+
+    def test_a_signed_in_long_ride_has_the_long_timeout_too(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        from core.models import User
+
+        timeouts = self.recording(router)
+        sign_in(client, monkeypatch, User.objects.create(discord_user_id=4405))
+        assert post(client, long_body(160)).status_code == 200
+        assert timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
+
+    def test_an_ordinary_plan_keeps_the_ordinary_timeout(self, client, segments, router) -> None:
+        timeouts = self.recording(router)
+        assert post(client, good_body()).status_code == 200
+        assert timeouts[0] == routing.ROUTER_TIMEOUT_S
+
+    @pytest.mark.parametrize(("spent", "status"), [("ordinary", 200), ("long", 503)])
+    def test_a_long_ride_has_the_long_budget(
+        self, spent, status, client, segments, router, clock
+    ) -> None:
+        """Past the ordinary budget a long ride is still planned; past its own
+        it is the same 503 as any other."""
+        fake = long_router()
+        budget = routing.PLAN_BUDGET_S if spent == "ordinary" else routing.LONG_PLAN_BUDGET_S
+
+        def slow(url, payload, timeout):
+            if url.endswith("/route"):
+                clock.now += budget + 1
+            return fake(url, payload, timeout)
+
+        router(slow)
+        response = post(client, long_body(160, confirm_long=True))
+        assert response.status_code == status
+        if status == 503:
+            assert int(response["Retry-After"]) >= 1
+
+    def test_the_long_figures(self) -> None:
+        """Written as numbers. The whole budget leaves gunicorn's 60 s kill ten
+        seconds for the stress join and the answer; one call may take most of it."""
+        assert (routing.LONG_ROUTER_TIMEOUT_S, routing.LONG_PLAN_BUDGET_S) == (45, 50)
+        assert routing.LONG_PLAN_BUDGET_S <= 60 - 10
+
+
 def spanning(km: float) -> list[list[float]]:
     """Two points on one parallel about `km` apart, inside the box."""
     import math as _m

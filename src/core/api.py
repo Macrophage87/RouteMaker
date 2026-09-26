@@ -285,7 +285,7 @@ def json_body_only(view):
 def route(request, body: RouteIn, response: HttpResponse):
     span = span_m(body.points)
     if span <= CONFIRM_SPAN_M:
-        return _plan(body, response)
+        return _plan(body, response, long_ride=False)
     if not body.confirm_long and not signed_in(request):
         return Status(
             409,
@@ -303,14 +303,14 @@ def route(request, body: RouteIn, response: HttpResponse):
     if refusal is not None:
         return refusal
     try:
-        return _plan(body, response)
+        return _plan(body, response, long_ride=True)
     finally:
         ratelimit.release(held)
 
 
-def _plan(body: RouteIn, response: HttpResponse):
+def _plan(body: RouteIn, response: HttpResponse, long_ride: bool):
     try:
-        return Status(200, routing.plan(body.points, body.preset))
+        return Status(200, routing.plan(body.points, body.preset, long_ride=long_ride))
     except routing.TooLong:
         return Status(400, {"error": TOO_LONG})
     except routing.NoRoute as no_route:
