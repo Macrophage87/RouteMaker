@@ -110,25 +110,39 @@ def test_the_ebike_bar_is_the_no_value_and_not_every_restriction() -> None:
 def test_variant_selection_from_toggles() -> None:
     assert variant_for(allow_trails=True, ebike_rules=False) is Variant.STANDARD
     assert variant_for(allow_trails=True, ebike_rules=True) is Variant.EBIKE
-    assert variant_for(allow_trails=False, ebike_rules=False, mass_ride=True) is Variant.NO_TRAIL
-    for ebike_rules in (False, True):
-        assert variant_for(allow_trails=True, ebike_rules=ebike_rules, mass_ride=True) in (
-            Variant.STANDARD,
-            Variant.EBIKE,
-        ), "a mass ride with trails allowed is not moved to the no-trail variant"
+    for ride in ("mass-ride", "group-ride", "default", None):
+        for ebike_rules in (False, True):
+            assert variant_for(allow_trails=True, ebike_rules=ebike_rules, ride=ride) in (
+                Variant.STANDARD,
+                Variant.EBIKE,
+            ), f"{ride} with trails allowed is not moved to the no-trail variant"
 
 
-def test_trails_off_is_refused_to_a_ride_that_is_not_a_mass_ride() -> None:
-    """Owner, 2026-09-26, of the Key Bridge roadway: "I wouldn't route someone
-    onto that outside of a mass ride." The no-trail variant keeps it, and PLAN
-    gives that variant to Group Ride's trails-off toggle too, so the toggle is
-    refused until Group Ride has a variant without those roadways."""
-    with pytest.raises(NoTrailIsNotForThisRide):
-        variant_for(allow_trails=False, ebike_rules=False)
-    # The property the refusal protects: the variant it would have handed out
-    # keeps every mass-ride-only roadway.
+def test_trails_off_gives_mass_ride_and_group_ride_the_no_trail_variant() -> None:
+    """PLAN.md:100 fixes Mass Ride's trails off, and PLAN.md:99 gives Group
+    Ride's "Allow bike paths and trails" toggle the no-trail variant when off.
+    Owner, 2026-09-26, asked whether a trails-off Group Ride should be kept off
+    the Key and Memorial roadways: "No, allow them" ("A trails-off Group Ride may
+    use those bridge roadways like a mass ride.")."""
+    for ride in ("mass-ride", "group-ride"):
+        assert variant_for(allow_trails=False, ebike_rules=False, ride=ride) is Variant.NO_TRAIL
+    # What the owner allowed: the variant a trails-off Group Ride gets keeps the
+    # mass-ride-only roadways, which the standard variant bars.
     kept = inject(Variant.NO_TRAIL, {"highway": "trunk"}, 7, frozenset(), frozenset({7}))
     assert kept is not None and kept.get("bicycle") != "no"
+    assert (
+        inject(Variant.STANDARD, {"highway": "trunk"}, 7, frozenset(), frozenset({7}))["bicycle"]
+        == "no"
+    )
+
+
+def test_trails_off_is_refused_to_a_ride_plan_gives_no_trails_off_option() -> None:
+    """Default is layer 2 only on the standard variant (PLAN.md:97), and no
+    ride PLAN does not name may pick up the no-trail variant, and with it the
+    roadways reserved for a mass ride or a trails-off Group Ride."""
+    for ride in ("default", None, "Group Ride", "mass ride", ""):
+        with pytest.raises(NoTrailIsNotForThisRide):
+            variant_for(allow_trails=False, ebike_rules=False, ride=ride)
 
 
 def test_exclusive_combination_is_refused_not_guessed() -> None:

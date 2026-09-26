@@ -251,9 +251,10 @@ class ReferenceData:
     # Bridge roadways a mass ride cannot use (`sidepath_only`), which the
     # no-trail variant drops.
     sidepath_bridge_ids: frozenset[int]
-    # Bridge roadways for mass rides only (`roadway_mass_ride_only`, the
-    # owner's rule of 2026-09-26 for Key Bridge and Memorial Bridge), which the
-    # standard and e-bike variants bar and the no-trail variant keeps.
+    # Bridge roadways for a mass ride or a trails-off Group Ride only
+    # (`roadway_mass_ride_only`, the owner's rules of 2026-09-26 for Key Bridge
+    # and Memorial Bridge), which the standard and e-bike variants bar and the
+    # no-trail variant keeps.
     mass_ride_only_bridge_ids: frozenset[int]
     # Agency volume lines, already normalised to one AADT definition.
     volume_features: tuple[conflation.AgencyFeature, ...]

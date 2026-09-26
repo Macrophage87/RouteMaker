@@ -161,8 +161,8 @@ agree.
   column. It says nothing about legality and must never be treated as a legal
   claim.
 * `roadway_mass_ride_only` — routing-relevant, the other way round: true means
-  the owner reserves the roadway for mass rides, so the no-trail variant keeps
-  it and the standard and e-bike variants bar it (`variants.inject()`
+  the owner reserves the roadway for a mass ride or a trails-off Group Ride, so
+  the no-trail variant keeps it and the standard and e-bike variants bar it (`variants.inject()`
   writes `bicycle=no`, and on a directional `bicycle:forward`/`:backward` key
   already present, and `inject_tags` withholds the row's `rm:bridge_bicycle`
   on those two variants so the transform cannot grant the roadway back). An
@@ -185,14 +185,16 @@ agree.
 
   **The no-trail variant is not a mass-ride-only variant.** PLAN.md:99 gives
   Group Ride's "Allow bike paths and trails" toggle, when off, the no-trail
-  variant as well, and a Group Ride there would be routed on the Key and
-  Memorial roadways, which the owner ruled out: "I wouldn't route someone onto
-  that outside of a mass ride." The two would read the same tiles, so the
-  column cannot tell them apart. `variants.variant_for` therefore refuses
-  trails-off to any ride that is not a mass ride, until Group Ride has its own
-  variant or a request-time exclusion of these roadways. The toggle is not
-  built yet, and the route API's presets (on the branch that builds them)
-  give Group Ride the standard variant, so nothing is exposed today; handoff.md section 7 carries the row.
+  variant as well, so a trails-off Group Ride is routed on the Key and
+  Memorial roadways. The owner was asked on 2026-09-26 whether it should be
+  kept off them, and answered "No, allow them" ("A trails-off Group Ride may
+  use those bridge roadways like a mass ride."). So these roadways are for a
+  mass ride or a trails-off Group Ride. `variants.variant_for` gives the
+  no-trail variant to those two rides (`variants.TRAILS_OFF_RIDES`) and
+  refuses trails-off to every other, since PLAN gives no other preset a
+  trails-off option. The toggle is not built yet, and the route API's presets
+  (on the branch that builds them) name `Variant.NO_TRAIL` directly for Mass
+  Ride, which does not pass through `variant_for`.
   The bar also closes the tags upstream's `graph.lua` would otherwise grant
   bicycle access from over `bicycle=no` - every `cycleway*` key and
   `vehicle:forward`/`:backward` set to `no`, `oneway:bicycle` to `yes`
