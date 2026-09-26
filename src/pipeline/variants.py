@@ -563,7 +563,7 @@ BICYCLE_CONDITIONAL_KEYS = (
 )
 
 
-# And the keys the bar removes. Upstream's `ways_proc` (lua/graph_upstream.lua)
+# And the keys the bar closes. Upstream's `ways_proc` (lua/graph_upstream.lua)
 # derives bicycle access from more than the bicycle keys: a `cycleway`,
 # `cycleway:both`, `cycleway:left`/`:right` lane or shared lane turns bike
 # access on in both directions, `cycleway=opposite_lane` on a oneway opens the
@@ -572,13 +572,13 @@ BICYCLE_CONDITIONAL_KEYS = (
 # through lua/graph.lua under LuaJIT (tests/test_lua_remap.py). None is on the
 # Key or Memorial roadway today (Memorial carries `cycleway:both=no`); one OSM
 # edit adding sharrows would have put ordinary riders back on it with nothing
-# reporting it. The roadway is closed to the variant being built, so its
-# cycleway description has nothing left to say there, and the vehicle
-# directional keys are removed rather than set, which leaves the plain
-# `vehicle`/`motor_vehicle` tags to answer for motor traffic as OSM wrote them.
-# `oneway:bicycle` goes too: with no bicycle access it has no direction left to
-# describe.
+# reporting it. Each is set to the value that grants nothing - `no` for the
+# cycleway and vehicle keys, `yes` for `oneway:bicycle` so a bicycle follows
+# the way's oneway - and not removed, because a removal cannot reach the
+# written extract (`bar_mass_ride_only_roadway`). The vehicle keys only ever
+# describe this variant's graph, which no motor-vehicle router reads.
 REOPENING_KEYS = ("vehicle:forward", "vehicle:backward", "oneway:bicycle")
+REOPENING_KEYS_CLOSED = {"oneway:bicycle": "yes"}
 
 
 def is_reopening_key(key: str) -> bool:
@@ -599,10 +599,12 @@ def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
     for key in (*BICYCLE_KEYS[1:], *BICYCLE_CONDITIONAL_KEYS):
         if key in tags:
             tags[key] = "no"
-    # Removed, not rewritten: tags upstream's graph.lua grants bicycle access
-    # from on its own, over a plain `bicycle=no` (`REOPENING_KEYS`).
-    for key in [key for key in tags if is_reopening_key(key)]:
-        del tags[key]
+    # Rewritten, not removed: `inject_tags` diffs this against the source and
+    # `extract.write_extract` lays the difference over the source's own tags,
+    # so a deleted key comes back in the written extract with OSM's value.
+    for key in tags:
+        if is_reopening_key(key):
+            tags[key] = REOPENING_KEYS_CLOSED.get(key, "no")
 
 
 def inject(

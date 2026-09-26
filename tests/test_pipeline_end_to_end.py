@@ -697,8 +697,16 @@ def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
         # passed the mass-ride-only ids to `inject` would still pass the Key
         # case above, OSM's own `bicycle=no` standing in for the missing bar.
         ("Arlington Memorial Bridge", "Arlington Memorial Bridge", {"highway": "primary"}),
+        # And one OSM edit away from either: a painted lane, which upstream's
+        # transform grants bicycle access from over a plain `bicycle=no`. Only
+        # the written extract shows whether the bar's answer to it survived.
+        (
+            "Arlington Memorial Bridge",
+            "Arlington Memorial Bridge",
+            {"highway": "primary", "cycleway:both": "lane", "vehicle:forward": "yes"},
+        ),
     ],
-    ids=["key-bridge-shape", "memorial-bridge-shape"],
+    ids=["key-bridge-shape", "memorial-bridge-shape", "memorial-with-a-painted-lane"],
 )
 def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
     tmp_path, segment_schemas, states, label, osm_name, roadway_tags
@@ -743,6 +751,9 @@ def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
             assert 711 not in tags
             continue
         assert tags[710].get("bicycle") == "no", variant.value
+        for key in ("cycleway:both", "vehicle:forward"):
+            if key in roadway_tags:
+                assert tags[710][key] == "no", f"{variant.value}: {key} reopens the roadway"
         assert "rm:bridge_bicycle" not in tags[710], (
             f"the {variant.value} extract would have its bar granted back by the transform"
         )

@@ -193,9 +193,11 @@ agree.
   variant or a request-time exclusion of these roadways. The toggle is not
   built yet, and the route API's presets (on the branch that builds them)
   give Group Ride the standard variant, so nothing is exposed today; handoff.md section 7 carries the row.
-  The bar also removes the tags upstream's `graph.lua` would otherwise grant
-  bicycle access from over `bicycle=no` (`cycleway*`, `oneway:bicycle`,
-  `vehicle:forward`/`:backward`; `variants.REOPENING_KEYS`).
+  The bar also closes the tags upstream's `graph.lua` would otherwise grant
+  bicycle access from over `bicycle=no` - every `cycleway*` key and
+  `vehicle:forward`/`:backward` set to `no`, `oneway:bicycle` to `yes`
+  (`variants.REOPENING_KEYS`) - by rewriting them, since the extract writer
+  can only lay values over the source's tags and never remove one.
 * `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
   variant alike, because access is not a request-time dial. False means OSM
   carries `bicycle=no` on the roadway itself, or that the roadway is a class

@@ -267,6 +267,10 @@ def test_a_mass_ride_only_bar_survives_the_real_transform(name) -> None:
     for variant in (Variant.STANDARD, Variant.EBIKE):
         barred = inject(variant, dict(tags), 7, frozenset(), frozenset({7}))
         assert _bike_access(barred) == ("false", "false"), (variant.value, barred)
+        # Every key the source carried is still there: the extract writer lays
+        # the pipeline's changes over the source's tags, so a key the bar
+        # deleted would come back with OSM's value.
+        assert set(tags) <= set(barred), (variant.value, set(tags) - set(barred))
     kept = inject(Variant.NO_TRAIL, dict(tags), 7, frozenset(), frozenset({7}))
     assert kept == tags, "the no-trail variant is untouched by the bar"
     if name == "cycleway-both-lane":
