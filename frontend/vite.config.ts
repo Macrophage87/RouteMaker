@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { licenceNotices } from "./src/licences/notices.mjs";
 
 // `npm run build` writes dist/, which the deploy step copies to
 // <DATA_ROOT>/frontend for Caddy to serve at / (docs/DEPLOYMENT.md, "The
@@ -20,8 +21,11 @@ const toStack = {
   headers: { Origin: stack, Referer: `${stack}/` },
 };
 
+const frontendRoot = new URL(".", import.meta.url).pathname;
+
 export default defineConfig({
-  plugins: [react()],
+  // licenceNotices completes what build.license writes (src/licences/notices.mjs).
+  plugins: [react(), licenceNotices(frontendRoot)],
   // MapLibre's worker imports a chunk it shares with the main bundle.
   worker: { format: "es" },
   build: {
@@ -31,7 +35,8 @@ export default defineConfig({
     chunkSizeWarningLimit: 2000,
     // The bundled packages' licences, which MIT, ISC and BSD-3-Clause all ask
     // to travel with redistributed copies; served at /licenses.txt and linked
-    // from the map's credits.
+    // from the map's credits. Completed by licenceNotices above: the text for
+    // packages that ship none, and the packages inside maplibre-gl's bundle.
     license: { fileName: "licenses.txt" },
   },
   server: { proxy: { "/api": toStack, "/tiles": toStack, "/basemap": toStack } },

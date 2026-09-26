@@ -83,3 +83,26 @@ def test_the_page_sets_no_referrer_policy_of_its_own() -> None:
     same-origin policy, and `no-referrer` there is a blank map."""
     page = (FRONTEND / "index.html").read_text().lower()
     assert 'name="referrer"' not in page and "referrerpolicy" not in page
+
+
+def test_the_built_licence_notices_leave_no_package_without_text() -> None:
+    """BSD-3-Clause's second clause asks for the notice to travel with a
+    minified copy, and two of the bundled packages ship no LICENSE file
+    (frontend/src/licences/notices.mjs fills them). CI builds the front end
+    before pytest, so there this reads what would be published."""
+    notices = FRONTEND / "dist" / "licenses.txt"
+    if not notices.exists():
+        if os.environ.get("CI"):
+            pytest.fail("CI built the front end but dist/licenses.txt is missing")
+        pytest.skip("front end not built here")
+    lines = notices.read_text().splitlines()
+    heading = re.compile(r"^## (\S+) - \S+ \(.+\)$")
+    names = [m.group(1) for line in lines if (m := heading.match(line))]
+    assert {"pmtiles", "@protomaps/basemaps", "maplibre-gl", "@maplibre/mlt"} <= set(names), names
+    empty = []
+    for i, line in enumerate(lines):
+        if heading.match(line):
+            rest = [text for text in lines[i + 1 :] if text.strip()]
+            if not rest or heading.match(rest[0]):
+                empty.append(line)
+    assert not empty, empty

@@ -1051,13 +1051,28 @@ lightningcss under MPL-2.0 - are not shipped):
 | --- | --- | --- | --- |
 | react, react-dom, scheduler | 19.3.0, 19.3.0, 0.28.0 | MIT | <https://github.com/facebook/react> |
 | maplibre-gl (with its bundled dependencies) | 6.11.2 | BSD-3-Clause | <https://github.com/maplibre/maplibre-gl-js> |
+| inside maplibre-gl's prebuilt bundle: @maplibre/mlt, @maplibre/geojson-vt, @maplibre/maplibre-gl-style-spec, @maplibre/vt-pbf, @mapbox/point-geometry, @mapbox/tiny-sdf, @mapbox/unitbezier, @mapbox/vector-tile, bidi-js, earcut, gl-matrix, kdbush, murmurhash-js, pbf, potpack, quickselect, tinyqueue | as locked | MIT, ISC, BSD-2-Clause, BSD-3-Clause, (MIT OR Apache-2.0) | each package's repository |
 | pmtiles | 4.5.0 | BSD-3-Clause | <https://github.com/protomaps/PMTiles> |
 | @protomaps/basemaps | 5.7.2 | BSD-3-Clause | <https://github.com/protomaps/basemaps> |
 | fflate | 0.8.3 | MIT | <https://github.com/101arrowz/fflate> |
 
-`licenses.txt` carries each package's licence text as the package ships it.
-`@protomaps/basemaps` ships none in its npm package, so its entry there is the
-name and licence only; the text is in its repository above.
+`licenses.txt` carries each package's licence text as the package ships it,
+completed by `frontend/src/licences/notices.mjs`, and the build fails if any
+bundled package is left without text. Two gaps are filled there:
+
+- `pmtiles` and `@protomaps/basemaps` are BSD-3-Clause and neither npm package
+  ships a LICENSE file, while the licence's second clause asks for the notice
+  to travel with a minified copy. Their text is committed under
+  `frontend/notices/`: the standard BSD-3-Clause text, with the copyright
+  holder each package's own `author` field names (Brandon Liu; The Protomaps
+  Authors). The upstream repositories' LICENSE files were not fetched, so the
+  holder and year are to be checked against them before the site is public.
+- maplibre-gl ships a prebuilt bundle with the packages in the table's second
+  row inlined, which Vite sees as maplibre-gl alone and which maplibre-gl's
+  own LICENSE.txt does not cover. The build reads which they are from the
+  source maps maplibre-gl ships beside its bundle and adds each one's licence
+  under its own heading (`murmurhash-js`, which has no LICENSE file, from the
+  MIT text in its README, committed as `frontend/notices/murmurhash-js.txt`).
 
 Not done yet, and recorded rather than hidden: the TypeScript types for the
 API are written by hand against the shared contract instead of generated from
