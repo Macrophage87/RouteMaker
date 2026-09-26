@@ -465,10 +465,12 @@ def test_the_script_also_creates_what_the_rebuild_writes() -> None:
 # The services that run this project's own images, which run as uid 10001.
 OUR_SERVICES = {"api", "worker", "migrate", "rebuild"}
 
-# ...and the one directory they write that no such service binds: `static` is
+# ...and the directories they write that no such service binds: `static` is
 # bound read-only into Caddy, and written by the `collectstatic` deploy step,
-# which runs the api image with that directory mounted (docs/DEPLOYMENT.md).
-ALSO_OURS = {"static"}
+# which runs the api image with that directory mounted (docs/DEPLOYMENT.md);
+# `basemap` is bound read-only into Caddy too, and written by
+# scripts/fetch_basemap.sh run as that uid (docs/OPERATIONS.md, "The base map").
+ALSO_OURS = {"static", "basemap"}
 
 
 def owned_directories() -> set[str]:

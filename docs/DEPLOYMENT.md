@@ -97,6 +97,7 @@ its image runs. **Nothing here is a claim that either image builds.** The first
 ```sh
 cp .env.example .env               # then fill it in; see docs/DEVELOPMENT.md
 sudo sh scripts/prepare_data_root.sh --env-file ./.env   # BEFORE the first up
+sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh   # base map, ~300 MB
 docker compose build               # builds api and pipeline
 docker compose up -d               # bot and renderer are skipped: they have no image
 ```
@@ -907,9 +908,11 @@ file in the `SOURCE` file beside them; it reaches the browser through the same
 the admin makes no request off this deployment's origin.
 
 The basemap under the polygon is a separate question, and in phase 1 the answer
-is that there is not one. The PMTiles extract and the renderer are unbuilt, so
-the widget draws the geometry over a plain background and requests no tiles at
-all. That is the shipped configuration rather than a broken one: the draw,
+is that there is not one. The public map's PMTiles extract exists
+(`scripts/fetch_basemap.sh`, served at `/basemap/`), but it is vector tiles for
+MapLibre and the widget's one layer is a raster XYZ template, and the renderer
+that could rasterise it is unbuilt; so the widget draws the geometry over a
+plain background and requests no tiles at all. That is the shipped configuration rather than a broken one: the draw,
 modify and delete controls are OpenLayers' own and an instance admin can edit a
 boundary without any imagery under it.
 

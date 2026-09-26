@@ -451,6 +451,62 @@ four for the build's own three variant extracts and its scratch); once there is
 one, its real size is what the gate charges. A rebuild refused by the gate has
 downloaded nothing.
 
+## The base map
+
+The public map's background is self-hosted, per PLAN.md "Base map": no request
+from a page on this site goes to a third-party tile server. Three things live
+under `<DATA_ROOT>/basemap/`, bound read-only into Caddy at `/srv/basemap` and
+served at `/basemap/`:
+
+| Path | What it is | Source |
+| --- | --- | --- |
+| `region.pmtiles` | the Protomaps basemap (v4 layers) over `settings.COVERAGE_BBOX`, about 300 MB | `pmtiles extract` of `https://build.protomaps.com/<YYYYMMDD>.pmtiles` |
+| `fonts/<fontstack>/<range>.pbf` | MapLibre glyphs (Noto Sans, OFL; `fonts/OFL.txt`) | `github.com/protomaps/basemaps-assets`, pinned commit |
+| `sprites/v4/<flavor>[@2x].{json,png}` | the style's icons | the same commit |
+
+`scripts/fetch_basemap.sh` makes all of it and pins every input at its top: the
+go-pmtiles release and its sha256, the basemaps-assets commit and the sha256 of
+its archive, the Protomaps build date and the bounding box (which
+`tests/test_basemap.py` holds equal to `COVERAGE_BBOX`). Both downloads are
+checked before anything is unpacked, and everything is assembled in
+`basemap/.work` and moved into place only when complete, so a failed or
+interrupted run leaves the previous files serving. The region has no published
+digest to check; `pmtiles verify` runs on it instead. Each finished part leaves
+a stamp (`.region.source`, `.assets.source`) naming what it was made from, and a
+run whose pins match the stamps does nothing and makes no request. Run it as the
+directory's owner, uid 10001 after `prepare_data_root.sh`:
+
+```sh
+sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh
+```
+
+The path is spelled out rather than read with `--env-file ./.env` because
+`.env` holds every secret the stack has and uid 10001 has no reason to read it.
+
+**Refresh.** PLAN says monthly, by the worker. That job does not exist yet; until
+it does the refresh is by hand, and it is one command naming a newer build:
+
+```sh
+sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh --build 20261026
+```
+
+then bump `PROTOMAPS_BUILD` in the script to the same date and commit it, so the
+repository says what is being served. build.protomaps.com keeps daily builds for
+a limited time only, so an old pin is a 404 and the script says so; there is no
+mirror to fall back to. Caddy reads the files per request, so nothing is
+restarted: the next request gets the new archive, and `Cache-Control: no-cache`
+on it means browsers revalidate rather than mixing old and new byte ranges. The
+glyphs and sprites change only when `ASSETS_COMMIT` is bumped.
+
+**What the edge enforces.** `/basemap/*` answers only `region.pmtiles`,
+`fonts/*` and `sprites/*` (anything else under it is a 404, the stamps and the
+work directory included), and only to requests whose `Origin` is this site or,
+with no `Origin`, whose `Referer` is a page on it; anything else is a 403. That
+is a hotlinking guard, not access control. **The per-IP range-request limit
+PLAN asks for is not in place**: the stock `caddy:2.8-alpine` image has no
+rate-limit module, and adding one means building Caddy with a third-party
+module. Until then nothing bounds how fast one address can read the archive.
+
 ## Firing a rebuild by hand
 
 ```sh

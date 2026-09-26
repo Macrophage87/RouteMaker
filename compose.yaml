@@ -94,6 +94,9 @@ services:
     volumes:
       - ${DATA_ROOT}/caddy:/data
       - ${DATA_ROOT}/static:/srv/static:ro
+      # The base map (PMTiles, glyphs, sprites), written by
+      # scripts/fetch_basemap.sh and served at /basemap/* by the Caddyfile.
+      - ${DATA_ROOT}/basemap:/srv/basemap:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     environment:
       # The one variable this service takes, and not a secret. The Caddyfile's

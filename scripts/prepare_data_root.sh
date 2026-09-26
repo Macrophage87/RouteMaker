@@ -110,6 +110,7 @@ esac
 DIRECTORIES="
 caddy
 static
+basemap
 postgres
 photon
 backups
@@ -136,9 +137,12 @@ done
 # that directory mounted (docs/DEPLOYMENT.md, "Static assets"). `tiles` is here
 # rather than the three `current` paths below it because the rebuild creates a
 # dated build directory beside them and replaces the symlink, which is a write
-# to `tiles/<variant>` itself.
+# to `tiles/<variant>` itself. `basemap` is the same case as `static`: bound
+# read-only into Caddy, written by scripts/fetch_basemap.sh run as 10001 (and,
+# once it exists, by the worker's monthly refresh).
 OWNED="
 static
+basemap
 backups
 elevation
 tiles

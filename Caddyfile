@@ -43,6 +43,47 @@
 		file_server
 	}
 
+	# The self-hosted base map (PLAN.md "Base map"): the PMTiles extract, the
+	# glyphs and the sprites that scripts/fetch_basemap.sh writes under
+	# ${DATA_ROOT}/basemap, which compose mounts read-only at /srv/basemap.
+	# MapLibre reads region.pmtiles through the pmtiles protocol as HTTP range
+	# requests, which file_server answers with 206 and the named bytes. Nothing
+	# on this site encodes responses, and nothing may: a compressed body
+	# changes what a byte range means.
+	#
+	# Served only to this site's own pages. A browser sends Origin on a
+	# cross-origin fetch and, under the default referrer policy and Django's
+	# `same-origin` one, the full Referer on a same-origin one, so the rule is:
+	# an Origin, when there is one, must be this site's scheme and host; with
+	# none, the Referer must be a page on it (the trailing "/" is what stops
+	# http://site.evil.example/ passing as http://site). The comparison is
+	# against the request's own scheme and Host, so the one rule serves the
+	# `:80` posture and a hostname alike. A request with neither header is
+	# refused too. This is a hotlinking guard, not access control: a client
+	# that is not a browser can send whatever headers it likes.
+	#
+	# The per-IP range-request limit PLAN asks for is NOT here: the stock
+	# caddy image (2.8.4, `caddy list-modules`) carries no rate-limit module.
+	# Adding one means building Caddy with a third-party module (for example
+	# mholt/caddy-ratelimit via xcaddy), which is recorded as an owner item.
+	handle_path /basemap/* {
+		@foreign not expression `{header.Origin} == {scheme} + "://" + {hostport} || ({header.Origin} == "" && {header.Referer}.startsWith({scheme} + "://" + {hostport} + "/"))`
+		respond @foreign 403
+		# The contract's three paths and nothing else - not the fetch
+		# script's stamps, nor its work directory mid-refresh.
+		@unlisted not path /region.pmtiles /fonts/* /sprites/*
+		respond @unlisted 404
+		# `private`: the answer depends on Origin and Referer, which a shared
+		# cache would not key on. The archive revalidates every time (a 304 is
+		# cheap), because a refresh replaces it under the same name; the
+		# glyphs and sprites only change with a pinned commit.
+		header /region.pmtiles Cache-Control "private, no-cache"
+		header /fonts/* Cache-Control "private, max-age=86400"
+		header /sprites/* Cache-Control "private, max-age=86400"
+		root * /srv/basemap
+		file_server
+	}
+
 	# Everything else is the API, on the port docker/api-entrypoint.sh binds
 	# gunicorn to. Photon, Valhalla and the renderer are deliberately absent:
 	# PLAN.md:65 says they are reachable only through the API, which proxies
