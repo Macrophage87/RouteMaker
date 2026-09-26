@@ -125,16 +125,52 @@ test("a route request posts the contract's body as JSON", async () => {
   if (result.ok) assert.equal(result.route.distance_m, 4660);
 });
 
-test("confirm_long is sent only when the rider confirmed", async () => {
+test("confirm_long is sent only when the rider confirmed, and the rest of the body is unchanged", async () => {
+  // The whole body on both branches: a confirmed Mass Ride that lost its
+  // preset would be planned on the API's default.
   const bodies: unknown[] = [];
   const impl = async (_url: string, init: RequestInit) => {
     bodies.push(JSON.parse(String(init.body)));
     return new Response("{}", { status: 500 });
   };
-  await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
-  await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, confirmLong: true });
-  assert.equal("confirm_long" in (bodies[0] as object), false);
-  assert.equal((bodies[1] as { confirm_long: boolean }).confirm_long, true);
+  const points: Array<[number, number]> = [[-77.95, 38.25], [-76.6, 39.3]];
+  await requestRoute(points, "mass-ride", { fetchImpl: impl });
+  await requestRoute(points, "mass-ride", { fetchImpl: impl, confirmLong: true });
+  await requestRoute(points, "group-ride", { fetchImpl: impl, confirmLong: false });
+  assert.deepEqual(bodies, [
+    { points, preset: "mass-ride" },
+    { points, preset: "mass-ride", confirm_long: true },
+    { points, preset: "group-ride" },
+  ]);
+});
+
+test("an error sentence of only whitespace is not shown as the API's words", () => {
+  for (const status of [404, 422]) {
+    const message = describeError(status, { error: "   \n" }, null).message;
+    assert.ok(message.trim().length > 0, `status ${status} showed an empty message`);
+  }
+  // A real sentence is shown trimmed.
+  assert.equal(describeError(404, { error: "  No way across.  " }, null).message, "No way across.");
+});
+
+test("every input refusal the validator can give is said in words, never empty", () => {
+  // Point counts outside 2-25 are refused by the API's validator; the app
+  // never sends one, but a link edited by hand can.
+  const tooFew = describeError(400, { error: "points: List should have at least 2 items after validation, not 1" }, null);
+  const tooMany = describeError(400, { error: "points: List should have at most 25 items after validation, not 26" }, null);
+  assert.notEqual(tooFew.message, tooMany.message);
+  for (const described of [tooFew, tooMany]) {
+    assert.equal(described.kind, "bad-input");
+    assert.doesNotMatch(described.message, /List should|items after validation|points:/);
+  }
+  // Several reasons joined by ";": the first is said, not the pile.
+  const several = describeError(400, { error: "preset: Input should be 'default'; points: Field required" }, null).message;
+  assert.match(several, /Input should be 'default'/);
+  assert.doesNotMatch(several, /Field required|;/);
+  // A reason that is nothing once the field path is stripped falls back to
+  // the plain sentence, with no dangling colon.
+  const bare = describeError(400, { error: "points: " }, null).message;
+  assert.equal(bare, describeError(400, null, null).message);
 });
 
 test("the caller's abort signal reaches fetch", async () => {
