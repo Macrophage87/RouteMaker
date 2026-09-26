@@ -469,8 +469,10 @@ OUR_SERVICES = {"api", "worker", "migrate", "rebuild"}
 # bound read-only into Caddy, and written by the `collectstatic` deploy step,
 # which runs the api image with that directory mounted (docs/DEPLOYMENT.md);
 # `basemap` is bound read-only into Caddy too, and written by
-# scripts/fetch_basemap.sh run as that uid (docs/OPERATIONS.md, "The base map").
-ALSO_OURS = {"static", "basemap"}
+# scripts/fetch_basemap.sh run as that uid (docs/OPERATIONS.md, "The base map");
+# `frontend` likewise, written by the front end's deploy step run as that uid
+# (docs/DEPLOYMENT.md, "The public front end").
+ALSO_OURS = {"static", "basemap", "frontend"}
 
 
 def owned_directories() -> set[str]:

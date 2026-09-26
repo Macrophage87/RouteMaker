@@ -111,6 +111,7 @@ DIRECTORIES="
 caddy
 static
 basemap
+frontend
 postgres
 photon
 backups
@@ -139,10 +140,13 @@ done
 # dated build directory beside them and replaces the symlink, which is a write
 # to `tiles/<variant>` itself. `basemap` is the same case as `static`: bound
 # read-only into Caddy, written by scripts/fetch_basemap.sh run as 10001 (and,
-# once it exists, by the worker's monthly refresh).
+# once it exists, by the worker's monthly refresh). `frontend` too: bound
+# read-only into Caddy, written by the front end's deploy step run as 10001
+# (docs/DEPLOYMENT.md, "The public front end").
 OWNED="
 static
 basemap
+frontend
 backups
 elevation
 tiles

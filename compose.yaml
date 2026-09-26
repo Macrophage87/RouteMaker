@@ -97,6 +97,9 @@ services:
       # The base map (PMTiles, glyphs, sprites), written by
       # scripts/fetch_basemap.sh and served at /basemap/* by the Caddyfile.
       - ${DATA_ROOT}/basemap:/srv/basemap:ro
+      # The built public front end, copied here by the deploy step
+      # (docs/DEPLOYMENT.md, "The public front end") and served at /.
+      - ${DATA_ROOT}/frontend:/srv/frontend:ro
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
     environment:
       # The one variable this service takes, and not a secret. The Caddyfile's
