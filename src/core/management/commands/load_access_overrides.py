@@ -8,12 +8,22 @@ loses the decision's wording and date. So they are checked in as a versioned
 file under `fixtures/overrides/`, reviewed like any other change, and loaded by
 this command, which writes what the admin path writes: the row, and an
 `AuditLogEntry` for adding it and for approving it, attributed to the instance
-admin who ran the command.
+admin named by `--actor`.
+
+`--actor` is named on the command line and not authenticated. The command
+checks that the id belongs to an active instance admin; nothing checks that the
+person at the shell is that admin, and anyone who can run this can already
+write the database. `run_rebuild_now` and `rollback_rebuild` record no actor for
+the same reason; this command records the named one, because an approval is a
+decision somebody is answerable for, and says in every entry's `detail` that
+the name was given rather than proven (`ACTOR_NOTE`).
 
 Dry by default, like `rollback_rebuild`: without `--confirm` it prints what it
 would do and writes nothing. Idempotent: a row already present and approved
 with the same kind, way and value is left alone and audited as nothing, so a
-second run is a no-op; one present but unapproved is approved. It refuses the
+second run is a no-op; one present but unapproved is approved, and its reason
+and evidence become the file's - the decision being loaded is why it is
+approved - with the proposal's own text kept in the audit entry. It refuses the
 whole file, before writing anything, if any row is malformed, writes a key an
 access override may not write, or disagrees with an approved row already on the
 same way - two approved rows answering one way differently would be applied in
@@ -37,6 +47,8 @@ from django.db import transaction
 from django.utils import timezone
 
 COMMAND = "load_access_overrides"
+# In every audit entry's detail: the attribution is a claim, not a sign-in.
+ACTOR_NOTE = "actor named on the command line (--actor), not authenticated"
 
 
 def parse_file(text: str, label: str) -> list[dict]:
@@ -105,7 +117,9 @@ def resolve_actor(discord_user_id: int, *, attempt: bool):
                 "override",
                 "",
                 AuditLogEntry.Outcome.REFUSED,
-                detail=f"{COMMAND} refused: the actor is not an active instance admin",
+                detail=(
+                    f"{COMMAND} refused: the actor is not an active instance admin; {ACTOR_NOTE}"
+                ),
             )
         raise CommandError(
             f"Discord id {discord_user_id} is not an active instance admin; approving an "
@@ -162,7 +176,10 @@ class Command(BaseCommand):
             "--actor",
             type=int,
             required=True,
-            help="Discord user id of the instance admin the rows are attributed to.",
+            help=(
+                "Discord user id of the instance admin the rows are attributed to. Checked "
+                "to be an active instance admin, not authenticated; the audit entries say so."
+            ),
         )
         parser.add_argument(
             "--confirm",
@@ -190,7 +207,7 @@ class Command(BaseCommand):
             self.stdout.write("dry run: nothing written; pass --confirm to write")
             return
 
-        source = f"{COMMAND} from {label}"
+        source = f"{COMMAND} from {label}; {ACTOR_NOTE}"
         with transaction.atomic():
             for action, row, existing in steps:
                 if action == "present":
@@ -217,17 +234,26 @@ class Command(BaseCommand):
                             f"{row['osm_way_id']} {json.dumps(row['value'])}; {source}"
                         ),
                     )
+                    replaced = ""
                 else:
+                    # The proposal's text is kept here, since the row's own
+                    # reason and evidence now say why it was approved.
+                    replaced = (
+                        f"; reason and evidence replaced by the file's, were: reason "
+                        f"{json.dumps(existing.reason)}, evidence {json.dumps(existing.evidence)}"
+                    )
                     existing.approved = True
                     existing.approved_at = now
-                    existing.save(update_fields=["approved", "approved_at"])
+                    existing.reason = row["reason"]
+                    existing.evidence = row["evidence"]
+                    existing.save(update_fields=["approved", "approved_at", "reason", "evidence"])
                 record(
                     actor,
                     "approve",
                     "override",
                     existing.pk,
                     AuditLogEntry.Outcome.ALLOWED,
-                    detail=f"approved; way {row['osm_way_id']}; {source}",
+                    detail=f"approved; way {row['osm_way_id']}; {source}{replaced}",
                 )
         written = sum(1 for action, _, _ in steps if action != "present")
         self.stdout.write(f"wrote {written} of {len(steps)} rows; the rest were already approved")
