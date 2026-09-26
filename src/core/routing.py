@@ -329,13 +329,13 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: float) -> dict 
     return None
 
 
-def plan(points: list[list[float]], preset_name: str, budget_s: float | None = None) -> dict:
+def plan(points: list[list[float]], preset_name: str) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
     Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
     for an unknown preset.
     """
-    deadline = time.monotonic() + (PLAN_BUDGET_S if budget_s is None else budget_s)
+    deadline = time.monotonic() + PLAN_BUDGET_S
     preset = presets.PRESETS[preset_name]
     costing = presets.costing(preset_name)
     request = {
