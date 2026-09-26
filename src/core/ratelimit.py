@@ -286,7 +286,10 @@ def _release(pairs) -> None:
                 pairs,
                 exc_info=True,
             )
-            connection.close()
+            try:
+                connection.close()
+            except Exception:  # noqa: BLE001 - Django has dropped the connection anyway
+                logger.warning("closing the connection failed too", exc_info=True)
             return
 
 

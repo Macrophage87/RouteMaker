@@ -1644,6 +1644,20 @@ class TestInFlight:
         assert len(calls) == 2
         assert our_advisory_locks() == 0
 
+    def test_a_release_whose_close_fails_too_does_not_raise(self, monkeypatch) -> None:
+        """Django drops a connection whose close failed, so the locks go with
+        it; the request that was planned is still answered."""
+        from django.db.utils import InterfaceError
+
+        from core import ratelimit
+
+        def fails():
+            raise InterfaceError("connection already closed")
+
+        monkeypatch.setattr(connection, "cursor", fails)
+        monkeypatch.setattr(connection, "close", fails)
+        ratelimit.release([(ratelimit._LOCK_CLASS_TOTAL + 9, 0)])
+
     def test_a_release_that_fails_does_not_fail_the_request(self, monkeypatch, core_log) -> None:
         """A route that was planned is answered even if a release fails; the
         failure is logged, the other slots are still released, and the
