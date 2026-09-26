@@ -69,6 +69,7 @@ export function App() {
   const narrow = useNarrow();
   const mapRef = useRef<MapLibreMap | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const panelBodyRef = useRef<HTMLDivElement>(null);
   const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const addRef = useRef<HTMLButtonElement>(null);
   const planButtonRef = useRef<HTMLButtonElement>(null);
@@ -232,7 +233,9 @@ export function App() {
   const routeFirst = narrow && shown !== null;
 
   // Reordering the sheet moves sections in the DOM, and a focused element
-  // that moves loses the focus; put it back where it was.
+  // that moves loses the focus; put it back where it was. When the route
+  // comes first, the sheet shows it from the top: the stats, not whatever
+  // the sheet was scrolled to for the question or error before it.
   const focusBeforeRender = useRef<Element | null>(null);
   focusBeforeRender.current = document.activeElement;
   useLayoutEffect(() => {
@@ -245,6 +248,7 @@ export function App() {
     ) {
       before.focus({ preventScroll: true });
     }
+    if (routeFirst) panelBodyRef.current?.scrollTo({ top: 0 });
   }, [routeFirst]);
 
   const announcement =
@@ -431,7 +435,7 @@ export function App() {
             {panelOpen ? "Hide" : "Plan"}
           </button>
         </header>
-        <div id="panel-body" className="panel-body" hidden={!panelOpen}>
+        <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
           {routeFirst
             ? [routeSection, presetsSection, pointsSection]
             : [presetsSection, pointsSection, routeSection]}
