@@ -97,10 +97,17 @@ its image runs. **Nothing here is a claim that either image builds.** The first
 ```sh
 cp .env.example .env               # then fill it in; see docs/DEVELOPMENT.md
 sudo sh scripts/prepare_data_root.sh --env-file ./.env   # BEFORE the first up
-sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh   # base map, ~300 MB
 docker compose build               # builds api and pipeline
 docker compose up -d               # bot and renderer are skipped: they have no image
 ```
+
+**The base map** is fetched once, after the prepare script and before anyone is
+shown the map: `scripts/fetch_basemap.sh`, run in a container as uid 10001,
+about 300 MB. The command, and why it is a container, is in docs/OPERATIONS.md,
+"The base map". Before this site is reachable from anywhere but this machine,
+note what that section says is missing: **the per-IP range-request limit PLAN
+asks for is not implemented** (the stock Caddy image has no rate-limit module),
+so opening it up is a decision to serve the archive without one.
 
 `docker compose up -d` starts everything except `bot`, `renderer` and `photon`,
 which sit behind the `unbuilt` profile. `bot` and `renderer` are there because
@@ -912,9 +919,10 @@ is that there is not one. The public map's PMTiles extract exists
 (`scripts/fetch_basemap.sh`, served at `/basemap/`), but it is vector tiles for
 MapLibre and the widget's one layer is a raster XYZ template, and the renderer
 that could rasterise it is unbuilt; so the widget draws the geometry over a
-plain background and requests no tiles at all. That is the shipped configuration rather than a broken one: the draw,
-modify and delete controls are OpenLayers' own and an instance admin can edit a
-boundary without any imagery under it.
+plain background and requests no tiles at all. That is the shipped
+configuration rather than a broken one: the draw, modify and delete controls
+are OpenLayers' own and an instance admin can edit a boundary without any
+imagery under it.
 
 A deployment that does have tiles — its own renderer once there is one, or a
 server the operator has chosen and is entitled to use — sets

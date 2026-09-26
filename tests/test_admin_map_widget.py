@@ -271,7 +271,8 @@ class TestNeitherAdminMapPageLeavesThisDeployment:
     def test_with_no_basemap_configured_there_is_no_tile_source_at_all(
         self, as_instance_admin, jurisdiction, which
     ) -> None:
-        """The shipped configuration. Phase 1 has no self-hosted basemap, so the
+        """The shipped configuration. Phase 1 has no raster basemap for the
+        widget (the self-hosted one is vector tiles for the public map), so the
         widget draws the polygon over a plain background and requests nothing."""
         assert settings.ADMIN_BASEMAP_TILE_URL == "", "this deployment ships no default basemap"
         body = page(as_instance_admin, self.urls(jurisdiction)[which])

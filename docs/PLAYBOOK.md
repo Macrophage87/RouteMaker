@@ -143,9 +143,22 @@ Before the first `up`, because Docker creates any missing bind source as a root-
 sudo sh scripts/prepare_data_root.sh --env-file ./.env
 ```
 
-It reads the one `DATA_ROOT=` line from the file without sourcing it, creates the thirteen
-directories, and hands seven of them to uid 10001 (the images' user), leaving `postgres/`, `caddy/`
+It reads the one `DATA_ROOT=` line from the file without sourcing it, creates the fourteen
+directories, and hands eight of them to uid 10001 (the images' user), leaving `postgres/`, `caddy/`
 and `photon/` alone. It is idempotent; run it again after moving the volume.
+
+Then the base map, which is what the public map draws under the routes (about 300 MB, under a
+minute). It runs as uid 10001 in a container, because that uid has no account on the host and
+cannot read a checkout under a home directory; no sudo is needed. From the repository root:
+
+```sh
+docker run --rm -u 10001:10001 -e DATA_ROOT=<DATA_ROOT>   -v <DATA_ROOT>/basemap:<DATA_ROOT>/basemap   -v "$PWD/scripts/fetch_basemap.sh:/fetch_basemap.sh:ro"   --entrypoint sh   docker.io/curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777   /fetch_basemap.sh
+```
+
+A second run prints "is current" and fetches nothing. What it installs, the licences and credits,
+and the monthly refresh are in `docs/OPERATIONS.md`, "The base map". The per-IP range-request
+limit PLAN asks for is not implemented; that section says what that means before the site is
+opened beyond this machine.
 
 ## 5. The stack, and the first two checklist items
 

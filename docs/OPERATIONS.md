@@ -461,8 +461,26 @@ served at `/basemap/`:
 | Path | What it is | Source |
 | --- | --- | --- |
 | `region.pmtiles` | the Protomaps basemap (v4 layers) over `settings.COVERAGE_BBOX`, about 300 MB | `pmtiles extract` of `https://build.protomaps.com/<YYYYMMDD>.pmtiles` |
-| `fonts/<fontstack>/<range>.pbf` | MapLibre glyphs (Noto Sans, OFL; `fonts/OFL.txt`) | `github.com/protomaps/basemaps-assets`, pinned commit |
+| `fonts/<fontstack>/<range>.pbf` | MapLibre glyphs (Noto Sans) | `https://github.com/protomaps/basemaps-assets`, pinned commit |
 | `sprites/v4/<flavor>[@2x].{json,png}` | the style's icons | the same commit |
+
+### Licences, and the credits every map must carry
+
+PLAN.md "Licensing" asks for each external source's licence, URL and refresh
+procedure. For the base map:
+
+| Source | Licence | Credit on the map | Refresh |
+| --- | --- | --- | --- |
+| `region.pmtiles`: Protomaps basemap, built from OpenStreetMap (and Natural Earth at low zooms) | the data is OpenStreetMap's, **ODbL 1.0** (<https://www.openstreetmap.org/copyright>); an extract of it is a produced work of that database. Natural Earth is public domain | **"© OpenStreetMap contributors"** and **"© Protomaps"**, both, on every map view | monthly (below) |
+| `fonts/`: Noto Sans glyphs | **SIL Open Font License 1.1**, shipped beside them as `fonts/OFL.txt` | none required | with `ASSETS_COMMIT` |
+| `sprites/v4/`: icons | **MIT**: basemaps-assets' README at the pinned commit (installed as `sprites/README.md`) says the sprites are derived from MIT-licensed tangrams/icons, <https://github.com/tangrams/icons/blob/master/LICENSE.md> | none required | with `ASSETS_COMMIT` |
+| go-pmtiles 1.31.2, the build tool (not served) | **BSD-3-Clause**, © Protomaps LLC, <https://github.com/protomaps/go-pmtiles> | n/a | with `PMTILES_VERSION` |
+
+The archive's own metadata attribution credits OpenStreetMap only, not
+Protomaps, so a style that shows the archive's attribution field shows half of
+what is owed. The front end has to set both credits itself.
+
+### Fetching it
 
 `scripts/fetch_basemap.sh` makes all of it and pins every input at its top: the
 go-pmtiles release and its sha256, the basemaps-assets commit and the sha256 of
@@ -473,39 +491,65 @@ checked before anything is unpacked, and everything is assembled in
 interrupted run leaves the previous files serving. The region has no published
 digest to check; `pmtiles verify` runs on it instead. Each finished part leaves
 a stamp (`.region.source`, `.assets.source`) naming what it was made from, and a
-run whose pins match the stamps does nothing and makes no request. Run it as the
-directory's owner, uid 10001 after `prepare_data_root.sh`:
+run whose pins match the stamps does nothing and makes no request. A run needs
+about 330 MB free on the data volume beyond what is already there: the new
+archive and both tarballs sit in `basemap/.work` until the swap.
+
+It has to run as the directory's owner, uid 10001 after `prepare_data_root.sh`,
+and that uid has no account on the host and usually cannot read the checkout
+(a home directory is `750`). So it runs in a container as 10001, with only the
+script and the one directory mounted, and `DATA_ROOT` spelled out rather than
+read from `.env`, which holds every secret the stack has. The image is
+`curlimages/curl`, pinned by digest, which carries curl, tar, sha256sum and cut;
+no sudo is needed, only the docker group. From the repository root:
 
 ```sh
-sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh
+docker run --rm -u 10001:10001 -e DATA_ROOT=<DATA_ROOT> \
+  -v <DATA_ROOT>/basemap:<DATA_ROOT>/basemap \
+  -v "$PWD/scripts/fetch_basemap.sh:/fetch_basemap.sh:ro" \
+  --entrypoint sh \
+  docker.io/curlimages/curl@sha256:58adaa4e8dca9c988bae2aba4ab3434a0bb2da16bbe3f92dec39ec7785166777 \
+  /fetch_basemap.sh
 ```
 
-The path is spelled out rather than read with `--env-file ./.env` because
-`.env` holds every secret the stack has and uid 10001 has no reason to read it.
+Run as shown on the development host on 2026-09-26: the first run downloaded
+312 MB and took about 40 s, and its `region.pmtiles` was byte-identical to one
+made earlier the same day from the same build; the second printed "is
+current" and fetched nothing.
 
-**Refresh.** PLAN says monthly, by the worker. That job does not exist yet; until
-it does the refresh is by hand, and it is one command naming a newer build:
+### Refresh
 
-```sh
-sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh --build 20261026
-```
+PLAN says monthly, by the worker. That job does not exist yet; until it does the
+refresh is by hand: the same command with `--build <YYYYMMDD>` appended, naming
+a newer day, then bump `PROTOMAPS_BUILD` in the script to that date and commit
+it, so the repository says what is being served. Until the pin is bumped, a
+plain re-run treats the newer archive as stale and goes back to the pinned day.
+build.protomaps.com keeps daily builds for a limited time only, so an old pin
+is a 404 and the script says so; there is no mirror to fall back to. Caddy reads
+the files per request, so nothing is restarted: the next request gets the new
+archive, and `Cache-Control: no-cache` on it means browsers revalidate rather
+than mixing old and new byte ranges. The glyphs and sprites change only when
+`ASSETS_COMMIT` is bumped. There is no lock: two runs at once over the same
+directory delete each other's work directory, which the future worker job has
+to prevent.
 
-then bump `PROTOMAPS_BUILD` in the script to the same date and commit it, so the
-repository says what is being served. build.protomaps.com keeps daily builds for
-a limited time only, so an old pin is a 404 and the script says so; there is no
-mirror to fall back to. Caddy reads the files per request, so nothing is
-restarted: the next request gets the new archive, and `Cache-Control: no-cache`
-on it means browsers revalidate rather than mixing old and new byte ranges. The
-glyphs and sprites change only when `ASSETS_COMMIT` is bumped.
+### What the edge enforces
 
-**What the edge enforces.** `/basemap/*` answers only `region.pmtiles`,
-`fonts/*` and `sprites/*` (anything else under it is a 404, the stamps and the
-work directory included), and only to requests whose `Origin` is this site or,
-with no `Origin`, whose `Referer` is a page on it; anything else is a 403. That
-is a hotlinking guard, not access control. **The per-IP range-request limit
-PLAN asks for is not in place**: the stock `caddy:2.8-alpine` image has no
-rate-limit module, and adding one means building Caddy with a third-party
-module. Until then nothing bounds how fast one address can read the archive.
+`/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
+else under it is a 404, the stamps and the work directory included), and only to
+requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a
+page on it; anything else is a 403, sent `no-store` so a browser does not keep
+it. That is a hotlinking guard, not access control, and it has two
+consequences: a browser that strips a same-origin `Referer` (a privacy
+extension, a page served with `Referrer-Policy: no-referrer`) gets a blank map,
+and the rule assumes Caddy is the TLS edge, because behind another
+TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
+
+**The per-IP range-request limit PLAN asks for is not in place**: the stock
+`caddy:2.8-alpine` image has no rate-limit module, and adding one means building
+Caddy with a third-party module. Until then nothing bounds how fast one address
+can read the archive, and that is a gate on opening the site to anything beyond
+this machine (docs/DEPLOYMENT.md, "Build").
 
 ## Firing a rebuild by hand
 
