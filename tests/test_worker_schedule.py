@@ -277,8 +277,18 @@ def test_the_weekly_task_checks_against_the_fixture_the_image_carries() -> None:
         repo / "fixtures" / "crossings" / "potomac-anacostia.json"
     )
     assert settings.REBUILD_CROSSINGS_FIXTURE.is_file()
-    dockerfile = (repo / "docker" / "pipeline.Dockerfile").read_text()
-    assert "COPY --chown=root:root fixtures ./fixtures" in dockerfile
+    # BASE_DIR is /app in the image; some COPY must put the fixture there.
+    lines = (repo / "docker" / "pipeline.Dockerfile").read_text().splitlines()
+    assert "WORKDIR /app" in [line.strip() for line in lines]
+    copied = [
+        line.split()[-2:] for line in lines if line.startswith("COPY") and "--from=" not in line
+    ]
+    fixture = Path("fixtures/crossings/potomac-anacostia.json")
+    assert any(
+        (fixture == Path(src) or Path(src) in fixture.parents)
+        and (Path("/app") / dest).resolve() / fixture.relative_to(src) == Path("/app") / fixture
+        for src, dest in copied
+    ), "the pipeline image does not carry the crossings fixture at BASE_DIR/fixtures"
 
 
 def job(attempts: int) -> Job:

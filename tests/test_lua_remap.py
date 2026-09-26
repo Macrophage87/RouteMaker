@@ -237,6 +237,20 @@ REOPENING_ROADWAYS = {
         "cycleway": "opposite_lane",
     },
     "oneway-bicycle-no": {"highway": "primary", "oneway": "yes", "oneway:bicycle": "no"},
+    # One side alone: upstream's `bike_reverse` opens the contraflow from either
+    # side's `opposite_lane`, so closing only the other side is not enough.
+    "oneway-left-opposite-lane": {
+        "highway": "primary",
+        "bridge": "yes",
+        "oneway": "yes",
+        "cycleway:left": "opposite_lane",
+    },
+    "oneway-right-opposite-lane": {
+        "highway": "primary",
+        "bridge": "yes",
+        "oneway": "yes",
+        "cycleway:right": "opposite_lane",
+    },
     "bicycle-designated": {"highway": "primary", "bicycle": "designated"},
 }
 

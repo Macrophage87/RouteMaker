@@ -31,8 +31,10 @@ ELEVENTH_STREET_SOUTH_LANDING = {546095996, 546096006, 546095995, 546095994}
 # The rest of that landing, which the owner ruled on in a second answer the
 # same day: three more 11th Street SE ways and Martin Luther King Jr Avenue SE.
 ELEVENTH_STREET_LANDING_ONWARD = {546095992, 546095991, 546095993, 589551026, 371431399, 589551027}
-# The owner said "No" to these, on Chain Bridge's District approach: they must
-# never appear in an override file that opens ways.
+# Chain Bridge's District approach, which must never appear in an override file
+# that opens ways: Canal Road NW (397297433, 469107787, 50773201), to which the
+# owner said "No", and the Clara Barton Parkway (889043769), which was not part
+# of that question and stays as OSM tags it, with no owner answer recorded.
 CHAIN_BRIDGE_DC_APPROACH = {397297433, 469107787, 50773201, 889043769}
 
 
@@ -161,6 +163,14 @@ class TestTheCommand:
                 # Attributed to a name typed on the command line, and every
                 # entry says that is all it is.
                 assert ACTOR_NOTE in entry.detail
+            # A row the loader created had no proposal before it, so its
+            # approval claims to have replaced nothing.
+            assert "were:" not in entries.get(action="approve").detail
+
+    def test_the_actor_note_says_the_actor_is_unproven(self) -> None:
+        """What the owner's decision needs each entry to say: the actor is the
+        one named by `--actor`, and nothing authenticated it."""
+        assert "--actor" in ACTOR_NOTE and "not authenticated" in ACTOR_NOTE
 
     def test_loading_twice_is_a_no_op(self, admin) -> None:
         load(str(OWNER_FILE), "--actor", str(admin.discord_user_id), "--confirm")
