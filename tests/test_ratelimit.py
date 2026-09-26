@@ -9,6 +9,7 @@ connections at once, one budget between them.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 from datetime import timedelta
@@ -16,7 +17,7 @@ from datetime import timedelta
 import pytest
 from django.db import connection, connections
 from django.http import HttpResponse
-from django.test import RequestFactory
+from django.test import RequestFactory, override_settings
 
 from core import ratelimit
 from core.models import RateLimitWindow
@@ -75,6 +76,14 @@ class TestClientKey:
         assert key != "198.51.100.7"
         # A keyed digest: the same width whatever the address.
         assert len(key) == len(ratelimit.client_key("2001:db8:1:2::/64"))
+
+    def test_it_is_keyed_by_the_deployments_secret(self) -> None:
+        """Unkeyed, the digest of an IPv4 address is reversed by hashing all
+        four billion of them; keyed, only the holder of SECRET_KEY can."""
+        key = ratelimit.client_key("198.51.100.7")
+        with override_settings(SECRET_KEY="another-deployments-secret"):
+            assert ratelimit.client_key("198.51.100.7") != key
+        assert key != hashlib.sha256(b"198.51.100.7").hexdigest()
 
     def test_it_is_stable_and_distinguishes_clients(self) -> None:
         assert ratelimit.client_key("198.51.100.7") == ratelimit.client_key("198.51.100.7")
@@ -144,14 +153,21 @@ class TestFixedWindow:
     def test_the_budget_holds_across_concurrent_connections(self) -> None:
         """Each thread has its own database connection, which is what a
         gunicorn worker per core amounts to."""
-        attempts = 4 * LIMIT.requests
+        # Three times the budget: enough to contend, and few enough connections
+        # that a suite running beside other suites on the same server does not
+        # meet max_connections - the review's suspected flake. A thread that
+        # fails says why instead of shortening `allowed` silently.
+        attempts = 3 * LIMIT.requests
         allowed = []
-        start = threading.Barrier(attempts)
+        errors = []
+        start = threading.Barrier(attempts, timeout=30)
 
         def one() -> None:
             try:
                 start.wait()
                 allowed.append(ratelimit.hit(LIMIT, "client-a").allowed)
+            except Exception as error:  # noqa: BLE001 - reported below
+                errors.append(repr(error))
             finally:
                 connections.close_all()
 
@@ -160,8 +176,48 @@ class TestFixedWindow:
             thread.start()
         for thread in threads:
             thread.join()
+        assert errors == []
         assert len(allowed) == attempts
         assert sum(allowed) == LIMIT.requests
+
+    def test_retry_after_is_the_time_left_in_the_window(self) -> None:
+        """Not only somewhere in range: the seconds from now to the window's
+        end, read off the database clock."""
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp()) / 60) * 60), "
+                "clock_timestamp()"
+            )
+            window_start, now = cursor.fetchone()
+        expected = (window_start + timedelta(seconds=LIMIT.window_s) - now).total_seconds()
+        if expected < 3:
+            pytest.skip("too close to a window boundary to measure")
+        for _ in range(LIMIT.requests):
+            ratelimit.hit(LIMIT, "client-a")
+        refused = ratelimit.hit(LIMIT, "client-a")
+        assert abs(refused.retry_after_s - expected) <= 2
+
+    def test_retry_after_is_never_zero_at_the_end_of_a_window(self, monkeypatch) -> None:
+        """At the last instant of a window the time left rounds to nothing,
+        and "Retry-After: 0" invites an immediate retry into the same refusal."""
+        for _ in range(LIMIT.requests):
+            ratelimit.hit(LIMIT, "client-a")
+
+        class Cursor:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def execute(self, *args):
+                pass
+
+            def fetchone(self):
+                return (LIMIT.requests + 1, 0)
+
+        monkeypatch.setattr(ratelimit.connection, "cursor", lambda: Cursor())
+        assert ratelimit.hit(LIMIT, "client-a").retry_after_s == 1
 
 
 @db
@@ -182,16 +238,36 @@ class TestRetention:
         days in the rate-limit store."""
         assert timedelta(0) < ratelimit.RETENTION <= timedelta(days=30)
 
-    def test_hits_purge_as_they_go(self, monkeypatch) -> None:
+    def test_the_worker_sweep_purges_on_its_schedule(self) -> None:
+        """A quiet deployment makes no requests, so the purge cannot ride on
+        them; it rides on the six-hourly membership sweep, as the session and
+        membership purges do."""
+        from config.procrastinate import app
+        from core.models import ScheduledRun
+
+        ratelimit.hit(LIMIT, "stale")
+        ratelimit.hit(LIMIT, "fresh")
+        RateLimitWindow.objects.filter(client="stale").update(
+            window_start=RateLimitWindow.objects.get(client="stale").window_start
+            - ratelimit.RETENTION
+            - timedelta(seconds=1)
+        )
+        app.tasks["membership_sweep"].func(timestamp=0)
+        assert set(RateLimitWindow.objects.values_list("client", flat=True)) == {"fresh"}
+        detail = ScheduledRun.objects.get(task="membership_sweep").detail
+        assert "1 idle rate-limit rows" in detail
+
+    def test_a_request_does_not_purge(self) -> None:
+        """The purge is the sweep's; a hit is one upsert."""
         ratelimit.hit(LIMIT, "stale")
         RateLimitWindow.objects.filter(client="stale").update(
             window_start=RateLimitWindow.objects.get(client="stale").window_start
             - ratelimit.RETENTION
             - timedelta(seconds=1)
         )
-        monkeypatch.setattr(ratelimit, "PURGE_PROBABILITY", 1.0)
-        ratelimit.hit(LIMIT, "fresh")
-        assert not RateLimitWindow.objects.filter(client="stale").exists()
+        for _ in range(50):
+            ratelimit.hit(LIMIT, "fresh")
+        assert RateLimitWindow.objects.filter(client="stale").exists()
 
     def test_the_table_stays_out_of_the_nightly_dump(self) -> None:
         """Backups outlive the retention window, so a table of client keys in

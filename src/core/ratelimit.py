@@ -21,34 +21,56 @@ routinely handed a whole /64 and per-address counting would give one person an
 unbounded number of budgets.
 
 What is stored: a keyed digest of that address, never the address, and the row
-is purged once it has been idle for `RETENTION`. PLAN, Privacy and retention,
-sets 30 days as the ceiling for client addresses in the rate-limit store; a day
-is enough for a limiter whose longest window is a minute. The table is also
+is purged once it has been idle for `RETENTION` by the worker's membership
+sweep (every six hours, `config.procrastinate.membership_sweep`), so no row
+outlives about thirty hours. PLAN, Privacy and retention, sets 30 days as the
+ceiling for client addresses in the rate-limit store. The table is also
 excluded from the nightly dump (`config.procrastinate.BACKUP_EXCLUDED_TABLES`),
-since a backup outlives the retention.
+since a backup outlives the retention. The digest is keyed with SECRET_KEY, so
+it hides the address from a dump but not from someone holding the key, who can
+try every IPv4 address; that is the same party that can read the database.
+
+A count per minute does not bound how many of a client's requests run at once,
+and a routing request holds a gunicorn worker for as long as the router takes.
+So routing also takes an in-flight slot (`in_flight_limited`): a session-level
+PostgreSQL advisory lock, one of `total` for the deployment and one of
+`per_client` for the client, held for the request and released after it. The
+lock lives on the worker's database connection, so it is correct across
+workers and dies with a killed worker. `total` is the worker count less two, so
+however the router is loaded two workers are always free for `/healthz`, the
+tiles, sign-in and the admin.
 """
 
 from __future__ import annotations
 
 import ipaddress
-import random
+import logging
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import wraps
 
+from django.conf import settings
 from django.db import connection
 from django.http import JsonResponse
 from django.utils.crypto import salted_hmac
 
+logger = logging.getLogger(__name__)
+
 # Rows idle longer than this are deleted. Inside the plan's 30-day ceiling.
 RETENTION = timedelta(days=1)
 
-# Each counted request purges idle rows with this probability. The purge is one
-# indexed DELETE; at one request in five hundred it costs nothing measurable
-# and needs no scheduled task.
-PURGE_PROBABILITY = 1 / 500
-
 _KEY_SALT = "routemaker/rate-limit/v1"
+
+# The first key of every advisory lock this module takes, so nothing else in
+# the database that uses advisory locks can collide with these.
+_LOCK_CLASS_TOTAL = 0x524D0000
+_LOCK_CLASS_CLIENT = 0x524D1000
+
+# How long a refused client is told to wait for a slot. A routing request takes
+# a second or two; the whole-deployment case asks for longer because it means
+# every slot is busy.
+CLIENT_BUSY_RETRY_S = 2
+DEPLOYMENT_BUSY_RETRY_S = 5
 
 
 @dataclass(frozen=True)
@@ -123,15 +145,16 @@ def hit(limit: Limit, client: str) -> Decision:
     with connection.cursor() as cursor:
         cursor.execute(_HIT, {"scope": limit.scope, "client": client, "window": limit.window_s})
         hits, remaining = cursor.fetchone()
-    if random.random() < PURGE_PROBABILITY:
-        purge_expired()
     if hits <= limit.requests:
         return Decision(allowed=True, retry_after_s=0)
     return Decision(allowed=False, retry_after_s=min(limit.window_s, max(1, int(remaining))))
 
 
 def purge_expired() -> int:
-    """Delete rows idle for longer than `RETENTION`; returns how many."""
+    """Delete rows idle for longer than `RETENTION`; returns how many.
+
+    Called by the worker's membership sweep, every six hours.
+    """
     with connection.cursor() as cursor:
         cursor.execute(
             "DELETE FROM rate_limit_window WHERE window_start < clock_timestamp() - %s",
@@ -160,6 +183,100 @@ def rate_limited(limit: Limit):
                 response["Retry-After"] = str(decision.retry_after_s)
                 return response
             return view(request, *args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+@dataclass(frozen=True)
+class InFlight:
+    """At most `per_client` requests per client, and at most the deployment's
+    `settings.<total_setting>` requests in all, running at once under `scope_id`."""
+
+    scope_id: int
+    per_client: int
+    total_setting: str
+
+    @property
+    def total(self) -> int:
+        return int(getattr(settings, self.total_setting))
+
+
+# Two per client, so that a planner which fires a new request while its last is
+# still in flight - a waypoint dragged twice - is not refused for it.
+ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CONCURRENCY")
+
+
+def _client_lock_id(client: str) -> int:
+    """The client's key as a signed 32-bit integer, the advisory lock's second key."""
+    value = int(client[:8], 16)
+    return value - (1 << 32) if value >= 1 << 31 else value
+
+
+def _take_one(cursor, candidates) -> tuple[int, int] | None:
+    for pair in candidates:
+        cursor.execute("SELECT pg_try_advisory_lock(%s, %s)", list(pair))
+        if cursor.fetchone()[0]:
+            return pair
+    return None
+
+
+def _release(pairs) -> None:
+    for pair in pairs:
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_unlock(%s, %s)", list(pair))
+        except Exception:  # noqa: BLE001 - a lost connection has released it already
+            logger.warning("could not release in-flight slot %s; its connection has gone", pair)
+
+
+def _busy(status: int, retry_after_s: int, message: str) -> JsonResponse:
+    response = JsonResponse({"error": message}, status=status)
+    response["Retry-After"] = str(retry_after_s)
+    return response
+
+
+def in_flight_limited(limit: InFlight):
+    """A view decorator: take a client slot and a deployment slot for the
+    request, or refuse it - 429 when this client already has `per_client`
+    running, 503 when the deployment has `total` running."""
+
+    def decorator(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            client = _client_lock_id(client_key(client_address(request)))
+            held = []
+            try:
+                with connection.cursor() as cursor:
+                    mine = _take_one(
+                        cursor,
+                        [
+                            (_LOCK_CLASS_CLIENT + limit.scope_id * 64 + slot, client)
+                            for slot in range(limit.per_client)
+                        ],
+                    )
+                    if mine is None:
+                        return _busy(
+                            429,
+                            CLIENT_BUSY_RETRY_S,
+                            "This address already has routes being planned; try again shortly.",
+                        )
+                    held.append(mine)
+                    shared = _take_one(
+                        cursor,
+                        [(_LOCK_CLASS_TOTAL + limit.scope_id, slot) for slot in range(limit.total)],
+                    )
+                    if shared is None:
+                        return _busy(
+                            503,
+                            DEPLOYMENT_BUSY_RETRY_S,
+                            "The planner is busy; try again in a few seconds.",
+                        )
+                    held.append(shared)
+                return view(request, *args, **kwargs)
+            finally:
+                _release(held)
 
         return wrapped
 
