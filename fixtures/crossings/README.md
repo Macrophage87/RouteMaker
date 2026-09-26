@@ -250,7 +250,14 @@ roadway a mass ride was given that day, what happens at its ends:
   tier reaches the router only as a comfort tag on tier-1 ways (the remap's
   `cycleway=track`), and Default is a layer-2 preset with no stress-weighted
   ranking, so a Default route weighs the road only by Valhalla's own bicycle
-  costing of its road class.
+  costing of its road class. Measured on a rebuilt graph of the 2026-09-24
+  extract with the rows loaded: a standard or e-bike route southbound from
+  the Navy Yard (38.8760, -76.9950) to 38.8660, -76.9880 now takes the local
+  span's roadway (546096009) and Martin Luther King Jr Avenue SE, 2.455 km,
+  where without the rows it took the Anacostia Riverwalk Trail (546096004);
+  northbound it stays on the Riverwalk. Nothing in the build discourages the
+  roadway, and whether something should is the owner's question, recorded in
+  handoff.md section 7.
 
 Access corrections go through the override table, the plan's one audited path
 for them, never through this file: the rows are checked in at
