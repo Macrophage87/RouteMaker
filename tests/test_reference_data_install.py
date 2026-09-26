@@ -135,7 +135,10 @@ def test_the_script_installs_every_file_the_loader_requires(tmp_path) -> None:
     # Named, not just counted, and named from both halves of the union: a
     # `sidepath_only` row and a legality-only row, so neither resolver can go
     # quiet without this failing.
-    assert "Key Bridge" in loaded.unmatched_crossings, "the sidepath half reports its misses"
+    assert "George Mason Memorial Bridge" in loaded.unmatched_crossings, (
+        "the sidepath half reports its misses"
+    )
+    assert "Key Bridge" in loaded.unmatched_crossings, "and the mass-ride-only half"
     assert "Theodore Roosevelt Bridge" in loaded.unmatched_crossings, "and the legality half"
 
 
@@ -256,9 +259,11 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
         for row in rows
         if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
     )
-    # Two of the fourteen are pinned by way id; this extract carries neither
+    # Two of the sixteen are pinned by way id; this extract carries neither
     # pinned way, so they are named in the same warning as the name misses.
-    assert len(sidepath_rows) == 4 and len(legality_only) == 14, "the fixture's two halves"
+    # Two sidepath rows and sixteen legality-only rows since 2026-09-26, when
+    # the owner put a mass ride on the Key Bridge and Chain Bridge roadways.
+    assert len(sidepath_rows) == 2 and len(legality_only) == 16, "the fixture's two halves"
 
     ways = [
         Way(
@@ -393,6 +398,46 @@ def test_the_loader_names_a_crossing_only_the_sidepath_column_asks_about(tmp_pat
     assert loaded.unmatched_crossings == ("Sidepath Bridge",)
     assert loaded.bridge_bicycle_legal == {8100: True}, "the legality half resolved"
     assert loaded.sidepath_bridge_ids == frozenset(), "and the sidepath row matched nothing"
+
+
+def test_the_mass_ride_only_half_reports_its_own_misses(tmp_path) -> None:
+    """`roadway_mass_ride_only` is a third column read by a third resolver, and
+    its misses join the one union warning like the other two. The row here has
+    no legality opinion and no sidepath flag, so if this half went quiet
+    nothing else would name it - and a mass-ride-only roadway the extract does
+    not carry is one the standard and e-bike variants are not barring."""
+    from pipeline.extract import Way
+    from pipeline.run import ReferenceData
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "urban-areas.json").write_text("[]")
+    (reference / "volume.json").write_text("[]")
+    rows = [
+        {
+            "name": "Parade Bridge",
+            "osm_names": ["Parade Bridge"],
+            "osm_names_verified": True,
+            "sidepath_only": False,
+            "roadway_mass_ride_only": True,
+            "roadway_bicycle_legal": None,
+        }
+    ]
+    (reference / "crossings.json").write_text(json.dumps(rows))
+
+    loaded = ReferenceData.load(reference, [])
+    assert loaded.unmatched_crossings == ("Parade Bridge",)
+    assert loaded.mass_ride_only_bridge_ids == frozenset()
+
+    way = Way(
+        osm_id=8200,
+        tags={"highway": "primary", "bridge": "yes", "name": "Parade Bridge"},
+        node_ids=[],
+        coordinates=ON_THE_POTOMAC,
+    )
+    loaded = ReferenceData.load(reference, [way])
+    assert loaded.unmatched_crossings == ()
+    assert loaded.mass_ride_only_bridge_ids == frozenset({8200})
 
 
 def line_feature(coordinates: list[list[float]], aadt: str, object_id: int = 1) -> dict:

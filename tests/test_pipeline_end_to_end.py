@@ -681,6 +681,58 @@ def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
         assert tags[700].get("rm:bridge_bicycle") == "no", variant.value
 
 
+def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
+    tmp_path, segment_schemas, states
+) -> None:
+    """Owner, 2026-09-26, on Key Bridge and Memorial Bridge: the roadway is for
+    a mass ride and no one else. Driven through the real pipeline, on the Key
+    Bridge's own shape - a trunk roadway OSM tags `bicycle=no`, which the
+    fixture's legality row overrides, beside a bike-designated sidewalk named
+    after the same structure - and read back from the written PBFs.
+
+    The legality tag is what makes this more than an `inject` change: the
+    transform writes `bicycle=yes` wherever `rm:bridge_bicycle=yes` arrives, so
+    emitted on the standard and e-bike extracts it would grant straight back
+    the roadway those variants bar.
+    """
+    from pipeline.extract import read_ways
+
+    source = install_source_extract(
+        tmp_path,
+        build_named_bridge_extract,
+        roadway_id=710,
+        sidepath_id=711,
+        name="Francis Scott Key Bridge",
+        roadway_tags={"highway": "trunk", "bicycle": "no", "foot": "no"},
+    )
+    row = {
+        "name": "Key Bridge",
+        "osm_way_id": 0,
+        "osm_names": ["Francis Scott Key Bridge"],
+        "roadway_bicycle_legal": True,
+        "sidepath_only": False,
+        "roadway_mass_ride_only": True,
+    }
+    context, _ = run_pipeline(source, tmp_path, urban=(710, 711), crossings=[row], skip=NOT_SWAPPED)
+    assert context.reference.mass_ride_only_bridge_ids == frozenset({710})
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if variant is Variant.NO_TRAIL:
+            # The roadway stays, with the legality the transform turns into
+            # `bicycle=yes`; the sidewalk goes, as every trail-class way does.
+            assert tags[710].get("rm:bridge_bicycle") == "yes"
+            assert 711 not in tags
+            continue
+        assert tags[710].get("bicycle") == "no", variant.value
+        assert "rm:bridge_bicycle" not in tags[710], (
+            f"the {variant.value} extract would have its bar granted back by the transform"
+        )
+        # The sidewalk is how an ordinary rider crosses, and nothing touched it.
+        assert tags[711].get("bicycle") != "no", variant.value
+        assert "rm:bridge_bicycle" not in tags[711], variant.value
+
+
 def test_a_way_clipping_an_authority_by_a_sliver_is_not_tagged_with_it(workspace, states) -> None:
     """assign_way returns every authority a way touches with the share inside
     each and says the caller decides. The caller did not decide: a road that

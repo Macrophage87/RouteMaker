@@ -49,10 +49,12 @@ reading an unmatched-name warning needs to know whether a crossing missing from
 the log is missing because the extract lost it or because this file never had
 it.
 
-The first job is to answer, per structure, the two questions the midpoint
+The first job is to answer, per structure, the questions the midpoint
 heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
-no-trail (mass ride) variant drops, and `resolve_bridge_bicycle_legality`
-decides what `rm:bridge_bicycle` carries into `graph.lua` on every variant.
+no-trail (mass ride) variant drops, `resolve_mass_ride_only_bridge_ids` decides
+which roadways the standard and e-bike variants bar because they are for mass
+rides only, and `resolve_bridge_bicycle_legality` decides what
+`rm:bridge_bicycle` carries into `graph.lua` on every variant.
 Memorial Bridge is one authority end to end; the "14th Street Bridge" is
 **five** parallel structures with different answers (three highway spans, the
 Long Bridge carrying rail, and the Charles R. Fenwick Bridge carrying Metro's
@@ -136,19 +138,37 @@ two columns the pipeline reads, written where nothing reads them:
   these two, and the twelve other legality-only rows, could resolve against
   nothing on every rebuild and appear in no log at all.
 
-And it supplies two independent sets to the tile build, from two different
-columns. Do not OR them together; a rebuild that did once passed its own test
-while being inert, because every row where it mattered happened to agree.
+And it supplies three independent answers to the tile build, from three
+different columns. Do not OR them together; a rebuild that did once passed its
+own test while being inert, because every row where it mattered happened to
+agree.
 
 * `sidepath_only` — routing-relevant, and read only by the no-trail (mass ride)
-  variant. True means a mass ride cannot practically use this crossing's
-  roadway even where an individual rider legally can: Key Bridge and Chain
-  Bridge are ordinary, bike-legal climbs that hundreds of people cannot safely
-  share, being narrow with no shoulder and no way off mid-span. This is what
-  keeps the no-trail variant off the Key Bridge sidewalk — an eight-foot path
-  with no way off it mid-span, for a field of hundreds — via
-  `resolve_sidepath_bridge_ids` and `variants.inject()`. It says nothing about
-  legality and must never be treated as a legal claim.
+  variant, which drops the roadway of a row that sets it: true means a mass
+  ride cannot practically use this crossing's roadway. It is set today only
+  where the roadway is barred anyway (the George Mason span and the Wilson
+  Bridge roadway). Key Bridge and Chain Bridge carried it until the owner's
+  decision of 2026-09-26 — "Mass ride can cross the Potomac at Chain Bridge,
+  Key Bridge, and Memorial bridge without using a trail." — and with it the
+  no-trail variant had no crossing there at all, since the sidewalk beside
+  each roadway is trail class and dropped as such. The no-trail variant is
+  kept off every bridge sidewalk by `is_trail_class`, not by this column. It
+  says nothing about legality and must never be treated as a legal claim.
+* `roadway_mass_ride_only` — routing-relevant, the other way round: true means
+  the roadway is for a mass ride and for no one else, so the no-trail variant
+  keeps it and the standard and e-bike variants bar it (`variants.inject()`
+  writes `bicycle=no`, and on a directional `bicycle:forward`/`:backward` key
+  already present, and `inject_tags` withholds the row's `rm:bridge_bicycle`
+  on those two variants so the transform cannot grant the roadway back). An
+  ordinary rider then crosses by the sidepath, which is its own trail-class
+  way that no resolver reaches. The owner set it on 2026-09-26 for Key Bridge
+  ("I wouldn't route someone onto that outside of a mass ride.") and
+  Arlington Memorial Bridge ("Same with memorial bridge."); both have a
+  bike-legal sidewalk or cycleway on the structure for the other two variants
+  to use, which the rows' notes name. A row may not combine it with
+  `sidepath_only` or with `roadway_bicycle_legal: false` — the roadway would
+  be in no graph — and `variants.check_crossing_rows_consistent` refuses
+  either at load. It is a routing rule, not a legal claim.
 * `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
   variant alike, because access is not a request-time dial. False means OSM
   carries `bicycle=no` on the roadway itself, or that the roadway is a class
@@ -158,8 +178,9 @@ while being inert, because every row where it mattered happened to agree.
   the Wilson Bridge roadway, the Theodore Roosevelt and American Legion
   bridges, and the two rail structures. True
   means the roadway is an ordinary, legal road, whatever its comfort - Key
-  Bridge and Chain Bridge are both `true` even though `sidepath_only` is also
-  `true` for both. `resolve_bridge_bicycle_legality` turns this into the
+  Bridge and Memorial Bridge are both `true` even though
+  `roadway_mass_ride_only` keeps ordinary riders off them.
+  `resolve_bridge_bicycle_legality` turns this into the
   `rm:bridge_bicycle` tag `graph.lua` already reads.
 
   **The roadway, and not the path on it.** A shared-use path on a bridge is

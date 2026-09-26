@@ -142,7 +142,9 @@ def state_polygons():
     Jurisdiction.objects.all().delete()
 
 
-def build_named_bridge_extract(path: Path, *, roadway_id: int, sidepath_id: int, name: str) -> None:
+def build_named_bridge_extract(
+    path: Path, *, roadway_id: int, sidepath_id: int, name: str, roadway_tags: dict | None = None
+) -> None:
     """A bridge's roadway and the shared-use path on it, both carrying the
     bridge's name.
 
@@ -154,7 +156,8 @@ def build_named_bridge_extract(path: Path, *, roadway_id: int, sidepath_id: int,
 
     It exists so the crossings fixture's `roadway_bicycle_legal` column can be
     driven through the real pipeline against the geometry it has to tell apart,
-    rather than against a synthetic row keyed by way id.
+    rather than against a synthetic row keyed by way id. `roadway_tags` is
+    merged over the roadway's own (a motorway unless it says otherwise).
     """
     Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
     writer = osmium.SimpleWriter(str(path))
@@ -174,7 +177,7 @@ def build_named_bridge_extract(path: Path, *, roadway_id: int, sidepath_id: int,
                 id=roadway_id,
                 nodes=[1, 2],
                 version=1,
-                tags={"highway": "motorway", "bridge": "yes", "name": name},
+                tags={"highway": "motorway", "bridge": "yes", "name": name, **(roadway_tags or {})},
             )
         )
         writer.add_way(

@@ -7,15 +7,18 @@ from typing import NamedTuple
 import pytest
 
 from pipeline.variants import (
+    ContradictoryCrossingRow,
     DuplicateCrossingName,
     Variant,
     bars_electric_bicycle,
     check_crossing_names_unique,
     crossing_names,
     inject,
+    is_roadway_mass_ride_only,
     is_sidepath_only,
     is_trail_class,
     resolve_bridge_bicycle_legality,
+    resolve_mass_ride_only_bridge_ids,
     resolve_sidepath_bridge_ids,
     unverified_crossing_names,
     variant_for,
@@ -136,8 +139,9 @@ class TestIsSidepathOnly:
         assert not is_sidepath_only(barred_with_no_sidepath)
 
     def test_a_legal_roadway_can_still_be_sidepath_only(self) -> None:
-        """Key Bridge and Chain Bridge: the roadway is legal, but the mass-ride
-        provision is still the sidepath."""
+        """A roadway can be legal and still be one a mass ride cannot use - the
+        shape Key Bridge and Chain Bridge had until the owner's decision of
+        2026-09-26 put a mass ride on both roadways."""
         assert is_sidepath_only({"sidepath_only": True, "roadway_bicycle_legal": True})
 
 
@@ -218,25 +222,39 @@ class ExpectedCrossing(NamedTuple):
     legal: bool
     police: str
     row_owner: str
+    # `roadway_mass_ride_only`: the roadway is for mass rides alone, and the
+    # standard and e-bike variants bar it. Owner statements of 2026-09-26, for
+    # Key Bridge and Arlington Memorial Bridge.
+    mass_ride_only: bool = False
 
 
 EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
+    # Owner, 2026-09-26: a mass ride crosses the Potomac on the roadway of Chain,
+    # Key and Memorial bridges, and on Key and Memorial the roadway is for mass
+    # rides only - an ordinary rider is sent by the sidepath.
     "Arlington Memorial Bridge": ExpectedCrossing(
-        ("Arlington Memorial Bridge",), False, True, "US Park Police", "National Park Service"
+        ("Arlington Memorial Bridge",),
+        False,
+        True,
+        "US Park Police",
+        "National Park Service",
+        mass_ride_only=True,
     ),
     # The label in the file is "Key Bridge"; OSM's name is the full one, and
     # this row is the reason `osm_names` exists at all. One authority end to
     # end, because the DC-Virginia boundary on the Potomac is the 1791 Virginia
     # shoreline and not the channel - the police split down the middle was the
     # midpoint heuristic written into the data.
-    "Key Bridge": ExpectedCrossing(("Francis Scott Key Bridge",), True, True, "MPD", "DDOT"),
+    "Key Bridge": ExpectedCrossing(
+        ("Francis Scott Key Bridge",), False, True, "MPD", "DDOT", mass_ride_only=True
+    ),
     # Legal roadways, both. Recording either as roadway-illegal is the round-3
-    # error: a narrow bridge a mass ride cannot share is not a bridge bicycles
-    # are barred from, and Chain Bridge is a standard climb out of Georgetown.
+    # error, and recording either as sidepath-only was the error the owner
+    # corrected on 2026-09-26: a mass ride takes these roadways.
     # Chain Bridge's Virginia end was also recorded as Fairfax County, which was
     # wrong twice over - the abutment is in Arlington, and above the shoreline
     # it is not a Virginia authority's to police at all.
-    "Chain Bridge": ExpectedCrossing(("Chain Bridge",), True, True, "MPD", "DDOT"),
+    "Chain Bridge": ExpectedCrossing(("Chain Bridge",), False, True, "MPD", "DDOT"),
     # The 14th Street complex: three highway spans, the Long Bridge (rail) and
     # the Fenwick Bridge (Metro). The shared-use path is a sidewalk on the
     # George Mason span, so that is the row that is sidepath-only; the other two
@@ -379,10 +397,17 @@ class TestTheFixtureSaysWhatItIsExpectedToSay:
         say different things: `sidepath_only` is a routing decision for mass
         rides and `roadway_bicycle_legal` is a legality fact for every variant."""
         actual = {
-            row["name"]: (row["sidepath_only"], row["roadway_bicycle_legal"])
+            row["name"]: (
+                row["sidepath_only"],
+                row["roadway_bicycle_legal"],
+                row["roadway_mass_ride_only"],
+            )
             for row in crossing_rows()
         }
-        expected = {name: (row.sidepath, row.legal) for name, row in EXPECTED_CROSSINGS.items()}
+        expected = {
+            name: (row.sidepath, row.legal, row.mass_ride_only)
+            for name, row in EXPECTED_CROSSINGS.items()
+        }
         assert actual == expected
 
     def test_every_row_names_the_expected_authorities(self) -> None:
@@ -433,10 +458,15 @@ class TestTheFixtureSaysWhatItIsExpectedToSay:
         assert not unmatched
         legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, ways)
         assert not legality_unmatched
+        mass_ride_ids, mass_ride_unmatched = resolve_mass_ride_only_bridge_ids(rows, ways)
+        assert not mass_ride_unmatched
 
         for way, (name, expected) in zip(ways, EXPECTED_CROSSINGS.items(), strict=True):
             assert (way.osm_id in bridge_ids) is expected.sidepath, f"{name}: sidepath_only"
             assert legality[way.osm_id] is expected.legal, f"{name}: roadway_bicycle_legal"
+            assert (way.osm_id in mass_ride_ids) is expected.mass_ride_only, (
+                f"{name}: roadway_mass_ride_only"
+            )
 
     def test_no_two_rows_claim_the_same_osm_name(self) -> None:
         """Names are how this file resolves, and they merge into one flat dict:
@@ -461,6 +491,7 @@ def test_the_committed_crossings_fixture_is_well_formed() -> None:
         assert row["name"]
         assert isinstance(row["roadway_bicycle_legal"], bool)
         assert isinstance(row["sidepath_only"], bool)
+        assert isinstance(row["roadway_mass_ride_only"], bool)
         # Not a legal statement about access: it records what a rider can use and
         # who to ask, which is why every row carries an authority and a note.
         assert row["police"] and row["note"]
@@ -520,6 +551,139 @@ def test_every_sidepath_only_crossing_is_trail_class_on_the_no_trail_variant() -
         assert inject(Variant.EBIKE, way.tags, way.osm_id, bridge_ids) is not None, row["name"]
 
 
+class TestARoadwayForMassRidesOnly:
+    """`roadway_mass_ride_only`, the owner's rule of 2026-09-26 for Key Bridge
+    and Arlington Memorial Bridge: the roadway is for a mass ride and for no one
+    else. The no-trail variant keeps it; the standard and e-bike variants bar it
+    (`bicycle=no`), so an ordinary rider is sent by the sidepath, which is its
+    own trail-class way and is never what the rule reaches."""
+
+    def resolved(self):
+        rows = crossing_rows()
+        ways = expected_extract()
+        sidepath_ids, _ = resolve_sidepath_bridge_ids(rows, ways)
+        mass_ride_ids, unmatched = resolve_mass_ride_only_bridge_ids(rows, ways)
+        assert not unmatched
+        return ways, sidepath_ids, mass_ride_ids
+
+    def test_every_crossing_in_every_variant(self) -> None:
+        """Over the whole fixture, against the hand-typed expectation: for each
+        crossing's roadway, what each of the three variants builds with."""
+        ways, sidepath_ids, mass_ride_ids = self.resolved()
+        for way, (name, expected) in zip(ways, EXPECTED_CROSSINGS.items(), strict=True):
+            no_trail = inject(Variant.NO_TRAIL, way.tags, way.osm_id, sidepath_ids, mass_ride_ids)
+            assert (no_trail is None) is expected.sidepath, f"{name}: no-trail drop"
+            if no_trail is not None:
+                assert no_trail.get("bicycle") != "no", f"{name}: no-trail barred the roadway"
+            for variant in (Variant.STANDARD, Variant.EBIKE):
+                built = inject(variant, way.tags, way.osm_id, sidepath_ids, mass_ride_ids)
+                assert built is not None, f"{name}: {variant.value} dropped the roadway"
+                barred = built.get("bicycle") == "no"
+                assert barred is expected.mass_ride_only, f"{name}: {variant.value} bar"
+
+    def test_the_owners_three_potomac_roadways_carry_a_mass_ride(self) -> None:
+        """The owner, 2026-09-26: "Mass ride can cross the Potomac at Chain
+        Bridge, Key Bridge, and Memorial bridge without using a trail" - so none
+        of the three roadways is dropped from the no-trail variant, and none is
+        legally barred."""
+        ways, sidepath_ids, mass_ride_ids = self.resolved()
+        by_label = dict(zip(EXPECTED_CROSSINGS, ways, strict=True))
+        for label in ("Chain Bridge", "Key Bridge", "Arlington Memorial Bridge"):
+            way = by_label[label]
+            kept = inject(Variant.NO_TRAIL, way.tags, way.osm_id, sidepath_ids, mass_ride_ids)
+            assert kept is not None and kept.get("bicycle") != "no", label
+        rows = {row["name"]: row for row in crossing_rows()}
+        assert all(
+            rows[label]["roadway_bicycle_legal"]
+            for label in ("Chain Bridge", "Key Bridge", "Arlington Memorial Bridge")
+        )
+
+    def test_the_bar_covers_a_directional_grant_too(self) -> None:
+        """A `bicycle:forward=yes` left standing would open one direction of a
+        roadway the bar closed, since Valhalla lets the directional key win."""
+        tags = {"highway": "trunk", "bicycle:forward": "yes", "bicycle:backward": "designated"}
+        for variant in (Variant.STANDARD, Variant.EBIKE):
+            built = inject(variant, tags, 7, frozenset(), frozenset({7}))
+            assert built["bicycle"] == "no", variant.value
+            assert built["bicycle:forward"] == "no", variant.value
+            assert built["bicycle:backward"] == "no", variant.value
+        kept = inject(Variant.NO_TRAIL, tags, 7, frozenset(), frozenset({7}))
+        assert kept == tags
+
+    def test_only_the_listed_ways_are_barred(self) -> None:
+        tags = {"highway": "trunk"}
+        for variant in (Variant.STANDARD, Variant.EBIKE):
+            assert "bicycle" not in inject(variant, tags, 8, frozenset(), frozenset({7}))
+
+    def test_the_rule_reaches_the_roadway_and_never_the_sidepath(self) -> None:
+        """The Key Bridge sidewalk and the Memorial Bridge cycleways are how an
+        ordinary rider crosses once the roadway is barred. A rule that reached
+        them would leave the standard and e-bike variants no crossing at all
+        there, so the trail-class guard every resolver shares keeps them out."""
+        roadway = FakeWay(
+            3101, {"highway": "trunk", "bridge": "yes", "name": "Francis Scott Key Bridge"}
+        )
+        sidewalk = FakeWay(
+            3102, {"highway": "footway", "bridge": "yes", "name": "Francis Scott Key Bridge"}
+        )
+        cycleway = FakeWay(
+            3103, {"highway": "cycleway", "bridge": "yes", "name": "Arlington Memorial Bridge"}
+        )
+        ids, unmatched = resolve_mass_ride_only_bridge_ids(
+            crossing_rows(), [roadway, sidewalk, cycleway]
+        )
+        assert ids == frozenset({3101})
+        assert "Key Bridge" not in unmatched
+        # Only the paths present: the rows are reported, not satisfied by them.
+        ids, unmatched = resolve_mass_ride_only_bridge_ids(crossing_rows(), [sidewalk, cycleway])
+        assert ids == frozenset()
+        assert {"Key Bridge", "Arlington Memorial Bridge"} <= set(unmatched)
+
+    def test_a_street_named_after_the_bridge_is_not_barred(self) -> None:
+        """Key Bridge's approaches are where every rider rides; the bridge guard
+        keeps them off the list."""
+        approach = FakeWay(3104, {"highway": "secondary", "name": "Francis Scott Key Bridge"})
+        ids, unmatched = resolve_mass_ride_only_bridge_ids(crossing_rows(), [approach])
+        assert ids == frozenset()
+        assert "Key Bridge" in unmatched
+
+    def test_baltimores_key_bridge_is_not_barred(self) -> None:
+        ids, unmatched = resolve_mass_ride_only_bridge_ids(
+            crossing_rows(), [DC_KEY_BRIDGE, BALTIMORE_KEY_BRIDGE]
+        )
+        assert ids == frozenset({DC_KEY_BRIDGE.osm_id})
+
+    def test_a_pinned_row_is_honoured_and_its_absence_reported(self) -> None:
+        row = {"name": "Pinned", "osm_way_id": 7401, "roadway_mass_ride_only": True}
+        assert resolve_mass_ride_only_bridge_ids([row], []) == (frozenset({7401}), ["Pinned"])
+        present = [FakeWay(7401, {"highway": "service"}, ((-76.52, 39.22),))]
+        assert resolve_mass_ride_only_bridge_ids([row], present) == (frozenset({7401}), [])
+
+    def test_the_column_is_read_alone(self) -> None:
+        assert is_roadway_mass_ride_only({"roadway_mass_ride_only": True})
+        assert not is_roadway_mass_ride_only({"roadway_mass_ride_only": False})
+        assert not is_roadway_mass_ride_only({"sidepath_only": True, "roadway_bicycle_legal": True})
+
+    @pytest.mark.parametrize(
+        "row",
+        [
+            # No-trail would drop the roadway and the other two would bar it:
+            # the roadway would be in no graph, for a row that says a mass ride
+            # uses it.
+            {"name": "X", "roadway_mass_ride_only": True, "sidepath_only": True},
+            # A roadway barred to every bicycle is not a mass ride's either.
+            {"name": "X", "roadway_mass_ride_only": True, "roadway_bicycle_legal": False},
+        ],
+    )
+    def test_a_contradictory_row_is_refused(self, row: dict) -> None:
+        with pytest.raises(ContradictoryCrossingRow, match="X"):
+            resolve_mass_ride_only_bridge_ids([row], [])
+        with pytest.raises(ContradictoryCrossingRow, match="X"):
+            resolve_sidepath_bridge_ids([row], [])
+        with pytest.raises(ContradictoryCrossingRow, match="X"):
+            resolve_bridge_bicycle_legality([row], [])
+
+
 def test_a_crossing_the_extract_does_not_carry_is_reported_rather_than_ignored() -> None:
     """A way id is the wrong thing to check in - OSM ids change whenever a mapper
     splits a bridge - so these resolve by name, and a name that finds nothing
@@ -527,8 +691,12 @@ def test_a_crossing_the_extract_does_not_carry_is_reported_rather_than_ignored()
     is not biting on that bridge, and an operator needs told which."""
     ids, unmatched = resolve_sidepath_bridge_ids(crossing_rows(), [])
     assert ids == frozenset()
-    assert "Key Bridge" in unmatched
-    assert "Arlington Memorial Bridge" not in unmatched, "it is not a sidepath-only crossing"
+    assert "George Mason Memorial Bridge" in unmatched
+    assert "Key Bridge" not in unmatched, "it is not a sidepath-only crossing since 2026-09-26"
+    ids, unmatched = resolve_mass_ride_only_bridge_ids(crossing_rows(), [])
+    assert ids == frozenset()
+    assert {"Key Bridge", "Arlington Memorial Bridge"} <= set(unmatched)
+    assert "Chain Bridge" not in unmatched, "its roadway is for every rider"
 
 
 def test_a_street_named_after_a_crossing_does_not_inherit_its_legality() -> None:
@@ -721,9 +889,10 @@ class TestTheLegalityHalfReportsItsOwnMisses:
             for row in rows
             if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
         ]
-        # Two of the fourteen are pinned by way id, and are named here because
-        # this extract does not carry the ways they are pinned to.
-        assert len(expected) == 14, "the fixture's legality-only rows"
+        # Two of the sixteen are pinned by way id, and are named here because
+        # this extract does not carry the ways they are pinned to. Sixteen since
+        # 2026-09-26, when Key Bridge and Chain Bridge stopped being sidepath-only.
+        assert len(expected) == 16, "the fixture's legality-only rows"
         assert sorted(expected) == legality_unmatched
         # The row whose miss was the one first noticed, when its note still
         # said (wrongly - the 2026-09-24 extract has it motorway class) that
@@ -863,6 +1032,21 @@ class TestUnverifiedCrossingNames:
         assert unverified_crossing_names(rows) == ["Unverified Bridge"]
 
 
+# Key Bridge and Chain Bridge as the fixture had them until the owner's decision
+# of 2026-09-26 - sidepath-only - kept as synthetic rows because the two tests
+# below are about the sidepath rule's guards, which the rows that remain
+# sidepath-only (motorway spans) do not exercise on a roadway name.
+SIDEPATH_ROWS_BEFORE_2026_09_26 = [
+    {
+        "name": "Key Bridge",
+        "osm_names": ["Francis Scott Key Bridge"],
+        "roadway_bicycle_legal": True,
+        "sidepath_only": True,
+    },
+    {"name": "Chain Bridge", "roadway_bicycle_legal": True, "sidepath_only": True},
+]
+
+
 def test_a_footway_carrying_a_bridges_name_is_not_what_the_sidepath_rule_matches() -> None:
     """SF-1: the sidepath rule matches the roadway, never the sidepath.
 
@@ -887,7 +1071,9 @@ def test_a_footway_carrying_a_bridges_name_is_not_what_the_sidepath_rule_matches
         3003, {"highway": "footway", "bridge": "yes", "name": "Francis Scott Key Bridge"}
     )
 
-    ids, unmatched = resolve_sidepath_bridge_ids(crossing_rows(), [north_walk, roadway, south_walk])
+    ids, unmatched = resolve_sidepath_bridge_ids(
+        SIDEPATH_ROWS_BEFORE_2026_09_26, [north_walk, roadway, south_walk]
+    )
 
     # The roadway is what matched, and it is what the no-trail variant drops.
     assert 3001 in ids, "the Key Bridge roadway is not in the sidepath set"
@@ -898,7 +1084,7 @@ def test_a_footway_carrying_a_bridges_name_is_not_what_the_sidepath_rule_matches
     # And nothing was silently satisfied: with only the footways present, the
     # crossing is reported unmatched rather than resolving against them.
     footways_only, unmatched_footways = resolve_sidepath_bridge_ids(
-        crossing_rows(), [north_walk, south_walk]
+        SIDEPATH_ROWS_BEFORE_2026_09_26, [north_walk, south_walk]
     )
     assert footways_only == frozenset()
     assert "Key Bridge" in unmatched_footways
@@ -921,7 +1107,7 @@ def test_a_street_named_after_a_bridge_is_not_a_bridge() -> None:
         FakeWay(4002, {"highway": "secondary", "name": "Chain Bridge"}),
         FakeWay(4003, {"highway": "secondary", "bridge": "no", "name": "Chain Bridge"}),
     ]
-    ids, unmatched = resolve_sidepath_bridge_ids(crossing_rows(), approaches)
+    ids, unmatched = resolve_sidepath_bridge_ids(SIDEPATH_ROWS_BEFORE_2026_09_26, approaches)
     assert ids == frozenset()
     assert {"Key Bridge", "Chain Bridge"} <= set(unmatched)
     for way in approaches:
@@ -1005,7 +1191,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
 
     def test_baltimores_key_bridge_matches_nothing(self) -> None:
         rows = crossing_rows()
-        ids, unmatched = resolve_sidepath_bridge_ids(rows, [BALTIMORE_KEY_BRIDGE])
+        ids, unmatched = resolve_mass_ride_only_bridge_ids(rows, [BALTIMORE_KEY_BRIDGE])
         assert ids == frozenset()
         assert "Key Bridge" in unmatched
         legality, legality_unmatched = resolve_bridge_bicycle_legality(rows, [BALTIMORE_KEY_BRIDGE])
@@ -1015,7 +1201,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
     def test_the_district_key_bridge_still_matches_beside_it(self) -> None:
         rows = crossing_rows()
         both = [DC_KEY_BRIDGE, BALTIMORE_KEY_BRIDGE]
-        ids, unmatched = resolve_sidepath_bridge_ids(rows, both)
+        ids, unmatched = resolve_mass_ride_only_bridge_ids(rows, both)
         assert ids == frozenset({DC_KEY_BRIDGE.osm_id})
         assert "Key Bridge" not in unmatched
         legality, _unmatched = resolve_bridge_bicycle_legality(rows, both)
@@ -1026,7 +1212,7 @@ class TestTheMatchIsScopedToTheFixturesRegion:
         inside the region, so it is refused rather than assumed to be."""
         nowhere = FakeWay(9100, dict(DC_KEY_BRIDGE.tags), ())
         rows = crossing_rows()
-        assert resolve_sidepath_bridge_ids(rows, [nowhere])[0] == frozenset()
+        assert resolve_mass_ride_only_bridge_ids(rows, [nowhere])[0] == frozenset()
         assert by_name(resolve_bridge_bicycle_legality(rows, [nowhere])[0]) == {}
 
     def test_a_way_leaving_the_region_is_not_inside_it(self) -> None:
@@ -1079,9 +1265,11 @@ class TestTheMatchIsScopedToTheFixturesRegion:
 
         sidepath_ids, _ = resolve_sidepath_bridge_ids(rows, ways)
         legality, _ = resolve_bridge_bicycle_legality(rows, ways)
+        mass_ride_ids, _ = resolve_mass_ride_only_bridge_ids(rows, ways)
+        assert mass_ride_ids, "the mass-ride-only rows matched nothing, so say nothing"
         # Pins bypass the region by design - an id pinned by hand is honoured
         # as written - so the property is about what the name match reached.
-        matched = set(sidepath_ids) | set(by_name(legality))
+        matched = set(sidepath_ids) | set(by_name(legality)) | set(mass_ride_ids)
 
         assert matched, "nothing matched, so the property says nothing"
         for osm_id in matched:

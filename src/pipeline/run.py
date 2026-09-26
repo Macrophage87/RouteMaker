@@ -227,9 +227,13 @@ class ReferenceData:
     # graded against rural statutory speeds and the road-exposure report becomes
     # a wall of top-tier segments on ordinary 25 mph streets.
     urban_way_ids: frozenset[int]
-    # Bridges bike-legal only by a sidepath. Without it the no-trail variant
-    # treats them as roadways and can put a mass ride on a bridge sidewalk.
+    # Bridge roadways a mass ride cannot use (`sidepath_only`), which the
+    # no-trail variant drops.
     sidepath_bridge_ids: frozenset[int]
+    # Bridge roadways for mass rides only (`roadway_mass_ride_only`, the
+    # owner's rule of 2026-09-26 for Key Bridge and Memorial Bridge), which the
+    # standard and e-bike variants bar and the no-trail variant keeps.
+    mass_ride_only_bridge_ids: frozenset[int]
     # Agency volume lines, already normalised to one AADT definition.
     volume_features: tuple[conflation.AgencyFeature, ...]
 
@@ -280,7 +284,10 @@ class ReferenceData:
         )
         bridge_ids, unmatched_sidepath = variants.resolve_sidepath_bridge_ids(crossing_rows, ways)
         legality, unmatched_legality = variants.resolve_bridge_bicycle_legality(crossing_rows, ways)
-        # One warning over the union of both resolvers, because a crossing the
+        mass_ride_ids, unmatched_mass_ride = variants.resolve_mass_ride_only_bridge_ids(
+            crossing_rows, ways
+        )
+        # One warning over the union of the three resolvers, because a crossing the
         # extract does not carry is one fact about one bridge however many of
         # the fixture's columns it silences. It covers a row pinned to an
         # `osm_way_id` the extract no longer carries as well as a name that
@@ -290,11 +297,13 @@ class ReferenceData:
         # sidepath flag - every row the `rm:bridge_bicycle` tag exists for,
         # including the Theodore Roosevelt Bridge - could resolve against
         # nothing and reach no log at all.
-        unmatched = sorted(set(unmatched_sidepath) | set(unmatched_legality))
+        unmatched = sorted(
+            set(unmatched_sidepath) | set(unmatched_legality) | set(unmatched_mass_ride)
+        )
         if unmatched:
             logger.warning(
-                "crossings not found in the extract, so the sidepath rule and the "
-                "bridge-legality column are both inert on them: %s",
+                "crossings not found in the extract, so the sidepath rule, the "
+                "bridge-legality column and the mass-ride-only rule are inert on them: %s",
                 ", ".join(unmatched),
             )
         # A second, deliberately separate warning. "Not found in the extract" and
@@ -312,6 +321,7 @@ class ReferenceData:
         return cls(
             urban_way_ids=frozenset(json.loads(urban.read_text())),
             sidepath_bridge_ids=bridge_ids,
+            mass_ride_only_bridge_ids=mass_ride_ids,
             volume_features=features,
             unmatched_crossings=tuple(unmatched),
             bridge_bicycle_legal=legality,
@@ -907,7 +917,11 @@ def build_handlers(
 
             for way in context.ways:
                 injected = variants.inject(
-                    variant, way.tags, way.osm_id, reference.sidepath_bridge_ids
+                    variant,
+                    way.tags,
+                    way.osm_id,
+                    reference.sidepath_bridge_ids,
+                    reference.mass_ride_only_bridge_ids,
                 )
                 if injected is None:
                     dropped.add(way.osm_id)
@@ -998,6 +1012,16 @@ def build_handlers(
                     # declines the grant on the standard and no-trail variants
                     # too, where no e-bike rule applies and the fixture's row
                     # should stand.
+                    legal = None
+                elif (
+                    variant is not variants.Variant.NO_TRAIL
+                    and way.osm_id in reference.mass_ride_only_bridge_ids
+                ):
+                    # The same reason, for the owner's mass-ride-only roadways
+                    # (2026-09-26): `variants.inject` bars them on this variant,
+                    # and the row's legality of true would be granted straight
+                    # back over the bar by the transform. The no-trail variant
+                    # keeps the roadway and keeps the legality with it.
                     legal = None
                 if legal is not None:
                     derived["bridge_bicycle"] = legal
