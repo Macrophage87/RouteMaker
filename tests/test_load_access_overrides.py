@@ -25,6 +25,9 @@ OWNER_FILE = REPO / "fixtures" / "overrides" / "2026-09-26-owner-bicycle-access.
 # Typed in by hand from the owner's answers, not read from the file.
 KEY_BRIDGE_VIRGINIA_APPROACHES = {50426889, 116044202}
 ELEVENTH_STREET_SOUTH_LANDING = {546095996, 546096006, 546095995, 546095994}
+# The rest of that landing, which the owner ruled on in a second answer the
+# same day: three more 11th Street SE ways and Martin Luther King Jr Avenue SE.
+ELEVENTH_STREET_LANDING_ONWARD = {546095992, 546095991, 546095993, 589551026, 371431399, 589551027}
 # The owner said "No" to these, on Chain Bridge's District approach: they must
 # never appear in an override file that opens ways.
 CHAIN_BRIDGE_DC_APPROACH = {397297433, 469107787, 50773201, 889043769}
@@ -37,7 +40,11 @@ def owner_rows() -> list[dict]:
 class TestTheOwnersFile:
     def test_it_opens_exactly_the_ways_the_owner_named(self) -> None:
         ways = {row["osm_way_id"] for row in owner_rows()}
-        assert ways == KEY_BRIDGE_VIRGINIA_APPROACHES | ELEVENTH_STREET_SOUTH_LANDING
+        assert ways == (
+            KEY_BRIDGE_VIRGINIA_APPROACHES
+            | ELEVENTH_STREET_SOUTH_LANDING
+            | ELEVENTH_STREET_LANDING_ONWARD
+        )
         assert not ways & CHAIN_BRIDGE_DC_APPROACH
 
     def test_every_row_is_a_bicycle_grant_with_the_decision_and_its_date(self) -> None:
@@ -53,6 +60,25 @@ class TestTheOwnersFile:
             assert "Bikes are legal, but there's a side path" in by_way[way]
         for way in ELEVENTH_STREET_SOUTH_LANDING:
             assert "Yes, legal for all" in by_way[way]
+        for way in ELEVENTH_STREET_LANDING_ONWARD:
+            assert "Legal for all. It might be discouraged as it's a very busy road" in by_way[way]
+            # The steer away from a busy road is the stress tier's job.
+            assert "stress classification, not an access bar" in by_way[way]
+
+    def test_a_second_load_after_the_file_grew_adds_only_the_new_rows(self, admin, tmp_path):
+        """The file grew from six rows to twelve on 2026-09-26. A deployment
+        that loaded the first six loads the grown file and gains six rows, not
+        twelve, and audits only those."""
+        from core.models import AuditLogEntry, Override
+
+        document = json.loads(OWNER_FILE.read_text())
+        first = tmp_path / "first.json"
+        first.write_text(json.dumps({**document, "rows": document["rows"][:6]}))
+        load(str(first), "--actor", str(admin.discord_user_id), "--confirm")
+        assert Override.objects.count() == 6
+        load(str(OWNER_FILE), "--actor", str(admin.discord_user_id), "--confirm")
+        assert Override.objects.count() == len(owner_rows()) == 12
+        assert AuditLogEntry.objects.count() == 2 * 12
 
 
 @pytest.fixture

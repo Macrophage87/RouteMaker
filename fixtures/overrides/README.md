@@ -32,4 +32,4 @@ The rows take effect on the next rebuild.
 
 | File | Decision |
 |---|---|
-| `2026-09-26-owner-bicycle-access.json` | Key Bridge's Virginia approaches and the 11th Street local span's south landing are legal to ride (owner, 2026-09-26). See `fixtures/crossings/README.md`. |
+| `2026-09-26-owner-bicycle-access.json` | Key Bridge's Virginia approaches and the 11th Street local span's south landing, including its run onto Martin Luther King Jr Avenue SE, are legal to ride (owner, 2026-09-26, in two answers; the file grew from six rows to twelve and reloading it adds only the new ones). See `fixtures/crossings/README.md`. |

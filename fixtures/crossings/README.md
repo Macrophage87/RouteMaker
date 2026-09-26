@@ -195,11 +195,13 @@ roadway a mass ride was given that day, what happens at its ends:
   (motorway or `bicycle=no` exits only): "Turn at Memorial Circle". An
   out-and-back for a mass ride; no access change.
 * **11th Street local span**, the south landing (11th Street SE,
-  `bicycle=no`): "Yes, legal for all". The four ways named in the question are
-  opened for every variant by approved access overrides; the landing runs on
-  through three more 11th Street SE ways and three Martin Luther King Jr
-  Avenue SE ways, also `bicycle=no`, before a bicycle may leave it, and those
-  six are an open question for the owner (see the row's note).
+  `bicycle=no`): "Yes, legal for all". The landing runs on through three more
+  11th Street SE ways and three Martin Luther King Jr Avenue SE ways, also
+  `bicycle=no`, before a bicycle may leave it, and of those the owner said,
+  the same day, "Legal for all. It might be discouraged as it's a very busy
+  road": legal for all, and discouraged because it is a very busy road, which
+  is the stress classification's job to express, not an access bar's. All ten
+  are opened for every variant by approved access overrides.
 
 Access corrections go through the override table, the plan's one audited path
 for them, never through this file: the rows are checked in at

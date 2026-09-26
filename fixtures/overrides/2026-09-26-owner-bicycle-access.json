@@ -56,6 +56,60 @@
       },
       "reason": "Owner decision, 2026-09-26, on the 11th Street Bridge local span's south landing (11th Street SE): \"Yes, legal for all\" - bicycles are legal on these ways in every variant.",
       "evidence": "The owner's statement above, following the owner's confirmation of 2026-09-25 that the local span's roadway (way 546096009) is legal to ride. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, bridge=yes, on the local span's south landing."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095992,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26; discouraged because it is a very busy road, and the stress classification, not an access bar, is what should steer riders away.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bridge=yes, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095991,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26; discouraged because it is a very busy road, and the stress classification, not an access bar, is what should steer riders away.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bridge=yes, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095993,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26; discouraged because it is a very busy road, and the stress classification, not an access bar, is what should steer riders away.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 589551026,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26; discouraged because it is a very busy road, and the stress classification, not an access bar, is what should steer riders away.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: Martin Luther King Junior Avenue Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 371431399,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26; discouraged because it is a very busy road, and the stress classification, not an access bar, is what should steer riders away.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: Martin Luther King Junior Avenue Southeast, highway=secondary, bridge=yes, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 589551027,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26; discouraged because it is a very busy road, and the stress classification, not an access bar, is what should steer riders away.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: Martin Luther King Junior Avenue Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
     }
   ]
 }
