@@ -1086,3 +1086,34 @@ def claim_bootstrap_instance_admin(user: User) -> bool:
         ),
     )
     return True
+
+
+class RateLimitWindow(models.Model):
+    """One client's count in the current fixed window of one limit.
+
+    PLAN, Moderation and abuse limits: every limit is counted in a PostgreSQL
+    fixed-window table rather than in process memory, because gunicorn runs a
+    worker per core and in-memory counters would multiply every stated limit by
+    the worker count. `core.ratelimit` does the counting in one upsert, which is
+    what makes it correct across workers; this model exists for the migration.
+
+    `client` is a keyed digest of the address, never the address (PLAN, Privacy
+    and retention), and the row is reused from window to window, so the table
+    grows with the number of clients rather than with time. Rows untouched for
+    `core.ratelimit.RETENTION` are purged.
+    """
+
+    scope = models.CharField(max_length=32)
+    client = models.CharField(max_length=64)
+    window_start = models.DateTimeField()
+    hits = models.IntegerField()
+
+    class Meta:
+        db_table = "rate_limit_window"
+        constraints = [
+            models.UniqueConstraint(fields=["scope", "client"], name="rate_limit_window_client")
+        ]
+        indexes = [models.Index(fields=["window_start"], name="rate_limit_window_start")]
+
+    def __str__(self) -> str:
+        return f"{self.scope}: {self.hits} since {self.window_start:%H:%M:%S}"
