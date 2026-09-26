@@ -372,6 +372,15 @@ binary, and is reported as a rebuild failure six hours in.
 
 Runs as uid 10001, non-root.
 
+**It carries `fixtures/`, and a deploy that changes the crossings fixture is not
+done until the fixture is reinstalled.** The rebuild reads
+`<DATA_ROOT>/reference/crossings.json`, which `scripts/install_reference_data.py`
+copies from the image, and refuses to run when that copy differs from the
+image's `fixtures/crossings/potomac-anacostia.json`. docs/OPERATIONS.md, "A
+deploy that changes the crossings fixture or loads access overrides", has the
+reinstall command, the order to deploy, reinstall and load access overrides in
+(all before the next Tuesday rebuild), and how to undo a loaded override.
+
 ### The two images with no source
 
 `ghcr.io/macrophage87/routemaker-renderer:${TAG}` is PLAN.md:63's thumbnail

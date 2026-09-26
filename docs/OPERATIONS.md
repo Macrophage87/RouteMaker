@@ -713,7 +713,9 @@ the first host to run it is the first test of it.
    urban area, and a way outside the coverage box is a way this deployment does
    not route over. (`merged.osm.pbf`, the unclipped file kept beside it, exists
    for `valhalla_build_admins`, which needs boundary relations the clip cuts.)
-   The crossings fixture is in the image and is copied for you.
+   The crossings fixture is in the image and is copied for you. A later deploy
+   that changes it has to copy it again — see "A deploy that changes the
+   crossings fixture or loads access overrides" below.
 
    Run with `--data-root` alone it installs the crossings and exits non-zero
    naming whichever of the other two is still missing, which is the cheap way to
@@ -749,6 +751,84 @@ the first host to run it is the first test of it.
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
 windows in the table above watching that it keeps happening.
+
+## A deploy that changes the crossings fixture or loads access overrides
+
+**The rebuild reads the installed crossings, not the image's.**
+`ReferenceData.load` reads `<DATA_ROOT>/reference/crossings.json`, which only
+`scripts/install_reference_data.py` writes, by copying the image's
+`fixtures/crossings/potomac-anacostia.json`. Deploying a rebuild image with a
+changed fixture therefore changes nothing by itself. The weekly task checks: it
+hands the image's fixture to `LOAD_REFERENCE_DATA`, which compares the two as
+parsed JSON and, if they say anything different, refuses the rebuild — terminal,
+not retried, run row failed, nothing built or promoted — with a message that
+gives the command below. So a missed reinstall now costs one refused Tuesday
+and an alert, not a promoted graph built from last week's rows.
+
+Reinstall, from the new rebuild image (with `--data-root` alone it copies the
+fixture and exits non-zero only if `urban-areas.json` or `volume.json` is
+missing, which on a running host they are not):
+
+```sh
+docker compose exec -T rebuild python3 scripts/install_reference_data.py --data-root /data
+```
+
+**When the change comes with access overrides, the order matters.** Access
+overrides (`fixtures/overrides/`, loaded by the `load_access_overrides` management command)
+can depend on crossings rows. The 2026-09-26 file is the example: it opens Key
+Bridge's Virginia approaches to every rider, and only the new fixture's
+`roadway_mass_ride_only` on Key Bridge keeps ordinary riders off its roadway. A
+rebuild that runs with the rows loaded and the old crossings installed — either
+the old rebuild image, or the new image before the reinstall — sends standard
+and e-bike routes over the Key roadway. The guard above covers the new image. It
+cannot cover the old one, which has no check. So:
+
+1. **Deploy both images from the merged branch**, api and rebuild together —
+   merge first, so the deploy does not drop work that is live but not on the
+   branch. `docker compose up -d api worker rebuild` after the build.
+2. **Reinstall the crossings** with the command above.
+3. **Load the override file**, dry run first, then `--confirm`:
+
+   ```sh
+   docker compose exec -T api python manage.py load_access_overrides - \
+       --actor <discord user id> < fixtures/overrides/<file>.json
+   docker compose exec -T api python manage.py load_access_overrides - \
+       --actor <discord user id> --confirm < fixtures/overrides/<file>.json
+   ```
+
+4. **Rebuild**: `run_rebuild_now` ("Firing a rebuild by hand" above), then
+   restart the routers.
+
+Do steps 1 to 3 together, and all of them before the next Tuesday 08:00 UTC run
+(`WEEKLY_REBUILD_CRON`), which fires on its own and promotes whatever is in
+place. Never load the rows while the old rebuild image is still deployed.
+
+**About `--actor`.** The rows are attributed to the account named by the
+Discord user id on the command line. The command checks that the account exists
+and is an active instance admin, but nothing authenticates the person typing:
+anyone with `docker compose exec` on the host can name any admin. That is the
+same trust boundary as the rest of this document, and it departs from
+`run_rebuild_now` and `rollback_rebuild`, which record no actor. Every audit
+entry the command writes says so in its `detail` ("named on the command line,
+not authenticated"). On a fresh host the account exists only after that admin
+has signed in once (`BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` makes the first one;
+docs/DEPLOYMENT.md, "Adding a second instance admin"), so load overrides after
+the first sign-in. On a fresh host the order above is safe either way, because
+the first install copies the new fixture.
+
+Two `--confirm` runs at the same moment can both create the rows: there is no
+lock and no unique constraint. The rows are identical, so the result applies
+the same way, but delete one of each pair in the admin (below).
+
+**Undoing a loaded row.** `approved` is read-only in the admin, so a row cannot
+be un-approved there. Delete it: in the admin under Overrides, or with the
+delete action on a selection. Both deletions are audited as `delete` with the
+actor who clicked. The graph changes on the next rebuild, not before — the
+running routers keep the access they were built with. Rerunning the loader on
+the same file creates the deleted rows again, so after a deliberate delete,
+change the file too (remove the row, in a reviewed commit). To take back a
+crossings change, revert the fixture, deploy, reinstall and rebuild, in the same
+order as above.
 
 ## After a rebuild: restart the routers
 

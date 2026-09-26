@@ -215,6 +215,27 @@ class ReferenceDataMissing(RuntimeError):
     """A required input is absent. Never substituted with an empty default."""
 
 
+# How an operator makes the installed crossings match the image, named in the
+# refusal below and in docs/OPERATIONS.md.
+REINSTALL_CROSSINGS = (
+    "docker compose exec -T rebuild python3 scripts/install_reference_data.py --data-root /data"
+)
+
+
+class InstalledCrossingsStale(ReferenceDataMissing):
+    """`<DATA_ROOT>/reference/crossings.json` is not the image's checked-in fixture.
+
+    The rebuild reads the installed copy, which only `install_reference_data.py`
+    writes, so deploying a rebuild image with a changed fixture changed nothing
+    until someone reinstalled - and nothing said so. The fixture of 2026-09-26
+    (Key Bridge's roadway for mass rides only) ran against the older installed
+    copy with the Key roadway open to every rider, and the approved access
+    overrides for its Virginia approaches then routed ordinary riders onto it.
+    A `ReferenceDataMissing`, so the task treats it as terminal: the retry would
+    read the same file.
+    """
+
+
 @dataclass(frozen=True)
 class ReferenceData:
     """Everything the rebuild needs besides the extract itself.
@@ -251,7 +272,23 @@ class ReferenceData:
     bridge_bicycle_legal: dict[int, bool]
 
     @classmethod
-    def load(cls, directory: Path, ways: Sequence[extract.Way] = ()) -> ReferenceData:
+    def load(
+        cls,
+        directory: Path,
+        ways: Sequence[extract.Way] = (),
+        *,
+        checked_in_crossings: Path | None = None,
+    ) -> ReferenceData:
+        """Read the three files; with `checked_in_crossings`, refuse a stale copy.
+
+        `checked_in_crossings` is the fixture the running code was written
+        against (the image's `fixtures/crossings/potomac-anacostia.json`, from
+        `settings.REBUILD_CROSSINGS_FIXTURE`, which the weekly task passes).
+        The installed `crossings.json` must say the same thing - compared as
+        parsed JSON, so re-indenting is not a difference and any value is - or
+        the load is refused with the command that fixes it. None skips the
+        check, for callers that install their own synthetic rows.
+        """
         urban = directory / "urban-areas.json"
         crossings = directory / "crossings.json"
         volume = directory / "volume.json"
@@ -263,6 +300,20 @@ class ReferenceData:
                 )
 
         crossing_rows = json.loads(crossings.read_text())
+        if checked_in_crossings is not None:
+            if not checked_in_crossings.exists():
+                raise ReferenceDataMissing(
+                    f"{checked_in_crossings} is absent, so the installed {crossings} cannot "
+                    "be checked against the fixture this code was written for"
+                )
+            if json.loads(checked_in_crossings.read_text()) != crossing_rows:
+                raise InstalledCrossingsStale(
+                    f"{crossings} differs from this image's {checked_in_crossings}: the "
+                    "fixture changed and the installed copy was not reinstalled, and the "
+                    "rebuild reads only the installed copy. Refused rather than built "
+                    "against the old rows. Reinstall it, then rerun the rebuild: "
+                    f"{REINSTALL_CROSSINGS}"
+                )
         features = tuple(
             conflation.AgencyFeature(
                 feature_id=row["id"],
@@ -342,6 +393,11 @@ class RebuildContext:
     source_pbf: Path
     work_dir: Path
     reference_dir: Path
+    # The checked-in crossings fixture the installed copy under `reference_dir`
+    # must match (`ReferenceData.load`). None, the default, skips the check;
+    # the weekly task passes `settings.REBUILD_CROSSINGS_FIXTURE`. Not a
+    # settings default because every test context installs synthetic rows.
+    checked_in_crossings: Path | None = None
     staging_schema: str = field(default_factory=lambda: _setting("SEGMENT_SCHEMA_STAGING"))
     tiles_dir: Path = field(default_factory=lambda: _setting("TILES_DIR"))
     elevation_dir: Path = field(default_factory=lambda: _setting("ELEVATION_DIR"))
@@ -701,7 +757,11 @@ def build_handlers(
     def load_reference_data() -> None:
         # Given the ways, because the crossings fixture resolves by name against
         # the extract. FETCH_EXTRACT runs first for exactly this reason.
-        context.reference = ReferenceData.load(context.reference_dir, context.ways)
+        context.reference = ReferenceData.load(
+            context.reference_dir,
+            context.ways,
+            checked_in_crossings=context.checked_in_crossings,
+        )
 
     def ensure_elevation() -> None:
         # Cached across rebuilds and re-validated on each: a truncated tile
