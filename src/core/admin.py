@@ -513,6 +513,22 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
 
     actions = ("revoke_now",)
 
+    def get_readonly_fields(self, request, obj=None):
+        """`guild_id` is locked on an existing guild and entered on a new one.
+
+        Read-only everywhere, it was read-only on the add form too, so the form
+        posted no snowflake and every attempt to configure a guild - the first
+        real one, on the first real host - failed with a NOT NULL violation on
+        `guild_id`. Only an instance admin reaches the add form
+        (`has_add_permission`), and naming the guild being admitted is the
+        whole of admitting it. Once the row exists the column is the remap the
+        plan routes elsewhere, so it locks again.
+        """
+        fields = super().get_readonly_fields(request, obj)
+        if obj is None:
+            return tuple(field for field in fields if field != "guild_id")
+        return fields
+
     def has_add_permission(self, request) -> bool:
         return bool(getattr(request.user, "is_instance_admin", False))
 

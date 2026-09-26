@@ -2965,3 +2965,40 @@ class TestAPermittedActionStillRuns:
         assert response.status_code == 302
         assert not RoleMapping.objects.filter(pk=mapping.pk).exists()
         assert not refusals().exists()
+
+
+class TestAnInstanceAdminConfiguresAGuild:
+    """The add form has to take the guild's snowflake. `guild_id` was in
+    `readonly_fields` for every form, the add form included, so it posted
+    none and the first real attempt to configure a guild died on the NOT
+    NULL constraint."""
+
+    def test_the_add_form_offers_the_snowflake(self, as_instance_admin) -> None:
+        page = as_instance_admin.get(admin_url("core_configuredguild_add"))
+        assert page.status_code == 200
+        assert b'name="guild_id"' in page.content
+
+    def test_an_instance_admin_admits_a_guild_by_its_snowflake(self, as_instance_admin) -> None:
+        from core.models import ConfiguredGuild
+
+        response = as_instance_admin.post(
+            admin_url("core_configuredguild_add"),
+            {"guild_id": "987654321098765432", "name": "Sandbox", "admin_contact_email": ""},
+        )
+        assert response.status_code == 302, response.content[:400]
+        assert ConfiguredGuild.objects.filter(guild_id=987654321098765432).exists()
+
+    def test_once_admitted_the_snowflake_is_locked_even_for_an_instance_admin(
+        self, as_instance_admin
+    ) -> None:
+        from core.models import ConfiguredGuild
+
+        guild = ConfiguredGuild.objects.create(guild_id=111, name="Before")
+        response = as_instance_admin.post(
+            admin_url("core_configuredguild_change", guild.pk),
+            {"guild_id": "222", "name": "After", "admin_contact_email": ""},
+        )
+        assert response.status_code == 302
+        guild.refresh_from_db()
+        assert guild.guild_id == 111, "the remap stays out of the form"
+        assert guild.name == "After"
