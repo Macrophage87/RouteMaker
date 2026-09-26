@@ -233,3 +233,31 @@ test("a network failure is its own kind", async () => {
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.kind, "network");
 });
+
+test("a refused confirmed long plan says what the API said; other refusals keep the app's words", async () => {
+  const sentences = {
+    429: "A long ride is already being planned from this address; try again shortly.",
+    503: "A long ride is already being planned; try again in a few seconds.",
+  };
+  for (const [status, sentence] of Object.entries(sentences)) {
+    const { impl } = fakeFetch(Number(status), JSON.stringify({ error: sentence }), { "Retry-After": "5" });
+    const confirmed = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, confirmLong: true });
+    const plain = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
+    assert.ok(!confirmed.ok && !plain.ok);
+    if (confirmed.ok || plain.ok) continue;
+    assert.equal(confirmed.error.message, sentence, `status ${status}`);
+    assert.notEqual(plain.error.message, sentence, `status ${status}`);
+    // Still a refusal the scheduler waits out, with its Retry-After.
+    assert.equal(confirmed.error.kind, plain.error.kind);
+    assert.equal(confirmed.error.status, Number(status));
+    assert.equal(confirmed.error.retryAfterS, 5);
+  }
+  // Only those two: a confirmed plan's 502 is still "router unavailable".
+  const { impl } = fakeFetch(502, JSON.stringify({ error: "upstream said no" }));
+  const down = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, confirmLong: true });
+  assert.ok(!down.ok && down.error.message !== "upstream said no");
+  // And a confirmed refusal with no sentence keeps the app's own.
+  const { impl: bare } = fakeFetch(429, "{}", { "Retry-After": "5" });
+  const quiet = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: bare, confirmLong: true });
+  assert.ok(!quiet.ok && quiet.error.message.length > 0);
+});

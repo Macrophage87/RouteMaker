@@ -211,5 +211,13 @@ export async function requestRoute(
   }
   if (response.ok && looksLikeRoute(body)) return { ok: true, route: body };
   const status = response.ok ? 500 : response.status;
-  return { ok: false, error: describeError(status, body, response.headers.get("Retry-After")) };
+  const error = describeError(status, body, response.headers.get("Retry-After"));
+  // A confirmed long plan can be refused because a long ride is already
+  // being planned (one per client, one per deployment: LONG-RIDE contract).
+  // The API's sentence says so; "too many requests" would not.
+  const said = serverSentence(body);
+  if (options.confirmLong && (status === 429 || status === 503) && said) {
+    return { ok: false, error: { ...error, title: "Planner busy", message: said } };
+  }
+  return { ok: false, error };
 }
