@@ -39,6 +39,14 @@ STATE_SESSION_KEY = "discord_login_request"
 USER_URL = "https://discord.com/api/users/@me"
 TOKEN_URL = "https://discord.com/api/oauth2/token"
 
+# Named on every request to Discord. Its API sits behind Cloudflare, which
+# refuses urllib's default "Python-urllib/3.x" with a 403 ("error code: 1010",
+# a banned client signature) before Discord sees the request - so the first
+# sign-in on a real host failed at the token exchange with "HTTP Error 403",
+# whatever the credentials. Discord's API documentation asks clients to send a
+# descriptive User-Agent.
+USER_AGENT = "RouteMaker (https://github.com/Macrophage87/RouteMaker, 1)"
+
 
 class LoginRefused(RuntimeError):
     """The login cannot proceed, for a reason the person may be told."""
@@ -194,14 +202,21 @@ def exchange_code(code: str) -> tuple[int, str]:
             urllib.request.Request(
                 TOKEN_URL,
                 data=body,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "User-Agent": USER_AGENT,
+                },
             ),
             timeout=10,
         ) as response:
             token = json.load(response)
         with urllib.request.urlopen(  # noqa: S310 - a constant https endpoint
             urllib.request.Request(
-                USER_URL, headers={"Authorization": f"Bearer {token['access_token']}"}
+                USER_URL,
+                headers={
+                    "Authorization": f"Bearer {token['access_token']}",
+                    "User-Agent": USER_AGENT,
+                },
             ),
             timeout=10,
         ) as response:

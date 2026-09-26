@@ -415,3 +415,40 @@ class TestAMalformedDiscordPayloadIsRefusedRatherThanCrashing:
         response = client.get(reverse("login-callback"), {"state": state, "code": "abc"})
         assert response.status_code == 302
         assert User.objects.filter(discord_user_id=4321).exists()
+
+
+def test_every_request_to_discord_names_itself(monkeypatch) -> None:
+    """Discord's API is behind Cloudflare, which answers urllib's default
+    User-Agent with 403 "error code: 1010" before Discord sees the request:
+    the first real sign-in failed at the token exchange with valid
+    credentials. Both calls the exchange makes must carry a named agent."""
+    import json
+
+    from core import auth_views
+
+    seen = []
+    responses = iter([json.dumps({"access_token": "t", "scope": "identify"}), '{"id": "42"}'])
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+        def read(self):
+            return self.payload.encode()
+
+    def urlopen(request, timeout=None):
+        seen.append(request)
+        return Response(next(responses))
+
+    monkeypatch.setattr("core.auth_views.urllib.request.urlopen", urlopen)
+    auth_views.exchange_code("abc")
+    assert [r.full_url for r in seen] == [auth_views.TOKEN_URL, auth_views.USER_URL]
+    for request in seen:
+        agent = request.get_header("User-agent") or ""
+        assert agent and not agent.startswith("Python-urllib"), (request.full_url, agent)
