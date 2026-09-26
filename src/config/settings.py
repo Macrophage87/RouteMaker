@@ -226,6 +226,11 @@ VALHALLA_UPSTREAMS = {
 # these settings do not route, and read the same default.
 ROUTING_CONCURRENCY = max(1, int(os.environ.get("WEB_CONCURRENCY") or 5) - 2)
 
+# Of those, how many may be long rides (over 150 km of straight line) at once,
+# across the whole api. Owner decision of 2026-09-26: long rides are planned,
+# but each holds a worker for several seconds, so one at a time.
+LONG_ROUTING_CONCURRENCY = 1
+
 # The disk gate. A rebuild refuses to start unless a second full tile set fits
 # beside the current one without taking the data volume past the alert
 # threshold. Until a first build has been measured there is no current set to

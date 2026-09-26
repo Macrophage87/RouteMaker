@@ -192,20 +192,47 @@ def rate_limited(limit: Limit):
 @dataclass(frozen=True)
 class InFlight:
     """At most `per_client` requests per client, and at most the deployment's
-    `settings.<total_setting>` requests in all, running at once under `scope_id`."""
+    `settings.<total_setting>` requests in all, running at once under `scope_id`.
+
+    A client's slots beyond its first are granted only while the pool is
+    roomy: a further slot is taken only if at least `ROOM_FOR_OTHERS` of the
+    deployment's slots would still be free after it. On a pool of three - the
+    compose default - that means one route per client, so filling the pool
+    takes three addresses rather than two; on a larger host a household behind
+    one NAT address gets a second route while the pool has room for everyone
+    else.
+    """
 
     scope_id: int
     per_client: int
     total_setting: str
+    client_busy: str = "This address already has a route being planned; try again shortly."
+    deployment_busy: str = "The planner is busy; try again in a few seconds."
 
     @property
     def total(self) -> int:
         return int(getattr(settings, self.total_setting))
 
 
-# Two per client, so that a planner which fires a new request while its last is
-# still in flight - a waypoint dragged twice - is not refused for it.
+# A client's second slot must leave at least this many deployment slots free.
+ROOM_FOR_OTHERS = 2
+
+# Up to two per client while the pool is roomy (see InFlight). The front end
+# keeps one route in flight and sends the next only when it has an answer, so a
+# single visitor never needs the second; it is there for several people behind
+# one address.
 ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CONCURRENCY")
+
+# Owner decision of 2026-09-26: long rides are planned, but each one holds a
+# worker for several seconds, so at most one runs per client and one in the
+# whole deployment, on top of the ordinary slots.
+LONG_ROUTING_IN_FLIGHT = InFlight(
+    scope_id=2,
+    per_client=1,
+    total_setting="LONG_ROUTING_CONCURRENCY",
+    client_busy="A long ride is already being planned from this address; try again shortly.",
+    deployment_busy="A long ride is already being planned; try again in a few seconds.",
+)
 
 
 def _client_lock_id(client: str) -> int:
@@ -214,12 +241,26 @@ def _client_lock_id(client: str) -> int:
     return value - (1 << 32) if value >= 1 << 31 else value
 
 
+def _try(cursor, pair) -> bool:
+    cursor.execute("SELECT pg_try_advisory_lock(%s, %s)", list(pair))
+    return bool(cursor.fetchone()[0])
+
+
 def _take_one(cursor, candidates) -> tuple[int, int] | None:
     for pair in candidates:
-        cursor.execute("SELECT pg_try_advisory_lock(%s, %s)", list(pair))
-        if cursor.fetchone()[0]:
+        if _try(cursor, pair):
             return pair
     return None
+
+
+def _held_in_class(cursor, lock_class: int) -> int:
+    """How many advisory locks of `lock_class` are held, by anyone."""
+    cursor.execute(
+        "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
+        "AND objsubid = 2 AND classid = %s::oid",
+        [lock_class],
+    )
+    return int(cursor.fetchone()[0])
 
 
 def _release(pairs) -> None:
@@ -237,46 +278,58 @@ def _busy(status: int, retry_after_s: int, message: str) -> JsonResponse:
     return response
 
 
+def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
+    """Take a deployment slot and a client slot for `request` under `limit`.
+
+    Returns the pairs held, to hand to `release`, and a refusal to send
+    instead of running the request, or None. On a refusal nothing is held.
+    The deployment slot is taken first, so the count of what is free already
+    includes this request.
+    """
+    client = _client_lock_id(client_key(client_address(request)))
+    total_class = _LOCK_CLASS_TOTAL + limit.scope_id
+    client_class = _LOCK_CLASS_CLIENT + limit.scope_id * 64
+    held: list = []
+    with connection.cursor() as cursor:
+        shared = _take_one(cursor, [(total_class, slot) for slot in range(limit.total)])
+        if shared is None:
+            return held, _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)
+        held.append(shared)
+        if _try(cursor, (client_class, client)):
+            held.append((client_class, client))
+            return held, None
+        free_after = limit.total - _held_in_class(cursor, total_class)
+        if free_after >= ROOM_FOR_OTHERS:
+            mine = _take_one(
+                cursor,
+                [(client_class + slot, client) for slot in range(1, limit.per_client)],
+            )
+            if mine is not None:
+                held.append(mine)
+                return held, None
+    release(held)
+    return [], _busy(429, CLIENT_BUSY_RETRY_S, limit.client_busy)
+
+
+def release(held) -> None:
+    _release(held)
+
+
 def in_flight_limited(limit: InFlight):
-    """A view decorator: take a client slot and a deployment slot for the
-    request, or refuse it - 429 when this client already has `per_client`
-    running, 503 when the deployment has `total` running."""
+    """A view decorator: hold `limit`'s slots for the request, or refuse it -
+    429 when this client already has its routes running, 503 when the
+    deployment has `total` running."""
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            client = _client_lock_id(client_key(client_address(request)))
-            held = []
+            held, refusal = acquire(request, limit)
+            if refusal is not None:
+                return refusal
             try:
-                with connection.cursor() as cursor:
-                    mine = _take_one(
-                        cursor,
-                        [
-                            (_LOCK_CLASS_CLIENT + limit.scope_id * 64 + slot, client)
-                            for slot in range(limit.per_client)
-                        ],
-                    )
-                    if mine is None:
-                        return _busy(
-                            429,
-                            CLIENT_BUSY_RETRY_S,
-                            "This address already has routes being planned; try again shortly.",
-                        )
-                    held.append(mine)
-                    shared = _take_one(
-                        cursor,
-                        [(_LOCK_CLASS_TOTAL + limit.scope_id, slot) for slot in range(limit.total)],
-                    )
-                    if shared is None:
-                        return _busy(
-                            503,
-                            DEPLOYMENT_BUSY_RETRY_S,
-                            "The planner is busy; try again in a few seconds.",
-                        )
-                    held.append(shared)
                 return view(request, *args, **kwargs)
             finally:
-                _release(held)
+                release(held)
 
         return wrapped
 

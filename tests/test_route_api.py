@@ -944,27 +944,162 @@ def spanning(km: float) -> list[list[float]]:
     return [[-77.9, LAT], [-77.9 + degrees, LAT]]
 
 
+def bouncing(km: float) -> list[list[float]]:
+    """Points bouncing along one parallel so the span is `km`, in legs of at
+    most 100 km, which is how a span past the width of the box is built."""
+    import math as _m
+
+    legs = max(1, _m.ceil(km / 100))
+    a, b = spanning(km / legs)
+    return [a if i % 2 == 0 else b for i in range(legs + 1)]
+
+
+def long_router() -> FakeRouter:
+    fake = standard_router()
+    fake.answers["route"] = [fake.answers["route"]] * 10
+    fake.answers["trace_attributes"] = [fake.answers["trace_attributes"]] * 10
+    return fake
+
+
 @db
 class TestLengthCap:
-    def test_just_under_the_cap_is_routed(self, client, segments, router) -> None:
-        from core.api import MAX_STRAIGHT_LINE_M
+    def test_just_under_the_confirm_span_is_routed(self, client, segments, router) -> None:
+        from core.api import CONFIRM_SPAN_M
 
         router(standard_router())
-        body = {"points": spanning(MAX_STRAIGHT_LINE_M / 1000 - 0.5), "preset": "default"}
+        body = {"points": spanning(CONFIRM_SPAN_M / 1000 - 0.5), "preset": "default"}
         assert post(client, body).status_code == 200
 
-    def test_just_over_the_cap_is_refused_before_the_router(self, client, router) -> None:
-        from core.api import MAX_STRAIGHT_LINE_M
+    def test_past_the_ceiling_is_too_long_however_it_is_asked(self, client, router) -> None:
+        from core.api import MAX_SPAN_M
 
-        body = {"points": spanning(MAX_STRAIGHT_LINE_M / 1000 + 0.5), "preset": "default"}
-        refused_before_the_router(client, router, body)
+        body = {"points": bouncing(MAX_SPAN_M / 1000 + 1), "preset": "default"}
+        refused_before_the_router(client, router, {**body, "confirm_long": True})
 
-    def test_the_cap_is_on_the_sum_of_legs(self, client, router) -> None:
-        """Many short hops that zig-zag across the region add up."""
-        from core.api import MAX_STRAIGHT_LINE_M
+    def test_just_under_the_ceiling_is_planned_when_confirmed(
+        self, client, segments, router
+    ) -> None:
+        from core.api import MAX_SPAN_M
 
-        a, b = spanning(MAX_STRAIGHT_LINE_M / 1000 / 2.5)
-        refused_before_the_router(client, router, {"points": [a, b, a, b], "preset": "default"})
+        router(long_router())
+        body = {"points": bouncing(MAX_SPAN_M / 1000 - 1), "preset": "default"}
+        assert post(client, {**body, "confirm_long": True}).status_code == 200
+
+    def test_the_span_is_the_sum_of_legs(self, client, router) -> None:
+        """Short hops that zig-zag add up: each leg is under the confirm span,
+        and together they are past the ceiling."""
+        from core.api import CONFIRM_SPAN_M, MAX_SPAN_M
+
+        a, b = spanning(CONFIRM_SPAN_M / 1000 / 2)
+        legs = int(MAX_SPAN_M / (CONFIRM_SPAN_M / 2)) + 1
+        points = [a if i % 2 == 0 else b for i in range(legs + 1)]
+        refused_before_the_router(
+            client, router, {"points": points, "preset": "default", "confirm_long": True}
+        )
+
+
+def long_body(km: float = 160.0, **extra) -> dict:
+    return {"points": bouncing(km), "preset": "default", **extra}
+
+
+@db
+class TestLongRide:
+    """Owner decision of 2026-09-26: "Maybe ask to confirm that a long ride is
+    intended so it won't mess with processing time", then "Actually do that with
+    anonymous visitors only"."""
+
+    def test_a_signed_out_long_ride_is_asked_to_confirm_without_routing(
+        self, client, router
+    ) -> None:
+        fake = router(long_router())
+        response = post(client, long_body(160))
+        assert response.status_code == 409
+        body = response.json()
+        assert set(body) == {"error", "code", "span_km"}
+        assert body["code"] == "confirm_long"
+        assert body["span_km"] == 160
+        assert body["error"]
+        assert fake.calls == []
+
+    def test_the_span_is_reported_rounded_to_a_kilometre(self, client, router) -> None:
+        router(long_router())
+        assert post(client, long_body(187.4)).json()["span_km"] == 187
+
+    def test_a_confirmed_long_ride_is_planned(self, client, segments, router) -> None:
+        fake = router(long_router())
+        response = post(client, long_body(160, confirm_long=True))
+        assert response.status_code == 200
+        assert "route" in fake.endpoints()
+
+    def test_confirm_false_is_no_confirmation(self, client, router) -> None:
+        router(long_router())
+        assert post(client, long_body(160, confirm_long=False)).status_code == 409
+
+    @pytest.mark.parametrize("value", ["true", 1, "yes", None])
+    def test_only_a_json_true_confirms(self, value, client, router) -> None:
+        refused_before_the_router(client, router, long_body(160, confirm_long=value))
+
+    def test_a_short_ride_needs_no_confirmation_either_way(self, client, segments, router) -> None:
+        router(long_router())
+        assert post(client, good_body()).status_code == 200
+        assert post(client, {**good_body(), "confirm_long": True}).status_code == 200
+
+    def test_a_signed_in_long_ride_is_planned_without_asking(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        from core.models import User
+
+        router(long_router())
+        sign_in(client, monkeypatch, User.objects.create(discord_user_id=4401))
+        assert post(client, long_body(160)).status_code == 200
+
+    def test_a_signed_in_ride_past_the_ceiling_is_still_too_long(
+        self, client, router, monkeypatch
+    ) -> None:
+        from core.api import MAX_SPAN_M
+        from core.models import User
+
+        sign_in(client, monkeypatch, User.objects.create(discord_user_id=4402))
+        refused_before_the_router(client, router, long_body(MAX_SPAN_M / 1000 + 1))
+
+    def test_a_banned_account_is_asked_like_anyone_signed_out(
+        self, client, router, monkeypatch
+    ) -> None:
+        from core.models import User
+
+        router(long_router())
+        user = User.objects.create(discord_user_id=4403)
+        sign_in(client, monkeypatch, user)
+        user.is_banned = True
+        user.save()
+        assert post(client, long_body(160)).status_code == 409
+
+    def test_a_forged_session_cookie_is_signed_out(self, client, router) -> None:
+        router(long_router())
+        client.cookies[settings.SESSION_COOKIE_NAME] = "forged0123456789abcdefghijklmnop"
+        assert post(client, long_body(160)).status_code == 409
+
+    def test_the_409_is_in_the_schema(self, client) -> None:
+        operation = client.get("/api/openapi.json").json()["paths"][ROUTE_PATH]["post"]
+        assert "409" in operation["responses"]
+
+
+def sign_in(client, monkeypatch, user):
+    """Through the real Discord flow, so the epoch middleware finds its row."""
+    from django.urls import reverse
+
+    from core.auth_views import STATE_SESSION_KEY
+
+    monkeypatch.setattr(
+        "core.auth_views.exchange_code",
+        lambda code: (user.discord_user_id, "identify"),
+        raising=False,
+    )
+    client.get(reverse("login"))
+    state = client.session[STATE_SESSION_KEY]["state"]
+    response = client.get(reverse("login-callback"), {"state": state, "code": "abc"})
+    assert response.status_code == 302
+    return client
 
 
 @db
@@ -1076,6 +1211,7 @@ class TestInFlight:
         assert set(refused.json()) == {"error"}
         assert allowed.status_code == 200
 
+    @override_settings(ROUTING_CONCURRENCY=6)
     def test_one_slot_of_the_clients_is_enough(self, client, segments, router) -> None:
         router(standard_router())
         other = hold_slots(self.client_slots("198.51.100.22")[:-1])
@@ -1116,6 +1252,129 @@ class TestInFlight:
         from core import ratelimit
 
         assert ratelimit.ROUTING_IN_FLIGHT.per_client >= 2
+
+    def long_slots(self, address: str | None = None):
+        from core import ratelimit
+
+        limit = ratelimit.LONG_ROUTING_IN_FLIGHT
+        if address is None:
+            return [(ratelimit._LOCK_CLASS_TOTAL + limit.scope_id, s) for s in range(limit.total)]
+        key = ratelimit._client_lock_id(ratelimit.client_key(address))
+        return [(ratelimit._LOCK_CLASS_CLIENT + limit.scope_id * 64, key)]
+
+    def test_a_second_long_ride_in_the_deployment_is_503(self, client, segments, router) -> None:
+        fake = router(long_router())
+        other = hold_slots(self.long_slots())
+        try:
+            refused = post(client, long_body(160, confirm_long=True))
+            short = post(client, good_body())
+        finally:
+            other.close()
+        assert refused.status_code == 503
+        assert int(refused["Retry-After"]) >= 1
+        assert "long ride" in refused.json()["error"]
+        assert short.status_code == 200, "an ordinary plan is not held up by a long one"
+        assert fake.endpoints() == ["route", "trace_attributes"]
+
+    def test_a_second_long_ride_from_one_client_is_429(self, client, segments, router) -> None:
+        router(long_router())
+        other = hold_slots(self.long_slots("198.51.100.40"))
+        try:
+            refused = post(
+                client, long_body(160, confirm_long=True), HTTP_X_FORWARDED_FOR="198.51.100.40"
+            )
+            elsewhere = post(
+                client, long_body(160, confirm_long=True), HTTP_X_FORWARDED_FOR="198.51.100.41"
+            )
+        finally:
+            other.close()
+        assert refused.status_code == 429
+        assert "long ride" in refused.json()["error"]
+        assert elsewhere.status_code == 200
+
+    def test_a_signed_in_long_ride_takes_the_long_slot_too(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        from core.models import User
+
+        router(long_router())
+        sign_in(client, monkeypatch, User.objects.create(discord_user_id=4404))
+        other = hold_slots(self.long_slots())
+        try:
+            assert post(client, long_body(160)).status_code == 503
+        finally:
+            other.close()
+
+    def test_the_long_slots_are_released(self, client, segments, router) -> None:
+        router(long_router())
+        assert post(client, long_body(160, confirm_long=True)).status_code == 200
+        assert our_advisory_locks() == 0
+
+    def test_a_long_ride_counts_once_against_the_budget(self, client, segments, router) -> None:
+        from core.models import RateLimitWindow
+
+        router(long_router())
+        post(client, long_body(160, confirm_long=True), HTTP_X_FORWARDED_FOR="198.51.100.42")
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [1]
+
+    def test_one_long_ride_at_a_time(self) -> None:
+        from core import ratelimit
+
+        assert ratelimit.LONG_ROUTING_IN_FLIGHT.per_client == 1
+        assert ratelimit.LONG_ROUTING_IN_FLIGHT.total == 1
+
+    def test_a_second_route_is_refused_when_the_pool_is_nearly_full(
+        self, client, segments, router
+    ) -> None:
+        """Review round 2: on the default pool of three, one address holding two
+        routes and another holding one fill it. A client's second slot must
+        leave room for others, so filling the pool takes three addresses."""
+        router(standard_router())
+        # The client's first route, in flight: a client slot and a deployment slot.
+        other = hold_slots(self.client_slots("198.51.100.50")[:1] + self.deployment_slots()[:1])
+        try:
+            response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.50")
+        finally:
+            other.close()
+        assert settings.ROUTING_CONCURRENCY == 3
+        assert response.status_code == 429
+
+    def test_filling_the_default_pool_takes_three_addresses(self, client, segments, router) -> None:
+        """Hold one slot per address, as three long requests would: the fourth
+        request, from any of them, finds the pool full."""
+        router(standard_router())
+        from core import ratelimit
+
+        holders = []
+        try:
+            for address in ("198.51.100.60", "198.51.100.61"):
+                holders.append(
+                    hold_slots(
+                        self.client_slots(address)[:1] + [self.deployment_slots()[len(holders)]]
+                    )
+                )
+            third_from_a_holder = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.60")
+            third_from_a_new_address = post(
+                client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.62"
+            )
+        finally:
+            for other in holders:
+                other.close()
+        assert ratelimit.ROUTING_IN_FLIGHT.total == 3
+        assert third_from_a_holder.status_code == 429
+        assert third_from_a_new_address.status_code == 200
+
+    @override_settings(ROUTING_CONCURRENCY=6)
+    def test_a_second_route_is_granted_while_the_pool_is_roomy(
+        self, client, segments, router
+    ) -> None:
+        router(standard_router())
+        other = hold_slots(self.client_slots("198.51.100.51")[:1] + self.deployment_slots()[:1])
+        try:
+            response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.51")
+        finally:
+            other.close()
+        assert response.status_code == 200
 
     def test_the_deployment_keeps_two_workers_free(self) -> None:
         from core import ratelimit

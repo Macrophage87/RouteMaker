@@ -15,8 +15,9 @@ limit (`core.ratelimit.ROUTING`), applied before the body is read.
 
 Every error is `{"error": "..."}` with the status the shared contract names:
 400 for input this API will not route (including a request too long to be
-worth routing), 422 when the router finds no route, 429 with Retry-After when
-the client's budget is spent or it already has two routes in flight, 502 when
+worth routing), 409 with `"code": "confirm_long"` when a signed-out long ride
+has not been confirmed, 422 when the router finds no route, 429 with
+Retry-After when the client's budget is spent or its routes are in flight, 502 when
 the router does not answer, 503 with Retry-After when the deployment's routing
 slots are all busy or the request's time budget ran out, and 500 for anything
 else - never a traceback, whatever DEBUG says.
@@ -40,7 +41,7 @@ from django.http import HttpResponse, JsonResponse
 from ninja import Field, NinjaAPI, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
-from pydantic import ConfigDict, field_validator
+from pydantic import ConfigDict, StrictBool, field_validator
 
 from routemaker.geo import Point, haversine
 
@@ -57,16 +58,27 @@ MAX_BODY_BYTES = 8 * 1024
 MIN_POINTS = 2
 MAX_POINTS = 25
 
-# The longest request this planner routes, as the sum of the straight-line
-# distances between consecutive points. A route's cost grows with its length -
-# the /route search, then one /trace_attributes per leg, then the stress join
-# over every vertex - and the operations probe put a 25-point zig-zag across
-# the box at 590 km and 15 s on its own, with five of them from one client
-# holding all five of the stack's gunicorn workers for 22-43 s and /healthz
-# unanswered for 21 s. 150 km of straight line is a long day's ride and more
-# than any reference route (the longest rural loop is under 50 km), so nobody
-# planning a ride meets it; a caller wanting more splits the route.
-MAX_STRAIGHT_LINE_M = 150_000
+# A request's span: the sum of the straight-line distances between consecutive
+# points. A route's cost grows with its length - the /route search, then one
+# /trace_attributes per leg, then the stress join over every vertex - and the
+# operations probe put a 25-point zig-zag across the box at 590 km and 15 s on
+# its own, with five of them from one client holding all five of the stack's
+# gunicorn workers for 22-43 s and /healthz unanswered for 21 s.
+#
+# Two figures, from the owner's decision of 2026-09-26 ("I'm on a 160 km ride
+# right now. Maybe ask to confirm that a long ride is intended", then "Actually
+# do that with anonymous visitors only"):
+#
+# - Past CONFIRM_SPAN_M a request is a long ride. A signed-out request must say
+#   it means one (`confirm_long: true`) or gets 409 with code "confirm_long"
+#   and the span, and the router is not called; a signed-in request does not
+#   have to. Every long ride, signed in or not, also takes a long in-flight slot
+#   (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment).
+# - Past MAX_SPAN_M nothing is planned: 400 "too long". A 300 km span covers the
+#   owner's 160 km ride with room, and the 40 s time budget holds for it - the
+#   590 km probe above took about 15 s.
+CONFIRM_SPAN_M = 150_000
+MAX_SPAN_M = 300_000
 TOO_LONG = "the route is too long to plan in one request; split it into shorter parts"
 
 # The Retry-After on a 503 for a request whose time budget ran out.
@@ -99,6 +111,10 @@ class RouteIn(Schema):
         description="[lon, lat] pairs, start first, each inside the coverage area.",
     )
     preset: PresetName
+    confirm_long: StrictBool = Field(
+        default=False,
+        description="Set true to plan a signed-out request longer than 150 km of straight line.",
+    )
 
     @field_validator("points")
     @classmethod
@@ -107,12 +123,33 @@ class RouteIn(Schema):
         for index, (lon, lat) in enumerate(points):
             if not (west <= lon <= east and south <= lat <= north):
                 raise ValueError(f"point {index} is outside the area this map covers")
-        straight = sum(
-            haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
-        )
-        if straight > MAX_STRAIGHT_LINE_M:
+        if span_m(points) > MAX_SPAN_M:
             raise ValueError(TOO_LONG)
         return points
+
+
+def span_m(points: list[list[float]]) -> float:
+    """The sum of the straight-line distances between consecutive points."""
+    return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
+
+
+def signed_in(request) -> bool:
+    """Whether the request carries a current session of an account in standing.
+
+    Reading the session here changes nothing about CSRF: the endpoint changes
+    no state, and a cross-site page cannot send it `application/json` without a
+    preflight, which is never granted. A forged or stale cookie is simply no
+    session - Django finds no row for it, and `SessionEpochMiddleware` signs
+    out a session issued under an old epoch - so it is treated as anonymous.
+    """
+    user = getattr(request, "user", None)
+    return bool(user is not None and user.is_authenticated and getattr(user, "is_active", False))
+
+
+class ConfirmLongOut(Schema):
+    error: str
+    code: Literal["confirm_long"]
+    span_km: int
 
 
 class LineString(Schema):
@@ -227,6 +264,7 @@ def json_body_only(view):
     response={
         200: RouteOut,
         400: ErrorOut,
+        409: ConfirmLongOut,
         422: ErrorOut,
         429: ErrorOut,
         500: ErrorOut,
@@ -245,6 +283,32 @@ def json_body_only(view):
     errors_as_json,
 )
 def route(request, body: RouteIn, response: HttpResponse):
+    span = span_m(body.points)
+    if span <= CONFIRM_SPAN_M:
+        return _plan(body, response)
+    if not body.confirm_long and not signed_in(request):
+        return Status(
+            409,
+            {
+                "error": (
+                    f"This is a long ride, about {round(span / 1000)} km in straight lines. "
+                    "Planning it takes longer; send the request again with confirm_long "
+                    "set to plan it."
+                ),
+                "code": "confirm_long",
+                "span_km": round(span / 1000),
+            },
+        )
+    held, refusal = ratelimit.acquire(request, ratelimit.LONG_ROUTING_IN_FLIGHT)
+    if refusal is not None:
+        return refusal
+    try:
+        return _plan(body, response)
+    finally:
+        ratelimit.release(held)
+
+
+def _plan(body: RouteIn, response: HttpResponse):
     try:
         return Status(200, routing.plan(body.points, body.preset))
     except routing.TooLong:
