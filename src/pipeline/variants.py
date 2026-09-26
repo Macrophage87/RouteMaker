@@ -42,8 +42,8 @@ def is_trail_class(
 ) -> bool:
     """Whether a way is trail class, by its highway tag alone.
 
-    A sidepath-only bridge - the George Mason span, the Wilson Bridge roadway;
-    Key Bridge and Chain Bridge until 2026-09-26 - does *not* count here, even
+    A sidepath-only bridge - Chain Bridge, the George Mason span, the Wilson
+    Bridge roadway; Key Bridge until 2026-09-26 - does *not* count here, even
     though its roadway must still be kept off the no-trail variant. Those
     are two different questions: this one is "what is this way", asked once and
     answered the same for the segment table and for every variant; the other is
@@ -246,8 +246,9 @@ def is_sidepath_only(row: dict) -> bool:
     `sidepath_only` alone, not OR'd with `roadway_bicycle_legal is False`. Those
     are different claims about different bridges: `sidepath_only` says a mass
     ride cannot practically use this crossing's roadway, and drives the no-trail
-    variant's drop decision (Key Bridge and Chain Bridge carried it until the
-    owner's decision of 2026-09-26 that a mass ride crosses on both roadways);
+    variant's drop decision (Key Bridge carried it until the owner's decision
+    of 2026-09-26 that a mass ride crosses on its roadway; Chain Bridge carries
+    it because the owner decided the same day it is not a mass-ride crossing);
     `roadway_bicycle_legal` says whether OSM's `bicycle=no` bars the roadway
     outright (the 14th Street freeway spans, the Wilson Bridge roadway, the
     Theodore Roosevelt Bridge) and drives `resolve_bridge_bicycle_legality`

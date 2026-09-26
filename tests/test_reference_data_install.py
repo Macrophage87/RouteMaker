@@ -259,11 +259,12 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
         for row in rows
         if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
     )
-    # Two of the sixteen are pinned by way id; this extract carries neither
+    # Two of the fifteen are pinned by way id; this extract carries neither
     # pinned way, so they are named in the same warning as the name misses.
-    # Two sidepath rows and sixteen legality-only rows since 2026-09-26, when
-    # the owner put a mass ride on the Key Bridge and Chain Bridge roadways.
-    assert len(sidepath_rows) == 2 and len(legality_only) == 16, "the fixture's two halves"
+    # Three sidepath rows and fifteen legality-only rows since 2026-09-26, when
+    # the owner put a mass ride on the Key Bridge roadway and decided Chain
+    # Bridge is not a mass-ride crossing.
+    assert len(sidepath_rows) == 3 and len(legality_only) == 15, "the fixture's two halves"
 
     ways = [
         Way(

@@ -248,13 +248,13 @@ EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
     "Key Bridge": ExpectedCrossing(
         ("Francis Scott Key Bridge",), False, True, "MPD", "DDOT", mass_ride_only=True
     ),
-    # Legal roadways, both. Recording either as roadway-illegal is the round-3
-    # error, and recording either as sidepath-only was the error the owner
-    # corrected on 2026-09-26: a mass ride takes these roadways.
+    # A legal roadway, and recording it as roadway-illegal is the round-3 error.
+    # Sidepath-only, so the no-trail variant drops it: the owner, 2026-09-26,
+    # "Not a mass-ride crossing", its District approach staying barred.
     # Chain Bridge's Virginia end was also recorded as Fairfax County, which was
     # wrong twice over - the abutment is in Arlington, and above the shoreline
     # it is not a Virginia authority's to police at all.
-    "Chain Bridge": ExpectedCrossing(("Chain Bridge",), False, True, "MPD", "DDOT"),
+    "Chain Bridge": ExpectedCrossing(("Chain Bridge",), True, True, "MPD", "DDOT"),
     # The 14th Street complex: three highway spans, the Long Bridge (rail) and
     # the Fenwick Bridge (Metro). The shared-use path is a sidewalk on the
     # George Mason span, so that is the row that is sidepath-only; the other two
@@ -581,17 +581,24 @@ class TestARoadwayForMassRidesOnly:
                 barred = built.get("bicycle") == "no"
                 assert barred is expected.mass_ride_only, f"{name}: {variant.value} bar"
 
-    def test_the_owners_three_potomac_roadways_carry_a_mass_ride(self) -> None:
+    def test_the_owners_potomac_roadways(self) -> None:
         """The owner, 2026-09-26: "Mass ride can cross the Potomac at Chain
-        Bridge, Key Bridge, and Memorial bridge without using a trail" - so none
-        of the three roadways is dropped from the no-trail variant, and none is
-        legally barred."""
+        Bridge, Key Bridge, and Memorial bridge without using a trail", and
+        then, of Chain Bridge with its District approach barred, "Not a
+        mass-ride crossing". So the no-trail variant keeps the Key and Memorial
+        roadways and drops Chain's, and none of the three is legally barred -
+        the standard and e-bike variants keep Chain's roadway."""
         ways, sidepath_ids, mass_ride_ids = self.resolved()
         by_label = dict(zip(EXPECTED_CROSSINGS, ways, strict=True))
-        for label in ("Chain Bridge", "Key Bridge", "Arlington Memorial Bridge"):
+        for label in ("Key Bridge", "Arlington Memorial Bridge"):
             way = by_label[label]
             kept = inject(Variant.NO_TRAIL, way.tags, way.osm_id, sidepath_ids, mass_ride_ids)
             assert kept is not None and kept.get("bicycle") != "no", label
+        chain = by_label["Chain Bridge"]
+        args = (chain.tags, chain.osm_id, sidepath_ids, mass_ride_ids)
+        assert inject(Variant.NO_TRAIL, *args) is None, "Chain Bridge is not a mass-ride crossing"
+        for variant in (Variant.STANDARD, Variant.EBIKE):
+            assert inject(variant, *args).get("bicycle") != "no", variant.value
         rows = {row["name"]: row for row in crossing_rows()}
         assert all(
             rows[label]["roadway_bicycle_legal"]
@@ -917,10 +924,10 @@ class TestTheLegalityHalfReportsItsOwnMisses:
             for row in rows
             if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
         ]
-        # Two of the sixteen are pinned by way id, and are named here because
-        # this extract does not carry the ways they are pinned to. Sixteen since
-        # 2026-09-26, when Key Bridge and Chain Bridge stopped being sidepath-only.
-        assert len(expected) == 16, "the fixture's legality-only rows"
+        # Two of the fifteen are pinned by way id, and are named here because
+        # this extract does not carry the ways they are pinned to. Fifteen since
+        # 2026-09-26, when Key Bridge stopped being sidepath-only.
+        assert len(expected) == 15, "the fixture's legality-only rows"
         assert sorted(expected) == legality_unmatched
         # The row whose miss was the one first noticed, when its note still
         # said (wrongly - the 2026-09-24 extract has it motorway class) that
@@ -1061,7 +1068,8 @@ class TestUnverifiedCrossingNames:
 
 
 # Key Bridge and Chain Bridge as the fixture had them until the owner's decision
-# of 2026-09-26 - sidepath-only - kept as synthetic rows because the two tests
+# of 2026-09-26 - both sidepath-only; Chain Bridge still is - kept as synthetic
+# rows because the two tests
 # below are about the sidepath rule's guards, which the rows that remain
 # sidepath-only (motorway spans) do not exercise on a roadway name.
 SIDEPATH_ROWS_BEFORE_2026_09_26 = [

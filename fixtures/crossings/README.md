@@ -145,13 +145,17 @@ agree.
 
 * `sidepath_only` — routing-relevant, and read only by the no-trail (mass ride)
   variant, which drops the roadway of a row that sets it: true means a mass
-  ride cannot practically use this crossing's roadway. It is set today only
-  where the roadway is barred anyway (the George Mason span and the Wilson
-  Bridge roadway). Key Bridge and Chain Bridge carried it until the owner's
-  decision of 2026-09-26 — "Mass ride can cross the Potomac at Chain Bridge,
-  Key Bridge, and Memorial bridge without using a trail." — and with it the
-  no-trail variant had no crossing there at all, since the sidewalk beside
-  each roadway is trail class and dropped as such. The no-trail variant is
+  ride cannot practically use this crossing's roadway. It is set today on
+  Chain Bridge, which the owner decided on 2026-09-26 is "Not a mass-ride
+  crossing" (its District approach, Canal Road NW, stays barred; the row's
+  note has the three statements in order and why the roadway is dropped
+  rather than left as a dead end), and where the roadway is barred anyway
+  (the George Mason span and the Wilson Bridge roadway). Key Bridge carried
+  it until the owner's decision of 2026-09-26 — "Mass ride can cross the
+  Potomac at Chain Bridge, Key Bridge, and Memorial bridge without using a
+  trail." — and with it the no-trail variant had no crossing there at all,
+  since the sidewalk beside the roadway is trail class and dropped as such.
+  Key Bridge is now the one mass-ride crossing into Virginia. The no-trail variant is
   kept off every bridge sidewalk by `is_trail_class`, not by this column. It
   says nothing about legality and must never be treated as a legal claim.
 * `roadway_mass_ride_only` — routing-relevant, the other way round: true means
@@ -188,9 +192,11 @@ roadway a mass ride was given that day, what happens at its ends:
   path that's a better option for most." Opened for every variant by approved
   access overrides; ordinary riders keep to the sidewalk because the bridge's
   roadway is `roadway_mass_ride_only`.
-* **Chain Bridge**, the District approach (Canal Road NW and the Clara Barton
-  Parkway, `bicycle=no`): "No". Left barred, so a mass ride cannot use Chain
-  Bridge from the District.
+* **Chain Bridge**, the District approach (Canal Road NW, `bicycle=no`): "No".
+  Left barred. The Clara Barton Parkway, the other road off that end, was not
+  in the question and stays as OSM tags it (`bicycle=no`). Asked whether that
+  leaves Chain Bridge a mass-ride crossing: "Not a mass-ride crossing" — so
+  the row is `sidepath_only` and the no-trail variant drops the roadway.
 * **Arlington Memorial Bridge**, the Virginia landing on Columbia Island
   (motorway or `bicycle=no` exits only): "Turn at Memorial Circle". An
   out-and-back for a mass ride; no access change.
