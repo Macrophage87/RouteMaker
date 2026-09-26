@@ -9,11 +9,15 @@
 #     region.pmtiles        the Protomaps basemap (v4 schema) over BBOX
 #     fonts/<stack>/<range>.pbf, fonts/OFL.txt
 #                           the glyphs, from protomaps/basemaps-assets
-#     sprites/v4/<flavor>.json|.png|@2x.*
-#                           the sprites, from the same commit
+#     sprites/v4/<flavor>.json|.png|@2x.*, sprites/README.md
+#                           the sprites, from the same commit, with that
+#                           commit's README, which is where it states the
+#                           licence of each directory
 #     .region.source, .assets.source
 #                           what each was made from; a run whose pins match
 #                           these, with the files present, does nothing
+#
+# Licences and required credits are in docs/OPERATIONS.md, "The base map".
 #
 # Every input is pinned below. The pmtiles binary and the assets archive are
 # checked against a sha256 before anything is unpacked, and a mismatch installs
@@ -21,24 +25,23 @@
 # against - Protomaps publishes no digest for a daily build and an extract is
 # a new file - so `pmtiles verify` is run on it instead before it is moved in.
 #
-# Usage, from the repository root, as the owner of ${DATA_ROOT}/basemap
-# (scripts/prepare_data_root.sh creates it and hands it to uid 10001):
+# Usage. DATA_ROOT must be set, and the run must be as the owner of
+# ${DATA_ROOT}/basemap, which scripts/prepare_data_root.sh hands to uid 10001.
+# That uid has no account on the host and cannot read a checkout under a home
+# directory, so the documented form runs the script in a container as 10001
+# with only the script and that one directory mounted (docs/OPERATIONS.md,
+# "The base map", has the command). The image needs sh, curl, tar, sha256sum
+# and cut; the pinned pmtiles binary needs x86_64 Linux.
 #
-#     sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh
-#     sudo -u '#10001' env DATA_ROOT=<DATA_ROOT> sh scripts/fetch_basemap.sh --build 20261026
-#
-# The path is given rather than `--env-file ./.env` in that form because the
-# env file holds every secret the stack has and uid 10001 has no business
-# reading it; `--env-file` is there for a caller who owns both.
-#
-# `--build` overrides PROTOMAPS_BUILD for one run. build.protomaps.com keeps
-# daily builds for a limited time only, so a pin older than that is a 404 and
-# the refresh is to name a newer day (docs/OPERATIONS.md, "The base map").
-# Needs curl, tar, sha256sum and an x86_64 Linux host (the pinned binary).
+# `--build YYYYMMDD` overrides PROTOMAPS_BUILD for one run. build.protomaps.com
+# keeps daily builds for a limited time only, so a pin older than that is a 404
+# and the refresh is to name a newer day. `--print-stamps` prints what the
+# stamps of a finished run with these pins would hold, and exits.
 #
 # Nothing here touches the running stack: Caddy reads the files on each
 # request, so a replaced region.pmtiles is served on the next one. The files
-# are made world-readable, since the edge reads them as its own uid.
+# are made world-readable, since the edge reads them as its own uid. There is
+# no lock: two runs at once over the same directory delete each other's work.
 
 set -eu
 
@@ -58,19 +61,13 @@ PROTOMAPS_BUILD="20260926"
 BBOX="-78.0,38.2,-76.02,39.72"
 
 usage() {
-	echo "usage: fetch_basemap.sh [--env-file <path>] [--build YYYYMMDD] [--print-stamps]" >&2
+	echo "usage: DATA_ROOT=<path> fetch_basemap.sh [--build YYYYMMDD] [--print-stamps]" >&2
 	exit 2
 }
 
-env_file=""
 print_stamps=""
 while [ $# -gt 0 ]; do
 	case "$1" in
-		--env-file)
-			[ $# -ge 2 ] || usage
-			env_file="$2"
-			shift 2
-			;;
 		--build)
 			[ $# -ge 2 ] || usage
 			PROTOMAPS_BUILD="$2"
@@ -97,22 +94,7 @@ if [ -n "$print_stamps" ]; then
 	exit 0
 fi
 
-if [ -n "$env_file" ]; then
-	# The same reading of compose's env file as scripts/prepare_data_root.sh:
-	# the last uncommented DATA_ROOT line, a trailing CR and one pair of
-	# quotes removed, nothing evaluated.
-	[ -r "$env_file" ] || { echo "cannot read env file '$env_file'" >&2; exit 2; }
-	value=$(sed -n 's/^[[:space:]]*DATA_ROOT[[:space:]]*=//p' "$env_file" | tail -n 1)
-	value=$(printf '%s' "$value" | tr -d '\r')
-	case "$value" in
-		\'*\') value=$(printf '%s' "$value" | sed "s/^'//; s/'\$//") ;;
-		'"'*'"') value=$(printf '%s' "$value" | sed 's/^"//; s/"$//') ;;
-	esac
-	[ -n "$value" ] || { echo "no DATA_ROOT= line in '$env_file'" >&2; exit 2; }
-	DATA_ROOT="$value"
-fi
-
-: "${DATA_ROOT:?DATA_ROOT is not set. Pass --env-file ./.env, or export DATA_ROOT yourself}"
+: "${DATA_ROOT:?DATA_ROOT is not set; name the data root, e.g. DATA_ROOT=/srv/routemaker-data}"
 case "$DATA_ROOT" in
 	/?*) ;;
 	*) echo "DATA_ROOT must be an absolute path, not '$DATA_ROOT'" >&2; exit 2 ;;
@@ -125,13 +107,21 @@ target="$DATA_ROOT/basemap"
 }
 [ -w "$target" ] || { echo "cannot write $target; run this as its owner" >&2; exit 2; }
 
+# Inside the target, so every move into place is a rename on one filesystem.
+# The Caddyfile serves only region.pmtiles, fonts/ and sprites/, so neither
+# this directory nor the stamps are ever reachable from outside. Removed first,
+# before the "already current" exit, so a killed run's leftovers never outlive
+# the next run.
+work="$target/.work"
+rm -rf "$work"
+
 current() {
 	# $1 stamp file, $2 expected stamp, $3... paths that must exist
 	stamp_file="$1"
 	expected="$2"
 	shift 2
-	[ -f "$target/$stamp_file" ] || return 1
-	[ "$(cat "$target/$stamp_file")" = "$expected" ] || return 1
+	# A missing stamp reads as empty, which matches no pin.
+	[ "$(cat "$target/$stamp_file" 2>/dev/null)" = "$expected" ] || return 1
 	for path in "$@"; do
 		[ -e "$target/$path" ] || return 1
 	done
@@ -141,18 +131,13 @@ current() {
 need_region=1
 need_assets=1
 current .region.source "$REGION_STAMP" region.pmtiles && need_region=""
-current .assets.source "$ASSETS_STAMP" fonts sprites && need_assets=""
+current .assets.source "$ASSETS_STAMP" fonts sprites sprites/README.md && need_assets=""
 
 if [ -z "$need_region" ] && [ -z "$need_assets" ]; then
 	echo "$target is current: $REGION_STAMP; $ASSETS_STAMP"
 	exit 0
 fi
 
-# Inside the target, so every move into place is a rename on one filesystem.
-# The Caddyfile serves only region.pmtiles, fonts/ and sprites/, so neither
-# this directory nor the stamps are ever reachable from outside.
-work="$target/.work"
-rm -rf "$work"
 mkdir "$work"
 trap 'rm -rf "$work"' EXIT
 trap 'exit 1' INT TERM HUP
@@ -171,8 +156,10 @@ if [ -n "$need_assets" ]; then
 	echo "fetching basemaps-assets $ASSETS_COMMIT"
 	fetch_checked "$ASSETS_URL" "$ASSETS_SHA256" "$work/assets.tar.gz"
 	mkdir "$work/assets"
+	top="basemaps-assets-$ASSETS_COMMIT"
 	tar -xzf "$work/assets.tar.gz" -C "$work/assets" --strip-components=1 \
-		"basemaps-assets-$ASSETS_COMMIT/fonts" "basemaps-assets-$ASSETS_COMMIT/sprites/v4"
+		"$top/fonts" "$top/sprites/v4" "$top/README.md"
+	mv "$work/assets/README.md" "$work/assets/sprites/README.md"
 fi
 
 if [ -n "$need_region" ]; then

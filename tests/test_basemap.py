@@ -6,19 +6,15 @@ self-hosted beside it, and all three served only to requests whose `Origin` or
 `Referer` is this site. The shared API contract puts them at
 `/basemap/region.pmtiles`, `/basemap/fonts/...` and `/basemap/sprites/...`.
 
-There is no Caddy binary in the test environment, so what the Caddyfile does is
-asserted from its text here and proved against a real Caddy by hand (the task
-report). What the fetch script does is run here, against a stand-in `curl`, for
-the two properties that matter without a network: a download that fails its
-checksum installs nothing, and a directory that is already current is left
-alone without a single request.
+What is asserted here is read from the files: the mount, the directives on
+the route, and the pins in the fetch script. What the route does when run is
+in tests/test_basemap_edge.py, and what the fetch script does when run is in
+tests/test_fetch_basemap.py.
 """
 
 from __future__ import annotations
 
-import os
 import re
-import subprocess
 from pathlib import Path
 
 import yaml
@@ -185,105 +181,3 @@ def test_every_download_is_pinned_and_checksummed() -> None:
     assert re.fullmatch(r"[0-9a-f]{40}", pinned("ASSETS_COMMIT"))
     assert re.fullmatch(r"[0-9a-f]{64}", pinned("ASSETS_SHA256"))
     assert re.fullmatch(r"20\d{6}", pinned("PROTOMAPS_BUILD"))
-
-
-def well_formed_impostors(tmp_path: Path) -> tuple[Path, Path]:
-    """Archives shaped exactly like the two pinned downloads, that are not them.
-
-    The shape matters: junk bytes would fail at `tar` whether or not the
-    checksum was compared, so a script that never compared it would pass. These
-    unpack, and the `pmtiles` inside "extracts" and "verifies", so the checksum
-    is the only thing standing between them and the served directory.
-    """
-    import tarfile
-
-    staging = tmp_path / "impostor"
-    top = staging / f"basemaps-assets-{pinned('ASSETS_COMMIT')}"
-    (top / "fonts" / "Noto Sans Regular").mkdir(parents=True)
-    (top / "fonts" / "Noto Sans Regular" / "0-255.pbf").write_bytes(b"not a glyph")
-    (top / "sprites" / "v4").mkdir(parents=True)
-    (top / "sprites" / "v4" / "light.json").write_text("{}")
-    assets = tmp_path / "assets.tar.gz"
-    with tarfile.open(assets, "w:gz") as archive:
-        archive.add(top, arcname=top.name)
-
-    binary = staging / "pmtiles"
-    binary.write_text('#!/bin/sh\ncase "$1" in extract) printf PMTiles > "$3" ;; esac\nexit 0\n')
-    binary.chmod(0o755)
-    pmtiles = tmp_path / "pmtiles.tar.gz"
-    with tarfile.open(pmtiles, "w:gz") as archive:
-        archive.add(binary, arcname="pmtiles")
-    return assets, pmtiles
-
-
-def run_fetch(tmp_path: Path) -> tuple[subprocess.CompletedProcess, Path, str]:
-    """Run the script with DATA_ROOT under tmp_path and a `curl` that answers
-    every download with an impostor and every HEAD with success."""
-    assets, pmtiles = well_formed_impostors(tmp_path)
-    root = tmp_path / "data"
-    (root / "basemap").mkdir(parents=True)
-    stubs = tmp_path / "bin"
-    stubs.mkdir()
-    calls = tmp_path / "curl-calls"
-    curl = stubs / "curl"
-    curl.write_text(
-        f"""#!/bin/sh
-echo "$@" >> {calls}
-out=""; url=""
-while [ $# -gt 0 ]; do
-    case "$1" in -o) out="$2"; shift ;; http*) url="$1" ;; esac
-    shift
-done
-[ -z "$out" ] && exit 0
-case "$url" in
-    *basemaps-assets*) cp {assets} "$out" ;;
-    *go-pmtiles*) cp {pmtiles} "$out" ;;
-    *) exit 22 ;;
-esac
-"""
-    )
-    curl.chmod(0o755)
-    env = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "DATA_ROOT": str(root)}
-    result = subprocess.run(["sh", str(FETCH)], capture_output=True, text=True, env=env)
-    return result, root / "basemap", calls.read_text() if calls.exists() else ""
-
-
-def test_a_download_that_fails_its_checksum_installs_nothing(tmp_path) -> None:
-    result, basemap, calls = run_fetch(tmp_path)
-    assert "basemaps-assets" in calls, f"the stand-in curl was never asked; premise failed: {calls}"
-    assert result.returncode != 0, result.stdout
-    left = sorted(p.name for p in basemap.iterdir())
-    assert left == [], f"a fetch of the wrong files left {left} in the served directory"
-
-
-def test_a_directory_that_is_already_current_makes_no_request(tmp_path) -> None:
-    """Idempotent: a second run over a finished fetch is a no-op, and in
-    particular does not pull the region from build.protomaps.com again."""
-    failing = 'echo "curl must not be called" >&2; exit 99'
-    root = tmp_path / "data"
-    basemap = root / "basemap"
-    basemap.mkdir(parents=True)
-    # What a finished run leaves, stamps included - produced by the script's
-    # own stamp function so the test does not restate the stamp format.
-    stamp = subprocess.run(
-        ["sh", str(FETCH), "--print-stamps"],
-        capture_output=True,
-        text=True,
-        env={**os.environ, "DATA_ROOT": str(root)},
-    )
-    assert stamp.returncode == 0, stamp.stderr
-    for line in stamp.stdout.splitlines():
-        name, _, value = line.partition(" ")
-        (basemap / name).write_text(value + "\n")
-    (basemap / "region.pmtiles").write_bytes(b"PMTiles")
-    (basemap / "fonts").mkdir()
-    (basemap / "sprites").mkdir()
-
-    stubs = tmp_path / "bin"
-    stubs.mkdir()
-    (stubs / "curl").write_text(f"#!/bin/sh\n{failing}\n")
-    (stubs / "curl").chmod(0o755)
-    env = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "DATA_ROOT": str(root)}
-    result = subprocess.run(["sh", str(FETCH)], capture_output=True, text=True, env=env)
-    assert result.returncode == 0, result.stderr
-    assert (basemap / "region.pmtiles").read_bytes() == b"PMTiles"
