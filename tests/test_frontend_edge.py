@@ -13,6 +13,7 @@ already present: this pulls nothing.
 
 from __future__ import annotations
 
+import gzip
 import shutil
 import subprocess
 import time
@@ -30,7 +31,9 @@ IMAGE = yaml.safe_load((REPO / "compose.yaml").read_text())["services"]["caddy"]
 LOCAL_IMAGE = IMAGE.removeprefix("docker.io/library/")
 
 INDEX = b"<!doctype html><title>RouteMaker</title><div id=root></div>"
-SCRIPT = b"console.log('app')"
+# Long enough that Caddy's encoder (minimum 512 bytes) compresses it.
+SCRIPT = b"console.log('app');\n" * 200
+LICENCES = b"# Licenses\n"
 STATIC = b"body{}"
 
 
@@ -48,8 +51,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def get(base: str, path: str) -> tuple[int, dict[str, str], bytes]:
-    request = urllib.request.Request(base + path)
+def get(base: str, path: str, **headers: str) -> tuple[int, dict[str, str], bytes]:
+    request = urllib.request.Request(
+        base + path, headers={k.replace("_", "-"): v for k, v in headers.items()}
+    )
     try:
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, dict(response.headers), response.read()
@@ -65,6 +70,7 @@ def edge(tmp_path_factory):
     (frontend / "index.html").write_bytes(INDEX)
     (frontend / "favicon.svg").write_bytes(b"<svg/>")
     (frontend / "assets" / "index-abc123.js").write_bytes(SCRIPT)
+    (frontend / "licenses.txt").write_bytes(LICENCES)
     static = root / "static"
     (static / "admin").mkdir(parents=True)
     (static / "admin" / "base.css").write_bytes(STATIC)
@@ -119,8 +125,37 @@ def test_the_app_is_served_at_the_root(edge) -> None:
     assert body == INDEX
     # Revalidated on every load, so a deploy is seen at once.
     assert "no-cache" in headers.get("Cache-Control", ""), headers
-    status, _, body = get(edge, "/index.html")
+    status, headers, body = get(edge, "/index.html")
     assert (status, body) == (200, INDEX)
+    assert "no-cache" in headers.get("Cache-Control", ""), headers
+
+
+def test_the_favicon_and_the_licence_notices_are_the_apps(edge) -> None:
+    status, _, body = get(edge, "/favicon.svg")
+    assert (status, body) == (200, b"<svg/>")
+    status, headers, body = get(edge, "/licenses.txt")
+    assert (status, body) == (200, LICENCES)
+    assert "no-cache" in headers.get("Cache-Control", ""), headers
+
+
+def test_the_app_carries_its_content_security_policy(edge) -> None:
+    """PLAN.md:246 asks for `default-src 'self'`; the app makes no request off
+    this site, so the policy can say so, and it refuses framing."""
+    _, headers, _ = get(edge, "/")
+    policy = headers.get("Content-Security-Policy", "")
+    directives = {part.split()[0]: part.split()[1:] for part in policy.split(";") if part.strip()}
+    assert directives.get("default-src") == ["'self'"], policy
+    assert directives.get("script-src") == ["'self'"], policy
+    assert directives.get("connect-src") == ["'self'"], policy
+    assert directives.get("frame-ancestors") == ["'none'"], policy
+    assert directives.get("object-src") == ["'none'"], policy
+
+
+def test_the_app_is_compressed_for_a_client_that_asks(edge) -> None:
+    status, headers, body = get(edge, "/assets/index-abc123.js", Accept_Encoding="gzip")
+    assert status == 200
+    assert headers.get("Content-Encoding") == "gzip", headers
+    assert gzip.decompress(body) == SCRIPT
 
 
 def test_the_app_keeps_the_referer_the_basemap_guard_needs(edge) -> None:
@@ -147,8 +182,10 @@ def test_hashed_assets_are_cached_for_good(edge) -> None:
 
 
 def test_a_missing_asset_is_the_file_servers_404_not_the_api(edge) -> None:
-    status, _, _ = get(edge, "/assets/gone.js")
+    status, headers, _ = get(edge, "/assets/gone.js")
     assert status == 404
+    # A 404 cached for a year would outlive the deploy that fixes it.
+    assert "immutable" not in headers.get("Cache-Control", ""), headers
 
 
 @pytest.mark.parametrize(
@@ -174,3 +211,11 @@ def test_everything_else_still_reaches_the_api(edge, path) -> None:
 def test_static_is_still_served_from_the_collected_assets(edge) -> None:
     status, _, body = get(edge, "/static/admin/base.css")
     assert (status, body) == (200, STATIC)
+
+
+def test_the_basemap_is_still_not_encoded(edge) -> None:
+    """Encoding belongs to the app's block only; the archive's byte ranges
+    must reach the reader as stored (tests/test_basemap.py reads the text,
+    this reads the answer)."""
+    _, headers, _ = get(edge, "/basemap/region.pmtiles", Accept_Encoding="gzip")
+    assert "Content-Encoding" not in headers, headers

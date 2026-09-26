@@ -113,15 +113,36 @@
 	# archive, glyphs and sprites on the page's thread), while links off the
 	# site - the attribution's - carry none. `no-referrer` here would blank the
 	# map. index.html revalidates on every load so a deploy is picked up at
-	# once; the hashed files under /assets/ never change under their name.
-	@frontend path / /index.html /favicon.svg /assets/*
+	# once; the hashed files under /assets/ never change under their name, so
+	# they are cached for good - but only the ones that exist, since a 404
+	# cached for a year would outlive the deploy that fixes it.
+	#
+	# The app's responses are compressed. The rule in the /basemap/* block
+	# that nothing may encode is about byte ranges into the archive; it does
+	# not reach this block, and the app's main script is ~1.3 MB raw and
+	# ~370 KB gzipped, which matters on a phone.
+	#
+	# The Content-Security-Policy is the app's own: every request it makes is
+	# to this site (PLAN.md:15, no third-party tile servers), MapLibre's worker
+	# is a same-origin file, and MapLibre sets inline styles. frame-ancestors
+	# refuses framing. licenses.txt is the bundled packages' licence notices,
+	# which the build writes and the map's credits link to.
+	@frontend path / /index.html /favicon.svg /licenses.txt /assets/*
 	handle @frontend {
+		encode zstd gzip
 		header Referrer-Policy "same-origin"
 		header X-Content-Type-Options "nosniff"
-		header /assets/* Cache-Control "public, max-age=31536000, immutable"
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+		root * /srv/frontend
+		@hashed {
+			path /assets/*
+			file
+		}
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
 		header / Cache-Control "no-cache"
 		header /index.html Cache-Control "no-cache"
-		root * /srv/frontend
+		header /licenses.txt Cache-Control "no-cache"
+		header /favicon.svg Cache-Control "public, max-age=86400"
 		file_server
 	}
 
