@@ -38,6 +38,8 @@ interface Props {
   onStressAvailability: (availability: StressAvailability) => void;
   onMapClick: (point: LonLat) => void;
   onMovePoint: (index: number, point: LonLat) => void;
+  /** Changes when the markers must be put back on the points as they are. */
+  markerReset: number;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
 }
@@ -227,7 +229,7 @@ export function MapView(props: Props) {
     };
   }, []);
 
-  // Markers follow the point list.
+  // Markers follow the point list (and go back to it on markerReset).
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -252,7 +254,7 @@ export function MapView(props: Props) {
       });
       return marker;
     });
-  }, [props.points]);
+  }, [props.points, props.markerReset]);
 
   // The route line.
   useEffect(() => {

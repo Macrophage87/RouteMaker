@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type StressAvailability } from "./MapView.tsx";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
@@ -38,6 +38,18 @@ function session(): Storage | null {
 const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
 const NARROW = "(max-width: 720px)";
 
+/** Whether the phone layout (the bottom sheet) is showing, kept up to date. */
+function useNarrow(): boolean {
+  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW).matches);
+  useEffect(() => {
+    const query = window.matchMedia(NARROW);
+    const onChange = () => setNarrow(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+  return narrow;
+}
+
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
   const [preset, setPreset] = useState<PresetId>(initialPlan.preset);
@@ -51,11 +63,17 @@ export function App() {
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
+  // Bumped to put the markers back where the points are, without changing
+  // the points (which would plan the same route again).
+  const [markerReset, setMarkerReset] = useState(0);
+  const narrow = useNarrow();
   const mapRef = useRef<MapLibreMap | null>(null);
   const panelRef = useRef<HTMLElement>(null);
   const removeRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const addRef = useRef<HTMLButtonElement>(null);
   const planButtonRef = useRef<HTMLButtonElement>(null);
+  const routeHeadingRef = useRef<HTMLHeadingElement>(null);
+  const pointsHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
 
@@ -117,10 +135,17 @@ export function App() {
     scheduler.current?.request({ points, preset, confirmLong: sendsConfirmation(points, confirmedKm) });
   }, [points, preset, confirmedKm]);
 
-  // The long-ride question takes the focus, so a keyboard rider lands on it.
+  // The long-ride question and every error are in the sheet; on a phone whose
+  // sheet is hidden they would otherwise be invisible, so the sheet opens.
   useEffect(() => {
-    if (status.kind === "confirm") planButtonRef.current?.focus();
-  }, [status.kind]);
+    if (status.kind === "confirm" || status.kind === "error") setPanelOpen(true);
+  }, [status]);
+
+  // The long-ride question takes the focus, so a keyboard rider lands on it
+  // (once the sheet is open: a hidden button cannot take it).
+  useEffect(() => {
+    if (status.kind === "confirm" && panelOpen) planButtonRef.current?.focus();
+  }, [status.kind, panelOpen]);
 
   // After Remove, the focus goes to the next Remove button, or to Add.
   useEffect(() => {
@@ -151,7 +176,7 @@ export function App() {
   const move = useCallback((index: number, point: LonLat) => {
     if (!insideCoverage(point)) {
       setNotice("That point is outside the area this map covers; it was put back.");
-      setPoints((current) => [...current]);
+      setMarkerReset((n) => n + 1);
       return;
     }
     setNotice(null);
@@ -180,10 +205,14 @@ export function App() {
     // Sent here as well as by the effect, which does not run again when the
     // confirmed span is unchanged; the debounce folds the two into one.
     scheduler.current?.request({ points, preset, confirmLong: true });
+    // The question goes away; the focus goes to where the answer will be.
+    routeHeadingRef.current?.focus();
   };
   const cancelLong = () => {
     setStatus({ kind: "idle" });
     setNotice("Not planned. Move or remove points for a shorter ride; any change asks again.");
+    // To the points, which are what the rider changes next.
+    pointsHeadingRef.current?.focus();
   };
 
   // The map frames a route in the part the panel does not cover.
@@ -198,6 +227,26 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // On a phone the sheet is half the screen; a route that is showing (a
+  // shared link, usually) comes first in it, before the ride types.
+  const routeFirst = narrow && shown !== null;
+
+  // Reordering the sheet moves sections in the DOM, and a focused element
+  // that moves loses the focus; put it back where it was.
+  const focusBeforeRender = useRef<Element | null>(null);
+  focusBeforeRender.current = document.activeElement;
+  useLayoutEffect(() => {
+    const before = focusBeforeRender.current;
+    if (
+      before instanceof HTMLElement &&
+      before !== document.body &&
+      before.isConnected &&
+      document.activeElement !== before
+    ) {
+      before.focus({ preventScroll: true });
+    }
+  }, [routeFirst]);
+
   const announcement =
     status.kind === "loading"
       ? `Planning a ${presetLabel(preset)} route…`
@@ -206,6 +255,147 @@ export function App() {
         : status.kind === "ok" && route
           ? announceRoute(route)
           : "";
+
+  const presetsSection = (
+    <fieldset key="presets" className="presets">
+      <legend>Ride type</legend>
+      {PRESETS.map((option) => (
+        <label key={option.id} className="preset">
+          <input
+            type="radio"
+            name="preset"
+            value={option.id}
+            checked={preset === option.id}
+            onChange={() => setPreset(option.id)}
+          />
+          <span>
+            <strong>{option.label}</strong>
+            <span className="hint">{option.description}</span>
+          </span>
+        </label>
+      ))}
+      <p className="hint">The ride types differ most on longer and rural routes; in town they often agree.</p>
+    </fieldset>
+  );
+  const pointsSection = (
+    <section key="points" aria-labelledby="points-heading">
+      <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
+        Points
+      </h2>
+      {points.length === 0 ? (
+        <p className="hint">
+          Click the map to set a start, then an end. Later clicks add a via point on the
+          nearest leg. Drag any marker to move it. From the keyboard, move the map with the
+          arrow keys and use "Add point at map centre".
+        </p>
+      ) : (
+        <ol className="points">
+          {points.map((point, index) => {
+            const name =
+              index === 0 ? "Start" : index === points.length - 1 && points.length > 1 ? "End" : `Via ${index}`;
+            return (
+              <li key={index}>
+                <span className="point-name">{name}</span>
+                <span className="coords">
+                  {point[1].toFixed(4)}, {point[0].toFixed(4)}
+                </span>
+                <button
+                  type="button"
+                  className="link"
+                  ref={(el) => {
+                    removeRefs.current[index] = el;
+                  }}
+                  onClick={() => removeAt(index)}
+                  aria-label={`Remove ${name}`}
+                >
+                  Remove
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
+      <div className="actions">
+        <button
+          type="button"
+          ref={addRef}
+          onClick={addAtCentre}
+          onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
+          onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
+          onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
+          onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
+          disabled={points.length >= MAX_POINTS}
+        >
+          Add point at map centre
+        </button>
+        <button type="button" onClick={() => setPoints((p) => [...p].reverse())} disabled={points.length < 2}>
+          Reverse
+        </button>
+        <button type="button" onClick={clearAll} disabled={points.length === 0}>
+          Clear
+        </button>
+      </div>
+      {notice && (
+        <p className="notice" role="status">
+          {notice}
+        </p>
+      )}
+    </section>
+  );
+  const routeSection = (
+    <section key="route" aria-labelledby="route-heading" aria-busy={stale}>
+      <h2 id="route-heading" ref={routeHeadingRef} tabIndex={-1}>
+        Route
+      </h2>
+      <div role="status" aria-live="polite" className="status-line">
+        {status.kind === "loading" && <p className="loading">{announcement}</p>}
+        {status.kind === "waiting" && <p className="loading">{announcement}</p>}
+        {status.kind === "ok" && <p className="visually-hidden">{announcement}</p>}
+        {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
+      </div>
+      {status.kind === "confirm" && (
+        <div
+          className="confirm"
+          role="alertdialog"
+          aria-labelledby="confirm-title"
+          aria-describedby="confirm-text"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancelLong();
+            }
+          }}
+        >
+          <p id="confirm-title">
+            <strong>{status.error.title}</strong>
+          </p>
+          <p id="confirm-text">{status.error.message} Plan it?</p>
+          <div className="actions">
+            <button type="button" ref={planButtonRef} onClick={confirmLong}>
+              Plan it
+            </button>
+            <button type="button" className="secondary" onClick={cancelLong}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+      {status.kind === "error" && (
+        <div className={`error error-${status.error.kind}`} role="alert">
+          <p>
+            <strong>{status.error.title}.</strong> {status.error.message}
+          </p>
+          {["router-down", "timed-out", "server", "network", "rate-limited"].includes(status.error.kind) && (
+            <button type="button" onClick={retry}>
+              Try again
+            </button>
+          )}
+        </div>
+      )}
+      {shown && <RouteSummary route={shown} points={routedPoints} />}
+    </section>
+  );
 
   return (
     <div className="app">
@@ -218,6 +408,7 @@ export function App() {
         onStressAvailability={setStress}
         onMapClick={place}
         onMovePoint={move}
+        markerReset={markerReset}
         onReady={(map) => {
           mapRef.current = map;
         }}
@@ -241,127 +432,9 @@ export function App() {
           </button>
         </header>
         <div id="panel-body" className="panel-body" hidden={!panelOpen}>
-          <fieldset className="presets">
-            <legend>Ride type</legend>
-            {PRESETS.map((option) => (
-              <label key={option.id} className="preset">
-                <input
-                  type="radio"
-                  name="preset"
-                  value={option.id}
-                  checked={preset === option.id}
-                  onChange={() => setPreset(option.id)}
-                />
-                <span>
-                  <strong>{option.label}</strong>
-                  <span className="hint">{option.description}</span>
-                </span>
-              </label>
-            ))}
-            <p className="hint">The ride types differ most on longer and rural routes; in town they often agree.</p>
-          </fieldset>
-
-          <section aria-labelledby="points-heading">
-            <h2 id="points-heading">Points</h2>
-            {points.length === 0 ? (
-              <p className="hint">
-                Click the map to set a start, then an end. Later clicks add a via point on the
-                nearest leg. Drag any marker to move it. From the keyboard, move the map with the
-                arrow keys and use "Add point at map centre".
-              </p>
-            ) : (
-              <ol className="points">
-                {points.map((point, index) => {
-                  const name =
-                    index === 0 ? "Start" : index === points.length - 1 && points.length > 1 ? "End" : `Via ${index}`;
-                  return (
-                    <li key={index}>
-                      <span className="point-name">{name}</span>
-                      <span className="coords">
-                        {point[1].toFixed(4)}, {point[0].toFixed(4)}
-                      </span>
-                      <button
-                        type="button"
-                        className="link"
-                        ref={(el) => {
-                          removeRefs.current[index] = el;
-                        }}
-                        onClick={() => removeAt(index)}
-                        aria-label={`Remove ${name}`}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
-            )}
-            {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
-            <div className="actions">
-              <button
-                type="button"
-                ref={addRef}
-                onClick={addAtCentre}
-                onFocus={() => setCrosshair((c) => ({ ...c, button: true }))}
-                onBlur={() => setCrosshair((c) => ({ ...c, button: false }))}
-                onMouseEnter={() => setCrosshair((c) => ({ ...c, button: true }))}
-                onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
-                disabled={points.length >= MAX_POINTS}
-              >
-                Add point at map centre
-              </button>
-              <button type="button" onClick={() => setPoints((p) => [...p].reverse())} disabled={points.length < 2}>
-                Reverse
-              </button>
-              <button type="button" onClick={clearAll} disabled={points.length === 0}>
-                Clear
-              </button>
-            </div>
-            {notice && (
-              <p className="notice" role="status">
-                {notice}
-              </p>
-            )}
-          </section>
-
-          <section aria-labelledby="route-heading" aria-busy={stale}>
-            <h2 id="route-heading">Route</h2>
-            <div role="status" aria-live="polite" className="status-line">
-              {status.kind === "loading" && <p className="loading">{announcement}</p>}
-              {status.kind === "waiting" && <p className="loading">{announcement}</p>}
-              {status.kind === "ok" && <p className="visually-hidden">{announcement}</p>}
-              {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
-            </div>
-            {status.kind === "confirm" && (
-              <div className="confirm" role="alertdialog" aria-labelledby="confirm-title" aria-describedby="confirm-text">
-                <p id="confirm-title">
-                  <strong>{status.error.title}</strong>
-                </p>
-                <p id="confirm-text">{status.error.message} Plan it?</p>
-                <div className="actions">
-                  <button type="button" ref={planButtonRef} onClick={confirmLong}>
-                    Plan it
-                  </button>
-                  <button type="button" className="secondary" onClick={cancelLong}>
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-            {status.kind === "error" && (
-              <div className={`error error-${status.error.kind}`} role="alert">
-                <p>
-                  <strong>{status.error.title}.</strong> {status.error.message}
-                </p>
-                {["router-down", "timed-out", "server", "network", "rate-limited"].includes(status.error.kind) && (
-                  <button type="button" onClick={retry}>
-                    Try again
-                  </button>
-                )}
-              </div>
-            )}
-            {shown && <RouteSummary route={shown} points={routedPoints} />}
-          </section>
+          {routeFirst
+            ? [routeSection, presetsSection, pointsSection]
+            : [presetsSection, pointsSection, routeSection]}
 
           <section aria-labelledby="layers-heading">
             <h2 id="layers-heading">Traffic stress</h2>
