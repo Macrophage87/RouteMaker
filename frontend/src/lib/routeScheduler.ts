@@ -26,8 +26,6 @@ import type { RouteResult } from "./api.ts";
 export interface Timers {
   set: (fn: () => void, ms: number) => unknown;
   clear: (handle: unknown) => void;
-  /** The clock, in milliseconds; Date.now when absent. */
-  time?: () => number;
 }
 
 export type SchedulerState =
@@ -59,10 +57,11 @@ export class RouteScheduler<P> {
   private generation = 0;
   private inFlight = false;
   private debounce: unknown = null;
-  private wait: unknown = null;
+  /** While set, the API's last Retry-After has not passed: nothing is sent. */
+  private hold: unknown = null;
+  private holdSeconds = 0;
+  private holdAnnounced = false;
   private waitsForLatest = 0;
-  /** The API asked not to be asked again before this time (Retry-After). */
-  private notBefore = 0;
   private readonly timers: Timers;
   private readonly debounceMs: number;
   private readonly maxWaits: number;
@@ -85,17 +84,18 @@ export class RouteScheduler<P> {
       this.debounce = null;
       this.pump();
     }, this.debounceMs);
-    if (!this.inFlight && this.wait === null) this.state({ kind: "pending" });
+    if (!this.inFlight && this.hold === null) this.state({ kind: "pending" });
   }
 
-  /** Nothing to route (fewer than two points): drop what is pending. */
+  /**
+   * Nothing to route (fewer than two points): drop what is pending. A
+   * Retry-After still holds; it is the API's, not the plan's.
+   */
   clear(): void {
     this.latest = null;
     this.generation += 1;
     if (this.debounce !== null) this.timers.clear(this.debounce);
     this.debounce = null;
-    if (this.wait !== null) this.timers.clear(this.wait);
-    this.wait = null;
     if (!this.inFlight) this.state({ kind: "idle" });
   }
 
@@ -103,19 +103,25 @@ export class RouteScheduler<P> {
     this.options.onState?.(state);
   }
 
-  private time(): number {
-    return this.timers.time?.() ?? Date.now();
+  /**
+   * Send nothing for this long; then send the latest plan, if any. Only
+   * called as an answer settles, and nothing is sent while a hold is on, so
+   * there is never an earlier hold to replace.
+   */
+  private holdFor(seconds: number): void {
+    this.holdSeconds = seconds;
+    this.holdAnnounced = false;
+    this.hold = this.timers.set(() => {
+      this.hold = null;
+      this.pump();
+    }, seconds * 1000);
   }
 
   private pump(): void {
-    if (this.inFlight || this.wait !== null || this.debounce !== null || this.latest === null) return;
-    const hold = this.notBefore - this.time();
-    if (hold > 0) {
-      this.state({ kind: "waiting", seconds: Math.ceil(hold / 1000) });
-      this.wait = this.timers.set(() => {
-        this.wait = null;
-        this.pump();
-      }, hold);
+    if (this.inFlight || this.debounce !== null || this.latest === null) return;
+    if (this.hold !== null) {
+      if (!this.holdAnnounced) this.state({ kind: "waiting", seconds: this.holdSeconds });
+      this.holdAnnounced = true;
       return;
     }
     const plan = this.latest;
@@ -133,7 +139,7 @@ export class RouteScheduler<P> {
     // A Retry-After holds for whatever is sent next, this plan or a newer one.
     const error = result && !result.ok ? result.error : null;
     const retryAfterS = error && (error.status === 429 || error.status === 503) ? error.retryAfterS : undefined;
-    if (retryAfterS !== undefined) this.notBefore = this.time() + Math.max(1, retryAfterS) * 1000;
+    if (retryAfterS !== undefined) this.holdFor(Math.max(1, retryAfterS));
     const current = generation === this.generation;
     if (!current) {
       // The plan changed while this was computing: its answer is not shown,
@@ -148,11 +154,13 @@ export class RouteScheduler<P> {
       return;
     }
     if (retryAfterS !== undefined && this.waitsForLatest < this.maxWaits) {
-      // Waited out in pump(), which holds until notBefore.
+      // Waited out: pump() says so, and the hold sends the plan when it ends.
       this.waitsForLatest += 1;
       this.pump();
       return;
     }
+    // Shown: nothing is left to send, so a hold that ends later sends nothing.
+    this.latest = null;
     this.state({ kind: "idle" });
     this.options.onResult(plan, result);
   }

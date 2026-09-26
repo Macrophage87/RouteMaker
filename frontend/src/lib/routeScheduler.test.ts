@@ -16,7 +16,6 @@ class FakeTimers implements Timers {
   clear = (handle: unknown) => {
     this.pending.delete(handle as number);
   };
-  time = () => this.now;
   async advance(ms: number) {
     const until = this.now + ms;
     for (;;) {
@@ -369,4 +368,32 @@ test("a Retry-After on an answer nobody is shown still holds the next plan", asy
   await ctx.timers.advance(1);
   assert.equal(ctx.api.calls.length, 2);
   assert.equal(ctx.api.calls[1].plan, 2);
+});
+
+test("a refusal that has been shown is not resent by itself when its Retry-After ends", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  await exhaust(ctx);
+  const sent = ctx.api.calls.length;
+  await ctx.timers.advance(60_000);
+  assert.equal(ctx.api.calls.length, sent, "the shown plan went again with nobody asking");
+});
+
+test("clearing during a Retry-After sends nothing when it ends, and the next plan still waits it out", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("5"));
+  await flush();
+  ctx.scheduler.clear();
+  await ctx.timers.advance(1000);
+  ctx.scheduler.request(2);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, 1, "the next plan went inside the Retry-After");
+  await ctx.timers.advance(5000);
+  assert.deepEqual(
+    ctx.api.calls.map((c) => c.plan),
+    [1, 2],
+  );
 });
