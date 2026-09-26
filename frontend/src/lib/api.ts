@@ -30,8 +30,7 @@ export type ErrorKind =
   | "router-down"
   | "timed-out"
   | "server"
-  | "network"
-  | "aborted";
+  | "network";
 
 export interface RouteError {
   kind: ErrorKind;
@@ -176,18 +175,12 @@ function looksLikeRoute(value: unknown): value is RouteResponse {
 
 type FetchLike = (url: string, init: RequestInit) => Promise<Response>;
 
-function aborted(): RouteResult {
-  return { ok: false, error: { kind: "aborted", status: 0, title: "Cancelled", message: "Replaced by a newer request." } };
-}
-
-function isAbort(failure: unknown): boolean {
-  return failure instanceof DOMException && failure.name === "AbortError";
-}
-
 export async function requestRoute(
   points: readonly LonLat[],
   preset: PresetId,
-  options: { signal?: AbortSignal; fetchImpl?: FetchLike; confirmLong?: boolean } = {},
+  // No abort signal: the scheduler never abandons a request, because an abort
+  // in the browser does not free the API's in-flight slot (routeScheduler.ts).
+  options: { fetchImpl?: FetchLike; confirmLong?: boolean } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -198,10 +191,8 @@ export async function requestRoute(
       // confirm_long only when the rider said yes to a long plan (LONG-RIDE
       // contract); the API asks anonymous riders first with a 409.
       body: JSON.stringify(options.confirmLong ? { points, preset, confirm_long: true } : { points, preset }),
-      signal: options.signal,
     });
-  } catch (failure) {
-    if (isAbort(failure)) return aborted();
+  } catch {
     return {
       ok: false,
       error: {
@@ -215,9 +206,7 @@ export async function requestRoute(
   let body: unknown = null;
   try {
     body = await response.json();
-  } catch (failure) {
-    // An abort can land while the body is still arriving.
-    if (isAbort(failure)) return aborted();
+  } catch {
     body = null;
   }
   if (response.ok && looksLikeRoute(body)) return { ok: true, route: body };

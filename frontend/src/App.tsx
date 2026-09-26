@@ -77,7 +77,7 @@ export function App() {
         } else if (result.error.kind === "confirm-long") {
           setRoute(null);
           setStatus({ kind: "confirm", error: result.error });
-        } else if (result.error.kind !== "aborted") {
+        } else {
           setRoute(null);
           setStatus({ kind: "error", error: result.error });
         }

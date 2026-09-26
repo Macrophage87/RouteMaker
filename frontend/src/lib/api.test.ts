@@ -173,28 +173,6 @@ test("every input refusal the validator can give is said in words, never empty",
   assert.equal(bare, describeError(400, null, null).message);
 });
 
-test("the caller's abort signal reaches fetch", async () => {
-  const { impl, calls } = fakeFetch(500, "{}");
-  const controller = new AbortController();
-  await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, signal: controller.signal });
-  assert.equal(calls[0].init.signal, controller.signal);
-});
-
-test("an abort while the body is still arriving is an abort, not a server error", async () => {
-  const impl = async () =>
-    ({
-      ok: true,
-      status: 200,
-      headers: new Headers(),
-      json: async () => {
-        throw new DOMException("The operation was aborted.", "AbortError");
-      },
-    }) as unknown as Response;
-  const result = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.error.kind, "aborted");
-});
-
 test("a 200 missing what the panel reads is refused, not rendered", async () => {
   const good = {
     preset: "default",
@@ -254,13 +232,4 @@ test("a network failure is its own kind", async () => {
   const result = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.error.kind, "network");
-});
-
-test("an aborted request is reported as aborted, so the caller can drop it", async () => {
-  const impl = async () => {
-    throw new DOMException("The operation was aborted.", "AbortError");
-  };
-  const result = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.error.kind, "aborted");
 });
