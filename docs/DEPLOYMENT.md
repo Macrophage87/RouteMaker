@@ -379,7 +379,8 @@ copies from the image, and refuses to run when that copy differs from the
 image's `fixtures/crossings/potomac-anacostia.json`. docs/OPERATIONS.md, "A
 deploy that changes the crossings fixture or loads access overrides", has the
 reinstall command, the order to deploy, reinstall and load access overrides in
-(all before the next Tuesday rebuild), and how to undo a loaded override.
+(all before the next Tuesday rebuild), and how to undo a loaded override. On a fresh host the overrides are loaded once, as step 7 of "First rebuild on
+a fresh host" there, or the first graph is built without them.
 
 ### The two images with no source
 
@@ -892,6 +893,7 @@ read-only beside it:
 | `run_rebuild_now` | `rebuild` | Queues the job for the service that owns the data mounts. It only writes a row, so any Django container could defer it, but the run it starts belongs there. |
 | `install_reference_data.py` | `rebuild` | Writes `<DATA_ROOT>/reference/`, and reads the extract under `<DATA_ROOT>/extracts/`. |
 | `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container that does not mount it, the check reports `not measured` and exits 1 rather than measuring the container's own layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
+| `load_access_overrides` | `api` | Writes approved `Override` rows and their audit entries, and touches nothing on the data volume. The file comes in on standard input (`-`), because the api image carries `src/` and not `fixtures/`. On a fresh host it is step 7 of docs/OPERATIONS.md, "First rebuild on a fresh host", after the first admin has signed in and the reference data is installed; on a running host, the order in "A deploy that changes the crossings fixture or loads access overrides". |
 | `unwedge_job` | `worker` | Reads and updates the job table only, so any Django container works; `worker` is the one that is up whenever the stack is, including while `rebuild` is the container being restarted. |
 
 The frontend half of that sentence has no source either: `frontend/` is a single

@@ -651,7 +651,7 @@ the first host to run it is the first test of it.
    That failure is terminal rather than retried (`ReferenceDataMissing` is in
    `config.procrastinate.terminal_causes`), so it costs one run, not six. The
    extract it wrote stays on the volume and the freshness rule — six days —
-   means step 7 reuses it rather than pulling it again.
+   means step 8 reuses it rather than pulling it again.
 
 6. **Install the reference data, pointed at the extract step 5 just wrote.**
 
@@ -719,9 +719,24 @@ the first host to run it is the first test of it.
 
    Run with `--data-root` alone it installs the crossings and exits non-zero
    naming whichever of the other two is still missing, which is the cheap way to
-   check this step before spending step 7 on it.
+   check this step before spending step 8 on it.
 
-7. **Run the rebuild for real.**
+7. **Load the access overrides**, now that the admin from step 4 has signed
+   in (the loader names that account with `--actor`) and step 6 has installed
+   the crossings the rows depend on. Every file in `fixtures/overrides/`, each
+   dry run first, then `--confirm`, from the checkout:
+
+   ```sh
+   docker compose exec -T api python manage.py load_access_overrides -        --actor <discord user id> < fixtures/overrides/<file>.json
+   docker compose exec -T api python manage.py load_access_overrides -        --actor <discord user id> --confirm < fixtures/overrides/<file>.json
+   ```
+
+   Skipping this still builds a graph, without the owner's access decisions:
+   on the 2026-09-26 file, the Key Bridge and 11th Street approaches stay
+   barred and a mass ride detours. "About `--actor`" below says what the
+   attribution is worth.
+
+8. **Run the rebuild for real.**
 
    ```sh
    docker compose exec -T rebuild ./manage.py run_rebuild_now
@@ -741,7 +756,7 @@ the first host to run it is the first test of it.
    Budget six hours, which is also the point at which the rebuild abandons
    itself.
 
-8. **Restart the routers.** `valhalla_service` opens its tile extract once at
+9. **Restart the routers.** `valhalla_service` opens its tile extract once at
    start, so until this runs the three containers are serving the empty
    directories they started against.
 
@@ -812,9 +827,9 @@ same trust boundary as the rest of this document, and it departs from
 entry the command writes says so in its `detail` ("named on the command line,
 not authenticated"). On a fresh host the account exists only after that admin
 has signed in once (`BOOTSTRAP_INSTANCE_ADMIN_DISCORD_ID` makes the first one;
-docs/DEPLOYMENT.md, "Adding a second instance admin"), so load overrides after
-the first sign-in. On a fresh host the order above is safe either way, because
-the first install copies the new fixture.
+docs/DEPLOYMENT.md, "Adding a second instance admin"), so on a fresh host the
+load is step 7 of "First rebuild on a fresh host", after the first sign-in and
+the first install, which copies the new fixture.
 
 Two `--confirm` runs at the same moment can both create the rows: there is no
 lock and no unique constraint. The rows are identical, so the result applies
