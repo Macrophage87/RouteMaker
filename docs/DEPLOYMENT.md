@@ -802,7 +802,9 @@ stack is not broken for lacking one.
   public routing API". It needs the `rate_limit_window` table from migration
   `core.0008`, which the `migrate` one-shot applies on the next `up`, and it
   reads `WEB_CONCURRENCY` - already on the api service - to size how many
-  routes may run at once.
+  routes may run at once: the worker count less two, at least one. Below three
+  workers that leaves fewer than two workers free while routes run, so keep
+  `WEB_CONCURRENCY` at 3 or more on any host that serves the public.
 
 So a first deployment that reaches `/`, gets a 404 and concludes the stack is
 down has concluded wrongly. `/auth/login` is the check.

@@ -215,16 +215,23 @@ VALHALLA_UPSTREAMS = {
     "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
 }
 
+
 # How many routing requests may run at once across the whole api, counted with
 # PostgreSQL advisory locks (core.ratelimit.in_flight_limited). A routing
 # request holds a gunicorn worker for as long as the router takes, so without a
 # bound a burst of long ones - each allowed by the per-minute limit - takes every
 # worker, and `/healthz` stops answering inside compose's 5 s healthcheck. The
-# worker count less two keeps two workers free whatever the router is doing.
+# worker count less two keeps two workers free whatever the router is doing,
+# from three workers up; one or two workers still get one slot, since an empty
+# pool would refuse every route, and so keep fewer than two free.
 # WEB_CONCURRENCY is the count docker/api-entrypoint.sh hands gunicorn, declared
 # on the api service with compose's default of 5; the other services that import
 # these settings do not route, and read the same default.
-ROUTING_CONCURRENCY = max(1, int(os.environ.get("WEB_CONCURRENCY") or 5) - 2)
+def routing_concurrency(web_concurrency: str | None) -> int:
+    return max(1, int(web_concurrency or 5) - 2)
+
+
+ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
 # Of those, how many may be long rides (over 150 km of straight line) at once,
 # across the whole api. Owner decision of 2026-09-26: long rides are planned,

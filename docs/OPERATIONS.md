@@ -246,11 +246,13 @@ The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
 preflight, and counting those would let it spend that visitor's budget. The
 in-flight limit is what keeps two gunicorn workers free for `/healthz`, the
-tiles, sign-in and the admin however the router is loaded; without it a burst
+tiles, sign-in and the admin however the router is loaded (from three workers
+up; one or two workers get one routing slot and keep fewer free); without it a burst
 of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
 PostgreSQL advisory lock held on the worker's connection for the length of the
-request, so a killed worker's slot is released with its connection.
+request, so a killed worker's slot is released with its connection, and a
+slot that cannot be unlocked closes the connection, which releases it too.
 
 **Long rides.** The owner's decision of 2026-09-26 (PLAN.md, Moderation and
 abuse limits): a request longer than 150 km of straight line is planned, up to

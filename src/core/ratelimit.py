@@ -36,9 +36,11 @@ So routing also takes an in-flight slot (`in_flight_limited`): a session-level
 PostgreSQL advisory lock, one of `total` for the deployment and one of
 `per_client` for the client, held for the request and released after it. The
 lock lives on the worker's database connection, so it is correct across
-workers and dies with a killed worker. `total` is the worker count less two, so
-however the router is loaded two workers are always free for `/healthz`, the
-tiles, sign-in and the admin.
+workers and dies with a killed worker; a lock that cannot be released closes
+that connection, which ends it. `total` is the worker count less two
+(`config.settings.routing_concurrency`), so from three workers up, however the
+router is loaded, two workers are free for `/healthz`, the tiles, sign-in and
+the admin; one or two workers still get one slot, and keep fewer free.
 """
 
 from __future__ import annotations
@@ -66,9 +68,10 @@ _KEY_SALT = "routemaker/rate-limit/v1"
 _LOCK_CLASS_TOTAL = 0x524D0000
 _LOCK_CLASS_CLIENT = 0x524D1000
 
-# How long a refused client is told to wait for a slot. A routing request takes
-# a second or two; the whole-deployment case asks for longer because it means
-# every slot is busy.
+# How long a refused client is told to wait for a slot. An ordinary route takes
+# about a second, one near 150 km six to ten under load and a long ride up to
+# fifteen; two seconds is a short first wait rather than the expected time, and
+# the whole-deployment case asks for longer because it means every slot is busy.
 CLIENT_BUSY_RETRY_S = 2
 DEPLOYMENT_BUSY_RETRY_S = 5
 
@@ -264,12 +267,27 @@ def _held_in_class(cursor, lock_class: int) -> int:
 
 
 def _release(pairs) -> None:
+    """Unlock each pair; if one cannot be unlocked, close the connection.
+
+    A session lock lasts as long as its connection, and with CONN_MAX_AGE the
+    connection outlives the request, so a slot that could not be released
+    would stay taken for that worker's next requests. Closing the connection
+    ends every lock it still holds - whether the failure was a lost connection,
+    which has released them already, or anything else - and Django opens a new
+    one on next use.
+    """
     for pair in pairs:
         try:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT pg_advisory_unlock(%s, %s)", list(pair))
-        except Exception:  # noqa: BLE001 - a lost connection has released it already
-            logger.warning("could not release in-flight slot %s; its connection has gone", pair)
+        except Exception:  # noqa: BLE001 - whatever failed, closing ends the locks
+            logger.warning(
+                "could not release in-flight slots %s; closing the connection to end them",
+                pairs,
+                exc_info=True,
+            )
+            connection.close()
+            return
 
 
 def _busy(status: int, retry_after_s: int, message: str) -> JsonResponse:
@@ -287,17 +305,36 @@ def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
     includes this request.
     """
     client = _client_lock_id(client_key(client_address(request)))
+    held: list = []
+    try:
+        if _take(limit, client, held):
+            return held, None
+    except BaseException:
+        # A failure between the two takes would otherwise leave the first
+        # held on a connection that outlives the request.
+        release(held)
+        raise
+    deployment_full = not held
+    release(held)
+    if deployment_full:
+        return [], _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)
+    return [], _busy(429, CLIENT_BUSY_RETRY_S, limit.client_busy)
+
+
+def _take(limit: InFlight, client: int, held: list) -> bool:
+    """Take the slots into `held`; true if the request may run. False with
+    nothing held means the deployment is full, false with the deployment slot
+    held means the client is."""
     total_class = _LOCK_CLASS_TOTAL + limit.scope_id
     client_class = _LOCK_CLASS_CLIENT + limit.scope_id * 64
-    held: list = []
     with connection.cursor() as cursor:
         shared = _take_one(cursor, [(total_class, slot) for slot in range(limit.total)])
         if shared is None:
-            return held, _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)
+            return False
         held.append(shared)
         if _try(cursor, (client_class, client)):
             held.append((client_class, client))
-            return held, None
+            return True
         free_after = limit.total - _held_in_class(cursor, total_class)
         if free_after >= ROOM_FOR_OTHERS:
             mine = _take_one(
@@ -306,9 +343,8 @@ def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
             )
             if mine is not None:
                 held.append(mine)
-                return held, None
-    release(held)
-    return [], _busy(429, CLIENT_BUSY_RETRY_S, limit.client_busy)
+                return True
+    return False
 
 
 def release(held) -> None:

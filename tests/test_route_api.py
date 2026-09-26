@@ -1315,12 +1315,14 @@ class TestInFlight:
         assert post(client, good_body()).status_code == 500
         assert our_advisory_locks() == 0
 
-    def test_a_client_may_have_a_second_route_in_flight(self) -> None:
-        """A planner fires a new request when a waypoint is dragged again
-        before the last answer arrives; one slot would refuse the second."""
+    def test_the_slot_figures_are_the_agreed_ones(self) -> None:
+        """Two per client, the second only while two of the api's slots would
+        stay free after it. Written as numbers, because every other test here
+        reads them from the module and so moves with them."""
         from core import ratelimit
 
-        assert ratelimit.ROUTING_IN_FLIGHT.per_client >= 2
+        assert ratelimit.ROUTING_IN_FLIGHT.per_client == 2
+        assert ratelimit.ROOM_FOR_OTHERS == 2
 
     def long_slots(self, address: str | None = None):
         from core import ratelimit
@@ -1403,6 +1405,7 @@ class TestInFlight:
         assert ratelimit.LONG_ROUTING_IN_FLIGHT.per_client == 1
         assert ratelimit.LONG_ROUTING_IN_FLIGHT.total == 1
 
+    @override_settings(ROUTING_CONCURRENCY=3)
     def test_a_second_route_is_refused_when_the_pool_is_nearly_full(
         self, client, segments, router
     ) -> None:
@@ -1416,15 +1419,14 @@ class TestInFlight:
             response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.50")
         finally:
             other.close()
-        assert settings.ROUTING_CONCURRENCY == 3
         assert response.status_code == 429
         assert our_advisory_locks() == 0, "a refused request holds nothing"
 
+    @override_settings(ROUTING_CONCURRENCY=3)
     def test_filling_the_default_pool_takes_three_addresses(self, client, segments, router) -> None:
-        """Hold one slot per address, as three long requests would: the fourth
-        request, from any of them, finds the pool full."""
+        """Two addresses each holding a route leave the third slot to a new
+        address, not to a second route from either of them."""
         router(standard_router())
-        from core import ratelimit
 
         holders = []
         try:
@@ -1441,7 +1443,6 @@ class TestInFlight:
         finally:
             for other in holders:
                 other.close()
-        assert ratelimit.ROUTING_IN_FLIGHT.total == 3
         assert third_from_a_holder.status_code == 429
         assert third_from_a_new_address.status_code == 200
 
@@ -1457,13 +1458,225 @@ class TestInFlight:
             other.close()
         assert response.status_code == 200
 
-    def test_the_deployment_keeps_two_workers_free(self) -> None:
+    @pytest.mark.parametrize(
+        ("workers", "slots"), [(None, 3), (1, 1), (2, 1), (3, 1), (5, 3), (9, 7)]
+    )
+    def test_the_pool_is_the_workers_less_two_and_never_empty(self, workers, slots) -> None:
+        """An empty pool would refuse every route with 503; one or two workers
+        get one slot, and so leave fewer than two workers free."""
+        from config.settings import routing_concurrency
+
+        assert routing_concurrency(None if workers is None else str(workers)) == slots
+
+    def test_the_setting_is_read_from_the_environment(self) -> None:
+        from config.settings import routing_concurrency
+
+        assert settings.ROUTING_CONCURRENCY == routing_concurrency(
+            os.environ.get("WEB_CONCURRENCY")
+        )
+
+    @pytest.mark.parametrize(("total", "held", "status"), [(1, 1, 503), (4, 3, 200)])
+    def test_the_pool_follows_the_setting(
+        self, total, held, status, client, segments, router
+    ) -> None:
+        """Not only at the default: the entrypoint gives cores*2+1 workers
+        when WEB_CONCURRENCY is unset, so the pool is whatever that makes it."""
         from core import ratelimit
 
-        assert ratelimit.ROUTING_IN_FLIGHT.total == max(
-            1, int(os.environ.get("WEB_CONCURRENCY") or 5) - 2
+        router(standard_router())
+        limit = ratelimit.ROUTING_IN_FLIGHT
+        with override_settings(ROUTING_CONCURRENCY=total):
+            other = hold_slots(
+                [(ratelimit._LOCK_CLASS_TOTAL + limit.scope_id, s) for s in range(held)]
+            )
+            try:
+                assert post(client, good_body()).status_code == status
+            finally:
+                other.close()
+
+    @override_settings(LONG_ROUTING_CONCURRENCY=2)
+    def test_the_long_pool_follows_its_setting(self, client, segments, router) -> None:
+        router(long_router())
+        other = hold_slots(self.long_slots()[:1])
+        try:
+            assert post(client, long_body(160, confirm_long=True)).status_code == 200
+        finally:
+            other.close()
+
+    def test_the_count_comes_before_the_slots(self, client, segments, router) -> None:
+        """A request refused for want of a slot has still spent its count, so
+        retrying into a busy pool is not free."""
+        from core.models import RateLimitWindow
+
+        router(standard_router())
+        other = hold_slots(self.deployment_slots())
+        try:
+            statuses = [
+                post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.45").status_code
+                for _ in range(3)
+            ]
+        finally:
+            other.close()
+        assert statuses == [503] * 3
+        assert list(RateLimitWindow.objects.values_list("hits", flat=True)) == [3]
+
+    def test_the_content_type_comes_before_the_slots(self, client, router) -> None:
+        """A cross-site text/plain POST is refused before it can take a slot."""
+        router(standard_router())
+        other = hold_slots(self.deployment_slots())
+        try:
+            response = post(client, json.dumps(good_body()), content_type="text/plain")
+        finally:
+            other.close()
+        assert response.status_code == 400
+
+    def test_the_confirmation_comes_before_the_long_slot(self, client, router) -> None:
+        """An unconfirmed long ride is asked to confirm even while the long
+        slot is busy: asking costs nothing, and the 409 is the useful answer."""
+        router(long_router())
+        other = hold_slots(self.long_slots())
+        try:
+            assert post(client, long_body(160)).status_code == 409
+        finally:
+            other.close()
+
+    def test_a_request_holds_its_slots_while_it_runs(self, client, segments, router) -> None:
+        """In autocommit a transaction-scoped lock would end with its own
+        statement: the request must still hold both slots when the router is
+        asked."""
+        fake = standard_router()
+        seen = []
+
+        def watching(url, payload, timeout):
+            seen.append(our_advisory_locks())
+            return fake(url, payload, timeout)
+
+        router(watching)
+        assert post(client, good_body()).status_code == 200
+        assert seen and all(n == 2 for n in seen), seen
+
+    def test_a_long_ride_holds_both_pools_while_it_runs(self, client, segments, router) -> None:
+        fake = long_router()
+        seen = []
+
+        def watching(url, payload, timeout):
+            seen.append(our_advisory_locks())
+            return fake(url, payload, timeout)
+
+        router(watching)
+        assert post(client, long_body(160, confirm_long=True)).status_code == 200
+        assert seen and all(n == 4 for n in seen), seen
+        assert our_advisory_locks() == 0
+
+    def test_a_503_leaves_no_slot_behind(self, client, segments, router) -> None:
+        router(standard_router())
+        other = hold_slots(self.deployment_slots())
+        try:
+            assert post(client, good_body()).status_code == 503
+            assert our_advisory_locks() == 0
+        finally:
+            other.close()
+
+    def test_a_refused_long_ride_leaves_no_slot_behind(self, client, segments, router) -> None:
+        router(long_router())
+        other = hold_slots(self.long_slots() + self.long_slots("198.51.100.43"))
+        try:
+            assert post(client, long_body(160, confirm_long=True)).status_code == 503
+            assert our_advisory_locks() == 0
+        finally:
+            other.close()
+        other = hold_slots(self.long_slots("198.51.100.44"))
+        try:
+            response = post(
+                client, long_body(160, confirm_long=True), HTTP_X_FORWARDED_FOR="198.51.100.44"
+            )
+            assert response.status_code == 429
+            assert our_advisory_locks() == 0
+        finally:
+            other.close()
+
+    def test_a_long_ride_that_fails_releases_its_slots(self, client, segments, router) -> None:
+        def breaks(url, payload, timeout):
+            raise RuntimeError("boom")
+
+        router(breaks)
+        assert post(client, long_body(160, confirm_long=True)).status_code == 500
+        assert our_advisory_locks() == 0
+
+    def test_a_view_that_raises_still_releases(self) -> None:
+        """The decorator is for other views too (the stress tiles). On a plain
+        Django view nothing turns the exception into a response first."""
+        from django.test import RequestFactory
+
+        from core import ratelimit
+
+        @ratelimit.in_flight_limited(ratelimit.ROUTING_IN_FLIGHT)
+        def boom(request):
+            raise RuntimeError("boom")
+
+        with pytest.raises(RuntimeError):
+            boom(RequestFactory().post("/x", REMOTE_ADDR="203.0.113.9"))
+        assert our_advisory_locks() == 0
+
+    def test_a_failure_while_taking_slots_holds_nothing(self, monkeypatch) -> None:
+        """The deployment slot is taken before the client's; a database error
+        between the two must not leave the first held on a pooled connection."""
+        from django.db.utils import OperationalError
+        from django.test import RequestFactory
+
+        from core import ratelimit
+
+        real = ratelimit._try
+        calls = []
+
+        def second_fails(cursor, pair):
+            calls.append(pair)
+            if len(calls) > 1:
+                raise OperationalError("server closed the connection unexpectedly")
+            return real(cursor, pair)
+
+        monkeypatch.setattr(ratelimit, "_try", second_fails)
+        with pytest.raises(OperationalError):
+            ratelimit.acquire(
+                RequestFactory().post("/x", REMOTE_ADDR="203.0.113.9"),
+                ratelimit.ROUTING_IN_FLIGHT,
+            )
+        assert len(calls) == 2
+        assert our_advisory_locks() == 0
+
+    def test_a_release_that_fails_does_not_fail_the_request(self, monkeypatch, core_log) -> None:
+        """A route that was planned is answered even if a release fails; the
+        failure is logged, the other slots are still released, and the
+        connection is closed, which ends any lock it still held."""
+        from django.db.utils import InterfaceError
+
+        from core import ratelimit
+
+        pairs = [(ratelimit._LOCK_CLASS_TOTAL + 9, 0), (ratelimit._LOCK_CLASS_TOTAL + 9, 1)]
+        with connection.cursor() as cursor:
+            for pair in pairs:
+                cursor.execute("SELECT pg_advisory_lock(%s, %s)", list(pair))
+            cursor.execute("SELECT pg_backend_pid()")
+            backend = cursor.fetchone()[0]
+        real_cursor = connection.cursor
+        attempts = []
+
+        def first_fails():
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise InterfaceError("connection already closed")
+            return real_cursor()
+
+        monkeypatch.setattr(connection, "cursor", first_fails)
+        ratelimit.release(pairs)
+        monkeypatch.undo()
+        assert any(
+            r.name == "core.ratelimit" and r.levelname == "WARNING" for r in core_log.records
         )
-        assert settings.ROUTING_CONCURRENCY >= 1
+        assert our_advisory_locks() == 0
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM pg_stat_activity WHERE pid = %s", [backend])
+            assert cursor.fetchone()[0] == 0, "the connection that failed is closed"
 
 
 class TestTransportEdges:
