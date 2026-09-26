@@ -234,10 +234,12 @@ the order a request meets it:
 | --- | --- | --- |
 | Content type, declared body size | `application/json`, at most 8 KB | 400 |
 | Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
-| Routes in flight per client | 2 | 429, `Retry-After: 2` |
+| Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
 | Routes in flight, whole api | `WEB_CONCURRENCY` less 2 (3 at compose's default of 5 workers) | 503, `Retry-After: 5` |
 | Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
-| Length | 150 km of straight line between consecutive points | 400 "too long" |
+| Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
+| Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 429 or 503, `Retry-After` 2 or 5 |
+| Length ceiling | 300 km of straight line, however asked | 400 "too long" |
 | Time | 20 s per router call, 40 s for the whole request | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out |
 
 The content type is checked before the count on purpose: a page on any site
@@ -249,6 +251,27 @@ of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
 PostgreSQL advisory lock held on the worker's connection for the length of the
 request, so a killed worker's slot is released with its connection.
+
+**Long rides.** The owner's decision of 2026-09-26 (PLAN.md, Moderation and
+abuse limits): a request longer than 150 km of straight line is planned, up to
+300 km, but a signed-out visitor is first asked to confirm it - the 409 carries
+the span, and the front end resends with `confirm_long` - and a signed-in one
+is not. Signed in means a current session of an account that is not banned or
+deleted; a forged or stale session cookie is treated as signed out. Reading the
+session changes nothing about CSRF: the endpoint changes no state, and a
+cross-site page cannot send it `application/json` without a preflight, which is
+never granted. Every long ride, signed in or not, holds one of the long slots
+for as long as it runs, so at most one is planned at a time across the api and
+ordinary plans carry on beside it.
+
+**What the slots do not stop.** They are counted per address, so a few
+coordinated addresses can still fill the pool: three on the default of three
+slots, each holding one long-running route. Every other request then gets 503
+for as long as they keep it up, though `/healthz`, the tiles, sign-in and the
+admin still answer. That is inherent in identifying clients by address, and no
+limit keyed on it removes it; what it bounds is the cost, a few seconds of
+router time per request, and the reach, the routing endpoint alone. An account
+or a proof-of-work step would be the next lever, and neither is built.
 
 **Who a client is.** The last `X-Forwarded-For` entry, which Caddy writes from
 the peer it saw, replacing whatever the client sent. That is only true while

@@ -313,6 +313,18 @@ two, at least one); `runserver` is one process, and the default of 5 gives it
 local client that sets that header chooses its own bucket - harmless here,
 because on the stack only Caddy reaches the api and Caddy overwrites it.
 
+**What a client should do.** Keep one route in flight: send the next plan only
+when the last has answered, and on a drag replace the pending points rather
+than queue another request. Do not retry on a timer. A 429 or 503 carries
+`Retry-After`; wait that long once, then send the current points. The per-client
+slot is one route on the default pool, so a second concurrent request from the
+same browser is refused rather than served.
+
+**Long rides.** Past 150 km of straight line a signed-out request gets 409 with
+`"code": "confirm_long"` and `span_km`, and nothing is routed; resend the same
+body with `"confirm_long": true` once the visitor agrees. A signed-in session
+never sees the 409. Past 300 km the answer is 400 however it is asked.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are
