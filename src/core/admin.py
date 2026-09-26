@@ -557,11 +557,19 @@ class ConfiguredGuildAdmin(GuildScopedAdmin):
 
     form = ConfiguredGuildForm
     guild_scope_field = "guild_id"
-    list_display = ("guild_id", "name", "state", "state_since")
+    # The server's name leads and is the link; the snowflake is for whoever
+    # has to match it against Discord, so it comes last, under a plain label.
+    list_display = ("name", "state", "state_since", "discord_server_id")
+    list_display_links = ("name",)
+    search_fields = ("name",)
     list_filter = ("state",)
     readonly_fields = ("guild_id", "state", "state_since", "standing_valid_until")
 
     actions = ("revoke_now",)
+
+    @admin.display(description="Discord server ID", ordering="guild_id")
+    def discord_server_id(self, obj) -> int:
+        return obj.guild_id
 
     def get_readonly_fields(self, request, obj=None):
         """`guild_id` is locked on an existing guild and entered on a new one.

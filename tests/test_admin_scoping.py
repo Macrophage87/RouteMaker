@@ -3021,3 +3021,20 @@ class TestTheDiscordIdFieldsExplainThemselves:
     def test_the_role_mapping_form(self, as_instance_admin) -> None:
         page = as_instance_admin.get(admin_url("core_rolemapping_add")).content.decode()
         assert "<details>" in page and "Copy Role ID" in page
+
+    def test_the_guild_list_leads_with_the_servers_name(self, as_instance_admin) -> None:
+        import re
+
+        from core.models import ConfiguredGuild
+
+        ConfiguredGuild.objects.create(guild_id=1163789106472550470, name="Sandbox")
+        page = as_instance_admin.get(admin_url("core_configuredguild_changelist")).content.decode()
+        row = re.search(r"<tbody>.*?</tr>", page, re.S).group(0)
+        cells = re.findall(r"<t[hd][^>]*>(.*?)</t[hd]>", row, re.S)
+        first_data = next(
+            c for c in cells if "action-checkbox" not in c and 'type="checkbox"' not in c
+        )
+        assert "Sandbox" in first_data and "<a " in first_data, (
+            "the name is the first column and the link"
+        )
+        assert "1163789106472550470" in row, "the snowflake is still shown"
