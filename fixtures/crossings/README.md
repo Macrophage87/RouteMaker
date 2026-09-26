@@ -244,8 +244,12 @@ agree.
   it cannot open anything. The no-trail variant does not carry it; it has no
   path to steer to. On a rebuilt graph of the 2026-09-24 extract with the
   override rows loaded, Navy Yard to Anacostia goes back to the Riverwalk in
-  both directions at the Default and Group Ride presets' options, while a
-  trip that starts or ends on the landing still uses it. The reviewer
+  both directions at the Default and Group Ride presets' options (southbound
+  2.538 km against the roadway's 2.455), a trip that starts or ends on the
+  landing still uses it, at the same length and duration, and Navy Yard to
+  the middle of the landing still crosses on the span (1.665 km, against
+  1.982 km by the Riverwalk). Every other trip of the round-1 sweep, and every
+  no-trail trip, is unchanged. The reviewer
   surface penalty (`rm:reviewer_surface`, capped at `compacted`) was
   measured first and moved no route: too weak for this.
 
