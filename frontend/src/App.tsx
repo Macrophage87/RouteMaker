@@ -11,7 +11,7 @@ import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
-import { STRESS_TIERS } from "./stressStyle.js";
+import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
 
 interface Plan {
   points: LonLat[];
@@ -471,7 +471,7 @@ function StressLegend() {
         {STRESS_TIERS.map((tier) => (
           <li key={tier.tier}>
             <svg width="44" height="12" aria-hidden="true">
-              <line x1="2" y1="6" x2="42" y2="6" stroke={tier.casing} strokeWidth={tier.width + 2} />
+              <line x1="2" y1="6" x2="42" y2="6" stroke={tier.casing} strokeWidth={tier.width + CASING_EXTRA_PX} />
               <line
                 x1="2"
                 y1="6"

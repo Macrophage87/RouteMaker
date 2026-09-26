@@ -7,7 +7,7 @@ import { Protocol } from "pmtiles";
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { stressCasingLayers, stressLayers } from "./stressStyle.js";
+import { stressOverlayLayers } from "./stressStyle.js";
 import { COVERAGE_BBOX, lonLatToTile, type LonLat } from "./lib/geo.ts";
 import {
   BASEMAP_SOURCE_ID,
@@ -93,7 +93,7 @@ async function stressTilesAnswer(origin: string): Promise<boolean> {
 }
 
 function allStressLayerIds(): string[] {
-  return [...stressCasingLayers(STRESS_SOURCE_ID), ...stressLayers(STRESS_SOURCE_ID)].map((l) => l.id);
+  return stressOverlayLayers(STRESS_SOURCE_ID).map((l) => l.id);
 }
 
 export function MapView(props: Props) {
@@ -153,11 +153,11 @@ export function MapView(props: Props) {
     const addStress = () => {
       if (map.getSource(STRESS_SOURCE_ID)) return;
       map.addSource(STRESS_SOURCE_ID, stressSource(origin));
-      // Under the base map's labels and the route, over its roads; each
-      // tier's casing first, so the tier sits on it.
+      // Under the base map's labels and the route, over its roads, in the
+      // order stressOverlayLayers gives: every casing under every tier.
       const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
       const visibility = callbacks.current.stressVisible ? "visible" : "none";
-      for (const layer of [...stressCasingLayers(STRESS_SOURCE_ID), ...stressLayers(STRESS_SOURCE_ID)]) {
+      for (const layer of stressOverlayLayers(STRESS_SOURCE_ID)) {
         map.addLayer({ ...(layer as maplibregl.LineLayerSpecification), layout: { visibility } }, firstSymbol);
       }
     };

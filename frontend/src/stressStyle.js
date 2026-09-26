@@ -133,9 +133,22 @@ export function stressCasingLayers(sourceId = "stress") {
     filter: ["==", ["get", "tier"], tier.tier],
     paint: {
       "line-color": tier.casing,
-      "line-width": tier.width + 2,
+      "line-width": tier.width + CASING_EXTRA_PX,
     },
   }));
+}
+
+/** How much wider a casing is than its tier's line: a pixel on each side. */
+export const CASING_EXTRA_PX = 2;
+
+/**
+ * The overlay's layers in the order they are added to the map, bottom first:
+ * every casing, then every tier. A casing drawn after a tier would paint over
+ * it, solid, wherever the two meet - including its own tier, which would then
+ * vanish under its casing.
+ */
+export function stressOverlayLayers(sourceId = "stress") {
+  return [...stressCasingLayers(sourceId), ...stressLayers(sourceId)];
 }
 
 /** Legend entries, which carry the label the colour alone cannot. */

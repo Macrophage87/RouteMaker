@@ -6,6 +6,7 @@ import {
   BASEMAP,
   stressLayers,
   stressCasingLayers,
+  stressOverlayLayers,
   legend,
   relativeLuminance,
   contrastRatio,
@@ -119,4 +120,40 @@ test("each tier has a casing layer drawn wider, in its own casing colour, on the
     assert.equal(casing.paint["line-dasharray"], undefined, "a casing is solid");
   });
   assert.equal(new Set([...casings, ...tiers].map((l) => l.id)).size, casings.length * 2);
+});
+
+test("a casing shows at least a pixel on each side of its tier", () => {
+  // The 3:1 figures in stressContrast.test.ts assume a visible halo; a casing
+  // a tenth of a pixel wider is a casing in name only.
+  const tiers = stressLayers();
+  stressCasingLayers().forEach((casing, i) => {
+    const extra = casing.paint["line-width"] - tiers[i].paint["line-width"];
+    assert.ok(extra >= 2, `LTS ${i + 1}'s casing is only ${extra} px wider`);
+  });
+});
+
+test("the overlay is added casings first: every casing under every tier", () => {
+  const ids = stressOverlayLayers("s").map((l) => l.id);
+  const tiers = stressLayers("s").map((l) => l.id);
+  const casings = stressCasingLayers("s").map((l) => l.id);
+  assert.deepEqual([...ids].sort(), [...tiers, ...casings].sort(), "each layer once");
+  casings.forEach((casing, i) => assert.ok(ids.indexOf(casing) < ids.indexOf(tiers[i]), `${casing} is drawn over its tier`));
+  const lastCasing = Math.max(...casings.map((c) => ids.indexOf(c)));
+  const firstTier = Math.min(...tiers.map((t) => ids.indexOf(t)));
+  assert.ok(lastCasing < firstTier, "a casing is drawn over another tier's line");
+  for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, "s");
+});
+
+test("the contrast maths is WCAG 2's, against its published anchors", () => {
+  assert.ok(Math.abs(relativeLuminance("#00ff00") - 0.7152) < 1e-4);
+  assert.ok(Math.abs(relativeLuminance("#ff0000") - 0.2126) < 1e-4);
+  assert.ok(Math.abs(relativeLuminance("#0000ff") - 0.0722) < 1e-4);
+  assert.equal(relativeLuminance("#000000"), 0);
+  assert.ok(Math.abs(relativeLuminance("#ffffff") - 1) < 1e-9);
+  assert.ok(Math.abs(contrastRatio("#ffffff", "#000000") - 21) < 1e-9);
+  assert.ok(Math.abs(contrastRatio("#000000", "#ffffff") - 21) < 1e-9, "the order of the two colours does not matter");
+  // #767676 on white is the well-known 4.54:1, the lightest grey that passes AA.
+  assert.ok(Math.abs(contrastRatio("#767676", "#ffffff") - 4.54) < 0.01);
+  // The linear segment below 0.04045: #0a0a0a is 10/255/12.92.
+  assert.ok(Math.abs(relativeLuminance("#0a0a0a") - 10 / 255 / 12.92) < 1e-9);
 });
