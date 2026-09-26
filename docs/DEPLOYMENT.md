@@ -109,6 +109,10 @@ note what that section says is missing: **the per-IP range-request limit PLAN
 asks for is not implemented** (the stock Caddy image has no rate-limit module),
 so opening it up is a decision to serve the archive without one.
 
+**The public front end** is built and copied into `${DATA_ROOT}/frontend`
+after that, and again on every deploy that changes `frontend/`; Caddy serves
+it at `/`. The two commands are in "The public front end" below.
+
 `docker compose up -d` starts everything except `bot`, `renderer` and `photon`,
 which sit behind the `unbuilt` profile. `bot` and `renderer` are there because
 neither has a source in this repository and so neither has an image in any
@@ -385,8 +389,9 @@ Runs as uid 10001, non-root.
 `ghcr.io/macrophage87/routemaker-renderer:${TAG}` is PLAN.md:63's thumbnail
 renderer, "a small Node
 sidecar using `@maplibre/maplibre-gl-native`". There is no Node service source
-in the repository: `frontend/` holds one stress-style module and its test, and
-`scripts/` holds five Python scripts and a shell script.
+in the repository: `frontend/` is the public map, a browser app built to static
+files that Caddy serves, with no server and no gl-native, and `scripts/` holds
+Python scripts and shell scripts.
 `ghcr.io/macrophage87/routemaker-bot:${TAG}` is handoff.md section 7's first row — no bot source, no gateway handler, no
 ingest route.
 
@@ -789,10 +794,16 @@ blue/green swap peak, against the 32 GB the script fails at).
 
 ## What the deployment serves
 
-`/` is a 404, and that is not a fault: `config/urls.py` routes three auth paths
-and the admin, and nothing else. Phase 1 has no frontend to serve there
-(`frontend/` is one module and its test), so there is no landing page and the
-stack is not broken for lacking one.
+`/` is the public map: the single-page app in `frontend/`, served by Caddy
+from `${DATA_ROOT}/frontend` once the deploy step in "The public front end"
+below has put it there. Planning works signed out (owner decision,
+2026-09-26). Django itself still routes nothing at `/` - `config/urls.py` has
+the API, the auth paths, the admin and the health check - so on a stack where
+the front end has not been published yet `/` is Caddy's 404, and that is the
+missing deploy step, not a broken stack.
+
+- **`/api/route`** plans a route for the map, signed out; **`/tiles/stress/*`**
+  is the stress overlay (the map hides its toggle while that answers 404).
 
 - **`/auth/login`** is the sign-in entry, and the only one. It starts the
   Discord authorize round-trip; `/auth/callback` finishes it and must match the
@@ -806,7 +817,8 @@ stack is not broken for lacking one.
   else.
 
 So a first deployment that reaches `/`, gets a 404 and concludes the stack is
-down has concluded wrongly. `/auth/login` is the check.
+down has concluded wrongly: the front end has not been published. `/healthz`
+and `/auth/login` are the checks for the API behind it.
 
 ## Static assets — a deploy step, and it works now
 
@@ -893,10 +905,93 @@ read-only beside it:
 | `check_operations` | `worker` | Three of its four checks read the database only; the fourth is a `statvfs` on `TILES_DIR`, which `worker` now binds read-only — in a container that does not mount it, the check reports `not measured` and exits 1 rather than measuring the container's own layer. `worker` rather than `rebuild` because this runs every ten minutes: in `rebuild` each tick spawned a ~95 MiB process **inside the rebuild's 8 GB cgroup**, six times an hour, including during the six-hour build that limit is sized for, and `rebuild` is also the container an `up -d` recreates — while `worker` is up whenever the stack is. The cron entry in docs/OPERATIONS.md has to `cd` into the directory holding `compose.yaml` first — cron runs from the owner's home directory, where `docker compose` finds no project and exits 1 every tick. |
 | `unwedge_job` | `worker` | Reads and updates the job table only, so any Django container works; `worker` is the one that is up whenever the stack is, including while `rebuild` is the container being restarted. |
 
-The frontend half of that sentence has no source either: `frontend/` is a single
-module and its test, with no React application, no bundler and no build script,
-so there is nothing to build into the volume yet. Only the admin's and Ninja's
-assets reach the volume today.
+The frontend half of that sentence is not in this volume: the React app is
+built to its own directory, `${DATA_ROOT}/frontend`, which Caddy serves at `/`,
+rather than into `static/` beside the admin's assets - see "The public front
+end" below.
+
+## The public front end
+
+`frontend/` is the public map and planner (PLAN.md, "Frontend"): React,
+TypeScript and Vite, MapLibre GL JS over the self-hosted Protomaps base map,
+the stress overlay from `/tiles/stress/`, and route planning through
+`/api/route`, all of it signed out. It builds to static files; nothing in it
+runs as a service.
+
+Two steps, from the repository root, on every deploy that changes
+`frontend/`. Neither needs Node on the host - the official image does the
+build, pinned by digest:
+
+```sh
+# 1. Install, test and build, as you, into frontend/dist (not committed).
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app \
+  docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7 \
+  sh -c 'npm ci && npm test && npm run build'
+
+# 2. Publish it into <DATA_ROOT>/frontend, as the directory's owner (10001).
+docker run --rm -u 10001:10001 \
+  -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
+  docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
+  sh -c 'cp -R /dist/assets /dist/favicon.svg /out/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+```
+
+`npm ci` installs exactly what `frontend/package-lock.json` names (every direct
+dependency is pinned to an exact version in `package.json` too). The publish
+copies the hashed files under `assets/` first and replaces `index.html` last,
+by a rename, so a page loaded mid-deploy gets either the old app or the new
+one and never an `index.html` naming files that are not there yet. Older
+hashed files are left behind: they are what a tab opened before the deploy
+still asks for, and they cost about 2 MB a release. `<DATA_ROOT>/frontend` is
+created and handed to 10001 by `scripts/prepare_data_root.sh`, like `static`
+and `basemap`, and compose mounts it read-only into Caddy at `/srv/frontend`;
+Caddy reads the files per request, so nothing is restarted.
+
+What the edge does with it (Caddyfile, `@frontend`):
+
+- `/`, `/index.html`, `/favicon.svg` and `/assets/*` are the app. The app's
+  paths are listed rather than the API's, so the Caddyfile never names the
+  admin path, and every other path - `/api/*`, `/tiles/*`, `/auth/*`,
+  `<DJANGO_ADMIN_PATH>`, `/healthz` - reaches the API exactly as before
+  (`tests/test_frontend_edge.py` runs this against the real Caddy image). A
+  client-side route the app grows later has to be added to that list.
+- `index.html` is `Cache-Control: no-cache`, so a deploy is seen on the next
+  load; `assets/*` are content-hashed and `max-age=31536000, immutable`.
+- `Referrer-Policy: same-origin`. MapLibre fetches the archive, the glyphs and
+  the sprites on the page's own thread, and `/basemap/*` answers only a request
+  whose `Origin` or `Referer` is this site (docs/OPERATIONS.md, "What the edge
+  enforces"). `same-origin` keeps that Referer on the page's own requests and
+  sends none to the sites the attribution links to. `no-referrer`, here or in a
+  `<meta>` in the page, is a blank map; `tests/test_frontend.py` refuses the
+  latter.
+
+What the map shows and credits:
+
+- The base map is the light flavour of `@protomaps/basemaps` over
+  `/basemap/region.pmtiles`, with glyphs and sprites from `/basemap/`. Its
+  credit - "© OpenStreetMap contributors (ODbL)" and "© Protomaps" - is stated
+  by the app, because the archive's own attribution names OpenStreetMap only.
+  DDOT's traffic volume (CC BY 4.0, adapted) and VDOT's (credited as a
+  courtesy) are credited on every view, and each route's own attribution
+  strings from the API are printed under its breakdown.
+- The stress overlay is drawn from `/tiles/stress/{z}/{x}/{y}.pbf` (layer
+  `stress`, property `tier`). The app asks for one tile over central DC at
+  load; if that is not a 200 (a 404 while the endpoint is not deployed, a 502
+  while the API is down) it hides the toggle and the legend and says the stress
+  map is unavailable, and planning carries on - every route still reports its
+  metres per stress tier.
+- The plan (points and ride type) lives in the URL fragment, so a link reopens
+  it; a fragment is never sent to a server, and nothing signed out is saved.
+
+`npm run dev` is for working on the UI only: Vite's server proxies `/api`,
+`/tiles` and `/basemap` to a stack (`DEV_STACK`, `http://localhost` by default)
+and rewrites `Origin` and `Referer` to that stack's own, because the base map
+refuses any other origin.
+
+Not done yet, and recorded rather than hidden: the TypeScript types for the
+API are written by hand against the shared contract instead of generated from
+`/api/openapi.json` as PLAN.md asks, so nothing yet pins the bundle to the API
+commit it was typed against; and there is no Content-Security-Policy on the
+app (MapLibre sets inline styles, which wants a decision of its own).
 
 ## The admin map widget
 
@@ -981,13 +1076,19 @@ it, and a live server started from it returned
 path (a 502, with the api absent, which is the point: the header is the site's
 and not the upstream's). Everything else below is still read as text.
 
-The file routes two things and no more:
+The file routes four things and no more (the base map and the front end have
+sections of their own: docs/OPERATIONS.md, "The base map", and "The public
+front end" above):
 
 - `handle_path /static/*` → `file_server` rooted at `/srv/static`, matching
   `STATIC_URL = "static/"` and the mount above. `handle_path` rather than
   `handle` because the matched prefix has to be stripped before the file server
   sees the path. It does not shadow the admin, which mounts under
   `DJANGO_ADMIN_PATH` (`internal-8f3a/` by default).
+- `handle_path /basemap/*` → the PMTiles archive, glyphs and sprites, to this
+  site's own pages only.
+- `handle @frontend` → the built single-page app at `/`, `/index.html`,
+  `/favicon.svg` and `/assets/*`, from `/srv/frontend`.
 - everything else → `reverse_proxy api:8000`, the port
   `docker/api-entrypoint.sh` binds gunicorn to.
 

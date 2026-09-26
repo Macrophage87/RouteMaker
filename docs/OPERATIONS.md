@@ -478,7 +478,9 @@ procedure. For the base map:
 
 The archive's own metadata attribution credits OpenStreetMap only, not
 Protomaps, so a style that shows the archive's attribution field shows half of
-what is owed. The front end has to set both credits itself.
+what is owed. The front end has to set both credits itself, and does:
+`BASEMAP.attribution` in `frontend/src/stressStyle.js` carries both, on the base
+map's source and in the map's attribution control.
 
 ### Fetching it
 
