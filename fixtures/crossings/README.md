@@ -155,9 +155,10 @@ agree.
   Potomac at Chain Bridge, Key Bridge, and Memorial bridge without using a
   trail." — and with it the no-trail variant had no crossing there at all,
   since the sidewalk beside the roadway is trail class and dropped as such.
-  Key Bridge is now the one mass-ride crossing into Virginia. The no-trail variant is
-  kept off every bridge sidewalk by `is_trail_class`, not by this column. It
-  says nothing about legality and must never be treated as a legal claim.
+  Key Bridge is now the one mass-ride crossing into Virginia. The no-trail
+  variant is kept off every bridge sidewalk by `is_trail_class`, not by this
+  column. It says nothing about legality and must never be treated as a legal
+  claim.
 * `roadway_mass_ride_only` — routing-relevant, the other way round: true means
   the roadway is for a mass ride and for no one else, so the no-trail variant
   keeps it and the standard and e-bike variants bar it (`variants.inject()`
@@ -180,6 +181,37 @@ agree.
   `bicycle:backward:conditional` present to a bare `no`, because
   `routemaker_remap.remap_conditional_access` would otherwise reopen a
   direction from a conditional's least restrictive branch.
+
+  **It is a no-trail-variant rule, and Group Ride shares that variant.** PLAN's
+  Group Ride switches to the no-trail variant when its "Allow bike paths and
+  trails" toggle is off, so a Group Ride with trails off is routed on the Key
+  and Memorial roadways too, although the owner's words are "outside of a
+  mass ride". Nothing here can tell the two presets apart: they read the same
+  tiles, and the column has no request-time dial. Until a separate variant or
+  a routing dial exists this is a known gap, recorded in handoff.md section 7
+  for the owner, not a guarded case.
+* `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
+  variant alike, because access is not a request-time dial. False means OSM
+  carries `bicycle=no` on the roadway itself, or that the roadway is a class
+  bicycles are barred from (the Rochambeau and Theodore Roosevelt spans are
+  `motorway` with no `bicycle` tag at all), or that there is no roadway at
+  all: the three 14th Street highway spans, the two 11th Street freeway spans,
+  the Wilson Bridge roadway, the Theodore Roosevelt and American Legion
+  bridges, and the two rail structures. True
+  means the roadway is an ordinary, legal road, whatever its comfort - Key
+  Bridge and Memorial Bridge are both `true` even though
+  `roadway_mass_ride_only` keeps ordinary riders off them.
+  `resolve_bridge_bicycle_legality` turns this into the
+  `rm:bridge_bicycle` tag `graph.lua` already reads.
+
+  **The roadway, and not the path on it.** A shared-use path on a bridge is
+  mapped as its own `highway=cycleway` or `footway` way, tagged `bridge=yes`
+  and named after the structure — that is what the Wilson path, the 14th Street
+  path and the Key Bridge sidewalk all look like in OSM. The resolver excludes
+  trail-class ways from the name match for that reason. Without the exclusion
+  the column barred the path as well as the roadway, on every variant, and the
+  remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
+  those points from all three graphs.
 
 ### The approaches: owner decisions of 2026-09-26
 
@@ -205,37 +237,25 @@ roadway a mass ride was given that day, what happens at its ends:
   11th Street SE ways and three Martin Luther King Jr Avenue SE ways, also
   `bicycle=no`, before a bicycle may leave it, and of those the owner said,
   the same day, "Legal for all. It might be discouraged as it's a very busy
-  road": legal for all, and discouraged because it is a very busy road, which
-  is the stress classification's job to express, not an access bar's. All ten
-  are opened for every variant by approved access overrides.
+  road". Legal for all, so all ten are opened for every variant by approved
+  access overrides; "might be discouraged" is not an access decision. What
+  follows is this project's reading, not the owner's words: nothing in the
+  graph discourages those ways today on account of their stress tier. The
+  tier reaches the router only as a comfort tag on tier-1 ways (the remap's
+  `cycleway=track`), and Default is a layer-2 preset with no stress-weighted
+  ranking, so a Default route weighs the road only by Valhalla's own bicycle
+  costing of its road class.
 
 Access corrections go through the override table, the plan's one audited path
 for them, never through this file: the rows are checked in at
 `fixtures/overrides/2026-09-26-owner-bicycle-access.json` and loaded as
 approved, audited `Override` rows by `manage.py load_access_overrides` (see
-`fixtures/overrides/README.md`).
-* `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
-  variant alike, because access is not a request-time dial. False means OSM
-  carries `bicycle=no` on the roadway itself, or that the roadway is a class
-  bicycles are barred from (the Rochambeau and Theodore Roosevelt spans are
-  `motorway` with no `bicycle` tag at all), or that there is no roadway at
-  all: the three 14th Street highway spans, the two 11th Street freeway spans,
-  the Wilson Bridge roadway, the Theodore Roosevelt and American Legion
-  bridges, and the two rail structures. True
-  means the roadway is an ordinary, legal road, whatever its comfort - Key
-  Bridge and Memorial Bridge are both `true` even though
-  `roadway_mass_ride_only` keeps ordinary riders off them.
-  `resolve_bridge_bicycle_legality` turns this into the
-  `rm:bridge_bicycle` tag `graph.lua` already reads.
-
-  **The roadway, and not the path on it.** A shared-use path on a bridge is
-  mapped as its own `highway=cycleway` or `footway` way, tagged `bridge=yes`
-  and named after the structure — that is what the Wilson path, the 14th Street
-  path and the Key Bridge sidewalk all look like in OSM. The resolver excludes
-  trail-class ways from the name match for that reason. Without the exclusion
-  the column barred the path as well as the roadway, on every variant, and the
-  remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
-  those points from all three graphs.
+`fixtures/overrides/README.md`). They depend on this file's rows of the same
+day - opening Key Bridge's Virginia approaches is safe for ordinary riders only
+because `roadway_mass_ride_only` bars them from the roadway - so they are loaded
+only after this file is reinstalled under `<DATA_ROOT>/reference/`, which the
+rebuild checks (docs/OPERATIONS.md, "A deploy that changes the crossings
+fixture or loads access overrides").
 
 At least one row (Theodore Roosevelt Bridge, American Legion Bridge) has
 `roadway_bicycle_legal: false` **and** `sidepath_only: false` — barred outright,

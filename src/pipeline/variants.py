@@ -28,6 +28,12 @@ class Variant(Enum):
     The no-trail variant is not the "mass ride variant": Group Ride uses it
     whenever its trail toggle is off, and naming it after one preset invites the
     assumption that it encodes that preset's other opinions.
+
+    One such opinion it does encode: a crossing row's `roadway_mass_ride_only`
+    keeps the roadway in this variant alone, so a Group Ride with trails off is
+    routed on the Key Bridge and Memorial Bridge roadways the owner reserved for
+    mass rides. Recorded as a gap (fixtures/crossings/README.md), not guarded:
+    the two presets read the same tiles.
     """
 
     STANDARD = "standard"
