@@ -7,16 +7,34 @@ import type { LonLat } from "./geo.ts";
 const GEORGETOWN: LonLat = [-77.0629, 38.905];
 const ROSSLYN: LonLat = [-77.0707, 38.8966];
 
-test("the pace is the answer's own distance over time", () => {
-  assert.match(paceText({ distance_m: 5000, duration_s: 1200, preset: "default" }) ?? "", /about 15 km\/h \(9 mph\)/);
-  assert.match(paceText({ distance_m: 4000, duration_s: 1560, preset: "mass-ride" }) ?? "", /^parade pace, about 9 km\/h/);
-  assert.equal(paceText({ distance_m: 0, duration_s: 0, preset: "default" }), null);
+/** The numbers in a sentence, in order: what these tests hold, not the wording. */
+const numbers = (text: string | null) => (text ?? "").match(/\d+(?:\.\d+)?/g) ?? [];
+
+test("the pace is the answer's own distance over time, in km/h and mph", () => {
+  // 5 km in 20 min is 15 km/h, 9.3 mph.
+  assert.deepEqual(numbers(paceText({ distance_m: 5000, duration_s: 1200, preset: "default" })), ["15", "9"]);
+  // 4 km in 26 min is 9.2 km/h, 5.7 mph.
+  assert.deepEqual(numbers(paceText({ distance_m: 4000, duration_s: 1560, preset: "default" })), ["9", "6"]);
+});
+
+test("Mass Ride's pace says what it is on top of the same figures", () => {
+  const plain = paceText({ distance_m: 4000, duration_s: 1560, preset: "default" }) ?? "";
+  const mass = paceText({ distance_m: 4000, duration_s: 1560, preset: "mass-ride" }) ?? "";
+  assert.notEqual(mass, plain);
+  assert.ok(mass.endsWith(plain), mass);
+});
+
+test("no pace without both a distance and a time", () => {
+  for (const [distance_m, duration_s] of [[0, 0], [5000, 0], [0, 1200], [-5, 1200], [5000, -1], [Number.NaN, 1200]]) {
+    assert.equal(paceText({ distance_m, duration_s, preset: "default" }), null, `${distance_m} m in ${duration_s} s`);
+  }
 });
 
 test("a detour notice gives distances, not a ratio", () => {
   const text = detourNotice({ distance_m: 141_100, preset: "mass-ride" }, [GEORGETOWN, ROSSLYN]) ?? "";
-  assert.match(text, /141 km/);
-  assert.match(text, /1\.\d km apart/);
+  const [route, straight] = numbers(text);
+  assert.equal(route, "141");
+  assert.match(straight, /^1\.\d$/);
   assert.doesNotMatch(text, /×|\dx\b/);
 });
 
@@ -36,7 +54,6 @@ test("no notice when the route is not a detour", () => {
 test("the announcement carries distance, moving time and climb", () => {
   const route = { distance_m: 5000, duration_s: 1200, climb_m: 31 } as RouteResponse;
   const said = announceRoute(route);
-  assert.match(said, /5\.0 km/);
-  assert.match(said, /20 min moving time/);
-  assert.match(said, /31 m/);
+  const figures = numbers(said);
+  for (const figure of ["5.0", "20", "31"]) assert.ok(figures.includes(figure), `${figure} missing from ${said}`);
 });

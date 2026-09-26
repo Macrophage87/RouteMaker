@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CONFIRM_STEP_KM, LONG_SPAN_KM, confirmedUpTo, sendsConfirmation, spanKm } from "./longRide.ts";
+import { CONFIRM_STEP_KM, confirmedUpTo, sendsConfirmation, spanKm } from "./longRide.ts";
 import type { LonLat } from "./geo.ts";
 
 // About 1 km per 0.009 degrees of latitude.
@@ -9,8 +9,7 @@ const along = (km: number): LonLat[] => [
   [-77.0, 38.3 + km / 111.2],
 ];
 
-test("the thresholds are the contract's", () => {
-  assert.equal(LONG_SPAN_KM, 150);
+test("the step a yes covers is 50 km", () => {
   assert.equal(CONFIRM_STEP_KM, 50);
 });
 

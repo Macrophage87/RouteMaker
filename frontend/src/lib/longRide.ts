@@ -15,7 +15,6 @@
  */
 import { pathLengthM, type LonLat } from "./geo.ts";
 
-export const LONG_SPAN_KM = 150;
 export const CONFIRM_STEP_KM = 50;
 
 export function spanKm(points: readonly LonLat[]): number {
