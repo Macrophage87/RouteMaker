@@ -1182,6 +1182,21 @@ class TestLongRide:
         user.save()
         assert post(client, long_body(160)).status_code == 409
 
+    @pytest.mark.parametrize(
+        ("authenticated", "active", "expected"),
+        [(True, True, True), (True, False, False), (False, True, False)],
+    )
+    def test_signed_in_means_an_account_in_standing(self, authenticated, active, expected) -> None:
+        """The epoch middleware signs a banned or deleted account out before
+        the view runs; the view checks standing too, so it does not rest on
+        the middleware being installed and in order."""
+        from types import SimpleNamespace
+
+        from core.api import signed_in
+
+        user = SimpleNamespace(is_authenticated=authenticated, is_active=active)
+        assert signed_in(SimpleNamespace(user=user)) is expected
+
     def test_a_forged_session_cookie_is_signed_out(self, client, router) -> None:
         router(long_router())
         client.cookies[settings.SESSION_COOKIE_NAME] = "forged0123456789abcdefghijklmnop"
