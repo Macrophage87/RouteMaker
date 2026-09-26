@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEBOUNCE_MS, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
+import { DEBOUNCE_MS, MAX_WAITS, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
 import { describeError, type RouteResponse, type RouteResult } from "./api.ts";
 
 /** A clock the test moves by hand. */
@@ -16,6 +16,7 @@ class FakeTimers implements Timers {
   clear = (handle: unknown) => {
     this.pending.delete(handle as number);
   };
+  time = () => this.now;
   async advance(ms: number) {
     const until = this.now + ms;
     for (;;) {
@@ -234,4 +235,138 @@ test("a change made while a request is out still waits its debounce after the an
   await timers.advance(DEBOUNCE_MS);
   assert.equal(api.calls.length, 2);
   assert.equal(api.calls[1].plan, 2);
+});
+
+const refusal = (retryAfter: string | null, status = 429): RouteResult => ({
+  ok: false,
+  error: describeError(status, null, retryAfter),
+});
+
+/** Answer each request with a refusal until the plan's refusal is shown. */
+async function exhaust(ctx: ReturnType<typeof setup>, retryAfter = "2") {
+  for (let i = 0; i < 20 && ctx.shown.length === 0; i += 1) {
+    ctx.api.calls.at(-1)?.answer(refusal(retryAfter));
+    await flush();
+    await ctx.timers.advance(Number(retryAfter) * 1000);
+  }
+}
+
+test("a plan is resent after exactly MAX_WAITS Retry-After waits, and a second wait in a row is still waited", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("2"));
+  await flush();
+  await ctx.timers.advance(2000);
+  assert.equal(ctx.api.calls.length, 2);
+  ctx.api.calls[1].answer(refusal("2"));
+  await flush();
+  assert.equal(ctx.shown.length, 0, "the second Retry-After in a row was shown, not waited");
+  await exhaust(ctx);
+  assert.equal(MAX_WAITS, 3);
+  assert.equal(ctx.api.calls.length, 1 + MAX_WAITS);
+  assert.equal(ctx.shown.length, 1);
+});
+
+test("the waits are per plan: a new plan gets its own after an earlier one used them up", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  await exhaust(ctx);
+  assert.equal(ctx.shown.length, 1);
+  const before = ctx.api.calls.length;
+  ctx.scheduler.request(2);
+  await ctx.timers.advance(DEBOUNCE_MS + 2000);
+  assert.equal(ctx.api.calls.length, before + 1);
+  ctx.api.calls.at(-1)!.answer(refusal("2"));
+  await flush();
+  assert.equal(ctx.shown.length, 1, "plan 2's first Retry-After was shown instead of waited out");
+  await ctx.timers.advance(2000);
+  assert.equal(ctx.api.calls.length, before + 2);
+});
+
+test("a Retry-After of 0 still waits a second", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("0"));
+  await flush();
+  await ctx.timers.advance(999);
+  assert.equal(ctx.api.calls.length, 1, "resent at once on Retry-After 0");
+  await ctx.timers.advance(1);
+  assert.equal(ctx.api.calls.length, 2);
+});
+
+test("a Retry-After on a status that is not 429 or 503 is shown, not waited", async () => {
+  for (const status of [502, 504, 500]) {
+    const ctx = setup();
+    ctx.scheduler.request(1);
+    await ctx.timers.advance(DEBOUNCE_MS);
+    ctx.api.calls[0].answer(refusal("5", status));
+    await flush();
+    assert.equal(ctx.shown.length, 1, `a ${status} with Retry-After was waited out`);
+    // Nor does it hold the next plan back.
+    ctx.scheduler.request(2);
+    await ctx.timers.advance(DEBOUNCE_MS);
+    assert.equal(ctx.api.calls.length, 2, `a ${status}'s Retry-After held the next plan`);
+  }
+});
+
+test("the states go pending, in flight, waiting, in flight, idle; an edit while waiting stays waiting", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("2"));
+  await flush();
+  ctx.scheduler.request(2);
+  await ctx.timers.advance(2000);
+  ctx.api.calls[1].answer(ok);
+  await flush();
+  assert.deepEqual(ctx.states, [
+    { kind: "pending" },
+    { kind: "in-flight" },
+    { kind: "waiting", seconds: 2 },
+    { kind: "in-flight" },
+    { kind: "idle" },
+  ]);
+});
+
+test("once the refusal is shown, Try again waits out what is left of its Retry-After", async () => {
+  // The correctness reviewer's probe: after the automatic waits the panel
+  // says "Try again in 2 seconds", and the button sent at once and was
+  // refused again.
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  let answered = 0;
+  for (; answered < 20 && ctx.shown.length === 0; answered += 1) {
+    ctx.api.calls.at(-1)!.answer(refusal("2"));
+    await flush();
+    if (ctx.shown.length === 0) await ctx.timers.advance(2000);
+  }
+  const sent = ctx.api.calls.length;
+  ctx.states.length = 0;
+  await ctx.timers.advance(400); // the rider reads it and clicks
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, sent, "Try again went before Retry-After had passed");
+  assert.deepEqual(ctx.states.at(-1), { kind: "waiting", seconds: 2 });
+  await ctx.timers.advance(2000 - 400 - DEBOUNCE_MS - 1);
+  assert.equal(ctx.api.calls.length, sent);
+  await ctx.timers.advance(1);
+  assert.equal(ctx.api.calls.length, sent + 1);
+});
+
+test("a Retry-After on an answer nobody is shown still holds the next plan", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.scheduler.request(2);
+  ctx.api.calls[0].answer(refusal("3"));
+  await flush();
+  await ctx.timers.advance(2999);
+  assert.equal(ctx.api.calls.length, 1, "the newer plan went inside the older answer's Retry-After");
+  await ctx.timers.advance(1);
+  assert.equal(ctx.api.calls.length, 2);
+  assert.equal(ctx.api.calls[1].plan, 2);
 });

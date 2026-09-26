@@ -15,14 +15,19 @@
  * - only the latest plan is kept while waiting; anything older is dropped
  *   unsent, and an answer for a plan that has since changed is not shown;
  * - a 429 or 503 carrying Retry-After is waited out - for exactly that long,
- *   not on a timer of our own - and the latest plan is sent then, a bounded
- *   number of times; a refusal without Retry-After is shown as it is.
+ *   not on a timer of our own, and never less than a second - and the latest
+ *   plan is sent then, up to MAX_WAITS times for each plan; a refusal without
+ *   Retry-After, or with it on any other status, is shown as it is;
+ * - once shown, a refusal's Retry-After still holds: "Try again", or any new
+ *   plan, waits until it has passed instead of being refused once more.
  */
 import type { RouteResult } from "./api.ts";
 
 export interface Timers {
   set: (fn: () => void, ms: number) => unknown;
   clear: (handle: unknown) => void;
+  /** The clock, in milliseconds; Date.now when absent. */
+  time?: () => number;
 }
 
 export type SchedulerState =
@@ -56,6 +61,8 @@ export class RouteScheduler<P> {
   private debounce: unknown = null;
   private wait: unknown = null;
   private waitsForLatest = 0;
+  /** The API asked not to be asked again before this time (Retry-After). */
+  private notBefore = 0;
   private readonly timers: Timers;
   private readonly debounceMs: number;
   private readonly maxWaits: number;
@@ -96,8 +103,21 @@ export class RouteScheduler<P> {
     this.options.onState?.(state);
   }
 
+  private time(): number {
+    return this.timers.time?.() ?? Date.now();
+  }
+
   private pump(): void {
     if (this.inFlight || this.wait !== null || this.debounce !== null || this.latest === null) return;
+    const hold = this.notBefore - this.time();
+    if (hold > 0) {
+      this.state({ kind: "waiting", seconds: Math.ceil(hold / 1000) });
+      this.wait = this.timers.set(() => {
+        this.wait = null;
+        this.pump();
+      }, hold);
+      return;
+    }
     const plan = this.latest;
     const generation = this.generation;
     this.inFlight = true;
@@ -110,6 +130,10 @@ export class RouteScheduler<P> {
 
   private settle(plan: P, generation: number, result: RouteResult | null): void {
     this.inFlight = false;
+    // A Retry-After holds for whatever is sent next, this plan or a newer one.
+    const error = result && !result.ok ? result.error : null;
+    const retryAfterS = error && (error.status === 429 || error.status === 503) ? error.retryAfterS : undefined;
+    if (retryAfterS !== undefined) this.notBefore = this.time() + Math.max(1, retryAfterS) * 1000;
     const current = generation === this.generation;
     if (!current) {
       // The plan changed while this was computing: its answer is not shown,
@@ -123,20 +147,10 @@ export class RouteScheduler<P> {
       this.state({ kind: "idle" });
       return;
     }
-    const error = result.ok ? null : result.error;
-    const waitable =
-      error &&
-      (error.status === 429 || error.status === 503) &&
-      error.retryAfterS !== undefined &&
-      this.waitsForLatest < this.maxWaits;
-    if (error && waitable) {
+    if (retryAfterS !== undefined && this.waitsForLatest < this.maxWaits) {
+      // Waited out in pump(), which holds until notBefore.
       this.waitsForLatest += 1;
-      const seconds = Math.max(1, error.retryAfterS ?? 1);
-      this.state({ kind: "waiting", seconds });
-      this.wait = this.timers.set(() => {
-        this.wait = null;
-        this.pump();
-      }, seconds * 1000);
+      this.pump();
       return;
     }
     this.state({ kind: "idle" });
