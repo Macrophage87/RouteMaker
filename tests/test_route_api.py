@@ -13,6 +13,7 @@ from __future__ import annotations
 import http.server
 import json
 import math
+import os
 import socket
 import threading
 from datetime import datetime, timedelta
@@ -21,6 +22,7 @@ from zoneinfo import ZoneInfo
 import pytest
 from django.conf import settings
 from django.db import connection
+from django.test import override_settings
 
 from core import presets, routing
 
@@ -388,11 +390,17 @@ class TestRefusedInput:
             client, router, {"points": [list(VERTICES[0]), point], "preset": "default"}
         )
 
-    def test_the_coverage_edges_are_inside(self, client, segments, router) -> None:
+    @pytest.mark.parametrize("corner", ["south-west", "north-east"])
+    def test_the_coverage_edges_are_inside(self, corner, client, segments, router) -> None:
+        """Corner by corner, with a short hop inward, because corner to corner
+        is longer than one request may be."""
         router(standard_router())
         west, south, east, north = settings.COVERAGE_BBOX
-        body = {"points": [[west, south], [east, north]], "preset": "default"}
-        assert post(client, body).status_code == 200
+        if corner == "south-west":
+            points = [[west, south], [west + 0.01, south + 0.01]]
+        else:
+            points = [[east, north], [east - 0.01, north - 0.01]]
+        assert post(client, {"points": points, "preset": "default"}).status_code == 200
 
     def test_lat_lon_order_is_refused_not_misread(self, client, router) -> None:
         """[lat, lon] for a DC point is far outside the box in both axes."""
@@ -456,9 +464,30 @@ class TestRouterOutcomes:
         assert no_trail != standard
         assert no_trail.startswith(standard)
 
-    def test_any_other_refusal_is_still_no_route(self, client, router) -> None:
-        router(FakeRouter({"route": routing.RouterRefused(400, 154, "exceeds max distance")}))
-        assert post(client, good_body()).status_code == 422
+    @pytest.mark.parametrize("preset", ["default", "mass-ride"])
+    @pytest.mark.parametrize("code", [150, 154, 157])
+    def test_a_router_limit_is_the_callers_too_long(self, code, preset, client, router) -> None:
+        """154 is "Path distance exceeds the max distance limit": the request
+        asked for too much, which is a 400 and not a missing crossing."""
+        router(FakeRouter({"route": routing.RouterRefused(400, code, "exceeds a limit")}))
+        response = post(client, good_body(preset))
+        assert response.status_code == 400
+        assert set(response.json()) == {"error"}
+        assert "roadway" not in response.json()["error"]
+
+    @pytest.mark.parametrize("code", [171, 999, None])
+    def test_other_refusals_are_no_route_without_the_crossing_story(
+        self, code, client, router
+    ) -> None:
+        """Only "no path" means the no-trail variant may have run out of
+        crossings; no road near a point, or an unknown refusal, does not."""
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path")}))
+        explained = post(client, good_body("mass-ride")).json()["error"]
+        router(FakeRouter({"route": routing.RouterRefused(400, code, "something else")}))
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 422
+        assert response.json()["error"] != explained
+        assert explained.startswith(response.json()["error"])
 
     def test_an_answer_with_no_legs_is_no_route(self, client, router) -> None:
         router(FakeRouter({"route": {"trip": {"legs": []}}}))
@@ -508,25 +537,53 @@ class TestRateLimit:
         other = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.8")
         assert other.status_code == 200
 
-    def test_invalid_requests_spend_the_budget_too(self, client, router) -> None:
-        """Otherwise a flood of bad bodies is free. Bodies refused before
-        parsing - the wrong content type - are counted as well, which is what
-        the limit being the outermost check means."""
+    def test_malformed_json_spends_the_budget(self, client, router) -> None:
+        """Otherwise a flood of bad bodies is free. Only a script can send a
+        JSON-typed body, so counting it costs no visitor anything."""
         from core.ratelimit import ROUTING
 
         router(standard_router())
         headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.9"}
         for _ in range(ROUTING.requests):
-            post(client, "{", content_type="text/plain", **headers)
+            post(client, "{", **headers)
         assert post(client, good_body(), **headers).status_code == 429
+
+    def test_a_cross_site_simple_post_does_not_spend_the_budget(
+        self, client, segments, router
+    ) -> None:
+        """A page on any site can make a visitor's browser send a text/plain or
+        form POST here without a preflight. Counting those would let it spend
+        the visitor's routing budget; they are refused before the count."""
+        from core.ratelimit import ROUTING
+
+        router(standard_router())
+        headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.10"}
+        body = json.dumps(good_body())
+        for content_type in ("text/plain", "application/x-www-form-urlencoded"):
+            for _ in range(ROUTING.requests + 5):
+                assert post(client, body, content_type=content_type, **headers).status_code == 400
+        assert post(client, good_body(), **headers).status_code == 200
+
+    def test_the_routing_limit_is_the_plans(self) -> None:
+        """PLAN, Moderation and abuse limits: routing 60 per minute, and the
+        unauthenticated paths 60 per minute per client address."""
+        from core.ratelimit import ROUTING
+
+        assert (ROUTING.requests, ROUTING.window_s) == (60, 60)
 
 
 def test_the_route_is_in_the_openapi_schema(client) -> None:
     """PLAN, Backend: the front end's TypeScript types are generated from it."""
     schema = client.get("/api/openapi.json").json()
     operation = schema["paths"][ROUTE_PATH]["post"]
-    assert {"200", "400", "422", "429", "502"} <= set(operation["responses"])
+    assert {"200", "400", "422", "429", "500", "502", "503"} <= set(operation["responses"])
     assert settings.ADMIN_PATH.strip("/") not in json.dumps(schema)
+
+
+def test_the_interactive_docs_are_not_served(client) -> None:
+    """They load their script from a third-party CDN, which the planned
+    Content-Security-Policy of `default-src 'self'` refuses."""
+    assert client.get("/api/docs").status_code == 404
 
 
 class TestPlanningTime:
@@ -635,3 +692,467 @@ def test_missing_elevations_are_skipped_not_zeroed() -> None:
     climb, descent = routing.climb_and_descent([100.0, None, 101.0, None, 100.0])
     assert (climb, descent) == (0.0, 0.0)
     assert not math.isnan(climb)
+
+
+# --- Review round 1: the properties the first suite left unasserted -------------------
+
+# Way 909 has two segments of different tiers, and one edge spans both, with
+# the first stretch twice as long on the ground as the second.
+UNEVEN = [(-77.05, LAT), (-77.03, LAT), (-77.02, LAT)]
+
+
+@pytest.fixture
+def uneven_way(segments):
+    with connection.cursor() as cursor:
+        for ordinal, tier, line in ((0, 2, UNEVEN[0:2]), (1, 3, UNEVEN[1:3])):
+            wkt = "LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in line) + ")"
+            cursor.execute(
+                f"INSERT INTO {segments}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule) VALUES (909, %s, ST_GeomFromText(%s, 4326), %s, 'test')",
+                [ordinal, wkt, tier],
+            )
+    return segments
+
+
+def one_edge_router(vertices, edges, length_km: float = 1.5) -> FakeRouter:
+    return FakeRouter(
+        {
+            "route": route_answer([(vertices, length_km, [1.0])]),
+            "trace_attributes": trace_answer(vertices, edges),
+        }
+    )
+
+
+@db
+class TestApportioning:
+    def test_an_edge_over_two_segments_is_split_by_ground_length(
+        self, client, uneven_way, router
+    ) -> None:
+        """PLAN, Stats source: "apportioning length where an edge spans several
+        segments". The reported 1.5 km is shared 2:1, as the ground is."""
+        router(one_edge_router(UNEVEN, [(909, 0, 2, 1.5)]))
+        stress = post(client, good_body()).json()["stress_m"]
+        assert stress["2"] == pytest.approx(1000.0, abs=0.5)
+        assert stress["3"] == pytest.approx(500.0, abs=0.5)
+
+    def test_an_edge_with_no_ground_length_keeps_its_length(self, client, segments, router) -> None:
+        """Two shape vertices at one place: the edge's reported length still
+        belongs to the route, on that place's segment."""
+        vertices = [VERTICES[0], (-77.045, LAT), (-77.045, LAT)]
+        router(one_edge_router(vertices, [(101, 0, 1, 0.4), (101, 1, 2, 0.2)], 0.6))
+        stress = post(client, good_body()).json()["stress_m"]
+        assert stress["3"] == pytest.approx(600.0, abs=0.5)
+
+    def test_an_edge_on_a_single_vertex_keeps_its_length(self, client, segments, router) -> None:
+        vertices = [VERTICES[0], (-77.045, LAT)]
+        router(one_edge_router(vertices, [(101, 0, 1, 0.4), (101, 1, 1, 0.1)], 0.5))
+        stress = post(client, good_body()).json()["stress_m"]
+        assert stress["3"] == pytest.approx(500.0, abs=0.5)
+
+    @pytest.mark.parametrize("begin, end", [(0, 2), (1, 0), (-1, 1)])
+    def test_an_edge_outside_the_shape_is_skipped_not_guessed(
+        self, begin, end, client, segments, router
+    ) -> None:
+        """Indices that do not describe a run of the returned shape - one past
+        its end, reversed - are a response this module does not understand."""
+        vertices = [VERTICES[0], (-77.045, LAT)]
+        if begin < 0:
+            edges = [(101, 0, 1, 0.4)]
+        else:
+            edges = [(101, 0, 1, 0.4), (202, begin, end, 0.3)]
+        router(one_edge_router(vertices, edges, 0.7))
+        response = post(client, good_body())
+        assert response.status_code == 200
+        assert sum(response.json()["stress_m"].values()) == pytest.approx(400.0, abs=0.5)
+
+
+@db
+class TestMultiLegStress:
+    def test_every_legs_stress_is_counted_and_a_failed_leg_is_its_own_length(
+        self, client, segments, router
+    ) -> None:
+        first, second = VERTICES[:2], VERTICES[3:]
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer([(first, 0.9, [1.0]), (second, 1.0, [1.0])]),
+                    "trace_attributes": [
+                        trace_answer(first, [(101, 0, 1, 0.9)]),
+                        routing.RouterRefused(400, 443, "no"),
+                        routing.RouterRefused(400, 444, "no"),
+                    ],
+                }
+            )
+        )
+        points = [list(VERTICES[0]), list(VERTICES[1]), list(VERTICES[4])]
+        stress = post(client, {"points": points, "preset": "default"}).json()["stress_m"]
+        assert stress["3"] == pytest.approx(900.0, abs=0.5)
+        assert stress["unknown"] == pytest.approx(1000.0, abs=0.5)
+
+    def test_two_traced_legs_both_count(self, client, segments, router) -> None:
+        first, second = VERTICES[:2], VERTICES[1:3]
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer([(first, 0.9, [1.0]), (second, 0.4, [1.0])]),
+                    "trace_attributes": [
+                        trace_answer(first, [(101, 0, 1, 0.9)]),
+                        trace_answer(second, [(202, 0, 1, 0.4)]),
+                    ],
+                }
+            )
+        )
+        points = [list(VERTICES[0]), list(VERTICES[1]), list(VERTICES[2])]
+        stress = post(client, {"points": points, "preset": "default"}).json()["stress_m"]
+        assert stress["3"] == pytest.approx(900.0, abs=0.5)
+        assert stress["1"] == pytest.approx(400.0, abs=0.5)
+
+
+@db
+class TestTheTraceRequest:
+    def test_it_asks_for_what_the_join_reads(self, client, segments, router) -> None:
+        """The fake answers whatever it is asked, so the request itself is what
+        holds the join's inputs: the way id, the lengths and the shape."""
+        fake = router(standard_router())
+        post(client, good_body())
+        trace = [p for url, p in fake.calls if url.endswith("trace_attributes")][0]
+        assert trace["filters"]["action"] == "include"
+        assert {
+            "edge.way_id",
+            "edge.length",
+            "edge.begin_shape_index",
+            "edge.end_shape_index",
+            "shape",
+        } <= set(trace["filters"]["attributes"])
+
+    def test_every_point_is_a_break(self, client, segments, router) -> None:
+        """Break locations are what make one leg per point, which the per-leg
+        trace and the elevation profile depend on."""
+        fake = router(standard_router())
+        post(client, good_body())
+        assert {loc["type"] for loc in fake.calls[0][1]["locations"]} == {"break"}
+
+    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    def test_the_answer_names_the_variant_that_routed_it(
+        self, name, client, segments, router
+    ) -> None:
+        router(standard_router())
+        body = post(client, good_body(name)).json()
+        assert body["variant"] == presets.PRESETS[name].variant
+        assert body["preset"] == name
+
+
+class Clock:
+    """A monotonic clock the fake router can move."""
+
+    def __init__(self) -> None:
+        self.now = 1000.0
+
+    def monotonic(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def clock(monkeypatch):
+    fake = Clock()
+    monkeypatch.setattr(routing, "time", fake)
+    return fake
+
+
+@db
+class TestTimeBudget:
+    def test_every_call_has_a_finite_timeout_under_gunicorns(
+        self, client, segments, router
+    ) -> None:
+        timeouts = []
+        fake = standard_router()
+
+        def recording(url, payload, timeout):
+            timeouts.append(timeout)
+            return fake(url, payload, timeout)
+
+        router(recording)
+        assert post(client, good_body()).status_code == 200
+        assert timeouts
+        assert all(timeout is not None and 0 < timeout < 60 for timeout in timeouts)
+
+    def test_the_budget_is_under_gunicorns_timeout(self) -> None:
+        assert 0 < routing.PLAN_BUDGET_S < 60
+        assert routing.ROUTER_TIMEOUT_S <= routing.PLAN_BUDGET_S
+
+    def test_a_late_call_gets_only_what_is_left(self, client, segments, router, clock) -> None:
+        timeouts = []
+        fake = standard_router()
+
+        def slow(url, payload, timeout):
+            timeouts.append(timeout)
+            clock.now += routing.PLAN_BUDGET_S - 5
+            return fake(url, payload, timeout)
+
+        router(slow)
+        post(client, good_body())
+        assert timeouts[0] == routing.ROUTER_TIMEOUT_S
+        assert timeouts[1] == pytest.approx(5.0)
+
+    def test_a_spent_budget_is_503_with_retry_after(self, client, segments, router, clock) -> None:
+        fake = standard_router()
+        calls = []
+
+        def slow(url, payload, timeout):
+            calls.append(url)
+            clock.now += routing.PLAN_BUDGET_S + 1
+            return fake(url, payload, timeout)
+
+        router(slow)
+        response = post(client, good_body())
+        assert response.status_code == 503
+        assert int(response["Retry-After"]) >= 1
+        assert set(response.json()) == {"error"}
+        assert len(calls) == 1, "no call is started once the budget is gone"
+
+    def test_a_timeout_that_ends_the_budget_is_503_not_502(
+        self, client, segments, router, clock
+    ) -> None:
+        def hangs(url, payload, timeout):
+            clock.now += timeout
+            raise routing.RouterUnavailable("timed out")
+
+        router(hangs)
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(routing, "ROUTER_TIMEOUT_S", routing.PLAN_BUDGET_S + 10)
+            response = post(client, good_body())
+        assert response.status_code == 503
+
+    def test_a_timeout_inside_the_budget_is_still_502(
+        self, client, segments, router, clock
+    ) -> None:
+        def hangs(url, payload, timeout):
+            clock.now += 1
+            raise routing.RouterUnavailable("refused")
+
+        router(hangs)
+        assert post(client, good_body()).status_code == 502
+
+
+def spanning(km: float) -> list[list[float]]:
+    """Two points on one parallel about `km` apart, inside the box."""
+    import math as _m
+
+    from routemaker.geo import EARTH_RADIUS_M
+
+    degrees = km * 1000 / (EARTH_RADIUS_M * _m.cos(_m.radians(LAT))) * 180 / _m.pi
+    return [[-77.9, LAT], [-77.9 + degrees, LAT]]
+
+
+@db
+class TestLengthCap:
+    def test_just_under_the_cap_is_routed(self, client, segments, router) -> None:
+        from core.api import MAX_STRAIGHT_LINE_M
+
+        router(standard_router())
+        body = {"points": spanning(MAX_STRAIGHT_LINE_M / 1000 - 0.5), "preset": "default"}
+        assert post(client, body).status_code == 200
+
+    def test_just_over_the_cap_is_refused_before_the_router(self, client, router) -> None:
+        from core.api import MAX_STRAIGHT_LINE_M
+
+        body = {"points": spanning(MAX_STRAIGHT_LINE_M / 1000 + 0.5), "preset": "default"}
+        refused_before_the_router(client, router, body)
+
+    def test_the_cap_is_on_the_sum_of_legs(self, client, router) -> None:
+        """Many short hops that zig-zag across the region add up."""
+        from core.api import MAX_STRAIGHT_LINE_M
+
+        a, b = spanning(MAX_STRAIGHT_LINE_M / 1000 / 2.5)
+        refused_before_the_router(client, router, {"points": [a, b, a, b], "preset": "default"})
+
+
+@db
+class TestUnexpectedErrors:
+    @pytest.mark.parametrize("debug", [False, True])
+    def test_an_unexpected_error_is_a_fixed_500(self, debug, client, segments, router) -> None:
+        """DJANGO_DEBUG=1 is the documented posture of a local stack on :80,
+        and Django's debug page would hand a stranger the SQL and the paths."""
+
+        def breaks(url, payload, timeout):
+            raise RuntimeError("SELECT secret FROM somewhere /home/steph")
+
+        router(breaks)
+        with override_settings(DEBUG=debug):
+            response = post(client, good_body())
+        assert response.status_code == 500
+        assert set(response.json()) == {"error"}
+        assert b"secret" not in response.content
+        assert b"Traceback" not in response.content
+
+
+@db
+class TestContentType:
+    @pytest.mark.parametrize(
+        "content_type", ["application/json; charset=utf-8", "Application/JSON", " application/json"]
+    )
+    def test_the_json_type_is_accepted_however_it_is_written(
+        self, content_type, client, segments, router
+    ) -> None:
+        router(standard_router())
+        response = post(client, json.dumps(good_body()), content_type=content_type)
+        assert response.status_code == 200
+
+    def test_a_body_of_exactly_the_limit_is_accepted(self, client, segments, router) -> None:
+        from core.api import MAX_BODY_BYTES
+
+        router(standard_router())
+        body = json.dumps(good_body())
+        body += " " * (MAX_BODY_BYTES - len(body.encode()))
+        assert len(body.encode()) == MAX_BODY_BYTES
+        assert post(client, body).status_code == 200
+
+    def test_one_byte_over_the_limit_is_refused(self, client, router) -> None:
+        from core.api import MAX_BODY_BYTES
+
+        body = json.dumps(good_body())
+        body += " " * (MAX_BODY_BYTES + 1 - len(body.encode()))
+        refused_before_the_router(client, router, body)
+
+
+def hold_slots(pairs):
+    """Take advisory locks on a connection of its own, as another worker would."""
+    import psycopg2
+
+    db_settings = connection.settings_dict
+    other = psycopg2.connect(
+        dbname=db_settings["NAME"],
+        user=db_settings["USER"],
+        password=db_settings["PASSWORD"],
+        host=db_settings["HOST"],
+        port=db_settings["PORT"],
+    )
+    other.autocommit = True
+    with other.cursor() as cursor:
+        for pair in pairs:
+            cursor.execute("SELECT pg_advisory_lock(%s, %s)", list(pair))
+    return other
+
+
+def our_advisory_locks() -> int:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND pid = pg_backend_pid()"
+        )
+        return cursor.fetchone()[0]
+
+
+@db
+class TestInFlight:
+    """Routing takes a slot for as long as it runs, so a burst of long routes -
+    each inside the per-minute count - cannot take every gunicorn worker."""
+
+    def client_slots(self, address: str):
+        from core import ratelimit
+
+        limit = ratelimit.ROUTING_IN_FLIGHT
+        key = ratelimit._client_lock_id(ratelimit.client_key(address))
+        return [
+            (ratelimit._LOCK_CLASS_CLIENT + limit.scope_id * 64 + slot, key)
+            for slot in range(limit.per_client)
+        ]
+
+    def deployment_slots(self):
+        from core import ratelimit
+
+        limit = ratelimit.ROUTING_IN_FLIGHT
+        return [(ratelimit._LOCK_CLASS_TOTAL + limit.scope_id, s) for s in range(limit.total)]
+
+    def test_a_client_with_its_slots_taken_is_429(self, client, segments, router) -> None:
+        router(standard_router())
+        other = hold_slots(self.client_slots("198.51.100.20"))
+        try:
+            refused = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.20")
+            allowed = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.21")
+        finally:
+            other.close()
+        assert refused.status_code == 429
+        assert int(refused["Retry-After"]) >= 1
+        assert set(refused.json()) == {"error"}
+        assert allowed.status_code == 200
+
+    def test_one_slot_of_the_clients_is_enough(self, client, segments, router) -> None:
+        router(standard_router())
+        other = hold_slots(self.client_slots("198.51.100.22")[:-1])
+        try:
+            response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.22")
+        finally:
+            other.close()
+        assert response.status_code == 200
+
+    def test_a_deployment_with_every_slot_taken_is_503(self, client, segments, router) -> None:
+        fake = router(standard_router())
+        other = hold_slots(self.deployment_slots())
+        try:
+            refused = post(client, good_body())
+        finally:
+            other.close()
+        assert refused.status_code == 503
+        assert int(refused["Retry-After"]) >= 1
+        assert fake.calls == []
+        assert post(client, good_body()).status_code == 200
+
+    def test_the_slots_are_released_after_the_request(self, client, segments, router) -> None:
+        router(standard_router())
+        assert post(client, good_body()).status_code == 200
+        assert our_advisory_locks() == 0
+
+    def test_the_slots_are_released_after_a_failure(self, client, segments, router) -> None:
+        def breaks(url, payload, timeout):
+            raise RuntimeError("boom")
+
+        router(breaks)
+        assert post(client, good_body()).status_code == 500
+        assert our_advisory_locks() == 0
+
+    def test_the_deployment_keeps_two_workers_free(self) -> None:
+        from core import ratelimit
+
+        assert ratelimit.ROUTING_IN_FLIGHT.total == max(
+            1, int(os.environ.get("WEB_CONCURRENCY") or 5) - 2
+        )
+        assert settings.ROUTING_CONCURRENCY >= 1
+
+
+class TestTransportEdges:
+    def test_a_client_error_that_is_not_json_is_still_a_refusal(self, server) -> None:
+        url = server(404, b"<html>not here</html>")
+        with pytest.raises(routing.RouterRefused) as refused:
+            routing._transport(url, {}, 5)
+        assert (refused.value.status, refused.value.code) == (404, None)
+
+
+def test_the_attribution_names_ddot_its_licence_and_the_change() -> None:
+    """CC BY 4.0 section 3(a)(1)(B): an adaptation says it was modified and
+    links the licence."""
+    ddot = [line for line in routing.ATTRIBUTION if "District Department of Transportation" in line]
+    assert len(ddot) == 1
+    assert "CC BY 4.0" in ddot[0]
+    assert "adapted" in ddot[0]
+    assert "creativecommons.org/licenses/by/4.0" in ddot[0]
+    assert any("USGS" in line for line in routing.ATTRIBUTION)
+    assert not any("courtesy" in line for line in routing.ATTRIBUTION)
+
+
+@db
+@pytest.mark.parametrize("debug", [False, True])
+def test_a_failure_in_the_limits_is_a_fixed_500_too(debug, client, monkeypatch) -> None:
+    """The limits run around Ninja's own handling, so a database that fails
+    inside them - the first thing a request touches - must not reach Django's
+    debug page either."""
+    from core import ratelimit
+
+    def breaks(limit, client_id):
+        raise RuntimeError("could not connect to server at /var/run/postgresql secret")
+
+    monkeypatch.setattr(ratelimit, "hit", breaks)
+    with override_settings(DEBUG=debug):
+        response = post(client, good_body())
+    assert response.status_code == 500
+    assert set(response.json()) == {"error"}
+    assert b"secret" not in response.content

@@ -23,8 +23,23 @@ them. Each edge is cut at its shape vertices, each piece goes to the nearest
 segment of the same way, and the edge's reported length is shared between its
 pieces in proportion to their ground length. Pieces are per traversal, so a
 route that rides the same way twice counts it twice (PLAN: the out-and-back
-fixture). A way with no segment row, and any leg whose trace failed both ways,
-counts as "unknown" rather than being guessed at.
+fixture). A way with no segment row, and any leg the router refused to trace
+by both matches, counts as "unknown" rather than being guessed at; a router
+that stops answering mid-trace is a 502 like any other.
+
+That is a deviation from PLAN's Stats source in one respect, recorded in the
+handoff: the plan asks for "linear overlap of the edge shape against stored
+segment geometry", and what is here is the nearest same-way segment to each
+piece's midpoint. The two agree wherever a piece lies along one segment, which
+is nearly every piece - the promoted build has 1,357,800 segments on 1,341,939
+ways - and differ only for a piece that straddles a segment boundary, whose
+length all goes to the segment nearer its middle instead of being split there.
+
+Every request has one time budget, `PLAN_BUDGET_S`, across all of its router
+calls. gunicorn kills a worker at its 60 s timeout and Caddy then answers an
+empty 502; the budget ends the request well before that with an answer the
+contract names (503 with Retry-After), and every call's socket timeout is
+clipped to what is left of it.
 
 Climb and descent come from the route's elevation profile through
 `routemaker.measure.elevation_gain`, the same hysteresis definition the
@@ -37,6 +52,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -64,6 +80,11 @@ ELEVATION_INTERVAL_M = 30
 # past which the router is treated as not answering at all.
 ROUTER_TIMEOUT_S = 20
 
+# The whole request's budget across every router call. gunicorn's --timeout is
+# 60 s (docker/api-entrypoint.sh); 40 leaves room for the stress query and the
+# response and is still an answer rather than a killed worker.
+PLAN_BUDGET_S = 40
+
 # PLAN, Time-dependent behavior: with no planning time set, requests assume the
 # next Saturday at 9:00 local time, so conditional restrictions are evaluated
 # rather than ignored. Type 3 is invariant time, which keeps bidirectional A*.
@@ -73,12 +94,19 @@ PLANNING_HOUR = 9
 
 STRESS_KEYS = ("1", "2", "3", "4", "unknown")
 
-# Valhalla's error codes for "these points cannot be joined" as opposed to "the
-# request was malformed": no path (442, 443) and no routable edge near a
-# location (170, 171). Anything else the router refuses is still reported as
-# no route, but logged, because it means the request this module built was not
-# one the router accepts.
-NO_ROUTE_CODES = frozenset({170, 171, 442, 443})
+# Valhalla's error codes, sorted by what they mean to the person asking.
+# No path between the points (442, 443): the one case where a no-trail
+# variant's missing crossings are the likely explanation.
+NO_PATH_CODES = frozenset({442, 443})
+# No routable edge near a location (170, 171): no route, but not for want of a
+# crossing.
+NO_EDGE_CODES = frozenset({170, 171})
+# The 15x family is the service's request limits - too many locations, a path
+# over the distance limit (154), too many shape points and so on. The request
+# asked for too much, which is the caller's 400. Any other refusal is still
+# reported as no route, and logged, because it means this module built a
+# request the router does not accept.
+REQUEST_LIMIT_CODES = frozenset(range(150, 160))
 
 
 class RouterUnavailable(Exception):
@@ -95,7 +123,23 @@ class RouterRefused(Exception):
 
 
 class NoRoute(Exception):
-    """No route joins these points on this preset's variant."""
+    """No route joins these points on this preset's variant.
+
+    `no_path` is true only when the router said there is no path at all, as
+    opposed to no road near a point or some other refusal.
+    """
+
+    def __init__(self, message: str, no_path: bool = False) -> None:
+        super().__init__(message)
+        self.no_path = no_path
+
+
+class TooLong(Exception):
+    """The router refused the request as beyond one of its limits."""
+
+
+class DeadlineExceeded(Exception):
+    """The request's time budget ran out before the router had answered."""
 
 
 def _transport(url: str, payload: dict, timeout: float) -> dict:
@@ -123,9 +167,18 @@ def _transport(url: str, payload: dict, timeout: float) -> dict:
         raise RouterUnavailable(str(error)) from error
 
 
-def _call(variant: str, endpoint: str, payload: dict) -> dict:
+def _call(variant: str, endpoint: str, payload: dict, deadline: float) -> dict:
+    """One router call inside the request's budget; `deadline` is monotonic."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
-    return _transport(url, payload, ROUTER_TIMEOUT_S)
+    try:
+        return _transport(url, payload, min(ROUTER_TIMEOUT_S, remaining))
+    except RouterUnavailable as error:
+        if time.monotonic() >= deadline:
+            raise DeadlineExceeded(f"{endpoint} ran past the budget") from error
+        raise
 
 
 def planning_time(now: datetime | None = None) -> str:
@@ -187,7 +240,11 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     for edge in trace.get("edges", []):
         length = float(edge.get("length") or 0.0) * to_metres
         begin, end = edge.get("begin_shape_index"), edge.get("end_shape_index")
-        if length <= 0 or begin is None or end is None or end <= begin or end >= len(shape):
+        # An index past the shape is a response this module does not
+        # understand, and is skipped rather than guessed at. `begin == end` is
+        # not: it is an edge that starts and ends on one vertex, and its length
+        # is kept, on that vertex.
+        if length <= 0 or begin is None or end is None or end < begin or end >= len(shape):
             continue
         way_id = int(edge.get("way_id") or 0)
         stretches = []
@@ -246,7 +303,7 @@ def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
     return totals
 
 
-def trace_leg(variant: str, costing: dict, shape: str) -> dict | None:
+def trace_leg(variant: str, costing: dict, shape: str, deadline: float) -> dict | None:
     """The leg's edges, by edge walk and then by map snap; None if neither works."""
     for match in ("edge_walk", "map_snap"):
         payload = {
@@ -266,17 +323,19 @@ def trace_leg(variant: str, costing: dict, shape: str) -> dict | None:
             },
         }
         try:
-            return _call(variant, "trace_attributes", payload)
+            return _call(variant, "trace_attributes", payload, deadline)
         except RouterRefused as refusal:
             logger.info("trace_attributes %s refused on %s: %s", match, variant, refusal)
     return None
 
 
-def plan(points: list[list[float]], preset_name: str) -> dict:
+def plan(points: list[list[float]], preset_name: str, budget_s: float | None = None) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
-    Raises NoRoute, RouterUnavailable, or KeyError for an unknown preset.
+    Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
+    for an unknown preset.
     """
+    deadline = time.monotonic() + (PLAN_BUDGET_S if budget_s is None else budget_s)
     preset = presets.PRESETS[preset_name]
     costing = presets.costing(preset_name)
     request = {
@@ -289,9 +348,11 @@ def plan(points: list[list[float]], preset_name: str) -> dict:
         "units": "kilometers",
     }
     try:
-        answer = _call(preset.variant, "route", request)
+        answer = _call(preset.variant, "route", request, deadline)
     except RouterRefused as refusal:
-        if refusal.code not in NO_ROUTE_CODES:
+        if refusal.code in REQUEST_LIMIT_CODES:
+            raise TooLong(str(refusal)) from refusal
+        if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
             logger.warning(
                 "the %s router refused a route request (%s, code %s): %s",
                 preset.variant,
@@ -299,7 +360,7 @@ def plan(points: list[list[float]], preset_name: str) -> dict:
                 refusal.code,
                 refusal,
             )
-        raise NoRoute(str(refusal)) from refusal
+        raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
 
     trip = answer.get("trip") or {}
     legs = trip.get("legs") or []
@@ -314,7 +375,7 @@ def plan(points: list[list[float]], preset_name: str) -> dict:
         shape = decode_polyline6(leg.get("shape", ""))
         coordinates.extend(shape[1:] if coordinates else shape)
         elevations.extend(leg.get("elevation") or [])
-        trace = trace_leg(preset.variant, costing, leg.get("shape", ""))
+        trace = trace_leg(preset.variant, costing, leg.get("shape", ""), deadline)
         if trace is None:
             stress["unknown"] += float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
         else:
@@ -342,14 +403,17 @@ def plan(points: list[list[float]], preset_name: str) -> dict:
 
 # PLAN, Licensing, and the public-tier rules in force (owner decision of
 # 2026-09-26): ODbL attribution for everything OpenStreetMap-derived, which is
-# the route itself and its stress tiers; DDOT's CC BY 4.0, because its counts
-# shape the stress tiers; VDOT's volume layer states no licence and is credited
-# as a courtesy; USGS 3DEP for the elevation the climb is computed from.
-# Protomaps is credited by the map, which draws its basemap; nothing in a
-# route response comes from it.
+# the route itself and its stress tiers. DDOT's traffic volume ("2024 Traffic
+# Volume" on Open Data DC) is CC BY 4.0, whose section 3(a)(1)(B) asks that an
+# adaptation say it was modified and link the licence: the counts are
+# normalised and fed to the classifier, so the credit says "adapted". VDOT's
+# volume layer states no licence and is credited plainly. USGS 3DEP for the
+# elevation the climb is computed from. Protomaps is credited by the map,
+# which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
     "© OpenStreetMap contributors, ODbL",
-    "Traffic volume: District Department of Transportation, CC BY 4.0",
-    "Traffic volume: Virginia Department of Transportation (courtesy credit)",
+    "Stress tiers use traffic volume from the District Department of Transportation,"
+    " adapted, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+    "Traffic volume: Virginia Department of Transportation",
     "Elevation: USGS 3D Elevation Program",
 )

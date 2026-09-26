@@ -73,15 +73,13 @@ _LIVING_STREETS = MID
 @dataclass(frozen=True)
 class Preset:
     name: str
-    label: str
     variant: str
     costing_options: MappingProxyType = field(repr=False)
 
 
-def _preset(name: str, label: str, variant: Variant, **options: Any) -> Preset:
+def _preset(name: str, variant: Variant, **options: Any) -> Preset:
     return Preset(
         name=name,
-        label=label,
         variant=variant.value,
         costing_options=MappingProxyType({**options, **_NO_STATE_CROSSING_PENALTY}),
     )
@@ -93,7 +91,6 @@ PRESETS: MappingProxyType = MappingProxyType(
         for preset in (
             _preset(
                 "default",
-                "Default",
                 Variant.STANDARD,
                 bicycle_type="Hybrid",
                 use_roads=MID,
@@ -106,7 +103,6 @@ PRESETS: MappingProxyType = MappingProxyType(
             ),
             _preset(
                 "group-ride",
-                "Group Ride",
                 Variant.STANDARD,
                 bicycle_type="Cross",
                 use_roads=MID,
@@ -119,7 +115,6 @@ PRESETS: MappingProxyType = MappingProxyType(
             ),
             _preset(
                 "mass-ride",
-                "Mass Ride",
                 Variant.NO_TRAIL,
                 bicycle_type="Hybrid",
                 use_roads=1.0,
