@@ -1110,6 +1110,13 @@ class TestInFlight:
         assert post(client, good_body()).status_code == 500
         assert our_advisory_locks() == 0
 
+    def test_a_client_may_have_a_second_route_in_flight(self) -> None:
+        """A planner fires a new request when a waypoint is dragged again
+        before the last answer arrives; one slot would refuse the second."""
+        from core import ratelimit
+
+        assert ratelimit.ROUTING_IN_FLIGHT.per_client >= 2
+
     def test_the_deployment_keeps_two_workers_free(self) -> None:
         from core import ratelimit
 
