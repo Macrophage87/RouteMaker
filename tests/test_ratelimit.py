@@ -27,6 +27,32 @@ db = pytest.mark.django_db(transaction=True)
 LIMIT = ratelimit.Limit(scope="test", requests=5, window_s=60)
 
 
+def _window_start(window_s: int):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp()) / %s) * %s)",
+            [window_s, window_s],
+        )
+        return cursor.fetchone()[0]
+
+
+def in_one_window(window_s: int, attempt):
+    """Run `attempt(n)` until one run starts and ends inside one window, and
+    return what it returned; assert on that, not inside the attempt.
+
+    A run that straddles a window boundary sees its count restart half way,
+    which is the limiter working. The retry starts just after that boundary,
+    so it has the whole window; each attempt is given its own `n` so it can
+    use a client of its own.
+    """
+    for n in range(2):
+        start = _window_start(window_s)
+        result = attempt(n)
+        if _window_start(window_s) == start:
+            return result
+    pytest.fail("two attempts in a row straddled a window boundary")
+
+
 def request_from(remote: str = "203.0.113.9", forwarded: str | None = None):
     extra = {"REMOTE_ADDR": remote}
     if forwarded is not None:
@@ -309,9 +335,13 @@ class TestDecorator:
             calls.append(1)
             return HttpResponse("ok")
 
-        for _ in range(LIMIT.requests + 3):
-            counting(request_from())
-        assert len(calls) == LIMIT.requests
+        def attempt(n):
+            calls.clear()
+            for _ in range(LIMIT.requests + 3):
+                counting(request_from(remote=f"203.0.113.{20 + n}"))
+            return len(calls)
+
+        assert in_one_window(LIMIT.window_s, attempt) == LIMIT.requests
 
     def test_the_bucket_is_the_forwarded_client_not_the_proxy(self) -> None:
         """Behind Caddy every request's peer is Caddy. Keyed on the peer, one

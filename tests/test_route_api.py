@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import http.server
 import json
+import logging
 import math
 import os
 import socket
@@ -23,6 +24,7 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from django.test import override_settings
+from test_ratelimit import in_one_window
 
 from core import presets, routing
 
@@ -464,8 +466,27 @@ class TestRouterOutcomes:
         assert no_trail != standard
         assert no_trail.startswith(standard)
 
+    def test_both_no_path_codes_tell_the_crossing_story(self, client, router) -> None:
+        """Valhalla answers 442 or 443 for no path, depending on where the
+        search gave up; either can be the no-trail variant's missing crossing."""
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path")}))
+        explained = post(client, good_body("mass-ride")).json()["error"]
+        router(FakeRouter({"route": routing.RouterRefused(400, 443, "No path")}))
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 422
+        assert response.json()["error"] == explained
+
+    def test_no_legs_on_mass_ride_tells_no_crossing_story(self, client, router) -> None:
+        """An empty answer is not the router saying there is no path."""
+        router(FakeRouter({"route": routing.RouterRefused(400, 442, "No path")}))
+        explained = post(client, good_body("mass-ride")).json()["error"]
+        router(FakeRouter({"route": {"trip": {"legs": []}}}))
+        response = post(client, good_body("mass-ride"))
+        assert response.status_code == 422
+        assert response.json()["error"] != explained
+
     @pytest.mark.parametrize("preset", ["default", "mass-ride"])
-    @pytest.mark.parametrize("code", [150, 154, 157])
+    @pytest.mark.parametrize("code", list(range(150, 160)))
     def test_a_router_limit_is_the_callers_too_long(self, code, preset, client, router) -> None:
         """154 is "Path distance exceeds the max distance limit": the request
         asked for too much, which is a 400 and not a missing crossing."""
@@ -475,7 +496,7 @@ class TestRouterOutcomes:
         assert set(response.json()) == {"error"}
         assert "roadway" not in response.json()["error"]
 
-    @pytest.mark.parametrize("code", [171, 999, None])
+    @pytest.mark.parametrize("code", [149, 160, 171, 999, None])
     def test_other_refusals_are_no_route_without_the_crossing_story(
         self, code, client, router
     ) -> None:
@@ -517,18 +538,21 @@ class TestRateLimit:
         from core.ratelimit import ROUTING
 
         fake = router(standard_router())
-        fake.answers["route"] = [fake.answers["route"]] * (ROUTING.requests + 5)
+        fake.answers["route"] = [fake.answers["route"]] * (2 * ROUTING.requests + 5)
         fake.answers["trace_attributes"] = [fake.answers["trace_attributes"]] * (
-            ROUTING.requests + 5
+            2 * ROUTING.requests + 5
         )
-        headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.7"}
-        statuses = [
-            post(client, good_body(), **headers).status_code for _ in range(ROUTING.requests)
-        ]
-        assert statuses == [200] * ROUTING.requests
-        calls_before = len(fake.calls)
 
-        refused = post(client, good_body(), **headers)
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{7 + 100 * n}"}
+            statuses = [
+                post(client, good_body(), **headers).status_code for _ in range(ROUTING.requests)
+            ]
+            calls_before = len(fake.calls)
+            return statuses, calls_before, post(client, good_body(), **headers)
+
+        statuses, calls_before, refused = in_one_window(ROUTING.window_s, attempt)
+        assert statuses == [200] * ROUTING.requests
         assert refused.status_code == 429
         assert 1 <= int(refused["Retry-After"]) <= ROUTING.window_s
         assert refused.json()["error"]
@@ -543,10 +567,14 @@ class TestRateLimit:
         from core.ratelimit import ROUTING
 
         router(standard_router())
-        headers = {"HTTP_X_FORWARDED_FOR": "198.51.100.9"}
-        for _ in range(ROUTING.requests):
-            post(client, "{", **headers)
-        assert post(client, good_body(), **headers).status_code == 429
+
+        def attempt(n):
+            headers = {"HTTP_X_FORWARDED_FOR": f"198.51.100.{9 + 100 * n}"}
+            for _ in range(ROUTING.requests):
+                post(client, "{", **headers)
+            return post(client, good_body(), **headers).status_code
+
+        assert in_one_window(ROUTING.window_s, attempt) == 429
 
     def test_a_cross_site_simple_post_does_not_spend_the_budget(
         self, client, segments, router
@@ -985,6 +1013,19 @@ class TestLengthCap:
         body = {"points": bouncing(MAX_SPAN_M / 1000 - 1), "preset": "default"}
         assert post(client, {**body, "confirm_long": True}).status_code == 200
 
+    def test_the_confirm_span_is_150_km(self, client, segments, router) -> None:
+        """In kilometres written out, so a change to the constant fails here."""
+        router(long_router())
+        assert post(client, {"points": spanning(149.5), "preset": "default"}).status_code == 200
+        assert post(client, {"points": spanning(150.5), "preset": "default"}).status_code == 409
+
+    def test_the_ceiling_is_300_km(self, client, segments, router) -> None:
+        router(long_router())
+        under = {"points": bouncing(299.5), "preset": "default", "confirm_long": True}
+        over = {"points": bouncing(300.5), "preset": "default", "confirm_long": True}
+        assert post(client, under).status_code == 200
+        assert post(client, over).status_code == 400
+
     def test_the_span_is_the_sum_of_legs(self, client, router) -> None:
         """Short hops that zig-zag add up: each leg is under the confirm span,
         and together they are past the ceiling."""
@@ -1112,9 +1153,12 @@ def sign_in(client, monkeypatch, user):
 @db
 class TestUnexpectedErrors:
     @pytest.mark.parametrize("debug", [False, True])
-    def test_an_unexpected_error_is_a_fixed_500(self, debug, client, segments, router) -> None:
+    def test_an_unexpected_error_is_a_fixed_500(
+        self, debug, client, segments, router, core_log
+    ) -> None:
         """DJANGO_DEBUG=1 is the documented posture of a local stack on :80,
-        and Django's debug page would hand a stranger the SQL and the paths."""
+        and Django's debug page would hand a stranger the SQL and the paths.
+        The traceback goes to the log instead, where the operator reads it."""
 
         def breaks(url, payload, timeout):
             raise RuntimeError("SELECT secret FROM somewhere /home/steph")
@@ -1126,6 +1170,24 @@ class TestUnexpectedErrors:
         assert set(response.json()) == {"error"}
         assert b"secret" not in response.content
         assert b"Traceback" not in response.content
+        assert_logged_with_traceback(core_log, RuntimeError)
+
+
+@pytest.fixture
+def core_log(caplog):
+    """caplog, also fed by the `core` loggers, which do not propagate to root."""
+    logger = logging.getLogger("core")
+    logger.addHandler(caplog.handler)
+    try:
+        yield caplog
+    finally:
+        logger.removeHandler(caplog.handler)
+
+
+def assert_logged_with_traceback(caplog, kind) -> None:
+    logged = [r for r in caplog.records if r.name == "core.api" and r.levelname == "ERROR"]
+    assert logged, "the failure is not in the log"
+    assert any(r.exc_info and r.exc_info[0] is kind for r in logged)
 
 
 @db
@@ -1426,7 +1488,7 @@ def test_the_attribution_names_ddot_its_licence_and_the_change() -> None:
 
 @db
 @pytest.mark.parametrize("debug", [False, True])
-def test_a_failure_in_the_limits_is_a_fixed_500_too(debug, client, monkeypatch) -> None:
+def test_a_failure_in_the_limits_is_a_fixed_500_too(debug, client, monkeypatch, core_log) -> None:
     """The limits run around Ninja's own handling, so a database that fails
     inside them - the first thing a request touches - must not reach Django's
     debug page either."""
@@ -1441,6 +1503,7 @@ def test_a_failure_in_the_limits_is_a_fixed_500_too(debug, client, monkeypatch) 
     assert response.status_code == 500
     assert set(response.json()) == {"error"}
     assert b"secret" not in response.content
+    assert_logged_with_traceback(core_log, RuntimeError)
 
 
 @db
