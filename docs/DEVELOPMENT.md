@@ -261,6 +261,37 @@ hits ENOSPC can raise from its destructor, which ends the process. When `/tmp`
 is short, point `TMPDIR` at a real disk: pytest's `tmp_path` and the tests that
 call `tempfile` directly both follow it, where `--basetemp` moves only the first.
 
+## The front end
+
+`frontend/` is the public map (docs/DEPLOYMENT.md, "The public front end").
+Node is not needed on the host; the official image runs everything, as you, in
+the checkout:
+
+```sh
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app node:22 npm ci
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app node:22 npm test
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /app node:22 npm run build
+```
+
+- `npm test` is `node --test` over `src/**/*.test.{mjs,ts}`: the pure logic
+  (error mapping, request pacing, the long-ride rule, stress bar maths, the
+  plan in the link) and the stress palette's contrast against the base map's
+  own colours, which reads `@protomaps/basemaps` from `node_modules` - so
+  `npm ci` first. The TypeScript runs through Node's own type stripping, on by
+  default from Node 22.18; `tests/test_frontend.py` runs the same files inside
+  pytest, skips on a machine without Node (WSL here) and fails in CI if the
+  Node there is older or missing.
+- `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
+  is not committed; `npm run typecheck` is the first half alone.
+- `npm run dev` serves the UI with hot reload and proxies `/api`, `/tiles` and
+  `/basemap` to a stack, rewriting `Origin` and `Referer` to that stack's own
+  because the base map refuses any other origin. `DEV_STACK` names the stack;
+  inside a container on the compose network that is the edge's name, e.g.
+  `docker run --rm -it -u "$(id -u):$(id -g)" -e HOME=/tmp -e DEV_STACK=http://<caddy container> --network routemaker_default -p 127.0.0.1:5173:5173 -v "$PWD/frontend:/app" -w /app node:22 npx vite --host 0.0.0.0`.
+  The dev server is for looking at the UI; proofs go through a Caddy serving
+  the build, as docs/DEPLOYMENT.md describes, because only that exercises the
+  edge's headers.
+
 ## What migrations do and do not create
 
 `Segment` is `managed = False` on purpose, so `migrate` does not create it. The

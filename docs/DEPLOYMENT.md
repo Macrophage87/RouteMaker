@@ -932,7 +932,7 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
 docker run --rm -u 10001:10001 \
   -v "$PWD/frontend/dist:/dist:ro" -v <DATA_ROOT>/frontend:/out \
   docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
-  sh -c 'cp -R /dist/assets /dist/favicon.svg /out/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
+  sh -c 'mkdir -p /out/assets && cp -n /dist/assets/* /out/assets/ && cp /dist/favicon.svg /dist/licenses.txt /out/ && cp /dist/index.html /out/.index.html.new && mv /out/.index.html.new /out/index.html'
 ```
 
 `npm ci` installs exactly what `frontend/package-lock.json` names (every direct
@@ -941,10 +941,33 @@ copies the hashed files under `assets/` first and replaces `index.html` last,
 by a rename, so a page loaded mid-deploy gets either the old app or the new
 one and never an `index.html` naming files that are not there yet. Older
 hashed files are left behind: they are what a tab opened before the deploy
-still asks for, and they cost about 2 MB a release. `<DATA_ROOT>/frontend` is
+still asks for, and they cost about 2 MB a release. `cp -n` leaves a hashed
+file that is already there alone rather than rewriting it under a reader
+(its name is its content, so it is the same file). The files are copied one
+by one into `assets/` rather than as `cp -R /dist/assets /out/`: with `-n`,
+busybox skips a directory that already exists, and the first version of this
+command, rerun on a second deploy, copied no new asset and then replaced
+`index.html` with one that named them - a blank app. `<DATA_ROOT>/frontend` is
 created and handed to 10001 by `scripts/prepare_data_root.sh`, like `static`
 and `basemap`, and compose mounts it read-only into Caddy at `/srv/frontend`;
 Caddy reads the files per request, so nothing is restarted.
+
+**On a stack that was running before the front end existed**, the order
+matters. `compose.yaml` now binds `${DATA_ROOT}/frontend` into Caddy, and a
+bind source that does not exist is created by the Docker daemon, as root, on
+the next `up` - after which step 2 fails with
+`cp: can't create directory '/out/assets': Permission denied`. So, from the
+repository root:
+
+```sh
+sudo sh scripts/prepare_data_root.sh --env-file ./.env   # creates frontend/, owned by 10001
+# then steps 1 and 2 above, then:
+docker compose up -d                                        # recreates caddy with the new mount
+```
+
+The prepare script is safe to rerun: it creates what is missing and changes
+the owner of our own directories only. If `up -d` did run first, running the
+script afterwards repairs the ownership, and step 2 then succeeds.
 
 What the edge does with it (Caddyfile, `@frontend`):
 
@@ -954,8 +977,22 @@ What the edge does with it (Caddyfile, `@frontend`):
   `<DJANGO_ADMIN_PATH>`, `/healthz` - reaches the API exactly as before
   (`tests/test_frontend_edge.py` runs this against the real Caddy image). A
   client-side route the app grows later has to be added to that list.
-- `index.html` is `Cache-Control: no-cache`, so a deploy is seen on the next
-  load; `assets/*` are content-hashed and `max-age=31536000, immutable`.
+- `index.html` and `licenses.txt` are `Cache-Control: no-cache`, so a deploy
+  is seen on the next load; the files under `assets/` are content-hashed and
+  `max-age=31536000, immutable` - only files that exist, so a 404 is not
+  cached for a year. The favicon is cached for a day.
+- The app's responses are compressed (`encode zstd gzip`, in this block only):
+  the main script is about 1.3 MB raw and 370 KB gzipped. Nothing else on the
+  site is encoded; `/basemap/*` must not be, since an encoder changes what a
+  byte range means (`tests/test_basemap.py`).
+- A `Content-Security-Policy` of `default-src 'self'` with `script-src`,
+  `connect-src` and `font-src 'self'`, `style-src 'self' 'unsafe-inline'`
+  (MapLibre sets inline styles), `img-src 'self' data: blob:`,
+  `worker-src 'self' blob:`, `object-src 'none'`, `base-uri 'self'`,
+  `form-action 'self'` and `frame-ancestors 'none'`. Every request the app
+  makes is to this site, which is what lets it be that tight; the operations
+  review ran it against the built app with no violation, and
+  `tests/test_frontend_edge.py` holds its main directives.
 - `Referrer-Policy: same-origin`. MapLibre fetches the archive, the glyphs and
   the sprites on the page's own thread, and `/basemap/*` answers only a request
   whose `Origin` or `Referer` is this site (docs/OPERATIONS.md, "What the edge
@@ -981,17 +1018,51 @@ What the map shows and credits:
   metres per stress tier.
 - The plan (points and ride type) lives in the URL fragment, so a link reopens
   it; a fragment is never sent to a server, and nothing signed out is saved.
+  Signing in keeps it: the plan is put in the tab's `sessionStorage` as the
+  sign-in link is followed and read back once on return, because the Discord
+  callback lands on `/` without a fragment (a `next` parameter would send the
+  points to the server's logs and to Discord).
+- Route requests are paced (`frontend/src/lib/routeScheduler.ts`): a change
+  waits 300 ms, one request is in flight at a time and is never abandoned
+  (aborting a fetch frees no slot on the server), only the latest plan is
+  kept, and a 429 or 503 with `Retry-After` is waited out for that long before
+  the latest plan is sent - at most three times - rather than retried on a
+  timer.
+- A long ride: an anonymous plan whose points span more than 150 km in straight
+  lines is answered 409 `confirm_long` by the API, and the app asks "This is a
+  long ride (about N km...). Plan it?" before sending it again with
+  `"confirm_long": true`. A yes covers the plan while its span stays within the
+  same 50 km step. Signed-in riders are never asked (the API does not send
+  the 409 to them).
+- Credits: one attribution line, OpenStreetMap first, ending with a link to
+  `/licenses.txt` - the bundled packages' licence notices, written by the
+  build (Vite's `build.license`).
 
 `npm run dev` is for working on the UI only: Vite's server proxies `/api`,
 `/tiles` and `/basemap` to a stack (`DEV_STACK`, `http://localhost` by default)
 and rewrites `Origin` and `Referer` to that stack's own, because the base map
 refuses any other origin.
 
+What the bundle ships, and under what licence (the runtime packages; the
+build tools - TypeScript, Vite and its React plugin, whose tree includes
+lightningcss under MPL-2.0 - are not shipped):
+
+| Package | Version | Licence | Source |
+| --- | --- | --- | --- |
+| react, react-dom, scheduler | 19.3.0, 19.3.0, 0.28.0 | MIT | <https://github.com/facebook/react> |
+| maplibre-gl (with its bundled dependencies) | 6.11.2 | BSD-3-Clause | <https://github.com/maplibre/maplibre-gl-js> |
+| pmtiles | 4.5.0 | BSD-3-Clause | <https://github.com/protomaps/PMTiles> |
+| @protomaps/basemaps | 5.7.2 | BSD-3-Clause | <https://github.com/protomaps/basemaps> |
+| fflate | 0.8.3 | MIT | <https://github.com/101arrowz/fflate> |
+
+`licenses.txt` carries each package's licence text as the package ships it.
+`@protomaps/basemaps` ships none in its npm package, so its entry there is the
+name and licence only; the text is in its repository above.
+
 Not done yet, and recorded rather than hidden: the TypeScript types for the
 API are written by hand against the shared contract instead of generated from
-`/api/openapi.json` as PLAN.md asks, so nothing yet pins the bundle to the API
-commit it was typed against; and there is no Content-Security-Policy on the
-app (MapLibre sets inline styles, which wants a decision of its own).
+`/api/openapi.json` (PLAN.md:51), so nothing yet pins the bundle to the API
+commit it was typed against.
 
 ## The admin map widget
 
@@ -1151,9 +1222,13 @@ publishes — and a `:80` site address without `DJANGO_DEBUG=1` is refused
 outright, because the example has to work as shipped rather than work once its
 reader has noticed a warning.
 
-**Caddy has never run in this environment.** There is no Caddy binary here and no
-Docker daemon, so the Caddyfile has not been parsed by Caddy, let alone served a
-request. The tests read it as text.
+**Caddy is run by the suite now, not only read.** `tests/test_basemap_edge.py`
+and `tests/test_frontend_edge.py` start the pinned `caddy` image against this
+file and read real responses: the `/basemap/*` guard, the front end's routes,
+headers and compression, and every other path still reaching the API. Both skip
+where there is no Docker daemon or the image is not already present - which
+includes CI as it stands - so there the Caddyfile is still checked only as text
+(`tests/test_deploy_surface.py`, `tests/test_basemap.py`).
 
 ## Known blockers on `docker compose up`
 
