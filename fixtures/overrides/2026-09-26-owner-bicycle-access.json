@@ -10,7 +10,7 @@
         "bicycle": "yes"
       },
       "reason": "Owner decision, 2026-09-26, on Key Bridge's Virginia approaches (North Fort Myer Drive and North Lynn Street, US 29): \"Bikes are legal, but there's a side path that's a better option for most.\" Bicycles are legal on this way for every rider; the preference for the sidepath is carried by the crossings fixture's roadway_mass_ride_only rule on the bridge itself, not by this row.",
-      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: North Fort Myer Drive, highway=trunk, ref US 29, oneway=yes, bicycle=no, foot=no - the only road from the Key Bridge roadway's Virginia end southward, so with bicycle=no the no-trail (mass ride) variant could not leave the bridge into Rosslyn."
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: North Fort Myer Drive, highway=trunk, ref US 29, oneway=yes, bicycle=no, foot=no - the only road from the Key Bridge roadway's Virginia end southward, so with bicycle=no the no-trail variant (Mass Ride's) could not leave the bridge into Rosslyn."
     },
     {
       "kind": "access",
@@ -19,7 +19,7 @@
         "bicycle": "yes"
       },
       "reason": "Owner decision, 2026-09-26, on Key Bridge's Virginia approaches (North Fort Myer Drive and North Lynn Street, US 29): \"Bikes are legal, but there's a side path that's a better option for most.\" Bicycles are legal on this way for every rider; the preference for the sidepath is carried by the crossings fixture's roadway_mass_ride_only rule on the bridge itself, not by this row.",
-      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: North Lynn Street, highway=trunk, ref US 29, oneway=yes, bicycle=no, foot=no - the only road onto the Key Bridge roadway's Virginia end from Rosslyn, so with bicycle=no the no-trail (mass ride) variant could not reach the bridge from Virginia."
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: North Lynn Street, highway=trunk, ref US 29, oneway=yes, bicycle=no, foot=no - the only road onto the Key Bridge roadway's Virginia end from Rosslyn, so with bicycle=no the no-trail variant (Mass Ride's) could not reach the bridge from Virginia."
     },
     {
       "kind": "access",
