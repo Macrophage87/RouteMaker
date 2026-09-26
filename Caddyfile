@@ -60,7 +60,11 @@
 	# against the request's own scheme and Host, so the one rule serves the
 	# `:80` posture and a hostname alike. A request with neither header is
 	# refused too. This is a hotlinking guard, not access control: a client
-	# that is not a browser can send whatever headers it likes.
+	# that is not a browser can send whatever headers it likes. Two
+	# consequences: a browser that strips a same-origin Referer (a privacy
+	# extension, a page served with `Referrer-Policy: no-referrer`) gets a
+	# blank map, and the rule assumes Caddy is the TLS edge - behind another
+	# TLS-terminating proxy {scheme} is http and every https page is refused.
 	#
 	# The per-IP range-request limit PLAN asks for is NOT here: the stock
 	# caddy image (2.8.4, `caddy list-modules`) carries no rate-limit module.
@@ -80,6 +84,11 @@
 		header /region.pmtiles Cache-Control "private, no-cache"
 		header /fonts/* Cache-Control "private, max-age=86400"
 		header /sprites/* Cache-Control "private, max-age=86400"
+		# `header` runs before `respond`, so without this a refused glyph
+		# would carry the day-long max-age above and a page of ours that lost
+		# its Referer once would stay broken for a day. Same-named directives
+		# keep their order, so this one, last, wins on a refusal.
+		header @foreign Cache-Control "no-store"
 		root * /srv/basemap
 		file_server
 	}
