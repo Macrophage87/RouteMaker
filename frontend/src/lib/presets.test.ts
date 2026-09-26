@@ -31,3 +31,10 @@ test("anything unknown falls back to the default rather than reaching the API", 
   }
   for (const preset of PRESETS) assert.equal(parsePreset(preset.id), preset.id);
 });
+
+test("no ride type is described by a headcount", () => {
+  // PLAN.md, Routing model: pace and posture distinguish Group Ride from Mass
+  // Ride, not rider count, so the picker does not name one.
+  const count = /\d|\b(two|three|four|five|six|seven|eight|nine|ten|twelve|fifteen|twenty|thirty|forty|fifty|dozen|hundred|thousand)\b/i;
+  for (const preset of PRESETS) assert.doesNotMatch(preset.description, count, preset.id);
+});

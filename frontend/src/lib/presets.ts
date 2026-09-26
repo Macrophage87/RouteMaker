@@ -23,7 +23,7 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "group-ride",
     label: "Group Ride",
-    description: "A club ride of about twenty at riding pace, with fewer turns and gates.",
+    description: "A group riding with traffic at riding pace: quiet roads, fewer turns and gates.",
   },
   {
     id: "mass-ride",
