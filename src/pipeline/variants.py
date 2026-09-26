@@ -543,7 +543,8 @@ def bars_electric_bicycle(tags: dict[str, str]) -> bool:
 
 # The keys `bar_mass_ride_only_roadway` writes `no` on: the plain key, and a
 # directional key already present, because Valhalla lets `bicycle:forward` and
-# `bicycle:backward` override the plain key one direction at a time.
+# `bicycle:backward` override the plain key one direction at a time. Not the
+# only keys Valhalla opens a way from - see `REOPENING_KEYS` below.
 BICYCLE_KEYS = ("bicycle", "bicycle:forward", "bicycle:backward")
 
 # And the conditional keys, where present. Valhalla reads none of them, but
@@ -557,6 +558,28 @@ BICYCLE_CONDITIONAL_KEYS = (
     "bicycle:forward:conditional",
     "bicycle:backward:conditional",
 )
+
+
+# And the keys the bar removes. Upstream's `ways_proc` (lua/graph_upstream.lua)
+# derives bicycle access from more than the bicycle keys: a `cycleway`,
+# `cycleway:both`, `cycleway:left`/`:right` lane or shared lane turns bike
+# access on in both directions, `cycleway=opposite_lane` on a oneway opens the
+# contraflow, as does `oneway:bicycle=no`, and `vehicle:forward`/`:backward=yes`
+# opens that direction - each of them over a plain `bicycle=no`, measured
+# through lua/graph.lua under LuaJIT (tests/test_lua_remap.py). None is on the
+# Key or Memorial roadway today (Memorial carries `cycleway:both=no`); one OSM
+# edit adding sharrows would have put ordinary riders back on it with nothing
+# reporting it. The roadway is closed to the variant being built, so its
+# cycleway description has nothing left to say there, and the vehicle
+# directional keys are removed rather than set, which leaves the plain
+# `vehicle`/`motor_vehicle` tags to answer for motor traffic as OSM wrote them.
+# `oneway:bicycle` goes too: with no bicycle access it has no direction left to
+# describe.
+REOPENING_KEYS = ("vehicle:forward", "vehicle:backward", "oneway:bicycle")
+
+
+def is_reopening_key(key: str) -> bool:
+    return key == "cycleway" or key.startswith("cycleway:") or key in REOPENING_KEYS
 
 
 def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
@@ -573,6 +596,10 @@ def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
     for key in (*BICYCLE_KEYS[1:], *BICYCLE_CONDITIONAL_KEYS):
         if key in tags:
             tags[key] = "no"
+    # Removed, not rewritten: tags upstream's graph.lua grants bicycle access
+    # from on its own, over a plain `bicycle=no` (`REOPENING_KEYS`).
+    for key in [key for key in tags if is_reopening_key(key)]:
+        del tags[key]
 
 
 def inject(
