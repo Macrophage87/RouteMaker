@@ -28,7 +28,7 @@ from django.conf import settings
 from django.http import JsonResponse
 from ninja import Field, NinjaAPI, Schema, Status
 from ninja.decorators import decorate_view
-from ninja.errors import ValidationError
+from ninja.errors import HttpError, ValidationError
 from pydantic import ConfigDict, field_validator
 
 from . import presets, ratelimit, routing
@@ -119,6 +119,13 @@ def invalid_input(request, exc: ValidationError):
         where = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
         problems.append(f"{where}: {error.get('msg', 'invalid')}" if where else error.get("msg"))
     return _error(400, "; ".join(p for p in problems if p) or "invalid request")
+
+
+@api.exception_handler(HttpError)
+def http_error(request, exc: HttpError):
+    """Ninja raises this itself for a body that is not JSON at all; the contract
+    wants the same `{"error"}` shape as every other refusal."""
+    return _error(exc.status_code, str(exc))
 
 
 def json_body_only(view):

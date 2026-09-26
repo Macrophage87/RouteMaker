@@ -349,6 +349,9 @@ def refused_before_the_router(client, router, body, **kwargs) -> dict:
     response = post(client, body, **kwargs)
     assert response.status_code == 400, response.content
     assert fake.calls == []
+    # The contract's shape for every error, not Ninja's own {"detail": ...}.
+    assert set(response.json()) == {"error"}
+    assert response.json()["error"]
     return response.json()
 
 
