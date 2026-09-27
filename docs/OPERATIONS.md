@@ -787,10 +787,10 @@ the first host to run it is the first test of it.
    any log to explain it. Step 4 is the rest of that bootstrap; what it needs
    from here is the id already in the container's environment.
 
-   `bot`, `renderer` and `photon` are behind the `unbuilt` profile and are
-   skipped: the first two have no source and no image, and photon's pinned
-   image would download a 61 GB planet index onto the root volume on first boot
-   (docs/DEPLOYMENT.md, "Photon"). `migrate` waits for the database's health
+   `bot` and `renderer` are behind the `unbuilt` profile and are skipped: they
+   have no source and no image. `photon` starts, and serves place search once
+   its index is imported (docs/DEPLOYMENT.md, "Photon"); until then it waits,
+   unhealthy, and downloads nothing. `migrate` waits for the database's health
    check and runs every migration, and `api`, `worker` and `rebuild` wait for
    it to have completed.
 

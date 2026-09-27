@@ -113,17 +113,16 @@ so opening it up is a decision to serve the archive without one.
 after that, and again on every deploy that changes `frontend/`; Caddy serves
 it at `/`. The two commands are in "The public front end" below.
 
-`docker compose up -d` starts everything except `bot`, `renderer` and `photon`,
-which sit behind the `unbuilt` profile. `bot` and `renderer` are there because
-neither has a source in this repository and so neither has an image in any
-registry: without the profile this command was a pull of
-`ghcr.io/macrophage87/routemaker-bot:${TAG}` that could not succeed, on a stack where every other
-service was ready to start. `photon` is there because the pinned image's first
-act on a fresh host is to download a 61 GB planet index onto the root volume —
-see "Photon" below, which has the arithmetic and the two lines that make
-enabling the profile safe. `docker compose --profile unbuilt up -d` is how all
-three come back; until then their absence is what handoff.md section 7 says it
-is — no membership sweep from a gateway connection, no thumbnails, no geocoder.
+`docker compose up -d` starts everything except `bot` and `renderer`, which
+sit behind the `unbuilt` profile because neither has a source in this
+repository and so neither has an image in any registry: without the profile
+this command was a pull of `ghcr.io/macrophage87/routemaker-bot:${TAG}` that
+could not succeed, on a stack where every other service was ready to start.
+`docker compose --profile unbuilt up -d` is how both come back; until then
+their absence is what handoff.md section 7 says it is — no membership sweep
+from a gateway connection, no thumbnails. `photon` starts with everything else
+and serves place search once its index is imported ("Photon" below); before
+that it waits, unhealthy, and downloads nothing.
 
 `TAG` is the image tag, read from `.env` (`TAG=dev` in `.env.example`). It names
 the built image, not a registry: `build:` sits beside `image:` in every service
@@ -507,8 +506,8 @@ rather than an omission:
   uid on every start, so a chown here is undone at best.
 - `caddy/` holds the ACME account key and the deployment's TLS private key.
   Caddy runs as root and obtains them itself.
-- `photon/` belongs to an image that is not ours and to a service parked behind
-  the `unbuilt` profile.
+- `photon/` belongs to an image that is not ours, whose entrypoint re-owns it
+  to that image's own uid on every start.
 
 The script used to end in `chown -R 10001:10001 "$DATA_ROOT"`, which swept all
 three into the uid that every container of ours runs as — including, until this
@@ -751,57 +750,112 @@ in the repository that assumes it:
 ## Photon
 
 `photon` is pinned to `docker.io/rtuszik/photon-docker:2.4.0` — the newest release
-tag on
-Docker Hub when this was written (pushed 2026-08-17; `latest`, `2` and `2.4` all
-resolved to the same digest, which is how the tag was chosen). It was on
-`latest`, which is not a pin: PLAN:293 says all images pinned, and a
-`docker compose pull` would otherwise bring in whatever that repository's
-maintainer had pushed since, with no change in this repository to point at.
+tag on Docker Hub when this was written (pushed 2026-08-17; `latest`, `2` and
+`2.4` all resolved to the same digest, which is how the tag was chosen), and it
+carries Photon 1.3.0 (`Implementation-Version` in `/photon/photon.jar`). It
+serves `GET /api/geocode` (place search) and `GET /api/reverse` (the names the
+planner shows for its points), which the API proxies signed out under a
+per-client limit (PLAN.md:65 and its amendment of 2026-09-27; `core.geocode`).
 
-**It is behind the `unbuilt` profile, so a default `up` does not start it**, and
-the reason is not that it is idle. It is what the pinned image does on a fresh
-host, read out of that tag's own source (github.com/rtuszik/photon-docker at
-2.4.0):
+**The image's own command is never run.** What `rtuszik/photon-docker:2.4.0`
+does on its own, read out of that tag's source (github.com/rtuszik/photon-docker
+at 2.4.0), is download before it serves: `src/utils/config.py:23` defaults
+`INITIAL_DOWNLOAD` to `True` and `REGION` is unset in this stack, which is the
+**whole-planet index** — about 61 GB compressed, around 104 GB free to unpack —
+and short of that space the entrypoint exits 75 and `restart: unless-stopped`
+crash-loops it. With an index present, `MIN_INDEX_DATE` and the 30-day
+`UPDATE_STRATEGY` schedule fetch a replacement. So compose replaces the
+command: it runs `java -jar /photon/photon.jar serve` on the index at
+`/photon/data` (`config.py:36`; the 1.x `/photon/photon_data` is inert), and
+nothing in the container can download. `INITIAL_DOWNLOAD: "False"` and
+`UPDATE_STRATEGY: "DISABLED"` are set as well, so reverting the command is not a
+planet download either. With no index (a fresh host, before the import below)
+the command prints that there is no index and waits; the container reports
+unhealthy and the API answers place search with its 502 "not available".
+`tests/test_compose_render.py` holds all of that.
 
-- `src/utils/config.py:23` defaults `INITIAL_DOWNLOAD` to `True`, and `REGION`
-  is unset in this stack, so the entrypoint's first act is to fetch the
-  **whole-planet index** — about 61 GB compressed, and around 104 GB free
-  needed to unpack it.
-- `src/utils/config.py:36` puts that index at `/photon/data`. This stack mounted
-  `${DATA_ROOT}/photon` at `/photon/photon_data`, which is the 1.x path, so the
-  mount was **inert**: the download would have landed on the container's
-  writable layer, on the *root* volume, which the host requirements above size
-  small on purpose and which carries the OS, the images and the checkout.
-- Short of that space the entrypoint exits 75, and `restart: unless-stopped`
-  turns that into a crash loop starting with the operator's first `up` on every
-  new deployment.
+### Building the index (PLAN.md:60)
 
-So the profile is the fix for the first `up`, and two corrections beside it are
-what make enabling the profile safe rather than a 61 GB surprise: the mount
-target is now `/photon/data`, so an index lands on the data volume where it was
-always meant to, and `INITIAL_DOWNLOAD: "False"` means nothing is fetched until
-somebody populates the index deliberately.
+PLAN.md:60 fills Photon "from GraphHopper's per-country Photon dump filtered to
+the coverage bounding box". The owner approved the download of exactly one file
+(OWNER-DECISIONS 2026-09-26b item 13):
+`https://download1.graphhopper.com/public/north-america/usa/photon-dump-usa-1.0-latest.jsonl.zst`
+(5,095,748,556 bytes, Last-Modified 2026-09-21) and the `.md5` beside it.
+Fetching it is the operator's step, onto the data volume and never the root
+one; nothing in the repository downloads it:
 
-**Nothing in phase 1 calls Photon, and its index is empty.** PLAN:60 populates
-it "from GraphHopper's per-country Photon dump filtered to the coverage bounding
-box or from a one-off Nominatim import of the clipped extract, documented as the
-heavier option" — neither is built here, there is no script for either, and
-nothing in the repository writes into `${DATA_ROOT}/photon`. There is also no
-API route to it: the geocoding proxy PLAN:65 describes — Photon behind session
-authentication and a per-user rate limit — is not built either. handoff.md
-section 7 carries the row. `docker compose --profile unbuilt up -d` starts it
-the day there is an index to serve, alongside the bot and the renderer, which
-sit behind the same profile for the simpler reason that they have no image at
-all.
+```sh
+export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
+mkdir -p "$DATA_ROOT/photon-import" && cd "$DATA_ROOT/photon-import"
+curl -fL -O https://download1.graphhopper.com/public/north-america/usa/photon-dump-usa-1.0-latest.jsonl.zst.md5
+curl -fL -C - --retry 20 -O https://download1.graphhopper.com/public/north-america/usa/photon-dump-usa-1.0-latest.jsonl.zst
+```
 
-`scripts/check_compose_limits.py` still counts its 3 GB, and that is deliberate:
-the script reads `compose.yaml` rather than a rendered configuration, and it
-answers "does this stack fit in 32 GB", not "does today's `up` fit". A profile
-is a service that is one flag away from being resident — `renderer` and `bot`
-are counted on the same reasoning — so charging all three keeps the sizing
-answer true for the day somebody enables them, at the cost of 4.5 GB of
-pessimism in a total that has room for it (27.0 GB resident, 25.0 GB at the
-blue/green swap peak, against the 32 GB the script fails at).
+`-C -` resumes a download that stopped. Then:
+
+```sh
+export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
+scripts/import_photon.sh "$DATA_ROOT/photon-import/photon-dump-usa-1.0-latest.jsonl.zst" \
+    "$DATA_ROOT/photon.next"
+```
+
+The script checks the dump against its `.md5`, then, in a throwaway container of
+the pinned image with no network, runs `scripts/photon_trim.py` over the dump
+(streamed, never unpacked to disk: it keeps the header, the country lines and
+every place whose centroid is inside `settings.COVERAGE_BBOX`) and Photon's own
+`import -import-file` over what it kept, with names in English
+(`settings.PHOTON_LANGUAGES`). Photon's importer has no box filter of its own —
+`-country-codes` is the finest it offers, and the dump is one country — which is
+why the trim is ours. The two steps run one after the other, not in a pipe: on a
+busy host the embedded OpenSearch, starved beside a core decompressing ~80 GB,
+let a bulk request run past its fixed 30 s client timeout and the import failed
+(twice, 2026-09-27).
+
+Measured on 2026-09-27, on the local host with other work running (load 16-26 on
+8 cores), from the 2026-09-19 data in the 2026-09-21 dump:
+
+| | |
+|---|---|
+| md5 check of the 5.1 GB dump | 222 s |
+| trim: places kept | 2,253,222 places of 53,979,766 lines |
+| trim: time | 1,416 (1,579 on an earlier run) s |
+| trimmed JSON lines | 5.0 GB (deleted afterwards) |
+| Photon import | 977 s, `-j 1`, 1.5 GB heap, peak 2.45 GiB (page cache included) of the 3 GB cap |
+| index on disk | 742 MB |
+| serving, resident | 0.7-1.3 GiB of the 3 GB limit, 1 GB heap |
+| search latency through the API and Caddy | median 0.48 s, 90th percentile 1.8 s over 49 repeated searches (the host at load 14-17); the first searches after Photon starts, reading the index from disk, 4-5 s, past the API's 4 s timeout: the box tries once more |
+
+### Serving it, and the monthly refresh
+
+The index is not on the weekly rebuild path (PLAN.md:60). It changes only when
+an operator refreshes it, which is monthly at most: GraphHopper republishes the
+dump weekly, and a place search a few weeks behind OpenStreetMap costs nothing
+the router does not already have. The procedure, every step by hand and no
+download without the owner's say-so:
+
+1. Download the dump as above (the same URL; its `Last-Modified` says whether
+   there is a newer one). A different file, region or format is a new download
+   to be approved first.
+2. Build into a new directory: `scripts/import_photon.sh ... "$DATA_ROOT/photon.next"`.
+   The serving index is untouched while this runs.
+3. Swap and restart only the geocoder; search is unavailable for the restart
+   (under a minute), routing is not affected:
+
+   ```sh
+   export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
+   docker compose stop photon
+   mv "$DATA_ROOT/photon" "$DATA_ROOT/photon.prev"
+   mv "$DATA_ROOT/photon.next" "$DATA_ROOT/photon"
+   docker compose up -d photon
+   ```
+
+4. Check it: `docker compose exec photon curl -s localhost:2322/status`, then a
+   search from the site. If it is wrong, swap `photon.prev` back the same way.
+5. Once it is right, `rm -rf "$DATA_ROOT/photon.prev"` and the dump.
+
+The first deployment is steps 1, 2 and the two `mv`/`up` lines with no
+`photon.prev`. `scripts/check_compose_limits.py` counts photon's 3 GB as
+resident, which it now is.
 
 ## What the deployment serves
 
@@ -1212,11 +1266,11 @@ front end" above):
   `docker/api-entrypoint.sh` binds gunicorn to.
 
 Photon, Valhalla and the renderer have no route here on purpose. PLAN.md:65: they
-are "reachable only through the API", which proxies geocoding behind session
-authentication and a per-user rate limit Photon has no notion of a user to
-enforce for itself. A `reverse_proxy` to any of them would put an unauthenticated
-geocoder, router or renderer on the public internet, and the suite fails if one
-appears.
+are "reachable only through the API", which proxies geocoding under a per-client
+rate limit Photon has no notion of a client to enforce for itself (signed out
+since the owner's amendment of 2026-09-27: `/api/geocode` and `/api/reverse`).
+A `reverse_proxy` to any of them would put an unlimited geocoder, router or
+renderer on the public internet, and the suite fails if one appears.
 
 ### `CADDY_SITE_ADDRESS`
 

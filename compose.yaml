@@ -443,9 +443,9 @@ services:
   # The index is at /photon/data (`config.py:36`), where the image's
   # entrypoint re-owns it to its photon user on every start.
   #
-  # 3 GB is PLAN:60's limit. The heap is 1 GB; the trimmed index is a few
-  # hundred MB and the rest is OpenSearch's off-heap and the page cache
-  # (docs/DEPLOYMENT.md, "Photon", has the measured figures).
+  # 3 GB is PLAN:60's limit. The heap is 1 GB; the trimmed index is 742 MB on
+  # disk and the rest is OpenSearch's off-heap and the page cache; it ran at
+  # 0.7-1.3 GiB (docs/DEPLOYMENT.md, "Photon", has the measured figures).
   photon:
     <<: [*restart, *logging]
     image: docker.io/rtuszik/photon-docker:2.4.0
@@ -459,11 +459,15 @@ services:
         fi
         exec java -Xms1g -Xmx1g -jar /photon/photon.jar serve \
           -listen-ip 0.0.0.0 -data-dir /photon/data \
-          -max-results 10 -max-reverse-results 1 -query-timeout 2
+          -max-results 10 -max-reverse-results 1 -query-timeout 3
     environment:
       INITIAL_DOWNLOAD: "False"
       UPDATE_STRATEGY: "DISABLED"
     volumes: ["${DATA_ROOT}/photon:/photon/data"]
+    # No swap on top of the 3 GB: a JVM whose heap is swapped out waits on the
+    # disk at every collection, and a search the API gives four seconds takes
+    # longer (measured on a host short of memory, 2026-09-27).
+    memswap_limit: 3G
     deploy:
       resources:
         limits: { memory: 3G, cpus: "2" }
