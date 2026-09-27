@@ -251,7 +251,9 @@ agree.
   admits a bicycle by default (`BICYCLE_BY_DEFAULT_HIGHWAY` in
   `lua/routemaker_remap.lua`, held equal to upstream's highway table), since
   upstream reads `use_sidepath` as access over a class that bars bicycles,
-  such as `motorway`, `footway` or `platform`. So it never opens a way that
+  such as `motorway`, `footway` or `platform`, nor on an untagged way
+  tagged `impassable=yes`, which upstream closes to every mode and would
+  otherwise reopen on reading `use_sidepath`. So it never opens a way that
   was closed. `use_sidepath` is used here only for its cost; its OSM meaning,
   a compulsory sidepath, is not claimed, and nothing user-facing may read it
   as one. The no-trail variant does not carry it; it has no path to steer
@@ -266,7 +268,14 @@ agree.
   Riverwalk and the far end of the landing: on the round-3 review's grid of
   264 such trips, 50 changed at the Default preset's options (12 of them
   more than 10% longer, the worst 0.982 to 1.171 km, +19%) and 22 at Group
-  Ride's (the worst +14%), with durations rising by the same share. The reviewer
+  Ride's (the worst +14%), with durations rising by the same share. The
+  owner was shown those figures and accepted them on 2026-09-27: "Yes, keep
+  it. For recreational rides, getting there enjoyably trumps a higher stress
+  shorter route. We can change this gor more commute centric routes." (quoted
+  as typed). So the penalty stands for the recreational presets there are
+  today, and a commute-oriented preset, if one is added, may weigh these ways
+  differently - a lighter penalty or none - rather than inherit this one;
+  that is its designer's to decide with the owner, not settled here. The reviewer
   surface penalty (`rm:reviewer_surface`, capped at `compacted`) was
   measured first and moved no route: too weak for this.
 

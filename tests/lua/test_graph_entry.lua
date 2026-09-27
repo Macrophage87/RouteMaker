@@ -315,8 +315,11 @@ local function with_penalty(tags)
   return marked
 end
 for _, class in ipairs(classes) do
+  -- impassable=yes (NOTRAIL re-check should-fix 1): upstream closes every
+  -- mode on it, and an untagged `use_sidepath` would have opened it again.
   for label, extra in pairs({ bare = {}, ["access=yes"] = { access = "yes" },
-                              ["foot=designated"] = { foot = "designated" } }) do
+                              ["foot=designated"] = { foot = "designated" },
+                              ["impassable=yes"] = { impassable = "yes" } }) do
     local plain = { highway = class }
     for k, v in pairs(extra) do plain[k] = v end
     check("the penalty leaves highway=" .. class .. " (" .. label .. ") as its class leaves it",

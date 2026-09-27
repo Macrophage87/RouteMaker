@@ -353,7 +353,9 @@ function M.remap_way(tags, derived)
   -- bicycle tag, only where nothing else restricts it *and* its road class
   -- admits a bicycle by default: upstream reads `use_sidepath` as "true" over
   -- the class default, so on an untagged motorway, footway or platform it
-  -- would open a way the class keeps closed.
+  -- would open a way the class keeps closed. Nor on an untagged
+  -- `impassable=yes` way of an open class: upstream closes every mode there,
+  -- and then reads `use_sidepath` as "true" all the same.
   if derived.ordinary_ride_penalty then
     local bicycle = out.bicycle or tags.bicycle
     if
@@ -362,6 +364,7 @@ function M.remap_way(tags, derived)
         bicycle == nil
         and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
         and M.access_is_unrestricted(tags)
+        and tags.impassable ~= "yes"
       )
     then
       out.bicycle = M.ORDINARY_RIDE_PENALTY_BICYCLE

@@ -282,10 +282,10 @@ def is_roadway_mass_ride_only(row: dict) -> bool:
     no-trail variant keeps the roadway and the standard and e-bike variants bar
     it, the opposite split to `sidepath_only`. The no-trail variant is not
     itself mass-ride-only - PLAN gives it to Group Ride with trails off too -
-    and the owner ruled on that twice: on 2026-09-26, "No, allow them" ("A
-    trails-off Group Ride may use those bridge roadways like a mass ride."),
-    and on 2026-09-26, "Every type, roadways ok" ("Offer trails-off on every
-    ride type; like Group Ride, it may use the Key and Memorial roadways.").
+    and the owner ruled on that twice, both on 2026-09-26: first "No, allow
+    them" ("A trails-off Group Ride may use those bridge roadways like a mass
+    ride."), then "Every type, roadways ok" ("Offer trails-off on every ride
+    type; like Group Ride, it may use the Key and Memorial roadways.").
     So the roadway is for any trails-off ride, and `variant_for` gives the
     no-trail variant to every ride with trails off. It is a routing rule, not a
     legal claim: `roadway_bicycle_legal` stays the legality column, and is true
