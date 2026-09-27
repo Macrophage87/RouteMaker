@@ -116,5 +116,7 @@ test("electric assist is Cargo Bike's alone, travels in the link and keeps the h
   assert.equal(decodePlan(encodePlan([], "cargo", assisted)).dials.assist, true);
   assert.equal(decodePlan(encodePlan([], "cargo", startDials("cargo"))).dials.assist, false);
   assert.equal(decodePlan("#preset=default&assist=1").dials.assist, false);
+  assert.equal(decodePlan("#preset=cargo&assist=0").dials.assist, false);
+  assert.equal(decodePlan("#preset=cargo&assist=1").dials.assist, true);
   assert.equal(dialFields(startDials("cargo")).assist, undefined);
 });

@@ -314,7 +314,9 @@ function M.remap_way(tags, derived)
   -- The cautions above still bind both: neither writes a cycleway key onto a
   -- trail-class way, and neither widens access.
   M.apply_facility(tags, derived, out)
-  if not derived.facility_neutral then M.split_both(tags, out) end
+  -- On the no-trail variant the neutral rewrite has already removed the
+  -- value, so the split finds nothing to copy there.
+  M.split_both(tags, out)
 
   if derived.reviewer_surface_penalty then
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
