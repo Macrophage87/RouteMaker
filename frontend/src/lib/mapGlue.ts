@@ -46,3 +46,18 @@ export function setStressVisibility(map: OverlayMap, visible: boolean): void {
 export function markerDeps<P>(points: readonly P[], markerReset: number): readonly unknown[] {
   return [points, markerReset];
 }
+
+export type MapClickAction = "close-popup" | "ignore" | "line" | "point";
+
+/**
+ * What a click on the map does. A via's Remove popup that is open is closed
+ * by the click and nothing else happens: clicking away is how a rider
+ * dismisses it, and it must not also add a point. The click a browser still
+ * sends at the end of a drag of the line is ignored. Otherwise a click on the
+ * line puts a via in that leg, and anywhere else it is a new point.
+ */
+export function mapClickAction(state: { popupOpen: boolean; afterDrag: boolean; onLine: boolean }): MapClickAction {
+  if (state.popupOpen) return "close-popup";
+  if (state.afterDrag) return "ignore";
+  return state.onLine ? "line" : "point";
+}

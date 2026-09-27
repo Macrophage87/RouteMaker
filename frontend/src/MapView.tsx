@@ -15,7 +15,7 @@ import {
   buildStyle,
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
-import { addStressOverlay, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
+import { addStressOverlay, mapClickAction, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 
@@ -137,6 +137,22 @@ export function MapView(props: Props) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
+  // Where the focus was before a via's Remove took it, to go back to on Escape.
+  const popupReturn = useRef<Element | null>(null);
+  /** Close a via's Remove popup, if one is open; whether one was. */
+  const closePopup = (returnFocus: boolean): boolean => {
+    const open = popup.current;
+    if (!open) return false;
+    popup.current = null;
+    open.remove();
+    const back = popupReturn.current;
+    popupReturn.current = null;
+    if (returnFocus) {
+      const target = back instanceof HTMLElement && back.isConnected && back !== document.body ? back : null;
+      (target ?? mapRef.current?.getCanvas())?.focus();
+    }
+    return true;
+  };
   const loaded = useRef(false);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
@@ -315,7 +331,11 @@ export function MapView(props: Props) {
       finish(event.type === "touchend" && touch ? local(touch.clientX, touch.clientY) : null);
     };
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && gesture.active) finish(null);
+      if (event.key !== "Escape") return;
+      // Escape calls off a drag; otherwise it closes a via's Remove, and the
+      // focus goes back where it was.
+      if (gesture.active) finish(null);
+      else if (closePopup(true)) event.preventDefault();
     };
     // A long press on a phone also asks for the browser's context menu.
     const onContextMenu = (event: Event) => {
@@ -330,15 +350,21 @@ export function MapView(props: Props) {
     canvas.addEventListener("contextmenu", onContextMenu);
 
     map.on("click", (event) => {
-      if (performance.now() < clickSuppressedUntil) return;
       // A click on the line puts the via in the leg clicked, as a drag does;
-      // anywhere else it is addPoint's (the leg it lengthens least).
+      // anywhere else it is addPoint's (the leg it lengthens least). A click
+      // that closes a via's Remove only closes it (mapGlue.ts).
       const touch = (event.originalEvent as PointerEvent).pointerType === "touch";
       const hit =
         event.originalEvent.target === canvas ? lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) : null;
+      const action = mapClickAction({
+        popupOpen: popup.current !== null,
+        afterDrag: performance.now() < clickSuppressedUntil,
+        onLine: hit !== null,
+      });
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
-      if (hit) callbacks.current.onLineDrop(hit.leg, point, hit.points);
-      else callbacks.current.onMapClick(point);
+      if (action === "close-popup") closePopup(false);
+      else if (action === "line" && hit) callbacks.current.onLineDrop(hit.leg, point, hit.points);
+      else if (action === "point") callbacks.current.onMapClick(point);
     });
 
     // Under the base map's labels and the route, over its roads, in the
@@ -433,8 +459,7 @@ export function MapView(props: Props) {
       window.removeEventListener("keydown", onKey);
       canvas.removeEventListener("mouseleave", onCanvasLeave);
       canvas.removeEventListener("contextmenu", onContextMenu);
-      popup.current?.remove();
-      popup.current = null;
+      closePopup(false);
       loaded.current = false;
       markers.current.forEach((m) => m.remove());
       markers.current = [];
@@ -448,8 +473,7 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map) return;
     markers.current.forEach((m) => m.remove());
-    popup.current?.remove();
-    popup.current = null;
+    closePopup(false);
     markers.current = props.points.map((point, index) => {
       const { text, name, kind } = pointLabel(index, props.points.length);
       const via = kind === "via";
@@ -466,7 +490,7 @@ export function MapView(props: Props) {
       let dragged = false;
       marker.on("dragstart", () => {
         dragged = true;
-        popup.current?.remove();
+        closePopup(false);
       });
       marker.on("dragend", () => {
         setTimeout(() => {
@@ -482,7 +506,11 @@ export function MapView(props: Props) {
         if (!via || dragged) return;
         // A via's click offers Remove beside it: a real button, so a finger
         // can use it as well as a mouse.
-        popup.current?.remove();
+        // Where the focus goes back to on Escape: from a second via's click,
+        // still wherever it was before the first.
+        const returnTo = popup.current ? popupReturn.current : document.activeElement;
+        closePopup(false);
+        popupReturn.current = returnTo;
         const button = document.createElement("button");
         button.type = "button";
         button.className = "via-remove";
@@ -490,10 +518,12 @@ export function MapView(props: Props) {
         button.setAttribute("aria-label", `Remove ${name.toLowerCase()}`);
         button.addEventListener("click", (clicked) => {
           clicked.stopPropagation();
-          popup.current?.remove();
+          closePopup(true);
           callbacks.current.onRemovePoint(index);
         });
-        popup.current = new maplibregl.Popup({ closeButton: false, offset: 14, className: "via-popup" })
+        // Not closed by MapLibre on a map click: the map's click handler
+        // closes it, so that the same click does not also add a point.
+        popup.current = new maplibregl.Popup({ closeButton: false, closeOnClick: false, offset: 14, className: "via-popup" })
           .setLngLat(marker.getLngLat())
           .setDOMContent(button)
           .addTo(map);
@@ -504,7 +534,7 @@ export function MapView(props: Props) {
         element.addEventListener("dblclick", (event) => {
           event.stopPropagation();
           event.preventDefault();
-          popup.current?.remove();
+          closePopup(true);
           callbacks.current.onRemovePoint(index);
         });
       }

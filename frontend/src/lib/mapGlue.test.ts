@@ -1,7 +1,7 @@
 // What MapView does to the map, run against a stand-in map that records calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addStressOverlay, markerDeps, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
+import { addStressOverlay, mapClickAction, markerDeps, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import { stressOverlayLayers } from "../stressStyle.js";
 
@@ -105,4 +105,22 @@ test("the markers are placed again when markerReset changes, even with the same 
   assert.equal(changed(markerDeps(points, 0), markerDeps(points, 0)), false);
   assert.equal(changed(markerDeps(points, 0), markerDeps(points, 1)), true, "a put-back leaves the markers");
   assert.equal(changed(markerDeps(points, 0), markerDeps([...points], 0)), true, "new points leave the markers");
+});
+
+test("a click that dismisses a via's Remove only dismisses it, on the line or off it", () => {
+  for (const onLine of [false, true]) {
+    for (const afterDrag of [false, true]) {
+      assert.equal(mapClickAction({ popupOpen: true, afterDrag, onLine }), "close-popup");
+    }
+  }
+});
+
+test("the click at the end of a drag of the line adds nothing", () => {
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: true, onLine: true }), "ignore");
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: true, onLine: false }), "ignore");
+});
+
+test("otherwise a click on the line is a via in that leg, and elsewhere a new point", () => {
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onLine: true }), "line");
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onLine: false }), "point");
 });
