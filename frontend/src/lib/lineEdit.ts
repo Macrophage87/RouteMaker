@@ -25,9 +25,9 @@ export interface OnPath {
  * about `p` with longitude scaled by the cosine of its latitude, which over
  * the few kilometres a cursor is from a line is the ground's own measure (and
  * the screen's: Web Mercator is conformal). Null for a path with no segment.
+ * A point exactly as near two segments (at the joint) goes with the first.
  */
 export function nearestOnPath(path: readonly LonLat[], p: LonLat): OnPath | null {
-  if (path.length < 2) return null;
   const k = Math.cos((p[1] * Math.PI) / 180);
   let best: OnPath | null = null;
   let bestD = Number.POSITIVE_INFINITY;
@@ -68,7 +68,7 @@ export function validLegEnds(ends: unknown, vertexCount: number, pointCount: num
   if (!Array.isArray(ends) || ends.length !== pointCount - 1) return false;
   let previous = 0;
   for (const end of ends) {
-    if (!Number.isInteger(end) || end < previous || end > vertexCount - 1) return false;
+    if (!Number.isInteger(end) || end < previous) return false;
     previous = end;
   }
   return previous === vertexCount - 1;
@@ -77,13 +77,15 @@ export function validLegEnds(ends: unknown, vertexCount: number, pointCount: num
 /**
  * Leg ends matched from the geometry alone: each via's boundary is a vertex,
  * the boundaries run forwards along the line, and the total distance from
- * each via to its vertex is the least it can be. Run once per route; 25
- * points by a few thousand vertices is quick.
+ * each via to its vertex is the least it can be; among equals, the earliest,
+ * which is where the line first reaches the via after the one before it.
+ * The path has at least two vertices (a drawn route). Run once per route;
+ * 25 points by a few thousand vertices is quick.
  */
 export function guessLegEnds(path: readonly LonLat[], points: readonly LonLat[]): number[] {
   const last = path.length - 1;
   const vias = points.slice(1, -1);
-  if (vias.length === 0 || path.length === 0) return [Math.max(0, last)];
+  if (vias.length === 0) return [last];
   // cost[v]: the least total with the current via at vertex v; from[j][v]:
   // where the via before it was, for walking back.
   let prefix = new Array<number>(path.length).fill(0);

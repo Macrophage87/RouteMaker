@@ -67,6 +67,26 @@ test("longitude is scaled by latitude, so the nearest segment is the nearest on 
   assert.equal(near.segment, 0);
 });
 
+test("a segment of no length (a repeated vertex) still has its nearest point", () => {
+  const near = nearestOnPath([L[1], L[1]], [-77.035, 38.9004]);
+  assert.ok(near);
+  assert.equal(near.segment, 0);
+  assert.ok(Math.hypot(near.point[0] - L[1][0], near.point[1] - L[1][1]) < 1e-9);
+});
+
+test("a point exactly as near two segments goes with the first along the line", () => {
+  // Out and straight back along the same line, on the equator, where the
+  // arithmetic is exact: the point is as near the way out as the way back.
+  const path: LonLat[] = [
+    [0, 0],
+    [2, 0],
+    [0, 0],
+  ];
+  const near = nearestOnPath(path, [1, 1]);
+  assert.ok(near);
+  assert.equal(near.segment, 0);
+});
+
 test("a path of one vertex, or none, has nothing to grab", () => {
   assert.equal(nearestOnPath([], [-77, 38.9]), null);
   assert.equal(nearestOnPath([L[0]], [-77, 38.9]), null);
@@ -107,6 +127,17 @@ test("the API's leg ends are used only when they describe this line and these po
 test("without the API's leg ends, each via is matched to its nearest vertex, in order", () => {
   const points: LonLat[] = [L[0], [-77.0301, 38.9001], L[4]];
   assert.deepEqual(guessLegEnds(L, points), [2, 4]);
+});
+
+test("a route with no via has one leg, ending at the last vertex", () => {
+  assert.deepEqual(guessLegEnds(L, [L[0], L[4]]), [4]);
+});
+
+test("a via the line passes twice is matched where the line first reaches it", () => {
+  // Out to the east end and back along the same street: via 1 (the middle
+  // vertex) is on the way out and on the way back.
+  const path: LonLat[] = [L[0], L[1], L[2], L[1], L[0]];
+  assert.deepEqual(guessLegEnds(path, [L[0], L[1], L[0]]), [1, 4]);
 });
 
 test("the guess keeps the vias in order when the line passes a later via first", () => {

@@ -63,9 +63,9 @@ export class LineGesture {
       this.phase = { kind: "armed", x, y };
       return;
     }
+    // Cleared by cancel(), so it only ever fires on a hold still under way.
     const timer = this.timers.set(() => {
-      if (this.phase.kind !== "holding") return;
-      this.phase = { kind: "dragging", pointer: "touch", x: this.phase.x, y: this.phase.y, moved: false };
+      this.phase = { kind: "dragging", pointer: "touch", x, y, moved: false };
       this.onPickUp();
     }, this.holdMs);
     this.phase = { kind: "holding", x, y, timer };
