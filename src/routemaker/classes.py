@@ -32,3 +32,13 @@ TRAIL_CLASS_HIGHWAY = frozenset({"cycleway", "footway", "path", "pedestrian", "b
 # readable, which a short-circuit would discard.
 ALWAYS_TOP_TIER_HIGHWAY = frozenset({"motorway", "motorway_link"})
 MOTOR_ONLY_HIGHWAY = ALWAYS_TOP_TIER_HIGHWAY  # retained name for existing imports
+
+# The trail-class ways a map zoomed out to the region still draws, and the ones
+# it leaves for closer in (`core.stress_tiles`). Cycleways, paths and bridleways
+# are the trail network a rider plans a ride around - the W&OD, the Capital
+# Crescent, the park paths. Footways, pedestrian ways and steps are mostly
+# sidewalks and plazas: 363,555 of the 414,836 trail-class segments in the first
+# promoted build, drawn at region scale as a solid mesh over every street grid.
+# Together the two are exactly TRAIL_CLASS_HIGHWAY.
+TRAIL_NETWORK_HIGHWAY = frozenset({"cycleway", "path", "bridleway"})
+SIDEWALK_CLASS_HIGHWAY = TRAIL_CLASS_HIGHWAY - TRAIL_NETWORK_HIGHWAY

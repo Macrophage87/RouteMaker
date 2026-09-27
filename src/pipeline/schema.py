@@ -17,6 +17,9 @@ import re
 
 from django.db import connection
 
+from routemaker.classes import SIDEWALK_CLASS_HIGHWAY, TRAIL_NETWORK_HIGHWAY
+from routemaker.stress import trail_rule
+
 # Schema names are interpolated into DDL, which no parameter placeholder can
 # carry. They come from settings, which itself reads them straight from
 # ROUTEMAKER_LIVE_SCHEMA and ROUTEMAKER_STAGING_SCHEMA - so this guard is not a
@@ -90,6 +93,36 @@ def refuse_reserved_schema(schema: str) -> str:
     return schema
 
 
+def _text_list(values) -> str:
+    """A SQL list of literals for the fixed strings below. They are this
+    module's own constants, but they are pasted into DDL and into a query run
+    with parameters, so a quote, a percent sign or a brace in one is refused
+    rather than escaped."""
+    items = sorted(values)
+    for item in items:
+        if any(c in item for c in "'%\\{}"):
+            raise ValueError(f"not a plain rule string: {item!r}")
+    return ", ".join(f"'{item}'" for item in items)
+
+
+# What the stress tiles draw zoomed out (`core.stress_tiles.OVERVIEW`): the
+# roads of LTS 3 and 4 and the trail network. Written once because the partial
+# index below is created with it and the tile query filters with it, and
+# PostgreSQL uses a partial index only when it can prove the query's condition
+# implies the index's - which it does for the same expression.
+OVERVIEW_PREDICATE = (
+    "(stress_tier >= 3 OR stress_rule IN ("
+    + _text_list(trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY)
+    + "))"
+)
+
+# What they draw at street zoom (`core.stress_tiles.STREETS`): everything but
+# the sidewalk class. `stress_rule` is NOT NULL, so NOT IN keeps every street.
+STREETS_PREDICATE = (
+    "stress_rule NOT IN (" + _text_list(trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY) + ")"
+)
+
+
 SEGMENT_DDL = """
 CREATE SCHEMA IF NOT EXISTS {schema};
 
@@ -132,6 +165,12 @@ CREATE TABLE {schema}.segment (
 CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
 CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
+-- The stress tiles' zoomed-out level reads about one row in seven of those in
+-- its bounding box; this index holds only those rows (OVERVIEW_PREDICATE).
+-- Measured on the first promoted build, the scan of the z10 tile over
+-- downtown DC: 285 ms through segment_geom_idx, 7 ms through this.
+CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {overview};
 
 -- What each synthetic border-control node means. The node ids are reassigned
 -- every rebuild, so this table describes one particular graph and changes
@@ -157,7 +196,7 @@ def create_segment_schema(schema: str) -> None:
     """Build an empty segment schema. Idempotent only at the schema level."""
     validate_schema_name(schema)
     with connection.cursor() as cursor:
-        cursor.execute(SEGMENT_DDL.format(schema=schema))
+        cursor.execute(SEGMENT_DDL.format(schema=schema, overview=OVERVIEW_PREDICATE))
 
 
 def drop_segment_schema(schema: str) -> None:

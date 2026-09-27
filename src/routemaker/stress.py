@@ -356,6 +356,16 @@ def _bike_lane_tier(
     return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
 
 
+def trail_rule(highway: str) -> str:
+    """The rule recorded on a trail-class way of `highway`.
+
+    A function rather than an f-string at its one use because the stress tiles
+    select trail kinds by this recorded rule (`pipeline.schema`'s overview
+    predicate), and the two must not drift apart.
+    """
+    return f"trail-class way ({highway})"
+
+
 def classify(
     tags: dict[str, str],
     aadt: int | None = None,
@@ -379,7 +389,7 @@ def classify(
     assumed: list[str] = []
 
     if highway in TRAIL_CLASS:
-        return StressResult(Stress.LTS1, f"trail-class way ({highway})")
+        return StressResult(Stress.LTS1, trail_rule(highway))
 
     if highway in MOTOR_ONLY:
         return StressResult(Stress.LTS4, f"motor-only classification ({highway})")
