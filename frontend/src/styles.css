@@ -485,12 +485,17 @@ button.secondary {
   display: none;
 }
 
-/* Undo on the map, on a phone (the panel's is on a desktop). */
-.map-undo {
+/* Undo and Redo on the map, on a phone (the panel's are on a desktop). */
+.map-history {
   position: absolute;
   top: 10px;
   left: 10px;
   z-index: 2;
+  display: flex;
+  gap: 6px;
+}
+
+.map-history button {
   box-shadow: var(--shadow);
 }
 

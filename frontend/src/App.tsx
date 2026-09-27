@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { insertIntoLeg, legEnds } from "./lib/lineEdit.ts";
-import { EditHistory, isUndoKey, typesText } from "./lib/editHistory.ts";
+import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
@@ -76,10 +76,10 @@ export function App() {
   // Bumped to put the markers back where the points are, without changing
   // the points (which would plan the same route again).
   const [markerReset, setMarkerReset] = useState(0);
-  // Undo (editHistory.ts): the point list before each edit, and how many
-  // there are, which is what the Undo button needs to know.
+  // Undo and redo (editHistory.ts), and whether each has anything to give
+  // back, which is what their buttons need to know.
   const history = useRef(new EditHistory<LonLat[]>());
-  const [undoable, setUndoable] = useState(0);
+  const [can, setCan] = useState({ undo: false, redo: false });
   // What an edit on the map did, for a screen reader: the map itself says
   // nothing. The count makes the same sentence twice a new announcement.
   const [said, setSaid] = useState({ text: "", count: 0 });
@@ -137,7 +137,7 @@ export function App() {
       setConfirmedKm(null);
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
-      setUndoable(0);
+      setCan({ undo: false, redo: false });
       setPoints(plan.points);
       setPreset(plan.preset);
     };
@@ -185,36 +185,55 @@ export function App() {
 
   const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
 
+  const syncHistory = useCallback(
+    () => setCan({ undo: history.current.canUndo, redo: history.current.canRedo }),
+    [],
+  );
+
   /** Every edit of the points goes through here, so undo can give the list before it back. */
   const commit = useCallback((next: LonLat[]) => {
     const before = pointsRef.current;
     history.current.record(before);
-    setUndoable(history.current.size);
+    syncHistory();
     // Kept current at once, so a second edit before the next render builds on this one.
     pointsRef.current = next;
     setPoints(next);
-  }, []);
+  }, [syncHistory]);
 
-  const undo = useCallback(() => {
-    const before = history.current.undo();
-    if (before === undefined) return;
-    setUndoable(history.current.size);
-    pointsRef.current = before;
-    setPoints(before);
-    setNotice(null);
-    announce(`Undone. The route has ${before.length} ${before.length === 1 ? "point" : "points"}.`);
-  }, [announce]);
+  /** Undo or redo: the list the history gives back, which is not itself an edit. */
+  const travel = useCallback(
+    (direction: "undo" | "redo") => {
+      const current = pointsRef.current;
+      const next = direction === "undo" ? history.current.undo(current) : history.current.redo(current);
+      if (next === undefined) return;
+      syncHistory();
+      pointsRef.current = next;
+      setPoints(next);
+      setNotice(null);
+      const count = `${next.length} ${next.length === 1 ? "point" : "points"}`;
+      announce(`${direction === "undo" ? "Undone" : "Redone"}. The route has ${count}.`);
+    },
+    [announce, syncHistory],
+  );
+  const undo = useCallback(() => travel("undo"), [travel]);
+  const redo = useCallback(() => travel("redo"), [travel]);
 
-  // Ctrl+Z, or Cmd+Z, anywhere but a text field (which has its own undo).
+  // Ctrl+Z (Cmd+Z) undoes; Ctrl+Shift+Z (Cmd+Shift+Z) and Ctrl+Y redo;
+  // anywhere but a text field, which has its own.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (!isUndoKey(event) || typesText(event.target as HTMLElement | null)) return;
-      event.preventDefault();
-      undo();
+      if (typesText(event.target as HTMLElement | null)) return;
+      if (isUndoKey(event)) {
+        event.preventDefault();
+        undo();
+      } else if (isRedoKey(event)) {
+        event.preventDefault();
+        redo();
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo]);
+  }, [undo, redo]);
 
   const place = useCallback((point: LonLat) => {
     if (!insideCoverage(point)) {
@@ -402,7 +421,7 @@ export function App() {
           nearest leg. Drag any marker to move it, or drag the route line to pull it through
           somewhere else (on a phone, press and hold the line first). Click a via point for
           Remove. From the keyboard, move the map with the arrow keys and use "Add point at
-          map centre"; Ctrl+Z undoes the last change.
+          map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
         </p>
       ) : (
         <ol className="points">
@@ -451,8 +470,13 @@ export function App() {
           Clear
         </button>
         {!narrow && (
-          <button type="button" onClick={undo} disabled={undoable === 0} aria-keyshortcuts="Control+Z Meta+Z">
+          <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
             Undo
+          </button>
+        )}
+        {!narrow && can.redo && (
+          <button type="button" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
+            Redo
           </button>
         )}
       </div>
@@ -544,12 +568,22 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
-      {narrow && undoable > 0 && (
+      {narrow && (can.undo || can.redo) && (
         // On a phone the sheet may be hidden while the rider edits the map,
-        // so Undo sits on the map there (and only there: one Undo per layout).
-        <button type="button" className="map-undo" onClick={undo}>
-          Undo
-        </button>
+        // so Undo and Redo sit on the map there (and only there: one of each
+        // per layout), each shown while it has something to give back.
+        <div className="map-history">
+          {can.undo && (
+            <button type="button" onClick={undo}>
+              Undo
+            </button>
+          )}
+          {can.redo && (
+            <button type="button" onClick={redo}>
+              Redo
+            </button>
+          )}
+        </div>
       )}
       <p className="visually-hidden" role="status" aria-live="polite">
         {said.text}
