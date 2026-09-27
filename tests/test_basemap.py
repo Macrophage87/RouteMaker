@@ -113,25 +113,33 @@ def test_nothing_re_encodes_the_bytes_a_range_names() -> None:
     assert not directives(basemap_block(), "encode"), (
         f"/basemap/* encodes its responses: {basemap_block()}"
     )
-    # The app's own files may be compressed (Caddyfile, `handle @frontend`);
-    # an `encode` anywhere else - at the site level above every route, or in
-    # any other block - would reach the archive's byte ranges or the API.
+    # The app's own files may be compressed (Caddyfile, `handle @frontend`),
+    # and so may the stress tiles, in the API's block, by an encode matched on
+    # the vector-tile content type alone; an `encode` anywhere else - at the
+    # site level above every route, or in any other block - would reach the
+    # archive's byte ranges or the rest of the API.
     lines = code_lines(CADDY_TEXT)
     stray = []
-    depth, inside_frontend = 0, False
+    depth, inside = 0, None
     for line in lines:
         stripped = line.strip()
-        if stripped == "handle @frontend {":
-            inside_frontend = True
-        if stripped.startswith("encode") and not (inside_frontend and depth == 2):
+        if depth == 1 and stripped in ("handle @frontend {", "handle {"):
+            inside = stripped
+        if stripped.startswith("encode") and not (inside and depth == 2):
             stray.append(stripped)
         depth += stripped.count("{") - stripped.count("}")
-        if inside_frontend and depth <= 1 and stripped == "}":
-            inside_frontend = False
+        if inside and depth <= 1 and stripped == "}":
+            inside = None
     assert not stray, f"the Caddyfile encodes responses outside the app's block: {stray}"
     assert directives(block("handle @frontend"), "encode"), (
-        "the premise: the app's block is where the one encode is"
+        "the premise: the app's block is where the app's encode is"
     )
+    api = block("handle")
+    if directives(api, "encode"):
+        matches = [line for line in api if line.startswith("header Content-Type")]
+        assert matches == ["header Content-Type application/vnd.mapbox-vector-tile*"], (
+            f"the API's encode must be confined to the stress tiles' content type: {api}"
+        )
 
 
 def test_only_the_three_contract_paths_are_served() -> None:
