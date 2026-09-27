@@ -13,7 +13,9 @@ import {
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
   fetchPlaces,
+  normalQuery,
   placeRole,
+  placesFor,
   searchUrl,
   type GeoGate,
   type GeoResult,
@@ -21,6 +23,9 @@ import {
   type PlaceRole,
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
+
+// App.tsx's phone layout, where the panel is a bottom sheet.
+const PHONE = "(max-width: 720px)";
 
 const ROLE_HINT: Record<PlaceRole, string> = {
   start: "The place you pick becomes the start.",
@@ -79,7 +84,10 @@ export function PlaceSearch({
   useEffect(() => () => runner.current?.clear(), []);
 
   const role = placeRole(pointCount, asVia && pointCount >= 2);
-  const places = result?.ok ? result.places : [];
+  const current = normalQuery(query);
+  const places = placesFor(query, answered, result);
+  const answeredNow = result !== null && current === answered;
+  const searching = current.length >= MIN_QUERY_CHARS && !answeredNow;
   const expanded = open && places.length > 0;
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
@@ -152,7 +160,13 @@ export function PlaceSearch({
         onChange={(event) => change(event.target.value)}
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
-        onFocus={() => setOpen(true)}
+        onFocus={(event) => {
+          setOpen(true);
+          // On a phone the sheet is half the screen and the keyboard takes
+          // much of the rest: bring the box to the top of the sheet so the
+          // results under it can be seen.
+          if (window.matchMedia(PHONE).matches) event.currentTarget.scrollIntoView({ block: "start" });
+        }}
       />
       <ul id={listId} role="listbox" aria-label="Places found" className="place-results" hidden={!expanded}>
         {places.map((place, i) => (
@@ -184,12 +198,10 @@ export function PlaceSearch({
         </label>
       )}
       <p className="visually-hidden" role="status" aria-live="polite">
-        {query.trim() === answered ? searchStatus(result, answered) : ""}
+        {answeredNow ? searchStatus(result, answered) : ""}
       </p>
-      {result && !result.ok && query.trim() === answered && (
-        <p className="hint">{searchStatus(result, answered)}</p>
-      )}
-      {result?.ok && result.places.length === 0 && query.trim() === answered && (
+      {searching && <p className="hint">Searching…</p>}
+      {answeredNow && result && (!result.ok || result.places.length === 0) && (
         <p className="hint">{searchStatus(result, answered)}</p>
       )}
     </div>

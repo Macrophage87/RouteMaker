@@ -38,6 +38,21 @@ export const NAME_DEBOUNCE_MS = 400;
 /** A busy answer is retried once, after its Retry-After but never later than this. */
 export const RETRY_CAP_MS = 1500;
 
+/** A query as it is sent: trimmed, its runs of white space one space. */
+export function normalQuery(query: string): string {
+  return query.trim().replace(/\s+/g, " ");
+}
+
+/**
+ * The places to show for what is in the box now: an answer to exactly that
+ * query, or none. A list left over from an earlier query is never shown, so
+ * Enter or a tap cannot pick a place the rider has already typed past.
+ */
+export function placesFor(query: string, answered: string, result: GeoResult | null): Place[] {
+  if (result === null || !result.ok || normalQuery(query) !== answered) return [];
+  return result.places;
+}
+
 export function searchUrl(query: string, bias?: LonLat, limit: number = SEARCH_RESULTS): string {
   const params = new URLSearchParams({ q: query.slice(0, MAX_QUERY_CHARS), limit: String(limit) });
   if (bias) {
@@ -142,8 +157,13 @@ export const realTimers: Timers = {
   clear: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
 };
 
+/**
+ * Worth one more try: busy (429, 503), or the geocoder not answering in time
+ * (502, or no answer at all) - the first searches after Photon starts read its
+ * index from disk and can run past the API's timeout, and the next is quick.
+ */
 function busy(result: GeoResult): boolean {
-  return !result.ok && (result.status === 429 || result.status === 503);
+  return !result.ok && [0, 429, 502, 503].includes(result.status);
 }
 
 function retryDelayMs(result: GeoResult): number {
@@ -154,8 +174,8 @@ function retryDelayMs(result: GeoResult): number {
 /**
  * The typeahead's requests: debounced, one in flight, only the latest query
  * answered. A query typed while another is in flight waits for it and is sent
- * next; anything typed in between is never sent. A busy answer (429, 503) is
- * retried once for the latest query.
+ * next; anything typed in between is never sent. A busy or unanswered search
+ * (429, 502, 503, no answer) is retried once for the latest query.
  */
 export class PlaceSearchRunner {
   private timer: unknown = null;
@@ -181,7 +201,7 @@ export class PlaceSearchRunner {
 
   /** Ask for `query`'s places; an empty or too-short one clears instead. */
   request(query: string) {
-    const q = query.trim().replace(/\s+/g, " ");
+    const q = normalQuery(query);
     this.cancelTimer();
     if (q.length < MIN_QUERY_CHARS) {
       this.wanted = null;

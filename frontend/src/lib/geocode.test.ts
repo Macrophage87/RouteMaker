@@ -14,7 +14,9 @@ import {
   applyPlace,
   coordinatesText,
   fetchPlaces,
+  normalQuery,
   placeKey,
+  placesFor,
   placeRole,
   pointRole,
   reverseUrl,
@@ -293,7 +295,7 @@ test("a failed or empty lookup falls back to coordinates and is not asked again"
   const { timers, api, namer } = namerRig();
   namer.want([A, B]);
   await timers.advance(NAME_DEBOUNCE_MS);
-  api.calls[0].answer({ ok: false, status: 502 });
+  api.calls[0].answer({ ok: false, status: 500 });
   await flush();
   api.calls[1].answer(found());
   await flush();
@@ -364,4 +366,26 @@ test("the link carries points and ride type only, never a name", () => {
   const hash = encodePlan([A, B], "default");
   assert.deepEqual([...new URLSearchParams(hash.slice(1)).keys()].sort(), ["p", "preset"]);
   assert.equal(decodePlan(hash).points.length, 2);
+});
+
+test("a list is shown only for the query in the box, never one typed past", () => {
+  const answer = found(PLACE);
+  assert.deepEqual(placesFor("Union  Station ", normalQuery("Union Station"), answer), [PLACE]);
+  assert.deepEqual(placesFor("Purcellville", "Baltimore Penn Station", answer), []);
+  assert.deepEqual(placesFor("Union Station", "Union Station", { ok: false, status: 502 }), []);
+  assert.deepEqual(placesFor("Union Station", "Union Station", null), []);
+});
+
+test("a search the geocoder did not answer in time is tried once more", async () => {
+  const { timers, api, runner, results } = searchRig();
+  runner.request("Lincoln Memorial");
+  await timers.advance(SEARCH_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 502 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  assert.equal(api.calls.length, 2);
+  api.calls[1].answer(found(PLACE));
+  await flush();
+  assert.equal(results.length, 1);
+  assert.equal(results[0][1].ok, true);
 });
