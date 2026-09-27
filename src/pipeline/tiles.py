@@ -610,12 +610,13 @@ def sample_cycle_lane(
     edge: Sequence[Sequence[float]],
     way_id: int | None = None,
 ) -> str | None:
-    """What the tiles say about the cycle lane on a known tier-1 street.
+    """What the tiles say about the cycle lane on a known street.
 
-    The remap writes cycleway=track onto a tier-1 way that has no cycleway tag
-    of its own, and Valhalla stores that as a separated cycle lane. A residential
-    street with no facility in OSM therefore reads back "separated" only if this
-    project's transform ran and its derived tags survived into the graph.
+    The facility remap moves a plainly tagged painted lane (`cycleway=lane`,
+    which upstream stores as dedicated) to upstream's shared class, so the
+    sentinel street (`pipeline.run.DERIVED_SENTINEL_WAY_ID`) reads back
+    "shared" only if this project's transform ran and its derived tags
+    survived into the graph.
 
     Which edge answers is the whole of the check's worth, and until this it was
     whichever one the trace happened to return first. `edge.way_id` was

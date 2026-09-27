@@ -140,14 +140,10 @@ def test_the_read_uses_the_standard_variants_own_build_config(tmp_path) -> None:
         seen.append(list(command))
         return tiles.CommandOutput(
             json.dumps(
-                {
-                    "edges": [
-                        {"way_id": run_module.DERIVED_SENTINEL_WAY_ID, "cycle_lane": "separated"}
-                    ]
-                }
+                {"edges": [{"way_id": run_module.DERIVED_SENTINEL_WAY_ID, "cycle_lane": "shared"}]}
             ),
             "",
         )
 
-    assert run_module._standard_cycle_lane(context, run) == "separated"
+    assert run_module._standard_cycle_lane(context, run) == "shared"
     assert seen[0][1] == str(context.build_configs[Variant.STANDARD])

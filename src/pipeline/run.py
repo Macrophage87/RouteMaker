@@ -26,12 +26,14 @@ import shlex
 import sqlite3
 import subprocess
 import time
+from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
+from routemaker import facility
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
@@ -115,23 +117,22 @@ LIT_BY_OSM_VALUE = {
     "sunset-sunrise": True,
 }
 
-# What the derived-tag sentinel must read back. The remap writes cycleway=track
-# onto a tier-1 way with no cycleway tag of its own, which Valhalla stores as a
-# separated cycle lane; nothing but this project's transform produces that on a
-# plain residential street.
-DERIVED_SENTINEL_EXPECTED = "separated"
+# What the derived-tag sentinel must read back. The facility remap moves a
+# painted lane (`cycleway=lane`, which upstream stores as a dedicated cycle
+# lane) to upstream's shared class; nothing but this project's transform turns
+# a plainly tagged painted lane into "shared".
+DERIVED_SENTINEL_EXPECTED = "shared"
 
-# The way id the tier-1 sentinel edge lies on, when a deployment knows it. The
+# The way the derived sentinel edge lies on, when a deployment knows it. The
 # read is narrowed to that way, so that a neighbouring way's own OSM-tagged
-# separated lane cannot answer for a transform that derived nothing.
+# sharrow cannot answer for a transform that derived nothing.
 #
-# Named by the first real rebuild: Decatur Street NW, the way
-# `settings.REBUILD_SENTINEL_TIER1_EDGE` lies on (see the evidence there). If a
-# later extract splits or replaces the way, the read finds no edge on it and
-# VALIDATE refuses, naming this check - move the sentinel then, don't drop the
-# id. With none, `tiles.sample_cycle_lane` still refuses a trace that spans
-# more than one way.
-DERIVED_SENTINEL_WAY_ID: int | None = 87471599
+# North Pierce Street, Arlington, the way `settings.REBUILD_SENTINEL_DERIVED_EDGE`
+# lies on (see the evidence there). If a later extract splits or replaces the
+# way, the read finds no edge on it and VALIDATE refuses, naming this check -
+# move the sentinel then, don't drop the id. With none,
+# `tiles.sample_cycle_lane` still refuses a trace that spans more than one way.
+DERIVED_SENTINEL_WAY_ID: int | None = 8795651
 
 # A way is tagged with an authority only if at least this share of its length
 # lies inside it; the dominant authority on each layer is always kept. Below a
@@ -443,6 +444,11 @@ class RebuildContext:
     # the agency and the year on the floor.
     aadt_by_way: dict[int, conflation.Match] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
+    # The owner's facility class per way (`routemaker.facility`), and the ride
+    # times in which a timed closure makes a road car-free. Computed once, after
+    # the access overrides, by the first stage that needs them.
+    facility_by_way: dict[int, str] = field(default_factory=dict)
+    car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -980,9 +986,36 @@ def build_handlers(
         # used to rewrite the live table five stages before the swap.
         writers.write_border_crossings(context.staging_schema, found)
 
+    def classify_facilities() -> None:
+        """Each way's facility class, once, from the tags the overrides left.
+
+        After APPLY_OVERRIDES on purpose: whether a bicycle may ride a way is
+        part of the class, and an approved access row is what corrects that.
+        """
+        if context.facility_by_way or not context.ways:
+            return
+        beside = facility.beside_separate_roads(
+            (way.osm_id, way.tags, way.coordinates) for way in context.ways
+        )
+        for way in context.ways:
+            context.facility_by_way[way.osm_id] = facility.facility(
+                way.tags, beside_separate_road=way.osm_id in beside
+            ).value
+            closed = facility.car_free_when(way.tags)
+            if closed:
+                context.car_free_by_way[way.osm_id] = closed
+        logger.info(
+            "facility classes: %s; %d ways car-free at set times, %d beside a road that "
+            "maps its facility separately",
+            dict(sorted(Counter(context.facility_by_way.values()).items())),
+            len(context.car_free_by_way),
+            len(beside),
+        )
+
     def inject_tags() -> None:
         reference = context.require_reference()
         context.work_dir.mkdir(parents=True, exist_ok=True)
+        classify_facilities()
 
         for variant in variants.Variant:
             per_way_tags: dict[int, dict[str, str]] = {}
@@ -1111,6 +1144,13 @@ def build_handlers(
                     derived["ordinary_ride_penalty"] = True
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
+                if variant is variants.Variant.NO_TRAIL:
+                    # Mass Ride's variant: no facility makes a street cheaper
+                    # (the owner, 2026-09-27: "Mass rides don't need to
+                    # consider these. Even protected bike lanes aren't used.").
+                    derived["facility_neutral"] = True
+                elif way.osm_id in context.facility_by_way:
+                    derived["facility"] = context.facility_by_way[way.osm_id]
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
@@ -1193,6 +1233,7 @@ def build_handlers(
             )
 
         reference = context.require_reference()
+        classify_facilities()
         rows: list[dict] = []
         for way in context.ways:
             stress = context.stress_by_way[way.osm_id]
@@ -1209,6 +1250,8 @@ def build_handlers(
                         is_unpaved=is_unpaved(way.tags),
                         is_rough=is_rough(way.tags),
                         lit=lit_value(way.tags),
+                        facility=context.facility_by_way.get(way.osm_id, "none"),
+                        car_free_when=sorted(context.car_free_by_way.get(way.osm_id, ())),
                     )
                 )
         context.rows = rows
@@ -1337,7 +1380,7 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
             tiles.sample_cycle_lane,
             run,
             config_path,
-            _setting("REBUILD_SENTINEL_TIER1_EDGE"),
+            _setting("REBUILD_SENTINEL_DERIVED_EDGE"),
             DERIVED_SENTINEL_WAY_ID,
         )
     )

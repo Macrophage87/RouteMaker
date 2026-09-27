@@ -300,14 +300,20 @@ function M.remap_way(tags, derived)
   -- signal that use_roads at layer 2 and stress-weighted ranking at layer 4
   -- carry anyway, so declining it on a restricted way costs nothing that
   -- matters and removes a whole class of this failure rather than one instance.
-  if
-    derived.stress_tier == 1
-    and not M.declares_cycleway(tags)
-    and not derived.is_trail_class
-    and M.access_is_unrestricted(tags)
-  then
-    out.cycleway = "track"
-  end
+  --
+  -- Superseded, 2026-09-27. Stress used to reach the graph as `cycleway=track`
+  -- on every tier-1 roadway, which priced a quiet residential street exactly as
+  -- a protected cycle track and below an off-road trail, and priced tiers 3 and
+  -- 4 no differently from tier 2. The owner's order (`routemaker.facility`)
+  -- puts ordinary streets last whatever their stress, and asks for a slider
+  -- that runs from the fastest legal route to "low stress routes are used
+  -- unless there's no other option". So the signal now travels two separate
+  -- ways: the facility class (`M.apply_facility`), and the stress penalty below
+  -- (`M.STRESS_PENALTY_TIER`), whose weight is the request's `use_roads`.
+  --
+  -- The cautions above still bind both: neither writes a cycleway key onto a
+  -- trail-class way, and neither widens access.
+  M.apply_facility(tags, derived, out)
 
   if derived.reviewer_surface_penalty then
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
@@ -356,17 +362,23 @@ function M.remap_way(tags, derived)
   -- would open a way the class keeps closed. Nor on an untagged
   -- `impassable=yes` way of an open class: upstream closes every mode there,
   -- and then reads `use_sidepath` as "true" all the same.
-  if derived.ordinary_ride_penalty then
-    local bicycle = out.bicycle or tags.bicycle
-    if
-      M.PENALISABLE_BICYCLE[bicycle]
-      or (
-        bicycle == nil
-        and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
-        and M.access_is_unrestricted(tags)
-        and tags.impassable ~= "yes"
-      )
-    then
+  --
+  -- The stress penalty is the same write for the same reason, on every way the
+  -- classifier rates tier 3 or 4 (never a trail-class way): Valhalla adds
+  -- `3 * (1 - use_roads)` to the accommodation factor of a `use_sidepath` edge
+  -- (sif/bicyclecost.cc, `sidepath_factor_`), so the request's `use_roads` -
+  -- the stress slider - scales it from nothing at the fastest-legal end to
+  -- "unless there's no other option" at the other, and one graph serves every
+  -- position. A cost and not a bar, and no change to any duration.
+  if
+    derived.ordinary_ride_penalty
+    or (
+      derived.stress_tier ~= nil
+      and derived.stress_tier >= M.STRESS_PENALTY_TIER
+      and not derived.is_trail_class
+    )
+  then
+    if M.may_penalise(tags, out.bicycle or tags.bicycle) then
       out.bicycle = M.ORDINARY_RIDE_PENALTY_BICYCLE
     end
   end
@@ -659,5 +671,152 @@ M.BICYCLE_BY_DEFAULT_HIGHWAY = {
   living_street = true, service = true, road = true, track = true,
   cycleway = true, path = true, steps = true,
 }
+
+--- Whether the use_sidepath penalty may replace this way's bicycle value.
+--
+-- The guard the ordinary-ride penalty was written with, shared now by the
+-- stress penalty. See the comment at its call in `remap_way`.
+function M.may_penalise(tags, bicycle)
+  return M.PENALISABLE_BICYCLE[bicycle]
+    or (
+      bicycle == nil
+      and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
+      and M.access_is_unrestricted(tags)
+      and tags.impassable ~= "yes"
+    )
+    or false
+end
+
+-- The stress tiers the penalty lands on: LTS 3 and 4, the two the classifier
+-- says most adults will not ride in mixed traffic.
+M.STRESS_PENALTY_TIER = 3
+
+-- --- Facility ------------------------------------------------------------------
+--
+-- The owner's order (2026-09-27, quoted in `routemaker.facility`): off-road
+-- paths first, protected lanes next, painted lanes well behind them, ordinary
+-- streets last, and sharrows counting for nothing.
+-- The class is computed once, in Python (`routemaker.facility`), written onto
+-- the segment table, and handed here as `rm:facility`. What this does with it
+-- is choose, for each class, the cycle-lane state Valhalla's bicycle costing
+-- prices it at (sif/bicyclecost.cc, 3.5.1; `u` is the request's use_roads):
+--
+--   highway=cycleway, any class: as upstream, `0.8u`       (no pedestrians)
+--   off-road footpath or path:  segregated, `0.1 + 0.9u`   (upstream: 0.2 + u)
+--   protected, on the roadway:  track,      `(0.15 + 0.6u) * stress`
+--   car-free road (a path):     track,      `(0.15 + 0.6u) * stress`
+--   painted lane:               shared,     `(0.9 + 0.05u) * stress`
+--   sharrow, ordinary street:   none,       `1.0 * stress`
+--
+-- `stress` is the roadway term, below 1 on a slow street and above it on a
+-- fast one. Upstream's own reading would price a painted lane at
+-- `0.4 + 0.45u`, within a few per cent of a protected lane on the same street,
+-- which is not the wide gap the owner asked for, and an off-road path open to walkers at
+-- `0.2 + u`, dearer than a protected lane; both are moved. What is not moved,
+-- because nothing but an access tag could move it: upstream prices every
+-- `highway=cycleway` it reads as closed to pedestrians at `0.8u`, and DC maps
+-- most of its protected lanes as exactly that, so a separately mapped
+-- protected lane and an off-road cycleway tie. Writing `foot=yes` would
+-- separate them and is an access claim; it is not written.
+--
+-- The writes are comfort signals the costing reads and nothing user-facing
+-- reads: `segregated` on a trail-class way is read by upstream's transform for
+-- its cycle-lane state and for nothing else, and the roadway rewrites only move
+-- a value between the three cycle-lane classes upstream reads, every one of
+-- which it already reads as bicycle access (`shared`, `dedicated`,
+-- `separated`), or remove one only where the way is open to a bicycle without
+-- it. So none of them can open or close a way.
+
+-- The roadway values that name a cycle lane of one of upstream's three classes,
+-- other than the contraflow ones: `opposite*` also carries access against a
+-- one-way's traffic (upstream's `bike_reverse`) and is never touched.
+M.LANE_VALUES = { lane = true, buffered_lane = true }
+M.TRACK_VALUES = { track = true }
+M.SHARED_VALUES = { shared_lane = true, shared = true, share_busway = true }
+
+-- The value a painted lane is rewritten to: upstream's shared class.
+M.PAINTED_LANE_VALUE = "shared_lane"
+
+--- Whether a roadway's cycle-lane values may be moved or removed.
+--
+-- Upstream opens a way to bicycles in both directions when both sides (or
+-- `:both`) carry a lane of any class, over `bicycle=no` if need be, so a
+-- removal there could close a way. Only where nothing but the road class
+-- decides access, and the class opens it anyway.
+function M.lanes_may_move(tags)
+  return not M.TRAIL_CLASS_HIGHWAY[tags.highway]
+    and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
+    and (tags.bicycle == nil or M.PENALISABLE_BICYCLE[tags.bicycle])
+    and M.access_is_unrestricted(tags)
+    or false
+end
+
+M.TRAIL_CLASS_HIGHWAY = {
+  cycleway = true, footway = true, path = true, pedestrian = true,
+  bridleway = true, steps = true,
+}
+
+--- Rewrite each cycleway key's value through `rewrite(value)`.
+local function rewrite_lanes(tags, out, rewrite)
+  for _, key in ipairs(M.CYCLEWAY_KEYS) do
+    local value = tags[key]
+    if value ~= nil then
+      local new = rewrite(value)
+      if new ~= nil and new ~= value then out[key] = new end
+    end
+  end
+end
+
+function M.apply_facility(tags, derived, out)
+  local facility = derived.facility
+  if derived.facility_neutral then
+    -- The no-trail variant, which Mass Ride routes on. The owner, 2026-09-27:
+    -- "Mass rides don't need to consider these. Even protected bike lanes
+    -- aren't used." A field of hundreds takes the general roadway, so no lane
+    -- of any class makes a street cheaper for it.
+    if M.lanes_may_move(tags) then
+      rewrite_lanes(tags, out, function(value)
+        if M.LANE_VALUES[value] or M.TRACK_VALUES[value] or M.SHARED_VALUES[value] then
+          return M.REMOVE
+        end
+      end)
+    end
+    return
+  end
+  if facility == nil then return end
+
+  if M.TRAIL_CLASS_HIGHWAY[tags.highway] then
+    -- Only where the mapper has not said, and never a cycleway key.
+    if tags.segregated == nil and facility == "path" then
+      out.segregated = "yes"
+    end
+    return
+  end
+
+  if facility == "path" then
+    -- A road closed to motor traffic. `cycleway=track` only where no side has
+    -- been spoken for, as the tier-1 write it replaces was, and only where the
+    -- way is already open to a bicycle by its own tags: the Python class is
+    -- computed from those same tags, and this repeats the check at the write.
+    if
+      not M.declares_cycleway(tags)
+      and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
+      and (M.PENALISABLE_BICYCLE[tags.bicycle] or (tags.bicycle == nil and M.access_is_unrestricted(tags)))
+    then
+      out.cycleway = "track"
+    end
+    return
+  end
+
+  if not M.lanes_may_move(tags) then return end
+  rewrite_lanes(tags, out, function(value)
+    if M.SHARED_VALUES[value] then return M.REMOVE end
+    if M.LANE_VALUES[value] then
+      -- A painted lane with a physical separation tagged is protected.
+      if facility == "protected" then return "track" end
+      return M.PAINTED_LANE_VALUE
+    end
+  end)
+end
 
 return M

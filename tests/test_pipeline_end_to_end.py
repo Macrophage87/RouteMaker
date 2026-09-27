@@ -432,6 +432,48 @@ def test_stress_reaches_the_extract_the_tiles_are_built_from(workspace, states) 
     assert tags[200].get("rm:trail_class") == "yes"
 
 
+def test_the_facility_class_reaches_the_extracts_and_the_segment_table(workspace, states) -> None:
+    """One source of truth (routemaker.facility): the class the rebuild computes
+    is the one the transform routes on and the one the segment table stores.
+    Mass Ride's variant carries no class at all, only the neutral marker, so no
+    facility makes a street cheaper for it (the owner, 2026-09-27)."""
+    from django.db import connection
+
+    from pipeline.extract import read_ways
+    from routemaker.facility import facility
+
+    source, root = workspace
+    context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+
+    classes = context.facility_by_way
+    assert classes, "the rebuild classified no facility"
+    # The trail is a path; the 35 mph secondary with no facility is none.
+    assert classes[200] == "path"
+    assert classes[100] == "none"
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        for way_id, way_tags in tags.items():
+            if way_id not in classes:
+                continue
+            if variant is Variant.NO_TRAIL:
+                assert way_tags.get("rm:facility") is None, (variant.value, way_id)
+                assert way_tags.get("rm:facility_neutral") == "yes", (variant.value, way_id)
+            else:
+                assert way_tags.get("rm:facility") == classes[way_id], (variant.value, way_id)
+                assert way_tags.get("rm:facility_neutral") is None, (variant.value, way_id)
+
+    staging = context.staging_schema
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT DISTINCT osm_way_id, facility FROM {staging}.segment")
+        stored = dict(cursor.fetchall())
+    assert stored == {way_id: classes[way_id] for way_id in stored}
+    # And the class is the pure function's answer for the way's tags (the
+    # fixture has no road that maps its facility separately).
+    for way in context.ways:
+        if way.osm_id in stored:
+            assert stored[way.osm_id] == facility(way.tags).value, way.osm_id
+
+
 def test_a_sidepath_only_bridge_is_dropped_from_the_no_trail_variant(workspace, states) -> None:
     """The id set was plumbed and never populated, and the lookup read a tag no
     real way carries - so the router could hand a thousand-person field a bridge

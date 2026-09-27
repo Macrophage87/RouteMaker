@@ -376,7 +376,9 @@ class FakeBinaries:
     def __init__(
         self,
         grade: float = 5.5,
-        cycle_lane: str | None = "separated",
+        # What the derived sentinel reads on a graph the remap reached
+        # (pipeline.run.DERIVED_SENTINEL_EXPECTED).
+        cycle_lane: str | None = "shared",
         log: str = LUA_LOADED_LOG,
         hgt_side: int = HGT_1ARCSEC_SIDE,
         violations: str = "",

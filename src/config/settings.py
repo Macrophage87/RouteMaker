@@ -256,22 +256,24 @@ DISK_GATE_FRACTION = 0.8
 REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024**3))
 
 # Build validation reads two known edges back out of the tiles. The steep edge
-# proves elevation was baked; the tier-1 street proves the derived tags reached
-# the graph, because a residential street with no cycleway tag in OSM only
-# reports a separated cycle lane if this project's remap ran. Both are read
+# proves elevation was baked; the derived edge proves the derived tags reached
+# the graph, because a street tagged with a plain painted lane in OSM only
+# reports a *shared* cycle lane if this project's remap ran: upstream stores
+# `cycleway=lane` as dedicated, and the facility remap moves it to upstream's
+# shared class (lua/routemaker_remap.lua, `M.apply_facility`). Both are read
 # through valhalla_service in one-shot mode against the freshly built tiles.
-# Both were confirmed by the first real rebuild (Geofabrik DC+MD+VA of
-# 2026-09-24, Valhalla 3.5.1), where VALIDATE ran against real tiles.
 # Steep: the climb of Chain Bridge Road NW out of the Potomac gorge; its grade
-# read back non-zero from all three variants.
-# Tier 1: the middle third of a 373 m block of Decatur Street NW, OSM
-# way 87471599 - highway=residential, no cycleway key of any form, classified
-# tier 1 - whose seven edges in the standard tiles all belong to that way and
-# all read "separated". The first pick, a Petworth point taken off a map,
-# snapped onto three alleys and a stretch of Buchanan Street NW - four ways -
-# and the read refused it, as it is written to.
+# read back non-zero from all three variants in the first real rebuild
+# (Geofabrik DC+MD+VA of 2026-09-24, Valhalla 3.5.1).
+# Derived: the middle of North Pierce Street, Arlington, OSM way 8795651 -
+# highway=tertiary, `cycleway=lane` and no other cycleway, access or bicycle
+# key - which read "dedicated" on a box graph built by the code before the
+# facility remap and "shared" on one built with it (PUBLIC-DIALS, 2026-09-27).
+# It replaces the tier-1 sentinel on Decatur Street NW (way 87471599), which
+# read "separated" only because tier 1 was written as `cycleway=track`, a write
+# the facility remap superseded.
 REBUILD_SENTINEL_STEEP_EDGE = ((-77.1050, 38.9318), (-77.1032, 38.9339))
-REBUILD_SENTINEL_TIER1_EDGE = ((-77.036016, 38.948268), (-77.037306, 38.948269))
+REBUILD_SENTINEL_DERIVED_EDGE = ((-77.076431, 38.892187), (-77.076530, 38.893129))
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

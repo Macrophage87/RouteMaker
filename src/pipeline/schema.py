@@ -126,6 +126,14 @@ CREATE TABLE {schema}.segment (
     is_unpaved      boolean,
     is_rough        boolean     NOT NULL DEFAULT false,
     lit             boolean,
+    -- The owner's facility class (`routemaker.facility`, 2026-09-27): path,
+    -- protected, lane or none. The one source the route breakdown and the
+    -- facility tiles read. `car_free_when` names the ride times
+    -- (`routemaker.ridetime.WHENS`) in which a timed closure to motor traffic
+    -- makes the way a path as well; empty on every other way.
+    facility        text        NOT NULL DEFAULT 'none'
+                    CHECK (facility IN ('path', 'protected', 'lane', 'none')),
+    car_free_when   text[]      NOT NULL DEFAULT '{{}}',
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

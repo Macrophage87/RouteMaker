@@ -63,6 +63,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("is_unpaved"),
             row.get("is_rough", False),
             row.get("lit"),
+            row.get("facility", "none"),
+            list(row.get("car_free_when", ())),
         )
         for row in rows
     ]
@@ -72,7 +74,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
         for batch in _batched(values):
             args = ",".join(
                 cursor.mogrify(
-                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::text[])",
                     (
                         way_id,
                         ordinal,
@@ -88,6 +90,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         unpaved,
                         rough,
                         lit,
+                        facility_class,
+                        car_free,
                     ),
                 )
                 for (
@@ -105,13 +109,16 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     unpaved,
                     rough,
                     lit,
+                    facility_class,
+                    car_free,
                 ) in batch
             )
             cursor.execute(
                 f"""INSERT INTO {schema}.segment
                     (osm_way_id, ordinal, geometry, stress_tier, stress_rule,
                      stress_assumed, volume_source, volume_aadt, volume_year,
-                     sinuosity, is_trail_class, is_unpaved, is_rough, lit)
+                     sinuosity, is_trail_class, is_unpaved, is_rough, lit, facility,
+                     car_free_when)
                     VALUES {args}"""
             )
             written += len(batch)

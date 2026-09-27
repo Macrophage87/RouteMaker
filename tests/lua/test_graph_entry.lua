@@ -42,19 +42,24 @@ check("upstream's rel_members_proc is left in place",
 -- remap must have run, and upstream's transform must have run after it on the
 -- remapped tags. bike_forward is upstream's own derived attribute and exists in
 -- no RouteMaker code, so its presence is what proves the delegation happened.
-local way = { highway = "residential", ["rm:stress_tier"] = "1" }
+local way = { highway = "residential", ["rm:stress_tier"] = "4" }
 local filter, out = ways_proc(way, 2)
 check("a way is kept by upstream", filter == 0, filter)
-check("the remap ran: low stress writes cycleway", out.cycleway == "track", out.cycleway)
+check("the remap ran: tier 4 carries the stress penalty", out.bicycle == "use_sidepath",
+  out.bicycle)
 check("upstream ran on the remapped tags: bike_forward is derived",
   out.bike_forward ~= nil, out.bike_forward)
 check("the rm: namespace never reaches the tile build", out["rm:stress_tier"] == nil)
 
 -- The same derived tier on a trail-class way must not turn bicycle access on for
 -- every sidewalk in the District.
-local trail = { highway = "footway", ["rm:stress_tier"] = "1", ["rm:trail_class"] = "yes" }
-local _, trail_out = ways_proc(trail, 3)
+local trail = { highway = "footway", ["rm:stress_tier"] = "4", ["rm:trail_class"] = "yes",
+  ["rm:facility"] = "path" }
+local _, trail_out = ways_proc(trail, 4)
 check("a trail-class way gets no cycleway write", trail_out.cycleway == nil, trail_out.cycleway)
+check("nor the stress penalty", trail_out.bicycle == nil, trail_out.bicycle)
+check("and a footway stays closed to bicycles", trail_out.bike_forward == "false",
+  trail_out.bike_forward)
 
 -- A cycle barrier carrying permissive access. Valhalla applies gate_cost only
 -- where the node is a gate and carries no access tags, so the permissive tag has
@@ -105,21 +110,23 @@ local restricted = {
 }
 
 for _, case in ipairs(restricted) do
-  local tags = { ["rm:stress_tier"] = "1" }
+  local tags = { ["rm:stress_tier"] = "4", ["rm:facility"] = "path" }
   for k, v in pairs(case.tags) do tags[k] = v end
 
   local bare_filter = transform_way(case.tags)
   local filter, out = transform_way(tags)
 
   check("upstream drops a " .. case.name .. " on its own", bare_filter == 1, bare_filter)
-  check("a " .. case.name .. " at tier 1 is still dropped", filter == 1, filter)
+  check("a " .. case.name .. " at tier 4 called a path is still dropped", filter == 1, filter)
   check("no cycleway is written onto a " .. case.name, out.cycleway == nil, out.cycleway)
+  check("nor the penalty", out.bicycle == nil, out.bicycle)
 end
 
 -- access=emergency and access=psv are not dropped, but arrive with bicycle
 -- access already false, so the write would flip that instead of the filter.
 for _, value in ipairs({ "emergency", "psv" }) do
-  local _, out = transform_way({ highway = "service", access = value, ["rm:stress_tier"] = "1" })
+  local _, out = transform_way({ highway = "service", access = value, ["rm:stress_tier"] = "4",
+    ["rm:facility"] = "path" })
   check("access=" .. value .. " keeps bicycle access off", out.bike_forward == "false",
     out.bike_forward)
   check("no cycleway is written onto access=" .. value, out.cycleway == nil, out.cycleway)
@@ -127,7 +134,8 @@ end
 
 -- `vehicle` is the one that reads as a motor-vehicle key and is not: OSM's
 -- vehicle covers bicycles, and upstream bars them on vehicle=no.
-local _, vehicle_out = transform_way({ highway = "track", vehicle = "no", ["rm:stress_tier"] = "1" })
+local _, vehicle_out = transform_way({ highway = "track", vehicle = "no", ["rm:stress_tier"] = "4",
+  ["rm:facility"] = "path" })
 check("a way tagged vehicle=no keeps bicycle access off",
   vehicle_out.bike_forward == "false", vehicle_out.bike_forward)
 check("no cycleway is written onto vehicle=no", vehicle_out.cycleway == nil, vehicle_out.cycleway)
@@ -136,18 +144,70 @@ check("no cycleway is written onto vehicle=no", vehicle_out.cycleway == nil, veh
 -- one is about the claim rather than the access: the way arrives marked private
 -- and a separated-track write would assert provision the tagging denies.
 local _, private_out =
-  transform_way({ highway = "service", access = "private", ["rm:stress_tier"] = "1" })
+  transform_way({ highway = "service", access = "private", ["rm:stress_tier"] = "4",
+    ["rm:facility"] = "path" })
 check("a private way is still routable", private_out.bike_forward == "true")
 check("but carries no cycleway write", private_out.cycleway == nil, private_out.cycleway)
 check("and is marked private by upstream", private_out.private == "true", private_out.private)
 
 -- The way the guard must not catch: an ordinary low-stress street still gets
 -- its write, and a permissively tagged one does too.
-local open_filter, open_out =
-  transform_way({ highway = "residential", access = "yes", ["rm:stress_tier"] = "1" })
-check("an access=yes residential street still gets the write", open_out.cycleway == "track",
+local open_filter, open_out = transform_way({ highway = "residential", access = "yes",
+  motor_vehicle = "no", ["rm:facility"] = "path" })
+check("an access=yes car-free street still gets the write", open_out.cycleway == "track",
   open_out.cycleway)
 check("and is kept", open_filter == 0, open_filter)
+local _, busy_out =
+  transform_way({ highway = "primary", access = "yes", ["rm:stress_tier"] = "3" })
+check("an access=yes tier-3 street still gets the penalty", busy_out.bicycle == "use_sidepath",
+  busy_out.bicycle)
+check("which leaves it open both ways", busy_out.bike_forward == "true"
+  and busy_out.bike_backward == "true")
+
+-- ---------------------------------------------------------------------------
+-- The facility class reaches upstream's cycle-lane state, and moves nothing
+-- about access. Read through the real transform: upstream's `cycle_lane_right`
+-- is 0 none, 1 shared, 2 dedicated, 3 separated.
+-- ---------------------------------------------------------------------------
+
+local function lane_and_access(tags)
+  local _, out = transform_way(tags)
+  return tonumber(out.cycle_lane_right), out.bike_forward, out.bike_backward
+end
+
+local function same_access(a, b)
+  local _, fa, ba = lane_and_access(a)
+  local _, fb, bb = lane_and_access(b)
+  return fa == fb and ba == bb
+end
+
+local cases = {
+  { "an off-road footpath", { highway = "path" }, "path", 1, 2 },
+  { "a designated footway trail", { highway = "footway", bicycle = "designated" }, "path", 1, 2 },
+  { "a cycleway, off-road or protected", { highway = "cycleway" }, "protected", 3, 3 },
+  { "a cycleway open to walkers", { highway = "cycleway", foot = "yes" }, "path", 2, 2 },
+  { "a signed sidepath", { highway = "footway", footway = "sidewalk", bicycle = "designated" },
+    "protected", 0, 0 },
+  { "a painted lane", { highway = "tertiary", cycleway = "lane" }, "lane", 2, 1 },
+  { "a sharrow", { highway = "residential", cycleway = "shared_lane" }, "none", 1, 0 },
+  { "a protected lane on the roadway", { highway = "primary", cycleway = "track" }, "protected", 3, 3 },
+  { "a car-free road", { highway = "service", motor_vehicle = "no", bicycle = "yes" }, "path", 0, 3 },
+}
+for _, case in ipairs(cases) do
+  local name, tags, facility, native, ours = case[1], case[2], case[3], case[4], case[5]
+  local derived = { ["rm:facility"] = facility }
+  for k, v in pairs(tags) do derived[k] = v end
+  check(name .. " arrives at upstream's own state without the class",
+    lane_and_access(tags) == native, lane_and_access(tags))
+  check(name .. " arrives at the owner's state with it",
+    lane_and_access(derived) == ours, lane_and_access(derived))
+  check(name .. " keeps its access", same_access(tags, derived))
+end
+
+local neutral = { highway = "tertiary", ["cycleway:both"] = "track", ["rm:facility_neutral"] = "yes" }
+check("the no-trail variant takes a track off the roadway", lane_and_access(neutral) == 0,
+  lane_and_access(neutral))
+check("and leaves it open", same_access(neutral, { highway = "tertiary", ["cycleway:both"] = "track" }))
 
 -- ---------------------------------------------------------------------------
 -- `rm:bridge_bicycle` reaches the graph as the bicycle tag it names.

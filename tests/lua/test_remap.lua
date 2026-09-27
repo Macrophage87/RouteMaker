@@ -428,29 +428,53 @@ for _, case in ipairs({
 }) do
   local key, value = next(case)
   check(key .. "=" .. value .. " is a restriction", not M.access_is_unrestricted(case))
+  local road = { highway = "residential" }
+  road[key] = value
   check("and earns no cycleway write",
-    M.remap_way(case, { stress_tier = 1 }).cycleway == nil)
+    M.remap_way(road, { stress_tier = 1, facility = "path" }).cycleway == nil, key)
 end
 
-check("an unrestricted low-stress way still gets its write",
-  M.remap_way({ highway = "residential" }, { stress_tier = 1 }).cycleway == "track")
+-- The one cycleway write left is a road closed to motor traffic, which the
+-- facility class calls a path (`routemaker.facility`).
+check("an unrestricted car-free road gets its write",
+  M.remap_way({ highway = "residential", motor_vehicle = "no" }, { facility = "path" }).cycleway
+    == "track")
+check("and so does one whose bicycle tag reopens it",
+  M.remap_way({ highway = "tertiary", access = "no", bicycle = "yes" }, { facility = "path" })
+    .cycleway == "track")
 
--- The gate is `stress_tier == 1` and nothing else. LTS1 is the only tier that
--- claims the separation a `cycleway=track` write asserts; LTS2 and LTS3 are
--- roads a confident adult rides in traffic, and writing a separated track onto
--- them hands upstream's accommodation factor to roads that have no provision at
--- all. Every tier is checked because `== 1` widened to `<= 2` or `<= 3` moves
--- only the tiers a two-case test never looks at.
+-- Superseded 2026-09-27: stress no longer reaches the graph as a cycleway
+-- write at any tier. It reaches it as the use_sidepath penalty, on tiers 3 and
+-- 4 and nowhere else; every tier is checked, because `>= 3` narrowed to `== 4`
+-- or widened to `>= 2` moves only a tier a two-case test never looks at.
 for tier = 1, 4 do
-  check("stress tier " .. tier .. " writes a cycleway only at 1",
-    (M.remap_way({ highway = "residential" }, { stress_tier = tier }).cycleway == "track")
-      == (tier == 1))
+  local out = M.remap_way({ highway = "residential" }, { stress_tier = tier })
+  check("stress tier " .. tier .. " writes no cycleway", out.cycleway == nil)
+  check("stress tier " .. tier .. " is penalised only at 3 and 4",
+    (out.bicycle == "use_sidepath") == (tier >= 3), tostring(out.bicycle))
 end
 check("no tier at all writes nothing",
-  M.remap_way({ highway = "residential" }, {}).cycleway == nil)
-check("and so does a permissively tagged one",
-  M.remap_way({ highway = "track", access = "permissive" }, { stress_tier = 1 }).cycleway
-    == "track")
+  next(M.remap_way({ highway = "residential" }, {})) == nil)
+check("the penalty never lands on a trail-class way",
+  M.remap_way({ highway = "cycleway" }, { stress_tier = 4, is_trail_class = true }).bicycle == nil)
+check("nor over a refusal",
+  M.remap_way({ highway = "primary", bicycle = "no" }, { stress_tier = 4 }).bicycle == nil)
+check("nor over dismount",
+  M.remap_way({ highway = "primary", bicycle = "dismount" }, { stress_tier = 4 }).bicycle == nil)
+check("nor onto a way whose access restricts it",
+  M.remap_way({ highway = "primary", access = "private" }, { stress_tier = 4 }).bicycle == nil)
+check("nor onto an untagged motorway",
+  M.remap_way({ highway = "motorway" }, { stress_tier = 4 }).bicycle == nil)
+check("it replaces an explicit yes",
+  M.remap_way({ highway = "primary", bicycle = "yes" }, { stress_tier = 3 }).bicycle
+    == "use_sidepath")
+check("and a bridge legality of false still bars the roadway",
+  M.remap_way({ highway = "primary" }, { stress_tier = 4, bridge_bicycle_legal = false }).bicycle
+    == "no")
+check("while a legality of true is penalised like any tier-4 roadway",
+  M.remap_way({ highway = "primary", bicycle = "no" }, { stress_tier = 4, bridge_bicycle_legal = true })
+    .bicycle == "use_sidepath")
+check("the penalised tiers are 3 and 4", M.STRESS_PENALTY_TIER == 3)
 
 -- ---------------------------------------------------------------------------
 -- A way that already declares a cycleway on any side keeps what it was tagged.
@@ -472,8 +496,10 @@ for _, key in ipairs({ "cycleway", "cycleway:both", "cycleway:left", "cycleway:r
   for _, value in ipairs({ "no", "lane", "track", "separate" }) do
     local tags = { highway = "residential" }
     tags[key] = value
+    tags.motor_vehicle = "no"
     check(key .. "=" .. value .. " blocks the write",
-      M.remap_way(tags, { stress_tier = 1 }).cycleway == nil, key .. "=" .. value)
+      M.remap_way(tags, { facility = "path" }).cycleway == nil, key .. "=" .. value)
+    tags.motor_vehicle = nil
     check(key .. "=" .. value .. " is seen by declares_cycleway", M.declares_cycleway(tags))
   end
 end
@@ -481,8 +507,8 @@ check("the key list is exactly the four forms", #M.CYCLEWAY_KEYS == 4)
 -- And nothing wider: a width key is not a facility value and a sidewalk is not
 -- a cycleway, so neither may block a write the way deserves.
 check("a cycleway width alone does not block the write",
-  M.remap_way({ highway = "residential", ["cycleway:left:width"] = "2.0", sidewalk = "both" },
-              { stress_tier = 1 }).cycleway == "track")
+  M.remap_way({ highway = "residential", ["cycleway:left:width"] = "2.0", sidewalk = "both",
+                motor_vehicle = "no" }, { facility = "path" }).cycleway == "track")
 check("and declares_cycleway says so",
   not M.declares_cycleway({ highway = "residential", ["cycleway:left:width"] = "2.0" }))
 
@@ -622,6 +648,70 @@ check("the element keeps its tags", kv.highway == "residential")
 check("the line carries the prefix the build log is searched for",
   #logged == 1 and logged[1]:find(M.VIOLATION_LOG_PREFIX, 1, true) == 1)
 check("the sentinel is outside the stripped namespace", M.VIOLATION_TAG:sub(1, 3) ~= "rm:")
+
+-- ---------------------------------------------------------------------------
+-- Facility (the owner's order, 2026-09-27): off-road path > protected >>
+-- painted lane > ordinary street, sharrows nothing; and nothing at all on the
+-- no-trail variant Mass Ride routes on.
+-- ---------------------------------------------------------------------------
+
+local function fac(tags, facility, extra)
+  local derived = { facility = facility }
+  for k, v in pairs(extra or {}) do derived[k] = v end
+  return M.remap_way(tags, derived)
+end
+
+check("an off-road footpath is segregated",
+  fac({ highway = "path" }, "path").segregated == "yes")
+check("a separately mapped protected lane is left as upstream prices it",
+  next(fac({ highway = "cycleway" }, "protected")) == nil)
+check("a mapper's own segregated tag stands",
+  fac({ highway = "path", segregated = "no" }, "path").segregated == nil)
+check("no cycleway key is ever written on a trail-class way",
+  fac({ highway = "footway", bicycle = "designated" }, "path").cycleway == nil
+    and fac({ highway = "cycleway" }, "protected").cycleway == nil)
+check("a trail-class way with no facility is left alone",
+  next(fac({ highway = "footway" }, "none")) == nil)
+
+check("a painted lane is moved to upstream's shared class",
+  fac({ highway = "tertiary", ["cycleway:right"] = "lane" }, "lane")["cycleway:right"] == "shared_lane")
+check("a buffered lane too",
+  fac({ highway = "tertiary", cycleway = "buffered_lane" }, "lane").cycleway == "shared_lane")
+check("a physically separated painted lane is a track",
+  fac({ highway = "tertiary", ["cycleway:both"] = "lane" }, "protected")["cycleway:both"] == "track")
+check("a track stays a track",
+  fac({ highway = "primary", ["cycleway:left"] = "track" }, "protected")["cycleway:left"] == nil)
+check("a sharrow counts as nothing",
+  fac({ highway = "residential", cycleway = "shared_lane" }, "none").cycleway == M.REMOVE)
+check("a bus lane shared with bicycles counts as nothing",
+  fac({ highway = "secondary", ["cycleway:both"] = "share_busway" }, "none")["cycleway:both"] == M.REMOVE)
+check("contraflow is never touched",
+  fac({ highway = "residential", oneway = "yes", ["cycleway:left"] = "opposite_lane" }, "lane")
+    ["cycleway:left"] == nil)
+check("separate and no are never touched",
+  next(fac({ highway = "primary", ["cycleway:right"] = "separate", ["cycleway:left"] = "no" }, "none"))
+    == nil)
+-- Upstream opens a way to bicycles when both sides carry a lane of any class,
+-- over bicycle=no; moving or removing a value there could close the way.
+check("no lane is moved where the bicycle tag refuses",
+  next(fac({ highway = "secondary", bicycle = "no", ["cycleway:both"] = "shared_lane" }, "none")) == nil)
+check("nor where access restricts the way",
+  next(fac({ highway = "residential", access = "private", cycleway = "lane" }, "lane")) == nil)
+check("nor on a class closed to bicycles by default",
+  next(fac({ highway = "motorway", cycleway = "shared_lane" }, "none")) == nil)
+
+check("the no-trail variant takes every lane off the roadway",
+  fac({ highway = "tertiary", ["cycleway:right"] = "track", ["cycleway:left"] = "lane" }, nil,
+      { facility_neutral = true })["cycleway:right"] == M.REMOVE)
+check("and the painted one too",
+  fac({ highway = "tertiary", ["cycleway:both"] = "lane" }, nil, { facility_neutral = true })
+    ["cycleway:both"] == M.REMOVE)
+check("but never contraflow",
+  fac({ highway = "residential", oneway = "yes", cycleway = "opposite_track" }, nil,
+      { facility_neutral = true }).cycleway == nil)
+check("and it writes no path signal even when handed a class",
+  next(fac({ highway = "residential", motor_vehicle = "no" }, "path", { facility_neutral = true }))
+    == nil)
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
