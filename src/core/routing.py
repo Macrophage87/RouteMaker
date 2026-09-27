@@ -311,7 +311,7 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 
 
 _STRESS_JOIN = """
-SELECT seg.stress_tier, {facility}, sum(p.metres)
+SELECT {tier}, {facility}, sum(p.metres)
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[], %s::float8[])
      AS p(way_id, lon, lat, metres)
 LEFT JOIN LATERAL (
@@ -327,6 +327,9 @@ GROUP BY 1, 2
 # A road closed to motor traffic only at set times is a path for a ride inside
 # the closure, and the road it is otherwise for any other (routemaker.facility).
 _FACILITY_AT = "CASE WHEN %s = ANY(seg.car_free_when) THEN 'path' ELSE seg.facility END"
+# And its stress is a closed road's: tier 1, as the weekend graph routes it
+# (pipeline.run.facility_derived), rather than the tier of the road with cars on it.
+_TIER_AT = "CASE WHEN %s = ANY(seg.car_free_when) THEN 1 ELSE seg.stress_tier END"
 
 # Whether the live segment table has the facility columns yet. They arrive with
 # the first rebuild after this code; until then the breakdown is all unknown
@@ -365,6 +368,7 @@ def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[st
     with_facility = _has_facility_columns(schema)
     query = _STRESS_JOIN.format(
         schema=schema,
+        tier=_TIER_AT if with_facility else "seg.stress_tier",
         facility=_FACILITY_AT if with_facility else "NULL",
         columns="s.facility, s.car_free_when" if with_facility else "NULL",
     )
@@ -375,7 +379,7 @@ def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[st
         [p.metres for p in pieces],
     ]
     with connection.cursor() as cursor:
-        cursor.execute(query, ([when] if with_facility else []) + arrays)
+        cursor.execute(query, ([when, when] if with_facility else []) + arrays)
         for tier, kind, metres in cursor.fetchall():
             stress[str(tier) if tier in (1, 2, 3, 4, 5) else "unknown"] += float(metres)
             facility[kind if kind in FACILITY_KEYS else "unknown"] += float(metres)

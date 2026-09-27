@@ -386,7 +386,8 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   absent, the setting of the moment. It sets Valhalla's `date_time` (the next
   Saturday 09:00, Tuesday 08:00 or Tuesday 12:00), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
-  whether a road closed to cars at set times counts as a path in `facility_m`.
+  whether a road closed to cars at set times counts as a path in `facility_m`
+  and as tier 1 in `stress_m`.
 - `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
   stress slider's start (75 or 100).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
@@ -434,6 +435,16 @@ its detent moves routes only where the terrain offers a choice (Rosslyn -
 Ballston: 105 m of climb at 0, 65 m at -100); above it the climb search found
 a hillier alternative on 6 of 14 trips (Bethesda - Georgetown +97 m for
 +0.2 km; Takoma - Navy Yard +24 m for +1.8 km), each search under 5 s.
+
+The weekend graph, on the same box (Default, the same trip at the weekend and
+on a weekday): Little Falls Parkway 2.84 km at the weekend on the closed
+parkway against 3.09 km around it on a weekday; lower Sligo Creek Parkway
+0.63 km against 1.07 km; Beach Drive NW at Carter Barron the same line both
+ways, 76% against 59% traffic-free. Mass Ride from Anacostia to Nationals Park
+took the Frederick Douglass bridge roadway before its tier 5 and takes the
+11th Street local span after (3.00 km against 3.05 km); with every other
+crossing excluded it still routes over Douglass, and every ordinary preset
+crosses on the Riverwalk paths.
 
 The answer adds `facility_m` (`path`, `protected`, `lane`, `none`,
 `unknown`, metres summing to the traced length, from `segment.facility` and

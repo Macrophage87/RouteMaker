@@ -209,14 +209,18 @@ class TestFacilityBreakdown:
         assert weekend["path"] - offpeak["path"] == pytest.approx(400.0)
         assert offpeak["none"] - weekend["none"] == pytest.approx(400.0)
 
-    def test_the_stress_breakdown_does_not_move_with_the_ride_time(
+    def test_a_weekend_closure_is_tier_1_only_at_the_weekend(
         self, client, facility_segments, router
     ):
+        """Way 202's second segment is tier 2 with cars on it and closed to
+        them at the weekend, when it is what the weekend graph routes it as."""
         router(standard_router())
-        a = post(client, {**good_body(), "when": "weekend"}).json()["stress_m"]
+        weekend = post(client, {**good_body(), "when": "weekend"}).json()["stress_m"]
         router(standard_router())
-        b = post(client, {**good_body(), "when": "weekday_rush"}).json()["stress_m"]
-        assert a == b
+        weekday = post(client, {**good_body(), "when": "weekday_rush"}).json()["stress_m"]
+        assert weekend["1"] - weekday["1"] == pytest.approx(400.0)
+        assert weekday["2"] - weekend["2"] == pytest.approx(400.0)
+        assert sum(weekend.values()) == pytest.approx(sum(weekday.values()))
 
     def test_a_live_schema_without_the_columns_is_all_unknown(
         self, client, facility_segments, router, monkeypatch

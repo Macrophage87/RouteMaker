@@ -1061,6 +1061,36 @@ change the file too (remove the row, in a reviewed commit). To take back a
 crossings change, revert the fixture, deploy, reinstall and rebuild, in the same
 order as above.
 
+## The weekend graph (a fourth router)
+
+The owner's "Build the weekend graph" of 2026-09-27: `valhalla-weekend` serves
+the standard graph's weekend twin (`pipeline.variants.Variant.WEEKEND`), where
+the roads OSM closes to motor traffic for the weekend (Beach Drive in
+Montgomery County, Sligo Creek Parkway, Little Falls Parkway, parts of Beach
+Drive NW; 19 ways in the DC box) are off-road paths at tier 1. A weekend ride
+on a preset whose graph is the standard one routes on it; the e-bike and
+no-trail graphs have no twin. If the weekend router does not answer, the api
+plans the ride on the standard graph and the answer's `variant` says
+`standard`, so a stack without it degrades rather than failing.
+
+What it costs, measured on 2026-09-27. On the DC box graph
+(-77.22,38.78,-76.90,39.02) the weekend tile build took 530-568 s against the
+standard graph's 549-555 s, and writing its extract about as long as any
+other variant's. The first live build (2026-09-25) took 21 min for the
+standard tiles, 7 min for no-trail and 20 min for e-bike, so the weekend
+graph adds about 20-25 minutes to a rebuild of about four hours, and another
+tile set of about 0.5 GB (`tiles.tar`, 481 MB for standard) beside each
+promoted build and each one retained. Resident memory is the standard
+router's again: the live standard router sat at 239-387 MiB and no-trail at
+80-188 MiB when read; the box routers after a trip set were 74-199 MiB. Its
+compose limit is 2 GB like its siblings, which puts the sum of limits at 29 GB
+on a 12 GB host: `scripts/check_compose_limits.py` still checks against its
+32 GB figure, and on this host the limits are ceilings nothing reaches
+together, not a reservation.
+
+On weekdays the weekend router is idle; restart it with the others after a
+promotion (below).
+
 ## After a rebuild: restart the routers
 
 **`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`
