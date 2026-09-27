@@ -63,8 +63,15 @@ within 40 m; one OSM street elevator (Medical Center, node 9512298306) has no
 DC elevator near it; and 15 OSM elevators sit at stations DC gives no
 elevator (Franconia-Springfield, Wheaton, Union Station, Silver Spring,
 Potomac Yard, West Falls Church, Forest Glen). None of the OSM-only ones are
-used: DC's layer is the map's source for Metro elevators, and the list is for
-review.
+used for Metro: DC's layer is the map's source for Metro elevators, and the
+list is for review.
+
+The MARC stations' elevators are OSM's (the coordinator's instruction: OSM's
+where tagged, else the station). Two stations have any: BWI (two) and
+Washington Union Station (three, inside the station building). Union Station
+is one station on the map for both systems, and DC lists no Metro elevator
+there, so its bike entrance is OSM's elevator nearest the station point -
+one of the three the check above also lists.
 
 ## Refresh (by hand)
 
