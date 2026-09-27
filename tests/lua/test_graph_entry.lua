@@ -552,5 +552,20 @@ local twice_ok, twice_err = pcall(dofile, "lua/graph.lua")
 check("a second load is refused rather than left to recurse",
   not twice_ok and tostring(twice_err):find("loaded twice", 1, true) ~= nil, twice_err)
 
+-- cycleway:both reaches the costing once spelled out as the two sides.
+local both_plain = { highway = "primary", ["cycleway:both"] = "track" }
+local both_derived = { highway = "primary", ["cycleway:both"] = "track", ["rm:facility"] = "protected" }
+local remap_module = require("routemaker_remap")
+local real_split = remap_module.split_both
+remap_module.split_both = function() end
+check("without the split upstream prices cycleway:both=track as no lane",
+  lane_and_access(both_derived) == 0, lane_and_access(both_derived))
+remap_module.split_both = real_split
+check("with the remap it is a separated lane", lane_and_access(both_derived) == 3,
+  lane_and_access(both_derived))
+check("and access is what it was", same_access(both_plain, both_derived))
+local _, left_out = transform_way(both_derived)
+check("on the left side too", tonumber(left_out.cycle_lane_left) == 3, left_out.cycle_lane_left)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

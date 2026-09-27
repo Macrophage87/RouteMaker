@@ -713,5 +713,52 @@ check("and it writes no path signal even when handed a class",
   next(fac({ highway = "residential", motor_vehicle = "no" }, "path", { facility_neutral = true }))
     == nil)
 
+-- cycleway:both spelled out as the two sides upstream prices.
+local split = M.remap_way({ highway = "primary", ["cycleway:both"] = "track" }, { facility = "protected" })
+check("cycleway:both=track is copied to both sides",
+  split["cycleway:left"] == "track" and split["cycleway:right"] == "track")
+local painted = M.remap_way({ highway = "tertiary", ["cycleway:both"] = "lane" }, { facility = "lane" })
+check("a painted both-sides lane is copied after the facility rewrite",
+  painted["cycleway:left"] == "shared_lane" and painted["cycleway:right"] == "shared_lane")
+local sided = M.remap_way({ highway = "tertiary", ["cycleway:both"] = "lane", ["cycleway:left"] = "no" },
+  { facility = "none" })
+check("a side the mapper spoke for is left alone",
+  sided["cycleway:left"] == nil and sided["cycleway:right"] == "shared_lane")
+check("a sharrow on both sides is not copied",
+  M.remap_way({ highway = "residential", ["cycleway:both"] = "shared_lane" }, { facility = "none" })
+    ["cycleway:right"] == nil)
+check("contraflow is never copied",
+  M.remap_way({ highway = "residential", oneway = "yes", ["cycleway:both"] = "opposite_lane" },
+    { facility = "lane" })["cycleway:left"] == nil)
+check("separate is never copied",
+  M.remap_way({ highway = "primary", ["cycleway:both"] = "separate" }, { facility = "none" })
+    ["cycleway:left"] == nil)
+check("nor onto the no-trail variant",
+  M.remap_way({ highway = "tertiary", ["cycleway:both"] = "track" }, { facility_neutral = true })
+    ["cycleway:right"] == nil)
+check("nor onto a trail-class way",
+  M.remap_way({ highway = "cycleway", ["cycleway:both"] = "lane" }, { facility = "path" })
+    ["cycleway:left"] == nil)
+check("nor where the bicycle tag refuses",
+  M.remap_way({ highway = "secondary", bicycle = "no", ["cycleway:both"] = "lane" }, {})
+    ["cycleway:left"] == nil)
+check("and it runs without a facility class",
+  M.remap_way({ highway = "tertiary", ["cycleway:both"] = "track" }, {})["cycleway:left"] == "track")
+
+-- A car-free road's sharrow counts for nothing; the road is a track.
+local closed_sharrow = M.remap_way({ highway = "tertiary", bicycle = "designated", cycleway = "shared_lane" },
+  { facility = "path" })
+check("a car-free road with a sharrow is a track", closed_sharrow.cycleway == "track")
+local closed_side = M.remap_way({ highway = "tertiary", ["cycleway:right"] = "shared_lane",
+  motor_vehicle = "no" }, { facility = "path" })
+check("a side sharrow is removed and the road is a track",
+  closed_side["cycleway:right"] == M.REMOVE and closed_side.cycleway == "track")
+check("a car-free road with a real lane keeps it and gets no track",
+  M.remap_way({ highway = "tertiary", cycleway = "lane", motor_vehicle = "no" }, { facility = "path" })
+    .cycleway == nil)
+check("nor over a refusal",
+  next(M.remap_way({ highway = "tertiary", bicycle = "no", cycleway = "shared_lane" }, { facility = "path" }))
+    == nil)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -314,6 +314,7 @@ function M.remap_way(tags, derived)
   -- The cautions above still bind both: neither writes a cycleway key onto a
   -- trail-class way, and neither widens access.
   M.apply_facility(tags, derived, out)
+  if not derived.facility_neutral then M.split_both(tags, out) end
 
   if derived.reviewer_surface_penalty then
     out.surface = M.bounded_surface(tags.surface or "paved", derived.reviewer_surface_penalty)
@@ -794,16 +795,28 @@ function M.apply_facility(tags, derived, out)
   end
 
   if facility == "path" then
-    -- A road closed to motor traffic. `cycleway=track` only where no side has
-    -- been spoken for, as the tier-1 write it replaces was, and only where the
-    -- way is already open to a bicycle by its own tags: the Python class is
-    -- computed from those same tags, and this repeats the check at the write.
+    -- A road closed to motor traffic (for good, or for the weekend on the
+    -- weekend graph). Only where the way is already open to a bicycle by its
+    -- own tags: the Python class is computed from those same tags, and this
+    -- repeats the check at the write. Sharrows count for nothing here as
+    -- anywhere, so they are taken off first - Beach Drive NW's weekend span is
+    -- tagged `cycleway=shared_lane`, and a sharrow left on it priced the
+    -- closed road as a street. `cycleway=track` is then written only where no
+    -- side is spoken for by anything else, as the tier-1 write it replaces was.
     if
-      not M.declares_cycleway(tags)
-      and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
+      M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
       and (M.PENALISABLE_BICYCLE[tags.bicycle] or (tags.bicycle == nil and M.access_is_unrestricted(tags)))
     then
-      out.cycleway = "track"
+      local spoken = false
+      for _, key in ipairs(M.CYCLEWAY_KEYS) do
+        local value = tags[key]
+        if M.SHARED_VALUES[value] then
+          out[key] = M.REMOVE
+        elseif value ~= nil and value ~= "" then
+          spoken = true
+        end
+      end
+      if not spoken then out.cycleway = "track" end
     end
     return
   end
@@ -817,6 +830,31 @@ function M.apply_facility(tags, derived, out)
       return M.PAINTED_LANE_VALUE
     end
   end)
+end
+
+--- Spell `cycleway:both` out as the two sides upstream prices.
+--
+-- Upstream's transform reads `cycleway:both` for access (both sides carrying a
+-- lane opens a way both ways) and never for the cycle-lane state the costing
+-- prices: that comes from `cycleway`, `cycleway:right` and `cycleway:left`
+-- alone. So a street mapped `cycleway:both=track` was priced as a street with
+-- no lane at all - 308 ways in the DC box. Copying the value (after the
+-- facility rewrite above) onto a side nobody has spoken for changes the price
+-- and nothing else: the access override reads both sides already, and it is
+-- satisfied the same way by the copy. Only a painted lane or a track (a
+-- sharrow counts for nothing), never a contraflow value (`opposite*` also
+-- carries access against a one-way's traffic), and only where the facility
+-- rewrite may move lanes at all (`lanes_may_move`: never a trail-class way,
+-- nor a way whose own tags restrict access).
+function M.split_both(tags, out)
+  local original = tags["cycleway:both"]
+  if not (M.LANE_VALUES[original] or M.TRACK_VALUES[original]) then return end
+  if not M.lanes_may_move(tags) then return end
+  local both = out["cycleway:both"] or original
+  if both == M.REMOVE then return end
+  for _, key in ipairs({ "cycleway:left", "cycleway:right" }) do
+    if tags[key] == nil and out[key] == nil then out[key] = both end
+  end
 end
 
 return M
