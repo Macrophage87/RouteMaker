@@ -122,7 +122,7 @@ def test_default_is_more_stress_averse_than_mid_and_rides_the_fastest_hills() ->
     hills slider's middle is "basically fastest time for most people", which is
     `use_hills` 1.0 (no grade penalty; Valhalla's grade-speed model only)."""
     assert options("default")["use_roads"] < options("group-ride")["use_roads"]
-    assert options("default")["use_roads"] <= 0.25
+    assert options("default")["use_roads"] <= 0.1
     assert options("default")["use_hills"] == 1.0
     assert presets.PRESETS["default"].hills == 0
 
@@ -258,3 +258,27 @@ def test_the_roadway_presets_are_hybrid(name: str) -> None:
 def test_the_dropped_presets_are_not_offered(name: str) -> None:
     """The owner dropped them, 2026-09-27 (PLAN.md, Owner amendments)."""
     assert name not in presets.PRESETS
+
+
+def test_default_starts_at_the_owners_ninety() -> None:
+    """The owner's answer of 2026-09-27: "90"."""
+    assert presets.PRESETS["default"].stress == 90
+
+
+def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
+    for name, preset in presets.PRESETS.items():
+        weekend = presets.variant_for_ride(name, "weekend")
+        weekday = presets.variant_for_ride(name, "weekday_rush")
+        assert weekday == preset.variant
+        assert weekend == ("weekend" if preset.variant == "standard" else preset.variant)
+        assert weekend in settings.VALHALLA_UPSTREAMS
+
+
+def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:
+    for when in ("weekend", "weekday_rush", "weekday_offpeak"):
+        assert presets.variant_for_ride("cargo", when, assist=True) == Variant.EBIKE.value
+    assert presets.variant_for_ride("default", "weekday_rush", assist=True) == "standard"
+    assert (
+        presets.costing("cargo", assist=True)["bicycle"]["cycling_speed"]
+        < options("ebike")["cycling_speed"]
+    )

@@ -188,7 +188,7 @@ class TestAnswer:
         assert set(body["stress_m"]) == STRESS_KEYS
         assert body["geometry"]["type"] == "LineString"
         assert body["preset"] == "default"
-        assert body["variant"] == presets.PRESETS["default"].variant
+        assert body["variant"] == presets.variant_for_ride("default", routing.default_when())
 
     def test_the_geometry_is_lon_lat(self, client, segments, router) -> None:
         router(standard_router())
@@ -328,7 +328,7 @@ class TestWhatIsSentToTheRouter:
         as the route that produced the shape."""
         fake = router(standard_router())
         assert post(client, good_body(name)).status_code == 200
-        base = settings.VALHALLA_UPSTREAMS[presets.PRESETS[name].variant]
+        base = settings.VALHALLA_UPSTREAMS[presets.variant_for_ride(name, routing.default_when())]
         assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
         assert all(p["costing_options"] == presets.costing(name) for _, p in fake.calls)
@@ -891,7 +891,7 @@ class TestTheTraceRequest:
     ) -> None:
         router(standard_router())
         body = post(client, good_body(name)).json()
-        assert body["variant"] == presets.PRESETS[name].variant
+        assert body["variant"] == presets.variant_for_ride(name, routing.default_when())
         assert body["preset"] == name
 
 

@@ -20,6 +20,8 @@ export interface Dials {
   when: When | null;
   /** Cargo Bike only. */
   carrying: Carrying | null;
+  /** Cargo Bike only: electric assist (e-bike rules, a faster pace, the same hills start). */
+  assist: boolean;
 }
 
 export const STRESS_MIN = 0;
@@ -33,17 +35,21 @@ interface Start {
   /** Mass Ride's hills slider stops at the fastest time (PLAN: the seek half is disabled). */
   seek: boolean;
   carrying?: Record<Carrying, number>;
+  /** Mass Ride's traffic slider is locked at the most direct roadway (owner, 2026-09-27). */
+  stressMax?: number;
+  /** Cargo Bike offers electric assist. */
+  assist?: boolean;
 }
 
 export const STARTS: Record<PresetId, Start> = {
-  default: { stress: 75, hills: 0, seek: true },
+  default: { stress: 90, hills: 0, seek: true },
   trailmaxxing: { stress: 100, hills: 0, seek: true },
   "group-ride": { stress: 50, hills: -50, seek: true },
-  "mass-ride": { stress: 0, hills: -95, seek: false },
+  "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
   "mountain-goat": { stress: 50, hills: 100, seek: true },
   gravel: { stress: 50, hills: 0, seek: true },
   fast: { stress: 10, hills: 0, seek: true },
-  cargo: { stress: 75, hills: -60, seek: true, carrying: { cargo: 75, people: 95 } },
+  cargo: { stress: 75, hills: -60, seek: true, carrying: { cargo: 75, people: 100 }, assist: true },
   ebike: { stress: 75, hills: -50, seek: true },
 };
 
@@ -66,19 +72,35 @@ export function hillsMax(preset: PresetId): number {
   return STARTS[preset].seek ? HILLS_MAX : 0;
 }
 
+export function stressMax(preset: PresetId): number {
+  return STARTS[preset].stressMax ?? STRESS_MAX;
+}
+
+export function offersAssist(preset: PresetId): boolean {
+  return STARTS[preset].assist === true;
+}
+
 export function carries(preset: PresetId): boolean {
   return STARTS[preset].carrying !== undefined;
 }
 
 /** Where the sliders start on a ride type, for what the bike carries. */
-export function startDials(preset: PresetId, carrying: Carrying | null = null, when: When | null = null): Dials {
+export function startDials(
+  preset: PresetId,
+  carrying: Carrying | null = null,
+  when: When | null = null,
+  assist = false,
+): Dials {
   const start = STARTS[preset];
   const load = start.carrying ? (carrying ?? "cargo") : null;
   return {
     stress: load && start.carrying ? start.carrying[load] : start.stress,
+    // Electric assist does not soften the hills start: a heavy cargo bike's
+    // motor rarely cancels a climb (the owner, 2026-09-27).
     hills: start.hills,
     when,
     carrying: load,
+    assist: offersAssist(preset) && assist,
   };
 }
 
@@ -88,22 +110,24 @@ function clamp(value: number, min: number, max: number): number {
 
 /** A position the API will take for this ride type, whatever a link said. */
 export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
-  const start = startDials(preset, dials.carrying ?? null, dials.when ?? null);
+  const start = startDials(preset, dials.carrying ?? null, dials.when ?? null, dials.assist === true);
   const stress = typeof dials.stress === "number" && Number.isFinite(dials.stress) ? dials.stress : start.stress;
   const hills = typeof dials.hills === "number" && Number.isFinite(dials.hills) ? dials.hills : start.hills;
   return {
-    stress: clamp(stress, STRESS_MIN, STRESS_MAX),
+    stress: clamp(stress, STRESS_MIN, stressMax(preset)),
     hills: clamp(hills, HILLS_MIN, hillsMax(preset)),
     when: start.when,
     carrying: start.carrying,
+    assist: start.assist,
   };
 }
 
 /** The request's dial fields. `when` is left out when the API is to work it out. */
-export function dialFields(dials: Dials): Record<string, string | number> {
-  const fields: Record<string, string | number> = { stress: dials.stress, hills: dials.hills };
+export function dialFields(dials: Dials): Record<string, string | number | boolean> {
+  const fields: Record<string, string | number | boolean> = { stress: dials.stress, hills: dials.hills };
   if (dials.when) fields.when = dials.when;
   if (dials.carrying) fields.carrying = dials.carrying;
+  if (dials.assist) fields.assist = true;
   return fields;
 }
 
@@ -112,7 +136,7 @@ export function stressWords(stress: number): string {
   if (stress <= 10) return "Most direct legal route";
   if (stress < 40) return "Direct, some busy streets";
   if (stress <= 60) return "Balanced";
-  if (stress < 90) return "Prefers quiet streets and paths";
+  if (stress < 95) return "Prefers quiet streets and paths";
   return "Low-stress only, unless there is no other way";
 }
 

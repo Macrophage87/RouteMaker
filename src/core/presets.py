@@ -48,6 +48,7 @@ from types import MappingProxyType
 from typing import Any
 
 from pipeline.variants import Variant
+from routemaker.ridetime import WEEKEND
 
 # Valhalla's bicycle defaults, stated so that "high" below reads against them.
 VALHALLA_MANEUVER_PENALTY_S = 5
@@ -62,8 +63,9 @@ MID = 0.5
 # 2 hrs on full trails. Instead it puts me on a set of roads where almost a
 # quarter are LTS4." and, of the faster road route, "It is faster, but not
 # worth it for most people." Chosen from the trip measurements in
-# docs/DEVELOPMENT.md, "The stress and hills sliders".
-DEFAULT_STRESS = 75
+# docs/DEVELOPMENT.md, "The stress and hills sliders". The owner's answer of
+# 2026-09-27 to "Keep Default at 75, or 90?": "90".
+DEFAULT_STRESS = 90
 
 # Cargo Bike. The owner, 2026-09-27: "Also another popular option in our city
 # would be cargo bikes. People use cargo bikes in our region quite often. They
@@ -86,17 +88,26 @@ DEFAULT_STRESS = 75
 #   bicycles.
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
-# - Stress: carrying cargo starts where Default does; carrying people starts
-#   near the top of the slider, where a tier 3 or 4 way costs about five times
-#   its length and a path or protected lane wins unless there is no other way.
+# - Stress: carrying cargo starts at a moderate 75; carrying people at the top
+#   of the slider, where a tier 3 or 4 way costs about five times its length
+#   and a path or protected lane wins unless there is no other way.
+# - Electric assist (the owner, 2026-09-27: "Cargo bikes with E assist still
+#   have problems on hills. They tend to be very heavy. The assist doesn't
+#   cancel out the hill in many cases. People with more powerful motors can
+#   increase hill tolerance. We want to be more novice friendly."): e-bike
+#   legality (the e-bike graph) and a somewhat faster pace, and the same
+#   hill-averse start; a rider with a strong motor moves the hills slider.
 CARRYING_CARGO = "cargo"
 CARRYING_PEOPLE = "people"
-CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 95}
+# Carrying cargo is moderate (the owner's words: "cargo = moderate"), and
+# carrying people is the top of the slider, "unless there's no other option".
+CARGO_CARRYING_STRESS = {CARRYING_CARGO: 75, CARRYING_PEOPLE: 100}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0
 CARGO_GATE_COST_S = 300
 CARGO_GATE_PENALTY_S = 600
 CARGO_SURFACE_AVOIDANCE = 0.6
+CARGO_ASSIST_PLANNING_SPEED_KMH = 18.0
 
 # The rest of PLAN's table (the owner, 2026-09-27: "Add the other presets too,
 # like trailmaxxing"), each at layers 1 and 2 only. What a preset's row gives
@@ -178,6 +189,13 @@ class Preset:
     # What the bike carries, where the preset asks (Cargo Bike): each choice
     # and the stress slider's start it gives. The first is the default.
     carrying: MappingProxyType | None = None
+    # The highest the stress slider may go on this preset. Mass Ride's is 0:
+    # the owner's "Lock at 0 (Recommended)" of 2026-09-27, since a field that
+    # takes the roadway has no business being steered onto quiet side streets.
+    stress_max: int = 100
+    # With the rider's electric-assist toggle (Cargo Bike): the variant and
+    # the planning speed it gives, or None where the toggle is not offered.
+    assist_speed_kmh: float | None = None
 
 
 def _preset(
@@ -187,6 +205,8 @@ def _preset(
     hills: int,
     hills_seek: bool = True,
     carrying: dict[str, int] | None = None,
+    stress_max: int = 100,
+    assist_speed_kmh: float | None = None,
     **options: Any,
 ) -> Preset:
     return Preset(
@@ -204,6 +224,8 @@ def _preset(
         hills=hills,
         hills_seek=hills_seek,
         carrying=MappingProxyType(carrying) if carrying else None,
+        stress_max=stress_max,
+        assist_speed_kmh=assist_speed_kmh,
     )
 
 
@@ -261,6 +283,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # Mass Ride's grade limit is the layer 4 cap, not this dial.
                 hills=-95,
                 hills_seek=False,
+                stress_max=0,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
@@ -320,6 +343,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 stress=CARGO_CARRYING_STRESS[CARRYING_CARGO],
                 hills=CARGO_HILLS,
                 carrying=CARGO_CARRYING_STRESS,
+                assist_speed_kmh=CARGO_ASSIST_PLANNING_SPEED_KMH,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
@@ -365,7 +389,25 @@ def carrying_of(name: str, carrying: str | None = None) -> str | None:
     return carrying or next(iter(preset.carrying))
 
 
-def costing(name: str, stress: int | None = None, hills: int | None = None) -> dict:
+def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
+    """The graph a ride routes on.
+
+    Electric assist (Cargo Bike) takes the e-bike graph. A weekend ride on the
+    standard graph takes its weekend twin, where roads closed to cars at the
+    weekend are off-road paths (`Variant.WEEKEND`); the e-bike and no-trail
+    graphs have no weekend twin, so their weekend rides stay on them.
+    """
+    preset = PRESETS[name]
+    if assist and preset.assist_speed_kmh is not None:
+        return Variant.EBIKE.value
+    if preset.variant == Variant.STANDARD.value and when == WEEKEND:
+        return Variant.WEEKEND.value
+    return preset.variant
+
+
+def costing(
+    name: str, stress: int | None = None, hills: int | None = None, assist: bool = False
+) -> dict:
     """The `costing_options` block for one preset, as a fresh copy.
 
     `stress` and `hills` are the sliders' positions; either left out is the
@@ -378,4 +420,7 @@ def costing(name: str, stress: int | None = None, hills: int | None = None) -> d
         options["use_roads"] = use_roads_for(stress)
     if hills is not None:
         options["use_hills"] = use_hills_for(hills)
+    speed = PRESETS[name].assist_speed_kmh
+    if assist and speed is not None:
+        options["cycling_speed"] = speed
     return {"bicycle": options}

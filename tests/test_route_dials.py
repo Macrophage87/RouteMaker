@@ -9,6 +9,7 @@ real, because the breakdown is a PostGIS join.
 from __future__ import annotations
 
 import pytest
+from django.conf import settings
 from django.db import connection
 from test_route_api import (
     VERTICES,
@@ -74,7 +75,7 @@ class TestTheSlidersReachTheRouter:
         assert sent_options(fake)["use_roads"] == presets.use_roads_for(presets.stress_start(name))
         assert sent_options(fake)["use_hills"] == presets.use_hills_for(start.hills)
 
-    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"mass-ride"}))
     @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (50, 0.5), (100, 0.0)])
     def test_stress_is_use_roads_run_backwards(
         self, name, stress, use_roads, client, facility_segments, router
@@ -329,3 +330,114 @@ def test_the_distance_budget_grows_with_the_slider(hills):
     assert presets.seek_distance_ratio(hills) > presets.seek_distance_ratio(hills - 1)
     assert presets.seek_distance_ratio(100) == pytest.approx(1.5)
     assert presets.seek_distance_ratio(0) == 1.0
+
+
+@db
+class TestTheWeekendGraph:
+    """The owner's "Build the weekend graph" (2026-09-27)."""
+
+    @pytest.mark.parametrize("name", sorted(presets.PRESETS))
+    def test_a_weekend_ride_on_the_standard_graph_takes_its_twin(
+        self, name, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "when": "weekend"}).json()
+        expected = (
+            "weekend"
+            if presets.PRESETS[name].variant == "standard"
+            else presets.PRESETS[name].variant
+        )
+        assert body["variant"] == expected
+        base = settings.VALHALLA_UPSTREAMS[expected]
+        assert all(url.startswith(base + "/") for url, _ in fake.calls)
+
+    @pytest.mark.parametrize("when", ["weekday_rush", "weekday_offpeak"])
+    def test_a_weekday_ride_stays_on_the_standard_graph(
+        self, when, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body(), "when": when}).json()
+        assert body["variant"] == "standard"
+        assert all("valhalla-weekend" not in url for url, _ in fake.calls)
+
+    def test_a_weekend_router_that_does_not_answer_falls_back_to_standard(
+        self, client, facility_segments, router
+    ):
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]):
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        response = post(client, {**good_body(), "when": "weekend"})
+        assert response.status_code == 200
+        assert response.json()["variant"] == "standard"
+        assert all(
+            url.startswith(settings.VALHALLA_UPSTREAMS["standard"]) for url, _ in standard.calls
+        )
+
+    def test_a_standard_router_that_does_not_answer_is_still_a_502(
+        self, client, facility_segments, router
+    ):
+        def transport(url, payload, timeout):
+            raise routing.RouterUnavailable("down")
+
+        router(transport)
+        assert post(client, {**good_body(), "when": "weekday_rush"}).status_code == 502
+        assert post(client, {**good_body(), "when": "weekend"}).status_code == 502
+
+
+@db
+class TestMassRideStress:
+    """The owner's "Lock at 0 (Recommended)" for Mass Ride's stress slider."""
+
+    def test_mass_ride_refuses_any_stress_above_zero(self, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body("mass-ride"), "stress": 1}).status_code == 400
+        assert fake.calls == []
+        router(standard_router())
+        assert post(client, {**good_body("mass-ride"), "stress": 0}).status_code == 200
+
+    def test_only_mass_ride_is_locked(self):
+        assert {n for n, p in presets.PRESETS.items() if p.stress_max < presets.STRESS_MAX} == {
+            "mass-ride"
+        }
+
+
+@db
+class TestCargoAssist:
+    def test_assist_takes_the_ebike_graph_and_a_faster_pace(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        body = post(client, {**good_body("cargo"), "assist": True, "when": "weekend"}).json()
+        assert body["variant"] == "ebike"
+        assert body["dials"]["assist"] is True
+        options = sent_options(fake)
+        assert options["cycling_speed"] > presets.CARGO_PLANNING_SPEED_KMH
+        assert all(url.startswith(settings.VALHALLA_UPSTREAMS["ebike"]) for url, _ in fake.calls)
+
+    def test_assist_keeps_cargos_hill_averse_start(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body("cargo"), "assist": True}).json()
+        assert body["dials"]["hills"] == presets.CARGO_HILLS
+        assert sent_options(fake)["use_hills"] == presets.use_hills_for(presets.CARGO_HILLS)
+
+    def test_without_assist_cargo_is_unchanged(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body("cargo"), "when": "weekday_rush"}).json()
+        assert body["variant"] == "standard"
+        assert body["dials"]["assist"] is False
+        assert sent_options(fake)["cycling_speed"] == presets.CARGO_PLANNING_SPEED_KMH
+
+    @pytest.mark.parametrize("extra", [{"assist": 1}, {"assist": "yes"}])
+    def test_assist_must_be_a_boolean(self, extra, client, facility_segments, router):
+        router(standard_router())
+        assert post(client, {**good_body("cargo"), **extra}).status_code == 400
+
+    def test_assist_is_cargo_only(self, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body("default"), "assist": True}).status_code == 400
+        assert fake.calls == []

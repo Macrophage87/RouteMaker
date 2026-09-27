@@ -32,11 +32,11 @@ export function initialCard(current: PresetId): number {
  * time the rider picked stays, since it is about the ride and not the bike.
  */
 export function choose(preset: PresetId, carrying: Carrying | null, current: Dials): Dials {
-  return startDials(preset, carrying, current.when);
+  return startDials(preset, carrying, current.when, current.assist);
 }
 
 /** Whether the rider has moved a slider away from the ride type's start. */
 export function isCustom(preset: PresetId, dials: Dials): boolean {
-  const start = startDials(preset, dials.carrying, dials.when);
+  const start = startDials(preset, dials.carrying, dials.when, dials.assist);
   return start.stress !== dials.stress || start.hills !== dials.hills;
 }

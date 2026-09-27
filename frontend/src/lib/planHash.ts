@@ -26,6 +26,7 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     params.set("hills", String(dials.hills));
     if (dials.when) params.set("when", dials.when);
     if (dials.carrying) params.set("carrying", dials.carrying);
+    if (dials.assist) params.set("assist", "1");
   }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
 }
@@ -55,6 +56,7 @@ export function decodePlan(hash: string): Plan {
     hills: numberOrUndefined(params.get("hills")),
     when: isWhen(when) ? when : null,
     carrying: isCarrying(carrying) ? carrying : null,
+    assist: params.get("assist") === "1",
   });
   return { points, preset, dials };
 }

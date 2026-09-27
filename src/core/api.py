@@ -175,6 +175,13 @@ class RouteIn(Schema):
         default=None,
         description="Cargo Bike only: what the bike carries, which sets the stress slider's start.",
     )
+    assist: StrictBool = Field(
+        default=False,
+        description=(
+            "Cargo Bike only: electric assist. Routes under e-bike rules at a somewhat faster"
+            " pace; the hills slider keeps Cargo Bike's start."
+        ),
+    )
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
@@ -186,6 +193,13 @@ class RouteIn(Schema):
             )
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
+        if self.stress is not None and self.stress > preset.stress_max:
+            raise ValueError(
+                "Mass Ride keeps to the most direct roadway: a field that takes the road is not"
+                " steered onto side streets, so the traffic slider stays at its lowest"
+            )
+        if self.assist and preset.assist_speed_kmh is None:
+            raise ValueError("assist applies to the Cargo Bike ride type only")
         return self
 
     @field_validator("points")
@@ -267,6 +281,7 @@ class DialsOut(Schema):
     hills: int
     when: WhenName
     carrying: CarryingName | None
+    assist: bool
 
 
 class HillsSeekOut(Schema):
@@ -283,7 +298,7 @@ class HillsSeekOut(Schema):
 
 class RouteOut(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike"]
+    variant: Literal["standard", "no-trail", "ebike", "weekend"]
     geometry: LineString
     distance_m: float
     duration_s: float
@@ -450,7 +465,11 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
     started = getattr(request, "routing_started", None)
     try:
         dials = routing.Dials(
-            stress=body.stress, hills=body.hills, when=body.when, carrying=body.carrying
+            stress=body.stress,
+            hills=body.hills,
+            when=body.when,
+            carrying=body.carrying,
+            assist=body.assist,
         )
         return Status(
             200,

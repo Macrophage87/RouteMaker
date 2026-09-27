@@ -13,7 +13,7 @@ import { dialFields, type Carrying, type Dials, type When } from "./dials.ts";
 
 export interface RouteResponse {
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike";
+  variant: "standard" | "no-trail" | "ebike" | "weekend";
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;
@@ -23,7 +23,7 @@ export interface RouteResponse {
   /** Metres per facility class. Absent from an API older than the sliders. */
   facility_m?: FacilityMetres;
   /** The positions the route was planned with. Absent from an older API. */
-  dials?: { stress: number; hills: number; when: When; carrying: Carrying | null };
+  dials?: { stress: number; hills: number; when: When; carrying: Carrying | null; assist?: boolean };
   /** Present when the hills slider was past its detent. */
   hills_seek?: {
     candidates: number;

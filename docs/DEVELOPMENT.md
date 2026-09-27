@@ -388,7 +388,18 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   conditional restrictions Valhalla reads are evaluated against, and it decides
   whether a road closed to cars at set times counts as a path in `facility_m`.
 - `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
-  stress slider's start (75 or 95).
+  stress slider's start (75 or 100).
+- `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
+  routes on the e-bike graph (e-bike legality) at 18 km/h rather than 14; the
+  hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
+  cancels a climb (the owner, 2026-09-27).
+- Mass Ride refuses `stress > 0` (400): the owner's "Lock at 0".
+- The graph a ride routes on (`variant` in the answer): a weekend ride on a
+  preset whose graph is the standard one routes on the weekend graph
+  (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road
+  paths; if that router does not answer, the standard graph answers instead
+  and `variant` says so. E-bike, Cargo with assist and Mass Ride keep their own
+  graphs at the weekend.
 
 **The stress and hills sliders, measured** (PUBLIC-DIALS, 2026-09-27: a box
 graph, -77.22,38.78,-76.90,39.02, rebuilt from the real extract by the real
@@ -397,19 +408,20 @@ pipeline stages before and after the graph change). Share of the route on LTS
 and use_hills 0.5), which reproduced the live Dupont Circle to Capitol answer
 (33% LTS1, 48% LTS3, 19% LTS4):
 
-| Trip | today | stress 0 | stress 25 | stress 75 (Default) | stress 100 |
-|---|---|---|---|---|---|
-| Dupont Circle - Capitol | 67%, 21.6 min | 90%, 19.6 | 52%, 21.8 | 17%, 25.9 | 6%, 26.0 |
-| Bethesda - Georgetown | 98%, 29.3 | 98%, 29.3 | 3%, 42.0 | 3%, 42.0 (92% path) | 3%, 42.0 |
-| Silver Spring - Union Station | 10%, 48.6 | 92%, 39.7 | 10%, 48.6 | 10%, 49.2 | 6%, 50.4 |
-| Courthouse - Farragut | 51%, 20.8 | 77%, 19.3 | 11%, 23.7 | 13%, 24.7 | 13%, 24.7 |
-| Logan Circle - Eastern Market | 81%, 18.5 | 90%, 18.1 | 20%, 21.9 | 18%, 22.0 | 9%, 29.4 |
-| Falls Church - DC | 9%, 48.9 | 92%, 41.6 | 1%, 50.2 | 1%, 50.2 | 1%, 50.2 |
+| Trip | today | stress 0 | stress 25 | stress 75 | stress 90 (Default) | stress 100 |
+|---|---|---|---|---|---|---|
+| Dupont Circle - Capitol | 67%, 21.6 min | 90%, 19.6 | 52%, 21.8 | 17%, 25.9 | 6%, 26.0 | 6%, 26.0 |
+| Bethesda - Georgetown | 98%, 29.3 | 98%, 29.3 | 3%, 42.0 | 3%, 42.0 | 3%, 42.0 (92% path) | 3%, 42.0 |
+| Silver Spring - Union Station | 10%, 48.6 | 92%, 39.7 | 10%, 48.6 | 10%, 49.2 | 7%, 50.3 | 6%, 50.4 |
+| Courthouse - Farragut | 51%, 20.8 | 77%, 19.3 | 11%, 23.7 | 13%, 24.7 | 13%, 24.7 | 13%, 24.7 |
+| Logan Circle - Eastern Market | 81%, 18.5 | 90%, 18.1 | 20%, 21.9 | 18%, 22.0 | 9%, 29.4 | 9%, 29.4 |
+| Falls Church - DC | 9%, 48.9 | 92%, 41.6 | 1%, 50.2 | 1%, 50.2 | 1%, 50.2 | 1%, 50.2 |
 
 Stress 0 is within 3% of the time of Valhalla's `shortest` route on every
-trip, so the direct end is the fastest legal route. Default starts at 75: on
-these trips it keeps LTS 3-4 under a fifth of the distance for a few minutes
-more, and 90-100 buys little more for most of them. The hills slider below
+trip, so the direct end is the fastest legal route. Default starts at 90, the
+owner's answer of 2026-09-27 to "75 or 90?": against 75 it takes Dupont
+Circle - Capitol from 17% to 6% on LTS 3-4 for 0.1 min, and Logan Circle -
+Eastern Market from 18% to 9% for 7.4 min; the other trips do not move. The hills slider below
 its detent moves routes only where the terrain offers a choice (Rosslyn -
 Ballston: 105 m of climb at 0, 65 m at -100); above it the climb search found
 a hillier alternative on 6 of 14 trips (Bethesda - Georgetown +97 m for
@@ -612,7 +624,7 @@ replacing the symlink, keeps `previous` for rollback, and repoints the
 
 `valhalla_service` does not reload tiles, so after a promotion the serving
 containers are restarted to load the new extract (`docker compose restart
-valhalla-standard valhalla-no-trail valhalla-ebike`); starting them against the
+valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`); starting them against the
 new build before stopping the old ones is the blue/green arrangement the plan
 describes and phase 1 does not implement. `pipeline.promotion.rollback` undoes
 a completed swap: schema, tiles and settings table together.

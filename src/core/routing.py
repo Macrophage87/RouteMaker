@@ -69,6 +69,7 @@ from django.db import connection
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
+from pipeline.variants import Variant
 from routemaker import ridetime
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
@@ -424,6 +425,7 @@ class Dials:
     hills: int | None = None
     when: str | None = None
     carrying: str | None = None
+    assist: bool = False
 
 
 # How many alternatives a climb search asks the router for, besides its best
@@ -491,7 +493,9 @@ def plan(
     )
     hills_dial = preset.hills if dials.hills is None else dials.hills
     when = dials.when or default_when()
-    costing = presets.costing(preset_name, stress_dial, hills_dial)
+    assist = bool(dials.assist) and preset.assist_speed_kmh is not None
+    variant = presets.variant_for_ride(preset_name, when, assist)
+    costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
     request = {
         "locations": [{"lon": lon, "lat": lat, "type": "break"} for lon, lat in points],
         "costing": "bicycle",
@@ -515,14 +519,25 @@ def plan(
         else:
             request["alternates"] = SEEK_ALTERNATES
     try:
-        answer = _call(preset.variant, "route", request, deadline)
+        try:
+            answer = _call(variant, "route", request, deadline)
+        except RouterUnavailable:
+            # The weekend graph is a fourth router, and a deployment that has
+            # not built it yet - or one whose weekend router is down - still
+            # answers a weekend ride, on the standard graph it is the twin of.
+            # The answer names the graph it came from.
+            if variant != Variant.WEEKEND.value:
+                raise
+            logger.warning("the weekend router did not answer; planning on the standard graph")
+            variant = Variant.STANDARD.value
+            answer = _call(variant, "route", request, deadline)
     except RouterRefused as refusal:
         if refusal.code in REQUEST_LIMIT_CODES:
             raise TooLong(str(refusal)) from refusal
         if refusal.code not in NO_PATH_CODES | NO_EDGE_CODES:
             logger.warning(
                 "the %s router refused a route request (%s, code %s): %s",
-                preset.variant,
+                variant,
                 refusal.status,
                 refusal.code,
                 refusal,
@@ -548,11 +563,11 @@ def plan(
         coordinates.extend(shape[1:] if coordinates else shape)
         elevations.extend(leg.get("elevation") or [])
         try:
-            trace = trace_leg(preset.variant, costing, leg.get("shape", ""), deadline)
+            trace = trace_leg(variant, costing, leg.get("shape", ""), deadline)
         except DeadlineExceeded:
             # The route is found, so it is answered; a leg left untraced is
             # unknown, and once the budget is gone `_call` starts no more.
-            logger.info("the budget ran out tracing a leg on %s", preset.variant)
+            logger.info("the budget ran out tracing a leg on %s", variant)
             trace = None
         if trace is None:
             untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
@@ -582,7 +597,7 @@ def plan(
         }
     return {
         "preset": preset.name,
-        "variant": preset.variant,
+        "variant": variant,
         "geometry": {
             "type": "LineString",
             "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
@@ -598,6 +613,7 @@ def plan(
             "hills": hills_dial,
             "when": when,
             "carrying": presets.carrying_of(preset_name, dials.carrying),
+            "assist": assist,
         },
         "hills_seek": hills_seek,
         "attribution": list(ATTRIBUTION),

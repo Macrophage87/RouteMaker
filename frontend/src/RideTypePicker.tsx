@@ -76,6 +76,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
           <strong>
             {custom ? `Custom (based on ${presetLabel(preset)})` : presetLabel(preset)}
             {carrying ? `, ${carrying.label.toLowerCase()}` : ""}
+            {dials.assist ? ", electric assist" : ""}
           </strong>
           <span className="hint">{current?.description}</span>
         </p>

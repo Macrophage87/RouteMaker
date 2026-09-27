@@ -25,7 +25,7 @@ test("the dialog opens on the ride type in use", () => {
 });
 
 test("choosing a ride type moves the sliders to its start and keeps the ride time", () => {
-  const current = { stress: 12, hills: 70, when: "weekday_rush" as const, carrying: null };
+  const current = { stress: 12, hills: 70, when: "weekday_rush" as const, carrying: null, assist: false };
   for (const preset of PRESETS) {
     const next = choose(preset.id, null, current);
     const start = startDials(preset.id);
@@ -45,4 +45,11 @@ test("a moved slider is custom; the ride type's own start is not", () => {
   }
   // Switching the load is not a custom setting.
   assert.equal(isCustom("cargo", startDials("cargo", "people")), false);
+});
+
+test("choosing Cargo Bike keeps electric assist; assist is not a custom setting", () => {
+  const assisted = { ...startDials("cargo", "cargo", null, true) };
+  assert.equal(choose("cargo", "people", assisted).assist, true);
+  assert.equal(choose("default", null, assisted).assist, false);
+  assert.equal(isCustom("cargo", assisted), false);
 });

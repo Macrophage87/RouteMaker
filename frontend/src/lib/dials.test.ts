@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PRESETS } from "./presets.ts";
 import {
+  offersAssist,
+  stressMax,
   HILLS_MAX,
   HILLS_MIN,
   STARTS,
@@ -54,13 +56,14 @@ test("a link's dials are clamped to what the API takes", () => {
     hills: HILLS_MIN,
     when: null,
     carrying: null,
+    assist: false,
   });
   assert.equal(fitDials("default", { stress: 42.6 }).stress, 43);
   assert.equal(fitDials("default", { stress: Number.NaN }).stress, STARTS.default.stress);
 });
 
 test("the sliders travel in the link and come back", () => {
-  const dials = { stress: 30, hills: 60, when: "weekday_rush" as const, carrying: null };
+  const dials = { stress: 30, hills: 60, when: "weekday_rush" as const, carrying: null, assist: false };
   const plan = decodePlan(encodePlan([[-77.04, 38.9], [-77.0, 38.89]], "default", dials));
   assert.deepEqual(plan.dials, dials);
   const cargo = decodePlan(encodePlan([], "cargo", startDials("cargo", "people")));
@@ -76,11 +79,12 @@ test("a link without dials opens at the ride type's start, and junk is ignored",
 
 test("the request carries the dials, and the ride time only when chosen", () => {
   assert.deepEqual(dialFields(startDials("default")), { stress: STARTS.default.stress, hills: 0 });
-  assert.deepEqual(dialFields({ stress: 10, hills: -20, when: "weekend", carrying: "people" }), {
+  assert.deepEqual(dialFields({ stress: 10, hills: -20, when: "weekend", carrying: "people", assist: true }), {
     stress: 10,
     hills: -20,
     when: "weekend",
     carrying: "people",
+    assist: true,
   });
 });
 
@@ -90,4 +94,27 @@ test("the words name both ends and the middle of each slider", () => {
   const hills = [hillsWords(HILLS_MIN), hillsWords(0), hillsWords(HILLS_MAX)];
   assert.equal(new Set(hills).size, 3);
   assert.match(hillsWords(0), /fastest/i);
+});
+
+test("Mass Ride's traffic slider is locked at the most direct roadway", () => {
+  assert.equal(stressMax("mass-ride"), 0);
+  assert.equal(fitDials("mass-ride", { stress: 60 }).stress, 0);
+  for (const preset of PRESETS) if (preset.id !== "mass-ride") assert.equal(stressMax(preset.id), STRESS_MAX, preset.id);
+});
+
+test("Default starts at the owner's 90", () => {
+  assert.equal(STARTS.default.stress, 90);
+});
+
+test("electric assist is Cargo Bike's alone, travels in the link and keeps the hills start", () => {
+  assert.ok(offersAssist("cargo"));
+  assert.equal(offersAssist("ebike"), false);
+  assert.equal(startDials("default", null, null, true).assist, false);
+  const assisted = startDials("cargo", "people", null, true);
+  assert.equal(assisted.assist, true);
+  assert.equal(assisted.hills, startDials("cargo", "people").hills);
+  assert.equal(decodePlan(encodePlan([], "cargo", assisted)).dials.assist, true);
+  assert.equal(decodePlan(encodePlan([], "cargo", startDials("cargo"))).dials.assist, false);
+  assert.equal(decodePlan("#preset=default&assist=1").dials.assist, false);
+  assert.equal(dialFields(startDials("cargo")).assist, undefined);
 });
