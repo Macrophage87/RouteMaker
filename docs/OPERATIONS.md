@@ -359,10 +359,19 @@ worth behind one address. Tiles take no in-flight slot: the slowest draw
 measured was the z10 downtown tile at 1.5 s with a cold database cache, and
 every draw after that was under half a second.
 
+**Bike facilities.** Where the live table has a `facility` column (path,
+protected, lane or none - the routing lane adds it), every feature carries it
+as `facility`, and the zoomed-out levels also keep the paths and protected
+lanes whatever their tier (`pipeline.schema.keeping_facilities`). A table
+without the column is served as before. The overview index is built on the
+widened predicate only once `pipeline.schema.SEGMENT_HAS_FACILITY` says the
+schema declares the column (a test fails while the two disagree); until then a
+table with the column draws its z10-11 tiles without the index.
+
 **Caching.** `Cache-Control: public, max-age=3600` and a weak ETag naming the
-live table (its oid, which a promotion changes) and the tile format version,
-so after the hour a client revalidates and gets a 304 without the tile being
-drawn. Caddy compresses the tiles (an `encode` in the api's block matched on
+live table (its oid, which a promotion changes), the optional columns it has,
+and the tile format version, so after the hour a client revalidates and gets a
+304 without the tile being drawn, and a column added in place is not a 304. Caddy compresses the tiles (an `encode` in the api's block matched on
 the vector-tile content type); nothing else the api answers is compressed.
 
 **The overview index.** The zoomed-out tiles read through a partial GiST index,
@@ -372,12 +381,19 @@ scan of the z10 downtown tile). A live table promoted before this change does
 not have it; the tiles are still right without it, only slower at z10-11,
 and the next rebuild brings it. To add it to a live table by hand before
 then, build it concurrently so reads carry on (the predicate is
-`pipeline.schema.OVERVIEW_PREDICATE`, printed here from the api container):
+`pipeline.schema.OVERVIEW_INDEX_PREDICATE`, printed here from the api container):
 
 ```sh
-docker compose exec -T api python manage.py shell -c "from pipeline.schema import OVERVIEW_PREDICATE as p; print(p)"
+docker compose exec -T api python manage.py shell -c "from pipeline.schema import OVERVIEW_INDEX_PREDICATE as p; print(p)"
 docker compose exec -T postgis psql -U routemaker -d routemaker -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS segment_overview_geom_idx ON live.segment USING gist (geometry) WHERE <the predicate>"
 ```
+
+**The covered area.** `GET /api/coverage` answers the area routes may be
+planned in as a GeoJSON polygon feature - `settings.COVERAGE_BBOX`, the box the
+route endpoint's validator enforces - with an hour's `Cache-Control`, limited
+to 60 a minute per address (`core.ratelimit.COVERAGE`). The map greys out
+everything outside it. Should the region become a drawn polygon, the validator
+and this endpoint change together (`core.api.coverage_ring`).
 
 ## Backups
 
