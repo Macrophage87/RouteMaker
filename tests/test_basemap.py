@@ -136,6 +136,9 @@ def test_nothing_re_encodes_the_bytes_a_range_names() -> None:
     )
     api = block("handle")
     if directives(api, "encode"):
+        # One encode, the matched one: a second, bare one beside it would
+        # compress every answer the API gives.
+        assert len(directives(api, "encode")) == 1, api
         matches = [line for line in api if line.startswith("header Content-Type")]
         assert matches == ["header Content-Type application/vnd.mapbox-vector-tile*"], (
             f"the API's encode must be confined to the stress tiles' content type: {api}"
