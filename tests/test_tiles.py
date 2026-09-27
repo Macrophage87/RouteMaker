@@ -116,7 +116,7 @@ def test_the_gate_sizes_a_second_set_from_the_served_one(tmp_path) -> None:
         (build / "tiles.tar").write_bytes(b"\0" * (3 * GIB // 1024))  # 3 MiB each
         tiles.promote(tmp_path, variant, "b1")
     served = tiles.current_set_bytes(tmp_path)
-    assert served == 3 * 3 * GIB // 1024
+    assert served == len(Variant) * 3 * GIB // 1024
 
     gate = tiles.check_disk_gate(
         tmp_path,
@@ -609,7 +609,7 @@ def test_restoring_links_nothing_moved_writes_nothing(tmp_path) -> None:
 def test_the_write_probe_reports_a_variant_directory_that_is_not_there(tmp_path) -> None:
     """Every variant is probed, and one with no directory at all cannot take a
     link either: reported, by path, alongside the ones that can."""
-    for variant in (Variant.STANDARD, Variant.EBIKE):
+    for variant in (Variant.STANDARD, Variant.EBIKE, Variant.WEEKEND):
         (tmp_path / variant.value).mkdir()
     problems = tiles.unwritable_link_dirs(tmp_path)
     assert len(problems) == 1, problems
