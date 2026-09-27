@@ -52,6 +52,9 @@ def url(z: int, x: int, y: int) -> str:
 
 # (label, tier, rule, trail, unpaved): one of each class the levels treat
 # differently. Each is a 170 m east-west line at its own latitude, 33 m apart.
+# The trail network's ways are unpaved here and the sidewalk class's paved, so
+# the two kinds carry different properties: a level that kept one kind in
+# place of the other would not draw the same classes.
 CLASSES = [
     ("quiet street", 1, "mixed traffic, 20 mph or below, single lane", False, False),
     ("unpaved street", 1, "mixed traffic, 20 mph or below, single lane", False, True),
@@ -59,7 +62,7 @@ CLASSES = [
     ("residential", 2, "mixed traffic, 25 mph, single lane", False, False),
     ("collector", 3, "mixed traffic, 30 mph, single lane", False, False),
     ("arterial", 4, "mixed traffic, 35 mph or above", False, False),
-    *[(h, 1, trail_rule(h), True, False) for h in sorted(TRAIL_CLASS_HIGHWAY)],
+    *[(h, 1, trail_rule(h), True, h in TRAIL_NETWORK_HIGHWAY) for h in sorted(TRAIL_CLASS_HIGHWAY)],
 ]
 
 
@@ -180,18 +183,41 @@ class TestContract:
         assert response.content == b""
         assert "public" in response["Cache-Control"]
 
-    @pytest.mark.parametrize("z", [10, 12, 14, 16])
-    def test_outside_the_coverage_box_the_tile_is_empty(self, client, segment_schemas, z) -> None:
+    # Just past one side of the box and inside the other three.
+    BEYOND = {
+        "west": (-78.3, 39.0),
+        "east": (-75.7, 39.0),
+        "south": (-77.0, 37.85),
+        "north": (-77.0, 40.05),
+        "far away": FAR_AWAY,
+    }
+
+    @pytest.mark.parametrize("side", list(BEYOND))
+    @pytest.mark.parametrize("z", [10, 14, 16])
+    def test_outside_the_coverage_box_the_tile_is_empty(
+        self, client, segment_schemas, side, z
+    ) -> None:
         live, _ = segment_schemas
+        lon, lat = self.BEYOND[side]
+        west, south, east, north = stress_tiles.tile_bounds(*tile_of(lon, lat, z))
+        c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
+        beyond = {
+            "west": east < c_west,
+            "east": west > c_east,
+            "south": north < c_south,
+            "north": south > c_north,
+        }
+        if side != "far away":
+            assert [k for k, v in beyond.items() if v] == [side]
         # A segment there would be drawn if the box were not consulted.
         with connection.cursor() as cursor:
             cursor.execute(
                 f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
                 "stress_rule) VALUES (1, 0, ST_MakeLine(ST_MakePoint(%s, %s), "
                 "ST_MakePoint(%s, %s)), 4, 'x')",
-                [FAR_AWAY[0], FAR_AWAY[1], FAR_AWAY[0] + 0.002, FAR_AWAY[1]],
+                [lon, lat, lon + 0.001, lat],
             )
-        response = client.get(url(*tile_of(*FAR_AWAY, z)))
+        response = client.get(url(*tile_of(lon, lat, z)))
         assert response.status_code == 200
         assert response.content == b""
 
@@ -303,14 +329,17 @@ class TestLevels:
         assert points(10) == points(12) == 2
         assert points(14) > 10
 
+    @pytest.mark.parametrize("z", [10, 12, 14])
     def test_a_line_just_past_the_edge_is_drawn_in_the_buffer(
-        self, client, segment_schemas
+        self, client, segment_schemas, z
     ) -> None:
-        """So a line along a tile edge is not cut short at it, casing and all."""
+        """So a line along a tile edge is not cut short at it, casing and all,
+        at every level."""
         live, _ = segment_schemas
-        z, x, y = tile_of(*CENTRE, 14)
+        level = stress_tiles.level_for(z)
+        z, x, y = tile_of(*CENTRE, z)
         west, south, east, north = stress_tiles.tile_bounds(z, x, y)
-        lon = east + 10 * (east - west) / stress_tiles.FULL.extent
+        lon = east + level.buffer / 2 * (east - west) / level.extent
         with connection.cursor() as cursor:
             cursor.execute(
                 f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
@@ -321,7 +350,8 @@ class TestLevels:
         layer = decode(client.get(url(z, x, y)).content)["stress"]
         (feature,) = layer.features
         xs = {px for line in feature.lines for px, _py in line}
-        assert all(layer.extent < px <= layer.extent + stress_tiles.FULL.buffer for px in xs)
+        assert xs
+        assert all(layer.extent < px <= layer.extent + level.buffer for px in xs)
 
 
 def test_a_rule_that_is_not_plain_text_is_refused_not_pasted() -> None:

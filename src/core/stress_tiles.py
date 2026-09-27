@@ -127,8 +127,7 @@ features AS (
     GROUP BY s.stress_tier, s.is_trail_class, s.is_unpaved, bounds.env
 )
 SELECT '{table}'::regclass::oid,
-       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features
-        WHERE geom IS NOT NULL)
+       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
 """
 
 _PER_SEGMENT = """
@@ -143,8 +142,7 @@ features AS (
       AND {where}
 )
 SELECT '{table}'::regclass::oid,
-       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features
-        WHERE geom IS NOT NULL)
+       (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
 """
 
 

@@ -158,9 +158,9 @@
 		# compressed here: a vector tile is protobuf, and the z14 tile over
 		# downtown DC measured 124 KB raw and 54 KB gzipped. Caddy's default
 		# list of compressible types does not include the vector-tile type,
-		# hence the match. Nothing else the API answers is touched.
-		@tiles path /tiles/*
-		encode @tiles zstd gzip {
+		# hence the match - which is also what keeps every other answer of
+		# the API's as it is.
+		encode zstd gzip {
 			match {
 				header Content-Type application/vnd.mapbox-vector-tile*
 			}
