@@ -19,6 +19,12 @@ export interface RouteResponse {
   descent_m: number;
   stress_m: StressMetres;
   attribution: string[];
+  /**
+   * Index in geometry.coordinates of each leg's last vertex (one per leg).
+   * Additive to the contract, so an older API may leave it out; lineEdit.ts
+   * checks it against the line before trusting it.
+   */
+  leg_ends?: number[];
 }
 
 export type ErrorKind =

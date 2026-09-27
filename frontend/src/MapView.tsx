@@ -16,8 +16,17 @@ import {
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { addStressOverlay, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
+import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
+import { LineGesture } from "./lib/lineGesture.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
+
+/** The route as it can be dragged: its line, where each leg ends in it, and the points it was planned through. */
+export interface LineEdit {
+  path: LonLat[];
+  ends: number[];
+  points: LonLat[];
+}
 
 /** Pixels on each side of the map that the panel covers. */
 export interface Frame {
@@ -37,6 +46,10 @@ interface Props {
   onStressAvailability: (availability: StressAvailability) => void;
   onMapClick: (point: LonLat) => void;
   onMovePoint: (index: number, point: LonLat) => void;
+  /** The route line, when it is the current points' route and can be dragged; null otherwise. */
+  lineEdit: LineEdit | null;
+  /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
+  onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
   onReady: (map: MapLibreMap) => void;
@@ -57,6 +70,15 @@ function registerPmtiles(): void {
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
+/** The handle and the dashed preview of a drag of the line. */
+const EDIT_SOURCE = "route-edit";
+/** How far from the line's centre a mouse, or a finger, still grabs it. */
+const MOUSE_HIT_PX = 8;
+const TOUCH_HIT_PX = 18;
+/** Near a marker, the marker is what the pointer is on, not the line. */
+const MARKER_CLEAR_PX = 14;
+/** After a drag, the click the browser may still send is not a new point. */
+const CLICK_AFTER_DRAG_MS = 400;
 const MAX_BOUNDS_PAD = 0.4;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
@@ -65,6 +87,21 @@ function pointLabel(index: number, count: number): { text: string; name: string;
   if (index === 0) return { text: "A", name: "Start", kind: "start" };
   if (index === count - 1 && count > 1) return { text: "B", name: "End", kind: "end" };
   return { text: String(index), name: `Via point ${index}`, kind: "via" };
+}
+
+type EditFeature =
+  | { type: "Feature"; properties: object; geometry: { type: "LineString"; coordinates: LonLat[] } }
+  | { type: "Feature"; properties: object; geometry: { type: "Point"; coordinates: LonLat } };
+
+/** The drag's handle (a point) and its preview (dashed lines), as map data. */
+function editData(handle: LonLat | null, preview: LonLat[][]): { type: "FeatureCollection"; features: EditFeature[] } {
+  const features: EditFeature[] = preview.map((coordinates) => ({
+    type: "Feature",
+    properties: {},
+    geometry: { type: "LineString", coordinates },
+  }));
+  if (handle) features.push({ type: "Feature", properties: {}, geometry: { type: "Point", coordinates: handle } });
+  return { type: "FeatureCollection", features };
 }
 
 /** Is the route's extent already on screen, outside the panel? If not, the map moves to it. */
@@ -143,8 +180,162 @@ export function MapView(props: Props) {
       if (!map.hasImage(id)) map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
     });
 
+    // Dragging the route line (lineEdit.ts, lineGesture.ts). The handle and
+    // the preview are map layers; the gesture follows the pointer on the
+    // window, so a drag that leaves the map still ends.
+    const showEdit = (handle: LonLat | null, preview: LonLat[][] = []) => {
+      (map.getSource(EDIT_SOURCE) as GeoJSONSource | undefined)?.setData(editData(handle, preview));
+    };
+    /** The leg and the spot on the line under a pointer at `point`, if it is on the line. */
+    const lineAt = (point: { x: number; y: number }, tolerance: number) => {
+      const edit = callbacks.current.lineEdit;
+      if (!edit) return null;
+      const { lng, lat } = map.unproject([point.x, point.y]);
+      const near = nearestOnPath(edit.path, [lng, lat]);
+      if (!near) return null;
+      const at = map.project(near.point);
+      if (Math.hypot(at.x - point.x, at.y - point.y) > tolerance) return null;
+      for (const p of edit.points) {
+        const marker = map.project(p);
+        if (Math.hypot(marker.x - at.x, marker.y - at.y) < MARKER_CLEAR_PX) return null;
+      }
+      return { leg: legOfSegment(edit.ends, near.segment), at: near.point, points: edit.points };
+    };
+    let grabbed: { leg: number; at: LonLat; points: LonLat[] } | null = null;
+    let panStopped = false;
+    let clickSuppressedUntil = 0;
+    const gesture = new LineGesture({
+      onPickUp: () => {
+        // A held finger: the map stops panning under it, and the handle and
+        // the preview show where the line was picked up.
+        panStopped = true;
+        map.dragPan.disable();
+        map.touchZoomRotate.disable();
+        if (grabbed) showEdit(grabbed.at, dragPreview(grabbed.points, grabbed.leg, grabbed.at));
+      },
+    });
+    const endDrag = () => {
+      showEdit(null);
+      canvas.style.cursor = "";
+      if (panStopped) {
+        panStopped = false;
+        map.dragPan.enable();
+        map.touchZoomRotate.enable();
+      }
+    };
+    const local = (clientX: number, clientY: number) => {
+      const box = canvas.getBoundingClientRect();
+      return { x: clientX - box.left, y: clientY - box.top };
+    };
+    const lonLatAt = (point: { x: number; y: number }): LonLat => {
+      const { lng, lat } = map.unproject([point.x, point.y]);
+      return [lng, lat];
+    };
+    const follow = (point: { x: number; y: number }): boolean => {
+      if (!grabbed || gesture.move(point.x, point.y) !== "drag") return false;
+      const cursor = lonLatAt(point);
+      showEdit(cursor, dragPreview(grabbed.points, grabbed.leg, cursor));
+      canvas.style.cursor = "grabbing";
+      return true;
+    };
+    /** The press ended at `point`, or was called off (null). */
+    const finish = (point: { x: number; y: number } | null) => {
+      const wasDragging = gesture.dragging;
+      const result = point ? gesture.release() : "none";
+      gesture.cancel();
+      const drop = grabbed;
+      grabbed = null;
+      endDrag();
+      if (wasDragging) clickSuppressedUntil = performance.now() + CLICK_AFTER_DRAG_MS;
+      if (result === "drop" && drop && point) callbacks.current.onLineDrop(drop.leg, lonLatAt(point), drop.points);
+    };
+
+    // Hovering: a handle on the line where a press would grab it.
+    let hoverFrame = 0;
+    let hoverPoint: { x: number; y: number } | null = null;
+    map.on("mousemove", (event) => {
+      if (gesture.active) return;
+      hoverPoint = event.originalEvent.target === canvas ? event.point : null;
+      if (hoverFrame) return;
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0;
+        if (gesture.active) return;
+        const hit = hoverPoint ? lineAt(hoverPoint, MOUSE_HIT_PX) : null;
+        showEdit(hit ? hit.at : null);
+        canvas.style.cursor = hit ? "pointer" : "";
+      });
+    });
+    const onCanvasLeave = () => {
+      hoverPoint = null;
+      if (!gesture.active) endDrag();
+    };
+    canvas.addEventListener("mouseleave", onCanvasLeave);
+    map.on("mousedown", (event) => {
+      if (event.originalEvent.button !== 0 || event.originalEvent.target !== canvas) return;
+      const hit = lineAt(event.point, MOUSE_HIT_PX);
+      if (!hit) return;
+      // The map does not pan: this press is the line's.
+      event.preventDefault();
+      grabbed = hit;
+      gesture.press("mouse", event.point.x, event.point.y);
+    });
+    const onMouseMove = (event: MouseEvent) => {
+      if (gesture.active) follow(local(event.clientX, event.clientY));
+    };
+    const onMouseUp = (event: MouseEvent) => {
+      if (gesture.active) finish(local(event.clientX, event.clientY));
+    };
+    map.on("touchstart", (event) => {
+      if (event.points.length !== 1) {
+        // A second finger is a pinch, never a drag of the line.
+        if (gesture.active) finish(null);
+        return;
+      }
+      if (event.originalEvent.target !== canvas) return;
+      const hit = lineAt(event.point, TOUCH_HIT_PX);
+      if (!hit) return;
+      grabbed = hit;
+      gesture.press("touch", event.point.x, event.point.y);
+    });
+    const onTouchMove = (event: TouchEvent) => {
+      if (!gesture.active) return;
+      if (event.touches.length !== 1) {
+        finish(null);
+        return;
+      }
+      const touch = event.touches[0];
+      if (follow(local(touch.clientX, touch.clientY))) event.preventDefault();
+    };
+    const onTouchEnd = (event: TouchEvent) => {
+      if (!gesture.active) return;
+      const touch = event.changedTouches[0];
+      finish(event.type === "touchend" && touch ? local(touch.clientX, touch.clientY) : null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && gesture.active) finish(null);
+    };
+    // A long press on a phone also asks for the browser's context menu.
+    const onContextMenu = (event: Event) => {
+      if (gesture.active) event.preventDefault();
+    };
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("touchmove", onTouchMove, { passive: false });
+    window.addEventListener("touchend", onTouchEnd);
+    window.addEventListener("touchcancel", onTouchEnd);
+    window.addEventListener("keydown", onKey);
+    canvas.addEventListener("contextmenu", onContextMenu);
+
     map.on("click", (event) => {
-      callbacks.current.onMapClick([event.lngLat.lng, event.lngLat.lat]);
+      if (performance.now() < clickSuppressedUntil) return;
+      // A click on the line puts the via in the leg clicked, as a drag does;
+      // anywhere else it is addPoint's (the leg it lengthens least).
+      const touch = (event.originalEvent as PointerEvent).pointerType === "touch";
+      const hit =
+        event.originalEvent.target === canvas ? lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) : null;
+      const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
+      if (hit) callbacks.current.onLineDrop(hit.leg, point, hit.points);
+      else callbacks.current.onMapClick(point);
     });
 
     // Under the base map's labels and the route, over its roads, in the
@@ -187,6 +378,27 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#1d4ed8", "line-width": 5 },
       });
+      map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
+      map.addLayer({
+        id: "route-edit-preview",
+        type: "line",
+        source: EDIT_SOURCE,
+        filter: ["==", ["geometry-type"], "LineString"],
+        layout: { "line-cap": "round" },
+        paint: { "line-color": "#1d4ed8", "line-width": 3, "line-opacity": 0.75, "line-dasharray": [2, 1.5] },
+      });
+      map.addLayer({
+        id: "route-edit-handle",
+        type: "circle",
+        source: EDIT_SOURCE,
+        filter: ["==", ["geometry-type"], "Point"],
+        paint: {
+          "circle-radius": 7,
+          "circle-color": "#ffffff",
+          "circle-stroke-color": "#1d4ed8",
+          "circle-stroke-width": 3,
+        },
+      });
       syncRoute(map, callbacks.current, fitted);
       callbacks.current.onReady(map);
       callbacks.current.onStressAvailability("checking");
@@ -208,6 +420,16 @@ export function MapView(props: Props) {
     return () => {
       disposed = true;
       if (recheck !== null) clearTimeout(recheck);
+      if (hoverFrame) cancelAnimationFrame(hoverFrame);
+      gesture.cancel();
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("touchmove", onTouchMove);
+      window.removeEventListener("touchend", onTouchEnd);
+      window.removeEventListener("touchcancel", onTouchEnd);
+      window.removeEventListener("keydown", onKey);
+      canvas.removeEventListener("mouseleave", onCanvasLeave);
+      canvas.removeEventListener("contextmenu", onContextMenu);
       loaded.current = false;
       markers.current.forEach((m) => m.remove());
       markers.current = [];
@@ -249,6 +471,14 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
+
+  // A route that can no longer be dragged (it is being planned again) takes
+  // its hover handle with it.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current || props.lineEdit) return;
+    (map.getSource(EDIT_SOURCE) as GeoJSONSource | undefined)?.setData(editData(null, []));
+  }, [props.lineEdit]);
 
   // The overlay toggle.
   useEffect(() => {
