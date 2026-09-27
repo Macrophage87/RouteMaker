@@ -42,3 +42,19 @@ MOTOR_ONLY_HIGHWAY = ALWAYS_TOP_TIER_HIGHWAY  # retained name for existing impor
 # Together the two are exactly TRAIL_CLASS_HIGHWAY.
 TRAIL_NETWORK_HIGHWAY = frozenset({"cycleway", "path", "bridleway"})
 SIDEWALK_CLASS_HIGHWAY = TRAIL_CLASS_HIGHWAY - TRAIL_NETWORK_HIGHWAY
+
+# The one footway that is a trail in practice: signed for bicycles and not a
+# sidewalk or a crossing. In the clipped extract of 2026-09-25, 856 such ways,
+# among them stretches of the Cross County Trail, the Ma and Pa Heritage
+# Trail, the Four Mile Run Trail and the W&OD; the 401 bicycle-designated
+# footways tagged footway=sidewalk are sidepaths along a street, which the
+# zoomed-out map leaves with the other sidewalks.
+SIDEWALK_FOOTWAY_VALUES = frozenset({"sidewalk", "crossing"})
+
+
+def is_bicycle_trail_footway(tags: dict[str, str]) -> bool:
+    return (
+        tags.get("highway") == "footway"
+        and tags.get("bicycle") == "designated"
+        and tags.get("footway") not in SIDEWALK_FOOTWAY_VALUES
+    )

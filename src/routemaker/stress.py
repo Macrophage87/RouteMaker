@@ -97,7 +97,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
+from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, is_bicycle_trail_footway
 from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
@@ -356,13 +356,16 @@ def _bike_lane_tier(
     return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
 
 
-def trail_rule(highway: str) -> str:
-    """The rule recorded on a trail-class way of `highway`.
+def trail_rule(highway: str, bicycle_trail: bool = False) -> str:
+    """The rule recorded on a trail-class way of `highway`; `bicycle_trail` for
+    a footway that is a trail in practice (`classes.is_bicycle_trail_footway`).
 
     A function rather than an f-string at its one use because the stress tiles
     select trail kinds by this recorded rule (`pipeline.schema`'s overview
-    predicate), and the two must not drift apart.
+    predicate), and the two must not drift apart. The tier is LTS 1 either way.
     """
+    if bicycle_trail:
+        return f"trail-class way ({highway}, designated for bicycles)"
     return f"trail-class way ({highway})"
 
 
@@ -389,7 +392,7 @@ def classify(
     assumed: list[str] = []
 
     if highway in TRAIL_CLASS:
-        return StressResult(Stress.LTS1, trail_rule(highway))
+        return StressResult(Stress.LTS1, trail_rule(highway, is_bicycle_trail_footway(tags)))
 
     if highway in MOTOR_ONLY:
         return StressResult(Stress.LTS4, f"motor-only classification ({highway})")

@@ -110,10 +110,22 @@ def _text_list(values) -> str:
 # index below is created with it and the tile query filters with it, and
 # PostgreSQL uses a partial index only when it can prove the query's condition
 # implies the index's - which it does for the same expression.
+# The trail network's recorded rules: cycleways, paths, bridleways, and the
+# footways designated for bicycles that are not sidewalks.
+TRAIL_NETWORK_RULES = frozenset(
+    [trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY] + [trail_rule("footway", bicycle_trail=True)]
+)
+
 OVERVIEW_PREDICATE = (
-    "(stress_tier >= 3 OR stress_rule IN ("
-    + _text_list(trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY)
-    + "))"
+    "(stress_tier >= 3 OR stress_rule IN (" + _text_list(TRAIL_NETWORK_RULES) + "))"
+)
+
+# Until the live table has a facility column the tiles derive one: the trail
+# network is an off-road path, and nothing else is anything. That is what
+# draws the trails with the path's rails before the routing lane's column
+# exists, so they read on parkland green at region zoom.
+TRAIL_NETWORK_FACILITY = (
+    "CASE WHEN stress_rule IN (" + _text_list(TRAIL_NETWORK_RULES) + ") THEN 'path' END"
 )
 
 # What they draw at street zoom (`core.stress_tiles.STREETS`): everything but

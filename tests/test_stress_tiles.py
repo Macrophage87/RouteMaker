@@ -63,6 +63,7 @@ CLASSES = [
     ("collector", 3, "mixed traffic, 30 mph, single lane", False, False),
     ("arterial", 4, "mixed traffic, 35 mph or above", False, False),
     *[(h, 1, trail_rule(h), True, h in TRAIL_NETWORK_HIGHWAY) for h in sorted(TRAIL_CLASS_HIGHWAY)],
+    ("trail on a footway", 1, trail_rule("footway", bicycle_trail=True), True, True),
 ]
 
 
@@ -113,7 +114,9 @@ def expected(keep) -> Counter:
 
 
 SIDEWALK_RULES = {trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY}
-NETWORK_RULES = {trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY}
+NETWORK_RULES = {trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY} | {
+    trail_rule("footway", bicycle_trail=True)
+}
 
 
 class TestClasses:
@@ -126,6 +129,24 @@ class TestClasses:
     @pytest.mark.parametrize("highway", sorted(TRAIL_CLASS_HIGHWAY))
     def test_the_classifier_records_the_rule_the_tiles_select_on(self, highway) -> None:
         assert classify({"highway": highway}).rule == trail_rule(highway)
+
+    @pytest.mark.parametrize(
+        ("tags", "trail"),
+        [
+            ({"highway": "footway", "bicycle": "designated"}, True),
+            ({"highway": "footway", "bicycle": "designated", "footway": "sidewalk"}, False),
+            ({"highway": "footway", "bicycle": "designated", "footway": "crossing"}, False),
+            ({"highway": "footway", "bicycle": "yes"}, False),
+            ({"highway": "pedestrian", "bicycle": "designated"}, False),
+        ],
+    )
+    def test_a_footway_designated_for_bicycles_is_a_trail_unless_a_sidewalk(
+        self, tags, trail
+    ) -> None:
+        result = classify(tags)
+        assert result.tier == 1
+        assert result.rule == trail_rule(tags["highway"], bicycle_trail=trail)
+        assert (result.rule in NETWORK_RULES) == trail
 
 
 @db
@@ -141,7 +162,7 @@ class TestContract:
         assert classes_in(response.content) == expected(lambda tier, rule: True)
         for feature in layer.features:
             assert feature.type == 2  # LINESTRING
-            assert set(feature.properties) <= {"tier", "trail", "unpaved"}
+            assert set(feature.properties) <= {"tier", "trail", "unpaved", "facility"}
             assert isinstance(feature.properties["trail"], bool)
 
     def test_an_unknown_surface_is_left_out_rather_than_called_paved(self, client, live) -> None:
@@ -299,6 +320,25 @@ class TestLevels:
         assert [lv.min_zoom for lv in dict.fromkeys(levels)] == sorted(
             lv.min_zoom for lv in stress_tiles.LEVELS
         )
+
+    def test_the_legend_names_the_zooms_the_levels_start_at(self) -> None:
+        """The front end's legend says what is drawn at which zoom, from
+        STRESS_ZOOMS in mapStyle.ts; those have to be these."""
+        import re
+        from pathlib import Path
+
+        source = (
+            Path(__file__).resolve().parents[1] / "frontend" / "src" / "lib" / "mapStyle.ts"
+        ).read_text()
+        block = re.search(r"STRESS_ZOOMS\s*=\s*\{([^}]*)\}", source)
+        assert block, "mapStyle.ts no longer declares STRESS_ZOOMS"
+        zooms = {k: int(v) for k, v in re.findall(r"(\w+):\s*(\d+)", block.group(1))}
+        assert zooms == {
+            "min": stress_tiles.MIN_ZOOM,
+            "streets": stress_tiles.STREETS.min_zoom,
+            "full": stress_tiles.FULL.min_zoom,
+            "max": stress_tiles.MAX_ZOOM,
+        }
 
     @pytest.mark.parametrize("z", [10, 12, 14])
     def test_a_tier_the_tiles_have_not_met_is_carried_as_the_table_holds_it(
@@ -491,11 +531,19 @@ class TestFacility:
             f.properties.get("facility", "(absent)") for f in features for _line in f.lines
         )
 
-    def test_without_the_column_no_feature_carries_it(self, client, live) -> None:
-        for z in (10, 12, 14):
-            features = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"].features
-            assert features
-            assert not any("facility" in f.properties for f in features)
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_without_the_column_the_trail_network_is_a_path_and_nothing_else_is_anything(
+        self, client, live, z
+    ) -> None:
+        """The stand-in until the routing lane's column: the trails carry the
+        path's rails; streets and sidewalks carry no facility at all."""
+        features = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"].features
+        drawn = Counter()
+        for f in features:
+            drawn[f.properties.get("facility", "(absent)")] += len(f.lines)
+        network = sum(1 for _l, _t, rule, _tr, _u in CLASSES if rule in NETWORK_RULES)
+        assert drawn["path"] == network
+        assert set(drawn) <= {"path", "(absent)"}
 
     def test_the_column_added_in_place_changes_the_etag(self, client, live) -> None:
         """Added by hand to a live table, the column changes the tiles but not

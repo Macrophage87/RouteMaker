@@ -13,7 +13,8 @@ measured on the first promoted build, the z10 tile over downtown DC held
 228,854 of them in 6.0 MB and took 3.5 s, and the z12 tile 47,392 in 1.2 MB.
 
 - `OVERVIEW`, z10-11: the roads of LTS 3 and 4 and the trail network
-  (cycleways, paths, bridleways; `routemaker.classes.TRAIL_NETWORK_HIGHWAY`).
+  (cycleways, paths, bridleways, and footways designated for bicycles that
+  are not sidewalks; `pipeline.schema.TRAIL_NETWORK_RULES`).
   Quiet streets and sidewalks are left out: at this scale they are a solid
   mesh over every street grid, and the question a zoomed-out map answers is
   where the busy roads and the trails are. The front end's legend says so.
@@ -53,6 +54,7 @@ from pipeline.schema import (
     FACILITY_COLUMN,
     OVERVIEW_PREDICATE,
     STREETS_PREDICATE,
+    TRAIL_NETWORK_FACILITY,
     keeping_facilities,
     validate_schema_name,
 )
@@ -69,7 +71,7 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 
 # Bumped whenever what a tile holds changes for the same table, so a client's
 # cached tiles are not revalidated as current against a different encoding.
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -130,8 +132,14 @@ PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_u
 # facility (path, protected, lane, none) arrives with the routing lane's
 # change, and a table promoted before it has no such column. Where it is
 # there, the zoomed-out levels also keep the paths and protected lanes
-# (`pipeline.schema.keeping_facilities`).
+# (`pipeline.schema.keeping_facilities`). Where it is not, a stand-in is
+# carried in its place (`FALLBACKS`).
 OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN}
+
+# What an optional property is drawn from on a table without its column: the
+# facility is derived from the trail network (an off-road path, or nothing),
+# so the trails carry the path's rails at every zoom before the column exists.
+FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
@@ -176,7 +184,12 @@ def _table() -> str:
 def tile_sql(level: Level, optional: frozenset[str] = frozenset()) -> str:
     """The level's query, carrying the optional columns in `optional` too."""
     template = _MERGED if level.merged else _PER_SEGMENT
-    carried = PROPERTIES | {n: c for n, c in OPTIONAL_PROPERTIES.items() if c in optional}
+    carried = {name: f"s.{column}" for name, column in PROPERTIES.items()}
+    for name, column in OPTIONAL_PROPERTIES.items():
+        if column in optional:
+            carried[name] = f"s.{column}"
+        elif name in FALLBACKS:
+            carried[name] = FALLBACKS[name]
     where = level.where or "true"
     if level.where and FACILITY_COLUMN in optional:
         where = keeping_facilities(where)
@@ -184,8 +197,8 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset()) -> str:
         table=_table(),
         where=where,
         layer=LAYER,
-        columns=", ".join(f"s.{column} AS {name}" for name, column in carried.items()),
-        group_by=", ".join(f"s.{column}" for column in carried.values()),
+        columns=", ".join(f"{expression} AS {name}" for name, expression in carried.items()),
+        group_by=", ".join(carried.values()),
     )
 
 
