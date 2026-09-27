@@ -76,7 +76,8 @@ export function importSentences(plan: ImportedPlan): string[] {
   const count = plan.points.length;
   const head =
     plan.source === "track"
-      ? `${named} was a track of ${km(plan.referenceM)} km; it is now a plan of ${count} points that the planner routes between.`
+      ? // No count: fitting adds points after this is said (GpxPanel), and the list shows them.
+        `${named} was a track of ${km(plan.referenceM)} km; the plan follows it through points taken from its shape.`
       : plan.source === "route"
         ? `${named} opened as a plan of its ${count} route points${plan.preset ? `, as a ${presetLabel(plan.preset)}` : ""}.`
         : `${named} had no track or route; its ${count} waypoints are the plan, in the file's order.`;

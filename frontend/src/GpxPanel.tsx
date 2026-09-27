@@ -36,6 +36,17 @@ function samePoints(a: readonly LonLat[], b: readonly LonLat[]): boolean {
   return a.length === b.length && a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1]);
 }
 
+function bounds(line: readonly LonLat[]): [number, number, number, number] {
+  let [west, south, east, north] = [Infinity, Infinity, -Infinity, -Infinity];
+  for (const [lon, lat] of line) {
+    west = Math.min(west, lon);
+    east = Math.max(east, lon);
+    south = Math.min(south, lat);
+    north = Math.max(north, lat);
+  }
+  return [west, south, east, north];
+}
+
 type Reading = { kind: "idle" } | { kind: "reading"; name: string } | { kind: "error"; message: string };
 
 /**
@@ -91,9 +102,32 @@ export function GpxPanel({ route, routedPoints, points, planStatus, imported, on
       setShowTrack(true);
       setFit(outcome.plan.source === "track" ? { points: outcome.plan.points, rounds: 0 } : null);
       onImport(outcome.plan);
+      frame(outcome.plan);
     } else {
       setReading({ kind: "error", message: outcome.message });
     }
+  };
+
+  // An opened file is shown whole, beside the panel rather than under it.
+  // MapView moves only when a route leaves the view, and a file opened over
+  // a wider view would otherwise be a speck in it.
+  const frame = (plan: ImportedPlan) => {
+    const map = getMap();
+    const line = plan.reference.length >= 2 ? plan.reference : plan.points;
+    if (!map || line.length < 2) return;
+    const panel = document.querySelector(".panel")?.getBoundingClientRect();
+    const narrow = window.matchMedia("(max-width: 720px)").matches;
+    const padding = narrow
+      ? { top: 40, left: 30, right: 30, bottom: (panel?.height ?? 0) + 90 }
+      : { top: 60, bottom: 60, right: 60, left: (panel?.right ?? 0) + 40 };
+    const [west, south, east, north] = bounds(line);
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding, maxZoom: 15, duration: 600 },
+    );
   };
 
   const download = () => {

@@ -80,11 +80,11 @@ const PLAN: ImportedPlan = {
   ],
 };
 
-test("an opened file is described: its name, its length, the plan's size, then one sentence per note", () => {
+test("an opened file is described: its name, its length, then one sentence per note", () => {
   const sentences = importSentences(PLAN);
   assert.equal(sentences.length, 1 + PLAN.notes.length);
   assert.ok(sentences[0].includes("Sunday loop"));
-  assert.deepEqual(numbers(sentences[0]), ["42.4", "25"]);
+  assert.deepEqual(numbers(sentences[0]), ["42.4"]);
   assert.deepEqual(numbers(sentences[1]), ["12"]);
   assert.deepEqual(numbers(sentences[2]), ["3"]);
   assert.deepEqual(numbers(sentences[3]), ["4"]);
