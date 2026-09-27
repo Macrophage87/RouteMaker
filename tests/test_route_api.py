@@ -886,6 +886,46 @@ def clock(monkeypatch):
     return fake
 
 
+def timed(clock, fake, durations):
+    """`fake`, with each call taking `durations[endpoint]` seconds on `clock`
+    (a number, or a list consumed in order). A call longer than its timeout
+    moves the clock by the timeout and raises RouterUnavailable, as a socket
+    timeout does. The timeouts given are kept in `.timeouts`."""
+
+    def call(url, payload, timeout):
+        call.timeouts.append(timeout)
+        took = durations.get(url.rsplit("/", 1)[1], 0.0)
+        if isinstance(took, list):
+            took = took.pop(0)
+        if took > timeout:
+            clock.now += timeout
+            raise routing.RouterUnavailable("timed out")
+        clock.now += took
+        return fake(url, payload, timeout)
+
+    call.timeouts = []
+    return call
+
+
+def arrives_late(monkeypatch, clock, seconds: float) -> None:
+    """The request spends `seconds` in the per-minute count, before any
+    routing starts, as a loaded host or a swapped-out worker makes it."""
+    from core import ratelimit
+
+    real = ratelimit.hit
+
+    def slow_hit(limit, client):
+        clock.now += seconds
+        return real(limit, client)
+
+    monkeypatch.setattr(ratelimit, "hit", slow_hit)
+
+
+# The routers' window: what is left of a budget once the answer's share is kept back.
+WINDOW_S = routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
+LONG_WINDOW_S = routing.LONG_PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
+
+
 @db
 class TestTimeBudget:
     def test_every_call_has_a_finite_timeout_under_gunicorns(
@@ -905,50 +945,108 @@ class TestTimeBudget:
 
     def test_the_budget_is_under_gunicorns_timeout(self) -> None:
         assert 0 < routing.PLAN_BUDGET_S < 60
-        assert routing.ROUTER_TIMEOUT_S <= routing.PLAN_BUDGET_S
+        assert 0 < routing.ROUTER_TIMEOUT_S <= WINDOW_S
 
     def test_a_late_call_gets_only_what_is_left(self, client, segments, router, clock) -> None:
-        timeouts = []
-        fake = standard_router()
+        call = router(timed(clock, standard_router(), {"route": WINDOW_S - 5}))
+        assert post(client, good_body()).status_code == 200
+        assert call.timeouts[0] == routing.ROUTER_TIMEOUT_S
+        assert call.timeouts[1] == pytest.approx(5.0)
 
-        def slow(url, payload, timeout):
-            timeouts.append(timeout)
-            clock.now += routing.PLAN_BUDGET_S - 5
-            return fake(url, payload, timeout)
+    @pytest.mark.parametrize("long_ride", [False, True])
+    def test_the_budget_starts_when_the_request_arrives(
+        self, long_ride, client, segments, router, clock, monkeypatch
+    ) -> None:
+        """Review round 3: the clock started inside the planner, so time spent
+        before it - the count, the slots, a worker swapped out - came on top of
+        the budget and ate into gunicorn's margin."""
+        arrives_late(monkeypatch, clock, 10)
+        call = router(timed(clock, long_router(), {}))
+        body = long_body(160, confirm_long=True) if long_ride else good_body()
+        assert post(client, body).status_code == 200
+        window = LONG_WINDOW_S if long_ride else WINDOW_S
+        assert call.timeouts[0] == pytest.approx(window - 10)
 
-        router(slow)
-        post(client, good_body())
-        assert timeouts[0] == routing.ROUTER_TIMEOUT_S
-        assert timeouts[1] == pytest.approx(5.0)
+    @pytest.mark.parametrize("long_ride", [False, True])
+    def test_no_router_call_runs_into_the_answers_reserve(
+        self, long_ride, client, segments, router, clock
+    ) -> None:
+        """However the router behaves, the last call ends where the window
+        ends, leaving the reserve for the stress join and the answer."""
+        start = clock.now
+        took = (LONG_WINDOW_S if long_ride else WINDOW_S) - 3
+        router(timed(clock, long_router(), {"route": took, "trace_attributes": 1000.0}))
+        body = long_body(160, confirm_long=True) if long_ride else good_body()
+        assert post(client, body).status_code == 200
+        budget = routing.LONG_PLAN_BUDGET_S if long_ride else routing.PLAN_BUDGET_S
+        assert clock.now - start == pytest.approx(budget - routing.ANSWER_RESERVE_S)
 
-    def test_a_spent_budget_is_503_with_retry_after(self, client, segments, router, clock) -> None:
-        fake = standard_router()
-        calls = []
-
-        def slow(url, payload, timeout):
-            calls.append(url)
-            clock.now += routing.PLAN_BUDGET_S + 1
-            return fake(url, payload, timeout)
-
-        router(slow)
-        response = post(client, good_body())
-        assert response.status_code == 503
-        assert int(response["Retry-After"]) >= 1
-        assert set(response.json()) == {"error"}
-        assert len(calls) == 1, "no call is started once the budget is gone"
-
-    def test_a_timeout_that_ends_the_budget_is_503_not_502(
+    def test_an_ordinary_route_may_take_longer_than_twenty_seconds(
         self, client, segments, router, clock
     ) -> None:
-        def hangs(url, payload, timeout):
-            clock.now += timeout
-            raise routing.RouterUnavailable("timed out")
+        """Review round 3 (spec): a Mass Ride loop of 169 km spanning 141 km -
+        no long ride - took 20.8 s and 23.5 s on /route with the host loaded,
+        and a fixed 20 s per call made it a 502 with most of the budget left."""
+        router(timed(clock, standard_router(), {"route": 25.0}))
+        assert post(client, good_body("mass-ride")).status_code == 200
 
-        router(hangs)
+    def test_a_route_that_ends_the_budget_is_503_with_retry_after(
+        self, client, segments, router, clock
+    ) -> None:
+        call = router(timed(clock, standard_router(), {"route": 1000.0}))
         with pytest.MonkeyPatch.context() as patch:
             patch.setattr(routing, "ROUTER_TIMEOUT_S", routing.PLAN_BUDGET_S + 10)
             response = post(client, good_body())
         assert response.status_code == 503
+        assert int(response["Retry-After"]) >= 1
+        assert set(response.json()) == {"error"}
+        assert len(call.timeouts) == 1, "no call is started once the budget is gone"
+
+    def test_a_route_answered_as_the_budget_ends_is_kept(
+        self, client, segments, router, clock
+    ) -> None:
+        """A route found is not thrown away for want of time to trace it: its
+        stress is unknown, and no trace is started."""
+        fake = standard_router()
+
+        def answers_late(url, payload, timeout):
+            clock.now += WINDOW_S + 1
+            return fake(url, payload, timeout)
+
+        router(answers_late)
+        response = post(client, good_body())
+        assert response.status_code == 200
+        stress = response.json()["stress_m"]
+        assert stress["unknown"] == pytest.approx(2200.0)
+        assert sum(stress.values()) == pytest.approx(2200.0)
+        assert fake.endpoints() == ["route"]
+
+    def test_legs_left_untraced_by_the_budget_are_unknown(
+        self, client, segments, router, clock
+    ) -> None:
+        """The first leg traced in time keeps its tiers; the leg whose trace
+        ran out of time and every leg after it count as unknown, untried."""
+        legs = [VERTICES[:2], VERTICES[1:3], VERTICES[2:4]]
+        fake = FakeRouter(
+            {
+                "route": route_answer(
+                    [(legs[0], 0.9, [1.0]), (legs[1], 0.4, [1.0]), (legs[2], 0.6, [1.0])]
+                ),
+                "trace_attributes": [
+                    trace_answer(legs[0], [(101, 0, 1, 0.9)]),
+                    trace_answer(legs[1], [(202, 0, 1, 0.4)]),
+                    trace_answer(legs[2], [(202, 0, 1, 0.6)]),
+                ],
+            }
+        )
+        call = router(timed(clock, fake, {"route": 1.0, "trace_attributes": [1.0, 1000.0, 1.0]}))
+        points = [list(VERTICES[0]), list(VERTICES[1]), list(VERTICES[2]), list(VERTICES[3])]
+        response = post(client, {"points": points, "preset": "default"})
+        assert response.status_code == 200
+        stress = response.json()["stress_m"]
+        assert stress["3"] == pytest.approx(900.0, abs=0.5)
+        assert stress["unknown"] == pytest.approx(1000.0, abs=0.5)
+        assert len(call.timeouts) == 3, "the third leg is not tried"
 
     def test_a_timeout_inside_the_budget_is_still_502(
         self, client, segments, router, clock
@@ -960,73 +1058,96 @@ class TestTimeBudget:
         router(hangs)
         assert post(client, good_body()).status_code == 502
 
+    def test_the_figures(self) -> None:
+        """Written as numbers, because every other test here reads them from the
+        module. An ordinary call may take nearly the whole window (35 of 37 s),
+        because a loaded /route for a 169 km loop took 23.5 s; the answer keeps
+        3 s for the stress join and the serialisation."""
+        assert (routing.ROUTER_TIMEOUT_S, routing.PLAN_BUDGET_S) == (35, 40)
+        assert routing.ANSWER_RESERVE_S == 3
+
+    def test_gunicorns_timeout_leaves_ten_seconds_past_the_longest_budget(self) -> None:
+        """The whole request is inside its budget, and the entrypoint's default
+        GUNICORN_TIMEOUT must stay at least ten seconds past the longest one."""
+        import re
+        from pathlib import Path
+
+        entrypoint = Path(settings.BASE_DIR) / "docker" / "api-entrypoint.sh"
+        found = re.search(r"--timeout \"\$\{GUNICORN_TIMEOUT:-(\d+)\}\"", entrypoint.read_text())
+        assert found is not None
+        assert routing.LONG_PLAN_BUDGET_S + 10 <= int(found.group(1))
+
 
 @db
 class TestLongRideTime:
     """A confirmed long ride has more time than an ordinary plan. Measured on
     the real routers with the host loaded: a cold single-leg /route for
-    Culpeper to Baltimore (158 km of straight line) took 43.9 s, the same
-    request warm 9.5 s; the ordinary 20 s per call made the first a 502."""
-
-    def recording(self, router):
-        fake = long_router()
-        timeouts = []
-
-        def slow(url, payload, timeout):
-            timeouts.append(timeout)
-            return fake(url, payload, timeout)
-
-        router(slow)
-        return timeouts
+    Culpeper to Baltimore (150.4 km of straight line, 183 km routed) took
+    43.9 s, the same request warm 9.5 s; the old 20 s per call made the first
+    a 502."""
 
     def test_a_long_rides_router_call_may_take_the_long_timeout(
-        self, client, segments, router
+        self, client, segments, router, clock
     ) -> None:
-        timeouts = self.recording(router)
+        call = router(timed(clock, long_router(), {}))
         assert post(client, long_body(160, confirm_long=True)).status_code == 200
-        assert timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
+        assert call.timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
         assert routing.LONG_ROUTER_TIMEOUT_S > routing.ROUTER_TIMEOUT_S
 
     def test_a_signed_in_long_ride_has_the_long_timeout_too(
-        self, client, segments, router, monkeypatch
+        self, client, segments, router, monkeypatch, clock
     ) -> None:
         from core.models import User
 
-        timeouts = self.recording(router)
+        call = router(timed(clock, long_router(), {}))
         sign_in(client, monkeypatch, User.objects.create(discord_user_id=4405))
         assert post(client, long_body(160)).status_code == 200
-        assert timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
+        assert call.timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
 
-    def test_an_ordinary_plan_keeps_the_ordinary_timeout(self, client, segments, router) -> None:
-        timeouts = self.recording(router)
+    def test_an_ordinary_plan_keeps_the_ordinary_timeout(
+        self, client, segments, router, clock
+    ) -> None:
+        call = router(timed(clock, long_router(), {}))
         assert post(client, good_body()).status_code == 200
-        assert timeouts[0] == routing.ROUTER_TIMEOUT_S
+        assert call.timeouts[0] == routing.ROUTER_TIMEOUT_S
 
-    @pytest.mark.parametrize(("spent", "status"), [("ordinary", 200), ("long", 503)])
+    def test_a_cold_long_leg_is_planned_and_traced(self, client, segments, router, clock) -> None:
+        """The measured cold Culpeper-Baltimore /route, 43.9 s, fits."""
+        router(timed(clock, long_router(), {"route": 43.9, "trace_attributes": 1.0}))
+        response = post(client, long_body(160, confirm_long=True))
+        assert response.status_code == 200
+        assert response.json()["stress_m"]["3"] > 0, "and it is traced"
+
+    @pytest.mark.parametrize(("took", "status"), [("ordinary", 200), ("long", 503)])
     def test_a_long_ride_has_the_long_budget(
-        self, spent, status, client, segments, router, clock
+        self, took, status, client, segments, router, clock
     ) -> None:
         """Past the ordinary budget a long ride is still planned; past its own
         it is the same 503 as any other."""
-        fake = long_router()
-        budget = routing.PLAN_BUDGET_S if spent == "ordinary" else routing.LONG_PLAN_BUDGET_S
-
-        def slow(url, payload, timeout):
-            if url.endswith("/route"):
-                clock.now += budget + 1
-            return fake(url, payload, timeout)
-
-        router(slow)
-        response = post(client, long_body(160, confirm_long=True))
+        seconds = routing.PLAN_BUDGET_S + 1 if took == "ordinary" else 1000.0
+        router(timed(clock, long_router(), {"route": seconds}))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(routing, "LONG_ROUTER_TIMEOUT_S", routing.LONG_PLAN_BUDGET_S + 10)
+            response = post(client, long_body(160, confirm_long=True))
         assert response.status_code == status
         if status == 503:
             assert int(response["Retry-After"]) >= 1
 
+    def test_a_late_long_call_gets_what_is_left_of_the_long_budget(
+        self, client, segments, router, clock
+    ) -> None:
+        """Review round 3 (mutation, N92/N93): the long-budget mirror of
+        test_a_late_call_gets_only_what_is_left."""
+        call = router(timed(clock, long_router(), {"route": LONG_WINDOW_S - 5}))
+        assert post(client, long_body(160, confirm_long=True)).status_code == 200
+        assert call.timeouts[0] == routing.LONG_ROUTER_TIMEOUT_S
+        assert call.timeouts[1] == pytest.approx(5.0)
+
     def test_the_long_figures(self) -> None:
-        """Written as numbers. The whole budget leaves gunicorn's 60 s kill ten
-        seconds for the stress join and the answer; one call may take most of it."""
+        """Written as numbers; the owner's answer of 2026-09-26 is 50 s for a
+        confirmed long ride. One call may take most of it."""
         assert (routing.LONG_ROUTER_TIMEOUT_S, routing.LONG_PLAN_BUDGET_S) == (45, 50)
-        assert routing.LONG_PLAN_BUDGET_S <= 60 - 10
+        assert routing.LONG_ROUTER_TIMEOUT_S <= LONG_WINDOW_S
 
 
 def spanning(km: float) -> list[list[float]]:
@@ -1086,10 +1207,11 @@ class TestLengthCap:
         assert post(client, {"points": spanning(149.5), "preset": "default"}).status_code == 200
         assert post(client, {"points": spanning(150.5), "preset": "default"}).status_code == 409
 
-    def test_the_ceiling_is_300_km(self, client, segments, router) -> None:
+    def test_the_ceiling_is_200_km(self, client, segments, router) -> None:
+        """The owner's answer of 2026-09-26: "200 km"."""
         router(long_router())
-        under = {"points": bouncing(299.5), "preset": "default", "confirm_long": True}
-        over = {"points": bouncing(300.5), "preset": "default", "confirm_long": True}
+        under = {"points": bouncing(199.5), "preset": "default", "confirm_long": True}
+        over = {"points": bouncing(200.5), "preset": "default", "confirm_long": True}
         assert post(client, under).status_code == 200
         assert post(client, over).status_code == 400
 
@@ -1207,7 +1329,7 @@ class TestLongRide:
         the module and so moves with them."""
         from core.api import CONFIRM_SPAN_M, MAX_SPAN_M
 
-        assert (CONFIRM_SPAN_M, MAX_SPAN_M) == (150_000, 300_000)
+        assert (CONFIRM_SPAN_M, MAX_SPAN_M) == (150_000, 200_000)
 
     def test_the_409_is_in_the_schema(self, client) -> None:
         operation = client.get("/api/openapi.json").json()["paths"][ROUTE_PATH]["post"]

@@ -36,10 +36,15 @@ ways - and differ only for a piece that straddles a segment boundary, whose
 length all goes to the segment nearer its middle instead of being split there.
 
 Every request has one time budget, `PLAN_BUDGET_S` (`LONG_PLAN_BUDGET_S` for a
-long ride), across all of its router calls. gunicorn kills a worker at its 60 s timeout and Caddy then answers an
-empty 502; the budget ends the request well before that with an answer the
-contract names (503 with Retry-After), and every call's socket timeout is
-clipped to what is left of it.
+long ride), counted from when it reaches the api (`core.api.errors_as_json`,
+the outermost wrapper), so the count, the slots and the answer are inside it.
+gunicorn kills a worker at its 60 s timeout and Caddy then answers an empty
+502; the budget ends the request well before that. The router calls get the
+budget less `ANSWER_RESERVE_S`, kept back for the stress join and the
+answer, and each call's socket timeout is the smaller of its per-call limit
+and what is left of that. A /route that runs out of it is 503 with
+Retry-After; a trace that does leaves its leg, and the legs after it, unknown,
+so a route already found is still answered.
 
 Climb and descent come from the route's elevation profile through
 `routemaker.measure.elevation_gain`, the same hysteresis definition the
@@ -75,27 +80,42 @@ logger = logging.getLogger(__name__)
 # ground here, so a finer interval samples the same cell twice.
 ELEVATION_INTERVAL_M = 30
 
-# How long one call to a router may take before the answer is 502. The plan's
-# latency target is p95 under 3 s for a 50-mile preview; this is the ceiling
-# past which the router is treated as not answering at all.
-ROUTER_TIMEOUT_S = 20
-
-# The whole request's budget across every router call. gunicorn's --timeout is
-# 60 s (docker/api-entrypoint.sh); 40 leaves room for the stress query and the
-# response and is still an answer rather than a killed worker.
+# The whole request's budget, from its arrival to its answer. gunicorn's
+# --timeout is 60 s (GUNICORN_TIMEOUT in docker/api-entrypoint.sh), and this is
+# an answer well inside it rather than a killed worker.
 PLAN_BUDGET_S = 40
 
-# A long ride (past 150 km of straight line; owner decision of 2026-09-26) has
-# more of both. A single long leg is one /route search, and on the real
-# routers with the host loaded a cold one - its graph tiles not yet in the
-# router's cache - took 43.9 s for Culpeper to Baltimore, 158 km of straight
-# line, and the same request 9.5 s warm; at 20 s per call the first was a
-# 502, however willing the rider was to wait. Only one long ride runs at a
-# time in the whole api (core.ratelimit.LONG_ROUTING_IN_FLIGHT), so the longer
-# hold is one worker's. 50 s still leaves gunicorn's 60 s kill ten seconds for
-# the stress join and the answer.
+# Of each budget, the seconds no router call may use: the stress join over the
+# traced pieces and the serialised answer. For a long route with the host
+# loaded the two together took about 3 s (review round 3).
+ANSWER_RESERVE_S = 3
+
+# How long one router call may take, at most, before the answer is 502; it is
+# also never more than what is left of the budget. The plan's latency target
+# is p95 under 3 s for a 50-mile preview, but an ordinary plan is up to 150 km
+# of straight line: on a loaded host the /route for a 169 km Mass Ride loop
+# spanning 141 km took 20.8 s and 23.5 s (review round 3), which a fixed 20 s
+# made a 502 with most of the budget unspent. 35 s is nearly all of the 37 s
+# the budget leaves the routers, and still lets a trace start after it.
+ROUTER_TIMEOUT_S = 35
+
+# A long ride (past 150 km of straight line) has more of both; the owner's
+# answer of 2026-09-26 is 50 s in all for a confirmed long ride, where
+# ordinary plans keep 40 s. A single long leg is one /route search, and on
+# the real routers with the host loaded a cold one - its graph tiles not yet
+# in the router's cache - took 43.9 s for Culpeper to Baltimore, 150.4 km of
+# straight line and 183 km routed, and the same request 9.5 s warm. Only one
+# long ride runs at a time in the whole api (core.ratelimit.
+# LONG_ROUTING_IN_FLIGHT), so the longer hold is one worker's. 50 s leaves
+# gunicorn's 60 s kill ten seconds.
 LONG_ROUTER_TIMEOUT_S = 45
 LONG_PLAN_BUDGET_S = 50
+
+
+def clock() -> float:
+    """The monotonic clock every budget is read from."""
+    return time.monotonic()
+
 
 # PLAN, Time-dependent behavior: with no planning time set, requests assume the
 # next Saturday at 9:00 local time, so conditional restrictions are evaluated
@@ -189,14 +209,14 @@ class Deadline:
 
 def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dict:
     """One router call inside the request's budget."""
-    remaining = deadline.at - time.monotonic()
+    remaining = deadline.at - clock()
     if remaining <= 0:
         raise DeadlineExceeded(f"no time left for {endpoint}")
     url = f"{settings.VALHALLA_UPSTREAMS[variant]}/{endpoint}"
     try:
         return _transport(url, payload, min(deadline.per_call_s, remaining))
     except RouterUnavailable as error:
-        if time.monotonic() >= deadline.at:
+        if clock() >= deadline.at:
             raise DeadlineExceeded(f"{endpoint} ran past the budget") from error
         raise
 
@@ -349,17 +369,26 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
     return None
 
 
-def plan(points: list[list[float]], preset_name: str, long_ride: bool = False) -> dict:
+def plan(
+    points: list[list[float]],
+    preset_name: str,
+    long_ride: bool = False,
+    started: float | None = None,
+) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
-    `long_ride` gives the request the long-ride time limits. Raises NoRoute,
-    TooLong, RouterUnavailable, DeadlineExceeded, or KeyError for an unknown
-    preset.
+    `long_ride` gives the request the long-ride time limits, and `started`
+    (from `clock()`) is when the request arrived; the budget runs from then,
+    or from now if it is not given. Raises NoRoute, TooLong, RouterUnavailable,
+    DeadlineExceeded, or KeyError for an unknown preset.
     """
+    if started is None:
+        started = clock()
     if long_ride:
-        deadline = Deadline(time.monotonic() + LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S)
+        budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
     else:
-        deadline = Deadline(time.monotonic() + PLAN_BUDGET_S, ROUTER_TIMEOUT_S)
+        budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
+    deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     preset = presets.PRESETS[preset_name]
     costing = presets.costing(preset_name)
     request = {
@@ -399,7 +428,13 @@ def plan(points: list[list[float]], preset_name: str, long_ride: bool = False) -
         shape = decode_polyline6(leg.get("shape", ""))
         coordinates.extend(shape[1:] if coordinates else shape)
         elevations.extend(leg.get("elevation") or [])
-        trace = trace_leg(preset.variant, costing, leg.get("shape", ""), deadline)
+        try:
+            trace = trace_leg(preset.variant, costing, leg.get("shape", ""), deadline)
+        except DeadlineExceeded:
+            # The route is found, so it is answered; a leg left untraced is
+            # unknown, and once the budget is gone `_call` starts no more.
+            logger.info("the budget ran out tracing a leg on %s", preset.variant)
+            trace = None
         if trace is None:
             stress["unknown"] += float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
         else:

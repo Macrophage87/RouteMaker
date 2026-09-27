@@ -234,8 +234,9 @@ def routing_concurrency(web_concurrency: str | None) -> int:
 ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
 # Of those, how many may be long rides (over 150 km of straight line) at once,
-# across the whole api. Owner decision of 2026-09-26: long rides are planned,
-# but each holds a worker for several seconds, so one at a time.
+# across the whole api. The owner decided on 2026-09-26 that long rides are
+# planned, a signed-out visitor confirming first; one at a time is the
+# implementation's choice, since each holds a worker for up to 50 s.
 LONG_ROUTING_CONCURRENCY = 1
 
 # The disk gate. A rebuild refuses to start unless a second full tile set fits

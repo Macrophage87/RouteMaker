@@ -13,7 +13,9 @@ saved; so POST /api/route reads the routers and the segment table and writes
 nothing but its rate-limit count. What stands in for the sign-in is the per-IP
 limit (`core.ratelimit.ROUTING`), applied before the body is read.
 
-Every error is `{"error": "..."}` with the status the shared contract names:
+Every error POST /api/route answers is `{"error": "..."}` with the status the
+shared contract names (another method on the path is Django's own 405, and
+not JSON):
 400 for input this API will not route (including a request too long to be
 worth routing), 409 with `"code": "confirm_long"` when a signed-out long ride
 has not been confirmed, 422 when the router finds no route, 429 with
@@ -73,12 +75,14 @@ MAX_POINTS = 25
 #   it means one (`confirm_long: true`) or gets 409 with code "confirm_long"
 #   and the span, and the router is not called; a signed-in request does not
 #   have to. Every long ride, signed in or not, also takes a long in-flight slot
-#   (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment).
-# - Past MAX_SPAN_M nothing is planned: 400 "too long". A 300 km span covers the
-#   owner's 160 km ride with room, and the 40 s time budget holds for it - the
-#   590 km probe above took about 15 s.
+#   (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment;
+#   those two figures are the implementation's choice, not the owner's), and
+#   has the long time limits (`routing.LONG_PLAN_BUDGET_S`, 50 s in all, the
+#   owner's answer of 2026-09-26).
+# - Past MAX_SPAN_M nothing is planned: 400 "too long". 200 km is the owner's
+#   answer of 2026-09-26 to "What's the longest ride anyone may plan?".
 CONFIRM_SPAN_M = 150_000
-MAX_SPAN_M = 300_000
+MAX_SPAN_M = 200_000
 TOO_LONG = "the route is too long to plan in one request; split it into shorter parts"
 
 # The Retry-After on a 503 for a request whose time budget ran out.
@@ -223,6 +227,9 @@ def errors_as_json(view):
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
+        # Being outermost, this is also where the request's time budget starts
+        # (`routing.plan`'s `started`), so the count and the slots are inside it.
+        request.routing_started = routing.clock()
         try:
             return view(request, *args, **kwargs)
         except Exception as exc:  # noqa: BLE001 - every failure gets the one answer
@@ -285,7 +292,7 @@ def json_body_only(view):
 def route(request, body: RouteIn, response: HttpResponse):
     span = span_m(body.points)
     if span <= CONFIRM_SPAN_M:
-        return _plan(body, response, long_ride=False)
+        return _plan(request, body, response, long_ride=False)
     if not body.confirm_long and not signed_in(request):
         return Status(
             409,
@@ -303,14 +310,17 @@ def route(request, body: RouteIn, response: HttpResponse):
     if refusal is not None:
         return refusal
     try:
-        return _plan(body, response, long_ride=True)
+        return _plan(request, body, response, long_ride=True)
     finally:
         ratelimit.release(held)
 
 
-def _plan(body: RouteIn, response: HttpResponse, long_ride: bool):
+def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
+    started = getattr(request, "routing_started", None)
     try:
-        return Status(200, routing.plan(body.points, body.preset, long_ride=long_ride))
+        return Status(
+            200, routing.plan(body.points, body.preset, long_ride=long_ride, started=started)
+        )
     except routing.TooLong:
         return Status(400, {"error": TOO_LONG})
     except routing.NoRoute as no_route:
