@@ -221,6 +221,21 @@ class TestTheInstalledCrossingsMustBeTheImagesFixture:
         # test contexts with synthetic rows rely on.
         ReferenceData.load(reference)
 
+    def test_a_copy_with_the_retired_penalty_column_is_refused_even_unchecked(
+        self, tmp_path
+    ) -> None:
+        """The 11th Street penalty's column was retired on 2026-09-27; an
+        installed copy that still has it is an old one, refused by name even
+        where the image's fixture is not handed in for comparison."""
+        from pipeline.run import ReferenceData
+        from pipeline.variants import MalformedCrossingRow
+
+        rows = json.loads(self.FIXTURE.read_text())
+        rows[0] = dict(rows[0], ordinary_ride_penalty_way_ids=[546096009])
+        reference = self.reference(tmp_path, json.dumps(rows).encode())
+        with pytest.raises(MalformedCrossingRow, match="retired"):
+            ReferenceData.load(reference)
+
     def test_a_missing_checked_in_fixture_is_refused(self, tmp_path) -> None:
         from pipeline.run import ReferenceData, ReferenceDataMissing
 
