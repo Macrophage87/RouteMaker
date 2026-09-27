@@ -273,8 +273,10 @@ slow search: Culpeper to Baltimore (150.4 km of straight line, 183 km routed)
 took 43.9 s cold on a loaded host and 9.5 s warm.
 
 **The time budget and gunicorn's timeout.** A request's budget - 40 s, 50 s
-for a long ride - runs from when it reaches the api, so the count, the slots,
-the router calls, the stress join and the answer are all inside it. The router
+for a long ride - runs from when it reaches the api (Django's first middleware,
+`core.middleware.RequestClockMiddleware`, stamps it), so the other middleware,
+the count, the slots, the router calls, the stress join and the answer are all
+inside it; only gunicorn's reading of the request comes before it. The router
 calls get all of it but the last 3 s (`ANSWER_RESERVE_S` in
 `core/routing.py`), and one call at most 35 s (45 s on a long ride). A request
 whose `/route` has not answered by then is 503 with `Retry-After: 30`; on a

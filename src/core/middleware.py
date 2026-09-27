@@ -1,4 +1,4 @@
-"""Per-request session and standing enforcement.
+"""Per-request middleware: the routing clock, and session and standing enforcement.
 
 The session epoch exists on the user row and the session row, but a value
 nothing reads revokes nothing: without this middleware, ban, suspension,
@@ -10,8 +10,28 @@ from __future__ import annotations
 from django.contrib.auth import logout
 from django.utils import timezone
 
+from . import routing
 from .auth_backend import attach_standing, session_is_current
 from .models import Session
+
+
+class RequestClockMiddleware:
+    """Stamps when Django first sees the request, for POST /api/route's budget.
+
+    First in MIDDLEWARE, so every other middleware - the session read, and
+    SessionEpochMiddleware's query and update for a signed-in request - is
+    inside the 40 s (50 s) that `routing.plan` counts, as it is inside
+    gunicorn's timeout. Stamped at the view instead, one request in the API
+    re-check took 41.34 s by gunicorn's clock. Setting an attribute costs
+    nothing on the requests that never read it.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        request.routing_started = routing.clock()
+        return self.get_response(request)
 
 
 class SessionEpochMiddleware:

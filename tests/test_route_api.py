@@ -990,6 +990,32 @@ class TestTimeBudget:
         assert call.timeouts[0] == pytest.approx(window - 10)
 
     @pytest.mark.parametrize("long_ride", [False, True])
+    def test_the_budget_counts_time_spent_in_djangos_middleware(
+        self, long_ride, client, segments, router, clock, monkeypatch
+    ) -> None:
+        """API re-check should-fix 1: the budget was stamped at the view
+        wrapper, after the middleware (a signed-in request's session read
+        among them), and one request took 41.34 s by gunicorn's clock against
+        a 40 s budget. The stamp is now taken by the first middleware."""
+        from core.middleware import SessionEpochMiddleware
+
+        real = SessionEpochMiddleware.__call__
+
+        def slow(self, request):
+            clock.now += 10
+            return real(self, request)
+
+        monkeypatch.setattr(SessionEpochMiddleware, "__call__", slow)
+        call = router(timed(clock, long_router(), {}))
+        body = long_body(160, confirm_long=True) if long_ride else good_body()
+        assert post(client, body).status_code == 200
+        window = LONG_WINDOW_S if long_ride else WINDOW_S
+        assert call.timeouts[0] == pytest.approx(window - 10)
+
+    def test_the_request_clock_is_the_first_middleware(self) -> None:
+        assert settings.MIDDLEWARE[0] == "core.middleware.RequestClockMiddleware"
+
+    @pytest.mark.parametrize("long_ride", [False, True])
     def test_no_router_call_runs_into_the_answers_reserve(
         self, long_ride, client, segments, router, clock
     ) -> None:

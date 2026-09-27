@@ -36,8 +36,9 @@ ways - and differ only for a piece that straddles a segment boundary, whose
 length all goes to the segment nearer its middle instead of being split there.
 
 Every request has one time budget, `PLAN_BUDGET_S` (`LONG_PLAN_BUDGET_S` for a
-long ride), counted from when it reaches the api (`core.api.errors_as_json`,
-the outermost wrapper), so the count, the slots and the answer are inside it.
+long ride), counted from when Django's first middleware sees it
+(`core.middleware.RequestClockMiddleware`), so the other middleware, the count,
+the slots and the answer are inside it.
 gunicorn kills a worker at its 60 s timeout and Caddy then answers an empty
 502; the budget ends the request well before that. The router calls get the
 budget less `ANSWER_RESERVE_S`, kept back for the stress join and the

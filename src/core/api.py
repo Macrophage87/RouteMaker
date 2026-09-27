@@ -275,9 +275,12 @@ def errors_as_json(view):
 
     @wraps(view)
     def wrapped(request, *args, **kwargs):
-        # Being outermost, this is also where the request's time budget starts
-        # (`routing.plan`'s `started`), so the count and the slots are inside it.
-        request.routing_started = routing.clock()
+        # The request's time budget (`routing.plan`'s `started`) runs from
+        # `core.middleware.RequestClockMiddleware`, the first middleware, so
+        # the other middleware, the count and the slots are inside it. Only a
+        # request that reached here without it is stamped now.
+        if getattr(request, "routing_started", None) is None:
+            request.routing_started = routing.clock()
         try:
             return view(request, *args, **kwargs)
         except Exception as exc:  # noqa: BLE001 - every failure gets the one answer

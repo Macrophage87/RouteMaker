@@ -58,6 +58,8 @@ PROCRASTINATE_IMPORT_PATHS = ["config.procrastinate"]
 PROCRASTINATE_AUTODISCOVER_MODULE_NAME = ""
 
 MIDDLEWARE = [
+    # First, so the routing budget counts the time spent in all the others.
+    "core.middleware.RequestClockMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
