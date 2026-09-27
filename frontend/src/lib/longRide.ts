@@ -5,7 +5,8 @@
  *
  * The API decides: an anonymous request whose points span more than 150 km in
  * straight lines gets a 409 with code "confirm_long" and the router is not
- * called; the same request with "confirm_long": true is planned, up to 300 km.
+ * called; the same request with "confirm_long": true is planned, up to the
+ * API's own ceiling (whose refusal the panel shows in the API's words).
  * A signed-in rider never gets the 409, so never sees the question.
  *
  * Once a rider says yes, the answer holds for the current plan while its span

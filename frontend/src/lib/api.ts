@@ -84,6 +84,20 @@ export function friendlyInput(said: string | undefined): string {
   return reason ? `The planner could not use these points: ${reason}.` : "The planner could not use these points.";
 }
 
+/**
+ * The longest Retry-After the planner honours. The API never asks for more
+ * than a minute (src/core/ratelimit.py caps it at the limit's window); a
+ * larger figure is a proxy's or a bug's, and taken as it stands it would hold
+ * every plan for a day, or overflow the browser's timer and send at once.
+ */
+export const RETRY_AFTER_CAP_S = 60;
+
+/** The API's sentence as a sentence: a capital first, a stop last. */
+function asSentence(said: string): string {
+  const text = said.charAt(0).toUpperCase() + said.slice(1);
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
+
 function wait(retryAfterS: number | undefined, fallback: string): string {
   if (retryAfterS === undefined) return fallback;
   return retryAfterS <= 1 ? "Try again in a moment." : `Try again in ${retryAfterS} seconds.`;
@@ -91,14 +105,16 @@ function wait(retryAfterS: number | undefined, fallback: string): string {
 
 export function describeError(status: number, body: unknown, retryAfter: string | null): RouteError {
   const said = serverSentence(body);
-  const retryAfterS = parseRetryAfter(retryAfter);
+  const parsed = parseRetryAfter(retryAfter);
+  const retryAfterS = parsed === undefined ? undefined : Math.min(parsed, RETRY_AFTER_CAP_S);
   const base = { status, ...(retryAfterS === undefined ? {} : { retryAfterS }) };
   if (status === 400 && said && /too long/i.test(said)) {
     return {
       ...base,
       kind: "too-long",
       title: "Too long to plan",
-      message: "Split the trip into shorter parts and plan each one.",
+      // The API's own words: the ceiling is its to set, and it says what it is.
+      message: asSentence(said),
     };
   }
   if (status === 400) {

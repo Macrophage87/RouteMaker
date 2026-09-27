@@ -25,3 +25,8 @@ export function formatClimb(metres: number): string {
   if (!usable(metres)) return DASH;
   return `${Math.round(metres)} m (${Math.round(metres * 3.28084)} ft)`;
 }
+
+/** A whole number of seconds, for "trying again in ...": "1 second", "5 seconds". */
+export function formatSeconds(seconds: number): string {
+  return seconds === 1 ? "1 second" : `${seconds} seconds`;
+}

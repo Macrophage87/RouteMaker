@@ -1,14 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEBOUNCE_MS, MAX_WAITS, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
-import { describeError, type RouteResponse, type RouteResult } from "./api.ts";
+import { RETRY_AFTER_CAP_S, describeError, type RouteError, type RouteResponse, type RouteResult } from "./api.ts";
 
 /** A clock the test moves by hand. */
 class FakeTimers implements Timers {
   now = 0;
   private next = 1;
   private pending = new Map<number, { at: number; fn: () => void }>();
+  longest = 0;
   set = (fn: () => void, ms: number) => {
+    this.longest = Math.max(this.longest, ms);
     const id = this.next++;
     this.pending.set(id, { at: this.now + ms, fn });
     return id;
@@ -325,6 +327,7 @@ test("the states go pending, in flight, waiting, in flight, idle; an edit while 
     { kind: "pending" },
     { kind: "in-flight" },
     { kind: "waiting", seconds: 2 },
+    { kind: "waiting", seconds: 1 },
     { kind: "in-flight" },
     { kind: "idle" },
   ]);
@@ -396,4 +399,78 @@ test("clearing during a Retry-After sends nothing when it ends, and the next pla
     ctx.api.calls.map((c) => c.plan),
     [1, 2],
   );
+});
+
+test("a wait that has been announced counts down what is left of it, a second at a time", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("4"));
+  await flush();
+  const seen: number[] = [];
+  for (let t = 0; t < 4; t += 1) {
+    const last = ctx.states.at(-1);
+    if (last?.kind === "waiting") seen.push(last.seconds);
+    await ctx.timers.advance(1000);
+  }
+  assert.deepEqual(seen, [4, 3, 2, 1]);
+  assert.deepEqual(ctx.states.at(-1), { kind: "in-flight" });
+});
+
+test("a wait nobody has been told about is not counted down", async () => {
+  // Shown: the refusal is on screen, with its own words; ticks would replace
+  // it with "trying again" when nothing is going to be tried.
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  for (let i = 0; i < 20 && ctx.shown.length === 0; i += 1) {
+    ctx.api.calls.at(-1)!.answer(refusal("3"));
+    await flush();
+    if (ctx.shown.length === 0) await ctx.timers.advance(3000);
+  }
+  assert.equal(ctx.shown.length, 1);
+  const count = ctx.states.length;
+  await ctx.timers.advance(5000);
+  assert.deepEqual(
+    ctx.states.slice(count).filter((s) => s.kind === "waiting"),
+    [],
+  );
+});
+
+test("after Clear during an announced wait, the next plan is told it is waiting", async () => {
+  // The correctness reviewer's probe: clearing reset the panel to idle, and
+  // the new points showed nothing at all until the hold ended.
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("5"));
+  await flush();
+  assert.equal(ctx.states.at(-1)?.kind, "waiting");
+  ctx.scheduler.clear();
+  assert.deepEqual(ctx.states.at(-1), { kind: "idle" });
+  ctx.scheduler.request(2);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  const last = ctx.states.at(-1);
+  assert.equal(last?.kind, "waiting", JSON.stringify(ctx.states));
+  if (last?.kind === "waiting") assert.ok(last.seconds >= 1 && last.seconds <= 5, `${last.seconds}`);
+});
+
+test("a Retry-After larger than the API's ceiling holds for the ceiling, on a timer that cannot overflow", async () => {
+  // describeError caps it too; this is the scheduler's own guard for an
+  // error that reaches it some other way.
+  for (const seconds of [86_400, 3_000_000, Number.MAX_SAFE_INTEGER, Infinity]) {
+    const ctx = setup();
+    ctx.scheduler.request(1);
+    await ctx.timers.advance(DEBOUNCE_MS);
+    const error: RouteError = { kind: "rate-limited", status: 429, title: "t", message: "m", retryAfterS: seconds };
+    ctx.api.calls[0].answer({ ok: false, error });
+    await flush();
+    const waiting = ctx.states.at(-1);
+    assert.deepEqual(waiting, { kind: "waiting", seconds: RETRY_AFTER_CAP_S }, `${seconds}`);
+    await ctx.timers.advance(RETRY_AFTER_CAP_S * 1000 - 1);
+    assert.equal(ctx.api.calls.length, 1, `${seconds}: resent early`);
+    await ctx.timers.advance(1);
+    assert.equal(ctx.api.calls.length, 2, `${seconds}: not resent at the ceiling`);
+    assert.ok(ctx.timers.longest <= 2 ** 31 - 1, `a ${ctx.timers.longest} ms timer`);
+  }
 });

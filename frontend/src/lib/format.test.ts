@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { formatClimb, formatDistance, formatDuration } from "./format.ts";
+import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./format.ts";
 
 test("distance shows both kilometres and miles", () => {
   const text = formatDistance(5480);
@@ -27,5 +27,14 @@ test("nonsense in gives a dash, not NaN", () => {
   for (const f of [formatDistance, formatDuration, formatClimb]) {
     assert.equal(f(Number.NaN), "–");
     assert.equal(f(-1), "–");
+  }
+});
+
+test("a count of seconds is singular at one and carries its number", () => {
+  assert.doesNotMatch(formatSeconds(1), /seconds/);
+  assert.match(formatSeconds(1), /^1 \S+$/);
+  for (const n of [2, 5, 60]) {
+    assert.match(formatSeconds(n), new RegExp(`^${n} `));
+    assert.notEqual(formatSeconds(n).replace(String(n), ""), formatSeconds(1).replace("1", ""), `${n}`);
   }
 });

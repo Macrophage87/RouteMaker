@@ -3,7 +3,7 @@
 // server's own `error` text is shown where it says something the status does not.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { describeError, parseRetryAfter, requestRoute, type ErrorKind } from "./api.ts";
+import { RETRY_AFTER_CAP_S, describeError, parseRetryAfter, requestRoute, type ErrorKind } from "./api.ts";
 
 test("each contract status maps to its own kind", () => {
   const cases: Array<[number, unknown, ErrorKind]> = [
@@ -260,4 +260,51 @@ test("a refused confirmed long plan says what the API said; other refusals keep 
   const { impl: bare } = fakeFetch(429, "{}", { "Retry-After": "5" });
   const quiet = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: bare, confirmLong: true });
   assert.ok(!quiet.ok && quiet.error.message.length > 0);
+});
+
+test("a refused confirmed long plan (429 or 503) is not titled like the plain refusal", async () => {
+  // The mutation reviewer's probe: without its own title a refused long ride
+  // read "Slow down" over "a long ride is already being planned".
+  for (const status of [429, 503]) {
+    const { impl } = fakeFetch(status, JSON.stringify({ error: "A long ride is already being planned." }), {
+      "Retry-After": "5",
+    });
+    const confirmed = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, confirmLong: true });
+    const plain = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl });
+    assert.ok(!confirmed.ok && !plain.ok);
+    if (confirmed.ok || plain.ok) continue;
+    assert.ok(confirmed.error.title.length > 0);
+    if (status === 429) assert.notEqual(confirmed.error.title, plain.error.title, `status ${status}`);
+  }
+});
+
+test("a Retry-After is capped at the API's own ceiling, however large the header", () => {
+  // The API never sends more than a minute (src/core/ratelimit.py); a proxy
+  // or a bug that did would otherwise hold every plan for a day, or overflow
+  // the browser's timer and send at once.
+  assert.equal(RETRY_AFTER_CAP_S, 60);
+  for (const header of ["86400", "3000000", "9".repeat(400)]) {
+    for (const status of [429, 503]) {
+      const described = describeError(status, null, header);
+      assert.equal(described.retryAfterS, RETRY_AFTER_CAP_S, `${status} ${header.slice(0, 10)}`);
+      assert.ok(!described.message.includes(header.slice(0, 5)), described.message);
+    }
+  }
+  assert.equal(describeError(429, null, String(RETRY_AFTER_CAP_S - 1)).retryAfterS, RETRY_AFTER_CAP_S - 1);
+  assert.equal(describeError(429, null, String(RETRY_AFTER_CAP_S)).retryAfterS, RETRY_AFTER_CAP_S);
+});
+
+test("too long shows the API's own sentence, whatever ceiling it names", () => {
+  // The ceiling is the API's to set (it moved from 300 km to 200 km); the
+  // panel shows what the API says rather than a figure of its own.
+  for (const said of [
+    "the route is too long to plan in one request; split it into shorter parts",
+    "This route is too long to plan: the longest is 200 km. Split it into shorter parts.",
+  ]) {
+    const described = describeError(400, { error: said }, null);
+    assert.equal(described.kind, "too-long");
+    assert.ok(described.message.toLowerCase().includes(said.slice(1).toLowerCase().replace(/\.$/, "")), described.message);
+    assert.match(described.message, /^[A-Z]/);
+    assert.match(described.message, /[.!?]$/);
+  }
 });

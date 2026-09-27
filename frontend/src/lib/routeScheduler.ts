@@ -15,13 +15,15 @@
  * - only the latest plan is kept while waiting; anything older is dropped
  *   unsent, and an answer for a plan that has since changed is not shown;
  * - a 429 or 503 carrying Retry-After is waited out - for exactly that long,
- *   not on a timer of our own, and never less than a second - and the latest
- *   plan is sent then, up to MAX_WAITS times for each plan; a refusal without
- *   Retry-After, or with it on any other status, is shown as it is;
+ *   not on a timer of our own, never less than a second and never more than
+ *   RETRY_AFTER_CAP_S - and the latest plan is sent then, up to MAX_WAITS
+ *   times for each plan; a refusal without Retry-After, or with it on any
+ *   other status, is shown as it is;
  * - once shown, a refusal's Retry-After still holds: "Try again", or any new
- *   plan, waits until it has passed instead of being refused once more.
+ *   plan, waits until it has passed instead of being refused once more;
+ * - a wait the rider has been told about counts down, a second at a time.
  */
-import type { RouteResult } from "./api.ts";
+import { RETRY_AFTER_CAP_S, type RouteResult } from "./api.ts";
 
 export interface Timers {
   set: (fn: () => void, ms: number) => unknown;
@@ -59,7 +61,9 @@ export class RouteScheduler<P> {
   private debounce: unknown = null;
   /** While set, the API's last Retry-After has not passed: nothing is sent. */
   private hold: unknown = null;
-  private holdSeconds = 0;
+  /** Whole seconds of the hold still to run. */
+  private holdLeft = 0;
+  /** Whether the last state given out was "waiting", so the countdown shows. */
   private holdAnnounced = false;
   private waitsForLatest = 0;
   private readonly timers: Timers;
@@ -100,28 +104,40 @@ export class RouteScheduler<P> {
   }
 
   private state(state: SchedulerState): void {
+    // Any other state replaces the "waiting" line: once the panel has shown
+    // idle (Clear) or a result, the next plan held back is announced afresh.
+    this.holdAnnounced = state.kind === "waiting";
     this.options.onState?.(state);
   }
 
   /**
    * Send nothing for this long; then send the latest plan, if any. Only
    * called as an answer settles, and nothing is sent while a hold is on, so
-   * there is never an earlier hold to replace.
+   * there is never an earlier hold to replace. One second a tick, so the
+   * countdown can be shown and no timer is ever long enough to overflow.
    */
   private holdFor(seconds: number): void {
-    this.holdSeconds = seconds;
-    this.holdAnnounced = false;
+    this.holdLeft = seconds;
+    this.tick();
+  }
+
+  private tick(): void {
     this.hold = this.timers.set(() => {
+      this.holdLeft -= 1;
+      if (this.holdLeft > 0) {
+        if (this.holdAnnounced) this.state({ kind: "waiting", seconds: this.holdLeft });
+        this.tick();
+        return;
+      }
       this.hold = null;
       this.pump();
-    }, seconds * 1000);
+    }, 1000);
   }
 
   private pump(): void {
     if (this.inFlight || this.debounce !== null || this.latest === null) return;
     if (this.hold !== null) {
-      if (!this.holdAnnounced) this.state({ kind: "waiting", seconds: this.holdSeconds });
-      this.holdAnnounced = true;
+      if (!this.holdAnnounced) this.state({ kind: "waiting", seconds: this.holdLeft });
       return;
     }
     const plan = this.latest;
@@ -139,7 +155,7 @@ export class RouteScheduler<P> {
     // A Retry-After holds for whatever is sent next, this plan or a newer one.
     const error = result && !result.ok ? result.error : null;
     const retryAfterS = error && (error.status === 429 || error.status === 503) ? error.retryAfterS : undefined;
-    if (retryAfterS !== undefined) this.holdFor(Math.max(1, retryAfterS));
+    if (retryAfterS !== undefined) this.holdFor(holdSeconds(retryAfterS));
     const current = generation === this.generation;
     if (!current) {
       // The plan changed while this was computing: its answer is not shown,
@@ -164,4 +180,9 @@ export class RouteScheduler<P> {
     this.state({ kind: "idle" });
     this.options.onResult(plan, result);
   }
+}
+
+/** A Retry-After as whole seconds to hold: at least one, at most the cap. */
+function holdSeconds(retryAfterS: number): number {
+  return Math.min(RETRY_AFTER_CAP_S, Math.max(1, Math.ceil(retryAfterS)));
 }
