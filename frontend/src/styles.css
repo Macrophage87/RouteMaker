@@ -1,0 +1,510 @@
+/*
+ * The planner's chrome. The map is the light Protomaps flavour in both themes;
+ * the panel follows the system theme. Text colours are chosen for at least
+ * 4.5:1 against their background in each theme (WCAG AA for body text).
+ */
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --bg-soft: #f3f4f6;
+  --text: #16181d;
+  --text-muted: #4b5260; /* 7.4:1 on --bg */
+  --border: #cfd4dc;
+  --accent: #1d4ed8; /* 6.7:1 on --bg */
+  --accent-text: #ffffff;
+  --error-bg: #fdecec;
+  --error-text: #8a1111; /* 7.9:1 on --error-bg */
+  --notice-bg: #fff6db;
+  --notice-text: #5c4200; /* 8.1:1 on --notice-bg */
+  --focus: #b45309;
+  --shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1b1e24;
+    --bg-soft: #262a32;
+    --text: #eef0f3;
+    --text-muted: #b9bfca; /* 9.2:1 on --bg */
+    --border: #3d434e;
+    --accent: #8ab4ff; /* 8.3:1 on --bg */
+    --accent-text: #0b1733;
+    --error-bg: #3a1717;
+    --error-text: #ffc9c9; /* 10:1 on --error-bg */
+    --notice-bg: #33290c;
+    --notice-text: #ffe3a3; /* 11:1 on --notice-bg */
+    --focus: #fbbf24;
+    --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  position: relative;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+.map {
+  position: absolute;
+  inset: 0;
+}
+
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.maplibregl-canvas:focus-visible {
+  outline-offset: -3px;
+}
+
+/* The panel: a card on the left on wide screens, a bottom sheet on phones. */
+.panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 380px;
+  max-height: calc(100% - 24px);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  z-index: 2;
+}
+
+.panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.panel-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.tagline {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.panel-body {
+  overflow-y: auto;
+  padding: 4px 14px 12px;
+}
+
+.panel-body[hidden] {
+  display: none;
+}
+
+.panel h2 {
+  font-size: 1rem;
+  margin: 14px 0 6px;
+}
+
+.hint {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  margin: 4px 0;
+}
+
+button {
+  font: inherit;
+  color: var(--accent-text);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.link,
+.panel-toggle {
+  background: transparent;
+  color: var(--accent);
+  border-color: transparent;
+  padding: 2px 6px;
+}
+
+.panel-toggle {
+  border-color: var(--border);
+  display: none;
+}
+
+a {
+  color: var(--accent);
+}
+
+.presets {
+  border: 0;
+  padding: 0;
+  margin: 10px 0 0;
+}
+
+.presets legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+.preset {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.preset:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--bg-soft);
+}
+
+.preset input {
+  margin-top: 3px;
+  accent-color: var(--accent);
+}
+
+.preset > span {
+  display: flex;
+  flex-direction: column;
+}
+
+.preset .hint {
+  margin: 0;
+}
+
+.points {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 6px;
+}
+
+.points li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.point-name {
+  font-weight: 600;
+  min-width: 52px;
+}
+
+.coords {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  flex: 1;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.notice {
+  background: var(--notice-bg);
+  color: var(--notice-text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 0.9rem;
+}
+
+.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.error p {
+  margin: 0 0 6px;
+}
+
+.loading {
+  margin: 4px 0;
+  color: var(--text-muted);
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  margin: 6px 0;
+}
+
+.stats dt {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.stats dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.stress {
+  margin: 10px 0 0;
+}
+
+.stress figcaption {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.stress-bar {
+  display: flex;
+  height: 16px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.stress-seg {
+  height: 100%;
+}
+
+/* Patterns as well as colours, so the bar reads in greyscale too. */
+.stress-seg-2 {
+  background-image: repeating-linear-gradient(90deg, transparent 0 6px, rgba(255, 255, 255, 0.35) 6px 8px);
+}
+
+.stress-seg-3 {
+  background-image: repeating-linear-gradient(45deg, transparent 0 4px, rgba(255, 255, 255, 0.3) 4px 6px);
+}
+
+.stress-seg-4 {
+  background-image: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
+}
+
+.stress-list,
+.legend {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+  font-size: 0.88rem;
+}
+
+.stress-list li,
+.legend li {
+  display: grid;
+  grid-template-columns: auto 52px 1fr auto;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.legend li {
+  grid-template-columns: 44px 52px 1fr;
+}
+
+.swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+}
+
+.stress-name {
+  font-weight: 600;
+}
+
+.stress-label {
+  color: var(--text-muted);
+}
+
+.stress-pct {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.route-credit {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  margin: 10px 0 0;
+}
+
+.toggle {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+}
+
+.panel-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+  padding-top: 8px;
+  font-size: 0.88rem;
+}
+
+.panel-footer p {
+  margin: 0;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.confirm {
+  border: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+}
+
+.confirm p {
+  margin: 0 0 6px;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+}
+
+.pace {
+  margin-top: 0;
+}
+
+/* The point "Add point at map centre" would place, while it has focus. */
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  pointer-events: none;
+  z-index: 1;
+  background:
+    linear-gradient(#111 0 0) center / 2px 100% no-repeat,
+    linear-gradient(#111 0 0) center / 100% 2px no-repeat;
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
+}
+
+/* Markers. */
+.pin {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 13px/1 system-ui, sans-serif;
+  color: #ffffff;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  cursor: grab;
+}
+
+.pin-start {
+  background: #15803d;
+}
+
+.pin-end {
+  background: #b91c1c;
+}
+
+.pin-via {
+  background: #374151;
+  width: 24px;
+  height: 24px;
+  font-size: 12px;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 11px;
+}
+
+/* Beside the panel, not under it: a credit hidden behind the panel is not shown. */
+@media (min-width: 721px) {
+  .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
+    max-width: calc(100vw - 450px);
+  }
+}
+
+@media (max-width: 720px) {
+  .panel {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 48%;
+    border-radius: 12px 12px 0 0;
+  }
+
+  .panel.closed {
+    max-height: none;
+  }
+
+  .panel-toggle {
+    display: inline-block;
+  }
+
+  .tagline {
+    display: none;
+  }
+
+  .maplibregl-ctrl-bottom-right,
+  .maplibregl-ctrl-bottom-left {
+    bottom: 0;
+  }
+
+  .app:has(.panel.open) .maplibregl-ctrl-bottom-right {
+    bottom: 48%;
+  }
+
+  .app:has(.panel.closed) .maplibregl-ctrl-bottom-right {
+    bottom: 56px;
+  }
+}

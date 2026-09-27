@@ -96,6 +96,56 @@
 		file_server
 	}
 
+	# The public front end (PLAN.md "Frontend"): the static single-page app that
+	# `npm run build` writes and the deploy step copies to ${DATA_ROOT}/frontend,
+	# which compose mounts read-only at /srv/frontend (docs/DEPLOYMENT.md, "The
+	# public front end").
+	#
+	# The app's own paths are listed rather than the API's, so the edge needs no
+	# knowledge of the admin path (settings.ADMIN_PATH, which PLAN keeps out of
+	# the bundle) and everything not listed - /api/*, /tiles/*, /auth/*, the
+	# admin, /healthz - still reaches the API unchanged. A client-side route
+	# added to the app later is added here too; until then an unknown path is
+	# the API's 404, as it was.
+	#
+	# `Referrer-Policy: same-origin`: the page's own requests keep their full
+	# Referer, which the /basemap/* guard above needs (MapLibre fetches the
+	# archive, glyphs and sprites on the page's thread), while links off the
+	# site - the attribution's - carry none. `no-referrer` here would blank the
+	# map. index.html revalidates on every load so a deploy is picked up at
+	# once; the hashed files under /assets/ never change under their name, so
+	# they are cached for good - but only the ones that exist, since a 404
+	# cached for a year would outlive the deploy that fixes it.
+	#
+	# The app's responses are compressed. The rule in the /basemap/* block
+	# that nothing may encode is about byte ranges into the archive; it does
+	# not reach this block, and the app's main script is ~1.3 MB raw and
+	# ~370 KB gzipped, which matters on a phone.
+	#
+	# The Content-Security-Policy is the app's own: every request it makes is
+	# to this site (PLAN.md:15, no third-party tile servers), MapLibre's worker
+	# is a same-origin file, and MapLibre sets inline styles. frame-ancestors
+	# refuses framing. licenses.txt is the bundled packages' licence notices,
+	# which the build writes and the map's credits link to.
+	@frontend path / /index.html /favicon.svg /licenses.txt /assets/*
+	handle @frontend {
+		encode zstd gzip
+		header Referrer-Policy "same-origin"
+		header X-Content-Type-Options "nosniff"
+		header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self' blob:; child-src 'self' blob:; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'"
+		root * /srv/frontend
+		@hashed {
+			path /assets/*
+			file
+		}
+		header @hashed Cache-Control "public, max-age=31536000, immutable"
+		header / Cache-Control "no-cache"
+		header /index.html Cache-Control "no-cache"
+		header /licenses.txt Cache-Control "no-cache"
+		header /favicon.svg Cache-Control "public, max-age=86400"
+		file_server
+	}
+
 	# Everything else is the API, on the port docker/api-entrypoint.sh binds
 	# gunicorn to. Photon, Valhalla and the renderer are deliberately absent:
 	# PLAN.md:65 says they are reachable only through the API, which proxies

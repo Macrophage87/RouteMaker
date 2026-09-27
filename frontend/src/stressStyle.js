@@ -16,6 +16,17 @@
  * passed. It did: LTS4 was the darkest tier of the four and sat eight grey
  * levels from LTS1, so on a marshal's black-and-white sheet "comfortable" and
  * "heavy traffic" printed the same.
+ *
+ * Each tier also carries a casing: a solid line drawn under it, two pixels
+ * wider, in a colour chosen to stand apart from both the tier and whatever the
+ * line is drawn over. The calm tiers are light greens, and on the base map
+ * they are drawn over parkland, woods and scrub that are the same light greens
+ * (LTS 1 against the park fill was 1.00:1), so without the casing the calmest
+ * streets - the ones this map exists to find - were the invisible ones. A dark
+ * casing under LTS 1 and 2 and a white one under LTS 3 and 4 keeps every tier
+ * at least 3:1 from the map (WCAG 1.4.11's figure for graphics) and from both
+ * themes' panel behind the legend; stressContrast.test.ts measures that
+ * against the base map's own fill colours.
  */
 
 export const STRESS_TIERS = [
@@ -26,6 +37,7 @@ export const STRESS_TIERS = [
     color: "#9ed3ac",
     dash: [1],
     width: 3,
+    casing: "#17301f",
   },
   {
     tier: 2,
@@ -34,6 +46,7 @@ export const STRESS_TIERS = [
     color: "#57a06c",
     dash: [4, 1],
     width: 3,
+    casing: "#17301f",
   },
   {
     tier: 3,
@@ -42,6 +55,7 @@ export const STRESS_TIERS = [
     color: "#8a4a10",
     dash: [2, 2],
     width: 3.5,
+    casing: "#ffffff",
   },
   {
     tier: 4,
@@ -50,6 +64,7 @@ export const STRESS_TIERS = [
     color: "#340808",
     dash: [1, 2],
     width: 4,
+    casing: "#ffffff",
   },
 ];
 
@@ -69,22 +84,37 @@ export function contrastRatio(a, b) {
 }
 
 /** The basemap, served from a local PMTiles file rather than a tile provider. */
+//
+// The path is the one Caddy serves the archive at (Caddyfile, /basemap/*;
+// docs/OPERATIONS.md, "The base map"). It is relative on purpose: the pmtiles
+// protocol fetches it on the page's own thread, so the browser resolves it
+// against the page and sends the same-origin Referer that the edge's hotlinking
+// guard requires. The archive's embedded attribution names OpenStreetMap only,
+// so the credit is stated here rather than read from it.
 export const BASEMAP = {
   // Range requests against one file on our own disk: no third party sees which
   // routes are being looked at, which matters when some of them are for
   // unpermitted rides.
   protocol: "pmtiles",
-  url: "pmtiles:///tiles/dc-metro.pmtiles",
-  attribution: "© OpenStreetMap contributors, © Protomaps",
+  path: "/basemap/region.pmtiles",
+  url: "pmtiles:///basemap/region.pmtiles",
+  attribution:
+    '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> (ODbL)' +
+    ', <a href="https://protomaps.com">© Protomaps</a>',
 };
 
-export function stressLayers(sourceId = "segments") {
+// The stress tiles' layer and property, per the SHARED API CONTRACT for
+// /tiles/stress/{z}/{x}/{y}.pbf: one layer named "stress", a "tier" of 1-4 or
+// null on each feature.
+export const STRESS_TILE_LAYER = "stress";
+
+export function stressLayers(sourceId = "stress") {
   return STRESS_TIERS.map((tier) => ({
     id: `stress-${tier.tier}`,
     type: "line",
     source: sourceId,
-    "source-layer": "segment",
-    filter: ["==", ["get", "stress_tier"], tier.tier],
+    "source-layer": STRESS_TILE_LAYER,
+    filter: ["==", ["get", "tier"], tier.tier],
     paint: {
       "line-color": tier.color,
       "line-width": tier.width,
@@ -93,13 +123,43 @@ export function stressLayers(sourceId = "segments") {
   }));
 }
 
+/** The casing under each tier's line, drawn first so the tier sits on it. */
+export function stressCasingLayers(sourceId = "stress") {
+  return STRESS_TIERS.map((tier) => ({
+    id: `stress-casing-${tier.tier}`,
+    type: "line",
+    source: sourceId,
+    "source-layer": STRESS_TILE_LAYER,
+    filter: ["==", ["get", "tier"], tier.tier],
+    paint: {
+      "line-color": tier.casing,
+      "line-width": tier.width + CASING_EXTRA_PX,
+    },
+  }));
+}
+
+/** How much wider a casing is than its tier's line: a pixel on each side. */
+export const CASING_EXTRA_PX = 2;
+
+/**
+ * The overlay's layers in the order they are added to the map, bottom first:
+ * every casing, then every tier. A casing drawn after a tier would paint over
+ * it, solid, wherever the two meet - including its own tier, which would then
+ * vanish under its casing.
+ */
+export function stressOverlayLayers(sourceId = "stress") {
+  return [...stressCasingLayers(sourceId), ...stressLayers(sourceId)];
+}
+
 /** Legend entries, which carry the label the colour alone cannot. */
 export function legend() {
-  return STRESS_TIERS.map(({ tier, short, label, color, dash }) => ({
+  return STRESS_TIERS.map(({ tier, short, label, color, dash, width, casing }) => ({
     tier,
     short,
     label,
     color,
     dash,
+    width,
+    casing,
   }));
 }

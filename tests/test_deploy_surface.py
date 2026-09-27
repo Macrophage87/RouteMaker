@@ -283,9 +283,20 @@ def test_the_caddyfile_names_no_other_service_at_all() -> None:
     """Stronger than the upstream check and cheap: an internal service's name
     has no business anywhere in the edge's configuration, whether in a
     `reverse_proxy`, a `redir` or a directive nobody has reached for yet.
-    Comments are exempt - this file explains what it does not route."""
-    body = "\n".join(line for line in CADDY_TEXT.splitlines() if not line.strip().startswith("#"))
-    named = sorted(name for name in set(SERVICES) - {"caddy", "api"} if name in body)
+    Comments are exempt - this file explains what it does not route - and
+    so is the value of the Content-Security-Policy header, whose directive
+    names (`worker-src`) are the browser's vocabulary, not a service. Names
+    are matched as whole words."""
+    body = "\n".join(
+        re.sub(r'(header\s+Content-Security-Policy\s+)"[^"]*"', r"\1", line)
+        for line in CADDY_TEXT.splitlines()
+        if not line.strip().startswith("#")
+    )
+    named = sorted(
+        name
+        for name in set(SERVICES) - {"caddy", "api"}
+        if re.search(rf"(?<![\w-]){re.escape(name)}(?![\w-])", body)
+    )
     assert not named, f"the Caddyfile names internal services: {named}"
 
 
@@ -343,3 +354,23 @@ def test_the_hsts_header_is_not_scoped_to_one_route() -> None:
         f"the HSTS header is {depth} blocks deep; at the site level it is one, and "
         "anywhere deeper it covers a subset of the responses"
     )
+
+
+def test_every_file_server_root_is_a_read_only_bind_from_the_data_root() -> None:
+    """The mutation reviewer's probe: deleting the frontend mount, dropping
+    its `:ro` or misspelling its target all passed, because the edge test
+    mounts /srv/frontend itself. Derived from the Caddyfile, so static and
+    basemap are held to the same rule."""
+    roots = [
+        directive.split()[1]
+        for directive in caddy_directives("root")
+        if len(directive.split()) == 2 and directive.split()[0] == "*"
+    ]
+    assert {"/srv/static", "/srv/basemap", "/srv/frontend"} <= set(roots), roots
+    volumes = SERVICES["caddy"]["volumes"]
+    for root in roots:
+        name = root.removeprefix("/srv/")
+        assert f"${{DATA_ROOT}}/{name}:{root}:ro" in volumes, (
+            f"the Caddyfile serves {root}, which compose must bind read-only from "
+            f"${{DATA_ROOT}}/{name}: {volumes}"
+        )

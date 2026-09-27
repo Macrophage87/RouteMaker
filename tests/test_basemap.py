@@ -113,8 +113,25 @@ def test_nothing_re_encodes_the_bytes_a_range_names() -> None:
     assert not directives(basemap_block(), "encode"), (
         f"/basemap/* encodes its responses: {basemap_block()}"
     )
-    site_level = [line for line in code_lines(CADDY_TEXT) if line.strip().startswith("encode")]
-    assert not site_level, f"the Caddyfile encodes responses: {site_level}"
+    # The app's own files may be compressed (Caddyfile, `handle @frontend`);
+    # an `encode` anywhere else - at the site level above every route, or in
+    # any other block - would reach the archive's byte ranges or the API.
+    lines = code_lines(CADDY_TEXT)
+    stray = []
+    depth, inside_frontend = 0, False
+    for line in lines:
+        stripped = line.strip()
+        if stripped == "handle @frontend {":
+            inside_frontend = True
+        if stripped.startswith("encode") and not (inside_frontend and depth == 2):
+            stray.append(stripped)
+        depth += stripped.count("{") - stripped.count("}")
+        if inside_frontend and depth <= 1 and stripped == "}":
+            inside_frontend = False
+    assert not stray, f"the Caddyfile encodes responses outside the app's block: {stray}"
+    assert directives(block("handle @frontend"), "encode"), (
+        "the premise: the app's block is where the one encode is"
+    )
 
 
 def test_only_the_three_contract_paths_are_served() -> None:
