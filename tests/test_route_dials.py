@@ -441,3 +441,30 @@ class TestCargoAssist:
         fake = router(standard_router())
         assert post(client, {**good_body("default"), "assist": True}).status_code == 400
         assert fake.calls == []
+
+
+@db
+def test_legal_but_avoid_is_its_own_key_and_the_sum_is_the_distance(
+    client, facility_segments, router
+):
+    """Way 303 had no segment row; as tier 5 its 500 m are "5", not "unknown"."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {facility_segments}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule, facility) VALUES (303, 0, ST_GeomFromText(%s, 4326), 5, 'test', 'none')",
+            ["LINESTRING(" + ", ".join(f"{lon} {lat}" for lon, lat in VERTICES[3:5]) + ")"],
+        )
+    router(standard_router())
+    stress = post(client, {**good_body(), "when": "weekday_rush"}).json()["stress_m"]
+    assert stress["5"] == pytest.approx(500.0)
+    assert stress["unknown"] == pytest.approx(0.0)
+    assert sum(stress.values()) == pytest.approx(2200.0)
+
+
+@pytest.mark.parametrize("name", sorted(presets.PRESETS))
+def test_every_preset_charges_entering_a_legal_but_avoid_way(name):
+    """The destination-only penalty is how tier 5 reaches every preset,
+    Mass Ride at use_roads 1.0 included (core.presets.AVOID_ENTRY_PENALTY_S)."""
+    options = presets.costing(name)["bicycle"]
+    assert options["destination_only_penalty"] == presets.AVOID_ENTRY_PENALTY_S
+    assert presets.AVOID_ENTRY_PENALTY_S >= 15 * 60

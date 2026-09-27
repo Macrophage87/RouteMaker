@@ -29,7 +29,7 @@ test("rounded percentages always add up to one hundred", () => {
 
 test("every tier and the unrated remainder are present, in tier order", () => {
   const keys = stressSegments(sample).map((s) => s.key);
-  assert.deepEqual(keys, ["1", "2", "3", "4", "unknown"]);
+  assert.deepEqual(keys, ["1", "2", "3", "4", "5", "unknown"]);
 });
 
 test("each segment carries a label, so the bar does not rely on colour", () => {

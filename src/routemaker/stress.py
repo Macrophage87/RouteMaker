@@ -94,7 +94,7 @@ against a surface that would shed one.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import IntEnum
 
 from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
@@ -119,6 +119,11 @@ class Stress(IntEnum):
     LTS2 = 2
     LTS3 = 3
     LTS4 = 4
+    # Not a Furth tier: a road a bicycle may legally ride that this map would
+    # rather nobody were sent onto - the owner's "Maybe make a 5th category for
+    # legal but to be avoided" (2026-09-27). Assigned by `legal_but_avoid` and
+    # by curated overrides, never by the Furth tables.
+    AVOID = 5
 
 
 # Re-exported from the shared module so there is one definition, not two.
@@ -271,7 +276,7 @@ class StressResult:
     @property
     def is_top_tier(self) -> bool:
         """What the Beginner invariant and the road-exposure report key on."""
-        return self.tier is Stress.LTS4
+        return self.tier >= Stress.LTS4
 
 
 def _mixed_traffic_tier(speed_mph: float, lanes: int) -> tuple[Stress, str]:
@@ -356,6 +361,31 @@ def _bike_lane_tier(
     return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
 
 
+# "Legal but avoid", by rule. OSM's `expressway=yes` is a divided highway with
+# partial access control; at a posted 50 mph or more it is the road the owner's
+# US 340 question was about - legal for a bicycle, and nothing a planner should
+# send one onto while another way exists. Measured over the region's source
+# extract (2026-09-27, road-km with divided carriageways counted once):
+# expressway=yes on trunk/primary bicycles may ride is 738 km, of which 425 km
+# is posted 55 mph or more and 133 km 50 mph; the rule takes those 558 km
+# (US 15 James Madison Highway and Catoctin Mountain Highway, US 29 Lee
+# Highway, VA 3 Germanna Highway, Fairfax County Parkway at 50, ...) and leaves
+# the urban expressways posted 45 or less (Whitney Young Bridge at 35) to the
+# Furth tables and to curated overrides.
+AVOID_HIGHWAY = frozenset({"trunk", "trunk_link", "primary", "primary_link"})
+AVOID_MIN_POSTED_MPH = 50.0
+
+
+def legal_but_avoid(tags: dict[str, str]) -> str | None:
+    """Why a way is "legal but avoid", or None. Posted speed only: never assumed."""
+    if tags.get("highway") not in AVOID_HIGHWAY or tags.get("expressway") != "yes":
+        return None
+    posted = parse_maxspeed_mph(tags.get("maxspeed"))
+    if posted is None or posted < AVOID_MIN_POSTED_MPH:
+        return None
+    return f"legal but avoid: expressway posted {posted:g} mph"
+
+
 def classify(
     tags: dict[str, str],
     aadt: int | None = None,
@@ -363,7 +393,24 @@ def classify(
     urban: bool = True,
     aadt_year: int | None = None,
 ) -> StressResult:
-    """Classify one way. `aadt` is bidirectional vehicles per day, already normalized.
+    """Classify one way: its Furth tier, or "legal but avoid" where the rule says so."""
+    result = _classify(tags, aadt, aadt_source, urban, aadt_year)
+    reason = legal_but_avoid(tags)
+    if reason is None:
+        return result
+    return replace(result, tier=Stress.AVOID, rule=f"{reason} (Furth: {result.rule})")
+
+
+def _classify(
+    tags: dict[str, str],
+    aadt: int | None = None,
+    aadt_source: str | None = None,
+    urban: bool = True,
+    aadt_year: int | None = None,
+) -> StressResult:
+    """Classify one way by the Furth tables.
+
+    `aadt` is bidirectional vehicles per day, already normalized.
 
     `aadt_source` is the publishing agency, not its precedence tier - see
     `StressResult` - and `aadt_year` is the count's vintage. Both are recorded

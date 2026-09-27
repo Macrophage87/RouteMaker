@@ -394,6 +394,14 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
   cancels a climb (the owner, 2026-09-27).
 - Mass Ride refuses `stress > 0` (400): the owner's "Lock at 0".
+- `stress_m` has a key `"5"`, "legal but avoid" (additive; the keys still sum to
+  the distance): an expressway posted 50 mph or more, or a way the owner
+  curated (`fixtures/overrides/2026-09-27-owner-stress.json`, loaded as that
+  directory's README says). In the graph it is the LTS 3-4 stress penalty
+  plus a destination-only mark; every preset sends
+  `destination_only_penalty` = `presets.AVOID_ENTRY_PENALTY_S` (1800 s of cost,
+  no time) for entering one, which reaches Mass Ride at `use_roads` 1.0 too.
+  OSM's own destination-only and private ways carry the same flag.
 - The graph a ride routes on (`variant` in the answer): a weekend ride on a
   preset whose graph is the standard one routes on the weekend graph
   (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road

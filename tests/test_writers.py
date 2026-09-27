@@ -253,17 +253,18 @@ def test_the_segment_key_rejects_a_duplicate_way_and_ordinal(segment_schemas) ->
         insert_segment(staging, way_id=5000, tier=3)  # same (osm_way_id, ordinal)
 
 
-def test_the_stress_tier_check_rejects_a_tier_outside_one_to_four(segment_schemas) -> None:
+def test_the_stress_tier_check_rejects_a_tier_outside_one_to_five(segment_schemas) -> None:
     """Asserted directly against the DDL. `classify()` can never itself produce
-    a tier outside 1-4 - `Stress` is an IntEnum of exactly those four values -
-    so this is the database's own backstop against whatever else ever writes
-    this column, and nothing exercised it.
+    a tier outside 1-5 - `Stress` is an IntEnum of the four Furth tiers and
+    "legal but avoid" (5, the owner's category of 2026-09-27) - so this is the
+    database's own backstop against whatever else ever writes this column.
     """
     from django.db import IntegrityError
 
     _live, staging = segment_schemas
+    insert_segment(staging, way_id=5999, tier=5)
     with pytest.raises(IntegrityError):
-        insert_segment(staging, way_id=6000, tier=5)
+        insert_segment(staging, way_id=6000, tier=6)
     with pytest.raises(IntegrityError):
         insert_segment(staging, way_id=6001, tier=0)
 

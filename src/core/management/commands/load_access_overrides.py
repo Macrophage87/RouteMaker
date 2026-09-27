@@ -29,6 +29,12 @@ access override may not write, or disagrees with an approved row already on the
 same way - two approved rows answering one way differently would be applied in
 id order, which is not a decision anybody made.
 
+Two kinds are loaded. `access` rows write access keys (`ACCESS_KEYS`). `stress`
+rows write `{"tier": n}`, 1 to 5, the tier the rebuild gives the way after
+classification (`pipeline.overrides.apply_stress`) - the owner's curated tiers of
+2026-09-27, "legal but avoid" (5) among them. `load_overrides` is the same
+command under the name that says so.
+
 The file may be read from standard input (`-`), because the api image carries
 `src/` and not `fixtures/`:
 
@@ -49,6 +55,9 @@ from django.utils import timezone
 COMMAND = "load_access_overrides"
 # In every audit entry's detail: the attribution is a claim, not a sign-in.
 ACTOR_NOTE = "actor named on the command line (--actor), not authenticated"
+KINDS = frozenset({"access", "stress"})
+# LTS 1 to 4, and 5, "legal but avoid" (routemaker.stress.Stress.AVOID).
+STRESS_TIER_MIN, STRESS_TIER_MAX = 1, 5
 
 
 def parse_file(text: str, label: str) -> list[dict]:
@@ -70,18 +79,27 @@ def parse_file(text: str, label: str) -> list[dict]:
         where = f"{label} row {index}"
         if not isinstance(row, dict):
             raise CommandError(f"{where} is not an object")
-        if row.get("kind") != "access":
-            raise CommandError(f"{where}: kind must be 'access', not {row.get('kind')!r}")
+        kind = row.get("kind")
+        if kind not in KINDS:
+            raise CommandError(f"{where}: kind must be one of {sorted(KINDS)}, not {kind!r}")
         way_id = row.get("osm_way_id")
         if not isinstance(way_id, int) or isinstance(way_id, bool) or way_id <= 0:
             raise CommandError(f"{where}: osm_way_id must be a positive integer")
-        if way_id in seen:
+        if (kind, way_id) in seen:
             raise CommandError(f"{where}: way {way_id} appears twice in the file")
-        seen.add(way_id)
+        seen.add((kind, way_id))
         value = row.get("value")
         if not isinstance(value, dict) or not value:
-            raise CommandError(f"{where}: value must be a non-empty object of tags")
-        for key, tag in value.items():
+            raise CommandError(f"{where}: value must be a non-empty object")
+        if kind == "stress":
+            tier = value.get("tier")
+            if set(value) != {"tier"} or not isinstance(tier, int) or isinstance(tier, bool):
+                raise CommandError(f'{where}: a stress value is {{"tier": n}} and nothing else')
+            if not STRESS_TIER_MIN <= tier <= STRESS_TIER_MAX:
+                raise CommandError(
+                    f"{where}: tier must be {STRESS_TIER_MIN} to {STRESS_TIER_MAX}, not {tier}"
+                )
+        for key, tag in value.items() if kind == "access" else ():
             if key not in ACCESS_KEYS:
                 raise CommandError(
                     f"{where}: writes {key!r}, which is not an access key; "
@@ -139,7 +157,7 @@ def plan(rows: list[dict]) -> list[tuple[str, dict, object]]:
     steps = []
     for row in rows:
         same_way = list(
-            Override.objects.filter(kind="access", osm_way_id=row["osm_way_id"]).order_by("id")
+            Override.objects.filter(kind=row["kind"], osm_way_id=row["osm_way_id"]).order_by("id")
         )
         match = next((o for o in same_way if o.value == row["value"]), None)
         conflicting = [
@@ -166,7 +184,7 @@ def plan(rows: list[dict]) -> list[tuple[str, dict, object]]:
 
 class Command(BaseCommand):
     help = (
-        "Load a reviewed, versioned file of bicycle access overrides as approved Override "
+        "Load a reviewed, versioned file of access or stress overrides as approved Override "
         "rows, audited to the instance admin named by --actor. Dry unless --confirm."
     )
 
@@ -215,7 +233,7 @@ class Command(BaseCommand):
                 now = timezone.now()
                 if action == "create":
                     existing = Override.objects.create(
-                        kind="access",
+                        kind=row["kind"],
                         osm_way_id=row["osm_way_id"],
                         value=row["value"],
                         reason=row["reason"],

@@ -1971,3 +1971,43 @@ class TestTheWorstSideIsTheOneScored:
         # And a one-way street with a shoulder on the side it has.
         shouldered = {**oneway, "maxspeed": "35 mph", "shoulder:right": "yes"}
         assert classify({**shouldered, "shoulder:right:width": "2.4"}).tier is Stress.LTS3
+
+
+# --- "Legal but avoid" (the owner's fifth category, 2026-09-27) --------------
+
+AVOID_BASE = {"highway": "trunk", "expressway": "yes", "oneway": "yes", "lanes": "2"}
+
+
+@pytest.mark.parametrize("posted", ["50 mph", "55 mph", "65 mph", "55"])
+def test_a_fast_expressway_is_legal_but_avoid(posted):
+    from routemaker.stress import Stress, classify
+
+    result = classify({**AVOID_BASE, "maxspeed": posted})
+    assert result.tier is Stress.AVOID
+    assert "legal but avoid" in result.rule and "Furth" in result.rule
+    assert result.is_top_tier
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {**AVOID_BASE, "maxspeed": "45 mph"},
+        {**AVOID_BASE},  # unposted: never assumed into the category
+        {**AVOID_BASE, "expressway": "no", "maxspeed": "55 mph"},
+        {"highway": "secondary", "expressway": "yes", "maxspeed": "55 mph"},
+        {"highway": "motorway", "expressway": "yes", "maxspeed": "55 mph"},
+    ],
+)
+def test_everything_else_keeps_its_furth_tier(tags):
+    from routemaker.stress import Stress, _classify, classify
+
+    result = classify(tags)
+    assert result.tier is not Stress.AVOID
+    assert result == _classify(tags)
+
+
+def test_the_category_sits_above_the_furth_scale():
+    from routemaker.stress import Stress
+
+    assert Stress.AVOID > Stress.LTS4
+    assert int(Stress.AVOID) == 5

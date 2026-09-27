@@ -66,7 +66,23 @@ export const STRESS_TIERS = [
     width: 4,
     casing: "#ffffff",
   },
+  // Not a Furth tier: legal for a bicycle and best avoided (the owner's fifth
+  // category, 2026-09-27). It cannot be darker than LTS 4 by a readable step,
+  // so it stands apart instead: a colour no other tier is near, the widest
+  // line, and a dash-dot pattern nothing else uses, over a white casing.
+  {
+    tier: 5,
+    label: "Legal, but best avoided",
+    short: "Avoid",
+    color: "#b0006a",
+    dash: [3, 1, 0.5, 1],
+    width: 4.5,
+    casing: "#ffffff",
+  },
 ];
+
+/** The Furth tiers, the ones ordered by luminance for greyscale print. */
+export const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
 
 /** WCAG relative luminance of a hex colour, 0 (black) to 1 (white). */
 export function relativeLuminance(hex) {
@@ -104,8 +120,8 @@ export const BASEMAP = {
 };
 
 // The stress tiles' layer and property, per the SHARED API CONTRACT for
-// /tiles/stress/{z}/{x}/{y}.pbf: one layer named "stress", a "tier" of 1-4 or
-// null on each feature.
+// /tiles/stress/{z}/{x}/{y}.pbf: one layer named "stress", a "tier" of 1-5 or
+// null on each feature (5 is "legal but avoid", added 2026-09-27).
 export const STRESS_TILE_LAYER = "stress";
 
 export function stressLayers(sourceId = "stress") {

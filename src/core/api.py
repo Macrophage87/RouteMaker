@@ -261,6 +261,7 @@ class StressOut(Schema):
     tier_2: float = Field(alias="2")
     tier_3: float = Field(alias="3")
     tier_4: float = Field(alias="4")
+    tier_5: float = Field(alias="5", description="Legal but avoid.")
     unknown: float
 
 

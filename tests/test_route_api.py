@@ -45,7 +45,7 @@ CONTRACT_KEYS = {
     "dials",
     "hills_seek",
 }
-STRESS_KEYS = {"1", "2", "3", "4", "unknown"}
+STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
 LAT = 38.9
 # Five vertices along one parallel, equally spaced, so every stretch between two
@@ -128,7 +128,7 @@ class FakeRouter:
 # segments: tier 1 on its first half, tier 4 on its second), way 303 (no
 # segment row at all).
 STANDARD_EDGES = [(101, 0, 1, 0.9), (202, 1, 3, 0.8), (303, 3, 4, 0.5)]
-STANDARD_EXPECTED = {"1": 400.0, "2": 0.0, "3": 900.0, "4": 400.0, "unknown": 500.0}
+STANDARD_EXPECTED = {"1": 400.0, "2": 0.0, "3": 900.0, "4": 400.0, "5": 0.0, "unknown": 500.0}
 
 
 def standard_router() -> FakeRouter:

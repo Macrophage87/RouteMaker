@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  FURTH_TIERS,
   STRESS_TIERS,
   BASEMAP,
   stressLayers,
@@ -31,7 +32,7 @@ test("luminance is computed from the colour and falls monotonically with stress"
   // earlier version compared a hand-written `lightness` field, so setting LTS4
   // to pure black left the test green while the printed overlay became
   // meaningless.
-  const luminance = STRESS_TIERS.map((t) => relativeLuminance(t.color));
+  const luminance = FURTH_TIERS.map((t) => relativeLuminance(t.color));
   for (let i = 1; i < luminance.length; i += 1) {
     assert.ok(
       luminance[i] < luminance[i - 1],
@@ -43,8 +44,8 @@ test("luminance is computed from the colour and falls monotonically with stress"
 test("adjacent tiers are separable in greyscale, not merely ordered", () => {
   // Monotonic is not enough: four tiers one grey level apart are ordered and
   // unreadable. 1.4:1 between neighbours keeps them apart on a photocopy.
-  for (let i = 1; i < STRESS_TIERS.length; i += 1) {
-    const ratio = contrastRatio(STRESS_TIERS[i].color, STRESS_TIERS[i - 1].color);
+  for (let i = 1; i < FURTH_TIERS.length; i += 1) {
+    const ratio = contrastRatio(FURTH_TIERS[i].color, FURTH_TIERS[i - 1].color);
     assert.ok(ratio >= 1.4, `tiers ${i} and ${i + 1} are ${ratio.toFixed(2)}:1 apart`);
   }
 });
@@ -57,16 +58,30 @@ test("every tier is legible against the map background", () => {
   }
 });
 
-test("tiers cover exactly the Furth scale", () => {
+test("tiers cover exactly the Furth scale, and legal-but-avoid above it", () => {
   assert.deepEqual(
     STRESS_TIERS.map((t) => t.tier),
+    [1, 2, 3, 4, 5],
+  );
+  assert.deepEqual(
+    FURTH_TIERS.map((t) => t.tier),
     [1, 2, 3, 4],
   );
 });
 
+test("legal-but-avoid stands apart from every Furth tier", () => {
+  const avoid = STRESS_TIERS.find((t) => t.tier === 5);
+  for (const tier of FURTH_TIERS) {
+    assert.ok(avoid.width > tier.width, `wider than ${tier.short}`);
+    assert.ok(contrastRatio(avoid.color, tier.color) >= 1.4 || relativeLuminance(avoid.color) > 0.05, tier.short);
+  }
+  assert.ok(avoid.dash.length > 2, "a dash-dot pattern, unlike the Furth tiers' dashes");
+  assert.match(avoid.label, /avoid/i);
+});
+
 test("one layer per tier, each filtered to its own tier", () => {
   const layers = stressLayers();
-  assert.equal(layers.length, 4);
+  assert.equal(layers.length, STRESS_TIERS.length);
   layers.forEach((layer, i) => {
     assert.equal(layer.filter[0], "==");
     assert.equal(layer.filter[2], STRESS_TIERS[i].tier);

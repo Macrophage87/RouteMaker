@@ -5,7 +5,7 @@
  * > Ordinary Streets. Sharrows don't count as anything." - plus what no
  * segment rated. Each row has a label and a percentage, never colour alone.
  */
-import { wholePercents } from "./stressBar.ts";
+import { wholePercents, type StressMetres } from "./stressBar.ts";
 
 export type FacilityKey = "path" | "protected" | "lane" | "none" | "unknown";
 export type FacilityMetres = Partial<Record<FacilityKey, number>>;
@@ -43,4 +43,10 @@ export function facilityRows(facility: FacilityMetres | undefined): FacilityRow[
   const fractions = rows.map((row) => row.metres / total);
   const percents = wholePercents(fractions);
   return rows.map((row, i) => ({ ...row, fraction: fractions[i], percent: percents[i] }));
+}
+
+/** Metres of the route on "legal but avoid" (stress tier 5); 0 from an older API. */
+export function avoidMetres(stress: StressMetres | undefined): number {
+  const value = stress?.["5"];
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
 }

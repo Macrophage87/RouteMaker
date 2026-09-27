@@ -98,7 +98,7 @@ CREATE TABLE {schema}.segment (
     osm_way_id      bigint      NOT NULL,
     ordinal         integer     NOT NULL,
     geometry        geometry(LineString, 4326) NOT NULL,
-    stress_tier     smallint    NOT NULL CHECK (stress_tier BETWEEN 1 AND 4),
+    stress_tier     smallint    NOT NULL CHECK (stress_tier BETWEEN 1 AND 5),
     stress_rule     text        NOT NULL,
     stress_assumed  jsonb       NOT NULL DEFAULT '[]'::jsonb,
     -- Volume provenance, three columns because three separate facts have to

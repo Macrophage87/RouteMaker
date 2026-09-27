@@ -126,7 +126,7 @@ def clock() -> float:
 # (`routemaker.ridetime`): the owner's three settings of 2026-09-27, the
 # weekend one being PLAN's own default of the next Saturday at 9:00.
 
-STRESS_KEYS = ("1", "2", "3", "4", "unknown")
+STRESS_KEYS = ("1", "2", "3", "4", "5", "unknown")
 FACILITY_KEYS = (*FACILITIES, "unknown")
 
 # Valhalla's error codes, sorted by what they mean to the person asking.
@@ -377,7 +377,7 @@ def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[st
     with connection.cursor() as cursor:
         cursor.execute(query, ([when] if with_facility else []) + arrays)
         for tier, kind, metres in cursor.fetchall():
-            stress[str(tier) if tier in (1, 2, 3, 4) else "unknown"] += float(metres)
+            stress[str(tier) if tier in (1, 2, 3, 4, 5) else "unknown"] += float(metres)
             facility[kind if kind in FACILITY_KEYS else "unknown"] += float(metres)
     return stress, facility
 

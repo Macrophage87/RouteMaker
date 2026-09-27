@@ -567,5 +567,15 @@ check("and access is what it was", same_access(both_plain, both_derived))
 local _, left_out = transform_way(both_derived)
 check("on the left side too", tonumber(left_out.cycle_lane_left) == 3, left_out.cycle_lane_left)
 
+-- Tier 5 reaches upstream as a destination-only edge and nothing else.
+local plain5 = { highway = "trunk", expressway = "yes", maxspeed = "55 mph" }
+local avoid5 = { highway = "trunk", expressway = "yes", maxspeed = "55 mph", ["rm:stress_tier"] = "5" }
+local _, plain5_out = transform_way(plain5)
+local _, avoid5_out = transform_way(avoid5)
+check("upstream alone: an ordinary trunk", plain5_out.private == "false", plain5_out.private)
+check("tier 5: destination-only", avoid5_out.private == "true", avoid5_out.private)
+check("and a bicycle may still ride it both ways", avoid5_out.bike_forward == "true"
+  and avoid5_out.bike_backward == plain5_out.bike_backward)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

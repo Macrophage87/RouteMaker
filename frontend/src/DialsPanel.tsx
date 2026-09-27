@@ -160,8 +160,8 @@ export function DialsPanel({ preset, dials, onCommit }: Props) {
           </label>
         ))}
         <p className="hint">
-          Roads closed to cars at set times, such as Beach Drive at weekends, count as traffic-free paths in the
-          breakdown when the ride is inside the closure.
+          At the weekend, roads closed to cars then, such as Beach Drive and Sligo Creek Parkway, are planned as
+          traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in the breakdown.
         </p>
       </fieldset>
       {moved && (

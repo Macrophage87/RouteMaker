@@ -6,7 +6,7 @@
  */
 import { STRESS_TIERS } from "../stressStyle.js";
 
-export type StressKey = "1" | "2" | "3" | "4" | "unknown";
+export type StressKey = "1" | "2" | "3" | "4" | "5" | "unknown";
 export type StressMetres = Partial<Record<StressKey, number>>;
 
 export interface StressSegment {

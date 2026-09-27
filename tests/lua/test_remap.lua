@@ -760,5 +760,27 @@ check("nor over a refusal",
   next(M.remap_way({ highway = "tertiary", bicycle = "no", cycleway = "shared_lane" }, { facility = "path" }))
     == nil)
 
+-- "Legal but avoid" (tier 5): the stress penalty and a destination-only mark.
+local avoid = M.remap_way({ highway = "trunk", expressway = "yes", maxspeed = "55 mph" }, { stress_tier = 5 })
+check("tier 5 carries the stress penalty", avoid.bicycle == "use_sidepath")
+check("and the destination-only mark", avoid.motor_vehicle == "destination")
+for tier = 1, 4 do
+  check("tier " .. tier .. " gets no destination-only mark",
+    M.remap_way({ highway = "trunk" }, { stress_tier = tier }).motor_vehicle == nil)
+end
+check("never on a trail-class way",
+  M.remap_way({ highway = "cycleway" }, { stress_tier = 5, is_trail_class = true }).motor_vehicle == nil)
+check("never over a real motor_vehicle value",
+  M.remap_way({ highway = "primary", motor_vehicle = "no" }, { stress_tier = 5 }).motor_vehicle == nil)
+check("nor where motorcar is tagged",
+  M.remap_way({ highway = "primary", motorcar = "yes" }, { stress_tier = 5 }).motor_vehicle == nil)
+check("nor where a bicycle may not ride",
+  M.remap_way({ highway = "primary", bicycle = "no" }, { stress_tier = 5 }).motor_vehicle == nil)
+check("nor where a bridge legality of false bars the roadway",
+  M.remap_way({ highway = "primary" }, { stress_tier = 5, bridge_bicycle_legal = false }).motor_vehicle == nil)
+check("a permissive motor_vehicle value is replaced",
+  M.remap_way({ highway = "primary", motor_vehicle = "yes" }, { stress_tier = 5 }).motor_vehicle
+    == "destination")
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -4,14 +4,21 @@
  * places it (another lane is changing App.tsx).
  */
 import { formatClimb, formatDistance } from "./lib/format.ts";
-import { facilityRows } from "./lib/facilityBar.ts";
+import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
   const rows = facilityRows(route.facility_m);
   const seek = route.hills_seek;
+  const avoid = avoidMetres(route.stress_m);
   return (
     <>
+      {avoid > 0 && (
+        <p className="notice avoid" role="note">
+          {formatDistance(avoid)} of this route is on roads marked legal but best avoided, such as expressways. The
+          planner uses them only where every other way is much longer.
+        </p>
+      )}
       {rows.length > 0 && (
         <figure className="stress facility">
           <figcaption>Bike facilities along the route</figcaption>

@@ -1,0 +1,169 @@
+{
+  "version": 1,
+  "decided": "2026-09-27",
+  "decided_by": "the deployment owner",
+  "rows": [
+    {
+      "kind": "stress",
+      "osm_way_id": 15561007,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-27, asked about US 340 in West Virginia (the William L. Wilson Freeway), chose \"Legal but avoid\" (\"Leave access as OSM has it; the stress penalty (LTS 4) already pushes Default and calmer rides off it when there's an alternative.\") and then: \"Maybe make a 5th category for legal but to be avoided\". The first entry of the category.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 15561007, William L. Wilson Freeway, highway=trunk, ref US 340, maxspeed 45 mph, no bicycle tag, so bicycle-legal by default and LTS 4 by the classifier. Only this 1.05 km of the freeway is in the extract, which is built from the DC, Maryland and Virginia state files; the rest lies in West Virginia."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546096009,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546095996,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546096006,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546095995,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546095994,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546095992,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546095991,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 546095993,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 589551026,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 371431399,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 589551027,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 6061612,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". The Benning Road Bridge roadway (westbound); its sidewalks are separate ways and are not touched.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 6061612, Benning Road Northeast, highway=primary, bridge:name Benning Road Bridge, oneway, maxspeed 35 mph, no bicycle tag."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 135146249,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". The Benning Road Bridge roadway (eastbound); its sidewalks are separate ways and are not touched.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 135146249, Benning Road Northeast, highway=primary, bridge:name Benning Road Bridge, oneway, maxspeed 35 mph, no bicycle tag."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 910656490,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid, Mass Ride included. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". And on Mass Ride, 2026-09-27: \"That shouldn't be the case. There were even issues on it on rides that I've done. Any time it's proposed for a mass ride there are strong objections\". The Frederick Douglass Memorial Bridge roadway; the Anacostia Riverwalk Trail ways on the bridge (984551672, 1088041544) are not touched, and the roadway stays legal.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 910656490, South Capitol Street Southeast, highway=primary, bridge:name Frederick Douglass Memorial Bridge, bicycle=use_sidepath, foot=no, oneway."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 910656491,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid, Mass Ride included. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". And on Mass Ride, 2026-09-27: \"That shouldn't be the case. There were even issues on it on rides that I've done. Any time it's proposed for a mass ride there are strong objections\". The Frederick Douglass Memorial Bridge roadway; the Anacostia Riverwalk Trail ways on the bridge (984551672, 1088041544) are not touched, and the roadway stays legal.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 910656491, South Capitol Street Southwest, highway=primary, bridge:name Frederick Douglass Memorial Bridge, bicycle=use_sidepath, foot=no, oneway."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50715828,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (westbound).",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 50715828, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 118727221,
+      "value": {
+        "tier": 4
+      },
+      "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (eastbound).",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 118727221, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag."
+    }
+  ]
+}

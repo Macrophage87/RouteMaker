@@ -30,6 +30,7 @@ class StressTier(models.IntegerChoices):
     LTS2 = 2, "Tolerable for most adults"
     LTS3 = 3, "Tolerable for confident cyclists"
     LTS4 = 4, "Strong and fearless only"
+    AVOID = 5, "Legal but avoid"
 
 
 class Segment(models.Model):

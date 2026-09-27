@@ -77,3 +77,21 @@ in a reviewed commit.
 | File | Decision |
 |---|---|
 | `2026-09-26-owner-bicycle-access.json` | Key Bridge's Virginia approaches and the 11th Street local span's south landing, including its run onto Martin Luther King Jr Avenue SE, are legal to ride (owner, 2026-09-26, in two answers; the file grew from six rows to twelve and reloading it adds only the new ones). See `fixtures/crossings/README.md`. Needs the crossings of 2026-09-26 installed first (above). |
+
+## Stress rows, and the files of 2026-09-27
+
+A row may also be `{"kind": "stress", "value": {"tier": n}}`, n from 1 to 5: the
+tier the rebuild gives the way after classification
+(`pipeline.overrides.apply_stress`). Tier 5 is "legal but avoid"
+(`routemaker.stress.Stress.AVOID`, the owner's category of 2026-09-27). The same
+command loads them (`load_overrides` is its other name); a way may carry one row
+of each kind.
+
+- `2026-09-27-owner-stress.json`: the owner's curated tiers - US 340's William
+  L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways at 5;
+  the 11th Street local span and its south landing, and the Sousa Bridge roadway,
+  at 4. Loaded by the owner's decision, like the access file before it.
+- `2026-09-27-owner-pennsylvania-ave-se.json`: `bicycle=no` on Pennsylvania
+  Avenue SE's expressway stretch east of the Sousa Bridge. Prepared, not loaded:
+  its extent is this repository's reading of the owner's "just after the bridge"
+  and waits for the owner's confirmation.

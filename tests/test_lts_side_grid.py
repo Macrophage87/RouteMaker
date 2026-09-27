@@ -137,7 +137,8 @@ def cycleway_grid():
 def test_the_cycleway_grid_is_the_whole_space(cycleway_grid) -> None:
     assert len(cycleway_grid) == len(CW_VALUES) ** 4 * len(CW_WIDTHS) ** 4 * len(ONEWAYS)
     # Every tier is reached, so every step below can be seen to move.
-    assert set(cycleway_grid.values()) == set(Stress)
+    # Every Furth tier: "legal but avoid" (5) is an expressway rule, not a cycleway one.
+    assert set(cycleway_grid.values()) == set(Stress) - {Stress.AVOID}
 
 
 def test_adding_a_cycleway_never_raises_the_tier(cycleway_grid) -> None:

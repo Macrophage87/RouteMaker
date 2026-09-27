@@ -386,6 +386,29 @@ function M.remap_way(tags, derived)
     end
   end
 
+  -- "Legal but avoid" (stress tier 5; the owner, 2026-09-27: "Maybe make a
+  -- 5th category for legal but to be avoided"). On top of the stress penalty
+  -- above, which Mass Ride's use_roads of 1.0 weighs at nothing, the way is
+  -- marked destination-only for motor vehicles: upstream reads
+  -- `motor_vehicle=destination` onto the edge's destination-only flag and
+  -- nothing about bicycle access, and Valhalla charges
+  -- `destination_only_penalty` (core.presets.AVOID_ENTRY_PENALTY_S) each time
+  -- a route enters such an edge from an ordinary one - cost only, no time, on
+  -- every preset, and the edge stays routable. The graph serves bicycles
+  -- only, so no motor-vehicle route ever reads the claim; it is written only
+  -- where nothing about motor vehicles is tagged already, since overwriting a
+  -- real `motor_vehicle` value would lose it.
+  if
+    derived.stress_tier == M.AVOID_TIER
+    and not derived.is_trail_class
+    and (tags.motor_vehicle == nil or M.PERMISSIVE_ACCESS[tags.motor_vehicle])
+    and tags.motorcar == nil
+    and out.bicycle ~= "no"
+    and M.may_penalise(tags, tags.bicycle)
+  then
+    out.motor_vehicle = M.AVOID_MOTOR_VEHICLE
+  end
+
   if derived.lit ~= nil then
     out.lit = derived.lit and "yes" or "no"
   end
@@ -693,6 +716,10 @@ end
 -- The stress tiers the penalty lands on: LTS 3 and 4, the two the classifier
 -- says most adults will not ride in mixed traffic.
 M.STRESS_PENALTY_TIER = 3
+
+-- "Legal but avoid", and the write that carries it (see `remap_way`).
+M.AVOID_TIER = 5
+M.AVOID_MOTOR_VEHICLE = "destination"
 
 -- --- Facility ------------------------------------------------------------------
 --

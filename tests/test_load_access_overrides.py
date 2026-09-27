@@ -322,7 +322,13 @@ class TestWhatTheCommandRefuses:
         ("change", "message"),
         [
             ({"value": {"highway": "cycleway"}}, "not an access key"),
-            ({"kind": "stress"}, "kind must be 'access'"),
+            ({"kind": "jurisdiction"}, "kind must be one of"),
+            ({"kind": "stress"}, "a stress value is"),
+            ({"kind": "stress", "value": {"tier": 6}}, "tier must be 1 to 5"),
+            ({"kind": "stress", "value": {"tier": 0}}, "tier must be 1 to 5"),
+            ({"kind": "stress", "value": {"tier": "5"}}, "a stress value is"),
+            ({"kind": "stress", "value": {"tier": True}}, "a stress value is"),
+            ({"kind": "stress", "value": {"tier": 5, "bicycle": "no"}}, "a stress value is"),
             ({"osm_way_id": 0}, "positive integer"),
             ({"reason": " "}, "reason is required"),
             ({"evidence": " "}, "evidence is required"),
@@ -389,3 +395,49 @@ class TestWhatTheCommandRefuses:
                 self.write(tmp_path, [self.ROW]), "--actor", str(admin.discord_user_id), "--confirm"
             )
         assert Override.objects.count() == 1
+
+
+@pytest.mark.django_db
+def test_a_stress_row_loads_as_an_approved_stress_override(tmp_path) -> None:
+    from core.models import Override, User
+
+    admin = User.objects.create(discord_user_id=881111, is_instance_admin=True)
+    row = {
+        "kind": "stress",
+        "osm_way_id": 42,
+        "value": {"tier": 5},
+        "reason": "r",
+        "evidence": "e",
+    }
+    path = tmp_path / "stress.json"
+    path.write_text(
+        json.dumps(
+            {"version": 1, "rows": [row, {**row, "kind": "access", "value": {"bicycle": "yes"}}]}
+        )
+    )
+    call_command(
+        "load_overrides",
+        str(path),
+        "--actor",
+        str(admin.discord_user_id),
+        "--confirm",
+        stdout=io.StringIO(),
+    )
+    stress = Override.objects.get(kind="stress")
+    assert (stress.osm_way_id, stress.value, stress.approved) == (42, {"tier": 5}, True)
+    assert Override.objects.filter(kind="access", osm_way_id=42).exists(), "one way, two kinds"
+    # A second run is a no-op; a different tier on the same way is a conflict.
+    call_command(
+        "load_overrides",
+        str(path),
+        "--actor",
+        str(admin.discord_user_id),
+        "--confirm",
+        stdout=io.StringIO(),
+    )
+    assert Override.objects.count() == 2
+    path.write_text(json.dumps({"version": 1, "rows": [{**row, "value": {"tier": 4}}]}))
+    with pytest.raises(CommandError, match="disagrees"):
+        call_command(
+            "load_overrides", str(path), "--actor", str(admin.discord_user_id), "--confirm"
+        )
