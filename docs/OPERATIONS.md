@@ -332,6 +332,53 @@ The table arrives with migration `core.0008_rate_limit_window`, which the
 `migrate` one-shot applies before the api starts; nothing else is needed on
 deploy.
 
+## The stress tiles
+
+`GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic
+stress overlay from the live segment table with PostGIS's `ST_AsMVT`, for
+anyone, signed in or not. Zooms 10 to 16 are drawn; any other zoom, and any
+tile outside `COVERAGE_BBOX`, is an empty 200. A coordinate that is not a tile
+is 400, and a deployment with no live segment table yet is 404, which the
+front end reads as "no overlay".
+
+| Zoom | What is drawn | Measured on the first promoted build, downtown DC tile |
+| --- | --- | --- |
+| 10-11 | LTS 3 and 4, and cycleways, paths and bridleways; one feature per class, simplified | z10 245 KB (165 KB gzipped) |
+| 12-13 | everything but footways, pedestrian ways and steps; one feature per class, simplified | z12 151 KB, z13 51 KB |
+| 14-16 | every segment | z14 124 KB (55 KB gzipped), 5,062 features |
+
+Every z10 tile over the whole box is 1.5 MB together (42 tiles, the largest the
+one above); first draws took a median of 38 ms and at most 471 ms, and at z12
+(576 tiles) a median of 18 ms and at most 133 ms.
+
+**Limits.** Counted per address like routing, under a scope of their own
+(`core.ratelimit.TILES`): 600 per 60 s window, 429 with `Retry-After` past it.
+A map fetches tiles by the screenful - a vigorous minute of zooming and
+panning a 1920x1080 window fetched 87 - so the figure is several people's
+worth behind one address. Tiles take no in-flight slot: the slowest draw
+measured was the z10 downtown tile at 1.5 s with a cold database cache, and
+every draw after that was under half a second.
+
+**Caching.** `Cache-Control: public, max-age=3600` and a weak ETag naming the
+live table (its oid, which a promotion changes) and the tile format version,
+so after the hour a client revalidates and gets a 304 without the tile being
+drawn. Caddy compresses the tiles (`encode` on `/tiles/*`, matched on the
+vector-tile content type); nothing else the api answers is compressed.
+
+**The overview index.** The zoomed-out tiles read through a partial GiST index,
+`segment_overview_geom_idx`, which `pipeline.schema.create_segment_schema`
+creates with the rest of the schema on every rebuild (285 ms to 7 ms for the
+scan of the z10 downtown tile). A live table promoted before this change does
+not have it; the tiles are still right without it, only slower at z10-11,
+and the next rebuild brings it. To add it to a live table by hand before
+then, build it concurrently so reads carry on (the predicate is
+`pipeline.schema.OVERVIEW_PREDICATE`, printed here from the api container):
+
+```sh
+docker compose exec -T api python manage.py shell -c "from pipeline.schema import OVERVIEW_PREDICATE as p; print(p)"
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS segment_overview_geom_idx ON live.segment USING gist (geometry) WHERE <the predicate>"
+```
+
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
