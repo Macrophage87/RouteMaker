@@ -1034,6 +1034,26 @@ Do steps 1 to 3 together, and all of them before the next Tuesday 08:00 UTC run
 (`WEEKLY_REBUILD_CRON`), which fires on its own and promotes whatever is in
 place. Never load the rows while the old rebuild image is still deployed.
 
+**The deploy of the traffic and hills sliders (PUBLIC-DIALS, 2026-09-27)** is
+one of these. Its fixture drops the `ordinary_ride_penalty_way_ids` column
+(the owner retired the 11th Street penalty), so step 2 is required: the new
+rebuild image refuses an installed copy that differs, and one that still has
+the column is refused by name (`variants.MalformedCrossingRow`). Step 3 loads
+`fixtures/overrides/2026-09-27-owner-stress.json`, the owner's curated stress
+tiers, which the owner approved for loading on 2026-09-27 ("Yes, load it"):
+
+```sh
+docker compose exec -T api python manage.py load_access_overrides - \
+    --actor <discord user id> < fixtures/overrides/2026-09-27-owner-stress.json
+docker compose exec -T api python manage.py load_access_overrides - \
+    --actor <discord user id> --confirm < fixtures/overrides/2026-09-27-owner-stress.json
+```
+
+Its stress rows name ways the 2026-09-26 access file opens (the 11th Street
+landing), so that file is loaded first if it is not already. The rebuild of
+step 4 builds four graphs, the weekend one among them, and needs the fourth
+router this deploy adds ("The weekend graph (a fourth router)" below).
+
 **About `--actor`.** The rows are attributed to the account named by the
 Discord user id on the command line. The command checks that the account exists
 and is an active instance admin, but nothing authenticates the person typing:

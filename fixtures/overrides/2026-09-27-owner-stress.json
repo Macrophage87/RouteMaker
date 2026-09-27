@@ -164,6 +164,33 @@
       },
       "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (eastbound).",
       "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 118727221, Pennsylvania Avenue Southeast, highway=primary, bridge:name John Philip Sousa Bridge, oneway, lanes 3, no bicycle tag."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 946400435,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, from the ramp merge.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 946400435, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50715834,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, to the second ramp merge.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 50715834, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 3, maxspeed 30 mph, 86 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 936339897,
+      "value": {
+        "tier": 5
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, through the Fairlawn Avenue SE junction.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 936339897, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
     }
   ]
 }

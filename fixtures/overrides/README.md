@@ -88,10 +88,16 @@ command loads them (`load_overrides` is its other name); a way may carry one row
 of each kind.
 
 - `2026-09-27-owner-stress.json`: the owner's curated tiers - US 340's William
-  L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways at 5;
-  the 11th Street local span and its south landing, and the Sousa Bridge roadway,
-  at 4. Loaded by the owner's decision, like the access file before it.
-- `2026-09-27-owner-pennsylvania-ave-se.json`: `bicycle=no` on Pennsylvania
-  Avenue SE's expressway stretch east of the Sousa Bridge. Prepared, not loaded:
-  its extent is this repository's reading of the owner's "just after the bridge"
-  and waits for the owner's confirmation.
+  L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways,
+  and Pennsylvania Avenue SE eastbound from the DC 295 off-ramp merge east of
+  the Sousa Bridge to Fairlawn Avenue SE ("Looking at it, there's a highway
+  offramp with a blind corner. It's a level 5 road afterwards."), at 5; the
+  11th Street local span and its south landing (the owner's "Steer to the
+  path", whose separate penalty was retired for this tier), and the Sousa
+  Bridge roadway, at 4. The owner approved loading it on 2026-09-27 ("Yes, load
+  it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
+  loads access overrides", gives the order.
+
+An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
+the bridge, was never loaded and is gone: the owner looked at the road and
+chose tier 5 instead, so the road stays legal.
