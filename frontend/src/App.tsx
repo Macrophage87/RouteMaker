@@ -12,7 +12,8 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
+import { addCoverageMask, fetchCoverage, watchForFacilities } from "./lib/mapGlue.ts";
 
 interface Plan {
   points: LonLat[];
@@ -60,6 +61,10 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
+  // Whether the grey coverage mask is on the map, and whether the stress tiles
+  // carry bike-facility data; each legend line is shown only when it is true.
+  const [coverageShown, setCoverageShown] = useState(false);
+  const [facilitiesShown, setFacilitiesShown] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -335,6 +340,7 @@ export function App() {
         </ol>
       )}
       {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
+      {coverageShown && <p className="hint">Grey areas are outside what RouteMaker covers.</p>}
       <div className="actions">
         <button
           type="button"
@@ -436,6 +442,10 @@ export function App() {
         markerReset={markerReset}
         onReady={(map) => {
           mapRef.current = map;
+          void fetchCoverage(window.location.origin).then((coverage) => {
+            if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
+          });
+          watchForFacilities(map, () => setFacilitiesShown(true));
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
       />
@@ -471,7 +481,7 @@ export function App() {
                   />
                   Show traffic stress on the map
                 </label>
-                <StressLegend />
+                <StressLegend facilities={facilitiesShown} />
               </>
             )}
             {stress === "checking" && <p className="hint">Checking the stress map…</p>}
@@ -560,7 +570,7 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
   );
 }
 
-function StressLegend() {
+function StressLegend({ facilities }: { facilities: boolean }) {
   return (
     <>
       <ul className="legend" aria-label="Traffic stress legend">
@@ -590,6 +600,34 @@ function StressLegend() {
         Zoomed out, only LTS 3 and 4 roads and the trails (cycleways and paths) are drawn. Quiet streets appear as you
         zoom in, and footways and sidewalks closer in still. Streets with no stress rating are not drawn.
       </p>
+      {facilities && (
+        <>
+          <p className="hint">Bike facilities are violet edges on either side of the stress line:</p>
+          <ul className="legend" aria-label="Bike facility legend">
+            {FACILITIES.map((facility) => {
+              const rails = facilityWidth(facility, STRESS_TIERS[0].width);
+              return (
+                <li key={facility.facility}>
+                  <svg width="44" height="14" aria-hidden="true">
+                    <line
+                      x1="2"
+                      y1="7"
+                      x2="42"
+                      y2="7"
+                      stroke={facility.color}
+                      strokeWidth={rails}
+                      strokeDasharray={facility.dash ? facility.dash.map((d: number) => d * rails).join(" ") : undefined}
+                    />
+                    <line x1="2" y1="7" x2="42" y2="7" stroke="#ffffff" strokeWidth={STRESS_TIERS[0].width + CASING_EXTRA_PX} />
+                  </svg>
+                  <span className="stress-label">{facility.label}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="hint">Sharrows count as ordinary streets. Paths and protected lanes stay on the map zoomed out.</p>
+        </>
+      )}
     </>
   );
 }

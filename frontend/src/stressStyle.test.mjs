@@ -8,6 +8,9 @@ import {
   stressCasingLayers,
   stressOverlayLayers,
   legend,
+  FACILITIES,
+  facilityLayers,
+  CASING_EXTRA_PX,
   relativeLuminance,
   contrastRatio,
 } from "./stressStyle.js";
@@ -146,12 +149,54 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const ids = stressOverlayLayers("s").map((l) => l.id);
   const tiers = stressLayers("s").map((l) => l.id);
   const casings = stressCasingLayers("s").map((l) => l.id);
-  assert.deepEqual([...ids].sort(), [...tiers, ...casings].sort(), "each layer once");
+  const rails = facilityLayers("s").map((l) => l.id);
+  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings].sort(), "each layer once");
   casings.forEach((casing, i) => assert.ok(ids.indexOf(casing) < ids.indexOf(tiers[i]), `${casing} is drawn over its tier`));
   const lastCasing = Math.max(...casings.map((c) => ids.indexOf(c)));
   const firstTier = Math.min(...tiers.map((t) => ids.indexOf(t)));
   assert.ok(lastCasing < firstTier, "a casing is drawn over another tier's line");
+  const lastRail = Math.max(...rails.map((r) => ids.indexOf(r)));
+  const firstCasing = Math.min(...casings.map((c) => ids.indexOf(c)));
+  assert.ok(lastRail < firstCasing, "a facility's rails are drawn over a stress line");
   for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, "s");
+});
+
+test("the bike facilities are the owner's three, and sharrows are not one of them", () => {
+  assert.deepEqual(
+    FACILITIES.map((f) => f.facility),
+    ["path", "protected", "lane"],
+  );
+  for (const f of FACILITIES) assert.ok(f.label.length > 0);
+});
+
+test("each facility is told apart from the others without colour, and the stronger read bolder", () => {
+  const cues = FACILITIES.map((f) => JSON.stringify([f.rail, f.dash]));
+  assert.equal(new Set(cues).size, FACILITIES.length);
+  const [path, protectedLane, lane] = FACILITIES;
+  assert.ok(path.rail >= protectedLane.rail && protectedLane.rail > lane.rail);
+  assert.equal(path.dash, null, "an off-road path's rails are unbroken");
+});
+
+test("each facility layer reads the tile's facility property and shows beyond the casing", () => {
+  const layers = facilityLayers("s");
+  layers.forEach((layer, i) => {
+    assert.deepEqual(layer.filter, ["==", ["get", "facility"], FACILITIES[i].facility]);
+    assert.equal(layer["source-layer"], "stress");
+    const width = layer.paint["line-width"];
+    assert.deepEqual(width.slice(0, 2), ["match", ["get", "tier"]]);
+    for (const tier of STRESS_TIERS) {
+      const w = width[width.indexOf(tier.tier, 2) + 1];
+      assert.ok(w >= tier.width + CASING_EXTRA_PX + 2, `${layer.id} at LTS ${tier.tier} hides under the casing`);
+    }
+    assert.ok(width.at(-1) > 0, "a tier the style does not know still gets rails");
+  });
+});
+
+test("the facility colours are legible on the base map and not the route's blue", () => {
+  for (const f of FACILITIES) {
+    assert.ok(contrastRatio(f.color, "#f5f3ef") >= 3, `${f.facility} is under 3:1 on the base map`);
+    assert.notEqual(f.color.toLowerCase(), "#1d4ed8");
+  }
 });
 
 test("the contrast maths is WCAG 2's, against its published anchors", () => {

@@ -1,7 +1,21 @@
 // What MapView does to the map, run against a stand-in map that records calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addStressOverlay, markerDeps, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
+import {
+  COVERAGE_MASK_LAYERS,
+  COVERAGE_SOURCE_ID,
+  addCoverageMask,
+  addStressOverlay,
+  coverageMask,
+  fetchCoverage,
+  markerDeps,
+  setStressVisibility,
+  tilesCarryFacilities,
+  watchForFacilities,
+  type Coverage,
+  type FacilityMap,
+  type OverlayMap,
+} from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import { stressOverlayLayers } from "../stressStyle.js";
 
@@ -105,4 +119,132 @@ test("the markers are placed again when markerReset changes, even with the same 
   assert.equal(changed(markerDeps(points, 0), markerDeps(points, 0)), false);
   assert.equal(changed(markerDeps(points, 0), markerDeps(points, 1)), true, "a put-back leaves the markers");
   assert.equal(changed(markerDeps(points, 0), markerDeps([...points], 0)), true, "new points leave the markers");
+});
+
+// The coverage mask (owner request of 2026-09-27, "grey out all the parts of
+// the map that don't have support").
+const COVERAGE: Coverage = {
+  type: "Feature",
+  geometry: {
+    type: "Polygon",
+    coordinates: [
+      [
+        [-78, 38.2],
+        [-76.02, 38.2],
+        [-76.02, 39.72],
+        [-78, 39.72],
+        [-78, 38.2],
+      ],
+    ],
+  },
+  properties: {},
+};
+
+function signedArea(ring: number[][]): number {
+  let sum = 0;
+  for (let i = 0; i + 1 < ring.length; i += 1) sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  return sum / 2;
+}
+
+test("the mask is the world with exactly the coverage cut out, and the edge is the coverage ring", () => {
+  const mask = coverageMask(COVERAGE);
+  const [fill, edge] = mask.features;
+  const [outer, hole] = fill.geometry.coordinates;
+  assert.equal(fill.geometry.coordinates.length, 2, "one outer ring, one hole");
+  const lons = outer.map((p) => p[0]);
+  const lats = outer.map((p) => p[1]);
+  assert.deepEqual([Math.min(...lons), Math.max(...lons)], [-180, 180]);
+  assert.ok(Math.min(...lats) <= -85 && Math.max(...lats) >= 85);
+  const ring = COVERAGE.geometry.coordinates[0];
+  assert.deepEqual([...hole].reverse(), ring, "the hole is the coverage ring");
+  assert.ok(Math.sign(signedArea(outer)) !== Math.sign(signedArea(hole)), "a hole winds against its ring");
+  assert.deepEqual(edge.geometry.coordinates, ring);
+  assert.deepEqual(
+    COVERAGE_MASK_LAYERS.map((l) => [l.filter[2], mask.features.filter((f) => f.properties.part === l.filter[2]).length]),
+    [
+      ["mask", 1],
+      ["edge", 1],
+    ],
+  );
+});
+
+test("the mask goes over the base map and under its labels, fill before edge, once", () => {
+  const { map, added, sources } = fakeMap(BASE);
+  assert.equal(addCoverageMask(map, COVERAGE), true);
+  assert.deepEqual(
+    added.map((a) => [a.layer.id, a.before]),
+    COVERAGE_MASK_LAYERS.map((l) => [l.id, "road-labels"]),
+  );
+  assert.ok(sources.get(COVERAGE_SOURCE_ID));
+  assert.equal(addCoverageMask(map, COVERAGE), false);
+  assert.equal(added.length, COVERAGE_MASK_LAYERS.length);
+});
+
+test("the mask goes under the stress overlay when the overlay reached the map first", () => {
+  const overlay = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string; type: string }) => ({
+    id: l.id,
+    type: l.type,
+  }));
+  const { map, added } = fakeMap([BASE[0], BASE[1], ...overlay, BASE[2], BASE[3]]);
+  addCoverageMask(map, COVERAGE);
+  for (const a of added) assert.equal(a.before, overlay[0].id);
+});
+
+test("the coverage is read from the API, and anything else is no mask", async () => {
+  const answer = (status: number, body: unknown) => async () =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  let asked = "";
+  const good = await fetchCoverage("https://example.test", (async (url: string) => {
+    asked = url;
+    return answer(200, COVERAGE)();
+  }) as typeof fetch);
+  assert.equal(asked, "https://example.test/api/coverage");
+  assert.deepEqual(good, COVERAGE);
+  assert.equal(await fetchCoverage("o", answer(429, { error: "slow down" }) as typeof fetch), null);
+  assert.equal(await fetchCoverage("o", answer(200, { type: "Feature", geometry: { type: "Point" } }) as typeof fetch), null);
+  assert.equal(
+    await fetchCoverage("o", (async () => {
+      throw new Error("offline");
+    }) as typeof fetch),
+    null,
+  );
+});
+
+function facilityMap(withSource: boolean, featuresByCall: unknown[][]) {
+  const listeners = new Set<() => void>();
+  const queries: Array<{ id: string; options: unknown }> = [];
+  const map: FacilityMap = {
+    getSource: (id) => (withSource && id === STRESS_SOURCE_ID ? {} : undefined),
+    querySourceFeatures: (id, options) => {
+      queries.push({ id, options });
+      return featuresByCall.shift() ?? [];
+    },
+    on: (_event, listener) => listeners.add(listener),
+    off: (_event, listener) => listeners.delete(listener),
+  };
+  return { map, listeners, queries };
+}
+
+test("the facility legend waits for facility data on the map, and stops looking once it has seen some", () => {
+  const { map, listeners, queries } = facilityMap(true, [[], [{}]]);
+  let found = 0;
+  watchForFacilities(map, () => {
+    found += 1;
+  });
+  assert.equal(listeners.size, 1);
+  [...listeners][0]();
+  assert.equal(found, 0, "no facility data yet");
+  [...listeners][0]();
+  assert.equal(found, 1);
+  assert.equal(listeners.size, 0, "the watch ends");
+  assert.deepEqual(queries[0], {
+    id: STRESS_SOURCE_ID,
+    options: { sourceLayer: "stress", filter: ["has", "facility"] },
+  });
+});
+
+test("before the stress overlay exists there is nothing to ask", () => {
+  const { map, queries } = facilityMap(false, [[{}]]);
+  assert.equal(tilesCarryFacilities(map), false);
+  assert.equal(queries.length, 0);
 });
