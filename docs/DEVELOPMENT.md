@@ -289,6 +289,44 @@ It is idempotent, creates the role, database and PostGIS extension if they are
 absent, and waits for the socket before returning.
 
 
+## The public API
+
+`POST /api/route` is Django Ninja (`core/api.py`); the presets it offers are
+`core/presets.py`, the router calls and the stress join `core/routing.py`, and
+the limits `core/ratelimit.py`. The schema is at `/api/openapi.json` on any
+running api. A request, against the native loop's `runserver` or the stack:
+
+```sh
+curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/json' \
+    -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "default"}'
+```
+
+It needs the three routers (`VALHALLA_UPSTREAMS`) and a populated live segment
+schema; without the routers the answer is a 502, which is the API working.
+`tests/test_route_api.py` replaces the router at `core.routing._transport`,
+the one function that touches the network, so the suite needs neither.
+
+Two settings worth knowing. `WEB_CONCURRENCY` - gunicorn's worker count - also
+sizes `ROUTING_CONCURRENCY`, the routes the api may run at once (the count less
+two, at least one); `runserver` is one process, and the default of 5 gives it
+3. And the per-client limit keys on the last `X-Forwarded-For` entry, so a
+local client that sets that header chooses its own bucket - harmless here,
+because on the stack only Caddy reaches the api and Caddy overwrites it.
+
+**What a client should do.** Keep one route in flight: send the next plan only
+when the last has answered, and on a drag replace the pending points rather
+than queue another request. Do not retry on a timer. A 429 or 503 carries
+`Retry-After`; wait that long once, then send the current points. The per-client
+slot is one route on the default pool, so a second concurrent request from the
+same browser is refused rather than served.
+
+**Long rides.** Past 150 km of straight line a signed-out request gets 409 with
+`"code": "confirm_long"` and `span_km`, and nothing is routed; resend the same
+body with `"confirm_long": true` once the visitor agrees. A signed-in session
+never sees the 409. Past 200 km the answer is 400 however it is asked. A
+route whose traces ran out of time comes back with that part of `stress_m` as
+`"unknown"`; treat it like any other unknown stretch.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are

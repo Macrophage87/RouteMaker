@@ -196,6 +196,7 @@ declining every week with "grow the volume" as the only remedy.
 | Database dumps | 7 (`BACKUP_KEEP`) | `pipeline.retention.prune_backups`, run by the backup task after a verified dump |
 | `scheduled_run` rows | 30 days, plus the newest row and the newest successful row per task | `core.runs.prune_run_rows`, run nightly |
 | Finished `procrastinate_jobs` and their events | 30 days | `core.runs.prune_job_rows`, run nightly |
+| `rate_limit_window` rows (keyed client addresses) | 1 day idle, so at most about 30 hours | `core.ratelimit.purge_expired`, run by the six-hourly membership sweep |
 
 Three rules are load-bearing rather than incidental:
 
@@ -222,10 +223,114 @@ pruned, whatever its age, and neither is a job a `procrastinate_periodic_defers`
 row still points at — that reference is how the scheduler knows it has already
 fired for a tick.
 
+## The public routing API: its limits, and clearing a client
+
+`POST /api/route` plans a route for anyone, signed in or not (the owner's
+amendment of 2026-09-26 in PLAN.md, The anonymous surface); its schema is at
+`/api/openapi.json`, and there is no interactive docs page. What bounds it, in
+the order a request meets it:
+
+| Check | Limit | Answer |
+| --- | --- | --- |
+| Content type, declared body size | `application/json`, at most 8 KB | 400 |
+| Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
+| Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
+| Routes in flight, whole api | `WEB_CONCURRENCY` less 2 (3 at compose's default of 5 workers) | 503, `Retry-After: 5` |
+| Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
+| Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
+| Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
+| Length ceiling | 200 km of straight line, however asked | 400 "too long" |
+| Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers; a trace cut short leaves its legs' stress `unknown` |
+
+The content type is checked before the count on purpose: a page on any site
+can make a visitor's browser send a `text/plain` or form POST here without a
+preflight, and counting those would let it spend that visitor's budget. The
+in-flight limit is what keeps two gunicorn workers free for `/healthz`, the
+tiles, sign-in and the admin however the router is loaded (from three workers
+up; one or two workers get one routing slot and keep fewer free); without it a burst
+of long routes inside one client's per-minute budget held every worker and
+`/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
+PostgreSQL advisory lock held on the worker's connection for the length of the
+request, so a killed worker's slot is released with its connection, and a
+slot that cannot be unlocked closes the connection, which releases it too.
+
+**Long rides.** The owner's decisions of 2026-09-26 (PLAN.md, Moderation and
+abuse limits): a request longer than 150 km of straight line is planned, but a
+signed-out visitor is first asked to confirm it - the 409 carries the span,
+and the front end resends with `confirm_long` - and a signed-in one is not;
+nothing past 200 km is planned, signed in or not; and a long ride may take up
+to 50 s where an ordinary one keeps 40 s. Signed in means a current session
+of an account that is not banned or deleted; a forged or stale session cookie
+is treated as signed out. Reading the session changes nothing about CSRF: the
+endpoint changes no state, and a cross-site page cannot send it
+`application/json` without a preflight, which is never granted. Every long
+ride, signed in or not, holds one of the long slots for as long as it runs, so
+at most one is planned at a time across the api and ordinary plans carry on
+beside it; those slot figures (one per client, one for the api) are the
+implementation's choice, not the owner's. The longer limit is there because a
+single long leg whose graph tiles are not yet in the router's cache is one
+slow search: Culpeper to Baltimore (150.4 km of straight line, 183 km routed)
+took 43.9 s cold on a loaded host and 9.5 s warm.
+
+**The time budget and gunicorn's timeout.** A request's budget - 40 s, 50 s
+for a long ride - runs from when it reaches the api, so the count, the slots,
+the router calls, the stress join and the answer are all inside it. The router
+calls get all of it but the last 3 s (`ANSWER_RESERVE_S` in
+`core/routing.py`), and one call at most 35 s (45 s on a long ride). A request
+whose `/route` has not answered by then is 503 with `Retry-After: 30`; one
+whose traces run out of time is answered with the rest of its stress
+`unknown`. gunicorn kills a worker whose request passes `GUNICORN_TIMEOUT`
+(`docker/api-entrypoint.sh`, default 60 s) and Caddy then answers an empty,
+non-JSON 502, so that timeout must stay at least ten seconds above the long
+budget; a test reads the entrypoint's default and fails if it does not. Do not
+lower `GUNICORN_TIMEOUT` below 60 without lowering the budgets in
+`core/routing.py` first. When the api gives up on a router call the router
+does not: Valhalla finishes the search and the answer is dropped, so the long
+slot bounds the api's workers, not the routers' CPU.
+
+**What the slots do not stop.** They are counted per address, so a few
+coordinated addresses can still fill the pool: three on the default of three
+slots, each holding one long-running route. Every other request then gets 503
+for as long as they keep it up, though `/healthz`, the tiles, sign-in and the
+admin still answer. That is inherent in identifying clients by address, and no
+limit keyed on it removes it; what it bounds is the cost, at most one worker
+for 40 s per request (50 s for the one long ride), and the reach, the routing
+endpoint alone. An account
+or a proof-of-work step would be the next lever, and neither is built.
+
+**Who a client is.** The last `X-Forwarded-For` entry, which Caddy writes from
+the peer it saw, replacing whatever the client sent. That is only true while
+Caddy is the one proxy in front of the api. Put a CDN or a load balancer in
+front of it, or give Caddy a `trusted_proxies` list, and the last entry becomes
+that proxy's address: every visitor would then share one budget and one pair of
+in-flight slots. Configure the proxy's real-client header through to the api
+before doing either.
+
+**What is stored.** `rate_limit_window` holds one row per client per limit: a
+keyed digest of the address (HMAC with `SECRET_KEY`), the window's start and
+the count. No address is stored, so a row cannot be looked up by address with
+SQL; compute the key first. To clear one client who has been refused - the
+count resets on its own at the end of the minute, so this is rarely needed:
+
+```sh
+docker compose exec -T api python manage.py shell -c "from core.models import RateLimitWindow; from core.ratelimit import client_key; print(RateLimitWindow.objects.filter(client=client_key('198.51.100.7')).delete())"
+```
+
+An IPv6 client is keyed by its /64, written as the network, for example
+`client_key('2001:db8:1:2::/64')`. Rotating `SECRET_KEY` changes every key, which
+simply starts every client's count afresh. Rows idle for a day are deleted by
+the membership sweep every six hours, and the table's data is not in the
+nightly dump.
+
+The table arrives with migration `core.0008_rate_limit_window`, which the
+`migrate` one-shot applies before the api starts; nothing else is needed on
+deploy.
+
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
-the session table and the cached membership table, verified by reading the
+the data of the session table, the cached membership table and the rate-limit
+table (`BACKUP_EXCLUDED_TABLES` in `config/procrastinate.py`), verified by reading the
 archive's own table of contents back with `pg_restore --list` — an archive with
 no table data at all is a dump of nothing, which is what a wrong database name
 produces while `pg_dump` exits zero.
@@ -314,7 +419,8 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
 ### What the restored deployment actually has
 
 - **No standing, until the membership cache is rebuilt.** The dump excludes the
-  cached membership table and the session table, and phase 1 has no bot, so
+  cached membership table, the session table and the rate-limit table (whose
+  counts are worthless after a restore anyway), and phase 1 has no bot, so
   nothing refills the cache — the sweep that would is unbuilt (handoff.md
   section 7). Until it exists, a restored deployment grants **no** guild-derived
   standing at all: everyone is signed out (sessions went with the dump's

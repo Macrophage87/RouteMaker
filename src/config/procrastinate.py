@@ -87,8 +87,11 @@ RETRY = RetryStrategy(max_attempts=5, exponential_wait=6)
 # Tables whose data is excluded from the nightly dump. The membership cache
 # because who organizes with whom is the sensitive part of this deployment and
 # it is rebuildable from the bot's backfill; the session table because a dump
-# that sits on disk for months must not carry live sessions.
-BACKUP_EXCLUDED_TABLES = ("cached_membership", "app_session")
+# that sits on disk for months must not carry live sessions. The rate-limit
+# table because it keys on client addresses, which PLAN's Privacy and retention
+# drops within 30 days, and a dump outlives that; its counts are worthless after
+# a restore anyway.
+BACKUP_EXCLUDED_TABLES = ("cached_membership", "app_session", "rate_limit_window")
 
 # How many dumps stay on the data volume. They are local-only for now - the
 # plan's S3 upload with SSE-KMS and 30-day remote retention is not built - and
@@ -502,14 +505,17 @@ def membership_sweep(timestamp: int) -> None:
 
     The session sweep runs here too, for the same reason the membership purge
     does: both hold rows naming who was signed in, or who organizes with whom,
-    for people who may have asked to be forgotten.
+    for people who may have asked to be forgotten. So does the rate-limit purge,
+    which holds keyed client addresses that PLAN's Privacy and retention drops
+    within 30 days; rows idle a day go on the next sweep.
     """
     from core.membership import sweep_memberships
     from core.models import apply_due_instance_admin_removals
+    from core.ratelimit import purge_expired
     from core.revocation import sweep_sessions
     from core.runs import record, run_with_deadline
 
-    def sweep() -> tuple[int, int, int, int]:
+    def sweep() -> tuple[int, int, int, int, int]:
         # The session sweep rides here rather than on a cron of its own: it is
         # the same shape of work (rows nothing will ever accept again, for
         # people who may have asked to be forgotten), it is cheap, and a second
@@ -525,10 +531,16 @@ def membership_sweep(timestamp: int) -> None:
         # removals are late rather than never. On a healthy deployment this
         # reports zero, which is the honest number.
         purged, departed = sweep_memberships()
-        return purged, departed, sweep_sessions(), apply_due_instance_admin_removals()
+        return (
+            purged,
+            departed,
+            sweep_sessions(),
+            apply_due_instance_admin_removals(),
+            purge_expired(),
+        )
 
     with record("membership_sweep") as run:
-        purged, departed, sessions, removals = run_with_deadline(
+        purged, departed, sessions, removals, idle_clients = run_with_deadline(
             sweep, SWEEP_TIMEOUT_S, "membership_sweep"
         )
         # "never-signed-in" was the whole of the purge once and is not any more:
@@ -537,7 +549,8 @@ def membership_sweep(timestamp: int) -> None:
         run.detail = (
             f"purged {purged} forgotten and never-signed-in rows, "
             f"dropped {departed} departed rows and {sessions} session rows, "
-            f"applied {removals} due instance-admin removals"
+            f"applied {removals} due instance-admin removals, "
+            f"purged {idle_clients} idle rate-limit rows"
         )
         run.save(update_fields=["detail"])
 

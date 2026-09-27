@@ -789,8 +789,8 @@ blue/green swap peak, against the 32 GB the script fails at).
 
 ## What the deployment serves
 
-`/` is a 404, and that is not a fault: `config/urls.py` routes three auth paths
-and the admin, and nothing else. Phase 1 has no frontend to serve there
+`/` is a 404, and that is not a fault: `config/urls.py` routes three auth paths,
+the admin, `/healthz` and the public API, and nothing else. Phase 1 has no frontend to serve there
 (`frontend/` is one module and its test), so there is no landing page and the
 stack is not broken for lacking one.
 
@@ -804,6 +804,20 @@ stack is not broken for lacking one.
   resolution and the per-object checks are what protect it.
 - **`/static/*`** is served by Caddy from the collected assets, and by nothing
   else.
+- **`/api/route`** (POST) is the public route planner, and needs no sign-in; its
+  OpenAPI schema is `/api/openapi.json`. Its limits, and the one assumption
+  they make about the proxy in front of the api, are in docs/OPERATIONS.md, "The
+  public routing API". It needs the `rate_limit_window` table from migration
+  `core.0008`, which the `migrate` one-shot applies on the next `up`, and it
+  reads `WEB_CONCURRENCY` - already on the api service - to size how many
+  routes may run at once: the worker count less two, at least one. Below three
+  workers that leaves fewer than two workers free while routes run, so keep
+  `WEB_CONCURRENCY` at 3 or more on any host that serves the public. Its time
+  budgets (40 s, 50 s for a long ride, counted from arrival) are sized under
+  gunicorn's `--timeout`, which the entrypoint takes from `GUNICORN_TIMEOUT`
+  (default 60): leave that at 60 or above, or a slow long ride is killed
+  mid-request and Caddy answers an empty 502 instead of the API's own 503.
+  docs/OPERATIONS.md, "The time budget and gunicorn's timeout", has the detail.
 
 So a first deployment that reaches `/`, gets a 404 and concludes the stack is
 down has concluded wrongly. `/auth/login` is the check.
