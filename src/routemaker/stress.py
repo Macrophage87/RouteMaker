@@ -241,6 +241,78 @@ ROUGH_TRACKTYPES = frozenset({"grade4", "grade5"})
 ROUGH_SMOOTHNESS = frozenset({"very_bad", "horrible", "very_horrible", "impassable"})
 
 
+# A curated stress adjustment (the owner, 2026-09-27: "we could have something
+# clickable as a link to why we'd consider a particular stretch of road level 5,
+# or also why a particular stretch of road might be adjusted, perhaps hidden.
+# For instance we could deviate from the typical LTS because of road
+# conditions, known aggressive drivers, problematic intersections, etc. Also we
+# could down adjust a road if this is the better route among similar routes.").
+# Why a stretch deviates from the tier its tags give it, in words a rider may
+# read. The owner's own quoted reason is not part of it: that stays in the
+# override row and its audit trail and is never shown.
+ADJUSTMENT_CATEGORIES = (
+    "road_conditions",
+    "driver_behaviour",
+    "intersection",
+    "sightlines",
+    "better_among_alternatives",
+    "other",
+)
+ADJUSTMENT_VISIBILITIES = ("public", "hidden")
+# Whether the owner has approved the category and note, as distinct from the
+# tier: a note this repository proposed is carried and never shown.
+ANNOTATION_STATUSES = ("proposed", "approved")
+ADJUSTMENT_UP, ADJUSTMENT_DOWN, ADJUSTMENT_SAME = "up", "down", "same"
+
+
+@dataclass(frozen=True)
+class StressAdjustment:
+    """One curated adjustment, as it applies to one way.
+
+    `adjustment_id` is stable across rebuilds and shared by every way of one
+    stretch, so a tile or a route answer can name the stretch and a card can
+    explain it once. `computed_tier` is what the classifier gave the way before
+    the adjustment, and `direction` follows from it: a curated tier below it is
+    a down-adjustment, which is allowed ("down adjust a road if this is the
+    better route among similar routes").
+    """
+
+    adjustment_id: str
+    tier: Stress
+    computed_tier: Stress
+    category: str
+    visibility: str
+    annotation_status: str
+    public_note: str | None = None
+
+    @property
+    def direction(self) -> str:
+        if self.tier > self.computed_tier:
+            return ADJUSTMENT_UP
+        if self.tier < self.computed_tier:
+            return ADJUSTMENT_DOWN
+        return ADJUSTMENT_SAME
+
+    @property
+    def is_shown(self) -> bool:
+        """Public and approved: only then may a rider read why."""
+        return self.visibility == "public" and self.annotation_status == "approved"
+
+    def exposed(self) -> dict:
+        """What may leave the rebuild: a hidden or unapproved adjustment is its
+        id and the fact of an adjustment, and nothing else."""
+        if not self.is_shown:
+            return {"adjustment_id": self.adjustment_id, "adjusted": True}
+        return {
+            "adjustment_id": self.adjustment_id,
+            "adjusted": True,
+            "direction": self.direction,
+            "computed_tier": int(self.computed_tier),
+            "category": self.category,
+            "public_note": self.public_note,
+        }
+
+
 @dataclass(frozen=True)
 class StressResult:
     """A tier plus the provenance of the inputs that produced it.
@@ -272,6 +344,8 @@ class StressResult:
     volume_source: str | None = None
     volume_aadt: int | None = None
     volume_year: int | None = None
+    # The curated adjustment that set this tier, if one did.
+    adjustment: StressAdjustment | None = None
 
     @property
     def is_top_tier(self) -> bool:

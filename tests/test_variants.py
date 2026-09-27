@@ -1735,7 +1735,7 @@ class TestTheRetiredOrdinaryRidePenalty:
             "rows"
         ]
         eleventh = {
-            r["osm_way_id"] for r in stress if r["value"] == {"tier": 4} and "11th" in r["reason"]
+            r["osm_way_id"] for r in stress if r["value"]["tier"] == 4 and "11th" in r["reason"]
         }
         landing = {
             r["osm_way_id"]

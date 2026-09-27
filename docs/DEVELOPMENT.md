@@ -408,6 +408,13 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   had 5 s), and destination-only and private ways keep Valhalla's own
   `destination_only_penalty` (600 s, not sent). The access of a tier-5 way is
   untouched, so it stays routable when it is the only way.
+- A curated tier is a stress adjustment (`routemaker.stress.StressAdjustment`,
+  the format in `fixtures/overrides/README.md`): `segment.stress_adjustment_id`
+  names it, and only a public adjustment whose words the owner approved also
+  fills `stress_computed_tier`, `stress_adjustment_direction` (`up`, `down`,
+  `same`), `stress_adjustment_category` and `stress_adjustment_note`
+  (`writers._adjustment_columns`, and a table constraint that refuses the rest
+  without an id). The answer and the tiles do not read them yet.
 - The graph a ride routes on (`variant` in the answer): a weekend ride on a
   preset whose graph is the standard one routes on the weekend graph
   (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road

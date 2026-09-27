@@ -43,6 +43,7 @@ it waited would make the review meaningless.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
@@ -92,6 +93,129 @@ HANDLED_KINDS = frozenset({"access", "stress", "jurisdiction"})
 
 class OverrideRefused(ValueError):
     """An approved row asks for something an override may not do."""
+
+
+# A stress row's value: the tier, and why the stretch deviates from the tier
+# its tags give it (`routemaker.stress.StressAdjustment`; the owner's request of
+# 2026-09-27 for a clickable "why", perhaps hidden). One adjustment may span
+# several ways, which share its id and everything but the way.
+STRESS_REQUIRED_KEYS = frozenset(
+    {"tier", "adjustment_id", "category", "visibility", "annotation_status"}
+)
+STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note"}
+STRESS_TIER_MIN, STRESS_TIER_MAX = 1, 5
+# Stable, readable, and safe in a URL, a tile attribute and a CSS selector.
+ADJUSTMENT_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
+ADJUSTMENT_ID_MAX = 64
+PUBLIC_NOTE_MAX = 200
+# The owner's rule for a public note: it describes the road and its traffic,
+# never a neighbourhood or its people. Review is the rule's real guard; this
+# refuses the words a note that broke it would most likely use.
+PUBLIC_NOTE_REFUSED_WORDS = re.compile(
+    r"\b(neighbou?rhoods?|residents?|locals?|communit(?:y|ies)|people|crime|ward|"
+    r"homeless|gangs?|poor|wealthy|rich)\b",
+    re.IGNORECASE,
+)
+
+
+def stress_value_problem(value: object) -> str | None:
+    """Why `value` is not a stress row's value, or None if it is.
+
+    Shared by the loader, which refuses the file, and by `apply_stress`, which
+    refuses the rebuild, so an admin-typed row meets the same rule as a file.
+    """
+    from routemaker.stress import (
+        ADJUSTMENT_CATEGORIES,
+        ADJUSTMENT_VISIBILITIES,
+        ANNOTATION_STATUSES,
+    )
+
+    if not isinstance(value, dict):
+        return "a stress value is an object"
+    missing = STRESS_REQUIRED_KEYS - set(value)
+    if missing:
+        return f"a stress value names its adjustment; missing {sorted(missing)}"
+    extra = set(value) - STRESS_KEYS
+    if extra:
+        return f"a stress value has no {sorted(extra)}; its keys are {sorted(STRESS_KEYS)}"
+    tier = value["tier"]
+    if not isinstance(tier, int) or isinstance(tier, bool):
+        return "a stress value's tier is an integer"
+    if not STRESS_TIER_MIN <= tier <= STRESS_TIER_MAX:
+        return f"tier must be {STRESS_TIER_MIN} to {STRESS_TIER_MAX}, not {tier}"
+    adjustment_id = value["adjustment_id"]
+    if (
+        not isinstance(adjustment_id, str)
+        or len(adjustment_id) > ADJUSTMENT_ID_MAX
+        or not ADJUSTMENT_ID.fullmatch(adjustment_id)
+    ):
+        return (
+            f"adjustment_id is lower-case words joined by hyphens, at most "
+            f"{ADJUSTMENT_ID_MAX} characters, not {adjustment_id!r}"
+        )
+    for key, allowed in (
+        ("category", ADJUSTMENT_CATEGORIES),
+        ("visibility", ADJUSTMENT_VISIBILITIES),
+        ("annotation_status", ANNOTATION_STATUSES),
+    ):
+        if value[key] not in allowed:
+            return f"{key} must be one of {list(allowed)}, not {value[key]!r}"
+    if "public_note" in value:
+        note = value["public_note"]
+        if not isinstance(note, str) or not note.strip() or note != note.strip():
+            return "public_note is non-empty text without surrounding space, or absent"
+        if len(note) > PUBLIC_NOTE_MAX:
+            return f"public_note is at most {PUBLIC_NOTE_MAX} characters, not {len(note)}"
+        refused = PUBLIC_NOTE_REFUSED_WORDS.search(note)
+        if refused:
+            return (
+                f"public_note says {refused.group(0)!r}: a note describes the road and its "
+                "traffic, never a neighbourhood or its people"
+            )
+    return None
+
+
+def stress_adjustment(override: Override, computed):
+    """The row's adjustment, for a way the classifier gave `computed`.
+
+    A row without an adjustment id predates the adjustment fields (typed into
+    the admin as `{"tier": n}`). It still sets the tier, and is carried as a
+    hidden adjustment named for its way, so nothing unreviewed is ever shown.
+    """
+    from routemaker.stress import Stress, StressAdjustment
+
+    value = override.value
+    if "adjustment_id" not in value:
+        tier = value.get("tier")
+        if (
+            not isinstance(tier, int)
+            or isinstance(tier, bool)
+            or not (STRESS_TIER_MIN <= tier <= STRESS_TIER_MAX)
+        ):
+            raise OverrideRefused(
+                f"stress override on way {override.osm_way_id} has no tier from "
+                f"{STRESS_TIER_MIN} to {STRESS_TIER_MAX}: {value!r}"
+            )
+        return StressAdjustment(
+            adjustment_id=f"way-{override.osm_way_id}",
+            tier=Stress(tier),
+            computed_tier=computed,
+            category="other",
+            visibility="hidden",
+            annotation_status="proposed",
+        )
+    problem = stress_value_problem(value)
+    if problem:
+        raise OverrideRefused(f"stress override on way {override.osm_way_id}: {problem}")
+    return StressAdjustment(
+        adjustment_id=value["adjustment_id"],
+        tier=Stress(value["tier"]),
+        computed_tier=computed,
+        category=value["category"],
+        visibility=value["visibility"],
+        annotation_status=value["annotation_status"],
+        public_note=value.get("public_note"),
+    )
 
 
 @dataclass(frozen=True)
@@ -241,11 +365,17 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
     After classification rather than before, because a corrected tier cannot be
     fed back through the classifier: there is no set of tags the rule "this road
     is LTS2, whatever the table says" corresponds to.
+
+    Up or down: a curated tier below the classifier's is a down-adjustment, and
+    allowed. The result carries the adjustment (`StressResult.adjustment`),
+    whose direction is taken against the classifier's tier.
     """
-    from routemaker.stress import Stress, StressResult
+    from routemaker.stress import StressResult
 
     applied = 0
     unmatched: list[int] = []
+    # The classifier's tier, before any row on the way replaced it.
+    computed: dict[int, object] = {}
 
     for override in overrides:
         if override.kind != "stress":
@@ -254,14 +384,17 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
         if current is None:
             unmatched.append(override.osm_way_id)
             continue
-        tier = Stress(int(override.value["tier"]))
+        computed.setdefault(override.osm_way_id, current.tier)
+        adjustment = stress_adjustment(override, computed[override.osm_way_id])
         stress_by_way[override.osm_way_id] = StressResult(
-            tier=tier,
-            # The provenance says an override produced it, so a reviewer
-            # comparing a tier against crash history is not left thinking the
-            # classifier reached it from the tags.
-            rule="override: "
-            + (override.value.get("reason") or override.reason or "approved correction"),
+            tier=adjustment.tier,
+            # The provenance says an override produced it and names the
+            # adjustment, so a reviewer comparing a tier against crash history
+            # is not left thinking the classifier reached it from the tags. The
+            # row's reason is not copied here: it quotes the owner, and it is
+            # for the audit trail, never for anything a rider can read.
+            rule=f"override: stress adjustment {adjustment.adjustment_id}",
+            adjustment=adjustment,
             assumed=getattr(current, "assumed", ()),
             # The count's provenance travels with the way, not with the tier:
             # an overridden segment was still touched by whichever agency's

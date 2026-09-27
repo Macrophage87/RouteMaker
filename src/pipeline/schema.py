@@ -134,6 +134,26 @@ CREATE TABLE {schema}.segment (
     facility        text        NOT NULL DEFAULT 'none'
                     CHECK (facility IN ('path', 'protected', 'lane', 'none')),
     car_free_when   text[]      NOT NULL DEFAULT '{{}}',
+    -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
+    -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).
+    -- `stress_adjustment_id` is stable across rebuilds and shared by the ways
+    -- of one stretch; null where no curated row set the tier. The rest is
+    -- what a rider may read, and is null on an adjustment that is hidden or
+    -- whose category and note the owner has not approved: such a row says
+    -- only that the tier was adjusted. `stress_computed_tier` is the
+    -- classifier's tier and `stress_adjustment_direction` follows from it.
+    -- The owner's quoted reason is never here; it stays in the override row.
+    stress_adjustment_id        text,
+    stress_computed_tier        smallint CHECK (stress_computed_tier BETWEEN 1 AND 5),
+    stress_adjustment_direction text CHECK (stress_adjustment_direction IN ('up', 'down', 'same')),
+    stress_adjustment_category  text CHECK (stress_adjustment_category IN (
+        'road_conditions', 'driver_behaviour', 'intersection', 'sightlines',
+        'better_among_alternatives', 'other')),
+    stress_adjustment_note      text,
+    CONSTRAINT segment_adjustment_shown CHECK (
+        stress_adjustment_id IS NOT NULL
+        OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL
+            AND stress_adjustment_category IS NULL AND stress_adjustment_note IS NULL)),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

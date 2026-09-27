@@ -278,3 +278,68 @@ def insert_segment(schema: str, way_id: int, tier: int) -> None:
                         %s, 'test')""",
             [way_id, tier],
         )
+
+
+# --- Curated stress adjustments (the owner, 2026-09-27) ----------------------
+
+
+def _adjusted(visibility: str, status: str):
+    from routemaker.stress import StressAdjustment
+
+    return StressResult(
+        Stress.AVOID,
+        "override: stress adjustment a-stretch",
+        adjustment=StressAdjustment(
+            adjustment_id="a-stretch",
+            tier=Stress.AVOID,
+            computed_tier=Stress.LTS4,
+            category="sightlines",
+            visibility=visibility,
+            annotation_status=status,
+            public_note="Off-ramp traffic merges in at a blind corner.",
+        ),
+    )
+
+
+ADJUSTMENT_COLUMNS = (
+    "stress_adjustment_id, stress_computed_tier, stress_adjustment_direction, "
+    "stress_adjustment_category, stress_adjustment_note"
+)
+
+
+@pytest.mark.parametrize(
+    ("stress", "expected"),
+    [
+        (
+            _adjusted("public", "approved"),
+            ("a-stretch", 4, "up", "sightlines", "Off-ramp traffic merges in at a blind corner."),
+        ),
+        (_adjusted("hidden", "approved"), ("a-stretch", None, None, None, None)),
+        (_adjusted("public", "proposed"), ("a-stretch", None, None, None, None)),
+        (StressResult(Stress.LTS2, "x"), (None, None, None, None, None)),
+    ],
+    ids=["public-approved", "hidden", "proposed", "unadjusted"],
+)
+def test_the_adjustment_reaches_the_row_only_as_far_as_it_may_be_shown(
+    segment_schemas, stress, expected
+) -> None:
+    _live, staging = segment_schemas
+    rows = [segment_row(1, 0, [(-77.0, 38.9), (-77.01, 38.91)], stress=stress)]
+    write_segments(staging, rows)
+    with connection.cursor() as cursor:
+        cursor.execute(f"SELECT {ADJUSTMENT_COLUMNS} FROM {staging}.segment")
+        assert cursor.fetchone() == expected
+
+
+def test_a_note_without_an_adjustment_id_is_refused_by_the_table(segment_schemas) -> None:
+    from django.db.utils import IntegrityError
+
+    _live, staging = segment_schemas
+    with pytest.raises(IntegrityError, match="segment_adjustment_shown"):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"""INSERT INTO {staging}.segment (osm_way_id, ordinal, geometry, stress_tier,
+                    stress_rule, stress_adjustment_note)
+                    VALUES (1, 0, ST_GeomFromText('LINESTRING(-77 38.9, -77.01 38.91)', 4326),
+                    2, 'x', 'a note')"""
+            )

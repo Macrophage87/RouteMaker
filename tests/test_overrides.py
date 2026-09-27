@@ -63,8 +63,10 @@ def test_a_stress_override_replaces_the_tier_and_says_so() -> None:
     )
     assert (applied, unmatched) == (1, [])
     assert classified[1].tier is Stress.LTS2
-    assert "override" in classified[1].rule
-    assert "resurfaced with a shoulder" in classified[1].rule
+    assert classified[1].rule == "override: stress adjustment way-1"
+    # The reason is for the audit trail (the owner, 2026-09-27: the quoted
+    # reason is never shown), so it does not travel into the segment's rule.
+    assert "resurfaced" not in classified[1].rule
     assert classified[1].assumed == ("maxspeed",), "the provenance of the inputs survives"
 
 
@@ -812,7 +814,9 @@ def test_an_override_can_never_write_a_derived_key() -> None:
     assert way.tags == {"highway": "secondary"}, "and nothing was written"
 
 
-def test_a_stress_rows_reason_is_the_tiers_provenance() -> None:
+def test_a_stress_rows_reason_never_reaches_the_tier() -> None:
+    """The owner's quoted reason is audit-only (2026-09-27); the tier names its
+    adjustment instead."""
     from pipeline.overrides import Override, apply_stress
     from routemaker.stress import Stress, StressResult
 
@@ -820,4 +824,5 @@ def test_a_stress_rows_reason_is_the_tiers_provenance() -> None:
     row = Override("stress", 7, {"tier": 5}, reason="Legal but avoid. The owner's words.")
     apply_stress(classified, [row])
     assert classified[7].tier is Stress.AVOID
-    assert "The owner's words" in classified[7].rule
+    assert "owner" not in classified[7].rule
+    assert classified[7].adjustment.adjustment_id == "way-7"

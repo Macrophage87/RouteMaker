@@ -80,12 +80,54 @@ in a reviewed commit.
 
 ## Stress rows, and the files of 2026-09-27
 
-A row may also be `{"kind": "stress", "value": {"tier": n}}`, n from 1 to 5: the
-tier the rebuild gives the way after classification
-(`pipeline.overrides.apply_stress`). Tier 5 is "legal but avoid"
-(`routemaker.stress.Stress.AVOID`, the owner's category of 2026-09-27). The same
-command loads them (`load_overrides` is its other name); a way may carry one row
-of each kind.
+A row may also be `"kind": "stress"`: the tier the rebuild gives the way after
+classification (`pipeline.overrides.apply_stress`), and the adjustment that
+tier makes. Tier 5 is "legal but avoid" (`routemaker.stress.Stress.AVOID`, the
+owner's category of 2026-09-27). The same command loads them (`load_overrides`
+is its other name); a way may carry one row of each kind.
+
+A stress row's `value` (the owner, 2026-09-27: "something clickable as a link
+to why we'd consider a particular stretch of road level 5, or also why a
+particular stretch of road might be adjusted, perhaps hidden"):
+
+```json
+{
+  "tier": 5,
+  "adjustment_id": "pennsylvania-ave-se-dc-295-merge",
+  "category": "sightlines",
+  "visibility": "public",
+  "annotation_status": "proposed",
+  "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
+}
+```
+
+- `tier`: 1 to 5. It may be below the classifier's tier: a down-adjustment
+  ("we could down adjust a road if this is the better route among similar
+  routes"). The direction, `up`, `down` or `same`, is not in the file; the
+  rebuild takes it against the classifier's tier.
+- `adjustment_id`: lower-case words joined by hyphens, at most 64 characters,
+  stable across rebuilds, and shared by every way of one stretch. Rows sharing
+  one must agree on everything but the way.
+- `category`: `road_conditions`, `driver_behaviour`, `intersection`,
+  `sightlines`, `better_among_alternatives` or `other`.
+- `visibility`: `public`, or `hidden` for an adjustment a rider sees only as
+  "adjusted".
+- `annotation_status`: `proposed` until the owner has approved the category
+  and the note, then `approved`. A proposed one is carried like a hidden one.
+- `public_note` (optional): at most 200 characters for a rider to read. It
+  describes the road and its traffic, never a neighbourhood or its people (the
+  owner's rule); the loader refuses the words such a note would most likely
+  use, and review is the real guard.
+
+The row's `reason`, the owner's own words, is for the audit trail and is never
+shown: it stays in the override row. The rebuild writes the adjustment to
+`segment.stress_adjustment_id`, and only for a public, approved adjustment also
+`stress_computed_tier`, `stress_adjustment_direction`,
+`stress_adjustment_category` and `stress_adjustment_note`. Reloading a file
+whose adjustment fields changed on the same tier updates the approved row in
+place (audited as a change); a different tier is a conflict to resolve in the
+admin. A stress row typed into the admin as `{"tier": n}` still sets the tier,
+as a hidden adjustment named `way-<id>`.
 
 - `2026-09-27-owner-stress.json`: the owner's curated tiers - US 340's William
   L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways,
@@ -96,7 +138,9 @@ of each kind.
   path", whose separate penalty was retired for this tier), and the Sousa
   Bridge roadway, at 4. The owner approved loading it on 2026-09-27 ("Yes, load
   it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
-  loads access overrides", gives the order.
+  loads access overrides", gives the order. Every category and note in it is
+  this repository's proposal (`annotation_status` `proposed`), so until the
+  owner approves them each stretch is served as adjusted and nothing more.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and

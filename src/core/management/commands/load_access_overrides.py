@@ -30,10 +30,17 @@ same way - two approved rows answering one way differently would be applied in
 id order, which is not a decision anybody made.
 
 Two kinds are loaded. `access` rows write access keys (`ACCESS_KEYS`). `stress`
-rows write `{"tier": n}`, 1 to 5, the tier the rebuild gives the way after
+rows write a tier, 1 to 5, the tier the rebuild gives the way after
 classification (`pipeline.overrides.apply_stress`) - the owner's curated tiers of
-2026-09-27, "legal but avoid" (5) among them. `load_overrides` is the same
-command under the name that says so.
+2026-09-27, "legal but avoid" (5) among them - and the adjustment it makes: a
+stable `adjustment_id` shared by the ways of one stretch, a `category`, a
+`visibility` (`public` or `hidden`), an `annotation_status` (`proposed` until
+the owner approves the category and note) and an optional rider-facing
+`public_note` (`pipeline.overrides.stress_value_problem` has the rules). Rows
+sharing an adjustment id must agree on everything but the way. A stress row
+already approved with the same tier and different adjustment fields is
+updated in place (`update`, audited as a change); a different tier is a
+conflict. `load_overrides` is the same command under the name that says so.
 
 The file may be read from standard input (`-`), because the api image carries
 `src/` and not `fixtures/`:
@@ -56,13 +63,11 @@ COMMAND = "load_access_overrides"
 # In every audit entry's detail: the attribution is a claim, not a sign-in.
 ACTOR_NOTE = "actor named on the command line (--actor), not authenticated"
 KINDS = frozenset({"access", "stress"})
-# LTS 1 to 4, and 5, "legal but avoid" (routemaker.stress.Stress.AVOID).
-STRESS_TIER_MIN, STRESS_TIER_MAX = 1, 5
 
 
 def parse_file(text: str, label: str) -> list[dict]:
     """The file's rows, validated, or CommandError naming what is wrong."""
-    from pipeline.overrides import ACCESS_KEYS
+    from pipeline.overrides import ACCESS_KEYS, stress_value_problem
 
     try:
         document = json.loads(text)
@@ -75,6 +80,7 @@ def parse_file(text: str, label: str) -> list[dict]:
         raise CommandError(f"{label} has no rows")
 
     seen: set[int] = set()
+    adjustments: dict[str, tuple[int, dict]] = {}
     for index, row in enumerate(rows):
         where = f"{label} row {index}"
         if not isinstance(row, dict):
@@ -92,12 +98,16 @@ def parse_file(text: str, label: str) -> list[dict]:
         if not isinstance(value, dict) or not value:
             raise CommandError(f"{where}: value must be a non-empty object")
         if kind == "stress":
-            tier = value.get("tier")
-            if set(value) != {"tier"} or not isinstance(tier, int) or isinstance(tier, bool):
-                raise CommandError(f'{where}: a stress value is {{"tier": n}} and nothing else')
-            if not STRESS_TIER_MIN <= tier <= STRESS_TIER_MAX:
+            problem = stress_value_problem(value)
+            if problem:
+                raise CommandError(f"{where}: {problem}")
+            shared = {k: v for k, v in value.items()}
+            first = adjustments.setdefault(value["adjustment_id"], (index, shared))
+            if first[1] != shared:
                 raise CommandError(
-                    f"{where}: tier must be {STRESS_TIER_MIN} to {STRESS_TIER_MAX}, not {tier}"
+                    f"{where}: adjustment {value['adjustment_id']!r} is also row {first[0]}, "
+                    "and the ways of one adjustment share its tier, category, visibility, "
+                    "annotation status and note"
                 )
         for key, tag in value.items() if kind == "access" else ():
             if key not in ACCESS_KEYS:
@@ -150,7 +160,9 @@ def plan(rows: list[dict]) -> list[tuple[str, dict, object]]:
     """(action, file row, existing row or None) per file row; refuses conflicts.
 
     `create` - no matching row; `approve` - a matching unapproved row exists;
-    `present` - a matching approved row exists, nothing to do.
+    `present` - a matching approved row exists, nothing to do; `update` - a
+    stress row approved with the same tier and other adjustment fields, which
+    the file's replace (the tier is the decision; the fields explain it).
     """
     from core.models import Override
 
@@ -160,6 +172,18 @@ def plan(rows: list[dict]) -> list[tuple[str, dict, object]]:
             Override.objects.filter(kind=row["kind"], osm_way_id=row["osm_way_id"]).order_by("id")
         )
         match = next((o for o in same_way if o.value == row["value"]), None)
+        if row["kind"] == "stress":
+            approved = [o for o in same_way if o.approved]
+            other_tier = [o for o in approved if o.value.get("tier") != row["value"]["tier"]]
+            if other_tier:
+                raise CommandError(
+                    f"way {row['osm_way_id']} already has approved override "
+                    f"{other_tier[0].pk} writing {other_tier[0].value}, which disagrees with "
+                    f"{row['value']}; resolve it in the admin first"
+                )
+            if match is None and approved:
+                steps.append(("update", row, approved[0]))
+                continue
         conflicting = [
             o
             for o in same_way
@@ -231,6 +255,25 @@ class Command(BaseCommand):
                 if action == "present":
                     continue
                 now = timezone.now()
+                if action == "update":
+                    before = existing.value
+                    existing.value = row["value"]
+                    existing.reason = row["reason"]
+                    existing.evidence = row["evidence"]
+                    existing.save(update_fields=["value", "reason", "evidence"])
+                    record(
+                        actor,
+                        "change",
+                        "override",
+                        existing.pk,
+                        AuditLogEntry.Outcome.ALLOWED,
+                        detail=(
+                            f"value, reason, evidence; way {row['osm_way_id']} "
+                            f"{json.dumps(before)} -> {json.dumps(row['value'])}; the tier "
+                            f"unchanged; {source}"
+                        ),
+                    )
+                    continue
                 if action == "create":
                     existing = Override.objects.create(
                         kind=row["kind"],

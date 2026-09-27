@@ -65,6 +65,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("lit"),
             row.get("facility", "none"),
             list(row.get("car_free_when", ())),
+            *_adjustment_columns(row["stress"]),
         )
         for row in rows
     ]
@@ -74,7 +75,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
         for batch in _batched(values):
             args = ",".join(
                 cursor.mogrify(
-                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::text[])",
+                    "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
+                    "%s::text[],%s,%s,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -92,6 +94,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         lit,
                         facility_class,
                         car_free,
+                        *adjustment,
                     ),
                 )
                 for (
@@ -111,6 +114,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     lit,
                     facility_class,
                     car_free,
+                    *adjustment,
                 ) in batch
             )
             cursor.execute(
@@ -118,11 +122,30 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     (osm_way_id, ordinal, geometry, stress_tier, stress_rule,
                      stress_assumed, volume_source, volume_aadt, volume_year,
                      sinuosity, is_trail_class, is_unpaved, is_rough, lit, facility,
-                     car_free_when)
+                     car_free_when, stress_adjustment_id, stress_computed_tier,
+                     stress_adjustment_direction, stress_adjustment_category,
+                     stress_adjustment_note)
                     VALUES {args}"""
             )
             written += len(batch)
     return written
+
+
+def _adjustment_columns(stress: StressResult) -> tuple:
+    """The adjustment's columns: none, its id alone, or all of what a rider may
+    read (`StressAdjustment.exposed`), so a hidden or unapproved note never
+    reaches the served table."""
+    adjustment = getattr(stress, "adjustment", None)
+    if adjustment is None:
+        return (None, None, None, None, None)
+    exposed = adjustment.exposed()
+    return (
+        exposed["adjustment_id"],
+        exposed.get("computed_tier"),
+        exposed.get("direction"),
+        exposed.get("category"),
+        exposed.get("public_note"),
+    )
 
 
 def _json_list(values: Iterable[str]) -> str:

@@ -113,6 +113,16 @@ def load(*args: str, stdin: str | None = None) -> str:
     return out.getvalue()
 
 
+# A stress row's adjustment fields (pipeline.overrides.stress_value_problem).
+ADJUSTMENT = {
+    "tier": 5,
+    "adjustment_id": "a-stretch",
+    "category": "sightlines",
+    "visibility": "public",
+    "annotation_status": "proposed",
+    "public_note": "Off-ramp traffic merges in at a blind corner.",
+}
+
 ROW = {
     "kind": "access",
     "osm_way_id": 42,
@@ -323,12 +333,24 @@ class TestWhatTheCommandRefuses:
         [
             ({"value": {"highway": "cycleway"}}, "not an access key"),
             ({"kind": "jurisdiction"}, "kind must be one of"),
-            ({"kind": "stress"}, "a stress value is"),
-            ({"kind": "stress", "value": {"tier": 6}}, "tier must be 1 to 5"),
-            ({"kind": "stress", "value": {"tier": 0}}, "tier must be 1 to 5"),
-            ({"kind": "stress", "value": {"tier": "5"}}, "a stress value is"),
-            ({"kind": "stress", "value": {"tier": True}}, "a stress value is"),
-            ({"kind": "stress", "value": {"tier": 5, "bicycle": "no"}}, "a stress value is"),
+            ({"kind": "stress"}, "names its adjustment"),
+            ({"kind": "stress", "value": {"tier": 5}}, "names its adjustment"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "tier": 6}}, "tier must be 1 to 5"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "tier": 0}}, "tier must be 1 to 5"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "tier": "5"}}, "tier is an integer"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "tier": True}}, "tier is an integer"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "bicycle": "no"}}, "has no"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "category": "x"}}, "category must be"),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "visibility": "x"}}, "visibility must"),
+            (
+                {"kind": "stress", "value": {**ADJUSTMENT, "annotation_status": "x"}},
+                "annotation_status must",
+            ),
+            ({"kind": "stress", "value": {**ADJUSTMENT, "adjustment_id": "A b"}}, "adjustment_id"),
+            (
+                {"kind": "stress", "value": {**ADJUSTMENT, "public_note": "Locals speed here."}},
+                "never a neighbourhood or its people",
+            ),
             ({"osm_way_id": 0}, "positive integer"),
             ({"reason": " "}, "reason is required"),
             ({"evidence": " "}, "evidence is required"),
@@ -405,7 +427,7 @@ def test_a_stress_row_loads_as_an_approved_stress_override(tmp_path) -> None:
     row = {
         "kind": "stress",
         "osm_way_id": 42,
-        "value": {"tier": 5},
+        "value": ADJUSTMENT,
         "reason": "r",
         "evidence": "e",
     }
@@ -424,7 +446,7 @@ def test_a_stress_row_loads_as_an_approved_stress_override(tmp_path) -> None:
         stdout=io.StringIO(),
     )
     stress = Override.objects.get(kind="stress")
-    assert (stress.osm_way_id, stress.value, stress.approved) == (42, {"tier": 5}, True)
+    assert (stress.osm_way_id, stress.value, stress.approved) == (42, ADJUSTMENT, True)
     assert Override.objects.filter(kind="access", osm_way_id=42).exists(), "one way, two kinds"
     # A second run is a no-op; a different tier on the same way is a conflict.
     call_command(
@@ -436,8 +458,114 @@ def test_a_stress_row_loads_as_an_approved_stress_override(tmp_path) -> None:
         stdout=io.StringIO(),
     )
     assert Override.objects.count() == 2
-    path.write_text(json.dumps({"version": 1, "rows": [{**row, "value": {"tier": 4}}]}))
+    path.write_text(
+        json.dumps({"version": 1, "rows": [{**row, "value": {**ADJUSTMENT, "tier": 4}}]})
+    )
     with pytest.raises(CommandError, match="disagrees"):
         call_command(
             "load_overrides", str(path), "--actor", str(admin.discord_user_id), "--confirm"
         )
+
+
+@pytest.mark.django_db
+class TestStressAdjustments:
+    """The adjustment fields of a stress row (the owner, 2026-09-27: "something
+    clickable as a link to why", "perhaps hidden")."""
+
+    @pytest.fixture
+    def admin(self):
+        from core.models import User
+
+        return User.objects.create(discord_user_id=881112, is_instance_admin=True)
+
+    def rows(self, *values: dict) -> list[dict]:
+        return [
+            {"kind": "stress", "osm_way_id": 100 + i, "value": v, "reason": "r", "evidence": "e"}
+            for i, v in enumerate(values)
+        ]
+
+    def test_the_ways_of_one_adjustment_must_agree(self, admin, tmp_path) -> None:
+        rows = self.rows(ADJUSTMENT, {**ADJUSTMENT, "public_note": "Another note."})
+        with pytest.raises(CommandError, match="also row 0"):
+            load(write_rows(tmp_path, rows), "--actor", str(admin.discord_user_id))
+        rows = self.rows(ADJUSTMENT, {**ADJUSTMENT, "tier": 4})
+        with pytest.raises(CommandError, match="also row 0"):
+            load(write_rows(tmp_path, rows), "--actor", str(admin.discord_user_id))
+
+    def test_two_adjustments_may_differ(self, admin, tmp_path) -> None:
+        rows = self.rows(ADJUSTMENT, {**ADJUSTMENT, "adjustment_id": "b", "tier": 2})
+        load(write_rows(tmp_path, rows), "--actor", str(admin.discord_user_id), "--confirm")
+        assert counts()[0] == 2
+
+    def test_a_down_adjustment_loads(self, admin, tmp_path) -> None:
+        from core.models import Override
+
+        down = {**ADJUSTMENT, "tier": 1, "category": "better_among_alternatives"}
+        load(
+            write_rows(tmp_path, self.rows(down)),
+            "--actor",
+            str(admin.discord_user_id),
+            "--confirm",
+        )
+        assert Override.objects.get().value["tier"] == 1
+
+    def test_a_hidden_adjustment_may_have_no_note(self, admin, tmp_path) -> None:
+        hidden = {k: v for k, v in ADJUSTMENT.items() if k != "public_note"}
+        hidden["visibility"] = "hidden"
+        load(write_rows(tmp_path, self.rows(hidden)), "--actor", str(admin.discord_user_id))
+
+    def test_new_fields_on_the_same_tier_update_the_row_in_place(self, admin, tmp_path) -> None:
+        from core.models import AuditLogEntry, Override
+
+        path = write_rows(tmp_path, self.rows(ADJUSTMENT))
+        load(path, "--actor", str(admin.discord_user_id), "--confirm")
+        (row,) = Override.objects.all()
+        approved = {**ADJUSTMENT, "annotation_status": "approved"}
+        path = write_rows(tmp_path, self.rows(approved))
+        assert "update: way 100" in load(path, "--actor", str(admin.discord_user_id))
+        assert Override.objects.get().value == ADJUSTMENT, "a dry run writes nothing"
+        load(path, "--actor", str(admin.discord_user_id), "--confirm")
+        (after,) = Override.objects.all()
+        assert (after.pk, after.value, after.approved) == (row.pk, approved, True)
+        change = AuditLogEntry.objects.get(action="change")
+        assert '"proposed"' in change.detail and '"approved"' in change.detail
+        assert "update" not in load(path, "--actor", str(admin.discord_user_id)), "then present"
+
+    def test_a_legacy_row_is_updated_to_the_adjustment(self, admin, tmp_path) -> None:
+        from core.models import Override
+
+        Override.objects.create(
+            kind="stress",
+            osm_way_id=100,
+            value={"tier": 5},
+            reason="r",
+            evidence="e",
+            approved=True,
+        )
+        load(
+            write_rows(tmp_path, self.rows(ADJUSTMENT)),
+            "--actor",
+            str(admin.discord_user_id),
+            "--confirm",
+        )
+        assert Override.objects.get().value == ADJUSTMENT
+
+    def test_a_different_tier_is_still_a_conflict(self, admin, tmp_path) -> None:
+        from core.models import Override
+
+        Override.objects.create(
+            kind="stress",
+            osm_way_id=100,
+            value={**ADJUSTMENT, "tier": 4},
+            reason="r",
+            evidence="e",
+            approved=True,
+        )
+        with pytest.raises(CommandError, match="disagrees"):
+            load(
+                write_rows(tmp_path, self.rows(ADJUSTMENT)),
+                "--actor",
+                str(admin.discord_user_id),
+                "--confirm",
+            )
+        assert Override.objects.get().value["tier"] == 4
