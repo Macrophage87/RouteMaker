@@ -49,7 +49,13 @@ from django.utils.cache import patch_cache_control
 from django.utils.http import parse_etags
 from django.views.decorators.http import require_http_methods
 
-from pipeline.schema import OVERVIEW_PREDICATE, STREETS_PREDICATE, validate_schema_name
+from pipeline.schema import (
+    FACILITY_COLUMN,
+    OVERVIEW_PREDICATE,
+    STREETS_PREDICATE,
+    keeping_facilities,
+    validate_schema_name,
+)
 
 from . import ratelimit
 
@@ -120,6 +126,13 @@ def outside_coverage(z: int, x: int, y: int) -> bool:
 # sent - an unknown surface is not "paved".
 PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_unpaved"}
 
+# Properties carried only from a live table that has the column: the bike
+# facility (path, protected, lane, none) arrives with the routing lane's
+# change, and a table promoted before it has no such column. Where it is
+# there, the zoomed-out levels also keep the paths and protected lanes
+# (`pipeline.schema.keeping_facilities`).
+OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN}
+
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
@@ -160,18 +173,23 @@ def _table() -> str:
     return f"{validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)}.segment"
 
 
-def tile_sql(level: Level) -> str:
+def tile_sql(level: Level, optional: frozenset[str] = frozenset()) -> str:
+    """The level's query, carrying the optional columns in `optional` too."""
     template = _MERGED if level.merged else _PER_SEGMENT
+    carried = PROPERTIES | {n: c for n, c in OPTIONAL_PROPERTIES.items() if c in optional}
+    where = level.where or "true"
+    if level.where and FACILITY_COLUMN in optional:
+        where = keeping_facilities(where)
     return template.format(
         table=_table(),
-        where=level.where or "true",
+        where=where,
         layer=LAYER,
-        columns=", ".join(f"s.{column} AS {name}" for name, column in PROPERTIES.items()),
-        group_by=", ".join(f"s.{column}" for column in PROPERTIES.values()),
+        columns=", ".join(f"s.{column} AS {name}" for name, column in carried.items()),
+        group_by=", ".join(f"s.{column}" for column in carried.values()),
     )
 
 
-def render(z: int, x: int, y: int) -> tuple[int, bytes]:
+def render(z: int, x: int, y: int, optional: frozenset[str] = frozenset()) -> tuple[int, bytes]:
     """(the live table's oid, the tile's bytes) for a tile inside the zooms served."""
     level = level_for(z)
     params = {
@@ -185,23 +203,34 @@ def render(z: int, x: int, y: int) -> tuple[int, bytes]:
         "unit": WORLD_M / 2**z / level.extent,
     }
     with connection.cursor() as cursor:
-        cursor.execute(tile_sql(level), params)
+        cursor.execute(tile_sql(level, optional), params)
         oid, tile = cursor.fetchone()
     return oid, bytes(tile or b"")
 
 
-def live_table_oid() -> int | None:
+def live_table() -> tuple[int | None, frozenset[str]]:
+    """The live table's oid, or None before any build, and which of the
+    optional columns it has."""
     with connection.cursor() as cursor:
-        cursor.execute("SELECT to_regclass(%s)::oid", [_table()])
-        return cursor.fetchone()[0]
+        cursor.execute(
+            "SELECT t.oid, ARRAY(SELECT attname::text FROM pg_attribute WHERE attrelid = t.oid "
+            "AND attname = ANY(%s) AND NOT attisdropped) "
+            "FROM (SELECT to_regclass(%s)::oid AS oid) AS t",
+            [list(OPTIONAL_PROPERTIES.values()), _table()],
+        )
+        oid, columns = cursor.fetchone()
+    return oid, frozenset(columns or ())
 
 
-def etag_for(oid: int) -> str:
+def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # Weak: the same table always draws the same features, but not always the
     # same bytes - ST_AsMVT's feature and value order follows the scan's row
     # order, and two draws of one z14 tile measured 124,520 and 124,532 bytes.
-    # A strong tag promises byte-identical bodies (RFC 9110 8.8.1).
-    return f'W/"stress-{oid}-v{FORMAT_VERSION}"'
+    # A strong tag promises byte-identical bodies (RFC 9110 8.8.1). The
+    # optional columns are in it because a column added to the live table in
+    # place (the facility, by hand) changes the tiles but not the table's oid.
+    carried = "".join(f"+{column}" for column in sorted(optional))
+    return f'W/"stress-{oid}{carried}-v{FORMAT_VERSION}"'
 
 
 def _matches(request, etag: str) -> bool:
@@ -231,14 +260,15 @@ def stress_tile(request, z: int, x: int, y: int) -> HttpResponse:
         return response
     if not MIN_ZOOM <= z <= MAX_ZOOM or outside_coverage(z, x, y):
         return _tile_response(b"")
-    oid = live_table_oid()
+    oid, optional = live_table()
     if oid is None:
         # No build has been promoted: nothing to draw, and the front end hides
         # the overlay on a 404 rather than showing a legend for nothing.
         response = JsonResponse({"error": "no stress data has been built yet"}, status=404)
         response["Cache-Control"] = "no-store"
         return response
-    if _matches(request, etag_for(oid)):
-        return _tile_response(b"", status=304, etag=etag_for(oid))
-    oid, body = render(z, x, y)
-    return _tile_response(body, etag=etag_for(oid))
+    etag = etag_for(oid, optional)
+    if _matches(request, etag):
+        return _tile_response(b"", status=304, etag=etag)
+    oid, body = render(z, x, y, optional)
+    return _tile_response(body, etag=etag_for(oid, optional))

@@ -122,6 +122,33 @@ STREETS_PREDICATE = (
     "stress_rule NOT IN (" + _text_list(trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY) + ")"
 )
 
+# The bike-facility class of a segment - off-road path, protected lane,
+# painted lane, or none, sharrows counting as none (owner request of
+# 2026-09-27; the routing lane adds the column). It is not a column of this
+# schema yet: the stress tiles carry it from a live table that has it and do
+# without it on one that does not. Paths and protected lanes are the ones a
+# zoomed-out map keeps, whatever their tier or kind of way.
+FACILITY_COLUMN = "facility"
+FACILITIES_KEPT_ZOOMED_OUT = ("path", "protected")
+
+# Whether SEGMENT_DDL declares the facility column. Set it True in the change
+# that adds the column, so the overview index is created with the predicate
+# the tile query then uses; a test fails while the two disagree.
+SEGMENT_HAS_FACILITY = False
+
+
+def keeping_facilities(predicate: str) -> str:
+    """`predicate`, widened to keep the facilities a zoomed-out map shows."""
+    kept = _text_list(FACILITIES_KEPT_ZOOMED_OUT)
+    return f"({predicate} OR {FACILITY_COLUMN} IN ({kept}))"
+
+
+# The overview index's predicate: the overview's, on the table this module
+# creates.
+OVERVIEW_INDEX_PREDICATE = (
+    keeping_facilities(OVERVIEW_PREDICATE) if SEGMENT_HAS_FACILITY else OVERVIEW_PREDICATE
+)
+
 
 SEGMENT_DDL = """
 CREATE SCHEMA IF NOT EXISTS {schema};
@@ -196,7 +223,7 @@ def create_segment_schema(schema: str) -> None:
     """Build an empty segment schema. Idempotent only at the schema level."""
     validate_schema_name(schema)
     with connection.cursor() as cursor:
-        cursor.execute(SEGMENT_DDL.format(schema=schema, overview=OVERVIEW_PREDICATE))
+        cursor.execute(SEGMENT_DDL.format(schema=schema, overview=OVERVIEW_INDEX_PREDICATE))
 
 
 def drop_segment_schema(schema: str) -> None:

@@ -408,6 +408,101 @@ class TestOverviewIndex:
                 cursor.execute("RESET enable_seqscan")
         assert "segment_overview_geom_idx" in plan
 
+    def test_it_is_built_on_the_predicate_the_tiles_then_use(self, segment_schemas) -> None:
+        """Once the schema declares the facility column, the tiles widen the
+        overview to keep paths and protected lanes, and the index must be
+        built on that wider predicate or the planner cannot use it."""
+        from pipeline import schema
+
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+                "AND table_name = 'segment' AND column_name = %s",
+                [live, schema.FACILITY_COLUMN],
+            )
+            has_column = cursor.fetchone()[0] == 1
+            cursor.execute(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = %s "
+                "AND indexname = 'segment_overview_geom_idx'",
+                [live],
+            )
+            (definition,) = cursor.fetchone()
+        assert has_column == schema.SEGMENT_HAS_FACILITY
+        assert (schema.FACILITY_COLUMN in definition) == has_column
+
+
+FACILITY_ROWS = [
+    # (label, tier, rule, trail, unpaved, facility)
+    ("protected lane", 1, "separated track alongside", False, False, "protected"),
+    ("painted lane", 2, "bike lane, narrow at 25 mph or below", False, False, "lane"),
+    ("sharrow street", 2, "mixed traffic, 25 mph, single lane", False, False, "none"),
+    ("off-road path on a footway", 1, trail_rule("footway"), True, False, "path"),
+    ("not classified", 1, "mixed traffic, 20 mph or below, single lane", False, False, None),
+]
+
+
+@db
+class TestFacility:
+    """The bike-facility class, carried from a live table that has the column."""
+
+    @pytest.fixture
+    def with_facility(self, segment_schemas):
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN facility text")
+            for i, (_label, tier, rule, trail, unpaved, facility) in enumerate(FACILITY_ROWS):
+                lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.0003
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class, is_unpaved, facility) VALUES (%s, 0, "
+                    "ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), %s, %s, %s, %s, %s)",
+                    [2000 + i, lon, lat, lon + 0.002, lat, tier, rule, trail, unpaved, facility],
+                )
+        return live
+
+    @staticmethod
+    def facilities(client, z) -> Counter:
+        features = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"].features
+        return Counter(
+            f.properties.get("facility", "(absent)") for f in features for _line in f.lines
+        )
+
+    def test_without_the_column_no_feature_carries_it(self, client, live) -> None:
+        for z in (10, 12, 14):
+            features = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"].features
+            assert features
+            assert not any("facility" in f.properties for f in features)
+
+    def test_the_column_added_in_place_changes_the_etag(self, client, live) -> None:
+        """Added by hand to a live table, the column changes the tiles but not
+        the table's oid; a client revalidating must not be told its old tile,
+        without the facilities, is current."""
+        path = url(*tile_of(*CENTRE, 14))
+        before = client.get(path)["ETag"]
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN facility text")
+        after = client.get(path, HTTP_IF_NONE_MATCH=before)
+        assert after.status_code == 200
+        assert after["ETag"] != before
+
+    def test_from_z14_every_segment_carries_its_class(self, client, with_facility) -> None:
+        assert self.facilities(client, 14) == Counter(
+            {"protected": 1, "lane": 1, "none": 1, "path": 1, "(absent)": 1}
+        )
+
+    @pytest.mark.parametrize("z", [10, 11])
+    def test_zoomed_out_paths_and_protected_lanes_are_kept(self, client, with_facility, z):
+        """Neither would be drawn by tier or kind of way at this zoom: an LTS 1
+        street and a footway."""
+        assert self.facilities(client, z) == Counter({"protected": 1, "path": 1})
+
+    @pytest.mark.parametrize("z", [12, 13])
+    def test_at_street_zoom_a_path_on_a_footway_is_kept(self, client, with_facility, z):
+        assert self.facilities(client, z) == Counter(
+            {"protected": 1, "lane": 1, "none": 1, "path": 1, "(absent)": 1}
+        )
+
 
 @db
 class TestCaching:
