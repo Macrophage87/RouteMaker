@@ -69,9 +69,11 @@ _LOCK_CLASS_TOTAL = 0x524D0000
 _LOCK_CLASS_CLIENT = 0x524D1000
 
 # How long a refused client is told to wait for a slot. An ordinary route takes
-# about a second, one near 150 km six to ten under load and a long ride up to
-# fifteen; two seconds is a short first wait rather than the expected time, and
-# the whole-deployment case asks for longer because it means every slot is busy.
+# about a second, one near 150 km from a few seconds to over twenty under load,
+# and a long ride from a few seconds warm to over forty cold (review round 3:
+# 22.15 s and 26.73 s measured, and one cold /route 43.9 s); two seconds is a
+# short first wait rather than the expected time, and the whole-deployment
+# case asks for longer because it means every slot is busy.
 CLIENT_BUSY_RETRY_S = 2
 DEPLOYMENT_BUSY_RETRY_S = 5
 
@@ -226,9 +228,10 @@ ROOM_FOR_OTHERS = 2
 # one address.
 ROUTING_IN_FLIGHT = InFlight(scope_id=1, per_client=2, total_setting="ROUTING_CONCURRENCY")
 
-# Owner decision of 2026-09-26: long rides are planned, but each one holds a
-# worker for several seconds, so at most one runs per client and one in the
-# whole deployment, on top of the ordinary slots.
+# Long rides (owner decision of 2026-09-26: planned, with a signed-out visitor
+# asked to confirm first) hold a worker for up to 50 s each. How many run at
+# once is the implementation's choice, not the owner's: at most one per client
+# and one in the whole deployment, on top of the ordinary slots.
 LONG_ROUTING_IN_FLIGHT = InFlight(
     scope_id=2,
     per_client=1,
@@ -257,10 +260,13 @@ def _take_one(cursor, candidates) -> tuple[int, int] | None:
 
 
 def _held_in_class(cursor, lock_class: int) -> int:
-    """How many advisory locks of `lock_class` are held, by anyone."""
+    """How many advisory locks of `lock_class` are held in this database, by
+    anyone. pg_locks shows the whole server's, and an advisory lock is per
+    database, so another database's locks in the same class are not ours."""
     cursor.execute(
         "SELECT count(*) FROM pg_locks WHERE locktype = 'advisory' AND granted "
-        "AND objsubid = 2 AND classid = %s::oid",
+        "AND objsubid = 2 AND classid = %s::oid "
+        "AND database = (SELECT oid FROM pg_database WHERE datname = current_database())",
         [lock_class],
     )
     return int(cursor.fetchone()[0])

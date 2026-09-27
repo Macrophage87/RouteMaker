@@ -1538,8 +1538,49 @@ class TestInFlight:
             other = hold_slots(self.client_slots("198.51.100.51")[:1] + self.deployment_slots()[:1])
             try:
                 response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.51")
+                left = our_advisory_locks()
             finally:
                 other.close()
+        assert response.status_code == 200
+        assert left == 0, "the second slot is released like the first (review round 3, N54)"
+
+    @override_settings(ROUTING_CONCURRENCY=4)
+    def test_locks_in_another_database_do_not_count(self, client, segments, router) -> None:
+        """Review round 3: advisory locks are per database, and so is taking a
+        slot, but pg_locks shows the whole server's. Another database's locks
+        in the same classes - a second deployment, a parallel test run - must
+        not make this pool look fuller than it is."""
+        import psycopg2
+
+        from core import ratelimit
+
+        router(standard_router())
+        db_settings = connection.settings_dict
+        elsewhere = psycopg2.connect(
+            dbname="postgres",
+            user=db_settings["USER"],
+            password=db_settings["PASSWORD"],
+            host=db_settings["HOST"],
+            port=db_settings["PORT"],
+        )
+        elsewhere.autocommit = True
+        limit = ratelimit.ROUTING_IN_FLIGHT
+        try:
+            with elsewhere.cursor() as cursor:
+                for slot in range(limit.total):
+                    cursor.execute(
+                        "SELECT pg_advisory_lock(%s, %s)",
+                        [ratelimit._LOCK_CLASS_TOTAL + limit.scope_id, slot],
+                    )
+            # Here, the client's first route and one of four deployment slots:
+            # a second route leaves two free, which is room enough.
+            other = hold_slots(self.client_slots("198.51.100.71")[:1] + self.deployment_slots()[:1])
+            try:
+                response = post(client, good_body(), HTTP_X_FORWARDED_FOR="198.51.100.71")
+            finally:
+                other.close()
+        finally:
+            elsewhere.close()
         assert response.status_code == 200
 
     @pytest.mark.parametrize(

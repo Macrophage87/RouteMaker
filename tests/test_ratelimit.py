@@ -206,22 +206,21 @@ class TestFixedWindow:
         assert len(allowed) == attempts
         assert sum(allowed) == LIMIT.requests
 
-    def test_retry_after_is_the_time_left_in_the_window(self) -> None:
+    @pytest.mark.parametrize(("into_window_s", "expected"), [(40.0, 20), (0.5, 60), (59.2, 1)])
+    def test_retry_after_is_the_time_left_in_the_window(
+        self, into_window_s, expected, monkeypatch
+    ) -> None:
         """Not only somewhere in range: the seconds from now to the window's
-        end, read off the database clock."""
-        with connection.cursor() as cursor:
-            cursor.execute(
-                "SELECT to_timestamp(floor(extract(epoch FROM clock_timestamp()) / 60) * 60), "
-                "clock_timestamp()"
-            )
-            window_start, now = cursor.fetchone()
-        expected = (window_start + timedelta(seconds=LIMIT.window_s) - now).total_seconds()
-        if expected < 3:
-            pytest.skip("too close to a window boundary to measure")
+        end, rounded up, read off the database clock. The clock is pinned to a
+        known instant in the window, so the figure is exact whenever the test
+        runs; unpinned, a wrong sign survived when it ran early in a minute
+        (review round 3, R28)."""
+        instant = f"(timestamptz '2026-09-26 12:00:00+00' + interval '{into_window_s} seconds')"
+        assert ratelimit._HIT.count("clock_timestamp()") == 2
+        monkeypatch.setattr(ratelimit, "_HIT", ratelimit._HIT.replace("clock_timestamp()", instant))
         for _ in range(LIMIT.requests):
-            ratelimit.hit(LIMIT, "client-a")
-        refused = ratelimit.hit(LIMIT, "client-a")
-        assert abs(refused.retry_after_s - expected) <= 2
+            assert ratelimit.hit(LIMIT, "client-a").allowed
+        assert ratelimit.hit(LIMIT, "client-a").retry_after_s == expected
 
     def test_retry_after_is_never_zero_at_the_end_of_a_window(self, monkeypatch) -> None:
         """At the last instant of a window the time left rounds to nothing,
