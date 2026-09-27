@@ -243,17 +243,30 @@ agree.
   a bicycle: upstream reads that as bicycle access both ways, like `yes`,
   and the bicycle costing charges more for it without changing the edge's
   speed, so it is a cost and not a bar, and a route's duration is unchanged.
-  It is never written over a refusal (OSM's `bicycle=no` before the access
-  rows are loaded, an e-bike or mass-ride-only bar, a legality of false), so
-  it cannot open anything. The no-trail variant does not carry it; it has no
-  path to steer to. On a rebuilt graph of the 2026-09-24 extract with the
-  override rows loaded, Navy Yard to Anacostia goes back to the Riverwalk in
-  both directions at the Default and Group Ride presets' options (southbound
-  2.538 km against the roadway's 2.455), a trip that starts or ends on the
-  landing still uses it, at the same length and duration, and Navy Yard to
-  the middle of the landing still crosses on the span (1.665 km, against
-  1.982 km by the Riverwalk). Every other trip of the round-1 sweep, and every
-  no-trail trip, is unchanged. The reviewer
+  It is never written over a refusal: not over `bicycle=no` (OSM's own
+  before the access rows are loaded, an e-bike or mass-ride-only bar, a
+  legality of false), not over a bicycle value that says more than "may
+  ride" (`dismount`, `destination`, `discouraged`), and on a way with no
+  bicycle tag only where no access tag restricts it and the road class
+  admits a bicycle by default (`BICYCLE_BY_DEFAULT_HIGHWAY` in
+  `lua/routemaker_remap.lua`, held equal to upstream's highway table), since
+  upstream reads `use_sidepath` as access over a class that bars bicycles,
+  such as `motorway`, `footway` or `platform`. So it never opens a way that
+  was closed. `use_sidepath` is used here only for its cost; its OSM meaning,
+  a compulsory sidepath, is not claimed, and nothing user-facing may read it
+  as one. The no-trail variant does not carry it; it has no path to steer
+  to. On a rebuilt graph of the 2026-09-24 extract with the override rows
+  loaded, Navy Yard to Anacostia goes back to the Riverwalk in both
+  directions at the Default and Group Ride presets' options (southbound
+  2.538 km against the roadway's 2.455), and Navy Yard to the middle of the
+  landing still crosses on the span (1.665 km, against 1.982 km by the
+  Riverwalk). Every other trip of the round-1 sweep, and every no-trail trip,
+  is unchanged. A trip that starts or ends on one of the penalised ways
+  still uses that way, but the route to it can change, usually to the
+  Riverwalk and the far end of the landing: on the round-3 review's grid of
+  264 such trips, 50 changed at the Default preset's options (12 of them
+  more than 10% longer, the worst 0.982 to 1.171 km, +19%) and 22 at Group
+  Ride's (the worst +14%), with durations rising by the same share. The reviewer
   surface penalty (`rm:reviewer_surface`, capped at `compacted`) was
   measured first and moved no route: too weak for this.
 

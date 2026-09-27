@@ -341,16 +341,29 @@ function M.remap_way(tags, derived)
   -- preset's options: the same 269 m of roadway cost 148 plain and 264 with
   -- it, in the same 58 s. The reviewer surface penalty was measured first and
   -- is too weak for this: capped at `compacted` (`bounded_surface`), it moved
-  -- no route off the roadway.
+  -- no route off the roadway. `use_sidepath` is used here only for its cost;
+  -- its OSM meaning, a compulsory sidepath, is not claimed, and nothing
+  -- user-facing may read it as one.
   --
   -- Only where the way is already open to a bicycle, because `use_sidepath`
   -- grants access like `yes` and so must never be written over a refusal: not
   -- over `bicycle=no` (OSM's own, the e-bike variant's bar, a mass-ride-only
-  -- roadway's bar, or a legality of false above), and on a way with no bicycle
-  -- tag only where nothing else restricts it.
+  -- roadway's bar, or a legality of false above), nor over a value that says
+  -- more than "may ride" (`dismount`, `destination`, ...). On a way with no
+  -- bicycle tag, only where nothing else restricts it *and* its road class
+  -- admits a bicycle by default: upstream reads `use_sidepath` as "true" over
+  -- the class default, so on an untagged motorway, footway or platform it
+  -- would open a way the class keeps closed.
   if derived.ordinary_ride_penalty then
     local bicycle = out.bicycle or tags.bicycle
-    if M.PENALISABLE_BICYCLE[bicycle] or (bicycle == nil and M.access_is_unrestricted(tags)) then
+    if
+      M.PENALISABLE_BICYCLE[bicycle]
+      or (
+        bicycle == nil
+        and M.BICYCLE_BY_DEFAULT_HIGHWAY[tags.highway]
+        and M.access_is_unrestricted(tags)
+      )
+    then
       out.bicycle = M.ORDINARY_RIDE_PENALTY_BICYCLE
     end
   end
@@ -629,5 +642,19 @@ M.NARROW_GAP_M = 1.5
 -- changes the cost and nothing about who may ride.
 M.ORDINARY_RIDE_PENALTY_BICYCLE = "use_sidepath"
 M.PENALISABLE_BICYCLE = { yes = true, designated = true, permissive = true }
+
+-- The road classes upstream's highway table opens to a bicycle when the way
+-- says nothing about bicycles (`bike_forward = "true"`). An allow list rather
+-- than a list of the barred classes, so a class this file does not know -
+-- `construction`, or one a future upstream adds - fails closed: the penalty
+-- is simply not written there. It never includes `MOTOR_ONLY_HIGHWAY`, and
+-- tests/lua/test_graph_entry.lua holds it equal to upstream's table.
+M.BICYCLE_BY_DEFAULT_HIGHWAY = {
+  trunk = true, trunk_link = true, primary = true, primary_link = true,
+  secondary = true, secondary_link = true, tertiary = true, tertiary_link = true,
+  unclassified = true, residential = true, residential_link = true,
+  living_street = true, service = true, road = true, track = true,
+  cycleway = true, path = true, steps = true,
+}
 
 return M

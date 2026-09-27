@@ -568,6 +568,28 @@ for label, tags in pairs({
   check("the penalty never opens a way that refuses a bicycle (" .. label .. ")",
     M.remap_way(tags, pen).bicycle == nil)
 end
+-- Nor one whose road class refuses it: untagged, these are closed to a bicycle
+-- by upstream's highway table, and `use_sidepath` would open them.
+for _, class in ipairs({ "motorway", "motorway_link", "footway", "pedestrian", "bridleway",
+                         "busway", "bus_guideway", "corridor", "elevator", "platform" }) do
+  check("the penalty never opens an untagged highway=" .. class,
+    M.remap_way({ highway = class }, pen).bicycle == nil)
+end
+for class in pairs(M.MOTOR_ONLY_HIGHWAY) do
+  check("no motor-only class admits a bicycle by default (" .. class .. ")",
+    not M.BICYCLE_BY_DEFAULT_HIGHWAY[class])
+end
+check("nor a construction site without a class",
+  M.remap_way({ highway = "construction" }, pen).bicycle == nil)
+for _, class in ipairs({ "residential", "trunk", "cycleway", "path", "track" }) do
+  check("and it still lands on an untagged highway=" .. class,
+    M.remap_way({ highway = class }, pen).bicycle == P)
+end
+-- And leaves a bicycle value that says more than "may ride" alone.
+for _, value in ipairs({ "dismount", "destination", "discouraged", "use_sidepath" }) do
+  check("the penalty leaves bicycle=" .. value .. " alone",
+    M.remap_way({ highway = "secondary", bicycle = value }, pen).bicycle == nil)
+end
 check("a fixture legality of false wins over the penalty",
   M.remap_way({ highway = "secondary", bicycle = "yes" },
               { ordinary_ride_penalty = true, bridge_bicycle_legal = false }).bicycle == "no")
