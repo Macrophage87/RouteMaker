@@ -99,6 +99,20 @@ class Decision:
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
 
+# Place search (GET /api/geocode), signed out by the owner's decision of
+# 2026-09-27. PLAN.md:65's figures for the geocoding proxy: "roughly 5 requests
+# per second burst and 60 per minute", "since ... a typeahead box does not need
+# more". The burst is counted first, so a request it refuses does not also
+# spend the minute.
+GEOCODE_BURST = Limit(scope="geocode-s", requests=5, window_s=1)
+GEOCODE = Limit(scope="geocode", requests=60, window_s=60)
+
+# Place names for route points (GET /api/reverse). A plan opened from a link
+# asks for a name for each of its points at once - up to 25 - so the burst is
+# sized to let that through in one go, while the minute keeps PLAN.md:65's 60.
+REVERSE_BURST = Limit(scope="reverse-10s", requests=30, window_s=10)
+REVERSE = Limit(scope="reverse", requests=60, window_s=60)
+
 
 def _normalise(candidate: str) -> str | None:
     try:
@@ -238,6 +252,18 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
     total_setting="LONG_ROUTING_CONCURRENCY",
     client_busy="A long ride is already being planned from this address; try again shortly.",
     deployment_busy="A long ride is already being planned; try again in a few seconds.",
+)
+
+
+# Place search and place names, one slot per client and `GEOCODE_CONCURRENCY`
+# in all (one, see settings), so a stalled Photon holds one worker at most. The
+# front end keeps one geocoding request in flight at a time.
+GEOCODE_IN_FLIGHT = InFlight(
+    scope_id=3,
+    per_client=1,
+    total_setting="GEOCODE_CONCURRENCY",
+    client_busy="A place search from this address is already running; try again shortly.",
+    deployment_busy="Place search is busy; try again in a moment.",
 )
 
 

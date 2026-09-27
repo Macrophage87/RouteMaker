@@ -246,6 +246,24 @@ ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 # implementation's choice, since each holds a worker for up to 50 s.
 LONG_ROUTING_CONCURRENCY = 1
 
+# The geocoder the API proxies place search and place names to (core.geocode):
+# Photon, on the compose network only (PLAN.md:65). Its answers take tens of
+# milliseconds, so a request that has not answered in two seconds is not going
+# to, and the search box would rather show nothing than hold a gunicorn worker.
+PHOTON_URL = os.environ.get("PHOTON_URL", "http://photon:2322")
+PHOTON_TIMEOUT_S = 2.0
+
+# The languages scripts/import_photon.sh imports names in, and so the only ones
+# a search may ask for; Photon falls back to the local name for the rest.
+PHOTON_LANGUAGES = ("en",)
+
+# How many geocoding requests may run at once across the whole api, counted
+# like the routing slots (core.ratelimit.GEOCODE_IN_FLIGHT). One: at Photon's
+# tens of milliseconds a slot serves a few dozen requests a second, and if
+# Photon stalls it holds one gunicorn worker at most for PHOTON_TIMEOUT_S, not
+# every worker the routing slots leave free for /healthz, the tiles and sign-in.
+GEOCODE_CONCURRENCY = 1
+
 # The disk gate. A rebuild refuses to start unless a second full tile set fits
 # beside the current one without taking the data volume past the alert
 # threshold. Until a first build has been measured there is no current set to
