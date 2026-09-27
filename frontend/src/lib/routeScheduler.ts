@@ -88,7 +88,9 @@ export class RouteScheduler<P> {
       this.debounce = null;
       this.pump();
     }, this.debounceMs);
-    if (!this.inFlight && this.hold === null) this.state({ kind: "pending" });
+    if (this.inFlight) return;
+    if (this.hold === null) this.state({ kind: "pending" });
+    else if (!this.holdAnnounced) this.state({ kind: "waiting", seconds: this.holdLeft });
   }
 
   /**

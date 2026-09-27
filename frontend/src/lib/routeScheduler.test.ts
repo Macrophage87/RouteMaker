@@ -474,3 +474,30 @@ test("a Retry-After larger than the API's ceiling holds for the ceiling, on a ti
     assert.ok(ctx.timers.longest <= 2 ** 31 - 1, `a ${ctx.timers.longest} ms timer`);
   }
 });
+
+test("a new plan during a wait the panel is not showing says it is waiting at once, not after the debounce", async () => {
+  // After Clear, or after the refusal is shown, the panel would otherwise be
+  // blank, or still show the old refusal, for the debounce.
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(refusal("5"));
+  await flush();
+  ctx.scheduler.clear();
+  ctx.scheduler.request(2);
+  assert.deepEqual(ctx.states.at(-1), { kind: "waiting", seconds: 5 });
+  const count = ctx.states.length;
+  ctx.scheduler.request(3);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.states.length, count, "announced twice");
+});
+
+test("a change while a request is out leaves the state in flight", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  const count = ctx.states.length;
+  ctx.scheduler.request(2);
+  assert.equal(ctx.states.length, count, JSON.stringify(ctx.states.slice(count)));
+  assert.deepEqual(ctx.states.at(-1), { kind: "in-flight" });
+});
