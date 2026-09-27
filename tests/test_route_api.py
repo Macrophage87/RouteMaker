@@ -446,6 +446,28 @@ class TestRefusedInput:
         error = refused_before_the_router(client, router, {**good_body(), "preset": "x"})["error"]
         assert "preset" in error
 
+    @pytest.mark.parametrize("problem", ["outside", "too-long"])
+    def test_a_validators_own_sentence_comes_without_pydantics_prefix(
+        self, problem, client, router
+    ) -> None:
+        """Follow-up to the front-end re-check: a 201 km plan read "Points:
+        Value error, the route is too long ...". The API wrote that sentence
+        itself; the field path and Pydantic's "Value error," are for a
+        developer, and the rider saw them."""
+        from core.api import MAX_SPAN_M
+
+        if problem == "outside":
+            west = settings.COVERAGE_BBOX[0]
+            points = [list(VERTICES[0]), [west - 0.01, LAT]]
+        else:
+            points = bouncing(MAX_SPAN_M / 1000 + 1)
+        error = refused_before_the_router(
+            client, router, {"points": points, "preset": "default", "confirm_long": True}
+        )["error"]
+        assert "value error" not in error.lower(), error
+        assert not error.startswith("points"), error
+        assert ":" not in error.split(" ")[0], error
+
 
 @db
 class TestRouterOutcomes:
@@ -1214,6 +1236,28 @@ class TestLengthCap:
         over = {"points": bouncing(200.5), "preset": "default", "confirm_long": True}
         assert post(client, under).status_code == 200
         assert post(client, over).status_code == 400
+
+    def test_too_long_names_the_ceiling_it_is_held_to(self, client, router, monkeypatch) -> None:
+        """The rider is told the limit, and the figure is MAX_SPAN_M's: moved
+        to 180 km, the sentence says 180 km."""
+        from core import api
+
+        for ceiling_m in (api.MAX_SPAN_M, 180_000):
+            monkeypatch.setattr(api, "MAX_SPAN_M", ceiling_m)
+            body = {"points": bouncing(ceiling_m / 1000 + 1), "preset": "default"}
+            error = refused_before_the_router(client, router, {**body, "confirm_long": True})
+            assert f"{ceiling_m // 1000} km" in error["error"], error
+            assert "too long" in error["error"]
+
+    def test_a_routers_own_limit_does_not_claim_the_straight_line_ceiling(
+        self, client, router
+    ) -> None:
+        """The router refusing a request well under 200 km is not "longer than
+        200 km in straight lines"."""
+        router(FakeRouter({"route": routing.RouterRefused(400, 154, "exceeds a limit")}))
+        error = post(client, good_body()).json()["error"]
+        assert "too long" in error
+        assert "km" not in error
 
     def test_the_span_is_the_sum_of_legs(self, client, router) -> None:
         """Short hops that zig-zag add up: each leg is under the confirm span,

@@ -297,14 +297,25 @@ test("a Retry-After is capped at the API's own ceiling, however large the header
 test("too long shows the API's own sentence, whatever ceiling it names", () => {
   // The ceiling is the API's to set (it moved from 300 km to 200 km); the
   // panel shows what the API says rather than a figure of its own.
-  for (const said of [
-    "the route is too long to plan in one request; split it into shorter parts",
-    "This route is too long to plan: the longest is 200 km. Split it into shorter parts.",
+  // [what the API sends, the sentence in it]. The first is what the API sent
+  // before it dropped Pydantic's prefix, and the panel read "Points: Value
+  // error, the route ..." (front-end re-check, should-fix 1).
+  const sentence =
+    "the route is longer than 200 km in straight lines, which is too long to plan in one request; split it into shorter parts";
+  for (const [said, core] of [
+    [`points: Value error, ${sentence}`, sentence],
+    [sentence, sentence],
+    ["This route is too long to plan: the longest is 200 km. Split it into shorter parts.", ""],
+    ["Is this route too long to plan in one request?", ""],
   ]) {
     const described = describeError(400, { error: said }, null);
     assert.equal(described.kind, "too-long");
-    assert.ok(described.message.toLowerCase().includes(said.slice(1).toLowerCase().replace(/\.$/, "")), described.message);
-    assert.match(described.message, /^[A-Z]/);
+    const body = (core || said).replace(/[.!?]$/, "");
+    const capitalised = body.charAt(0).toUpperCase() + body.slice(1);
+    // Starts with the API's sentence, capitalised, and ends in exactly one stop.
+    assert.ok(described.message.startsWith(capitalised), described.message);
+    assert.equal(described.message.length, capitalised.length + 1, described.message);
     assert.match(described.message, /[.!?]$/);
+    if (/[.!?]$/.test(core || said)) assert.equal(described.message.at(-1), (core || said).at(-1));
   }
 });

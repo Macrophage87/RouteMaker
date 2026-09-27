@@ -83,7 +83,21 @@ MAX_POINTS = 25
 #   answer of 2026-09-26 to "What's the longest ride anyone may plan?".
 CONFIRM_SPAN_M = 150_000
 MAX_SPAN_M = 200_000
-TOO_LONG = "the route is too long to plan in one request; split it into shorter parts"
+
+
+def too_long() -> str:
+    """The refusal past MAX_SPAN_M, naming the figure so a rider knows the limit."""
+    return (
+        f"the route is longer than {MAX_SPAN_M // 1000} km in straight lines, which is too "
+        "long to plan in one request; split it into shorter parts"
+    )
+
+
+# The router's own request limits can refuse a route under MAX_SPAN_M, so this
+# one names no figure.
+ROUTER_TOO_LONG = (
+    "the route is too long for the router to plan in one request; split it into shorter parts"
+)
 
 # The Retry-After on a 503 for a request whose time budget ran out.
 DEADLINE_RETRY_S = 30
@@ -128,7 +142,7 @@ class RouteIn(Schema):
             if not (west <= lon <= east and south <= lat <= north):
                 raise ValueError(f"point {index} is outside the area this map covers")
         if span_m(points) > MAX_SPAN_M:
-            raise ValueError(TOO_LONG)
+            raise ValueError(too_long())
         return points
 
 
@@ -183,17 +197,32 @@ class RouteOut(Schema):
     attribution: list[str]
 
 
+# What Pydantic puts before the text of a ValueError raised in a validator.
+VALUE_ERROR_PREFIX = "Value error, "
+
+
 def _error(status: int, message: str) -> JsonResponse:
     return JsonResponse({"error": message}, status=status)
 
 
 @api.exception_handler(ValidationError)
 def invalid_input(request, exc: ValidationError):
-    """Ninja's 422 for a body it cannot validate is the contract's 400."""
+    """Ninja's 422 for a body it cannot validate is the contract's 400.
+
+    A refusal raised by one of RouteIn's own validators is a sentence this API
+    wrote for a rider ("the route is longer than 200 km ..."), so it goes out as
+    it was written: without the field path and Pydantic's "Value error, ",
+    which the front end showed as "Points: Value error, the route ...". Pydantic's
+    own messages ("Input should be ...") keep the field they are about.
+    """
     problems = []
     for error in exc.errors[:5]:
+        msg = error.get("msg", "invalid")
+        if error.get("type") == "value_error":
+            problems.append(msg.removeprefix(VALUE_ERROR_PREFIX))
+            continue
         where = ".".join(str(part) for part in error.get("loc", ()) if part != "body")
-        problems.append(f"{where}: {error.get('msg', 'invalid')}" if where else error.get("msg"))
+        problems.append(f"{where}: {msg}" if where else msg)
     return _error(400, "; ".join(p for p in problems if p) or "invalid request")
 
 
@@ -322,7 +351,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
             200, routing.plan(body.points, body.preset, long_ride=long_ride, started=started)
         )
     except routing.TooLong:
-        return Status(400, {"error": TOO_LONG})
+        return Status(400, {"error": ROUTER_TOO_LONG})
     except routing.NoRoute as no_route:
         message = "No route joins these points on this preset."
         if no_route.no_path and presets.PRESETS[body.preset].variant == "no-trail":

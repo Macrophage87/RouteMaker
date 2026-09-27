@@ -65,6 +65,17 @@ function serverSentence(body: unknown): string | undefined {
 }
 
 /**
+ * A validator's sentence without the field path and "Value error," Ninja puts
+ * before it. The API strips them itself now; this is for an API that does not.
+ */
+function withoutValidatorPrefix(said: string): string {
+  return said
+    .replace(/^[\w.]+:\s*/, "")
+    .replace(/^Value error,\s*/i, "")
+    .trim();
+}
+
+/**
  * The validator's reason in words a rider can use. Ninja's messages carry a
  * field path and "Value error," ("points: Value error, point 1 is outside the
  * area this map covers"), which is for a developer.
@@ -76,11 +87,7 @@ export function friendlyInput(said: string | undefined): string {
   }
   if (/at least 2|too short|min_length/i.test(said)) return "Set a start and an end first.";
   if (/at most|too long|max_length/i.test(said)) return "That is more points than one route can take.";
-  const reason = said
-    .split(";")[0]
-    .replace(/^[\w.]+:\s*/, "")
-    .replace(/^Value error,\s*/i, "")
-    .trim();
+  const reason = withoutValidatorPrefix(said.split(";")[0]);
   return reason ? `The planner could not use these points: ${reason}.` : "The planner could not use these points.";
 }
 
@@ -114,7 +121,7 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       kind: "too-long",
       title: "Too long to plan",
       // The API's own words: the ceiling is its to set, and it says what it is.
-      message: asSentence(said),
+      message: asSentence(withoutValidatorPrefix(said)),
     };
   }
   if (status === 400) {
