@@ -293,8 +293,9 @@ coordinated addresses can still fill the pool: three on the default of three
 slots, each holding one long-running route. Every other request then gets 503
 for as long as they keep it up, though `/healthz`, the tiles, sign-in and the
 admin still answer. That is inherent in identifying clients by address, and no
-limit keyed on it removes it; what it bounds is the cost, a few seconds of
-router time per request, and the reach, the routing endpoint alone. An account
+limit keyed on it removes it; what it bounds is the cost, at most one worker
+for 40 s per request (50 s for the one long ride), and the reach, the routing
+endpoint alone. An account
 or a proof-of-work step would be the next lever, and neither is built.
 
 **Who a client is.** The last `X-Forwarded-For` entry, which Caddy writes from
