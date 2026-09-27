@@ -467,8 +467,11 @@ def test_legal_but_avoid_is_its_own_key_and_the_sum_is_the_distance(
 
 @pytest.mark.parametrize("name", sorted(presets.PRESETS))
 def test_every_preset_charges_entering_a_legal_but_avoid_way(name):
-    """The destination-only penalty is how tier 5 reaches every preset,
-    Mass Ride at use_roads 1.0 included (core.presets.AVOID_ENTRY_PENALTY_S)."""
+    """The alley penalty is how tier 5 reaches every preset, Mass Ride at
+    use_roads 1.0 included (core.presets.AVOID_ENTRY_PENALTY_S), and
+    destination-only ways keep Valhalla's own penalty: none is sent."""
     options = presets.costing(name)["bicycle"]
-    assert options["destination_only_penalty"] == presets.AVOID_ENTRY_PENALTY_S
+    assert options["alley_penalty"] == presets.AVOID_ENTRY_PENALTY_S
     assert presets.AVOID_ENTRY_PENALTY_S >= 15 * 60
+    assert "destination_only_penalty" not in options
+    assert "service_penalty" not in options

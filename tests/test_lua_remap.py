@@ -292,8 +292,9 @@ def test_a_mass_ride_only_bar_survives_the_real_transform(name) -> None:
 
 
 # Ways upstream's highway table closes to a bicycle by class alone, found open
-# under the ordinary-ride penalty by the round-3 correctness and mutation
-# reviews (their probes, through lua/graph.lua), and one open class as control.
+# under the retired ordinary-ride penalty by the round-3 correctness and
+# mutation reviews (their probes, through lua/graph.lua), and one open class as
+# control. The stress penalty and the tier-5 mark are the same writes now.
 CLASS_BARRED_WAYS = {
     "motorway": {"highway": "motorway"},
     "motorway_link": {"highway": "motorway_link"},
@@ -311,16 +312,18 @@ CLASS_BARRED_WAYS = {
 }
 
 
+@pytest.mark.parametrize("tier", ["3", "4", "5"])
 @pytest.mark.parametrize("name", sorted(CLASS_BARRED_WAYS))
-def test_the_ordinary_ride_penalty_never_opens_a_class_upstream_bars(name) -> None:
+def test_the_stress_penalty_never_opens_a_class_upstream_bars(name, tier) -> None:
     tags = CLASS_BARRED_WAYS[name]
     assert _bike_access(tags) == ("false", "false"), "the control: the class bars it"
-    marked = {**tags, "rm:ordinary_ride_penalty": "yes"}
+    marked = {**tags, "rm:stress_tier": tier}
     assert _bike_access(marked) == ("false", "false")
 
 
-def test_the_ordinary_ride_penalty_keeps_an_open_untagged_road_open() -> None:
-    marked = {"highway": "residential", "rm:ordinary_ride_penalty": "yes"}
+@pytest.mark.parametrize("tier", ["3", "4", "5"])
+def test_the_stress_penalty_keeps_an_open_untagged_road_open(tier) -> None:
+    marked = {"highway": "residential", "rm:stress_tier": tier}
     assert _bike_access(marked) == ("true", "true")
 
 

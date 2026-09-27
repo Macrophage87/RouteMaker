@@ -325,41 +325,42 @@ local _, unpenalised = transform_way({ highway = "residential", surface = "paved
 check("a way with no penalty keeps its surveyed surface",
   unpenalised.surface == "paved", unpenalised.surface)
 
--- `rm:ordinary_ride_penalty` (owner, 2026-09-26: "Steer to the path") reaches
--- the graph as upstream's own `bicycle=use_sidepath`, which upstream reads as
--- bicycle access both ways: a cost, not a bar. Read at upstream's output, with
--- the landing's own shapes: opened by an access override (`bicycle=yes`), and
--- the span, opened over OSM's `bicycle=no` by the fixture's legality row.
+-- The stress penalty (tier 3 and up) reaches the graph as upstream's own
+-- `bicycle=use_sidepath`, which upstream reads as bicycle access both ways: a
+-- cost, not a bar. Read at upstream's output, with the 11th Street landing's
+-- own shapes, curated LTS 4 since the ordinary-ride penalty that used to mark
+-- them was retired (owner, 2026-09-27): opened by an access override
+-- (`bicycle=yes`), and the span, opened over OSM's `bicycle=no` by the
+-- fixture's legality row.
 local landing = { highway = "secondary", bicycle = "yes", foot = "no" }
 local span = { highway = "secondary", bicycle = "no", foot = "no", bridge = "yes",
   ["rm:bridge_bicycle"] = "yes" }
 for label, tags in pairs({ landing = landing, span = span }) do
   local marked = {}
   for k, v in pairs(tags) do marked[k] = v end
-  marked["rm:ordinary_ride_penalty"] = "yes"
+  marked["rm:stress_tier"] = "4"
   local _, out = transform_way(marked)
   check("the penalty reaches the graph on the " .. label,
     out.bicycle == "use_sidepath", tostring(out.bicycle))
   check("and the " .. label .. " stays open both ways",
     out.bike_forward == "true" and out.bike_backward == "true",
     tostring(out.bike_forward) .. "/" .. tostring(out.bike_backward))
-  check("and the derived tag is stripped from the " .. label,
-    out["rm:ordinary_ride_penalty"] == nil)
+  check("and the derived tag is stripped from the " .. label, out["rm:stress_tier"] == nil)
   local plain_tags = {}
   for k, v in pairs(tags) do plain_tags[k] = v end
   local _, plain = transform_way(plain_tags)
   check("without it the " .. label .. " is plain bicycle=yes",
     plain.bicycle == "yes", tostring(plain.bicycle))
-  local off_tags = {}
-  for k, v in pairs(tags) do off_tags[k] = v end
-  off_tags["rm:ordinary_ride_penalty"] = "no"
-  local _, off = transform_way(off_tags)
-  check("rm:ordinary_ride_penalty=no is no penalty on the " .. label,
-    off.bicycle == "yes", tostring(off.bicycle))
+  local old_tags = {}
+  for k, v in pairs(tags) do old_tags[k] = v end
+  old_tags["rm:ordinary_ride_penalty"] = "yes"
+  local _, old = transform_way(old_tags)
+  check("the retired rm:ordinary_ride_penalty is read by nothing on the " .. label,
+    old.bicycle == "yes", tostring(old.bicycle))
 end
 -- And it opens nothing: the landing as OSM tags it, before the override.
 local _, barred = transform_way({ highway = "secondary", bicycle = "no", foot = "no",
-  ["rm:ordinary_ride_penalty"] = "yes" })
+  ["rm:stress_tier"] = "4" })
 check("the penalty leaves a barred way barred",
   barred.bike_forward == "false" and barred.bike_backward == "false",
   tostring(barred.bike_forward))
@@ -378,7 +379,7 @@ local function class_access(tags)
   return tostring(out and out.bike_forward) .. "/" .. tostring(out and out.bike_backward)
 end
 local function with_penalty(tags)
-  local marked = { ["rm:ordinary_ride_penalty"] = "yes" }
+  local marked = { ["rm:stress_tier"] = "4" }
   for k, v in pairs(tags) do marked[k] = v end
   return marked
 end
@@ -567,15 +568,26 @@ check("and access is what it was", same_access(both_plain, both_derived))
 local _, left_out = transform_way(both_derived)
 check("on the left side too", tonumber(left_out.cycle_lane_left) == 3, left_out.cycle_lane_left)
 
--- Tier 5 reaches upstream as a destination-only edge and nothing else.
+-- Tier 5 reaches upstream as an alley (use 5) and nothing else: not
+-- destination-only, access unchanged. OSM's own alleys become service roads
+-- (use 11), so only tier-5 ways pay the alley charge.
 local plain5 = { highway = "trunk", expressway = "yes", maxspeed = "55 mph" }
 local avoid5 = { highway = "trunk", expressway = "yes", maxspeed = "55 mph", ["rm:stress_tier"] = "5" }
 local _, plain5_out = transform_way(plain5)
 local _, avoid5_out = transform_way(avoid5)
-check("upstream alone: an ordinary trunk", plain5_out.private == "false", plain5_out.private)
-check("tier 5: destination-only", avoid5_out.private == "true", avoid5_out.private)
+check("upstream alone: an ordinary trunk", tonumber(plain5_out.use) == 0, plain5_out.use)
+check("tier 5: an alley", tonumber(avoid5_out.use) == 5, avoid5_out.use)
+check("not destination-only", avoid5_out.private == plain5_out.private, avoid5_out.private)
 check("and a bicycle may still ride it both ways", avoid5_out.bike_forward == "true"
   and avoid5_out.bike_backward == plain5_out.bike_backward)
+local _, real_alley = transform_way({ highway = "service", service = "alley" })
+check("OSM's own alley is a service road in the graph", tonumber(real_alley.use) == 11, real_alley.use)
+check("and stays open", real_alley.bike_forward == "true")
+local local_access = { highway = "residential", motor_vehicle = "destination", ["rm:stress_tier"] = "1" }
+local _, local_out = transform_way(local_access)
+check("a local-access street stays destination-only, as before", local_out.private == "true",
+  local_out.private)
+check("and is no alley", tonumber(local_out.use) == 0, local_out.use)
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

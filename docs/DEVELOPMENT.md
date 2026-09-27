@@ -399,10 +399,15 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   the distance): an expressway posted 50 mph or more, or a way the owner
   curated (`fixtures/overrides/2026-09-27-owner-stress.json`, loaded as that
   directory's README says). In the graph it is the LTS 3-4 stress penalty
-  plus a destination-only mark; every preset sends
-  `destination_only_penalty` = `presets.AVOID_ENTRY_PENALTY_S` (1800 s of cost,
-  no time) for entering one, which reaches Mass Ride at `use_roads` 1.0 too.
-  OSM's own destination-only and private ways carry the same flag.
+  plus Valhalla's alley use (`service=alley`, written by
+  `routemaker_remap.remap_way`); every preset sends `alley_penalty` =
+  `presets.AVOID_ENTRY_PENALTY_S` (1800 s of cost, no time) for entering one,
+  which reaches Mass Ride at `use_roads` 1.0 too. Only tier-5 ways pay it (the
+  owner's "Only tier-5 roads", 2026-09-27): OSM's own alleys become plain
+  service roads in the graph (Valhalla's service penalty, 15 s, where an alley
+  had 5 s), and destination-only and private ways keep Valhalla's own
+  `destination_only_penalty` (600 s, not sent). The access of a tier-5 way is
+  untouched, so it stays routable when it is the only way.
 - The graph a ride routes on (`variant` in the answer): a weekend ride on a
   preset whose graph is the standard one routes on the weekend graph
   (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road

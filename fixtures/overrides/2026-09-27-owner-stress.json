@@ -18,8 +18,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -27,8 +27,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -36,8 +36,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -45,8 +45,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -54,8 +54,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -63,8 +63,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -72,8 +72,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -81,8 +81,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -90,8 +90,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -99,8 +99,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",
@@ -108,8 +108,8 @@
       "value": {
         "tier": 4
       },
-      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways, the crossings fixture's ordinary_ride_penalty_way_ids; its ordinary-ride penalty (\"Steer to the path\", 2026-09-26) stays as it is.",
-      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\", ordinary_ride_penalty_way_ids."
+      "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24; fixtures/crossings/potomac-anacostia.json, row \"11th Street Bridge (local span)\" and its note (the ways its retired ordinary_ride_penalty_way_ids column named)."
     },
     {
       "kind": "stress",

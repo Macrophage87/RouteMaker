@@ -71,9 +71,6 @@ local function derived_from(kv)
   if kv["rm:trail_class"] then derived.is_trail_class = kv["rm:trail_class"] == "yes" end
   if kv["rm:facility"] then derived.facility = kv["rm:facility"] end
   if kv["rm:facility_neutral"] then derived.facility_neutral = kv["rm:facility_neutral"] == "yes" end
-  if kv["rm:ordinary_ride_penalty"] then
-    derived.ordinary_ride_penalty = kv["rm:ordinary_ride_penalty"] == "yes"
-  end
   return derived
 end
 

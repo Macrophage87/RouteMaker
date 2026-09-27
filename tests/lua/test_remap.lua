@@ -571,12 +571,13 @@ check("nor is a restrictive access tag",
   M.remap_node({ barrier = "cycle_barrier", access = "private" }).access == nil)
 
 -- ---------------------------------------------------------------------------
--- The ordinary-ride penalty (owner, 2026-09-26: "Steer to the path") is a
--- cost on a way already open to bicycles, never a grant over a refusal.
+-- The stress penalty is a cost on a way already open to bicycles, never a
+-- grant over a refusal. (These cases were the retired ordinary-ride
+-- penalty's, which wrote the same tag; they hold for the tier that replaced it.)
 -- ---------------------------------------------------------------------------
 
-local P = M.ORDINARY_RIDE_PENALTY_BICYCLE
-local pen = { ordinary_ride_penalty = true }
+local P = M.STRESS_PENALTY_BICYCLE
+local pen = { stress_tier = 4 }
 check("the penalty is upstream's sidepath-preferred value", P == "use_sidepath")
 for _, value in ipairs({ "yes", "designated", "permissive" }) do
   check("the penalty replaces bicycle=" .. value,
@@ -618,15 +619,15 @@ for _, value in ipairs({ "dismount", "destination", "discouraged", "use_sidepath
 end
 check("a fixture legality of false wins over the penalty",
   M.remap_way({ highway = "secondary", bicycle = "yes" },
-              { ordinary_ride_penalty = true, bridge_bicycle_legal = false }).bicycle == "no")
+              { stress_tier = 4, bridge_bicycle_legal = false }).bicycle == "no")
 check("a fixture legality of true is granted and then penalised",
   M.remap_way({ highway = "secondary", bicycle = "no" },
-              { ordinary_ride_penalty = true, bridge_bicycle_legal = true }).bicycle == P)
-check("no penalty, no change",
+              { stress_tier = 4, bridge_bicycle_legal = true }).bicycle == P)
+check("no tier, no change",
   M.remap_way({ highway = "secondary", bicycle = "yes" }, {}).bicycle == nil)
-check("an explicit false is no penalty",
+check("a derived ordinary_ride_penalty is read by nothing any more",
   M.remap_way({ highway = "secondary", bicycle = "yes" },
-              { ordinary_ride_penalty = false }).bicycle == nil)
+              { ordinary_ride_penalty = true }).bicycle == nil)
 
 -- ---------------------------------------------------------------------------
 -- Violations are recorded rather than raised. error() inside the transform
@@ -760,30 +761,39 @@ check("nor over a refusal",
   next(M.remap_way({ highway = "tertiary", bicycle = "no", cycleway = "shared_lane" }, { facility = "path" }))
     == nil)
 
--- "Legal but avoid" (tier 5): the stress penalty and a destination-only mark.
+-- "Legal but avoid" (tier 5): the stress penalty and the alley use, and
+-- nothing about motor vehicles (only tier-5 ways pay; local-access ways stay).
 local avoid = M.remap_way({ highway = "trunk", expressway = "yes", maxspeed = "55 mph" }, { stress_tier = 5 })
 check("tier 5 carries the stress penalty", avoid.bicycle == "use_sidepath")
-check("and the destination-only mark", avoid.motor_vehicle == "destination")
+check("and the alley use", avoid.service == "alley")
+check("and writes nothing about motor vehicles", avoid.motor_vehicle == nil)
 for tier = 1, 4 do
-  check("tier " .. tier .. " gets no destination-only mark",
-    M.remap_way({ highway = "trunk" }, { stress_tier = tier }).motor_vehicle == nil)
+  check("tier " .. tier .. " gets no alley use",
+    M.remap_way({ highway = "trunk" }, { stress_tier = tier }).service == nil)
 end
 check("never on a trail-class way",
-  M.remap_way({ highway = "cycleway" }, { stress_tier = 5, is_trail_class = true }).motor_vehicle == nil)
-check("never over a real motor_vehicle value",
-  M.remap_way({ highway = "primary", motor_vehicle = "no" }, { stress_tier = 5 }).motor_vehicle == nil)
-check("nor where motorcar is tagged",
-  M.remap_way({ highway = "primary", motorcar = "yes" }, { stress_tier = 5 }).motor_vehicle == nil)
+  M.remap_way({ highway = "cycleway" }, { stress_tier = 5, is_trail_class = true }).service == nil)
+check("never over a way's own service value",
+  M.remap_way({ highway = "primary", service = "busway" }, { stress_tier = 5 }).service == nil)
+check("never on a service road",
+  M.remap_way({ highway = "service" }, { stress_tier = 5 }).service == nil)
 check("nor where a bicycle may not ride",
-  M.remap_way({ highway = "primary", bicycle = "no" }, { stress_tier = 5 }).motor_vehicle == nil)
+  M.remap_way({ highway = "primary", bicycle = "no" }, { stress_tier = 5 }).service == nil)
 check("nor where a bridge legality of false bars the roadway",
-  M.remap_way({ highway = "primary" }, { stress_tier = 5, bridge_bicycle_legal = false }).motor_vehicle == nil)
+  M.remap_way({ highway = "primary" }, { stress_tier = 5, bridge_bicycle_legal = false }).service == nil)
+check("nor on an untagged motorway",
+  M.remap_way({ highway = "motorway" }, { stress_tier = 5 }).service == nil)
 check("a roadway OSM already tags use_sidepath is marked (the Douglass bridge)",
   M.remap_way({ highway = "primary", bicycle = "use_sidepath", foot = "no" }, { stress_tier = 5 })
-    .motor_vehicle == "destination")
-check("a permissive motor_vehicle value is replaced",
-  M.remap_way({ highway = "primary", motor_vehicle = "yes" }, { stress_tier = 5 }).motor_vehicle
-    == "destination")
+    .service == "alley")
+check("OSM's own alleys become service roads, so they do not pay the tier-5 charge",
+  M.remap_way({ highway = "service", service = "alley" }, {}).service == M.REMOVE)
+check("at every tier",
+  M.remap_way({ highway = "service", service = "alley" }, { stress_tier = 2 }).service == M.REMOVE)
+check("and other service values are left alone",
+  M.remap_way({ highway = "service", service = "driveway" }, {}).service == nil)
+check("a local-access street is not touched",
+  next(M.remap_way({ highway = "residential", access = "destination" }, { stress_tier = 1 })) == nil)
 
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

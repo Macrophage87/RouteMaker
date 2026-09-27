@@ -54,8 +54,7 @@ heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
 no-trail variant (Mass Ride's, and any other ride's with trails off) drops,
 `resolve_mass_ride_only_bridge_ids` decides
 which roadways the standard and e-bike variants bar because they are for a
-trails-off ride only, `resolve_ordinary_ride_penalty_ids`
-decides which ways those two variants carry a penalty on, and
+trails-off ride only, and
 `resolve_bridge_bicycle_legality` decides what `rm:bridge_bicycle` carries into
 `graph.lua` on every variant.
 Memorial Bridge is one authority end to end; the "14th Street Bridge" is
@@ -229,55 +228,21 @@ agree.
   remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
   those points from all three graphs.
 
-* `ordinary_ride_penalty_way_ids` — routing-relevant, and on the 11th Street
-  local span row only: the OSM way ids of the roadway an ordinary ride is
-  steered off, the span (546096009) and the ten south-landing ways named
-  under the approaches, below. Ids
-  rather than names, because a landing is not a bridge and no name match
-  reaches it; an id the extract no longer carries is reported in the
-  "crossings not found" warning, as a stale pin is. Absent means none, and
-  anything but a list of positive ids is refused at load
-  (`variants.MalformedCrossingRow`). The standard and e-bike variants carry
-  `rm:ordinary_ride_penalty` on those ways, and the transform writes it as
-  Valhalla's own `bicycle=use_sidepath` wherever the way is already open to
-  a bicycle: upstream reads that as bicycle access both ways, like `yes`,
-  and the bicycle costing charges more for it without changing the edge's
-  speed, so it is a cost and not a bar, and a route's duration is unchanged.
-  It is never written over a refusal: not over `bicycle=no` (OSM's own
-  before the access rows are loaded, an e-bike or mass-ride-only bar, a
-  legality of false), not over a bicycle value that says more than "may
-  ride" (`dismount`, `destination`, `discouraged`), and on a way with no
-  bicycle tag only where no access tag restricts it and the road class
-  admits a bicycle by default (`BICYCLE_BY_DEFAULT_HIGHWAY` in
-  `lua/routemaker_remap.lua`, held equal to upstream's highway table), since
-  upstream reads `use_sidepath` as access over a class that bars bicycles,
-  such as `motorway`, `footway` or `platform`, nor on an untagged way
-  tagged `impassable=yes`, which upstream closes to every mode and would
-  otherwise reopen on reading `use_sidepath`. So it never opens a way that
-  was closed. `use_sidepath` is used here only for its cost; its OSM meaning,
-  a compulsory sidepath, is not claimed, and nothing user-facing may read it
-  as one. The no-trail variant does not carry it; it has no path to steer
-  to. On a rebuilt graph of the 2026-09-24 extract with the override rows
-  loaded, Navy Yard to Anacostia goes back to the Riverwalk in both
-  directions at the Default and Group Ride presets' options (southbound
-  2.538 km against the roadway's 2.455), and Navy Yard to the middle of the
-  landing still crosses on the span (1.665 km, against 1.982 km by the
-  Riverwalk). Every other trip of the round-1 sweep, and every no-trail trip,
-  is unchanged. A trip that starts or ends on one of the penalised ways
-  still uses that way, but the route to it can change, usually to the
-  Riverwalk and the far end of the landing: on the round-3 review's grid of
-  264 such trips, 50 changed at the Default preset's options (12 of them
-  more than 10% longer, the worst 0.982 to 1.171 km, +19%) and 22 at Group
-  Ride's (the worst +14%), with durations rising by the same share. The
-  owner was shown those figures and accepted them on 2026-09-27: "Yes, keep
+* `ordinary_ride_penalty_way_ids` — retired on 2026-09-27 (the owner: "Retire
+  it (Recommended)"). It put a routing penalty on the 11th Street local span
+  (546096009) and its ten south-landing ways for the owner's "Steer to the
+  path" of 2026-09-26 ("Keep it legal but add a penalty on that roadway for
+  ordinary rides so the Riverwalk wins when it's close in length."). Those
+  ways are curated LTS 4 now (`fixtures/overrides/2026-09-27-owner-stress.json`;
+  the owner: "11th street is LTS4"), and the stress penalty of LTS 3-4 is the
+  same `bicycle=use_sidepath` write; the owner's words stand in those rows. A
+  file that still carries the column is refused at load
+  (`variants.MalformedCrossingRow`), so an old installed copy cannot pass.
+  The owner's acceptance of what the penalty did to trips that start or end
+  on those ways stands for the tier that replaced it (2026-09-27): "Yes, keep
   it. For recreational rides, getting there enjoyably trumps a higher stress
   shorter route. We can change this gor more commute centric routes." (quoted
-  as typed). So the penalty stands for the recreational presets there are
-  today, and a commute-oriented preset, if one is added, may weigh these ways
-  differently - a lighter penalty or none - rather than inherit this one;
-  that is its designer's to decide with the owner, not settled here. The reviewer
-  surface penalty (`rm:reviewer_surface`, capped at `compacted`) was
-  measured first and moved no route: too weak for this.
+  as typed).
 
 ### The approaches: owner decisions of 2026-09-26
 
@@ -317,7 +282,8 @@ roadway a mass ride was given that day, what happens at its ends:
   owner was asked whether the planner should steer those riders back to the
   path, and chose "Steer to the path" ("Keep it legal but add a penalty on
   that roadway for ordinary rides so the Riverwalk wins when it's close in
-  length."). That is `ordinary_ride_penalty_way_ids`, above.
+  length."). That was `ordinary_ride_penalty_way_ids`, above, retired
+  2026-09-27 for the curated LTS 4 of those ways.
 
 Access corrections go through the override table, the plan's one audited path
 for them, never through this file: the rows are checked in at

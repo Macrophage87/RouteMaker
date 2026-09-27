@@ -338,21 +338,25 @@ function M.remap_way(tags, derived)
     out.bicycle = "yes"
   end
 
-  -- An ordinary-ride penalty (the crossings fixture's
-  -- `ordinary_ride_penalty_way_ids`; the owner's "Steer to the path" of
-  -- 2026-09-26 for the 11th Street local span: "Keep it legal but add a penalty
-  -- on that roadway for ordinary rides so the Riverwalk wins when it's close in
-  -- length."). Written as `bicycle=use_sidepath`, which upstream's transform
-  -- reads as bicycle access in both directions, exactly as `yes`, and which
-  -- Valhalla's bicycle costing charges more for without changing the edge's
-  -- speed: a cost, not a bar, and no change to a route's reported duration.
-  -- Measured on a rebuilt graph of the 11th Street landing at the Default
-  -- preset's options: the same 269 m of roadway cost 148 plain and 264 with
-  -- it, in the same 58 s. The reviewer surface penalty was measured first and
-  -- is too weak for this: capped at `compacted` (`bounded_surface`), it moved
-  -- no route off the roadway. `use_sidepath` is used here only for its cost;
-  -- its OSM meaning, a compulsory sidepath, is not claimed, and nothing
-  -- user-facing may read it as one.
+  -- The stress penalty: `bicycle=use_sidepath` on every way the classifier or
+  -- a curated override rates tier 3 or more (never a trail-class way).
+  -- Upstream's transform reads `use_sidepath` as bicycle access in both
+  -- directions, exactly as `yes`, and Valhalla adds `3 * (1 - use_roads)` to
+  -- the accommodation factor of such an edge (sif/bicyclecost.cc,
+  -- `sidepath_factor_`) without changing its speed: a cost, not a bar, and no
+  -- change to a route's reported duration. The request's `use_roads` - the
+  -- stress slider - scales it from nothing at the fastest-legal end to "unless
+  -- there's no other option" at the other, so one graph serves every position.
+  -- `use_sidepath` is used here only for its cost; its OSM meaning, a
+  -- compulsory sidepath, is not claimed, and nothing user-facing reads it.
+  --
+  -- It replaced the crossings fixture's ordinary-ride penalty (retired by the
+  -- owner, 2026-09-27: "Retire it (Recommended)"), which wrote the same tag on
+  -- the 11th Street local span and its south landing for the owner's "Steer to
+  -- the path" of 2026-09-26 ("Keep it legal but add a penalty on that roadway
+  -- for ordinary rides so the Riverwalk wins when it's close in length."); those
+  -- ways are now curated LTS 4 (fixtures/overrides/2026-09-27-owner-stress.json)
+  -- and so carry it by their tier.
   --
   -- Only where the way is already open to a bicycle, because `use_sidepath`
   -- grants access like `yes` and so must never be written over a refusal: not
@@ -365,50 +369,46 @@ function M.remap_way(tags, derived)
   -- would open a way the class keeps closed. Nor on an untagged
   -- `impassable=yes` way of an open class: upstream closes every mode there,
   -- and then reads `use_sidepath` as "true" all the same.
-  --
-  -- The stress penalty is the same write for the same reason, on every way the
-  -- classifier rates tier 3 or 4 (never a trail-class way): Valhalla adds
-  -- `3 * (1 - use_roads)` to the accommodation factor of a `use_sidepath` edge
-  -- (sif/bicyclecost.cc, `sidepath_factor_`), so the request's `use_roads` -
-  -- the stress slider - scales it from nothing at the fastest-legal end to
-  -- "unless there's no other option" at the other, and one graph serves every
-  -- position. A cost and not a bar, and no change to any duration.
   if
-    derived.ordinary_ride_penalty
-    or (
-      derived.stress_tier ~= nil
-      and derived.stress_tier >= M.STRESS_PENALTY_TIER
-      and not derived.is_trail_class
-    )
+    derived.stress_tier ~= nil
+    and derived.stress_tier >= M.STRESS_PENALTY_TIER
+    and not derived.is_trail_class
   then
     if M.may_penalise(tags, out.bicycle or tags.bicycle) then
-      out.bicycle = M.ORDINARY_RIDE_PENALTY_BICYCLE
+      out.bicycle = M.STRESS_PENALTY_BICYCLE
     end
   end
 
   -- "Legal but avoid" (stress tier 5; the owner, 2026-09-27: "Maybe make a
-  -- 5th category for legal but to be avoided"). On top of the stress penalty
-  -- above, which Mass Ride's use_roads of 1.0 weighs at nothing, the way is
-  -- marked destination-only for motor vehicles: upstream reads
-  -- `motor_vehicle=destination` onto the edge's destination-only flag and
-  -- nothing about bicycle access, and Valhalla charges
-  -- `destination_only_penalty` (core.presets.AVOID_ENTRY_PENALTY_S) each time
-  -- a route enters such an edge from an ordinary one - cost only, no time, on
-  -- every preset, and the edge stays routable. A way OSM already tags
-  -- `bicycle=use_sidepath` (the Frederick Douglass bridge roadway) is open to a
-  -- bicycle and marked too. The graph serves bicycles
-  -- only, so no motor-vehicle route ever reads the claim; it is written only
-  -- where nothing about motor vehicles is tagged already, since overwriting a
-  -- real `motor_vehicle` value would lose it.
+  -- 5th category for legal but to be avoided"), charged only there (the
+  -- owner's "Only tier-5 roads (Recommended)": "Rework it so only 'legal but
+  -- avoid' roads pay the penalty; local-access streets stay normal."). On top
+  -- of the stress penalty above, which Mass Ride's use_roads of 1.0 weighs at
+  -- nothing, the roadway is given upstream's alley use (`service=alley`, which
+  -- upstream reads onto `use` whatever the road class): Valhalla charges
+  -- `alley_penalty` (core.presets.AVOID_ENTRY_PENALTY_S) each time a route
+  -- enters an alley from something that is not one - cost only, no time, on
+  -- every preset, and the edge stays routable. Nothing else in bicycle costing
+  -- reads the alley use, and the road keeps its class. Bicycle costing reads
+  -- no toll (it disables toll booth costs) and destination-only is shared with
+  -- OSM's own local-access ways, which is why neither is the mechanism.
+  --
+  -- Only where the way is open to a bicycle and says nothing about service
+  -- already. OSM's own alleys (`highway=service` + `service=alley`) would pay the
+  -- same charge, so on them the service value is removed: they become the
+  -- service roads they are, priced by `service_penalty` (Valhalla's 15 s) in
+  -- place of `alley_penalty` (its 5 s).
   if
     derived.stress_tier == M.AVOID_TIER
     and not derived.is_trail_class
-    and (tags.motor_vehicle == nil or M.PERMISSIVE_ACCESS[tags.motor_vehicle])
-    and tags.motorcar == nil
+    and tags.highway ~= "service"
+    and tags.service == nil
     and out.bicycle ~= "no"
-    and (tags.bicycle == M.ORDINARY_RIDE_PENALTY_BICYCLE or M.may_penalise(tags, tags.bicycle))
+    and (tags.bicycle == M.STRESS_PENALTY_BICYCLE or M.may_penalise(tags, tags.bicycle))
   then
-    out.motor_vehicle = M.AVOID_MOTOR_VEHICLE
+    out.service = M.AVOID_SERVICE
+  elseif tags.service == M.AVOID_SERVICE and tags.highway == "service" then
+    out.service = M.REMOVE
   end
 
   if derived.lit ~= nil then
@@ -680,10 +680,10 @@ M.FORBIDDEN_KEYS = { highway = true, maxspeed = true }
 
 M.NARROW_GAP_M = 1.5
 
--- The ordinary-ride penalty's value, and the bicycle values it may replace:
--- the ones upstream's own `bicycle` table maps to plain access, so the swap
--- changes the cost and nothing about who may ride.
-M.ORDINARY_RIDE_PENALTY_BICYCLE = "use_sidepath"
+-- The stress penalty's value, and the bicycle values it may replace: the ones
+-- upstream's own `bicycle` table maps to plain access, so the swap changes the
+-- cost and nothing about who may ride.
+M.STRESS_PENALTY_BICYCLE = "use_sidepath"
 M.PENALISABLE_BICYCLE = { yes = true, designated = true, permissive = true }
 
 -- The road classes upstream's highway table opens to a bicycle when the way
@@ -702,8 +702,8 @@ M.BICYCLE_BY_DEFAULT_HIGHWAY = {
 
 --- Whether the use_sidepath penalty may replace this way's bicycle value.
 --
--- The guard the ordinary-ride penalty was written with, shared now by the
--- stress penalty. See the comment at its call in `remap_way`.
+-- The guard the stress penalty is written with. See the comment at its call
+-- in `remap_way`.
 function M.may_penalise(tags, bicycle)
   return M.PENALISABLE_BICYCLE[bicycle]
     or (
@@ -721,7 +721,7 @@ M.STRESS_PENALTY_TIER = 3
 
 -- "Legal but avoid", and the write that carries it (see `remap_way`).
 M.AVOID_TIER = 5
-M.AVOID_MOTOR_VEHICLE = "destination"
+M.AVOID_SERVICE = "alley"
 
 -- --- Facility ------------------------------------------------------------------
 --

@@ -126,16 +126,18 @@ MASS_RIDE_PLANNING_SPEED_KMH = round(6 * 1.609344, 1)
 # Off everywhere, meaning sent as zero (owner decision, State crossing penalty).
 _NO_STATE_CROSSING_PENALTY = {"country_crossing_cost": 0, "country_crossing_penalty": 0}
 
-# "Legal but avoid" (stress tier 5): the transform marks those ways
-# destination-only for motor vehicles, and Valhalla charges this many seconds
-# of cost - no time - each time a route enters one from an ordinary way
-# (sif/dynamiccost.h, `destination_only_penalty_`). It does not depend on
-# use_roads, so it reaches every preset, Mass Ride at the direct end of the
+# "Legal but avoid" (stress tier 5): the transform gives those roadways
+# upstream's alley use, and Valhalla charges `alley_penalty` - this many
+# seconds of cost, no time - each time a route enters one from something that
+# is not an alley (sif/dynamiccost.h, base_transition_cost). It does not depend
+# on use_roads, so it reaches every preset, Mass Ride at the direct end of the
 # stress slider included, and the way stays routable when it is the only one.
 # Half an hour: a detour of up to 30 minutes' riding is preferred to entering
-# one (4.8 km at Mass Ride's parade pace, 9 km at Hybrid's 18 km/h). OSM's own
-# destination-only and private ways carry the same flag and so the same
-# penalty; Valhalla already charged them one at its default.
+# one (4.8 km at Mass Ride's parade pace, 9 km at Hybrid's 18 km/h). Only
+# tier-5 ways pay it (the owner, 2026-09-27: "Only tier-5 roads"): OSM's own
+# alleys are service roads in the graph, and `destination_only_penalty` is not
+# sent, so OSM's destination-only and private-for-cars ways pay Valhalla's
+# own 600 s exactly as before.
 AVOID_ENTRY_PENALTY_S = 1800
 
 # Valhalla's own default, and well below the 1.0 at which the surface exclusion
@@ -229,7 +231,7 @@ def _preset(
                 **options,
                 "use_roads": use_roads_for(stress),
                 "use_hills": use_hills_for(hills),
-                "destination_only_penalty": AVOID_ENTRY_PENALTY_S,
+                "alley_penalty": AVOID_ENTRY_PENALTY_S,
                 **_NO_STATE_CROSSING_PENALTY,
             }
         ),
