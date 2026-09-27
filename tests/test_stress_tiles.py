@@ -10,6 +10,7 @@ segment each zoom level keeps.
 from __future__ import annotations
 
 import math
+from collections import Counter
 
 import pytest
 from django.conf import settings
@@ -85,21 +86,27 @@ def live(segment_schemas):
     return live
 
 
-def classes_in(body: bytes) -> set[tuple]:
+def classes_in(body: bytes) -> Counter:
+    """How many lines the tile draws of each class. Lines, not features: a
+    merged tile draws a class as one feature, and a sidewalk and a cycleway
+    carry the same properties, so only the count tells them apart."""
     layers = decode(body)
     assert set(layers) == {"stress"}
-    return {
-        props(f.properties.get("tier"), f.properties.get("trail"), f.properties.get("unpaved"))
-        for f in layers["stress"].features
-    }
+    drawn = Counter()
+    for f in layers["stress"].features:
+        key = props(
+            f.properties.get("tier"), f.properties.get("trail"), f.properties.get("unpaved")
+        )
+        drawn[key] += len(f.lines)
+    return drawn
 
 
-def expected(keep) -> set[tuple]:
-    return {
+def expected(keep) -> Counter:
+    return Counter(
         props(tier, trail, unpaved)
         for _label, tier, rule, trail, unpaved in CLASSES
         if keep(tier, rule)
-    }
+    )
 
 
 SIDEWALK_RULES = {trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY}
@@ -203,7 +210,7 @@ class TestContract:
             )
         z, x, y = tile_of(lon, lat, 14)
         assert stress_tiles.tile_bounds(z, x, y)[0] < west
-        assert classes_in(client.get(url(z, x, y)).content) == {(4, False, None)}
+        assert classes_in(client.get(url(z, x, y)).content) == {(4, False, None): 1}
 
     @pytest.mark.parametrize("address", [(14, 2**14, 0), (14, 0, 2**14), (31, 0, 0)])
     def test_a_coordinate_that_is_not_a_tile_is_400(self, client, live, address) -> None:
