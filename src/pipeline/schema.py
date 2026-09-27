@@ -143,11 +143,13 @@ def keeping_facilities(predicate: str) -> str:
     return f"({predicate} OR {FACILITY_COLUMN} IN ({kept}))"
 
 
-# The overview index's predicate: the overview's, on the table this module
-# creates.
-OVERVIEW_INDEX_PREDICATE = (
-    keeping_facilities(OVERVIEW_PREDICATE) if SEGMENT_HAS_FACILITY else OVERVIEW_PREDICATE
-)
+def overview_index_predicate(has_facility: bool) -> str:
+    """The overview index's predicate on a table with or without the facility
+    column: the one the tile query uses on that table."""
+    return keeping_facilities(OVERVIEW_PREDICATE) if has_facility else OVERVIEW_PREDICATE
+
+
+OVERVIEW_INDEX_PREDICATE = overview_index_predicate(SEGMENT_HAS_FACILITY)
 
 
 SEGMENT_DDL = """

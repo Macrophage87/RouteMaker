@@ -431,6 +431,29 @@ class TestOverviewIndex:
         assert has_column == schema.SEGMENT_HAS_FACILITY
         assert (schema.FACILITY_COLUMN in definition) == has_column
 
+    def test_on_a_table_with_the_facility_the_widened_query_can_use_it(self, live) -> None:
+        """The predicate the index is built with once the column is declared
+        is one the widened overview query is proved to imply."""
+        from pipeline import schema
+
+        z, x, y = tile_of(*CENTRE, 10)
+        params = {"z": z, "x": x, "y": y, "extent": 2048, "buffer": 16, "margin": 0.01, "unit": 1.0}
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment ADD COLUMN facility text")
+            cursor.execute(f"DROP INDEX {live}.segment_overview_geom_idx")
+            cursor.execute(
+                f"CREATE INDEX segment_overview_geom_idx ON {live}.segment USING gist (geometry) "
+                f"WHERE {schema.overview_index_predicate(True)}"
+            )
+            cursor.execute("SET enable_seqscan = off")
+            try:
+                sql = stress_tiles.tile_sql(stress_tiles.OVERVIEW, frozenset({"facility"}))
+                cursor.execute(f"EXPLAIN {sql}", params)
+                plan = "\n".join(row[0] for row in cursor.fetchall())
+            finally:
+                cursor.execute("RESET enable_seqscan")
+        assert "segment_overview_geom_idx" in plan
+
 
 FACILITY_ROWS = [
     # (label, tier, rule, trail, unpaved, facility)

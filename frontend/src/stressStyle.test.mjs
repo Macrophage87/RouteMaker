@@ -166,7 +166,7 @@ test("the bike facilities are the owner's three, and sharrows are not one of the
     FACILITIES.map((f) => f.facility),
     ["path", "protected", "lane"],
   );
-  for (const f of FACILITIES) assert.ok(f.label.length > 0);
+  for (const f of FACILITIES) assert.ok(f.label.length > 0 && f.short.length > 0);
 });
 
 test("each facility is told apart from the others without colour, and the stronger read bolder", () => {

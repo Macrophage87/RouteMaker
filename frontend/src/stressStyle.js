@@ -155,9 +155,9 @@ export const CASING_EXTRA_PX = 2;
  * thin. "none" (sharrows included) draws nothing.
  */
 export const FACILITIES = [
-  { facility: "path", label: "Off-road bike path", color: "#4c1d95", rail: 3, dash: null },
-  { facility: "protected", label: "Protected bike lane", color: "#4c1d95", rail: 3, dash: [0.5, 0.35] },
-  { facility: "lane", label: "Painted bike lane", color: "#8b5cf6", rail: 1.5, dash: null },
+  { facility: "path", short: "Path", label: "Off-road bike path", color: "#4c1d95", rail: 3, dash: null },
+  { facility: "protected", short: "Protected", label: "Protected bike lane", color: "#4c1d95", rail: 3, dash: [0.5, 0.35] },
+  { facility: "lane", short: "Painted", label: "Painted bike lane", color: "#8b5cf6", rail: 1.5, dash: null },
 ];
 
 /** A facility's rails: wide enough to show `rail` px beyond each side of the casing. */

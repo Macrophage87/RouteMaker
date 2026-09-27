@@ -620,6 +620,7 @@ function StressLegend({ facilities }: { facilities: boolean }) {
                     />
                     <line x1="2" y1="7" x2="42" y2="7" stroke="#ffffff" strokeWidth={STRESS_TIERS[0].width + CASING_EXTRA_PX} />
                   </svg>
+                  <span className="stress-name">{facility.short}</span>
                   <span className="stress-label">{facility.label}</span>
                 </li>
               );
