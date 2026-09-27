@@ -16,6 +16,10 @@ import {
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { addStressOverlay, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
+import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
+import { addRailStations, setRailVisibility } from "./lib/railLayer.ts";
+import type { RailVisibility, StationRole } from "./lib/railStations.ts";
+import { attachRailInteraction } from "./railInteraction.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -41,6 +45,10 @@ interface Props {
   markerReset: number;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
+  /** Which rail stations show (the panel's toggles). */
+  rail: RailVisibility;
+  /** A station's Start here / End here / Add as via, with its bike entrance. */
+  onStationPoint: (role: StationRole, point: LonLat) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -143,7 +151,10 @@ export function MapView(props: Props) {
       if (!map.hasImage(id)) map.addImage(id, { width: 1, height: 1, data: new Uint8Array(4) });
     });
 
+    // A tap on a station opens its choices instead of adding a point.
+    let rail: ReturnType<typeof attachRailInteraction> | null = null;
     map.on("click", (event) => {
+      if (rail?.handleClick(event)) return;
       callbacks.current.onMapClick([event.lngLat.lng, event.lngLat.lat]);
     });
 
@@ -187,6 +198,15 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": "#1d4ed8", "line-width": 5 },
       });
+      // Over the base map and the stress overlay, under the route (railLayer.ts).
+      addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio());
+      rail = attachRailInteraction(map, {
+        station: stationById,
+        pennColour: PENN_COLOUR,
+        visibility: () => callbacks.current.rail,
+        pointCount: () => callbacks.current.points.length,
+        onStationPoint: (role, point) => callbacks.current.onStationPoint(role, point),
+      });
       syncRoute(map, callbacks.current, fitted);
       callbacks.current.onReady(map);
       callbacks.current.onStressAvailability("checking");
@@ -207,6 +227,7 @@ export function MapView(props: Props) {
 
     return () => {
       disposed = true;
+      rail?.close();
       if (recheck !== null) clearTimeout(recheck);
       loaded.current = false;
       markers.current.forEach((m) => m.remove());
@@ -257,7 +278,19 @@ export function MapView(props: Props) {
     setStressVisibility(map, props.stressVisible);
   }, [props.stressVisible]);
 
+  // The rail stations' toggles.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    setRailVisibility(map, RAIL_STATIONS, props.rail);
+  }, [props.rail.metro, props.rail.marc]);
+
   return <div ref={container} className="map" role="region" aria-label="Map" />;
+}
+
+/** Station icons are drawn for the screen's pixel density, whole numbers only. */
+function iconPixelRatio(): number {
+  return Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1)));
 }
 
 function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean }): void {

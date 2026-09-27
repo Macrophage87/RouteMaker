@@ -13,6 +13,8 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { placeAtStation, type RailVisibility, type StationRole } from "./lib/railStations.ts";
+import { RailStationsSection } from "./RailStations.tsx";
 
 interface Plan {
   points: LonLat[];
@@ -60,6 +62,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
+  const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   const [panelOpen, setPanelOpen] = useState(true);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -185,6 +188,16 @@ export function App() {
     }
     setNotice(null);
     setPoints((current) => current.map((p, i) => (i === index ? point : p)));
+  }, []);
+
+  // A station's Start here / End here / Add as via (railStations.ts).
+  const placeStation = useCallback((role: StationRole, point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice("That station is outside the area this map covers.");
+      return;
+    }
+    setNotice(null);
+    setPoints((current) => placeAtStation(current, point, role));
   }, []);
 
   const removeAt = (index: number) => {
@@ -438,6 +451,8 @@ export function App() {
           mapRef.current = map;
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
+        rail={rail}
+        onStationPoint={placeStation}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       <aside ref={panelRef} className={`panel ${panelOpen ? "open" : "closed"}`} aria-label="Route planner">
@@ -481,6 +496,8 @@ export function App() {
               </p>
             )}
           </section>
+
+          <RailStationsSection visibility={rail} onChange={setRail} />
 
           <footer className="panel-footer">
             <p>

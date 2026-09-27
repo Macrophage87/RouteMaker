@@ -18,6 +18,7 @@
   --notice-text: #5c4200; /* 8.1:1 on --notice-bg */
   --focus: #b45309;
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
+  --rail-ring: #1f2937; /* the station icons' ring, in the legend */
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   font-size: 15px;
   line-height: 1.4;
@@ -38,6 +39,7 @@
     --notice-text: #ffe3a3; /* 11:1 on --notice-bg */
     --focus: #fbbf24;
     --shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+    --rail-ring: #e5e7eb;
   }
 }
 
@@ -338,6 +340,76 @@ a {
 
 .legend li {
   grid-template-columns: 44px 52px 1fr;
+}
+
+.rail-legend li {
+  grid-template-columns: 18px 1fr;
+}
+
+.rail-swatch {
+  display: block;
+}
+
+/* A station's hover card and its tap choices, in the panel's theme. */
+.rail-popup .maplibregl-popup-content {
+  background: var(--bg);
+  color: var(--text);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  padding: 8px 10px;
+  font-size: 0.9rem;
+}
+
+.rail-popup.maplibregl-popup-anchor-top .maplibregl-popup-tip {
+  border-bottom-color: var(--bg);
+}
+.rail-popup.maplibregl-popup-anchor-bottom .maplibregl-popup-tip {
+  border-top-color: var(--bg);
+}
+.rail-popup.maplibregl-popup-anchor-left .maplibregl-popup-tip {
+  border-right-color: var(--bg);
+}
+.rail-popup.maplibregl-popup-anchor-right .maplibregl-popup-tip {
+  border-left-color: var(--bg);
+}
+
+.rail-popup .maplibregl-popup-close-button {
+  color: var(--text-muted);
+  font-size: 18px;
+  padding: 0 6px;
+}
+
+.station-name {
+  display: block;
+  padding-right: 16px;
+}
+
+.station-lines {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.station-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 1px solid #1f2937;
+}
+
+.station-entrance {
+  color: var(--text-muted);
+  margin: 4px 0 0;
+  font-size: 0.82rem;
+}
+
+.station-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .swatch {
