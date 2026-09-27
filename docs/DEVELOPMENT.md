@@ -359,8 +359,7 @@ route whose traces ran out of time comes back with that part of `stress_m` as
 `"unknown"`; treat it like any other unknown stretch.
 
 **The sliders, the ride time and Cargo Bike** (PUBLIC-DIALS, the owner's
-requests of 2026-09-27; PLAN.md, Routing model, "Owner amendments,
-2026-09-27"). All optional and additive; a body without them is planned as
+requests of 2026-09-27; PLAN.md, "Owner amendments"). All optional and additive; a body without them is planned as
 before, at the preset's own starting positions:
 
 ```sh
