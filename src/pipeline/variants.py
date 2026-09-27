@@ -28,6 +28,17 @@ class Variant(Enum):
     The no-trail variant is not the "mass ride variant": Group Ride uses it
     whenever its trail toggle is off, and naming it after one preset invites the
     assumption that it encodes that preset's other opinions.
+
+    One such opinion it does encode: a crossing row's `roadway_mass_ride_only`
+    keeps the roadway in this variant alone, so any ride with trails off is
+    routed on the Key Bridge and Memorial Bridge roadways too. The owner
+    decided that it may be: on 2026-09-26, asked whether a trails-off Group
+    Ride should be kept off those roadways, "No, allow them" - "A trails-off
+    Group Ride may use those bridge roadways like a mass ride."; and on
+    2026-09-26, asked what trails-off should do for the other ride types,
+    "Every type, roadways ok" - "Offer trails-off on every ride type; like
+    Group Ride, it may use the Key and Memorial roadways." `variant_for` gives
+    this variant to any ride with trails off (fixtures/crossings/README.md).
     """
 
     STANDARD = "standard"
@@ -42,8 +53,9 @@ def is_trail_class(
 ) -> bool:
     """Whether a way is trail class, by its highway tag alone.
 
-    A sidepath-only bridge - Key Bridge, Chain Bridge - does *not* count here,
-    even though its roadway must still be kept off the no-trail variant. Those
+    A sidepath-only bridge - Chain Bridge, the George Mason span, the Wilson
+    Bridge roadway; Key Bridge until 2026-09-26 - does *not* count here, even
+    though its roadway must still be kept off the no-trail variant. Those
     are two different questions: this one is "what is this way", asked once and
     answered the same for the segment table and for every variant; the other is
     "should the no-trail variant drop it", which is variant-specific and lives
@@ -244,9 +256,10 @@ def is_sidepath_only(row: dict) -> bool:
 
     `sidepath_only` alone, not OR'd with `roadway_bicycle_legal is False`. Those
     are different claims about different bridges: `sidepath_only` says a mass
-    ride cannot practically use this crossing's roadway even though an ordinary
-    rider legally can (Key Bridge, Chain Bridge - narrow, no shoulder, no way off
-    mid-span) and drives the no-trail variant's drop decision;
+    ride cannot practically use this crossing's roadway, and drives the no-trail
+    variant's drop decision (Key Bridge carried it until the owner's decision
+    of 2026-09-26 that a mass ride crosses on its roadway; Chain Bridge carries
+    it because the owner decided the same day it is not a mass-ride crossing);
     `roadway_bicycle_legal` says whether OSM's `bicycle=no` bars the roadway
     outright (the 14th Street freeway spans, the Wilson Bridge roadway, the
     Theodore Roosevelt Bridge) and drives `resolve_bridge_bicycle_legality`
@@ -258,6 +271,176 @@ def is_sidepath_only(row: dict) -> bool:
     rows that pull them apart - barred outright, with no sidepath standing in.
     """
     return bool(row.get("sidepath_only"))
+
+
+def is_roadway_mass_ride_only(row: dict) -> bool:
+    """Whether a crossing row's roadway is kept for trails-off rides alone.
+
+    The owner's rule of 2026-09-26 for Key Bridge and Arlington Memorial Bridge:
+    a mass ride takes the roadway, and an ordinary rider is sent by the sidepath
+    ("I wouldn't route someone onto that outside of a mass ride"). So the
+    no-trail variant keeps the roadway and the standard and e-bike variants bar
+    it, the opposite split to `sidepath_only`. The no-trail variant is not
+    itself mass-ride-only - PLAN gives it to Group Ride with trails off too -
+    and the owner ruled on that twice: on 2026-09-26, "No, allow them" ("A
+    trails-off Group Ride may use those bridge roadways like a mass ride."),
+    and on 2026-09-26, "Every type, roadways ok" ("Offer trails-off on every
+    ride type; like Group Ride, it may use the Key and Memorial roadways.").
+    So the roadway is for any trails-off ride, and `variant_for` gives the
+    no-trail variant to every ride with trails off. It is a routing rule, not a
+    legal claim: `roadway_bicycle_legal` stays the legality column, and is true
+    on both rows.
+    """
+    return bool(row.get("roadway_mass_ride_only"))
+
+
+class ContradictoryCrossingRow(ValueError):
+    """A crossing row whose columns cannot all be obeyed at once."""
+
+
+def check_crossing_rows_consistent(rows: Sequence[dict]) -> None:
+    """Refuse a row that says its roadway is a mass ride's and also that it is not.
+
+    `roadway_mass_ride_only` bars the roadway from the standard and e-bike
+    variants and leaves it to the no-trail one. With `sidepath_only` the no-trail
+    variant drops it too, and with `roadway_bicycle_legal: false` it is barred
+    to every bicycle - either way the roadway would be in no graph at all, for a
+    row that says a mass ride rides it. Checked at load, where an operator sees
+    it, by every resolver, like the duplicate-name check.
+    """
+    for row in rows:
+        if not is_roadway_mass_ride_only(row):
+            continue
+        if is_sidepath_only(row) or row.get("roadway_bicycle_legal") is False:
+            raise ContradictoryCrossingRow(
+                f"{crossing_label(row)!r} is roadway_mass_ride_only, but its roadway is "
+                "also sidepath_only or not bicycle-legal, so no variant could use it"
+            )
+
+
+def _resolve_flagged_bridge_ids(
+    rows: list[dict], ways: Iterable, flagged
+) -> tuple[frozenset[int], list[str]]:
+    """The roadway ways of the rows `flagged` selects, and the rows not found.
+
+    One matcher for the two per-way id sets (`sidepath_only`,
+    `roadway_mass_ride_only`): by name against `is_crossing_candidate` ways, or
+    by a hand pin, with misses reported by `crossing_misses`.
+    """
+    check_crossing_names_unique(rows)
+    check_crossing_rows_consistent(rows)
+    wanted: dict[str, list[str]] = {}
+    explicit: set[int] = set()
+    pinned: dict[str, int] = {}
+    for row in rows:
+        if not flagged(row):
+            continue
+        if way_id := pinned_way_id(row):
+            explicit.add(way_id)
+            pinned[crossing_label(row)] = way_id
+            continue
+        if names := crossing_names(row):
+            wanted[row["name"]] = [name.casefold() for name in names]
+
+    by_name = {name for names in wanted.values() for name in names}
+    matched_ids: set[int] = set()
+    seen: set[str] = set()
+    present: set[int] = set()
+    for way in ways:
+        # Every way, before any guard: a pin bypasses them, so the question
+        # for a pin is only whether the extract carries its way at all.
+        present.add(way.osm_id)
+        # A bridge, the roadway only (the sidepath is what these rules route
+        # onto, so it is never what they match; see the docstrings), and
+        # inside the fixture's region.
+        if not is_crossing_candidate(way):
+            continue
+        for name in way_names(way):
+            if name in by_name:
+                matched_ids.add(way.osm_id)
+                seen.add(name)
+
+    return frozenset(matched_ids | explicit), crossing_misses(wanted, seen, pinned, present)
+
+
+def resolve_mass_ride_only_bridge_ids(
+    rows: Iterable[dict], ways: Iterable
+) -> tuple[frozenset[int], list[str]]:
+    """The roadway ways of the `roadway_mass_ride_only` rows, and the rows not found.
+
+    Matched exactly as `resolve_sidepath_bridge_ids` matches, through the same
+    guards. The trail-class guard matters most here: the sidewalk or cycleway
+    named after the bridge is the crossing an ordinary rider is sent by, and
+    barring it with the roadway would leave the standard and e-bike variants
+    no crossing there at all.
+    """
+    return _resolve_flagged_bridge_ids(list(rows), ways, is_roadway_mass_ride_only)
+
+
+# The column naming the ways an ordinary ride is steered off by a penalty.
+ORDINARY_RIDE_PENALTY_COLUMN = "ordinary_ride_penalty_way_ids"
+
+
+class MalformedCrossingRow(ValueError):
+    """A crossing row whose column cannot be read as the file documents it."""
+
+
+def ordinary_ride_penalty_way_ids(row: dict) -> list[int]:
+    """The ways a row puts an ordinary-ride penalty on, by OSM way id.
+
+    A list of ids rather than names, because the ways it names are not the
+    bridge: they are the roads a rider lands on, which no name match reaches
+    (`is_crossing_candidate` admits bridge ways only, and a street is not named
+    after its landing). The rows are pins, reported when the extract no longer
+    carries them, like a row's `osm_way_id`. Absent means none. Anything but a
+    list of positive integers is refused rather than read as none.
+    """
+    ids = row.get(ORDINARY_RIDE_PENALTY_COLUMN)
+    if ids is None:
+        return []
+    if not isinstance(ids, list) or not all(
+        isinstance(way_id, int) and not isinstance(way_id, bool) and way_id > 0 for way_id in ids
+    ):
+        raise MalformedCrossingRow(
+            f"{crossing_label(row)!r}: {ORDINARY_RIDE_PENALTY_COLUMN} must be a list of "
+            f"positive OSM way ids, not {ids!r}"
+        )
+    return list(ids)
+
+
+def resolve_ordinary_ride_penalty_ids(
+    rows: Iterable[dict], ways: Iterable
+) -> tuple[frozenset[int], list[str]]:
+    """The ways the standard and e-bike variants carry a routing penalty on.
+
+    The owner's answer of 2026-09-26 on the 11th Street local span, asked
+    whether the planner should steer ordinary riders going south from the Navy
+    Yard back to the Anacostia Riverwalk once the span's south landing was open
+    to them: "Steer to the path" - "Keep it legal but add a penalty on that
+    roadway for ordinary rides so the Riverwalk wins when it's close in
+    length." A penalty, not a bar: the ways stay legal and routable, and a
+    route still takes them where they are clearly shorter or the only way. The
+    no-trail variant is left as it was (`run.inject_tags` emits the tag on the
+    other two only), since the owner's question was about ordinary rides.
+
+    Returns the ids and, per row, the ids the given ways do not include, as
+    `crossing_misses` reports a stale pin: the penalty still goes out for the
+    id, and the rebuild runs.
+    """
+    ids: set[int] = set()
+    missing: dict[str, list[int]] = {}
+    rows = list(rows)
+    for row in rows:
+        for way_id in ordinary_ride_penalty_way_ids(row):
+            ids.add(way_id)
+            missing.setdefault(crossing_label(row), []).append(way_id)
+    present = {way.osm_id for way in ways}
+    misses = [
+        f"{label} ({ORDINARY_RIDE_PENALTY_COLUMN}: {', '.join(str(i) for i in absent)})"
+        for label, wanted in sorted(missing.items())
+        if (absent := [way_id for way_id in wanted if way_id not in present])
+    ]
+    return frozenset(ids), misses
 
 
 def resolve_sidepath_bridge_ids(
@@ -300,40 +483,7 @@ def resolve_sidepath_bridge_ids(
     either way the sidepath rule is not biting on that bridge. So is a row
     pinned to an `osm_way_id` the given ways do not carry (`crossing_misses`).
     """
-    rows = list(rows)
-    check_crossing_names_unique(rows)
-    wanted: dict[str, list[str]] = {}
-    explicit: set[int] = set()
-    pinned: dict[str, int] = {}
-    for row in rows:
-        if not is_sidepath_only(row):
-            continue
-        if way_id := pinned_way_id(row):
-            explicit.add(way_id)
-            pinned[crossing_label(row)] = way_id
-            continue
-        if names := crossing_names(row):
-            wanted[row["name"]] = [name.casefold() for name in names]
-
-    by_name = {name for names in wanted.values() for name in names}
-    matched_ids: set[int] = set()
-    seen: set[str] = set()
-    present: set[int] = set()
-    for way in ways:
-        # Every way, before any guard: a pin bypasses them, so the question
-        # for a pin is only whether the extract carries its way at all.
-        present.add(way.osm_id)
-        # A bridge, the roadway only (the sidepath is what this rule routes
-        # onto, so it is never what the rule matches; see the docstring), and
-        # inside the fixture's region.
-        if not is_crossing_candidate(way):
-            continue
-        for name in way_names(way):
-            if name in by_name:
-                matched_ids.add(way.osm_id)
-                seen.add(name)
-
-    return frozenset(matched_ids | explicit), crossing_misses(wanted, seen, pinned, present)
+    return _resolve_flagged_bridge_ids(list(rows), ways, is_sidepath_only)
 
 
 def resolve_bridge_bicycle_legality(
@@ -374,6 +524,7 @@ def resolve_bridge_bicycle_legality(
     """
     rows = list(rows)
     check_crossing_names_unique(rows)
+    check_crossing_rows_consistent(rows)
     by_name: dict[str, bool] = {}
     explicit: dict[int, bool] = {}
     wanted: dict[str, list[str]] = {}
@@ -468,33 +619,108 @@ def bars_electric_bicycle(tags: dict[str, str]) -> bool:
     return tags.get("electric_bicycle") == "no"
 
 
+# The keys `bar_mass_ride_only_roadway` writes `no` on: the plain key, and a
+# directional key already present, because Valhalla lets `bicycle:forward` and
+# `bicycle:backward` override the plain key one direction at a time. Not the
+# only keys Valhalla opens a way from - see `REOPENING_KEYS` below.
+BICYCLE_KEYS = ("bicycle", "bicycle:forward", "bicycle:backward")
+
+# And the conditional keys, where present. Valhalla reads none of them, but
+# `routemaker_remap.remap_conditional_access` does: it writes the least
+# restrictive branch of a conditional onto `bicycle:forward`/`:backward`, so a
+# `bicycle:conditional=yes @ (Sa,Su)` would reopen the roadway the bar closed.
+# A bare `no` parses as an unconditional `no`, which is never less restrictive
+# than the base, so the remap writes nothing.
+BICYCLE_CONDITIONAL_KEYS = (
+    "bicycle:conditional",
+    "bicycle:forward:conditional",
+    "bicycle:backward:conditional",
+)
+
+
+# And the keys the bar closes. Upstream's `ways_proc` (lua/graph_upstream.lua)
+# derives bicycle access from more than the bicycle keys: a `cycleway`,
+# `cycleway:both`, `cycleway:left`/`:right` lane or shared lane turns bike
+# access on in both directions, `cycleway=opposite_lane` on a oneway opens the
+# contraflow, as does `oneway:bicycle=no`, and `vehicle:forward`/`:backward=yes`
+# opens that direction - each of them over a plain `bicycle=no`, measured
+# through lua/graph.lua under LuaJIT (tests/test_lua_remap.py). None is on the
+# Key or Memorial roadway today (Memorial carries `cycleway:both=no`); one OSM
+# edit adding sharrows would have put ordinary riders back on it with nothing
+# reporting it. Each is set to the value that grants nothing - `no` for the
+# cycleway and vehicle keys, `yes` for `oneway:bicycle` so a bicycle follows
+# the way's oneway - and not removed, because a removal cannot reach the
+# written extract (`bar_mass_ride_only_roadway`). The vehicle keys only ever
+# describe this variant's graph, which no motor-vehicle router reads.
+REOPENING_KEYS = ("vehicle:forward", "vehicle:backward", "oneway:bicycle")
+REOPENING_KEYS_CLOSED = {"oneway:bicycle": "yes"}
+
+
+def is_reopening_key(key: str) -> bool:
+    return key == "cycleway" or key.startswith("cycleway:") or key in REOPENING_KEYS
+
+
+def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
+    """Bar a `roadway_mass_ride_only` roadway to the variant being built, in place.
+
+    The bar wins over an approved `bicycle=yes` access override on the same
+    way, deliberately. The override says bicycles are *legal* there, which the
+    fixture's `roadway_bicycle_legal: true` already says of both such roadways;
+    the bar says ordinary riders are not *routed* there (owner, 2026-09-26),
+    which is a different question the override does not answer. The no-trail
+    variant is untouched by the bar and carries the override as written.
+    """
+    tags["bicycle"] = "no"
+    for key in (*BICYCLE_KEYS[1:], *BICYCLE_CONDITIONAL_KEYS):
+        if key in tags:
+            tags[key] = "no"
+    # Rewritten, not removed: `inject_tags` diffs this against the source and
+    # `extract.write_extract` lays the difference over the source's own tags,
+    # so a deleted key comes back in the written extract with OSM's value.
+    for key in tags:
+        if is_reopening_key(key):
+            tags[key] = REOPENING_KEYS_CLOSED.get(key, "no")
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],
     osm_id: int | None = None,
     sidepath_bridge_ids: frozenset[int] = frozenset(),
+    mass_ride_only_ids: frozenset[int] = frozenset(),
 ) -> dict[str, str] | None:
     """Return the tags this variant should build with, or None to drop the way.
 
     Dropping rather than tagging inaccessible, because a way tagged bicycle=no
     still occupies the graph and still lands in trace results; the no-trail
     variant is meant not to have trails in it at all.
+
+    A `roadway_mass_ride_only` roadway (`mass_ride_only_ids`) is the other way
+    round, and barred rather than dropped: it stays in the standard and e-bike
+    graphs, as the road a trace can still land on, with `bicycle=no`, and the
+    no-trail variant keeps it as it is.
     """
+    is_mass_ride_only = osm_id is not None and osm_id in mass_ride_only_ids
+
     if variant is Variant.STANDARD:
-        return dict(tags)
+        out = dict(tags)
+        if is_mass_ride_only:
+            bar_mass_ride_only_roadway(out)
+        return out
 
     if variant is Variant.NO_TRAIL:
         # A sidepath-only bridge is dropped here and only here: it is not trail
-        # class (its roadway is an ordinary, bike-legal road on the segment
-        # table and on the other two variants), but a mass ride cannot use an
-        # eight-foot sidewalk with no way off it mid-span, so the no-trail
-        # variant's own drop decision folds the two together rather than
-        # `is_trail_class` doing it for every caller.
+        # class (its roadway is an ordinary road on the segment table and on
+        # the other two variants), but the row says a mass ride cannot use it,
+        # so the no-trail variant's own drop decision folds the two together
+        # rather than `is_trail_class` doing it for every caller.
         is_sidepath_bridge = osm_id is not None and osm_id in sidepath_bridge_ids
         return None if (is_trail_class(tags) or is_sidepath_bridge) else dict(tags)
 
     if variant is Variant.EBIKE:
         out = dict(tags)
+        if is_mass_ride_only:
+            bar_mass_ride_only_roadway(out)
         # An e-bike is barred where electric bicycles are barred, which is not
         # the same set of ways as where bicycles are barred. Expressed through
         # the bicycle tag because Valhalla's bicycle costing is what reads it.
@@ -511,6 +737,19 @@ def variant_for(allow_trails: bool, ebike_rules: bool) -> Variant:
     The two are mutually exclusive until the phase 6 path-avoidance dial, so the
     UI disables e-bike rules while trails are disallowed and explains why rather
     than silently choosing one.
+
+    Trails off gives the no-trail variant, whatever the ride: the toggles alone
+    decide, and no ride is named. PLAN.md:86 has every dial on every preset,
+    and the no-trail variant keeps the roadways the crossings fixture marks
+    `roadway_mass_ride_only` (Key Bridge and Arlington Memorial Bridge), which
+    the owner reserved on 2026-09-26 ("I wouldn't route someone onto that
+    outside of a mass ride."), then opened to a trails-off Group Ride ("No,
+    allow them" - "A trails-off Group Ride may use those bridge roadways like a
+    mass ride."), and on 2026-09-26 to every ride type: asked what trails-off
+    should do for ride types other than Mass Ride and Group Ride, "Every type,
+    roadways ok" - "Offer trails-off on every ride type; like Group Ride, it
+    may use the Key and Memorial roadways." So every trails-off ride shares the
+    variant, roadways and all.
     """
     if not allow_trails and ebike_rules:
         raise ValueError("no-trail and e-bike variants are mutually exclusive until phase 6")

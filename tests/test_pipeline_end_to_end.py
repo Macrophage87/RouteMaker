@@ -681,6 +681,132 @@ def test_the_shared_use_path_on_a_bridge_is_not_barred_by_the_roadways_row(
         assert tags[700].get("rm:bridge_bicycle") == "no", variant.value
 
 
+@pytest.mark.parametrize(
+    ("label", "osm_name", "roadway_tags"),
+    [
+        # Key Bridge: a trunk roadway OSM tags `bicycle=no`, which the fixture's
+        # legality row overrides.
+        (
+            "Key Bridge",
+            "Francis Scott Key Bridge",
+            {"highway": "trunk", "bicycle": "no", "foot": "no"},
+        ),
+        # Arlington Memorial Bridge: a primary roadway with no bicycle tag at
+        # all. Nothing of OSM's own bars it, so only the bar `inject` writes
+        # keeps ordinary riders off - the shape on which a pipeline that never
+        # passed the mass-ride-only ids to `inject` would still pass the Key
+        # case above, OSM's own `bicycle=no` standing in for the missing bar.
+        ("Arlington Memorial Bridge", "Arlington Memorial Bridge", {"highway": "primary"}),
+        # And one OSM edit away from either: a painted lane, which upstream's
+        # transform grants bicycle access from over a plain `bicycle=no`. Only
+        # the written extract shows whether the bar's answer to it survived.
+        (
+            "Arlington Memorial Bridge",
+            "Arlington Memorial Bridge",
+            {"highway": "primary", "cycleway:both": "lane", "vehicle:forward": "yes"},
+        ),
+    ],
+    ids=["key-bridge-shape", "memorial-bridge-shape", "memorial-with-a-painted-lane"],
+)
+def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
+    tmp_path, segment_schemas, states, label, osm_name, roadway_tags
+) -> None:
+    """Owner, 2026-09-26, on Key Bridge and Memorial Bridge: "I wouldn't route
+    someone onto that outside of a mass ride." and "Same with memorial bridge.",
+    then "No, allow them" for a trails-off Group Ride and, on 2026-09-26,
+    "Every type, roadways ok" for every other trails-off ride, all of which read
+    the same no-trail tiles. So no trails-on ride's variant carries the roadway. Driven
+    through the real pipeline, on each bridge's own roadway shape beside a
+    bike-designated path named after the same structure, and read back from the
+    written PBFs.
+
+    The legality tag is what makes this more than an `inject` change: the
+    transform writes `bicycle=yes` wherever `rm:bridge_bicycle=yes` arrives, so
+    emitted on the standard and e-bike extracts it would grant straight back
+    the roadway those variants bar.
+    """
+    from pipeline.extract import read_ways
+
+    source = install_source_extract(
+        tmp_path,
+        build_named_bridge_extract,
+        roadway_id=710,
+        sidepath_id=711,
+        name=osm_name,
+        roadway_tags=roadway_tags,
+    )
+    row = {
+        "name": label,
+        "osm_way_id": 0,
+        "osm_names": [osm_name],
+        "roadway_bicycle_legal": True,
+        "sidepath_only": False,
+        "roadway_mass_ride_only": True,
+    }
+    context, _ = run_pipeline(source, tmp_path, urban=(710, 711), crossings=[row], skip=NOT_SWAPPED)
+    assert context.reference.mass_ride_only_bridge_ids == frozenset({710})
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if variant is Variant.NO_TRAIL:
+            # The roadway stays, with the legality the transform turns into
+            # `bicycle=yes`; the sidewalk goes, as every trail-class way does.
+            assert tags[710].get("rm:bridge_bicycle") == "yes"
+            assert 711 not in tags
+            continue
+        assert tags[710].get("bicycle") == "no", variant.value
+        for key in ("cycleway:both", "vehicle:forward"):
+            if key in roadway_tags:
+                assert tags[710][key] == "no", f"{variant.value}: {key} reopens the roadway"
+        assert "rm:bridge_bicycle" not in tags[710], (
+            f"the {variant.value} extract would have its bar granted back by the transform"
+        )
+        # The sidewalk is how an ordinary rider crosses, and nothing touched it.
+        assert tags[711].get("bicycle") != "no", variant.value
+        assert "rm:bridge_bicycle" not in tags[711], variant.value
+
+
+def test_the_ordinary_ride_penalty_reaches_the_standard_and_ebike_extracts_only(
+    tmp_path, segment_schemas, states
+) -> None:
+    """Owner, 2026-09-26, on the 11th Street local span: "Steer to the path"
+    ("Keep it legal but add a penalty on that roadway for ordinary rides so the
+    Riverwalk wins when it's close in length."). The row names the roadway by
+    way id; the standard and e-bike extracts carry `rm:ordinary_ride_penalty`
+    on it, and the no-trail extract, and the path beside it, do not. Read back
+    from the written PBFs."""
+    from pipeline.extract import read_ways
+
+    source = install_source_extract(
+        tmp_path,
+        build_named_bridge_extract,
+        roadway_id=720,
+        sidepath_id=721,
+        name="11th Street Southeast",
+        roadway_tags={"highway": "secondary", "bicycle": "no", "foot": "no"},
+    )
+    row = {
+        "name": "11th Street Bridge (local span)",
+        "osm_way_id": 720,
+        "roadway_bicycle_legal": True,
+        "sidepath_only": False,
+        "roadway_mass_ride_only": False,
+        "ordinary_ride_penalty_way_ids": [720],
+    }
+    context, _ = run_pipeline(source, tmp_path, urban=(720, 721), crossings=[row], skip=NOT_SWAPPED)
+    assert context.reference.ordinary_ride_penalty_ids == frozenset({720})
+
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        # Legal on every variant: the penalty is not a bar.
+        assert tags[720].get("rm:bridge_bicycle") == "yes", variant.value
+        if variant is Variant.NO_TRAIL:
+            assert "rm:ordinary_ride_penalty" not in tags[720]
+            continue
+        assert tags[720].get("rm:ordinary_ride_penalty") == "yes", variant.value
+        assert "rm:ordinary_ride_penalty" not in tags[721], variant.value
+
+
 def test_a_way_clipping_an_authority_by_a_sliver_is_not_tagged_with_it(workspace, states) -> None:
     """assign_way returns every authority a way touches with the share inside
     each and says the caller decides. The caller did not decide: a road that

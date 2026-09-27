@@ -49,10 +49,15 @@ reading an unmatched-name warning needs to know whether a crossing missing from
 the log is missing because the extract lost it or because this file never had
 it.
 
-The first job is to answer, per structure, the two questions the midpoint
+The first job is to answer, per structure, the questions the midpoint
 heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
-no-trail (mass ride) variant drops, and `resolve_bridge_bicycle_legality`
-decides what `rm:bridge_bicycle` carries into `graph.lua` on every variant.
+no-trail variant (Mass Ride's, and any other ride's with trails off) drops,
+`resolve_mass_ride_only_bridge_ids` decides
+which roadways the standard and e-bike variants bar because they are for a
+trails-off ride only, `resolve_ordinary_ride_penalty_ids`
+decides which ways those two variants carry a penalty on, and
+`resolve_bridge_bicycle_legality` decides what `rm:bridge_bicycle` carries into
+`graph.lua` on every variant.
 Memorial Bridge is one authority end to end; the "14th Street Bridge" is
 **five** parallel structures with different answers (three highway spans, the
 Long Bridge carrying rail, and the Charles R. Fenwick Bridge carrying Metro's
@@ -136,19 +141,71 @@ two columns the pipeline reads, written where nothing reads them:
   these two, and the twelve other legality-only rows, could resolve against
   nothing on every rebuild and appear in no log at all.
 
-And it supplies two independent sets to the tile build, from two different
-columns. Do not OR them together; a rebuild that did once passed its own test
-while being inert, because every row where it mattered happened to agree.
+And it supplies four independent answers to the tile build, from four
+different columns. Do not OR them together; a rebuild that did once passed its
+own test while being inert, because every row where it mattered happened to
+agree.
 
-* `sidepath_only` — routing-relevant, and read only by the no-trail (mass ride)
-  variant. True means a mass ride cannot practically use this crossing's
-  roadway even where an individual rider legally can: Key Bridge and Chain
-  Bridge are ordinary, bike-legal climbs that hundreds of people cannot safely
-  share, being narrow with no shoulder and no way off mid-span. This is what
-  keeps the no-trail variant off the Key Bridge sidewalk — an eight-foot path
-  with no way off it mid-span, for a field of hundreds — via
-  `resolve_sidepath_bridge_ids` and `variants.inject()`. It says nothing about
-  legality and must never be treated as a legal claim.
+* `sidepath_only` — routing-relevant, and read only by the no-trail variant
+  (Mass Ride's layer 1), which drops the roadway of a row that sets it: true means a mass
+  ride cannot practically use this crossing's roadway. It is set today on
+  Chain Bridge, which the owner decided on 2026-09-26 is "Not a mass-ride
+  crossing" (its District approach, Canal Road NW, stays barred; the row's
+  note has the three statements in order and why the roadway is dropped
+  rather than left as a dead end), and where the roadway is barred anyway
+  (the George Mason span and the Wilson Bridge roadway). Key Bridge carried
+  it until the owner's decision of 2026-09-26 — "Mass ride can cross the
+  Potomac at Chain Bridge, Key Bridge, and Memorial bridge without using a
+  trail." — and with it the no-trail variant had no crossing there at all,
+  since the sidewalk beside the roadway is trail class and dropped as such.
+  Key Bridge is now the one mass-ride crossing into Virginia. The no-trail
+  variant is kept off every bridge sidewalk by `is_trail_class`, not by this
+  column. It says nothing about legality and must never be treated as a legal
+  claim.
+* `roadway_mass_ride_only` — routing-relevant, the other way round: true means
+  the owner reserves the roadway for a trails-off ride (a mass ride, or any
+  ride with "Allow bike paths and trails" off), so the no-trail variant keeps
+  it and the standard and e-bike variants bar it (`variants.inject()` writes
+  `bicycle=no`, and on a directional `bicycle:forward`/`:backward` key already
+  present, and `inject_tags` withholds the row's `rm:bridge_bicycle`
+  on those two variants so the transform cannot grant the roadway back). An
+  ordinary rider then crosses by the sidepath, which is its own trail-class
+  way that no resolver reaches. The owner set it on 2026-09-26 for Key Bridge
+  ("I wouldn't route someone onto that outside of a mass ride.") and
+  Arlington Memorial Bridge ("Same with memorial bridge."); both have a
+  bike-legal sidewalk or cycleway on the structure for the other two variants
+  to use, which the rows' notes name. A row may not combine it with
+  `sidepath_only` or with `roadway_bicycle_legal: false` — the roadway would
+  be in no graph — and `variants.check_crossing_rows_consistent` refuses
+  either at load. It is a routing rule, not a legal claim, and for that reason
+  it stands over an approved `bicycle=yes` access override on the same way:
+  the override says the roadway is legal, which `roadway_bicycle_legal`
+  already says, and not that ordinary riders are routed onto it. The bar also
+  sets any `bicycle:conditional`, `bicycle:forward:conditional` or
+  `bicycle:backward:conditional` present to a bare `no`, because
+  `routemaker_remap.remap_conditional_access` would otherwise reopen a
+  direction from a conditional's least restrictive branch.
+
+  **The no-trail variant is not a mass-ride-only variant.** PLAN.md:99 gives
+  Group Ride's "Allow bike paths and trails" toggle, when off, the no-trail
+  variant as well, and PLAN.md:86 puts every dial on every preset, so any
+  trails-off ride is routed on the Key and Memorial roadways. The owner was
+  asked on 2026-09-26 whether a trails-off Group Ride should be kept off
+  them, and answered "No, allow them" ("A trails-off Group Ride may use those
+  bridge roadways like a mass ride."); and on 2026-09-26 what trails-off
+  should do for the other ride types, and answered "Every type, roadways ok"
+  ("Offer trails-off on every ride type; like Group Ride, it may use the Key
+  and Memorial roadways."). So these roadways are for any trails-off ride.
+  `variants.variant_for` gives the no-trail variant to every request with
+  trails off; it takes the two toggles and no ride name. The toggle is not
+  built yet, and the route API's presets (on the branch that builds them)
+  name `Variant.NO_TRAIL` directly for Mass Ride, which does not pass through
+  `variant_for`.
+  The bar also closes the tags upstream's `graph.lua` would otherwise grant
+  bicycle access from over `bicycle=no` - every `cycleway*` key and
+  `vehicle:forward`/`:backward` set to `no`, `oneway:bicycle` to `yes`
+  (`variants.REOPENING_KEYS`) - by rewriting them, since the extract writer
+  can only lay values over the source's tags and never remove one.
 * `roadway_bicycle_legal` — a legal fact about the **roadway**, read by every
   variant alike, because access is not a request-time dial. False means OSM
   carries `bicycle=no` on the roadway itself, or that the roadway is a class
@@ -158,8 +215,9 @@ while being inert, because every row where it mattered happened to agree.
   the Wilson Bridge roadway, the Theodore Roosevelt and American Legion
   bridges, and the two rail structures. True
   means the roadway is an ordinary, legal road, whatever its comfort - Key
-  Bridge and Chain Bridge are both `true` even though `sidepath_only` is also
-  `true` for both. `resolve_bridge_bicycle_legality` turns this into the
+  Bridge and Memorial Bridge are both `true` even though
+  `roadway_mass_ride_only` keeps ordinary riders off them.
+  `resolve_bridge_bicycle_legality` turns this into the
   `rm:bridge_bicycle` tag `graph.lua` already reads.
 
   **The roadway, and not the path on it.** A shared-use path on a bridge is
@@ -170,6 +228,98 @@ while being inert, because every row where it mattered happened to agree.
   the column barred the path as well as the roadway, on every variant, and the
   remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
   those points from all three graphs.
+
+* `ordinary_ride_penalty_way_ids` — routing-relevant, and on the 11th Street
+  local span row only: the OSM way ids of the roadway an ordinary ride is
+  steered off, the span (546096009) and the ten south-landing ways named
+  under the approaches, below. Ids
+  rather than names, because a landing is not a bridge and no name match
+  reaches it; an id the extract no longer carries is reported in the
+  "crossings not found" warning, as a stale pin is. Absent means none, and
+  anything but a list of positive ids is refused at load
+  (`variants.MalformedCrossingRow`). The standard and e-bike variants carry
+  `rm:ordinary_ride_penalty` on those ways, and the transform writes it as
+  Valhalla's own `bicycle=use_sidepath` wherever the way is already open to
+  a bicycle: upstream reads that as bicycle access both ways, like `yes`,
+  and the bicycle costing charges more for it without changing the edge's
+  speed, so it is a cost and not a bar, and a route's duration is unchanged.
+  It is never written over a refusal: not over `bicycle=no` (OSM's own
+  before the access rows are loaded, an e-bike or mass-ride-only bar, a
+  legality of false), not over a bicycle value that says more than "may
+  ride" (`dismount`, `destination`, `discouraged`), and on a way with no
+  bicycle tag only where no access tag restricts it and the road class
+  admits a bicycle by default (`BICYCLE_BY_DEFAULT_HIGHWAY` in
+  `lua/routemaker_remap.lua`, held equal to upstream's highway table), since
+  upstream reads `use_sidepath` as access over a class that bars bicycles,
+  such as `motorway`, `footway` or `platform`. So it never opens a way that
+  was closed. `use_sidepath` is used here only for its cost; its OSM meaning,
+  a compulsory sidepath, is not claimed, and nothing user-facing may read it
+  as one. The no-trail variant does not carry it; it has no path to steer
+  to. On a rebuilt graph of the 2026-09-24 extract with the override rows
+  loaded, Navy Yard to Anacostia goes back to the Riverwalk in both
+  directions at the Default and Group Ride presets' options (southbound
+  2.538 km against the roadway's 2.455), and Navy Yard to the middle of the
+  landing still crosses on the span (1.665 km, against 1.982 km by the
+  Riverwalk). Every other trip of the round-1 sweep, and every no-trail trip,
+  is unchanged. A trip that starts or ends on one of the penalised ways
+  still uses that way, but the route to it can change, usually to the
+  Riverwalk and the far end of the landing: on the round-3 review's grid of
+  264 such trips, 50 changed at the Default preset's options (12 of them
+  more than 10% longer, the worst 0.982 to 1.171 km, +19%) and 22 at Group
+  Ride's (the worst +14%), with durations rising by the same share. The reviewer
+  surface penalty (`rm:reviewer_surface`, capped at `compacted`) was
+  measured first and moved no route: too weak for this.
+
+### The approaches: owner decisions of 2026-09-26
+
+A crossing is only as usable as the roads at either end of it, and those are
+not this file's to open. The owner answered, for each Potomac and Anacostia
+roadway a mass ride was given that day, what happens at its ends:
+
+* **Key Bridge**, the Virginia approaches (North Fort Myer Drive and North Lynn
+  Street, US 29, `bicycle=no` in OSM): "Bikes are legal, but there's a side
+  path that's a better option for most." Opened for every variant by approved
+  access overrides; ordinary riders keep to the sidewalk because the bridge's
+  roadway is `roadway_mass_ride_only`.
+* **Chain Bridge**, the District approach (Canal Road NW, `bicycle=no`): "No".
+  Left barred. The Clara Barton Parkway, the other road off that end, was not
+  in the question and stays as OSM tags it (`bicycle=no`). Asked whether that
+  leaves Chain Bridge a mass-ride crossing: "Not a mass-ride crossing" — so
+  the row is `sidepath_only` and the no-trail variant drops the roadway.
+* **Arlington Memorial Bridge**, the Virginia landing on Columbia Island
+  (motorway or `bicycle=no` exits only): "Turn at Memorial Circle". An
+  out-and-back for a mass ride; no access change.
+* **11th Street local span**, the south landing (11th Street SE,
+  `bicycle=no`): "Yes, legal for all". The landing runs on through three more
+  11th Street SE ways and three Martin Luther King Jr Avenue SE ways, also
+  `bicycle=no`, before a bicycle may leave it, and of those the owner said,
+  the same day, "Legal for all. It might be discouraged as it's a very busy
+  road". Legal for all, so all ten are opened for every variant by approved
+  access overrides; "might be discouraged" is not an access decision. What
+  follows is this project's reading, not the owner's words: nothing in the
+  graph discourages those ways on account of their stress tier. The tier
+  reaches the router only as a comfort tag on tier-1 ways (the remap's
+  `cycleway=track`), and Default is a layer-2 preset with no stress-weighted
+  ranking. Measured on a rebuilt graph of the 2026-09-24 extract with the
+  rows loaded: a standard or e-bike route southbound from the Navy Yard
+  (38.8760, -76.9950) to 38.8660, -76.9880 took the local span's roadway
+  (546096009) and Martin Luther King Jr Avenue SE, 2.455 km, where without
+  the rows it took the Anacostia Riverwalk Trail (546096004), 2.538 km. The
+  owner was asked whether the planner should steer those riders back to the
+  path, and chose "Steer to the path" ("Keep it legal but add a penalty on
+  that roadway for ordinary rides so the Riverwalk wins when it's close in
+  length."). That is `ordinary_ride_penalty_way_ids`, above.
+
+Access corrections go through the override table, the plan's one audited path
+for them, never through this file: the rows are checked in at
+`fixtures/overrides/2026-09-26-owner-bicycle-access.json` and loaded as
+approved, audited `Override` rows by `manage.py load_access_overrides` (see
+`fixtures/overrides/README.md`). They depend on this file's rows of the same
+day - opening Key Bridge's Virginia approaches is safe for ordinary riders only
+because `roadway_mass_ride_only` bars them from the roadway - so they are loaded
+only after this file is reinstalled under `<DATA_ROOT>/reference/`, which the
+rebuild checks (docs/OPERATIONS.md, "A deploy that changes the crossings
+fixture or loads access overrides").
 
 At least one row (Theodore Roosevelt Bridge, American Legion Bridge) has
 `roadway_bicycle_legal: false` **and** `sidepath_only: false` — barred outright,

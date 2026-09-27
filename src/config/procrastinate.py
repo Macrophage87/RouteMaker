@@ -219,6 +219,7 @@ def weekly_rebuild(context=None, *, timestamp: int) -> None:
             source_pbf=settings.REBUILD_SOURCE_PBF,
             work_dir=settings.REBUILD_WORK_DIR,
             reference_dir=settings.REBUILD_REFERENCE_DIR,
+            checked_in_crossings=settings.REBUILD_CROSSINGS_FIXTURE,
             deadline=time.monotonic() + REBUILD_TIMEOUT_S,
         )
         # Before the disk gate, which is the first thing the first stage runs.

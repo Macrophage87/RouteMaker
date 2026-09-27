@@ -1547,7 +1547,8 @@ def test_moving_the_data_root_stops_the_stack_before_it_copies() -> None:
 
 # --- Every command a guide shows, against the thing it runs ------------------
 
-PLACEHOLDER = re.compile(r"<[^>]*>")
+# `<job_id>`, `<discord user id>`; not the `< file` of a redirection.
+PLACEHOLDER = re.compile(r"<(?!\s)[^<>]*>")
 
 
 def inline_code(text: str) -> list[str]:
@@ -1581,7 +1582,9 @@ def documented_manage_commands(documents=None) -> list[tuple[str, str | None, li
             match = re.search(r"(?:^|\s)(?:\./)?manage\.py\s+(.+)", line)
             if not match:
                 continue
-            command = re.split(r"\s(?:\|\||&&|;|\|)\s", PLACEHOLDER.sub("1", match.group(1)))[0]
+            # A redirection is the shell's, not an argument: `< file.json` feeds
+            # `load_access_overrides -` its standard input.
+            command = re.split(r"\s(?:\|\||&&|;|\||<|>)\s", PLACEHOLDER.sub("1", match.group(1)))[0]
             service = re.search(
                 r"docker compose (?:exec|run)\s+(?:-\S+\s+)*(\S+)\s+(?:\./)?manage\.py", line
             )

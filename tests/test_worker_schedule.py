@@ -17,6 +17,7 @@ exercised rather than restated.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -115,6 +116,11 @@ def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
     monkeypatch.setattr(settings, "REBUILD_SOURCE_PBF", source)
     monkeypatch.setattr(settings, "REBUILD_WORK_DIR", tmp_path / "rebuild")
     monkeypatch.setattr(settings, "REBUILD_REFERENCE_DIR", tmp_path / "reference")
+    # The installed synthetic rows stand in for the image's fixture too, so the
+    # stale-crossings check has something that agrees with them to compare.
+    checked_in = tmp_path / "checked-in-crossings.json"
+    checked_in.write_bytes((tmp_path / "reference" / "crossings.json").read_bytes())
+    monkeypatch.setattr(settings, "REBUILD_CROSSINGS_FIXTURE", checked_in)
     monkeypatch.setattr(settings, "TILES_DIR", tmp_path / "tiles")
     monkeypatch.setattr(settings, "ELEVATION_DIR", tmp_path / "elevation")
     monkeypatch.setattr(settings, "REBUILD_MIN_FREE_BYTES", 0)
@@ -233,6 +239,56 @@ def test_a_rebuild_that_cannot_start_records_the_failure_and_is_not_retried(
     run = ScheduledRun.objects.get(task="weekly_rebuild")
     assert not run.succeeded
     assert "source extract missing" in run.detail
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_rebuild_against_stale_installed_crossings_is_refused_and_not_retried(
+    rebuild_environment,
+) -> None:
+    """The live rebuild reads `<DATA_ROOT>/reference/crossings.json`, not the
+    fixture in its image, so a deploy that changed the fixture changed nothing
+    until someone reinstalled. The weekly task hands the image's fixture to
+    LOAD_REFERENCE_DATA, which refuses a copy that says anything else, names
+    the reinstall command, and is terminal: the retry would read the same file.
+    Nothing is built or promoted."""
+    from core.models import ScheduledRun, ValhallaUpstream
+
+    root, binaries = rebuild_environment
+    rows = json.loads(settings.REBUILD_CROSSINGS_FIXTURE.read_text())
+    settings.REBUILD_CROSSINGS_FIXTURE.write_text(
+        json.dumps(rows + [{"name": "A row the install predates", "osm_way_id": 0}])
+    )
+
+    with pytest.raises(RebuildAbandoned, match="differs from this image"):
+        app.tasks["weekly_rebuild"].func(timestamp=0)
+
+    run = ScheduledRun.objects.get(task="weekly_rebuild")
+    assert not run.succeeded
+    assert "install_reference_data.py" in run.detail
+    assert binaries.commands("valhalla_build_tiles") == []
+    assert ValhallaUpstream.objects.count() == 0
+
+
+def test_the_weekly_task_checks_against_the_fixture_the_image_carries() -> None:
+    """The setting the task passes is the checked-in file, at the path the
+    pipeline image copies `fixtures/` to (BASE_DIR is /app there)."""
+    repo = Path(__file__).resolve().parents[1]
+    assert settings.REBUILD_CROSSINGS_FIXTURE == (
+        repo / "fixtures" / "crossings" / "potomac-anacostia.json"
+    )
+    assert settings.REBUILD_CROSSINGS_FIXTURE.is_file()
+    # BASE_DIR is /app in the image; some COPY must put the fixture there.
+    lines = (repo / "docker" / "pipeline.Dockerfile").read_text().splitlines()
+    assert "WORKDIR /app" in [line.strip() for line in lines]
+    copied = [
+        line.split()[-2:] for line in lines if line.startswith("COPY") and "--from=" not in line
+    ]
+    fixture = Path("fixtures/crossings/potomac-anacostia.json")
+    assert any(
+        (fixture == Path(src) or Path(src) in fixture.parents)
+        and (Path("/app") / dest).resolve() / fixture.relative_to(src) == Path("/app") / fixture
+        for src, dest in copied
+    ), "the pipeline image does not carry the crossings fixture at BASE_DIR/fixtures"
 
 
 def job(attempts: int) -> Job:

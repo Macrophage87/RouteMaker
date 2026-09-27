@@ -418,7 +418,7 @@ def a4_first_rebuild(ctx: Context, out: list[str], *, second: bool = False) -> N
     routers restart onto it, and each variant answers a canary route.
 
     On a fresh host this is the runbook's two-phase first rebuild
-    (docs/OPERATIONS.md, "First rebuild on a fresh host", steps 5 to 7): the
+    (docs/OPERATIONS.md, "First rebuild on a fresh host", steps 5 to 8): the
     first run downloads the extract and stops at LOAD_REFERENCE_DATA, the
     operator installs the reference data against that extract, and the second
     run goes to promotion. The item follows that shape when it meets it.

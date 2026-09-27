@@ -135,8 +135,20 @@ def test_the_script_installs_every_file_the_loader_requires(tmp_path) -> None:
     # Named, not just counted, and named from both halves of the union: a
     # `sidepath_only` row and a legality-only row, so neither resolver can go
     # quiet without this failing.
-    assert "Key Bridge" in loaded.unmatched_crossings, "the sidepath half reports its misses"
+    assert "George Mason Memorial Bridge" in loaded.unmatched_crossings, (
+        "the sidepath half reports its misses"
+    )
+    assert "Key Bridge" in loaded.unmatched_crossings, "and the mass-ride-only half"
     assert "Theodore Roosevelt Bridge" in loaded.unmatched_crossings, "and the legality half"
+    assert any(
+        name.startswith("11th Street Bridge (local span) (ordinary_ride_penalty_way_ids")
+        for name in loaded.unmatched_crossings
+    ), "and the ordinary-ride penalty's ways"
+    fixture = json.loads((reference / "crossings.json").read_text())
+    assert loaded.ordinary_ride_penalty_ids == {
+        way_id for row in fixture for way_id in row.get("ordinary_ride_penalty_way_ids", [])
+    }, "the penalty's ways go out for their ids even where the extract lacks them"
+    assert loaded.ordinary_ride_penalty_ids
 
 
 def test_without_inputs_the_script_installs_the_fixture_and_names_what_is_missing(tmp_path) -> None:
@@ -148,6 +160,83 @@ def test_without_inputs_the_script_installs_the_fixture_and_names_what_is_missin
     assert "MISSING" in result.stderr and "urban-areas.json" in result.stderr
     assert "volume.json" in result.stderr
     assert Path(tmp_path / "reference" / "volume.json").exists() is False
+
+
+class TestTheInstalledCrossingsMustBeTheImagesFixture:
+    """`ReferenceData.load(..., checked_in_crossings=...)`: the rebuild reads the
+    installed copy, so a copy older than the image's fixture is refused rather
+    than built against, with the command that reinstalls it."""
+
+    FIXTURE = REPO / "fixtures" / "crossings" / "potomac-anacostia.json"
+
+    def reference(self, tmp_path: Path, crossings: bytes) -> Path:
+        reference = tmp_path / "reference"
+        reference.mkdir()
+        (reference / "urban-areas.json").write_text("[]")
+        (reference / "volume.json").write_text("[]")
+        (reference / "crossings.json").write_bytes(crossings)
+        return reference
+
+    def test_the_installer_output_passes(self, tmp_path) -> None:
+        from pipeline.run import ReferenceData
+
+        subprocess.run(
+            [sys.executable, str(SCRIPT), "--data-root", str(tmp_path)], capture_output=True
+        )
+        (tmp_path / "reference" / "urban-areas.json").write_text("[]")
+        (tmp_path / "reference" / "volume.json").write_text("[]")
+        ReferenceData.load(tmp_path / "reference", checked_in_crossings=self.FIXTURE)
+
+    def test_the_same_rows_reindented_pass(self, tmp_path) -> None:
+        from pipeline.run import ReferenceData
+
+        rows = json.loads(self.FIXTURE.read_text())
+        reference = self.reference(tmp_path, json.dumps(rows).encode())
+        ReferenceData.load(reference, checked_in_crossings=self.FIXTURE)
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            # The live copy of 2026-09-25: Key Bridge sidepath-only, and no row
+            # carrying roadway_mass_ride_only at all.
+            lambda rows: [
+                {
+                    k: v
+                    for k, v in dict(r, sidepath_only=True).items()
+                    if k != "roadway_mass_ride_only"
+                }
+                if r["name"] == "Key Bridge"
+                else r
+                for r in rows
+            ],
+            lambda rows: rows[:-1],
+            lambda rows: [dict(r, note="") if i == 0 else r for i, r in enumerate(rows)],
+        ],
+        ids=["the-2026-09-25-install", "a-row-missing", "a-note-changed"],
+    )
+    def test_a_copy_that_says_anything_else_is_refused(self, tmp_path, change) -> None:
+        from pipeline.run import REINSTALL_CROSSINGS, InstalledCrossingsStale, ReferenceData
+
+        rows = change(json.loads(self.FIXTURE.read_text()))
+        reference = self.reference(tmp_path, json.dumps(rows, indent=2).encode())
+        with pytest.raises(InstalledCrossingsStale) as refused:
+            ReferenceData.load(reference, checked_in_crossings=self.FIXTURE)
+        assert REINSTALL_CROSSINGS in str(refused.value)
+        # And without the check the same copy loads, which is the case the
+        # test contexts with synthetic rows rely on.
+        ReferenceData.load(reference)
+
+    def test_a_missing_checked_in_fixture_is_refused(self, tmp_path) -> None:
+        from pipeline.run import ReferenceData, ReferenceDataMissing
+
+        reference = self.reference(tmp_path, self.FIXTURE.read_bytes())
+        with pytest.raises(ReferenceDataMissing, match="cannot be checked"):
+            ReferenceData.load(reference, checked_in_crossings=tmp_path / "absent.json")
+
+    def test_the_reinstall_command_is_the_one_the_runbook_gives(self) -> None:
+        from pipeline.run import REINSTALL_CROSSINGS
+
+        assert REINSTALL_CROSSINGS in (REPO / "docs" / "OPERATIONS.md").read_text()
 
 
 def test_the_loader_separates_unmatched_crossings_from_unverified_names(tmp_path, caplog) -> None:
@@ -256,9 +345,12 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
         for row in rows
         if not row["sidepath_only"] and row["roadway_bicycle_legal"] is not None
     )
-    # Two of the fourteen are pinned by way id; this extract carries neither
+    # Two of the fifteen are pinned by way id; this extract carries neither
     # pinned way, so they are named in the same warning as the name misses.
-    assert len(sidepath_rows) == 4 and len(legality_only) == 14, "the fixture's two halves"
+    # Three sidepath rows and fifteen legality-only rows since 2026-09-26, when
+    # the owner put a mass ride on the Key Bridge roadway and decided Chain
+    # Bridge is not a mass-ride crossing.
+    assert len(sidepath_rows) == 3 and len(legality_only) == 15, "the fixture's two halves"
 
     ways = [
         Way(
@@ -289,7 +381,12 @@ def test_the_loader_names_crossings_only_the_legality_column_asks_about(tmp_path
     # And the sidepath half has nothing to add: every one of its rows is here.
     for row in sidepath_rows:
         assert row["name"] not in loaded.unmatched_crossings
-    assert sorted(loaded.unmatched_crossings) == legality_only
+    # The ordinary-ride penalty's ways are pins too, and this extract carries
+    # none of them: one more entry, naming the row and the ids.
+    penalty = [n for n in loaded.unmatched_crossings if "ordinary_ride_penalty_way_ids" in n]
+    assert len(penalty) == 1 and penalty[0].startswith("11th Street Bridge (local span)")
+    assert penalty[0] in unmatched[0]
+    assert sorted(set(loaded.unmatched_crossings) - set(penalty)) == legality_only
 
 
 def test_a_pinned_way_the_extract_lacks_joins_the_one_warning(tmp_path, caplog) -> None:
@@ -393,6 +490,46 @@ def test_the_loader_names_a_crossing_only_the_sidepath_column_asks_about(tmp_pat
     assert loaded.unmatched_crossings == ("Sidepath Bridge",)
     assert loaded.bridge_bicycle_legal == {8100: True}, "the legality half resolved"
     assert loaded.sidepath_bridge_ids == frozenset(), "and the sidepath row matched nothing"
+
+
+def test_the_mass_ride_only_half_reports_its_own_misses(tmp_path) -> None:
+    """`roadway_mass_ride_only` is a third column read by a third resolver, and
+    its misses join the one union warning like the other two. The row here has
+    no legality opinion and no sidepath flag, so if this half went quiet
+    nothing else would name it - and a mass-ride-only roadway the extract does
+    not carry is one the standard and e-bike variants are not barring."""
+    from pipeline.extract import Way
+    from pipeline.run import ReferenceData
+
+    reference = tmp_path / "reference"
+    reference.mkdir()
+    (reference / "urban-areas.json").write_text("[]")
+    (reference / "volume.json").write_text("[]")
+    rows = [
+        {
+            "name": "Parade Bridge",
+            "osm_names": ["Parade Bridge"],
+            "osm_names_verified": True,
+            "sidepath_only": False,
+            "roadway_mass_ride_only": True,
+            "roadway_bicycle_legal": None,
+        }
+    ]
+    (reference / "crossings.json").write_text(json.dumps(rows))
+
+    loaded = ReferenceData.load(reference, [])
+    assert loaded.unmatched_crossings == ("Parade Bridge",)
+    assert loaded.mass_ride_only_bridge_ids == frozenset()
+
+    way = Way(
+        osm_id=8200,
+        tags={"highway": "primary", "bridge": "yes", "name": "Parade Bridge"},
+        node_ids=[],
+        coordinates=ON_THE_POTOMAC,
+    )
+    loaded = ReferenceData.load(reference, [way])
+    assert loaded.unmatched_crossings == ()
+    assert loaded.mass_ride_only_bridge_ids == frozenset({8200})
 
 
 def line_feature(coordinates: list[list[float]], aadt: str, object_id: int = 1) -> dict:

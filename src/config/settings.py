@@ -129,6 +129,11 @@ DATA_ROOT = Path(os.environ.get("DATA_ROOT", BASE_DIR / "data"))
 REBUILD_WORK_DIR = DATA_ROOT / "rebuild"
 REBUILD_SOURCE_PBF = DATA_ROOT / "extracts" / "source.osm.pbf"
 REBUILD_REFERENCE_DIR = DATA_ROOT / "reference"
+# The crossings fixture as the image carries it (the pipeline image copies
+# fixtures/). The rebuild refuses when REBUILD_REFERENCE_DIR/crossings.json,
+# which install_reference_data.py copies from it, says something different:
+# a deploy that changed the fixture changes nothing until it is reinstalled.
+REBUILD_CROSSINGS_FIXTURE = BASE_DIR / "fixtures" / "crossings" / "potomac-anacostia.json"
 BACKUP_DIR = DATA_ROOT / "backups"
 # Tiles: one directory per variant, a dated build directory under each, and a
 # `current` symlink that the serving container mounts. Inside the rebuild

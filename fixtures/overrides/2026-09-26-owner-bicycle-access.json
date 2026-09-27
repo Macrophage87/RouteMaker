@@ -1,0 +1,115 @@
+{
+  "version": 1,
+  "decided": "2026-09-26",
+  "decided_by": "the deployment owner",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 50426889,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on Key Bridge's Virginia approaches (North Fort Myer Drive and North Lynn Street, US 29): \"Bikes are legal, but there's a side path that's a better option for most.\" Bicycles are legal on this way for every rider; the preference for the sidepath is carried by the crossings fixture's roadway_mass_ride_only rule on the bridge itself, not by this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: North Fort Myer Drive, highway=trunk, ref US 29, oneway=yes, bicycle=no, foot=no - the only road from the Key Bridge roadway's Virginia end southward, so with bicycle=no the no-trail variant (Mass Ride's) could not leave the bridge into Rosslyn."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 116044202,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on Key Bridge's Virginia approaches (North Fort Myer Drive and North Lynn Street, US 29): \"Bikes are legal, but there's a side path that's a better option for most.\" Bicycles are legal on this way for every rider; the preference for the sidepath is carried by the crossings fixture's roadway_mass_ride_only rule on the bridge itself, not by this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: North Lynn Street, highway=trunk, ref US 29, oneway=yes, bicycle=no, foot=no - the only road onto the Key Bridge roadway's Virginia end from Rosslyn, so with bicycle=no the no-trail variant (Mass Ride's) could not reach the bridge from Virginia."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095996,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the 11th Street Bridge local span's south landing (11th Street SE): \"Yes, legal for all\" - bicycles are legal on these ways in every variant.",
+      "evidence": "The owner's statement above, following the owner's confirmation of 2026-09-25 that the local span's roadway (way 546096009) is legal to ride. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, joining the local span's south end."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546096006,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the 11th Street Bridge local span's south landing (11th Street SE): \"Yes, legal for all\" - bicycles are legal on these ways in every variant.",
+      "evidence": "The owner's statement above, following the owner's confirmation of 2026-09-25 that the local span's roadway (way 546096009) is legal to ride. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095995,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the 11th Street Bridge local span's south landing (11th Street SE): \"Yes, legal for all\" - bicycles are legal on these ways in every variant.",
+      "evidence": "The owner's statement above, following the owner's confirmation of 2026-09-25 that the local span's roadway (way 546096009) is legal to ride. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095994,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the 11th Street Bridge local span's south landing (11th Street SE): \"Yes, legal for all\" - bicycles are legal on these ways in every variant.",
+      "evidence": "The owner's statement above, following the owner's confirmation of 2026-09-25 that the local span's roadway (way 546096009) is legal to ride. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, bridge=yes, on the local span's south landing."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095992,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26, who added that it might be discouraged as it is a very busy road; that is not an access decision, so this row opens the way as the others do. Project note, not the owner's words: RouteMaker's stress tier does not steer a Default route away from this road today - the tier reaches the router only as a comfort tag on tier-1 ways, and stress-weighted ranking is not built - so the stress tier is not what weighs against it. What does, for ordinary rides, is the penalty the crossings fixture's 11th Street local span row puts on this way (ordinary_ride_penalty_way_ids; owner, 2026-09-26: \"Steer to the path\"), not this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bridge=yes, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095991,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26, who added that it might be discouraged as it is a very busy road; that is not an access decision, so this row opens the way as the others do. Project note, not the owner's words: RouteMaker's stress tier does not steer a Default route away from this road today - the tier reaches the router only as a comfort tag on tier-1 ways, and stress-weighted ranking is not built - so the stress tier is not what weighs against it. What does, for ordinary rides, is the penalty the crossings fixture's 11th Street local span row puts on this way (ordinary_ride_penalty_way_ids; owner, 2026-09-26: \"Steer to the path\"), not this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bridge=yes, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 546095993,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26, who added that it might be discouraged as it is a very busy road; that is not an access decision, so this row opens the way as the others do. Project note, not the owner's words: RouteMaker's stress tier does not steer a Default route away from this road today - the tier reaches the router only as a comfort tag on tier-1 ways, and stress-weighted ranking is not built - so the stress tier is not what weighs against it. What does, for ordinary rides, is the penalty the crossings fixture's 11th Street local span row puts on this way (ordinary_ride_penalty_way_ids; owner, 2026-09-26: \"Steer to the path\"), not this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: 11th Street Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 589551026,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26, who added that it might be discouraged as it is a very busy road; that is not an access decision, so this row opens the way as the others do. Project note, not the owner's words: RouteMaker's stress tier does not steer a Default route away from this road today - the tier reaches the router only as a comfort tag on tier-1 ways, and stress-weighted ranking is not built - so the stress tier is not what weighs against it. What does, for ordinary rides, is the penalty the crossings fixture's 11th Street local span row puts on this way (ordinary_ride_penalty_way_ids; owner, 2026-09-26: \"Steer to the path\"), not this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: Martin Luther King Junior Avenue Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 371431399,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26, who added that it might be discouraged as it is a very busy road; that is not an access decision, so this row opens the way as the others do. Project note, not the owner's words: RouteMaker's stress tier does not steer a Default route away from this road today - the tier reaches the router only as a comfort tag on tier-1 ways, and stress-weighted ranking is not built - so the stress tier is not what weighs against it. What does, for ordinary rides, is the penalty the crossings fixture's 11th Street local span row puts on this way (ordinary_ride_penalty_way_ids; owner, 2026-09-26: \"Steer to the path\"), not this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: Martin Luther King Junior Avenue Southeast, highway=secondary, bridge=yes, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 589551027,
+      "value": {
+        "bicycle": "yes"
+      },
+      "reason": "Owner decision, 2026-09-26, on the rest of the 11th Street Bridge local span's south landing - the three further 11th Street SE ways and the Martin Luther King Jr Avenue SE ways it runs into before any road a bicycle may use: \"Legal for all. It might be discouraged as it's a very busy road\". Legal for all per the owner, 2026-09-26, who added that it might be discouraged as it is a very busy road; that is not an access decision, so this row opens the way as the others do. Project note, not the owner's words: RouteMaker's stress tier does not steer a Default route away from this road today - the tier reaches the router only as a comfort tag on tier-1 ways, and stress-weighted ranking is not built - so the stress tier is not what weighs against it. What does, for ordinary rides, is the penalty the crossings fixture's 11th Street local span row puts on this way (ordinary_ride_penalty_way_ids; owner, 2026-09-26: \"Steer to the path\"), not this row.",
+      "evidence": "The owner's statement above. OSM, Geofabrik DC+MD+VA extract of 2026-09-24: Martin Luther King Junior Avenue Southeast, highway=secondary, bicycle=no, foot=no, on the local span's south landing. On a rebuilt no-trail graph of that extract the four landing ways approved first reach no bicycle-legal road without these six; with them the no-trail variant crosses the span both ways."
+    }
+  ]
+}

@@ -257,6 +257,87 @@ local _, unpenalised = transform_way({ highway = "residential", surface = "paved
 check("a way with no penalty keeps its surveyed surface",
   unpenalised.surface == "paved", unpenalised.surface)
 
+-- `rm:ordinary_ride_penalty` (owner, 2026-09-26: "Steer to the path") reaches
+-- the graph as upstream's own `bicycle=use_sidepath`, which upstream reads as
+-- bicycle access both ways: a cost, not a bar. Read at upstream's output, with
+-- the landing's own shapes: opened by an access override (`bicycle=yes`), and
+-- the span, opened over OSM's `bicycle=no` by the fixture's legality row.
+local landing = { highway = "secondary", bicycle = "yes", foot = "no" }
+local span = { highway = "secondary", bicycle = "no", foot = "no", bridge = "yes",
+  ["rm:bridge_bicycle"] = "yes" }
+for label, tags in pairs({ landing = landing, span = span }) do
+  local marked = {}
+  for k, v in pairs(tags) do marked[k] = v end
+  marked["rm:ordinary_ride_penalty"] = "yes"
+  local _, out = transform_way(marked)
+  check("the penalty reaches the graph on the " .. label,
+    out.bicycle == "use_sidepath", tostring(out.bicycle))
+  check("and the " .. label .. " stays open both ways",
+    out.bike_forward == "true" and out.bike_backward == "true",
+    tostring(out.bike_forward) .. "/" .. tostring(out.bike_backward))
+  check("and the derived tag is stripped from the " .. label,
+    out["rm:ordinary_ride_penalty"] == nil)
+  local plain_tags = {}
+  for k, v in pairs(tags) do plain_tags[k] = v end
+  local _, plain = transform_way(plain_tags)
+  check("without it the " .. label .. " is plain bicycle=yes",
+    plain.bicycle == "yes", tostring(plain.bicycle))
+  local off_tags = {}
+  for k, v in pairs(tags) do off_tags[k] = v end
+  off_tags["rm:ordinary_ride_penalty"] = "no"
+  local _, off = transform_way(off_tags)
+  check("rm:ordinary_ride_penalty=no is no penalty on the " .. label,
+    off.bicycle == "yes", tostring(off.bicycle))
+end
+-- And it opens nothing: the landing as OSM tags it, before the override.
+local _, barred = transform_way({ highway = "secondary", bicycle = "no", foot = "no",
+  ["rm:ordinary_ride_penalty"] = "yes" })
+check("the penalty leaves a barred way barred",
+  barred.bike_forward == "false" and barred.bike_backward == "false",
+  tostring(barred.bike_forward))
+-- Nor a way barred by its road class alone. An untagged motorway, footway,
+-- pedestrian street, bridleway, busway or platform is closed to a bicycle by
+-- upstream's highway table, and `use_sidepath` would open it (upstream reads
+-- it as "true" over the class default). Every class in that table, read at
+-- upstream's output: the penalty changes no class's bicycle access.
+local penalty_remap = require("routemaker_remap")
+check("the vendored upstream exposes its highway table", type(highway) == "table")
+local classes = {}
+for class in pairs(highway) do classes[#classes + 1] = class end
+table.sort(classes)
+local function class_access(tags)
+  local _, out = transform_way(tags)
+  return tostring(out and out.bike_forward) .. "/" .. tostring(out and out.bike_backward)
+end
+local function with_penalty(tags)
+  local marked = { ["rm:ordinary_ride_penalty"] = "yes" }
+  for k, v in pairs(tags) do marked[k] = v end
+  return marked
+end
+for _, class in ipairs(classes) do
+  for label, extra in pairs({ bare = {}, ["access=yes"] = { access = "yes" },
+                              ["foot=designated"] = { foot = "designated" } }) do
+    local plain = { highway = class }
+    for k, v in pairs(extra) do plain[k] = v end
+    check("the penalty leaves highway=" .. class .. " (" .. label .. ") as its class leaves it",
+      class_access(with_penalty(plain)) == class_access(plain),
+      class_access(plain) .. " plain, " .. class_access(with_penalty(plain)) .. " penalised")
+  end
+  check("the remap's by-default table agrees with upstream on highway=" .. class,
+    (penalty_remap.BICYCLE_BY_DEFAULT_HIGHWAY[class] == true)
+      == (highway[class].bike_forward == "true"))
+end
+for class in pairs(penalty_remap.BICYCLE_BY_DEFAULT_HIGHWAY) do
+  check("highway=" .. class .. " is a class upstream's table knows", highway[class] ~= nil)
+end
+for _, tags in ipairs({
+  { highway = "footway", footway = "sidewalk" },
+  { highway = "construction", construction = "motorway" },
+}) do
+  check("the penalty leaves highway=" .. tags.highway .. " as it was",
+    class_access(with_penalty(tags)) == class_access(tags), class_access(with_penalty(tags)))
+end
+
 -- ---------------------------------------------------------------------------
 -- gate_cost applies only where tagged_access is 0.
 -- ---------------------------------------------------------------------------

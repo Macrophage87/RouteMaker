@@ -315,6 +315,21 @@ check("an undirected conditional applies to both directions",
     { bicycle = "no", ["bicycle:conditional"] = "designated @ (Sa,Su 07:00-19:00)" }),
     "bicycle:backward") == "designated")
 
+-- The mass-ride-only bar (`variants.bar_mass_ride_only_roadway`, owner rule of
+-- 2026-09-26) sets every conditional key present to a bare "no" on the standard
+-- and e-bike extracts, and relies on this: a bare "no" over a base of "no"
+-- opens nothing in either direction.
+do
+  local barred = M.remap_conditional_access({
+    bicycle = "no",
+    ["bicycle:conditional"] = "no",
+    ["bicycle:forward:conditional"] = "no",
+    ["bicycle:backward:conditional"] = "no",
+  })
+  check("a bare no conditional over a barred way opens neither direction",
+    barred["bicycle:forward"] == nil and barred["bicycle:backward"] == nil)
+end
+
 -- A static graph cannot represent time, so a time-limited restriction must not
 -- be written as a permanent one. An unroutable edge is also the answer that
 -- tells the rider nothing: the route goes another way and nothing can say why.
@@ -528,6 +543,64 @@ check("nor is vehicle=no, which bars bicycles under OSM semantics",
   M.remap_node({ barrier = "cycle_barrier", vehicle = "no" }).vehicle == nil)
 check("nor is a restrictive access tag",
   M.remap_node({ barrier = "cycle_barrier", access = "private" }).access == nil)
+
+-- ---------------------------------------------------------------------------
+-- The ordinary-ride penalty (owner, 2026-09-26: "Steer to the path") is a
+-- cost on a way already open to bicycles, never a grant over a refusal.
+-- ---------------------------------------------------------------------------
+
+local P = M.ORDINARY_RIDE_PENALTY_BICYCLE
+local pen = { ordinary_ride_penalty = true }
+check("the penalty is upstream's sidepath-preferred value", P == "use_sidepath")
+for _, value in ipairs({ "yes", "designated", "permissive" }) do
+  check("the penalty replaces bicycle=" .. value,
+    M.remap_way({ highway = "secondary", bicycle = value }, pen).bicycle == P)
+end
+check("and lands on an untagged, unrestricted road",
+  M.remap_way({ highway = "secondary" }, pen).bicycle == P)
+for label, tags in pairs({
+  ["bicycle=no"] = { highway = "secondary", bicycle = "no" },
+  ["bicycle=private"] = { highway = "secondary", bicycle = "private" },
+  ["access=no"] = { highway = "secondary", access = "no" },
+  ["vehicle=no"] = { highway = "secondary", vehicle = "no" },
+  ["bicycle:forward=no"] = { highway = "secondary", ["bicycle:forward"] = "no" },
+}) do
+  check("the penalty never opens a way that refuses a bicycle (" .. label .. ")",
+    M.remap_way(tags, pen).bicycle == nil)
+end
+-- Nor one whose road class refuses it: untagged, these are closed to a bicycle
+-- by upstream's highway table, and `use_sidepath` would open them.
+for _, class in ipairs({ "motorway", "motorway_link", "footway", "pedestrian", "bridleway",
+                         "busway", "bus_guideway", "corridor", "elevator", "platform" }) do
+  check("the penalty never opens an untagged highway=" .. class,
+    M.remap_way({ highway = class }, pen).bicycle == nil)
+end
+for class in pairs(M.MOTOR_ONLY_HIGHWAY) do
+  check("no motor-only class admits a bicycle by default (" .. class .. ")",
+    not M.BICYCLE_BY_DEFAULT_HIGHWAY[class])
+end
+check("nor a construction site without a class",
+  M.remap_way({ highway = "construction" }, pen).bicycle == nil)
+for _, class in ipairs({ "residential", "trunk", "cycleway", "path", "track" }) do
+  check("and it still lands on an untagged highway=" .. class,
+    M.remap_way({ highway = class }, pen).bicycle == P)
+end
+-- And leaves a bicycle value that says more than "may ride" alone.
+for _, value in ipairs({ "dismount", "destination", "discouraged", "use_sidepath" }) do
+  check("the penalty leaves bicycle=" .. value .. " alone",
+    M.remap_way({ highway = "secondary", bicycle = value }, pen).bicycle == nil)
+end
+check("a fixture legality of false wins over the penalty",
+  M.remap_way({ highway = "secondary", bicycle = "yes" },
+              { ordinary_ride_penalty = true, bridge_bicycle_legal = false }).bicycle == "no")
+check("a fixture legality of true is granted and then penalised",
+  M.remap_way({ highway = "secondary", bicycle = "no" },
+              { ordinary_ride_penalty = true, bridge_bicycle_legal = true }).bicycle == P)
+check("no penalty, no change",
+  M.remap_way({ highway = "secondary", bicycle = "yes" }, {}).bicycle == nil)
+check("an explicit false is no penalty",
+  M.remap_way({ highway = "secondary", bicycle = "yes" },
+              { ordinary_ride_penalty = false }).bicycle == nil)
 
 -- ---------------------------------------------------------------------------
 -- Violations are recorded rather than raised. error() inside the transform

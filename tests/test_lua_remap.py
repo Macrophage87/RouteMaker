@@ -208,6 +208,122 @@ def test_a_rule_violation_reaches_the_build_log_and_keeps_the_element() -> None:
     assert "ROUTEMAKER-VIOLATION" in result.stderr, "nothing a build log could be searched for"
 
 
+# Tags on which upstream's `ways_proc` grants bicycle access over a plain
+# `bicycle=no`, found through lua/graph.lua by the correctness review of
+# 2026-09-26, and the barred roadway's own shapes as controls.
+REOPENING_ROADWAYS = {
+    "key-bridge-as-tagged": {"highway": "trunk", "bicycle": "no", "foot": "no", "bridge": "yes"},
+    "memorial-as-tagged": {"highway": "primary", "bridge": "yes", "cycleway:both": "no"},
+    "cycleway-both-lane": {"highway": "primary", "bridge": "yes", "cycleway:both": "lane"},
+    "cycleway-both-shared-lane": {
+        "highway": "primary",
+        "bridge": "yes",
+        "cycleway:both": "shared_lane",
+    },
+    "cycleway-left-right": {
+        "highway": "primary",
+        "bridge": "yes",
+        "cycleway:left": "lane",
+        "cycleway:right": "lane",
+    },
+    "cycleway-lane": {"highway": "primary", "bridge": "yes", "cycleway": "lane"},
+    "cycleway-track": {"highway": "primary", "bridge": "yes", "cycleway": "track"},
+    "vehicle-forward": {"highway": "primary", "bridge": "yes", "vehicle:forward": "yes"},
+    "vehicle-backward": {"highway": "primary", "bridge": "yes", "vehicle:backward": "yes"},
+    "oneway-opposite-lane": {
+        "highway": "primary",
+        "bridge": "yes",
+        "oneway": "yes",
+        "cycleway": "opposite_lane",
+    },
+    "oneway-bicycle-no": {"highway": "primary", "oneway": "yes", "oneway:bicycle": "no"},
+    # One side alone: upstream's `bike_reverse` opens the contraflow from either
+    # side's `opposite_lane`, so closing only the other side is not enough.
+    "oneway-left-opposite-lane": {
+        "highway": "primary",
+        "bridge": "yes",
+        "oneway": "yes",
+        "cycleway:left": "opposite_lane",
+    },
+    "oneway-right-opposite-lane": {
+        "highway": "primary",
+        "bridge": "yes",
+        "oneway": "yes",
+        "cycleway:right": "opposite_lane",
+    },
+    "bicycle-designated": {"highway": "primary", "bicycle": "designated"},
+}
+
+
+def _bike_access(tags: dict[str, str]) -> tuple[str, str]:
+    table = ", ".join(f'["{key}"] = "{value}"' for key, value in sorted(tags.items()))
+    result = _lua_driver(
+        'dofile("lua/graph.lua")\n'
+        f"local _, out = ways_proc({{ {table} }}, 3)\n"
+        'io.stdout:write(tostring(out and out.bike_forward), " ",\n'
+        '  tostring(out and out.bike_backward), "\\n")\n'
+    )
+    assert result.returncode == 0, result.stderr
+    forward, backward = result.stdout.split()
+    return forward, backward
+
+
+@pytest.mark.parametrize("name", sorted(REOPENING_ROADWAYS))
+def test_a_mass_ride_only_bar_survives_the_real_transform(name) -> None:
+    """The bar `variants.inject` writes on a mass-ride-only roadway, for the
+    standard and e-bike variants, read back through the shipped entry point:
+    no bicycle access in either direction, whatever else the way is tagged
+    with. The no-trail variant, handed the same way, still grants it where
+    OSM's tags do."""
+    from pipeline.variants import Variant, inject
+
+    tags = REOPENING_ROADWAYS[name]
+    for variant in (Variant.STANDARD, Variant.EBIKE):
+        barred = inject(variant, dict(tags), 7, frozenset(), frozenset({7}))
+        assert _bike_access(barred) == ("false", "false"), (variant.value, barred)
+        # Every key the source carried is still there: the extract writer lays
+        # the pipeline's changes over the source's tags, so a key the bar
+        # deleted would come back with OSM's value.
+        assert set(tags) <= set(barred), (variant.value, set(tags) - set(barred))
+    kept = inject(Variant.NO_TRAIL, dict(tags), 7, frozenset(), frozenset({7}))
+    assert kept == tags, "the no-trail variant is untouched by the bar"
+    if name == "cycleway-both-lane":
+        assert _bike_access(kept) == ("true", "true"), "the control: this tag does open a way"
+
+
+# Ways upstream's highway table closes to a bicycle by class alone, found open
+# under the ordinary-ride penalty by the round-3 correctness and mutation
+# reviews (their probes, through lua/graph.lua), and one open class as control.
+CLASS_BARRED_WAYS = {
+    "motorway": {"highway": "motorway"},
+    "motorway_link": {"highway": "motorway_link"},
+    "footway": {"highway": "footway"},
+    "sidewalk": {"highway": "footway", "footway": "sidewalk"},
+    "footway-foot-designated": {"highway": "footway", "foot": "designated"},
+    "footway-access-yes": {"highway": "footway", "access": "yes"},
+    "pedestrian": {"highway": "pedestrian"},
+    "bridleway": {"highway": "bridleway"},
+    "busway": {"highway": "busway"},
+    "bus_guideway": {"highway": "bus_guideway"},
+    "corridor": {"highway": "corridor"},
+    "elevator": {"highway": "elevator"},
+    "platform": {"highway": "platform"},
+}
+
+
+@pytest.mark.parametrize("name", sorted(CLASS_BARRED_WAYS))
+def test_the_ordinary_ride_penalty_never_opens_a_class_upstream_bars(name) -> None:
+    tags = CLASS_BARRED_WAYS[name]
+    assert _bike_access(tags) == ("false", "false"), "the control: the class bars it"
+    marked = {**tags, "rm:ordinary_ride_penalty": "yes"}
+    assert _bike_access(marked) == ("false", "false")
+
+
+def test_the_ordinary_ride_penalty_keeps_an_open_untagged_road_open() -> None:
+    marked = {"highway": "residential", "rm:ordinary_ride_penalty": "yes"}
+    assert _bike_access(marked) == ("true", "true")
+
+
 def test_the_border_guard_does_not_delete_the_border_node() -> None:
     """The guard exists so a state crossing stays passable. Written as `error()`
     it deleted the crossing node instead, which is the one outcome its comment
