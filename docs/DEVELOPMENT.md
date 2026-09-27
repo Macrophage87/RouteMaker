@@ -323,7 +323,9 @@ same browser is refused rather than served.
 **Long rides.** Past 150 km of straight line a signed-out request gets 409 with
 `"code": "confirm_long"` and `span_km`, and nothing is routed; resend the same
 body with `"confirm_long": true` once the visitor agrees. A signed-in session
-never sees the 409. Past 300 km the answer is 400 however it is asked.
+never sees the 409. Past 200 km the answer is 400 however it is asked. A
+route whose traces ran out of time comes back with that part of `stress_m` as
+`"unknown"`; treat it like any other unknown stretch.
 
 ## The worker
 

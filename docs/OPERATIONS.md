@@ -238,9 +238,9 @@ the order a request meets it:
 | Routes in flight, whole api | `WEB_CONCURRENCY` less 2 (3 at compose's default of 5 workers) | 503, `Retry-After: 5` |
 | Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
 | Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
-| Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 429 or 503, `Retry-After` 2 or 5 |
-| Length ceiling | 300 km of straight line, however asked | 400 "too long" |
-| Time | 20 s per router call, 40 s for the whole request; a long ride 45 s and 50 s | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out |
+| Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
+| Length ceiling | 200 km of straight line, however asked | 400 "too long" |
+| Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers; a trace cut short leaves its legs' stress `unknown` |
 
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
@@ -254,22 +254,39 @@ PostgreSQL advisory lock held on the worker's connection for the length of the
 request, so a killed worker's slot is released with its connection, and a
 slot that cannot be unlocked closes the connection, which releases it too.
 
-**Long rides.** The owner's decision of 2026-09-26 (PLAN.md, Moderation and
-abuse limits): a request longer than 150 km of straight line is planned, up to
-300 km, but a signed-out visitor is first asked to confirm it - the 409 carries
-the span, and the front end resends with `confirm_long` - and a signed-in one
-is not. Signed in means a current session of an account that is not banned or
-deleted; a forged or stale session cookie is treated as signed out. Reading the
-session changes nothing about CSRF: the endpoint changes no state, and a
-cross-site page cannot send it `application/json` without a preflight, which is
-never granted. Every long ride, signed in or not, holds one of the long slots
-for as long as it runs, so at most one is planned at a time across the api and
-ordinary plans carry on beside it. A long ride also has longer time limits,
-45 s per router call and 50 s in all, because a single long leg whose graph
-tiles are not yet in the router's cache is one slow search: Culpeper to
-Baltimore took 43.9 s cold on a loaded host and 9.5 s warm, and at the
-ordinary 20 s per call the cold one was a 502. 50 s leaves gunicorn's 60 s
-timeout ten seconds for the rest of the request.
+**Long rides.** The owner's decisions of 2026-09-26 (PLAN.md, Moderation and
+abuse limits): a request longer than 150 km of straight line is planned, but a
+signed-out visitor is first asked to confirm it - the 409 carries the span,
+and the front end resends with `confirm_long` - and a signed-in one is not;
+nothing past 200 km is planned, signed in or not; and a long ride may take up
+to 50 s where an ordinary one keeps 40 s. Signed in means a current session
+of an account that is not banned or deleted; a forged or stale session cookie
+is treated as signed out. Reading the session changes nothing about CSRF: the
+endpoint changes no state, and a cross-site page cannot send it
+`application/json` without a preflight, which is never granted. Every long
+ride, signed in or not, holds one of the long slots for as long as it runs, so
+at most one is planned at a time across the api and ordinary plans carry on
+beside it; those slot figures (one per client, one for the api) are the
+implementation's choice, not the owner's. The longer limit is there because a
+single long leg whose graph tiles are not yet in the router's cache is one
+slow search: Culpeper to Baltimore (150.4 km of straight line, 183 km routed)
+took 43.9 s cold on a loaded host and 9.5 s warm.
+
+**The time budget and gunicorn's timeout.** A request's budget - 40 s, 50 s
+for a long ride - runs from when it reaches the api, so the count, the slots,
+the router calls, the stress join and the answer are all inside it. The router
+calls get all of it but the last 3 s (`ANSWER_RESERVE_S` in
+`core/routing.py`), and one call at most 35 s (45 s on a long ride). A request
+whose `/route` has not answered by then is 503 with `Retry-After: 30`; one
+whose traces run out of time is answered with the rest of its stress
+`unknown`. gunicorn kills a worker whose request passes `GUNICORN_TIMEOUT`
+(`docker/api-entrypoint.sh`, default 60 s) and Caddy then answers an empty,
+non-JSON 502, so that timeout must stay at least ten seconds above the long
+budget; a test reads the entrypoint's default and fails if it does not. Do not
+lower `GUNICORN_TIMEOUT` below 60 without lowering the budgets in
+`core/routing.py` first. When the api gives up on a router call the router
+does not: Valhalla finishes the search and the answer is dropped, so the long
+slot bounds the api's workers, not the routers' CPU.
 
 **What the slots do not stop.** They are counted per address, so a few
 coordinated addresses can still fill the pool: three on the default of three

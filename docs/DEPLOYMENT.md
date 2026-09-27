@@ -804,7 +804,12 @@ stack is not broken for lacking one.
   reads `WEB_CONCURRENCY` - already on the api service - to size how many
   routes may run at once: the worker count less two, at least one. Below three
   workers that leaves fewer than two workers free while routes run, so keep
-  `WEB_CONCURRENCY` at 3 or more on any host that serves the public.
+  `WEB_CONCURRENCY` at 3 or more on any host that serves the public. Its time
+  budgets (40 s, 50 s for a long ride, counted from arrival) are sized under
+  gunicorn's `--timeout`, which the entrypoint takes from `GUNICORN_TIMEOUT`
+  (default 60): leave that at 60 or above, or a slow long ride is killed
+  mid-request and Caddy answers an empty 502 instead of the API's own 503.
+  docs/OPERATIONS.md, "The time budget and gunicorn's timeout", has the detail.
 
 So a first deployment that reaches `/`, gets a 404 and concludes the stack is
 down has concluded wrongly. `/auth/login` is the check.
