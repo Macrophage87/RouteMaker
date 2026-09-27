@@ -810,3 +810,14 @@ def test_an_override_can_never_write_a_derived_key() -> None:
     with pytest.raises(OverrideRefused, match="not an access key"):
         apply_access([way], [Override("access", OPEN_WAY, {f"{DERIVED_PREFIX}stress_tier": "1"})])
     assert way.tags == {"highway": "secondary"}, "and nothing was written"
+
+
+def test_a_stress_rows_reason_is_the_tiers_provenance() -> None:
+    from pipeline.overrides import Override, apply_stress
+    from routemaker.stress import Stress, StressResult
+
+    classified = {7: StressResult(Stress.LTS4, "mixed traffic, 35 mph or above")}
+    row = Override("stress", 7, {"tier": 5}, reason="Legal but avoid. The owner's words.")
+    apply_stress(classified, [row])
+    assert classified[7].tier is Stress.AVOID
+    assert "The owner's words" in classified[7].rule

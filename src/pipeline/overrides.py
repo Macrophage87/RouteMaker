@@ -101,6 +101,9 @@ class Override:
     kind: str
     osm_way_id: int
     value: dict
+    # The approved row's own reason, for provenance (a stress row's tier is
+    # recorded with it); not part of what the row changes.
+    reason: str = ""
 
 
 @dataclass(frozen=True)
@@ -167,7 +170,7 @@ def load_approved(model=None) -> list[Override]:
         from core.models import Override as model
 
     return [
-        Override(kind=row.kind, osm_way_id=row.osm_way_id, value=row.value)
+        Override(kind=row.kind, osm_way_id=row.osm_way_id, value=row.value, reason=row.reason or "")
         for row in model.objects.filter(approved=True).order_by("osm_way_id", "id")
     ]
 
@@ -257,7 +260,8 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             # The provenance says an override produced it, so a reviewer
             # comparing a tier against crash history is not left thinking the
             # classifier reached it from the tags.
-            rule=f"override: {override.value.get('reason', 'approved correction')}",
+            rule="override: "
+            + (override.value.get("reason") or override.reason or "approved correction"),
             assumed=getattr(current, "assumed", ()),
             # The count's provenance travels with the way, not with the tier:
             # an overridden segment was still touched by whichever agency's
