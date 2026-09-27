@@ -155,7 +155,8 @@ export class RouteScheduler<P> {
     // A Retry-After holds for whatever is sent next, this plan or a newer one.
     const error = result && !result.ok ? result.error : null;
     const retryAfterS = error && (error.status === 429 || error.status === 503) ? error.retryAfterS : undefined;
-    if (retryAfterS !== undefined) this.holdFor(holdSeconds(retryAfterS));
+    // At most the cap; at least a second, since the first tick is a second away.
+    if (retryAfterS !== undefined) this.holdFor(Math.min(RETRY_AFTER_CAP_S, retryAfterS));
     const current = generation === this.generation;
     if (!current) {
       // The plan changed while this was computing: its answer is not shown,
@@ -180,9 +181,4 @@ export class RouteScheduler<P> {
     this.state({ kind: "idle" });
     this.options.onResult(plan, result);
   }
-}
-
-/** A Retry-After as whole seconds to hold: at least one, at most the cap. */
-function holdSeconds(retryAfterS: number): number {
-  return Math.min(RETRY_AFTER_CAP_S, Math.max(1, Math.ceil(retryAfterS)));
 }
