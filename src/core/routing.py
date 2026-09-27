@@ -425,9 +425,14 @@ def plan(
     elevations: list[float | None] = []
     stress = dict.fromkeys(STRESS_KEYS, 0.0)
     pieces: list[Piece] = []
+    # The index in `coordinates` of each leg's last vertex: the joints are
+    # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
+    # front end reads which leg a point on the line belongs to from these.
+    leg_ends: list[int] = []
     for leg in legs:
         shape = decode_polyline6(leg.get("shape", ""))
         coordinates.extend(shape[1:] if coordinates else shape)
+        leg_ends.append(len(coordinates) - 1)
         elevations.extend(leg.get("elevation") or [])
         try:
             trace = trace_leg(preset.variant, costing, leg.get("shape", ""), deadline)
@@ -458,6 +463,7 @@ def plan(
         "descent_m": round(descent, 1),
         "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
         "attribution": list(ATTRIBUTION),
+        "leg_ends": leg_ends,
     }
 
 

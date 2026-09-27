@@ -40,6 +40,7 @@ CONTRACT_KEYS = {
     "descent_m",
     "stress_m",
     "attribution",
+    "leg_ends",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "unknown"}
 
@@ -244,6 +245,37 @@ class TestAnswer:
         body = {"points": [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[4])]}
         answer = post(client, {**body, "preset": "default"}).json()
         assert answer["geometry"]["coordinates"] == [list(v) for v in VERTICES]
+
+    def test_leg_ends_mark_where_each_leg_finishes_in_the_line(
+        self, client, segments, router
+    ) -> None:
+        """The front end inserts a via dragged off the line into the leg that
+        was grabbed; the leg boundaries are the router's, not a guess."""
+        legs = [VERTICES[:2], VERTICES[1:4], VERTICES[3:]]
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer([(leg, 1.0, [1.0]) for leg in legs]),
+                    "trace_attributes": [trace_answer(leg, [(101, 0, 1, 1.0)]) for leg in legs],
+                }
+            )
+        )
+        body = {"points": [list(VERTICES[i]) for i in (0, 1, 3, 4)], "preset": "default"}
+        answer = post(client, body).json()
+        coordinates = answer["geometry"]["coordinates"]
+        ends = answer["leg_ends"]
+        assert len(ends) == len(body["points"]) - 1
+        assert ends == sorted(ends)
+        assert ends[-1] == len(coordinates) - 1
+        for end, leg in zip(ends, legs, strict=True):
+            assert coordinates[end] == list(leg[-1])
+
+    def test_a_one_leg_route_ends_its_leg_at_the_last_vertex(
+        self, client, segments, router
+    ) -> None:
+        router(standard_router())
+        answer = post(client, good_body()).json()
+        assert answer["leg_ends"] == [len(answer["geometry"]["coordinates"]) - 1]
 
 
 @db

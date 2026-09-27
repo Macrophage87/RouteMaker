@@ -358,6 +358,12 @@ never sees the 409. Past 200 km the answer is 400 however it is asked. A
 route whose traces ran out of time comes back with that part of `stress_m` as
 `"unknown"`; treat it like any other unknown stretch.
 
+**Legs.** Besides the shared contract's fields, a 200 carries `leg_ends`: for
+each leg (one fewer than the points) the index in `geometry.coordinates` of its
+last vertex, so leg k runs from `leg_ends[k - 1]` (0 for the first) to
+`leg_ends[k]`. The planner uses it to put a via dragged off the line into the
+leg that was grabbed. It is additive; a client that predates it ignores it.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are
