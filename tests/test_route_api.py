@@ -40,6 +40,10 @@ CONTRACT_KEYS = {
     "descent_m",
     "stress_m",
     "attribution",
+    # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
+    "facility_m",
+    "dials",
+    "hills_seek",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "unknown"}
 
@@ -344,7 +348,7 @@ class TestWhatIsSentToTheRouter:
         request = fake.calls[0][1]
         assert request["elevation_interval"] > 0
         assert request["date_time"]["type"] == 3
-        assert request["date_time"]["value"] == routing.planning_time()
+        assert request["date_time"]["value"] == routing.planning_time(when=routing.default_when())
 
 
 def refused_before_the_router(client, router, body, **kwargs) -> dict:
@@ -410,7 +414,7 @@ class TestRefusedInput:
         )
 
     def test_an_unknown_preset(self, client, router) -> None:
-        refused_before_the_router(client, router, {**good_body(), "preset": "trailmaxxing"})
+        refused_before_the_router(client, router, {**good_body(), "preset": "night"})
 
     def test_a_missing_preset(self, client, router) -> None:
         refused_before_the_router(client, router, {"points": good_body()["points"]})

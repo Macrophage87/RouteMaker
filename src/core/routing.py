@@ -62,14 +62,15 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import datetime
 
 from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
+from routemaker import ridetime
+from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
 from routemaker.measure import elevation_gain
 
@@ -118,14 +119,14 @@ def clock() -> float:
     return time.monotonic()
 
 
-# PLAN, Time-dependent behavior: with no planning time set, requests assume the
-# next Saturday at 9:00 local time, so conditional restrictions are evaluated
-# rather than ignored. Type 3 is invariant time, which keeps bidirectional A*.
-PLANNING_ZONE = ZoneInfo("America/New_York")
-PLANNING_WEEKDAY = 5  # Saturday
-PLANNING_HOUR = 9
+# PLAN, Time-dependent behavior: requests carry a planning time so conditional
+# restrictions are evaluated rather than ignored; type 3 is invariant time,
+# which keeps bidirectional A*. The time is the ride-time setting's
+# (`routemaker.ridetime`): the owner's three settings of 2026-09-27, the
+# weekend one being PLAN's own default of the next Saturday at 9:00.
 
 STRESS_KEYS = ("1", "2", "3", "4", "unknown")
+FACILITY_KEYS = (*FACILITIES, "unknown")
 
 # Valhalla's error codes, sorted by what they mean to the person asking.
 # No path between the points (442, 443): the one case where a no-trail
@@ -222,16 +223,19 @@ def _call(variant: str, endpoint: str, payload: dict, deadline: Deadline) -> dic
         raise
 
 
-def planning_time(now: datetime | None = None) -> str:
-    """The next Saturday at 9:00 in the region's time, as Valhalla's local time."""
-    local = (now or timezone.now()).astimezone(PLANNING_ZONE)
-    days = (PLANNING_WEEKDAY - local.weekday()) % 7
-    candidate = (local + timedelta(days=days)).replace(
-        hour=PLANNING_HOUR, minute=0, second=0, microsecond=0
-    )
-    if candidate <= local:
-        candidate += timedelta(days=7)
-    return candidate.strftime("%Y-%m-%dT%H:%M")
+def planning_time(now: datetime | None = None, when: str = ridetime.WEEKEND) -> str:
+    """The next instant of a ride-time setting, as Valhalla's local time.
+
+    For the weekend that is the next Saturday at 9:00, PLAN's own default; the
+    weekday settings are the next Tuesday at 8:00 and at 12:00
+    (`routemaker.ridetime.REPRESENTATIVE_TIME`).
+    """
+    return ridetime.representative_time(when, now or timezone.now())
+
+
+def default_when(now: datetime | None = None) -> str:
+    """The ride-time setting of the moment the plan is made."""
+    return ridetime.when_at(now or timezone.now())
 
 
 def decode_polyline6(encoded: str) -> list[tuple[float, float]]:
@@ -306,42 +310,80 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
 
 
 _STRESS_JOIN = """
-SELECT seg.stress_tier, sum(p.metres)
+SELECT seg.stress_tier, {facility}, sum(p.metres)
 FROM unnest(%s::bigint[], %s::float8[], %s::float8[], %s::float8[])
      AS p(way_id, lon, lat, metres)
 LEFT JOIN LATERAL (
-    SELECT s.stress_tier
+    SELECT s.stress_tier, {columns}
     FROM {schema}.segment AS s
     WHERE s.osm_way_id = p.way_id
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)
     LIMIT 1
 ) AS seg ON true
-GROUP BY seg.stress_tier
+GROUP BY 1, 2
 """
+
+# A road closed to motor traffic only at set times is a path for a ride inside
+# the closure, and the road it is otherwise for any other (routemaker.facility).
+_FACILITY_AT = "CASE WHEN %s = ANY(seg.car_free_when) THEN 'path' ELSE seg.facility END"
+
+# Whether the live segment table has the facility columns yet. They arrive with
+# the first rebuild after this code; until then the breakdown is all unknown
+# rather than an error. Remembered once seen, since a schema is only ever
+# replaced by a newer build of itself.
+_facility_columns_seen = False
+
+
+def _has_facility_columns(schema: str) -> bool:
+    global _facility_columns_seen
+    if _facility_columns_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name IN ('facility', 'car_free_when')",
+            [schema],
+        )
+        _facility_columns_seen = cursor.fetchone()[0] == 2
+    return _facility_columns_seen
+
+
+def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[str, float]]:
+    """Metres per stress tier and per facility class, for a ride at `when`.
+
+    Stress is keyed "1".."4" and "unknown", facility "path", "protected",
+    "lane", "none" and "unknown"; each sums to the traced length.
+    """
+    stress = dict.fromkeys(STRESS_KEYS, 0.0)
+    facility = dict.fromkeys(FACILITY_KEYS, 0.0)
+    if not pieces:
+        return stress, facility
+    # The schema name comes from settings and is validated the way every DDL
+    # that names it is; an identifier cannot be a query parameter.
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    with_facility = _has_facility_columns(schema)
+    query = _STRESS_JOIN.format(
+        schema=schema,
+        facility=_FACILITY_AT if with_facility else "NULL",
+        columns="s.facility, s.car_free_when" if with_facility else "NULL",
+    )
+    arrays = [
+        [p.way_id for p in pieces],
+        [p.lon for p in pieces],
+        [p.lat for p in pieces],
+        [p.metres for p in pieces],
+    ]
+    with connection.cursor() as cursor:
+        cursor.execute(query, ([when] if with_facility else []) + arrays)
+        for tier, kind, metres in cursor.fetchall():
+            stress[str(tier) if tier in (1, 2, 3, 4) else "unknown"] += float(metres)
+            facility[kind if kind in FACILITY_KEYS else "unknown"] += float(metres)
+    return stress, facility
 
 
 def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
     """Metres per stress tier, keyed "1".."4" and "unknown"."""
-    totals = dict.fromkeys(STRESS_KEYS, 0.0)
-    if not pieces:
-        return totals
-    # The schema name comes from settings and is validated the way every DDL
-    # that names it is; an identifier cannot be a query parameter.
-    query = _STRESS_JOIN.format(schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE))
-    with connection.cursor() as cursor:
-        cursor.execute(
-            query,
-            [
-                [p.way_id for p in pieces],
-                [p.lon for p in pieces],
-                [p.lat for p in pieces],
-                [p.metres for p in pieces],
-            ],
-        )
-        for tier, metres in cursor.fetchall():
-            key = str(tier) if tier in (1, 2, 3, 4) else "unknown"
-            totals[key] += float(metres)
-    return totals
+    return breakdown(pieces, ridetime.WEEKEND)[0]
 
 
 def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> dict | None:
@@ -370,37 +412,100 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
     return None
 
 
+@dataclass(frozen=True)
+class Dials:
+    """Where the rider has the sliders and the ride-time setting.
+
+    `None` is the preset's own starting position (`core.presets`); `when`
+    `None` is the setting of the moment the plan is made.
+    """
+
+    stress: int | None = None
+    hills: int | None = None
+    when: str | None = None
+    carrying: str | None = None
+
+
+# How many alternatives a climb search asks the router for, besides its best
+# route. The service's `max_alternates` is 3 (valhalla/valhalla-*.json).
+SEEK_ALTERNATES = 3
+
+
+def _climb_of(trip: dict) -> float:
+    return climb_and_descent(
+        [e for leg in trip.get("legs") or [] for e in leg.get("elevation") or []]
+    )[0]
+
+
+def choose_climb(trips: list[dict], ratio: float) -> int:
+    """The index of the trip that climbs most within `ratio` of the first's length.
+
+    The first trip is the router's own best route at the hills detent, so it is
+    the direct route the budget is measured against, and it is what is kept
+    when nothing else climbs more.
+    """
+    direct = float((trips[0].get("summary") or {}).get("length", 0.0))
+    best, best_climb = 0, _climb_of(trips[0])
+    for index, trip in enumerate(trips[1:], start=1):
+        length = float((trip.get("summary") or {}).get("length", 0.0))
+        climb = _climb_of(trip)
+        if length <= direct * ratio and climb > best_climb:
+            best, best_climb = index, climb
+    return best
+
+
 def plan(
     points: list[list[float]],
     preset_name: str,
     long_ride: bool = False,
     started: float | None = None,
+    dials: Dials | None = None,
 ) -> dict:
     """Route through `points` on `preset_name`, returning the contract's body.
 
     `long_ride` gives the request the long-ride time limits, and `started`
     (from `clock()`) is when the request arrived; the budget runs from then,
-    or from now if it is not given. Raises NoRoute, TooLong, RouterUnavailable,
-    DeadlineExceeded, or KeyError for an unknown preset.
+    or from now if it is not given. `dials` are the sliders and the ride time.
+    Raises NoRoute, TooLong, RouterUnavailable, DeadlineExceeded, or KeyError
+    for an unknown preset.
     """
     if started is None:
         started = clock()
+    dials = dials or Dials()
     if long_ride:
         budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
     else:
         budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     preset = presets.PRESETS[preset_name]
-    costing = presets.costing(preset_name)
+    stress_dial = (
+        presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
+    )
+    hills_dial = preset.hills if dials.hills is None else dials.hills
+    when = dials.when or default_when()
+    costing = presets.costing(preset_name, stress_dial, hills_dial)
     request = {
         "locations": [{"lon": lon, "lat": lat, "type": "break"} for lon, lat in points],
         "costing": "bicycle",
         "costing_options": costing,
         "elevation_interval": ELEVATION_INTERVAL_M,
-        "date_time": {"type": 3, "value": planning_time()},
+        "date_time": {"type": 3, "value": planning_time(when=when)},
         "directions_type": "none",
         "units": "kilometers",
     }
+    # Past the detent the hills slider is a climb search among the router's
+    # alternatives. Valhalla computes alternatives only between two locations,
+    # and not inside a long ride's budget, so anything else keeps the route
+    # the detent gives and says so.
+    seeking = hills_dial > 0 and preset.hills_seek
+    seek_limited = None
+    if seeking:
+        if len(points) != 2:
+            seek_limited = "two_points"
+        elif long_ride:
+            seek_limited = "long_ride"
+        else:
+            request["alternates"] = SEEK_ALTERNATES
     try:
         answer = _call(preset.variant, "route", request, deadline)
     except RouterRefused as refusal:
@@ -416,7 +521,11 @@ def plan(
             )
         raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
 
-    trip = answer.get("trip") or {}
+    trips = [answer.get("trip") or {}] + [
+        (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
+    ]
+    chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial)) if seeking else 0
+    trip = trips[chosen]
     legs = trip.get("legs") or []
     if not legs:
         raise NoRoute("the router returned no legs")
@@ -424,6 +533,7 @@ def plan(
     coordinates: list[tuple[float, float]] = []
     elevations: list[float | None] = []
     stress = dict.fromkeys(STRESS_KEYS, 0.0)
+    facility = dict.fromkeys(FACILITY_KEYS, 0.0)
     pieces: list[Piece] = []
     for leg in legs:
         shape = decode_polyline6(leg.get("shape", ""))
@@ -437,14 +547,31 @@ def plan(
             logger.info("the budget ran out tracing a leg on %s", preset.variant)
             trace = None
         if trace is None:
-            stress["unknown"] += float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
+            untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
+            stress["unknown"] += untraced
+            facility["unknown"] += untraced
         else:
             pieces.extend(pieces_of_trace(trace))
-    for key, metres in stress_breakdown(pieces).items():
+    traced_stress, traced_facility = breakdown(pieces, when)
+    for key, metres in traced_stress.items():
         stress[key] += metres
+    for key, metres in traced_facility.items():
+        facility[key] += metres
 
     summary = trip.get("summary") or {}
     climb, descent = climb_and_descent(elevations)
+    hills_seek = None
+    if seeking:
+        direct = trips[0].get("summary") or {}
+        hills_seek = {
+            "candidates": len(trips),
+            "chosen": chosen,
+            "extra_climb_m": round(climb - _climb_of(trips[0]), 1),
+            "extra_distance_m": round(
+                (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0, 1
+            ),
+            "limited": seek_limited,
+        }
     return {
         "preset": preset.name,
         "variant": preset.variant,
@@ -457,6 +584,14 @@ def plan(
         "climb_m": round(climb, 1),
         "descent_m": round(descent, 1),
         "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
+        "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
+        "dials": {
+            "stress": stress_dial,
+            "hills": hills_dial,
+            "when": when,
+            "carrying": presets.carrying_of(preset_name, dials.carrying),
+        },
+        "hills_seek": hills_seek,
         "attribution": list(ATTRIBUTION),
     }
 

@@ -55,6 +55,57 @@ VALHALLA_GATE_COST_S = 30
 VALHALLA_GATE_PENALTY_S = 300
 
 MID = 0.5
+
+# Default's starting position on the stress slider. The owner, 2026-09-27:
+# "It seems that the current default is probably a bit too traffic tolerant
+# for most people. For instance my route to work, would typically be about
+# 2 hrs on full trails. Instead it puts me on a set of roads where almost a
+# quarter are LTS4." and, of the faster road route, "It is faster, but not
+# worth it for most people." Chosen from the trip measurements in
+# docs/DEVELOPMENT.md, "The stress and hills sliders".
+DEFAULT_STRESS = 75
+
+# Cargo Bike. The owner, 2026-09-27: "Also another popular option in our city
+# would be cargo bikes. People use cargo bikes in our region quite often. They
+# tend not to be great on hills. Also have a button to differentiate carrying
+# cargo vs carrying children, which have different levels of traffic stress
+# tolerance." And later the same day, to be more inclusive: the choice is
+# carrying cargo or carrying people. PLAN's Cargo row: "No narrow gaps, gentle
+# grades | L2: high gate_cost, low use_hills". Hybrid, as PLAN's Presets list it.
+#
+# - Hills: well toward avoid (`use_hills` 0.4).
+# - Speed: 14 km/h (8.7 mph), a loaded cargo bike's cruising pace unassisted,
+#   against Hybrid's 18; it only changes the times shown and the time-based
+#   cost, not which ways are allowed.
+# - Narrow gaps: the transform already turns cycle barriers, and bollards
+#   whose tagged gap is under 1.5 m, into gates (`NARROW_GAP_M`,
+#   lua/routemaker_remap.lua), so a gate cost of five minutes and a penalty of
+#   ten keep a cargo route out of them unless there is no other way. Steps are
+#   already priced out for every bicycle by Valhalla (1 km/h and its steps
+#   factor), and stiles and kissing gates are barriers upstream closes to
+#   bicycles.
+# - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
+#   hard exclusion arms, so a gravel link is dear rather than impossible).
+# - Stress: carrying cargo starts where Default does; carrying people starts
+#   near the top of the slider, where a tier 3 or 4 way costs about five times
+#   its length and a path or protected lane wins unless there is no other way.
+CARRYING_CARGO = "cargo"
+CARRYING_PEOPLE = "people"
+CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 95}
+CARGO_HILLS = -60
+CARGO_PLANNING_SPEED_KMH = 14.0
+CARGO_GATE_COST_S = 300
+CARGO_GATE_PENALTY_S = 600
+CARGO_SURFACE_AVOIDANCE = 0.6
+
+# The rest of PLAN's table (the owner, 2026-09-27: "Add the other presets too,
+# like trailmaxxing"), each at layers 1 and 2 only. What a preset's row gives
+# layer 4 is not built, and its card says what it does today.
+LOW_SURFACE_AVOIDANCE = 0.1
+HIGH_SURFACE_AVOIDANCE = 0.75
+# An e-bike's cruising speed with assist, 15 mph: the US class 1 and 2 limit is
+# 20 mph, and a rider in town cruises well under it.
+EBIKE_PLANNING_SPEED_KMH = 24.0
 HIGH_MANEUVER_PENALTY_S = 30
 HIGH_GATE_COST_S = 120
 
@@ -70,18 +121,89 @@ _SURFACE_AVOIDANCE = 0.25
 _LIVING_STREETS = MID
 
 
+# --- The two sliders ------------------------------------------------------
+#
+# The owner, 2026-09-27: "lets have sliders where we can adjust the penalties
+# for traffic stress and hilliness. The lowest setting for traffic stress is
+# fastest legal route to basically one where low stress routes are used unless
+# there's no other option. For hilliness, we can go from a default which is
+# basically fastest time for most people in the middle, to hill avoidant, and
+# even hill seeking." PLAN:86, "Every dial exists on every preset": a preset
+# sets where each slider starts, and the rider may move it on any preset.
+#
+# Stress, 0 to 100, is `use_roads` run backwards: 0 is `use_roads` 1.0 and
+# 100 is 0.0. Valhalla prices every edge at its time times
+# `1 + grade + accommodation * roadway stress`; at `use_roads` 1.0 the
+# roadway and accommodation terms are at their smallest and the graph's stress
+# penalty (`use_sidepath` on LTS 3-4 ways, lua/routemaker_remap.lua) weighs
+# `3 * (1 - use_roads)`, nothing; at 0.0 it weighs 3 on top of a doubled road
+# factor. The graph carries the tiers and the request carries the weight, so
+# one graph serves every position.
+#
+# Hills, -100 to 100, with its detent at 0. Below 0 it is `use_hills`, 1.0 at
+# the detent and 0.0 at -100. `use_hills` 1.0 adds no grade penalty at all, so
+# an edge costs its time as Valhalla's grade-speed model has it - the owner's
+# "fastest time for most people". Above 0 Valhalla has nothing to offer
+# (`use_hills` stops at indifferent), and the request becomes a climb search
+# among the router's alternatives (`core.routing`) within the distance budget
+# the dial sets (`seek_distance_ratio`).
+STRESS_MIN, STRESS_MAX = 0, 100
+HILLS_MIN, HILLS_MAX = -100, 100
+
+
+def use_roads_for(stress: int) -> float:
+    return round(1.0 - stress / 100, 3)
+
+
+def use_hills_for(hills: int) -> float:
+    return round(1.0 + min(hills, 0) / 100, 3)
+
+
+def seek_distance_ratio(hills: int) -> float:
+    """How much longer than the direct route a climb search may go: up to half again."""
+    return 1.0 + 0.5 * max(hills, 0) / 100
+
+
 @dataclass(frozen=True)
 class Preset:
     name: str
     variant: str
     costing_options: MappingProxyType = field(repr=False)
+    # Where the two sliders start on this preset.
+    stress: int = 50
+    hills: int = 0
+    # Whether the hills slider may go past its detent. Not on Mass Ride: PLAN,
+    # "On Mass Ride the seek half is disabled with the speed-band explanation".
+    hills_seek: bool = True
+    # What the bike carries, where the preset asks (Cargo Bike): each choice
+    # and the stress slider's start it gives. The first is the default.
+    carrying: MappingProxyType | None = None
 
 
-def _preset(name: str, variant: Variant, **options: Any) -> Preset:
+def _preset(
+    name: str,
+    variant: Variant,
+    stress: int,
+    hills: int,
+    hills_seek: bool = True,
+    carrying: dict[str, int] | None = None,
+    **options: Any,
+) -> Preset:
     return Preset(
         name=name,
         variant=variant.value,
-        costing_options=MappingProxyType({**options, **_NO_STATE_CROSSING_PENALTY}),
+        costing_options=MappingProxyType(
+            {
+                **options,
+                "use_roads": use_roads_for(stress),
+                "use_hills": use_hills_for(hills),
+                **_NO_STATE_CROSSING_PENALTY,
+            }
+        ),
+        stress=stress,
+        hills=hills,
+        hills_seek=hills_seek,
+        carrying=MappingProxyType(carrying) if carrying else None,
     )
 
 
@@ -92,9 +214,9 @@ PRESETS: MappingProxyType = MappingProxyType(
             _preset(
                 "default",
                 Variant.STANDARD,
+                stress=DEFAULT_STRESS,
+                hills=0,
                 bicycle_type="Hybrid",
-                use_roads=MID,
-                use_hills=MID,
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
@@ -102,11 +224,26 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
             _preset(
+                "trailmaxxing",
+                Variant.STANDARD,
+                # "Lowest stress ride, directness secondary": use_roads near
+                # zero, living streets on, low surface avoidance, Cross.
+                stress=95,
+                hills=0,
+                bicycle_type="Cross",
+                avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
+                use_living_streets=1.0,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
                 "group-ride",
                 Variant.STANDARD,
+                # Where the table puts it: mid use_roads and mid use_hills.
+                stress=50,
+                hills=-50,
                 bicycle_type="Cross",
-                use_roads=MID,
-                use_hills=MID,
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
@@ -116,11 +253,13 @@ PRESETS: MappingProxyType = MappingProxyType(
             _preset(
                 "mass-ride",
                 Variant.NO_TRAIL,
-                bicycle_type="Hybrid",
-                use_roads=1.0,
+                # use_roads at max: the direct end of the stress slider.
+                stress=0,
                 # "Near zero" rather than zero: zero is Recovery's value, and
                 # Mass Ride's grade limit is the layer 4 cap, not this dial.
-                use_hills=0.05,
+                hills=-95,
+                hills_seek=False,
+                bicycle_type="Hybrid",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
                 use_living_streets=_LIVING_STREETS,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
@@ -128,16 +267,160 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
                 cycling_speed=MASS_RIDE_PLANNING_SPEED_KMH,
             ),
+            _preset(
+                "mountain-goat",
+                Variant.STANDARD,
+                # "The hills dial at seek with everything else permissive":
+                # the hills slider starts at its top, which is today's climb
+                # search among the router's alternatives (core.routing), not
+                # the via-point search the table's L4 describes.
+                stress=50,
+                hills=HILLS_MAX,
+                bicycle_type="Cross",
+                avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                "gravel",
+                Variant.STANDARD,
+                # "L2: Cross or Mountain, avoid_bad_surfaces zero". Unpaved-share
+                # ranking is layer 4 and not built.
+                stress=50,
+                hills=0,
+                bicycle_type="Cross",
+                avoid_bad_surfaces=0.0,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                "beginner",
+                Variant.STANDARD,
+                # "Protected infrastructure only, low grades | L2: use_roads
+                # zero, use_hills near zero". use_roads zero is the top of the
+                # stress slider: a tier 3-4 way costs about five times its time
+                # and paths and protected lanes are the cheapest ways there
+                # are, so they win unless there is no other way. It is a
+                # preference, not a gate: the road exposure report that would
+                # list what could not be avoided is layer 4.
+                stress=100,
+                hills=-95,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
+                use_living_streets=1.0,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                "fast",
+                Variant.STANDARD,
+                # "Few stops, few turns, smooth pavement | L2: high use_roads,
+                # high maneuver_penalty, high surface avoidance" - high, and
+                # still below the 1.0 at which the surface exclusion arms.
+                stress=10,
+                hills=0,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
+                use_living_streets=0.2,
+                maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                "recovery",
+                Variant.STANDARD,
+                # "Minimize elevation | L2: use_hills zero"; traffic as Default.
+                stress=DEFAULT_STRESS,
+                hills=HILLS_MIN,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
+            _preset(
+                "cargo",
+                Variant.STANDARD,
+                stress=CARGO_CARRYING_STRESS[CARRYING_CARGO],
+                hills=CARGO_HILLS,
+                carrying=CARGO_CARRYING_STRESS,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=CARGO_GATE_COST_S,
+                gate_penalty=CARGO_GATE_PENALTY_S,
+                cycling_speed=CARGO_PLANNING_SPEED_KMH,
+            ),
+            _preset(
+                "ebike",
+                Variant.EBIKE,
+                # "Grade matters less, path legality matters more | L1: e-bike
+                # variant. L2: mid use_hills". The variant bars the ways tagged
+                # electric_bicycle=no; nothing here asserts any legality.
+                stress=DEFAULT_STRESS,
+                hills=-50,
+                bicycle_type="Hybrid",
+                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+                cycling_speed=EBIKE_PLANNING_SPEED_KMH,
+            ),
+            _preset(
+                "bikepacking",
+                Variant.STANDARD,
+                # "L4: points-of-interest scoring ...; distance budget; Cross or
+                # Mountain bicycle_type". The scoring is not built; the L2 part
+                # is a loaded touring bike on mixed surfaces.
+                stress=DEFAULT_STRESS,
+                hills=-25,
+                bicycle_type="Cross",
+                avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
+                use_living_streets=_LIVING_STREETS,
+                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
+                gate_cost=VALHALLA_GATE_COST_S,
+                gate_penalty=VALHALLA_GATE_PENALTY_S,
+            ),
         )
     }
 )
 
 
-def costing(name: str) -> dict:
+def stress_start(name: str, carrying: str | None = None) -> int:
+    """Where the stress slider starts on a preset, for what the bike carries."""
+    preset = PRESETS[name]
+    if preset.carrying is None:
+        return preset.stress
+    return preset.carrying[carrying or next(iter(preset.carrying))]
+
+
+def carrying_of(name: str, carrying: str | None = None) -> str | None:
+    """The carrying choice in force: the rider's, the preset's first, or none."""
+    preset = PRESETS[name]
+    if preset.carrying is None:
+        return None
+    return carrying or next(iter(preset.carrying))
+
+
+def costing(name: str, stress: int | None = None, hills: int | None = None) -> dict:
     """The `costing_options` block for one preset, as a fresh copy.
 
-    A copy because a caller that adjusts what it was handed - a future slider,
-    a test - must not retune the preset for every later request in the worker.
-    Raises KeyError for a name that is not a preset.
+    `stress` and `hills` are the sliders' positions; either left out is the
+    preset's own. A copy because a caller that adjusts what it was handed must
+    not retune the preset for every later request in the worker. Raises
+    KeyError for a name that is not a preset.
     """
-    return {"bicycle": copy.deepcopy(dict(PRESETS[name].costing_options))}
+    options = copy.deepcopy(dict(PRESETS[name].costing_options))
+    if stress is not None:
+        options["use_roads"] = use_roads_for(stress)
+    if hills is not None:
+        options["use_hills"] = use_hills_for(hills)
+    return {"bicycle": options}

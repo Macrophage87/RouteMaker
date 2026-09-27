@@ -44,8 +44,9 @@ from django.http import HttpResponse, JsonResponse
 from ninja import Field, NinjaAPI, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
-from pydantic import ConfigDict, StrictBool, field_validator
+from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_validator
 
+from routemaker import ridetime
 from routemaker.geo import Point, haversine
 
 from . import presets, ratelimit, routing
@@ -126,6 +127,8 @@ class ErrorOut(Schema):
 Coordinate = Annotated[float, Field(allow_inf_nan=False)]
 LonLat = Annotated[list[Coordinate], Field(min_length=2, max_length=2)]
 PresetName = Literal[tuple(presets.PRESETS)]  # type: ignore[valid-type]
+WhenName = Literal[ridetime.WHENS]  # type: ignore[valid-type]
+CarryingName = Literal[presets.CARRYING_CARGO, presets.CARRYING_PEOPLE]
 
 
 class RouteIn(Schema):
@@ -141,6 +144,48 @@ class RouteIn(Schema):
         default=False,
         description="Set true to plan a signed-out request longer than 150 km of straight line.",
     )
+    stress: StrictInt | None = Field(
+        default=None,
+        ge=presets.STRESS_MIN,
+        le=presets.STRESS_MAX,
+        description=(
+            "The traffic-stress slider: 0 is the most direct legal route, 100 keeps to low-stress"
+            " ways unless there is no other option. Absent: the preset's own start."
+        ),
+    )
+    hills: StrictInt | None = Field(
+        default=None,
+        ge=presets.HILLS_MIN,
+        le=presets.HILLS_MAX,
+        description=(
+            "The hills slider: -100 avoids climbing, 0 is the fastest time, above 0 looks for"
+            " climbs among the router's alternatives (two-point plans only). Absent: the"
+            " preset's own start. Mass Ride does not seek climbs."
+        ),
+    )
+    when: WhenName | None = Field(
+        default=None,
+        description=(
+            "When the ride is: weekend, weekday_rush (Mon-Fri 07-10 and 16-19) or weekday_offpeak."
+            " Absent: the setting of the moment the plan is made, in the region's time."
+        ),
+    )
+    carrying: CarryingName | None = Field(
+        default=None,
+        description="Cargo Bike only: what the bike carries, which sets the stress slider's start.",
+    )
+
+    @model_validator(mode="after")
+    def dials_fit_the_preset(self):
+        preset = presets.PRESETS[self.preset]
+        if self.hills is not None and self.hills > 0 and not preset.hills_seek:
+            raise ValueError(
+                "Mass Ride does not look for climbs: a field that slows below balance speed on a"
+                " climb walks, so the hills slider stops at the fastest time"
+            )
+        if self.carrying is not None and preset.carrying is None:
+            raise ValueError("carrying applies to the Cargo Bike ride type only")
+        return self
 
     @field_validator("points")
     @classmethod
@@ -204,6 +249,37 @@ class StressOut(Schema):
     unknown: float
 
 
+class FacilityOut(Schema):
+    """Metres on each of the owner's facility classes; they sum to the distance."""
+
+    path: float = Field(description="Traffic-free: off-road paths, and roads closed to cars.")
+    protected: float = Field(description="Protected lanes, on the roadway or beside it.")
+    lane: float = Field(description="Painted lanes.")
+    none: float = Field(description="Ordinary streets, sharrows included.")
+    unknown: float
+
+
+class DialsOut(Schema):
+    """The slider positions and ride time the route was planned with."""
+
+    stress: int
+    hills: int
+    when: WhenName
+    carrying: CarryingName | None
+
+
+class HillsSeekOut(Schema):
+    """Present when the hills slider was past its detent."""
+
+    candidates: int = Field(description="Routes compared, the direct one included.")
+    chosen: int = Field(description="Which was kept; 0 is the direct route.")
+    extra_climb_m: float
+    extra_distance_m: float
+    limited: Literal["two_points", "long_ride"] | None = Field(
+        description="Why no alternatives were compared, if none were."
+    )
+
+
 class RouteOut(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike"]
@@ -213,6 +289,9 @@ class RouteOut(Schema):
     climb_m: float
     descent_m: float
     stress_m: StressOut
+    facility_m: FacilityOut
+    dials: DialsOut
+    hills_seek: HillsSeekOut | None
     attribution: list[str]
 
 
@@ -369,8 +448,14 @@ def route(request, body: RouteIn, response: HttpResponse):
 def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
     started = getattr(request, "routing_started", None)
     try:
+        dials = routing.Dials(
+            stress=body.stress, hills=body.hills, when=body.when, carrying=body.carrying
+        )
         return Status(
-            200, routing.plan(body.points, body.preset, long_ride=long_ride, started=started)
+            200,
+            routing.plan(
+                body.points, body.preset, long_ride=long_ride, started=started, dials=dials
+            ),
         )
     except routing.TooLong:
         return Status(400, {"error": ROUTER_TOO_LONG})

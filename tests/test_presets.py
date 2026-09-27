@@ -15,7 +15,23 @@ from django.conf import settings
 from core import presets
 from pipeline.variants import Variant
 
-CONTRACT_PRESETS = {"default", "group-ride", "mass-ride"}
+# The contract's three, Cargo Bike (the owner, 2026-09-27: "Also another
+# popular option in our city would be cargo bikes.") and the rest of PLAN's
+# table ("Add the other presets too, like trailmaxxing").
+CONTRACT_PRESETS = {
+    "default",
+    "trailmaxxing",
+    "group-ride",
+    "mass-ride",
+    "mountain-goat",
+    "gravel",
+    "beginner",
+    "fast",
+    "recovery",
+    "cargo",
+    "ebike",
+    "bikepacking",
+}
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
 # clamps or refuses, and either way the preset would not mean what it says.
@@ -102,9 +118,46 @@ def test_the_bicycle_types_are_the_ones_the_plan_names() -> None:
     assert options("group-ride")["bicycle_type"] == "Cross"
 
 
-def test_default_sits_mid_scale_on_roads_and_hills() -> None:
-    assert 0.25 < options("default")["use_roads"] < 0.75
-    assert 0.25 < options("default")["use_hills"] < 0.75
+def test_default_is_more_stress_averse_than_mid_and_rides_the_fastest_hills() -> None:
+    """Superseding the table's "mid use_roads, mid use_hills" for Default. The
+    owner, 2026-09-27: the old default was "a bit too traffic tolerant for most
+    people" and a faster road route "not worth it for most people"; and the
+    hills slider's middle is "basically fastest time for most people", which is
+    `use_hills` 1.0 (no grade penalty; Valhalla's grade-speed model only)."""
+    assert options("default")["use_roads"] < options("group-ride")["use_roads"]
+    assert options("default")["use_roads"] <= 0.25
+    assert options("default")["use_hills"] == 1.0
+    assert presets.PRESETS["default"].hills == 0
+
+
+def test_cargo_is_hill_averse_slow_and_gate_shy() -> None:
+    """PLAN Cargo: "No narrow gaps, gentle grades | L2: high gate_cost, low
+    use_hills"; the owner: "They tend not to be great on hills"."""
+    assert options("cargo")["use_hills"] < options("default")["use_hills"]
+    assert options("cargo")["use_hills"] <= 0.5
+    assert options("cargo")["gate_cost"] > options("group-ride")["gate_cost"]
+    assert options("cargo")["cycling_speed"] < 18.0
+    assert options("cargo")["avoid_bad_surfaces"] > options("default")["avoid_bad_surfaces"]
+    assert options("cargo")["bicycle_type"] == "Hybrid"
+
+
+def test_carrying_people_is_markedly_more_stress_averse() -> None:
+    people = presets.stress_start("cargo", presets.CARRYING_PEOPLE)
+    cargo = presets.stress_start("cargo", presets.CARRYING_CARGO)
+    assert people - cargo >= 15
+    assert presets.use_roads_for(people) <= 0.1
+    assert presets.stress_start("cargo") == cargo
+
+
+def test_only_mass_ride_stops_the_hills_slider_at_the_detent() -> None:
+    assert {name for name, p in presets.PRESETS.items() if not p.hills_seek} == {"mass-ride"}
+
+
+@pytest.mark.parametrize("name", sorted(CONTRACT_PRESETS))
+def test_the_starts_are_inside_the_sliders(name: str) -> None:
+    preset = presets.PRESETS[name]
+    assert presets.STRESS_MIN <= preset.stress <= presets.STRESS_MAX
+    assert presets.HILLS_MIN <= preset.hills <= (presets.HILLS_MAX if preset.hills_seek else 0)
 
 
 def test_mass_ride_wants_the_roadway_and_avoids_hills() -> None:
@@ -156,4 +209,65 @@ def test_the_request_costing_is_a_copy() -> None:
 
 def test_an_unknown_preset_is_refused() -> None:
     with pytest.raises(KeyError):
-        presets.costing("trailmaxxing")
+        presets.costing("night")
+
+
+def test_trailmaxxing_is_more_stress_averse_than_default() -> None:
+    """ "Lowest stress ride, directness secondary | L2: use_roads near zero,
+    living streets on, low surface avoidance"."""
+    assert options("trailmaxxing")["use_roads"] < options("default")["use_roads"]
+    assert options("trailmaxxing")["use_roads"] <= 0.1
+    assert options("trailmaxxing")["use_living_streets"] > options("default")["use_living_streets"]
+    assert options("trailmaxxing")["avoid_bad_surfaces"] < options("default")["avoid_bad_surfaces"]
+
+
+def test_beginner_is_the_top_of_the_stress_slider_and_near_flat() -> None:
+    """ "L2: use_roads zero, use_hills near zero"."""
+    assert options("beginner")["use_roads"] == 0.0
+    assert 0 < options("beginner")["use_hills"] <= 0.1
+
+
+def test_fast_is_direct_turn_shy_and_smooth() -> None:
+    """ "L2: high use_roads, high maneuver_penalty, high surface avoidance"."""
+    assert options("fast")["use_roads"] >= 0.9
+    assert options("fast")["maneuver_penalty"] > options("default")["maneuver_penalty"]
+    assert options("default")["avoid_bad_surfaces"] < options("fast")["avoid_bad_surfaces"] < 1.0
+
+
+def test_recovery_minimises_elevation() -> None:
+    assert options("recovery")["use_hills"] == 0.0
+    assert options("recovery")["use_roads"] == options("default")["use_roads"]
+
+
+def test_mountain_goat_starts_at_seek() -> None:
+    assert presets.PRESETS["mountain-goat"].hills == presets.HILLS_MAX
+    assert presets.PRESETS["mountain-goat"].hills_seek
+
+
+def test_gravel_has_no_surface_avoidance() -> None:
+    assert options("gravel")["avoid_bad_surfaces"] == 0.0
+
+
+def test_ebike_routes_on_the_ebike_variant() -> None:
+    """ "L1: e-bike variant. L2: mid use_hills"."""
+    assert presets.PRESETS["ebike"].variant == Variant.EBIKE.value
+    assert options("ebike")["use_hills"] == 0.5
+    assert options("ebike")["cycling_speed"] > 18.0
+
+
+@pytest.mark.parametrize("name", ["trailmaxxing", "mountain-goat", "gravel", "bikepacking"])
+def test_the_off_road_presets_are_cross_or_mountain(name: str) -> None:
+    """PLAN, Presets: "Trailmaxxing, Bikepacking, and Mountain Goat are Cross
+    or Mountain"; Gravel's row says the same."""
+    assert options(name)["bicycle_type"] in {"Cross", "Mountain"}
+
+
+@pytest.mark.parametrize("name", ["beginner", "fast", "recovery", "cargo", "mass-ride"])
+def test_the_roadway_presets_are_hybrid(name: str) -> None:
+    """PLAN, Presets: "Mass Ride, Fast, Beginner, Recovery, and Cargo are Hybrid"."""
+    assert options(name)["bicycle_type"] == "Hybrid"
+
+
+def test_there_is_no_night_preset() -> None:
+    """The owner dropped it, 2026-09-27 (PLAN.md, Owner amendments)."""
+    assert "night" not in presets.PRESETS

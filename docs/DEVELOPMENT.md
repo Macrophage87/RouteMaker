@@ -358,6 +358,44 @@ never sees the 409. Past 200 km the answer is 400 however it is asked. A
 route whose traces ran out of time comes back with that part of `stress_m` as
 `"unknown"`; treat it like any other unknown stretch.
 
+**The sliders, the ride time and Cargo Bike** (PUBLIC-DIALS, the owner's
+requests of 2026-09-27; PLAN.md, Routing model, "Owner amendments,
+2026-09-27"). All optional and additive; a body without them is planned as
+before, at the preset's own starting positions:
+
+```sh
+curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/json' \
+    -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "cargo",
+         "carrying": "people", "stress": 90, "hills": -40, "when": "weekend"}'
+```
+
+- `stress`, integer 0-100: `use_roads = 1 - stress/100`. 0 is the most direct
+  legal route, 100 keeps to low-stress ways unless there is no other option.
+  The graph carries the stress tiers (LTS 3-4 ways as `bicycle=use_sidepath`,
+  `lua/routemaker_remap.lua`), and Valhalla weighs that `3 * (1 - use_roads)`,
+  so one graph serves every position.
+- `hills`, integer -100-100, detent at 0: below it `use_hills = 1 + hills/100`
+  (0 is `use_hills` 1.0, no grade penalty, the fastest time); above it a climb
+  search among the router's `alternates` (3), choosing the one that climbs most
+  within `1 + 0.5 * hills/100` of the direct route's length. Two-point plans
+  only, and not on a long ride; `hills_seek.limited` says when it was not done.
+  Mass Ride refuses `hills > 0` (400).
+- `when`: `weekend`, `weekday_rush` (Mon-Fri 07:00-10:00 and 16:00-19:00,
+  America/New_York; federal holidays count as weekend) or `weekday_offpeak`;
+  absent, the setting of the moment. It sets Valhalla's `date_time` (the next
+  Saturday 09:00, Tuesday 08:00 or Tuesday 12:00), which is what the
+  conditional restrictions Valhalla reads are evaluated against, and it decides
+  whether a road closed to cars at set times counts as a path in `facility_m`.
+- `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
+  stress slider's start (75 or 95).
+
+The answer adds `facility_m` (`path`, `protected`, `lane`, `none`,
+`unknown`, metres summing to the traced length, from `segment.facility` and
+`segment.car_free_when`), `dials` (the positions actually planned with) and
+`hills_seek` (null unless the hills slider was past its detent). Until the
+live segment table has been rebuilt with the facility columns, `facility_m`
+is all `unknown` and nothing else changes.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are
