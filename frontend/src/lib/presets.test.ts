@@ -2,10 +2,23 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PRESETS, DEFAULT_PRESET, isPreset, parsePreset } from "./presets.ts";
 
-test("the picker offers exactly the contract's three presets", () => {
+test("the picker offers every ride type in PLAN's table", () => {
   assert.deepEqual(
     PRESETS.map((p) => p.id),
-    ["default", "group-ride", "mass-ride"],
+    [
+      "default",
+      "trailmaxxing",
+      "group-ride",
+      "mass-ride",
+      "mountain-goat",
+      "gravel",
+      "beginner",
+      "fast",
+      "recovery",
+      "cargo",
+      "ebike",
+      "bikepacking",
+    ],
   );
 });
 
@@ -25,7 +38,7 @@ test("the default is one of the offered presets", () => {
 });
 
 test("anything unknown falls back to the default rather than reaching the API", () => {
-  for (const junk of ["", "Mass Ride", "beginner", null, undefined, 3, "__proto__", "toString"]) {
+  for (const junk of ["", "Mass Ride", "Beginner", "cargo-bike", null, undefined, 3, "__proto__", "toString"]) {
     assert.equal(parsePreset(junk), DEFAULT_PRESET, String(junk));
     assert.equal(isPreset(junk), false, String(junk));
   }

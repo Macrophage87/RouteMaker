@@ -8,17 +8,32 @@
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
 import { parsePreset, type PresetId } from "./presets.ts";
+import { fitDials, isCarrying, isWhen, type Dials } from "./dials.ts";
 
 export interface Plan {
   points: LonLat[];
   preset: PresetId;
+  /** The sliders, the ride time and Cargo Bike's load (dials.ts). */
+  dials: Dials;
 }
 
-export function encodePlan(points: readonly LonLat[], preset: PresetId): string {
+export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: Dials): string {
   const params = new URLSearchParams();
   if (points.length) params.set("p", points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));
   params.set("preset", preset);
+  if (dials) {
+    params.set("stress", String(dials.stress));
+    params.set("hills", String(dials.hills));
+    if (dials.when) params.set("when", dials.when);
+    if (dials.carrying) params.set("carrying", dials.carrying);
+  }
   return `#${params.toString().replaceAll("%2C", ",").replaceAll("%3B", ";")}`;
+}
+
+function numberOrUndefined(value: string | null): number | undefined {
+  if (value === null || value.trim() === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
 }
 
 export function decodePlan(hash: string): Plan {
@@ -32,5 +47,14 @@ export function decodePlan(hash: string): Plan {
     points.push(point);
     if (points.length === MAX_POINTS) break;
   }
-  return { points, preset: parsePreset(params.get("preset")) };
+  const preset = parsePreset(params.get("preset"));
+  const when = params.get("when");
+  const carrying = params.get("carrying");
+  const dials = fitDials(preset, {
+    stress: numberOrUndefined(params.get("stress")),
+    hills: numberOrUndefined(params.get("hills")),
+    when: isWhen(when) ? when : null,
+    carrying: isCarrying(carrying) ? carrying : null,
+  });
+  return { points, preset, dials };
 }

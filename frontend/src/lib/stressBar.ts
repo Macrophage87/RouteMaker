@@ -28,7 +28,7 @@ function metresOf(stress: StressMetres, key: StressKey): number {
 }
 
 /** Largest-remainder rounding, so the labels never add up to 99 or 101. */
-function wholePercents(fractions: number[]): number[] {
+export function wholePercents(fractions: number[]): number[] {
   const raw = fractions.map((f) => f * 100);
   const floors = raw.map(Math.floor);
   let short = 100 - floors.reduce((a, b) => a + b, 0);

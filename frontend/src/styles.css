@@ -508,3 +508,144 @@ button.secondary {
     bottom: 56px;
   }
 }
+
+/* --- Ride type, its dialog, and the sliders (RideTypePicker, DialsPanel) --- */
+
+.ride-type-current {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.ride-type-current p {
+  margin: 0;
+  display: grid;
+  gap: 2px;
+}
+
+dialog.ride-types {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+dialog.ride-types::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.ride-types-body {
+  padding: 16px;
+}
+
+.ride-types-body header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.ride-types-body h2 {
+  margin: 0;
+}
+
+.ride-type-cards {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.ride-type-card > button {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+}
+
+.ride-type-card.current > button,
+.ride-type-card button[aria-pressed="true"] {
+  border-color: var(--accent);
+}
+
+.ride-type-loads {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ride-type-loads button {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  min-height: 44px;
+}
+
+.dials .dial {
+  margin: 12px 0;
+}
+
+.dial-label {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-weight: 600;
+}
+
+.dial-now {
+  font-weight: 400;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.dials input[type="range"] {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--accent);
+}
+
+.dial-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.85em;
+  color: var(--text-muted);
+}
+
+.dials fieldset.when {
+  border: 0;
+  padding: 0;
+  margin: 12px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+}
+
+.dials fieldset.when legend {
+  font-weight: 600;
+  padding: 0;
+  margin-bottom: 4px;
+}
+
+@media (max-width: 720px) {
+  dialog.ride-types {
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    max-height: 100dvh;
+    margin: 0;
+    border-radius: 0;
+  }
+}

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type StressAvailability } from "./MapView.tsx";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
-import { PRESETS, presetLabel, type PresetId } from "./lib/presets.ts";
+import { presetLabel, type PresetId } from "./lib/presets.ts";
 import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
@@ -13,11 +13,16 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { DialsPanel } from "./DialsPanel.tsx";
+import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
+import { RideTypePicker } from "./RideTypePicker.tsx";
+import type { Dials } from "./lib/dials.ts";
 
 interface Plan {
   points: LonLat[];
   preset: PresetId;
   confirmLong: boolean;
+  dials: Dials;
 }
 
 type Status =
@@ -54,6 +59,7 @@ function useNarrow(): boolean {
 export function App() {
   const [points, setPoints] = useState<LonLat[]>(initialPlan.points);
   const [preset, setPreset] = useState<PresetId>(initialPlan.preset);
+  const [dials, setDials] = useState<Dials>(initialPlan.dials);
   const [route, setRoute] = useState<RouteResponse | null>(null);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -84,7 +90,7 @@ export function App() {
   const scheduler = useRef<RouteScheduler<Plan> | null>(null);
   if (scheduler.current === null) {
     scheduler.current = new RouteScheduler<Plan>({
-      send: (plan) => requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong }),
+      send: (plan) => requestRoute(plan.points, plan.preset, { confirmLong: plan.confirmLong, dials: plan.dials }),
       onState: (state: SchedulerState) => {
         if (state.kind === "in-flight" || state.kind === "pending") setStatus({ kind: "loading" });
         else if (state.kind === "waiting") setStatus({ kind: "waiting", seconds: state.seconds });
@@ -107,10 +113,10 @@ export function App() {
 
   // Keep the link in step with the plan, without adding history entries.
   useEffect(() => {
-    const hash = encodePlan(points, preset);
+    const hash = encodePlan(points, preset, dials);
     writtenHash.current = hash;
     window.history.replaceState(null, "", hash);
-  }, [points, preset]);
+  }, [points, preset, dials]);
 
   // A link pasted into this tab, or the back button, changes the fragment
   // without a reload: open the plan it names.
@@ -121,6 +127,7 @@ export function App() {
       setConfirmedKm(null);
       setPoints(plan.points);
       setPreset(plan.preset);
+      setDials(plan.dials);
     };
     window.addEventListener("hashchange", onHash);
     return () => window.removeEventListener("hashchange", onHash);
@@ -134,8 +141,8 @@ export function App() {
       setStatus({ kind: "idle" });
       return;
     }
-    scheduler.current?.request({ points, preset, confirmLong: sendsConfirmation(points, confirmedKm) });
-  }, [points, preset, confirmedKm]);
+    scheduler.current?.request({ points, preset, dials, confirmLong: sendsConfirmation(points, confirmedKm) });
+  }, [points, preset, dials, confirmedKm]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
   // sheet is hidden they would otherwise be invisible, so the sheet opens
@@ -201,7 +208,13 @@ export function App() {
     const { lng, lat } = map.getCenter();
     place([lng, lat]);
   };
-  const retry = () => scheduler.current?.request({ points, preset, confirmLong: sendsConfirmation(points, confirmedKm) });
+  const retry = () =>
+    scheduler.current?.request({ points, preset, dials, confirmLong: sendsConfirmation(points, confirmedKm) });
+  // A new ride type moves the sliders to where it starts them (RideTypePicker).
+  const choosePreset = (id: PresetId, next: Dials) => {
+    setPreset(id);
+    setDials(next);
+  };
   const confirmLong = () => {
     const asked = status.kind === "confirm" && status.error.spanKm !== undefined ? status.error.spanKm : spanKm(points);
     const upTo = confirmedUpTo(Math.max(asked, spanKm(points)));
@@ -210,7 +223,7 @@ export function App() {
     setNotice(null);
     // Sent here as well as by the effect, which does not run again when the
     // confirmed span is unchanged; the debounce folds the two into one.
-    scheduler.current?.request({ points, preset, confirmLong: true });
+    scheduler.current?.request({ points, preset, dials, confirmLong: true });
     // The question goes away; the focus goes to where the answer will be.
     routeHeadingRef.current?.focus();
   };
@@ -275,27 +288,7 @@ export function App() {
           ? announceRoute(route)
           : "";
 
-  const presetsSection = (
-    <fieldset key="presets" className="presets">
-      <legend>Ride type</legend>
-      {PRESETS.map((option) => (
-        <label key={option.id} className="preset">
-          <input
-            type="radio"
-            name="preset"
-            value={option.id}
-            checked={preset === option.id}
-            onChange={() => setPreset(option.id)}
-          />
-          <span>
-            <strong>{option.label}</strong>
-            <span className="hint">{option.description}</span>
-          </span>
-        </label>
-      ))}
-      <p className="hint">The ride types differ most on longer and rural routes; in town they often agree.</p>
-    </fieldset>
-  );
+  const presetsSection = <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} />;
   const pointsSection = (
     <section key="points" aria-labelledby="points-heading">
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
@@ -417,7 +410,12 @@ export function App() {
   );
 
   const sections: Record<SheetSection, ReactElement> = {
-    presets: presetsSection,
+    presets: (
+      <Fragment key="presets">
+        {presetsSection}
+        <DialsPanel preset={preset} dials={dials} onCommit={setDials} />
+      </Fragment>
+    ),
     points: pointsSection,
     route: routeSection,
   };
@@ -528,6 +526,7 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
         </div>
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
+      <FacilityBreakdown route={route} />
       {segments.length > 0 && (
         <figure className="stress">
           <figcaption>Traffic stress along the route</figcaption>

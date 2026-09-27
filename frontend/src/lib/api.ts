@@ -8,6 +8,8 @@
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
+import type { FacilityMetres } from "./facilityBar.ts";
+import { dialFields, type Carrying, type Dials, type When } from "./dials.ts";
 
 export interface RouteResponse {
   preset: PresetId;
@@ -18,6 +20,18 @@ export interface RouteResponse {
   climb_m: number;
   descent_m: number;
   stress_m: StressMetres;
+  /** Metres per facility class. Absent from an API older than the sliders. */
+  facility_m?: FacilityMetres;
+  /** The positions the route was planned with. Absent from an older API. */
+  dials?: { stress: number; hills: number; when: When; carrying: Carrying | null };
+  /** Present when the hills slider was past its detent. */
+  hills_seek?: {
+    candidates: number;
+    chosen: number;
+    extra_climb_m: number;
+    extra_distance_m: number;
+    limited: "two_points" | "long_ride" | null;
+  } | null;
   attribution: string[];
 }
 
@@ -222,7 +236,7 @@ export async function requestRoute(
   preset: PresetId,
   // No abort signal: the scheduler never abandons a request, because an abort
   // in the browser does not free the API's in-flight slot (routeScheduler.ts).
-  options: { fetchImpl?: FetchLike; confirmLong?: boolean } = {},
+  options: { fetchImpl?: FetchLike; confirmLong?: boolean; dials?: Dials } = {},
 ): Promise<RouteResult> {
   const fetchImpl: FetchLike = options.fetchImpl ?? ((url, init) => fetch(url, init));
   let response: Response;
@@ -232,7 +246,12 @@ export async function requestRoute(
       headers: { "Content-Type": "application/json", Accept: "application/json" },
       // confirm_long only when the rider said yes to a long plan (LONG-RIDE
       // contract); the API asks anonymous riders first with a 409.
-      body: JSON.stringify(options.confirmLong ? { points, preset, confirm_long: true } : { points, preset }),
+      body: JSON.stringify({
+        points,
+        preset,
+        ...(options.dials ? dialFields(options.dials) : {}),
+        ...(options.confirmLong ? { confirm_long: true } : {}),
+      }),
     });
   } catch {
     return {
