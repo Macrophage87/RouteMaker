@@ -81,6 +81,8 @@ const TOUCH_HIT_PX = 18;
 const MARKER_CLEAR_PX = 14;
 /** After a drag, the click the browser may still send is not a new point. */
 const CLICK_AFTER_DRAG_MS = 400;
+/** The buzz when a held finger picks the line up. */
+const PICK_UP_BUZZ_MS = 15;
 const MAX_BOUNDS_PAD = 0.4;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
@@ -226,7 +228,13 @@ export function MapView(props: Props) {
     const gesture = new LineGesture({
       onPickUp: () => {
         // A held finger: the map stops panning under it, and the handle and
-        // the preview show where the line was picked up.
+        // the preview show where the line was picked up, with a short buzz
+        // where the phone has one (Android; iOS Safari has no vibrate).
+        try {
+          navigator.vibrate?.(PICK_UP_BUZZ_MS);
+        } catch {
+          // A browser that refuses is no reason to stop the drag.
+        }
         panStopped = true;
         map.dragPan.disable();
         map.touchZoomRotate.disable();

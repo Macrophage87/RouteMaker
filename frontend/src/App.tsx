@@ -537,7 +537,7 @@ export function App() {
           )}
         </div>
       )}
-      {shown && <RouteSummary route={shown} points={routedPoints} />}
+      {shown && <RouteSummary route={shown} points={routedPoints} narrow={narrow} />}
     </section>
   );
 
@@ -647,7 +647,7 @@ export function App() {
   );
 }
 
-function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[] }) {
+function RouteSummary({ route, points, narrow }: { route: RouteResponse; points: LonLat[]; narrow: boolean }) {
   const segments = stressSegments(route.stress_m);
   const detourText = detourNotice(route, points);
   const pace = paceText(route);
@@ -677,6 +677,13 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
         </div>
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
+      {/* Riders often arrive by a shared link, straight into a route, and a
+          phone has no hover to show the handle: say that the line moves. */}
+      <p className="hint reshape">
+        {narrow
+          ? "To reshape the route, press and hold the line, then drag it."
+          : "To reshape the route, drag the line."}
+      </p>
       {segments.length > 0 && (
         <figure className="stress">
           <figcaption>Traffic stress along the route</figcaption>
