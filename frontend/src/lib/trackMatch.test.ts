@@ -206,6 +206,17 @@ test("refining picks the longest misses first, and adds nothing when nothing is 
   assert.deepEqual(refineVias(track, vias, route, 0), vias);
 });
 
+test("on an out-and-back retracing itself, a via on the way back keeps its place after the turnaround", () => {
+  const out = dense([at(0, 0), at(2000, 0)]);
+  const back = dense([at(2000, 0), at(1500, 0), at(1500, 100), at(500, 100), at(500, 0), at(0, 0)]);
+  const track = [...out, ...back.slice(1)];
+  const route = [...out, ...out.slice(0, -1).reverse()];
+  const vias = [track[0], at(1000, 0), at(2000, 0), at(250, 0), track.at(-1)!];
+  const refined = refineVias(track, vias, route, 1);
+  assert.equal(refined.length, 6);
+  assert.deepEqual(refined.filter((p) => vias.includes(p)), vias);
+});
+
 test("on an out-and-back, a via missed on the way back goes after the outbound vias", () => {
   const out = dense([at(0, 0), at(2000, 0)]);
   // Back along a street 100 m north for its middle kilometre.

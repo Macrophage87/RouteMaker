@@ -42,7 +42,8 @@ test("a route of at most 25 points inside the area is the plan, point for point"
 });
 
 test("a route type that is not a RouteMaker ride type sets no ride type", () => {
-  for (const type of [undefined, "cycling", `${PLAN_TYPE_PREFIX}rocket`, "mass-ride"]) {
+  // "garmin_gpx:" is as long as the prefix, so only the prefix itself is checked.
+  for (const type of [undefined, "cycling", `${PLAN_TYPE_PREFIX}rocket`, "mass-ride", "garmin_gpx:default"]) {
     const plan = planFromGpx(file({ routes: [{ type, points: [{ lon: -77, lat: 38.9 }, { lon: -77.01, lat: 38.91 }] }] }));
     assert.equal(plan.preset, null, String(type));
   }
@@ -194,4 +195,7 @@ test("fitting adds points where the route missed the track, up to 25 and three r
   const near = Array.from({ length: MAX_POINTS - 2 }, (_, i) => WIGGLE[i * 40]);
   assert.equal(nextRefinement(plan.reference, near, straight, 0)?.length, MAX_POINTS);
   assert.equal(nextRefinement(plan.reference, plan.points, plan.reference, 0), null);
+  // A route that follows 97% or more is left alone, even with a short miss to fill.
+  const nearly = WIGGLE.map((p, i): LonLat => (i >= 600 && i < 615 ? [p[0], p[1] + 80 / 111_195] : p));
+  assert.equal(nextRefinement(plan.reference, plan.points, nearly, 0), null);
 });

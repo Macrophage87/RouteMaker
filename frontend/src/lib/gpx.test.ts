@@ -5,6 +5,7 @@ import {
   COPYRIGHT_AUTHOR,
   GPX_NS_11,
   GpxError,
+  MAX_GPX_BYTES,
   MAX_GPX_POINTS,
   PLAN_TYPE_PREFIX,
   parseGpx,
@@ -117,6 +118,8 @@ test("what is not well-formed GPX 1.0 or 1.1 is refused", () => {
     [`<gpx xmlns="${GPX_NS_11}" version="2.0"></gpx>`, "not-gpx"],
     [`<gpx version="1.1"></gpx>`, "not-gpx"],
     [`<gpx xmlns="http://www.topografix.com/GPX/1/0" version="1.1"></gpx>`, "not-gpx"],
+    [`<gpx xmlns="http://www.topografix.com/GPX/1/0" version="2.0"></gpx>`, "not-gpx"],
+    [doc("<trk><name>a</trk></name>"), "malformed"],
     [doc("<trk><trkseg></trk>"), "malformed"],
     [doc("<trk>"), "malformed"],
     [doc("") + "<gpx/>", "malformed"],
@@ -145,6 +148,18 @@ test("more than the point cap is refused; the cap itself is read", () => {
     () => parseGpx(doc(points(MAX_GPX_POINTS) + '<wpt lat="38.9" lon="-77"/>')),
     (e: unknown) => e instanceof GpxError && e.code === "too-many-points",
   );
+});
+
+test("a text longer than 20 MB is refused before it is scanned", () => {
+  assert.throws(
+    () => parseGpx(doc("") + " ".repeat(MAX_GPX_BYTES)),
+    (e: unknown) => e instanceof GpxError && e.code === "too-big",
+  );
+});
+
+test("a > inside a quoted attribute value does not end the tag", () => {
+  const file = parseGpx(doc(`<trk><trkseg><trkpt lat="38.9" lon="-77" x="a>b"/><trkpt lon='-77.1' y='c>"d' lat='38.8'/></trkseg></trk>`));
+  assert.deepEqual(file.tracks[0].segments[0], [[-77, 38.9], [-77.1, 38.8]]);
 });
 
 test("a byte-order mark, comments and processing instructions are allowed", () => {
@@ -322,6 +337,13 @@ test("the export's attribution: OpenStreetMap in metadata/copyright with no year
 test("the export names the application, and carries no author, time or other identifying element", () => {
   const xml = writeGpx(EXPORT);
   assert.match(xml, /<gpx [^>]*creator="RouteMaker"/);
+  assert.deepEqual(Object.keys(tree(xml).attributes).sort(), [
+    "creator",
+    "version",
+    "xmlns",
+    "xmlns:xsi",
+    "xsi:schemaLocation",
+  ]);
   for (const element of ["author", "time", "email", "extensions", "src"]) {
     assert.doesNotMatch(xml, new RegExp(`<${element}\\b`), element);
   }
@@ -348,8 +370,8 @@ test("the track is the route line and the route points are the plan's, both at f
 });
 
 test("text is escaped, and characters XML cannot carry are dropped", () => {
-  const xml = writeGpx({ ...EXPORT, name: 'A <b> & "c"\u0001', attribution: ["x < y"] });
+  const xml = writeGpx({ ...EXPORT, name: 'A <b> & "c" &amp;\u0001', attribution: ["x < y"] });
   const file = parseGpx(xml);
-  assert.equal(file.name, 'A <b> & "c"');
+  assert.equal(file.name, 'A <b> & "c" &amp;');
   assert.match(xml, /Route data: x &lt; y\./);
 });

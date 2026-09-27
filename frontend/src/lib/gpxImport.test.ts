@@ -31,11 +31,14 @@ test("a file over 20 MB is refused before it is read", async () => {
   const outcome = await readGpx(huge);
   assert.equal(outcome.ok, false);
   assert.equal(read, false);
+  let made = 0;
   const viaWorker = await importGpx(huge, () => {
+    made += 1;
     throw new Error("no worker should be made");
   });
   assert.equal(viaWorker.ok, false);
   assert.equal(read, false);
+  assert.equal(made, 0);
 });
 
 function fakeWorker(answer: (file: Blob) => Promise<ImportOutcome> | "error") {
