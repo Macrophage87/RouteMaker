@@ -394,7 +394,9 @@ function M.remap_way(tags, derived)
   -- nothing about bicycle access, and Valhalla charges
   -- `destination_only_penalty` (core.presets.AVOID_ENTRY_PENALTY_S) each time
   -- a route enters such an edge from an ordinary one - cost only, no time, on
-  -- every preset, and the edge stays routable. The graph serves bicycles
+  -- every preset, and the edge stays routable. A way OSM already tags
+  -- `bicycle=use_sidepath` (the Frederick Douglass bridge roadway) is open to a
+  -- bicycle and marked too. The graph serves bicycles
   -- only, so no motor-vehicle route ever reads the claim; it is written only
   -- where nothing about motor vehicles is tagged already, since overwriting a
   -- real `motor_vehicle` value would lose it.
@@ -404,7 +406,7 @@ function M.remap_way(tags, derived)
     and (tags.motor_vehicle == nil or M.PERMISSIVE_ACCESS[tags.motor_vehicle])
     and tags.motorcar == nil
     and out.bicycle ~= "no"
-    and M.may_penalise(tags, tags.bicycle)
+    and (tags.bicycle == M.ORDINARY_RIDE_PENALTY_BICYCLE or M.may_penalise(tags, tags.bicycle))
   then
     out.motor_vehicle = M.AVOID_MOTOR_VEHICLE
   end

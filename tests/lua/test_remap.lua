@@ -778,6 +778,9 @@ check("nor where a bicycle may not ride",
   M.remap_way({ highway = "primary", bicycle = "no" }, { stress_tier = 5 }).motor_vehicle == nil)
 check("nor where a bridge legality of false bars the roadway",
   M.remap_way({ highway = "primary" }, { stress_tier = 5, bridge_bicycle_legal = false }).motor_vehicle == nil)
+check("a roadway OSM already tags use_sidepath is marked (the Douglass bridge)",
+  M.remap_way({ highway = "primary", bicycle = "use_sidepath", foot = "no" }, { stress_tier = 5 })
+    .motor_vehicle == "destination")
 check("a permissive motor_vehicle value is replaced",
   M.remap_way({ highway = "primary", motor_vehicle = "yes" }, { stress_tier = 5 }).motor_vehicle
     == "destination")
