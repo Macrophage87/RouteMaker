@@ -240,7 +240,7 @@ the order a request meets it:
 | Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
-| Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers; a trace cut short leaves its legs' stress `unknown` |
+| Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers (on a long ride with `"code": "long_ride_timed_out"`, which the planner shows at once instead of resending); a trace cut short leaves its legs' stress `unknown` |
 
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
@@ -277,7 +277,11 @@ for a long ride - runs from when it reaches the api, so the count, the slots,
 the router calls, the stress join and the answer are all inside it. The router
 calls get all of it but the last 3 s (`ANSWER_RESERVE_S` in
 `core/routing.py`), and one call at most 35 s (45 s on a long ride). A request
-whose `/route` has not answered by then is 503 with `Retry-After: 30`; one
+whose `/route` has not answered by then is 503 with `Retry-After: 30`; on a
+long ride that 503 also carries `"code": "long_ride_timed_out"`, and the
+planner shows it at once rather than resending it after the Retry-After as it
+does other 503s, since the same ride would most likely hold the one long slot
+for its whole budget again ("Try again" still waits the 30 s out). One
 whose traces run out of time is answered with the rest of its stress
 `unknown`. gunicorn kills a worker whose request passes `GUNICORN_TIMEOUT`
 (`docker/api-entrypoint.sh`, default 60 s) and Caddy then answers an empty,

@@ -1057,7 +1057,10 @@ What the map shows and credits:
   (aborting a fetch frees no slot on the server), only the latest plan is
   kept, and a 429 or 503 with `Retry-After` is waited out for that long before
   the latest plan is sent - at most three times - rather than retried on a
-  timer.
+  timer. The one 503 not waited out is a long ride's that ran out of its
+  time budget (`"code": "long_ride_timed_out"`): it is shown at once, since
+  resent it would most likely hold the one long slot for its whole budget
+  again, and "Try again" waits its Retry-After out before sending.
 - A long ride: an anonymous plan whose points span more than 150 km in straight
   lines is answered 409 `confirm_long` by the API, and the app asks "This is a
   long ride (about N km...). Plan it?" before sending it again with

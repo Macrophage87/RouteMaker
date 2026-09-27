@@ -3,7 +3,14 @@
 // server's own `error` text is shown where it says something the status does not.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { RETRY_AFTER_CAP_S, describeError, parseRetryAfter, requestRoute, type ErrorKind } from "./api.ts";
+import {
+  LONG_RIDE_TIMED_OUT,
+  RETRY_AFTER_CAP_S,
+  describeError,
+  parseRetryAfter,
+  requestRoute,
+  type ErrorKind,
+} from "./api.ts";
 
 test("each contract status maps to its own kind", () => {
   const cases: Array<[number, unknown, ErrorKind]> = [
@@ -317,5 +324,34 @@ test("too long shows the API's own sentence, whatever ceiling it names", () => {
     assert.equal(described.message.length, capitalised.length + 1, described.message);
     assert.match(described.message, /[.!?]$/);
     if (/[.!?]$/.test(core || said)) assert.equal(described.message.at(-1), (core || said).at(-1));
+  }
+});
+
+test("a long ride that ran out of time is marked not to be resent; other 503s are not", async () => {
+  const said = "Planning this long ride ran out of time. Try again in 30 seconds, or split it into shorter parts.";
+  // The code is the API's (src/core/api.py LONG_RIDE_TIMED_OUT); both ends must spell it alike.
+  assert.equal(LONG_RIDE_TIMED_OUT, "long_ride_timed_out");
+  const timedOut = describeError(503, { error: said, code: LONG_RIDE_TIMED_OUT }, "30");
+  assert.equal(timedOut.kind, "timed-out");
+  assert.equal(timedOut.noAutoResend, true);
+  assert.equal(timedOut.retryAfterS, 30, "Try again still waits the Retry-After out");
+  assert.equal(timedOut.message, said);
+  for (const other of [
+    describeError(503, { error: "Planning this route took too long; try again shortly." }, "30"),
+    describeError(503, { error: "A long ride is already being planned.", code: "something-else" }, "5"),
+    describeError(429, { error: "x", code: LONG_RIDE_TIMED_OUT }, "5"),
+    describeError(504, { error: "x", code: LONG_RIDE_TIMED_OUT }, "5"),
+    describeError(500, { error: "x", code: LONG_RIDE_TIMED_OUT }, null),
+  ]) {
+    assert.equal(other.noAutoResend, undefined, other.message);
+  }
+  // Through requestRoute on a confirmed plan, the mark survives.
+  const { impl } = fakeFetch(503, JSON.stringify({ error: said, code: LONG_RIDE_TIMED_OUT }), { "Retry-After": "30" });
+  const result = await requestRoute([[0, 0], [1, 1]], "default", { fetchImpl: impl, confirmLong: true });
+  assert.ok(!result.ok);
+  if (!result.ok) {
+    assert.equal(result.error.noAutoResend, true);
+    assert.equal(result.error.message, said);
+    assert.equal(result.error.title, timedOut.title);
   }
 });

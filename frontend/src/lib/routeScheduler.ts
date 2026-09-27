@@ -18,7 +18,9 @@
  *   not on a timer of our own, never less than a second and never more than
  *   RETRY_AFTER_CAP_S - and the latest plan is sent then, up to MAX_WAITS
  *   times for each plan; a refusal without Retry-After, or with it on any
- *   other status, is shown as it is;
+ *   other status, is shown as it is, and so is a long ride that ran out of
+ *   its time budget (`noAutoResend`): resent, it would most likely hold the
+ *   one long slot for its whole budget again;
  * - once shown, a refusal's Retry-After still holds: "Try again", or any new
  *   plan, waits until it has passed instead of being refused once more;
  * - a wait the rider has been told about counts down, a second at a time.
@@ -172,7 +174,7 @@ export class RouteScheduler<P> {
       this.state({ kind: "idle" });
       return;
     }
-    if (retryAfterS !== undefined && this.waitsForLatest < this.maxWaits) {
+    if (retryAfterS !== undefined && !error?.noAutoResend && this.waitsForLatest < this.maxWaits) {
       // Waited out: pump() says so, and the hold sends the plan when it ends.
       this.waitsForLatest += 1;
       this.pump();

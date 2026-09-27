@@ -21,7 +21,8 @@ worth routing), 409 with `"code": "confirm_long"` when a signed-out long ride
 has not been confirmed, 422 when the router finds no route, 429 with
 Retry-After when the client's budget is spent or its routes are in flight, 502 when
 the router does not answer, 503 with Retry-After when the deployment's routing
-slots are all busy or the request's time budget ran out, and 500 for anything
+slots are all busy or the request's time budget ran out (a long ride's with
+`"code": "long_ride_timed_out"`, not to be resent unasked), and 500 for anything
 else - never a traceback, whatever DEBUG says.
 
 The checks run in this order, outermost first: the content type and declared
@@ -102,6 +103,13 @@ ROUTER_TOO_LONG = (
 # The Retry-After on a 503 for a request whose time budget ran out.
 DEADLINE_RETRY_S = 30
 
+# The `code` on a long ride's 503 when its own budget ran out. A client that
+# resends a 503 after its Retry-After should not resend this one by itself:
+# the same ride may well take its whole budget again, holding the one long
+# slot every time (front-end re-check, 2026-09-27). It is still a 503 with
+# Retry-After, so a rider who asks again waits that out first.
+LONG_RIDE_TIMED_OUT = "long_ride_timed_out"
+
 api = NinjaAPI(
     title="RouteMaker",
     version="1",
@@ -168,6 +176,17 @@ class ConfirmLongOut(Schema):
     error: str
     code: Literal["confirm_long"]
     span_km: int
+
+
+class BusyOut(Schema):
+    error: str
+    code: Literal["long_ride_timed_out"] | None = Field(
+        default=None,
+        description=(
+            "Present only when a long ride ran out of its time budget: show it, and do not"
+            " resend it without the rider asking."
+        ),
+    )
 
 
 class LineString(Schema):
@@ -305,7 +324,7 @@ def json_body_only(view):
         429: ErrorOut,
         500: ErrorOut,
         502: ErrorOut,
-        503: ErrorOut,
+        503: BusyOut,
     },
     summary="Plan a route through two to twenty-five points on a preset",
     by_alias=True,
@@ -365,5 +384,20 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
     except routing.RouterUnavailable:
         return Status(502, {"error": "The router is not answering; try again shortly."})
     except routing.DeadlineExceeded:
-        response["Retry-After"] = str(DEADLINE_RETRY_S)
-        return Status(503, {"error": "Planning this route took too long; try again shortly."})
+        # A JsonResponse rather than Status, so an ordinary 503 stays exactly
+        # {"error"} instead of carrying "code": null.
+        if long_ride:
+            refusal = JsonResponse(
+                {
+                    "error": (
+                        "Planning this long ride ran out of time. Try again in"
+                        f" {DEADLINE_RETRY_S} seconds, or split it into shorter parts."
+                    ),
+                    "code": LONG_RIDE_TIMED_OUT,
+                },
+                status=503,
+            )
+        else:
+            refusal = _error(503, "Planning this route took too long; try again shortly.")
+        refusal["Retry-After"] = str(DEADLINE_RETRY_S)
+        return refusal

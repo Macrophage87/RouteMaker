@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEBOUNCE_MS, MAX_WAITS, RouteScheduler, type SchedulerState, type Timers } from "./routeScheduler.ts";
-import { RETRY_AFTER_CAP_S, describeError, type RouteError, type RouteResponse, type RouteResult } from "./api.ts";
+import {
+  LONG_RIDE_TIMED_OUT,
+  RETRY_AFTER_CAP_S,
+  describeError,
+  type RouteError,
+  type RouteResponse,
+  type RouteResult,
+} from "./api.ts";
 
 /** A clock the test moves by hand. */
 class FakeTimers implements Timers {
@@ -500,4 +507,46 @@ test("a change while a request is out leaves the state in flight", async () => {
   ctx.scheduler.request(2);
   assert.equal(ctx.states.length, count, JSON.stringify(ctx.states.slice(count)));
   assert.deepEqual(ctx.states.at(-1), { kind: "in-flight" });
+});
+
+function timedOutLongRide(): RouteResult {
+  return {
+    ok: false,
+    error: describeError(503, { error: "Planning this long ride ran out of time.", code: LONG_RIDE_TIMED_OUT }, "30"),
+  };
+}
+
+test("a long ride that ran out of its time budget is shown at once and never resent by itself", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(timedOutLongRide());
+  await flush();
+  assert.equal(ctx.shown.length, 1, "not held back to be resent");
+  assert.equal(ctx.shown[0].result.ok, false);
+  assert.deepEqual(ctx.states.at(-1), { kind: "idle" });
+  await ctx.timers.advance(10 * 60_000);
+  assert.equal(ctx.api.calls.length, 1, "resent with nobody asking");
+});
+
+test("Try again after a long ride ran out of time waits its Retry-After out, then sends", async () => {
+  const ctx = setup();
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  ctx.api.calls[0].answer(timedOutLongRide());
+  await flush();
+  await ctx.timers.advance(5000);
+  ctx.scheduler.request(1); // Try again
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, 1);
+  assert.equal(ctx.states.at(-1)?.kind, "waiting");
+  await ctx.timers.advance(25_000 - DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, 2);
+  // Asked again after the hold has passed, it goes after the debounce alone.
+  ctx.api.calls[1].answer(timedOutLongRide());
+  await flush();
+  await ctx.timers.advance(31_000);
+  ctx.scheduler.request(1);
+  await ctx.timers.advance(DEBOUNCE_MS);
+  assert.equal(ctx.api.calls.length, 3);
 });

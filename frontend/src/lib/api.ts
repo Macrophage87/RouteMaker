@@ -40,7 +40,17 @@ export interface RouteError {
   retryAfterS?: number;
   /** On "confirm-long": the straight-line span the API measured, in km. */
   spanKm?: number;
+  /**
+   * Shown at once, never resent by the scheduler after its Retry-After: a
+   * long ride that used its whole time budget (the API's code
+   * "long_ride_timed_out") would most likely use it again, holding the one
+   * long slot each time. "Try again" still waits the Retry-After out.
+   */
+  noAutoResend?: true;
 }
+
+/** The API's code on a long ride's 503 when its time budget ran out. */
+export const LONG_RIDE_TIMED_OUT = "long_ride_timed_out";
 
 export type RouteResult = { ok: true; route: RouteResponse } | { ok: false; error: RouteError };
 
@@ -166,6 +176,15 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       message: "The routing engine is not answering right now. Try again shortly.",
     };
   }
+  if (status === 503 && code === LONG_RIDE_TIMED_OUT) {
+    return {
+      ...base,
+      kind: "timed-out",
+      title: "Long ride not planned",
+      message: said ?? `Planning this long ride ran out of time. ${wait(retryAfterS, "Try again shortly.")}`,
+      noAutoResend: true,
+    };
+  }
   if (status === 503 || status === 504) {
     return {
       ...base,
@@ -239,7 +258,8 @@ export async function requestRoute(
   // being planned (one per client, one per deployment: LONG-RIDE contract).
   // The API's sentence says so; "too many requests" would not.
   const said = serverSentence(body);
-  if (options.confirmLong && (status === 429 || status === 503) && said) {
+  // A long ride that ran out of time already has its own title and words.
+  if (options.confirmLong && (status === 429 || status === 503) && said && !error.noAutoResend) {
     return { ok: false, error: { ...error, title: "Planner busy", message: said } };
   }
   return { ok: false, error };

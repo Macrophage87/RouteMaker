@@ -1155,6 +1155,49 @@ class TestLongRideTime:
         if status == 503:
             assert int(response["Retry-After"]) >= 1
 
+    @pytest.mark.parametrize("long_ride", [False, True])
+    def test_only_a_long_ride_that_ran_out_of_time_says_so_in_its_code(
+        self, long_ride, client, segments, router, clock
+    ) -> None:
+        """Front-end re-check note: the planner resent a 503 with Retry-After
+        up to three times, so one long ride past its budget held the long slot
+        for minutes. A long ride's 503 carries its own code, which the planner
+        shows at once instead of resending; an ordinary one is unchanged."""
+        router(timed(clock, long_router(), {"route": 1000.0}))
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(routing, "ROUTER_TIMEOUT_S", routing.PLAN_BUDGET_S + 10)
+            patch.setattr(routing, "LONG_ROUTER_TIMEOUT_S", routing.LONG_PLAN_BUDGET_S + 10)
+            response = post(client, long_body(160, confirm_long=True) if long_ride else good_body())
+        assert response.status_code == 503
+        assert int(response["Retry-After"]) >= 1
+        assert response.json()["error"]
+        if long_ride:
+            assert set(response.json()) == {"error", "code"}
+            assert response.json()["code"] == "long_ride_timed_out"
+        else:
+            assert set(response.json()) == {"error"}
+
+    def test_a_long_ride_refused_for_a_busy_slot_has_no_timed_out_code(
+        self, client, segments, router, monkeypatch
+    ) -> None:
+        """The long slot being taken is a wait worth resending after; only a
+        budget run out is not."""
+        from core import ratelimit
+
+        router(long_router())
+        real = ratelimit.acquire
+
+        def long_slot_taken(request, limit):
+            if limit is ratelimit.LONG_ROUTING_IN_FLIGHT:
+                return [], ratelimit._busy(503, 5, limit.deployment_busy)
+            return real(request, limit)
+
+        monkeypatch.setattr(ratelimit, "acquire", long_slot_taken)
+        response = post(client, long_body(160, confirm_long=True))
+        assert response.status_code == 503
+        assert response.json()["error"] == ratelimit.LONG_ROUTING_IN_FLIGHT.deployment_busy
+        assert "code" not in response.json()
+
     def test_a_late_long_call_gets_what_is_left_of_the_long_budget(
         self, client, segments, router, clock
     ) -> None:
