@@ -485,6 +485,14 @@ button.secondary {
   display: none;
 }
 
+/* Undo on the map, on a phone (the panel's is on a desktop). */
+.map-undo {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  box-shadow: var(--shadow);
+}
 
 .maplibregl-ctrl-attrib {
   font-size: 11px;
