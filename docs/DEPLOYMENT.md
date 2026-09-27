@@ -379,8 +379,9 @@ copies from the image, and refuses to run when that copy differs from the
 image's `fixtures/crossings/potomac-anacostia.json`. docs/OPERATIONS.md, "A
 deploy that changes the crossings fixture or loads access overrides", has the
 reinstall command, the order to deploy, reinstall and load access overrides in
-(all before the next Tuesday rebuild), and how to undo a loaded override. On a fresh host the overrides are loaded once, as step 7 of "First rebuild on
-a fresh host" there, or the first graph is built without them.
+(all before the next Tuesday rebuild), and how to undo a loaded override. On a
+fresh host the overrides are loaded once, as step 7 of "First rebuild on a
+fresh host" there, or the first graph is built without them.
 
 ### The two images with no source
 

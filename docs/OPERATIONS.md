@@ -727,8 +727,10 @@ the first host to run it is the first test of it.
    dry run first, then `--confirm`, from the checkout:
 
    ```sh
-   docker compose exec -T api python manage.py load_access_overrides -        --actor <discord user id> < fixtures/overrides/<file>.json
-   docker compose exec -T api python manage.py load_access_overrides -        --actor <discord user id> --confirm < fixtures/overrides/<file>.json
+   docker compose exec -T api python manage.py load_access_overrides - \
+       --actor <discord user id> < fixtures/overrides/<file>.json
+   docker compose exec -T api python manage.py load_access_overrides - \
+       --actor <discord user id> --confirm < fixtures/overrides/<file>.json
    ```
 
    Skipping this still builds a graph, without the owner's access decisions:

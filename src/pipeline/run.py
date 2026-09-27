@@ -347,7 +347,7 @@ class ReferenceData:
         penalty_ids, unmatched_penalty = variants.resolve_ordinary_ride_penalty_ids(
             crossing_rows, ways
         )
-        # One warning over the union of the three resolvers, because a crossing the
+        # One warning over the union of the four resolvers, because a crossing the
         # extract does not carry is one fact about one bridge however many of
         # the fixture's columns it silences. It covers a row pinned to an
         # `osm_way_id` the extract no longer carries as well as a name that

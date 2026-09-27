@@ -26,7 +26,8 @@ row on the same way that disagrees.
 checks that the id belongs to an active instance admin, and nothing checks that
 the person at the shell is that admin. Every audit entry it writes says so in
 its `detail`. On a fresh host the admin's account exists only after their first
-Discord sign-in, so load overrides after that.
+Discord sign-in, so load overrides after that: step 7 of "First rebuild on a
+fresh host" in docs/OPERATIONS.md is where a fresh host does it.
 
 The api image carries `src/` and not `fixtures/`, so the file goes in on
 standard input:
