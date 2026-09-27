@@ -13,6 +13,9 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { PlaceSearch } from "./PlaceSearch.tsx";
+import { usePlaceNames } from "./usePlaceNames.ts";
+import { applyPlace, coordinatesText, pointRole, type Place } from "./lib/geocode.ts";
 
 interface Plan {
   points: LonLat[];
@@ -78,6 +81,7 @@ export function App() {
   const pointsHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
+  const { gate: geoGate, namer } = usePlaceNames(points);
 
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
@@ -186,6 +190,24 @@ export function App() {
     setNotice(null);
     setPoints((current) => current.map((p, i) => (i === index ? point : p)));
   }, []);
+
+  // A place picked from search: the start, the destination or a via
+  // (geocode.ts, applyPlace), named as it was found, and the map goes there.
+  const pickPlace = (found: Place, asVia: boolean) => {
+    const point: LonLat = [found.lon, found.lat];
+    if (!insideCoverage(point)) return;
+    namer.remember(point, found.name, found.label);
+    setNotice(null);
+    setPoints((current) => applyPlace(current, point, asVia));
+    const map = mapRef.current;
+    map?.flyTo({ center: point, zoom: Math.max(map.getZoom(), 14) });
+  };
+  const searchBias = (): LonLat | undefined => {
+    const centre = mapRef.current?.getCenter();
+    if (!centre) return undefined;
+    const point: LonLat = [centre.lng, centre.lat];
+    return insideCoverage(point) ? point : undefined;
+  };
 
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
@@ -301,23 +323,36 @@ export function App() {
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
         Points
       </h2>
+      <PlaceSearch
+        pointCount={points.length}
+        full={points.length >= MAX_POINTS}
+        gate={geoGate}
+        bias={searchBias}
+        onPick={pickPlace}
+      />
       {points.length === 0 ? (
         <p className="hint">
-          Click the map to set a start, then an end. Later clicks add a via point on the
+          Search for a place, or click the map to set a start, then an end. Later clicks add a via point on the
           nearest leg. Drag any marker to move it. From the keyboard, move the map with the
           arrow keys and use "Add point at map centre".
         </p>
       ) : (
         <ol className="points">
           {points.map((point, index) => {
-            const name =
-              index === 0 ? "Start" : index === points.length - 1 && points.length > 1 ? "End" : `Via ${index}`;
+            const name = pointRole(index, points.length);
+            const place = namer.name(point);
+            const coords = coordinatesText(point);
             return (
               <li key={index}>
                 <span className="point-name">{name}</span>
-                <span className="coords">
-                  {point[1].toFixed(4)}, {point[0].toFixed(4)}
-                </span>
+                {place ? (
+                  <span className="point-place" title={`${place.label} (${coords})`}>
+                    <span className="place-name">{place.name}</span>
+                    <span className="coords">{coords}</span>
+                  </span>
+                ) : (
+                  <span className="coords">{coords}</span>
+                )}
                 <button
                   type="button"
                   className="link"
