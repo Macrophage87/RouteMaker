@@ -77,7 +77,15 @@ export function stressSource(origin: string) {
   return {
     type: "vector" as const,
     tiles: [`${origin}/tiles/stress/{z}/{x}/{y}.pbf`],
-    minzoom: 10,
-    maxzoom: 16,
+    minzoom: STRESS_ZOOMS.min,
+    maxzoom: STRESS_ZOOMS.max,
   };
 }
+
+/**
+ * The zooms the stress tiles are drawn at, and where each level of detail
+ * starts (core/stress_tiles.py, whose levels tests/test_stress_tiles.py holds
+ * equal to these): below `min` nothing is drawn, from `min` the busy roads and
+ * the trails, from `streets` every street, from `full` footways too.
+ */
+export const STRESS_ZOOMS = { min: 10, streets: 12, full: 14, max: 16 } as const;

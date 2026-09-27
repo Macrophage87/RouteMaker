@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAP_ATTRIBUTION, MAP_CREDITS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { MAP_ATTRIBUTION, MAP_CREDITS, STRESS_ZOOMS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
 
 const ORIGIN = "https://routes.example.org";
 
@@ -66,4 +66,12 @@ test("the credits read as one line with OpenStreetMap first", () => {
 
 test("the licence notices are linked from the credits", () => {
   assert.match(MAP_ATTRIBUTION, /href="\/licenses\.txt"/);
+});
+
+test("the stress source starts and ends where the zoom levels say", () => {
+  const source = stressSource("https://example.test");
+  assert.equal(source.minzoom, STRESS_ZOOMS.min);
+  assert.equal(source.maxzoom, STRESS_ZOOMS.max);
+  assert.ok(STRESS_ZOOMS.min < STRESS_ZOOMS.streets && STRESS_ZOOMS.streets < STRESS_ZOOMS.full);
+  assert.ok(STRESS_ZOOMS.full <= STRESS_ZOOMS.max);
 });

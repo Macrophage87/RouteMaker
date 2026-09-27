@@ -10,8 +10,9 @@ import {
   fetchCoverage,
   markerDeps,
   setStressVisibility,
-  tilesCarryFacilities,
+  facilitiesOnMap,
   watchForFacilities,
+  watchZoom,
   type Coverage,
   type FacilityMap,
   type OverlayMap,
@@ -210,7 +211,9 @@ test("the coverage is read from the API, and anything else is no mask", async ()
   );
 });
 
-function facilityMap(withSource: boolean, featuresByCall: unknown[][]) {
+type Feature = { properties?: Record<string, unknown> | null };
+
+function facilityMap(withSource: boolean, featuresByCall: Feature[][]) {
   const listeners = new Set<() => void>();
   const queries: Array<{ id: string; options: unknown }> = [];
   const map: FacilityMap = {
@@ -225,18 +228,28 @@ function facilityMap(withSource: boolean, featuresByCall: unknown[][]) {
   return { map, listeners, queries };
 }
 
-test("the facility legend waits for facility data on the map, and stops looking once it has seen some", () => {
-  const { map, listeners, queries } = facilityMap(true, [[], [{}]]);
-  let found = 0;
-  watchForFacilities(map, () => {
-    found += 1;
-  });
+const kind = (facility: unknown): Feature => ({ properties: { facility } });
+
+test("the facility legend lists the kinds the map has drawn, as it draws them, and stops once it has all", () => {
+  const { map, listeners, queries } = facilityMap(true, [
+    [],
+    [kind("path"), kind("none"), kind("path")],
+    [kind("path")],
+    [kind("lane"), kind("protected")],
+  ]);
+  const reports: string[][] = [];
+  watchForFacilities(map, (kinds) => reports.push([...kinds].sort()));
+  const settle = () => [...listeners][0]();
+  settle();
+  assert.deepEqual(reports, [], "no facility data yet");
+  settle();
+  assert.deepEqual(reports, [["path"]], "'none' is not a kind the legend shows");
+  settle();
+  assert.equal(reports.length, 1, "nothing new, nothing reported");
   assert.equal(listeners.size, 1);
-  [...listeners][0]();
-  assert.equal(found, 0, "no facility data yet");
-  [...listeners][0]();
-  assert.equal(found, 1);
-  assert.equal(listeners.size, 0, "the watch ends");
+  settle();
+  assert.deepEqual(reports.at(-1), ["lane", "path", "protected"]);
+  assert.equal(listeners.size, 0, "every kind seen: the watch ends");
   assert.deepEqual(queries[0], {
     id: STRESS_SOURCE_ID,
     options: { sourceLayer: "stress", filter: ["has", "facility"] },
@@ -244,7 +257,18 @@ test("the facility legend waits for facility data on the map, and stops looking 
 });
 
 test("before the stress overlay exists there is nothing to ask", () => {
-  const { map, queries } = facilityMap(false, [[{}]]);
-  assert.equal(tilesCarryFacilities(map), false);
+  const { map, queries } = facilityMap(false, [[kind("path")]]);
+  assert.equal(facilitiesOnMap(map).size, 0);
   assert.equal(queries.length, 0);
+});
+
+test("the zoom is reported at once and after every zoom", () => {
+  let z = 8.4;
+  const listeners: Array<() => void> = [];
+  const seen: number[] = [];
+  watchZoom({ getZoom: () => z, on: (_event, listener) => listeners.push(listener) }, (value) => seen.push(value));
+  assert.deepEqual(seen, [8.4]);
+  z = 11.2;
+  for (const listener of listeners) listener();
+  assert.deepEqual(seen, [8.4, 11.2]);
 });

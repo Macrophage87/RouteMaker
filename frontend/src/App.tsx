@@ -13,7 +13,8 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
-import { addCoverageMask, fetchCoverage, watchForFacilities } from "./lib/mapGlue.ts";
+import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
 
 interface Plan {
   points: LonLat[];
@@ -64,7 +65,8 @@ export function App() {
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
-  const [facilitiesShown, setFacilitiesShown] = useState(false);
+  const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
+  const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -445,7 +447,8 @@ export function App() {
           void fetchCoverage(window.location.origin).then((coverage) => {
             if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
           });
-          watchForFacilities(map, () => setFacilitiesShown(true));
+          watchForFacilities(map, setFacilitiesShown);
+          watchZoom(map, setZoom);
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
       />
@@ -481,7 +484,7 @@ export function App() {
                   />
                   Show traffic stress on the map
                 </label>
-                <StressLegend facilities={facilitiesShown} />
+                <StressLegend facilities={facilitiesShown} zoom={zoom} />
               </>
             )}
             {stress === "checking" && <p className="hint">Checking the stress map…</p>}
@@ -570,7 +573,7 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
   );
 }
 
-function StressLegend({ facilities }: { facilities: boolean }) {
+function StressLegend({ facilities, zoom }: { facilities: ReadonlySet<string>; zoom: number | null }) {
   return (
     <>
       <ul className="legend" aria-label="Traffic stress legend">
@@ -596,15 +599,22 @@ function StressLegend({ facilities }: { facilities: boolean }) {
       {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
           below street zoom only LTS 3-4 roads and the trail network, and
           footways only from zoom 14. */}
+      {zoom !== null && zoom < STRESS_ZOOMS.min && (
+        <p className="notice" role="status">
+          Zoom in to see traffic stress.
+        </p>
+      )}
       <p className="hint">
-        Zoomed out, only LTS 3 and 4 roads and the trails (cycleways and paths) are drawn. Quiet streets appear as you
-        zoom in, and footways and sidewalks closer in still. Streets with no stress rating are not drawn.
+        At zoom {STRESS_ZOOMS.min} and {STRESS_ZOOMS.streets - 1} only LTS 3 and 4 roads and the trails are drawn;
+        quiet streets appear from zoom {STRESS_ZOOMS.streets}, footways and sidewalks from zoom {STRESS_ZOOMS.full}, and
+        further out than zoom {STRESS_ZOOMS.min} nothing is drawn. Streets with no stress rating are not drawn.
+        {zoom !== null && ` The map is at zoom ${Math.floor(zoom)}.`}
       </p>
-      {facilities && (
+      {facilities.size > 0 && (
         <>
           <p className="hint">Bike facilities are violet edges on either side of the stress line:</p>
           <ul className="legend" aria-label="Bike facility legend">
-            {FACILITIES.map((facility) => {
+            {FACILITIES.filter((facility) => facilities.has(facility.facility)).map((facility) => {
               const rails = facilityWidth(facility, STRESS_TIERS[0].width);
               return (
                 <li key={facility.facility}>

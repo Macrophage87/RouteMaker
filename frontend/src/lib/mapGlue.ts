@@ -2,7 +2,7 @@
  * What MapView does to the map, as functions of a small map interface, so a
  * test can run them against a stand-in (MapView itself needs WebGL).
  */
-import { STRESS_TILE_LAYER, stressOverlayLayers } from "../stressStyle.js";
+import { FACILITIES, STRESS_TILE_LAYER, stressOverlayLayers } from "../stressStyle.js";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 
 /** The parts of a MapLibre map these use. */
@@ -155,31 +155,58 @@ export async function fetchCoverage(origin: string, get: typeof fetch = fetch): 
 /** The parts of a MapLibre map the facility check uses. */
 export interface FacilityMap {
   getSource(id: string): unknown;
-  querySourceFeatures(id: string, options: { sourceLayer: string; filter: ["has", string] }): unknown[];
+  querySourceFeatures(
+    id: string,
+    options: { sourceLayer: string; filter: ["has", string] },
+  ): Array<{ properties?: Record<string, unknown> | null }>;
   on(event: "idle", listener: () => void): unknown;
   off(event: "idle", listener: () => void): unknown;
 }
 
 /**
- * Whether the stress tiles on screen carry a bike-facility class. The tiles
- * carry one only from a segment table that has the column
- * (core/stress_tiles.py), so the legend offers the facility entries only once
- * the map has drawn some.
+ * The bike-facility kinds the stress tiles on screen carry, among the ones the
+ * legend knows. Until the routing lane's column exists the tiles carry only
+ * "path", derived from the trail network (core/stress_tiles.py), so the legend
+ * lists only the kinds the map has actually drawn.
  */
-export function tilesCarryFacilities(map: FacilityMap): boolean {
-  if (!map.getSource(STRESS_SOURCE_ID)) return false;
-  return (
-    map.querySourceFeatures(STRESS_SOURCE_ID, { sourceLayer: STRESS_TILE_LAYER, filter: ["has", "facility"] })
-      .length > 0
-  );
+export function facilitiesOnMap(map: FacilityMap): Set<string> {
+  const kinds = new Set<string>();
+  if (!map.getSource(STRESS_SOURCE_ID)) return kinds;
+  const known = new Set(FACILITIES.map((f: { facility: string }) => f.facility));
+  for (const feature of map.querySourceFeatures(STRESS_SOURCE_ID, {
+    sourceLayer: STRESS_TILE_LAYER,
+    filter: ["has", "facility"],
+  })) {
+    const kind = feature.properties?.facility;
+    if (typeof kind === "string" && known.has(kind)) kinds.add(kind);
+  }
+  return kinds;
 }
 
-/** Call `found` once, the first time the map settles with facility data drawn. */
-export function watchForFacilities(map: FacilityMap, found: () => void): void {
+/**
+ * Report each time the map settles having drawn a facility kind it had not
+ * drawn before, with every kind seen so far; stop once it has seen them all.
+ */
+export function watchForFacilities(map: FacilityMap, seen: (kinds: ReadonlySet<string>) => void): void {
+  const all = new Set<string>();
   const check = () => {
-    if (!tilesCarryFacilities(map)) return;
-    map.off("idle", check);
-    found();
+    const before = all.size;
+    for (const kind of facilitiesOnMap(map)) all.add(kind);
+    if (all.size === before) return;
+    seen(new Set(all));
+    if (all.size === FACILITIES.length) map.off("idle", check);
   };
   map.on("idle", check);
+}
+
+/** The parts of a MapLibre map the zoom watch uses. */
+export interface ZoomMap {
+  getZoom(): number;
+  on(event: "zoomend", listener: () => void): unknown;
+}
+
+/** Report the zoom now and after every change, for the legend's zoom notes. */
+export function watchZoom(map: ZoomMap, zoom: (z: number) => void): void {
+  zoom(map.getZoom());
+  map.on("zoomend", () => zoom(map.getZoom()));
 }
