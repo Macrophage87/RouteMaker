@@ -204,10 +204,18 @@ for _, case in ipairs(cases) do
   check(name .. " keeps its access", same_access(tags, derived))
 end
 
-local neutral = { highway = "tertiary", ["cycleway:both"] = "track", ["rm:facility_neutral"] = "yes" }
-check("the no-trail variant takes a track off the roadway", lane_and_access(neutral) == 0,
-  lane_and_access(neutral))
-check("and leaves it open", same_access(neutral, { highway = "tertiary", ["cycleway:both"] = "track" }))
+-- Upstream reads its cycle-lane state from `cycleway`, `cycleway:right` and
+-- `cycleway:left` (not `cycleway:both`, which it reads only for access), so the
+-- neutral cases use the keys that reach the costing.
+for _, lane in ipairs({ { cycleway = "track" }, { ["cycleway:right"] = "lane" }, { cycleway = "shared_lane" } }) do
+  local key, value = next(lane)
+  local plain = { highway = "tertiary", [key] = value }
+  local neutral = { highway = "tertiary", [key] = value, ["rm:facility_neutral"] = "yes" }
+  check("upstream prices " .. key .. "=" .. value .. " as a cycle lane", lane_and_access(plain) > 0)
+  check("the no-trail variant takes " .. key .. "=" .. value .. " off the roadway",
+    lane_and_access(neutral) == 0, lane_and_access(neutral))
+  check("and leaves it open", same_access(neutral, plain))
+end
 
 -- ---------------------------------------------------------------------------
 -- `rm:bridge_bicycle` reaches the graph as the bicycle tag it names.

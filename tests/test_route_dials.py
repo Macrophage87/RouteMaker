@@ -157,7 +157,7 @@ class TestRefusedDials:
 
     def test_mass_ride_does_not_seek_climbs(self, client, facility_segments, router):
         fake = router(standard_router())
-        response = post(client, {**good_body("mass-ride"), "hills": 5})
+        response = post(client, {**good_body("mass-ride"), "hills": 1})
         assert response.status_code == 400
         assert fake.calls == []
         router(standard_router())
@@ -301,6 +301,22 @@ class TestSeekingClimbs:
         body = routing.plan(points, "default", long_ride=True, dials=routing.Dials(hills=50))
         assert "alternates" not in fake.calls[0][1]
         assert body["hills_seek"]["limited"] == "long_ride"
+
+
+@db
+def test_a_span_past_the_search_limit_does_not_search(facility_segments, router):
+    fake = router(standard_router())
+    far = [[-77.05, 38.9], [-77.05 + 0.6, 38.9]]  # about 52 km of straight line
+    assert (
+        routing.haversine(routing.Point(*far[0]), routing.Point(*far[1])) > routing.SEEK_MAX_SPAN_M
+    )
+    body = routing.plan(far, "default", dials=routing.Dials(hills=50))
+    assert "alternates" not in fake.calls[0][1]
+    assert body["hills_seek"]["limited"] == "long_ride"
+    near = [[-77.05, 38.9], [-77.05 + 0.5, 38.9]]  # about 43 km
+    fake = router(seeking_router([(2.2, HILLY)]))
+    routing.plan(near, "default", dials=routing.Dials(hills=50))
+    assert fake.calls[0][1]["alternates"] == routing.SEEK_ALTERNATES
 
 
 def test_choose_climb_prefers_the_first_on_a_tie():

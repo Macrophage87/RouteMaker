@@ -159,7 +159,8 @@ class RouteIn(Schema):
         le=presets.HILLS_MAX,
         description=(
             "The hills slider: -100 avoids climbing, 0 is the fastest time, above 0 looks for"
-            " climbs among the router's alternatives (two-point plans only). Absent: the"
+            " climbs among the router's alternatives (two-point plans up to 50 km of straight"
+            " line). Absent: the"
             " preset's own start. Mass Ride does not seek climbs."
         ),
     )

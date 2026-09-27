@@ -430,6 +430,14 @@ class Dials:
 # route. The service's `max_alternates` is 3 (valhalla/valhalla-*.json).
 SEEK_ALTERNATES = 3
 
+# The longest straight-line span a climb search runs on. Measured on the live
+# standard router (2026-09-27, host loaded): three alternates roughly doubled a
+# warm 12 km search (0.2 s to 1-2 s) and a warm 65 km one (1.9 s to 3.6 s),
+# but a cold 65 km search took 51 s with them and 39 s without, past the 40 s
+# budget either way. Past this span the direct route is kept and the answer
+# says so, rather than risking a 503 for a route that was always available.
+SEEK_MAX_SPAN_M = 50_000
+
 
 def _climb_of(trip: dict) -> float:
     return climb_and_descent(
@@ -502,7 +510,7 @@ def plan(
     if seeking:
         if len(points) != 2:
             seek_limited = "two_points"
-        elif long_ride:
+        elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > SEEK_MAX_SPAN_M:
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES

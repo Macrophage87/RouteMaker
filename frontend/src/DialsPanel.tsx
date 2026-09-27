@@ -102,7 +102,7 @@ export function DialsPanel({ preset, dials, onCommit }: Props) {
         disabledNote={
           seekAllowed
             ? draft.hills > 0
-              ? "Looks for climbs among a few alternative routes, up to half again as long; two-point routes only."
+              ? "Looks for climbs among a few alternative routes, up to half again as long; for a start and an end only, up to 50 km apart."
               : undefined
             : "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed."
         }

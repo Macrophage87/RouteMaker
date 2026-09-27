@@ -378,7 +378,9 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   (0 is `use_hills` 1.0, no grade penalty, the fastest time); above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
   within `1 + 0.5 * hills/100` of the direct route's length. Two-point plans
-  only, and not on a long ride; `hills_seek.limited` says when it was not done.
+  only, and not past 50 km of straight line (`routing.SEEK_MAX_SPAN_M`: a cold
+  65 km search with alternates took 51 s on the live router); `hills_seek.limited`
+  says when it was not done.
   Mass Ride refuses `hills > 0` (400).
 - `when`: `weekend`, `weekday_rush` (Mon-Fri 07:00-10:00 and 16:00-19:00,
   America/New_York; federal holidays count as weekend) or `weekday_offpeak`;
