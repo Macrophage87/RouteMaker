@@ -30,13 +30,15 @@ class Variant(Enum):
     assumption that it encodes that preset's other opinions.
 
     One such opinion it does encode: a crossing row's `roadway_mass_ride_only`
-    keeps the roadway in this variant alone, so a Group Ride with trails off is
+    keeps the roadway in this variant alone, so any ride with trails off is
     routed on the Key Bridge and Memorial Bridge roadways too. The owner
-    decided on 2026-09-26 that it may be: asked whether a trails-off Group Ride
-    should be kept off those roadways, "No, allow them" - "A trails-off Group
-    Ride may use those bridge roadways like a mass ride." `variant_for` gives
-    this variant to those two rides and refuses trails-off to any other
-    (fixtures/crossings/README.md).
+    decided that it may be: on 2026-09-26, asked whether a trails-off Group
+    Ride should be kept off those roadways, "No, allow them" - "A trails-off
+    Group Ride may use those bridge roadways like a mass ride."; and on
+    2026-09-27, asked what trails-off should do for the other ride types,
+    "Every type, roadways ok" - "Offer trails-off on every ride type; like
+    Group Ride, it may use the Key and Memorial roadways." `variant_for` gives
+    this variant to any ride with trails off (fixtures/crossings/README.md).
     """
 
     STANDARD = "standard"
@@ -272,7 +274,7 @@ def is_sidepath_only(row: dict) -> bool:
 
 
 def is_roadway_mass_ride_only(row: dict) -> bool:
-    """Whether a crossing row's roadway is reserved for mass rides.
+    """Whether a crossing row's roadway is kept for trails-off rides alone.
 
     The owner's rule of 2026-09-26 for Key Bridge and Arlington Memorial Bridge:
     a mass ride takes the roadway, and an ordinary rider is sent by the sidepath
@@ -280,12 +282,14 @@ def is_roadway_mass_ride_only(row: dict) -> bool:
     no-trail variant keeps the roadway and the standard and e-bike variants bar
     it, the opposite split to `sidepath_only`. The no-trail variant is not
     itself mass-ride-only - PLAN gives it to Group Ride with trails off too -
-    and the owner ruled on that too, on 2026-09-26: "No, allow them" ("A
-    trails-off Group Ride may use those bridge roadways like a mass ride.").
-    So the roadway is for a mass ride or a trails-off Group Ride, and
-    `variant_for` refuses trails-off to any other ride. It is a routing rule,
-    not a legal claim: `roadway_bicycle_legal` stays the legality column, and
-    is true on both rows.
+    and the owner ruled on that twice: on 2026-09-26, "No, allow them" ("A
+    trails-off Group Ride may use those bridge roadways like a mass ride."),
+    and on 2026-09-27, "Every type, roadways ok" ("Offer trails-off on every
+    ride type; like Group Ride, it may use the Key and Memorial roadways.").
+    So the roadway is for any trails-off ride, and `variant_for` gives the
+    no-trail variant to every ride with trails off. It is a routing rule, not a
+    legal claim: `roadway_bicycle_legal` stays the legality column, and is true
+    on both rows.
     """
     return bool(row.get("roadway_mass_ride_only"))
 
@@ -727,44 +731,28 @@ def inject(
     raise ValueError(f"unknown variant: {variant}")
 
 
-class NoTrailIsNotForThisRide(ValueError):
-    """A ride PLAN gives no trails-off option asked for the no-trail variant."""
-
-
-# The rides PLAN gives a trails-off option, by the route API's preset names:
-# Mass Ride, whose trails are fixed off (PLAN.md:100, "L1: no-trail variant"),
-# and Group Ride, whose "Allow bike paths and trails" toggle "switches to the
-# no-trail variant when off" (PLAN.md:99). No other preset's layer assignment
-# names the no-trail variant.
-TRAILS_OFF_RIDES = frozenset({"mass-ride", "group-ride"})
-
-
-def variant_for(allow_trails: bool, ebike_rules: bool, *, ride: str | None = None) -> Variant:
+def variant_for(allow_trails: bool, ebike_rules: bool) -> Variant:
     """Pick the variant for a request's toggles.
 
     The two are mutually exclusive until the phase 6 path-avoidance dial, so the
     UI disables e-bike rules while trails are disallowed and explains why rather
     than silently choosing one.
 
-    And trails off gives the no-trail variant only to a ride in
-    `TRAILS_OFF_RIDES`. That variant keeps the roadways the crossings fixture
-    marks `roadway_mass_ride_only` (Key Bridge and Arlington Memorial Bridge),
-    which the owner reserved on 2026-09-26 ("I wouldn't route someone onto that
-    outside of a mass ride.") and then, the same day, opened to a trails-off
-    Group Ride: asked whether Group Ride with the toggle off should be kept off
-    those roadways, "No, allow them" - "A trails-off Group Ride may use those
-    bridge roadways like a mass ride." So Group Ride with trails off shares the
-    variant, roadways and all, and any other ride asking for trails off is
-    refused, since PLAN gives it no such option. A caller that picks
-    `Variant.NO_TRAIL` by name bypasses this - the Mass Ride preset does.
+    Trails off gives the no-trail variant, whatever the ride: the toggles alone
+    decide, and no ride is named. PLAN.md:86 has every dial on every preset,
+    and the no-trail variant keeps the roadways the crossings fixture marks
+    `roadway_mass_ride_only` (Key Bridge and Arlington Memorial Bridge), which
+    the owner reserved on 2026-09-26 ("I wouldn't route someone onto that
+    outside of a mass ride."), then opened to a trails-off Group Ride ("No,
+    allow them" - "A trails-off Group Ride may use those bridge roadways like a
+    mass ride."), and on 2026-09-27 to every ride type: asked what trails-off
+    should do for ride types other than Mass Ride and Group Ride, "Every type,
+    roadways ok" - "Offer trails-off on every ride type; like Group Ride, it
+    may use the Key and Memorial roadways." So every trails-off ride shares the
+    variant, roadways and all.
     """
     if not allow_trails and ebike_rules:
         raise ValueError("no-trail and e-bike variants are mutually exclusive until phase 6")
     if not allow_trails:
-        if ride not in TRAILS_OFF_RIDES:
-            raise NoTrailIsNotForThisRide(
-                f"PLAN gives no trails-off option to ride {ride!r}; the no-trail variant "
-                f"is for {', '.join(sorted(TRAILS_OFF_RIDES))} only"
-            )
         return Variant.NO_TRAIL
     return Variant.EBIKE if ebike_rules else Variant.STANDARD

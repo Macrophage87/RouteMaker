@@ -9,7 +9,6 @@ import pytest
 from pipeline.variants import (
     ContradictoryCrossingRow,
     DuplicateCrossingName,
-    NoTrailIsNotForThisRide,
     Variant,
     bars_electric_bicycle,
     check_crossing_names_unique,
@@ -110,23 +109,22 @@ def test_the_ebike_bar_is_the_no_value_and_not_every_restriction() -> None:
 def test_variant_selection_from_toggles() -> None:
     assert variant_for(allow_trails=True, ebike_rules=False) is Variant.STANDARD
     assert variant_for(allow_trails=True, ebike_rules=True) is Variant.EBIKE
-    for ride in ("mass-ride", "group-ride", "default", None):
-        for ebike_rules in (False, True):
-            assert variant_for(allow_trails=True, ebike_rules=ebike_rules, ride=ride) in (
-                Variant.STANDARD,
-                Variant.EBIKE,
-            ), f"{ride} with trails allowed is not moved to the no-trail variant"
+    assert variant_for(True, False) is Variant.STANDARD
+    assert variant_for(True, True) is Variant.EBIKE
 
 
-def test_trails_off_gives_mass_ride_and_group_ride_the_no_trail_variant() -> None:
-    """PLAN.md:100 fixes Mass Ride's trails off, and PLAN.md:99 gives Group
-    Ride's "Allow bike paths and trails" toggle the no-trail variant when off.
-    Owner, 2026-09-26, asked whether a trails-off Group Ride should be kept off
-    the Key and Memorial roadways: "No, allow them" ("A trails-off Group Ride may
-    use those bridge roadways like a mass ride.")."""
-    for ride in ("mass-ride", "group-ride"):
-        assert variant_for(allow_trails=False, ebike_rules=False, ride=ride) is Variant.NO_TRAIL
-    # What the owner allowed: the variant a trails-off Group Ride gets keeps the
+def test_trails_off_gives_every_ride_the_no_trail_variant() -> None:
+    """Owner, 2026-09-27, asked what trails-off should do for ride types other
+    than Mass Ride and Group Ride: "Every type, roadways ok" ("Offer trails-off
+    on every ride type; like Group Ride, it may use the Key and Memorial
+    roadways."). The toggles alone decide; no ride is named, so no ride can be
+    refused, and a call that names one is an error rather than a silent choice."""
+    assert variant_for(allow_trails=False, ebike_rules=False) is Variant.NO_TRAIL
+    assert variant_for(False, False) is Variant.NO_TRAIL
+    for ride in ("default", "group-ride", "mass-ride", None):
+        with pytest.raises(TypeError):
+            variant_for(allow_trails=False, ebike_rules=False, ride=ride)  # type: ignore[call-arg]
+    # What the owner allowed: the variant a trails-off ride gets keeps the
     # mass-ride-only roadways, which the standard variant bars.
     kept = inject(Variant.NO_TRAIL, {"highway": "trunk"}, 7, frozenset(), frozenset({7}))
     assert kept is not None and kept.get("bicycle") != "no"
@@ -134,15 +132,6 @@ def test_trails_off_gives_mass_ride_and_group_ride_the_no_trail_variant() -> Non
         inject(Variant.STANDARD, {"highway": "trunk"}, 7, frozenset(), frozenset({7}))["bicycle"]
         == "no"
     )
-
-
-def test_trails_off_is_refused_to_a_ride_plan_gives_no_trails_off_option() -> None:
-    """Default is layer 2 only on the standard variant (PLAN.md:97), and no
-    ride PLAN does not name may pick up the no-trail variant, and with it the
-    roadways reserved for a mass ride or a trails-off Group Ride."""
-    for ride in ("default", None, "Group Ride", "mass ride", ""):
-        with pytest.raises(NoTrailIsNotForThisRide):
-            variant_for(allow_trails=False, ebike_rules=False, ride=ride)
 
 
 def test_exclusive_combination_is_refused_not_guessed() -> None:
@@ -255,16 +244,18 @@ class ExpectedCrossing(NamedTuple):
     legal: bool
     police: str
     row_owner: str
-    # `roadway_mass_ride_only`: the roadway is for mass rides alone, and the
-    # standard and e-bike variants bar it. Owner statements of 2026-09-26, for
-    # Key Bridge and Arlington Memorial Bridge.
+    # `roadway_mass_ride_only`: the roadway is for trails-off rides alone (the
+    # no-trail variant), and the standard and e-bike variants bar it. Owner
+    # statements of 2026-09-26, for Key Bridge and Arlington Memorial Bridge,
+    # and of 2026-09-27 ("Every type, roadways ok").
     mass_ride_only: bool = False
 
 
 EXPECTED_CROSSINGS: dict[str, ExpectedCrossing] = {
     # Owner, 2026-09-26: a mass ride crosses the Potomac on the roadway of Chain,
-    # Key and Memorial bridges, and on Key and Memorial the roadway is for mass
-    # rides only - an ordinary rider is sent by the sidepath.
+    # Key and Memorial bridges, and on Key and Memorial the roadway is kept to
+    # the no-trail variant - a mass ride or any other trails-off ride - while an
+    # ordinary rider with trails on is sent by the sidepath.
     "Arlington Memorial Bridge": ExpectedCrossing(
         ("Arlington Memorial Bridge",),
         False,
@@ -1744,7 +1735,10 @@ class TestTheOrdinaryRidePenalty:
         assert misses == []
         assert resolve_ordinary_ride_penalty_ids([{"name": "Neither"}], ways) == (frozenset(), [])
 
-    @pytest.mark.parametrize("value", ["546096009", [0], [-1], [True], ["1"], [1.5], {"a": 1}, 7])
+    @pytest.mark.parametrize(
+        "value",
+        ["546096009", [0], [-1], [True], ["1"], [1.5], {"a": 1}, 7, 0, "", False, {}],
+    )
     def test_a_column_that_is_not_a_list_of_way_ids_is_refused(self, value) -> None:
         from pipeline.variants import MalformedCrossingRow, resolve_ordinary_ride_penalty_ids
 

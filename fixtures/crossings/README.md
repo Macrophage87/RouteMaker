@@ -51,10 +51,10 @@ it.
 
 The first job is to answer, per structure, the questions the midpoint
 heuristic gets wrong: `resolve_sidepath_bridge_ids` decides which roadways the
-no-trail variant (Mass Ride's, and PLAN's Group Ride with trails off) drops,
+no-trail variant (Mass Ride's, and any other ride's with trails off) drops,
 `resolve_mass_ride_only_bridge_ids` decides
-which roadways the standard and e-bike variants bar because they are for a mass
-ride or a trails-off Group Ride only, `resolve_ordinary_ride_penalty_ids`
+which roadways the standard and e-bike variants bar because they are for a
+trails-off ride only, `resolve_ordinary_ride_penalty_ids`
 decides which ways those two variants carry a penalty on, and
 `resolve_bridge_bicycle_legality` decides what `rm:bridge_bicycle` carries into
 `graph.lua` on every variant.
@@ -163,10 +163,11 @@ agree.
   column. It says nothing about legality and must never be treated as a legal
   claim.
 * `roadway_mass_ride_only` — routing-relevant, the other way round: true means
-  the owner reserves the roadway for a mass ride or a trails-off Group Ride, so
-  the no-trail variant keeps it and the standard and e-bike variants bar it (`variants.inject()`
-  writes `bicycle=no`, and on a directional `bicycle:forward`/`:backward` key
-  already present, and `inject_tags` withholds the row's `rm:bridge_bicycle`
+  the owner reserves the roadway for a trails-off ride (a mass ride, or any
+  ride with "Allow bike paths and trails" off), so the no-trail variant keeps
+  it and the standard and e-bike variants bar it (`variants.inject()` writes
+  `bicycle=no`, and on a directional `bicycle:forward`/`:backward` key already
+  present, and `inject_tags` withholds the row's `rm:bridge_bicycle`
   on those two variants so the transform cannot grant the roadway back). An
   ordinary rider then crosses by the sidepath, which is its own trail-class
   way that no resolver reaches. The owner set it on 2026-09-26 for Key Bridge
@@ -187,16 +188,19 @@ agree.
 
   **The no-trail variant is not a mass-ride-only variant.** PLAN.md:99 gives
   Group Ride's "Allow bike paths and trails" toggle, when off, the no-trail
-  variant as well, so a trails-off Group Ride is routed on the Key and
-  Memorial roadways. The owner was asked on 2026-09-26 whether it should be
-  kept off them, and answered "No, allow them" ("A trails-off Group Ride may
-  use those bridge roadways like a mass ride."). So these roadways are for a
-  mass ride or a trails-off Group Ride. `variants.variant_for` gives the
-  no-trail variant to those two rides (`variants.TRAILS_OFF_RIDES`) and
-  refuses trails-off to every other, since PLAN gives no other preset a
-  trails-off option. The toggle is not built yet, and the route API's presets
-  (on the branch that builds them) name `Variant.NO_TRAIL` directly for Mass
-  Ride, which does not pass through `variant_for`.
+  variant as well, and PLAN.md:86 puts every dial on every preset, so any
+  trails-off ride is routed on the Key and Memorial roadways. The owner was
+  asked on 2026-09-26 whether a trails-off Group Ride should be kept off
+  them, and answered "No, allow them" ("A trails-off Group Ride may use those
+  bridge roadways like a mass ride."); and on 2026-09-27 what trails-off
+  should do for the other ride types, and answered "Every type, roadways ok"
+  ("Offer trails-off on every ride type; like Group Ride, it may use the Key
+  and Memorial roadways."). So these roadways are for any trails-off ride.
+  `variants.variant_for` gives the no-trail variant to every request with
+  trails off; it takes the two toggles and no ride name. The toggle is not
+  built yet, and the route API's presets (on the branch that builds them)
+  name `Variant.NO_TRAIL` directly for Mass Ride, which does not pass through
+  `variant_for`.
   The bar also closes the tags upstream's `graph.lua` would otherwise grant
   bicycle access from over `bicycle=no` - every `cycleway*` key and
   `vehicle:forward`/`:backward` set to `no`, `oneway:bicycle` to `yes`
