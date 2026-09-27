@@ -13,6 +13,8 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { GpxPanel } from "./GpxPanel.tsx";
+import type { ImportedPlan } from "./lib/gpxPlan.ts";
 
 interface Plan {
   points: LonLat[];
@@ -67,6 +69,8 @@ export function App() {
   // Bumped to put the markers back where the points are, without changing
   // the points (which would plan the same route again).
   const [markerReset, setMarkerReset] = useState(0);
+  // The GPX file opened last (GpxPanel), until the plan is cleared.
+  const [imported, setImported] = useState<ImportedPlan | null>(null);
   const narrow = useNarrow();
   const mapRef = useRef<MapLibreMap | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -119,6 +123,7 @@ export function App() {
       if (window.location.hash === writtenHash.current) return;
       const plan = decodePlan(window.location.hash);
       setConfirmedKm(null);
+      setImported(null);
       setPoints(plan.points);
       setPreset(plan.preset);
     };
@@ -193,8 +198,18 @@ export function App() {
   };
   const clearAll = () => {
     setConfirmedKm(null);
+    setImported(null);
     setPoints([]);
   };
+  const openImported = (plan: ImportedPlan) => {
+    setConfirmedKm(null);
+    setNotice(null);
+    setImported(plan);
+    if (plan.preset) setPreset(plan.preset);
+    setPoints(plan.points);
+  };
+  const getMap = useCallback(() => mapRef.current, []);
+  const refineImported = useCallback((next: LonLat[]) => setPoints(next), []);
   const addAtCentre = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -458,6 +473,17 @@ export function App() {
         </header>
         <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
           {order.map((id) => sections[id])}
+
+          <GpxPanel
+            route={shown}
+            routedPoints={routedPoints}
+            points={points}
+            planStatus={status.kind}
+            imported={imported}
+            onImport={openImported}
+            onRefine={refineImported}
+            getMap={getMap}
+          />
 
           <section aria-labelledby="layers-heading">
             <h2 id="layers-heading">Traffic stress</h2>
