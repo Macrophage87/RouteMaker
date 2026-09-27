@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
-import type { GeoJSONSource, Map as MapLibreMap, Marker } from "maplibre-gl";
+import type { GeoJSONSource, Map as MapLibreMap, Marker, Popup } from "maplibre-gl";
 import { Protocol } from "pmtiles";
 // MapLibre 6 ships its worker as a separate module and finds it next to its own
 // file by `import.meta.url`, which a bundle does not preserve; Vite builds it
@@ -50,6 +50,8 @@ interface Props {
   lineEdit: LineEdit | null;
   /** The line was dragged (or clicked) to `point` from leg `leg` of the route through `points`. */
   onLineDrop: (leg: number, point: LonLat, points: LonLat[]) => void;
+  /** Remove the point at `index` (a via's Remove on the map). */
+  onRemovePoint: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
   onReady: (map: MapLibreMap) => void;
@@ -134,6 +136,7 @@ export function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
+  const popup = useRef<Popup | null>(null);
   const loaded = useRef(false);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
@@ -430,6 +433,8 @@ export function MapView(props: Props) {
       window.removeEventListener("keydown", onKey);
       canvas.removeEventListener("mouseleave", onCanvasLeave);
       canvas.removeEventListener("contextmenu", onContextMenu);
+      popup.current?.remove();
+      popup.current = null;
       loaded.current = false;
       markers.current.forEach((m) => m.remove());
       markers.current = [];
@@ -443,24 +448,66 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map) return;
     markers.current.forEach((m) => m.remove());
+    popup.current?.remove();
+    popup.current = null;
     markers.current = props.points.map((point, index) => {
       const { text, name, kind } = pointLabel(index, props.points.length);
+      const via = kind === "via";
       const element = document.createElement("div");
       element.className = `pin pin-${kind}`;
       element.textContent = text;
       element.setAttribute("role", "img");
-      element.setAttribute("aria-label", `${name}. Drag to move.`);
-      element.title = `${name} - drag to move`;
-      // A click on a marker is not a click on the map: without this it would
-      // also add a via point under the marker.
-      element.addEventListener("click", (event) => event.stopPropagation());
+      element.setAttribute("aria-label", via ? `${name}. Drag to move; click for Remove.` : `${name}. Drag to move.`);
+      element.title = via ? `${name} - drag to move, click for Remove, double-click to remove` : `${name} - drag to move`;
       const marker = new maplibregl.Marker({ element, draggable: true, anchor: "center" })
         .setLngLat(point)
         .addTo(map);
+      // The browser's click at the end of a drag of the marker is not a click on it.
+      let dragged = false;
+      marker.on("dragstart", () => {
+        dragged = true;
+        popup.current?.remove();
+      });
       marker.on("dragend", () => {
+        setTimeout(() => {
+          dragged = false;
+        }, 0);
         const { lng, lat } = marker.getLngLat();
         callbacks.current.onMovePoint(index, [lng, lat]);
       });
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: without this it
+        // would also add a via point under the marker.
+        event.stopPropagation();
+        if (!via || dragged) return;
+        // A via's click offers Remove beside it: a real button, so a finger
+        // can use it as well as a mouse.
+        popup.current?.remove();
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "via-remove";
+        button.textContent = "Remove";
+        button.setAttribute("aria-label", `Remove ${name.toLowerCase()}`);
+        button.addEventListener("click", (clicked) => {
+          clicked.stopPropagation();
+          popup.current?.remove();
+          callbacks.current.onRemovePoint(index);
+        });
+        popup.current = new maplibregl.Popup({ closeButton: false, offset: 14, className: "via-popup" })
+          .setLngLat(marker.getLngLat())
+          .setDOMContent(button)
+          .addTo(map);
+        button.focus();
+      });
+      if (via) {
+        // A double-click removes it at once, and is not the map's zoom.
+        element.addEventListener("dblclick", (event) => {
+          event.stopPropagation();
+          event.preventDefault();
+          popup.current?.remove();
+          callbacks.current.onRemovePoint(index);
+        });
+      }
       return marker;
     });
   }, markerDeps(props.points, props.markerReset));

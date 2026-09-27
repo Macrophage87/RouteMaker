@@ -455,12 +455,36 @@ button.secondary {
   background: #b91c1c;
 }
 
+/* A via is a waypoint on the way, not an end: smaller, white with the
+   route's blue ring, so start and end stand out and the line shows through. */
 .pin-via {
-  background: #374151;
-  width: 24px;
-  height: 24px;
-  font-size: 12px;
+  background: #ffffff;
+  color: #1d4ed8;
+  border: 3px solid #1d4ed8;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
 }
+
+/* A finger is wider than the marker: the pressable area is not. */
+.pin-via::after {
+  content: "";
+  position: absolute;
+  inset: -10px;
+  border-radius: 50%;
+}
+
+/* A via's Remove, beside it on the map. */
+.via-popup .maplibregl-popup-content {
+  padding: 4px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+}
+
+.via-popup .maplibregl-popup-tip {
+  display: none;
+}
+
 
 .maplibregl-ctrl-attrib {
   font-size: 11px;

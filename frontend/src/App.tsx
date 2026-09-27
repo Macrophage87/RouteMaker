@@ -235,6 +235,18 @@ export function App() {
     focusAfterRemove.current = index;
     commit(pointsRef.current.filter((_, i) => i !== index));
   };
+  // From the map: the focus stays where it was (on a phone the sheet may be
+  // hidden), and the removal is said instead.
+  const removeFromMap = useCallback(
+    (index: number) => {
+      const current = pointsRef.current;
+      if (index < 0 || index >= current.length) return;
+      const name = pointName(index, current.length);
+      commit(current.filter((_, i) => i !== index));
+      announce(`${name} removed.`);
+    },
+    [commit, announce],
+  );
   const clearAll = () => {
     setConfirmedKm(null);
     commit([]);
@@ -356,7 +368,8 @@ export function App() {
         <p className="hint">
           Click the map to set a start, then an end. Later clicks add a via point on the
           nearest leg. Drag any marker to move it, or drag the route line to pull it through
-          somewhere else (on a phone, press and hold the line first). From the keyboard, move the map with the arrow keys and use "Add point at
+          somewhere else (on a phone, press and hold the line first). Click a via point for
+          Remove. From the keyboard, move the map with the arrow keys and use "Add point at
           map centre".
         </p>
       ) : (
@@ -486,6 +499,7 @@ export function App() {
         onMovePoint={move}
         lineEdit={lineEdit}
         onLineDrop={insertOnLine}
+        onRemovePoint={removeFromMap}
         markerReset={markerReset}
         onReady={(map) => {
           mapRef.current = map;
