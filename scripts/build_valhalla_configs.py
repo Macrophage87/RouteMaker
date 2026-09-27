@@ -34,7 +34,7 @@ VENDOR = REPO / "valhalla" / "vendor" / "valhalla_build_config.py"
 # naming one directory are three builds overwriting each other, and only the
 # last variant's graph survives. Each variant therefore names its own
 # directory, and the test asserts the three files differ in exactly that.
-VARIANTS = ("standard", "no-trail", "ebike")
+VARIANTS = ("standard", "no-trail", "ebike", "weekend")
 
 # Where a variant's served tiles live, as both the rebuild container and the
 # serving container see them: DATA_ROOT is mounted at /data in the first and

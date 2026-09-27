@@ -46,7 +46,8 @@ from config.procrastinate import WEEKLY_REBUILD_CRON
 RESTART_HINT = (
     "When it finishes, restart the routers so they load the promoted build - "
     "`valhalla_service` reads its tiles once at start and does not reload them: "
-    "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike"
+    "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
+    "valhalla-weekend"
 )
 
 IN_FLIGHT_REFUSAL = (

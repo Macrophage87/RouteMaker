@@ -188,6 +188,7 @@ services:
       VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
       VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
       VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
+      VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
       # The same /data this service's two mounts below are under, so
       # settings.TILES_DIR is /data/tiles and settings.STATIC_ROOT is
       # /data/static - both of them paths that exist in this container.
@@ -549,6 +550,39 @@ services:
       resources:
         limits: { memory: 2G, cpus: "2" }
 
+  # The standard graph at the weekend (pipeline.variants.Variant.WEEKEND). The
+  # owner's "Build the weekend graph" of 2026-09-27. The same limits as its
+  # siblings; measured resident on a DC box graph, see docs/OPERATIONS.md.
+  valhalla-weekend:
+    <<: [*restart, *logging]
+    image: ghcr.io/valhalla/valhalla:3.5.1
+    # The upstream image declares neither ENTRYPOINT nor CMD - it is a toolbox,
+    # not a service image - so it inherits the base image's shell and exits
+    # immediately. With `restart: unless-stopped` that is a container that
+    # restarts forever while answering nothing, which is what an env var named
+    # VALHALLA_CONFIG bought: the image reads no such variable.
+    #
+    # The second argument is the worker count per stage. valhalla_service takes
+    # it from argv and otherwise uses hardware_concurrency, which on this host
+    # would start one worker per core of the whole machine inside a two-core
+    # limit. It is not a configuration key; the loki_workers, thor_workers and
+    # odin_workers keys the configs used to carry are read by nothing.
+    command: ["valhalla_service", "/conf/valhalla-weekend.json", "2"]
+    # The served build, at the path the config names. `current` is a symlink
+    # the rebuild replaces at promotion; the container loads whatever it
+    # points at when it starts, and is restarted after a swap to load the
+    # next one. The same path resolves to the same file inside the rebuild
+    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
+    # directory this line binds one variant's `current` out of.
+    volumes:
+      - ${DATA_ROOT}/tiles/weekend/current:/data/tiles/weekend/current:ro
+      - ${DATA_ROOT}/elevation:/data/elevation:ro
+      - ./valhalla:/conf:ro
+      - ./lua:/conf/lua:ro
+    deploy:
+      resources:
+        limits: { memory: 2G, cpus: "2" }
+
   # No source, no `build:`, and therefore no image anywhere: `docker compose up`
   # stopped at a pull of routemaker/renderer:${TAG} from a registry that has
   # never held it. Parked behind a profile so the default `up` skips it and the
@@ -659,6 +693,7 @@ services:
       VALHALLA_STANDARD_URL: ${VALHALLA_STANDARD_URL:-http://valhalla-standard:8002}
       VALHALLA_NO_TRAIL_URL: ${VALHALLA_NO_TRAIL_URL:-http://valhalla-no-trail:8002}
       VALHALLA_EBIKE_URL: ${VALHALLA_EBIKE_URL:-http://valhalla-ebike:8002}
+      VALHALLA_WEEKEND_URL: ${VALHALLA_WEEKEND_URL:-http://valhalla-weekend:8002}
     # The five directories this service writes, each bound on its own, rather
     # than `${DATA_ROOT}:/data` - which is the same volume and also carries
     # `caddy/` (the ACME account key and the deployment's TLS private key),

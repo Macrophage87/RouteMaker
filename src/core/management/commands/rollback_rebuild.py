@@ -49,7 +49,7 @@ from pipeline.variants import Variant
 RESTART_HINT = (
     "The routers keep serving the build they started against, so finish the "
     "rollback on the deploy host: docker compose restart valhalla-standard "
-    "valhalla-no-trail valhalla-ebike"
+    "valhalla-no-trail valhalla-ebike valhalla-weekend"
 )
 
 

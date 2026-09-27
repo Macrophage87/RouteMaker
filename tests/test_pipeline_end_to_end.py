@@ -1135,10 +1135,10 @@ def test_every_variant_gets_an_admin_and_a_timezone_database_where_its_config_sa
     downloads = [c for c in binaries.calls if c[0] == "sh"]
     copies = [c for c in binaries.calls if c[0] == "cp"]
     assert len(downloads) == 1, "a hundred megabytes, fetched once"
-    # Two variants copy the timezone database and two copy the admin one, and
-    # each copy is from the first variant's build directory into its own - which
+    # Every variant after the first copies the timezone database and the admin
+    # one, each from the first variant's build directory into its own - which
     # is what the per-variant file assertions above have already read back.
-    assert len(copies) == 4
+    assert len(copies) == 2 * (len(Variant) - 1)
 
     def named(variant, key):
         return json.loads(Path(context.build_configs[variant]).read_text())["mjolnir"][key]
@@ -1232,7 +1232,7 @@ def test_validation_reads_every_variant_back_through_its_own_build_config(
     reads = binaries.commands("valhalla_service")
     read_configs = {Path(c[1]) for c in reads}
     assert read_configs == set(context.build_configs.values())
-    assert len(read_configs) == 3, "every variant's build must be read back"
+    assert len(read_configs) == len(Variant), "every variant's build must be read back"
     for config_path in read_configs:
         assert context.build_id in config_path.parts, "the read targets the dated build"
 
@@ -1425,7 +1425,7 @@ def test_the_full_rebuild_swaps_and_reconciles(workspace, states) -> None:
     # The settings table the API watches: one row per variant, at the compose
     # service's URL, naming the build now served.
     rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
-    assert set(rows) == {"standard", "no-trail", "ebike"}
+    assert set(rows) == {variant.value for variant in Variant}
     for variant, row in rows.items():
         assert row.build_id == "20260917T080000Z"
         assert row.url == settings.VALHALLA_UPSTREAMS[variant]
@@ -1564,7 +1564,7 @@ def test_a_settings_write_that_fails_partway_repoints_no_row_at_all(
     )
 
     rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
-    assert set(rows) == {"standard", "no-trail", "ebike"}
+    assert set(rows) == {variant.value for variant in Variant}
     for variant, row in rows.items():
         assert (row.build_id, row.previous_build_id) == ("20260910T080000Z", ""), variant
     for variant in Variant:

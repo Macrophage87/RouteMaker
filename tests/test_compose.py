@@ -116,7 +116,12 @@ def test_no_service_uses_a_shared_env_file() -> None:
 
 def test_one_valhalla_process_per_tile_variant() -> None:
     variants = sorted(n for n in SERVICES if n.startswith("valhalla-"))
-    assert variants == ["valhalla-ebike", "valhalla-no-trail", "valhalla-standard"]
+    assert variants == [
+        "valhalla-ebike",
+        "valhalla-no-trail",
+        "valhalla-standard",
+        "valhalla-weekend",
+    ]
 
 
 def _load_check_compose_limits():

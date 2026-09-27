@@ -167,6 +167,8 @@ PLAN_MEMORY_LIMITS = {
     "valhalla-standard": "2G",
     "valhalla-no-trail": "2G",
     "valhalla-ebike": "2G",
+    # "each Valhalla 2 GB": the weekend graph's router too (owner, 2026-09-27).
+    "valhalla-weekend": "2G",
     "photon": "3G",
     "postgis": "4G",
     "rebuild": "8G",

@@ -120,6 +120,7 @@ tiles
 tiles/standard/current
 tiles/no-trail/current
 tiles/ebike/current
+tiles/weekend/current
 extracts
 reference
 rebuild

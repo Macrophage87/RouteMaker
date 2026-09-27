@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
-from routemaker import facility
+from routemaker import facility, ridetime
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
@@ -668,6 +668,33 @@ def assert_derived_tags_reached_the_tiles(sentinel_value: str | None, expected: 
         )
 
 
+def facility_derived(
+    variant: variants.Variant,
+    way_id: int,
+    facility_by_way: dict[int, str],
+    car_free_by_way: dict[int, frozenset[str]],
+) -> dict[str, object]:
+    """The facility values one variant's extract hands the transform for a way.
+
+    - No-trail, Mass Ride's graph: the neutral marker and no class, since no
+      facility makes a street cheaper for it (the owner, 2026-09-27: "Mass
+      rides don't need to consider these. Even protected bike lanes aren't
+      used.").
+    - Weekend: a road closed to motor traffic for the whole weekend
+      (`ridetime.closed_settings`) is on this graph what a road closed for good
+      is on every graph - an off-road path, at the lowest tier, so the stress
+      penalty does not land on it either. Every other way as on the standard.
+    - Standard and e-bike: the way's class.
+    """
+    if variant is variants.Variant.NO_TRAIL:
+        return {"facility_neutral": True}
+    if variant is variants.Variant.WEEKEND and ridetime.WEEKEND in car_free_by_way.get(way_id, ()):
+        return {"facility": facility.Facility.PATH.value, "stress_tier": 1}
+    if way_id in facility_by_way:
+        return {"facility": facility_by_way[way_id]}
+    return {}
+
+
 def build_handlers(
     context: RebuildContext,
     run: Callable[[Sequence[str]], str] | None = None,
@@ -1144,13 +1171,11 @@ def build_handlers(
                     derived["ordinary_ride_penalty"] = True
                 if stress is not None:
                     derived["stress_tier"] = int(stress.tier)
-                if variant is variants.Variant.NO_TRAIL:
-                    # Mass Ride's variant: no facility makes a street cheaper
-                    # (the owner, 2026-09-27: "Mass rides don't need to
-                    # consider these. Even protected bike lanes aren't used.").
-                    derived["facility_neutral"] = True
-                elif way.osm_id in context.facility_by_way:
-                    derived["facility"] = context.facility_by_way[way.osm_id]
+                derived.update(
+                    facility_derived(
+                        variant, way.osm_id, context.facility_by_way, context.car_free_by_way
+                    )
+                )
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit

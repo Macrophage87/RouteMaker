@@ -977,7 +977,7 @@ the first host to run it is the first test of it.
    directories they started against.
 
    ```sh
-   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
+   docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
    ```
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
@@ -1071,7 +1071,7 @@ build id, and the three routers keep answering from last week's tiles until they
 are restarted:
 
 ```sh
-docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
 ```
 
 Nothing in the rebuild does this, and there is no check that notices it has not
@@ -1223,7 +1223,7 @@ changes nothing — and `--confirm` is what performs it.
 ```sh
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
-docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
 ```
 
 **In `rebuild`, not in `api` or `worker`.** The command rewrites the promotion
@@ -1365,7 +1365,7 @@ tiles):
    disagree means that variant is not back yet.
 5. **Restart the routers** if any of them restarted while the links were
    wrong — it will have loaded the build that failed to swap:
-   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike`
+   `docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
    (see "After a rebuild: restart the routers"). Harmless if none did.
 6. **Leave `staging` alone.** It is the failed build's output and the next
    rebuild's first stage drops it. Then rebuild — `run_rebuild_now`, or wait

@@ -220,6 +220,7 @@ VALHALLA_UPSTREAMS = {
     "standard": os.environ.get("VALHALLA_STANDARD_URL", "http://valhalla-standard:8002"),
     "no-trail": os.environ.get("VALHALLA_NO_TRAIL_URL", "http://valhalla-no-trail:8002"),
     "ebike": os.environ.get("VALHALLA_EBIKE_URL", "http://valhalla-ebike:8002"),
+    "weekend": os.environ.get("VALHALLA_WEEKEND_URL", "http://valhalla-weekend:8002"),
 }
 
 

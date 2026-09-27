@@ -153,7 +153,8 @@ def test_the_rebuild_task_runs_the_real_handler_set(rebuild_environment, states)
     # on serving the build they started against until their containers restart,
     # and nothing in phase 1 restarts them.
     assert (
-        "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike" in run.detail
+        "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
+        "valhalla-weekend" in run.detail
     ), f"the run that promoted a build must say what still has to happen: {run.detail}"
 
     with connection.cursor() as cursor:
@@ -161,12 +162,12 @@ def test_the_rebuild_task_runs_the_real_handler_set(rebuild_environment, states)
         assert cursor.fetchone()[0] == 5
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.border_crossing")
         assert cursor.fetchone()[0] == 1
-    assert ValhallaUpstream.objects.count() == 3
+    assert ValhallaUpstream.objects.count() == 4
     assert DriftReport.objects.count() == 1
     build_id = ValhallaUpstream.objects.get(variant="standard").build_id
     assert os.readlink(root / "tiles" / "standard" / "current") == build_id
-    assert len(binaries.commands("valhalla_build_tiles")) == 3
-    assert len(binaries.commands("valhalla_service")) == 4, "three grade reads and one tag read"
+    assert len(binaries.commands("valhalla_build_tiles")) == 4
+    assert len(binaries.commands("valhalla_service")) == 5, "four grade reads and one tag read"
     assert (root / "elevation" / "N38" / "N38W078.hgt").is_file()
 
 

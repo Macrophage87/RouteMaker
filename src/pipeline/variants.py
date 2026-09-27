@@ -44,6 +44,15 @@ class Variant(Enum):
     STANDARD = "standard"
     NO_TRAIL = "no-trail"
     EBIKE = "ebike"
+    # The standard graph as it stands at the weekend: the roads OSM closes to
+    # motor traffic at weekends (Beach Drive in Montgomery County, Sligo Creek
+    # Parkway, Little Falls Parkway, parts of Beach Drive NW) are off-road paths
+    # in it, so a weekend ride prefers them. The owner, 2026-09-27: "Build the
+    # weekend graph" ("Weekend rides actively prefer car-free roads; more
+    # memory and rebuild time on this 12 GB machine."). Only the standard graph
+    # has a weekend twin; an e-bike or trails-off ride at the weekend routes on
+    # its own graph and reports the closures in its breakdown only.
+    WEEKEND = "weekend"
 
 
 def is_trail_class(
@@ -702,7 +711,10 @@ def inject(
     """
     is_mass_ride_only = osm_id is not None and osm_id in mass_ride_only_ids
 
-    if variant is Variant.STANDARD:
+    if variant in (Variant.STANDARD, Variant.WEEKEND):
+        # The weekend graph's tags are the standard graph's: what differs is
+        # the facility class and tier handed to the transform
+        # (`run.inject_tags`), not the OSM tags.
         out = dict(tags)
         if is_mass_ride_only:
             bar_mass_ride_only_roadway(out)

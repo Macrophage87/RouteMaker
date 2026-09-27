@@ -21,7 +21,12 @@ MAY_PUBLISH_PORTS = {"caddy"}
 # The sum of memory limits, including the duplicate Valhalla containers that
 # exist during a swap, must stay under host RAM.
 HOST_RAM_GB = 32
-SWAP_DUPLICATE_SERVICES = ("valhalla-standard", "valhalla-no-trail", "valhalla-ebike")
+SWAP_DUPLICATE_SERVICES = (
+    "valhalla-standard",
+    "valhalla-no-trail",
+    "valhalla-ebike",
+    "valhalla-weekend",
+)
 
 # PLAN.md, Operations/"Rebuild and swap": "raising the [worker] count
 # multiplies the resident tile working set against the container's memory

@@ -124,7 +124,8 @@ class RebuildAbandoned(RuntimeError):
 # graph against this week's segment rows.
 ROUTER_RESTART_NOTICE = (
     "The routers serve the previous build until they are restarted: "
-    "`docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike`."
+    "`docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike "
+    "valhalla-weekend`."
 )
 
 
