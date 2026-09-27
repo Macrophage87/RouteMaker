@@ -300,6 +300,19 @@ class TestLevels:
             lv.min_zoom for lv in stress_tiles.LEVELS
         )
 
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_a_tier_the_tiles_have_not_met_is_carried_as_the_table_holds_it(
+        self, client, segment_schemas, z
+    ) -> None:
+        """Nothing in the tiles enumerates the tiers, so a new one - a
+        traffic-free path category, say - reaches the map unchanged, and a
+        trail-network way keeps its place zoomed out whatever its tier."""
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP CONSTRAINT segment_stress_tier_check")
+        insert(live, [("traffic-free path", 0, trail_rule("cycleway"), True, False)])
+        assert classes_in(client.get(url(*tile_of(*CENTRE, z))).content) == {(0, True, False): 1}
+
     def test_below_z14_detail_finer_than_the_tile_grid_is_not_drawn(
         self, client, segment_schemas
     ) -> None:

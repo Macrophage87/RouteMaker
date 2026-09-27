@@ -112,10 +112,18 @@ def outside_coverage(z: int, x: int, y: int) -> bool:
     return east < c_west or west > c_east or north < c_south or south > c_north
 
 
+# Each feature's properties, as {tile property: segment column}: the one place
+# that says what a tile carries. A value is carried as the column holds it, so
+# a new tier value reaches the tile unchanged; a new property is a new entry
+# here (and, if the zoomed-out levels should keep it, a term in
+# pipeline.schema's predicates). A null is left out of the feature rather than
+# sent - an unknown surface is not "paved".
+PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_unpaved"}
+
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
-    SELECT s.stress_tier AS tier, s.is_trail_class AS trail, s.is_unpaved AS unpaved,
+    SELECT {columns},
            ST_AsMVTGeom(
                ST_Simplify(ST_Collect(ST_Transform(s.geometry, 3857)), %(unit)s),
                bounds.env, %(extent)s, %(buffer)s, true
@@ -124,7 +132,7 @@ features AS (
     WHERE s.geometry && ST_Transform(
               ST_TileEnvelope(%(z)s, %(x)s, %(y)s, margin => %(margin)s), 4326)
       AND {where}
-    GROUP BY s.stress_tier, s.is_trail_class, s.is_unpaved, bounds.env
+    GROUP BY {group_by}, bounds.env
 )
 SELECT '{table}'::regclass::oid,
        (SELECT ST_AsMVT(features.*, '{layer}', %(extent)s, 'geom') FROM features)
@@ -133,7 +141,7 @@ SELECT '{table}'::regclass::oid,
 _PER_SEGMENT = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
-    SELECT s.stress_tier AS tier, s.is_trail_class AS trail, s.is_unpaved AS unpaved,
+    SELECT {columns},
            ST_AsMVTGeom(ST_Transform(s.geometry, 3857), bounds.env, %(extent)s, %(buffer)s, true)
                AS geom
     FROM {table} AS s, bounds
@@ -154,7 +162,13 @@ def _table() -> str:
 
 def tile_sql(level: Level) -> str:
     template = _MERGED if level.merged else _PER_SEGMENT
-    return template.format(table=_table(), where=level.where or "true", layer=LAYER)
+    return template.format(
+        table=_table(),
+        where=level.where or "true",
+        layer=LAYER,
+        columns=", ".join(f"s.{column} AS {name}" for name, column in PROPERTIES.items()),
+        group_by=", ".join(f"s.{column}" for column in PROPERTIES.values()),
+    )
 
 
 def render(z: int, x: int, y: int) -> tuple[int, bytes]:

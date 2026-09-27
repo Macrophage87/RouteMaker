@@ -362,8 +362,8 @@ every draw after that was under half a second.
 **Caching.** `Cache-Control: public, max-age=3600` and a weak ETag naming the
 live table (its oid, which a promotion changes) and the tile format version,
 so after the hour a client revalidates and gets a 304 without the tile being
-drawn. Caddy compresses the tiles (`encode` on `/tiles/*`, matched on the
-vector-tile content type); nothing else the api answers is compressed.
+drawn. Caddy compresses the tiles (an `encode` in the api's block matched on
+the vector-tile content type); nothing else the api answers is compressed.
 
 **The overview index.** The zoomed-out tiles read through a partial GiST index,
 `segment_overview_geom_idx`, which `pipeline.schema.create_segment_schema`
