@@ -583,7 +583,13 @@ function StressLegend() {
           </li>
         ))}
       </ul>
-      <p className="hint">Streets with no stress rating are not drawn.</p>
+      {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
+          below street zoom only LTS 3-4 roads and the trail network, and
+          footways only from zoom 14. */}
+      <p className="hint">
+        Zoomed out, only LTS 3 and 4 roads and the trails (cycleways and paths) are drawn. Quiet streets appear as you
+        zoom in, and footways and sidewalks closer in still. Streets with no stress rating are not drawn.
+      </p>
     </>
   );
 }
