@@ -475,3 +475,72 @@ def test_every_preset_charges_entering_a_legal_but_avoid_way(name):
     assert presets.AVOID_ENTRY_PENALTY_S >= 15 * 60
     assert "destination_only_penalty" not in options
     assert "service_penalty" not in options
+
+
+WHY = ("direction", "category", "public_note", "display")
+
+
+@db
+class TestTheStressAdjustmentsARouteUses:
+    """The owner, 2026-09-27: "Only provide the warnings if the route goes over
+    the road." The answer names the adjustments the traced route rides over,
+    with the why only where the segment table carries it."""
+
+    def mark(self, live, way, ordinal, **columns) -> None:
+        sets = ", ".join(f"{name} = %s" for name in columns)
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {live}.segment SET {sets} WHERE osm_way_id = %s AND ordinal = %s",
+                [*columns.values(), way, ordinal],
+            )
+
+    def test_a_route_over_no_adjustment_has_none(self, client, facility_segments, router):
+        router(standard_router())
+        assert post(client, good_body()).json()["stress_adjustments"] == []
+
+    def test_a_public_approved_adjustment_carries_its_note(self, client, facility_segments, router):
+        self.mark(
+            facility_segments,
+            202,
+            0,
+            stress_adjustment_id="a-stretch",
+            stress_computed_tier=2,
+            stress_adjustment_direction="up",
+            stress_adjustment_category="sightlines",
+            stress_adjustment_note="Off-ramp traffic merges in at a blind corner.",
+            stress_adjustment_display="route_only",
+        )
+        router(standard_router())
+        (used,) = post(client, good_body()).json()["stress_adjustments"]
+        assert used == {
+            "adjustment_id": "a-stretch",
+            "tier": 3,
+            "adjusted": True,
+            "length_m": pytest.approx(used["length_m"]),
+            "direction": "up",
+            "category": "sightlines",
+            "public_note": "Off-ramp traffic merges in at a blind corner.",
+            "display": "route_only",
+        }
+        assert used["length_m"] > 0
+
+    def test_a_hidden_adjustment_is_only_adjusted(self, client, facility_segments, router):
+        self.mark(facility_segments, 101, 0, stress_adjustment_id="quiet-one")
+        self.mark(facility_segments, 202, 1, stress_adjustment_id="quiet-two")
+        router(standard_router())
+        used = post(client, good_body()).json()["stress_adjustments"]
+        assert [u["adjustment_id"] for u in used] == ["quiet-one", "quiet-two"], "route order"
+        for entry in used:
+            assert entry["adjusted"] is True
+            assert all(entry[key] is None for key in WHY), "no why for a hidden one"
+
+    def test_a_live_schema_without_the_columns_has_none(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"ALTER TABLE {facility_segments}.segment DROP COLUMN stress_adjustment_display"
+            )
+        monkeypatch.setattr(routing, "_adjustment_columns_seen", False)
+        router(standard_router())
+        assert post(client, good_body()).json()["stress_adjustments"] == []

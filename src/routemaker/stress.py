@@ -251,6 +251,7 @@ ROUGH_SMOOTHNESS = frozenset({"very_bad", "horrible", "very_horrible", "impassab
 # read. The owner's own quoted reason is not part of it: that stays in the
 # override row and its audit trail and is never shown.
 ADJUSTMENT_CATEGORIES = (
+    "speed",
     "road_conditions",
     "driver_behaviour",
     "intersection",
@@ -259,6 +260,11 @@ ADJUSTMENT_CATEGORIES = (
     "other",
 )
 ADJUSTMENT_VISIBILITIES = ("public", "hidden")
+# Where a public note may be shown. The owner, 2026-09-27: "In many cases
+# there's an acceptable trail. Only provide the warnings if the route goes over
+# the road." `route_only`: in the summary of a route that uses the stretch, and
+# nowhere else. `map`: also when a rider clicks the stretch on the map.
+ADJUSTMENT_DISPLAYS = ("route_only", "map")
 # Whether the owner has approved the category and note, as distinct from the
 # tier: a note this repository proposed is carried and never shown.
 ANNOTATION_STATUSES = ("proposed", "approved")
@@ -284,6 +290,7 @@ class StressAdjustment:
     visibility: str
     annotation_status: str
     public_note: str | None = None
+    display: str = "route_only"
 
     @property
     def direction(self) -> str:
@@ -310,6 +317,7 @@ class StressAdjustment:
             "computed_tier": int(self.computed_tier),
             "category": self.category,
             "public_note": self.public_note,
+            "display": self.display,
         }
 
 

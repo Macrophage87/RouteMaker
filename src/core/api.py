@@ -297,6 +297,32 @@ class HillsSeekOut(Schema):
     )
 
 
+class StressAdjustmentOut(Schema):
+    """A curated stress adjustment the route rides over (the owner, 2026-09-27:
+    "Only provide the warnings if the route goes over the road"). The why is
+    present only for a public adjustment whose words the owner approved."""
+
+    adjustment_id: str = Field(description="Stable across rebuilds; one per stretch.")
+    tier: int = Field(description="The tier the route rode the stretch at.")
+    adjusted: Literal[True]
+    length_m: float
+    direction: Literal["up", "down", "same"] | None = None
+    category: (
+        Literal[
+            "speed",
+            "road_conditions",
+            "driver_behaviour",
+            "intersection",
+            "sightlines",
+            "better_among_alternatives",
+            "other",
+        ]
+        | None
+    ) = None
+    public_note: str | None = None
+    display: Literal["route_only", "map"] | None = None
+
+
 class RouteOut(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend"]
@@ -307,6 +333,7 @@ class RouteOut(Schema):
     descent_m: float
     stress_m: StressOut
     facility_m: FacilityOut
+    stress_adjustments: list[StressAdjustmentOut]
     dials: DialsOut
     hills_seek: HillsSeekOut | None
     attribution: list[str]

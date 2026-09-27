@@ -386,6 +386,93 @@ def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[st
     return stress, facility
 
 
+_ADJUSTMENT_JOIN = """
+SELECT seg.stress_adjustment_id, seg.stress_tier, seg.stress_adjustment_direction,
+       seg.stress_adjustment_category, seg.stress_adjustment_note,
+       seg.stress_adjustment_display, sum(p.metres)
+FROM unnest(%s::bigint[], %s::float8[], %s::float8[], %s::float8[])
+     WITH ORDINALITY AS p(way_id, lon, lat, metres, ordinality)
+JOIN LATERAL (
+    SELECT s.stress_tier, s.stress_adjustment_id, s.stress_adjustment_direction,
+           s.stress_adjustment_category, s.stress_adjustment_note, s.stress_adjustment_display
+    FROM {schema}.segment AS s
+    WHERE s.osm_way_id = p.way_id
+    ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)
+    LIMIT 1
+) AS seg ON true
+WHERE seg.stress_adjustment_id IS NOT NULL
+GROUP BY 1, 2, 3, 4, 5, 6
+ORDER BY min(p.ordinality)
+"""
+ADJUSTMENT_COLUMNS = (
+    "stress_adjustment_id",
+    "stress_adjustment_direction",
+    "stress_adjustment_category",
+    "stress_adjustment_note",
+    "stress_adjustment_display",
+)
+_adjustment_columns_seen = False
+
+
+def _has_adjustment_columns(schema: str) -> bool:
+    global _adjustment_columns_seen
+    if _adjustment_columns_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = ANY(%s)",
+            [schema, list(ADJUSTMENT_COLUMNS)],
+        )
+        _adjustment_columns_seen = cursor.fetchone()[0] == len(ADJUSTMENT_COLUMNS)
+    return _adjustment_columns_seen
+
+
+def adjustments_used(pieces: list[Piece]) -> list[dict]:
+    """The curated stress adjustments the route rides over, in route order.
+
+    The owner, 2026-09-27: "In many cases there's an acceptable trail. Only
+    provide the warnings if the route goes over the road." So a note belongs
+    in the answer of a route that uses the stretch, and this is where it
+    comes from. Each entry is the adjustment's id, the tier the route rode at
+    and the metres on it; the why (direction, category, note, display) is null
+    except where the segment table carries it, which is a public adjustment whose
+    words the owner approved (`pipeline.writers._adjustment_columns`). A
+    hidden one is only "adjusted". Empty until the live table has the columns.
+    """
+    if not pieces:
+        return []
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    if not _has_adjustment_columns(schema):
+        return []
+    arrays = [
+        [p.way_id for p in pieces],
+        [p.lon for p in pieces],
+        [p.lat for p in pieces],
+        [p.metres for p in pieces],
+    ]
+    query = _ADJUSTMENT_JOIN.format(schema=schema)
+    used = []
+    with connection.cursor() as cursor:
+        cursor.execute(query, arrays)
+        for adjustment_id, tier, direction, category, note, display, metres in cursor.fetchall():
+            # The why is null where the table holds none: a hidden or
+            # unapproved adjustment, which the writer never fills.
+            used.append(
+                {
+                    "adjustment_id": adjustment_id,
+                    "tier": tier,
+                    "adjusted": True,
+                    "length_m": round(float(metres), 1),
+                    "direction": direction,
+                    "category": category,
+                    "public_note": note,
+                    "display": display,
+                }
+            )
+    return used
+
+
 def stress_breakdown(pieces: list[Piece]) -> dict[str, float]:
     """Metres per stress tier, keyed "1".."4" and "unknown"."""
     return breakdown(pieces, ridetime.WEEKEND)[0]
@@ -612,6 +699,7 @@ def plan(
         "descent_m": round(descent, 1),
         "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
         "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
+        "stress_adjustments": adjustments_used(pieces),
         "dials": {
             "stress": stress_dial,
             "hills": hills_dial,

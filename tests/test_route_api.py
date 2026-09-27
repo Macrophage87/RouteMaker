@@ -42,6 +42,7 @@ CONTRACT_KEYS = {
     "attribution",
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
     "facility_m",
+    "stress_adjustments",
     "dials",
     "hills_seek",
 }

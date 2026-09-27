@@ -22,6 +22,22 @@ export interface RouteResponse {
   stress_m: StressMetres;
   /** Metres per facility class. Absent from an API older than the sliders. */
   facility_m?: FacilityMetres;
+  /**
+   * The curated stress adjustments the route rides over, in route order; the
+   * why only for a public one whose words the owner approved (shown in the
+   * route's summary: "Only provide the warnings if the route goes over the
+   * road"). Absent from an older API. The card that shows it is to come.
+   */
+  stress_adjustments?: {
+    adjustment_id: string;
+    tier: number;
+    adjusted: true;
+    length_m: number;
+    direction: "up" | "down" | "same" | null;
+    category: string | null;
+    public_note: string | null;
+    display: "route_only" | "map" | null;
+  }[];
   /** The positions the route was planned with. Absent from an older API. */
   dials?: { stress: number; hills: number; when: When; carrying: Carrying | null; assist?: boolean };
   /** Present when the hills slider was past its detent. */

@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-09-27",
   "decided_by": "the deployment owner",
-  "annotations": "Each row's category and public_note were proposed by this repository on 2026-09-27 and wait for the owner (annotation_status \"proposed\"): until the owner approves them the rebuild carries each stretch as adjusted, with its id and nothing else. The tiers are the owner's and load now.",
+  "annotations": "Each row's category and public_note were proposed by this repository on 2026-09-27; the owner approved them the same day for a route's summary only (\"In many cases there's an acceptable trail. Only provide the warnings if the route goes over the road.\"), so every row is display \"route_only\". US 340 is \"speed\", the category the owner added (\"Yes, add 'speed' (Recommended)\").",
   "rows": [
     {
       "kind": "stress",
@@ -10,9 +10,10 @@
       "value": {
         "tier": 5,
         "adjustment_id": "us-340-wilson-freeway",
-        "category": "other",
+        "category": "speed",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Freeway-grade highway with fast through traffic."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, asked about US 340 in West Virginia (the William L. Wilson Freeway), chose \"Legal but avoid\" (\"Leave access as OSM has it; the stress penalty (LTS 4) already pushes Default and calmer rides off it when there's an alternative.\") and then: \"Maybe make a 5th category for legal but to be avoided\". The first entry of the category.",
@@ -26,7 +27,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -40,7 +42,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -54,7 +57,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -68,7 +72,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -82,7 +87,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -96,7 +102,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -110,7 +117,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -124,7 +132,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -138,7 +147,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -152,7 +162,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -166,7 +177,8 @@
         "adjustment_id": "11th-street-bridge-local-span",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Bridge roadway shared with fast traffic; the Anacostia Riverwalk Trail beside it is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". This is the 11th Street Bridge local span or one of its south landing ways. They carried the crossings fixture's ordinary-ride penalty for the owner's \"Steer to the path\" (2026-09-26: \"Keep it legal but add a penalty on that roadway for ordinary rides so the Riverwalk wins when it's close in length.\"); the owner retired that penalty on 2026-09-27 (\"Retire it (Recommended)\"), and this row's LTS 4 stress penalty now does the steering.",
@@ -180,7 +192,8 @@
         "adjustment_id": "benning-road-bridge-roadway",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Multi-lane bridge roadway with traffic posted at 35 mph."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". The Benning Road Bridge roadway (westbound); its sidewalks are separate ways and are not touched.",
@@ -194,7 +207,8 @@
         "adjustment_id": "benning-road-bridge-roadway",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Multi-lane bridge roadway with traffic posted at 35 mph."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". The Benning Road Bridge roadway (eastbound); its sidewalks are separate ways and are not touched.",
@@ -208,7 +222,8 @@
         "adjustment_id": "frederick-douglass-bridge-roadway",
         "category": "driver_behaviour",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Fast multi-lane bridge roadway; the Anacostia Riverwalk Trail on the bridge is the way across."
       },
       "reason": "Legal but avoid, Mass Ride included. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". And on Mass Ride, 2026-09-27: \"That shouldn't be the case. There were even issues on it on rides that I've done. Any time it's proposed for a mass ride there are strong objections\". The Frederick Douglass Memorial Bridge roadway; the Anacostia Riverwalk Trail ways on the bridge (984551672, 1088041544) are not touched, and the roadway stays legal.",
@@ -222,7 +237,8 @@
         "adjustment_id": "frederick-douglass-bridge-roadway",
         "category": "driver_behaviour",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Fast multi-lane bridge roadway; the Anacostia Riverwalk Trail on the bridge is the way across."
       },
       "reason": "Legal but avoid, Mass Ride included. The owner, 2026-09-27: \"11th street is LTS4, benning road by bridge on road, and south Capitol by bridge on a road are in the avoid category\". And on Mass Ride, 2026-09-27: \"That shouldn't be the case. There were even issues on it on rides that I've done. Any time it's proposed for a mass ride there are strong objections\". The Frederick Douglass Memorial Bridge roadway; the Anacostia Riverwalk Trail ways on the bridge (984551672, 1088041544) are not touched, and the roadway stays legal.",
@@ -236,7 +252,8 @@
         "adjustment_id": "sousa-bridge-roadway",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Multi-lane bridge roadway; the trail across the bridge is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (westbound).",
@@ -250,7 +267,8 @@
         "adjustment_id": "sousa-bridge-roadway",
         "category": "other",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Multi-lane bridge roadway; the trail across the bridge is the calmer crossing."
       },
       "reason": "LTS 4. The owner, 2026-09-27, of Pennsylvania Avenue SE and the John Philip Sousa Bridge: \"Pensylvania turns into an expressway just after the bridge. If you can't take the trail it becomes prohibited to bikes. Probably an LTS4, but useless for mass rides.\" The John Philip Sousa Bridge roadway (eastbound).",
@@ -264,7 +282,8 @@
         "adjustment_id": "pennsylvania-ave-se-dc-295-merge",
         "category": "sightlines",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, from the ramp merge.",
@@ -278,7 +297,8 @@
         "adjustment_id": "pennsylvania-ave-se-dc-295-merge",
         "category": "sightlines",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, to the second ramp merge.",
@@ -292,7 +312,8 @@
         "adjustment_id": "pennsylvania-ave-se-dc-295-merge",
         "category": "sightlines",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
+        "display": "route_only",
         "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, through the Fairlawn Avenue SE junction.",

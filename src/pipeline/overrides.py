@@ -100,7 +100,7 @@ class OverrideRefused(ValueError):
 # 2026-09-27 for a clickable "why", perhaps hidden). One adjustment may span
 # several ways, which share its id and everything but the way.
 STRESS_REQUIRED_KEYS = frozenset(
-    {"tier", "adjustment_id", "category", "visibility", "annotation_status"}
+    {"tier", "adjustment_id", "category", "visibility", "annotation_status", "display"}
 )
 STRESS_KEYS = STRESS_REQUIRED_KEYS | {"public_note"}
 STRESS_TIER_MIN, STRESS_TIER_MAX = 1, 5
@@ -126,6 +126,7 @@ def stress_value_problem(value: object) -> str | None:
     """
     from routemaker.stress import (
         ADJUSTMENT_CATEGORIES,
+        ADJUSTMENT_DISPLAYS,
         ADJUSTMENT_VISIBILITIES,
         ANNOTATION_STATUSES,
     )
@@ -157,6 +158,7 @@ def stress_value_problem(value: object) -> str | None:
         ("category", ADJUSTMENT_CATEGORIES),
         ("visibility", ADJUSTMENT_VISIBILITIES),
         ("annotation_status", ANNOTATION_STATUSES),
+        ("display", ADJUSTMENT_DISPLAYS),
     ):
         if value[key] not in allowed:
             return f"{key} must be one of {list(allowed)}, not {value[key]!r}"
@@ -215,6 +217,7 @@ def stress_adjustment(override: Override, computed):
         visibility=value["visibility"],
         annotation_status=value["annotation_status"],
         public_note=value.get("public_note"),
+        display=value["display"],
     )
 
 

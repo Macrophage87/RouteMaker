@@ -96,7 +96,8 @@ particular stretch of road might be adjusted, perhaps hidden"):
   "adjustment_id": "pennsylvania-ave-se-dc-295-merge",
   "category": "sightlines",
   "visibility": "public",
-  "annotation_status": "proposed",
+  "annotation_status": "approved",
+  "display": "route_only",
   "public_note": "Off-ramp traffic from DC 295 merges in at a blind corner."
 }
 ```
@@ -108,12 +109,16 @@ particular stretch of road might be adjusted, perhaps hidden"):
 - `adjustment_id`: lower-case words joined by hyphens, at most 64 characters,
   stable across rebuilds, and shared by every way of one stretch. Rows sharing
   one must agree on everything but the way.
-- `category`: `road_conditions`, `driver_behaviour`, `intersection`,
-  `sightlines`, `better_among_alternatives` or `other`.
+- `category`: `speed`, `road_conditions`, `driver_behaviour`,
+  `intersection`, `sightlines`, `better_among_alternatives` or `other`.
 - `visibility`: `public`, or `hidden` for an adjustment a rider sees only as
   "adjusted".
 - `annotation_status`: `proposed` until the owner has approved the category
   and the note, then `approved`. A proposed one is carried like a hidden one.
+- `display`: where a public note may be shown. `route_only` is the summary of
+  a route that rides over the stretch and nowhere else (the owner, 2026-09-27:
+  "In many cases there's an acceptable trail. Only provide the warnings if the
+  route goes over the road."); `map` is that and a click on the map as well.
 - `public_note` (optional): at most 200 characters for a rider to read. It
   describes the road and its traffic, never a neighbourhood or its people (the
   owner's rule); the loader refuses the words such a note would most likely
@@ -123,7 +128,9 @@ The row's `reason`, the owner's own words, is for the audit trail and is never
 shown: it stays in the override row. The rebuild writes the adjustment to
 `segment.stress_adjustment_id`, and only for a public, approved adjustment also
 `stress_computed_tier`, `stress_adjustment_direction`,
-`stress_adjustment_category` and `stress_adjustment_note`. Reloading a file
+`stress_adjustment_category`, `stress_adjustment_note` and
+`stress_adjustment_display`. A route's answer lists the adjustments it rides
+over (`stress_adjustments`, `core.routing.adjustments_used`). Reloading a file
 whose adjustment fields changed on the same tier updates the approved row in
 place (audited as a change); a different tier is a conflict to resolve in the
 admin. A stress row typed into the admin as `{"tier": n}` still sets the tier,
@@ -138,9 +145,9 @@ as a hidden adjustment named `way-<id>`.
   path", whose separate penalty was retired for this tier), and the Sousa
   Bridge roadway, at 4. The owner approved loading it on 2026-09-27 ("Yes, load
   it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
-  loads access overrides", gives the order. Every category and note in it is
-  this repository's proposal (`annotation_status` `proposed`), so until the
-  owner approves them each stretch is served as adjusted and nothing more.
+  loads access overrides", gives the order. Its categories and notes were
+  proposed here and approved by the owner the same day for `route_only`
+  display; US 340 is `speed`.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and

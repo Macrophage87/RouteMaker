@@ -147,13 +147,18 @@ CREATE TABLE {schema}.segment (
     stress_computed_tier        smallint CHECK (stress_computed_tier BETWEEN 1 AND 5),
     stress_adjustment_direction text CHECK (stress_adjustment_direction IN ('up', 'down', 'same')),
     stress_adjustment_category  text CHECK (stress_adjustment_category IN (
-        'road_conditions', 'driver_behaviour', 'intersection', 'sightlines',
+        'speed', 'road_conditions', 'driver_behaviour', 'intersection', 'sightlines',
         'better_among_alternatives', 'other')),
     stress_adjustment_note      text,
+    -- `route_only`: the note is for the summary of a route over the stretch
+    -- and nowhere else (the owner: "Only provide the warnings if the route
+    -- goes over the road"); `map`: also on a click on the map.
+    stress_adjustment_display   text CHECK (stress_adjustment_display IN ('route_only', 'map')),
     CONSTRAINT segment_adjustment_shown CHECK (
         stress_adjustment_id IS NOT NULL
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL
-            AND stress_adjustment_category IS NULL AND stress_adjustment_note IS NULL)),
+            AND stress_adjustment_category IS NULL AND stress_adjustment_note IS NULL
+            AND stress_adjustment_display IS NULL)),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

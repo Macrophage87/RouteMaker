@@ -297,13 +297,14 @@ def _adjusted(visibility: str, status: str):
             visibility=visibility,
             annotation_status=status,
             public_note="Off-ramp traffic merges in at a blind corner.",
+            display="route_only",
         ),
     )
 
 
 ADJUSTMENT_COLUMNS = (
     "stress_adjustment_id, stress_computed_tier, stress_adjustment_direction, "
-    "stress_adjustment_category, stress_adjustment_note"
+    "stress_adjustment_category, stress_adjustment_note, stress_adjustment_display"
 )
 
 
@@ -312,11 +313,18 @@ ADJUSTMENT_COLUMNS = (
     [
         (
             _adjusted("public", "approved"),
-            ("a-stretch", 4, "up", "sightlines", "Off-ramp traffic merges in at a blind corner."),
+            (
+                "a-stretch",
+                4,
+                "up",
+                "sightlines",
+                "Off-ramp traffic merges in at a blind corner.",
+                "route_only",
+            ),
         ),
-        (_adjusted("hidden", "approved"), ("a-stretch", None, None, None, None)),
-        (_adjusted("public", "proposed"), ("a-stretch", None, None, None, None)),
-        (StressResult(Stress.LTS2, "x"), (None, None, None, None, None)),
+        (_adjusted("hidden", "approved"), ("a-stretch", None, None, None, None, None)),
+        (_adjusted("public", "proposed"), ("a-stretch", None, None, None, None, None)),
+        (StressResult(Stress.LTS2, "x"), (None, None, None, None, None, None)),
     ],
     ids=["public-approved", "hidden", "proposed", "unadjusted"],
 )

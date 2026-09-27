@@ -412,9 +412,14 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   the format in `fixtures/overrides/README.md`): `segment.stress_adjustment_id`
   names it, and only a public adjustment whose words the owner approved also
   fills `stress_computed_tier`, `stress_adjustment_direction` (`up`, `down`,
-  `same`), `stress_adjustment_category` and `stress_adjustment_note`
-  (`writers._adjustment_columns`, and a table constraint that refuses the rest
-  without an id). The answer and the tiles do not read them yet.
+  `same`), `stress_adjustment_category`, `stress_adjustment_note` and
+  `stress_adjustment_display` (`writers._adjustment_columns`, and a table
+  constraint that refuses the rest without an id). The answer's
+  `stress_adjustments` lists, in route order, each adjustment the traced route
+  rides over: `adjustment_id`, `tier`, `adjusted`, `length_m`, and for a
+  public, approved one `direction`, `category`, `public_note` and `display`
+  (the owner: "Only provide the warnings if the route goes over the road").
+  Empty until the live table has the columns. The tiles do not read them.
 - The graph a ride routes on (`variant` in the answer): a weekend ride on a
   preset whose graph is the standard one routes on the weekend graph
   (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road

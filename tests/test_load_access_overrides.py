@@ -120,6 +120,7 @@ ADJUSTMENT = {
     "category": "sightlines",
     "visibility": "public",
     "annotation_status": "proposed",
+    "display": "route_only",
     "public_note": "Off-ramp traffic merges in at a blind corner.",
 }
 

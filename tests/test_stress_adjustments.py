@@ -44,6 +44,7 @@ GOOD = {
     "category": "sightlines",
     "visibility": "public",
     "annotation_status": "approved",
+    "display": "route_only",
     "public_note": "Off-ramp traffic merges in at a blind corner.",
 }
 
@@ -65,6 +66,7 @@ class TestTheValue:
 
     def test_the_categories_are_the_owners(self) -> None:
         assert ADJUSTMENT_CATEGORIES == (
+            "speed",
             "road_conditions",
             "driver_behaviour",
             "intersection",
@@ -85,6 +87,7 @@ class TestTheValue:
             ({"adjustment_id": 7}, "adjustment_id"),
             ({"visibility": "private"}, "visibility must"),
             ({"annotation_status": "draft"}, "annotation_status must"),
+            ({"display": "everywhere"}, "display must"),
             ({"public_note": ""}, "public_note is non-empty"),
             ({"public_note": " padded"}, "public_note is non-empty"),
             ({"public_note": 3}, "public_note is non-empty"),
@@ -132,6 +135,7 @@ class TestTheAdjustment:
             visibility=fields.get("visibility", "public"),
             annotation_status=fields.get("annotation_status", "approved"),
             public_note=fields.get("public_note", "A note."),
+            display=fields.get("display", "route_only"),
         )
 
     @pytest.mark.parametrize(
@@ -153,6 +157,7 @@ class TestTheAdjustment:
             "computed_tier": 4,
             "category": "sightlines",
             "public_note": "A note.",
+            "display": "route_only",
         }
 
     @pytest.mark.parametrize(
@@ -211,12 +216,18 @@ class TestTheOwnersFile:
     def test_it_loads(self) -> None:
         parse_file(OWNER_STRESS.read_text(), OWNER_STRESS.name)
 
-    def test_every_row_is_public_and_waits_for_the_owners_words(self) -> None:
-        """Every category and note in the file is this repository's proposal."""
+    def test_every_note_is_approved_for_a_routes_summary_only(self) -> None:
+        """The owner, 2026-09-27: "Only provide the warnings if the route goes
+        over the road." Approved as proposed, for route_only display."""
         for row in owner_rows():
             assert row["value"]["visibility"] == "public"
-            assert row["value"]["annotation_status"] == "proposed"
+            assert row["value"]["annotation_status"] == "approved"
+            assert row["value"]["display"] == "route_only"
             assert row["value"]["public_note"]
+
+    def test_us_340_is_speed(self) -> None:
+        (row,) = [r for r in owner_rows() if r["osm_way_id"] == 15561007]
+        assert row["value"]["category"] == "speed"
 
     def test_pennsylvania_avenue_after_the_merge_is_a_sightline(self) -> None:
         penn = [r for r in owner_rows() if r["osm_way_id"] in PENN_AFTER_THE_MERGE]
