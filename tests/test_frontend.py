@@ -85,27 +85,89 @@ def test_the_page_sets_no_referrer_policy_of_its_own() -> None:
     assert 'name="referrer"' not in page and "referrerpolicy" not in page
 
 
-def test_the_built_licence_notices_leave_no_package_without_text() -> None:
+def licence_sections(text: str) -> dict[str, tuple[str, str, str]]:
+    """dist/licenses.txt by package: (version, licence, body under its heading)."""
+    heading = re.compile(r"^## (.+?) - (\S+) \((.+)\)$", re.M)
+    found = list(heading.finditer(text))
+    sections = {}
+    for i, m in enumerate(found):
+        end = found[i + 1].start() if i + 1 < len(found) else len(text)
+        sections[m.group(1)] = (m.group(2), m.group(3), text[m.end() : end])
+    return sections
+
+
+def author_name(pkg: dict) -> str:
+    """package.json's author, as a name: "Name <email> (url)" or {"name": ...}."""
+    author = pkg.get("author") or ""
+    if isinstance(author, dict):
+        author = author.get("name") or ""
+    return re.sub(r"\s*[<(].*$", "", author).strip()
+
+
+def committed_notices() -> dict[str, str]:
+    """COMMITTED_NOTICES from frontend/src/licences/notices.mjs: package -> file."""
+    source = (FRONTEND / "src" / "licences" / "notices.mjs").read_text()
+    block = re.search(r"COMMITTED_NOTICES\s*=\s*\{([^}]*)\}", source)
+    assert block, "notices.mjs no longer declares COMMITTED_NOTICES"
+    pairs = re.findall(r'^\s*"?([@\w./-]+?)"?\s*:\s*"([^"]+)"', block.group(1), re.M)
+    return dict(pairs)
+
+
+def test_the_built_licence_notices_are_complete_and_each_packages_own() -> None:
     """BSD-3-Clause's second clause asks for the notice to travel with a
     minified copy, and two of the bundled packages ship no LICENSE file
     (frontend/src/licences/notices.mjs fills them). CI builds the front end
-    before pytest, so there this reads what would be published."""
+    before pytest, so there this reads what would be published: every package
+    maplibre-gl inlines has a heading, each heading's version and licence are
+    that package's own, every body is a licence, the BSD-3 bodies carry the
+    binary-redistribution clause, and a committed notice names the holder its
+    package's author field names (the mutation reviewer's probe_licences.py)."""
     notices = FRONTEND / "dist" / "licenses.txt"
     if not notices.exists():
         if os.environ.get("CI"):
             pytest.fail("CI built the front end but dist/licenses.txt is missing")
         pytest.skip("front end not built here")
-    lines = notices.read_text().splitlines()
-    heading = re.compile(r"^## (\S+) - \S+ \(.+\)$")
-    names = [m.group(1) for line in lines if (m := heading.match(line))]
-    assert {"pmtiles", "@protomaps/basemaps", "maplibre-gl", "@maplibre/mlt"} <= set(names), names
-    empty = []
-    for i, line in enumerate(lines):
-        if heading.match(line):
-            rest = [text for text in lines[i + 1 :] if text.strip()]
-            if not rest or heading.match(rest[0]):
-                empty.append(line)
-    assert not empty, empty
+    import json
+
+    sections = licence_sections(notices.read_text())
+    required = {"pmtiles", "@protomaps/basemaps", "maplibre-gl", "@maplibre/mlt"}
+    assert required <= set(sections), sorted(sections)
+
+    maps = FRONTEND / "node_modules" / "maplibre-gl" / "dist"
+    inlined = set()
+    for source_map in maps.glob("*.mjs.map"):
+        if "-dev" in source_map.name:
+            continue
+        for source in json.loads(source_map.read_text())["sources"]:
+            at = source.rfind("node_modules/")
+            if at >= 0:
+                parts = source[at + len("node_modules/") :].split("/")
+                inlined.add("/".join(parts[:2]) if parts[0].startswith("@") else parts[0])
+    assert len(inlined) >= 10, sorted(inlined)
+    unlisted = sorted(inlined - set(sections))
+    assert not unlisted, f"bundled without a notice: {unlisted}"
+
+    for name, (version, licence, body) in sections.items():
+        pkg = json.loads((FRONTEND / "node_modules" / name / "package.json").read_text())
+        assert (version, licence) == (pkg.get("version"), pkg.get("license")), name
+        assert re.search(r"copyright|licen[cs]e", body, re.I), f"{name}: the text is not a licence"
+
+    for name in ("pmtiles", "@protomaps/basemaps"):
+        assert sections[name][1] == "BSD-3-Clause", name
+        assert "Redistributions in binary form must reproduce" in sections[name][2], name
+
+    committed = committed_notices()
+    assert {"pmtiles", "@protomaps/basemaps"} <= set(committed), committed
+    for name, rel in committed.items():
+        pkg = json.loads((FRONTEND / "node_modules" / name / "package.json").read_text())
+        author = author_name(pkg)
+        assert author, f"{name} names no author to hold its copyright"
+        texts = {"committed": (FRONTEND / rel).read_text(), "built": sections[name][2]}
+        for where, text in texts.items():
+            lines = [line.strip() for line in text.splitlines()]
+            holders = [line for line in lines if line.lower().startswith("copyright")]
+            named = holders and all(author in line for line in holders)
+            assert named, f"{name} ({where}): {holders}, author {author}"
 
 
 def caddyfile_csp() -> dict[str, list[str]]:
@@ -124,7 +186,7 @@ def test_the_apps_content_security_policy_is_asserted_where_ci_runs() -> None:
     assert policy.get("default-src") == ["'self'"], policy
     assert policy.get("frame-ancestors") == ["'none'"], policy
     assert policy.get("object-src") == ["'none'"], policy
-    for directive in ("script-src", "connect-src"):
+    for directive in ("script-src", "connect-src", "base-uri", "form-action"):
         assert policy.get(directive) == ["'self'"], policy
 
 
@@ -144,14 +206,18 @@ def test_ci_typechecks_tests_and_builds_the_front_end_before_pytest() -> None:
     typecheck or build, would leave the bundle unchecked with CI green."""
     import yaml
 
-    steps = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())["jobs"]["test"][
-        "steps"
-    ]
+    job = yaml.safe_load((REPO / ".github" / "workflows" / "ci.yml").read_text())["jobs"]["test"]
+    steps = job["steps"]
     front = [i for i, s in enumerate(steps) if s.get("working-directory") == "frontend"]
     assert len(front) == 1, steps
+    pytest_at = [i for i, s in enumerate(steps) if str(s.get("run", "")).startswith("pytest")]
+    # A step that may fail, or never runs, checks nothing while CI stays green.
+    for i in front + pytest_at[:1]:
+        assert not steps[i].get("continue-on-error"), steps[i]
+        assert "if" not in steps[i], steps[i]
+    assert not job.get("continue-on-error") and "if" not in job, job
     commands = [part.strip() for part in steps[front[0]]["run"].split("&&")]
     assert commands == ["npm ci", "npm run typecheck", "npm test", "npm run build"], commands
-    pytest_at = [i for i, s in enumerate(steps) if str(s.get("run", "")).startswith("pytest")]
     assert pytest_at and front[0] < pytest_at[0], "the front end is built after pytest reads it"
     node = [s for s in steps if str(s.get("uses", "")).startswith("actions/setup-node")]
     assert node and str(node[0]["with"]["node-version"]).split(".")[0] == "22", node

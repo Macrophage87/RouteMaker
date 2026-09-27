@@ -132,6 +132,16 @@ test("a casing shows at least a pixel on each side of its tier", () => {
   });
 });
 
+test("a casing is a halo, not a band: no wider on the two sides together than its tier's own line", () => {
+  // A casing wider than the line it frames swallows the streets beside it at
+  // the zooms the overlay is read at, and the tier becomes a stripe on a band.
+  const tiers = stressLayers();
+  stressCasingLayers().forEach((casing, i) => {
+    const extra = casing.paint["line-width"] - tiers[i].paint["line-width"];
+    assert.ok(extra <= tiers[i].paint["line-width"], `LTS ${i + 1}'s casing is ${extra} px wider than a ${tiers[i].paint["line-width"]} px line`);
+  });
+});
+
 test("the overlay is added casings first: every casing under every tier", () => {
   const ids = stressOverlayLayers("s").map((l) => l.id);
   const tiers = stressLayers("s").map((l) => l.id);
