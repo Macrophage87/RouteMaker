@@ -37,17 +37,14 @@ interface Start {
 
 export const STARTS: Record<PresetId, Start> = {
   default: { stress: 75, hills: 0, seek: true },
-  trailmaxxing: { stress: 95, hills: 0, seek: true },
+  trailmaxxing: { stress: 100, hills: 0, seek: true },
   "group-ride": { stress: 50, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false },
   "mountain-goat": { stress: 50, hills: 100, seek: true },
   gravel: { stress: 50, hills: 0, seek: true },
-  beginner: { stress: 100, hills: -95, seek: true },
   fast: { stress: 10, hills: 0, seek: true },
-  recovery: { stress: 75, hills: -100, seek: true },
   cargo: { stress: 75, hills: -60, seek: true, carrying: { cargo: 75, people: 95 } },
   ebike: { stress: 75, hills: -50, seek: true },
-  bikepacking: { stress: 75, hills: -25, seek: true },
 };
 
 export const WHENS: readonly { id: When; label: string }[] = [

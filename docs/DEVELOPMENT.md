@@ -389,6 +389,31 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
 - `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
   stress slider's start (75 or 95).
 
+**The stress and hills sliders, measured** (PUBLIC-DIALS, 2026-09-27: a box
+graph, -77.22,38.78,-76.90,39.02, rebuilt from the real extract by the real
+pipeline stages before and after the graph change). Share of the route on LTS
+3-4 and moving time; "today" is the old graph at the old Default (use_roads
+and use_hills 0.5), which reproduced the live Dupont Circle to Capitol answer
+(33% LTS1, 48% LTS3, 19% LTS4):
+
+| Trip | today | stress 0 | stress 25 | stress 75 (Default) | stress 100 |
+|---|---|---|---|---|---|
+| Dupont Circle - Capitol | 67%, 21.6 min | 90%, 19.6 | 52%, 21.8 | 17%, 25.9 | 6%, 26.0 |
+| Bethesda - Georgetown | 98%, 29.3 | 98%, 29.3 | 3%, 42.0 | 3%, 42.0 (92% path) | 3%, 42.0 |
+| Silver Spring - Union Station | 10%, 48.6 | 92%, 39.7 | 10%, 48.6 | 10%, 49.2 | 6%, 50.4 |
+| Courthouse - Farragut | 51%, 20.8 | 77%, 19.3 | 11%, 23.7 | 13%, 24.7 | 13%, 24.7 |
+| Logan Circle - Eastern Market | 81%, 18.5 | 90%, 18.1 | 20%, 21.9 | 18%, 22.0 | 9%, 29.4 |
+| Falls Church - DC | 9%, 48.9 | 92%, 41.6 | 1%, 50.2 | 1%, 50.2 | 1%, 50.2 |
+
+Stress 0 is within 3% of the time of Valhalla's `shortest` route on every
+trip, so the direct end is the fastest legal route. Default starts at 75: on
+these trips it keeps LTS 3-4 under a fifth of the distance for a few minutes
+more, and 90-100 buys little more for most of them. The hills slider below
+its detent moves routes only where the terrain offers a choice (Rosslyn -
+Ballston: 105 m of climb at 0, 65 m at -100); above it the climb search found
+a hillier alternative on 6 of 14 trips (Bethesda - Georgetown +97 m for
++0.2 km; Takoma - Navy Yard +24 m for +1.8 km), each search under 5 s.
+
 The answer adds `facility_m` (`path`, `protected`, `lane`, `none`,
 `unknown`, metres summing to the traced length, from `segment.facility` and
 `segment.car_free_when`), `dials` (the positions actually planned with) and

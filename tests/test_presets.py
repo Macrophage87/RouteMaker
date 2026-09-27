@@ -25,12 +25,9 @@ CONTRACT_PRESETS = {
     "mass-ride",
     "mountain-goat",
     "gravel",
-    "beginner",
     "fast",
-    "recovery",
     "cargo",
     "ebike",
-    "bikepacking",
 }
 
 # The factor dials Valhalla reads on a 0..1 scale; outside it the service
@@ -216,15 +213,9 @@ def test_trailmaxxing_is_more_stress_averse_than_default() -> None:
     """ "Lowest stress ride, directness secondary | L2: use_roads near zero,
     living streets on, low surface avoidance"."""
     assert options("trailmaxxing")["use_roads"] < options("default")["use_roads"]
-    assert options("trailmaxxing")["use_roads"] <= 0.1
+    assert options("trailmaxxing")["use_roads"] == 0.0
     assert options("trailmaxxing")["use_living_streets"] > options("default")["use_living_streets"]
     assert options("trailmaxxing")["avoid_bad_surfaces"] < options("default")["avoid_bad_surfaces"]
-
-
-def test_beginner_is_the_top_of_the_stress_slider_and_near_flat() -> None:
-    """ "L2: use_roads zero, use_hills near zero"."""
-    assert options("beginner")["use_roads"] == 0.0
-    assert 0 < options("beginner")["use_hills"] <= 0.1
 
 
 def test_fast_is_direct_turn_shy_and_smooth() -> None:
@@ -232,11 +223,6 @@ def test_fast_is_direct_turn_shy_and_smooth() -> None:
     assert options("fast")["use_roads"] >= 0.9
     assert options("fast")["maneuver_penalty"] > options("default")["maneuver_penalty"]
     assert options("default")["avoid_bad_surfaces"] < options("fast")["avoid_bad_surfaces"] < 1.0
-
-
-def test_recovery_minimises_elevation() -> None:
-    assert options("recovery")["use_hills"] == 0.0
-    assert options("recovery")["use_roads"] == options("default")["use_roads"]
 
 
 def test_mountain_goat_starts_at_seek() -> None:
@@ -255,19 +241,20 @@ def test_ebike_routes_on_the_ebike_variant() -> None:
     assert options("ebike")["cycling_speed"] > 18.0
 
 
-@pytest.mark.parametrize("name", ["trailmaxxing", "mountain-goat", "gravel", "bikepacking"])
+@pytest.mark.parametrize("name", ["trailmaxxing", "mountain-goat", "gravel"])
 def test_the_off_road_presets_are_cross_or_mountain(name: str) -> None:
     """PLAN, Presets: "Trailmaxxing, Bikepacking, and Mountain Goat are Cross
-    or Mountain"; Gravel's row says the same."""
+    or Mountain"; Gravel's row says the same. (Bikepacking is not offered.)"""
     assert options(name)["bicycle_type"] in {"Cross", "Mountain"}
 
 
-@pytest.mark.parametrize("name", ["beginner", "fast", "recovery", "cargo", "mass-ride"])
+@pytest.mark.parametrize("name", ["fast", "cargo", "mass-ride"])
 def test_the_roadway_presets_are_hybrid(name: str) -> None:
     """PLAN, Presets: "Mass Ride, Fast, Beginner, Recovery, and Cargo are Hybrid"."""
     assert options(name)["bicycle_type"] == "Hybrid"
 
 
-def test_there_is_no_night_preset() -> None:
-    """The owner dropped it, 2026-09-27 (PLAN.md, Owner amendments)."""
-    assert "night" not in presets.PRESETS
+@pytest.mark.parametrize("name", ["night", "bikepacking", "beginner", "recovery"])
+def test_the_dropped_presets_are_not_offered(name: str) -> None:
+    """The owner dropped them, 2026-09-27 (PLAN.md, Owner amendments)."""
+    assert name not in presets.PRESETS

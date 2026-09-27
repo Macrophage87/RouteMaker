@@ -12,12 +12,9 @@ test("the picker offers every ride type in PLAN's table", () => {
       "mass-ride",
       "mountain-goat",
       "gravel",
-      "beginner",
       "fast",
-      "recovery",
       "cargo",
       "ebike",
-      "bikepacking",
     ],
   );
 });
@@ -38,7 +35,7 @@ test("the default is one of the offered presets", () => {
 });
 
 test("anything unknown falls back to the default rather than reaching the API", () => {
-  for (const junk of ["", "Mass Ride", "Beginner", "cargo-bike", null, undefined, 3, "__proto__", "toString"]) {
+  for (const junk of ["", "Mass Ride", "beginner", "recovery", "cargo-bike", null, undefined, 3, "__proto__", "toString"]) {
     assert.equal(parsePreset(junk), DEFAULT_PRESET, String(junk));
     assert.equal(isPreset(junk), false, String(junk));
   }

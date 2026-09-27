@@ -227,8 +227,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 "trailmaxxing",
                 Variant.STANDARD,
                 # "Lowest stress ride, directness secondary": use_roads near
-                # zero, living streets on, low surface avoidance, Cross.
-                stress=95,
+                # zero, living streets on, low surface avoidance, Cross. The
+                # owner, 2026-09-27, dropping Beginner and Recovery: Trailmaxxing
+                # is the stress slider at its maximum; hills stay the rider's.
+                stress=STRESS_MAX,
                 hills=0,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
@@ -298,25 +300,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
             _preset(
-                "beginner",
-                Variant.STANDARD,
-                # "Protected infrastructure only, low grades | L2: use_roads
-                # zero, use_hills near zero". use_roads zero is the top of the
-                # stress slider: a tier 3-4 way costs about five times its time
-                # and paths and protected lanes are the cheapest ways there
-                # are, so they win unless there is no other way. It is a
-                # preference, not a gate: the road exposure report that would
-                # list what could not be avoided is layer 4.
-                stress=100,
-                hills=-95,
-                bicycle_type="Hybrid",
-                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
-                use_living_streets=1.0,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
-            ),
-            _preset(
                 "fast",
                 Variant.STANDARD,
                 # "Few stops, few turns, smooth pavement | L2: high use_roads,
@@ -328,19 +311,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,
                 use_living_streets=0.2,
                 maneuver_penalty=HIGH_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
-            ),
-            _preset(
-                "recovery",
-                Variant.STANDARD,
-                # "Minimize elevation | L2: use_hills zero"; traffic as Default.
-                stress=DEFAULT_STRESS,
-                hills=HILLS_MIN,
-                bicycle_type="Hybrid",
-                avoid_bad_surfaces=_SURFACE_AVOIDANCE,
-                use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
                 gate_cost=VALHALLA_GATE_COST_S,
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
@@ -373,21 +343,6 @@ PRESETS: MappingProxyType = MappingProxyType(
                 gate_cost=VALHALLA_GATE_COST_S,
                 gate_penalty=VALHALLA_GATE_PENALTY_S,
                 cycling_speed=EBIKE_PLANNING_SPEED_KMH,
-            ),
-            _preset(
-                "bikepacking",
-                Variant.STANDARD,
-                # "L4: points-of-interest scoring ...; distance budget; Cross or
-                # Mountain bicycle_type". The scoring is not built; the L2 part
-                # is a loaded touring bike on mixed surfaces.
-                stress=DEFAULT_STRESS,
-                hills=-25,
-                bicycle_type="Cross",
-                avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
-                use_living_streets=_LIVING_STREETS,
-                maneuver_penalty=VALHALLA_MANEUVER_PENALTY_S,
-                gate_cost=VALHALLA_GATE_COST_S,
-                gate_penalty=VALHALLA_GATE_PENALTY_S,
             ),
         )
     }

@@ -13,12 +13,9 @@ export type PresetId =
   | "mass-ride"
   | "mountain-goat"
   | "gravel"
-  | "beginner"
   | "fast"
-  | "recovery"
   | "cargo"
-  | "ebike"
-  | "bikepacking";
+  | "ebike";
 
 export interface PresetOption {
   id: PresetId;
@@ -36,7 +33,7 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "trailmaxxing",
     label: "Trailmaxxing",
-    description: "As much trail and quiet street as possible; directness comes second, and road links between trails stay in.",
+    description: "Paths and protected lanes wherever they exist; busy streets only where there is no other way, directness second.",
   },
   {
     id: "group-ride",
@@ -60,19 +57,9 @@ export const PRESETS: readonly PresetOption[] = [
     description: "Unpaved roads and trails cost nothing extra; it does not yet seek them out.",
   },
   {
-    id: "beginner",
-    label: "Beginner",
-    description: "Paths and protected lanes wherever they exist, gentle grades; busy streets only where there is no other way.",
-  },
-  {
     id: "fast",
     label: "Fast",
     description: "Direct roads, few turns and smooth pavement, whatever the traffic.",
-  },
-  {
-    id: "recovery",
-    label: "Recovery",
-    description: "The flattest way there, with Default's preference for quiet streets.",
   },
   {
     id: "cargo",
@@ -83,11 +70,6 @@ export const PRESETS: readonly PresetOption[] = [
     id: "ebike",
     label: "E-bike",
     description: "Leaves out ways where e-bikes are not allowed, minds hills less, times at assisted pace.",
-  },
-  {
-    id: "bikepacking",
-    label: "Bikepacking",
-    description: "A loaded touring bike on mixed surfaces; finding water, food and camping is still to come.",
   },
 ];
 
