@@ -815,6 +815,8 @@ missing deploy step, not a broken stack.
 
 - **`/tiles/stress/*`** is the stress overlay (the map hides its toggle while
   that answers 404).
+- **`/api/coverage`** (GET) is the area routes may be planned in, as GeoJSON;
+  the map greys out everything outside it. No sign-in, an hour's cache.
 - **`/auth/login`** is the sign-in entry, and the only one. It starts the
   Discord authorize round-trip; `/auth/callback` finishes it and must match the
   redirect URI registered on the Discord application exactly.
@@ -1041,11 +1043,22 @@ What the map shows and credits:
   courtesy) are credited on every view, and each route's own attribution
   strings from the API are printed under its breakdown.
 - The stress overlay is drawn from `/tiles/stress/{z}/{x}/{y}.pbf` (layer
-  `stress`, property `tier`). The app asks for one tile over central DC at
+  `stress`, properties `tier`, `trail`, `unpaved` and `facility`) from zoom 10
+  to 16; zoomed out to 10-11 only LTS 3-4 roads and the trails, from 12 every
+  street, from 14 footways too, and below 10 nothing, where the legend says
+  "Zoom in to see traffic stress". Bike facilities are violet rails either
+  side of the stress line - off-road paths bold and solid, protected lanes
+  bold and broken, painted lanes thin - listed in the legend once the map has
+  drawn one; until the segment table carries a facility class, the trails
+  are the paths. The app asks for one tile over central DC at
   load; if that is not a 200 (a 404 while the endpoint is not deployed, a 502
   while the API is down) it hides the toggle and the legend and says the stress
   map is unavailable, and planning carries on - every route still reports its
   metres per stress tier.
+- Everything outside the covered area (`/api/coverage`) is greyed out, with a
+  thin dark line at the edge, over the base map and under its labels and the
+  overlay; the planner says "Grey areas are outside what RouteMaker covers."
+  If `/api/coverage` does not answer, the map is shown without the mask.
 - The plan (points and ride type) lives in the URL fragment, so a link reopens
   it; a fragment is never sent to a server, and nothing signed out is saved.
   Signing in keeps it: the plan is put in the tab's `sessionStorage` as the

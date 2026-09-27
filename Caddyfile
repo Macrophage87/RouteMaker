@@ -156,7 +156,7 @@
 	handle {
 		# The stress tiles (GET /tiles/stress/..., core/stress_tiles.py) are
 		# compressed here: a vector tile is protobuf, and the z14 tile over
-		# downtown DC measured 124 KB raw and 54 KB gzipped. Caddy's default
+		# downtown DC measured 124 KB raw and 55 KB gzipped. Caddy's default
 		# list of compressible types does not include the vector-tile type,
 		# hence the match - which is also what keeps every other answer of
 		# the API's as it is.

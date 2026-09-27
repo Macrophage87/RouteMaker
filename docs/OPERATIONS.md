@@ -343,7 +343,7 @@ front end reads as "no overlay".
 
 | Zoom | What is drawn | Measured on the first promoted build, downtown DC tile |
 | --- | --- | --- |
-| 10-11 | LTS 3 and 4, and cycleways, paths and bridleways; one feature per class, simplified | z10 245 KB (165 KB gzipped) |
+| 10-11 | LTS 3 and 4, and the trail network (cycleways, paths, bridleways, and footways designated for bicycles that are not sidewalks); one feature per class, simplified | z10 245 KB (165 KB gzipped) |
 | 12-13 | everything but footways, pedestrian ways and steps; one feature per class, simplified | z12 151 KB, z13 51 KB |
 | 14-16 | every segment | z14 124 KB (55 KB gzipped), 5,062 features |
 
@@ -359,7 +359,15 @@ worth behind one address. Tiles take no in-flight slot: the slowest draw
 measured was the z10 downtown tile at 1.5 s with a cold database cache, and
 every draw after that was under half a second.
 
-**Bike facilities.** Where the live table has a `facility` column (path,
+Below zoom 10 nothing is drawn; the legend says "Zoom in to see traffic
+stress" there (owner decision of 2026-09-27: busy roads and trails at region
+zoom, nothing below it).
+
+**Bike facilities.** Until the live table has a `facility` column, every
+trail-network segment carries `facility: "path"`
+(`pipeline.schema.TRAIL_NETWORK_FACILITY`), so the trails are drawn with
+the path's rails at every zoom, and nothing else carries a facility.
+Where the live table has a `facility` column (path,
 protected, lane or none - the routing lane adds it), every feature carries it
 as `facility`, and the zoomed-out levels also keep the paths and protected
 lanes whatever their tier (`pipeline.schema.keeping_facilities`). A table
@@ -371,7 +379,8 @@ table with the column draws its z10-11 tiles without the index.
 **Caching.** `Cache-Control: public, max-age=3600` and a weak ETag naming the
 live table (its oid, which a promotion changes), the optional columns it has,
 and the tile format version, so after the hour a client revalidates and gets a
-304 without the tile being drawn, and a column added in place is not a 304. Caddy compresses the tiles (an `encode` in the api's block matched on
+304 without the tile being drawn, and a column added in place is not a 304.
+Caddy compresses the tiles (an `encode` in the api's block matched on
 the vector-tile content type); nothing else the api answers is compressed.
 
 **The overview index.** The zoomed-out tiles read through a partial GiST index,
