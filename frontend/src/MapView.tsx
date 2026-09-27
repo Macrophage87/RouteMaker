@@ -7,16 +7,15 @@ import { Protocol } from "pmtiles";
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { stressOverlayLayers } from "./stressStyle.js";
 import { COVERAGE_BBOX, lonLatToTile, type LonLat } from "./lib/geo.ts";
 import {
   BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
   STRESS_SOURCE_ID,
   buildStyle,
-  stressSource,
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
+import { addStressOverlay, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -94,10 +93,6 @@ async function stressTilesAnswer(origin: string): Promise<boolean> {
   }
 }
 
-function allStressLayerIds(): string[] {
-  return stressOverlayLayers(STRESS_SOURCE_ID).map((l) => l.id);
-}
-
 export function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapLibreMap | null>(null);
@@ -152,17 +147,9 @@ export function MapView(props: Props) {
       callbacks.current.onMapClick([event.lngLat.lng, event.lngLat.lat]);
     });
 
-    const addStress = () => {
-      if (map.getSource(STRESS_SOURCE_ID)) return;
-      map.addSource(STRESS_SOURCE_ID, stressSource(origin));
-      // Under the base map's labels and the route, over its roads, in the
-      // order stressOverlayLayers gives: every casing under every tier.
-      const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
-      const visibility = callbacks.current.stressVisible ? "visible" : "none";
-      for (const layer of stressOverlayLayers(STRESS_SOURCE_ID)) {
-        map.addLayer({ ...(layer as maplibregl.LineLayerSpecification), layout: { visibility } }, firstSymbol);
-      }
-    };
+    // Under the base map's labels and the route, over its roads, in the
+    // order stressOverlayLayers gives: every casing under every tier.
+    const addStress = () => addStressOverlay(map, origin, callbacks.current.stressVisible);
 
     // Ask the endpoint; if it does not answer, say so and ask again later, so
     // one bad minute does not take the overlay away for the whole visit.
@@ -254,7 +241,7 @@ export function MapView(props: Props) {
       });
       return marker;
     });
-  }, [props.points, props.markerReset]);
+  }, markerDeps(props.points, props.markerReset));
 
   // The route line.
   useEffect(() => {
@@ -267,9 +254,7 @@ export function MapView(props: Props) {
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !loaded.current || !map.getSource(STRESS_SOURCE_ID)) return;
-    for (const id of allStressLayerIds()) {
-      if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", props.stressVisible ? "visible" : "none");
-    }
+    setStressVisibility(map, props.stressVisible);
   }, [props.stressVisible]);
 
   return <div ref={container} className="map" role="region" aria-label="Map" />;

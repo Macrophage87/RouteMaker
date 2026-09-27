@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type StressAvailability } from "./MapView.tsx";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
-import { formatClimb, formatDistance, formatDuration } from "./lib/format.ts";
+import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
 import { PRESETS, presetLabel, type PresetId } from "./lib/presets.ts";
 import { decodePlan, encodePlan } from "./lib/planHash.ts";
 import { stressSegments } from "./lib/stressBar.ts";
@@ -11,6 +11,7 @@ import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
+import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
 
 interface Plan {
@@ -137,16 +138,18 @@ export function App() {
   }, [points, preset, confirmedKm]);
 
   // The long-ride question and every error are in the sheet; on a phone whose
-  // sheet is hidden they would otherwise be invisible, so the sheet opens.
+  // sheet is hidden they would otherwise be invisible, so the sheet opens
+  // (sheet.ts), for each new one.
   useEffect(() => {
-    if (status.kind === "confirm" || status.kind === "error") setPanelOpen(true);
+    if (opensSheet(status.kind)) setPanelOpen(true);
   }, [status]);
 
   // The long-ride question takes the focus, so a keyboard rider lands on it
   // (once the sheet is open: a hidden button cannot take it).
+  const focusPlan = focusesPlanButton(status.kind, panelOpen);
   useEffect(() => {
-    if (status.kind === "confirm" && panelOpen) planButtonRef.current?.focus();
-  }, [status.kind, panelOpen]);
+    if (focusPlan) planButtonRef.current?.focus();
+  }, [focusPlan]);
 
   // After Remove, the focus goes to the next Remove button, or to Add.
   useEffect(() => {
@@ -203,6 +206,8 @@ export function App() {
     const asked = status.kind === "confirm" && status.error.spanKm !== undefined ? status.error.spanKm : spanKm(points);
     const upTo = confirmedUpTo(Math.max(asked, spanKm(points)));
     setConfirmedKm(upTo);
+    // "Not planned", from an earlier Cancel, is no longer true.
+    setNotice(null);
     // Sent here as well as by the effect, which does not run again when the
     // confirmed span is unchanged; the debounce folds the two into one.
     scheduler.current?.request({ points, preset, confirmLong: true });
@@ -229,8 +234,10 @@ export function App() {
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
   // On a phone the sheet is half the screen; a route that is showing (a
-  // shared link, usually) comes first in it, before the ride types.
-  const routeFirst = narrow && shown !== null;
+  // shared link, usually), a question or an error comes first in it, before
+  // the ride types (sheet.ts).
+  const order = sheetOrder(narrow, status.kind, shown !== null);
+  const routeFirst = order[0] === "route";
 
   // Reordering the sheet moves sections in the DOM, and a focused element
   // that moves loses the focus; put it back where it was. When the route
@@ -251,11 +258,19 @@ export function App() {
     if (routeFirst) panelBodyRef.current?.scrollTo({ top: 0 });
   }, [routeFirst]);
 
+  // Each new question or error is shown from the top of the sheet, where the
+  // Route section now is: a sheet left scrolled down to the ride types would
+  // open with the reason it opened out of sight.
+  const attention = opensSheet(status.kind) ? status : null;
+  useLayoutEffect(() => {
+    if (attention && routeFirst) panelBodyRef.current?.scrollTo({ top: 0 });
+  }, [attention]);
+
   const announcement =
     status.kind === "loading"
       ? `Planning a ${presetLabel(preset)} route…`
       : status.kind === "waiting"
-        ? `The planner is busy; trying again in ${status.seconds} seconds.`
+        ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
         : status.kind === "ok" && route
           ? announceRoute(route)
           : "";
@@ -365,7 +380,7 @@ export function App() {
           aria-labelledby="confirm-title"
           aria-describedby="confirm-text"
           onKeyDown={(event) => {
-            if (event.key === "Escape") {
+            if (isCancelKey(event.key)) {
               event.preventDefault();
               cancelLong();
             }
@@ -400,6 +415,12 @@ export function App() {
       {shown && <RouteSummary route={shown} points={routedPoints} />}
     </section>
   );
+
+  const sections: Record<SheetSection, ReactElement> = {
+    presets: presetsSection,
+    points: pointsSection,
+    route: routeSection,
+  };
 
   return (
     <div className="app">
@@ -436,9 +457,7 @@ export function App() {
           </button>
         </header>
         <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
-          {routeFirst
-            ? [routeSection, presetsSection, pointsSection]
-            : [presetsSection, pointsSection, routeSection]}
+          {order.map((id) => sections[id])}
 
           <section aria-labelledby="layers-heading">
             <h2 id="layers-heading">Traffic stress</h2>
