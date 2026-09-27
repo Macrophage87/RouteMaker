@@ -99,6 +99,19 @@ class Decision:
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
 
+# The stress tiles, counted apart from routing so that looking at the map never
+# spends the routing budget (nor routing the tiles'). PLAN's 60 per minute is a
+# figure for requests a person makes one at a time; a map makes them by the
+# screenful. A 1920x1080 view of 512-pixel tiles is up to 5 x 4 = 20 tiles,
+# and every zoom step or long pan fetches most of a screenful again: a minute
+# of zooming in and out four levels and panning, in a 1920x1080 window with an
+# empty cache, fetched 87 (2026-09-27, against the first promoted build). 600
+# a minute is several times that, for a household or an office behind one
+# address; the browser's cache (an hour, then a 304 that draws nothing) keeps
+# a return to a place from counting twice in the hour. This is above PLAN's
+# 60 for unauthenticated paths, which a map could not work inside.
+TILES = Limit(scope="tiles", requests=600, window_s=60)
+
 
 def _normalise(candidate: str) -> str | None:
     try:

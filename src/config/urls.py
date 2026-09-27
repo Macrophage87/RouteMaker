@@ -16,7 +16,7 @@ reasoning for the two-word body and the single query.
 from django.conf import settings
 from django.urls import path
 
-from core import auth_views, health
+from core import auth_views, health, stress_tiles
 from core.admin import site
 from core.api import api
 
@@ -24,6 +24,7 @@ urlpatterns = [
     path(settings.ADMIN_PATH, site.urls),
     path("healthz", health.healthz, name="healthz"),
     path("api/", api.urls),
+    path("tiles/stress/<int:z>/<int:x>/<int:y>.pbf", stress_tiles.stress_tile, name="stress-tile"),
     path("auth/login", auth_views.login_start, name="login"),
     path("auth/callback", auth_views.login_callback, name="login-callback"),
     path("auth/logout", auth_views.logout_view, name="logout"),
