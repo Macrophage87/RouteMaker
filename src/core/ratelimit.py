@@ -112,6 +112,10 @@ ROUTING = Limit(scope="route", requests=60, window_s=60)
 # 60 for unauthenticated paths, which a map could not work inside.
 TILES = Limit(scope="tiles", requests=600, window_s=60)
 
+# GET /api/coverage, the covered area the map greys out the rest of: one
+# request per page load, so PLAN's figure for unauthenticated paths.
+COVERAGE = Limit(scope="coverage", requests=60, window_s=60)
+
 
 def _normalise(candidate: str) -> str | None:
     try:

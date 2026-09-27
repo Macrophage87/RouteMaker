@@ -404,3 +404,45 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
             refusal = _error(503, "Planning this route took too long; try again shortly.")
         refusal["Retry-After"] = str(DEADLINE_RETRY_S)
         return refusal
+
+
+class CoverageGeometry(Schema):
+    type: Literal["Polygon"]
+    coordinates: list[list[list[float]]]
+
+
+class CoverageOut(Schema):
+    type: Literal["Feature"]
+    geometry: CoverageGeometry
+    properties: dict
+
+
+# How long a client may keep the coverage area. It changes only with the
+# settings, which is a deploy.
+COVERAGE_MAX_AGE_S = 3600
+
+
+def coverage_ring() -> list[list[float]]:
+    """The area this API routes in, as a closed ring, counter-clockwise.
+
+    The same `settings.COVERAGE_BBOX` that `RouteIn.inside_coverage` refuses
+    points outside of; the front end greys out everything beyond it, so what
+    it shows as covered is what the API accepts.
+    """
+    west, south, east, north = settings.COVERAGE_BBOX
+    return [[west, south], [east, south], [east, north], [west, north], [west, south]]
+
+
+@api.get(
+    "/coverage",
+    response={200: CoverageOut, 429: ErrorOut, 500: ErrorOut},
+    summary="The area routes may be planned in, as a GeoJSON polygon",
+)
+@decorate_view(ratelimit.rate_limited(ratelimit.COVERAGE), errors_as_json)
+def coverage(request, response: HttpResponse):
+    response["Cache-Control"] = f"public, max-age={COVERAGE_MAX_AGE_S}"
+    return {
+        "type": "Feature",
+        "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
+        "properties": {},
+    }
