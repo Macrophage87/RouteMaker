@@ -174,7 +174,6 @@ test("a station's features carry what its hover card and icon need", () => {
   assert.equal(props.lines, "red,orange,blue,silver");
   assert.equal(props.icon, iconId(["red", "orange", "blue", "silver"]));
   assert.equal(props.sort, 4);
-  assert.equal(props.elevator, true);
   assert.match(String(props.label), /Red.*Orange.*Blue.*Silver/);
 });
 
@@ -185,6 +184,12 @@ test("every icon a toggle setting can ask for is one allIconLines makes", () => 
       if (f.properties.kind === "station") assert.ok(made.has(f.properties.icon), f.properties.icon);
     }
   }
+});
+
+test("a station on both systems needs its MARC-only icon too, for when Metro is hidden", () => {
+  const both: Station = { ...named("Union Station") };
+  const ids = allIconLines([both]).map(iconId).sort();
+  assert.deepEqual(ids, ["rail-penn", "rail-red", "rail-red-penn"]);
 });
 
 test("icons are named by their lines, and only a MARC-only one is square", () => {

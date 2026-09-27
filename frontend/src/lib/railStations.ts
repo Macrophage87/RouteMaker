@@ -241,7 +241,6 @@ export interface StationFeatureProps {
   icon: string;
   /** Interchanges drawn over single-line stations where they touch. */
   sort: number;
-  elevator: boolean;
 }
 export interface EntranceFeatureProps {
   kind: "elevator" | "entrance";
@@ -274,7 +273,6 @@ export function railFeatures(
         label: linesLabel(lines),
         icon: iconId(lines),
         sort: lines.length,
-        elevator: station.elevators.length > 0,
       },
     });
     for (const [kind, points] of [

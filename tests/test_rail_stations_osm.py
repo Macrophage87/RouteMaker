@@ -204,9 +204,10 @@ def _metres(a, b):
 
 def test_the_elevator_check_lists_each_side_s_unmatched_elevators() -> None:
     stations = [("A", (-77.0, 38.9)), ("B", (-77.0, 38.95))]
-    dc = [("A1", (-77.0, 38.9002)), ("A2", (-77.0, 38.9010))]
+    dc = [("A1", (-77.0, 38.9002)), ("A2", (-77.0, 38.9010)), ("A3", (-77.001, 38.9))]
     osm = [
         ("node/1", (-77.0, 38.90021), True),  # A1, 1 m off: agrees
+        ("node/5", (-77.00101, 38.9), False),  # A3: an untagged elevator agrees too
         ("node/2", (-77.0, 38.8990), True),  # a street elevator DC lacks
         ("node/3", (-77.0, 38.9500), False),  # at B, which DC gives none
         ("node/4", (-77.0, 38.9300), True),  # 2 km from both: ignored
@@ -214,7 +215,7 @@ def test_the_elevator_check_lists_each_side_s_unmatched_elevators() -> None:
     dc_only, osm_only, near = elevators.compare(stations, dc, osm, _metres)
     assert [d[0] for d in dc_only] == ["A2"]
     assert [(o[0], o[1], o[3]) for o in osm_only] == [("node/2", "A", True), ("node/3", "B", False)]
-    assert [o[0] for o in near] == ["node/1", "node/2", "node/3"]
+    assert [o[0] for o in near] == ["node/1", "node/5", "node/2", "node/3"]
 
 
 def test_distance_is_about_right_at_this_latitude() -> None:

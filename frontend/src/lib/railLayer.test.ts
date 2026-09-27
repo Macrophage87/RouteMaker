@@ -32,9 +32,14 @@ function fakeMap(initial: Array<{ id: string; type: string }>) {
     getStyle: () => ({ layers }),
     addLayer: (layer: object, before?: string) => {
       const l = layer as { id: string; type: string };
-      const at = before === undefined ? -1 : layers.findIndex((x) => x.id === before);
-      if (at < 0) layers.push(l);
-      else layers.splice(at, 0, l);
+      if (before === undefined) {
+        layers.push(l);
+        return;
+      }
+      // As MapLibre does: a beforeId that is not on the map is an error.
+      const at = layers.findIndex((x) => x.id === before);
+      if (at < 0) throw new Error(`no layer ${before}`);
+      layers.splice(at, 0, l);
     },
     getLayer: (id) => layers.find((l) => l.id === id),
     setLayoutProperty: () => {},
