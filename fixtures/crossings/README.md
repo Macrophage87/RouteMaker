@@ -192,7 +192,7 @@ agree.
   trails-off ride is routed on the Key and Memorial roadways. The owner was
   asked on 2026-09-26 whether a trails-off Group Ride should be kept off
   them, and answered "No, allow them" ("A trails-off Group Ride may use those
-  bridge roadways like a mass ride."); and on 2026-09-27 what trails-off
+  bridge roadways like a mass ride."); and on 2026-09-26 what trails-off
   should do for the other ride types, and answered "Every type, roadways ok"
   ("Offer trails-off on every ride type; like Group Ride, it may use the Key
   and Memorial roadways."). So these roadways are for any trails-off ride.

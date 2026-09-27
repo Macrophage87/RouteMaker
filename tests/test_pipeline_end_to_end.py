@@ -713,7 +713,7 @@ def test_a_mass_ride_only_roadway_is_barred_everywhere_but_no_trail(
 ) -> None:
     """Owner, 2026-09-26, on Key Bridge and Memorial Bridge: "I wouldn't route
     someone onto that outside of a mass ride." and "Same with memorial bridge.",
-    then "No, allow them" for a trails-off Group Ride and, on 2026-09-27,
+    then "No, allow them" for a trails-off Group Ride and, on 2026-09-26,
     "Every type, roadways ok" for every other trails-off ride, all of which read
     the same no-trail tiles. So no trails-on ride's variant carries the roadway. Driven
     through the real pipeline, on each bridge's own roadway shape beside a

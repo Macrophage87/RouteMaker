@@ -114,7 +114,7 @@ def test_variant_selection_from_toggles() -> None:
 
 
 def test_trails_off_gives_every_ride_the_no_trail_variant() -> None:
-    """Owner, 2026-09-27, asked what trails-off should do for ride types other
+    """Owner, 2026-09-26, asked what trails-off should do for ride types other
     than Mass Ride and Group Ride: "Every type, roadways ok" ("Offer trails-off
     on every ride type; like Group Ride, it may use the Key and Memorial
     roadways."). The toggles alone decide; no ride is named, so no ride can be
@@ -247,7 +247,7 @@ class ExpectedCrossing(NamedTuple):
     # `roadway_mass_ride_only`: the roadway is for trails-off rides alone (the
     # no-trail variant), and the standard and e-bike variants bar it. Owner
     # statements of 2026-09-26, for Key Bridge and Arlington Memorial Bridge,
-    # and of 2026-09-27 ("Every type, roadways ok").
+    # and of 2026-09-26 ("Every type, roadways ok").
     mass_ride_only: bool = False
 
 

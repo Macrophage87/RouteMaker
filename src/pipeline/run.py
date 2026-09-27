@@ -253,7 +253,7 @@ class ReferenceData:
     sidepath_bridge_ids: frozenset[int]
     # Bridge roadways for trails-off rides only (`roadway_mass_ride_only`, the
     # owner's rules of 2026-09-26 for Key Bridge and Memorial Bridge, opened to
-    # every trails-off ride on 2026-09-27: "Every type, roadways ok"), which the
+    # every trails-off ride on 2026-09-26: "Every type, roadways ok"), which the
     # standard and e-bike variants bar and the no-trail variant keeps.
     mass_ride_only_bridge_ids: frozenset[int]
     # Ways an ordinary ride is steered off by a penalty, not a bar

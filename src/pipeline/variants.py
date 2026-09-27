@@ -35,7 +35,7 @@ class Variant(Enum):
     decided that it may be: on 2026-09-26, asked whether a trails-off Group
     Ride should be kept off those roadways, "No, allow them" - "A trails-off
     Group Ride may use those bridge roadways like a mass ride."; and on
-    2026-09-27, asked what trails-off should do for the other ride types,
+    2026-09-26, asked what trails-off should do for the other ride types,
     "Every type, roadways ok" - "Offer trails-off on every ride type; like
     Group Ride, it may use the Key and Memorial roadways." `variant_for` gives
     this variant to any ride with trails off (fixtures/crossings/README.md).
@@ -284,7 +284,7 @@ def is_roadway_mass_ride_only(row: dict) -> bool:
     itself mass-ride-only - PLAN gives it to Group Ride with trails off too -
     and the owner ruled on that twice: on 2026-09-26, "No, allow them" ("A
     trails-off Group Ride may use those bridge roadways like a mass ride."),
-    and on 2026-09-27, "Every type, roadways ok" ("Offer trails-off on every
+    and on 2026-09-26, "Every type, roadways ok" ("Offer trails-off on every
     ride type; like Group Ride, it may use the Key and Memorial roadways.").
     So the roadway is for any trails-off ride, and `variant_for` gives the
     no-trail variant to every ride with trails off. It is a routing rule, not a
@@ -745,7 +745,7 @@ def variant_for(allow_trails: bool, ebike_rules: bool) -> Variant:
     the owner reserved on 2026-09-26 ("I wouldn't route someone onto that
     outside of a mass ride."), then opened to a trails-off Group Ride ("No,
     allow them" - "A trails-off Group Ride may use those bridge roadways like a
-    mass ride."), and on 2026-09-27 to every ride type: asked what trails-off
+    mass ride."), and on 2026-09-26 to every ride type: asked what trails-off
     should do for ride types other than Mass Ride and Group Ride, "Every type,
     roadways ok" - "Offer trails-off on every ride type; like Group Ride, it
     may use the Key and Memorial roadways." So every trails-off ride shares the
