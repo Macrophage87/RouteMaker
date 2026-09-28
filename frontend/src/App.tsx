@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
 import { canDragLine, dropStillValid, insertIntoLeg, legEnds } from "./lib/lineEdit.ts";
-import { EditHistory, isRedoKey, isUndoKey, step, typesText } from "./lib/editHistory.ts";
+import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
@@ -24,6 +24,8 @@ import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { StressZoomNotes } from "./lib/stressLegend.ts";
+import { PointsList } from "./lib/pointsList.ts";
+import { planEdits, travelSaid } from "./lib/planEdits.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
@@ -212,30 +214,34 @@ export function App() {
     [],
   );
 
+  // The plan's edits and its undo and redo (lib/planEdits.ts, where they are tested).
+  const edits = useMemo(
+    () =>
+      planEdits<LonLat[]>({
+        history: history.current,
+        current: () => pointsRef.current,
+        set: (next) => {
+          // Kept current at once, so a second edit before the next render builds on this one.
+          pointsRef.current = next;
+          setPoints(next);
+        },
+        sync: syncHistory,
+      }),
+    [syncHistory],
+  );
+
   /** Every edit of the points goes through here, so undo can give the list before it back. */
-  const commit = useCallback((next: LonLat[]) => {
-    const before = pointsRef.current;
-    history.current.record(before);
-    syncHistory();
-    // Kept current at once, so a second edit before the next render builds on this one.
-    pointsRef.current = next;
-    setPoints(next);
-  }, [syncHistory]);
+  const commit = edits.commit;
 
   /** Undo or redo: the list the history gives back, which is not itself an edit. */
   const travel = useCallback(
     (direction: "undo" | "redo") => {
-      const current = pointsRef.current;
-      const next = step(history.current, direction, current);
+      const next = edits.travel(direction);
       if (next === undefined) return;
-      syncHistory();
-      pointsRef.current = next;
-      setPoints(next);
       setNotice(null);
-      const count = `${next.length} ${next.length === 1 ? "point" : "points"}`;
-      announce(`${direction === "undo" ? "Undone" : "Redone"}. The route has ${count}.`);
+      announce(travelSaid(direction, next.length));
     },
-    [announce, syncHistory],
+    [announce, edits],
   );
   const undo = useCallback(() => travel("undo"), [travel]);
   const redo = useCallback(() => travel("redo"), [travel]);
@@ -478,34 +484,13 @@ export function App() {
           "Add point at map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
         </p>
       ) : (
-        <ol className="points">
-          {pointRows(points, namer).map(({ role: name, place, coords }, index) => {
-            return (
-              <li key={index}>
-                <span className="point-name">{name}</span>
-                {place ? (
-                  <span className="point-place" title={`${place.label} (${coords})`}>
-                    <span className="place-name">{place.name}</span>
-                    <span className="coords">{coords}</span>
-                  </span>
-                ) : (
-                  <span className="coords">{coords}</span>
-                )}
-                <button
-                  type="button"
-                  className="link"
-                  ref={(el) => {
-                    removeRefs.current[index] = el;
-                  }}
-                  onClick={() => removeAt(index)}
-                  aria-label={`Remove ${name}`}
-                >
-                  Remove
-                </button>
-              </li>
-            );
-          })}
-        </ol>
+        <PointsList
+          rows={pointRows(points, namer)}
+          onRemove={removeAt}
+          removeRef={(index, button) => {
+            removeRefs.current[index] = button;
+          }}
+        />
       )}
       {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
       {coverageShown && <p className="hint">Grey areas are outside what RouteMaker covers.</p>}
