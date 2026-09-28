@@ -907,7 +907,9 @@ def test_every_documented_restart_is_of_the_routers_that_load_tiles_at_start() -
     Derived from `compose.yaml`: the services that bind a variant's tile
     directory (whose `current` link names the promoted build) are the ones a
     restart is for, and every documented
-    `docker compose restart` names exactly that set."""
+    `docker compose restart` names exactly that set - less any the same snippet
+    stops instead: a rollback that withdraws a variant's first build stops its
+    router rather than restarting it onto no tiles (`rollback_rebuild`)."""
     routers = {
         name
         for name, service in SERVICES.items()
@@ -915,19 +917,32 @@ def test_every_documented_restart_is_of_the_routers_that_load_tiles_at_start() -
         if re.match(r"^\$\{DATA_ROOT\}/tiles/[^/:]+:/data/tiles/", volume)
     }
     assert routers, "no service binds a promoted tile directory"
-    restarts = [
-        (name, tokens)
-        for name, body in ALL_DOCUMENTS.items()
-        for tokens in snippet_commands(body)
-        if tokens[:3] == ["docker", "compose", "restart"]
-    ]
+    restarts = []
+    for name, body in ALL_DOCUMENTS.items():
+        for block in shell_snippets(body):
+            commands = snippet_commands("```sh\n" + block + "```")
+            stopped = {
+                token
+                for tokens in commands
+                if tokens[:3] == ["docker", "compose", "stop"]
+                for token in tokens[3:]
+                if not token.startswith("-")
+            }
+            restarts += [
+                (name, tokens, stopped)
+                for tokens in commands
+                if tokens[:3] == ["docker", "compose", "restart"]
+            ]
     assert restarts, "no guide restarts the routers after a rebuild"
-    for name, tokens in restarts:
+    for name, tokens, stopped in restarts:
         named = {token for token in tokens[3:] if not token.startswith("-")}
-        assert named == routers, (
+        assert stopped <= routers and not named & stopped and named | stopped == routers, (
             f"{name} runs `{' '.join(tokens)}`; the services that load tiles at start, "
             f"which are the only ones a restart is for, are {sorted(routers)}"
         )
+    assert any(stopped for _name, _tokens, stopped in restarts), (
+        "no guide stops a withdrawn router, so the exception above checks nothing"
+    )
 
 
 # --- Numbers and inputs the documents share with the code ---------------------
