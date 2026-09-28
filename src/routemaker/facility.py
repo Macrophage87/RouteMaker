@@ -98,12 +98,17 @@ SEPARATION_KEYS = (
 TRAIL_SEPARATION_KEYS = ("separation", "separation:left", "separation:right", "separation:both")
 
 SIDEWALK = "sidewalk"
-# Footways and paths that cross a road rather than leave it: a marked crossing,
-# or the refuge in the middle of one. Open to bicycles or not, they are part of
-# the street they cross, not an off-road path (PUBLIC-TILES review, 2026-09-28:
-# 3,328 footway=crossing and 233 footway=traffic_island ways in the region
-# open to bicycles were counted as paths).
-CROSSING_KINDS = frozenset({"crossing", "traffic_island"})
+# Trail-class ways that cross a road rather than leave it: a marked crossing,
+# or the refuge in the middle of one. They are part of the street they cross,
+# not an off-road path (PUBLIC-TILES review, 2026-09-28: 3,328 footway=crossing
+# and 233 footway=traffic_island ways in the region open to bicycles were
+# counted as paths) - with one exception: a crossing signed for bicycles
+# (`bicycle=designated`) carries a trail across the road, and stays the
+# trail's, as `highway=cycleway` + `cycleway=crossing` does (correctness
+# review, 2026-09-28). An island is never the trail's.
+CROSSING_KEYS = ("footway", "path", "cycleway")
+CROSSING = "crossing"
+TRAFFIC_ISLAND = "traffic_island"
 
 # The keys that close a road to motor traffic, outright or at set times.
 MOTOR_KEYS = ("motor_vehicle", "motorcar")
@@ -161,7 +166,10 @@ def facility(tags: dict[str, str], beside_separate_road: bool = False) -> Facili
     if highway in TRAIL_CLASS_HIGHWAY:
         if highway == "steps" or not trail_open_to_bicycle(tags):
             return Facility.NONE
-        if any(tags.get(key) in CROSSING_KINDS for key in ("footway", "path")):
+        kinds = {tags.get(key) for key in CROSSING_KEYS}
+        if TRAFFIC_ISLAND in kinds:
+            return Facility.NONE
+        if CROSSING in kinds and highway != "cycleway" and tags.get("bicycle") != "designated":
             return Facility.NONE
         if SIDEWALK in (tags.get("footway"), tags.get("path"), tags.get("cycleway")):
             # A signed sidepath is the protected facility beside its road; a

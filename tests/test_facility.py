@@ -39,11 +39,14 @@ P, PR, L, N = Facility.PATH, Facility.PROTECTED, Facility.LANE, Facility.NONE
         ({"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}, N),
         # A crossing, or the island in one, is part of the street it crosses.
         ({"highway": "footway", "footway": "crossing", "bicycle": "yes"}, N),
-        ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, N),
         ({"highway": "footway", "footway": "traffic_island", "bicycle": "permissive"}, N),
-        ({"highway": "path", "path": "crossing", "bicycle": "designated"}, N),
-        # A trail's own crossing of a road stays the trail's.
+        ({"highway": "path", "path": "crossing", "bicycle": "yes"}, N),
+        ({"highway": "cycleway", "cycleway": "traffic_island"}, N),
+        ({"highway": "footway", "footway": "traffic_island", "bicycle": "designated"}, N),
+        # A crossing signed for bicycles carries its trail across the road.
         ({"highway": "cycleway", "cycleway": "crossing"}, P),
+        ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, P),
+        ({"highway": "path", "path": "crossing", "bicycle": "designated"}, P),
         ({"highway": "cycleway", "is_sidepath": "yes"}, PR),
         ({"highway": "cycleway", "separation:left": "flex_post;bump"}, PR),
         ({"highway": "cycleway", "separation:left": "no"}, P),
