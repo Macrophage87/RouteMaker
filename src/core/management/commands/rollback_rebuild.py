@@ -116,7 +116,13 @@ class Command(BaseCommand):
             raise CommandError(str(unavailable)) from unavailable
 
         for variant in Variant:
-            self.stdout.write(f"{variant.value}: would go back to build {target[variant]}")
+            if target[variant] is None:
+                self.stdout.write(
+                    f"{variant.value}: on its first build; would be withdrawn (no tiles served, "
+                    "no settings row) - its rides are planned on the standard graph"
+                )
+            else:
+                self.stdout.write(f"{variant.value}: would go back to build {target[variant]}")
         self.stdout.write(f"live segments would come from {settings.SEGMENT_SCHEMA_RETIRED}")
 
         if not options["confirm"]:

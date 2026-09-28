@@ -1478,6 +1478,70 @@ def test_rollback_puts_the_previous_build_back_everywhere(workspace, states) -> 
     assert ValhallaUpstream.objects.get(variant="ebike").build_id == "20260910T080000Z"
 
 
+def _as_three_variants(root) -> None:
+    """The deployment before PUBLIC-DIALS: no weekend graph, no weekend row."""
+    import shutil
+
+    from core.models import ValhallaUpstream
+
+    shutil.rmtree(root / "tiles" / "weekend")
+    ValhallaUpstream.objects.filter(variant="weekend").delete()
+
+
+def test_rollback_after_the_first_four_variant_rebuild_withdraws_the_weekend_graph(
+    workspace, states
+) -> None:
+    """The upgrade from three variants to four (OPS review, 2026-09-28): the
+    weekend graph's first build has nothing to go back to, and refusing the
+    whole rollback for it left the rebuild that changed everyone's routing
+    with no undo. The other three go back; weekend is withdrawn - no tiles
+    served, no row - which is the deployment before that rebuild."""
+    from core.models import ValhallaUpstream
+    from pipeline.promotion import rollback, rollback_target
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+    _as_three_variants(root)
+    build_toy_extract(source, changed=True)
+    run_pipeline(source, root, build_id="20260917T080000Z")
+    weekend = root / "tiles" / "weekend"
+    assert os.readlink(weekend / "current") == "20260917T080000Z"
+    assert not (weekend / "previous").is_symlink()
+
+    target = rollback_target(root / "tiles")
+    assert target[Variant.WEEKEND] is None
+    assert target[Variant.STANDARD] == "20260910T080000Z"
+
+    rollback(root / "tiles")
+
+    assert count(settings.SEGMENT_SCHEMA_LIVE) == 5
+    for variant in Variant:
+        if variant is Variant.WEEKEND:
+            continue
+        assert os.readlink(root / "tiles" / variant.value / "current") == "20260910T080000Z"
+    assert not (weekend / "current").is_symlink(), "the weekend graph is withdrawn"
+    assert (weekend / "20260917T080000Z").is_dir(), "its build is kept for retention"
+    assert not ValhallaUpstream.objects.filter(variant="weekend").exists()
+    assert ValhallaUpstream.objects.get(variant="standard").build_id == "20260910T080000Z"
+
+
+def test_a_variant_without_a_previous_build_is_not_withdrawn_on_its_own(workspace, states) -> None:
+    """Only a variant promoted with the build the others serve counts as on its
+    first build; one whose row names another build is a broken deployment,
+    and the rollback is refused as before."""
+    from core.models import ValhallaUpstream
+    from pipeline.promotion import RollbackUnavailable, rollback_target
+
+    source, root = workspace
+    run_pipeline(source, root, build_id="20260910T080000Z")
+    _as_three_variants(root)
+    build_toy_extract(source, changed=True)
+    run_pipeline(source, root, build_id="20260917T080000Z")
+    ValhallaUpstream.objects.filter(variant="weekend").update(build_id="20260903T080000Z")
+    with pytest.raises(RollbackUnavailable, match="weekend"):
+        rollback_target(root / "tiles")
+
+
 def refusing_swap(*args, **kwargs):
     """`swap_schemas`, as it behaves when the rename cannot be made."""
     from pipeline.swap import SwapLockTimeout

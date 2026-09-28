@@ -393,6 +393,15 @@ def demote(tiles_dir: Path, variant: Variant) -> str | None:
     return previous
 
 
+def withdraw(tiles_dir: Path, variant: Variant) -> None:
+    """Take a variant on its first build out of service: no `current`, no
+    `previous`. The rollback of the rebuild that introduced it (the weekend
+    graph, PUBLIC-DIALS); the build directory itself stays for retention."""
+    variant_dir = Path(tiles_dir) / variant.value
+    _remove_link(variant_dir / PREVIOUS)
+    _remove_link(variant_dir / CURRENT)
+
+
 # A name no build id can take (`retention.BUILD_ID`) and no link is called, so a
 # probe left behind by a process killed between its two syscalls is never read
 # as a build or a promotion link.

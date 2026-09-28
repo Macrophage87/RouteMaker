@@ -243,12 +243,21 @@ def restore_upstreams(before: Mapping[str, UpstreamState]) -> None:
             if not state.existed:
                 ValhallaUpstream.objects.filter(variant=variant).delete()
                 continue
-            ValhallaUpstream.objects.filter(variant=variant).update(
+            updated = ValhallaUpstream.objects.filter(variant=variant).update(
                 url=state.url,
                 build_id=state.build_id,
                 previous_build_id=state.previous_build_id,
                 updated_at=timezone.now(),
             )
+            if not updated:
+                # A rollback that withdrew a variant on its first build deleted
+                # the row, and its undo has to put it back.
+                ValhallaUpstream.objects.create(
+                    variant=variant,
+                    url=state.url,
+                    build_id=state.build_id,
+                    previous_build_id=state.previous_build_id,
+                )
 
 
 def restore_everything(
@@ -385,7 +394,7 @@ def _retired_holds_a_graph(retired: str) -> bool:
         return cursor.fetchone()[0]
 
 
-def rollback_target(tiles_dir: Path) -> dict[Variant, str]:
+def rollback_target(tiles_dir: Path) -> dict[Variant, str | None]:
     """The build each variant would go back to, or a refusal naming what is missing.
 
     `rollback_swap`'s own gate is that a retired schema exists, which is true
@@ -394,21 +403,34 @@ def rollback_target(tiles_dir: Path) -> dict[Variant, str]:
     this checks all three parts of a previous build - the settings rows, the
     `previous` tile links, and a retired schema with a graph in it - and
     refuses before anything has been renamed or moved.
+
+    A variant on its first build maps to None: it has no row naming a previous
+    build and no `previous` link, and it was promoted with the build every
+    other variant is serving - the weekend graph, after the first rebuild that
+    built four (PUBLIC-DIALS). Its rollback withdraws it (no `current`, no
+    settings row), which is the deployment as it was before that rebuild; the
+    API plans a weekend ride on the standard graph when its router does not
+    answer. Only when every other variant has something to go back to: a
+    deployment where none does is the first-ever swap, refused as before.
     """
     from django.conf import settings
 
     from core.models import ValhallaUpstream
 
     rows = {row.variant: row for row in ValhallaUpstream.objects.all()}
-    target: dict[Variant, str] = {}
+    target: dict[Variant, str | None] = {}
     missing: list[str] = []
+    first_builds: list = []
     for variant in Variant:
         row = rows.get(variant.value)
         if row is None:
             missing.append(f"{variant.value} has no settings row")
             continue
         if not row.previous_build_id:
-            missing.append(f"{variant.value}'s settings row names no previous build")
+            if tiles.promoted_build_id(tiles_dir, variant, tiles.PREVIOUS) is None:
+                first_builds.append((variant, row))
+            else:
+                missing.append(f"{variant.value}'s settings row names no previous build")
             continue
         link = tiles.promoted_build_id(tiles_dir, variant, tiles.PREVIOUS)
         if link is None:
@@ -421,6 +443,13 @@ def rollback_target(tiles_dir: Path) -> dict[Variant, str]:
             )
             continue
         target[variant] = row.previous_build_id
+
+    served = {rows[variant.value].build_id for variant in target}
+    for variant, row in first_builds:
+        if target and not missing and served == {row.build_id}:
+            target[variant] = None
+        else:
+            missing.append(f"{variant.value}'s settings row names no previous build")
 
     retired = settings.SEGMENT_SCHEMA_RETIRED
     if not schema_exists(retired):
@@ -491,9 +520,15 @@ def rollback(tiles_dir: Path) -> None:
     rows_before = upstream_states(settings.VALHALLA_UPSTREAMS)
     try:
         for variant in Variant:
-            tiles.demote(tiles_dir, variant)
+            if target[variant] is None:
+                tiles.withdraw(tiles_dir, variant)
+            else:
+                tiles.demote(tiles_dir, variant)
         with transaction.atomic():
             for variant in Variant:
+                if target[variant] is None:
+                    ValhallaUpstream.objects.filter(variant=variant.value).delete()
+                    continue
                 ValhallaUpstream.objects.filter(variant=variant.value).update(
                     build_id=target[variant], previous_build_id="", updated_at=timezone.now()
                 )
