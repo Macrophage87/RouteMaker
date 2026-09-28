@@ -287,6 +287,18 @@ def test_beside_is_measured_to_the_road_not_its_line_beyond_its_end():
     assert beside_separate_roads([road, onward]) == set()
 
 
+@pytest.mark.parametrize(
+    ("point", "metres"),
+    [((30.0, 0.0), 20.0), ((-5.0, 0.0), 5.0), ((5.0, 3.0), 3.0), ((13.0, 4.0), 5.0)],
+)
+def test_the_distance_to_a_road_piece_stops_at_its_ends(point, metres):
+    """F21, where the grid cannot hide it: past either end of a piece the
+    distance is to that end, not to the piece's line."""
+    from routemaker.facility import _point_segment_m
+
+    assert _point_segment_m(point, (0.0, 0.0), (10.0, 0.0)) == pytest.approx(metres)
+
+
 @pytest.mark.parametrize(("near", "beside"), [(5, False), (6, True)])
 def test_beside_needs_six_tenths_of_the_way(near, beside):
     """F18: of ten vertices, six near the road is beside it, five is not."""

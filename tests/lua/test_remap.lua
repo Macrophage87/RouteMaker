@@ -829,6 +829,9 @@ check("while one that is gets it",
 check("the no-trail variant takes no lane off a way the lanes open over bicycle=no",
   fac({ highway = "residential", bicycle = "no", ["cycleway:both"] = "lane" }, nil,
       { facility_neutral = true })["cycleway:both"] == nil)
+check("a trail-class way is never graded, even one a mapper tagged use_sidepath (LU3)",
+  ungraded(M.remap_way({ highway = "cycleway", bicycle = "use_sidepath" },
+    { stress_tier = 4, is_trail_class = true })))
 check("nor off one whose access is restricted",
   fac({ highway = "residential", access = "private", cycleway = "track" }, nil,
       { facility_neutral = true }).cycleway == nil)

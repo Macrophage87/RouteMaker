@@ -250,6 +250,7 @@ class TestApplyingIt:
             {"tier": "5"},
             {**GOOD, "tier": 0},
             {**GOOD, "tier": True},
+            {"tier": True},
         ],
     )
     def test_a_malformed_approved_row_refuses_the_rebuild(self, value) -> None:
