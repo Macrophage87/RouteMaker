@@ -478,11 +478,13 @@ services:
     # The served build, at the path the config names. `current` is a symlink
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
-    # next one. The same path resolves to the same file inside the rebuild
-    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
-    # directory this line binds one variant's `current` out of.
+    # next one. The variant's directory is bound, not `current` itself: a bind
+    # of the symlink is resolved on the host, and Docker Desktop kept serving
+    # the build it first resolved even after the container was recreated
+    # (2026-09-28). Bound this way the relative link resolves inside the
+    # container, to the same file the rebuild container sees under /data/tiles.
     volumes:
-      - ${DATA_ROOT}/tiles/standard/current:/data/tiles/standard/current:ro
+      - ${DATA_ROOT}/tiles/standard:/data/tiles/standard:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
@@ -508,11 +510,13 @@ services:
     # The served build, at the path the config names. `current` is a symlink
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
-    # next one. The same path resolves to the same file inside the rebuild
-    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
-    # directory this line binds one variant's `current` out of.
+    # next one. The variant's directory is bound, not `current` itself: a bind
+    # of the symlink is resolved on the host, and Docker Desktop kept serving
+    # the build it first resolved even after the container was recreated
+    # (2026-09-28). Bound this way the relative link resolves inside the
+    # container, to the same file the rebuild container sees under /data/tiles.
     volumes:
-      - ${DATA_ROOT}/tiles/no-trail/current:/data/tiles/no-trail/current:ro
+      - ${DATA_ROOT}/tiles/no-trail:/data/tiles/no-trail:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro
@@ -538,11 +542,13 @@ services:
     # The served build, at the path the config names. `current` is a symlink
     # the rebuild replaces at promotion; the container loads whatever it
     # points at when it starts, and is restarted after a swap to load the
-    # next one. The same path resolves to the same file inside the rebuild
-    # container, which binds ${DATA_ROOT}/tiles at /data/tiles - the same host
-    # directory this line binds one variant's `current` out of.
+    # next one. The variant's directory is bound, not `current` itself: a bind
+    # of the symlink is resolved on the host, and Docker Desktop kept serving
+    # the build it first resolved even after the container was recreated
+    # (2026-09-28). Bound this way the relative link resolves inside the
+    # container, to the same file the rebuild container sees under /data/tiles.
     volumes:
-      - ${DATA_ROOT}/tiles/ebike/current:/data/tiles/ebike/current:ro
+      - ${DATA_ROOT}/tiles/ebike:/data/tiles/ebike:ro
       - ${DATA_ROOT}/elevation:/data/elevation:ro
       - ./valhalla:/conf:ro
       - ./lua:/conf/lua:ro

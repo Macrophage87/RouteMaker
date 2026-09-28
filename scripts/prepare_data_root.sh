@@ -117,8 +117,11 @@ photon
 backups
 elevation
 tiles
+tiles/standard
 tiles/standard/current
+tiles/no-trail
 tiles/no-trail/current
+tiles/ebike
 tiles/ebike/current
 tiles/weekend/current
 extracts

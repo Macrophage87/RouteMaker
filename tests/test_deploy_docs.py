@@ -434,7 +434,7 @@ def test_the_premise_is_not_vacuous() -> None:
     """A derivation that found nothing would make the test below pass on an
     empty script. Three of these are the ones that actually broke."""
     paths = data_root_mount_paths()
-    assert {"backups", "static", "elevation", "tiles/standard/current"} <= paths, (
+    assert {"backups", "static", "elevation", "tiles/standard"} <= paths, (
         f"the mappings stopped being found: {sorted(paths)}"
     )
 
@@ -904,14 +904,15 @@ def test_every_documented_restart_is_of_the_routers_that_load_tiles_at_start() -
     that reads `.env`, a restart keeps the environment the container was
     created with, which is the mistake the guides warn about in prose.
 
-    Derived from `compose.yaml`: the services that bind a promoted `current`
-    tile directory are the ones a restart is for, and every documented
+    Derived from `compose.yaml`: the services that bind a variant's tile
+    directory (whose `current` link names the promoted build) are the ones a
+    restart is for, and every documented
     `docker compose restart` names exactly that set."""
     routers = {
         name
         for name, service in SERVICES.items()
         for volume in service.get("volumes") or []
-        if re.match(r"^\$\{DATA_ROOT\}/tiles/[^/]+/current:", volume)
+        if re.match(r"^\$\{DATA_ROOT\}/tiles/[^/:]+:/data/tiles/", volume)
     }
     assert routers, "no service binds a promoted tile directory"
     restarts = [
