@@ -6,7 +6,7 @@
 #
 # DUMP is photon-dump-usa-1.0-latest.jsonl.zst, already downloaded, with its
 # .md5 beside it when GraphHopper publishes one. This script downloads nothing:
-# the owner approved that one file (OWNER-DECISIONS 2026-09-26b item 13, from
+# the owner approved that one file (PLAN.md:65, amendment of 2026-09-27; from
 # https://download1.graphhopper.com/public/north-america/usa/), and fetching it
 # is the operator's step in docs/DEPLOYMENT.md, "Photon".
 #
@@ -21,7 +21,7 @@
 # kept. Photon's importer has no box filter of its own; `-country-codes` is the
 # finest it offers, and the dump is one country. The two run one after the
 # other, not in a pipe: the trim is a single core decompressing ~80 GB for
-# several minutes, and Photon's embedded OpenSearch, starved beside it on a
+# about 24 minutes (1,416 s measured), and Photon's embedded OpenSearch, starved beside it on a
 # busy host, let a bulk request run past its fixed 30 s client timeout and the
 # import failed (twice, 2026-09-27). The trimmed file (about 5 GB for this box)
 # is deleted once the import succeeds; a failed import is run again on it by

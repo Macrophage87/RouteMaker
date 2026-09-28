@@ -772,13 +772,15 @@ nothing in the container can download. `INITIAL_DOWNLOAD: "False"` and
 planet download either. With no index (a fresh host, before the import below)
 the command prints that there is no index and waits; the container reports
 unhealthy and the API answers place search with its 502 "not available".
+Point names (`/api/reverse`) come from the standard router first and use
+Photon only for a nearby place, so they keep working, less finely, without it.
 `tests/test_compose_render.py` holds all of that.
 
 ### Building the index (PLAN.md:60)
 
 PLAN.md:60 fills Photon "from GraphHopper's per-country Photon dump filtered to
 the coverage bounding box". The owner approved the download of exactly one file
-(OWNER-DECISIONS 2026-09-26b item 13):
+(PLAN.md:65, owner amendment of 2026-09-27, "5.1 GB dump (Recommended)"):
 `https://download1.graphhopper.com/public/north-america/usa/photon-dump-usa-1.0-latest.jsonl.zst`
 (5,095,748,556 bytes, Last-Modified 2026-09-21) and the `.md5` beside it.
 Fetching it is the operator's step, onto the data volume and never the root
@@ -818,7 +820,7 @@ Measured on 2026-09-27, on the local host with other work running (load 16-26 on
 |---|---|
 | md5 check of the 5.1 GB dump | 222 s |
 | trim: places kept | 2,253,222 places of 53,979,766 lines |
-| trim: time | 1,416 (1,579 on an earlier run) s |
+| trim: time | 1,416 s (about 24 minutes) |
 | trimmed JSON lines | 5.0 GB (deleted afterwards) |
 | Photon import | 977 s, `-j 1`, 1.5 GB heap, peak 2.45 GiB (page cache included) of the 3 GB cap |
 | index on disk | 742 MB |
@@ -833,9 +835,11 @@ dump weekly, and a place search a few weeks behind OpenStreetMap costs nothing
 the router does not already have. The procedure, every step by hand and no
 download without the owner's say-so:
 
-1. Download the dump as above (the same URL; its `Last-Modified` says whether
-   there is a newer one). A different file, region or format is a new download
-   to be approved first.
+1. Ask the owner, and record the answer, before every download - the same
+   URL included. The owner approved one file on 2026-09-27 ("Only this file is
+   approved"), not a monthly fetch of it; a newer copy at the same URL is a new
+   download. Once approved, download it as above; its `Last-Modified` says
+   whether there is a newer one worth asking about.
 2. Build into a new directory: `scripts/import_photon.sh ... "$DATA_ROOT/photon.next"`.
    The serving index is untouched while this runs.
 3. Swap and restart only the geocoder; search is unavailable for the restart

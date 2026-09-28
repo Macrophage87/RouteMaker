@@ -358,6 +358,58 @@ never sees the 409. Past 200 km the answer is 400 however it is asked. A
 route whose traces ran out of time comes back with that part of `stress_m` as
 `"unknown"`; treat it like any other unknown stretch.
 
+### Place search and place names: `GET /api/geocode`, `GET /api/reverse`
+
+Both are signed out (PLAN.md's owner amendments of 2026-09-27), in
+`core/api.py` and `core/geocode.py`, with the limits in `core/ratelimit.py`.
+Search needs Photon (`PHOTON_URL`); names need the standard router
+(`VALHALLA_UPSTREAMS["standard"]`) and use Photon only for a nearby place.
+
+```sh
+curl -s 'http://localhost:8000/api/geocode?q=1100+Wilson+Blvd&lat=38.89&lon=-77.07&limit=6'
+curl -s 'http://localhost:8000/api/reverse?lat=38.90133&lon=-77.260598'
+```
+
+| | `GET /api/geocode` | `GET /api/reverse` |
+| --- | --- | --- |
+| Parameters | `q` (2-200 characters after white space is collapsed), optional `lat` and `lon` together (a bias, inside `COVERAGE_BBOX`), `limit` 1-10 (default 6), `lang` (`en` only, the imported language) | `lat`, `lon` (inside `COVERAGE_BBOX`), `lang` (`en`) |
+| What reaches Photon | the query with US street abbreviations spelled out (`Blvd`, `St`, `Ave`, `Rd`, `Dr`, `Pkwy`, `Hwy`, `Ct`, `Ln`, `Pl`, `Sq`, `Ter`, `N`/`S`/`E`/`W`, `NE`/`NW`/`SE`/`SW`; `geocode.expand_abbreviations` has the rules), the bias, a count a few above `limit`, `lang`, and `bbox` = `COVERAGE_BBOX`; nothing else the request carries | `lat`, `lon`, `lang`, `limit=1`, `radius=0.25` km |
+| 200 | `{"results": [...], "attribution": [...]}`, at most `limit` results, each inside the box, rows with the same name and OSM key within 300 m folded into one | the same shape, zero or one result |
+
+Each result is `{name, label, lon, lat, kind, osm_type, osm_id, osm_key,
+osm_value}`. `label` is the name with up to two of neighbourhood, town, county
+and state. The four `osm_*` fields may be null; a client shows what the place
+is from `osm_key`/`osm_value` (the front end's `placeType`) and can match a
+station to its own records by `osm_type`/`osm_id`. For search, `kind` is
+Photon's layer (`house`, `street`, `city`, `district`, `other`, ...). For a
+name, `kind` is `trail` or `street` when the name is the road or trail the
+point snaps to on the standard router's graph (the nearest named edge within
+25 m; a named trail within 5 m of the nearest named edge wins, and a route
+number such as "US 29" gives way to the street's name), with
+`osm_type`/`osm_id` that way; or `near` when no named edge is close enough and
+the name is "near" a place Photon knows, never with a house number. If the
+router does not answer, the name is the `near` one; if Photon does not, the
+label has no neighbourhood.
+
+Refusals, all `{"error": "..."}`: 400 for a parameter above; 403 when the
+browser says `Sec-Fetch-Site: cross-site` or `same-site` (refused before it is
+counted: any page can make a visitor's browser send a GET); 429 with
+`Retry-After` for a spent per-client budget or a geocoding request already in
+flight from the client; 503 with `Retry-After` when the deployment's one slot
+is busy; 502 when Photon (search) or both Photon and the router (names) do not
+answer in time; 500 for anything else. `tests/test_geocode_api.py` replaces
+Photon at `core.geocode._get` and the router at `core.geocode._locate`.
+
+**What a client should do.** Keep one geocoding request in flight for the
+page, search and names together - the per-client slot is shared, so a second
+concurrent request is refused - and send search first. Debounce the search box
+(the front end waits 250 ms) and answer only the latest query; ask a name for a
+point once, after it stops moving, and cache it by a rounded coordinate. On a
+429, 503 or 502 try once more after the `Retry-After` (at most a couple of
+seconds), then show the coordinates or "not available". Never put a name in the
+link: the fragment is points and ride type, and names are asked again when a
+link is opened.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are

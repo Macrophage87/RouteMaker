@@ -12,8 +12,9 @@ Every line that is not a `Place` is passed through unchanged, and a `Place`
 line is kept when any of its centroids lies inside the box (edges included).
 A line is never re-serialised, only copied, so what Photon reads is byte for
 byte what GraphHopper published. The centroid is found by text rather than by
-parsing the whole line, which is what makes a pass over the ~40 GB US dump a
-matter of minutes rather than hours; a `Place` line whose centroid cannot be
+parsing the whole line, which is what makes a pass over the US dump (~80 GB
+uncompressed) take about 24 minutes rather than hours (1,416 s measured on a
+busy host, 2026-09-27); a `Place` line whose centroid cannot be
 read is dropped and counted, never guessed at.
 
 Usage (inside the pinned photon image, which ships python and zstandard; see

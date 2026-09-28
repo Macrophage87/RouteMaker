@@ -248,10 +248,12 @@ LONG_ROUTING_CONCURRENCY = 1
 
 # The geocoder the API proxies place search and place names to (core.geocode):
 # Photon, on the compose network only (PLAN.md:65). Measured through the proof
-# stack on a busy host (2026-09-27), a search takes 0.1-0.4 s and now and then
-# 1.5 s, and the first after a start up to 3 s while the index is read into
-# the page cache; two seconds refused those. Four is past all of them, and the
-# one geocoding slot (GEOCODE_CONCURRENCY) means it is one worker held at most.
+# stack on a busy host (2026-09-27, docs/DEPLOYMENT.md "Photon"), a warm search
+# takes a median 0.48 s and at most 2.7 s, which two seconds refused; the first
+# searches after Photon starts, reading its index from disk, took 4-5 s, past
+# even this, and the front end tries such a search once more. Four seconds is
+# past every warm search, and the one geocoding slot (GEOCODE_CONCURRENCY)
+# means it is one worker held at most.
 PHOTON_URL = os.environ.get("PHOTON_URL", "http://photon:2322")
 PHOTON_TIMEOUT_S = 4.0
 

@@ -157,7 +157,7 @@ def test_the_import_script_trims_to_the_coverage_box() -> None:
 
 
 def test_the_import_script_names_only_the_approved_dump() -> None:
-    """The owner approved one download (OWNER-DECISIONS 2026-09-26b item 13);
+    """The owner approved one download (PLAN.md:65, amendment of 2026-09-27);
     the script fetches nothing itself and says which file it expects."""
     script = (ROOT / "scripts" / "import_photon.sh").read_text()
     assert "photon-dump-usa-1.0-latest.jsonl.zst" in script

@@ -242,12 +242,38 @@ the order a request meets it:
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
 | Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers (on a long ride with `"code": "long_ride_timed_out"`, which the planner shows at once instead of resending); a trace cut short leaves its legs' stress `unknown` |
 
+Place search and place names (`GET /api/geocode`, `GET /api/reverse`,
+signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in
+`core/ratelimit.py`:
+
+| Check | Limit | Answer |
+| --- | --- | --- |
+| A browser's own word that another site sent it | `Sec-Fetch-Site` `cross-site` or `same-site` | 403, not counted |
+| Searches per client | 5 per fixed 1 s window, then 60 per 60 s (PLAN.md:65); a request the first refuses does not spend the second | 429, `Retry-After` |
+| Names per client | 30 per fixed 10 s window (a shared plan's 25 points at once), then 60 per 60 s, counted apart from search | 429, `Retry-After` |
+| Geocoding in flight per client | 1, search and names together | 429, `Retry-After: 2` |
+| Geocoding in flight, whole api | `GEOCODE_CONCURRENCY`, 1 | 503, `Retry-After: 5` |
+| Photon | 4 s per request (`PHOTON_TIMEOUT_S`); Photon's own query timeout is 3 s | 502 |
+| The router's locate, for a name | 3 s (`geocode.LOCATE_TIMEOUT_S`); past it the name is "near" a place | - |
+
+The counts are rows in the same `rate_limit_window` table as routing's, under
+the scopes `geocode-s`, `geocode`, `reverse-10s` and `reverse`, and are cleared
+the same way (below).
+
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
 preflight, and counting those would let it spend that visitor's budget. The
-in-flight limit is what keeps two gunicorn workers free for `/healthz`, the
-tiles, sign-in and the admin however the router is loaded (from three workers
-up; one or two workers get one routing slot and keep fewer free); without it a burst
+routing in-flight limit keeps at least two gunicorn workers free of routing
+however the router is loaded (from three workers up; one or two workers get one
+routing slot and keep fewer free). Geocoding takes one more slot of its own
+(`GEOCODE_CONCURRENCY` = 1), so with routing and geocoding both saturated the
+worst case on compose's default of 5 workers is 3 routes and 1 geocoding
+request, and **one** worker free for `/healthz`, the tiles, sign-in and the
+admin, not two. That is the implementation's choice: a geocoding request
+holds its worker for tens of milliseconds warm and at most Photon's 4 s plus,
+for a name, the router's 3 s, so the second free worker is taken briefly and
+rarely; raising `WEB_CONCURRENCY` by one restores two. Without the routing
+limit a burst
 of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
 PostgreSQL advisory lock held on the worker's connection for the length of the
@@ -790,7 +816,8 @@ the first host to run it is the first test of it.
    `bot` and `renderer` are behind the `unbuilt` profile and are skipped: they
    have no source and no image. `photon` starts, and serves place search once
    its index is imported (docs/DEPLOYMENT.md, "Photon"); until then it waits,
-   unhealthy, and downloads nothing. `migrate` waits for the database's health
+   unhealthy, and downloads nothing, and place search answers 502 while point
+   names fall back to the router alone. `migrate` waits for the database's health
    check and runs every migration, and `api`, `worker` and `rebuild` wait for
    it to have completed.
 
