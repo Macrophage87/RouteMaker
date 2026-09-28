@@ -20,6 +20,16 @@ export interface Place {
   lon: number;
   lat: number;
   kind: string;
+  /**
+   * The OSM element and tag behind the result, when the API knows them: what
+   * the list shows as the place's type (`placeType`), and what a station
+   * result is matched by to the Metro lane's station records
+   * (`stationBikeEntrance`, wip/metro), which is not on this branch yet.
+   */
+  osm_type?: "N" | "W" | "R" | null;
+  osm_id?: number | null;
+  osm_key?: string | null;
+  osm_value?: string | null;
 }
 
 export type GeoResult =
@@ -105,7 +115,14 @@ export async function fetchPlaces(url: string, fetchImpl?: FetchLike): Promise<G
   if (!b || !Array.isArray(b.results)) return { ok: false, status: 500 };
   return {
     ok: true,
-    places: b.results.filter(isPlace).map((p) => ({ ...p, kind: typeof p.kind === "string" ? p.kind : "other" })),
+    places: b.results.filter(isPlace).map((p) => ({
+      ...p,
+      kind: typeof p.kind === "string" ? p.kind : "other",
+      osm_type: p.osm_type === "N" || p.osm_type === "W" || p.osm_type === "R" ? p.osm_type : null,
+      osm_id: typeof p.osm_id === "number" && Number.isInteger(p.osm_id) ? p.osm_id : null,
+      osm_key: typeof p.osm_key === "string" ? p.osm_key : null,
+      osm_value: typeof p.osm_value === "string" ? p.osm_value : null,
+    })),
     attribution: Array.isArray(b.attribution) ? b.attribution.filter((a): a is string => typeof a === "string") : [],
   };
 }
@@ -339,30 +356,86 @@ export class PlaceNamer {
   }
 }
 
-export type PlaceRole = "start" | "end" | "replace-end" | "via";
+/** What a picked place is made: the start, the destination, or a stop on the way. */
+export type PlaceChoice = "start" | "end" | "via";
 
-/** What choosing a search result does to a plan of `count` points. */
-export function placeRole(count: number, asVia: boolean): PlaceRole {
+/** The choice the box starts on: the start for an empty plan, else the destination. */
+export function defaultChoice(count: number): PlaceChoice {
+  return count === 0 ? "start" : "end";
+}
+
+/** The choices open to a plan of `count` points (a stop needs a start and an end, and room). */
+export function choicesFor(count: number, full: boolean): PlaceChoice[] {
+  if (count === 0) return ["start"];
+  return count >= 2 && !full ? ["start", "end", "via"] : ["start", "end"];
+}
+
+export type PlaceEffect = "start" | "replace-start" | "end" | "replace-end" | "via";
+
+/** What choosing a search result as `choice` does to a plan of `count` points. */
+export function placeEffect(count: number, choice: PlaceChoice): PlaceEffect {
   if (count === 0) return "start";
-  if (count === 1) return "end";
-  return asVia ? "via" : "replace-end";
+  if (choice === "start") return "replace-start";
+  if (choice === "via" && count >= 2) return "via";
+  return count === 1 ? "end" : "replace-end";
 }
 
 /**
- * The plan after choosing `point` from search: the start when there is none,
- * the destination when there is a start, and with a route already there
- * either a new destination or, asked for, a via on the leg it lengthens least.
+ * The plan after choosing `point` from search: the start of an empty plan;
+ * then, as chosen, a new start, the destination (added after a lone start,
+ * replacing an end), or a stop on the leg it lengthens least.
  */
-export function applyPlace(points: readonly LonLat[], point: LonLat, asVia: boolean): LonLat[] {
-  switch (placeRole(points.length, asVia)) {
+export function applyPlace(points: readonly LonLat[], point: LonLat, choice: PlaceChoice): LonLat[] {
+  switch (placeEffect(points.length, choice)) {
     case "start":
     case "end":
       return [...points, point];
+    case "replace-start":
+      return [point, ...points.slice(1)];
     case "replace-end":
       return [...points.slice(0, -1), point];
     case "via":
       return addPoint(points, point);
   }
+}
+
+const TRAIL_VALUES = new Set(["cycleway", "path", "footway", "bridleway", "track", "pedestrian"]);
+const NEIGHBORHOOD_VALUES = new Set(["neighbourhood", "suburb", "quarter", "borough"]);
+const TOWN_VALUES = new Set(["city", "town", "village", "hamlet"]);
+const FOOD_VALUES = new Set(["restaurant", "cafe", "fast_food", "bar", "pub", "ice_cream"]);
+
+/**
+ * A short type for a result, from its OSM tag: what tells "Bethesda" the
+ * station from Bethesda the town (round-1 review). The API cannot say which
+ * rail network a station is on (Photon keeps no network tag here), so a
+ * station is "Station".
+ */
+export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">): string {
+  const key = place.osm_key ?? "";
+  const value = place.osm_value ?? "";
+  if ((key === "railway" && (value === "station" || value === "halt")) || (key === "public_transport" && value === "station")) {
+    return "Station";
+  }
+  if (key === "railway" && value === "subway_entrance") return "Station entrance";
+  if ((key === "highway" && value === "bus_stop") || (key === "amenity" && value === "bus_station")) return "Bus stop";
+  if (key === "shop" && value === "bicycle") return "Bike shop";
+  if (key === "amenity" && value === "bicycle_rental") return "Bike share";
+  if (key === "amenity" && value === "bicycle_parking") return "Bike parking";
+  if (key === "leisure" && (value === "park" || value === "nature_reserve" || value === "garden")) return "Park";
+  if ((key === "highway" && TRAIL_VALUES.has(value)) || place.kind === "trail") return "Trail";
+  if (key === "highway" || place.kind === "street") return "Street";
+  if (key === "place" && value === "house") return "Address";
+  if (key === "place" && NEIGHBORHOOD_VALUES.has(value)) return "Neighborhood";
+  if (key === "place" && TOWN_VALUES.has(value)) return "Town";
+  if (key === "aeroway" && value === "aerodrome") return "Airport";
+  if (key === "amenity" && FOOD_VALUES.has(value)) return "Food and drink";
+  if (key === "shop") return "Shop";
+  if (key === "building" || key === "office") return "Building";
+  if (value && value !== "yes") {
+    const words = value.replaceAll("_", " ");
+    return words.charAt(0).toUpperCase() + words.slice(1);
+  }
+  return "Place";
 }
 
 /** The start's, the end's or a via's name in the points list. */

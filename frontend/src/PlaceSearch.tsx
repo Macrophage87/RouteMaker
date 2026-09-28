@@ -1,6 +1,8 @@
 /**
  * The search box: type a place, pick it, and it becomes the start, the
- * destination or a via (lib/geocode.ts, applyPlace).
+ * destination or a stop, as chosen (lib/geocode.ts, applyPlace). Each result
+ * shows a short type from its OSM tag, and the list says it holds only places
+ * in this map's area.
  *
  * The ARIA 1.2 combobox pattern: the input owns a listbox, the arrow keys
  * move through the options without leaving the input (aria-activedescendant),
@@ -12,27 +14,34 @@ import {
   MAX_QUERY_CHARS,
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
+  choicesFor,
+  defaultChoice,
   fetchPlaces,
   normalQuery,
-  placeRole,
+  placeEffect,
+  placeType,
   placesFor,
   searchUrl,
   type GeoGate,
   type GeoResult,
   type Place,
-  type PlaceRole,
+  type PlaceChoice,
+  type PlaceEffect,
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
 
-const ROLE_HINT: Record<PlaceRole, string> = {
+const EFFECT_HINT: Record<PlaceEffect, string> = {
   start: "The place you pick becomes the start.",
+  "replace-start": "The place you pick becomes the new start.",
   end: "The place you pick becomes the destination.",
   "replace-end": "The place you pick becomes the new destination.",
   via: "The place you pick is added as a stop along the way.",
 };
+
+const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
 
 export function searchStatus(result: GeoResult | null, query: string): string {
   if (result === null) return "";
@@ -58,7 +67,7 @@ export function PlaceSearch({
   gate: GeoGate;
   /** Where results should lean towards: the map's centre, when it is in the area. */
   bias: () => LonLat | undefined;
-  onPick: (place: Place, asVia: boolean) => void;
+  onPick: (place: Place, choice: PlaceChoice) => void;
 }) {
   const id = useId();
   const [query, setQuery] = useState("");
@@ -66,7 +75,9 @@ export function PlaceSearch({
   const [answered, setAnswered] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
-  const [asVia, setAsVia] = useState(false);
+  // What the rider asked a pick to be; null until they choose, which follows
+  // the plan (the start of an empty plan, then the destination).
+  const [chosen, setChosen] = useState<PlaceChoice | null>(null);
   const runner = useRef<PlaceSearchRunner | null>(null);
   const biasRef = useRef(bias);
   biasRef.current = bias;
@@ -83,7 +94,9 @@ export function PlaceSearch({
   }
   useEffect(() => () => runner.current?.clear(), []);
 
-  const role = placeRole(pointCount, asVia && pointCount >= 2);
+  const choices = choicesFor(pointCount, full);
+  const choice = chosen !== null && choices.includes(chosen) ? chosen : defaultChoice(pointCount);
+  const effect = placeEffect(pointCount, choice);
   const current = normalQuery(query);
   const places = placesFor(query, answered, result);
   const answeredNow = result !== null && current === answered;
@@ -104,7 +117,7 @@ export function PlaceSearch({
   };
 
   const pick = (place: Place) => {
-    onPick(place, asVia && pointCount >= 2);
+    onPick(place, choice);
     setQuery("");
     setResult(null);
     setOpen(false);
@@ -156,7 +169,6 @@ export function PlaceSearch({
         maxLength={MAX_QUERY_CHARS}
         placeholder="A place, an address or a street"
         value={query}
-        disabled={full}
         onChange={(event) => change(event.target.value)}
         onKeyDown={onKeyDown}
         onBlur={() => setOpen(false)}
@@ -180,23 +192,40 @@ export function PlaceSearch({
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => pick(place)}
           >
-            <span className="place-name">{place.name}</span>
+            <span className="place-name">
+              {place.name} <span className="place-type">{placeType(place)}</span>
+            </span>
             {place.label !== place.name && <span className="place-label">{place.label}</span>}
           </li>
         ))}
       </ul>
-      {expanded && result?.ok && result.attribution.length > 0 && (
-        <p className="place-credit">Search: {result.attribution.join("; ")}</p>
+      {expanded && (
+        <p className="place-credit">
+          Only places in this map's area.
+          {result?.ok && result.attribution.length > 0 && <> Search: {result.attribution.join("; ")}</>}
+        </p>
+      )}
+      {choices.length > 1 && (
+        <fieldset className="place-choice">
+          <legend>Use the place as</legend>
+          {choices.map((option) => (
+            <label key={option}>
+              <input
+                type="radio"
+                name={`${id}-choice`}
+                value={option}
+                checked={choice === option}
+                onChange={() => setChosen(option)}
+              />
+              {CHOICE_LABEL[option]}
+            </label>
+          ))}
+        </fieldset>
       )}
       <p id={`${id}-hint`} className="hint">
-        {full ? "The route has as many points as it can take." : ROLE_HINT[role]}
+        {EFFECT_HINT[effect]}
+        {full && " The route has as many points as it can take, so no stop can be added."}
       </p>
-      {pointCount >= 2 && !full && (
-        <label className="toggle">
-          <input type="checkbox" checked={asVia} onChange={(event) => setAsVia(event.target.checked)} />
-          Add as a stop along the way instead
-        </label>
-      )}
       <p className="visually-hidden" role="status" aria-live="polite">
         {answeredNow ? searchStatus(result, answered) : ""}
       </p>

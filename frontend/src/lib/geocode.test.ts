@@ -12,12 +12,15 @@ import {
   RETRY_CAP_MS,
   SEARCH_DEBOUNCE_MS,
   applyPlace,
+  choicesFor,
   coordinatesText,
+  defaultChoice,
   fetchPlaces,
   normalQuery,
   placeKey,
   placesFor,
-  placeRole,
+  placeEffect,
+  placeType,
   pointRole,
   reverseUrl,
   searchUrl,
@@ -125,7 +128,7 @@ test("an answer's places are kept and anything malformed in it is not", async ()
   });
   const result = await fetchPlaces("/api/geocode?q=union", impl);
   assert.equal(result.ok, true);
-  assert.deepEqual(result.ok && result.places, [PLACE]);
+  assert.deepEqual(result.ok && result.places, [{ ...PLACE, osm_type: null, osm_id: null, osm_key: null, osm_value: null }]);
   assert.deepEqual(result.ok && result.attribution, ["© OpenStreetMap contributors, ODbL"]);
   assert.equal(seen[0].init.credentials, "same-origin");
 });
@@ -331,29 +334,86 @@ test("a busy lookup is tried again once", async () => {
 
 // --- what a pick does -----------------------------------------------------------
 
-test("a pick is the start, then the destination, then a new destination", () => {
-  assert.deepEqual(applyPlace([], A, false), [A]);
-  assert.deepEqual(applyPlace([A], B, false), [A, B]);
-  assert.deepEqual(applyPlace([A, B], C, false), [A, C]);
-  assert.deepEqual(applyPlace([A, B, C], B, false), [A, B, B]);
+test("by default a pick is the start, then the destination, then a new destination", () => {
+  assert.deepEqual(applyPlace([], A, defaultChoice(0)), [A]);
+  assert.deepEqual(applyPlace([A], B, defaultChoice(1)), [A, B]);
+  assert.deepEqual(applyPlace([A, B], C, defaultChoice(2)), [A, C]);
+  assert.deepEqual(applyPlace([A, B, C], B, defaultChoice(3)), [A, B, B]);
+});
+
+test("a pick can be made the start once there is one", () => {
+  assert.deepEqual(applyPlace([A], B, "start"), [B]);
+  assert.deepEqual(applyPlace([A, B], C, "start"), [C, B]);
+  assert.deepEqual(applyPlace([A, C, B], B, "start"), [B, C, B]);
+  assert.equal(placeEffect(2, "start"), "replace-start");
 });
 
 test("asked for, a pick is a via between the start and the end", () => {
   const via: LonLat = [-77.03, 38.893];
-  const next = applyPlace([A, B], via, true);
-  assert.deepEqual(next, [A, via, B]);
-  assert.equal(placeRole(2, true), "via");
+  assert.deepEqual(applyPlace([A, B], via, "via"), [A, via, B]);
+  assert.equal(placeEffect(2, "via"), "via");
 });
 
 test("with fewer than two points, a via is the start or the end", () => {
-  assert.deepEqual(applyPlace([], A, true), [A]);
-  assert.deepEqual(applyPlace([A], B, true), [A, B]);
-  assert.deepEqual([placeRole(0, true), placeRole(1, true)], ["start", "end"]);
+  assert.deepEqual(applyPlace([], A, "via"), [A]);
+  assert.deepEqual(applyPlace([A], B, "via"), [A, B]);
+  assert.deepEqual([placeEffect(0, "via"), placeEffect(1, "via")], ["start", "end"]);
+});
+
+test("the choices on offer follow the plan", () => {
+  assert.deepEqual(choicesFor(0, false), ["start"]);
+  assert.deepEqual(choicesFor(1, false), ["start", "end"]);
+  assert.deepEqual(choicesFor(2, false), ["start", "end", "via"]);
+  assert.deepEqual(choicesFor(MAX_POINTS, true), ["start", "end"], "a full route can still move its ends");
 });
 
 test("a via on a full route changes nothing", () => {
   const full: LonLat[] = Array.from({ length: MAX_POINTS }, (_, i) => [-77 + i / 100, 38.9]);
-  assert.deepEqual(applyPlace(full, A, true), full);
+  assert.deepEqual(applyPlace(full, A, "via"), full);
+  assert.equal(applyPlace(full, A, "end").length, MAX_POINTS);
+});
+
+test("each result has a short type from its OSM tag", () => {
+  const type = (osm_key: string | null, osm_value: string | null, kind = "other") => placeType({ kind, osm_key, osm_value });
+  assert.equal(type("railway", "station"), "Station");
+  assert.equal(type("shop", "bicycle"), "Bike shop");
+  assert.equal(type("leisure", "park"), "Park");
+  assert.equal(type("highway", "cycleway"), "Trail");
+  assert.equal(type("highway", "residential"), "Street");
+  assert.equal(type("place", "house"), "Address");
+  assert.equal(type("place", "neighbourhood"), "Neighborhood");
+  assert.equal(type("place", "town"), "Town");
+  assert.equal(type("amenity", "bicycle_rental"), "Bike share");
+  assert.equal(type("highway", "bus_stop"), "Bus stop");
+  assert.equal(type(null, null, "trail"), "Trail");
+  assert.equal(type("highway", null, "street"), "Street");
+  assert.equal(type("tourism", "information_office"), "Information office");
+  assert.equal(type(null, null), "Place");
+  assert.equal(type("building", "yes"), "Building");
+  const types = new Set([
+    type("railway", "station"),
+    type("railway", "subway_entrance"),
+    type("shop", "bicycle"),
+    type("shop", "gift"),
+    type("amenity", "restaurant"),
+    type("aeroway", "aerodrome"),
+  ]);
+  assert.equal(types.size, 6, "different places, different types");
+});
+
+test("a result keeps its OSM identity and tag, and a malformed one is dropped", async () => {
+  const { impl } = respond(200, {
+    results: [
+      { ...PLACE, osm_type: "N", osm_id: 738189330, osm_key: "railway", osm_value: "station" },
+      { ...PLACE, name: "Odd", osm_type: "X", osm_id: 1.5, osm_key: 7, osm_value: null },
+    ],
+    attribution: [],
+  });
+  const result = await fetchPlaces("/api/geocode?q=union", impl);
+  assert.ok(result.ok);
+  const [station, odd] = result.places;
+  assert.deepEqual([station.osm_type, station.osm_id, station.osm_key, station.osm_value], ["N", 738189330, "railway", "station"]);
+  assert.deepEqual([odd.osm_type, odd.osm_id, odd.osm_key, odd.osm_value], [null, null, null, null]);
 });
 
 test("roles in the points list", () => {
