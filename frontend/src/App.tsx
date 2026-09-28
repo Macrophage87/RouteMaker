@@ -15,7 +15,14 @@ import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSecti
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { applyPlace, coordinatesText, pointRole, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import {
+  applyPlace,
+  coordinatesText,
+  placeFromSearch,
+  pointRole,
+  type Place,
+  type PlaceChoice,
+} from "./lib/geocode.ts";
 
 interface Plan {
   points: LonLat[];
@@ -194,9 +201,8 @@ export function App() {
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
-    const point: LonLat = [found.lon, found.lat];
-    if (!insideCoverage(point)) return;
-    namer.remember(point, found.name, found.label);
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label));
+    if (point === null) return;
     setNotice(null);
     setPoints((current) => applyPlace(current, point, choice));
     const map = mapRef.current;

@@ -14,14 +14,10 @@ import {
   MAX_QUERY_CHARS,
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
-  choicesFor,
-  defaultChoice,
-  fetchPlaces,
-  normalQuery,
-  placeEffect,
+  comboboxKey,
   placeType,
-  placesFor,
-  searchUrl,
+  searchSender,
+  searchView,
   type GeoGate,
   type GeoResult,
   type Place,
@@ -83,7 +79,7 @@ export function PlaceSearch({
   biasRef.current = bias;
   if (runner.current === null) {
     runner.current = new PlaceSearchRunner({
-      send: (q) => gate.run(() => fetchPlaces(searchUrl(q, biasRef.current())), true),
+      send: searchSender(gate, () => biasRef.current()),
       onResult: (q, r) => {
         setResult(r);
         setAnswered(q);
@@ -94,14 +90,15 @@ export function PlaceSearch({
   }
   useEffect(() => () => runner.current?.clear(), []);
 
-  const choices = choicesFor(pointCount, full);
-  const choice = chosen !== null && choices.includes(chosen) ? chosen : defaultChoice(pointCount);
-  const effect = placeEffect(pointCount, choice);
-  const current = normalQuery(query);
-  const places = placesFor(query, answered, result);
-  const answeredNow = result !== null && current === answered;
-  const searching = current.length >= MIN_QUERY_CHARS && !answeredNow;
-  const expanded = open && places.length > 0;
+  const { places, expanded, answeredNow, searching, choices, choice, effect } = searchView({
+    query,
+    answered,
+    result,
+    open,
+    pointCount,
+    full,
+    chosen,
+  });
   const listId = `${id}-list`;
   const optionId = (i: number) => `${id}-opt-${i}`;
 
@@ -126,25 +123,24 @@ export function PlaceSearch({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      if (places.length === 0) return;
-      event.preventDefault();
+    const action = comboboxKey(event.key, {
+      active,
+      count: places.length,
+      expanded,
+      hasQuery: query !== "",
+    });
+    if (action.kind === "none") return;
+    event.preventDefault();
+    if (action.kind === "move") {
       setOpen(true);
-      const step = event.key === "ArrowDown" ? 1 : -1;
-      setActive((a) => (a + step + places.length) % places.length);
-    } else if (event.key === "Enter") {
-      if (!expanded) return;
-      event.preventDefault();
-      pick(places[active >= 0 ? active : 0]);
-    } else if (event.key === "Escape") {
-      if (expanded) {
-        event.preventDefault();
-        setOpen(false);
-        setActive(-1);
-      } else if (query) {
-        event.preventDefault();
-        change("");
-      }
+      setActive(action.active);
+    } else if (action.kind === "pick") {
+      pick(places[action.index]);
+    } else if (action.kind === "close") {
+      setOpen(false);
+      setActive(-1);
+    } else {
+      change("");
     }
   };
 

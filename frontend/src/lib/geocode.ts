@@ -11,7 +11,7 @@
  * abandoned fetch does not free that slot any sooner, so every request from
  * this page goes through one `GeoGate`: one in flight, search ahead of names.
  */
-import { MAX_POINTS, addPoint, type LonLat } from "./geo.ts";
+import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { parseRetryAfter } from "./api.ts";
 
 export interface Place {
@@ -58,7 +58,7 @@ export function normalQuery(query: string): string {
  * query, or none. A list left over from an earlier query is never shown, so
  * Enter or a tap cannot pick a place the rider has already typed past.
  */
-export function placesFor(query: string, answered: string, result: GeoResult | null): Place[] {
+export function displayedPlaces(query: string, answered: string, result: GeoResult | null): Place[] {
   if (result === null || !result.ok || normalQuery(query) !== answered) return [];
   return result.places;
 }
@@ -392,12 +392,116 @@ export class PlaceNamer {
   }
 }
 
+type FetchPlaces = (url: string) => Promise<GeoResult>;
+
+/** How the search box asks: through the page's gate, ahead of any name waiting. */
+export function searchSender(
+  gate: GeoGate,
+  bias: () => LonLat | undefined,
+  fetchImpl: FetchPlaces = (url) => fetchPlaces(url),
+): (query: string) => Promise<GeoResult> {
+  return (query) => gate.run(() => fetchImpl(searchUrl(query, bias())), true);
+}
+
+/** How a point's name is asked: through the same gate, behind any search. */
+export function nameSender(
+  gate: GeoGate,
+  fetchImpl: FetchPlaces = (url) => fetchPlaces(url),
+): (point: LonLat) => Promise<GeoResult> {
+  return (point) => gate.run(() => fetchImpl(reverseUrl(point)));
+}
+
+/**
+ * Where a picked place goes, or null if it is outside the map's area (the
+ * API fences results to the box, so that is a result to refuse, not trust).
+ * The point keeps the name it was found by: `remember` is the namer's.
+ */
+export function placeFromSearch(
+  found: Place,
+  remember: (point: LonLat, name: string, label: string) => void,
+): LonLat | null {
+  const point: LonLat = [found.lon, found.lat];
+  if (!insideCoverage(point)) return null;
+  remember(point, found.name, found.label);
+  return point;
+}
+
+/** What the search box shows, from its state: the one place its derived state is worked out. */
+export function searchView(state: {
+  query: string;
+  answered: string;
+  result: GeoResult | null;
+  open: boolean;
+  pointCount: number;
+  full: boolean;
+  chosen: PlaceChoice | null;
+}) {
+  const current = normalQuery(state.query);
+  const places = displayedPlaces(state.query, state.answered, state.result);
+  const answeredNow = state.result !== null && current === state.answered;
+  const choice = choiceInForce(state.chosen, state.pointCount, state.full);
+  return {
+    places,
+    // Open only with places for the query in the box: Enter picks from these.
+    expanded: state.open && places.length > 0,
+    answeredNow,
+    searching: current.length >= MIN_QUERY_CHARS && !answeredNow,
+    choices: choicesFor(state.pointCount, state.full),
+    choice,
+    effect: placeEffect(state.pointCount, choice),
+  };
+}
+
+export type KeyAction =
+  | { kind: "none" }
+  | { kind: "move"; active: number }
+  | { kind: "pick"; index: number }
+  | { kind: "close" }
+  | { kind: "clear" };
+
+/**
+ * What a key does in the search box (the ARIA combobox pattern): the arrows
+ * move through the options and wrap, Enter picks the highlighted option or
+ * else the first, Escape closes an open list and then clears the box.
+ */
+export function comboboxKey(
+  key: string,
+  state: { active: number; count: number; expanded: boolean; hasQuery: boolean },
+): KeyAction {
+  const { active, count, expanded, hasQuery } = state;
+  if (key === "ArrowDown" || key === "ArrowUp") {
+    if (count === 0) return { kind: "none" };
+    const step = key === "ArrowDown" ? 1 : -1;
+    // With nothing highlighted, Down is the first and Up the last.
+    if (active < 0) return { kind: "move", active: step > 0 ? 0 : count - 1 };
+    return { kind: "move", active: (active + step + count) % count };
+  }
+  if (key === "Enter") {
+    if (!expanded || count === 0) return { kind: "none" };
+    return { kind: "pick", index: active >= 0 && active < count ? active : 0 };
+  }
+  if (key === "Escape") {
+    if (expanded) return { kind: "close" };
+    if (hasQuery) return { kind: "clear" };
+  }
+  return { kind: "none" };
+}
+
 /** What a picked place is made: the start, the destination, or a stop on the way. */
 export type PlaceChoice = "start" | "end" | "via";
 
 /** The choice the box starts on: the start for an empty plan, else the destination. */
 export function defaultChoice(count: number): PlaceChoice {
   return count === 0 ? "start" : "end";
+}
+
+/**
+ * The choice in force: the rider's, while it is still on offer - a "stop"
+ * chosen on a route that has since lost its end, or filled up, is not - and
+ * otherwise the plan's default.
+ */
+export function choiceInForce(chosen: PlaceChoice | null, count: number, full: boolean): PlaceChoice {
+  return chosen !== null && choicesFor(count, full).includes(chosen) ? chosen : defaultChoice(count);
 }
 
 /** The choices open to a plan of `count` points (a stop needs a start and an end, and room). */

@@ -19,7 +19,13 @@ import {
   fetchPlaces,
   normalQuery,
   placeKey,
-  placesFor,
+  displayedPlaces,
+  comboboxKey,
+  choiceInForce,
+  nameSender,
+  placeFromSearch,
+  searchSender,
+  searchView,
   placeEffect,
   placeType,
   pointRole,
@@ -29,7 +35,7 @@ import {
   type Place,
   type Timers,
 } from "./geocode.ts";
-import { MAX_POINTS, type LonLat } from "./geo.ts";
+import { COVERAGE_BBOX, MAX_POINTS, type LonLat } from "./geo.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 
 class FakeTimers implements Timers {
@@ -469,10 +475,10 @@ test("the link carries points and ride type only, never a name", () => {
 
 test("a list is shown only for the query in the box, never one typed past", () => {
   const answer = found(PLACE);
-  assert.deepEqual(placesFor("Union  Station ", normalQuery("Union Station"), answer), [PLACE]);
-  assert.deepEqual(placesFor("Purcellville", "Baltimore Penn Station", answer), []);
-  assert.deepEqual(placesFor("Union Station", "Union Station", { ok: false, status: 502 }), []);
-  assert.deepEqual(placesFor("Union Station", "Union Station", null), []);
+  assert.deepEqual(displayedPlaces("Union  Station ", normalQuery("Union Station"), answer), [PLACE]);
+  assert.deepEqual(displayedPlaces("Purcellville", "Baltimore Penn Station", answer), []);
+  assert.deepEqual(displayedPlaces("Union Station", "Union Station", { ok: false, status: 502 }), []);
+  assert.deepEqual(displayedPlaces("Union Station", "Union Station", null), []);
 });
 
 test("a search the geocoder did not answer in time is tried once more", async () => {
@@ -487,4 +493,223 @@ test("a search the geocoder did not answer in time is tried once more", async ()
   await flush();
   assert.equal(results.length, 1);
   assert.equal(results[0][1].ok, true);
+});
+
+// --- the search box's own logic (PlaceSearch.tsx renders from these) ---------
+
+test("the constants riders feel are the ones written down", () => {
+  assert.equal(SEARCH_DEBOUNCE_MS, 250);
+  assert.equal(NAME_DEBOUNCE_MS, 400);
+  assert.equal(RETRY_CAP_MS, 1500);
+  assert.equal(MIN_QUERY_CHARS, 3);
+  assert.equal(MAX_QUERY_CHARS, 200);
+  assert.equal(FAILED_RETRY_MS, 30_000);
+});
+
+test("the arrows move through the list and wrap; with no list they do nothing", () => {
+  const at = (active: number, key: string, count = 3) =>
+    comboboxKey(key, { active, count, expanded: true, hasQuery: true });
+  assert.deepEqual(at(-1, "ArrowDown"), { kind: "move", active: 0 });
+  assert.deepEqual(at(0, "ArrowDown"), { kind: "move", active: 1 });
+  assert.deepEqual(at(2, "ArrowDown"), { kind: "move", active: 0 }, "wraps from the last to the first");
+  assert.deepEqual(at(0, "ArrowUp"), { kind: "move", active: 2 }, "wraps from the first to the last");
+  assert.deepEqual(at(-1, "ArrowUp"), { kind: "move", active: 2 });
+  assert.deepEqual(at(-1, "ArrowDown", 0), { kind: "none" });
+});
+
+test("Enter picks the highlighted place, else the first, and nothing from a closed list", () => {
+  const enter = (active: number, expanded = true) =>
+    comboboxKey("Enter", { active, count: 3, expanded, hasQuery: true });
+  assert.deepEqual(enter(1), { kind: "pick", index: 1 });
+  assert.deepEqual(enter(-1), { kind: "pick", index: 0 });
+  assert.deepEqual(enter(1, false), { kind: "none" }, "a list not showing picks nothing");
+  assert.deepEqual(comboboxKey("Enter", { active: -1, count: 0, expanded: true, hasQuery: true }), { kind: "none" });
+});
+
+test("Escape closes an open list, then clears the box, then does nothing", () => {
+  assert.deepEqual(comboboxKey("Escape", { active: 0, count: 2, expanded: true, hasQuery: true }), { kind: "close" });
+  assert.deepEqual(comboboxKey("Escape", { active: -1, count: 2, expanded: false, hasQuery: true }), { kind: "clear" });
+  assert.deepEqual(comboboxKey("Escape", { active: -1, count: 0, expanded: false, hasQuery: false }), { kind: "none" });
+  assert.deepEqual(comboboxKey("x", { active: -1, count: 2, expanded: true, hasQuery: true }), { kind: "none" });
+});
+
+test("the list shown is for the query in the box, never one typed past (the round-0 bug)", () => {
+  const answer = found(PLACE);
+  assert.deepEqual(displayedPlaces("Purcellville", "Baltimore Penn Station", answer), []);
+  assert.deepEqual(displayedPlaces("Baltimore Penn Station", "Baltimore Penn Station", answer), [PLACE]);
+});
+
+test("a choice no longer on offer gives way to the plan's default", () => {
+  assert.equal(choiceInForce("via", 3, false), "via");
+  assert.equal(choiceInForce("via", 1, false), "end", "a stop needs a start and an end");
+  assert.equal(choiceInForce("via", MAX_POINTS, true), "end", "a full route takes no stop");
+  assert.equal(choiceInForce("start", 2, false), "start");
+  assert.equal(choiceInForce(null, 0, false), "start");
+  assert.equal(choiceInForce(null, 2, false), "end");
+});
+
+test("the search box's request goes ahead of names waiting at the gate", async () => {
+  const gate = new GeoGate();
+  const order: string[] = [];
+  let release: () => void = () => {};
+  const answered: GeoResult = found();
+  const fetchImpl = (url: string) => {
+    order.push(url.split("?")[0]);
+    if (order.length > 1) return Promise.resolve(answered);
+    return new Promise<GeoResult>((resolve) => {
+      release = () => resolve(answered);
+    });
+  };
+  const name = nameSender(gate, fetchImpl);
+  const search = searchSender(gate, () => [-77.03, 38.9], fetchImpl);
+  const first = name(A);
+  const queued = name(B);
+  const typed = search("Union Station");
+  await flush();
+  release();
+  await Promise.all([first, queued, typed]);
+  assert.deepEqual(order, ["/api/reverse", "/api/geocode", "/api/reverse"]);
+});
+
+test("a search is sent with the map's bias; a name with its point", async () => {
+  const urls: string[] = [];
+  const fetchImpl = async (url: string) => {
+    urls.push(url);
+    return found();
+  };
+  await searchSender(new GeoGate(), () => [-77.03, 38.9], fetchImpl)("Union Station");
+  await nameSender(new GeoGate(), fetchImpl)(A);
+  const search = new URL(urls[0], "http://site.test");
+  assert.equal(search.searchParams.get("q"), "Union Station");
+  assert.equal(Number(search.searchParams.get("lon")), -77.03);
+  const name = new URL(urls[1], "http://site.test");
+  assert.equal(name.pathname, "/api/reverse");
+  assert.deepEqual([Number(name.searchParams.get("lon")), Number(name.searchParams.get("lat"))], A);
+});
+
+test("a picked place keeps the name it was found by; one outside the map is refused", () => {
+  const remembered: Array<[LonLat, string, string]> = [];
+  const remember = (p: LonLat, name: string, label: string) => {
+    remembered.push([p, name, label]);
+  };
+  assert.deepEqual(placeFromSearch(PLACE, remember), [PLACE.lon, PLACE.lat]);
+  assert.deepEqual(remembered, [[[PLACE.lon, PLACE.lat], PLACE.name, PLACE.label]]);
+  const outside = { ...PLACE, lon: COVERAGE_BBOX[2] + 0.5 };
+  assert.equal(placeFromSearch(outside, remember), null);
+  assert.equal(remembered.length, 1, "nothing remembered for a place refused");
+});
+
+// --- the mutation review's probes (round 1), kept -----------------------------
+
+test("points about 50 m apart are named apart: the cache is ~10 m, not ~1 km", () => {
+  assert.notEqual(placeKey(A), placeKey([A[0] + 0.0006, A[1]]));
+});
+
+test("a query of exactly the minimum length is sent", async () => {
+  const { timers, api, runner } = searchRig();
+  runner.request("Uni");
+  await timers.advance(SEARCH_DEBOUNCE_MS);
+  assert.equal(api.calls.length, 1);
+});
+
+test("a search with no answer at all (status 0) is tried once more", async () => {
+  const { timers, api, runner } = searchRig();
+  runner.request("Lincoln");
+  await timers.advance(SEARCH_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 0 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  assert.equal(api.calls.length, 2);
+});
+
+test("a retry waits out a Retry-After shorter than the cap", async () => {
+  const { timers, api, runner } = searchRig();
+  runner.request("Lincoln");
+  await timers.advance(SEARCH_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 429, retryAfterS: 1 });
+  await flush();
+  await timers.advance(999);
+  assert.equal(api.calls.length, 1, "not before the second it was asked to wait");
+  await timers.advance(1);
+  assert.equal(api.calls.length, 2);
+});
+
+test("a new query gets a retry of its own", async () => {
+  const { timers, api, runner } = searchRig();
+  runner.request("Lincoln");
+  await timers.advance(SEARCH_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 503 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  api.calls[1].answer({ ok: false, status: 503 });
+  await flush();
+  runner.request("Purcellville");
+  await timers.advance(SEARCH_DEBOUNCE_MS);
+  api.calls[2].answer({ ok: false, status: 503 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  assert.equal(api.calls.length, 4);
+});
+
+test("a name busy twice is not asked a third time straight away", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 429 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  api.calls[1].answer({ ok: false, status: 429 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS * 4);
+  assert.equal(api.calls.length, 2);
+});
+
+test("a search's name, remembered while that point's lookup is in flight, is kept", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  namer.remember(A, "Lincoln Memorial");
+  api.calls[0].answer(found({ ...PLACE, name: "Henry Bacon Drive Northwest" }));
+  await flush();
+  assert.equal(namer.name(A)?.name, "Lincoln Memorial");
+});
+
+test("the box shows no list, and Enter has nothing to pick, for a query typed past", () => {
+  const view = searchView({
+    query: "Purcellville",
+    answered: "Baltimore Penn Station",
+    result: found(PLACE),
+    open: true,
+    pointCount: 2,
+    full: false,
+    chosen: null,
+  });
+  assert.deepEqual(view.places, []);
+  assert.equal(view.expanded, false);
+  assert.equal(view.searching, true, "the query in the box is still being looked up");
+  const enter = comboboxKey("Enter", { active: 0, count: view.places.length, expanded: view.expanded, hasQuery: true });
+  assert.deepEqual(enter, { kind: "none" });
+});
+
+test("the box's view of an answered query: its places, its choice and what a pick does", () => {
+  const view = searchView({
+    query: " Union  Station",
+    answered: "Union Station",
+    result: found(PLACE),
+    open: true,
+    pointCount: 1,
+    full: false,
+    chosen: "via",
+  });
+  assert.deepEqual(view.places, [PLACE]);
+  assert.equal(view.expanded, true);
+  assert.equal(view.answeredNow, true);
+  assert.equal(view.searching, false);
+  assert.deepEqual(view.choices, ["start", "end"]);
+  assert.equal(view.choice, "end", "a stale stop gives way");
+  assert.equal(view.effect, "end");
+  const closed = searchView({ query: "Union Station", answered: "Union Station", result: found(PLACE), open: false, pointCount: 0, full: false, chosen: null });
+  assert.equal(closed.expanded, false);
+  const short = searchView({ query: "Un", answered: "", result: null, open: true, pointCount: 0, full: false, chosen: null });
+  assert.equal(short.searching, false, "too short to be looked up");
 });

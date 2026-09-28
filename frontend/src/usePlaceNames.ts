@@ -9,7 +9,7 @@
  * and ride type, and a link opened elsewhere names its points afresh.
  */
 import { useEffect, useRef, useState } from "react";
-import { GeoGate, PlaceNamer, fetchPlaces, reverseUrl } from "./lib/geocode.ts";
+import { GeoGate, PlaceNamer, nameSender } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
 
 export function usePlaceNames(points: readonly LonLat[]) {
@@ -20,7 +20,7 @@ export function usePlaceNames(points: readonly LonLat[]) {
   if (namer.current === null) {
     const g = gate.current;
     namer.current = new PlaceNamer({
-      send: (point) => g.run(() => fetchPlaces(reverseUrl(point))),
+      send: nameSender(g),
       onChange: () => setVersion((v) => v + 1),
     });
   }
