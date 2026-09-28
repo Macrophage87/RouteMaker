@@ -70,7 +70,8 @@ class FakePhoton:
         self.calls.append((path, dict(params)))
         if isinstance(self.reply, Exception):
             raise self.reply
-        return self.reply
+        # Photon answers at most `limit` features, as the real one does.
+        return {**self.reply, "features": self.reply["features"][: params.get("limit", 50)]}
 
 
 class FakeRouter:
@@ -301,6 +302,32 @@ class TestSearch:
         )
         results = get(client, SEARCH, q="Union Station Drive").json()["results"]
         assert len(results) == 3
+
+    def test_folded_rows_do_not_leave_the_list_short(self, client, photon) -> None:
+        """Photon is asked for a few more than are shown, so rows folded into
+        one still leave `limit` to show."""
+        drive = dict(name="Union Station Drive Northeast", osm_key="highway", osm_value="tertiary")
+        photon(
+            answer(
+                feature(-77.00762, 38.89719, district="Near Northeast", **drive),
+                feature(-77.00722, 38.89701, district="Ward 6", **drive),
+                feature(
+                    -77.00741,
+                    38.89777,
+                    name="Union Station",
+                    osm_key="railway",
+                    osm_value="station",
+                ),
+                feature(
+                    -77.0065,
+                    38.8965,
+                    name="Union Station Plaza",
+                    osm_key="leisure",
+                    osm_value="park",
+                ),
+            )
+        )
+        assert len(get(client, SEARCH, q="Union Station", limit="3").json()["results"]) == 3
 
     def test_an_answer_may_be_kept_by_the_browser_only(self, client, photon) -> None:
         photon(answer(LINCOLN))
@@ -633,6 +660,12 @@ class TestEdgeName:
             geocode._locate(38.9, -77.26)
 
 
+def test_an_osm_identity_that_is_not_one_is_none() -> None:
+    osm = geocode._osm({"osm_type": "X", "osm_id": True, "osm_key": 7, "osm_value": ""})
+    assert osm == {"osm_type": None, "osm_id": None, "osm_key": None, "osm_value": None}
+    assert geocode._osm({"osm_type": "W", "osm_id": 5})["osm_type"] == "W"
+
+
 class TestAbbreviations:
     @pytest.mark.parametrize(
         ("typed", "sent"),
@@ -643,6 +676,7 @@ class TestAbbreviations:
             ("1000 N Glebe Rd", "1000 North Glebe Road"),
             ("N Glebe Rd", "North Glebe Road"),
             ("E St NW", "E Street Northwest"),
+            ("E St Arlington", "E Street Arlington"),
             ("14th St NW", "14th Street Northwest"),
             ("E Capitol St", "East Capitol Street"),
             ("Maple Ave E", "Maple Avenue East"),

@@ -408,14 +408,13 @@ const FOOD_VALUES = new Set(["restaurant", "cafe", "fast_food", "bar", "pub", "i
  * A short type for a result, from its OSM tag: what tells "Bethesda" the
  * station from Bethesda the town (round-1 review). The API cannot say which
  * rail network a station is on (Photon keeps no network tag here), so a
- * station is "Station".
+ * Metro, MARC or VRE station is "Rail station".
  */
 export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">): string {
   const key = place.osm_key ?? "";
   const value = place.osm_value ?? "";
-  if ((key === "railway" && (value === "station" || value === "halt")) || (key === "public_transport" && value === "station")) {
-    return "Station";
-  }
+  if (key === "railway" && (value === "station" || value === "halt")) return "Rail station";
+  if (key === "public_transport" && value === "station") return "Station";
   if (key === "railway" && value === "subway_entrance") return "Station entrance";
   if ((key === "highway" && value === "bus_stop") || (key === "amenity" && value === "bus_station")) return "Bus stop";
   if (key === "shop" && value === "bicycle") return "Bike shop";

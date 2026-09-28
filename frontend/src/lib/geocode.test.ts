@@ -360,6 +360,12 @@ test("with fewer than two points, a via is the start or the end", () => {
   assert.deepEqual([placeEffect(0, "via"), placeEffect(1, "via")], ["start", "end"]);
 });
 
+test("the choice the box starts on is always one on offer", () => {
+  for (const count of [0, 1, 2, 5, MAX_POINTS]) {
+    assert.ok(choicesFor(count, count >= MAX_POINTS).includes(defaultChoice(count)), `count ${count}`);
+  }
+});
+
 test("the choices on offer follow the plan", () => {
   assert.deepEqual(choicesFor(0, false), ["start"]);
   assert.deepEqual(choicesFor(1, false), ["start", "end"]);
@@ -375,7 +381,8 @@ test("a via on a full route changes nothing", () => {
 
 test("each result has a short type from its OSM tag", () => {
   const type = (osm_key: string | null, osm_value: string | null, kind = "other") => placeType({ kind, osm_key, osm_value });
-  assert.equal(type("railway", "station"), "Station");
+  assert.equal(type("railway", "station"), "Rail station");
+  assert.equal(type("public_transport", "station"), "Station");
   assert.equal(type("shop", "bicycle"), "Bike shop");
   assert.equal(type("leisure", "park"), "Park");
   assert.equal(type("highway", "cycleway"), "Trail");
@@ -387,6 +394,8 @@ test("each result has a short type from its OSM tag", () => {
   assert.equal(type("highway", "bus_stop"), "Bus stop");
   assert.equal(type(null, null, "trail"), "Trail");
   assert.equal(type("highway", null, "street"), "Street");
+  assert.equal(type(null, null, "street"), "Street", "a point named for its street");
+  assert.equal(type("amenity", "yes"), "Place", "a bare yes says nothing");
   assert.equal(type("tourism", "information_office"), "Information office");
   assert.equal(type(null, null), "Place");
   assert.equal(type("building", "yes"), "Building");
