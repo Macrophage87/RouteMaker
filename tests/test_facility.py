@@ -37,6 +37,13 @@ P, PR, L, N = Facility.PATH, Facility.PROTECTED, Facility.LANE, Facility.NONE
         # Sidewalks: a signed sidepath is protected; a sidewalk a bike may use is not a facility.
         ({"highway": "footway", "footway": "sidewalk", "bicycle": "designated"}, PR),
         ({"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}, N),
+        # A crossing, or the island in one, is part of the street it crosses.
+        ({"highway": "footway", "footway": "crossing", "bicycle": "yes"}, N),
+        ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, N),
+        ({"highway": "footway", "footway": "traffic_island", "bicycle": "permissive"}, N),
+        ({"highway": "path", "path": "crossing", "bicycle": "designated"}, N),
+        # A trail's own crossing of a road stays the trail's.
+        ({"highway": "cycleway", "cycleway": "crossing"}, P),
         ({"highway": "cycleway", "is_sidepath": "yes"}, PR),
         ({"highway": "cycleway", "separation:left": "flex_post;bump"}, PR),
         ({"highway": "cycleway", "separation:left": "no"}, P),
