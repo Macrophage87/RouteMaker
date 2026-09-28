@@ -15,7 +15,7 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
-import { placeAtStation, type RailVisibility, type StationRole } from "./lib/railStations.ts";
+import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 
@@ -293,17 +293,14 @@ export function App() {
       setNotice("That station is outside the area this map covers.");
       return;
     }
-    const next = placeAtStation(pointsRef.current, point, role);
-    if (next.length > MAX_POINTS) {
-      setNotice(`A route can have at most ${MAX_POINTS} points.`);
+    const edit = stationEdit(pointsRef.current, point, role);
+    if ("refused" in edit) {
+      if (edit.refused === "cap") setNotice(`A route can have at most ${MAX_POINTS} points.`);
       return;
     }
-    // A card opened for fewer points offers a role the plan no longer has.
-    const index = next.indexOf(point);
-    if (index < 0) return;
     setNotice(null);
-    commit(next);
-    announce(`${pointName(index, next.length)} set at the station.`);
+    commit(edit.next);
+    announce(`${pointName(edit.index, edit.next.length)} set at the station.`);
   }, [commit, announce]);
 
   const removeAt = (index: number) => {

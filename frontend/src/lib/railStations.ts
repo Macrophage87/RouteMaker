@@ -445,3 +445,21 @@ export function placeAtStation(points: readonly LonLat[], point: LonLat, role: S
   if (role === "end") return points.length === 1 ? [points[0], point] : [...points.slice(0, -1), point];
   return addPoint(points, point);
 }
+
+/** A station's Start here / End here / Add as via as an edit of the plan, or why it is not one. */
+export type StationEdit = { next: LonLat[]; index: number } | { refused: "cap" | "role" };
+
+/**
+ * The plan after a station's action, and the index of the point it set - by
+ * its role, not by looking the point up, since the same station can be both
+ * ends. A via the 25-point cap leaves no room for is refused as "cap"; a role
+ * the plan does not offer (a card opened for fewer points) as "role".
+ */
+export function stationEdit(points: readonly LonLat[], point: LonLat, role: StationRole): StationEdit {
+  if (!stationRoles(points.length).includes(role)) {
+    return { refused: role === "via" && points.length >= MAX_POINTS ? "cap" : "role" };
+  }
+  const next = placeAtStation(points, point, role);
+  const index = role === "start" ? 0 : role === "end" ? next.length - 1 : next.indexOf(point, 1);
+  return { next, index };
+}
