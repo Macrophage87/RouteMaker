@@ -350,7 +350,7 @@ def test_the_admin_database_is_built_once_and_copied(tmp_path) -> None:
     ways a variant keeps), and the configs differ only in which `mjolnir.admin`
     path they name. So the pipeline parsed 1-2 GB of OSM and rebuilt the same
     boundary polygons three times to write three identical databases, inside a
-    rebuild that is killed at six hours.
+    rebuild that is killed at eight hours.
 
     The same shape the timezone database already had: the first variant builds
     it, the rest copy the file.

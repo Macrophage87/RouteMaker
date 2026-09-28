@@ -451,7 +451,7 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 On a host at load 5-9 it took 56 s with the overview index and 76 s without;
 the round-2 reviews measured 135-216 s on a host at load 10-27. Its default
 budget is 30 minutes; in the weekly rebuild it gets whatever is left of the
-rebuild's six hours if that is less, and the run row says when it stopped
+rebuild's eight hours if that is less, and the run row says when it stopped
 short ("stopped at its time budget with N left", "N timed out"), in which
 case run it by hand.
 Until it has run, a z10-12 tile over a dense area can be refused: see the next

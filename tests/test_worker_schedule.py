@@ -718,7 +718,7 @@ def test_a_budget_that_lapses_after_the_swap_names_the_swap_and_the_restart(
     Executed here as the reviewer executed it: the swap runs for real and
     succeeds, so `live_old` exists, and the budget lapses before the reconcile.
     The clock is the patched part rather than the wall, because waiting out a
-    real budget is the same test with six hours in it.
+    real budget is the same test with eight hours in it.
     """
     from core.models import ScheduledRun
     from pipeline import rebuild as rebuild_module

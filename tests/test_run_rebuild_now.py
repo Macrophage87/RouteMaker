@@ -7,7 +7,7 @@ seven days away.
 
 The job, not the rebuild. This command defers and returns; the `rebuild`
 service is what runs the work, because that is the container with the Valhalla
-binaries, the data mounts and the six-hour budget. So what is asserted here is
+binaries, the data mounts and the eight-hour budget. So what is asserted here is
 the row it writes - the queue, the task, the lock, the status - rather than
 anything about a build, which tests/test_worker_schedule.py already runs against
 the real handler set.

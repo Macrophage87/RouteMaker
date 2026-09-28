@@ -476,7 +476,7 @@ def test_check_operations_ignores_a_job_that_merely_finished() -> None:
 
 @db
 def test_check_operations_reports_a_job_wedged_past_its_budget() -> None:
-    """The rebuild's own six-hour budget is what "too long" means for it, so a
+    """The rebuild's own eight-hour budget is what "too long" means for it, so a
     job that has outlived it is a job whose enforcement did not happen."""
     from io import StringIO
 
@@ -535,7 +535,7 @@ def test_check_operations_leaves_a_job_inside_its_budget_alone() -> None:
 @db
 def test_the_budget_a_job_is_judged_against_is_its_own_tasks() -> None:
     """One table, read from the constants the tasks enforce on themselves. The
-    sweep's half hour and the rebuild's six hours are two different numbers, and
+    sweep's half hour and the rebuild's eight hours are two different numbers, and
     judging the sweep by the rebuild's budget is a sweep that is wedged for five
     and a half hours before anything says so."""
     from io import StringIO
