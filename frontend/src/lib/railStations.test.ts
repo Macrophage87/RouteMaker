@@ -287,7 +287,7 @@ test("icons are named by their lines, and only a MARC-only one is square", () =>
 test("the lines read as words", () => {
   assert.equal(linesLabel(["red"]), "Red line");
   assert.equal(linesLabel(["orange", "blue", "silver"]), "Orange, Blue and Silver lines");
-  assert.equal(linesLabel(["red", "penn"]), "Red line and MARC Penn Line");
+  assert.equal(linesLabel(["red", "penn"]), "Red line, plus MARC Penn Line");
   assert.equal(linesLabel(["penn"]), "MARC Penn Line");
 });
 

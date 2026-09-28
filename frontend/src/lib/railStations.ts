@@ -275,7 +275,7 @@ export function lineStyle(line: LineKey, pennColor: string): LineStyle {
   return line === "penn" ? { key: "penn", label: PENN_LABEL, color: pennColor } : METRO_LINES[line];
 }
 
-/** "Red, Orange and Silver lines", "MARC Penn Line", "Red line and MARC Penn Line". */
+/** "Red, Orange and Silver lines", "MARC Penn Line", "Red line, plus MARC Penn Line". */
 export function linesLabel(lines: readonly LineKey[]): string {
   const metro = lines.filter((line) => line !== "penn").map((line) => METRO_LINES[line as MetroLine].label);
   const parts: string[] = [];
@@ -284,7 +284,7 @@ export function linesLabel(lines: readonly LineKey[]): string {
     parts.push(`${list} line${metro.length === 1 ? "" : "s"}`);
   }
   if (lines.includes("penn")) parts.push(PENN_LABEL);
-  return parts.join(" and ");
+  return parts.join(", plus ");
 }
 
 export interface BikeEntrance {
