@@ -379,6 +379,32 @@ function M.remap_way(tags, derived)
     end
   end
 
+  -- Graded (the owner, 2026-09-28: "Yes, grade them (Recommended)" - "LTS 4
+  -- penalised more than LTS 3 at every slider position"). With the penalty
+  -- above alone, LTS 3 and LTS 4 cost the same, so a slider move could swap a
+  -- tier-3 street for a shorter tier-4 one. LTS 4 and up are also marked as a
+  -- truck route (`hgv:state_network`, which upstream reads onto
+  -- `truck_route` and nothing else: truck access comes from `hgv` alone), and
+  -- Valhalla adds `kTruckStress` (0.5) to such an edge's roadway stress before
+  -- the speed penalty and the accommodation factor multiply it
+  -- (sif/bicyclecost.cc): a cost at the fastest-legal end too, growing as the
+  -- slider rises, and no change to speed or access. Only where the stress
+  -- penalty holds (the way is open to a bicycle), never on a trail-class way,
+  -- never over a network the way already declares, and not on the no-trail
+  -- variant: Mass Ride's slider is locked at 0 and a mass ride takes the big
+  -- roads by design.
+  if
+    derived.stress_tier ~= nil
+    and derived.stress_tier >= M.GRADED_TIER
+    and not derived.is_trail_class
+    and not derived.facility_neutral
+    and (out.bicycle or tags.bicycle) == M.STRESS_PENALTY_BICYCLE
+    and tags["hgv:state_network"] == nil
+    and tags["hgv:national_network"] == nil
+  then
+    out["hgv:state_network"] = M.GRADED_VALUE
+  end
+
   -- "Legal but avoid" (stress tier 5; the owner, 2026-09-27: "Maybe make a
   -- 5th category for legal but to be avoided"), charged only there (the
   -- owner's "Only tier-5 roads (Recommended)": "Rework it so only 'legal but
@@ -718,6 +744,10 @@ end
 -- The stress tiers the penalty lands on: LTS 3 and 4, the two the classifier
 -- says most adults will not ride in mixed traffic.
 M.STRESS_PENALTY_TIER = 3
+
+-- The tier that costs more again (see `remap_way`): LTS 4, and so 5.
+M.GRADED_TIER = 4
+M.GRADED_VALUE = "yes"
 
 -- "Legal but avoid", and the write that carries it (see `remap_way`).
 M.AVOID_TIER = 5

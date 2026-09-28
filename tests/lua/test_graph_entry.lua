@@ -589,5 +589,22 @@ check("a local-access street stays destination-only, as before", local_out.priva
   local_out.private)
 check("and is no alley", tonumber(local_out.use) == 0, local_out.use)
 
+-- Graded: upstream reads the tier-4 mark as a truck route and nothing else.
+local plain4 = { highway = "secondary", maxspeed = "35 mph" }
+local marked4 = { highway = "secondary", maxspeed = "35 mph", ["rm:stress_tier"] = "4" }
+local marked3 = { highway = "secondary", maxspeed = "35 mph", ["rm:stress_tier"] = "3" }
+local _, plain4_out = transform_way(plain4)
+local _, marked4_out = transform_way(marked4)
+local _, marked3_out = transform_way(marked3)
+check("upstream alone: no truck route", plain4_out.truck_route ~= "true", tostring(plain4_out.truck_route))
+check("tier 4: a truck route", marked4_out.truck_route == "true", tostring(marked4_out.truck_route))
+check("tier 3: none", marked3_out.truck_route ~= "true", tostring(marked3_out.truck_route))
+check("and truck access is upstream's own", marked4_out.truck_forward == plain4_out.truck_forward,
+  tostring(marked4_out.truck_forward))
+check("and bicycle access both ways", marked4_out.bike_forward == "true" and marked4_out.bike_backward == "true")
+check("and the speed is unchanged", marked4_out.speed == plain4_out.speed, tostring(marked4_out.speed))
+local _, neutral4 = transform_way({ highway = "secondary", ["rm:stress_tier"] = "4", ["rm:facility_neutral"] = "yes" })
+check("the no-trail variant: none", neutral4.truck_route ~= "true", tostring(neutral4.truck_route))
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

@@ -795,5 +795,27 @@ check("and other service values are left alone",
 check("a local-access street is not touched",
   next(M.remap_way({ highway = "residential", access = "destination" }, { stress_tier = 1 })) == nil)
 
+-- Graded: LTS 4 and up are also a truck route (the owner, 2026-09-28).
+local G = "hgv:state_network"
+check("tier 3: the penalty and no truck route",
+  M.remap_way({ highway = "secondary" }, { stress_tier = 3 })[G] == nil)
+check("tier 4: a truck route", M.remap_way({ highway = "secondary" }, { stress_tier = 4 })[G] == "yes")
+check("tier 5: a truck route too", M.remap_way({ highway = "trunk" }, { stress_tier = 5 })[G] == "yes")
+check("tier 5 over OSM's own use_sidepath (Douglass)",
+  M.remap_way({ highway = "primary", bicycle = "use_sidepath", foot = "no" }, { stress_tier = 5 })[G] == "yes")
+check("not on the no-trail variant",
+  M.remap_way({ highway = "secondary" }, { stress_tier = 4, facility_neutral = true })[G] == nil)
+check("not on a trail-class way",
+  M.remap_way({ highway = "cycleway" }, { stress_tier = 4, is_trail_class = true })[G] == nil)
+check("not where a bicycle may not ride",
+  M.remap_way({ highway = "secondary", bicycle = "no" }, { stress_tier = 4 })[G] == nil)
+check("not where the penalty may not land (dismount)",
+  M.remap_way({ highway = "secondary", bicycle = "dismount" }, { stress_tier = 4 })[G] == nil)
+check("not over a declared network",
+  M.remap_way({ highway = "secondary", ["hgv:national_network"] = "yes" }, { stress_tier = 4 })[G] == nil)
+check("nor over its own state network value",
+  M.remap_way({ highway = "secondary", ["hgv:state_network"] = "no" }, { stress_tier = 4 })[G] == nil)
+check("no tier, no truck route", M.remap_way({ highway = "secondary" }, {})[G] == nil)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)
