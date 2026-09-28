@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-09-28",
   "decided_by": "the deployment owner",
-  "status": "prepared, not loaded: loaded only with the owner's go-ahead",
+  "status": "approved for loading by the owner on 2026-09-28 (\"Yes, load it\"), at the next deploy",
   "rows": [
     {
       "kind": "access",

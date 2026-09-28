@@ -225,9 +225,10 @@ class Preset:
 # where it's a fun downhill and a point where you're riding the breaks." -
 # and, asked where it should start, "Depends on ride type" (the option read:
 # "Gentler threshold for Cargo (heavy, braking matters most), higher for
-# others."). Proposed here for the owner to confirm; None never charges a
-# descent. Below a threshold a descent costs nothing, so the gentle ones stay a
-# reward: Valhalla already times them faster.
+# others."). The table below was proposed here and approved by the owner on
+# 2026-09-28 ("Approve the table"); None never charges a descent. Below a
+# threshold a descent costs nothing, so the gentle ones stay a reward:
+# Valhalla already times them faster.
 BRAKE_GRADES = MappingProxyType(
     {
         # The owner's 2-3%: a loaded cargo bike brakes hard on any real hill.

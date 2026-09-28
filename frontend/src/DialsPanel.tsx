@@ -20,6 +20,8 @@ import {
   stressMax,
   startDials,
   stressWords,
+  TRAFFIC_TOLERANT_WARNING,
+  warnsTrafficTolerant,
   type Dials,
   type When,
 } from "./lib/dials.ts";
@@ -113,7 +115,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
         min={STRESS_MIN}
         max={stressMax(preset) === 0 ? STRESS_MAX : stressMax(preset)}
         value={draft.stress}
-        ends={["Direct roads", "Balanced", "Quiet roads"]}
+        ends={["Traffic tolerant", "Balanced", "Quiet roads"]}
         words={stressWords(draft.stress)}
         disabled={stressMax(preset) === 0}
         disabledNote={
@@ -124,6 +126,11 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
         onDraft={(stress) => setDraft({ ...draft, stress })}
         onRelease={release}
       />
+      {warnsTrafficTolerant(preset, draft.stress) && (
+        <p className="notice traffic-tolerant" role="note">
+          {TRAFFIC_TOLERANT_WARNING}
+        </p>
+      )}
       <Slider
         label="Hills"
         min={HILLS_MIN}

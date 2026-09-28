@@ -368,8 +368,10 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
          "carrying": "people", "stress": 90, "hills": -40, "when": "weekend"}'
 ```
 
-- `stress`, integer 0-100: `use_roads = 1 - stress/100`. 0 is the most direct
-  legal route, 100 keeps to low-stress ways unless there is no other option.
+- `stress`, integer 0-100: `use_roads = 1 - stress/100`. 0 is traffic
+  tolerant (the planner warns at 10 or below: the owner, 2026-09-28; a true
+  fastest option is a later custom-costing phase), 100 keeps to low-stress ways
+  unless avoiding them takes much longer.
   The graph carries the stress tiers (LTS 3-4 ways as `bicycle=use_sidepath`,
   `lua/routemaker_remap.lua`), and Valhalla weighs that `3 * (1 - use_roads)`,
   so one graph serves every position. LTS 4 and up cost more again ("Graded
@@ -518,8 +520,8 @@ with `past` the metres beyond the first 150 (the kick, free whatever its
 grade), `w(x) = x * (1 + x / 0.03)` and a climb's threshold 3%; and the
 route with the least `time + (-hills / 100) * cost` is kept. One kilometre at
 8% costs 356 s at -100, about what walking it adds. A descent is priced the
-same way from the ride type's brake grade (proposed, for the owner to
-confirm):
+same way from the ride type's brake grade (approved by the owner,
+2026-09-28: "Approve the table"):
 
 | Ride type | Descents cost past | Why |
 |---|---|---|
@@ -554,7 +556,8 @@ shorter with 239 s of descent cost against 297 s, while Fast keeps the
 direct descent. On most city trips the router offers no gentler alternative,
 and the kept route is its own. A per-edge sustained-grade cost - the same
 model priced into every edge from the pipeline's elevation - would need a fork
-of the costing (PLAN's layer 3).
+of the costing (PLAN's layer 3); the owner chose "Ship this, fork later
+(Recommended)".
 
 **Graded stress** (the owner, 2026-09-28: "Yes, grade them (Recommended)" and
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").

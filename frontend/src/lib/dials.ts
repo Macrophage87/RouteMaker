@@ -132,9 +132,24 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   return fields;
 }
 
+/**
+ * The bottom of the traffic slider is traffic tolerant, not "fastest" (the
+ * owner, 2026-09-28: "Let's make the current setting a traffic tolerant one
+ * and then build a full fastest custom. There should be a warning going at
+ * this setting."). At or below this position the panel and the route summary
+ * say so.
+ */
+export const TRAFFIC_TOLERANT_MAX = 10;
+export const TRAFFIC_TOLERANT_WARNING = "Traffic tolerant: this route may use busy, fast roads.";
+
+/** Whether a position warns: the bottom of the slider, on a ride type whose slider moves. */
+export function warnsTrafficTolerant(preset: PresetId, stress: number): boolean {
+  return stressMax(preset) > 0 && stress <= TRAFFIC_TOLERANT_MAX;
+}
+
 /** The words for a stress position: both ends and the middle are named. */
 export function stressWords(stress: number): string {
-  if (stress <= 10) return "Most direct legal route";
+  if (stress <= TRAFFIC_TOLERANT_MAX) return "Traffic tolerant";
   if (stress < 40) return "Direct, some busy streets";
   if (stress <= 60) return "Balanced";
   if (stress < 95) return "Prefers quiet streets and paths";

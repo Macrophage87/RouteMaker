@@ -870,7 +870,7 @@ def test_the_beach_drive_nw_file_is_prepared_and_the_districts_only() -> None:
     from core.management.commands.load_access_overrides import parse_file
 
     document = json.loads(BEACH_DRIVE_NW.read_text())
-    assert document["status"].startswith("prepared, not loaded")
+    assert "Yes, load it" in document["status"]
     rows = parse_file(BEACH_DRIVE_NW.read_text(), BEACH_DRIVE_NW.name)
     assert {r["osm_way_id"] for r in rows} == BEACH_DRIVE_NW_WAYS
     for row in rows:

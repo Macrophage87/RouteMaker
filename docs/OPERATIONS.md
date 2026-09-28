@@ -1052,8 +1052,8 @@ docker compose exec -T api python manage.py load_access_overrides - \
 Its stress rows name ways the 2026-09-26 access file opens (the 11th Street
 landing), so that file is loaded first if it is not already.
 `fixtures/overrides/2026-09-28-owner-beach-drive-nw.json` (car-free Beach
-Drive NW) is prepared, not loaded: it is loaded the same way only with the
-owner's go-ahead.
+Drive NW) is loaded the same way at this deploy, after the stress file: the
+owner approved it on 2026-09-28 ("Yes, load it").
 
 The rebuild of step 4 builds four graphs, the weekend one among them, and needs
 the fourth router this deploy adds ("The weekend graph (a fourth router)"

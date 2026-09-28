@@ -6,13 +6,20 @@
 import { formatClimb, formatDistance } from "./lib/format.ts";
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
+import { TRAFFIC_TOLERANT_WARNING, warnsTrafficTolerant } from "./lib/dials.ts";
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
   const rows = facilityRows(route.facility_m);
   const seek = route.hills_seek;
   const avoid = avoidMetres(route.stress_m);
+  const tolerant = route.dials !== undefined && warnsTrafficTolerant(route.preset, route.dials.stress);
   return (
     <>
+      {tolerant && (
+        <p className="notice traffic-tolerant" role="note">
+          {TRAFFIC_TOLERANT_WARNING}
+        </p>
+      )}
       {avoid > 0 && (
         <p className="notice avoid" role="note">
           {formatDistance(avoid)} of this route is on roads marked legal but best avoided, such as expressways and some bridge roadways. The

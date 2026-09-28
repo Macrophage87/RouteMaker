@@ -2,6 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PRESETS } from "./presets.ts";
 import {
+  TRAFFIC_TOLERANT_MAX,
+  warnsTrafficTolerant,
   offersAssist,
   stressMax,
   HILLS_MAX,
@@ -121,3 +123,15 @@ test("electric assist is Cargo Bike's alone, travels in the link and keeps the h
   assert.equal(decodePlan("#preset=cargo&assist=1").dials.assist, true);
   assert.equal(dialFields(startDials("cargo")).assist, undefined);
 });
+
+test("the bottom of the traffic slider is traffic tolerant and warns", () => {
+  assert.equal(stressWords(0), "Traffic tolerant");
+  assert.equal(stressWords(TRAFFIC_TOLERANT_MAX), "Traffic tolerant");
+  assert.notEqual(stressWords(TRAFFIC_TOLERANT_MAX + 5), "Traffic tolerant");
+  assert.ok(warnsTrafficTolerant("default", 0));
+  assert.ok(warnsTrafficTolerant("fast", STARTS.fast.stress));
+  assert.ok(!warnsTrafficTolerant("default", 15));
+  // Mass Ride's slider is locked at 0 and says why; it does not warn.
+  assert.ok(!warnsTrafficTolerant("mass-ride", 0));
+});
+

@@ -169,7 +169,7 @@ change.
   between Joyce Road and the Maryland line - nine ways, 2.53 km, that OSM tags
   open to cars on weekdays (six ways, 2.32 km, destination-only at weekends;
   three short ways at the Wise Road end, 212 m, closed at weekends). The owner:
-  "(most of beach drive in DC is closed to car traffic permanantly)". Prepared,
-  not loaded: it is loaded with the owner's go-ahead, like the other files.
+  "(most of beach drive in DC is closed to car traffic permanantly)". The owner
+  approved loading it on 2026-09-28 ("Yes, load it"), at the next deploy.
   Montgomery County's Beach Drive stays as OSM tags it, closed at weekends.
 
