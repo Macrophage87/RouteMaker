@@ -23,14 +23,13 @@ class Command(BaseCommand):
         parser.add_argument(
             "--budget-s",
             type=float,
-            default=1800.0,
+            default=tile_cache.PREDRAW_BUDGET_S,
             help="Stop after this many seconds; what is left is drawn on first request.",
         )
 
     def handle(self, *args, budget_s: float, **options) -> None:
         started = time.monotonic()
-        drawn, cached = tile_cache.predraw(budget_s=budget_s)
+        result = tile_cache.predraw(budget_s=budget_s)
         self.stdout.write(
-            f"drew {drawn} stress tiles, {cached} already cached, "
-            f"in {time.monotonic() - started:.0f} s"
+            f"stress tiles: {result.summary()}, in {time.monotonic() - started:.0f} s"
         )

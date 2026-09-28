@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 import random
 import time
+from typing import NamedTuple
 
 from django.db import connection
 
@@ -69,7 +70,18 @@ def put(version: str, z: int, x: int, y: int, body: bytes) -> None:
 
 
 def evict(version: str, max_bytes: int = MAX_BYTES) -> int:
-    """Delete stale rows, and the oldest on-request tiles past `max_bytes`."""
+    """Delete stale rows, and the oldest on-request tiles past `max_bytes`.
+
+    "Stale" is every version but `version`, which is right only while one
+    version is being served. Two races make it wrong for a moment, and both
+    only cost draws, never a wrong tile (a row is only ever read back under
+    its own version): a request that drew from the old table just before a
+    promotion and evicts in its `put` just after it deletes the new table's
+    fresh rows (a 1-in-EVICT_EVERY chance per such request); and two api
+    images with different FORMAT_VERSIONs serving side by side - a rolling
+    deploy - delete each other's rows until the old one is gone. The next
+    pre-draw, or first requests, fill them again.
+    """
     with connection.cursor() as cursor:
         cursor.execute("DELETE FROM stress_tile_cache WHERE version <> %s", [version])
         stale = cursor.rowcount
@@ -119,46 +131,77 @@ def _tiles_with_segments(table: str, max_zoom: int) -> dict[int, set[tuple[int, 
     return tiles
 
 
-def predraw(max_zoom: int = PREDRAW_MAX_ZOOM, budget_s: float = 1800.0) -> tuple[int, int]:
+class Predrawn(NamedTuple):
+    drawn: int
+    cached: int
+    # Tiles that ran past PREDRAW_TIMEOUT_MS and were skipped.
+    timed_out: int = 0
+    # Tiles not reached because the budget was spent.
+    left: int = 0
+
+    def summary(self) -> str:
+        """For a run row: what was drawn, and what was not."""
+        text = f"{self.drawn} drawn, {self.cached} already there"
+        if self.timed_out:
+            text += f", {self.timed_out} timed out"
+        if self.left:
+            text += f"; stopped at its time budget with {self.left} left"
+        return text
+
+
+# The pre-draw's default time budget, well past what a whole box takes (56 s on
+# a quiet host, 135-216 s on a loaded one, with or without the overview index).
+PREDRAW_BUDGET_S = 1800.0
+
+
+def predraw(max_zoom: int = PREDRAW_MAX_ZOOM, budget_s: float = PREDRAW_BUDGET_S) -> Predrawn:
     """Draw every z10-`max_zoom` tile of the live table not yet cached.
 
-    Returns (drawn, already cached). Stops, logging, when `budget_s` is spent;
-    what it did not reach is drawn on first request. Each draw runs under
-    `stress_tiles.PREDRAW_TIMEOUT_MS`, so a swap waiting for its lock behind
-    one waits at most that long.
+    Stops when `budget_s` is spent, counting what it did not reach, which is
+    drawn on first request instead. Each draw runs under
+    `stress_tiles.PREDRAW_TIMEOUT_MS`; one that runs past it is skipped and
+    counted, and the pre-draw goes on.
     """
     from . import stress_tiles
 
     oid, optional = stress_tiles.live_table()
     if oid is None:
-        return 0, 0
+        return Predrawn(0, 0)
     version = stress_tiles.etag_for(oid, optional)
     evict(version)
     deadline = time.monotonic() + budget_s
-    drawn = cached = 0
     by_zoom = _tiles_with_segments(stress_tiles._table(), max_zoom)
-    for z in sorted(by_zoom):
-        for x, y in sorted(by_zoom[z]):
-            if stress_tiles.outside_coverage(z, x, y):
-                continue
-            if get(version, z, x, y) is not None:
-                cached += 1
-                continue
-            if time.monotonic() > deadline:
-                logger.warning(
-                    "stress tile pre-draw stopped at its %ss budget: %d drawn", budget_s, drawn
-                )
-                return drawn, cached
-            try:
-                drawn_oid, body = stress_tiles.render(
-                    z, x, y, optional, timeout_ms=stress_tiles.PREDRAW_TIMEOUT_MS
-                )
-            except stress_tiles.DrawTimedOut:
-                logger.warning("stress tile %d/%d/%d timed out in the pre-draw", z, x, y)
-                continue
-            if drawn_oid != oid:
-                # A promotion landed mid-way; the next pre-draw is for that table.
-                return drawn, cached
-            put(version, z, x, y, body)
-            drawn += 1
-    return drawn, cached
+    tiles = [
+        (z, x, y)
+        for z in sorted(by_zoom)
+        for x, y in sorted(by_zoom[z])
+        if not stress_tiles.outside_coverage(z, x, y)
+    ]
+    drawn = cached = timed_out = 0
+    for done, (z, x, y) in enumerate(tiles):
+        if get(version, z, x, y) is not None:
+            cached += 1
+            continue
+        if time.monotonic() > deadline:
+            left = len(tiles) - done
+            logger.warning(
+                "stress tile pre-draw stopped at its %ss budget: %d drawn, %d left",
+                budget_s,
+                drawn,
+                left,
+            )
+            return Predrawn(drawn, cached, timed_out, left)
+        try:
+            drawn_oid, body = stress_tiles.render(
+                z, x, y, optional, timeout_ms=stress_tiles.PREDRAW_TIMEOUT_MS
+            )
+        except stress_tiles.DrawTimedOut:
+            logger.warning("stress tile %d/%d/%d timed out in the pre-draw", z, x, y)
+            timed_out += 1
+            continue
+        if drawn_oid != oid:
+            # A promotion landed mid-way; the next pre-draw is for that table.
+            return Predrawn(drawn, cached, timed_out, len(tiles) - done)
+        put(version, z, x, y, body)
+        drawn += 1
+    return Predrawn(drawn, cached, timed_out)
