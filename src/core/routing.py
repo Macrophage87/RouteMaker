@@ -623,6 +623,44 @@ def choose_gentlest(trips: list[dict], weight: float, brake_grade: float | None)
     return best
 
 
+def _exposure(variant: str, costing: dict, trip: dict, when: str, deadline: Deadline):
+    """A trip's traffic exposure: metres on LTS 3, twice LTS 4, three times
+    tier 5 (the graded stress). None when a leg cannot be traced."""
+    pieces: list[Piece] = []
+    for leg in trip.get("legs") or []:
+        trace = trace_leg(variant, costing, leg.get("shape", ""), deadline)
+        if trace is None:
+            return None
+        pieces.extend(pieces_of_trace(trace))
+    stress, _facility = breakdown(pieces, when)
+    return stress["3"] + 2 * stress["4"] + 3 * stress["5"]
+
+
+def calmer_or_own(
+    trips: list[dict], chosen: int, variant: str, costing: dict, when: str, deadline: Deadline
+) -> int:
+    """`chosen`, if it is no busier than the router's own route, else 0.
+
+    The avoid half weighs sustained grades the router's cost cannot see, and
+    on a few plans that bought a gentler profile with busier roads
+    (correctness review, 2026-09-28: Foggy Bottom to Mount Pleasant at stress
+    90 took 1.1 km more of LTS 3-4 to save 7.5 s of sustained climbing). The
+    hills slider never trades calm roads for busy ones: the alternative is
+    traced, and kept only if its exposure is no worse than the router's own
+    route's. Only when an alternative won, so a plain plan pays nothing.
+    """
+    if chosen == 0:
+        return 0
+    try:
+        own = _exposure(variant, costing, trips[0], when, deadline)
+        alternative = _exposure(variant, costing, trips[chosen], when, deadline)
+    except (DeadlineExceeded, RouterUnavailable):
+        return 0
+    if own is None or alternative is None or alternative > own:
+        return 0
+    return chosen
+
+
 def choose_climb(trips: list[dict], ratio: float) -> int:
     """The index of the trip that climbs most within `ratio` of the first's length.
 
@@ -773,7 +811,14 @@ def plan(
     if seeking:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
     elif avoiding:
-        chosen = choose_gentlest(trips, avoid_weight, preset.brake_grade)
+        chosen = calmer_or_own(
+            trips,
+            choose_gentlest(trips, avoid_weight, preset.brake_grade),
+            variant,
+            costing,
+            when,
+            deadline,
+        )
     else:
         chosen = 0
     trip = trips[chosen]

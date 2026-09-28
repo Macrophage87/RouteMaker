@@ -801,3 +801,32 @@ class TestAlternatesInsideTheBudget:
         fake = router(seeking_router([(2.2, HILLY)]))
         routing.plan(mid, "default", dials=routing.Dials(hills=50))
         assert fake.calls[0][1]["alternates"] == routing.SEEK_ALTERNATES
+
+
+@db
+class TestTheAvoidHalfNeverTradesCalmForBusy:
+    """Correctness review, 2026-09-28: the hills slider never trades calm
+    roads for busy ones. An alternative that wins on sustained grades is
+    traced and kept only if it is no busier than the router's own route."""
+
+    def router_with(self, own_way, alternate_way):
+        own = _trip(VERTICES, 2.0, LONG_STEEP)
+        alternate = _trip(list(reversed(VERTICES)), 2.4, KICK_THEN_FLAT)
+        alternate_shape = alternate["legs"][0]["shape"]
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                return {"trip": own, "alternates": [{"trip": alternate}]}
+            way = alternate_way if payload["encoded_polyline"] == alternate_shape else own_way
+            return trace_answer(VERTICES, [(way, 0, 4, 2.0)])
+
+        return transport
+
+    def test_a_busier_alternative_is_not_taken(self, client, facility_segments, router):
+        # The router's own route on way 101 (tier 1), the gentler one on 202 (tiers 3 and 2).
+        router(self.router_with(101, 202))
+        assert post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["chosen"] == 0
+
+    def test_a_calmer_alternative_is_taken(self, client, facility_segments, router):
+        router(self.router_with(202, 101))
+        assert post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["chosen"] == 1
