@@ -42,9 +42,12 @@ for one is a lookup, not a draw.
 A draw (a tile not in the cache) takes an in-flight slot
 (`ratelimit.TILES_IN_FLIGHT`) and runs under DRAW_TIMEOUT_MS: well under the
 swap's 3 s lock timeout, so a promotion waiting for its lock behind a tile
-draw is not made to fail its attempts, and short enough that the slots cannot
-hold workers for long. A draw refused a slot, or cut off by the timeout, is
-answered 429 or 503 with Retry-After, which the front end waits out.
+draw normally takes it on the first attempt, and short enough that the slots
+cannot hold workers for long. It is not a hard bound: PostgreSQL checks for the
+cancel between steps, and one cold draw on a busy host was seen to end at
+5.46 s. The swap's retries (five attempts) are what cover that. A draw
+refused a slot, or cut off by the timeout, is answered 429 or 503 with
+Retry-After, which the front end waits out.
 
 Coverage: a tile straddling the edge of `settings.COVERAGE_BBOX` is drawn from
 its segments clipped to the box, so nothing is drawn in the map's grey area.

@@ -39,8 +39,12 @@ lock lives on the worker's database connection, so it is correct across
 workers and dies with a killed worker; a lock that cannot be released closes
 that connection, which ends it. `total` is the worker count less two
 (`config.settings.routing_concurrency`), so from three workers up, however the
-router is loaded, two workers are free for `/healthz`, the tiles, sign-in and
-the admin; one or two workers still get one slot, and keep fewer free.
+router is loaded, two workers are left to everything else. Stress tile draws
+(`TILES_IN_FLIGHT`) take their own slots from those two -
+`config.settings.tile_concurrency`, one at compose's five workers - so with
+every route and every draw running, one worker is still free for `/healthz`,
+sign-in, the admin and tiles served from the cache. One or two workers still
+get one routing slot and one tile slot, and keep fewer free.
 """
 
 from __future__ import annotations
@@ -264,11 +268,13 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
 # PostgreSQL takes, and the ops review of round 1 measured one address, inside
 # its 600 a minute, holding all five workers with cold z10 draws for 50 s -
 # routing and /healthz with them. So a draw takes a slot: at most
-# `settings.TILE_CONCURRENCY` in the deployment (the worker count less three,
-# at least one), at most two per client while the pool is roomy. A refused tile
-# is answered at once with Retry-After: 1, and the front end asks again then
-# (frontend/src/lib/stressProtocol.ts), so a refusal is a short wait and not a
-# blank tile. Cache hits take no slot.
+# `settings.TILE_CONCURRENCY` in the deployment (what routing's slots leave of
+# the worker count less one, at least one), at most two per client while the
+# pool is roomy. A refused tile
+# is answered at once with Retry-After: 1, and the front end asks again later,
+# backing off, with at most two tile requests of its own in flight
+# (frontend/src/lib/stressProtocol.ts), so a refusal is a wait and not a blank
+# tile. Cache hits take no slot.
 TILES_IN_FLIGHT = InFlight(
     scope_id=3,
     per_client=2,

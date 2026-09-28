@@ -242,12 +242,16 @@ ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
 
 # How many stress tiles the api may draw from the segment table at once; a
-# tile served from the cache (core.tile_cache) takes no slot. The worker count
-# less three, at least one: with routing's worker count less two, the two pools
-# together can fill every worker only for as long as a tile draw may run
-# (core.stress_tiles.DRAW_TIMEOUT_MS), which is what keeps /healthz answering.
+# tile served from the cache (core.tile_cache) takes no slot. What routing's
+# slots leave of the worker count less one, at least one - so from three
+# workers up, with every routing slot and every tile slot taken, one worker is
+# still free for /healthz, sign-in, the admin and cache hits. At compose's five
+# workers that is three routes and one tile draw. Below three workers the two
+# pools can hold every worker between them (one route and one draw), as
+# routing alone can at one worker.
 def tile_concurrency(web_concurrency: str | None) -> int:
-    return max(1, int(web_concurrency or 5) - 3)
+    workers = int(web_concurrency or 5)
+    return max(1, workers - 1 - routing_concurrency(web_concurrency))
 
 
 TILE_CONCURRENCY = tile_concurrency(os.environ.get("WEB_CONCURRENCY"))

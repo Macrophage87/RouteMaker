@@ -116,18 +116,18 @@ class TestCache:
         ]
 
     def test_predraw_draws_z10_to_13_once(self, live) -> None:
-        drawn, cached = tile_cache.predraw()
-        assert (drawn, cached) == (4, 0)  # one tile at each zoom holds the fixture
+        result = tile_cache.predraw()
+        assert result == (4, 0, 0, 0)  # one tile at each zoom holds the fixture
         with connection.cursor() as cursor:
             cursor.execute("SELECT z FROM stress_tile_cache ORDER BY z")
             assert [z for (z,) in cursor.fetchall()] == [10, 11, 12, 13]
-        assert tile_cache.predraw() == (0, 4)
+        assert tile_cache.predraw() == (0, 4, 0, 0)
 
     def test_predraw_draws_nothing_before_any_build(self, segment_schemas) -> None:
         from pipeline.schema import drop_segment_schema
 
         drop_segment_schema(segment_schemas[0])
-        assert tile_cache.predraw() == (0, 0)
+        assert tile_cache.predraw() == (0, 0, 0, 0)
 
     def test_predraw_clears_what_an_earlier_table_left(self, live) -> None:
         tile_cache.put('W/"stress-1-v1"', 10, 0, 0, b"old")
@@ -141,7 +141,7 @@ class TestCache:
 
         out = StringIO()
         call_command("predraw_stress_tiles", stdout=out)
-        assert "drew 4" in out.getvalue()
+        assert "4 drawn" in out.getvalue()
 
     def test_the_cache_is_left_out_of_the_nightly_dump(self) -> None:
         from config.procrastinate import BACKUP_EXCLUDED_TABLES
@@ -180,14 +180,28 @@ class TestDrawSlots:
         assert drawn.status_code == 200
         assert our_advisory_locks() == 0, "the slot is given back after the draw"
 
-    def test_the_pool_leaves_room_for_routing_and_healthz(self) -> None:
+    def test_routing_and_tile_draws_together_leave_a_worker_free(self) -> None:
         from config.settings import routing_concurrency, tile_concurrency
 
         for workers in range(1, 17):
-            assert tile_concurrency(str(workers)) >= 1
-            if workers >= 4:
-                assert tile_concurrency(str(workers)) <= workers - 2
-                assert tile_concurrency(str(workers)) < routing_concurrency(str(workers))
+            tiles, routes = tile_concurrency(str(workers)), routing_concurrency(str(workers))
+            assert tiles >= 1
+            if workers >= 3:
+                assert routes + tiles <= workers - 1, workers
+        assert tile_concurrency(None) == 1, "compose's five workers: three routes, one draw"
+
+    def test_a_tile_draw_is_not_refused_while_routing_is_full(self, client, live) -> None:
+        """The tiles' slots are their own: a full routing pool does not refuse a
+        draw (review cm2)."""
+        limit = ratelimit.ROUTING_IN_FLIGHT
+        routing = hold_slots(
+            [(ratelimit._LOCK_CLASS_TOTAL + limit.scope_id, s) for s in range(limit.total)]
+        )
+        try:
+            drawn = client.get(url(*TILE), HTTP_X_FORWARDED_FOR="198.51.100.90")
+        finally:
+            routing.close()
+        assert drawn.status_code == 200
 
     @override_settings(TILE_CONCURRENCY=1)
     def test_the_pool_size_is_the_setting(self, client, live) -> None:
@@ -238,3 +252,86 @@ def test_a_failed_predraw_is_reported_and_does_not_fail_the_rebuild(monkeypatch)
     monkeypatch.setattr(tile_cache, "predraw", broken)
     note = procrastinate._predraw_stress_tiles()
     assert "predraw_stress_tiles" in note
+
+
+@db
+class TestPredrawProbes:
+    """Review cm2's probes of the pre-draw, each against a surviving mutant."""
+
+    def test_the_predraw_uses_its_own_longer_timeout(self, live, monkeypatch) -> None:
+        seen = []
+        real = stress_tiles.render
+
+        def spy(*args, **kwargs):
+            seen.append(kwargs.get("timeout_ms"))
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(stress_tiles, "render", spy)
+        tile_cache.predraw()
+        assert seen and all(t is not None and t >= 3 * stress_tiles.DRAW_TIMEOUT_MS for t in seen)
+        assert stress_tiles.PREDRAW_TIMEOUT_MS >= 3 * stress_tiles.DRAW_TIMEOUT_MS
+
+    def test_a_timed_out_tile_is_counted_and_the_rest_are_drawn(self, live, monkeypatch) -> None:
+        real = stress_tiles.render
+        calls = []
+
+        def first_times_out(*args, **kwargs):
+            calls.append(args)
+            if len(calls) == 1:
+                raise stress_tiles.DrawTimedOut("probe")
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(stress_tiles, "render", first_times_out)
+        result = tile_cache.predraw()
+        assert (result.drawn, result.timed_out, result.left) == (3, 1, 0)
+        assert "1 timed out" in result.summary()
+
+    def test_a_promotion_mid_predraw_stores_nothing_under_the_old_version(
+        self, live, monkeypatch
+    ) -> None:
+        oid, _ = stress_tiles.live_table()
+        monkeypatch.setattr(stress_tiles, "render", lambda *a, **k: (oid + 1, b"new-table"))
+        result = tile_cache.predraw()
+        assert result.drawn == 0 and result.left == 4
+        assert rows() == 0
+
+    def test_a_spent_budget_draws_nothing_and_says_how_much_is_left(self, live) -> None:
+        result = tile_cache.predraw(budget_s=-1)
+        assert result == (0, 0, 0, 4)
+        assert rows() == 0
+        assert "stopped at its time budget with 4 left" in result.summary()
+
+    def test_the_rebuild_row_says_when_the_predraw_is_incomplete(self, live, monkeypatch) -> None:
+        from config import procrastinate
+
+        monkeypatch.setattr(
+            tile_cache, "predraw", lambda **k: tile_cache.Predrawn(10, 2, timed_out=1, left=7)
+        )
+        note = procrastinate._predraw_stress_tiles()
+        assert "10 drawn" in note and "1 timed out" in note and "7 left" in note
+        assert "predraw_stress_tiles" in note
+
+    def test_the_rebuild_gives_the_predraw_only_what_is_left_of_its_own_budget(
+        self, live, monkeypatch
+    ) -> None:
+        from config import procrastinate
+
+        budgets = []
+        monkeypatch.setattr(
+            tile_cache,
+            "predraw",
+            lambda budget_s: budgets.append(budget_s) or tile_cache.Predrawn(0, 0),
+        )
+        procrastinate._predraw_stress_tiles(time.monotonic() + 60)
+        procrastinate._predraw_stress_tiles(time.monotonic() - 5)
+        procrastinate._predraw_stress_tiles(time.monotonic() + 10 * tile_cache.PREDRAW_BUDGET_S)
+        assert 55 <= budgets[0] <= 60
+        assert budgets[1] == 0
+        assert budgets[2] == tile_cache.PREDRAW_BUDGET_S
+
+    def test_a_tile_drawn_from_a_newer_table_carries_its_etag(self, client, live, monkeypatch):
+        oid, _ = stress_tiles.live_table()
+        monkeypatch.setattr(stress_tiles, "render", lambda *a, **k: (oid + 1, b""))
+        response = client.get(url(*TILE))
+        assert str(oid + 1) in response["ETag"]
+        assert rows() == 0
