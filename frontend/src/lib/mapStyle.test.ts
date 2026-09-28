@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAP_ATTRIBUTION, MAP_CREDITS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { MAP_ATTRIBUTION, MAP_CREDITS, RAIL_CREDITS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
 
 const ORIGIN = "https://routes.example.org";
 
@@ -66,4 +66,16 @@ test("the credits read as one line with OpenStreetMap first", () => {
 
 test("the licence notices are linked from the credits", () => {
   assert.match(MAP_ATTRIBUTION, /href="\/licenses\.txt"/);
+});
+
+test("the rail stations' source is credited on every map, after the base map's", () => {
+  const all = MAP_CREDITS.join(" ");
+  assert.match(all, /Open Data DC/);
+  const at = MAP_ATTRIBUTION.indexOf("Open Data DC");
+  assert.ok(at > MAP_ATTRIBUTION.indexOf("OpenStreetMap"));
+  assert.match(MAP_ATTRIBUTION.slice(at), /CC BY 4\.0/);
+});
+
+test("the rail credit links the CC BY 4.0 licence itself", () => {
+  assert.match(RAIL_CREDITS.join(" "), /href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/"/);
 });

@@ -12,13 +12,16 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
-import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
+import { announceRoute, detourNotice, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials } from "./lib/dials.ts";
+import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
+import { RailStationsSection } from "./RailStations.tsx";
+import { RAIL_STATIONS } from "./lib/railData.ts";
 
 interface Plan {
   points: LonLat[];
@@ -46,11 +49,6 @@ function session(): Storage | null {
 const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
 
 /** A point's name in the list: Start, Via 1, Via 2, ..., End. */
-function pointName(index: number, count: number): string {
-  if (index === 0) return "Start";
-  if (index === count - 1 && count > 1) return "End";
-  return `Via ${index}`;
-}
 const NARROW = "(max-width: 720px)";
 
 /** Whether the phone layout (the bottom sheet) is showing, kept up to date. */
@@ -75,6 +73,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
+  const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   const [panelOpen, setPanelOpen] = useState(true);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -288,6 +287,23 @@ export function App() {
     },
     [commit, announce],
   );
+
+  // A station's Start here / End here / Add as via (railStations.ts): an
+  // edit of the points like any other, so it can be undone and redone.
+  const placeStation = useCallback((role: StationRole, point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice("That station is outside the area this map covers.");
+      return;
+    }
+    const edit = stationEdit(pointsRef.current, point, role);
+    if ("refused" in edit) {
+      if (edit.refused === "cap") setNotice(`A route can have at most ${MAX_POINTS} points.`);
+      return;
+    }
+    setNotice(null);
+    commit(edit.next);
+    announce(`${pointName(edit.index, edit.next.length)} set at the station.`);
+  }, [commit, announce]);
 
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
@@ -566,6 +582,8 @@ export function App() {
           mapRef.current = map;
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
+        rail={rail}
+        onStationPoint={placeStation}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       {narrow && (can.undo || can.redo) && (
@@ -630,6 +648,8 @@ export function App() {
               </p>
             )}
           </section>
+
+          {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
           <footer className="panel-footer">
             <p>

@@ -11,13 +11,27 @@ import { COVERAGE_BBOX, lonLatToTile, type LonLat } from "./lib/geo.ts";
 import {
   BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
+  OPENING_ZOOM,
   STRESS_SOURCE_ID,
   buildStyle,
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
-import { addStressOverlay, hoverChanged, mapClickAction, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
+import {
+  addStressOverlay,
+  focusBackTarget,
+  markerDeps,
+  popupsOpen,
+  pressGrab,
+  runClick,
+  runHover,
+  setStressVisibility,
+} from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
+import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
+import { addRailStations, setRailVisibility } from "./lib/railLayer.ts";
+import type { RailVisibility, StationRole } from "./lib/railStations.ts";
+import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -56,6 +70,10 @@ interface Props {
   markerReset: number;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
+  /** Which rail stations show (the panel's toggles). */
+  rail: RailVisibility;
+  /** A station's Start here / End here / Add as via, with its bike entrance. */
+  onStationPoint: (role: StationRole, point: LonLat) => void;
 }
 
 // One protocol for the page. MapLibre 4+ runs a custom protocol's handler on
@@ -153,8 +171,10 @@ export function MapView(props: Props) {
     const back = popupReturn.current;
     popupReturn.current = null;
     if (returnFocus) {
-      const target = back instanceof HTMLElement && back.isConnected && back !== document.body ? back : null;
-      (target ?? mapRef.current?.getCanvas())?.focus();
+      const usable = (element: Element) =>
+        element instanceof HTMLElement && element.isConnected && element !== document.body;
+      const target = focusBackTarget<Element>(back, usable, mapRef.current?.getCanvas() ?? null);
+      if (target instanceof HTMLElement) target.focus();
     }
     return true;
   };
@@ -176,7 +196,7 @@ export function MapView(props: Props) {
       container: container.current,
       style: buildStyle(origin, basemapLayers) as maplibregl.StyleSpecification,
       center: DC_CENTRE,
-      zoom: 11.2,
+      zoom: OPENING_ZOOM,
       minZoom: 7,
       maxZoom: 18,
       maxBounds: [
@@ -211,6 +231,12 @@ export function MapView(props: Props) {
       hoverShown.current = preview.length === 0 ? handle : null;
       (map.getSource(EDIT_SOURCE) as GeoJSONSource | undefined)?.setData(editData(handle, preview));
     };
+    // The rail stations' hover card and tap card (railInteraction.ts), once
+    // their layers are on the map.
+    let rail: ReturnType<typeof attachRailInteraction> | null = null;
+    const anyPopupOpen = () => popupsOpen(popup.current, rail);
+    /** The station under a pointer at `point` on the canvas, if any. */
+    const stationAt = (point: { x: number; y: number }): StationFound | null => rail?.stationAt(point) ?? null;
     /** The leg and the spot on the line under a pointer at `point`, if it is on the line. */
     const lineAt = (point: { x: number; y: number }, tolerance: number) => {
       const edit = callbacks.current.lineEdit;
@@ -281,7 +307,9 @@ export function MapView(props: Props) {
       if (result === "drop" && drop && point) callbacks.current.onLineDrop(drop.leg, lonLatAt(point), drop.points);
     };
 
-    // Hovering: a handle on the line where a press would grab it.
+    // Hovering: a handle on the line where a press would grab it, or a
+    // station's hover card where a click would open its card - one or the
+    // other, as pointerTarget (mapGlue.ts) decides for the press and click.
     let hoverFrame = 0;
     let hoverPoint: { x: number; y: number } | null = null;
     map.on("mousemove", (event) => {
@@ -291,28 +319,40 @@ export function MapView(props: Props) {
       hoverFrame = requestAnimationFrame(() => {
         hoverFrame = 0;
         if (gesture.active) return;
-        const hit = hoverPoint ? lineAt(hoverPoint, MOUSE_HIT_PX) : null;
-        const at = hit ? hit.at : null;
-        // Nowhere near the line, frame after frame, is no reason to render.
-        if (!hoverChanged(hoverShown.current, at)) return;
-        showEdit(at);
-        canvas.style.cursor = hit ? "pointer" : "";
+        const under = hoverPoint
+          ? { station: stationAt(hoverPoint), line: lineAt(hoverPoint, MOUSE_HIT_PX) }
+          : { station: null, line: null };
+        runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
+          drawHandle: (at) => showEdit(at as LonLat | null),
+          stationHover: (station, lineHint) => rail?.showHover(station, lineHint),
+          setCursor: (cursor) => {
+            canvas.style.cursor = cursor;
+          },
+        });
       });
     });
     const onCanvasLeave = () => {
       hoverPoint = null;
+      rail?.showHover(null);
       if (!gesture.active) endDrag();
     };
     canvas.addEventListener("mouseleave", onCanvasLeave);
     map.on("mousedown", (event) => {
       if (event.originalEvent.button !== 0 || event.originalEvent.target !== canvas) return;
-      const hit = lineAt(event.point, MOUSE_HIT_PX);
+      const hit = grabAt(event.point, MOUSE_HIT_PX);
       if (!hit) return;
       // The map does not pan: this press is the line's.
       event.preventDefault();
       grabbed = hit;
       gesture.press("mouse", event.point.x, event.point.y);
     });
+    /**
+     * The line under a press at `point`, if the press is the line's: near the
+     * line, a station included (it becomes the station's click if it does not
+     * become a drag), and not while a popup is open (the click only closes it).
+     */
+    const grabAt = (point: { x: number; y: number }, tolerance: number) =>
+      pressGrab({ station: stationAt(point), line: lineAt(point, tolerance) }, anyPopupOpen());
     const onMouseMove = (event: MouseEvent) => {
       if (gesture.active) follow(local(event.clientX, event.clientY));
     };
@@ -326,7 +366,7 @@ export function MapView(props: Props) {
         return;
       }
       if (event.originalEvent.target !== canvas) return;
-      const hit = lineAt(event.point, TOUCH_HIT_PX);
+      const hit = grabAt(event.point, TOUCH_HIT_PX);
       if (!hit) return;
       grabbed = hit;
       gesture.press("touch", event.point.x, event.point.y);
@@ -365,21 +405,26 @@ export function MapView(props: Props) {
     canvas.addEventListener("contextmenu", onContextMenu);
 
     map.on("click", (event) => {
-      // A click on the line puts the via in the leg clicked, as a drag does;
-      // anywhere else it is addPoint's (the leg it lengthens least). A click
-      // that closes a via's Remove only closes it (mapGlue.ts).
+      // A click on a station opens its card, and a click on the line puts
+      // the via in the leg clicked, as a drag does; anywhere else it is
+      // addPoint's (the leg it lengthens least). A click while a via's Remove
+      // or a station's card is open only closes it, or opens the station
+      // clicked (mapGlue.ts mapClickAction).
       const touch = (event.originalEvent as PointerEvent).pointerType === "touch";
-      const hit =
-        event.originalEvent.target === canvas ? lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) : null;
-      const action = mapClickAction({
-        popupOpen: popup.current !== null,
-        afterDrag: performance.now() < clickSuppressedUntil,
-        onLine: hit !== null,
-      });
+      const onCanvas = event.originalEvent.target === canvas;
+      const under = onCanvas
+        ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
+        : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
-      if (action === "close-popup") closePopup(false);
-      else if (action === "line" && hit) callbacks.current.onLineDrop(hit.leg, point, hit.points);
-      else if (action === "point") callbacks.current.onMapClick(point);
+      runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil }, {
+        closePopups: () => {
+          closePopup(false);
+          rail?.closeCard();
+        },
+        openCard: (station) => rail?.openCard(station),
+        lineDrop: (hit) => callbacks.current.onLineDrop(hit.leg, point, hit.points),
+        addPoint: () => callbacks.current.onMapClick(point),
+      });
     });
 
     // Under the base map's labels and the route, over its roads, in the
@@ -443,6 +488,17 @@ export function MapView(props: Props) {
           "circle-stroke-width": 3,
         },
       });
+      // Over the base map and the stress overlay, under the route and the
+      // drag's handle and preview (railLayer.ts).
+      // Left off, with a console warning, if a fixture no longer fits (railFixtures.ts).
+      if (RAIL_STATIONS.length > 0) addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio());
+      rail = attachRailInteraction(map, {
+        station: stationById,
+        pennColour: PENN_COLOUR,
+        visibility: () => callbacks.current.rail,
+        pointCount: () => callbacks.current.points.length,
+        onStationPoint: (role, point) => callbacks.current.onStationPoint(role, point),
+      });
       syncRoute(map, callbacks.current, fitted);
       callbacks.current.onReady(map);
       callbacks.current.onStressAvailability("checking");
@@ -463,6 +519,7 @@ export function MapView(props: Props) {
 
     return () => {
       disposed = true;
+      rail?.close();
       if (recheck !== null) clearTimeout(recheck);
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -587,7 +644,19 @@ export function MapView(props: Props) {
     setStressVisibility(map, props.stressVisible);
   }, [props.stressVisible]);
 
+  // The rail stations' toggles.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current) return;
+    setRailVisibility(map, RAIL_STATIONS, props.rail);
+  }, [props.rail.metro, props.rail.marc]);
+
   return <div ref={container} className="map" role="region" aria-label="Map" />;
+}
+
+/** Station icons are drawn for the screen's pixel density, whole numbers only. */
+function iconPixelRatio(): number {
+  return Math.min(3, Math.max(1, Math.ceil(window.devicePixelRatio || 1)));
 }
 
 function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean }): void {
