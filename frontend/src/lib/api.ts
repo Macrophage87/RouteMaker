@@ -46,7 +46,7 @@ export interface RouteResponse {
     chosen: number;
     extra_climb_m: number;
     extra_distance_m: number;
-    limited: "two_points" | "long_ride" | null;
+    limited: "two_points" | "long_ride" | "timed_out" | null;
   } | null;
   /** Present when the hills slider was below its middle: sustained climbs and
    * brake-riding descents weighed among the router's alternatives. */
@@ -58,7 +58,7 @@ export interface RouteResponse {
     grade_cost_s: number;
     direct_grade_cost_s: number;
     extra_distance_m: number;
-    limited: "two_points" | "long_ride" | null;
+    limited: "two_points" | "long_ride" | "timed_out" | null;
   } | null;
   attribution: string[];
   /**

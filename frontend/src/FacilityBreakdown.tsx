@@ -59,6 +59,8 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
             ? "Looking for climbs works on routes with just a start and an end; this one has via points, so it is the fastest route."
             : seek.limited === "long_ride"
               ? "Looking for climbs is done only when the start and end are within 50 km of each other; this is the fastest route."
+              : seek.limited === "timed_out"
+                ? "Looking for climbs took too long this time; this is the fastest route."
               : seek.chosen === 0
                 ? `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`
                 : `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`}

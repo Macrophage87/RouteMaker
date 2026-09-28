@@ -544,6 +544,35 @@ SEEK_ALTERNATES = 3
 # says so, rather than risking a 503 for a route that was always available.
 SEEK_MAX_SPAN_M = 50_000
 
+# The avoid half's span, shorter: it is where Cargo, Group Ride, E-bike and
+# Mass Ride start, so most of their rides ask for alternatives, and on the live
+# router (OPS review, 2026-09-28, host loaded) a 42-48 km request with them took
+# 43-47 s where the plain one answered in 33 s.
+AVOID_MAX_SPAN_M = 25_000
+
+# The most a request for alternatives may take before it is asked again
+# without them, inside what is left of the budget: the search for a better
+# climb or a gentler route is worth a few seconds, not the ride.
+ALTERNATES_TIMEOUT_S = 18
+
+# The weekend router, a fourth service that may not be up yet (between the
+# deploy and `up -d valhalla-weekend`) or may hang: one call to it may take at
+# most this long before the ride is planned on the standard graph, and a
+# failure is remembered this long, so every weekend ride in the meantime goes
+# straight to the standard graph instead of paying the failure again.
+WEEKEND_TIMEOUT_S = 15
+WEEKEND_FAILURE_TTL_S = 60
+_weekend_failed_at: float | None = None
+
+
+def _weekend_down() -> bool:
+    return _weekend_failed_at is not None and clock() - _weekend_failed_at < WEEKEND_FAILURE_TTL_S
+
+
+def _mark_weekend(ok: bool) -> None:
+    global _weekend_failed_at
+    _weekend_failed_at = None if ok else clock()
+
 
 def _climb_of(trip: dict) -> float:
     return climb_and_descent(
@@ -565,18 +594,30 @@ def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
     return profile
 
 
-def choose_gentlest(trips: list[dict], weight: float, brake_grade: float | None) -> int:
-    """The index of the trip whose time plus weighted sustained-grade cost is
-    least (routemaker.climbs): the avoid half of the hills slider.
+def _router_cost(trip: dict) -> float:
+    """Valhalla's own cost of a trip: its time with every cost-only penalty
+    the request priced in (the stress penalty, the tier-5 entry charge, the
+    grade penalty, maneuvers, gates). A body without it (an older router)
+    falls back to the time."""
+    summary = trip.get("summary") or {}
+    return float(summary.get("cost", summary.get("time", 0.0)))
 
-    The first trip is the router's own best route, already priced by
-    Valhalla's per-edge grade penalty; the alternatives are compared on what
-    that penalty cannot see - how long each climb and descent goes on.
+
+def choose_gentlest(trips: list[dict], weight: float, brake_grade: float | None) -> int:
+    """The index of the trip whose router cost plus weighted sustained-grade
+    cost is least (routemaker.climbs): the avoid half of the hills slider.
+
+    The first trip is the router's own best route, already the cheapest by
+    Valhalla's own cost, which carries the stress, tier-5 and per-edge grade
+    penalties; an alternative wins only where what that cost cannot see - how
+    long each climb and descent goes on - saves more than it costs. Ranked by
+    time, as it first was, a faster alternative won on time alone and traded
+    calm roads for busy ones (correctness review, 2026-09-28: Mass Ride at -95
+    over the Frederick Douglass roadway).
     """
     best, best_score = 0, None
     for index, trip in enumerate(trips):
-        time_s = float((trip.get("summary") or {}).get("time", 0.0))
-        score = time_s + weight * climbs.grade_cost_s(grade_profile(trip), brake_grade)
+        score = _router_cost(trip) + weight * climbs.grade_cost_s(grade_profile(trip), brake_grade)
         if best_score is None or score < best_score:
             best, best_score = index, score
     return best
@@ -597,6 +638,37 @@ def choose_climb(trips: list[dict], ratio: float) -> int:
         if length <= direct * ratio and climb > best_climb:
             best, best_climb = index, climb
     return best
+
+
+def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]:
+    """One /route, and whether a request for alternatives was abandoned.
+
+    A request with alternatives gets at most ALTERNATES_TIMEOUT_S; if it does
+    not answer in that, the same route is asked again without them inside what
+    is left of the budget, and the ride keeps the router's own route. The
+    weekend router gets at most WEEKEND_TIMEOUT_S a call, so a hung one leaves
+    the standard graph time to answer.
+    """
+    limit = deadline.per_call_s
+    if variant == Variant.WEEKEND.value:
+        limit = min(limit, WEEKEND_TIMEOUT_S)
+    if "alternates" not in request:
+        return _call(variant, "route", request, Deadline(deadline.at, limit)), False
+    try:
+        return (
+            _call(
+                variant, "route", request, Deadline(deadline.at, min(limit, ALTERNATES_TIMEOUT_S))
+            ),
+            False,
+        )
+    except RouterUnavailable:
+        logger.warning(
+            "the %s router did not answer a request for alternatives in %s s; asking without",
+            variant,
+            ALTERNATES_TIMEOUT_S,
+        )
+        plain = {key: value for key, value in request.items() if key != "alternates"}
+        return _call(variant, "route", plain, Deadline(deadline.at, limit)), True
 
 
 def plan(
@@ -651,25 +723,35 @@ def plan(
     avoiding = hills_dial < 0
     seek_limited = None
     if seeking or avoiding:
+        span_limit = SEEK_MAX_SPAN_M if seeking else AVOID_MAX_SPAN_M
         if len(points) != 2:
             seek_limited = "two_points"
-        elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > SEEK_MAX_SPAN_M:
+        elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > span_limit:
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
+    if variant == Variant.WEEKEND.value and _weekend_down():
+        logger.info("the weekend router failed recently; planning on the standard graph")
+        variant = Variant.STANDARD.value
     try:
         try:
-            answer = _call(variant, "route", request, deadline)
+            answer, timed_out = _route(variant, request, deadline)
+            if variant == Variant.WEEKEND.value:
+                _mark_weekend(True)
         except RouterUnavailable:
             # The weekend graph is a fourth router, and a deployment that has
-            # not built it yet - or one whose weekend router is down - still
-            # answers a weekend ride, on the standard graph it is the twin of.
-            # The answer names the graph it came from.
+            # not built it yet - or one whose weekend router is down or hung -
+            # still answers a weekend ride, on the standard graph it is the
+            # twin of. The answer names the graph it came from, and the failure
+            # is remembered for WEEKEND_FAILURE_TTL_S.
             if variant != Variant.WEEKEND.value:
                 raise
+            _mark_weekend(False)
             logger.warning("the weekend router did not answer; planning on the standard graph")
             variant = Variant.STANDARD.value
-            answer = _call(variant, "route", request, deadline)
+            answer, timed_out = _route(variant, request, deadline)
+        if timed_out:
+            seek_limited = "timed_out"
     except RouterRefused as refusal:
         if refusal.code in REQUEST_LIMIT_CODES:
             raise TooLong(str(refusal)) from refusal

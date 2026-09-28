@@ -58,3 +58,17 @@ def segment_schemas():
     yield live, staging
     for name in names:
         drop_segment_schema(name)
+
+
+@pytest.fixture(autouse=True)
+def _weekend_router_state():
+    """core.routing remembers a failed weekend router for a minute; no test
+    inherits another's memory of one."""
+    try:
+        from core import routing
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        yield
+        return
+    routing._weekend_failed_at = None
+    yield
+    routing._weekend_failed_at = None

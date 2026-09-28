@@ -383,6 +383,34 @@ class TestTheWeekendGraph:
             url.startswith(settings.VALHALLA_UPSTREAMS["standard"]) for url, _ in standard.calls
         )
 
+    def test_a_failed_weekend_router_is_not_asked_again_for_a_minute(
+        self, client, facility_segments, router, monkeypatch
+    ):
+        """Between the deploy and `up -d valhalla-weekend`, or with the weekend
+        router hung, every weekend ride paid the failure (2.5-35 s). It is
+        remembered for WEEKEND_FAILURE_TTL_S."""
+        weekend_calls = []
+        standard = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]):
+                weekend_calls.append(timeout)
+                raise routing.RouterUnavailable("connection refused")
+            return standard(url, payload, timeout)
+
+        now = [1000.0]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        router(transport)
+        assert post(client, {**good_body(), "when": "weekend"}).json()["variant"] == "standard"
+        assert len(weekend_calls) == 1
+        assert weekend_calls[0] <= routing.WEEKEND_TIMEOUT_S, "a hung one is cut short"
+        now[0] += routing.WEEKEND_FAILURE_TTL_S - 1
+        assert post(client, {**good_body(), "when": "weekend"}).json()["variant"] == "standard"
+        assert len(weekend_calls) == 1, "not asked again inside the minute"
+        now[0] += 2
+        post(client, {**good_body(), "when": "weekend"})
+        assert len(weekend_calls) == 2, "and asked again after it"
+
     def test_a_standard_router_that_does_not_answer_is_still_a_502(
         self, client, facility_segments, router
     ):
@@ -687,3 +715,89 @@ def test_grade_profile_splits_legs():
 def test_choose_gentlest_keeps_the_router_route_on_a_tie():
     trips = [_trip(VERTICES, 2.0, LONG_STEEP), _trip(VERTICES, 2.0, LONG_STEEP)]
     assert routing.choose_gentlest(trips, 1.0, 0.06) == 0
+
+
+# --- The avoid half ranks by the router's cost (correctness review, 2026-09-28) ---
+
+
+def _costed(vertices, km, elevations, cost):
+    trip = _trip(vertices, km, elevations)
+    trip["summary"]["cost"] = cost
+    return trip
+
+
+def test_a_faster_but_busier_alternate_is_not_taken():
+    """Mass Ride at -95 took the Frederick Douglass roadway: faster (1072 s
+    against 1693 s) but dearer by the router's own cost (4346 against 4111),
+    with the same sustained-grade cost. Ranked by cost, the router's own
+    route stays."""
+    flat = [10.0, 10.0, 10.0, 10.0]
+    own = _costed(VERTICES, 3.0, flat, 4111.0)
+    own["summary"]["time"] = 1693.0
+    douglass = _costed(VERTICES, 2.5, flat, 4346.0)
+    douglass["summary"]["time"] = 1072.0
+    assert routing.choose_gentlest([own, douglass], 0.95, 0.04) == 0
+
+
+def test_a_dearer_alternate_still_wins_on_a_long_climb_it_avoids():
+    own = _costed(VERTICES, 2.0, LONG_STEEP, 1000.0)
+    gentle = _costed(VERTICES, 2.4, KICK_THEN_FLAT, 1100.0)
+    assert routing.choose_gentlest([own, gentle], 1.0, 0.06) == 1
+
+
+def test_a_trip_without_a_cost_falls_back_to_its_time():
+    trip = _trip(VERTICES, 2.0, [10.0, 10.0])
+    assert routing._router_cost(trip) == trip["summary"]["time"]
+
+
+@db
+class TestAlternatesInsideTheBudget:
+    """OPS review, 2026-09-28: a request for alternatives could run past the
+    per-call limit and turn a ride the plain request answers into a 502."""
+
+    def test_a_slow_request_for_alternatives_is_asked_again_without(
+        self, client, facility_segments, router
+    ):
+        plain = standard_router()
+        calls = []
+
+        def transport(url, payload, timeout):
+            calls.append((payload.get("alternates"), timeout))
+            if url.endswith("/route") and "alternates" in payload:
+                raise routing.RouterUnavailable("timed out")
+            return plain(url, payload, timeout)
+
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60}).json()
+        assert calls[0] == (routing.SEEK_ALTERNATES, routing.ALTERNATES_TIMEOUT_S)
+        assert calls[1][0] is None, "asked again without alternatives"
+        assert body["hills_avoid"]["limited"] == "timed_out"
+        assert body["distance_m"] == pytest.approx(2200.0)
+
+    def test_the_seek_half_says_so_too(self, client, facility_segments, router):
+        plain = standard_router()
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route") and "alternates" in payload:
+                raise routing.RouterUnavailable("timed out")
+            return plain(url, payload, timeout)
+
+        router(transport)
+        assert post(client, {**good_body(), "hills": 60}).json()["hills_seek"]["limited"] == (
+            "timed_out"
+        )
+
+    def test_the_avoid_half_stops_at_a_shorter_span(self, facility_segments, router):
+        mid = [[-77.05, 38.9], [-77.05 + 0.35, 38.9]]  # about 30 km
+        assert (
+            routing.AVOID_MAX_SPAN_M
+            < routing.haversine(routing.Point(*mid[0]), routing.Point(*mid[1]))
+            < routing.SEEK_MAX_SPAN_M
+        )
+        fake = router(standard_router())
+        body = routing.plan(mid, "default", dials=routing.Dials(hills=-50))
+        assert "alternates" not in fake.calls[0][1]
+        assert body["hills_avoid"]["limited"] == "long_ride"
+        fake = router(seeking_router([(2.2, HILLY)]))
+        routing.plan(mid, "default", dials=routing.Dials(hills=50))
+        assert fake.calls[0][1]["alternates"] == routing.SEEK_ALTERNATES

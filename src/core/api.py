@@ -292,7 +292,7 @@ class HillsSeekOut(Schema):
     chosen: int = Field(description="Which was kept; 0 is the direct route.")
     extra_climb_m: float
     extra_distance_m: float
-    limited: Literal["two_points", "long_ride"] | None = Field(
+    limited: Literal["two_points", "long_ride", "timed_out"] | None = Field(
         description="Why no alternatives were compared, if none were."
     )
 
@@ -336,7 +336,7 @@ class HillsAvoidOut(Schema):
     grade_cost_s: float = Field(description="The kept route's sustained climb and descent cost.")
     direct_grade_cost_s: float
     extra_distance_m: float
-    limited: Literal["two_points", "long_ride"] | None = Field(
+    limited: Literal["two_points", "long_ride", "timed_out"] | None = Field(
         description="Why no alternatives were compared, if none were."
     )
 
