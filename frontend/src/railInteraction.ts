@@ -7,6 +7,8 @@
 import * as maplibregl from "maplibre-gl";
 import type { Map as MapLibreMap, PointLike } from "maplibre-gl";
 import type { LonLat } from "./lib/geo.ts";
+import { focusBackTarget } from "./lib/mapGlue.ts";
+import { RailCards } from "./lib/railCards.ts";
 import { RAIL_LAYERS, railHitFrom, type RailHit } from "./lib/railLayer.ts";
 import {
   bikeEntrance,
@@ -73,16 +75,14 @@ export interface StationFound {
  * click, whether the pointer is on a station, the route line or the map
  * (mapGlue.ts pointerTarget and mapClickAction), so that the line's handle
  * and a station's card never both answer the same pointer; this module finds
- * the station and shows its cards.
+ * the station and draws its cards, whose state is RailCards (railCards.ts).
  */
 export function attachRailInteraction(map: MapLibreMap, options: RailInteractionOptions) {
+  // The hover card has nothing to press; the pointer goes through it (.rail-hover).
   const hover = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "rail-popup rail-hover", offset: 12 });
-  // What the hover card shows ("" for nothing), so an unchanged hover is not built again.
-  let hovered = "";
-  let chosen: maplibregl.Popup | null = null;
+  const canvas = map.getCanvas();
 
   const layers = () => [RAIL_LAYERS.elevators, RAIL_LAYERS.stations].filter((id) => map.getLayer(id));
-  const cardOpen = () => chosen?.isOpen() ?? false;
 
   /** The station (or elevator) within the tap slop of a pointer at `point`, if any. */
   function stationAt(point: { x: number; y: number }): StationFound | null {
@@ -98,69 +98,72 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
     return hit && station ? { hit, station } : null;
   }
 
-  /** The hover card for `found`, or none; not while a station's card is open. */
-  function showHover(found: StationFound | null): void {
-    const key = found && !cardOpen() ? `${found.hit.id}|${found.hit.elevator?.join(",") ?? ""}` : "";
-    if (key === hovered) return;
-    hovered = key;
-    if (!found || key === "") {
+  const cards = new RailCards<StationFound>({
+    key: ({ hit }) => `${hit.id}|${hit.elevator?.join(",") ?? ""}`,
+    showHover({ hit, station }, lineHint) {
+      const content = summary(station, options, hit.elevator !== undefined);
+      if (lineHint) {
+        // The route runs over this station: a press that drags takes the line.
+        const hint = document.createElement("p");
+        hint.className = "station-line-hint";
+        hint.textContent = "Click for the station; drag to reshape the route.";
+        content.append(hint);
+      }
+      hover
+        .setLngLat(hit.elevator ?? station.point)
+        .setDOMContent(content)
+        .addTo(map);
+    },
+    hideHover() {
       hover.remove();
-      return;
-    }
-    hover
-      .setLngLat(found.hit.elevator ?? found.station.point)
-      .setDOMContent(summary(found.station, options, found.hit.elevator !== undefined))
-      .addTo(map);
-  }
-
-  /** Close the station's card, if one is open; whether one was. */
-  function closeCard(): boolean {
-    const open = cardOpen();
-    chosen?.remove();
-    chosen = null;
-    return open;
-  }
-
-  /** Open the card for a tapped station, with its Start here / End here / Add as via. */
-  function openCard({ hit, station }: StationFound): void {
-    showHover(null);
-    closeCard();
-    const point: LonLat = hit.elevator ?? bikeEntrance(station).point;
-    const content = summary(station, options, hit.elevator !== undefined);
-    const actions = document.createElement("div");
-    actions.className = "station-actions";
-    for (const role of stationRoles(options.pointCount())) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = ROLE_TEXT[role];
-      button.addEventListener("click", () => {
+    },
+    openCard({ hit, station }) {
+      // Where the focus goes back to on Escape, as for a via's Remove.
+      const returnTo = document.activeElement;
+      const point: LonLat = hit.elevator ?? bikeEntrance(station).point;
+      const content = summary(station, options, hit.elevator !== undefined);
+      const actions = document.createElement("div");
+      actions.className = "station-actions";
+      for (const role of stationRoles(options.pointCount())) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = ROLE_TEXT[role];
+        button.addEventListener("click", () => {
+          popup.remove();
+          options.onStationPoint(role, point);
+        });
+        actions.append(button);
+      }
+      content.append(actions);
+      content.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
         popup.remove();
-        options.onStationPoint(role, point);
+        const usable = (element: Element) =>
+          element instanceof HTMLElement && element.isConnected && element !== document.body;
+        const target = focusBackTarget<Element>(returnTo, usable, canvas);
+        if (target instanceof HTMLElement) target.focus();
       });
-      actions.append(button);
-    }
-    content.append(actions);
-    content.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") popup.remove();
-    });
-    // Not closed by MapLibre on a map click: MapView's click closes it, so
-    // that the same click does not also add a point (mapClickAction).
-    const popup = new maplibregl.Popup({ className: "rail-popup", offset: 12, focusAfterOpen: true, closeOnClick: false })
-      .setLngLat(hit.elevator ?? station.point)
-      .setDOMContent(content)
-      .addTo(map);
-    chosen = popup;
-  }
+      // Not closed by MapLibre on a map click: MapView's click closes it, so
+      // that the same click does not also add a point (mapClickAction).
+      const popup = new maplibregl.Popup({ className: "rail-popup", offset: 12, focusAfterOpen: true, closeOnClick: false })
+        .setLngLat(hit.elevator ?? station.point)
+        .setDOMContent(content)
+        .addTo(map);
+      return popup;
+    },
+  });
 
   return {
     stationAt,
-    showHover,
-    cardOpen,
-    openCard,
-    closeCard,
+    /** The hover card for `found` (with the line hint), or none. */
+    showHover: (found: StationFound | null, lineHint = false) => cards.hover(found, lineHint),
+    cardOpen: () => cards.cardOpen(),
+    openCard: (found: StationFound) => cards.open(found),
+    closeCard: () => cards.close(),
     close() {
-      showHover(null);
-      closeCard();
+      cards.hover(null);
+      cards.close();
     },
   };
 }

@@ -18,10 +18,12 @@ import {
 import type { RouteResponse } from "./lib/api.ts";
 import {
   addStressOverlay,
-  hoverChanged,
-  mapClickAction,
+  focusBackTarget,
   markerDeps,
-  pointerTarget,
+  popupsOpen,
+  pressGrab,
+  runClick,
+  runHover,
   setStressVisibility,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
@@ -169,8 +171,10 @@ export function MapView(props: Props) {
     const back = popupReturn.current;
     popupReturn.current = null;
     if (returnFocus) {
-      const target = back instanceof HTMLElement && back.isConnected && back !== document.body ? back : null;
-      (target ?? mapRef.current?.getCanvas())?.focus();
+      const usable = (element: Element) =>
+        element instanceof HTMLElement && element.isConnected && element !== document.body;
+      const target = focusBackTarget<Element>(back, usable, mapRef.current?.getCanvas() ?? null);
+      if (target instanceof HTMLElement) target.focus();
     }
     return true;
   };
@@ -230,7 +234,7 @@ export function MapView(props: Props) {
     // The rail stations' hover card and tap card (railInteraction.ts), once
     // their layers are on the map.
     let rail: ReturnType<typeof attachRailInteraction> | null = null;
-    const anyPopupOpen = () => popup.current !== null || (rail?.cardOpen() ?? false);
+    const anyPopupOpen = () => popupsOpen(popup.current, rail);
     /** The station under a pointer at `point` on the canvas, if any. */
     const stationAt = (point: { x: number; y: number }): StationFound | null => rail?.stationAt(point) ?? null;
     /** The leg and the spot on the line under a pointer at `point`, if it is on the line. */
@@ -315,16 +319,16 @@ export function MapView(props: Props) {
       hoverFrame = requestAnimationFrame(() => {
         hoverFrame = 0;
         if (gesture.active) return;
-        const station = hoverPoint ? stationAt(hoverPoint) : null;
-        const hit = hoverPoint && !station ? lineAt(hoverPoint, MOUSE_HIT_PX) : null;
-        const target = pointerTarget({ popupOpen: anyPopupOpen(), onStation: station !== null, onLine: hit !== null });
-        const at = target === "line" && hit ? hit.at : null;
-        // Nowhere near the line, frame after frame, is no reason to render:
-        // the handle is drawn, and the cursor written, only when they change.
-        if (hoverChanged(hoverShown.current, at)) showEdit(at);
-        rail?.showHover(target === "station" ? station : null);
-        const cursor = target === "map" ? "" : "pointer";
-        if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
+        const under = hoverPoint
+          ? { station: stationAt(hoverPoint), line: lineAt(hoverPoint, MOUSE_HIT_PX) }
+          : { station: null, line: null };
+        runHover(under, anyPopupOpen(), { handle: hoverShown.current, cursor: canvas.style.cursor }, {
+          drawHandle: (at) => showEdit(at as LonLat | null),
+          stationHover: (station, lineHint) => rail?.showHover(station, lineHint),
+          setCursor: (cursor) => {
+            canvas.style.cursor = cursor;
+          },
+        });
       });
     });
     const onCanvasLeave = () => {
@@ -343,16 +347,12 @@ export function MapView(props: Props) {
       gesture.press("mouse", event.point.x, event.point.y);
     });
     /**
-     * The line under a press at `point`, if the press is the line's: not on a
-     * station (its press is left to become the station's click) and not while
-     * a popup is open (the click only closes it).
+     * The line under a press at `point`, if the press is the line's: near the
+     * line, a station included (it becomes the station's click if it does not
+     * become a drag), and not while a popup is open (the click only closes it).
      */
-    const grabAt = (point: { x: number; y: number }, tolerance: number) => {
-      const station = stationAt(point);
-      const hit = station ? null : lineAt(point, tolerance);
-      const target = pointerTarget({ popupOpen: anyPopupOpen(), onStation: station !== null, onLine: hit !== null });
-      return target === "line" ? hit : null;
-    };
+    const grabAt = (point: { x: number; y: number }, tolerance: number) =>
+      pressGrab({ station: stationAt(point), line: lineAt(point, tolerance) }, anyPopupOpen());
     const onMouseMove = (event: MouseEvent) => {
       if (gesture.active) follow(local(event.clientX, event.clientY));
     };
@@ -412,22 +412,19 @@ export function MapView(props: Props) {
       // clicked (mapGlue.ts mapClickAction).
       const touch = (event.originalEvent as PointerEvent).pointerType === "touch";
       const onCanvas = event.originalEvent.target === canvas;
-      const station = onCanvas ? stationAt(event.point) : null;
-      const hit = onCanvas && !station ? lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) : null;
-      const action = mapClickAction({
-        popupOpen: anyPopupOpen(),
-        afterDrag: performance.now() < clickSuppressedUntil,
-        onStation: station !== null,
-        onLine: hit !== null,
-      });
+      const under = onCanvas
+        ? { station: stationAt(event.point), line: lineAt(event.point, touch ? TOUCH_HIT_PX : MOUSE_HIT_PX) }
+        : { station: null, line: null };
       const point: LonLat = [event.lngLat.lng, event.lngLat.lat];
-      if (action === "close-popup" || action === "station") {
-        closePopup(false);
-        rail?.closeCard();
-      }
-      if (action === "station" && station) rail?.openCard(station);
-      else if (action === "line" && hit) callbacks.current.onLineDrop(hit.leg, point, hit.points);
-      else if (action === "point") callbacks.current.onMapClick(point);
+      runClick(under, { popupOpen: anyPopupOpen(), afterDrag: performance.now() < clickSuppressedUntil }, {
+        closePopups: () => {
+          closePopup(false);
+          rail?.closeCard();
+        },
+        openCard: (station) => rail?.openCard(station),
+        lineDrop: (hit) => callbacks.current.onLineDrop(hit.leg, point, hit.points),
+        addPoint: () => callbacks.current.onMapClick(point),
+      });
     });
 
     // Under the base map's labels and the route, over its roads, in the

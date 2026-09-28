@@ -65,11 +65,10 @@ export type MapClickAction = "close-popup" | "ignore" | "station" | "line" | "po
  * closed, and on a station that station's card opens in its place; clicking
  * away is how a rider dismisses a popup, and it must not also add a point.
  * The click a browser still sends at the end of a drag of the line is
- * ignored. Otherwise a station under the pointer opens its card, even where
- * the route runs over it: the symbol is a small target and the line is
- * draggable on either side of it, where a station under the line's 8 px
- * (18 px by touch) reach could never be tapped at all. Then a click on the
- * line puts a via in that leg, and anywhere else it is a new point.
+ * ignored. Otherwise a click on a station opens its card, even where the
+ * route runs over it - owner, 2026-09-28: "Tap = station, drag = line" (a
+ * press there that becomes a drag is the line's; pointerTarget). Then a click
+ * on the line puts a via in that leg, and anywhere else it is a new point.
  */
 export function mapClickAction(state: PointerState & { afterDrag: boolean }): MapClickAction {
   if (state.popupOpen) return state.onStation ? "station" : "close-popup";
@@ -78,19 +77,106 @@ export function mapClickAction(state: PointerState & { afterDrag: boolean }): Ma
   return state.onLine ? "line" : "point";
 }
 
-export type PointerTarget = "station" | "line" | "map";
+export interface PointerAnswer {
+  /** What a hover shows: a station's hover card, the line's handle, or nothing. */
+  hover: "station" | "line" | "map";
+  /**
+   * Whether a press is (provisionally) the line's: if it becomes a drag it
+   * drags the line; released as a click, it is mapClickAction's.
+   */
+  grab: boolean;
+}
 
 /**
- * What the pointer is on, for a hover and for a press alike: the line's
- * handle shows exactly where a press would pick the line up. A station under
- * the pointer is the station's (its hover card, and a press that is left to
- * become its click), whether or not the line runs there; the line is the
- * line's only while no popup is open, since a click then only closes it.
- * Anywhere else a press pans the map.
+ * What the pointer is on, for a hover and a press. A press near the line is
+ * the line's wherever it is, a station included (owner, 2026-09-28: "A quick
+ * click/tap opens the station card; pressing and dragging grabs the route
+ * line. Both work everywhere."), but not while a popup is open, since a click
+ * then only closes it. A hover over a station shows the station's card - with
+ * a hint that the line can be dragged there too, where it can - and the
+ * line's handle shows only off the stations, so the two never answer one
+ * pointer together.
  */
-export function pointerTarget(state: PointerState): PointerTarget {
-  if (state.onStation) return "station";
-  return state.onLine && !state.popupOpen ? "line" : "map";
+export function pointerTarget(state: PointerState): PointerAnswer {
+  const grab = state.onLine && !state.popupOpen;
+  return { hover: state.onStation ? "station" : grab ? "line" : "map", grab };
+}
+
+/** What lies under a pointer, as MapView's finders report it. */
+export interface Under<S, L> {
+  station: S | null;
+  line: L | null;
+}
+
+function stateOf(under: Under<unknown, unknown>, popupOpen: boolean): PointerState {
+  return { popupOpen, onStation: under.station !== null, onLine: under.line !== null };
+}
+
+/** Whether a popup is open: a via's Remove (null when none), or a station's card. */
+export function popupsOpen(viaPopup: unknown, cards: { cardOpen(): boolean } | null): boolean {
+  return viaPopup !== null || (cards?.cardOpen() ?? false);
+}
+
+/** The line a press at `under` picks up (provisionally), or null: the press is the map's. */
+export function pressGrab<L>(under: Under<unknown, L>, popupOpen: boolean): L | null {
+  return pointerTarget(stateOf(under, popupOpen)).grab ? under.line : null;
+}
+
+export interface ClickEffects<S, L> {
+  closePopups(): void;
+  openCard(station: S): void;
+  lineDrop(line: L): void;
+  addPoint(): void;
+}
+
+/** Carry out a click at `under` (mapClickAction); returns what it was. */
+export function runClick<S, L>(
+  under: Under<S, L>,
+  now: { popupOpen: boolean; afterDrag: boolean },
+  effects: ClickEffects<S, L>,
+): MapClickAction {
+  const action = mapClickAction({ ...stateOf(under, now.popupOpen), afterDrag: now.afterDrag });
+  if (action === "close-popup" || action === "station") effects.closePopups();
+  if (action === "station" && under.station !== null) effects.openCard(under.station);
+  else if (action === "line" && under.line !== null) effects.lineDrop(under.line);
+  else if (action === "point") effects.addPoint();
+  return action;
+}
+
+export interface HoverEffects<S> {
+  /** Draw the line's handle at a spot, or take it away (a map render). */
+  drawHandle(at: readonly [number, number] | null): void;
+  /** A station's hover card (with the line hint), or none. */
+  stationHover(station: S | null, lineHint: boolean): void;
+  setCursor(cursor: string): void;
+}
+
+/**
+ * Carry out a hover at `under`. The handle is drawn, and the cursor written,
+ * only when they change: a pointer nowhere near the line, frame after frame,
+ * is no reason to render.
+ */
+export function runHover<S, L extends { at: readonly [number, number] }>(
+  under: Under<S, L>,
+  popupOpen: boolean,
+  shown: { handle: readonly [number, number] | null; cursor: string },
+  effects: HoverEffects<S>,
+): void {
+  const target = pointerTarget(stateOf(under, popupOpen));
+  const at = target.hover === "line" && under.line !== null ? under.line.at : null;
+  if (hoverChanged(shown.handle, at)) effects.drawHandle(at);
+  // The hover is the station's exactly when there is one under the pointer.
+  effects.stationHover(under.station, target.hover === "station" && target.grab);
+  const cursor = target.hover === "map" ? "" : "pointer";
+  if (shown.cursor !== cursor) effects.setCursor(cursor);
+}
+
+/**
+ * Where the focus goes back to when a popup that took it closes: where it was
+ * before, if that can still take it, or else the fallback (the map).
+ */
+export function focusBackTarget<E>(back: E | null, usable: (element: E) => boolean, fallback: E | null): E | null {
+  return back !== null && usable(back) ? back : fallback;
 }
 
 /**

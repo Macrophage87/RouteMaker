@@ -18,3 +18,11 @@ test("the legend's ring stands 3:1 off both panel themes", () => {
     assert.ok(contrastRatio(ring, bg) >= 3, `${ring} on ${bg}`);
   }
 });
+
+// The station hover card (railInteraction.ts) has nothing to press, and sits
+// over the route line beside the station: the pointer has to reach the map.
+test("the station hover card lets the pointer through to the map", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const rule = css.match(/\.rail-hover\s*\{([^}]*)\}/)?.[1] ?? "";
+  assert.match(rule, /pointer-events:\s*none/);
+});
