@@ -11,6 +11,7 @@ import { COVERAGE_BBOX, lonLatToTile, type LonLat } from "./lib/geo.ts";
 import {
   BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
+  OPENING_ZOOM,
   STRESS_SOURCE_ID,
   buildStyle,
 } from "./lib/mapStyle.ts";
@@ -123,7 +124,7 @@ export function MapView(props: Props) {
       container: container.current,
       style: buildStyle(origin, basemapLayers) as maplibregl.StyleSpecification,
       center: DC_CENTRE,
-      zoom: 11.2,
+      zoom: OPENING_ZOOM,
       minZoom: 7,
       maxZoom: 18,
       maxBounds: [
@@ -199,7 +200,8 @@ export function MapView(props: Props) {
         paint: { "line-color": "#1d4ed8", "line-width": 5 },
       });
       // Over the base map and the stress overlay, under the route (railLayer.ts).
-      addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio());
+      // Left off, with a console warning, if a fixture no longer fits (railFixtures.ts).
+      if (RAIL_STATIONS.length > 0) addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio());
       rail = attachRailInteraction(map, {
         station: stationById,
         pennColour: PENN_COLOUR,

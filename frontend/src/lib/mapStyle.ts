@@ -12,6 +12,8 @@ import { BASEMAP } from "../stressStyle.js";
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
 export const SPRITE_FLAVOR = "light";
+/** The zoom the map opens at, over central DC (MapView.tsx); the rail stations show from it. */
+export const OPENING_ZOOM = 11.2;
 
 /**
  * Credits every map view carries (the public-tier rules, owner decision

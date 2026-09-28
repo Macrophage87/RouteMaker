@@ -84,10 +84,20 @@ reviewer also checked the stations' WMATA pages):
 | 2025-06-22 | Half of Silver Line trains run Ashburn - New Carrollton | Minnesota Ave, Deanwood, Cheverly, Landover, New Carrollton (now Orange and Silver) |
 | 2025-12-31 | Half of Yellow Line trains run Huntington - Greenbelt | Shaw-Howard U, U Street, Columbia Heights, Georgia Ave-Petworth, Fort Totten, West Hyattsville, Hyattsville Crossing, College Park-U of Md, Greenbelt (Fort Totten now Red, Green and Yellow; the rest Green and Yellow) |
 
-Each correction names its station by `GIS_ID` and name; the build stops if
-either no longer matches, or if `LINE` already carries the line (the
-correction is then spent and should be deleted). Yellow at Gallery Place and
-Mt Vernon Sq was already in the field and is current.
+Each correction names its station by `GIS_ID` and name. A correction whose
+station no longer matches either, whose line is not a line's name, or whose
+line `LINE` already carries (it is then spent and should be deleted) no longer
+fits, and then:
+
+- `npm test` fails, and so does `npm run build` on its own: a Vite plugin
+  builds the stations from these files before anything else
+  (`src/lib/railFixturesPlugin.mjs`), with the same code the app runs;
+- a build that somehow ships it anyway does not lose the planner: the app
+  leaves the rail stations off the map and says why in the console
+  (`loadRailStations`, `src/lib/railFixtures.ts`).
+
+Yellow at Gallery Place and Mt Vernon Sq was already in the field and is
+current.
 
 ### Entrances and elevators
 
@@ -146,8 +156,8 @@ curl -fsS -o frontend/src/rail-data/metro-entrances.geojson \
 ```
 
 then `npm test` in `frontend/` (a `LINE` value the parser does not know, or a
-line correction that no longer applies, fails it), update the tables and
-dates above, and review the diff.
+line correction that no longer fits, fails it, and `npm run build` too),
+update the tables and dates above, and review the diff.
 
 The OSM-derived fixtures, from the current extract (read only):
 
@@ -159,9 +169,12 @@ The OSM-derived fixtures, from the current extract (read only):
 The first prints the station order it derived from the Penn Line's route
 relation and stops with an error if any Penn Line variant calls south of
 Baltimore Penn at a station the list lacks. The second prints the elevator
-disagreements and rewrites `metro-osm-elevators.geojson`; update the summary
-above from it, and the extract's date and sha256.
+disagreements and the OSM elevators the map uses, and rewrites
+`metro-osm-elevators.geojson` from that last list; update the summary above
+from it, and the extract's date and sha256.
 
-The MARC fixture's `colour` is the OSM route's own tag (a pale lavender) and is
-not used: the map draws the Penn Line in gold, `PENN_COLOUR` in
-`src/lib/railStations.ts` (owner, 2026-09-28: a Purple Line opens soon).
+The MARC fixture's `colour` is the OSM route's own tag (a pale lavender). The
+map does not read it - it draws the Penn Line in gold, `PENN_COLOUR` in
+`src/lib/railStations.ts` (owner, 2026-09-28: a Purple Line opens soon) - and
+it is kept as provenance: it records what OSM says, so a refresh shows if the
+route's own colour changes.

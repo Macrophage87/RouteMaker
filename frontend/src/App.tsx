@@ -15,6 +15,7 @@ import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSecti
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
 import { placeAtStation, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
+import { RAIL_STATIONS } from "./lib/railData.ts";
 
 interface Plan {
   points: LonLat[];
@@ -497,7 +498,7 @@ export function App() {
             )}
           </section>
 
-          <RailStationsSection visibility={rail} onChange={setRail} />
+          {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
           <footer className="panel-footer">
             <p>
