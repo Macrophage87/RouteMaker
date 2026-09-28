@@ -386,8 +386,11 @@ name, `kind` is `trail` or `street` when the name is the road or trail the
 point snaps to on the standard router's graph (the nearest named edge within
 25 m; a named trail within 5 m of the nearest named edge wins, and a route
 number such as "US 29" gives way to the street's name), with
-`osm_type`/`osm_id` that way; or `near` when no named edge is close enough and
-the name is "near" a place Photon knows, never with a house number. If the
+`osm_type`/`osm_id` that way; or `near`, worded "near X", in two cases: the
+point is on an unnamed trail and the only name is a street more than 5 m
+further off (X is that street, with its `osm_type` "W" and `osm_id`); or no
+named edge is close enough and X is a place Photon knows, never with a house
+number. Ferry edges never name a point. If the
 router does not answer, the name is the `near` one; if Photon does not, the
 label has no neighbourhood.
 
@@ -396,7 +399,8 @@ browser says `Sec-Fetch-Site: cross-site` or `same-site` (refused before it is
 counted: any page can make a visitor's browser send a GET); 429 with
 `Retry-After` for a spent per-client budget or a geocoding request already in
 flight from the client past a second's wait; 503 with `Retry-After` when the
-deployment's geocoding slots are still busy after it; 502 when Photon (search) or both Photon and the router (names) do not
+deployment's geocoding slots are still busy after it, or at once when another
+request is already waiting; 502 when Photon (search) or both Photon and the router (names) do not
 answer in time; 500 for anything else. `tests/test_geocode_api.py` replaces
 Photon at `core.geocode._get` and the router at `core.geocode._locate`.
 

@@ -252,7 +252,7 @@ signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in
 | Searches per client | 5 per fixed 1 s window, then 60 per 60 s (PLAN.md:65); a request the first refuses does not spend the second | 429, `Retry-After` |
 | Names per client | 30 per fixed 10 s window (a shared plan's 25 points at once), then 60 per 60 s, counted apart from search | 429, `Retry-After` |
 | Geocoding in flight per client | 1, search and names together; a request waits up to 1 s for it | 429, `Retry-After: 2` |
-| Geocoding in flight, whole api | `GEOCODE_CONCURRENCY`, 2 (the owner's answer of 2026-09-28); names may take only one of them, so a plan being named always leaves one for search; a request waits up to 1 s for a slot | 503, `Retry-After: 5` |
+| Geocoding in flight, whole api | `GEOCODE_CONCURRENCY`, 2 (the owner's answer of 2026-09-28); names may take only one of them, so a plan being named always leaves one for search; a request waits up to 1 s for a slot, at most 1 waiting across the api | 503, `Retry-After: 5` (at once when one is already waiting) |
 | Photon | 4 s per request (`PHOTON_TIMEOUT_S`); Photon's own query timeout is 3 s | 502 |
 | The router's locate, for a name | 3 s (`geocode.LOCATE_TIMEOUT_S`); past it the name is "near" a place | - |
 
@@ -275,19 +275,46 @@ workers). A small worker count still gets one routing slot, and keeps fewer
 free.
 
 **When the stress tiles merge** (wip/tiles), their draws take a pool of their
-own, `TILE_CONCURRENCY`, which that branch sizes as the worker count less
-three (4 on 7 workers) on the grounds that a draw is bounded by its 2 s
-statement timeout. Combined on 7 workers: 3 routes (up to 40-50 s each) + 2
-lookups (up to Photon's 4 s, plus the router's 3 s for a name) + 4 draws can
-ask for 9 workers of 7, so every worker can be held at once and `/healthz`
-waits for the first draw to finish - up to 2 s, inside compose's 5 s
-healthcheck, but not a worker kept free. To keep one worker free outright,
-the merge should size the tile pool from what is left:
-`TILE_CONCURRENCY = max(1, WEB_CONCURRENCY - 1 - ROUTING_CONCURRENCY - GEOCODE_CONCURRENCY)`,
-which is 1 draw on 7 workers (3 + 2 + 1 = 6 held, one free); a larger tile
-pool needs more workers (each one more worker, one more draw). The two
-branches' in-flight pools must also keep distinct scope ids (tiles 3,
-geocoding 4; `tests/test_ratelimit.py` fails on a clash). Without the routing
+own, `TILE_CONCURRENCY`. That branch (at 96b9af2) sizes it as
+`max(1, workers - 1 - routing_concurrency(...))`, with its worker count
+defaulting to 5. That formula looks right but leaves geocoding out: merged
+with this branch's `routing_concurrency` (the worker count less two less the
+two geocoding slots, 3 on 7 workers) it gives 3 draws on 7 workers, and 3
+routes + 2 lookups + 3 draws is 8 slots on 7 workers - none free for
+`/healthz`. The merge must size the tile pool from what routing and
+geocoding leave, keeping one worker free, and default the worker count to
+this branch's `DEFAULT_WEB_CONCURRENCY` (7) rather than 5:
+
+```python
+def tile_concurrency(web_concurrency: str | None) -> int:
+    workers = int(web_concurrency or DEFAULT_WEB_CONCURRENCY)
+    return max(1, workers - 1 - routing_concurrency(web_concurrency) - GEOCODE_CONCURRENCY)
+```
+
+That is 1 draw on 7 workers (3 + 2 + 1 = 6 held, one free), and 1 at every
+worker count from 5 up: routing takes each worker added above that, so a
+second draw means taking a routing slot, a decision for the owner. At 3 or 4
+workers the pools can hold every worker between them. The two branches'
+in-flight pools must also keep distinct scope ids (tiles 3, geocoding 4;
+`tests/test_ratelimit.py` fails on a clash), and `InFlight` must carry both
+this branch's `wait_s` and `max_waiters` and that branch's `client_retry_s`
+and `deployment_retry_s`.
+
+**Geocoding waiters.** A geocoding request that finds both slots busy waits up
+to a second for one, polling every 50 ms, and a waiting request holds a
+gunicorn worker without holding a slot. So the waiting room is capped
+(`GEOCODE_IN_FLIGHT.max_waiters`, 1, counted like the slots with advisory
+locks): with one already waiting across the deployment, a request is refused
+at once with 503. With Photon stalled, routing full and more searches
+arriving, at most 3 routes + 2 lookups + 1 waiter hold workers, and the
+seventh answers `/healthz` and refuses the rest at once (round-2 review:
+uncapped, 12 waiters pushed `/healthz` to 5.4 s; the round-3 stall probe
+found two waiters still held both spare workers, and one keeps it under a
+second).
+
+**Setting `WEB_CONCURRENCY` by hand.** The routing pool follows it: 5 workers
+give 1 routing slot (5 - 2 - 2), not the 3 they gave before geocoding had two
+slots; 7 (compose's default) gives 3. Without the routing
 limit a burst
 of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
