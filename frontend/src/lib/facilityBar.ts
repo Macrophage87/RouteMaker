@@ -22,7 +22,7 @@ export interface FacilityRow {
 
 export const FACILITY_CLASSES: readonly Omit<FacilityRow, "metres" | "fraction" | "percent">[] = [
   { key: "path", label: "Traffic-free path", hint: "Off-road paths, and roads closed to cars", color: "#1b7f3b" },
-  { key: "protected", label: "Protected bike lane", hint: "Separated from traffic by posts, kerbs or parking", color: "#2b6cb0" },
+  { key: "protected", label: "Protected bike lane", hint: "Separated from traffic by posts, curbs or parking", color: "#2b6cb0" },
   { key: "lane", label: "Painted bike lane", hint: "Marked with paint only", color: "#b7791f" },
   { key: "none", label: "Street, no bike lane", hint: "Sharrows count here", color: "#6b7280" },
   { key: "unknown", label: "Not rated", hint: "No facility rating on these segments", color: "#c4c7cc" },

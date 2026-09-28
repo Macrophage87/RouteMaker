@@ -28,12 +28,12 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "default",
     label: "Default",
-    description: "Everyday riding that prefers paths and quiet streets, even when a busier road would be a little faster.",
+    description: "Everyday riding that prefers paths and quiet streets, even when a busier road would be faster.",
   },
   {
     id: "trailmaxxing",
     label: "Trailmaxxing",
-    description: "Paths and protected lanes wherever they exist; busy streets only where there is no other way, directness second.",
+    description: "Paths and protected lanes wherever they exist; busy streets only where avoiding them takes much longer, directness second.",
   },
   {
     id: "group-ride",
@@ -70,7 +70,7 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "ebike",
     label: "E-bike",
-    description: "Leaves out ways where e-bikes are not allowed, minds hills less, times at assisted pace.",
+    description: "Leaves out ways mapped as closed to e-bikes, minds hills less, times at assisted pace.",
   },
 ];
 

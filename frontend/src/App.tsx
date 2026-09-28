@@ -413,7 +413,7 @@ export function App() {
     presets: (
       <Fragment key="presets">
         {presetsSection}
-        <DialsPanel preset={preset} dials={dials} onCommit={setDials} />
+        <DialsPanel preset={preset} dials={dials} onCommit={setDials} resolvedWhen={route?.dials?.when ?? null} />
       </Fragment>
     ),
     points: pointsSection,

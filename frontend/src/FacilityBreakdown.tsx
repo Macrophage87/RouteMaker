@@ -15,7 +15,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
     <>
       {avoid > 0 && (
         <p className="notice avoid" role="note">
-          {formatDistance(avoid)} of this route is on roads marked legal but best avoided, such as expressways. The
+          {formatDistance(avoid)} of this route is on roads marked legal but best avoided, such as expressways and some bridge roadways. The
           planner uses them only where every other way is much longer.
         </p>
       )}

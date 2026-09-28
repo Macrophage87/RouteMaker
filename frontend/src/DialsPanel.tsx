@@ -28,6 +28,8 @@ interface Props {
   preset: PresetId;
   dials: Dials;
   onCommit: (dials: Dials) => void;
+  /** What "Now" came to on the last route: one of the three settings. */
+  resolvedWhen?: When | null;
 }
 
 function Slider(props: {
@@ -74,7 +76,11 @@ function Slider(props: {
   );
 }
 
-export function DialsPanel({ preset, dials, onCommit }: Props) {
+function whenLabel(when: When): string {
+  return WHENS.find((option) => option.id === when)?.label ?? when;
+}
+
+export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
   const release = () => {
@@ -146,6 +152,7 @@ export function DialsPanel({ preset, dials, onCommit }: Props) {
             onChange={() => onCommit({ ...dials, when: null })}
           />
           Now
+          {dials.when === null && resolvedWhen ? ` (${whenLabel(resolvedWhen)})` : ""}
         </label>
         {WHENS.map((option) => (
           <label key={option.id} className="toggle">
@@ -160,8 +167,9 @@ export function DialsPanel({ preset, dials, onCommit }: Props) {
           </label>
         ))}
         <p className="hint">
-          At the weekend, roads closed to cars then, such as Beach Drive and Sligo Creek Parkway, are planned as
-          traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in the breakdown.
+          On weekends, roads closed to cars then, such as Beach Drive in Montgomery County and Sligo Creek Parkway,
+          are planned as traffic-free paths. With e-bike rules or on a mass ride they are only counted as paths in
+          the breakdown.
         </p>
       </fieldset>
       {moved && (
