@@ -408,6 +408,13 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   had 5 s), and destination-only and private ways keep Valhalla's own
   `destination_only_penalty` (600 s, not sent). The access of a tier-5 way is
   untouched, so it stays routable when it is the only way.
+  Measured on the DC box graph (PUBLIC-DIALS round 3, Valhalla `/locate`
+  against the graph of 7a04862): all 9,322 destination-only or
+  private-for-cars road ways located keep the base graph's
+  `destination_only` flag and bicycle access, and 49 of them, OSM's own
+  alleys, are service roads; all 1,273 tier-5 ways located are alleys, not
+  destination-only, open to bicycles. With every other Anacostia crossing
+  excluded, Mass Ride still routes over the tier-5 Douglass roadway.
 - A curated tier is a stress adjustment (`routemaker.stress.StressAdjustment`,
   the format in `fixtures/overrides/README.md`): `segment.stress_adjustment_id`
   names it, and only a public adjustment whose words the owner approved also
