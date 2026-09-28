@@ -878,3 +878,47 @@ def test_the_beach_drive_nw_file_is_prepared_and_the_districts_only() -> None:
         assert "Beach Drive Northwest" in row["evidence"]
         assert "closed to car traffic permanantly" in row["reason"]
         assert "Our own correction (Recommended)" in row["reason"]
+
+
+class TestACarFreeRoadIsTier1:
+    """Correctness review, 2026-09-28: Beach Drive NW, corrected car-free,
+    stayed LTS 3 in the segment table and under the stress penalty. A road
+    closed to motor traffic for good is tier 1 on every graph, as a weekend
+    closure is on the weekend graph."""
+
+    def test_the_corrected_road_is_tier_1(self) -> None:
+        from pipeline.run import car_free_tier_1
+
+        way = Way(1, highway="unclassified", bicycle="designated", motor_vehicle="yes")
+        stress = {1: StressResult(Stress.LTS3, "mixed traffic, 30 mph", ("maxspeed",), "ddot")}
+        assert car_free_tier_1(way, stress) is False, "open to cars: untouched"
+        apply_access([way], [Override("access", 1, {"motor_vehicle": "no"})])
+        assert car_free_tier_1(way, stress) is True
+        assert stress[1].tier is Stress.LTS1
+        assert stress[1].rule.startswith("closed to motor traffic")
+        assert (stress[1].assumed, stress[1].volume_source) == (("maxspeed",), "ddot")
+
+    def test_a_curated_tier_wins(self) -> None:
+        from pipeline.run import car_free_tier_1
+
+        way = Way(1, highway="unclassified", motor_vehicle="no")
+        stress = {1: StressResult(Stress.LTS4, "x")}
+        apply_stress(stress, [Override("stress", 1, {"tier": 4})])
+        assert car_free_tier_1(way, stress) is False
+        assert stress[1].tier is Stress.LTS4
+
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            {"highway": "cycleway", "motor_vehicle": "no"},
+            {"highway": "unclassified", "motor_vehicle": "no", "bicycle": "no"},
+            {"highway": "motorway", "motor_vehicle": "no"},
+        ],
+        ids=["trail-class", "closed-to-bicycles", "motor-only"],
+    )
+    def test_not_where_it_is_no_road_closed_to_cars(self, tags) -> None:
+        from pipeline.run import car_free_tier_1
+
+        stress = {1: StressResult(Stress.LTS3, "x")}
+        assert car_free_tier_1(Way(1, **tags), stress) is False
+        assert stress[1].tier is Stress.LTS3

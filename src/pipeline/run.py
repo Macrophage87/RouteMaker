@@ -656,6 +656,43 @@ def assert_derived_tags_reached_the_tiles(sentinel_value: str | None, expected: 
         )
 
 
+def car_free_tier_1(way, stress_by_way: dict) -> bool:
+    """Make a road closed to motor traffic for good tier 1, as the weekend graph
+    makes a weekend closure; True when it did.
+
+    PLAN:354: "A road closed to motor vehicles outright is a path", and a path
+    carries no motor traffic to be stressed by. The classifier rates the road
+    from its class and speed as though cars used it (Beach Drive NW, corrected
+    car-free by the owner, came out tier 3), so the segment table reported the
+    road as LTS 3 and the transform put the stress penalty on it. Replaced
+    after the overrides (an approved `motor_vehicle=no` row counts), and only
+    where no curated stress row set the tier: the owner's word on a way wins.
+    """
+    from routemaker.classes import TRAIL_CLASS_HIGHWAY
+    from routemaker.stress import Stress, StressResult
+
+    if way.tags.get("highway") in TRAIL_CLASS_HIGHWAY:
+        return False
+    # A road (not a trail, not a motor-only class) the facility rule reads as
+    # an off-road path because it is closed to motor traffic.
+    if facility.facility(way.tags) is not facility.Facility.PATH:
+        return False
+    current = stress_by_way.get(way.osm_id)
+    if current is None or getattr(current, "adjustment", None) is not None:
+        return False
+    if current.tier is Stress.LTS1:
+        return False
+    stress_by_way[way.osm_id] = StressResult(
+        tier=Stress.LTS1,
+        rule=f"closed to motor traffic: an off-road path (was: {current.rule})",
+        assumed=current.assumed,
+        volume_source=current.volume_source,
+        volume_aadt=current.volume_aadt,
+        volume_year=current.volume_year,
+    )
+    return True
+
+
 def facility_derived(
     variant: variants.Variant,
     way_id: int,
@@ -1012,6 +1049,7 @@ def build_handlers(
         beside = facility.beside_separate_roads(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
+        car_free_for_good = 0
         for way in context.ways:
             context.facility_by_way[way.osm_id] = facility.facility(
                 way.tags, beside_separate_road=way.osm_id in beside
@@ -1019,11 +1057,14 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
+            if car_free_tier_1(way, context.stress_by_way):
+                car_free_for_good += 1
         logger.info(
-            "facility classes: %s; %d ways car-free at set times, %d beside a road that "
-            "maps its facility separately",
+            "facility classes: %s; %d ways car-free at set times, %d car-free for good "
+            "(tier 1), %d beside a road that maps its facility separately",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
+            car_free_for_good,
             len(beside),
         )
 
