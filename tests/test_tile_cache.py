@@ -311,6 +311,18 @@ class TestPredrawProbes:
         assert "10 drawn" in note and "1 timed out" in note and "7 left" in note
         assert "predraw_stress_tiles" in note
 
+    @pytest.mark.parametrize(
+        ("result", "hand_run"),
+        [((5, 0, 1, 0), True), ((5, 0, 0, 3), True), ((5, 2, 0, 0), False)],
+    )
+    def test_the_row_asks_for_a_hand_run_when_anything_was_not_drawn(
+        self, monkeypatch, result, hand_run
+    ) -> None:
+        from config import procrastinate
+
+        monkeypatch.setattr(tile_cache, "predraw", lambda **k: tile_cache.Predrawn(*result))
+        assert ("predraw_stress_tiles" in procrastinate._predraw_stress_tiles()) == hand_run
+
     def test_the_rebuild_gives_the_predraw_only_what_is_left_of_its_own_budget(
         self, live, monkeypatch
     ) -> None:

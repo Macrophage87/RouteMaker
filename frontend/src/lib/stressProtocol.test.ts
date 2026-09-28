@@ -119,6 +119,7 @@ test("a page has at most MAX_IN_FLIGHT tile requests out, and a refused tile giv
   }
   await all;
   assert.equal(most, MAX_IN_FLIGHT);
+  assert.ok(MAX_IN_FLIGHT <= 2, "a page asks for no more than the API draws for it, and one more");
   assert.equal(queue.inFlight, 0);
 
   // While one tile waits out its backoff, the others go ahead.
