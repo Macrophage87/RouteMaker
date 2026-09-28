@@ -12,6 +12,8 @@ import {
   RETRY_CAP_MS,
   SEARCH_DEBOUNCE_MS,
   FAILED_RETRY_MS,
+  RETRY_CLOCK_SLACK_MS,
+  RETRY_FLOOR_MS,
   applyPlace,
   choicesFor,
   coordinatesText,
@@ -315,7 +317,7 @@ test("an empty lookup falls back to coordinates and is not asked again", async (
   assert.equal(api.calls.length, 1);
 });
 
-test("several failed lookups wait on one timer, not one each", async () => {
+test("several failed lookups are each asked again, one at a time", async () => {
   const { timers, api, namer } = namerRig();
   namer.want([A, B, C]);
   await timers.advance(NAME_DEBOUNCE_MS);
@@ -323,9 +325,82 @@ test("several failed lookups wait on one timer, not one each", async () => {
     api.calls[i].answer({ ok: false, status: 500 });
     await flush();
   }
-  assert.equal(timers.delays.filter((ms) => ms === FAILED_RETRY_MS).length, 1);
   await timers.advance(FAILED_RETRY_MS);
-  assert.equal(api.calls.length, 4, "the three are asked again, one at a time");
+  assert.equal(api.calls.length, 4, "one re-ask in flight at a time");
+  for (let i = 3; i < 6; i += 1) {
+    api.calls[i].answer(found({ ...PLACE, name: `Place ${i}` }));
+    await flush();
+  }
+  assert.equal(api.calls.length, 6);
+  assert.ok(namer.name(A) && namer.name(B) && namer.name(C));
+  assert.equal(api.maxInFlight(), 1);
+});
+
+test("staggered failures: a later failed point is still asked again (round-2 probe)", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A, B]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 500 }); // A fails at t0
+  await flush();
+  assert.equal(api.calls.length, 2);
+  await timers.advance(10_000);
+  api.calls[1].answer({ ok: false, status: 500 }); // B fails 10 s later
+  await flush();
+  await timers.advance(FAILED_RETRY_MS - 10_000); // A is due
+  assert.equal(api.calls.length, 3, "A asked again");
+  api.calls[2].answer(found({ ...PLACE, name: "Lincoln Memorial" }));
+  await flush();
+  await timers.advance(FAILED_RETRY_MS * 4);
+  assert.equal(api.calls.length, 4, "B asked again too");
+  assert.deepEqual(api.calls[3].arg, B);
+});
+
+test("a retry timer that fires a little early by the page's clock still asks again", async () => {
+  // Date.now ran 9 ms slow over the 30 s in the round-2 browser run.
+  const timers = new FakeTimers();
+  const api = fakeSend<LonLat>();
+  const namer = new PlaceNamer({ send: api.send, onChange: () => {}, timers, now: () => timers.now * 0.9997 });
+  namer.want([A]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 500 });
+  await flush();
+  await timers.advance(FAILED_RETRY_MS + 50);
+  assert.equal(api.calls.length, 2, "asked when the timer fires, not a floor's wait later");
+});
+
+test("while a re-ask is in flight the retry timer does not spin", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 500 });
+  await flush();
+  await timers.advance(FAILED_RETRY_MS);
+  assert.equal(api.calls.length, 2, "re-asked, and the answer is slow");
+  const before = timers.delays.length;
+  await timers.advance(5_000);
+  assert.equal(timers.delays.length, before, "no timer set while it waits");
+});
+
+test("a retry that meets a busy moment gets its own busy retry", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 429 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  api.calls[1].answer({ ok: false, status: 500 }); // failed after its busy retry
+  await flush();
+  await timers.advance(FAILED_RETRY_MS);
+  assert.equal(api.calls.length, 3, "asked again after 30 s");
+  api.calls[2].answer({ ok: false, status: 429 });
+  await flush();
+  await timers.advance(RETRY_CAP_MS);
+  assert.equal(api.calls.length, 4, "and that re-ask, meeting a busy api, is tried once more");
+});
+
+test("the retry timings are the ones written down", () => {
+  assert.equal(RETRY_CLOCK_SLACK_MS, 250);
+  assert.equal(RETRY_FLOOR_MS, 250);
 });
 
 test("a failed lookup shows coordinates, then is asked again later, not for the session", async () => {

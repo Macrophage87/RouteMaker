@@ -290,6 +290,15 @@ type Named =
 export const FAILED_RETRY_MS = 30_000;
 
 /**
+ * A timer set for 30 s can fire a few milliseconds early by the clock the
+ * failure was stamped with (Date.now against the timer's own clock: 29 991 ms
+ * in the round-2 browser run), so a point is due this much early; and the
+ * retry timer is never set shorter than RETRY_FLOOR_MS.
+ */
+export const RETRY_CLOCK_SLACK_MS = 250;
+export const RETRY_FLOOR_MS = 250;
+
+/**
  * Names for route points, one lookup per point: a cache by `placeKey`, one
  * request at a time, only the points still in the plan asked about. A point
  * whose lookup failed, or that has no name nearby, shows its coordinates. A
@@ -348,7 +357,10 @@ export class PlaceNamer {
   /** Whether `point` should be looked up: never asked, or failed long enough ago. */
   private due(point: LonLat): boolean {
     const named = this.cache.get(placeKey(point));
-    return named === undefined || (named.state === "failed" && this.now() - named.at >= FAILED_RETRY_MS);
+    return (
+      named === undefined ||
+      (named.state === "failed" && this.now() - named.at >= FAILED_RETRY_MS - RETRY_CLOCK_SLACK_MS)
+    );
   }
 
   private pump() {
@@ -375,7 +387,7 @@ export class PlaceNamer {
         else {
           this.cache.set(key, { state: "failed", at: this.now() });
           this.retried.delete(key);
-          this.retryLater();
+          this.armRetry();
         }
         this.options.onChange();
       }
@@ -383,12 +395,30 @@ export class PlaceNamer {
     });
   }
 
-  private retryLater() {
-    if (this.retryTimer !== null) return;
+  /**
+   * Set the one retry timer for the earliest failed point still in the plan
+   * that is not yet due, or clear it if there is none. It is set again each
+   * time it fires, so failures at different times are each asked again in
+   * turn (round-2 review: a timer that found nothing due was never set
+   * again, and a later failure was never retried). Points already due are
+   * the pump's: it takes them one after another.
+   */
+  private armRetry() {
+    if (this.retryTimer !== null) this.timers.clear(this.retryTimer);
+    this.retryTimer = null;
+    let earliest: number | undefined;
+    for (const point of this.wanted) {
+      const named = this.cache.get(placeKey(point));
+      if (named?.state !== "failed" || this.due(point)) continue;
+      if (earliest === undefined || named.at < earliest) earliest = named.at;
+    }
+    if (earliest === undefined) return;
+    const wait = Math.max(RETRY_FLOOR_MS, earliest + FAILED_RETRY_MS - this.now());
     this.retryTimer = this.timers.set(() => {
       this.retryTimer = null;
       this.pump();
-    }, FAILED_RETRY_MS);
+      this.armRetry();
+    }, wait);
   }
 }
 
