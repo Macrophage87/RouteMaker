@@ -275,6 +275,13 @@ REBUILD_MIN_FREE_BYTES = int(os.environ.get("REBUILD_MIN_FREE_BYTES", 20 * 1024*
 # the facility remap superseded.
 REBUILD_SENTINEL_STEEP_EDGE = ((-77.1050, 38.9318), (-77.1032, 38.9339))
 REBUILD_SENTINEL_DERIVED_EDGE = ((-77.076431, 38.892187), (-77.076530, 38.893129))
+# Weekend: Sligo Creek Parkway, Takoma Park, OSM way 696971684 - tertiary,
+# `motor_vehicle:conditional=no @ (Fr 09:00-24:00; Sa; Su 00:00-18:00)` - which
+# reads "separated" on the weekend graph (a road closed to cars is a path
+# there, and the transform writes it as a track) and "none" on the standard
+# graph (OPS review, 2026-09-28, on box builds). A weekend graph that came out
+# a copy of the standard one reads "none".
+REBUILD_SENTINEL_WEEKEND_EDGE = ((-77.005773, 38.989038), (-77.006179, 38.989341))
 
 # Discord login, identify scope only. The client secret is used once per login to
 # exchange an authorization code and is never written anywhere; no per-user

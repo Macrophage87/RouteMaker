@@ -134,6 +134,12 @@ DERIVED_SENTINEL_EXPECTED = "shared"
 # `tiles.sample_cycle_lane` still refuses a trace that spans more than one way.
 DERIVED_SENTINEL_WAY_ID: int | None = 8795651
 
+# The weekend graph's own sentinel (`settings.REBUILD_SENTINEL_WEEKEND_EDGE`):
+# a road closed to cars at the weekend reads as a separated lane there and only
+# there, so a weekend graph derived like the standard one is refused.
+WEEKEND_SENTINEL_WAY_ID: int = 696971684
+WEEKEND_SENTINEL_EXPECTED = "separated"
+
 # A way is tagged with an authority only if at least this share of its length
 # lies inside it; the dominant authority on each layer is always kept. Below a
 # tenth, the overlap is a polygon's edge crossing the way's end - a road that
@@ -726,6 +732,7 @@ def build_handlers(
     sample_grade: Callable[[], float] | None = None,
     sample_derived_tag: Callable[[], str | None] | None = None,
     state_at: Callable[[float, float], str | None] | None = None,
+    sample_weekend_tag: Callable[[], str | None] | None = None,
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
     disk_usage: Callable | None = None,
     fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
@@ -749,6 +756,7 @@ def build_handlers(
     fetch_elevation = fetch_elevation or elevation.fetch_3dep
     sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
+    sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
 
     def fetch_extract() -> None:
         """Produce this week's extract, or reuse the one on disk, then read it.
@@ -783,8 +791,8 @@ def build_handlers(
         # placed after the download would be a gate on a volume the rebuild had
         # already filled. With no extract on disk there is nothing to measure,
         # so it is sized from `source.ESTIMATED_BYTES`; check_disk_gate already
-        # reserves four times the source size for the build's own three variant
-        # extracts and scratch, which covers the production's files as well.
+        # reserves the source size once per variant extract (four) and once more
+        # for scratch, which covers the production's files as well.
         context.disk_gate = tiles.check_disk_gate(
             context.tiles_dir,
             source.ESTIMATED_BYTES if refresh else context.source_pbf.stat().st_size,
@@ -1319,6 +1327,14 @@ def build_handlers(
         assert_admin_and_timezone_databases_were_built(context.build_configs)
         assert_elevation_reached_the_tiles(sample_grade())
         assert_derived_tags_reached_the_tiles(sample_derived_tag(), DERIVED_SENTINEL_EXPECTED)
+        weekend = sample_weekend_tag()
+        if weekend != WEEKEND_SENTINEL_EXPECTED:
+            raise ValidationFailed(
+                f"the weekend graph reports {weekend!r} on Sligo Creek Parkway (way "
+                f"{WEEKEND_SENTINEL_WAY_ID}), not {WEEKEND_SENTINEL_EXPECTED!r}: it was not "
+                "derived as the weekend twin, so a weekend ride on it would not prefer the "
+                "roads closed to cars"
+            )
 
     def swap() -> None:
         context.swap_outcome = promotion.perform_swap(
@@ -1426,6 +1442,21 @@ def _standard_cycle_lane(context: RebuildContext, run) -> str | None:
             config_path,
             _setting("REBUILD_SENTINEL_DERIVED_EDGE"),
             DERIVED_SENTINEL_WAY_ID,
+        )
+    )
+
+
+def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
+    config_path = context.build_configs.get(variants.Variant.WEEKEND)
+    if config_path is None:
+        raise ValidationFailed("the weekend variant has no build config to read back")
+    return _read_back(
+        functools.partial(
+            tiles.sample_cycle_lane,
+            run,
+            config_path,
+            _setting("REBUILD_SENTINEL_WEEKEND_EDGE"),
+            WEEKEND_SENTINEL_WAY_ID,
         )
     )
 

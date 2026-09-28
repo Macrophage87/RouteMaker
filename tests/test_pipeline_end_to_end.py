@@ -2987,3 +2987,16 @@ def test_the_ebike_bar_is_not_granted_back_by_the_crossings_fixture(
                 "fixture's row to a way tagged for a restriction it does not enforce"
             )
             assert "bicycle" not in tags[EBIKE_BARRED_BRIDGE], "and nothing bars it here"
+
+
+def test_a_weekend_graph_derived_like_the_standard_one_is_refused(workspace, states) -> None:
+    """OPS review, 2026-09-28: VALIDATE read the derived sentinel from the
+    standard graph only, so a weekend graph that came out a copy of it (no
+    car-free roads as paths) would have promoted. Its own sentinel, Sligo
+    Creek Parkway, reads "separated" only on a real weekend twin."""
+    source, root = workspace
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, root, binaries=FakeBinaries(weekend_cycle_lane="none"))
+    assert caught.value.stage is Stage.VALIDATE
+    assert "weekend graph" in str(caught.value.cause)
+    assert "Sligo Creek" in str(caught.value.cause)

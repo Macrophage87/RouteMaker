@@ -379,6 +379,8 @@ class FakeBinaries:
         # What the derived sentinel reads on a graph the remap reached
         # (pipeline.run.DERIVED_SENTINEL_EXPECTED).
         cycle_lane: str | None = "shared",
+        # And the weekend graph's own sentinel (WEEKEND_SENTINEL_EXPECTED).
+        weekend_cycle_lane: str | None = "separated",
         log: str = LUA_LOADED_LOG,
         hgt_side: int = HGT_1ARCSEC_SIDE,
         violations: str = "",
@@ -388,6 +390,7 @@ class FakeBinaries:
     ) -> None:
         self.grade = grade
         self.cycle_lane = cycle_lane
+        self.weekend_cycle_lane = weekend_cycle_lane
         self.log = log
         self.hgt_side = hgt_side
         # What the transform wrote to stderr during the parse. Valhalla's own
@@ -472,13 +475,18 @@ class FakeBinaries:
             wanted = json.loads(request)["filters"]["attributes"]
             # The edge a real trace along the sentinel returns lies on the
             # sentinel's own way, which the cycle-lane read is narrowed to.
-            from pipeline.run import DERIVED_SENTINEL_WAY_ID
+            from pipeline.run import DERIVED_SENTINEL_WAY_ID, WEEKEND_SENTINEL_WAY_ID
 
+            weekend = "weekend" in Path(_config).as_posix()
             edge: dict = {"way_id": DERIVED_SENTINEL_WAY_ID}
             if "edge.weighted_grade" in wanted:
                 edge["weighted_grade"] = self.grade
                 edge["max_upward_grade"] = self.grade
-            if "edge.cycle_lane" in wanted and self.cycle_lane is not None:
+            if "edge.cycle_lane" in wanted and weekend:
+                edge["way_id"] = WEEKEND_SENTINEL_WAY_ID
+                if self.weekend_cycle_lane is not None:
+                    edge["cycle_lane"] = self.weekend_cycle_lane
+            elif "edge.cycle_lane" in wanted and self.cycle_lane is not None:
                 edge["cycle_lane"] = self.cycle_lane
             # Response on stdout, log on stderr, which is the only arrangement
             # one-shot mode produces. The two log lines are the ones a real
