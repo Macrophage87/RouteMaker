@@ -544,3 +544,22 @@ class TestTheStressAdjustmentsARouteUses:
         monkeypatch.setattr(routing, "_adjustment_columns_seen", False)
         router(standard_router())
         assert post(client, good_body()).json()["stress_adjustments"] == []
+
+
+@db
+def test_a_mass_ride_counts_bike_lanes_as_none(client, facility_segments, router):
+    """Mass Ride rides the roadway (the owner: "Even protected bike lanes
+    aren't used."), so way 202's painted lane is "none" in its breakdown, and
+    the path stays a path."""
+    router(standard_router())
+    ordinary = post(client, {**good_body("default"), "when": "weekday_rush"}).json()["facility_m"]
+    router(standard_router())
+    body = post(client, {**good_body("mass-ride"), "when": "weekday_rush"}).json()
+    assert body["variant"] == "no-trail"
+    mass = body["facility_m"]
+    assert ordinary["lane"] > 0
+    assert mass["lane"] == 0 and mass["protected"] == 0
+    assert mass["none"] == pytest.approx(
+        ordinary["none"] + ordinary["lane"] + ordinary["protected"]
+    )
+    assert mass["path"] == pytest.approx(ordinary["path"])

@@ -352,11 +352,22 @@ def _has_facility_columns(schema: str) -> bool:
     return _facility_columns_seen
 
 
-def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[str, float]]:
+# The facility classes a ride on the roadway does not use: a mass ride takes
+# the general lanes whatever the street marks for bicycles (the owner,
+# 2026-09-27: "Mass rides don't need to consider these. Even protected bike
+# lanes aren't used."), so on the no-trail variant their length is "none".
+ROADWAY_ONLY_AS_NONE = frozenset({"protected", "lane"})
+
+
+def breakdown(
+    pieces: list[Piece], when: str, roadway_only: bool = False
+) -> tuple[dict[str, float], dict[str, float]]:
     """Metres per stress tier and per facility class, for a ride at `when`.
 
     Stress is keyed "1".."4" and "unknown", facility "path", "protected",
-    "lane", "none" and "unknown"; each sums to the traced length.
+    "lane", "none" and "unknown"; each sums to the traced length. With
+    `roadway_only` (a ride on the no-trail variant), bicycle lanes of either
+    class count as "none"; a road closed to cars is still a path.
     """
     stress = dict.fromkeys(STRESS_KEYS, 0.0)
     facility = dict.fromkeys(FACILITY_KEYS, 0.0)
@@ -382,6 +393,8 @@ def breakdown(pieces: list[Piece], when: str) -> tuple[dict[str, float], dict[st
         cursor.execute(query, ([when, when] if with_facility else []) + arrays)
         for tier, kind, metres in cursor.fetchall():
             stress[str(tier) if tier in (1, 2, 3, 4, 5) else "unknown"] += float(metres)
+            if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
+                kind = "none"
             facility[kind if kind in FACILITY_KEYS else "unknown"] += float(metres)
     return stress, facility
 
@@ -666,7 +679,9 @@ def plan(
             facility["unknown"] += untraced
         else:
             pieces.extend(pieces_of_trace(trace))
-    traced_stress, traced_facility = breakdown(pieces, when)
+    traced_stress, traced_facility = breakdown(
+        pieces, when, roadway_only=variant == Variant.NO_TRAIL.value
+    )
     for key, metres in traced_stress.items():
         stress[key] += metres
     for key, metres in traced_facility.items():
