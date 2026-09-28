@@ -1,0 +1,231 @@
+{
+ "type": "FeatureCollection",
+ "source": "OpenStreetMap (ODbL); scripts/check_metro_elevators.py --write",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.168594,
+     38.765917
+    ]
+   },
+   "properties": {
+    "station": "Franconia-Springfield",
+    "station_gis_id": "MetroStnFullPt_23",
+    "osm": "node/463721423"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.052356,
+     39.037658
+    ]
+   },
+   "properties": {
+    "station": "Wheaton",
+    "station_gis_id": "MetroStnFullPt_60",
+    "osm": "node/796622777"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.051977,
+     39.037944
+    ]
+   },
+   "properties": {
+    "station": "Wheaton",
+    "station_gis_id": "MetroStnFullPt_60",
+    "osm": "node/3105382513"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.00605,
+     38.897962
+    ]
+   },
+   "properties": {
+    "station": "Union Station",
+    "station_gis_id": "MetroStnFullPt_31",
+    "osm": "node/4719437766"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.005387,
+     38.898038
+    ]
+   },
+   "properties": {
+    "station": "Union Station",
+    "station_gis_id": "MetroStnFullPt_31",
+    "osm": "node/4719464290"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.005245,
+     38.898006
+    ]
+   },
+   "properties": {
+    "station": "Union Station",
+    "station_gis_id": "MetroStnFullPt_31",
+    "osm": "node/4719464291"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.029749,
+     38.993371
+    ]
+   },
+   "properties": {
+    "station": "Silver Spring",
+    "station_gis_id": "MetroStnFullPt_62",
+    "osm": "node/5385070210"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.030391,
+     38.993939
+    ]
+   },
+   "properties": {
+    "station": "Silver Spring",
+    "station_gis_id": "MetroStnFullPt_62",
+    "osm": "node/6835873199"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.052818,
+     39.037337
+    ]
+   },
+   "properties": {
+    "station": "Wheaton",
+    "station_gis_id": "MetroStnFullPt_60",
+    "osm": "node/9983934657"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.046227,
+     38.834176
+    ]
+   },
+   "properties": {
+    "station": "Potomac Yard",
+    "station_gis_id": "MetroStnFullPt_98",
+    "osm": "node/10913626152"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.188944,
+     38.900936
+    ]
+   },
+   "properties": {
+    "station": "West Falls Church",
+    "station_gis_id": "MetroStnFullPt_86",
+    "osm": "node/10969406302"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.047275,
+     38.835063
+    ]
+   },
+   "properties": {
+    "station": "Potomac Yard",
+    "station_gis_id": "MetroStnFullPt_98",
+    "osm": "node/12639597407"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.047455,
+     38.832856
+    ]
+   },
+   "properties": {
+    "station": "Potomac Yard",
+    "station_gis_id": "MetroStnFullPt_98",
+    "osm": "node/13233743425"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.043012,
+     39.015274
+    ]
+   },
+   "properties": {
+    "station": "Forest Glen",
+    "station_gis_id": "MetroStnFullPt_61",
+    "osm": "node/14117966304"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.043033,
+     39.015354
+    ]
+   },
+   "properties": {
+    "station": "Forest Glen",
+    "station_gis_id": "MetroStnFullPt_61",
+    "osm": "node/14117966305"
+   }
+  }
+ ]
+}

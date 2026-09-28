@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { LIGHT } from "@protomaps/basemaps";
 import { contrastRatio } from "../stressStyle.js";
-import { METRO_LINES } from "./railStations.ts";
+import { METRO_LINES, PENN_COLOUR } from "./railStations.ts";
 import { OUTLINE, STATION_ICON_PX, elevatorIcon, hexToRgb, stationIcon, type Raster } from "./stationIcons.ts";
 
 const hex = (rgb: number[]) => `#${rgb.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
@@ -102,4 +102,36 @@ test("colours must be #rrggbb", () => {
   assert.deepEqual(hexToRgb("#BF0D3E"), [191, 13, 62]);
   assert.throws(() => hexToRgb("red"));
   assert.throws(() => stationIcon([], "circle"));
+});
+
+// What a station icon lies over: land and landcover fills, roads, water and
+// buildings - the same surfaces stressContrast.test.ts measures the overlay on.
+const SURFACE =
+  /^(background|earth|park_|wood_|scrub_|hospital|industrial|school|pedestrian|glacier|sand|beach|aerodrome|runway|water|zoo|military|pier|buildings|other|minor|link|major$|highway$|bridges_(other|minor|link|major|highway)$|tunnel_(other|minor|link|major|highway)$)/;
+
+function surfaces(): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (const [key, value] of Object.entries(LIGHT)) {
+    if (typeof value === "string" && SURFACE.test(key) && !key.includes("casing") && /^#[0-9a-f]{6}$/i.test(value)) {
+      out.push([key, value]);
+    }
+  }
+  for (const [key, value] of Object.entries((LIGHT as { landcover?: Record<string, string> }).landcover ?? {})) {
+    if (/^#[0-9a-f]{6}$/i.test(value)) out.push([`landcover.${key}`, value]);
+  }
+  return out;
+}
+
+test("the Penn Line's gold stands 3:1 off every surface of the base map, and off Metro's Yellow", () => {
+  const fills = surfaces();
+  assert.ok(fills.length > 20);
+  for (const [key, value] of fills) {
+    const ratio = contrastRatio(PENN_COLOUR, value);
+    assert.ok(ratio >= 3, `${key} ${value}: ${ratio.toFixed(2)}`);
+  }
+  assert.ok(contrastRatio(PENN_COLOUR, METRO_LINES.yellow.color) >= 3);
+  // A gold: red above green above blue, and not one of Metro's six.
+  const [r, g, b] = hexToRgb(PENN_COLOUR);
+  assert.ok(r > g && g > b, PENN_COLOUR);
+  assert.ok(!Object.values(METRO_LINES).some((line) => line.color === PENN_COLOUR));
 });

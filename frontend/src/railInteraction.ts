@@ -10,6 +10,7 @@ import type { LonLat } from "./lib/geo.ts";
 import { RAIL_LAYERS, railHitFrom } from "./lib/railLayer.ts";
 import {
   bikeEntrance,
+  entranceNote,
   lineStyle,
   linesLabel,
   stationRoles,
@@ -56,11 +57,7 @@ function summary(station: Station, options: RailInteractionOptions, elevatorTapp
   root.append(row);
   const entrance = document.createElement("p");
   entrance.className = "station-entrance";
-  entrance.textContent = elevatorTapped
-    ? "Elevator: a way in with a bike."
-    : station.elevators.length > 0
-      ? "Routes use its elevator, the way in with a bike."
-      : "No elevator listed; routes use the station itself.";
+  entrance.textContent = elevatorTapped ? "Elevator: a way in with a bike." : entranceNote(bikeEntrance(station).kind);
   root.append(entrance);
   return root;
 }
@@ -115,7 +112,7 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
     }
     hover.remove();
     chosen?.remove();
-    const point: LonLat = hit.elevator ?? bikeEntrance(station);
+    const point: LonLat = hit.elevator ?? bikeEntrance(station).point;
     const content = summary(station, options, hit.elevator !== undefined);
     const actions = document.createElement("div");
     actions.className = "station-actions";

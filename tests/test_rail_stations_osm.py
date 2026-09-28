@@ -222,3 +222,43 @@ def test_distance_is_about_right_at_this_latitude() -> None:
     # 0.001 degrees of latitude is 110.5 m; of longitude at 38.9 N, 86.6 m.
     assert marc.distance_m((-77.0, 38.9), (-77.0, 38.901)) == pytest.approx(110.5, rel=0.01)
     assert marc.distance_m((-77.0, 38.9), (-77.001, 38.9)) == pytest.approx(86.6, rel=0.01)
+
+
+def test_osm_elevators_are_kept_only_for_stations_dc_gives_none() -> None:
+    stations = [("A", "GA", (-77.0, 38.9)), ("B", "GB", (-77.0, 38.95))]
+    dc = [("A1", (-77.0, 38.9002))]
+    osm = [
+        ("node/1", (-77.0, 38.9001), True),  # at A, which has DC's: not kept
+        ("node/2", (-77.0, 38.9504), False),  # at B, 44 m: kept
+        ("node/3", (-77.0, 38.9540), True),  # at B but 440 m off: not kept
+    ]
+    rows = elevators.fallback_elevators(stations, dc, osm, _metres)
+    assert [(r[0], r[1], r[2]) for r in rows] == [("node/2", "B", "GB")]
+    doc = elevators.fallback_geojson(rows)
+    (feature,) = doc["features"]
+    assert feature["properties"] == {"station": "B", "station_gis_id": "GB", "osm": "node/2"}
+    assert feature["geometry"]["coordinates"] == [-77.0, 38.9504]
+    assert "OpenStreetMap" in doc["source"]
+
+
+def test_the_committed_fallback_elevators_are_at_stations_dc_lists_none_for() -> None:
+    data = REPO / "frontend" / "src" / "rail-data"
+    dc = json.loads((data / "metro-entrances.geojson").read_text(encoding="utf-8"))["features"]
+    stations = json.loads((data / "metro-stations.geojson").read_text(encoding="utf-8"))["features"]
+    fallback = json.loads((data / "metro-osm-elevators.geojson").read_text(encoding="utf-8"))
+
+    def station_of(point):
+        return min(stations, key=lambda s: _metres(point, s["geometry"]["coordinates"]))
+
+    with_dc = {
+        station_of(f["geometry"]["coordinates"])["properties"]["GIS_ID"]
+        for f in dc
+        if f["properties"]["DESCRIPTION"] == "Metro Station Elevator"
+    }
+    assert fallback["features"]
+    for f in fallback["features"]:
+        assert f["properties"]["station_gis_id"] not in with_dc
+        assert (
+            station_of(f["geometry"]["coordinates"])["properties"]["GIS_ID"]
+            == f["properties"]["station_gis_id"]
+        )

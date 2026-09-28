@@ -19,12 +19,18 @@ Listed:
 - a count of OSM's other elevators near stations (mostly platform-to-mezzanine
   ones inside the station, which are not a way in from the street).
 
+With --write it also writes frontend/src/rail-data/metro-osm-elevators.geojson:
+the OSM elevators at the stations DC gives no elevator at all. The owner
+chose (2026-09-28) to send riders to those where DC has none, and to the
+nearest DC entrance where neither has one; DC's elevator stays first wherever
+DC lists one.
+
 Run from the repository root with the development venv:
 
     .venv311/bin/python scripts/check_metro_elevators.py \
         --pbf <DATA_ROOT>/extracts/source.osm.pbf
 
-It reads the extract and the committed fixtures and writes nothing.
+It reads the extract and the committed fixtures; without --write it writes nothing.
 """
 
 from __future__ import annotations
@@ -37,6 +43,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 DATA = REPO / "frontend" / "src" / "rail-data"
+FALLBACK_OUT = DATA / "metro-osm-elevators.geojson"
 MATCH_M = 40.0
 NEAR_STATION_M = 300.0
 
@@ -81,21 +88,57 @@ def compare(stations, dc_elevators, osm_elevators, distance_m):
     return dc_only, osm_only, near
 
 
+def fallback_elevators(stations, dc_elevators, osm_elevators, distance_m):
+    """The OSM elevators within NEAR_STATION_M of a station DC gives no elevator.
+
+    stations: [(name, gis_id, (lon, lat))]; the other two as for compare().
+    Each elevator, DC's and OSM's alike, goes to its nearest station; an OSM
+    one is kept only when that station has no DC elevator. Returns
+    [(osm id, name, gis_id, point, metres from the station)].
+    """
+
+    def nearest(point):
+        return min(stations, key=lambda s: distance_m(point, s[2]))
+
+    with_dc = {nearest(p)[1] for _, p in dc_elevators}
+    kept = []
+    for osm, point, _street in osm_elevators:
+        name, gis_id, where = nearest(point)
+        metres = distance_m(point, where)
+        if metres <= NEAR_STATION_M and gis_id not in with_dc:
+            kept.append((osm, name, gis_id, point, metres))
+    return kept
+
+
+def fallback_geojson(rows) -> dict:
+    return {
+        "type": "FeatureCollection",
+        "source": "OpenStreetMap (ODbL); scripts/check_metro_elevators.py --write",
+        "features": [
+            {
+                "type": "Feature",
+                "geometry": {"type": "Point", "coordinates": [round(lon, 6), round(lat, 6)]},
+                "properties": {"station": name, "station_gis_id": gis_id, "osm": osm},
+            }
+            for osm, name, gis_id, (lon, lat), _ in rows
+        ],
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--pbf", type=Path, required=True, help="<DATA_ROOT>/extracts/source.osm.pbf"
     )
+    parser.add_argument("--write", action="store_true", help=f"also write {FALLBACK_OUT.name}")
     args = parser.parse_args(argv)
     marc = _marc_module()
 
     def features(name):
         return json.loads((DATA / name).read_text(encoding="utf-8"))["features"]
 
-    stations = [
-        (f["properties"]["NAME"], tuple(f["geometry"]["coordinates"]))
-        for f in features("metro-stations.geojson")
-    ]
+    metro = features("metro-stations.geojson")
+    stations = [(f["properties"]["NAME"], tuple(f["geometry"]["coordinates"])) for f in metro]
     dc = [
         (
             f"{f['properties']['NAME']} ({f['properties']['GIS_ID']})",
@@ -140,6 +183,18 @@ def main(argv: list[str] | None = None) -> int:
     print(
         f"\nOther OSM-only elevators, at stations DC gives elevators (mostly inside): {len(rest)}"
     )
+    with_ids = [
+        (f["properties"]["NAME"], f["properties"]["GIS_ID"], tuple(f["geometry"]["coordinates"]))
+        for f in metro
+    ]
+    rows = fallback_elevators(with_ids, dc, osm, marc.distance_m)
+    print(f"\nOSM elevators used where DC lists none ({len(rows)}):")
+    for osm_id, name, _, _, metres in rows:
+        print(f"  {name}: {osm_id}, {metres:.0f} m from the station point")
+    if args.write:
+        text = json.dumps(fallback_geojson(rows), indent=1, ensure_ascii=False) + "\n"
+        FALLBACK_OUT.write_text(text, encoding="utf-8")
+        print(f"wrote {FALLBACK_OUT}")
     return 0
 
 

@@ -21,8 +21,7 @@ export interface LineStyle {
 
 /**
  * WMATA's published line colours (the Metro brand's Red, Orange, Blue, Green,
- * Yellow and Silver). The Penn Line's colour is not typed here: it is the
- * route relation's own colour= tag, carried in the MARC fixture.
+ * Yellow and Silver). The Penn Line's is PENN_COLOUR below.
  */
 export const METRO_LINES: Record<MetroLine, LineStyle> = {
   red: { key: "red", label: "Red", color: "#bf0d3e" },
@@ -34,6 +33,17 @@ export const METRO_LINES: Record<MetroLine, LineStyle> = {
 };
 
 export const PENN_LABEL = "MARC Penn Line";
+
+/**
+ * The Penn Line's colour: a dark gold. The owner's choice (2026-09-28): "A
+ * purple line will be opening soon, so a different color, gold maybe?" - the
+ * OSM relation's own colour= tag, a pale lavender, would read as the Purple
+ * Line's. #8a6500 is the lightest gold that stands 3:1 off every fill of the
+ * base map a station is drawn over (the calmest is the scrub and park green,
+ * 3.1:1), and 3.6:1 off Metro's Yellow, so the two never read as one.
+ * stationIcons.test.ts measures both.
+ */
+export const PENN_COLOUR = "#8a6500";
 
 /**
  * A LINE value as line keys, in drawing order, each once. Every value in the
@@ -80,6 +90,16 @@ export type MarcProps =
 export interface MarcCollection extends Collection<MarcProps> {
   colour?: string | null;
 }
+/** metro-osm-elevators.geojson: OSM's elevators at stations DC lists none for. */
+export interface OsmElevatorProps {
+  station: string;
+  station_gis_id: string;
+  osm: string;
+}
+/** metro-line-corrections.json: lines DC's LINE field predates (README.md). */
+export interface LineCorrections {
+  changes: Array<{ add: string[]; since: string; source: string; stations: Array<[string, string]> }>;
+}
 
 export interface Station {
   id: string;
@@ -89,8 +109,10 @@ export interface Station {
   metro: MetroLine[];
   /** Whether the MARC Penn Line calls here. */
   penn: boolean;
-  /** Elevators, the bike entrance (owner, 2026-09-27). */
+  /** DC's elevators, the bike entrance (owner, 2026-09-27). */
   elevators: LonLat[];
+  /** OpenStreetMap's elevators: MARC's, and Metro's where DC lists none (owner, 2026-09-28). */
+  osmElevators: LonLat[];
   /** Other entrances: stairs and escalators. */
   entrances: LonLat[];
 }
@@ -119,22 +141,65 @@ function nearest(stations: readonly Station[], point: LonLat, within: number): S
 }
 
 /**
- * One list of stations from the three fixtures. DC's entrances are matched to
+ * Lines added to DC's LINE field for service it predates. Each correction
+ * names its station by GIS_ID and by name, and both must match, so a
+ * refreshed layer that renames or renumbers a station stops the build rather
+ * than dropping the correction; a line the field already has is an error too,
+ * because then the correction is spent and should go.
+ */
+export function applyCorrections(stations: Station[], corrections: LineCorrections): void {
+  for (const change of corrections.changes) {
+    const add = parseLines(change.add.join(","));
+    for (const [name, gisId] of change.stations) {
+      const station = stations.find((s) => s.id === `metro-${gisId}`);
+      if (!station || station.name !== name) {
+        throw new Error(`line correction for ${name} (${gisId}) matches no station in the layer`);
+      }
+      const already = add.filter((line) => station.metro.includes(line));
+      if (already.length > 0) {
+        throw new Error(`${name} already has ${already.join(", ")} in LINE: drop that correction`);
+      }
+      const lines = new Set([...station.metro, ...add]);
+      station.metro = LINE_KEYS.filter((key): key is MetroLine => lines.has(key as MetroLine));
+    }
+  }
+}
+
+/**
+ * One list of stations from the fixtures. DC's entrances are matched to
  * stations by position, not name (the two layers spell names differently);
- * MARC stations that stand at a Metro station become part of it.
+ * MARC stations that stand at a Metro station become part of it; OSM's
+ * elevators go to the station the fixture names, each once.
  */
 export function buildStations(
   metro: Collection<MetroStationProps>,
   entrances: Collection<MetroEntranceProps>,
   marc: MarcCollection,
+  extra: { corrections?: LineCorrections; osmElevators?: Collection<OsmElevatorProps> } = {},
 ): Station[] {
   const stations: Station[] = [];
   for (const feature of metro.features) {
     const point = lonLat(feature);
     if (!point) continue;
     const { NAME, LINE, GIS_ID } = feature.properties;
-    stations.push({ id: `metro-${GIS_ID}`, name: NAME, point, metro: parseLines(LINE), penn: false, elevators: [], entrances: [] });
+    stations.push({
+      id: `metro-${GIS_ID}`,
+      name: NAME,
+      point,
+      metro: parseLines(LINE),
+      penn: false,
+      elevators: [],
+      osmElevators: [],
+      entrances: [],
+    });
   }
+  if (extra.corrections) applyCorrections(stations, extra.corrections);
+  const seenOsm = new Set<string>();
+  const addOsmElevator = (station: Station, osm: string, point: LonLat) => {
+    if (seenOsm.has(osm)) return;
+    seenOsm.add(osm);
+    station.osmElevators.push(point);
+  };
   for (const feature of entrances.features) {
     const point = lonLat(feature);
     if (!point) continue;
@@ -161,6 +226,7 @@ export function buildStations(
         metro: [],
         penn: true,
         elevators: [],
+        osmElevators: [],
         entrances: [],
       };
       stations.push(station);
@@ -173,7 +239,14 @@ export function buildStations(
     if (props.kind === "station" || !point) continue;
     const station = byOrder.get(props.station);
     if (!station) continue;
-    (props.kind === "elevator" ? station.elevators : station.entrances).push(point);
+    if (props.kind === "elevator") addOsmElevator(station, props.osm, point);
+    else station.entrances.push(point);
+  }
+  for (const feature of extra.osmElevators?.features ?? []) {
+    const point = lonLat(feature);
+    const station = stations.find((s) => s.id === `metro-${feature.properties.station_gis_id}`);
+    if (!point || !station) continue;
+    addOsmElevator(station, feature.properties.osm, point);
   }
   return stations;
 }
@@ -214,22 +287,70 @@ export function linesLabel(lines: readonly LineKey[]): string {
   return parts.join(" and ");
 }
 
-/**
- * Where a ride starting or ending at this station goes: its elevator nearest
- * the station, which is where a bike gets in (owner, 2026-09-27); the station
- * itself when none is known.
- */
-export function bikeEntrance(station: Station): LonLat {
-  let best: LonLat = station.point;
+export interface BikeEntrance {
+  point: LonLat;
+  /** Which it is: DC's elevator, OSM's elevator, DC's (or OSM's) other entrance, or the station itself. */
+  kind: "elevator" | "osm-elevator" | "entrance" | "station";
+}
+
+function nearestTo(from: LonLat, points: readonly LonLat[]): LonLat | null {
+  let best: LonLat | null = null;
   let bestM = Number.POSITIVE_INFINITY;
-  for (const elevator of station.elevators) {
-    const m = haversineM(station.point, elevator);
+  for (const point of points) {
+    const m = haversineM(from, point);
     if (m < bestM) {
-      best = elevator;
+      best = point;
       bestM = m;
     }
   }
   return best;
+}
+
+/**
+ * Where a ride starting or ending at this station goes: the elevator nearest
+ * the station, which is where a bike gets in (owner, 2026-09-27). DC's
+ * elevator first; where DC lists none, OpenStreetMap's; where neither has
+ * one, the nearest other entrance (owner, 2026-09-28); the station itself
+ * only when nothing is known.
+ */
+export function bikeEntrance(station: Station): BikeEntrance {
+  const candidates: Array<[BikeEntrance["kind"], readonly LonLat[]]> = [
+    ["elevator", station.elevators],
+    ["osm-elevator", station.osmElevators],
+    ["entrance", station.entrances],
+  ];
+  for (const [kind, points] of candidates) {
+    const point = nearestTo(station.point, points);
+    if (point) return { point, kind };
+  }
+  return { point: station.point, kind: "station" };
+}
+
+/** What a station's card says about where routes to it go. */
+export function entranceNote(kind: BikeEntrance["kind"]): string {
+  switch (kind) {
+    case "elevator":
+      return "Routes use its elevator, the way in with a bike.";
+    case "osm-elevator":
+      return "Routes use its elevator, from OpenStreetMap: DC's list has none here.";
+    case "entrance":
+      return "No elevator listed; routes use its nearest entrance.";
+    case "station":
+      return "No elevator or entrance listed; routes use the station itself.";
+  }
+}
+
+/** Stations by id, and the bike entrance by station id: what railData.ts exports. */
+export function stationIndex(stations: readonly Station[]) {
+  const byId = new Map(stations.map((station) => [station.id, station]));
+  return {
+    station: (id: string): Station | undefined => byId.get(id),
+    /** Null for an id it does not know. */
+    bikeEntrance: (id: string): LonLat | null => {
+      const station = byId.get(id);
+      return station ? bikeEntrance(station).point : null;
+    },
+  };
 }
 
 export interface StationFeatureProps {
@@ -276,7 +397,7 @@ export function railFeatures(
       },
     });
     for (const [kind, points] of [
-      ["elevator", station.elevators],
+      ["elevator", [...station.elevators, ...station.osmElevators]],
       ["entrance", station.entrances],
     ] as const) {
       for (const point of points) {

@@ -70,6 +70,7 @@ const station = (id: string, metro: Station["metro"], penn: boolean, elevators: 
   metro,
   penn,
   elevators,
+  osmElevators: [],
   entrances: [[-77.0005, 38.9]],
 });
 const STATIONS = [

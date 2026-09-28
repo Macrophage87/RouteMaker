@@ -101,7 +101,7 @@ export function RailStationsSection({ visibility, onChange }: Props) {
         </li>
       </ul>
       <p className="hint">
-        Tap a station to start, end or pass through it there; the route uses its elevator when one is listed.
+        Tap a station to start, end or pass through it there; the route uses its elevator, or its nearest entrance where none is listed.
       </p>
     </section>
   );

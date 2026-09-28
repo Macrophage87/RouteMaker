@@ -8,8 +8,11 @@ import {
   METRO_LINES,
   SHARED_STATION_M,
   allIconLines,
+  applyCorrections,
   bikeEntrance,
   buildStations,
+  entranceNote,
+  stationIndex,
   iconId,
   iconShape,
   linesLabel,
@@ -18,6 +21,8 @@ import {
   railFeatures,
   stationRoles,
   visibleLines,
+  type BikeEntrance,
+  type LineCorrections,
   type MarcCollection,
   type Station,
 } from "./railStations.ts";
@@ -26,7 +31,10 @@ const read = (name: string) => JSON.parse(readFileSync(new URL(`../rail-data/${n
 const metro = read("metro-stations.geojson");
 const entrances = read("metro-entrances.geojson");
 const marc: MarcCollection = read("marc-penn-stations.geojson");
-const stations = buildStations(metro, entrances, marc);
+const corrections: LineCorrections = read("metro-line-corrections.json");
+const osmElevators = read("metro-osm-elevators.geojson");
+const stations = buildStations(metro, entrances, marc, { corrections, osmElevators });
+const uncorrected = buildStations(metro, entrances, marc);
 const named = (name: string) => {
   const found = stations.find((s) => s.name === name);
   assert.ok(found, name);
@@ -71,7 +79,39 @@ test("the interchanges downtown carry every line that serves them", () => {
   assert.deepEqual(named("Gallery Pl-Chinatown").metro, ["red", "green", "yellow"]);
   assert.deepEqual(named("L'Enfant Plaza").metro, ["orange", "blue", "green", "yellow", "silver"]);
   assert.deepEqual(named("Rosslyn").metro, ["orange", "blue", "silver"]);
-  assert.deepEqual(named("Fort Totten").metro, ["red", "green"]);
+  assert.deepEqual(named("Fort Totten").metro, ["red", "green", "yellow"]);
+});
+
+test("Silver to New Carrollton and Yellow to Greenbelt are on top of DC's LINE field", () => {
+  assert.deepEqual(visibleLines(named("New Carrollton"), ALL), ["orange", "silver", "penn"]);
+  for (const name of ["Minnesota Ave", "Deanwood", "Cheverly", "Landover"]) {
+    assert.deepEqual(named(name).metro, ["orange", "silver"], name);
+  }
+  for (const name of ["Greenbelt", "College Park-U of Md", "Shaw-Howard U", "Columbia Heights"]) {
+    assert.deepEqual(named(name).metro, ["green", "yellow"], name);
+  }
+  // Only the stations the table names change, and each by exactly its lines.
+  const named_ = new Map(corrections.changes.flatMap((c) => c.stations.map(([n]) => [n, c.add] as const)));
+  for (const [i, station] of uncorrected.entries()) {
+    const after = stations[i];
+    const added = after.metro.filter((line) => !station.metro.includes(line));
+    assert.deepEqual(added, named_.get(station.name) ?? [], station.name);
+  }
+  // Every correction cites its source and date.
+  for (const change of corrections.changes) {
+    assert.match(change.source, /^https:\/\/www\.wmata\.com\//);
+    assert.match(change.since, /^\d{4}-\d{2}-\d{2}$/);
+  }
+});
+
+test("a correction that no longer fits the layer stops the build instead of being dropped", () => {
+  const fresh = () => buildStations(metro, entrances, marc);
+  const one = (name: string, gis: string, add = ["silver"]): LineCorrections => ({
+    changes: [{ add, since: "2025-06-22", source: "x", stations: [[name, gis]] }],
+  });
+  assert.throws(() => applyCorrections(fresh(), one("New Carrollton", "MetroStnFullPt_999")), /matches no station/);
+  assert.throws(() => applyCorrections(fresh(), one("New Carollton", "MetroStnFullPt_70")), /matches no station/);
+  assert.throws(() => applyCorrections(fresh(), one("New Carrollton", "MetroStnFullPt_70", ["orange"])), /already/);
 });
 
 test("every Metro station is on the map once, and the MARC stations that are not Metro's are added", () => {
@@ -119,33 +159,77 @@ test("every entrance is given to a station, near it and of its name", () => {
     count += 1;
   }
   assert.equal(count, 260);
-  const marcElevators = marc.features.filter((f) => f.properties.kind === "elevator").length;
-  const all = stations.reduce((n, s) => n + s.elevators.length, 0);
-  assert.equal(all, 86 + marcElevators);
+  assert.equal(stations.reduce((n, s) => n + s.elevators.length, 0), 86, "DC's elevators, all of them");
+  // OSM's: MARC's and the fallback fixture's, each node once (Union Station is in both).
+  const osmIds = new Set([
+    ...marc.features.filter((f) => f.properties.kind === "elevator").map((f) => f.properties.osm),
+    ...osmElevators.features.map((f: { properties: { osm: string } }) => f.properties.osm),
+  ]);
+  assert.equal(stations.reduce((n, s) => n + s.osmElevators.length, 0), osmIds.size);
 });
 
-test("the bike entrance is the elevator nearest the station, or the station when there is none", () => {
+test("OSM's elevators are only at stations DC gives none", () => {
+  for (const station of stations) {
+    if (station.metro.length > 0 && station.osmElevators.length > 0) {
+      assert.equal(station.elevators.length, 0, station.name);
+    }
+  }
+  for (const name of ["Wheaton", "Silver Spring", "Forest Glen", "Potomac Yard", "Union Station"]) {
+    assert.ok(named(name).osmElevators.length > 0, name);
+  }
+});
+
+test("the bike entrance: DC's elevator, else OSM's, else the nearest entrance, else the station", () => {
+  const near: LonLat = [-77, 38.9005];
   const station: Station = {
     id: "x",
     name: "X",
     point: [-77, 38.9],
     metro: ["red"],
     penn: false,
-    elevators: [
-      [-77, 38.902],
-      [-77, 38.9005],
-      [-77.003, 38.9],
-    ],
-    entrances: [[-77, 38.9001]],
+    elevators: [[-77, 38.902], near, [-77.003, 38.9]],
+    osmElevators: [[-77, 38.9001]],
+    entrances: [[-77, 38.90005], [-77, 38.9003]],
   };
-  assert.deepEqual(bikeEntrance(station), [-77, 38.9005]);
-  assert.deepEqual(bikeEntrance({ ...station, elevators: [] }), [-77, 38.9]);
-  // Real data: Metro Center has elevators, Union Station's are OSM's (DC lists none there).
+  assert.deepEqual(bikeEntrance(station), { point: near, kind: "elevator" }, "DC's, even with OSM's nearer");
+  assert.deepEqual(bikeEntrance({ ...station, elevators: [] }), { point: [-77, 38.9001], kind: "osm-elevator" });
+  assert.deepEqual(bikeEntrance({ ...station, elevators: [], osmElevators: [] }), {
+    point: [-77, 38.90005],
+    kind: "entrance",
+  });
+  assert.deepEqual(bikeEntrance({ ...station, elevators: [], osmElevators: [], entrances: [] }), {
+    point: [-77, 38.9],
+    kind: "station",
+  });
+  // Real data.
+  const kind = (name: string) => bikeEntrance(named(name)).kind;
+  assert.equal(kind("Metro Center"), "elevator");
+  for (const name of ["Wheaton", "Silver Spring", "Forest Glen", "Potomac Yard", "Union Station"]) {
+    assert.equal(kind(name), "osm-elevator", name);
+  }
+  assert.equal(kind("Dunn Loring-Merrifield"), "entrance");
+  assert.equal(kind("BWI Thurgood Marshall Airport"), "osm-elevator");
+  assert.equal(kind("Seabrook"), "station");
+  // Every Metro station has at least an entrance: none sends a ride to its centre point.
+  for (const s_ of stations.filter((x) => x.metro.length > 0)) assert.notEqual(bikeEntrance(s_).kind, "station", s_.name);
+});
+
+test("each kind of bike entrance says so on the card", () => {
+  const kinds: Array<BikeEntrance["kind"]> = ["elevator", "osm-elevator", "entrance", "station"];
+  assert.equal(new Set(kinds.map(entranceNote)).size, kinds.length);
+  assert.match(entranceNote("osm-elevator"), /OpenStreetMap/);
+});
+
+test("stationBikeEntrance, by id: the bike entrance's point, or null for an id it does not know", () => {
+  const index = stationIndex(stations);
   const metroCenter = named("Metro Center");
-  assert.ok(metroCenter.elevators.some((p) => p === bikeEntrance(metroCenter)));
-  const silverSpring = named("Silver Spring");
-  assert.equal(silverSpring.elevators.length, 0);
-  assert.deepEqual(bikeEntrance(silverSpring), silverSpring.point);
+  assert.equal(index.station(metroCenter.id), metroCenter);
+  assert.deepEqual(index.bikeEntrance(metroCenter.id), bikeEntrance(metroCenter).point);
+  assert.ok(metroCenter.elevators.includes(index.bikeEntrance(metroCenter.id)!));
+  const seabrook = named("Seabrook");
+  assert.deepEqual(index.bikeEntrance(seabrook.id), seabrook.point);
+  assert.equal(index.bikeEntrance("metro-nope"), null);
+  assert.equal(index.station("metro-nope"), undefined);
 });
 
 test("the toggles decide which stations and lines are drawn, entrances with their station", () => {
@@ -164,7 +248,7 @@ test("the toggles decide which stations and lines are drawn, entrances with thei
   assert.equal(union({ metro: true, marc: false })?.icon, "rail-red");
   assert.equal(union({ metro: false, marc: true })?.icon, "rail-penn");
   const elevators = count(ALL, "elevator");
-  assert.equal(elevators, stations.reduce((n, s) => n + s.elevators.length, 0));
+  assert.equal(elevators, stations.reduce((n, s) => n + s.elevators.length + s.osmElevators.length, 0));
   assert.ok(count({ metro: false, marc: true }, "elevator") < elevators);
 });
 
@@ -234,4 +318,15 @@ test("start and end replace the plan's ends; a via goes on the leg it lengthens 
   // A role the plan cannot take leaves it as it was.
   assert.deepEqual(placeAtStation([], s, "end"), []);
   assert.deepEqual(placeAtStation([a], s, "via"), [a]);
+});
+
+test("how many stations route to each kind of bike entrance (README.md's counts)", () => {
+  const counts: Record<string, number> = {};
+  for (const station of stations) {
+    const { kind } = bikeEntrance(station);
+    counts[kind] = (counts[kind] ?? 0) + 1;
+  }
+  // 64 with DC's elevator; 7 Metro stations with OSM's, and BWI; 27 with an entrance;
+  // the six MARC-only stations OSM tags nothing at.
+  assert.deepEqual(counts, { elevator: 64, "osm-elevator": 8, entrance: 27, station: 6 });
 });
