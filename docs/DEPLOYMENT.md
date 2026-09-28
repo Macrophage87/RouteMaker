@@ -857,9 +857,31 @@ download without the owner's say-so:
    search from the site. If it is wrong, swap `photon.prev` back the same way.
 5. Once it is right, `rm -rf "$DATA_ROOT/photon.prev"` and the dump.
 
-The first deployment is steps 1, 2 and the two `mv`/`up` lines with no
-`photon.prev`. `scripts/check_compose_limits.py` counts photon's 3 GB as
-resident, which it now is.
+**The first deployment** has no index to keep, but it does have a directory:
+`scripts/prepare_data_root.sh` creates `$DATA_ROOT/photon` empty, and `mv`
+onto an existing directory moves the new index *into* it
+(`photon/photon.next/photon_data/...`), where Photon never looks - it would
+log "no index" and wait, unhealthy. So remove the empty one first; `rmdir`
+refuses anything that is not empty, which makes it the safe command here:
+
+```sh
+export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
+docker compose stop photon
+rmdir "$DATA_ROOT/photon"                      # the empty one prepare_data_root.sh made
+mv "$DATA_ROOT/photon.next" "$DATA_ROOT/photon"
+docker compose up -d photon
+```
+
+An index built elsewhere on the same host is moved the same way, with no
+download and no import: on the local host the index built on 2026-09-27 is at
+`/home/steph/rmdata/search/photon-index` (742 MB, `photon_data/node_1`
+inside), and `mv /home/steph/rmdata/search/photon-index "$DATA_ROOT/photon"`
+in place of the `photon.next` line puts it where compose mounts it. (A `mv`
+across filesystems is a copy; `cp -a` then removing the source is the same.)
+Ownership needs nothing: the image's entrypoint re-owns `/photon/data` to its
+photon user on every start. Check it with step 4 above.
+`scripts/check_compose_limits.py` counts photon's 3 GB as resident, which it
+now is.
 
 ## What the deployment serves
 
