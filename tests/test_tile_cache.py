@@ -220,3 +220,15 @@ class TestDrawTimeout:
         with connection.cursor() as cursor:
             cursor.execute("SHOW statement_timeout")
             assert cursor.fetchone()[0] in {"0", "0ms"}
+
+
+@db
+def test_a_failed_predraw_is_reported_and_does_not_fail_the_rebuild(monkeypatch) -> None:
+    from config import procrastinate
+
+    def broken(**kwargs):
+        raise RuntimeError("no")
+
+    monkeypatch.setattr(tile_cache, "predraw", broken)
+    note = procrastinate._predraw_stress_tiles()
+    assert "predraw_stress_tiles" in note

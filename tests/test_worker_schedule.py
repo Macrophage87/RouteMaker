@@ -156,6 +156,20 @@ def test_the_rebuild_task_runs_the_real_handler_set(rebuild_environment, states)
         "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike" in run.detail
     ), f"the run that promoted a build must say what still has to happen: {run.detail}"
 
+    # The promoted table's z10-13 stress tiles are drawn into the tile cache
+    # after the swap (core.tile_cache), so the map does not draw them on request.
+    from core import stress_tiles
+
+    version = stress_tiles.etag_for(*stress_tiles.live_table())
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*), count(DISTINCT z) FROM stress_tile_cache WHERE version = %s",
+            [version],
+        )
+        tiles, zooms = cursor.fetchone()
+    assert tiles > 0 and zooms == 4, (tiles, zooms)
+    assert f"{tiles} drawn" in run.detail, run.detail
+
     with connection.cursor() as cursor:
         cursor.execute(f"SELECT count(*) FROM {settings.SEGMENT_SCHEMA_LIVE}.segment")
         assert cursor.fetchone()[0] == 5
