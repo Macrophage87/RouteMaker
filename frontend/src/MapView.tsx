@@ -7,7 +7,7 @@ import { Protocol } from "pmtiles";
 // as an asset of its own here and the map is told where it is.
 import maplibreWorkerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 import { layers as protomapsLayers, namedFlavor } from "@protomaps/basemaps";
-import { COVERAGE_BBOX, lonLatToTile, type LonLat } from "./lib/geo.ts";
+import { COVERAGE_BBOX, type LonLat } from "./lib/geo.ts";
 import {
   BASEMAP_SOURCE_ID,
   MAP_ATTRIBUTION,
@@ -16,7 +16,7 @@ import {
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { addStressOverlay, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
-import { fetchTile } from "./lib/stressProtocol.ts";
+import { stressTilesAnswer } from "./lib/stressProtocol.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -81,20 +81,6 @@ function routeInView(map: MapLibreMap, coordinates: LonLat[], padding: Frame): b
   });
 }
 
-async function stressTilesAnswer(origin: string): Promise<boolean> {
-  // One tile over central DC at a zoom the contract serves. A 404 means the
-  // endpoint is not deployed; a 502 that the API is down. Either way the map
-  // shows without the overlay rather than with a legend for nothing.
-  // Through the stress protocol's fetch, so a 429 or 503 - the tile's draw
-  // refused a slot before the pre-draw has run - is waited out like any tile.
-  const { x, y, z } = lonLatToTile(DC_CENTRE, 12);
-  try {
-    await fetchTile(`${origin}/tiles/stress/${z}/${x}/${y}.pbf`);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export function MapView(props: Props) {
   const container = useRef<HTMLDivElement>(null);

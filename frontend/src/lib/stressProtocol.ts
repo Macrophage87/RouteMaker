@@ -25,6 +25,8 @@
  * 304) works as it did.
  */
 
+import { lonLatToTile, type LonLat } from "./geo.ts";
+
 export const STRESS_PROTOCOL = "rmstress";
 
 export const MAX_IN_FLIGHT = 2;
@@ -167,4 +169,25 @@ export function registerStressProtocol(host: ProtocolHost, get?: typeof fetch): 
     data: await fetchTile(httpUrl(params.url), { get, signal: abort.signal }),
   }));
   registered = true;
+}
+
+/** The tile the availability check asks for: central DC at z12. */
+export const PROBE_CENTRE: LonLat = [-77.03, 38.9];
+
+/**
+ * Whether the stress tiles answer, for MapView's check at load. One tile over
+ * central DC at a zoom the contract serves. A 404 means the endpoint is not
+ * deployed, a 502 that the API is down: either way the map shows without the
+ * overlay rather than with a legend for nothing. It goes through `fetchTile`,
+ * so a 429 or 503 - the tile's draw refused a slot before the pre-draw has run
+ * - is waited out like any tile's.
+ */
+export async function stressTilesAnswer(origin: string, options: Fetching = {}): Promise<boolean> {
+  const { x, y, z } = lonLatToTile(PROBE_CENTRE, 12);
+  try {
+    await fetchTile(`${origin}/tiles/stress/${z}/${x}/${y}.pbf`, options);
+    return true;
+  } catch {
+    return false;
+  }
 }

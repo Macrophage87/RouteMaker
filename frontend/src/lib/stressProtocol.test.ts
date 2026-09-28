@@ -13,6 +13,7 @@ import {
   protocolUrl,
   registerStressProtocol,
   retryAfterS,
+  stressTilesAnswer,
 } from "./stressProtocol.ts";
 
 const TILE = "https://example.test/tiles/stress/14/1/2.pbf";
@@ -178,4 +179,55 @@ test("the protocol's URL carries the real one; the loader fetches it with MapLib
   assert.equal(reply.data.byteLength, 3);
   assert.deepEqual(asked, [TILE]);
   assert.equal(signals[0], abort.signal);
+});
+
+test("the page's own queue caps its tile requests at MAX_IN_FLIGHT", async () => {
+  // No queue passed: the default, shared by every tile the page asks for.
+  let out = 0;
+  let most = 0;
+  const releases: Array<() => void> = [];
+  const get = (async () => {
+    out += 1;
+    most = Math.max(most, out);
+    await new Promise<void>((resolve) => releases.push(resolve));
+    out -= 1;
+    return new Response(new Uint8Array([1]), { status: 200 });
+  }) as unknown as typeof fetch;
+  const all = Promise.all(Array.from({ length: 8 }, () => fetchTile(TILE, { get })));
+  for (let i = 0; i < 8; i += 1) {
+    await new Promise((r) => setTimeout(r, 5));
+    releases.shift()?.();
+  }
+  await all;
+  assert.equal(most, MAX_IN_FLIGHT);
+});
+
+test("the queue lets waiters in in the order they came", async () => {
+  const queue = new Queue(1);
+  await queue.acquire();
+  const order: number[] = [];
+  const waiters = [1, 2, 3].map((n) => queue.acquire().then(() => order.push(n)));
+  for (let i = 0; i < 3; i += 1) {
+    queue.release();
+    await new Promise((r) => setTimeout(r, 1));
+  }
+  await Promise.all(waiters);
+  assert.deepEqual(order, [1, 2, 3]);
+});
+
+test("the availability check waits out refusals, and fails only on what retrying cannot fix", async () => {
+  const origin = "https://example.test";
+  const busyThenOk = answers([503, "1"], [429, "1"], [200, null]);
+  const c = clock();
+  assert.equal(
+    await stressTilesAnswer(origin, { get: busyThenOk.get, wait: c.wait, now: c.now, random: MIDDLE, queue: new Queue(2) }),
+    true,
+  );
+  assert.equal(busyThenOk.asked.length, 3);
+  assert.match(busyThenOk.asked[0], /^https:\/\/example\.test\/tiles\/stress\/12\/\d+\/\d+\.pbf$/);
+  for (const status of [404, 502]) {
+    const gone = answers([status, null]);
+    assert.equal(await stressTilesAnswer(origin, { get: gone.get, queue: new Queue(2) }), false);
+    assert.equal(gone.asked.length, 1);
+  }
 });
