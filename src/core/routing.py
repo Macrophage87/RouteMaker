@@ -70,7 +70,7 @@ from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
 from pipeline.variants import Variant
-from routemaker import ridetime
+from routemaker import climbs, ridetime
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
 from routemaker.measure import elevation_gain
@@ -551,6 +551,37 @@ def _climb_of(trip: dict) -> float:
     )[0]
 
 
+def grade_profile(trip: dict) -> list[tuple[float, float | None]]:
+    """The trip's elevation profile, (metres along it, elevation), in the order
+    ridden: the router samples every ELEVATION_INTERVAL_M along each leg."""
+    profile: list[tuple[float, float | None]] = []
+    offset = 0.0
+    for leg in trip.get("legs") or []:
+        heights = leg.get("elevation") or []
+        profile.extend((offset + i * ELEVATION_INTERVAL_M, h) for i, h in enumerate(heights))
+        offset += float((leg.get("summary") or {}).get("length", 0.0)) * 1000.0
+        # A leg's samples do not join the next leg's: a gap between them.
+        profile.append((offset, None))
+    return profile
+
+
+def choose_gentlest(trips: list[dict], weight: float, brake_grade: float | None) -> int:
+    """The index of the trip whose time plus weighted sustained-grade cost is
+    least (routemaker.climbs): the avoid half of the hills slider.
+
+    The first trip is the router's own best route, already priced by
+    Valhalla's per-edge grade penalty; the alternatives are compared on what
+    that penalty cannot see - how long each climb and descent goes on.
+    """
+    best, best_score = 0, None
+    for index, trip in enumerate(trips):
+        time_s = float((trip.get("summary") or {}).get("time", 0.0))
+        score = time_s + weight * climbs.grade_cost_s(grade_profile(trip), brake_grade)
+        if best_score is None or score < best_score:
+            best, best_score = index, score
+    return best
+
+
 def choose_climb(trips: list[dict], ratio: float) -> int:
     """The index of the trip that climbs most within `ratio` of the first's length.
 
@@ -614,8 +645,12 @@ def plan(
     # and not inside a long ride's budget, so anything else keeps the route
     # the detent gives and says so.
     seeking = hills_dial > 0 and preset.hills_seek
+    # Below it the slider also weighs sustained climbs and brake-riding
+    # descents (routemaker.climbs; the owner, 2026-09-28) among the same
+    # alternatives, by `-hills/100`.
+    avoiding = hills_dial < 0
     seek_limited = None
-    if seeking:
+    if seeking or avoiding:
         if len(points) != 2:
             seek_limited = "two_points"
         elif long_ride or haversine(Point(*points[0]), Point(*points[1])) > SEEK_MAX_SPAN_M:
@@ -651,7 +686,13 @@ def plan(
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
-    chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial)) if seeking else 0
+    avoid_weight = -hills_dial / 100 if avoiding else 0.0
+    if seeking:
+        chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
+    elif avoiding:
+        chosen = choose_gentlest(trips, avoid_weight, preset.brake_grade)
+    else:
+        chosen = 0
     trip = trips[chosen]
     legs = trip.get("legs") or []
     if not legs:
@@ -701,6 +742,23 @@ def plan(
             ),
             "limited": seek_limited,
         }
+    hills_avoid = None
+    if avoiding:
+        direct = trips[0].get("summary") or {}
+        hills_avoid = {
+            "candidates": len(trips),
+            "chosen": chosen,
+            "weight": round(avoid_weight, 2),
+            "brake_grade": preset.brake_grade,
+            "grade_cost_s": round(climbs.grade_cost_s(grade_profile(trip), preset.brake_grade), 1),
+            "direct_grade_cost_s": round(
+                climbs.grade_cost_s(grade_profile(trips[0]), preset.brake_grade), 1
+            ),
+            "extra_distance_m": round(
+                (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0, 1
+            ),
+            "limited": seek_limited,
+        }
     return {
         "preset": preset.name,
         "variant": variant,
@@ -723,6 +781,7 @@ def plan(
             "assist": assist,
         },
         "hills_seek": hills_seek,
+        "hills_avoid": hills_avoid,
         "attribution": list(ATTRIBUTION),
     }
 

@@ -135,7 +135,9 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
           seekAllowed
             ? draft.hills > 0
               ? "Looks for climbs among a few alternative routes, up to half again as long; for a start and an end only, up to 50 km apart."
-              : undefined
+              : draft.hills < 0
+                ? "Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to 50 km apart."
+                : undefined
             : "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed."
         }
         onDraft={(hills) => setDraft({ ...draft, hills })}

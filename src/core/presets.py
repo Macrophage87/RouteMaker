@@ -215,6 +215,38 @@ class Preset:
     # With the rider's electric-assist toggle (Cargo Bike): the variant and
     # the planning speed it gives, or None where the toggle is not offered.
     assist_speed_kmh: float | None = None
+    # The grade past which a sustained descent costs (`BRAKE_GRADES`).
+    brake_grade: float | None = None
+
+
+# Where a sustained descent starts to cost, per ride type, on the avoid half
+# of the hills slider (routemaker.climbs). The owner, 2026-09-28: "I'd say a
+# descent over about 2-3% might actually want to be penalized. There's a point
+# where it's a fun downhill and a point where you're riding the breaks." -
+# and, asked where it should start, "Depends on ride type" (the option read:
+# "Gentler threshold for Cargo (heavy, braking matters most), higher for
+# others."). Proposed here for the owner to confirm; None never charges a
+# descent. Below a threshold a descent costs nothing, so the gentle ones stay a
+# reward: Valhalla already times them faster.
+BRAKE_GRADES = MappingProxyType(
+    {
+        # The owner's 2-3%: a loaded cargo bike brakes hard on any real hill.
+        "cargo": 0.03,
+        # PLAN's Mass Ride: low grade tolerance, a field that cannot brake as
+        # one, and descents over the cap flagged as sharply as climbs.
+        "mass-ride": 0.04,
+        # A group brakes earlier than a rider alone, to keep together.
+        "group-ride": 0.05,
+        # Most riders start braking in earnest somewhere past 6%.
+        "default": 0.06,
+        "trailmaxxing": 0.06,
+        "gravel": 0.06,
+        "ebike": 0.06,
+        # Riders who choose these want the descent.
+        "mountain-goat": None,
+        "fast": None,
+    }
+)
 
 
 def _preset(
@@ -246,6 +278,7 @@ def _preset(
         carrying=MappingProxyType(carrying) if carrying else None,
         stress_max=stress_max,
         assist_speed_kmh=assist_speed_kmh,
+        brake_grade=BRAKE_GRADES[name],
     )
 
 

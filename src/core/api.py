@@ -323,6 +323,24 @@ class StressAdjustmentOut(Schema):
     display: Literal["route_only", "map"] | None = None
 
 
+class HillsAvoidOut(Schema):
+    """Present when the hills slider was below its detent: sustained climbs and
+    brake-riding descents weighed among the router's alternatives."""
+
+    candidates: int = Field(description="Routes compared, the router's own included.")
+    chosen: int = Field(description="Which was kept; 0 is the router's own route.")
+    weight: float = Field(description="How much the sustained-grade cost counted: -hills/100.")
+    brake_grade: float | None = Field(
+        description="The ride type's grade past which a descent costs; null: never."
+    )
+    grade_cost_s: float = Field(description="The kept route's sustained climb and descent cost.")
+    direct_grade_cost_s: float
+    extra_distance_m: float
+    limited: Literal["two_points", "long_ride"] | None = Field(
+        description="Why no alternatives were compared, if none were."
+    )
+
+
 class RouteOut(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend"]
@@ -336,6 +354,7 @@ class RouteOut(Schema):
     stress_adjustments: list[StressAdjustmentOut]
     dials: DialsOut
     hills_seek: HillsSeekOut | None
+    hills_avoid: HillsAvoidOut | None
     attribution: list[str]
 
 

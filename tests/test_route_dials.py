@@ -93,7 +93,8 @@ class TestTheSlidersReachTheRouter:
         fake = router(standard_router())
         assert post(client, {**good_body(), "hills": hills}).status_code == 200
         assert sent_options(fake)["use_hills"] == use_hills
-        assert "alternates" not in fake.calls[0][1]
+        # Below the detent the alternatives are weighed for sustained grades.
+        assert ("alternates" in fake.calls[0][1]) == (hills < 0)
 
     def test_more_stress_never_means_more_use_roads(self):
         values = [presets.use_roads_for(s) for s in range(0, 101, 5)]
@@ -575,3 +576,114 @@ def test_a_mass_ride_counts_bike_lanes_as_none(client, facility_segments, router
     mass = post(client, {**good_body("mass-ride"), "when": "weekday_rush"}).json()["facility_m"]
     assert ordinary["protected"] > 0
     assert mass["protected"] == 0
+
+
+# --- The avoid half: sustained climbs and descents (the owner, 2026-09-28) ----
+
+
+def ramp_profile(segments, step=30.0):
+    """Elevations every `step` metres for [(length_m, grade)] ridden in order."""
+    heights, e = [100.0], 100.0
+    for length, grade in segments:
+        for _ in range(int(length // step)):
+            e += grade * step
+            heights.append(e)
+    return heights
+
+
+# 1.5 km at 9%: a sustained climb; the same rise as a 120 m kick then flat.
+LONG_STEEP = ramp_profile([(1500, 0.09)])
+KICK_THEN_FLAT = ramp_profile([(120, 0.10), (1380, 0.0)])
+LONG_STEEP_DOWN = ramp_profile([(1500, -0.09)])
+GENTLE_DOWN = ramp_profile([(1500, -0.02)])
+
+
+def avoid_router(first, alternates) -> FakeRouter:
+    return FakeRouter(
+        {
+            "route": {
+                "trip": _trip(VERTICES, *first),
+                "alternates": [{"trip": _trip(VERTICES, km, elev)} for km, elev in alternates],
+            },
+            "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+        }
+    )
+
+
+@db
+class TestAvoidingSustainedGrades:
+    def test_a_long_steep_climb_loses_to_a_longer_kick(self, client, facility_segments, router):
+        # The router's own route climbs 1.5 km at 9%; the alternative is 20% longer
+        # (40 s at the fake's 100 s a km) and climbs only a 120 m kick.
+        router(avoid_router((2.0, LONG_STEEP), [(2.4, KICK_THEN_FLAT)]))
+        body = post(client, {**good_body(), "hills": -60}).json()
+        assert body["hills_avoid"]["chosen"] == 1
+        assert body["hills_avoid"]["grade_cost_s"] == 0
+        assert body["hills_avoid"]["direct_grade_cost_s"] > 500
+        assert body["hills_avoid"]["weight"] == 0.6
+        assert body["distance_m"] == pytest.approx(2400.0)
+
+    def test_a_short_kick_is_kept(self, client, facility_segments, router):
+        router(avoid_router((2.0, KICK_THEN_FLAT), [(2.4, ramp_profile([(1500, 0.0)]))]))
+        assert post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["chosen"] == 0
+
+    def test_a_steep_descent_is_avoided_by_cargo_and_kept_by_fast(
+        self, client, facility_segments, router
+    ):
+        routes = ((2.0, LONG_STEEP_DOWN), [(2.3, GENTLE_DOWN)])
+        router(avoid_router(*routes))
+        cargo = post(client, {**good_body("cargo"), "hills": -60}).json()["hills_avoid"]
+        assert (cargo["chosen"], cargo["brake_grade"]) == (1, 0.03)
+        router(avoid_router(*routes))
+        fast = post(client, {**good_body("fast"), "hills": -60}).json()["hills_avoid"]
+        assert (fast["chosen"], fast["brake_grade"]) == (0, None)
+
+    def test_the_slider_scales_it(self, client, facility_segments, router):
+        # 100 s longer: more than the climb costs at -5, less than at -100.
+        routes = ((2.0, LONG_STEEP), [(3.0, KICK_THEN_FLAT)])
+        router(avoid_router(*routes))
+        assert post(client, {**good_body(), "hills": -5}).json()["hills_avoid"]["chosen"] == 0
+        router(avoid_router(*routes))
+        assert post(client, {**good_body(), "hills": -100}).json()["hills_avoid"]["chosen"] == 1
+
+    def test_the_middle_is_untouched(self, client, facility_segments, router):
+        fake = router(avoid_router((2.0, LONG_STEEP), [(2.4, KICK_THEN_FLAT)]))
+        body = post(client, {**good_body(), "hills": 0}).json()
+        assert body["hills_avoid"] is None
+        assert "alternates" not in fake.calls[0][1]
+        assert body["distance_m"] == pytest.approx(2000.0)
+
+    def test_a_via_point_keeps_the_router_route_and_says_why(
+        self, client, facility_segments, router
+    ):
+        fake = router(standard_router())
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        body = post(client, {"points": points, "preset": "default", "hills": -50}).json()
+        assert "alternates" not in fake.calls[0][1]
+        assert body["hills_avoid"]["limited"] == "two_points"
+        assert body["hills_avoid"]["chosen"] == 0
+
+
+def test_every_preset_states_a_brake_grade():
+    """Proposed per ride type for the owner to confirm (the owner, 2026-09-28:
+    "Depends on ride type"); Cargo's is the owner's 2-3%."""
+    assert set(presets.BRAKE_GRADES) == set(presets.PRESETS)
+    assert presets.PRESETS["cargo"].brake_grade == 0.03
+    graded = [g for g in presets.BRAKE_GRADES.values() if g is not None]
+    assert min(graded) == presets.PRESETS["cargo"].brake_grade
+    assert presets.PRESETS["default"].brake_grade > presets.PRESETS["cargo"].brake_grade
+
+
+def test_grade_profile_splits_legs():
+    trip = route_answer([(VERTICES, 0.09, [1.0, 2.0, 3.0, 4.0]), (VERTICES, 0.09, [4.0, 5.0])])[
+        "trip"
+    ]
+    profile = routing.grade_profile(trip)
+    assert profile[:4] == [(0.0, 1.0), (30.0, 2.0), (60.0, 3.0), (90.0, 4.0)]
+    assert profile[4][1] is None
+    assert profile[5] == (90.0, 4.0)
+
+
+def test_choose_gentlest_keeps_the_router_route_on_a_tie():
+    trips = [_trip(VERTICES, 2.0, LONG_STEEP), _trip(VERTICES, 2.0, LONG_STEEP)]
+    assert routing.choose_gentlest(trips, 1.0, 0.06) == 0

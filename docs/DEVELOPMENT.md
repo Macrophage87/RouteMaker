@@ -481,6 +481,81 @@ protected and painted lanes count as `none`: the field rides the roadway (the
 owner: "Even protected bike lanes aren't used."); a road closed to cars is
 still `path`.
 
+**Sustained grades** (the owner, 2026-09-28: "I'd probably have an increasing
+penalty for steeper hills instead" of a hard grade cap; "In many cases it's not
+just stepness but steepness and length. 10% can be done for 100m of riding,
+people would just sprint before it. If continued over kilometers, that becomes
+a hike-a-bike"; and "I'd say a descent over about 2-3% might actually want to
+be penalized. There's a point where it's a fun downhill and a point where
+you're riding the breaks.").
+
+Valhalla's own grade penalty is already progressive per metre climbed. Its
+edge cost is `time * (1 + grade_penalty + ...)`, with `grade_penalty =
+(1 - use_hills) * kAvoidHillsStrength[grade]` and a slower bicycle speed
+uphill (`kGradeBasedSpeedFactor`); the extra cost per metre climbed over flat
+riding, on a quiet street, in metres of flat riding:
+
+| Hills slider | 3% | 5% | 6.5% | 8% | 10% | 13% | 15% |
+|---|---|---|---|---|---|---|---|
+| 0 (use_hills 1.0) | 12 | 13 | 17 | 20 | 20 | 23 | 31 |
+| -60 (0.4) | 18 | 26 | 45 | 61 | 74 | 138 | 191 |
+| -100 (0.0) | 22 | 34 | 63 | 88 | 109 | 215 | 297 |
+
+So at -100 a 10% pitch costs 3.2 times a 5% one per metre climbed. What it
+cannot do is tell a kick from a long climb: each edge is priced alone, from
+its own grade. The grade is Valhalla's, computed from the DEM when the graph is
+built (mjolnir/elevationbuilder.cc); no tag feeds it, and no other edge cost
+scales with `use_hills`, so a graph tag cannot carry a hills-slider-scaled,
+length-aware penalty in the pinned Valhalla. The avoid half therefore weighs
+the router's alternatives (`core.routing.choose_gentlest`), as the seek half
+does: the router's elevation along each (every 30 m, in the direction ridden)
+is read as sustained climbs and descents (`routemaker.climbs`: a run survives a
+3 m dip and a 150 m flat), each priced in seconds by
+
+    cost = 1.7 * w(grade - threshold) * past * (1 + past / 1000)
+
+with `past` the metres beyond the first 150 (the kick, free whatever its
+grade), `w(x) = x * (1 + x / 0.03)` and a climb's threshold 3%; and the
+route with the least `time + (-hills / 100) * cost` is kept. One kilometre at
+8% costs 356 s at -100, about what walking it adds. A descent is priced the
+same way from the ride type's brake grade (proposed, for the owner to
+confirm):
+
+| Ride type | Descents cost past | Why |
+|---|---|---|
+| Cargo | 3% | the owner's "about 2-3%", braking a loaded bike |
+| Mass Ride | 4% | PLAN's low grade tolerance; a field cannot brake as one |
+| Group Ride | 5% | a group brakes earlier to stay together |
+| Default, Trailmaxxing, Gravel, E-bike | 6% | most riders brake in earnest past 6% |
+| Mountain Goat, Fast | never | riders who choose these want the descent |
+
+Nothing changes at the middle of the slider or above it, and nothing is
+rebuilt: the graph is the same. The limits are the seek half's - a start and
+an end only, up to 50 km apart, three alternatives - and every ride below the
+middle now asks for them (Cargo starts at -60), which roughly doubles the
+router's work for such a ride.
+
+The data (region extract and 1-arc-second DEM, named roads and trails chained
+by name, both directions, `routemaker.climbs.runs`): 75,436 climbs past 150 m,
+of which 79 are 8% or steeper for a kilometre or more, all in the Catoctins,
+the Blue Ridge and around Sugarloaf (Coxey Brown Road, 2.9 km at 10.2%, 4,451
+s; Middlepoint Road, 2.3 km at 9.9%; Harp Hill Road, 1.9 km at 9.0%; Park
+Mills Road by Sugarloaf, 660 m at 9.0%). The costliest in the District and
+Arlington are 1-2 km at 5-7% (Massachusetts Avenue NW, 1.9 km at 5.5%, 360
+s; Arizona Avenue NW, Fulton Street NW, Morris Road SE) or short and steep
+(Calvert Street NW, 420 m at 10.1%); around Great Falls the steepest roads
+are 400-700 m at 7-11%. The DC box has no climb of 8% for a kilometre.
+
+Measured on the box graph through the API's own code: of 16 ridge-crossing
+trips, the avoid half changed the route on a few - Georgetown to Glover Park
+at -60 takes a 3.72 km route with 86 s of sustained-climb cost against the
+router's 103 s; down Massachusetts Avenue NW, Cargo at -60 takes a route 99 m
+shorter with 239 s of descent cost against 297 s, while Fast keeps the
+direct descent. On most city trips the router offers no gentler alternative,
+and the kept route is its own. A per-edge sustained-grade cost - the same
+model priced into every edge from the pipeline's elevation - would need a fork
+of the costing (PLAN's layer 3).
+
 **Graded stress** (the owner, 2026-09-28: "Yes, grade them (Recommended)" and
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per

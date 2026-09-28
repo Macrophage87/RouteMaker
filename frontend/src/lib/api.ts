@@ -48,6 +48,18 @@ export interface RouteResponse {
     extra_distance_m: number;
     limited: "two_points" | "long_ride" | null;
   } | null;
+  /** Present when the hills slider was below its middle: sustained climbs and
+   * brake-riding descents weighed among the router's alternatives. */
+  hills_avoid?: {
+    candidates: number;
+    chosen: number;
+    weight: number;
+    brake_grade: number | null;
+    grade_cost_s: number;
+    direct_grade_cost_s: number;
+    extra_distance_m: number;
+    limited: "two_points" | "long_ride" | null;
+  } | null;
   attribution: string[];
 }
 

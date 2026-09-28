@@ -45,6 +45,7 @@ CONTRACT_KEYS = {
     "stress_adjustments",
     "dials",
     "hills_seek",
+    "hills_avoid",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
