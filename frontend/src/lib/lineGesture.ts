@@ -30,13 +30,12 @@ type Phase =
   | { kind: "idle" }
   | { kind: "armed"; x: number; y: number }
   | { kind: "holding"; x: number; y: number; timer: unknown }
-  | { kind: "dragging"; pointer: PointerKind; x: number; y: number; moved: boolean };
+  | { kind: "dragging"; x: number; y: number; moved: boolean };
 
 export interface GestureOptions {
   /** A held finger has picked the line up: stop the map panning, show the handle. */
   onPickUp: () => void;
   timers?: Timers;
-  holdMs?: number;
 }
 
 const realTimers: Timers = {
@@ -47,13 +46,11 @@ const realTimers: Timers = {
 export class LineGesture {
   private phase: Phase = { kind: "idle" };
   private readonly timers: Timers;
-  private readonly holdMs: number;
   private readonly onPickUp: () => void;
 
   constructor(options: GestureOptions) {
     this.onPickUp = options.onPickUp;
     this.timers = options.timers ?? realTimers;
-    this.holdMs = options.holdMs ?? HOLD_MS;
   }
 
   /** A press that landed on the line (the caller has checked that). */
@@ -65,9 +62,9 @@ export class LineGesture {
     }
     // Cleared by cancel(), so it only ever fires on a hold still under way.
     const timer = this.timers.set(() => {
-      this.phase = { kind: "dragging", pointer: "touch", x, y, moved: false };
+      this.phase = { kind: "dragging", x, y, moved: false };
       this.onPickUp();
-    }, this.holdMs);
+    }, HOLD_MS);
     this.phase = { kind: "holding", x, y, timer };
   }
 
@@ -80,7 +77,7 @@ export class LineGesture {
     const phase = this.phase;
     if (phase.kind === "armed") {
       if (Math.hypot(x - phase.x, y - phase.y) < MOUSE_SLOP_PX) return "none";
-      this.phase = { kind: "dragging", pointer: "mouse", x: phase.x, y: phase.y, moved: true };
+      this.phase = { kind: "dragging", x: phase.x, y: phase.y, moved: true };
       return "drag";
     }
     if (phase.kind === "holding") {
@@ -88,7 +85,10 @@ export class LineGesture {
       return "none";
     }
     if (phase.kind === "dragging") {
-      if (!phase.moved && Math.hypot(x - phase.x, y - phase.y) >= MOUSE_SLOP_PX) phase.moved = true;
+      // Only a finger's drag starts unmoved (a mouse's starts by moving). It
+      // is allowed the same wobble after the pick-up as during the hold, so
+      // a hold that lifts off where it was adds nothing.
+      if (!phase.moved && Math.hypot(x - phase.x, y - phase.y) > TOUCH_SLOP_PX) phase.moved = true;
       return "drag";
     }
     return "none";

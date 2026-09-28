@@ -146,3 +146,27 @@ test("with nothing pressed, moves and releases do nothing", () => {
   assert.equal(g.release(), "none");
   assert.equal(g.cancel(), false);
 });
+
+test("a quick flick past the click tolerance and straight up is a drop", () => {
+  const { g } = gesture();
+  g.press("mouse", 100, 100);
+  assert.equal(g.move(100 + MOUSE_SLOP_PX, 100), "drag");
+  assert.equal(g.release(), "drop");
+});
+
+test("a finger that picked the line up may wobble as far as during the hold and still drop nothing", () => {
+  const { g, clock } = gesture();
+  g.press("touch", 50, 50);
+  clock.advance(HOLD_MS);
+  assert.equal(g.move(50 + TOUCH_SLOP_PX, 50), "drag");
+  assert.equal(g.release(), "none");
+});
+
+test("a finger that picked the line up and moved past the slop drops a via", () => {
+  const { g, clock } = gesture();
+  g.press("touch", 50, 50);
+  clock.advance(HOLD_MS);
+  g.move(50 + TOUCH_SLOP_PX + 1, 50);
+  g.move(52, 50); // back near the start: it has still moved
+  assert.equal(g.release(), "drop");
+});

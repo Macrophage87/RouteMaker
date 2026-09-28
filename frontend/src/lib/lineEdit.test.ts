@@ -3,7 +3,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_POINTS, addPoint, type LonLat } from "./geo.ts";
 import {
+  canDragLine,
   dragPreview,
+  dropStillValid,
   guessLegEnds,
   insertIntoLeg,
   legEnds,
@@ -117,6 +119,7 @@ test("the API's leg ends are used only when they describe this line and these po
   assert.equal(validLegEnds(undefined, 5, 3), false);
   assert.equal(validLegEnds("2,4", 5, 3), false);
   assert.equal(validLegEnds([4], 5, 3), false, "one end for two legs");
+  assert.equal(validLegEnds([1, 2, 4], 5, 3), false, "three ends for two legs");
   assert.equal(validLegEnds([2, 3], 5, 3), false, "the last leg must end at the last vertex");
   assert.equal(validLegEnds([3, 2, 4], 5, 4), false, "ends go forwards");
   assert.equal(validLegEnds([-1, 4], 5, 3), false);
@@ -192,6 +195,7 @@ test("a full route takes no more vias, and a leg that is not there takes none", 
   const two: LonLat[] = [full[0], full[1]];
   assert.equal(insertIntoLeg(two, 1, [-77, 38.95]), null);
   assert.equal(insertIntoLeg(two, -1, [-77, 38.95]), null);
+  assert.equal(insertIntoLeg([L[0], L[2], L[4]], 0.5, [-77, 38.95]), null, "a leg is a whole number");
   assert.equal(insertIntoLeg(full.slice(0, MAX_POINTS - 1), 0, [-77, 38.95])?.length, MAX_POINTS);
 });
 
@@ -210,4 +214,20 @@ test("the preview runs from the grabbed leg's two points to the cursor", () => {
     [points[0], cursor],
     [cursor, points[1]],
   ]);
+});
+
+test("the line can be dragged only when it is the showing, settled route of these points", () => {
+  const ok = { routeShown: true, stale: false, routedIsCurrent: true, vertexCount: 5 };
+  assert.equal(canDragLine(ok), true);
+  assert.equal(canDragLine({ ...ok, routeShown: false }), false);
+  assert.equal(canDragLine({ ...ok, stale: true }), false, "being planned again");
+  assert.equal(canDragLine({ ...ok, routedIsCurrent: false }), false, "planned for an older list");
+  assert.equal(canDragLine({ ...ok, vertexCount: 1 }), false, "no segment to grab");
+  assert.equal(canDragLine({ ...ok, vertexCount: 2 }), true);
+});
+
+test("a drop is kept only while the points are the very list the line was planned for", () => {
+  const points: LonLat[] = [L[0], L[4]];
+  assert.equal(dropStillValid(points, points), true);
+  assert.equal(dropStillValid(points, [...points]), false, "an equal list is a newer edit");
 });

@@ -1,7 +1,7 @@
 // Undo and redo for the point list, and the keys that ask for them.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { EditHistory, UNDO_LIMIT, isRedoKey, isUndoKey, typesText } from "./editHistory.ts";
+import { EditHistory, UNDO_LIMIT, isRedoKey, isUndoKey, step, typesText } from "./editHistory.ts";
 
 test("undo gives back the list as it was before each edit, newest first", () => {
   const history = new EditHistory<string[]>();
@@ -134,4 +134,12 @@ test("a text field keeps its own undo; buttons, radios and the map do not", () =
   assert.equal(typesText({ tagName: "BUTTON" }), false);
   assert.equal(typesText({ tagName: "CANVAS" }), false);
   assert.equal(typesText(null), false);
+});
+
+test("a step of undo goes back and a step of redo forwards", () => {
+  const history = new EditHistory<number>();
+  history.record(1); // 1 -> 2
+  assert.equal(step(history, "redo", 2), undefined, "nothing to redo yet");
+  assert.equal(step(history, "undo", 2), 1);
+  assert.equal(step(history, "redo", 1), 2);
 });

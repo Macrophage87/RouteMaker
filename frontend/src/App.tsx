@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
-import { insertIntoLeg, legEnds } from "./lib/lineEdit.ts";
-import { EditHistory, isRedoKey, isUndoKey, typesText } from "./lib/editHistory.ts";
+import { canDragLine, dropStillValid, insertIntoLeg, legEnds } from "./lib/lineEdit.ts";
+import { EditHistory, isRedoKey, isUndoKey, step, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
@@ -204,7 +204,7 @@ export function App() {
   const travel = useCallback(
     (direction: "undo" | "redo") => {
       const current = pointsRef.current;
-      const next = direction === "undo" ? history.current.undo(current) : history.current.redo(current);
+      const next = step(history.current, direction, current);
       if (next === undefined) return;
       syncHistory();
       pointsRef.current = next;
@@ -265,7 +265,7 @@ export function App() {
   // if the points have changed since, the leg means nothing any more.
   const insertOnLine = useCallback(
     (leg: number, point: LonLat, routed: LonLat[]) => {
-      if (routed !== pointsRef.current) return;
+      if (!dropStillValid(routed, pointsRef.current)) return;
       if (!insideCoverage(point)) {
         setNotice("That point is outside the area this map covers; it was put back.");
         return;
@@ -343,7 +343,9 @@ export function App() {
   // The line can be dragged when it is the route of the points as they are:
   // not while a new one is being planned, when its legs are the old list's.
   const lineEdit = useMemo<LineEdit | null>(() => {
-    if (!shown || stale || routedPoints !== points || shown.geometry.coordinates.length < 2) return null;
+    const routeShown = shown !== null;
+    const vertexCount = shown?.geometry.coordinates.length ?? 0;
+    if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
     const path = shown.geometry.coordinates;
     return { path, ends: legEnds(path, routedPoints, shown.leg_ends), points: routedPoints };
   }, [shown, stale, routedPoints, points]);

@@ -141,3 +141,26 @@ export function dragPreview(points: readonly LonLat[], leg: number, cursor: LonL
     [cursor, points[leg + 1]],
   ];
 }
+
+/**
+ * Whether the drawn line can be dragged: a route is showing, it is not being
+ * planned again, and it was planned for the points as they are (its legs are
+ * that list's legs), with a segment to grab.
+ */
+export function canDragLine(state: {
+  routeShown: boolean;
+  stale: boolean;
+  routedIsCurrent: boolean;
+  vertexCount: number;
+}): boolean {
+  return state.routeShown && !state.stale && state.routedIsCurrent && state.vertexCount >= 2;
+}
+
+/**
+ * Whether a drop still means what it did: the line was grabbed on the route
+ * of `routed`, and that is still the point list (the same list, not an equal
+ * one; any edit makes a new list). Otherwise its leg number is stale.
+ */
+export function dropStillValid<P>(routed: readonly P[], current: readonly P[]): boolean {
+  return routed === current;
+}

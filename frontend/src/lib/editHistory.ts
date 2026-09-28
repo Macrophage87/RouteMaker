@@ -88,3 +88,10 @@ export function typesText(target: { tagName?: string; type?: string; isContentEd
   if (tag === "TEXTAREA") return true;
   return tag === "INPUT" && TEXT_INPUTS.has((target.type ?? "text").toLowerCase());
 }
+
+export type Direction = "undo" | "redo";
+
+/** One step through the history: undo goes back, redo forwards. */
+export function step<T>(history: EditHistory<T>, direction: Direction, current: T): T | undefined {
+  return direction === "undo" ? history.undo(current) : history.redo(current);
+}
