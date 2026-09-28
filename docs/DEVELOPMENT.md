@@ -514,6 +514,26 @@ speed and lane count are at their maximum. At 0 LTS 3 adds nothing and LTS 4
 about 0.8-1.1, so the most direct route leans off LTS 4 too. Tier 5 is LTS 4
 plus the alley charge on entry.
 
+Measured on the DC box graph (PUBLIC-DIALS, 2026-09-28, head fc9bab7):
+
+- Every tier-4 edge located (27,141 of 36,121 ways, 5,148 km open to
+  bicycles) carries the marks but 37; with each edge's own class, lanes,
+  speed and cycle lane from the ungraded graph, 99.8% of that length is at
+  2x or more at every slider position from 5 to 100. 9.9 km falls short
+  (1.78x at worst, a bicycle-legal motorway-class way at 105 km/h).
+- L Street to Massachusetts Avenue, the review's probe: LTS 4 was 393 m at
+  0, 1,675 m at 25 and 482 m at 100 before; it is 393, 393, 300, 77, 77 and
+  77 m at 0, 25, 50, 75, 90 and 100 now, trading LTS 4 for LTS 3 as the
+  slider rises. Over the 21 box trips LTS 4 never rises by more than 34 m
+  from one position to the next (Chevy Chase to Peirce Mill at 50, where the
+  route drops 3.1 km of LTS 3; Logan Circle to Eastern Market, 11 m); before,
+  five trips rose, by up to 1.3 km.
+- The cost at 0: on 10 of the 21 trips the direct end is now 3-19% slower
+  than the fastest route (Bethesda to Georgetown 34.9 against 29.3 minutes),
+  where before only one was; it leans off LTS 4 at 0 as the owner's "at
+  every slider position" asks, and no longer reads as "the fastest legal
+  route" there.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are
