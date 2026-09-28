@@ -39,7 +39,7 @@ Two surfaces, one computation. Both read `core.runs.stale_task_details` and
   reason. This entry fires every ten minutes, and `docker compose exec` runs
   the process **inside the target container's cgroup**: in `rebuild` that is
   144 spawns a day of a ~95 MiB Django process inside the 8 GB limit the
-  six-hour build is sized against, and six of them land inside every hour of
+  eight-hour build is sized against, and six of them land inside every hour of
   that build. `worker` is a 2 GB service whose own tasks run for seconds a day,
   and it is up whenever the stack is — including while `rebuild` is the
   container an `up -d` is recreating.
@@ -181,7 +181,7 @@ Two things follow, and both are in place now:
 
 The rebuild has its own queue and its own worker for an unrelated reason: it
 needs the container with the Valhalla binaries and the data mounts, and a
-six-hour build must not sit in front of a five-minute tick.
+eight-hour build must not sit in front of a five-minute tick.
 
 ## Retention
 
@@ -459,7 +459,8 @@ restore is the restore, not a second fault.
 
 ## The rebuild's own budget
 
-A rebuild has six hours. It hands whatever remains of that budget to every
+A rebuild has eight hours (six until the owner's "Yes, 8 hours (Recommended)"
+of 2026-09-28, for the fourth graph). It hands whatever remains of that budget to every
 binary it runs and checks it between stages, and a rebuild that runs out is
 **abandoned rather than retried**, in either shape it arrives in
 (`RebuildTimedOut` from the stage boundary, `subprocess.TimeoutExpired` from a
@@ -680,7 +681,7 @@ a Procrastinate periodic task on its own queue, so the only route to it was
 
 It **queues** a job and returns; it does not run the rebuild. The `rebuild`
 service is what picks the job up, because that is the container with the
-Valhalla binaries, the data mounts and the six-hour budget, and it takes it
+Valhalla binaries, the data mounts and the eight-hour budget, and it takes it
 within seconds while that service is up. Follow it with
 `docker compose logs -f rebuild`, or on the operations page.
 
@@ -805,7 +806,7 @@ the first host to run it is the first test of it.
    `doing`, and the alert arrives eight days later. `docker compose ps rebuild`
    and `docker compose logs --tail=20 rebuild` are the check;
    `./manage.py unwedge_job <job_id>` is the repair if it has already happened.
-   A build takes up to six hours from 08:00 UTC on Tuesdays and no grace period
+   A build takes up to eight hours from 08:00 UTC on Tuesdays and no grace period
    can cover it, so the answer is to wait or to accept the unwedge, not to
    lengthen the grace.
 
@@ -818,7 +819,7 @@ the first host to run it is the first test of it.
 
    **`worker` wedges the same way**, for less time and with the same repair. A
    `nightly_backup` or a sweep killed mid-run leaves its row `doing` too; its
-   tasks are bounded at thirty minutes rather than six hours, so the odds of
+   tasks are bounded at thirty minutes rather than eight hours, so the odds of
    catching one are lower, but `unwedge_job` is still what clears it and the
    wedged-job surface still reports it.
 
@@ -969,7 +970,7 @@ the first host to run it is the first test of it.
    from that bucket — so a first host should expect to debug it before it expects
    it to work.
 
-   Budget six hours, which is also the point at which the rebuild abandons
+   Budget eight hours, which is also the point at which the rebuild abandons
    itself.
 
 9. **Restart the routers.** `valhalla_service` opens its tile extract once at

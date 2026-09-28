@@ -146,7 +146,7 @@ rather than abandoning it (its `shutdown_graceful_timeout` is unset, so the
 wait is unbounded), and the `stop_grace_period: 60s` on that service expires
 into a SIGKILL. What is left is a `weekly_rebuild` row still `doing` with no
 worker behind it — nothing retries it, the next Tuesday's tick refuses on it,
-and the staleness alert is eight days out. No grace period covers a six-hour
+and the staleness alert is eight days out. No grace period covers an eight-hour
 build, so the rule is the schedule: release outside Tuesday 08:00 UTC and the
 hours after it, check `docker compose ps rebuild` first, and if it has already
 happened, `docker compose exec -T worker ./manage.py unwedge_job <job_id>`
@@ -380,7 +380,7 @@ developer machine and not for this image.
 
 A `RUN` asserts every binary the rebuild shells out to is on `PATH` at build
 time. The quiet failure that guards against is a stage that runs, finds no
-binary, and is reported as a rebuild failure six hours in.
+binary, and is reported as a rebuild failure hours in.
 
 Runs as uid 10001, non-root.
 
@@ -738,7 +738,7 @@ in the repository that assumes it:
   produces an OOM kill of whichever container the kernel picks, during a
   rebuild, which is when the stack is at its peak.
 - **8 vCPU.** The CPU limits are written against it — the rebuild takes 4, half
-  the machine, so that a six-hour build does not saturate every core and destroy
+  the machine, so that an eight-hour build does not saturate every core and destroy
   the preview latency target. On a 4-vCPU host those limits over-subscribe the
   machine rather than bounding anything.
 - **200 GB.** `REBUILD_MIN_FREE_BYTES` defaults to **21474836480 — 20 GiB** —

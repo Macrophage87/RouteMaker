@@ -48,7 +48,13 @@ DEGRADED_GUILD_SWEEP_CRON = "*/5 * * * *"
 # timeout rather than by the weekly alarm. Enforced: the rebuild hands its
 # deadline to every binary it runs and checks it between stages; the sweep runs
 # under core.runs.run_with_deadline.
-REBUILD_TIMEOUT_S = 6 * 60 * 60
+#
+# Eight hours, not the plan's original six: the fourth graph (the weekend twin,
+# PUBLIC-DIALS) adds about 25 minutes to a quiet run and far more to a loaded
+# one, and a six-hour run had already failed on its budget with three. The
+# owner, 2026-09-28, asked "Raise the limit to 8 hours?": "Yes, 8 hours
+# (Recommended)" (PLAN.md, Owner amendments).
+REBUILD_TIMEOUT_S = 8 * 60 * 60
 SWEEP_TIMEOUT_S = 30 * 60
 # The backup's ceiling, and it is the maintenance queue's bound rather than the
 # backup's own convenience. `pg_dump` had no timeout at all, and the maintenance

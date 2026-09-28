@@ -1046,7 +1046,9 @@ def test_a_cold_worker_runs_a_deferred_job() -> None:
 
 
 def test_the_time_budgets_are_the_plans() -> None:
-    assert REBUILD_TIMEOUT_S == 6 * 60 * 60
+    # Eight hours: the owner's "Yes, 8 hours (Recommended)" of 2026-09-28
+    # against PLAN.md:58's six, for the fourth graph (PLAN.md, Owner amendments).
+    assert REBUILD_TIMEOUT_S == 8 * 60 * 60
     assert SWEEP_TIMEOUT_S == 30 * 60
 
 

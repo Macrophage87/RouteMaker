@@ -135,13 +135,14 @@ def test_membership_sweep_runs_every_six_hours() -> None:
 
 # --- The weekly rebuild -----------------------------------------------------
 # PLAN.md: "retried with exponential backoff up to 5 times, with per-type
-# timeouts (export 2 minutes, push 5 minutes, rebuild 6 hours)."
+# timeouts (export 2 minutes, push 5 minutes, rebuild 8 hours)." - six hours
+# until the owner's amendment of 2026-09-28 ("Yes, 8 hours (Recommended)").
 
 
 def test_rebuild_job_timeout_matches_plan() -> None:
     from config.procrastinate import REBUILD_TIMEOUT_S
 
-    assert REBUILD_TIMEOUT_S == 6 * 60 * 60
+    assert REBUILD_TIMEOUT_S == 8 * 60 * 60
 
 
 # --- Jurisdiction crossings --------------------------------------------------

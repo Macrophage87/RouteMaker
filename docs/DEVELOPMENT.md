@@ -632,7 +632,7 @@ Compose runs two workers from the same task module: `worker` on the
 `maintenance` queue (the backup and the membership sweep, in the API image) and
 `rebuild` on the `rebuild` queue (the weekly rebuild, in the pipeline image that
 carries the Valhalla and GDAL binaries, with the five data directories it
-writes bound under `/data`). The queue split is what puts the six-hour build in the container with
+writes bound under `/data`). The queue split is what puts the eight-hour build in the container with
 the binaries and the 8 GB limit rather than in the API's.
 
 A worker started any other way does not work. `procrastinate --app=... worker`

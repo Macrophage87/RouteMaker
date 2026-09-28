@@ -51,7 +51,9 @@ MIN_FREE_GIB = 20  # the disk gate's floor, `REBUILD_MIN_FREE_BYTES`
 # Memorial to Union Station. Any bicycle graph of the District routes it.
 CANARY = ((-77.0502, 38.8893), (-77.0063, 38.8973))
 REBUILD_POLL_S = 60
-REBUILD_TIMEOUT_S = 8 * 3600
+# Past the rebuild's own 8-hour budget (config.procrastinate), so the poll
+# outlasts a rebuild that uses all of it.
+REBUILD_TIMEOUT_S = 9 * 3600
 RESTORE_DB = "routemaker_acceptance_restore"
 
 
