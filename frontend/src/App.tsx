@@ -1,6 +1,8 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactElement } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactElement } from "react";
 import type { Map as MapLibreMap } from "maplibre-gl";
-import { MapView, type Frame, type StressAvailability } from "./MapView.tsx";
+import { MapView, type Frame, type LineEdit, type StressAvailability } from "./MapView.tsx";
+import { canDragLine, dropStillValid, insertIntoLeg, legEnds } from "./lib/lineEdit.ts";
+import { EditHistory, isRedoKey, isUndoKey, step, typesText } from "./lib/editHistory.ts";
 import { requestRoute, type RouteError, type RouteResponse, type RouteResult } from "./lib/api.ts";
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./lib/geo.ts";
 import { formatClimb, formatDistance, formatDuration, formatSeconds } from "./lib/format.ts";
@@ -42,6 +44,13 @@ function session(): Storage | null {
 }
 
 const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
+
+/** A point's name in the list: Start, Via 1, Via 2, ..., End. */
+function pointName(index: number, count: number): string {
+  if (index === 0) return "Start";
+  if (index === count - 1 && count > 1) return "End";
+  return `Via ${index}`;
+}
 const NARROW = "(max-width: 720px)";
 
 /** Whether the phone layout (the bottom sheet) is showing, kept up to date. */
@@ -73,6 +82,13 @@ export function App() {
   // Bumped to put the markers back where the points are, without changing
   // the points (which would plan the same route again).
   const [markerReset, setMarkerReset] = useState(0);
+  // Undo and redo (editHistory.ts), and whether each has anything to give
+  // back, which is what their buttons need to know.
+  const history = useRef(new EditHistory<LonLat[]>());
+  const [can, setCan] = useState({ undo: false, redo: false });
+  // What an edit on the map did, for a screen reader: the map itself says
+  // nothing. The count makes the same sentence twice a new announcement.
+  const [said, setSaid] = useState({ text: "", count: 0 });
   const narrow = useNarrow();
   const mapRef = useRef<MapLibreMap | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -125,6 +141,9 @@ export function App() {
       if (window.location.hash === writtenHash.current) return;
       const plan = decodePlan(window.location.hash);
       setConfirmedKm(null);
+      // Another plan: undo does not reach back into the one before it.
+      history.current.clear();
+      setCan({ undo: false, redo: false });
       setPoints(plan.points);
       setPreset(plan.preset);
       setDials(plan.dials);
@@ -171,6 +190,58 @@ export function App() {
   const pointsRef = useRef(points);
   pointsRef.current = points;
 
+  const announce = useCallback((text: string) => setSaid((s) => ({ text, count: s.count + 1 })), []);
+
+  const syncHistory = useCallback(
+    () => setCan({ undo: history.current.canUndo, redo: history.current.canRedo }),
+    [],
+  );
+
+  /** Every edit of the points goes through here, so undo can give the list before it back. */
+  const commit = useCallback((next: LonLat[]) => {
+    const before = pointsRef.current;
+    history.current.record(before);
+    syncHistory();
+    // Kept current at once, so a second edit before the next render builds on this one.
+    pointsRef.current = next;
+    setPoints(next);
+  }, [syncHistory]);
+
+  /** Undo or redo: the list the history gives back, which is not itself an edit. */
+  const travel = useCallback(
+    (direction: "undo" | "redo") => {
+      const current = pointsRef.current;
+      const next = step(history.current, direction, current);
+      if (next === undefined) return;
+      syncHistory();
+      pointsRef.current = next;
+      setPoints(next);
+      setNotice(null);
+      const count = `${next.length} ${next.length === 1 ? "point" : "points"}`;
+      announce(`${direction === "undo" ? "Undone" : "Redone"}. The route has ${count}.`);
+    },
+    [announce, syncHistory],
+  );
+  const undo = useCallback(() => travel("undo"), [travel]);
+  const redo = useCallback(() => travel("redo"), [travel]);
+
+  // Ctrl+Z (Cmd+Z) undoes; Ctrl+Shift+Z (Cmd+Shift+Z) and Ctrl+Y redo;
+  // anywhere but a text field, which has its own.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (typesText(event.target as HTMLElement | null)) return;
+      if (isUndoKey(event)) {
+        event.preventDefault();
+        undo();
+      } else if (isRedoKey(event)) {
+        event.preventDefault();
+        redo();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
+
   const place = useCallback((point: LonLat) => {
     if (!insideCoverage(point)) {
       setNotice("That point is outside the area this map covers (the DC region to Baltimore).");
@@ -181,8 +252,10 @@ export function App() {
       return;
     }
     setNotice(null);
-    setPoints((current) => addPoint(current, point));
-  }, []);
+    const next = addPoint(pointsRef.current, point);
+    commit(next);
+    announce(`${pointName(next.indexOf(point), next.length)} added.`);
+  }, [commit, announce]);
 
   const move = useCallback((index: number, point: LonLat) => {
     if (!insideCoverage(point)) {
@@ -191,16 +264,50 @@ export function App() {
       return;
     }
     setNotice(null);
-    setPoints((current) => current.map((p, i) => (i === index ? point : p)));
-  }, []);
+    commit(pointsRef.current.map((p, i) => (i === index ? point : p)));
+  }, [commit]);
+
+  // The route line dragged (or clicked) at `point` from leg `leg`: a via in
+  // that leg (lineEdit.ts). `routed` is the list the line was planned for;
+  // if the points have changed since, the leg means nothing any more.
+  const insertOnLine = useCallback(
+    (leg: number, point: LonLat, routed: LonLat[]) => {
+      if (!dropStillValid(routed, pointsRef.current)) return;
+      if (!insideCoverage(point)) {
+        setNotice("That point is outside the area this map covers; it was put back.");
+        return;
+      }
+      const next = insertIntoLeg(routed, leg, point);
+      if (next === null) {
+        setNotice(`A route can have at most ${MAX_POINTS} points.`);
+        return;
+      }
+      setNotice(null);
+      commit(next);
+      announce(`Via point ${leg + 1} added, between ${pointName(leg, next.length)} and ${pointName(leg + 2, next.length)}.`);
+    },
+    [commit, announce],
+  );
 
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
-    setPoints((current) => current.filter((_, i) => i !== index));
+    commit(pointsRef.current.filter((_, i) => i !== index));
   };
+  // From the map: the focus stays where it was (on a phone the sheet may be
+  // hidden), and the removal is said instead.
+  const removeFromMap = useCallback(
+    (index: number) => {
+      const current = pointsRef.current;
+      if (index < 0 || index >= current.length) return;
+      const name = pointName(index, current.length);
+      commit(current.filter((_, i) => i !== index));
+      announce(`${name} removed.`);
+    },
+    [commit, announce],
+  );
   const clearAll = () => {
     setConfirmedKm(null);
-    setPoints([]);
+    commit([]);
   };
   const addAtCentre = () => {
     const map = mapRef.current;
@@ -246,6 +353,15 @@ export function App() {
 
   const stale = status.kind === "loading" || status.kind === "waiting";
   const shown = status.kind === "error" || status.kind === "confirm" ? null : route;
+  // The line can be dragged when it is the route of the points as they are:
+  // not while a new one is being planned, when its legs are the old list's.
+  const lineEdit = useMemo<LineEdit | null>(() => {
+    const routeShown = shown !== null;
+    const vertexCount = shown?.geometry.coordinates.length ?? 0;
+    if (!shown || !canDragLine({ routeShown, stale, routedIsCurrent: routedPoints === points, vertexCount })) return null;
+    const path = shown.geometry.coordinates;
+    return { path, ends: legEnds(path, routedPoints, shown.leg_ends), points: routedPoints };
+  }, [shown, stale, routedPoints, points]);
   // On a phone the sheet is half the screen; a route that is showing (a
   // shared link, usually), a question or an error comes first in it, before
   // the ride types (sheet.ts).
@@ -297,14 +413,15 @@ export function App() {
       {points.length === 0 ? (
         <p className="hint">
           Click the map to set a start, then an end. Later clicks add a via point on the
-          nearest leg. Drag any marker to move it. From the keyboard, move the map with the
-          arrow keys and use "Add point at map centre".
+          nearest leg. Drag any marker to move it, or drag the route line to pull it through
+          somewhere else (on a phone, press and hold the line first). Click a via point for
+          Remove. From the keyboard, move the map with the arrow keys and use "Add point at
+          map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
         </p>
       ) : (
         <ol className="points">
           {points.map((point, index) => {
-            const name =
-              index === 0 ? "Start" : index === points.length - 1 && points.length > 1 ? "End" : `Via ${index}`;
+            const name = pointName(index, points.length);
             return (
               <li key={index}>
                 <span className="point-name">{name}</span>
@@ -341,12 +458,22 @@ export function App() {
         >
           Add point at map centre
         </button>
-        <button type="button" onClick={() => setPoints((p) => [...p].reverse())} disabled={points.length < 2}>
+        <button type="button" onClick={() => commit([...pointsRef.current].reverse())} disabled={points.length < 2}>
           Reverse
         </button>
         <button type="button" onClick={clearAll} disabled={points.length === 0}>
           Clear
         </button>
+        {!narrow && (
+          <button type="button" onClick={undo} disabled={!can.undo} aria-keyshortcuts="Control+Z Meta+Z">
+            Undo
+          </button>
+        )}
+        {!narrow && can.redo && (
+          <button type="button" onClick={redo} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y">
+            Redo
+          </button>
+        )}
       </div>
       {notice && (
         <p className="notice" role="status">
@@ -405,7 +532,7 @@ export function App() {
           )}
         </div>
       )}
-      {shown && <RouteSummary route={shown} points={routedPoints} />}
+      {shown && <RouteSummary route={shown} points={routedPoints} narrow={narrow} />}
     </section>
   );
 
@@ -431,6 +558,9 @@ export function App() {
         onStressAvailability={setStress}
         onMapClick={place}
         onMovePoint={move}
+        lineEdit={lineEdit}
+        onLineDrop={insertOnLine}
+        onRemovePoint={removeFromMap}
         markerReset={markerReset}
         onReady={(map) => {
           mapRef.current = map;
@@ -438,6 +568,27 @@ export function App() {
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
+      {narrow && (can.undo || can.redo) && (
+        // On a phone the sheet may be hidden while the rider edits the map,
+        // so Undo and Redo sit on the map there (and only there: one of each
+        // per layout), each shown while it has something to give back.
+        <div className="map-history">
+          {can.undo && (
+            <button type="button" onClick={undo}>
+              Undo
+            </button>
+          )}
+          {can.redo && (
+            <button type="button" onClick={redo}>
+              Redo
+            </button>
+          )}
+        </div>
+      )}
+      <p className="visually-hidden" role="status" aria-live="polite">
+        {said.text}
+        {said.count % 2 === 1 ? " " : ""}
+      </p>
       <aside ref={panelRef} className={`panel ${panelOpen ? "open" : "closed"}`} aria-label="Route planner">
         <header className="panel-header">
           <div>
@@ -496,7 +647,7 @@ export function App() {
   );
 }
 
-function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[] }) {
+function RouteSummary({ route, points, narrow }: { route: RouteResponse; points: LonLat[]; narrow: boolean }) {
   const segments = stressSegments(route.stress_m);
   const detourText = detourNotice(route, points);
   const pace = paceText(route);
@@ -527,6 +678,13 @@ function RouteSummary({ route, points }: { route: RouteResponse; points: LonLat[
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
       <FacilityBreakdown route={route} />
+      {/* Riders often arrive by a shared link, straight into a route, and a
+          phone has no hover to show the handle: say that the line moves. */}
+      <p className="hint reshape">
+        {narrow
+          ? "To reshape the route, press and hold the line, then drag it."
+          : "To reshape the route, drag the line."}
+      </p>
       {segments.length > 0 && (
         <figure className="stress">
           <figcaption>Traffic stress along the route</figcaption>

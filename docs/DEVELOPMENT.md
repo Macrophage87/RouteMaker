@@ -612,6 +612,12 @@ Measured on the DC box graph (PUBLIC-DIALS, 2026-09-28, head fc9bab7):
   every slider position" asks, and no longer reads as "the fastest legal
   route" there.
 
+**Legs.** Besides the shared contract's fields, a 200 carries `leg_ends`: for
+each leg (one fewer than the points) the index in `geometry.coordinates` of its
+last vertex, so leg k runs from `leg_ends[k - 1]` (0 for the first) to
+`leg_ends[k]`. The planner uses it to put a via dragged off the line into the
+leg that was grabbed. It is additive; a client that predates it ignores it.
+
 ## The worker
 
 Procrastinate runs through its Django integration, so its job tables are

@@ -356,6 +356,9 @@ class RouteOut(Schema):
     hills_seek: HillsSeekOut | None
     hills_avoid: HillsAvoidOut | None
     attribution: list[str]
+    # Index in geometry.coordinates of each leg's last vertex, one per leg
+    # (points - 1); a leg starts where the one before it ends.
+    leg_ends: list[int]
 
 
 # What Pydantic puts before the text of a ValueError raised in a validator.

@@ -61,6 +61,12 @@ export interface RouteResponse {
     limited: "two_points" | "long_ride" | null;
   } | null;
   attribution: string[];
+  /**
+   * Index in geometry.coordinates of each leg's last vertex (one per leg).
+   * Additive to the contract, so an older API may leave it out; lineEdit.ts
+   * checks it against the line before trusting it.
+   */
+  leg_ends?: number[];
 }
 
 export type ErrorKind =
