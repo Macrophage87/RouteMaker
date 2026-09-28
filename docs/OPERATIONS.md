@@ -1050,9 +1050,25 @@ docker compose exec -T api python manage.py load_access_overrides - \
 ```
 
 Its stress rows name ways the 2026-09-26 access file opens (the 11th Street
-landing), so that file is loaded first if it is not already. The rebuild of
-step 4 builds four graphs, the weekend one among them, and needs the fourth
-router this deploy adds ("The weekend graph (a fourth router)" below).
+landing), so that file is loaded first if it is not already.
+`fixtures/overrides/2026-09-28-owner-beach-drive-nw.json` (car-free Beach
+Drive NW) is prepared, not loaded: it is loaded the same way only with the
+owner's go-ahead.
+
+The rebuild of step 4 builds four graphs, the weekend one among them, and needs
+the fourth router this deploy adds ("The weekend graph (a fourth router)"
+below). Before it, and before `up` can create them as root, make the router's
+directories and start it once the rebuild has promoted a build:
+
+```sh
+sudo sh scripts/prepare_data_root.sh --env-file ./.env   # creates tiles/weekend and tiles/weekend/current
+docker compose up -d valhalla-weekend    # after the rebuild has promoted a build
+```
+
+The planner's front end changes too (the sliders, the ride-type dialog, the
+facility breakdown): publish it as docs/DEPLOYMENT.md, "The public front end",
+describes, after the api image, so the page never asks an api that does not yet
+take the new fields.
 
 **About `--actor`.** The rows are attributed to the account named by the
 Discord user id on the command line. The command checks that the account exists
@@ -1117,7 +1133,7 @@ promotion (below).
 once at start and serves that graph for the life of the process, so replacing
 the `current` symlink promotes a build the running containers cannot see. The
 swap is complete in the database and on disk, `valhalla_upstream` names the new
-build id, and the three routers keep answering from last week's tiles until they
+build id, and the four routers keep answering from last week's tiles until they
 are restarted:
 
 ```sh

@@ -173,7 +173,7 @@ python3 scripts/acceptance.py --only A1 A2       # preflight; build; up; wait fo
 ```
 
 A2 builds the two images (minutes) and starts nine services. It waits for `postgis` healthy,
-`migrate` exited 0, `api` healthy, `worker` and `rebuild` running. **The three routers will be
+`migrate` exited 0, `api` healthy, `worker` and `rebuild` running. **The four routers will be
 restarting** until the first rebuild gives them tiles; A2 reports their state without judging it.
 
 Then the one deploy step the guides put after every build:
@@ -232,7 +232,7 @@ On a fresh host this is the runbook's two-phase first rebuild, and the script fo
 - **Second run** (hours): elevation tiles from 3DEP, the three variant tile builds, validation,
   the swap. The script polls the run row every minute up to eight hours; `docker compose logs -f
   rebuild` in another terminal shows the stages. When it succeeds the script checks the promotion
-  links, restarts the three routers, sends a canary route to each, and runs `check_operations`.
+  links, restarts the four routers, sends a canary route to each, and runs `check_operations`.
 
 If the run fails, `docker compose exec -T worker ./manage.py check_operations` and the operations
 page name the stage and the last twenty lines of the failing command; `docs/OPERATIONS.md`

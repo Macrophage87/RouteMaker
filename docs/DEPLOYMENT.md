@@ -195,7 +195,7 @@ answers PQPING_OK for a server that is accepting connections, and it reports
 the same for a connection the server would reject on the password. The gate
 therefore goes green, `migrate` fails authentication, and `api`, `worker` and
 `rebuild` — all held on `service_completed_successfully` — never start at all.
-The stack comes up as Caddy and three routers, exactly the shape a wrong
+The stack comes up as Caddy and the routers, exactly the shape a wrong
 `PGHOST` used to produce.
 
 **That shape has two causes and this is only one of them.** The other needs
@@ -1317,7 +1317,7 @@ rendered: the YAML was right and the deployment was not.
    wins over `${PGHOST:-postgis}`, so rendered from the shipped example all four
    Django services were pointed at the loopback address of their own container.
    `migrate` could not connect, and `api`, `worker` and `rebuild` all wait on
-   migrate having completed, so the stack came up as Caddy and three routers
+   migrate having completed, so the stack came up as Caddy and the routers
    serving nothing. The line is commented out; the compose default is the
    service name. `tests/test_compose_render.py` renders `docker compose config`
    against a copy of `.env.example` and asserts the rendered value, which is the

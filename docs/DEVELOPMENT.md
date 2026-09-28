@@ -332,7 +332,7 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
     -d '{"points": [[-77.0434, 38.9097], [-77.0091, 38.8899]], "preset": "default"}'
 ```
 
-It needs the three routers (`VALHALLA_UPSTREAMS`) and a populated live segment
+It needs the four routers (`VALHALLA_UPSTREAMS`) and a populated live segment
 schema; without the routers the answer is a 502, which is the API working.
 `tests/test_route_api.py` replaces the router at `core.routing._transport`,
 the one function that touches the network, so the suite needs neither.
@@ -372,7 +372,8 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   legal route, 100 keeps to low-stress ways unless there is no other option.
   The graph carries the stress tiers (LTS 3-4 ways as `bicycle=use_sidepath`,
   `lua/routemaker_remap.lua`), and Valhalla weighs that `3 * (1 - use_roads)`,
-  so one graph serves every position.
+  so one graph serves every position. LTS 4 and up cost more again ("Graded
+  stress", below).
 - `hills`, integer -100-100, detent at 0: below it `use_hills = 1 + hills/100`
   (0 is `use_hills` 1.0, no grade penalty, the fastest time); above it a climb
   search among the router's `alternates` (3), choosing the one that climbs most
@@ -389,7 +390,7 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   whether a road closed to cars at set times counts as a path in `facility_m`
   and as tier 1 in `stress_m`.
 - `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
-  stress slider's start (75 or 100).
+  stress slider's start (90, Default's, or 100).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
   routes on the e-bike graph (e-bike legality) at 18 km/h rather than 14; the
   hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
@@ -475,7 +476,43 @@ The answer adds `facility_m` (`path`, `protected`, `lane`, `none`,
 `segment.car_free_when`), `dials` (the positions actually planned with) and
 `hills_seek` (null unless the hills slider was past its detent). Until the
 live segment table has been rebuilt with the facility columns, `facility_m`
-is all `unknown` and nothing else changes.
+is all `unknown` and nothing else changes. On the no-trail graph (Mass Ride)
+protected and painted lanes count as `none`: the field rides the roadway (the
+owner: "Even protected bike lanes aren't used."); a road closed to cars is
+still `path`.
+
+**Graded stress** (the owner, 2026-09-28: "Yes, grade them (Recommended)" and
+"I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
+A way's *stress level* at a slider position is the cost its tier adds per
+metre over the same edge with no tier, as a multiple of the edge's time cost:
+Valhalla 3.5.1's bicycle edge cost is `time * factor`, with `factor = 1 +
+grade + accommodation * roadway_stress` (sif/bicyclecost.cc), so the stress
+level is `factor(tier) - factor(no tier)` for the same edge, grade and speed.
+LTS 3 is `bicycle=use_sidepath`, which adds `3 * (1 - use_roads)` to the
+accommodation factor. LTS 4 and up add the graph's top practical speed (140,
+`kMaxOSMSpeed`) and lane count (15 each way, `kMaxLaneCount`), which raise the
+roadway stress through its speed penalty and lane term; the bicycle's time
+comes from its own speed, so no duration changes, and the speed limit and
+access stay OSM's. Not on the no-trail graph: Mass Ride is locked at 0.
+
+The stress levels, LTS 3 / LTS 4 (and the ratio), modelled from the costing
+code for representative roadways at each slider position:
+
+| Roadway | 0 | 25 | 50 | 75 | 90 | 100 |
+|---|---|---|---|---|---|---|
+| secondary, 1 lane each way, 30 mph | 0 / 1.14 | 0.92 / 4.64 (5.0x) | 1.98 / 10.21 (5.2x) | 3.26 / 20.22 (6.2x) | 4.13 / 28.38 (6.9x) | 4.75 / 34.82 (7.3x) |
+| primary, 2 lanes each way, 35 mph | 0 / 1.05 | 1.14 / 4.62 (4.1x) | 2.63 / 10.42 (4.0x) | 4.70 / 21.06 (4.5x) | 6.23 / 29.80 (4.8x) | 7.38 / 36.74 (5.0x) |
+| primary, 2 lanes each way, 40 mph, painted lane | 0 / 0.82 | 1.26 / 3.97 (3.1x) | 3.00 / 9.10 (3.0x) | 5.51 / 18.42 (3.3x) | 7.39 / 26.08 (3.5x) | 8.82 / 32.14 (3.6x) |
+| trunk, 3 lanes each way, 45 mph | 0 / 0.91 | 1.55 / 4.63 (3.0x) | 3.85 / 10.88 (2.8x) | 7.58 / 22.74 (3.0x) | 10.54 / 32.62 (3.1x) | 12.84 / 40.52 (3.2x) |
+| primary, 2 lanes each way, 55 mph | 0 / 0.82 | 1.46 / 4.19 (2.9x) | 3.59 / 9.78 (2.7x) | 6.76 / 20.15 (3.0x) | 9.20 / 28.70 (3.1x) | 11.07 / 35.51 (3.2x) |
+
+Over every combination of class, 1-4 lanes, no, shared or painted lane and a
+prior truck route, the smallest ratio at slider positions 5 to 100 is at
+least 2.0 on roads posted up to 50 mph, 1.99 at 55 mph and 1.75 at 65 mph;
+closing that gap needs a costing fork (PLAN's layer 3), since the graph's
+speed and lane count are at their maximum. At 0 LTS 3 adds nothing and LTS 4
+about 0.8-1.1, so the most direct route leans off LTS 4 too. Tier 5 is LTS 4
+plus the alley charge on entry.
 
 ## The worker
 
