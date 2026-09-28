@@ -1,7 +1,15 @@
 // What MapView does to the map, run against a stand-in map that records calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addStressOverlay, hoverChanged, mapClickAction, markerDeps, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
+import {
+  addStressOverlay,
+  hoverChanged,
+  mapClickAction,
+  markerDeps,
+  pointerTarget,
+  setStressVisibility,
+  type OverlayMap,
+} from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import { stressOverlayLayers } from "../stressStyle.js";
 
@@ -107,22 +115,74 @@ test("the markers are placed again when markerReset changes, even with the same 
   assert.equal(changed(markerDeps(points, 0), markerDeps([...points], 0)), true, "new points leave the markers");
 });
 
+const EDITS = new Set(["line", "point"]);
+type ClickState = { popupOpen: boolean; afterDrag: boolean; onStation: boolean; onLine: boolean };
+const everyState = (f: (s: ClickState) => void) => {
+  for (const popupOpen of [false, true])
+    for (const afterDrag of [false, true])
+      for (const onStation of [false, true])
+        for (const onLine of [false, true]) f({ popupOpen, afterDrag, onStation, onLine });
+};
+
 test("a click that dismisses a via's Remove only dismisses it, on the line or off it", () => {
   for (const onLine of [false, true]) {
     for (const afterDrag of [false, true]) {
-      assert.equal(mapClickAction({ popupOpen: true, afterDrag, onLine }), "close-popup");
+      assert.equal(mapClickAction({ popupOpen: true, afterDrag, onStation: false, onLine }), "close-popup");
     }
   }
 });
 
-test("the click at the end of a drag of the line adds nothing", () => {
-  assert.equal(mapClickAction({ popupOpen: false, afterDrag: true, onLine: true }), "ignore");
-  assert.equal(mapClickAction({ popupOpen: false, afterDrag: true, onLine: false }), "ignore");
+test("no click edits the route while a popup (a via's Remove or a station's card) is open", () => {
+  everyState((s) => {
+    if (s.popupOpen) assert.ok(!EDITS.has(mapClickAction(s)), JSON.stringify(s));
+  });
+});
+
+test("a click on a station with a popup open opens that station's card, on the line or off it", () => {
+  for (const onLine of [false, true]) {
+    assert.equal(mapClickAction({ popupOpen: true, afterDrag: false, onStation: true, onLine }), "station");
+  }
+});
+
+test("the click at the end of a drag of the line adds nothing, and opens no card", () => {
+  for (const onStation of [false, true]) {
+    assert.equal(mapClickAction({ popupOpen: false, afterDrag: true, onStation, onLine: true }), "ignore");
+    assert.equal(mapClickAction({ popupOpen: false, afterDrag: true, onStation, onLine: false }), "ignore");
+  }
+});
+
+test("a click on a station opens its card and adds nothing, even where the line runs over it", () => {
+  for (const onLine of [false, true]) {
+    assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onStation: true, onLine }), "station");
+  }
 });
 
 test("otherwise a click on the line is a via in that leg, and elsewhere a new point", () => {
-  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onLine: true }), "line");
-  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onLine: false }), "point");
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onStation: false, onLine: true }), "line");
+  assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onStation: false, onLine: false }), "point");
+});
+
+test("the pointer is on a station wherever a station is under it, line or popup or not", () => {
+  everyState(({ popupOpen, onLine }) => {
+    assert.equal(pointerTarget({ popupOpen, onStation: true, onLine }), "station");
+  });
+});
+
+test("the line is under the pointer only near it, off every station, with no popup open", () => {
+  assert.equal(pointerTarget({ popupOpen: false, onStation: false, onLine: true }), "line");
+  assert.equal(pointerTarget({ popupOpen: true, onStation: false, onLine: true }), "map");
+  assert.equal(pointerTarget({ popupOpen: false, onStation: false, onLine: false }), "map");
+  assert.equal(pointerTarget({ popupOpen: true, onStation: false, onLine: false }), "map");
+});
+
+test("hover and press agree with the click: the line's handle and a station's card are shown where a click acts on them", () => {
+  // The hover and the press share pointerTarget; the click agrees with it
+  // whenever it is not the click at the end of a drag.
+  everyState((s) => {
+    if (s.afterDrag) return;
+    assert.equal(pointerTarget(s) === "line", mapClickAction(s) === "line", JSON.stringify(s));
+    assert.equal(pointerTarget(s) === "station", mapClickAction(s) === "station", JSON.stringify(s));
+  });
 });
 
 test("the hover handle is drawn again only when it appears, goes or moves", () => {

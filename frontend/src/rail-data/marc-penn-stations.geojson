@@ -1,0 +1,226 @@
+{
+ "type": "FeatureCollection",
+ "source": "OpenStreetMap (ODbL), MARC Penn Line route relation 4799476; scripts/build_marc_penn_stations.py",
+ "colour": "#BDBADC",
+ "features": [
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.005863,
+     38.89837
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "Washington Union Station",
+    "order": 0,
+    "osm": "node/6097540128"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.872288,
+     38.948125
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "New Carrollton",
+    "order": 1,
+    "osm": "node/659535446"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.843227,
+     38.973189
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "Seabrook",
+    "order": 2,
+    "osm": "node/1142897972"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.764949,
+     39.017702
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "Bowie State",
+    "order": 3,
+    "osm": "node/659520037"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.705905,
+     39.087778
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "Odenton",
+    "order": 4,
+    "osm": "node/659518114"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.694549,
+     39.192173
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "BWI Thurgood Marshall Airport",
+    "order": 5,
+    "osm": "node/6097540129"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.691306,
+     39.237058
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "Halethorpe",
+    "order": 6,
+    "osm": "node/1148084504"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.653188,
+     39.293321
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "West Baltimore",
+    "order": 7,
+    "osm": "node/1148081900"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.6154,
+     39.307698
+    ]
+   },
+   "properties": {
+    "kind": "station",
+    "name": "Baltimore Penn Station",
+    "order": 8,
+    "osm": "node/6097540130"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.00605,
+     38.897962
+    ]
+   },
+   "properties": {
+    "kind": "elevator",
+    "station": 0,
+    "osm": "node/4719437766"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.005387,
+     38.898038
+    ]
+   },
+   "properties": {
+    "kind": "elevator",
+    "station": 0,
+    "osm": "node/4719464290"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -77.005245,
+     38.898006
+    ]
+   },
+   "properties": {
+    "kind": "elevator",
+    "station": 0,
+    "osm": "node/4719464291"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.694728,
+     39.192233
+    ]
+   },
+   "properties": {
+    "kind": "elevator",
+    "station": 5,
+    "osm": "node/8587341048"
+   }
+  },
+  {
+   "type": "Feature",
+   "geometry": {
+    "type": "Point",
+    "coordinates": [
+     -76.694474,
+     39.192296
+    ]
+   },
+   "properties": {
+    "kind": "elevator",
+    "station": 5,
+    "osm": "node/8587341052"
+   }
+  }
+ ]
+}

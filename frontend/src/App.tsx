@@ -15,6 +15,9 @@ import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { placeAtStation, type RailVisibility, type StationRole } from "./lib/railStations.ts";
+import { RailStationsSection } from "./RailStations.tsx";
+import { RAIL_STATIONS } from "./lib/railData.ts";
 
 interface Plan {
   points: LonLat[];
@@ -69,6 +72,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
+  const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   const [panelOpen, setPanelOpen] = useState(true);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -281,6 +285,26 @@ export function App() {
     },
     [commit, announce],
   );
+
+  // A station's Start here / End here / Add as via (railStations.ts): an
+  // edit of the points like any other, so it can be undone and redone.
+  const placeStation = useCallback((role: StationRole, point: LonLat) => {
+    if (!insideCoverage(point)) {
+      setNotice("That station is outside the area this map covers.");
+      return;
+    }
+    const next = placeAtStation(pointsRef.current, point, role);
+    if (next.length > MAX_POINTS) {
+      setNotice(`A route can have at most ${MAX_POINTS} points.`);
+      return;
+    }
+    // A card opened for fewer points offers a role the plan no longer has.
+    const index = next.indexOf(point);
+    if (index < 0) return;
+    setNotice(null);
+    commit(next);
+    announce(`${pointName(index, next.length)} set at the station.`);
+  }, [commit, announce]);
 
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
@@ -568,6 +592,8 @@ export function App() {
           mapRef.current = map;
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
+        rail={rail}
+        onStationPoint={placeStation}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
       {narrow && (can.undo || can.redo) && (
@@ -632,6 +658,8 @@ export function App() {
               </p>
             )}
           </section>
+
+          {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
           <footer className="panel-footer">
             <p>

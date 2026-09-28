@@ -47,19 +47,50 @@ export function markerDeps<P>(points: readonly P[], markerReset: number): readon
   return [points, markerReset];
 }
 
-export type MapClickAction = "close-popup" | "ignore" | "line" | "point";
+/** What is under the pointer, as MapView finds it. */
+export interface PointerState {
+  /** A via's Remove or a rail station's card is open. */
+  popupOpen: boolean;
+  /** A station's symbol (or one of its elevators) is under the pointer, within the tap slop. */
+  onStation: boolean;
+  /** The route line is within the hit tolerance, clear of the markers. */
+  onLine: boolean;
+}
+
+export type MapClickAction = "close-popup" | "ignore" | "station" | "line" | "point";
 
 /**
- * What a click on the map does. A via's Remove popup that is open is closed
- * by the click and nothing else happens: clicking away is how a rider
- * dismisses it, and it must not also add a point. The click a browser still
- * sends at the end of a drag of the line is ignored. Otherwise a click on the
+ * What a click (or tap) on the map does. Nothing a click does while a popup
+ * is open edits the route: a via's Remove or a station's card that is open is
+ * closed, and on a station that station's card opens in its place; clicking
+ * away is how a rider dismisses a popup, and it must not also add a point.
+ * The click a browser still sends at the end of a drag of the line is
+ * ignored. Otherwise a station under the pointer opens its card, even where
+ * the route runs over it: the symbol is a small target and the line is
+ * draggable on either side of it, where a station under the line's 8 px
+ * (18 px by touch) reach could never be tapped at all. Then a click on the
  * line puts a via in that leg, and anywhere else it is a new point.
  */
-export function mapClickAction(state: { popupOpen: boolean; afterDrag: boolean; onLine: boolean }): MapClickAction {
-  if (state.popupOpen) return "close-popup";
+export function mapClickAction(state: PointerState & { afterDrag: boolean }): MapClickAction {
+  if (state.popupOpen) return state.onStation ? "station" : "close-popup";
   if (state.afterDrag) return "ignore";
+  if (state.onStation) return "station";
   return state.onLine ? "line" : "point";
+}
+
+export type PointerTarget = "station" | "line" | "map";
+
+/**
+ * What the pointer is on, for a hover and for a press alike: the line's
+ * handle shows exactly where a press would pick the line up. A station under
+ * the pointer is the station's (its hover card, and a press that is left to
+ * become its click), whether or not the line runs there; the line is the
+ * line's only while no popup is open, since a click then only closes it.
+ * Anywhere else a press pans the map.
+ */
+export function pointerTarget(state: PointerState): PointerTarget {
+  if (state.onStation) return "station";
+  return state.onLine && !state.popupOpen ? "line" : "map";
 }
 
 /**

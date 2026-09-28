@@ -12,6 +12,8 @@ import { BASEMAP } from "../stressStyle.js";
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
 export const SPRITE_FLAVOR = "light";
+/** The zoom the map opens at, over central DC (MapView.tsx); the rail stations show from it. */
+export const OPENING_ZOOM = 11.2;
 
 /**
  * Credits every map view carries (the public-tier rules, owner decision
@@ -26,8 +28,17 @@ export const VOLUME_CREDITS: readonly string[] = [
   "Traffic volume: Virginia Department of Transportation (VDOT)",
 ];
 
+/**
+ * The rail stations' layers (src/rail-data/README.md). The MARC Penn Line's
+ * stations are OpenStreetMap's and need nothing beyond the ODbL credit.
+ */
+export const RAIL_CREDITS: readonly string[] = [
+  'Metro stations and entrances: District of Columbia (Open Data DC), ' +
+    '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
+];
+
 /** In the order the map shows them: OpenStreetMap first. */
-export const MAP_CREDITS: readonly string[] = [BASEMAP.attribution, ...VOLUME_CREDITS];
+export const MAP_CREDITS: readonly string[] = [BASEMAP.attribution, ...VOLUME_CREDITS, ...RAIL_CREDITS];
 
 /**
  * The attribution control's one entry. MapLibre sorts separate entries by

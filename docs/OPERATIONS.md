@@ -594,6 +594,13 @@ what is owed. The front end has to set both credits itself, and does:
 `BASEMAP.attribution` in `frontend/src/stressStyle.js` carries both, on the base
 map's source and in the map's attribution control.
 
+The rail stations drawn over the base map carry one more credit on every map
+view, "Metro stations and entrances: District of Columbia (Open Data DC),
+CC BY 4.0" (`RAIL_CREDITS` in `frontend/src/lib/mapStyle.ts`). Their sources,
+licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
+the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
+none, are OpenStreetMap's and need nothing beyond the ODbL credit.
+
 ### Fetching it
 
 `scripts/fetch_basemap.sh` makes all of it and pins every input at its top: the

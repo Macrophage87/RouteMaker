@@ -1,0 +1,35 @@
+{
+ "note": "Lines added on top of the LINE field of Open Data DC's Metro Stations Regional layer, which predates these two service changes. Applied by src/lib/railStations.ts; each station is named as the layer names it, with its GIS_ID. See README.md.",
+ "changes": [
+  {
+   "add": ["silver"],
+   "since": "2025-06-22",
+   "what": "Half of Silver Line trains run between Ashburn and New Carrollton",
+   "source": "https://www.wmata.com/about/news/Metrorail-service-changes-take-effect-Sunday-June-22.cfm",
+   "stations": [
+    ["Minnesota Ave", "MetroStnFullPt_45"],
+    ["Deanwood", "MetroStnFullPt_69"],
+    ["Cheverly", "MetroStnFullPt_72"],
+    ["Landover", "MetroStnFullPt_71"],
+    ["New Carrollton", "MetroStnFullPt_70"]
+   ]
+  },
+  {
+   "add": ["yellow"],
+   "since": "2025-12-31",
+   "what": "Half of Yellow Line trains run between Huntington and Greenbelt",
+   "source": "https://www.wmata.com/news/yellow-line-extends-to-greenbelt-dec--31.html",
+   "stations": [
+    ["Shaw-Howard U", "MetroStnFullPt_82"],
+    ["U Street/African-Amer Civil War Memorial/Cardozo", "MetroStnFullPt_30"],
+    ["Columbia Heights", "MetroStnFullPt_48"],
+    ["Georgia Ave-Petworth", "MetroStnFullPt_57"],
+    ["Fort Totten", "MetroStnFullPt_64"],
+    ["West Hyattsville", "MetroStnFullPt_66"],
+    ["Hyattsville Crossing", "MetroStnFullPt_65"],
+    ["College Park-U of Md", "MetroStnFullPt_54"],
+    ["Greenbelt", "MetroStnFullPt_84"]
+   ]
+  }
+ ]
+}
