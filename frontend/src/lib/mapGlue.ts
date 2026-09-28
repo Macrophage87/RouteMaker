@@ -61,3 +61,13 @@ export function mapClickAction(state: { popupOpen: boolean; afterDrag: boolean; 
   if (state.afterDrag) return "ignore";
   return state.onLine ? "line" : "point";
 }
+
+/**
+ * Whether the hover handle has to be drawn again: it appeared, went, or
+ * moved. A pointer wandering away from the line gives "none" frame after
+ * frame, and drawing "none" again is a map render for nothing.
+ */
+export function hoverChanged(before: readonly [number, number] | null, after: readonly [number, number] | null): boolean {
+  if (before === null || after === null) return before !== after;
+  return before[0] !== after[0] || before[1] !== after[1];
+}

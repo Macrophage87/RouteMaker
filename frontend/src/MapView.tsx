@@ -15,7 +15,7 @@ import {
   buildStyle,
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
-import { addStressOverlay, mapClickAction, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
+import { addStressOverlay, hoverChanged, mapClickAction, markerDeps, setStressVisibility } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
 
@@ -139,6 +139,9 @@ export function MapView(props: Props) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
+  // The hover handle as last drawn (null: none), so an unchanged answer is
+  // not drawn again; anything else that redraws the edit layer resets it.
+  const hoverShown = useRef<LonLat | null>(null);
   // Where the focus was before a via's Remove took it, to go back to on Escape.
   const popupReturn = useRef<Element | null>(null);
   /** Close a via's Remove popup, if one is open; whether one was. */
@@ -205,6 +208,7 @@ export function MapView(props: Props) {
     // the preview are map layers; the gesture follows the pointer on the
     // window, so a drag that leaves the map still ends.
     const showEdit = (handle: LonLat | null, preview: LonLat[][] = []) => {
+      hoverShown.current = preview.length === 0 ? handle : null;
       (map.getSource(EDIT_SOURCE) as GeoJSONSource | undefined)?.setData(editData(handle, preview));
     };
     /** The leg and the spot on the line under a pointer at `point`, if it is on the line. */
@@ -288,7 +292,10 @@ export function MapView(props: Props) {
         hoverFrame = 0;
         if (gesture.active) return;
         const hit = hoverPoint ? lineAt(hoverPoint, MOUSE_HIT_PX) : null;
-        showEdit(hit ? hit.at : null);
+        const at = hit ? hit.at : null;
+        // Nowhere near the line, frame after frame, is no reason to render.
+        if (!hoverChanged(hoverShown.current, at)) return;
+        showEdit(at);
         canvas.style.cursor = hit ? "pointer" : "";
       });
     });
@@ -481,7 +488,11 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map) return;
     markers.current.forEach((m) => m.remove());
-    closePopup(false);
+    // An undo (Ctrl+Z) while a via's Remove has the focus rebuilds the
+    // markers under it: the focus goes back as Escape would send it, not to
+    // the page's body.
+    const focusInPopup = popup.current?.getElement().contains(document.activeElement) ?? false;
+    closePopup(focusInPopup);
     markers.current = props.points.map((point, index) => {
       const { text, name, kind } = pointLabel(index, props.points.length);
       const via = kind === "via";
@@ -563,6 +574,7 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     if (!map || !loaded.current || props.lineEdit) return;
     (map.getSource(EDIT_SOURCE) as GeoJSONSource | undefined)?.setData(editData(null, []));
+    hoverShown.current = null;
   }, [props.lineEdit]);
 
   // The overlay toggle.

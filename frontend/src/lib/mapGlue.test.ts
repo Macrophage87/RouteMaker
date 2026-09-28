@@ -1,7 +1,7 @@
 // What MapView does to the map, run against a stand-in map that records calls.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addStressOverlay, mapClickAction, markerDeps, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
+import { addStressOverlay, hoverChanged, mapClickAction, markerDeps, setStressVisibility, type OverlayMap } from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import { stressOverlayLayers } from "../stressStyle.js";
 
@@ -123,4 +123,13 @@ test("the click at the end of a drag of the line adds nothing", () => {
 test("otherwise a click on the line is a via in that leg, and elsewhere a new point", () => {
   assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onLine: true }), "line");
   assert.equal(mapClickAction({ popupOpen: false, afterDrag: false, onLine: false }), "point");
+});
+
+test("the hover handle is drawn again only when it appears, goes or moves", () => {
+  assert.equal(hoverChanged(null, null), false, "still nowhere near the line");
+  assert.equal(hoverChanged([-77, 38.9], [-77, 38.9]), false, "the same spot");
+  assert.equal(hoverChanged(null, [-77, 38.9]), true);
+  assert.equal(hoverChanged([-77, 38.9], null), true);
+  assert.equal(hoverChanged([-77, 38.9], [-77.001, 38.9]), true);
+  assert.equal(hoverChanged([-77, 38.9], [-77, 38.901]), true);
 });
