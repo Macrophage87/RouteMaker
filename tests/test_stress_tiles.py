@@ -20,7 +20,13 @@ from test_ratelimit import in_one_window
 
 from core import ratelimit, stress_tiles
 from pipeline.schema import create_segment_schema, drop_segment_schema
-from routemaker.classes import SIDEWALK_CLASS_HIGHWAY, TRAIL_CLASS_HIGHWAY, TRAIL_NETWORK_HIGHWAY
+from routemaker.classes import (
+    SIDEWALK_CLASS_HIGHWAY,
+    TRAIL_CLASS_HIGHWAY,
+    TRAIL_NETWORK_HIGHWAY,
+    TrailKind,
+    trail_kind,
+)
 from routemaker.stress import classify, trail_rule
 
 db = pytest.mark.django_db(transaction=True)
@@ -50,10 +56,13 @@ def url(z: int, x: int, y: int) -> str:
     return f"/tiles/stress/{z}/{x}/{y}.pbf"
 
 
+OPEN, SIDEPATH, CLOSED = TrailKind.OPEN, TrailKind.SIDEPATH, TrailKind.CLOSED
+
 # (label, tier, rule, trail, unpaved): one of each class the levels treat
-# differently. Each is a 170 m east-west line at its own latitude, 33 m apart.
-# The trail network's ways are unpaved here and the sidewalk class's paved, so
-# the two kinds carry different properties: a level that kept one kind in
+# differently. Each is a 170 m east-west line at its own latitude, 28 m apart.
+# The plain trail texts are a table from before the rebuild recorded what a
+# bicycle may do on a trail (`trail_kind`); the kinds follow. Unpaved differs
+# between kinds the levels treat differently, so a level that kept one in
 # place of the other would not draw the same classes.
 CLASSES = [
     ("quiet street", 1, "mixed traffic, 20 mph or below, single lane", False, False),
@@ -63,7 +72,10 @@ CLASSES = [
     ("collector", 3, "mixed traffic, 30 mph, single lane", False, False),
     ("arterial", 4, "mixed traffic, 35 mph or above", False, False),
     *[(h, 1, trail_rule(h), True, h in TRAIL_NETWORK_HIGHWAY) for h in sorted(TRAIL_CLASS_HIGHWAY)],
-    ("trail on a footway", 1, trail_rule("footway", bicycle_trail=True), True, True),
+    ("open path", 1, trail_rule("path", OPEN), True, True),
+    ("footway open to bicycles", 1, trail_rule("footway", OPEN), True, True),
+    ("sidepath", 1, trail_rule("footway", SIDEPATH), True, False),
+    ("hiking trail, no bicycles", 1, trail_rule("path", CLOSED), True, False),
 ]
 
 
@@ -74,7 +86,7 @@ def props(tier, trail, unpaved) -> tuple:
 def insert(schema: str, rows) -> None:
     with connection.cursor() as cursor:
         for i, (_label, tier, rule, trail, unpaved) in enumerate(rows):
-            lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.0003
+            lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.00025
             cursor.execute(
                 f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
                 "stress_rule, is_trail_class, is_unpaved) VALUES "
@@ -113,9 +125,19 @@ def expected(keep) -> Counter:
     )
 
 
-SIDEWALK_RULES = {trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY}
-NETWORK_RULES = {trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY} | {
-    trail_rule("footway", bicycle_trail=True)
+# Written out rather than read from pipeline.schema, so the tests hold the
+# schema's sets to the rule rather than to themselves.
+SIDEWALK_RULES = {trail_rule(h) for h in ("footway", "pedestrian", "steps")}
+BIKE_TRAILS = ("bridleway", "cycleway", "footway", "path", "pedestrian")
+NETWORK_RULES = (
+    {trail_rule(h) for h in ("cycleway", "path", "bridleway")}
+    | {trail_rule(h, OPEN) for h in BIKE_TRAILS}
+    | {trail_rule(h, SIDEPATH) for h in BIKE_TRAILS}
+)
+FACILITY_OF = {
+    **{trail_rule(h, OPEN): "path" for h in BIKE_TRAILS},
+    trail_rule("cycleway"): "path",
+    **{trail_rule(h, SIDEPATH): "protected" for h in BIKE_TRAILS},
 }
 
 
@@ -123,30 +145,56 @@ class TestClasses:
     def test_the_two_trail_kinds_partition_trail_class(self) -> None:
         assert TRAIL_NETWORK_HIGHWAY | SIDEWALK_CLASS_HIGHWAY == TRAIL_CLASS_HIGHWAY
         assert not TRAIL_NETWORK_HIGHWAY & SIDEWALK_CLASS_HIGHWAY
-        assert {"cycleway", "path"} <= TRAIL_NETWORK_HIGHWAY
+        assert {"cycleway", "path", "bridleway"} <= TRAIL_NETWORK_HIGHWAY
         assert "footway" in SIDEWALK_CLASS_HIGHWAY
 
-    @pytest.mark.parametrize("highway", sorted(TRAIL_CLASS_HIGHWAY))
-    def test_the_classifier_records_the_rule_the_tiles_select_on(self, highway) -> None:
-        assert classify({"highway": highway}).rule == trail_rule(highway)
-
     @pytest.mark.parametrize(
-        ("tags", "trail"),
+        ("tags", "kind"),
         [
-            ({"highway": "footway", "bicycle": "designated"}, True),
-            ({"highway": "footway", "bicycle": "designated", "footway": "sidewalk"}, False),
-            ({"highway": "footway", "bicycle": "designated", "footway": "crossing"}, False),
-            ({"highway": "footway", "bicycle": "yes"}, False),
-            ({"highway": "pedestrian", "bicycle": "designated"}, False),
+            ({"highway": "cycleway"}, OPEN),
+            ({"highway": "path"}, OPEN),
+            ({"highway": "path", "bicycle": "no"}, CLOSED),
+            ({"highway": "path", "bicycle": "dismount"}, CLOSED),
+            ({"highway": "path", "bicycle": "private"}, CLOSED),
+            ({"highway": "path", "access": "private"}, CLOSED),
+            ({"highway": "path", "access": "private", "bicycle": "yes"}, OPEN),
+            ({"highway": "bridleway"}, CLOSED),
+            ({"highway": "bridleway", "bicycle": "permissive"}, OPEN),
+            ({"highway": "footway"}, None),
+            ({"highway": "footway", "bicycle": "no"}, None),
+            ({"highway": "footway", "bicycle": "yes"}, OPEN),
+            ({"highway": "footway", "bicycle": "designated"}, OPEN),
+            ({"highway": "footway", "footway": "sidewalk", "bicycle": "designated"}, SIDEPATH),
+            ({"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}, None),
+            ({"highway": "path", "is_sidepath": "yes"}, SIDEPATH),
+            ({"highway": "cycleway", "separation": "kerb"}, SIDEPATH),
+            ({"highway": "cycleway", "separation": "solid_line"}, OPEN),
+            ({"highway": "pedestrian", "bicycle": "yes"}, OPEN),
+            ({"highway": "steps", "bicycle": "yes"}, None),
         ],
     )
-    def test_a_footway_designated_for_bicycles_is_a_trail_unless_a_sidewalk(
-        self, tags, trail
-    ) -> None:
+    def test_what_a_bicycle_may_do_on_a_trail_is_recorded(self, tags, kind) -> None:
+        """The routing lane's rule for trails (routemaker.facility on
+        wip/dials), which the stopgap facility has to match."""
+        assert trail_kind(tags) == kind
         result = classify(tags)
         assert result.tier == 1
-        assert result.rule == trail_rule(tags["highway"], bicycle_trail=trail)
-        assert (result.rule in NETWORK_RULES) == trail
+        assert result.rule == trail_rule(tags["highway"], kind)
+
+    def test_a_trail_barred_to_bicycles_is_not_in_the_network_nor_a_path(self) -> None:
+        rule = classify({"highway": "path", "bicycle": "no", "name": "Appalachian Trail"}).rule
+        assert rule not in NETWORK_RULES
+        assert rule not in FACILITY_OF
+
+    def test_the_schema_holds_the_trail_rules_the_tests_do(self) -> None:
+        from pipeline import schema
+
+        assert schema.TRAIL_NETWORK_RULES == NETWORK_RULES
+        for rule in SIDEWALK_RULES:
+            assert rule not in schema.TRAIL_NETWORK_RULES
+
+    def test_the_trail_network_keeps_its_bridleways(self) -> None:
+        assert "bridleway" in TRAIL_NETWORK_HIGHWAY
 
 
 @db
@@ -188,7 +236,7 @@ class TestContract:
 
         # Tile y runs north to south. Row 0 is the quiet street, row 5 the arterial.
         for row, tier in ((0, 1), (5, 4)):
-            lat = CENTRE[1] - 0.0018 + row * 0.0003
+            lat = CENTRE[1] - 0.0018 + row * 0.00025
             want_y = (mercator(north) - mercator(lat)) / (mercator(north) - mercator(south))
             (feature,) = [
                 f
@@ -532,18 +580,27 @@ class TestFacility:
         )
 
     @pytest.mark.parametrize("z", [10, 12, 14])
-    def test_without_the_column_the_trail_network_is_a_path_and_nothing_else_is_anything(
+    def test_without_the_column_the_facility_is_derived_by_the_routing_lanes_rule(
         self, client, live, z
     ) -> None:
-        """The stand-in until the routing lane's column: the trails carry the
-        path's rails; streets and sidewalks carry no facility at all."""
+        """The stand-in until the routing lane's column: a trail a bicycle may
+        ride is a path, a sidepath protected, and nothing else - a hiking trail
+        barred to bicycles, a street, a sidewalk - carries a facility."""
         features = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"].features
         drawn = Counter()
         for f in features:
             drawn[f.properties.get("facility", "(absent)")] += len(f.lines)
-        network = sum(1 for _l, _t, rule, _tr, _u in CLASSES if rule in NETWORK_RULES)
-        assert drawn["path"] == network
-        assert set(drawn) <= {"path", "(absent)"}
+        level = stress_tiles.level_for(z)
+        kept = [
+            rule
+            for _l, tier, rule, _t, _u in CLASSES
+            if level is stress_tiles.FULL
+            or (level is stress_tiles.STREETS and rule not in SIDEWALK_RULES)
+            or (level is stress_tiles.OVERVIEW and (tier >= 3 or rule in NETWORK_RULES))
+        ]
+        want = Counter(FACILITY_OF.get(rule, "(absent)") for rule in kept)
+        assert drawn == want
+        assert drawn["path"] >= 3 and drawn["protected"] == 1
 
     def test_the_column_added_in_place_changes_the_etag(self, client, live) -> None:
         """Added by hand to a live table, the column changes the tiles but not

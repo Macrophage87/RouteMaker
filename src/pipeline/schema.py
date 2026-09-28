@@ -17,7 +17,12 @@ import re
 
 from django.db import connection
 
-from routemaker.classes import SIDEWALK_CLASS_HIGHWAY, TRAIL_NETWORK_HIGHWAY
+from routemaker.classes import (
+    SIDEWALK_CLASS_HIGHWAY,
+    TRAIL_CLASS_HIGHWAY,
+    TRAIL_NETWORK_HIGHWAY,
+    TrailKind,
+)
 from routemaker.stress import trail_rule
 
 # Schema names are interpolated into DDL, which no parameter placeholder can
@@ -110,22 +115,34 @@ def _text_list(values) -> str:
 # index below is created with it and the tile query filters with it, and
 # PostgreSQL uses a partial index only when it can prove the query's condition
 # implies the index's - which it does for the same expression.
-# The trail network's recorded rules: cycleways, paths, bridleways, and the
-# footways designated for bicycles that are not sidewalks.
-TRAIL_NETWORK_RULES = frozenset(
-    [trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY] + [trail_rule("footway", bicycle_trail=True)]
-)
+#
+# The trail network is the trail-class ways a bicycle may ride away from the
+# road, and the sidepaths beside it (`routemaker.classes.trail_kind`): a
+# bike-barred hiking trail is not in it. A table built before the kinds were
+# recorded holds the plain texts, which cannot tell the Appalachian Trail from
+# the W&OD; its cycleways, paths and bridleways stay in the network, as they
+# were, until the next rebuild writes the kinds (LEGACY_TRAIL_RULES).
+TRAILS = sorted(TRAIL_CLASS_HIGHWAY - {"steps"})
+OPEN_TRAIL_RULES = frozenset(trail_rule(h, TrailKind.OPEN) for h in TRAILS)
+SIDEPATH_RULES = frozenset(trail_rule(h, TrailKind.SIDEPATH) for h in TRAILS)
+LEGACY_TRAIL_RULES = frozenset(trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY)
+TRAIL_NETWORK_RULES = OPEN_TRAIL_RULES | SIDEPATH_RULES | LEGACY_TRAIL_RULES
 
 OVERVIEW_PREDICATE = (
     "(stress_tier >= 3 OR stress_rule IN (" + _text_list(TRAIL_NETWORK_RULES) + "))"
 )
 
-# Until the live table has a facility column the tiles derive one: the trail
-# network is an off-road path, and nothing else is anything. That is what
-# draws the trails with the path's rails before the routing lane's column
-# exists, so they read on parkland green at region zoom.
+# Until the live table has a facility column the tiles derive one, by the
+# routing lane's rule for trails: a trail a bicycle may ride is an off-road
+# path, a sidepath is the protected facility, and nothing else is anything.
+# On a table from before the kinds were recorded only a cycleway is a path;
+# a plain "path" there may be a hiking trail barred to bicycles.
 TRAIL_NETWORK_FACILITY = (
-    "CASE WHEN stress_rule IN (" + _text_list(TRAIL_NETWORK_RULES) + ") THEN 'path' END"
+    "CASE WHEN stress_rule IN ("
+    + _text_list(OPEN_TRAIL_RULES | {trail_rule("cycleway")})
+    + ") THEN 'path' WHEN stress_rule IN ("
+    + _text_list(SIDEPATH_RULES)
+    + ") THEN 'protected' END"
 )
 
 # What they draw at street zoom (`core.stress_tiles.STREETS`): everything but

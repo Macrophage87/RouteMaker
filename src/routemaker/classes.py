@@ -43,18 +43,76 @@ MOTOR_ONLY_HIGHWAY = ALWAYS_TOP_TIER_HIGHWAY  # retained name for existing impor
 TRAIL_NETWORK_HIGHWAY = frozenset({"cycleway", "path", "bridleway"})
 SIDEWALK_CLASS_HIGHWAY = TRAIL_CLASS_HIGHWAY - TRAIL_NETWORK_HIGHWAY
 
-# The one footway that is a trail in practice: signed for bicycles and not a
-# sidewalk or a crossing. In the clipped extract of 2026-09-25, 856 such ways,
-# among them stretches of the Cross County Trail, the Ma and Pa Heritage
-# Trail, the Four Mile Run Trail and the W&OD; the 401 bicycle-designated
-# footways tagged footway=sidewalk are sidepaths along a street, which the
-# zoomed-out map leaves with the other sidewalks.
-SIDEWALK_FOOTWAY_VALUES = frozenset({"sidewalk", "crossing"})
+# What a bicycle may do on a trail-class way, as the stress tiles need it
+# (`trail_kind`). The rule is PUBLIC-DIALS's `routemaker.facility` rule for
+# trail-class ways (wip/dials, 2026-09-27), restated here because that module
+# is not on this branch; where the two meet, `routemaker.facility` is the one
+# to keep and `trail_kind` should read it. The one part not restated is its
+# geometric test for a trail lying beside a road that maps its facility
+# separately, which needs the rebuild's geometry; such a trail reads "open"
+# here and "protected" there, and both are drawn and kept zoomed out.
+#
+# Why it matters to the map: 3,831 trail-network ways in the 2026-09-25 extract
+# are tagged bicycle=no, dismount or private - the Appalachian Trail, the
+# Potomac Heritage Trail, the Bull Run-Occoquan Trail - and the map must not
+# draw them as bike paths.
+BICYCLE_ALLOWED = frozenset({"yes", "designated", "permissive", "official"})
+TRAIL_OPEN_BY_DEFAULT = frozenset({"cycleway", "path"})
+_PERMISSIVE_ACCESS = frozenset({"yes", "permissive", "designated", "official", "public"})
+PHYSICAL_SEPARATION = frozenset(
+    {
+        "flex_post",
+        "bollard",
+        "kerb",
+        "planter",
+        "jersey_barrier",
+        "concrete_barrier",
+        "fence",
+        "guard_rail",
+        "parking_lane",
+        "vertical_panel",
+        "hedge",
+        "tree_row",
+        "yes",
+    }
+)
+TRAIL_SEPARATION_KEYS = ("separation", "separation:left", "separation:right", "separation:both")
 
 
-def is_bicycle_trail_footway(tags: dict[str, str]) -> bool:
-    return (
-        tags.get("highway") == "footway"
-        and tags.get("bicycle") == "designated"
-        and tags.get("footway") not in SIDEWALK_FOOTWAY_VALUES
+class TrailKind:
+    """What `trail_kind` answers; None is a way no bicycle rides as a trail
+    (steps, a sidewalk a bicycle may merely use, a footway not signed for one)."""
+
+    OPEN = "open to bicycles"  # an off-road path
+    SIDEPATH = "sidepath for bicycles"  # the protected facility beside a road
+    CLOSED = "not open to bicycles"  # a trail-network way a bicycle may not ride
+
+
+def trail_open_to_bicycle(tags: dict[str, str]) -> bool:
+    """Whether a bicycle may ride a trail-class way, as Valhalla will read it."""
+    bicycle = tags.get("bicycle")
+    if bicycle is not None:
+        return bicycle in BICYCLE_ALLOWED
+    return tags.get("highway") in TRAIL_OPEN_BY_DEFAULT and all(
+        tags.get(key) is None or tags[key] in _PERMISSIVE_ACCESS for key in ("access", "vehicle")
     )
+
+
+def _physical(value: str | None) -> bool:
+    return bool(value) and any(part.strip() in PHYSICAL_SEPARATION for part in value.split(";"))
+
+
+def trail_kind(tags: dict[str, str]) -> str | None:
+    """A trail-class way's `TrailKind`, or None."""
+    highway = tags.get("highway")
+    if highway not in TRAIL_CLASS_HIGHWAY or highway == "steps":
+        return None
+    if not trail_open_to_bicycle(tags):
+        return TrailKind.CLOSED if highway in TRAIL_NETWORK_HIGHWAY else None
+    if "sidewalk" in (tags.get("footway"), tags.get("path"), tags.get("cycleway")):
+        return TrailKind.SIDEPATH if tags.get("bicycle") == "designated" else None
+    if tags.get("is_sidepath") == "yes" or any(
+        _physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS
+    ):
+        return TrailKind.SIDEPATH
+    return TrailKind.OPEN

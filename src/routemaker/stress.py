@@ -97,7 +97,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, is_bicycle_trail_footway
+from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
 from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
@@ -356,16 +356,22 @@ def _bike_lane_tier(
     return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
 
 
-def trail_rule(highway: str, bicycle_trail: bool = False) -> str:
-    """The rule recorded on a trail-class way of `highway`; `bicycle_trail` for
-    a footway that is a trail in practice (`classes.is_bicycle_trail_footway`).
+def trail_rule(highway: str, kind: str | None = None) -> str:
+    """The rule recorded on a trail-class way of `highway` and `kind`
+    (`classes.trail_kind`). The tier is LTS 1 whatever the kind.
 
-    A function rather than an f-string at its one use because the stress tiles
-    select trail kinds by this recorded rule (`pipeline.schema`'s overview
-    predicate), and the two must not drift apart. The tier is LTS 1 either way.
+    THIS TEXT IS JOINED AGAINST STORED DATA. The rebuild writes it into
+    `segment.stress_rule`, and the stress tiles select the trail network and
+    derive its facility by comparing that column with these strings
+    (`pipeline.schema`'s overview predicate and TRAIL_NETWORK_FACILITY, and the
+    overview's partial index). Changing a word here silently drops every trail
+    from the zoomed-out map until the next rebuild writes the new text - and
+    the tests, which build their expectations from this function, will not
+    notice. Add a new text beside the old one (as `LEGACY_TRAIL_RULES` keeps the
+    texts from before `kind` existed) rather than editing one.
     """
-    if bicycle_trail:
-        return f"trail-class way ({highway}, designated for bicycles)"
+    if kind is not None:
+        return f"trail-class way ({highway}, {kind})"
     return f"trail-class way ({highway})"
 
 
@@ -392,7 +398,7 @@ def classify(
     assumed: list[str] = []
 
     if highway in TRAIL_CLASS:
-        return StressResult(Stress.LTS1, trail_rule(highway, is_bicycle_trail_footway(tags)))
+        return StressResult(Stress.LTS1, trail_rule(highway, trail_kind(tags)))
 
     if highway in MOTOR_ONLY:
         return StressResult(Stress.LTS4, f"motor-only classification ({highway})")
