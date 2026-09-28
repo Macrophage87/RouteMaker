@@ -50,6 +50,8 @@ GOOD = {
 
 # Typed in from the owner's answers of 2026-09-27, not read from the file.
 PENN_AFTER_THE_MERGE = {946400435, 50715834, 936339897}
+# And the westbound approach through the ramps to the bridge (2026-09-28).
+PENN_WESTBOUND_THROUGH_THE_RAMPS = {919160290, 1120042712, 696737927}
 SOUSA_ROADWAY = {50715828, 118727221}
 
 
@@ -220,6 +222,8 @@ class TestTheOwnersFile:
         """The owner, 2026-09-27: "Only provide the warnings if the route goes
         over the road." Approved as proposed, for route_only display."""
         for row in owner_rows():
+            if row["osm_way_id"] in PENN_WESTBOUND_THROUGH_THE_RAMPS:
+                continue
             assert row["value"]["visibility"] == "public"
             assert row["value"]["annotation_status"] == "approved"
             assert row["value"]["display"] == "route_only"
@@ -237,6 +241,20 @@ class TestTheOwnersFile:
         assert all(r["value"]["category"] == "sightlines" for r in penn)
         assert all("blind corner" in r["value"]["public_note"] for r in penn)
         assert all("a level 5 road afterwards" in r["reason"] for r in penn)
+
+    def test_pennsylvania_avenue_westbound_through_the_ramps_waits_for_its_words(self) -> None:
+        """The owner, 2026-09-28: "Yes, avoid westbound too". The tier is the
+        owner's; the note is proposed until the owner confirms it."""
+        west = [r for r in owner_rows() if r["osm_way_id"] in PENN_WESTBOUND_THROUGH_THE_RAMPS]
+        assert {r["osm_way_id"] for r in west} == PENN_WESTBOUND_THROUGH_THE_RAMPS
+        assert {r["value"]["adjustment_id"] for r in west} == {
+            "pennsylvania-ave-se-dc-295-ramps-westbound"
+        }
+        for row in west:
+            assert row["value"]["tier"] == 5
+            assert row["value"]["annotation_status"] == "proposed"
+            assert row["value"]["display"] == "route_only"
+            assert "Yes, avoid westbound too" in row["reason"]
 
     def test_the_sousa_bridge_roadway_stays_lts_4(self) -> None:
         sousa = [r for r in owner_rows() if r["osm_way_id"] in SOUSA_ROADWAY]

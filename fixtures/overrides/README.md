@@ -140,14 +140,17 @@ as a hidden adjustment named `way-<id>`.
   L. Wilson Freeway, the Benning Road and Frederick Douglass bridge roadways,
   and Pennsylvania Avenue SE eastbound from the DC 295 off-ramp merge east of
   the Sousa Bridge to Fairlawn Avenue SE ("Looking at it, there's a highway
-  offramp with a blind corner. It's a level 5 road afterwards."), at 5; the
+  offramp with a blind corner. It's a level 5 road afterwards.") and westbound
+  through the DC 295 ramps to the bridge ("Yes, avoid westbound too",
+  2026-09-28), at 5; the
   11th Street local span and its south landing (the owner's "Steer to the
   path", whose separate penalty was retired for this tier), and the Sousa
   Bridge roadway, at 4. The owner approved loading it on 2026-09-27 ("Yes, load
   it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
   loads access overrides", gives the order. Its categories and notes were
   proposed here and approved by the owner the same day for `route_only`
-  display; US 340 is `speed`.
+  display; US 340 is `speed`. The westbound Pennsylvania Avenue SE note of
+  2026-09-28 is still `proposed`.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and

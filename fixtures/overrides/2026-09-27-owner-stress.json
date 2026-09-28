@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-09-27",
   "decided_by": "the deployment owner",
-  "annotations": "Each row's category and public_note were proposed by this repository on 2026-09-27; the owner approved them the same day for a route's summary only (\"In many cases there's an acceptable trail. Only provide the warnings if the route goes over the road.\"), so every row is display \"route_only\". US 340 is \"speed\", the category the owner added (\"Yes, add 'speed' (Recommended)\").",
+  "annotations": "Each row's category and public_note were proposed by this repository on 2026-09-27; the owner approved them the same day for a route's summary only (\"In many cases there's an acceptable trail. Only provide the warnings if the route goes over the road.\"), so every row is display \"route_only\". US 340 is \"speed\", the category the owner added (\"Yes, add 'speed' (Recommended)\"). The westbound rows of 2026-09-28 carry a proposed category and note, not yet approved: until the owner confirms the wording the stretch is served as adjusted and nothing more.",
   "rows": [
     {
       "kind": "stress",
@@ -318,6 +318,51 @@
       },
       "reason": "Legal but avoid. The owner, 2026-09-27, of Pennsylvania Avenue SE east of the Sousa Bridge: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE eastbound from the node where the DC 295 (Anacostia Freeway) off-ramp merges in (OSM node 646190619, the end of motorway_link 6052332, destination \"Pennsylvania Avenue East\"), 130 m east of the John Philip Sousa Bridge's east end, to the Fairlawn Avenue SE junction, the first at-grade street; the second DC 295 ramp (motorway_link 50715843) merges in along it. The bridge roadway stays LTS 4, and the stretch between the bridge and the merge is not touched. This way: eastbound, through the Fairlawn Avenue SE junction.",
       "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 936339897, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 45 m, no bicycle, access or expressway tag; motorway_link 6052332 ends at node 646190619 and motorway_link 50715843 at node 646190624, both on this carriageway; Fairlawn Avenue SE (tertiary) meets it at node 646190627."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 919160290,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "pennsylvania-ave-se-dc-295-ramps-westbound",
+        "category": "intersection",
+        "visibility": "public",
+        "annotation_status": "proposed",
+        "display": "route_only",
+        "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-28, asked whether the westbound approach through the DC 295 ramps should also be \"legal but avoid\": \"Yes, avoid westbound too\". Of the eastbound stretch the owner had said, 2026-09-27: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE westbound through the DC 295 (Anacostia Freeway) ramps to the John Philip Sousa Bridge's east end: from node 646190846, where the ramp to DC 295 north (motorway_link 946400434) leaves and a connector (motorway_link 1248114774) joins, about 40 m east of where Fairlawn Avenue SE meets the other carriageway (Fairlawn does not meet this one), past the off-ramp from DC 295 (motorway_link 6053308, \"Pennsylvania Avenue West\") merging in at node 646190854 and the ramp to DC 295 south (motorway_link 6053144) leaving at node 646190856, to node 646190442, where the bridge roadway begins. The bridge roadway stays LTS 4. This way: westbound, from the DC 295 north ramp past the off-ramp merge.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 919160290, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 3, maxspeed 30 mph, 132 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1120042712,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "pennsylvania-ave-se-dc-295-ramps-westbound",
+        "category": "intersection",
+        "visibility": "public",
+        "annotation_status": "proposed",
+        "display": "route_only",
+        "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-28, asked whether the westbound approach through the DC 295 ramps should also be \"legal but avoid\": \"Yes, avoid westbound too\". Of the eastbound stretch the owner had said, 2026-09-27: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE westbound through the DC 295 (Anacostia Freeway) ramps to the John Philip Sousa Bridge's east end: from node 646190846, where the ramp to DC 295 north (motorway_link 946400434) leaves and a connector (motorway_link 1248114774) joins, about 40 m east of where Fairlawn Avenue SE meets the other carriageway (Fairlawn does not meet this one), past the off-ramp from DC 295 (motorway_link 6053308, \"Pennsylvania Avenue West\") merging in at node 646190854 and the ramp to DC 295 south (motorway_link 6053144) leaving at node 646190856, to node 646190442, where the bridge roadway begins. The bridge roadway stays LTS 4. This way: westbound, to the DC 295 south ramp.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 1120042712, Pennsylvania Avenue Southeast, highway=trunk, oneway, lanes 4, maxspeed 30 mph, 32 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 696737927,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "pennsylvania-ave-se-dc-295-ramps-westbound",
+        "category": "intersection",
+        "visibility": "public",
+        "annotation_status": "proposed",
+        "display": "route_only",
+        "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-28, asked whether the westbound approach through the DC 295 ramps should also be \"legal but avoid\": \"Yes, avoid westbound too\". Of the eastbound stretch the owner had said, 2026-09-27: \"Looking at it, there's a highway offramp with a blind corner. It's a level 5 road afterwards.\" Pennsylvania Avenue SE westbound through the DC 295 (Anacostia Freeway) ramps to the John Philip Sousa Bridge's east end: from node 646190846, where the ramp to DC 295 north (motorway_link 946400434) leaves and a connector (motorway_link 1248114774) joins, about 40 m east of where Fairlawn Avenue SE meets the other carriageway (Fairlawn does not meet this one), past the off-ramp from DC 295 (motorway_link 6053308, \"Pennsylvania Avenue West\") merging in at node 646190854 and the ramp to DC 295 south (motorway_link 6053144) leaving at node 646190856, to node 646190442, where the bridge roadway begins. The bridge roadway stays LTS 4. This way: westbound, from the DC 295 south ramp to the bridge.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 696737927, Pennsylvania Avenue Southeast, highway=primary, oneway, lanes 3, maxspeed 30 mph, 157 m, no bicycle, access or expressway tag; the ramps named meet it at the nodes named."
     }
   ]
 }
