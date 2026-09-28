@@ -221,3 +221,29 @@ def test_a_withdrawn_variant_is_stopped_not_restarted() -> None:
     assert "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike &&" in hint
     assert "docker compose stop valhalla-weekend" in hint
     assert "restart valhalla-weekend" not in hint and "ebike valhalla-weekend" not in hint
+
+
+@pytest.mark.django_db(transaction=True)
+@pytest.mark.parametrize("confirm", [False, True], ids=["dry-run", "confirmed"])
+def test_the_command_prints_the_withdraw_hint_when_weekend_is_withdrawn(
+    stubbed_rollback, monkeypatch, confirm
+) -> None:
+    """Through the command's own output, on both paths (correctness review,
+    round 3, X30 and X31: either call site could print the old four-router
+    restart with every test green)."""
+    from io import StringIO
+
+    from core.management.commands.rollback_rebuild import RESTART_HINT
+    from pipeline.variants import Variant
+
+    target = {variant: "20260910T080000Z" for variant in Variant} | {Variant.WEEKEND: None}
+    monkeypatch.setattr(
+        "core.management.commands.rollback_rebuild.rollback_target", lambda tiles_dir: target
+    )
+    out = StringIO()
+    call_command("rollback_rebuild", *(["--confirm"] if confirm else []), stdout=out)
+    printed = out.getvalue()
+    assert RESTART_HINT not in printed
+    assert "docker compose stop valhalla-weekend" in printed
+    assert "restart valhalla-standard valhalla-no-trail valhalla-ebike &&" in printed
+    assert len(stubbed_rollback) == (1 if confirm else 0)

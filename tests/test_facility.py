@@ -148,6 +148,13 @@ def test_a_timed_closure_is_not_a_path_on_its_own():
         ("no @ (06:00-10:15,14:45-19:15)", {"weekday_rush"}),
         ("no @ (08:00-20:00)", {"weekend", "weekday_rush"}),
         ("no @ (00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak"}),
+        # One unreadable branch makes the value unreadable, in either order
+        # and whatever the readable one covers (correctness review, round 3, R19).
+        ("no @ (Sa-Su); no @ (sunset-sunrise)", set()),
+        ("no @ (sunset-sunrise); no @ (Sa-Su)", set()),
+        ("no @ (Mo-Su 00:00-24:00); no @ (sunset-sunrise)", set()),
+        # Only the `no` branches are read.
+        ("destination @ (sunset-sunrise); no @ (Sa-Su)", {"weekend"}),
         # Local traffic only is not car-free.
         ("destination @ (Sa 07:00-Su 19:00, PH)", set()),
         # A condition this reader cannot read closes nothing.

@@ -217,18 +217,27 @@ def closed_settings(value: str | None) -> frozenset[str]:
     Every instant of a setting must fall inside one of the `no` branches. A
     condition this cannot read (a month range, sunset) closes nothing: an
     unreadable closure is reported as the road it is on every other day.
+
+    One unreadable `no` branch makes the whole value unreadable, whichever
+    order the branches come in and whichever setting is asked about: the
+    branches are all read before any setting is decided. Read as they were
+    needed, `no @ (Sa-Su); no @ (sunset-sunrise)` closed nothing but
+    `no @ (Mo-Su 00:00-24:00); no @ (sunset-sunrise)` closed everything,
+    since the second branch was never reached (correctness review, round 3).
     """
-    closed = []
-    for when in WHENS:
-        try:
-            if all(
-                any(
-                    value_ == "no" and holds_at(cond, day, minute)
-                    for value_, cond in branches(value)
-                )
-                for day, minute in INSTANTS[when]
-            ):
-                closed.append(when)
-        except Unreadable:
-            return frozenset()
-    return frozenset(closed)
+    try:
+        closures = [condition_intervals(cond) for value_, cond in branches(value) if value_ == "no"]
+    except Unreadable:
+        return frozenset()
+    return frozenset(
+        when
+        for when in WHENS
+        if all(
+            any(
+                start <= day * 1440 + minute < end
+                for intervals in closures
+                for start, end in intervals
+            )
+            for day, minute in INSTANTS[when]
+        )
+    )

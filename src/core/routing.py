@@ -562,6 +562,16 @@ ALTERNATES_TIMEOUT_S = 18
 # straight to the standard graph instead of paying the failure again.
 WEEKEND_TIMEOUT_S = 15
 WEEKEND_FAILURE_TTL_S = 60
+
+# The traffic-wins check (`no_busier_than_middle`) runs after the ride's own
+# route and before the answer's traces, so it must leave those traces their
+# time: the middle call and its two exposure traces run inside what is left of
+# the budget less this reserve, and are skipped - the hill-avoiding route kept -
+# when less than MIDDLE_MIN_S would be left for the middle call (correctness
+# review, round 3: a slow first route and a hung middle call answered at 37 s
+# with the whole breakdown "unknown").
+MIDDLE_TRACE_RESERVE_S = 8
+MIDDLE_MIN_S = 4
 _weekend_failed_at: float | None = None
 
 
@@ -634,12 +644,33 @@ def choose_gentlest(trips: list[dict], weight: float, brake_grade: float | None)
     return best
 
 
-def _exposure(variant: str, costing: dict, trip: dict, when: str, deadline: Deadline):
+def _trace(
+    variant: str, costing: dict, shape: str, deadline: Deadline, traces: dict | None = None
+) -> dict | None:
+    """`trace_leg`, remembered in `traces` (one plan's) so that a route traced
+    for a guard is not traced again for the answer. A trace that raised is not
+    remembered."""
+    if traces is None:
+        return trace_leg(variant, costing, shape, deadline)
+    key = (variant, shape, json.dumps(costing, sort_keys=True))
+    if key not in traces:
+        traces[key] = trace_leg(variant, costing, shape, deadline)
+    return traces[key]
+
+
+def _exposure(
+    variant: str,
+    costing: dict,
+    trip: dict,
+    when: str,
+    deadline: Deadline,
+    traces: dict | None = None,
+):
     """A trip's traffic exposure: metres on LTS 3, twice LTS 4, three times
     tier 5 (the graded stress). None when a leg cannot be traced."""
     pieces: list[Piece] = []
     for leg in trip.get("legs") or []:
-        trace = trace_leg(variant, costing, leg.get("shape", ""), deadline)
+        trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
         if trace is None:
             return None
         pieces.extend(pieces_of_trace(trace))
@@ -648,7 +679,13 @@ def _exposure(variant: str, costing: dict, trip: dict, when: str, deadline: Dead
 
 
 def calmer_or_own(
-    trips: list[dict], chosen: int, variant: str, costing: dict, when: str, deadline: Deadline
+    trips: list[dict],
+    chosen: int,
+    variant: str,
+    costing: dict,
+    when: str,
+    deadline: Deadline,
+    traces: dict | None = None,
 ) -> int:
     """`chosen`, if it is no busier than the router's own route, else 0.
 
@@ -663,8 +700,8 @@ def calmer_or_own(
     if chosen == 0:
         return 0
     try:
-        own = _exposure(variant, costing, trips[0], when, deadline)
-        alternative = _exposure(variant, costing, trips[chosen], when, deadline)
+        own = _exposure(variant, costing, trips[0], when, deadline, traces)
+        alternative = _exposure(variant, costing, trips[chosen], when, deadline, traces)
     except (DeadlineExceeded, RouterUnavailable):
         return 0
     if own is None or alternative is None or alternative > own:
@@ -680,6 +717,7 @@ def no_busier_than_middle(
     middle_costing: dict,
     when: str,
     deadline: Deadline,
+    traces: dict | None = None,
 ) -> tuple[dict, bool]:
     """The route to answer on the avoid half, and whether it is the middle's.
 
@@ -693,22 +731,28 @@ def no_busier_than_middle(
     traced: if the hill-avoiding route's exposure (LTS 3 + 2 x LTS 4 + 3 x
     tier 5 metres) is worse, the middle's route is the answer. A middle call
     or a trace that fails, or no time left, keeps the hill-avoiding route.
+
+    All of it runs inside the budget less MIDDLE_TRACE_RESERVE_S, which is the
+    answer's own traces' time, and none of it runs if that leaves the middle
+    call less than MIDDLE_MIN_S; on the weekend graph the middle call is held
+    to WEEKEND_TIMEOUT_S, as every call there is.
     """
+    step = Deadline(deadline.at - MIDDLE_TRACE_RESERVE_S, deadline.per_call_s)
+    limit = min(deadline.per_call_s, ALTERNATES_TIMEOUT_S, step.at - clock())
+    if variant == Variant.WEEKEND.value:
+        limit = min(limit, WEEKEND_TIMEOUT_S)
+    if limit < MIDDLE_MIN_S:
+        return trip, False
     middle_request = {key: value for key, value in request.items() if key != "alternates"} | {
         "costing_options": middle_costing
     }
     try:
-        answer = _call(
-            variant,
-            "route",
-            middle_request,
-            Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
-        )
+        answer = _call(variant, "route", middle_request, Deadline(step.at, limit))
         middle = answer.get("trip") or {}
         if not middle.get("legs"):
             return trip, False
-        own = _exposure(variant, costing, trip, when, deadline)
-        calmer = _exposure(variant, middle_costing, middle, when, deadline)
+        own = _exposure(variant, costing, trip, when, step, traces)
+        calmer = _exposure(variant, middle_costing, middle, when, step, traces)
     except (DeadlineExceeded, RouterUnavailable, RouterRefused):
         return trip, False
     if own is None or calmer is None or own <= calmer:
@@ -882,6 +926,8 @@ def plan(
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
     avoid_weight = -hills_dial / 100 if avoiding else 0.0
+    # This plan's traces, so a route the guards traced is not traced again.
+    traces: dict = {}
     if seeking:
         chosen = choose_climb(trips, presets.seek_distance_ratio(hills_dial))
     elif avoiding:
@@ -892,21 +938,22 @@ def plan(
             costing,
             when,
             deadline,
+            traces,
         )
     else:
         chosen = 0
     trip = trips[chosen]
     kept_middle = False
+    trace_costing = costing
     if avoiding:
+        middle_costing = presets.costing(preset_name, stress_dial, 0, assist=assist)
         trip, kept_middle = no_busier_than_middle(
-            trip,
-            request,
-            variant,
-            costing,
-            presets.costing(preset_name, stress_dial, 0, assist=assist),
-            when,
-            deadline,
+            trip, request, variant, costing, middle_costing, when, deadline, traces
         )
+        if kept_middle:
+            # Traced with the costing it was routed with, which the check
+            # already did: the trace is reused, not asked for again.
+            trace_costing = middle_costing
     legs = trip.get("legs") or []
     if not legs:
         raise NoRoute("the router returned no legs")
@@ -926,7 +973,7 @@ def plan(
         leg_ends.append(len(coordinates) - 1)
         elevations.extend(leg.get("elevation") or [])
         try:
-            trace = trace_leg(variant, costing, leg.get("shape", ""), deadline)
+            trace = _trace(variant, trace_costing, leg.get("shape", ""), deadline, traces)
         except DeadlineExceeded:
             # The route is found, so it is answered; a leg left untraced is
             # unknown, and once the budget is gone `_call` starts no more.
