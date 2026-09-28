@@ -353,6 +353,9 @@ class TestWhatTheCommandRefuses:
                 "never a neighbourhood or its people",
             ),
             ({"osm_way_id": 0}, "positive integer"),
+            # Only the two kinds the pipeline applies (mutation review r1, L6).
+            ({"kind": "tier", "value": {"tier": 5}}, "kind must be one of"),
+            ({"kind": "Access"}, "kind must be one of"),
             ({"reason": " "}, "reason is required"),
             ({"evidence": " "}, "evidence is required"),
             ({"evidence": None}, "evidence is required"),
@@ -522,12 +525,21 @@ class TestStressAdjustments:
         load(path, "--actor", str(admin.discord_user_id), "--confirm")
         (row,) = Override.objects.all()
         approved = {**ADJUSTMENT, "annotation_status": "approved"}
-        path = write_rows(tmp_path, self.rows(approved))
+        # The owner's words and the evidence for the approval are the new
+        # row's, not the old one's (L3).
+        path = write_rows(
+            tmp_path,
+            [
+                {**row, "reason": "Approved as written.", "evidence": "owner, 2026-09-28"}
+                for row in self.rows(approved)
+            ],
+        )
         assert "update: way 100" in load(path, "--actor", str(admin.discord_user_id))
         assert Override.objects.get().value == ADJUSTMENT, "a dry run writes nothing"
         load(path, "--actor", str(admin.discord_user_id), "--confirm")
         (after,) = Override.objects.all()
         assert (after.pk, after.value, after.approved) == (row.pk, approved, True)
+        assert (after.reason, after.evidence) == ("Approved as written.", "owner, 2026-09-28")
         change = AuditLogEntry.objects.get(action="change")
         assert '"proposed"' in change.detail and '"approved"' in change.detail
         assert "update" not in load(path, "--actor", str(admin.discord_user_id)), "then present"

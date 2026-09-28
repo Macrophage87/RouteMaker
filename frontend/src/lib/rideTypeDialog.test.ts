@@ -53,3 +53,9 @@ test("choosing Cargo Bike keeps electric assist; assist is not a custom setting"
   assert.equal(choose("default", null, assisted).assist, false);
   assert.equal(isCustom("cargo", assisted), false);
 });
+
+test("the old browsers' Esc closes the dialog too, and an unknown ride type opens on the first card", () => {
+  // Mutation review r1, FE19 and FE20.
+  assert.ok(closesDialog("Esc"));
+  assert.equal(initialCard("no-such-ride" as (typeof PRESETS)[number]["id"]), 0);
+});

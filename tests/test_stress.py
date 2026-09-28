@@ -2011,3 +2011,13 @@ def test_the_category_sits_above_the_furth_scale():
 
     assert Stress.AVOID > Stress.LTS4
     assert int(Stress.AVOID) == 5
+
+
+@pytest.mark.parametrize("highway", ["trunk", "trunk_link", "primary", "primary_link"])
+def test_every_class_of_the_avoid_rule_takes_it(highway):
+    """The ramps too (mutation review r1, S1): an expressway's link posted at
+    50 is the same road to a bicycle."""
+    from routemaker.stress import legal_but_avoid
+
+    tags = {"highway": highway, "expressway": "yes", "maxspeed": "50 mph"}
+    assert legal_but_avoid(tags) == "legal but avoid: expressway posted 50 mph"

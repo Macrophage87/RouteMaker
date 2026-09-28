@@ -129,3 +129,59 @@ def test_a_profiles_cost_is_its_runs_both_ways() -> None:
         sum(climb_cost_s(r) if r.rise_m > 0 else descent_cost_s(r, 0.03) for r in runs(profile))
     )
     assert both > grade_cost_s(profile, brake_grade=None) > 0
+
+
+# --- Boundaries (mutation review r1, C1, C2, C4, C5, C8, C12, C17) -----------
+
+
+class TestTheBoundaries:
+    def test_a_dip_of_exactly_three_metres_does_not_end_a_climb(self) -> None:
+        profile = join(ramp(500, 0.06), [(0.0, 0.0), (60.0, -climbs.DIP_M)], ramp(500, 0.06))
+        (run,) = [r for r in runs(profile) if r.rise_m > 0]
+        assert run.length_m == pytest.approx(1060)
+
+    def test_a_rise_of_exactly_five_metres_is_a_hill(self) -> None:
+        (run,) = runs([(0.0, 0.0), (50.0, 2.5), (100.0, climbs.MIN_RISE_M)])
+        assert run.rise_m == pytest.approx(climbs.MIN_RISE_M)
+
+    def test_a_climb_after_a_level_approach_starts_at_its_foot(self) -> None:
+        (run,) = runs(join(ramp(120, 0.0), ramp(500, 0.06)))
+        assert run.start_m == pytest.approx(120)
+
+    def test_the_climb_out_of_a_sag_starts_at_its_bottom(self) -> None:
+        """The next climb is looked for from the top of the last, so a sag
+        between them is where it starts - not the point the flat ran out."""
+        profile = join(
+            ramp(500, 0.06),
+            [(0.0, 0.0), (60.0, -2.5), (120.0, -1.5), (180.0, -1.5)],
+            ramp(500, 0.06),
+        )
+        second = [r for r in runs(profile) if r.rise_m > 0][-1]
+        assert second.start_m == pytest.approx(560)
+        assert second.rise_m == pytest.approx(31.0)
+
+    def test_runs_are_in_the_order_ridden(self) -> None:
+        profile = join(ramp(600, 0.06), ramp(600, -0.06), ramp(600, 0.06), ramp(600, -0.06))
+        found = runs(profile)
+        assert [r.rise_m > 0 for r in found] == [True, False, True, False]
+        assert [r.start_m for r in found] == sorted(r.start_m for r in found)
+
+    @pytest.mark.parametrize("grade", [0.0, 0.01, 0.02, 0.029])
+    def test_a_climb_under_the_free_grade_costs_nothing_never_less(self, grade) -> None:
+        """C8: without the guard a gentle climb had a negative cost, which
+        would make a route cheaper for having it."""
+        assert climb_cost_s(Run(0, 2000, 2000 * grade)) == 0.0
+
+    @pytest.mark.parametrize("grade", [0.01, 0.02, 0.049])
+    def test_a_descent_under_the_brake_grade_costs_nothing_never_less(self, grade) -> None:
+        assert descent_cost_s(Run(0, 2000, -2000 * grade), brake_grade=0.05) == 0.0
+
+    def test_what_a_climb_and_a_descent_cost_is_pinned(self) -> None:
+        """The module's worked figure for 1 km at 8%, and a descent priced at
+        the same weight as a climb (C12)."""
+        assert climb_cost_s(Run(0, 1000, 80)) == pytest.approx(
+            1.7 * 850 * 0.05 * (1 + 0.05 / 0.03) * (1 + 850 / 1000)
+        )
+        assert descent_cost_s(Run(0, 1000, -80), brake_grade=0.03) == pytest.approx(
+            climb_cost_s(Run(0, 1000, 80))
+        )

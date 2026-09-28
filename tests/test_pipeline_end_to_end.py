@@ -28,12 +28,16 @@ import pytest
 from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
+    BESIDE_TRAIL_ID,
     GIB,
     LUA_LOADED_LOG,
     PARALLEL_COUNT,
     REPO,
+    SEPARATE_ROAD_ID,
+    WEEKEND_CLOSED_ID,
     FakeBinaries,
     box,
+    build_dials_extract,
     build_named_bridge_extract,
     build_parallel_extract,
     build_toy_extract,
@@ -472,6 +476,60 @@ def test_the_facility_class_reaches_the_extracts_and_the_segment_table(workspace
     for way in context.ways:
         if way.osm_id in stored:
             assert stored[way.osm_id] == facility(way.tags).value, way.osm_id
+
+
+def run_dials_extract(tmp_path):
+    source = install_source_extract(tmp_path, build_dials_extract)
+    ids = (WEEKEND_CLOSED_ID, SEPARATE_ROAD_ID, BESIDE_TRAIL_ID)
+    context, _ = run_pipeline(source, tmp_path, urban=ids, skip=NOT_SWAPPED)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT osm_way_id, facility, car_free_when "
+            f"FROM {context.staging_schema}.segment"
+        )
+        stored = {way_id: (kind, set(when)) for way_id, kind, when in cursor.fetchall()}
+    return context, stored
+
+
+def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
+    tmp_path, segment_schemas, states
+) -> None:
+    """Through the rebuild, from the map's own conditional tag: the segment
+    table records the closure, and the weekend extract - only it - carries
+    the road as a tier-1 path (mutation review r1, P1, P4 and W4: each cut the
+    closure off with the suite green)."""
+    from pipeline.extract import read_ways
+
+    context, stored = run_dials_extract(tmp_path)
+    assert stored[WEEKEND_CLOSED_ID] == ("none", {"weekend"})
+    assert stored[SEPARATE_ROAD_ID][1] == set()
+    tier = int(context.stress_by_way[WEEKEND_CLOSED_ID].tier)
+    assert tier > 1, "the fixture's road is busier than a path, or the check shows nothing"
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}[
+            WEEKEND_CLOSED_ID
+        ]
+        if variant is Variant.WEEKEND:
+            assert (tags.get("rm:facility"), tags.get("rm:stress_tier")) == ("path", "1")
+        else:
+            assert tags.get("rm:stress_tier") == str(tier), variant.value
+            assert tags.get("rm:facility") != "path", variant.value
+
+
+def test_a_trail_beside_a_road_that_maps_its_lane_separately_is_protected(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The cycleway 5 m from a `cycleway:right=separate` road is that road's
+    protected lane, not an off-road path - in the segment table and in the
+    extracts routing reads (P2: with the geometry cut off, DC's separately
+    mapped protected lanes all became paths)."""
+    from pipeline.extract import read_ways
+
+    context, stored = run_dials_extract(tmp_path)
+    assert stored[BESIDE_TRAIL_ID][0] == "protected"
+    assert context.facility_by_way[BESIDE_TRAIL_ID] == "protected"
+    tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(Variant.STANDARD))}
+    assert tags[BESIDE_TRAIL_ID].get("rm:facility") == "protected"
 
 
 def test_a_sidepath_only_bridge_is_dropped_from_the_no_trail_variant(workspace, states) -> None:

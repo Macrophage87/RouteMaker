@@ -334,3 +334,36 @@ def test_cargo_assist_is_the_ebike_graph_at_any_time() -> None:
         presets.costing("cargo", assist=True)["bicycle"]["cycling_speed"]
         < options("ebike")["cycling_speed"]
     )
+
+
+def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
+    """Pinned, unlike the dials above: the owner approved these numbers as a
+    table on 2026-09-28 ("Approve the table"), so a retuned value is a change
+    to what he approved, not a tuning (mutation review r1, PR7-PR11)."""
+    approved = {
+        "cargo": 0.03,
+        "mass-ride": 0.04,
+        "group-ride": 0.05,
+        "default": 0.06,
+        "trailmaxxing": 0.06,
+        "gravel": 0.06,
+        "ebike": 0.06,
+        "mountain-goat": None,
+        "fast": None,
+    }
+    assert dict(presets.BRAKE_GRADES) == approved
+    for name, preset in presets.PRESETS.items():
+        assert preset.brake_grade == approved[name], name
+
+
+@pytest.mark.parametrize(
+    ("stress", "use_roads"), [(33, 0.67), (95, 0.05), (5, 0.95), (1, 0.99), (100, 0.0)]
+)
+def test_use_roads_follows_every_slider_step(stress, use_roads) -> None:
+    """Not only at multiples of ten (PR24: rounding to one decimal passed)."""
+    assert presets.use_roads_for(stress) == use_roads
+
+
+@pytest.mark.parametrize(("hills", "use_hills"), [(-33, 0.67), (-95, 0.05), (-5, 0.95), (40, 1.0)])
+def test_use_hills_follows_every_slider_step(hills, use_hills) -> None:
+    assert presets.use_hills_for(hills) == use_hills

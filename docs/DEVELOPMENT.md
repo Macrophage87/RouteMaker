@@ -392,7 +392,12 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   Saturday 09:00, Tuesday 08:00 or Tuesday 12:00), which is what the
   conditional restrictions Valhalla reads are evaluated against, and it decides
   whether a road closed to cars at set times counts as a path in `facility_m`
-  and as tier 1 in `stress_m`.
+  and as tier 1 in `stress_m`. The closure is read from
+  `motor_vehicle:conditional` / `motorcar:conditional` (`routemaker.ridetime`):
+  day ranges, week spans that wrap (`Fr 19:00-Mo 06:00`), `PH`, and times with
+  no days, which name every day (Clark Place NW's `no @ (06:00-10:15,14:45-19:15)`
+  is car-free at weekday rush; supported since the round-1 mutation review).
+  A condition it cannot read - a month range, `sunset` - closes nothing.
 - `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
   stress slider's start (90, Default's, or 100).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride

@@ -151,6 +151,38 @@ test("confirm_long is sent only when the rider confirmed, and the rest of the bo
   ]);
 });
 
+test("the sliders, the ride time and the load are in the posted body", async () => {
+  // The whole body: without the dial fields every slider does nothing, and
+  // nothing else notices (mutation review r1, FE30).
+  const bodies: unknown[] = [];
+  const impl = async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return new Response("{}", { status: 500 });
+  };
+  const points: Array<[number, number]> = [[-77.04, 38.91], [-77.01, 38.89]];
+  await requestRoute(points, "default", {
+    fetchImpl: impl,
+    dials: { stress: 40, hills: -20, when: "weekday_rush", carrying: null, assist: false },
+  });
+  await requestRoute(points, "cargo", {
+    fetchImpl: impl,
+    confirmLong: true,
+    dials: { stress: 100, hills: -60, when: null, carrying: "people", assist: true },
+  });
+  assert.deepEqual(bodies, [
+    { points, preset: "default", stress: 40, hills: -20, when: "weekday_rush" },
+    {
+      points,
+      preset: "cargo",
+      stress: 100,
+      hills: -60,
+      carrying: "people",
+      assist: true,
+      confirm_long: true,
+    },
+  ]);
+});
+
 test("an error sentence of only whitespace is not shown as the API's words", () => {
   for (const status of [404, 422]) {
     const message = describeError(status, { error: "   \n" }, null).message;

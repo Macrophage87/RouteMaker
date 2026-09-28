@@ -205,8 +205,52 @@ class TestApplyingIt:
         assert adjustment.exposed() == {"adjustment_id": "way-9", "adjusted": True}
 
     @pytest.mark.parametrize(
+        "fields",
+        [{"visibility": "hidden"}, {"annotation_status": "proposed"}],
+        ids=["hidden", "proposed"],
+    )
+    def test_an_applied_hidden_or_proposed_row_exposes_only_its_id(self, fields) -> None:
+        """Through apply_stress, not a hand-built adjustment: the row's own
+        visibility and status reach what leaves the rebuild (mutation review
+        r1, O15 and O16)."""
+        classified = {1: StressResult(Stress.LTS4, "x")}
+        apply_stress(classified, [Override("stress", 1, {**GOOD, **fields})])
+        assert classified[1].adjustment.exposed() == {
+            "adjustment_id": "a-stretch",
+            "adjusted": True,
+        }
+
+    def test_an_applied_public_approved_row_carries_its_own_words(self) -> None:
+        """The note, the display and the category come from the row (O9, O10,
+        O14, S9) - values other than the ones a default would give."""
+        classified = {1: StressResult(Stress.LTS3, "x")}
+        value = {
+            **GOOD,
+            "tier": 4,
+            "category": "intersection",
+            "display": "map",
+            "public_note": "A left turn across two lanes without a signal.",
+        }
+        apply_stress(classified, [Override("stress", 1, value)])
+        assert classified[1].adjustment.exposed() == {
+            "adjustment_id": "a-stretch",
+            "adjusted": True,
+            "direction": "up",
+            "computed_tier": 3,
+            "category": "intersection",
+            "public_note": "A left turn across two lanes without a signal.",
+            "display": "map",
+        }
+
+    @pytest.mark.parametrize(
         "value",
-        [{**GOOD, "category": "gossip"}, {"tier": 7}, {"tier": "5"}, {**GOOD, "tier": 0}],
+        [
+            {**GOOD, "category": "gossip"},
+            {"tier": 7},
+            {"tier": "5"},
+            {**GOOD, "tier": 0},
+            {**GOOD, "tier": True},
+        ],
     )
     def test_a_malformed_approved_row_refuses_the_rebuild(self, value) -> None:
         with pytest.raises(OverrideRefused):

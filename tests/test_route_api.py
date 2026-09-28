@@ -352,6 +352,11 @@ class TestStressBreakdown:
         stress = response.json()["stress_m"]
         assert stress["unknown"] == pytest.approx(2200.0)
         assert sum(v for k, v in stress.items() if k != "unknown") == 0
+        # And the facility breakdown, which must sum to the same distance
+        # (mutation review r1, RT15).
+        facility = response.json()["facility_m"]
+        assert facility["unknown"] == pytest.approx(2200.0)
+        assert sum(v for k, v in facility.items() if k != "unknown") == 0
 
 
 @db

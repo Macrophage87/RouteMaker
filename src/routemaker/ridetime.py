@@ -162,11 +162,17 @@ def _rule_intervals(rule: str) -> list[tuple[int, int]]:
         if end <= start:
             return [(start, WEEK_MINUTES), (0, end)]
         return [(start, end)]
-    head, _, times = rule.partition(" ")
-    if head == "PH":
-        # A public holiday is never one of the instants a setting stands for.
-        return []
-    days = _day_set(head)
+    if _TIMES.match(rule.split(",", 1)[0].strip()):
+        # Times with no days name every day: Clark Place NW's
+        # `no @ (06:00-10:15,14:45-19:15)` (correctness note, mutation review
+        # r1 - it was unreadable and closed nothing).
+        days, times = set(range(7)), rule
+    else:
+        head, _, times = rule.partition(" ")
+        if head == "PH":
+            # A public holiday is never one of the instants a setting stands for.
+            return []
+        days = _day_set(head)
     ranges: list[tuple[int, int]] = []
     for part in times.split(",") if times.strip() else ["00:00-24:00"]:
         match = _TIMES.match(part.strip())

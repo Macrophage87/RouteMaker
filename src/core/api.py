@@ -194,6 +194,11 @@ class RouteIn(Schema):
             )
         if self.carrying is not None and preset.carrying is None:
             raise ValueError("carrying applies to the Cargo Bike ride type only")
+        if self.carrying is not None and self.carrying not in preset.carrying:
+            # The type already says so; this keeps a load the preset has no
+            # start for from reaching `presets.stress_start` as a KeyError
+            # (mutation review r1, A11).
+            raise ValueError("carrying is cargo or people")
         if self.stress is not None and self.stress > preset.stress_max:
             raise ValueError(
                 "Mass Ride keeps to the most direct roadway: a field that takes the road is not"

@@ -272,6 +272,65 @@ def build_parallel_extract(path: Path, *, road_id: int, trail_id: int) -> None:
         writer.close()
 
 
+WEEKEND_CLOSED_ID = 600
+SEPARATE_ROAD_ID = 700
+BESIDE_TRAIL_ID = 701
+
+
+def build_dials_extract(path: Path) -> None:
+    """The two things PUBLIC-DIALS reads from the map that only the rebuild
+    can: a road closed to motor traffic every weekend, and a trail lying 5 m
+    beside a road that says it maps its bike facility separately.
+
+    The Beach Drive and Pennsylvania Avenue shapes in miniature: a 30 mph
+    residential street tagged `motor_vehicle:conditional=no @ (Sa-Su
+    00:00-24:00)`, and a cycleway along a road tagged `cycleway:right=separate`
+    - which is how DC maps a protected lane, as its own way.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        road_lat, trail_lat = 38.9100, 38.910045  # the trail 5 m north
+        nodes = {
+            1: (-77.040, 38.9000),
+            2: (-77.030, 38.9000),
+            3: (-77.040, road_lat),
+            4: (-77.030, road_lat),
+            5: (-77.040, trail_lat),
+            6: (-77.030, trail_lat),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            WEEKEND_CLOSED_ID: (
+                [1, 2],
+                {
+                    "highway": "residential",
+                    "maxspeed": "30 mph",
+                    "name": "Weekend Drive",
+                    "motor_vehicle:conditional": "no @ (Sa-Su 00:00-24:00)",
+                },
+            ),
+            SEPARATE_ROAD_ID: (
+                [3, 4],
+                {
+                    "highway": "secondary",
+                    "maxspeed": "25 mph",
+                    "name": "Separate Avenue",
+                    "cycleway:right": "separate",
+                },
+            ),
+            BESIDE_TRAIL_ID: ([5, 6], {"highway": "cycleway", "name": "Separate Avenue lane"}),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()
+
+
 PARALLEL_COUNT = {
     "id": "count-parkway",
     # Drawn between the two ways and nearer the trail, which is what makes the

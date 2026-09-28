@@ -4,7 +4,7 @@ Properties, not sentences: which class a tagging lands in, in the owner's
 order, and which ride times a timed closure covers.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import pytest
 
@@ -75,6 +75,20 @@ P, PR, L, N = Facility.PATH, Facility.PROTECTED, Facility.LANE, Facility.NONE
         ({"highway": "service", "motor_vehicle": "no", "access": "private"}, N),
         ({"highway": "unclassified", "vehicle": "no"}, N),
         ({"highway": "unclassified", "vehicle": "no", "bicycle": "yes"}, P),
+        # motorcar=no alone closes a road too: the C&O Canal towpath's service
+        # road, way 1379394513 (mutation review r1, F4).
+        ({"highway": "service", "motorcar": "no"}, P),
+        # motor_vehicle=no with vehicle=no bars the bicycle as well (F23).
+        ({"highway": "service", "motor_vehicle": "no", "vehicle": "no"}, N),
+        ({"highway": "service", "motor_vehicle": "no", "vehicle": "no", "bicycle": "yes"}, P),
+        # A sidewalk is one whichever key maps it (F9).
+        ({"highway": "path", "path": "sidewalk", "bicycle": "designated"}, PR),
+        ({"highway": "cycleway", "cycleway": "sidewalk"}, N),
+        ({"highway": "path", "path": "sidewalk", "bicycle": "yes"}, N),
+        # A kerb is physical separation; paint is not (F15).
+        ({"highway": "cycleway", "separation": "kerb"}, PR),
+        ({"highway": "cycleway", "separation:right": "solid_line;kerb"}, PR),
+        ({"highway": "cycleway", "separation": "solid_line"}, P),
     ],
 )
 def test_facility_class(tags, expected):
@@ -113,6 +127,27 @@ def test_a_timed_closure_is_not_a_path_on_its_own():
         ("no @ (Mo-Fr 16:00-19:00)", set()),
         ("no @ (Mo-Fr 07:00-10:00,16:00-19:00)", {"weekday_rush"}),
         ("no @ (Mo-Su 00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak"}),
+        # Morning rush only: the evening instant is open (R21).
+        ("no @ (Mo-Fr 07:00-10:00)", set()),
+        # An interval's end is outside it: 08:00 and 17:30 are the rush
+        # instants, and a closure ending at them does not cover them (R20).
+        ("no @ (Mo-Fr 06:00-08:00,16:00-17:30)", set()),
+        ("no @ (Mo-Fr 06:00-08:01,16:00-17:31)", {"weekday_rush"}),
+        # Saturday alone is not the weekend: Sunday's instant is open (R11).
+        ("no @ (Sa 00:00-24:00)", set()),
+        ("no @ (Sa)", set()),
+        # A span that wraps the week, Friday evening to Monday morning (R12).
+        ("no @ (Fr 19:00-Mo 06:00)", {"weekend"}),
+        # A day's times that end where they start run into the next day (R14).
+        ("no @ (Sa-Su 07:00-07:00)", {"weekend"}),
+        # A rule and the public holidays after it, as way 6053480 has it (R18).
+        ("no @ (Sa 07:00-Su 19:00, PH)", {"weekend"}),
+        # Times with no days are every day: Clark Place NW (the round-1
+        # correctness note). Both rush instants are inside; Sunday 11:00 and
+        # noon are not.
+        ("no @ (06:00-10:15,14:45-19:15)", {"weekday_rush"}),
+        ("no @ (08:00-20:00)", {"weekend", "weekday_rush"}),
+        ("no @ (00:00-24:00)", {"weekend", "weekday_rush", "weekday_offpeak"}),
         # Local traffic only is not car-free.
         ("destination @ (Sa 07:00-Su 19:00, PH)", set()),
         # A condition this reader cannot read closes nothing.
@@ -133,6 +168,11 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
     assert car_free_when({"highway": "tertiary", "motor_vehicle:conditional": closed}) == {
         "weekend"
     }
+    assert car_free_when({"highway": "tertiary", "motorcar:conditional": closed}) == {"weekend"}
+    # A road bicycles may not use at all is never a path for them (F7).
+    for highway in ("motorway", "motorway_link"):
+        assert not car_free_when({"highway": highway, "motor_vehicle:conditional": closed})
+    assert not car_free_when({"motor_vehicle:conditional": closed})
     assert not car_free_when(
         {"highway": "tertiary", "bicycle": "no", "motor_vehicle:conditional": closed}
     )
@@ -154,9 +194,40 @@ def test_car_free_when_needs_a_bicycle_and_a_road():
         (datetime(2026, 11, 26, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
         # Independence Day 2026 falls on a Saturday and is observed Friday 3 July.
         (datetime(2026, 7, 3, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        # Evening rush starts at 16:00, not before (mutation review r1, R2).
+        (datetime(2026, 9, 28, 15, 30, tzinfo=ridetime.ZONE), "weekday_offpeak"),
+        (datetime(2026, 9, 28, 15, 59, tzinfo=ridetime.ZONE), "weekday_offpeak"),
+        # Juneteenth 2026 is Friday 19 June (R3).
+        (datetime(2026, 6, 19, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        # A holiday on a Sunday is observed on the Monday: 4 July 2027 (R5).
+        (datetime(2027, 7, 5, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 7, 2, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
+        # Memorial Day is the last Monday of May: 25 May 2026, 31 May 2027 (R7).
+        (datetime(2026, 5, 25, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2026, 5, 18, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
+        (datetime(2027, 5, 31, 8, 0, tzinfo=ridetime.ZONE), "weekend"),
+        (datetime(2027, 5, 24, 8, 0, tzinfo=ridetime.ZONE), "weekday_rush"),
     ],
 )
 def test_when_at(moment, when):
+    assert ridetime.when_at(moment) == when
+
+
+@pytest.mark.parametrize(
+    ("moment", "when"),
+    [
+        # 12:30 UTC on Tuesday 29 September is 08:30 in Washington (R9).
+        (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "weekday_rush"),
+        # 02:00 UTC on Saturday 3 October is 22:00 on Friday there.
+        (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "weekday_offpeak"),
+        # 03:30 UTC on Monday 28 September is still Sunday evening.
+        (datetime(2026, 9, 28, 3, 30, tzinfo=UTC), "weekend"),
+        # And in winter, five hours behind: 13:30 UTC on 12 January is 08:30.
+        (datetime(2027, 1, 12, 13, 30, tzinfo=UTC), "weekday_rush"),
+        (datetime(2027, 1, 12, 11, 30, tzinfo=UTC), "weekday_offpeak"),
+    ],
+)
+def test_when_at_reads_a_utc_moment_in_the_regions_time(moment, when):
     assert ridetime.when_at(moment) == when
 
 
@@ -174,6 +245,14 @@ def test_representative_time_is_the_next_such_instant():
         assert ridetime.when_at(stamp.replace(tzinfo=ridetime.ZONE)) == when
 
 
+def test_at_the_representative_instant_itself_the_next_is_a_week_on():
+    """R10: the router is told the next such instant, never the present one."""
+    saturday_nine = datetime(2026, 10, 3, 9, 0, tzinfo=ridetime.ZONE)
+    assert ridetime.representative_time("weekend", saturday_nine) == "2026-10-10T09:00"
+    a_minute_before = datetime(2026, 10, 3, 8, 59, tzinfo=ridetime.ZONE)
+    assert ridetime.representative_time("weekend", a_minute_before) == "2026-10-03T09:00"
+
+
 def _line(lon, lat, n=6, dlon=0.0002):
     return [(lon + i * dlon, lat) for i in range(n)]
 
@@ -189,6 +268,41 @@ def test_a_cycleway_along_a_road_that_says_separate_is_protected():
     found = beside_separate_roads([road, beside, away, plain_road, by_plain])
     assert found == {2}
     assert facility(beside[1], beside_separate_road=True) is PR
+
+
+def test_beside_is_within_twenty_metres():
+    """F17: 15 m is the lane; 30 m is the far side of a boulevard."""
+    road = (1, {"highway": "primary", "cycleway:right": "separate"}, _line(-77.03, 38.90))
+    near = (2, {"highway": "cycleway"}, _line(-77.03, 38.90 + 15 / 111_195))
+    far = (3, {"highway": "cycleway"}, _line(-77.03, 38.90 + 30 / 111_195))
+    assert beside_separate_roads([road, near, far]) == {2}
+
+
+def test_beside_is_measured_to_the_road_not_its_line_beyond_its_end():
+    """F21: a trail carrying straight on past the road's end lies on the
+    road's line but is not beside it."""
+    road = (1, {"highway": "primary", "cycleway:both": "separate"}, _line(-77.03, 38.90, n=3))
+    # The road ends at -77.0296; the trail starts 50 m further east.
+    onward = (2, {"highway": "cycleway"}, _line(-77.0290, 38.90))
+    assert beside_separate_roads([road, onward]) == set()
+
+
+@pytest.mark.parametrize(("near", "beside"), [(5, False), (6, True)])
+def test_beside_needs_six_tenths_of_the_way(near, beside):
+    """F18: of ten vertices, six near the road is beside it, five is not."""
+    road = (1, {"highway": "primary", "cycleway:both": "separate"}, _line(-77.03, 38.90, n=12))
+    points = [(-77.03 + i * 0.0002, 38.9001 if i < near else 38.902) for i in range(10)]
+    assert beside_separate_roads([road, (2, {"highway": "cycleway"}, points)]) == (
+        {2} if beside else set()
+    )
+
+
+def test_only_a_road_is_the_road_a_lane_lies_beside():
+    """F19: a trail-class way that carries a `cycleway*=separate` tag is not
+    a road, and the path beside it stays a path."""
+    odd = (1, {"highway": "footway", "cycleway:right": "separate"}, _line(-77.03, 38.90))
+    beside = (2, {"highway": "cycleway"}, _line(-77.03, 38.9001))
+    assert beside_separate_roads([odd, beside]) == set()
 
 
 def test_beside_needs_most_of_the_way():

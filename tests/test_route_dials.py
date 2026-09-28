@@ -8,6 +8,8 @@ real, because the breakdown is a PostGIS join.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from django.conf import settings
 from django.db import connection
@@ -148,11 +150,27 @@ class TestRefusedDials:
             {"when": "Weekend"},
             {"carrying": "goats"},
             {"carrying": "people"},
+            {"hills": "50"},
+            {"hills": 20.0},
+            {"hills": True},
         ],
     )
     def test_bad_dials_are_a_400_before_the_router(self, extra, client, facility_segments, router):
         fake = router(standard_router())
         response = post(client, {**good_body("default"), **extra})
+        assert response.status_code == 400
+        assert "error" in response.json()
+        assert fake.calls == []
+
+    @pytest.mark.parametrize("carrying", ["goats", "Cargo", "", 1])
+    def test_a_load_cargo_bike_has_no_start_for_is_a_400(
+        self, carrying, client, facility_segments, router
+    ):
+        """On the ride type that does carry, not only on one that does not:
+        with the type loosened this reached `preset.carrying[...]` and was a
+        500 (mutation review r1, A11)."""
+        fake = router(standard_router())
+        response = post(client, {**good_body("cargo"), "carrying": carrying})
         assert response.status_code == 400
         assert "error" in response.json()
         assert fake.calls == []
@@ -185,6 +203,28 @@ class TestRideTime:
         assert fake.calls[0][1]["date_time"]["value"] == routing.planning_time(
             when=routing.default_when()
         )
+
+    @pytest.mark.parametrize(
+        ("now", "when", "told"),
+        [
+            # 08:30 in Washington on Tuesday 29 September: morning rush.
+            (datetime(2026, 9, 29, 12, 30, tzinfo=UTC), "weekday_rush", "2026-10-06T08:00"),
+            # 22:00 on Friday 2 October there, Saturday already in UTC.
+            (datetime(2026, 10, 3, 2, 0, tzinfo=UTC), "weekday_offpeak", "2026-10-06T12:00"),
+            # Saturday noon there.
+            (datetime(2026, 10, 3, 16, 0, tzinfo=UTC), "weekend", "2026-10-10T09:00"),
+        ],
+    )
+    def test_absent_is_the_setting_of_the_clock_in_washington(
+        self, client, facility_segments, router, monkeypatch, now, when, told
+    ):
+        """Pinned to a clock, not to `default_when()` itself, which a test
+        cannot fail against (mutation review r1, R9 and RT21)."""
+        monkeypatch.setattr(routing.timezone, "now", lambda: now)
+        fake = router(standard_router())
+        body = post(client, good_body()).json()
+        assert body["dials"]["when"] == when
+        assert fake.calls[0][1]["date_time"]["value"] == told
 
 
 @db
@@ -280,6 +320,36 @@ class TestSeekingClimbs:
         router(seeking_router([(2.8, STEEPEST), (2.4, HILLY)]))
         body = post(client, {**good_body(), "hills": 100}).json()
         assert body["hills_seek"]["chosen"] == 1
+
+    def test_the_extra_climb_is_over_the_direct_routes_own(self, client, facility_segments, router):
+        """RT9: on a direct route that climbs too, what is reported is the
+        difference, not the chosen route's whole climb."""
+        direct, hilly = _trip(VERTICES, 2.0, HILLY), _trip(VERTICES, 2.2, STEEPEST)
+        router(
+            FakeRouter(
+                {
+                    "route": {"trip": direct, "alternates": [{"trip": hilly}]},
+                    "trace_attributes": trace_answer(VERTICES, [(101, 0, 4, 2.0)]),
+                }
+            )
+        )
+        body = post(client, {**good_body(), "hills": 100}).json()
+        assert body["hills_seek"]["chosen"] == 1
+        assert routing._climb_of(direct) > 0
+        assert body["hills_seek"]["extra_climb_m"] == pytest.approx(
+            routing._climb_of(hilly) - routing._climb_of(direct), abs=0.1
+        )
+
+    def test_the_search_asks_for_every_alternative_the_routers_allow(self):
+        """RT3: the routers' `max_alternates`, in every variant's config."""
+        import json
+        from pathlib import Path
+
+        configs = sorted((Path(settings.BASE_DIR) / "valhalla").glob("valhalla-*.json"))
+        assert len(configs) == 4
+        for path in configs:
+            limits = json.loads(path.read_text())["service_limits"]
+            assert routing.SEEK_ALTERNATES == limits["max_alternates"], path.name
 
     def test_nothing_climbs_more_keeps_the_direct_route(self, client, facility_segments, router):
         router(seeking_router([(2.1, FLAT)]))

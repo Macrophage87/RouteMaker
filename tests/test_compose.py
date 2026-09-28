@@ -263,7 +263,7 @@ def test_a_bind_nested_in_a_read_only_bind_has_its_mountpoint_in_the_checkout() 
                 continue
             for _, target, _ in binds:
                 if target.startswith(parent_target.rstrip("/") + "/"):
-                    mountpoint = f"{parent_source}/{target[len(parent_target):].strip('/')}"
+                    mountpoint = f"{parent_source}/{target[len(parent_target) :].strip('/')}"
                     nested.append(name)
                     assert any(path.startswith(mountpoint + "/") for path in tracked), (
                         f"{name}: {target} is bound inside read-only {parent_target}, so "

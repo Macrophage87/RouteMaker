@@ -17,6 +17,9 @@ import {
   hillsWords,
   startDials,
   stressWords,
+  WHENS,
+  carries,
+  isWhen,
 } from "./dials.ts";
 import { decodePlan, encodePlan } from "./planHash.ts";
 
@@ -133,4 +136,49 @@ test("the bottom of the traffic slider is traffic tolerant and warns", () => {
   assert.ok(!warnsTrafficTolerant("default", 15));
   // Mass Ride's slider is locked at 0 and says why; it does not warn.
   assert.ok(!warnsTrafficTolerant("mass-ride", 0));
+});
+
+test("each word's range starts where the next one ends", () => {
+  // Mutation review r1, FE13 and FE14: the boundaries, not only the ends.
+  assert.equal(stressWords(TRAFFIC_TOLERANT_MAX + 1), "Direct, some busy streets");
+  assert.equal(stressWords(39), "Direct, some busy streets");
+  assert.equal(stressWords(40), "Balanced");
+  assert.equal(stressWords(60), "Balanced");
+  assert.equal(stressWords(61), "Prefers quiet streets and paths");
+  assert.equal(stressWords(94), "Prefers quiet streets and paths");
+  assert.equal(stressWords(95), "Low-stress, unless avoiding busy streets takes much longer");
+  assert.equal(hillsWords(-80), "Avoids hills");
+  assert.equal(hillsWords(-79), "Gentler grades");
+  assert.equal(hillsWords(-11), "Gentler grades");
+  assert.equal(hillsWords(-10), "Fastest time");
+  assert.equal(hillsWords(10), "Fastest time");
+  assert.equal(hillsWords(11), "Some extra climbing");
+  assert.equal(hillsWords(79), "Some extra climbing");
+  assert.equal(hillsWords(80), "Seeks hills");
+});
+
+test("only Cargo Bike carries a load", () => {
+  // FE17.
+  for (const preset of PRESETS) assert.equal(carries(preset.id), preset.id === "cargo", preset.id);
+});
+
+test("the three ride times, and nothing else, are ride times", () => {
+  // FE32: dropping weekday_offpeak from WHENS left every test green.
+  assert.deepEqual(
+    WHENS.map((w) => w.id),
+    ["weekend", "weekday_rush", "weekday_offpeak"],
+  );
+  for (const when of ["weekend", "weekday_rush", "weekday_offpeak"]) assert.ok(isWhen(when), when);
+  assert.equal(isWhen("now"), false);
+  assert.equal(decodePlan("#preset=default&when=weekday_offpeak").dials.when, "weekday_offpeak");
+});
+
+test("an empty stress or hills in a link is the ride type's start, not 0", () => {
+  // FE27: Number("") is 0, and 0 is traffic tolerant.
+  for (const preset of ["default", "group-ride", "cargo"] as const) {
+    const plan = decodePlan(`#preset=${preset}&stress=&hills=`);
+    assert.equal(plan.dials.stress, STARTS[preset].carrying?.cargo ?? STARTS[preset].stress, preset);
+    assert.equal(plan.dials.hills, STARTS[preset].hills, preset);
+    assert.equal(decodePlan(`#preset=${preset}&stress=%20`).dials.stress, plan.dials.stress, preset);
+  }
 });

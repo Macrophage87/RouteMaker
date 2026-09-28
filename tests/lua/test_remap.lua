@@ -819,5 +819,19 @@ check("not where the penalty may not land (dismount)",
   ungraded(M.remap_way({ highway = "secondary", bicycle = "dismount" }, { stress_tier = 4 })))
 check("no tier, not graded", ungraded(M.remap_way({ highway = "secondary" }, {})))
 
+-- Mutation review r1, LU6 and LU20: the guards that keep a comfort write
+-- from opening or closing a way.
+check("a car-free way of a class not open to bicycles by default gets no track",
+  fac({ highway = "construction", motor_vehicle = "no" }, "path").cycleway == nil
+    and fac({ highway = "busway", motor_vehicle = "no" }, "path").cycleway == nil)
+check("while one that is gets it",
+  fac({ highway = "residential", motor_vehicle = "no" }, "path").cycleway == "track")
+check("the no-trail variant takes no lane off a way the lanes open over bicycle=no",
+  fac({ highway = "residential", bicycle = "no", ["cycleway:both"] = "lane" }, nil,
+      { facility_neutral = true })["cycleway:both"] == nil)
+check("nor off one whose access is restricted",
+  fac({ highway = "residential", access = "private", cycleway = "track" }, nil,
+      { facility_neutral = true }).cycleway == nil)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

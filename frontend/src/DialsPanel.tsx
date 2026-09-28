@@ -9,22 +9,8 @@
  */
 import { useEffect, useId, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
-import {
-  HILLS_MIN,
-  STRESS_MAX,
-  STRESS_MIN,
-  WHENS,
-  hillsMax,
-  hillsWords,
-  offersAssist,
-  stressMax,
-  startDials,
-  stressWords,
-  TRAFFIC_TOLERANT_WARNING,
-  warnsTrafficTolerant,
-  type Dials,
-  type When,
-} from "./lib/dials.ts";
+import { WHENS, type Dials, type When } from "./lib/dials.ts";
+import { panelView, type SliderView } from "./lib/dialsPanel.ts";
 
 interface Props {
   preset: PresetId;
@@ -36,33 +22,29 @@ interface Props {
 
 function Slider(props: {
   label: string;
-  min: number;
-  max: number;
+  view: SliderView;
   value: number;
-  ends: [string, string, string];
-  words: string;
-  disabled?: boolean;
-  disabledNote?: string;
   onDraft: (value: number) => void;
   onRelease: () => void;
 }) {
   const id = useId();
-  const [low, middle, high] = props.ends;
+  const { view } = props;
+  const [low, middle, high] = view.ends;
   return (
     <div className="dial">
       <label htmlFor={id} className="dial-label">
         {props.label}
-        <span className="dial-now">{props.words}</span>
+        <span className="dial-now">{view.words}</span>
       </label>
       <input
         id={id}
         type="range"
-        min={props.min}
-        max={props.max}
+        min={view.min}
+        max={view.max}
         step={5}
         value={props.value}
-        aria-valuetext={props.words}
-        disabled={props.disabled}
+        aria-valuetext={view.words}
+        disabled={view.disabled}
         onChange={(event) => props.onDraft(Number(event.target.value))}
         onPointerUp={props.onRelease}
         onKeyUp={props.onRelease}
@@ -73,7 +55,7 @@ function Slider(props: {
         <span>{middle}</span>
         <span>{high}</span>
       </div>
-      {props.disabledNote && <p className="hint">{props.disabledNote}</p>}
+      {view.note && <p className="hint">{view.note}</p>}
     </div>
   );
 }
@@ -88,13 +70,11 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
   const release = () => {
     if (draft.stress !== dials.stress || draft.hills !== dials.hills) onCommit(draft);
   };
-  const seekAllowed = hillsMax(preset) > 0;
-  const start = startDials(preset, dials.carrying, dials.when);
-  const moved = dials.stress !== start.stress || dials.hills !== start.hills;
+  const view = panelView(preset, dials, draft);
   return (
     <section className="dials" aria-labelledby="dials-heading">
       <h2 id="dials-heading">Adjust this ride</h2>
-      {offersAssist(preset) && (
+      {view.assistToggle && (
         <label className="toggle">
           <input
             type="checkbox"
@@ -104,7 +84,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
           Electric assist
         </label>
       )}
-      {offersAssist(preset) && dials.assist && (
+      {view.assistNote && (
         <p className="hint">
           Follows e-bike rules and plans at a little more speed. Hills still count: a loaded cargo bike&apos;s motor
           rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.
@@ -112,41 +92,20 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
       )}
       <Slider
         label="Traffic"
-        min={STRESS_MIN}
-        max={stressMax(preset) === 0 ? STRESS_MAX : stressMax(preset)}
+        view={view.traffic}
         value={draft.stress}
-        ends={["Traffic tolerant", "Balanced", "Quiet roads"]}
-        words={stressWords(draft.stress)}
-        disabled={stressMax(preset) === 0}
-        disabledNote={
-          stressMax(preset) === 0
-            ? "A mass ride takes the most direct roadway; it is not steered onto side streets."
-            : undefined
-        }
         onDraft={(stress) => setDraft({ ...draft, stress })}
         onRelease={release}
       />
-      {warnsTrafficTolerant(preset, draft.stress) && (
+      {view.warning && (
         <p className="notice traffic-tolerant" role="note">
-          {TRAFFIC_TOLERANT_WARNING}
+          {view.warning}
         </p>
       )}
       <Slider
         label="Hills"
-        min={HILLS_MIN}
-        max={hillsMax(preset)}
+        view={view.hills}
         value={draft.hills}
-        ends={seekAllowed ? ["Avoid hills", "Fastest", "Seek hills"] : ["Avoid hills", "", "Fastest"]}
-        words={hillsWords(draft.hills)}
-        disabledNote={
-          seekAllowed
-            ? draft.hills > 0
-              ? "Looks for climbs among a few alternative routes, up to half again as long; for a start and an end only, up to 50 km apart."
-              : draft.hills < 0
-                ? "Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to 50 km apart."
-                : undefined
-            : "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed."
-        }
         onDraft={(hills) => setDraft({ ...draft, hills })}
         onRelease={release}
       />
@@ -181,8 +140,8 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
           the breakdown.
         </p>
       </fieldset>
-      {moved && (
-        <button type="button" className="link" onClick={() => onCommit(start)}>
+      {view.reset && (
+        <button type="button" className="link" onClick={() => view.reset && onCommit(view.reset)}>
           Back to this ride type's settings
         </button>
       )}
