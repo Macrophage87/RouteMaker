@@ -23,7 +23,7 @@ import { stationEdit, type RailVisibility, type StationRole } from "./lib/railSt
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
-import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
+import { StressZoomNotes } from "./lib/stressLegend.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
@@ -691,7 +691,7 @@ export function App() {
                   />
                   Show traffic stress on the map
                 </label>
-                <StressLegend facilities={facilitiesShown} zoom={zoom} />
+                <StressLegend facilities={facilitiesShown} zoom={zoom} shown={stressVisible} />
               </>
             )}
             {stress === "checking" && <p className="hint">Checking the stress map…</p>}
@@ -790,7 +790,15 @@ function RouteSummary({ route, points, narrow }: { route: RouteResponse; points:
   );
 }
 
-function StressLegend({ facilities, zoom }: { facilities: ReadonlySet<string>; zoom: number | null }) {
+function StressLegend({
+  facilities,
+  zoom,
+  shown,
+}: {
+  facilities: ReadonlySet<string>;
+  zoom: number | null;
+  shown: boolean;
+}) {
   return (
     <>
       <ul className="legend" aria-label="Traffic stress legend">
@@ -814,19 +822,8 @@ function StressLegend({ facilities, zoom }: { facilities: ReadonlySet<string>; z
         ))}
       </ul>
       {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
-          below street zoom only LTS 3-4 roads and the trail network, and
-          footways only from zoom 14. */}
-      {zoom !== null && zoom < STRESS_ZOOMS.min && (
-        <p className="notice" role="status">
-          Zoom in to see traffic stress.
-        </p>
-      )}
-      <p className="hint">
-        At zoom {STRESS_ZOOMS.min} and {STRESS_ZOOMS.streets - 1} only LTS 3 and 4 roads and the trails are drawn;
-        quiet streets appear from zoom {STRESS_ZOOMS.streets}, footways and sidewalks from zoom {STRESS_ZOOMS.full}, and
-        further out than zoom {STRESS_ZOOMS.min} nothing is drawn. Streets with no stress rating are not drawn.
-        {zoom !== null && ` The map is at zoom ${Math.floor(zoom)}.`}
-      </p>
+          only the trails below STRESS_ZOOMS.roads (lib/stressLegend.ts). */}
+      <StressZoomNotes zoom={zoom} shown={shown} />
       {facilities.size > 0 && (
         <>
           <p className="hint">Bike facilities are violet edges on either side of the stress line:</p>
@@ -853,7 +850,7 @@ function StressLegend({ facilities, zoom }: { facilities: ReadonlySet<string>; z
               );
             })}
           </ul>
-          <p className="hint">Sharrows count as ordinary streets. Paths and protected lanes stay on the map zoomed out.</p>
+          <p className="hint">Sharrows count as ordinary streets. Zoomed out, only the paths stay on the map.</p>
         </>
       )}
     </>

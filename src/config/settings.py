@@ -277,6 +277,16 @@ def tile_concurrency(web_concurrency: str | None) -> int:
 
 TILE_CONCURRENCY = tile_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
+# How many stress tiles the pre-draw (core.tile_cache.predraw) draws at once.
+# It runs in the worker after a promotion, and in `manage.py
+# predraw_stress_tiles` - never in a gunicorn worker - so it holds none of the
+# slots above and leaves the owner's arithmetic for the api's workers as it is.
+# What it takes is PostgreSQL CPU, a core per draw, on the host routing and
+# /healthz run on. Two: the whole box took 155 s with one, 89 s with two and no
+# less with three or four (2026-09-28, on a copy of the promoted build), so a
+# third would take a core for nothing.
+STRESS_PREDRAW_WORKERS = int(os.environ.get("STRESS_PREDRAW_WORKERS", "2"))
+
 # Of those, how many may be long rides (over 150 km of straight line) at once,
 # across the whole api. The owner decided on 2026-09-26 that long rides are
 # planned, a signed-out visitor confirming first; one at a time is the

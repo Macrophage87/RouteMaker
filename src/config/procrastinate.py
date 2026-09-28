@@ -322,11 +322,12 @@ def weekly_rebuild(context=None, *, timestamp: int) -> None:
 
 
 def _predraw_stress_tiles(deadline: float | None = None) -> str:
-    """Draw the new table's z10-13 stress tiles into the cache, after the swap.
+    """Draw the new table's z10-14 stress tiles - every tile the map asks for
+    - into the cache, after the swap.
 
-    Until they are drawn a z10-12 tile is drawn on its first request, under the
-    api's short draw timeout, and on a table without the overview index the
-    dearest of them do not fit in it. A failure here is logged and reported on
+    Until they are drawn a tile is drawn on its first request, through the api's
+    one draw slot and under its short draw timeout, and a street-level screen
+    took 20-30 s that way (OWNER-DECISIONS 63). A failure here is logged and reported on
     the run row and does not fail the rebuild: the build is promoted and
     serving, and `manage.py predraw_stress_tiles` finishes the job.
 

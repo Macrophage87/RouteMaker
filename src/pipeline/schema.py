@@ -20,7 +20,6 @@ from django.db import connection
 from routemaker.classes import (
     SIDEWALK_CLASS_HIGHWAY,
     TRAIL_CLASS_HIGHWAY,
-    TRAIL_NETWORK_HIGHWAY,
     TrailKind,
 )
 from routemaker.stress import trail_rule
@@ -110,40 +109,51 @@ def _text_list(values) -> str:
     return ", ".join(f"'{item}'" for item in items)
 
 
-# What the stress tiles draw zoomed out (`core.stress_tiles.OVERVIEW`): the
-# roads of LTS 3 and 4 and the trail network. Written once because the partial
-# index below is created with it and the tile query filters with it, and
-# PostgreSQL uses a partial index only when it can prove the query's condition
-# implies the index's - which it does for the same expression.
+# What the stress tiles draw zoomed out (`core.stress_tiles.TRAILS`, below
+# `core.stress_tiles.ROAD_STRESS_MIN_ZOOM`): the traffic-free paths and
+# nothing else. The owner, 2026-09-28: "It looks way too busy zoomed out
+# though." and then "Zoomed out just show the trails." (OWNER-DECISIONS 64,
+# 65). A path is what `routemaker.facility` calls one - the rule routing
+# reads, written by the rebuild to `segment.facility` - so a car-free road
+# (Beach Drive in DC) is on the zoomed-out map and a hiking trail barred to
+# bicycles is not. Protected lanes are not: they are on the roadway or beside
+# it, and zoomed out they would draw the street grid again.
 #
-# The trail network is the trail-class ways a bicycle may ride away from the
-# road, and the sidepaths beside it (`routemaker.classes.trail_kind`): a
-# bike-barred hiking trail is not in it. A table built before the kinds were
-# recorded holds the plain texts, which cannot tell the Appalachian Trail from
-# the W&OD; its cycleways, paths and bridleways stay in the network, as they
-# were, until the next rebuild writes the kinds (LEGACY_TRAIL_RULES).
+# Written once because the partial index below is created with it and the tile
+# query filters with it, and PostgreSQL uses a partial index only when it can
+# prove the query's condition implies the index's - which it does for the same
+# expression.
+FACILITY_COLUMN = "facility"
+TRAIL_FACILITY = "path"
+
+# A live table promoted before the facility column has no such column, and the
+# tiles derive the facility from the rule the rebuild recorded
+# (`routemaker.classes.trail_kind`, in the text of `stress_rule`), by the
+# routing lane's rule for trails: a trail a bicycle may ride is a path, a
+# sidepath is the protected facility, and nothing else is anything. On a table
+# from before the kinds were recorded only a cycleway is a path; a plain
+# "path" there may be a hiking trail barred to bicycles.
 TRAILS = sorted(TRAIL_CLASS_HIGHWAY - {"steps"})
 OPEN_TRAIL_RULES = frozenset(trail_rule(h, TrailKind.OPEN) for h in TRAILS)
 SIDEPATH_RULES = frozenset(trail_rule(h, TrailKind.SIDEPATH) for h in TRAILS)
-LEGACY_TRAIL_RULES = frozenset(trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY)
-TRAIL_NETWORK_RULES = OPEN_TRAIL_RULES | SIDEPATH_RULES | LEGACY_TRAIL_RULES
+PATH_RULES = OPEN_TRAIL_RULES | {trail_rule("cycleway")}
 
-OVERVIEW_PREDICATE = (
-    "(stress_tier >= 3 OR stress_rule IN (" + _text_list(TRAIL_NETWORK_RULES) + "))"
-)
-
-# Until the live table has a facility column the tiles derive one, by the
-# routing lane's rule for trails: a trail a bicycle may ride is an off-road
-# path, a sidepath is the protected facility, and nothing else is anything.
-# On a table from before the kinds were recorded only a cycleway is a path;
-# a plain "path" there may be a hiking trail barred to bicycles.
 TRAIL_NETWORK_FACILITY = (
     "CASE WHEN stress_rule IN ("
-    + _text_list(OPEN_TRAIL_RULES | {trail_rule("cycleway")})
+    + _text_list(PATH_RULES)
     + ") THEN 'path' WHEN stress_rule IN ("
     + _text_list(SIDEPATH_RULES)
     + ") THEN 'protected' END"
 )
+
+
+def trails_predicate(has_facility: bool) -> str:
+    """The zoomed-out tiles' condition on a table with or without the facility
+    column: its paths. Also the overview index's predicate on that table."""
+    if has_facility:
+        return f"{FACILITY_COLUMN} = '{TRAIL_FACILITY}'"
+    return "stress_rule IN (" + _text_list(PATH_RULES) + ")"
+
 
 # What they draw at street zoom (`core.stress_tiles.STREETS`): everything but
 # the sidewalk class. `stress_rule` is NOT NULL, so NOT IN keeps every street.
@@ -156,10 +166,10 @@ STREETS_PREDICATE = (
 # 2026-09-27), written by the rebuild from `routemaker.facility` - the rule
 # routing reads. A live table promoted before the column has none: the stress
 # tiles carry it from a table that has it and derive it
-# (TRAIL_NETWORK_FACILITY) on one that does not. Paths and protected lanes are
-# the ones a zoomed-out map keeps, whatever their tier or kind of way.
-FACILITY_COLUMN = "facility"
-FACILITIES_KEPT_ZOOMED_OUT = ("path", "protected")
+# (TRAIL_NETWORK_FACILITY) on one that does not. At street zoom the paths and
+# protected lanes are kept whatever their kind of way - a sidewalk designated
+# for bicycles beside a road is the protected lane there.
+FACILITIES_KEPT_AT_STREET_ZOOM = ("path", "protected")
 
 # Whether SEGMENT_DDL declares the facility column. Set it True in the change
 # that adds the column, so the overview index is created with the predicate
@@ -169,15 +179,15 @@ SEGMENT_HAS_FACILITY = True
 
 
 def keeping_facilities(predicate: str) -> str:
-    """`predicate`, widened to keep the facilities a zoomed-out map shows."""
-    kept = _text_list(FACILITIES_KEPT_ZOOMED_OUT)
+    """`predicate`, widened to keep the facilities a street-zoom map shows."""
+    kept = _text_list(FACILITIES_KEPT_AT_STREET_ZOOM)
     return f"({predicate} OR {FACILITY_COLUMN} IN ({kept}))"
 
 
 def overview_index_predicate(has_facility: bool) -> str:
     """The overview index's predicate on a table with or without the facility
-    column: the one the tile query uses on that table."""
-    return keeping_facilities(OVERVIEW_PREDICATE) if has_facility else OVERVIEW_PREDICATE
+    column: the one the zoomed-out tile query uses on that table."""
+    return trails_predicate(has_facility)
 
 
 OVERVIEW_INDEX_PREDICATE = overview_index_predicate(SEGMENT_HAS_FACILITY)
@@ -258,10 +268,9 @@ CREATE TABLE {schema}.segment (
 CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
 CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
--- The stress tiles' zoomed-out level reads about one row in seven of those in
--- its bounding box; this index holds only those rows (OVERVIEW_PREDICATE).
--- Measured on the first promoted build, the scan of the z10 tile over
--- downtown DC: 285 ms through segment_geom_idx, 7 ms through this.
+-- The stress tiles' zoomed-out level draws only the paths
+-- (trails_predicate); this index holds only those rows, so a z10 tile's scan
+-- does not read the whole region's streets to find them.
 CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {overview};
 

@@ -398,46 +398,61 @@ map's grey area. A coordinate that is not a tile is 400, and a deployment with
 no live segment table yet is 404 with `no-store`, which the front end reads as
 "no overlay".
 
-| Zoom | What is drawn | Measured on the first promoted build, downtown DC tile |
+| Zoom | What is drawn | Measured on a copy of the promoted build, 2026-09-28 |
 | --- | --- | --- |
-| 10-11 | LTS 3 and 4, and the trails a bicycle may ride and the sidepaths; one feature per class, simplified | z10 245 KB (165 KB gzipped) |
-| 12-13 | everything but footways, pedestrian ways and steps not open to bicycles; one feature per class, simplified | z12 151 KB, z13 51 KB |
-| 14-16 | every segment | z14 124 KB (55 KB gzipped), 5,062 features |
+| 10-12 | only the traffic-free paths (`pipeline.schema.trails_predicate`); one feature per class, simplified | z10 downtown 38 KB; all 762 tiles 0.5 MB |
+| 13 | the full stress colours: everything but footways, pedestrian ways and steps not open to bicycles; one feature per class, simplified | 2,116 tiles, 16 MB, at most 51 KB |
+| 14-16 | every segment | z14: 8,190 tiles, 49 MB, at most 125 KB (downtown, 55 KB gzipped) |
 
-Below zoom 10 nothing is drawn; the legend says "Zoom in to see traffic
-stress" there (owner decision of 2026-09-27: busy roads and trails at region
-zoom, nothing below it).
+The owner, 2026-09-28: "It looks way too busy zoomed out though." and then
+"Zoomed out just show the trails." (OWNER-DECISIONS 64, 65). So below
+`core.stress_tiles.ROAD_STRESS_MIN_ZOOM` - 13, the orchestrator's default,
+neighbourhood scale - the overlay draws only the paths, and the legend says
+"Zoom in to see traffic stress on roads" there. To move it, change
+`ROAD_STRESS_MIN_ZOOM` and `STRESS_ZOOMS.roads` in
+`frontend/src/lib/mapStyle.ts` together (a test fails while they differ),
+rebuild the api image and the front end, and run the pre-draw. Below zoom 10
+nothing is drawn. The map asks for nothing past z14 (the source's `maxzoom`):
+it draws z15-16 from the z14 tile, whose 4,096 units a side are half a pixel
+each at z16. z15-16 are still served, for the contract.
 
 **Trails.** The rebuild records on each trail-class way what a bicycle may do
 on it (`routemaker.classes.trail_kind`, in the text of `stress_rule`): open to
 bicycles, a sidepath for bicycles, or not open to bicycles, by the routing
 lane's rule for trails. A trail barred to bicycles - the Appalachian Trail,
 the Potomac Heritage Trail, the Bull Run-Occoquan Trail, 3,831 ways in the
-2026-09-25 extract - is not in the zoomed-out trail network and is not drawn
-as a bike path. A table promoted before this was recorded has only the plain
-texts: there every cycleway, path and bridleway stays in the zoomed-out
-network, as before, and only a cycleway is drawn as a path, until the next
-rebuild.
+2026-09-25 extract - is not a path and is not on the zoomed-out map. A table
+promoted before this was recorded has only the plain texts, which cannot tell
+a hiking trail from a bike trail: there only a cycleway is a path (1,659 mi
+of the 2026-09-28 live table's 6,857 mi of cycleways, paths and bridleways),
+until the next rebuild records the kinds or writes the facility.
 
 **Bike facilities.** Until the live table has a `facility` column the tiles
 derive one (`pipeline.schema.TRAIL_NETWORK_FACILITY`): a trail open to bicycles
 is a path, a sidepath is protected, and nothing else carries one. Where the
 live table has the column (path, protected, lane or none - the routing lane
-adds it) every feature carries it as `facility`, and the zoomed-out levels also
-keep the paths and protected lanes whatever their tier
-(`pipeline.schema.keeping_facilities`). The overview index is built on the
-widened predicate only once `pipeline.schema.SEGMENT_HAS_FACILITY` says the
-schema declares the column (a test fails while the two disagree).
+adds it) every feature carries it as `facility`, the zoomed-out tiles are its
+paths - a car-free road such as Beach Drive in DC included - and z13 also
+keeps the paths and protected lanes whatever their kind of way
+(`pipeline.schema.keeping_facilities`). Protected lanes are not on the
+zoomed-out map: they are on the roadway or beside it, and would draw the
+street grid again. The overview index is built on the facility's predicate
+only once `pipeline.schema.SEGMENT_HAS_FACILITY` says the schema declares the
+column (a test fails while the two disagree).
 
 **The tile cache.** A tile, once drawn, is kept in the `stress_tile_cache`
 table (`core/tile_cache.py`, migration `core.0009`) under its ETag and z/x/y,
-and served from there without a draw. z10-13 over the box are drawn ahead
-after every promotion - the weekly rebuild does it after the swap and says so
-on its run row ("Stress tile cache pre-drawn: N drawn, M already there") - and
-kept: 2,693 tiles and 32.6 MB on the first promoted build. A z14-16 tile drawn
-on request is kept too, up to 256 MB of them, oldest out first. Rows for an
-older table or tile format are deleted by the next pre-draw or eviction. The
-table is left out of the nightly dump; it refills itself.
+and served from there without a draw. Every tile the map asks for - z10-14,
+each one the coverage box reaches, 11,068 tiles and 66 MB, empty ones included
+so their requests are lookups too - is drawn ahead after every promotion (the
+owner, 2026-09-28: "It takes a very long time to load those roads.", where:
+"Zoomed in (street level)"; OWNER-DECISIONS 63). The weekly rebuild does it
+after the swap and says so on its run row ("Stress tile cache pre-drawn: N
+drawn, M already there"), and the tiles are kept. A z15-16 tile drawn on
+request (the map does not ask for them) is kept too, up to 256 MB of them,
+oldest out first. Rows for an older table or tile format are deleted by the
+next pre-draw or eviction. The table is left out of the nightly dump; it
+refills itself.
 
 Run the pre-draw by hand on a deployment whose live table was promoted before
 the cache existed (the first deploy of this change), and after
@@ -448,14 +463,19 @@ of. It skips what is already cached, so it is safe to re-run:
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
 
-On a host at load 5-9 it took 56 s with the overview index and 76 s without;
-the round-2 reviews measured 135-216 s on a host at load 10-27. Its default
-budget is 30 minutes; in the weekly rebuild it gets whatever is left of the
-rebuild's eight hours if that is less, and the run row says when it stopped
-short ("stopped at its time budget with N left", "N timed out"), in which
-case run it by hand.
-Until it has run, a z10-12 tile over a dense area can be refused: see the next
-paragraph.
+It draws `STRESS_PREDRAW_WORKERS` tiles at once (default 2), each on a
+database connection of its own. It runs in the worker or in this command,
+never in gunicorn, so it takes none of the api's draw slots below; what it
+takes is a PostgreSQL core per draw. The whole box took 155 s with one worker,
+89 s with two and no less with three or four, on a copy of the promoted build
+at load 4-6 (2026-09-28), and a route and `/healthz` meanwhile answered as
+fast as with no pre-draw (the FOLLOWUP-TILES-ZOOM report has the figures).
+Its default budget is an hour; in the weekly rebuild it gets whatever is left
+of the rebuild's eight hours if that is less, and the run row says when it
+stopped short ("stopped at its time budget with N left", "N timed out"), in
+which case run it by hand. Until it has run, a tile is drawn on request
+through the one draw slot, and a street-level screen takes 20-30 s: see the
+next paragraph.
 
 **Draw slots and the draw timeout.** A tile not in the cache is drawn under an
 in-flight slot (`core.ratelimit.TILES_IN_FLIGHT`): at most `TILE_CONCURRENCY`
@@ -477,9 +497,7 @@ The map fetches tiles through a protocol of its own
 at once, and a refused tile waits the longer of its Retry-After and 1, 2, 4,
 8, 8... seconds, each stretched at random by 0.5-1.5, for up to 30 s before
 MapLibre is left to show the parent tile there. The map's availability check
-at load goes the same way. Without the overview index a cold z10 downtown draw
-takes 6.7 s (3.1 s warm, quiet host), past the timeout: those tiles come only
-from the pre-draw.
+at load goes the same way.
 
 What this bought, measured on a copy of the first promoted build (5 workers, 2
 CPUs; one route every 2 s and `/healthz` every second from other addresses,
@@ -523,33 +541,21 @@ Caddy compresses the tiles (an `encode` in the api's block matched on the
 vector-tile content type); nothing else the api answers is compressed.
 
 **The overview index.** The zoomed-out tiles read through a partial GiST index,
-`segment_overview_geom_idx`, which `pipeline.schema.create_segment_schema`
-creates with the rest of the schema on every rebuild. The figures above the
-table of zooms are with it; without it the z10 downtown tile takes 6.7 s cold
-and 3.1 s warm to draw, single-threaded, against 1.6 s and 0.25 s with it, and
-the pre-draw takes 76 s rather than 56 s (both at load 5-9). A live table promoted before this
-change does not have it, and the next rebuild brings it. To add it to a live
-table by hand, build it concurrently so reads carry on. The predicate is
-`pipeline.schema.OVERVIEW_INDEX_PREDICATE`; `-v 0` keeps the shell's own
-banner out of what is printed:
+`segment_overview_geom_idx`, holding only the paths
+(`pipeline.schema.OVERVIEW_INDEX_PREDICATE`), which
+`pipeline.schema.create_segment_schema` creates with the rest of the schema on
+every rebuild. It only speeds the pre-draw now that the zoomed-out tiles are
+the paths alone: without it the z10 downtown tile took 0.27 s rather than
+0.06 s, and z10-12 took 8.7 s rather than 5.9 s. A live table promoted before
+this change has the index built on the old predicate (busy roads and the trail
+network), which the paths' query cannot use; nothing needs doing, and the next
+rebuild brings the new one. It may be dropped by hand - concurrently, so
+reads carry on, and only when no rebuild is queued or running, since the
+swap's `LOCK TABLE` waits behind it:
 
 ```sh
-docker compose exec -T api python manage.py shell -v 0 -c "from pipeline.schema import OVERVIEW_INDEX_PREDICATE as p; print(p)"
-docker compose exec -T postgis psql -U routemaker -d routemaker -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS segment_overview_geom_idx ON live.segment USING gist (geometry) WHERE <the predicate>"
-docker compose exec -T postgis psql -U routemaker -d routemaker -c "SELECT indisvalid FROM pg_index WHERE indexrelid = 'live.segment_overview_geom_idx'::regclass"
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "DROP INDEX CONCURRENTLY IF EXISTS live.segment_overview_geom_idx"
 ```
-
-The last must print `t`. A concurrent build that was interrupted leaves an
-index that exists but is invalid (`f`), which the planner never uses and which
-`IF NOT EXISTS` then skips over without a word; drop it the same way and build
-it again:
-
-```sh
-docker compose exec -T postgis psql -U routemaker -d routemaker -c "DROP INDEX CONCURRENTLY live.segment_overview_geom_idx"
-```
-
-The build took 6 s on a copy at load 5-9 and 22-63 s at load 10-27. Run the pre-draw
-afterwards if the cache was empty; it does not need redoing for the index.
 
 **The covered area.** `GET /api/coverage` answers the area routes may be
 planned in as a GeoJSON polygon feature - `settings.COVERAGE_BBOX`, the box the
@@ -668,9 +674,9 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
   which is why `collectstatic` is the last line above.
 - **An empty stress tile cache.** `stress_tile_cache` is in the dump without
   its rows, and the restored segment table is a new relation, so every cached
-  tile would be stale anyway. Until the pre-draw has run, dense z10-12 tiles are
-  refused (their draws do not fit the api's 2 s timeout) and the map shows no
-  overlay there. Draw them: `docker compose exec -T api python manage.py
+  tile would be stale anyway. Until the pre-draw has run, every tile is drawn
+  on request through the api's one draw slot, and a street-level screen takes
+  20-30 s to fill. Draw them: `docker compose exec -T api python manage.py
   predraw_stress_tiles` ("The stress tiles", above).
 
 ### It will page for the first few hours, and that is the restore

@@ -916,7 +916,8 @@ missing deploy step, not a broken stack.
   that answers 404). It needs the `stress_tile_cache` table from migration
   `core.0009`, which the `migrate` one-shot applies, and on the first deploy of
   the tile cache one `docker compose exec -T api python manage.py
-  predraw_stress_tiles` to draw the live table's z10-13 tiles into it; the
+  predraw_stress_tiles` to draw the live table's z10-14 tiles - every one the map
+  asks for - into it; the
   weekly rebuild does it after every promotion from then on
   (docs/OPERATIONS.md, "The stress tiles").
 - **`/api/coverage`** (GET) is the area routes may be planned in, as GeoJSON;

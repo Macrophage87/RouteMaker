@@ -473,14 +473,15 @@ def trail_rule(highway: str, kind: str | None = None) -> str:
     (`classes.trail_kind`). The tier is LTS 1 whatever the kind.
 
     THIS TEXT IS JOINED AGAINST STORED DATA. The rebuild writes it into
-    `segment.stress_rule`, and the stress tiles select the trail network and
-    derive its facility by comparing that column with these strings
-    (`pipeline.schema`'s overview predicate and TRAIL_NETWORK_FACILITY, and the
-    overview's partial index). Changing a word here silently drops every trail
-    from the zoomed-out map until the next rebuild writes the new text - and
+    `segment.stress_rule`, and on a table without the facility column the
+    stress tiles select the zoomed-out paths and derive the facility by
+    comparing that column with these strings (`pipeline.schema`'s PATH_RULES,
+    trails_predicate and TRAIL_NETWORK_FACILITY, and the overview's partial
+    index). Changing a word here silently drops every trail from the
+    zoomed-out map until the next rebuild writes the new text - and
     the tests, which build their expectations from this function, will not
-    notice. Add a new text beside the old one (as `LEGACY_TRAIL_RULES` keeps the
-    texts from before `kind` existed) rather than editing one.
+    notice. Add a new text beside the old one (as PATH_RULES keeps the
+    cycleway's text from before `kind` existed) rather than editing one.
     """
     if kind is not None:
         return f"trail-class way ({highway}, {kind})"

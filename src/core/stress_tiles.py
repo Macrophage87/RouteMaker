@@ -12,32 +12,36 @@ segments and a tile holding every one of them is useless at region scale:
 measured on the first promoted build, the z10 tile over downtown DC held
 228,854 of them in 6.0 MB and took 3.5 s, and the z12 tile 47,392 in 1.2 MB.
 
-- `OVERVIEW`, z10-11: the roads of LTS 3 and 4 and the trail network
-  (cycleways, paths, bridleways, and footways designated for bicycles that
-  are not sidewalks; `pipeline.schema.TRAIL_NETWORK_RULES`).
-  Quiet streets and sidewalks are left out: at this scale they are a solid
-  mesh over every street grid, and the question a zoomed-out map answers is
-  where the busy roads and the trails are. The front end's legend says so.
-- `STREETS`, z12-13: every segment except the sidewalk class (footways,
-  pedestrian ways, steps; `SIDEWALK_CLASS_HIGHWAY`), which in DC is a second
-  copy of the street grid beside the first.
-- `FULL`, z14-16: every segment, one feature each.
+- `TRAILS`, z10 to ROAD_STRESS_MIN_ZOOM - 1: the traffic-free paths and
+  nothing else (`pipeline.schema.trails_predicate`: what `routemaker.facility`
+  calls a path). The owner, 2026-09-28: "It looks way too busy zoomed out
+  though." and "Zoomed out just show the trails." (OWNER-DECISIONS 64, 65).
+- `STREETS`, from ROAD_STRESS_MIN_ZOOM to z13: the full stress colours, every
+  segment except the sidewalk class (footways, pedestrian ways, steps;
+  `SIDEWALK_CLASS_HIGHWAY`), which in DC is a second copy of the street grid
+  beside the first.
+- `FULL`, z14-16: every segment, one feature each. The map asks for nothing
+  past z14 - it draws z15-16 from the z14 tile (`STRESS_ZOOMS.max` in the front
+  end's mapStyle.ts) - so z14 is the deepest zoom drawn ahead; z15-16 are
+  still served, for the contract, and drawn on request.
 
 At the first two levels a tile carries one feature per distinct (tier, trail,
-unpaved) - every segment of a class collected into one multi-line and
-simplified to the tile's grid - so the size is the drawn geometry and not a
-per-segment overhead; the properties a feature carries are still exactly its
+unpaved, facility) - every segment of a class collected into one multi-line
+and simplified to the tile's grid - so the size is the drawn geometry and not
+a per-segment overhead; the properties a feature carries are still exactly its
 segments'. What each level selects is written once, in `pipeline.schema`,
-where the overview's partial GiST index is created with the same predicate, so
-the planner can prove the index applies (its scan of the z10 downtown tile
-went from 285 ms to 7 ms).
+where the overview's partial GiST index is created with the zoomed-out
+predicate, so the planner can prove the index applies.
 
 Caching: the tiles change only when a rebuild promotes a new segment table, and
 the promoted table is a new relation each time, so the ETag is that table's
 oid with this module's format version. A client that already has a tile gets
 a 304 without the tile being drawn again, and a tile drawn once is kept in
-`core.tile_cache` - z10-13 drawn ahead after every promotion - so a request
-for one is a lookup, not a draw.
+`core.tile_cache`, so a request
+for one is a lookup, not a draw. Every tile the map asks for, z10 to z14 over
+the coverage box, is drawn ahead after every promotion (the owner, 2026-09-28:
+"It takes a very long time to load those roads.", where it felt slow: "Zoomed
+in (street level)"; OWNER-DECISIONS 63).
 
 A draw (a tile not in the cache) takes an in-flight slot
 (`ratelimit.TILES_IN_FLIGHT`) and runs under DRAW_TIMEOUT_MS: well under the
@@ -67,10 +71,10 @@ from django.views.decorators.http import require_http_methods
 
 from pipeline.schema import (
     FACILITY_COLUMN,
-    OVERVIEW_PREDICATE,
     STREETS_PREDICATE,
     TRAIL_NETWORK_FACILITY,
     keeping_facilities,
+    trails_predicate,
     validate_schema_name,
 )
 
@@ -79,6 +83,17 @@ from . import ratelimit, tile_cache
 LAYER = "stress"
 MIN_ZOOM = 10
 MAX_ZOOM = 16
+
+# THE ZOOM THE ROADS' STRESS COLOURS START AT. Further out the overlay draws
+# only the traffic-free paths (the owner, 2026-09-28: "Zoomed out just show
+# the trails."; the orchestrator's default of z13, neighbourhood scale, which
+# the owner may move). The front end's legend says so from its own copy,
+# `STRESS_ZOOMS.roads` in frontend/src/lib/mapStyle.ts, which a test holds
+# equal to this: change both. Between MIN_ZOOM + 1 and FULL_MIN_ZOOM.
+ROAD_STRESS_MIN_ZOOM = 13
+
+# Where a tile stops merging a class's segments and carries each one.
+FULL_MIN_ZOOM = 14
 # ST_TileEnvelope's own ceiling; a larger zoom is not a tile address.
 MAX_ADDRESSABLE_ZOOM = 30
 
@@ -94,13 +109,13 @@ MAX_AGE_S = 3600
 
 # How long a tile draw on request may run. The swap takes its lock with a 3 s
 # lock_timeout (pipeline.swap.DEFAULT_LOCK_TIMEOUT_MS) and waits behind any
-# draw holding the table, so a draw must end well inside that; a draw from a
-# table with the overview index takes 0.25 s warm and 1.6 s cold at z10 over
-# downtown DC, the dearest tile there is, and anything slower is drawn ahead.
+# draw holding the table, so a draw must end well inside that. Every tile the
+# map asks for is drawn ahead, so a draw on request is one the pre-draw has not
+# reached yet (or a z15-16 tile, which the map does not ask for).
 DRAW_TIMEOUT_MS = 2000
 
-# The pre-draw's own limit, for a table without the overview index (6.7 s cold
-# at the same tile). It runs right after the swap, not during one.
+# The pre-draw's own limit per tile, well past the dearest z14 tile over
+# downtown DC. It runs right after the swap, not during one.
 PREDRAW_TIMEOUT_MS = 20_000
 
 # What a refused or cut-off draw asks the client to wait.
@@ -121,12 +136,14 @@ class Level:
     where: str | None
     # One feature per class, simplified, rather than one per segment.
     merged: bool
+    # Only the paths (`pipeline.schema.trails_predicate`), in place of `where`.
+    trails_only: bool = False
 
 
-OVERVIEW = Level("overview", MIN_ZOOM, 2048, 16, OVERVIEW_PREDICATE, merged=True)
-STREETS = Level("streets", 12, 4096, 32, STREETS_PREDICATE, merged=True)
-FULL = Level("full", 14, 4096, 64, None, merged=False)
-LEVELS = (FULL, STREETS, OVERVIEW)
+TRAILS = Level("trails", MIN_ZOOM, 4096, 32, None, merged=True, trails_only=True)
+STREETS = Level("streets", ROAD_STRESS_MIN_ZOOM, 4096, 32, STREETS_PREDICATE, merged=True)
+FULL = Level("full", FULL_MIN_ZOOM, 4096, 64, None, merged=False)
+LEVELS = (FULL, STREETS, TRAILS)
 
 
 def level_for(z: int) -> Level:
@@ -169,9 +186,10 @@ PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_u
 # Properties carried only from a live table that has the column: the bike
 # facility (path, protected, lane, none), which the rebuild writes from
 # `routemaker.facility`, and a table promoted before it has no such column. Where it is
-# there, the zoomed-out levels also keep the paths and protected lanes
-# (`pipeline.schema.keeping_facilities`). Where it is not, a stand-in is
-# carried in its place (`FALLBACKS`).
+# there, the street-zoom level also keeps the paths and protected lanes
+# (`pipeline.schema.keeping_facilities`) and the zoomed-out one draws its
+# paths. Where it is not, a stand-in is carried in its place (`FALLBACKS`)
+# and the zoomed-out paths are the ones that stand-in calls a path.
 OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN}
 
 # What an optional property is drawn from on a table without its column: the
@@ -235,9 +253,13 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
             carried[name] = f"s.{column}"
         elif name in FALLBACKS:
             carried[name] = FALLBACKS[name]
-    where = level.where or "true"
-    if level.where and FACILITY_COLUMN in optional:
-        where = keeping_facilities(where)
+    has_facility = FACILITY_COLUMN in optional
+    if level.trails_only:
+        where = trails_predicate(has_facility)
+    else:
+        where = level.where or "true"
+        if level.where and has_facility:
+            where = keeping_facilities(where)
     return template.format(
         table=_table(),
         where=where,
