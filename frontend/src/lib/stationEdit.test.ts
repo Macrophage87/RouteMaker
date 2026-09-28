@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
 import { EditHistory, step } from "./editHistory.ts";
 import { stationEdit } from "./railStations.ts";
+import { pointName } from "./summary.ts";
 
 const STATION: LonLat = [-77.02791, 38.89893];
 const plan = (n: number): LonLat[] => Array.from({ length: n }, (_, i) => [-77 + i * 0.001, 38.9] as LonLat);
@@ -79,4 +80,16 @@ test("a station's edit, recorded as App's commit does, is undone and redone exac
   const undone = step(history, "undo", edit.next);
   assert.deepEqual(undone, before);
   assert.deepEqual(step(history, "redo", undone!), edit.next);
+});
+
+test("Add as via at the station that is already the End is a via, and is announced as one", () => {
+  // The same array as the End, as the fixtures hand it out.
+  const points: LonLat[] = [[-77.05, 38.9], [-77.04, 38.91], STATION];
+  const edit = stationEdit(points, STATION, "via");
+  assert.ok("next" in edit);
+  assert.equal(edit.next.length, 4);
+  assert.ok(edit.index > 0 && edit.index < edit.next.length - 1, `index ${edit.index}`);
+  assert.equal(edit.next[edit.index], STATION);
+  assert.equal(edit.next[edit.next.length - 1], STATION, "the End is still the station");
+  assert.match(pointName(edit.index, edit.next.length), /^Via /);
 });

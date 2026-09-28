@@ -82,3 +82,14 @@ test("after a card closes, hovering the same station shows its hover card again"
   rail.hover("a");
   assert.deepEqual(calls, ["hover:a"]);
 });
+
+test("after a card closes itself, hovering the same station shows its hover card again", () => {
+  // Escape, its close button or an action removes the card; RailCards is not told.
+  const { rail, calls, cards } = setup();
+  rail.open("a");
+  rail.hover("a");
+  cards[0].remove();
+  calls.length = 0;
+  rail.hover("a");
+  assert.deepEqual(calls, ["hover:a"]);
+});

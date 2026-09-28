@@ -12,7 +12,7 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
-import { announceRoute, detourNotice, paceText } from "./lib/summary.ts";
+import { announceRoute, detourNotice, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
@@ -44,11 +44,6 @@ function session(): Storage | null {
 const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
 
 /** A point's name in the list: Start, Via 1, Via 2, ..., End. */
-function pointName(index: number, count: number): string {
-  if (index === 0) return "Start";
-  if (index === count - 1 && count > 1) return "End";
-  return `Via ${index}`;
-}
 const NARROW = "(max-width: 720px)";
 
 /** Whether the phone layout (the bottom sheet) is showing, kept up to date. */
