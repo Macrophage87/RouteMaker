@@ -230,6 +230,8 @@ class InFlight:
     total_setting: str
     client_busy: str = "This address already has a route being planned; try again shortly."
     deployment_busy: str = "The planner is busy; try again in a few seconds."
+    client_retry_s: int = CLIENT_BUSY_RETRY_S
+    deployment_retry_s: int = DEPLOYMENT_BUSY_RETRY_S
 
     @property
     def total(self) -> int:
@@ -255,6 +257,26 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
     total_setting="LONG_ROUTING_CONCURRENCY",
     client_busy="A long ride is already being planned from this address; try again shortly.",
     deployment_busy="A long ride is already being planned; try again in a few seconds.",
+)
+
+# Stress tiles drawn from the segment table rather than served from the tile
+# cache (core.tile_cache). A draw holds a gunicorn worker for as long as
+# PostgreSQL takes, and the ops review of round 1 measured one address, inside
+# its 600 a minute, holding all five workers with cold z10 draws for 50 s -
+# routing and /healthz with them. So a draw takes a slot: at most
+# `settings.TILE_CONCURRENCY` in the deployment (the worker count less three,
+# at least one), at most two per client while the pool is roomy. A refused tile
+# is answered at once with Retry-After: 1, and the front end asks again then
+# (frontend/src/lib/stressProtocol.ts), so a refusal is a short wait and not a
+# blank tile. Cache hits take no slot.
+TILES_IN_FLIGHT = InFlight(
+    scope_id=3,
+    per_client=2,
+    total_setting="TILE_CONCURRENCY",
+    client_busy="This address is already drawing stress tiles; try again in a moment.",
+    deployment_busy="The stress map is busy; try again in a moment.",
+    client_retry_s=1,
+    deployment_retry_s=1,
 )
 
 
@@ -343,8 +365,8 @@ def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
     deployment_full = not held
     release(held)
     if deployment_full:
-        return [], _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)
-    return [], _busy(429, CLIENT_BUSY_RETRY_S, limit.client_busy)
+        return [], _busy(503, limit.deployment_retry_s, limit.deployment_busy)
+    return [], _busy(429, limit.client_retry_s, limit.client_busy)
 
 
 def _take(limit: InFlight, client: int, held: list) -> bool:

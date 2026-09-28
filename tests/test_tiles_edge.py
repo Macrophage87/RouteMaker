@@ -109,3 +109,9 @@ def test_nothing_else_the_api_answers_is_encoded(edge) -> None:
     status, headers, _ = get(edge, "/api/openapi.json", Accept_Encoding="gzip")
     assert status == 200
     assert "Content-Encoding" not in headers, headers
+
+
+def test_zstd_is_offered_too(edge) -> None:
+    status, headers, _ = get(edge, "/tiles/stress/14/1/1.pbf", Accept_Encoding="zstd")
+    assert status == 200
+    assert headers.get("Content-Encoding") == "zstd", headers

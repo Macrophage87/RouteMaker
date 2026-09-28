@@ -35,7 +35,19 @@ went from 285 ms to 7 ms).
 Caching: the tiles change only when a rebuild promotes a new segment table, and
 the promoted table is a new relation each time, so the ETag is that table's
 oid with this module's format version. A client that already has a tile gets
-a 304 without the tile being drawn again.
+a 304 without the tile being drawn again, and a tile drawn once is kept in
+`core.tile_cache` - z10-13 drawn ahead after every promotion - so a request
+for one is a lookup, not a draw.
+
+A draw (a tile not in the cache) takes an in-flight slot
+(`ratelimit.TILES_IN_FLIGHT`) and runs under DRAW_TIMEOUT_MS: well under the
+swap's 3 s lock timeout, so a promotion waiting for its lock behind a tile
+draw is not made to fail its attempts, and short enough that the slots cannot
+hold workers for long. A draw refused a slot, or cut off by the timeout, is
+answered 429 or 503 with Retry-After, which the front end waits out.
+
+Coverage: a tile straddling the edge of `settings.COVERAGE_BBOX` is drawn from
+its segments clipped to the box, so nothing is drawn in the map's grey area.
 """
 
 from __future__ import annotations
@@ -44,7 +56,7 @@ import math
 from dataclasses import dataclass
 
 from django.conf import settings
-from django.db import connection
+from django.db import OperationalError, connection, transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils.cache import patch_cache_control
 from django.utils.http import parse_etags
@@ -59,7 +71,7 @@ from pipeline.schema import (
     validate_schema_name,
 )
 
-from . import ratelimit
+from . import ratelimit, tile_cache
 
 LAYER = "stress"
 MIN_ZOOM = 10
@@ -76,6 +88,20 @@ FORMAT_VERSION = 2
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
 MAX_AGE_S = 3600
+
+# How long a tile draw on request may run. The swap takes its lock with a 3 s
+# lock_timeout (pipeline.swap.DEFAULT_LOCK_TIMEOUT_MS) and waits behind any
+# draw holding the table, so a draw must end well inside that; a draw from a
+# table with the overview index takes 0.25 s warm and 1.6 s cold at z10 over
+# downtown DC, the dearest tile there is, and anything slower is drawn ahead.
+DRAW_TIMEOUT_MS = 2000
+
+# The pre-draw's own limit, for a table without the overview index (6.7 s cold
+# at the same tile). It runs right after the swap, not during one.
+PREDRAW_TIMEOUT_MS = 20_000
+
+# What a refused or cut-off draw asks the client to wait.
+RETRY_AFTER_S = 1
 
 # EPSG:3857's full width, in metres.
 WORLD_M = 2 * math.pi * 6378137
@@ -120,6 +146,15 @@ def outside_coverage(z: int, x: int, y: int) -> bool:
     return east < c_west or west > c_east or north < c_south or south > c_north
 
 
+def straddles_coverage(z: int, x: int, y: int, margin: float) -> bool:
+    """Whether the tile, with `margin` of its width drawn past each edge,
+    reaches past the coverage box - and so has to be clipped to it."""
+    west, south, east, north = tile_bounds(z, x, y)
+    dx, dy = (east - west) * margin, (north - south) * margin
+    c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
+    return west - dx < c_west or east + dx > c_east or south - dy < c_south or north + dy > c_north
+
+
 # Each feature's properties, as {tile property: segment column}: the one place
 # that says what a tile carries. A value is carried as the column holds it, so
 # a new tier value reaches the tile unchanged; a new property is a new entry
@@ -146,12 +181,13 @@ WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
     SELECT {columns},
            ST_AsMVTGeom(
-               ST_Simplify(ST_Collect(ST_Transform(s.geometry, 3857)), %(unit)s),
+               ST_Simplify(ST_Collect(ST_Transform({geometry}, 3857)), %(unit)s),
                bounds.env, %(extent)s, %(buffer)s, true
            ) AS geom
     FROM {table} AS s, bounds
     WHERE s.geometry && ST_Transform(
               ST_TileEnvelope(%(z)s, %(x)s, %(y)s, margin => %(margin)s), 4326)
+      {coverage}
       AND {where}
     GROUP BY {group_by}, bounds.env
 )
@@ -163,11 +199,12 @@ _PER_SEGMENT = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
     SELECT {columns},
-           ST_AsMVTGeom(ST_Transform(s.geometry, 3857), bounds.env, %(extent)s, %(buffer)s, true)
+           ST_AsMVTGeom(ST_Transform({geometry}, 3857), bounds.env, %(extent)s, %(buffer)s, true)
                AS geom
     FROM {table} AS s, bounds
     WHERE s.geometry && ST_Transform(
               ST_TileEnvelope(%(z)s, %(x)s, %(y)s, margin => %(margin)s), 4326)
+      {coverage}
       AND {where}
 )
 SELECT '{table}'::regclass::oid,
@@ -181,8 +218,13 @@ def _table() -> str:
     return f"{validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)}.segment"
 
 
-def tile_sql(level: Level, optional: frozenset[str] = frozenset()) -> str:
-    """The level's query, carrying the optional columns in `optional` too."""
+# The coverage box, as the clipped query reads it from its parameters.
+_COVERAGE_BOX = "ST_MakeEnvelope(%(c_west)s, %(c_south)s, %(c_east)s, %(c_north)s, 4326)"
+
+
+def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = False) -> str:
+    """The level's query, carrying the optional columns in `optional` too, and
+    with `clip`, drawing only what lies inside the coverage box."""
     template = _MERGED if level.merged else _PER_SEGMENT
     carried = {name: f"s.{column}" for name, column in PROPERTIES.items()}
     for name, column in OPTIONAL_PROPERTIES.items():
@@ -196,16 +238,37 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset()) -> str:
     return template.format(
         table=_table(),
         where=where,
+        geometry=f"ST_ClipByBox2D(s.geometry, {_COVERAGE_BOX})" if clip else "s.geometry",
+        coverage=f"AND s.geometry && {_COVERAGE_BOX}" if clip else "",
         layer=LAYER,
         columns=", ".join(f"{expression} AS {name}" for name, expression in carried.items()),
         group_by=", ".join(carried.values()),
     )
 
 
-def render(z: int, x: int, y: int, optional: frozenset[str] = frozenset()) -> tuple[int, bytes]:
-    """(the live table's oid, the tile's bytes) for a tile inside the zooms served."""
+class DrawTimedOut(Exception):
+    """A tile draw ran past its statement timeout and was cancelled."""
+
+
+def render(
+    z: int,
+    x: int,
+    y: int,
+    optional: frozenset[str] = frozenset(),
+    timeout_ms: int | None = None,
+) -> tuple[int, bytes]:
+    """(the live table's oid, the tile's bytes) for a tile inside the zooms
+    served, drawn under a `timeout_ms` statement timeout (DRAW_TIMEOUT_MS if
+    none is given)."""
+    if timeout_ms is None:
+        timeout_ms = DRAW_TIMEOUT_MS
     level = level_for(z)
+    c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
     params = {
+        "c_west": c_west,
+        "c_south": c_south,
+        "c_east": c_east,
+        "c_north": c_north,
         "z": z,
         "x": x,
         "y": y,
@@ -215,9 +278,16 @@ def render(z: int, x: int, y: int, optional: frozenset[str] = frozenset()) -> tu
         # One tile unit, in metres of EPSG:3857: finer detail is not drawn.
         "unit": WORLD_M / 2**z / level.extent,
     }
-    with connection.cursor() as cursor:
-        cursor.execute(tile_sql(level, optional), params)
-        oid, tile = cursor.fetchone()
+    clip = straddles_coverage(z, x, y, level.buffer / level.extent)
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [str(timeout_ms)])
+            cursor.execute(tile_sql(level, optional, clip), params)
+            oid, tile = cursor.fetchone()
+    except OperationalError as error:
+        if getattr(error.__cause__, "sqlstate", None) == "57014":  # query_canceled
+            raise DrawTimedOut(f"tile {z}/{x}/{y} ran past {timeout_ms} ms") from error
+        raise
     return oid, bytes(tile or b"")
 
 
@@ -283,5 +353,28 @@ def stress_tile(request, z: int, x: int, y: int) -> HttpResponse:
     etag = etag_for(oid, optional)
     if _matches(request, etag):
         return _tile_response(b"", status=304, etag=etag)
-    oid, body = render(z, x, y, optional)
-    return _tile_response(body, etag=etag_for(oid, optional))
+    cached = tile_cache.get(etag, z, x, y)
+    if cached is not None:
+        return _tile_response(cached, etag=etag)
+    held, refusal = ratelimit.acquire(request, ratelimit.TILES_IN_FLIGHT)
+    if refusal is not None:
+        refusal["Cache-Control"] = "no-store"
+        return refusal
+    try:
+        try:
+            drawn_oid, body = render(z, x, y, optional)
+        except DrawTimedOut:
+            response = JsonResponse(
+                {"error": "This part of the stress map is taking too long; try again shortly."},
+                status=503,
+            )
+            response["Retry-After"] = str(RETRY_AFTER_S)
+            response["Cache-Control"] = "no-store"
+            return response
+    finally:
+        ratelimit.release(held)
+    if drawn_oid == oid:
+        # Not when a promotion landed between the lookup and the draw: this
+        # body belongs to the new table, and its own requests will cache it.
+        tile_cache.put(etag, z, x, y, body)
+    return _tile_response(body, etag=etag_for(drawn_oid, optional))

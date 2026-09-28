@@ -91,7 +91,12 @@ RETRY = RetryStrategy(max_attempts=5, exponential_wait=6)
 # table because it keys on client addresses, which PLAN's Privacy and retention
 # drops within 30 days, and a dump outlives that; its counts are worthless after
 # a restore anyway.
-BACKUP_EXCLUDED_TABLES = ("cached_membership", "app_session", "rate_limit_window")
+BACKUP_EXCLUDED_TABLES = (
+    "cached_membership",
+    "app_session",
+    "rate_limit_window",
+    "stress_tile_cache",
+)
 
 # How many dumps stay on the data volume. They are local-only for now - the
 # plan's S3 upload with SSE-KMS and 30-day remote retention is not built - and
@@ -303,9 +308,34 @@ def weekly_rebuild(context=None, *, timestamp: int) -> None:
         )
         run.detail = (
             f"build {context.build_id}: {len(report.completed)} stages completed, "
-            f"pruned {reclaimed} old build directories.{overridden} {ROUTER_RESTART_NOTICE}"
+            f"pruned {reclaimed} old build directories.{overridden} "
+            f"{_predraw_stress_tiles()} {ROUTER_RESTART_NOTICE}"
         )
         run.save(update_fields=["detail"])
+
+
+def _predraw_stress_tiles() -> str:
+    """Draw the new table's z10-13 stress tiles into the cache, after the swap.
+
+    Until they are drawn a z10-12 tile is drawn on its first request, under the
+    api's short draw timeout, and on a table without the overview index the
+    dearest of them do not fit in it. A failure here is logged and reported on
+    the run row and does not fail the rebuild: the build is promoted and
+    serving, and `manage.py predraw_stress_tiles` finishes the job.
+    """
+    import logging
+
+    from core import tile_cache
+
+    try:
+        drawn, cached = tile_cache.predraw()
+    except Exception as error:  # noqa: BLE001 - the promotion stands whatever this does
+        logging.getLogger(__name__).exception("the stress tile pre-draw failed")
+        return (
+            f"The stress tile pre-draw failed ({type(error).__name__}); "
+            "run manage.py predraw_stress_tiles."
+        )
+    return f"Stress tile cache pre-drawn: {drawn} drawn, {cached} already there."
 
 
 def _prune_tile_builds(tiles_dir, keep: int, what: str, protect=()) -> int:

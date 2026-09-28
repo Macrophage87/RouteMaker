@@ -702,3 +702,156 @@ class TestRateLimit:
         assert ratelimit.TILES.requests / ratelimit.TILES.window_s > (
             ratelimit.ROUTING.requests / ratelimit.ROUTING.window_s
         )
+
+
+def _line(live: str, start: tuple[float, float], end: tuple[float, float], tier: int = 4) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+            "stress_rule) VALUES (1, 0, ST_MakeLine(ST_MakePoint(%s, %s), "
+            "ST_MakePoint(%s, %s)), %s, 'x')",
+            [*start, *end, tier],
+        )
+
+
+@db
+class TestCoverageClip:
+    """Revision round 2 (correctness review SF1): a tile straddling the edge of
+    the coverage box drew every segment in its envelope, so roads beyond the
+    edge were coloured in the map's grey area."""
+
+    EDGE_LAT = 39.0
+
+    def east_edge_tile(self, z: int):
+        return tile_of(settings.COVERAGE_BBOX[2] - 1e-6, self.EDGE_LAT, z)
+
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_a_line_across_the_edge_is_drawn_only_inside_it(self, client, segment_schemas, z):
+        live, _ = segment_schemas
+        east = settings.COVERAGE_BBOX[2]
+        _line(live, (east - 0.004, self.EDGE_LAT), (east + 0.004, self.EDGE_LAT))
+        z, x, y = self.east_edge_tile(z)
+        layer = decode(client.get(url(z, x, y)).content)["stress"]
+        west, _s, tile_east, _n = stress_tiles.tile_bounds(z, x, y)
+        edge_x = (east - west) / (tile_east - west) * layer.extent
+        xs = [px for f in layer.features for line in f.lines for px, _py in line]
+        assert xs, "the part inside the box is drawn"
+        assert max(xs) <= edge_x + 1
+        assert min(xs) < edge_x - 1
+
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_a_line_wholly_beyond_the_edge_is_not_drawn(self, client, segment_schemas, z):
+        live, _ = segment_schemas
+        east = settings.COVERAGE_BBOX[2]
+        # Inside the tile (or its buffer), outside the box.
+        _line(live, (east + 0.0002, self.EDGE_LAT), (east + 0.0006, self.EDGE_LAT))
+        response = client.get(url(*self.east_edge_tile(z)))
+        assert response.status_code == 200
+        layer = decode(response.content).get("stress")
+        assert layer is None or not layer.features
+
+    def test_a_tile_inside_the_box_is_not_clipped(self) -> None:
+        for z in (10, 12, 14):
+            level = stress_tiles.level_for(z)
+            margin = level.buffer / level.extent
+            assert not stress_tiles.straddles_coverage(*tile_of(*CENTRE, z), margin)
+            assert stress_tiles.straddles_coverage(*self.east_edge_tile(z), margin)
+
+    @pytest.mark.parametrize(
+        ("lon", "lat"), [(-78.0, 39.0), (-76.02, 39.0), (-77.0, 38.2), (-77.0, 39.72)]
+    )
+    def test_every_edge_of_the_box_clips(self, lon, lat) -> None:
+        level = stress_tiles.level_for(12)
+        assert stress_tiles.straddles_coverage(*tile_of(lon, lat, 12), level.buffer / level.extent)
+
+
+@db
+class TestProbes:
+    """The mutation review of round 1: each holds a property a surviving mutant
+    broke (reports/TILES-review-r1-mutation.md, SF1-7)."""
+
+    def test_a_tile_and_the_coverage_stay_fresh_long_enough(self, client, live) -> None:
+        import re
+
+        for path in (url(*tile_of(*CENTRE, 14)), "/api/coverage"):
+            control = client.get(path)["Cache-Control"]
+            assert int(re.search(r"max-age=(\d+)", control)[1]) >= 600, path
+
+    def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
+        path = url(*tile_of(*CENTRE, 14))
+        before = client.get(path)["ETag"]
+        monkeypatch.setattr(stress_tiles, "FORMAT_VERSION", stress_tiles.FORMAT_VERSION + 1)
+        after = client.get(path, HTTP_IF_NONE_MATCH=before)
+        assert after.status_code == 200
+        assert after["ETag"] != before
+
+    @pytest.mark.parametrize("z", [10, 12, 14])
+    def test_a_line_in_the_outer_part_of_the_buffer_is_drawn(self, client, segment_schemas, z):
+        live, _ = segment_schemas
+        level = stress_tiles.level_for(z)
+        z, x, y = tile_of(*CENTRE, z)
+        west, south, east, north = stress_tiles.tile_bounds(z, x, y)
+        lon = east + 0.9 * level.buffer * (east - west) / level.extent
+        _line(live, (lon, south + 0.3 * (north - south)), (lon, south + 0.7 * (north - south)))
+        (feature,) = decode(client.get(url(z, x, y)).content)["stress"].features
+        assert feature.lines
+
+    @pytest.mark.parametrize("z", [10, 12])
+    def test_detail_a_grid_unit_and_a_half_off_straight_is_kept(self, client, segment_schemas, z):
+        live, _ = segment_schemas
+        level = stress_tiles.level_for(z)
+        u = stress_tiles.WORLD_M / 2**z / level.extent
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT ST_X(g), ST_Y(g) FROM "
+                "ST_Transform(ST_SetSRID(ST_MakePoint(%s, %s), 4326), 3857) AS g",
+                list(CENTRE),
+            )
+            cx, cy = cursor.fetchone()
+            points = [(cx - 60 * u, cy), (cx, cy + 1.5 * u), (cx + 60 * u, cy)]
+            line = ", ".join(f"ST_MakePoint({px}, {py})" for px, py in points)
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule) VALUES (1, 0, ST_Transform(ST_SetSRID(ST_MakeLine(ARRAY["
+                f"{line}]), 3857), 4326), 4, 'x')"
+            )
+        (feature,) = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"].features
+        assert sum(len(line) for line in feature.lines) >= 3
+
+    @pytest.mark.parametrize("z", [12, 14])
+    def test_a_long_line_is_clipped_to_the_tile_and_its_buffer(self, client, segment_schemas, z):
+        live, _ = segment_schemas
+        level = stress_tiles.level_for(z)
+        _line(live, (CENTRE[0] - 0.5, CENTRE[1]), (CENTRE[0] + 0.5, CENTRE[1]))
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        xs = [px for f in layer.features for line in f.lines for px, _ in line]
+        assert xs
+        assert all(-level.buffer <= px <= layer.extent + level.buffer for px in xs)
+
+    @pytest.mark.parametrize("name", ["OVERVIEW", "STREETS", "FULL"])
+    @pytest.mark.parametrize("clip", [False, True])
+    def test_every_level_filters_by_the_tile_box(self, segment_schemas, name, clip) -> None:
+        level = getattr(stress_tiles, name)
+        z, x, y = tile_of(*CENTRE, level.min_zoom)
+        c_west, c_south, c_east, c_north = settings.COVERAGE_BBOX
+        params = {
+            "z": z, "x": x, "y": y, "extent": level.extent, "buffer": level.buffer,
+            "margin": level.buffer / level.extent, "unit": 1.0,
+            "c_west": c_west, "c_south": c_south, "c_east": c_east, "c_north": c_north,
+        }  # fmt: skip
+        with connection.cursor() as cursor:
+            cursor.execute(f"EXPLAIN (VERBOSE) {stress_tiles.tile_sql(level, clip=clip)}", params)
+            plan = "\n".join(row[0] for row in cursor.fetchall())
+        assert "&&" in plan, plan
+        assert ("st_clipbybox2d" in plan.lower()) == clip
+
+    def test_before_any_build_the_404_is_not_cached(self, client, segment_schemas) -> None:
+        drop_segment_schema(segment_schemas[0])
+        response = client.get(url(*tile_of(*CENTRE, 14)))
+        assert response.status_code == 404
+        assert "no-store" in response["Cache-Control"]
+
+    def test_a_non_tile_400_is_not_cached(self, client, segment_schemas) -> None:
+        response = client.get(url(14, 2**14, 0))
+        assert response.status_code == 400
+        assert "no-store" in response["Cache-Control"]
