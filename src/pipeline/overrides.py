@@ -53,8 +53,16 @@ from types import MappingProxyType
 # editor, and `highway` in particular sets the hierarchy level an edge lands on,
 # whether shortcuts are built over it, and whether a maneuver is emitted at all.
 ACCESS_KEYS = frozenset(
-    {"bicycle", "bicycle:forward", "bicycle:backward", "access", "oneway:bicycle"}
+    {"bicycle", "bicycle:forward", "bicycle:backward", "access", "oneway:bicycle", "motor_vehicle"}
 )
+# `motor_vehicle` is the one key here that is not about bicycles: a road the
+# owner knows is closed to motor traffic for good while OSM still tags it open
+# or closed only at set times (the owner, 2026-09-28: "Our own correction
+# (Recommended)" - audited corrections may mark roads car-free, loaded with the
+# owner's go-ahead; Beach Drive NW). Written before the facility class is
+# taken, it makes the road a path (`routemaker.facility.closed_to_motor_traffic`)
+# and nothing about who may ride changes: upstream reads `motor_vehicle` for
+# motor access only.
 
 # The subset of those keys that states whether a bicycle may use the way at all,
 # and so the subset the crossings fixture's legality column competes with: the

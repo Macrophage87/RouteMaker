@@ -149,9 +149,27 @@ as a hidden adjustment named `way-<id>`.
   it"); docs/OPERATIONS.md, "A deploy that changes the crossings fixture or
   loads access overrides", gives the order. Its categories and notes were
   proposed here and approved by the owner the same day for `route_only`
-  display; US 340 is `speed`. The westbound Pennsylvania Avenue SE note of
-  2026-09-28 is still `proposed`.
+  display; US 340 is `speed`. The westbound Pennsylvania Avenue SE note was
+  approved as written on 2026-09-28.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and
 chose tier 5 instead, so the road stays legal.
+
+## Car-free corrections, and the file of 2026-09-28
+
+An access row may write `motor_vehicle` (`"value": {"motor_vehicle": "no"}`)
+for a road the owner knows is closed to motor traffic for good while OSM says
+otherwise: the owner's "Our own correction (Recommended)" of 2026-09-28. The
+facility class is taken after the row is applied, so the road is a path to
+every ride type but Mass Ride, at every ride time; who may ride it does not
+change.
+
+- `2026-09-28-owner-beach-drive-nw.json`: Beach Drive NW in the District
+  between Joyce Road and the Maryland line - nine ways, 2.53 km, that OSM tags
+  open to cars on weekdays (six ways, 2.32 km, destination-only at weekends;
+  three short ways at the Wise Road end, 212 m, closed at weekends). The owner:
+  "(most of beach drive in DC is closed to car traffic permanantly)". Prepared,
+  not loaded: it is loaded with the owner's go-ahead, like the other files.
+  Montgomery County's Beach Drive stays as OSM tags it, closed at weekends.
+

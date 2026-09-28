@@ -29,7 +29,8 @@ access override may not write, or disagrees with an approved row already on the
 same way - two approved rows answering one way differently would be applied in
 id order, which is not a decision anybody made.
 
-Two kinds are loaded. `access` rows write access keys (`ACCESS_KEYS`). `stress`
+Two kinds are loaded. `access` rows write access keys (`ACCESS_KEYS`), among
+them `motor_vehicle`, for a road the owner knows is closed to cars for good. `stress`
 rows write a tier, 1 to 5, the tier the rebuild gives the way after
 classification (`pipeline.overrides.apply_stress`) - the owner's curated tiers of
 2026-09-27, "legal but avoid" (5) among them - and the adjustment it makes: a

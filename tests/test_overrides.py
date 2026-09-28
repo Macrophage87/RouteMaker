@@ -826,3 +826,55 @@ def test_a_stress_rows_reason_never_reaches_the_tier() -> None:
     assert classified[7].tier is Stress.AVOID
     assert "owner" not in classified[7].rule
     assert classified[7].adjustment.adjustment_id == "way-7"
+
+
+# --- Car-free corrections (the owner, 2026-09-28: "Our own correction") ------
+
+BEACH_DRIVE_NW = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "overrides"
+    / "2026-09-28-owner-beach-drive-nw.json"
+)
+# Typed in from the extract: Beach Drive NW ways OSM tags open to cars on
+# weekdays (destination-only or closed only at weekends), in the District.
+BEACH_DRIVE_NW_WAYS = {
+    130676633, 90291940, 90291938, 1248259617, 137999530, 958914394,
+    435217294, 1110955925, 1110955926,
+}  # fmt: skip
+
+
+def test_a_car_free_correction_makes_the_road_a_path() -> None:
+    from routemaker.facility import Facility, facility
+
+    way = Way(1, highway="unclassified", bicycle="designated", motor_vehicle="yes")
+    assert facility(way.tags) is Facility.NONE, "the control"
+    apply_access([way], [Override("access", 1, {"motor_vehicle": "no"})])
+    assert way.tags["motor_vehicle"] == "no"
+    assert facility(way.tags) is Facility.PATH
+    assert way.tags["bicycle"] == "designated", "who may ride is unchanged"
+
+
+def test_motor_vehicle_is_the_only_non_bicycle_key_an_override_may_write() -> None:
+    from pipeline.overrides import ACCESS_KEYS, BICYCLE_ACCESS_KEYS
+
+    assert "motor_vehicle" in ACCESS_KEYS
+    assert "motor_vehicle" not in BICYCLE_ACCESS_KEYS, "it does not overrule the fixture"
+    for key in ("motorcar", "vehicle", "hgv", "highway"):
+        assert key not in ACCESS_KEYS
+
+
+def test_the_beach_drive_nw_file_is_prepared_and_the_districts_only() -> None:
+    import json
+
+    from core.management.commands.load_access_overrides import parse_file
+
+    document = json.loads(BEACH_DRIVE_NW.read_text())
+    assert document["status"].startswith("prepared, not loaded")
+    rows = parse_file(BEACH_DRIVE_NW.read_text(), BEACH_DRIVE_NW.name)
+    assert {r["osm_way_id"] for r in rows} == BEACH_DRIVE_NW_WAYS
+    for row in rows:
+        assert row["value"] == {"motor_vehicle": "no"}
+        assert "Beach Drive Northwest" in row["evidence"]
+        assert "closed to car traffic permanantly" in row["reason"]
+        assert "Our own correction (Recommended)" in row["reason"]
