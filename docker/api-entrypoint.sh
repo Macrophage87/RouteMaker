@@ -10,7 +10,7 @@
 set -eu
 
 # The worker count, when compose has not already set one. `compose.yaml` does
-# set it - `WEB_CONCURRENCY: ${WEB_CONCURRENCY:-5}` on the api service, from
+# set it - `WEB_CONCURRENCY: ${WEB_CONCURRENCY:-7}` on the api service, from
 # `.env` - so this is the fallback for a container run by hand, and it is the
 # fallback that has to be right, because it is the one nobody is looking at.
 #

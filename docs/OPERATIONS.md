@@ -235,19 +235,74 @@ the order a request meets it:
 | Content type, declared body size | `application/json`, at most 8 KB | 400 |
 | Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
 | Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
-| Routes in flight, whole api | `WEB_CONCURRENCY` less 2 (3 at compose's default of 5 workers) | 503, `Retry-After: 5` |
+| Routes in flight, whole api | `WEB_CONCURRENCY` less 2, less `GEOCODE_CONCURRENCY` (3 at compose's default of 7 workers) | 503, `Retry-After: 5` |
 | Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
 | Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
 | Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers (on a long ride with `"code": "long_ride_timed_out"`, which the planner shows at once instead of resending); a trace cut short leaves its legs' stress `unknown` |
 
+Place search and place names (`GET /api/geocode`, `GET /api/reverse`,
+signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in
+`core/ratelimit.py`:
+
+| Check | Limit | Answer |
+| --- | --- | --- |
+| A browser's own word that another site sent it | `Sec-Fetch-Site` `cross-site` or `same-site` | 403, not counted |
+| Searches per client | 5 per fixed 1 s window, then 60 per 60 s (PLAN.md:65); a request the first refuses does not spend the second | 429, `Retry-After` |
+| Names per client | 30 per fixed 10 s window (a shared plan's 25 points at once), then 60 per 60 s, counted apart from search | 429, `Retry-After` |
+| Geocoding in flight per client | 1, search and names together; a request waits up to 1 s for it | 429, `Retry-After: 2` |
+| Geocoding in flight, whole api | `GEOCODE_CONCURRENCY`, 2 (the owner's answer of 2026-09-28); names may take only one of them, so a plan being named always leaves one for search; a request waits up to 1 s for a slot, at most 1 waiting across the api | 503, `Retry-After: 5` (at once when one is already waiting) |
+| Photon | 4 s per request (`PHOTON_TIMEOUT_S`); Photon's own query timeout is 3 s | 502 |
+| The router's locate, for a name | 3 s (`geocode.LOCATE_TIMEOUT_S`); past it the name is "near" a place | - |
+
+The counts are rows in the same `rate_limit_window` table as routing's, under
+the scopes `geocode-s`, `geocode`, `reverse-10s` and `reverse`, and are cleared
+the same way (below).
+
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
-preflight, and counting those would let it spend that visitor's budget. The
-in-flight limit is what keeps two gunicorn workers free for `/healthz`, the
-tiles, sign-in and the admin however the router is loaded (from three workers
-up; one or two workers get one routing slot and keep fewer free); without it a burst
+preflight, and counting those would let it spend that visitor's budget.
+
+**How the workers are shared.** Compose runs 7 gunicorn workers (on 3 cpus;
+the owner's answer of 2026-09-28 raised them from 5 so place search could
+have two lookups at once). Four pools take them, each an advisory-lock slot
+held for the length of a request:
+
+| Pool | Slots on 7 workers | Held for at most |
+| --- | --- | --- |
+| Routes (`ROUTING_CONCURRENCY`, the workers less two less the geocoding slots) | 3 | 40-50 s (the time budget) |
+| Geocoding (`GEOCODE_CONCURRENCY`) | 2 | Photon's 4 s, plus the router's 3 s for a name |
+| Geocoding waiting room (`GEOCODE_IN_FLIGHT.max_waiters`) | 1 | 1 s (the wait), then served or refused |
+| Stress tile draws (`TILE_CONCURRENCY`, the workers less one less routes less geocoding) | 1 | the 2 s draw timeout (one cold draw on a busy host ran to 5.46 s) |
+
+So at worst all 7 are held at once - 3 + 2 + 1 + 1 - and a worker is free
+again within about a second, when the waiter is served or refused. That is
+the owner's answer of 2026-09-28, "Free within ~1 s (Recommended)", refining
+the earlier "a worker always free for /healthz" after routing, tiles and
+search merged; `/healthz`'s 5 s healthcheck waits out that second. Without the
+waiter, routes, lookups and draws leave one worker free outright; that is
+what `tests/test_tile_cache.py` holds for every worker count from 5 to 16,
+with the waiter as the only thing that may take it. Below five workers the
+pools can hold every worker between them.
+
+**Geocoding waiters.** A geocoding request that finds both slots busy waits up
+to a second for one, polling every 50 ms, and a waiting request holds a
+gunicorn worker without holding a slot. So the waiting room is capped at one
+(counted like the slots with advisory locks): with one already waiting across
+the deployment, a request is refused at once with 503. Uncapped, 12 waiters
+pushed `/healthz` to 5.4 s during a Photon stall (round-2 review); with two,
+both spare workers were held and it still waited 5.45 s; with one, the
+round-3 stall probe (3 routes held, Photon paused, 12 searches) had `/healthz`
+answer in 0.13-0.33 s.
+
+**Setting `WEB_CONCURRENCY` by hand.** The routing pool follows it: 5 workers
+give 1 routing slot (5 - 2 - 2) and 1 tile draw, not the 3 routes they gave
+before geocoding had two slots; 7 (compose's default) gives 3 and 1; each
+worker above 7 is one more routing slot. The routing, geocoding and tile
+pools keep distinct scope ids (routing 1, long rides 2, tiles 3, geocoding 4);
+`tests/test_ratelimit.py` fails on a clash. Without the routing
+limit a burst
 of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
 PostgreSQL advisory lock held on the worker's connection for the length of the
@@ -404,9 +459,11 @@ paragraph.
 
 **Draw slots and the draw timeout.** A tile not in the cache is drawn under an
 in-flight slot (`core.ratelimit.TILES_IN_FLIGHT`): at most `TILE_CONCURRENCY`
-draws in the deployment - what routing's slots leave of the worker count less
-one, at least one: one at compose's five workers (three routes, one draw, one
-worker always free from three workers up; `config.settings.tile_concurrency`).
+draws in the deployment - what routing's and geocoding's slots leave of the
+worker count less one, at least one: one at compose's seven workers (three
+routes, two lookups, one draw; `config.settings.tile_concurrency`), which with
+the one geocoding waiter can hold all seven, a worker free again within about a
+second - see "How the workers are shared" above).
 A draw that finds no slot is refused at once: 503 (the deployment's slot) or
 429 (the client's), with `Retry-After: 1` and `no-store`. A draw runs under a
 2 s statement timeout (`DRAW_TIMEOUT_MS`), inside the promotion swap's 3 s
@@ -970,10 +1027,11 @@ the first host to run it is the first test of it.
    any log to explain it. Step 4 is the rest of that bootstrap; what it needs
    from here is the id already in the container's environment.
 
-   `bot`, `renderer` and `photon` are behind the `unbuilt` profile and are
-   skipped: the first two have no source and no image, and photon's pinned
-   image would download a 61 GB planet index onto the root volume on first boot
-   (docs/DEPLOYMENT.md, "Photon"). `migrate` waits for the database's health
+   `bot` and `renderer` are behind the `unbuilt` profile and are skipped: they
+   have no source and no image. `photon` starts, and serves place search once
+   its index is imported (docs/DEPLOYMENT.md, "Photon"); until then it waits,
+   unhealthy, and downloads nothing, and place search answers 502 while point
+   names fall back to the router alone. `migrate` waits for the database's health
    check and runs every migration, and `api`, `worker` and `rebuild` wait for
    it to have completed.
 
@@ -991,6 +1049,19 @@ the first host to run it is the first test of it.
    A build takes up to eight hours from 08:00 UTC on Tuesdays and no grace period
    can cover it, so the answer is to wait or to accept the unwedge, not to
    lengthen the grace.
+
+   **Also check that no proof or test container is running from this
+   project's images.** A container started with `docker run` from
+   `ghcr.io/macrophage87/routemaker-api:<tag>` (or any image compose built)
+   inherits the image's build labels, `com.docker.compose.project=routemaker`
+   and `com.docker.compose.service=api` among them, so while it runs the live
+   project sees it as one more api container: `docker compose ps`, `up` and
+   `down` count and act on it. Tear every such stack down before a live
+   `docker compose` command - `docker ps -a --filter
+   label=com.docker.compose.project=routemaker` should list only the
+   project's own `routemaker-*` containers - or start proof containers with a
+   label of their own, `--label com.docker.compose.project=<other>`, which
+   overrides the image's (merge re-check of PUBLIC-SEARCH, 2026-09-28).
 
    **The command will also take a minute to return**, and that is the grace
    period being spent rather than something hanging. `down` and `up -d` send

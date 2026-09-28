@@ -1903,11 +1903,13 @@ class TestInFlight:
         assert response.status_code == 200
 
     @pytest.mark.parametrize(
-        ("workers", "slots"), [(None, 3), (1, 1), (2, 1), (3, 1), (5, 3), (9, 7)]
+        ("workers", "slots"), [(None, 3), (1, 1), (2, 1), (3, 1), (5, 1), (7, 3), (9, 5)]
     )
     def test_the_pool_is_the_workers_less_two_and_never_empty(self, workers, slots) -> None:
-        """An empty pool would refuse every route with 503; one or two workers
-        get one slot, and so leave fewer than two workers free."""
+        """The worker count less two and less the geocoding slots (2), so the
+        two pools together leave two workers free; an empty pool would refuse
+        every route with 503, so a small count still gets one slot and leaves
+        fewer free."""
         from config.settings import routing_concurrency
 
         assert routing_concurrency(None if workers is None else str(workers)) == slots
@@ -1920,7 +1922,7 @@ class TestInFlight:
         import config.settings as module
 
         monkeypatch.setenv("WEB_CONCURRENCY", "9")
-        assert runpy.run_path(module.__file__)["ROUTING_CONCURRENCY"] == 7
+        assert runpy.run_path(module.__file__)["ROUTING_CONCURRENCY"] == 5
 
     @pytest.mark.parametrize(("total", "held", "status"), [(1, 1, 503), (4, 3, 200)])
     def test_the_pool_follows_the_setting(

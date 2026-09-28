@@ -180,15 +180,31 @@ class TestDrawSlots:
         assert drawn.status_code == 200
         assert our_advisory_locks() == 0, "the slot is given back after the draw"
 
-    def test_routing_and_tile_draws_together_leave_a_worker_free(self) -> None:
+    def test_routing_geocoding_and_tile_draws_leave_a_worker_free_within_a_second(
+        self,
+    ) -> None:
+        """The owner's answer of 2026-09-28, "Free within ~1 s (Recommended)":
+        routes, lookups and draws together leave a worker, and the one geocoding
+        request allowed to wait (at most a second) is all that may take it."""
+        from django.conf import settings
+
         from config.settings import routing_concurrency, tile_concurrency
 
+        lookups = settings.GEOCODE_CONCURRENCY
+        waiters = ratelimit.GEOCODE_IN_FLIGHT.max_waiters
+        assert ratelimit.GEOCODE_IN_FLIGHT.wait_s <= 1.0
         for workers in range(1, 17):
             tiles, routes = tile_concurrency(str(workers)), routing_concurrency(str(workers))
             assert tiles >= 1
-            if workers >= 3:
-                assert routes + tiles <= workers - 1, workers
-        assert tile_concurrency(None) == 1, "compose's five workers: three routes, one draw"
+            if workers >= 5:
+                assert routes + lookups + tiles <= workers - 1, workers
+                assert routes + lookups + tiles + waiters <= workers, workers
+        assert (routing_concurrency(None), lookups, waiters, tile_concurrency(None)) == (
+            3,
+            2,
+            1,
+            1,
+        ), "compose's seven workers: 3 routes, 2 lookups, 1 waiter, 1 draw"
 
     def test_a_tile_draw_is_not_refused_while_routing_is_full(self, client, live) -> None:
         """The tiles' slots are their own: a full routing pool does not refuse a
