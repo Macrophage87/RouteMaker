@@ -206,3 +206,18 @@ def test_the_refusal_names_the_oldest_rebuild_in_flight(stubbed_rollback) -> Non
     )
     assert f"job {queued}" not in message, message
     assert stubbed_rollback == []
+
+
+def test_a_withdrawn_variant_is_stopped_not_restarted() -> None:
+    """OPS review, 2026-09-28: after the first four-graph rollback the weekend
+    router, restarted on a tiles directory with no `current`, stayed up and
+    answered every weekend ride 171. It is stopped instead."""
+    from core.management.commands.rollback_rebuild import RESTART_HINT, restart_hint
+    from pipeline.variants import Variant
+
+    every = {variant: "20260910T080000Z" for variant in Variant}
+    assert restart_hint(every) == RESTART_HINT
+    hint = restart_hint({**every, Variant.WEEKEND: None})
+    assert "docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike &&" in hint
+    assert "docker compose stop valhalla-weekend" in hint
+    assert "restart valhalla-weekend" not in hint and "ebike valhalla-weekend" not in hint

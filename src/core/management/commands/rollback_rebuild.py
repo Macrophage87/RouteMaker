@@ -53,6 +53,23 @@ RESTART_HINT = (
 )
 
 
+def restart_hint(target) -> str:
+    """What finishes this rollback on the host. A withdrawn variant (on its
+    first build) is stopped, not restarted: restarted on a tiles directory with
+    no `current` it would stay up and answer every ride "no suitable edges"
+    (OPS review, 2026-09-28)."""
+    withdrawn = [variant for variant in Variant if target.get(variant) is None]
+    if not withdrawn:
+        return RESTART_HINT
+    kept = " ".join(f"valhalla-{v.value}" for v in Variant if v not in withdrawn)
+    stopped = " ".join(f"valhalla-{v.value}" for v in withdrawn)
+    return (
+        "The routers keep serving the build they started against, so finish the "
+        f"rollback on the deploy host: docker compose restart {kept} && docker compose "
+        f"stop {stopped} (withdrawn: its rides are planned on the standard graph)"
+    )
+
+
 class Command(BaseCommand):
     help = (
         "Report, or perform, the rollback of the last completed swap: the previous "
@@ -132,7 +149,7 @@ class Command(BaseCommand):
             # confirmed path meant the rehearsal did not mention the step that
             # makes the rollback take effect - and the routers keep serving the
             # build they started against until they are restarted.
-            self.stdout.write(RESTART_HINT)
+            self.stdout.write(restart_hint(target))
             return
 
         rollback(tiles_dir)
@@ -164,4 +181,4 @@ class Command(BaseCommand):
         )
         for variant in Variant:
             self.stdout.write(f"{variant.value}: serving build {target[variant]}")
-        self.stdout.write(RESTART_HINT)
+        self.stdout.write(restart_hint(target))

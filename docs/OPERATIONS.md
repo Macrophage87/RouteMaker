@@ -1120,7 +1120,13 @@ service with no container yet: `up -d valhalla-weekend` is what starts it.
 The first rebuild that builds four graphs is the first that has a weekend
 build at all, so `rollback_rebuild` after it goes back on the other three and
 withdraws the weekend graph - no `current` link, no settings row - which is
-the deployment before that rebuild; its dry run says so.
+the deployment before that rebuild; its dry run says so, and says to stop
+`valhalla-weekend` rather than restart it ("Rolling back a rebuild", below).
+
+Until the first four-graph promotion there is no weekend settings row, so a
+plain `docker compose up -d` that starts `valhalla-weekend` on its empty
+directory costs nothing: the api plans weekend rides on the standard graph
+until a weekend build has been promoted.
 
 What it costs, measured on 2026-09-27. On the DC box graph
 (-77.22,38.78,-76.90,39.02) the weekend tile build took 530-568 s against the
@@ -1257,7 +1263,7 @@ cases, all of them by design:
   is finished; neither is wedged, and a fresh run is `run_rebuild_now`.
 - **The worker is still alive.** A running worker updates
   `procrastinate_workers.last_heartbeat` every 10 seconds from its own asyncio
-  task, and a sync task body runs in a thread, so a worker six hours into a
+  task, and a sync task body runs in a thread, so a worker hours into a
   rebuild is still beating. Procrastinate's own stalled threshold is 30
   seconds and that is the number used here. Requeueing a job that is genuinely
   running is how two rebuilds end up writing the same staging schema.
@@ -1343,10 +1349,30 @@ The restart is part of the procedure, not an afterthought: `valhalla_service`
 does not reload tiles at runtime, so until the containers restart they are
 still serving the build that was rolled away from.
 
+**A variant on its first build is withdrawn, not rolled back.** After the
+first rebuild that builds four graphs, the weekend graph has no previous build.
+The rollback goes back on the other three and withdraws it - its `current` and
+`previous` links and its settings row removed - which is the deployment before
+that rebuild. Its router is then **stopped, not restarted**: restarted on a
+directory with no `current` it stays up and answers every ride "no suitable
+edges". The command prints the lines to run in that case:
+
+```sh
+docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike
+docker compose stop valhalla-weekend
+```
+
+The api plans weekend rides on the standard graph while there is no weekend
+settings row, and also if the weekend router answers "no suitable edges"
+(170/171) where the standard graph places the same points, remembering that
+for a minute. A later rebuild promotes the weekend graph again; `up -d
+valhalla-weekend` after it starts the router.
+
 It refuses unless **all three parts** of a previous deployment are there: a
-settings row per variant naming a previous build, a `previous` tile link per
-variant naming the same build, and a retired schema with segments in it. The
-refusal names which part is missing. The most common one is a first-ever
+settings row per variant naming a previous build (or, for a variant on its
+first build, none, as above), a `previous` tile link per variant naming the
+same build, and a retired schema with segments in it. The refusal names which
+part is missing. The most common one is a first-ever
 rebuild, where the schema the first swap retired is the empty one that swap
 created on its way past — rolling back to that used to promote an empty schema
 over the served graph in silence.
