@@ -483,6 +483,7 @@ export function MapView(props: Props) {
       if (RAIL_STATIONS.length > 0) addRailStations(map, RAIL_STATIONS, callbacks.current.rail, PENN_COLOUR, iconPixelRatio());
       rail = attachRailInteraction(map, {
         station: stationById,
+        stations: RAIL_STATIONS,
         pennColour: PENN_COLOUR,
         visibility: () => callbacks.current.rail,
         pointCount: () => callbacks.current.points.length,
