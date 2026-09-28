@@ -575,6 +575,9 @@ export function MapView(props: Props) {
     if (!map || !loaded.current || props.lineEdit) return;
     (map.getSource(EDIT_SOURCE) as GeoJSONSource | undefined)?.setData(editData(null, []));
     hoverShown.current = null;
+    // The hover's pointer cursor goes with its handle (an undo made while
+    // hovering the line would otherwise leave it).
+    map.getCanvas().style.cursor = "";
   }, [props.lineEdit]);
 
   // The overlay toggle.

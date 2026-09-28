@@ -170,3 +170,11 @@ test("a finger that picked the line up and moved past the slop drops a via", () 
   g.move(52, 50); // back near the start: it has still moved
   assert.equal(g.release(), "drop");
 });
+
+test("a vertical move past the slop after the pick-up counts as moved too", () => {
+  const { g, clock } = gesture();
+  g.press("touch", 50, 50);
+  clock.advance(HOLD_MS);
+  g.move(50, 50 + TOUCH_SLOP_PX + 1);
+  assert.equal(g.release(), "drop");
+});
