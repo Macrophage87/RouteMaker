@@ -347,3 +347,9 @@ class TestPredrawProbes:
         response = client.get(url(*TILE))
         assert str(oid + 1) in response["ETag"]
         assert rows() == 0
+
+
+@pytest.mark.parametrize("result", [(4, 0), (0, 4), (3, 1, 0, 0)])
+def test_a_complete_predraw_mentions_no_stop_and_nothing_left(result) -> None:
+    summary = tile_cache.Predrawn(*result).summary()
+    assert "stopped" not in summary and "left" not in summary and "timed out" not in summary

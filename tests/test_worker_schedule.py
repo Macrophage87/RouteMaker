@@ -136,14 +136,34 @@ def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
 
 
 @pytest.mark.django_db(transaction=True)
-def test_the_rebuild_task_runs_the_real_handler_set(rebuild_environment, states) -> None:
+def test_the_rebuild_task_runs_the_real_handler_set(
+    rebuild_environment, states, monkeypatch
+) -> None:
     """The registered callable, exactly as the worker calls it: no samplers
     injected, no handlers replaced, nothing skipped. Every stage runs, the
     swap promotes, and the run row records it."""
+    import time
+
+    from config import procrastinate
     from core.models import DriftReport, ScheduledRun, ValhallaUpstream
 
+    # The pre-draw is given the rebuild's own deadline, so its budget is cut to
+    # what the rebuild has left (review of the polish pass, SF1).
+    real_predraw = procrastinate._predraw_stress_tiles
+    deadlines = []
+
+    def recording(*args, **kwargs):
+        deadlines.append(args[0] if args else kwargs.get("deadline"))
+        return real_predraw(*args, **kwargs)
+
+    monkeypatch.setattr(procrastinate, "_predraw_stress_tiles", recording)
     root, binaries = rebuild_environment
+    started = time.monotonic()
     app.tasks["weekly_rebuild"].func(timestamp=0)
+    (deadline,) = deadlines
+    assert deadline is not None
+    assert started < deadline <= time.monotonic() + procrastinate.REBUILD_TIMEOUT_S
+    assert deadline >= started + procrastinate.REBUILD_TIMEOUT_S - 1
 
     run = ScheduledRun.objects.get(task="weekly_rebuild")
     assert run.succeeded and run.finished_at is not None
