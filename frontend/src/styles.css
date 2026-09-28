@@ -518,6 +518,124 @@ button.secondary {
   filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 1px #fff);
 }
 
+/* Place search (PlaceSearch.tsx) and the points' names. */
+.place-search {
+  position: relative;
+  margin: 0 0 8px;
+}
+
+.place-search-label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.place-search input[type="search"] {
+  box-sizing: border-box;
+  width: 100%;
+  /* 16px and up, or a phone zooms the page in when the box takes the focus. */
+  font: inherit;
+  font-size: max(1rem, 16px);
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+
+.place-results {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 2px 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  max-height: 16rem;
+  overflow-y: auto;
+}
+
+.place-results[hidden] {
+  display: none;
+}
+
+.place-results li {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.place-results li.active,
+.place-results li:hover {
+  background: var(--bg-soft);
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.place-name {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.place-type {
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 4px;
+  white-space: nowrap;
+}
+
+.place-choice {
+  border: 0;
+  padding: 0;
+  margin: 6px 0 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  align-items: center;
+}
+
+.place-choice legend {
+  float: left;
+  padding: 0;
+  margin-right: 4px;
+  font-size: 0.9rem;
+}
+
+.place-choice label {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 32px;
+}
+
+.place-label {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.place-credit {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  margin: 2px 0 0;
+}
+
+.point-place {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.point-place .coords {
+  font-size: 0.78rem;
+}
+
 /* Markers. */
 .pin {
   width: 28px;

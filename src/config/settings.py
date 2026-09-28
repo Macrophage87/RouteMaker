@@ -223,35 +223,55 @@ VALHALLA_UPSTREAMS = {
 }
 
 
+# How many geocoding requests may run at once across the whole api, counted
+# like the routing slots (core.ratelimit.GEOCODE_IN_FLIGHT): two, the owner's
+# answer of 2026-09-28 to "let search use 2 lookups at a time (with a short wait
+# instead of an instant 'busy')?". Point names may take only one of them
+# (core.ratelimit.name_slots), so a plan being named leaves one for search; a
+# request waits up to a second for a slot before it is refused.
+GEOCODE_CONCURRENCY = 2
+
 # How many routing requests may run at once across the whole api, counted with
 # PostgreSQL advisory locks (core.ratelimit.in_flight_limited). A routing
 # request holds a gunicorn worker for as long as the router takes, so without a
 # bound a burst of long ones - each allowed by the per-minute limit - takes every
 # worker, and `/healthz` stops answering inside compose's 5 s healthcheck. The
-# worker count less two keeps two workers free whatever the router is doing,
-# from three workers up; one or two workers still get one slot, since an empty
-# pool would refuse every route, and so keep fewer than two free.
-# WEB_CONCURRENCY is the count docker/api-entrypoint.sh hands gunicorn, declared
-# on the api service with compose's default of 5; the other services that import
-# these settings do not route, and read the same default.
+# worker count less two, less the geocoding slots, leaves two workers to the
+# rest whatever the router and the geocoder are doing: on compose's 7 workers
+# (the owner's answer of 2026-09-28), 3 routes and 2 lookups hold 5. Of the
+# other two, one is the tile pool's (tile_concurrency, below) and one may be
+# taken for up to a second by a geocoding request waiting for a slot. A small
+# count still gets one slot, since an empty pool would refuse every route, and
+# so keeps fewer free. WEB_CONCURRENCY is the count
+# docker/api-entrypoint.sh hands gunicorn, declared on the api service with
+# compose's default of 7; the other services that import these settings do not
+# route, and read the same default.
+DEFAULT_WEB_CONCURRENCY = 7
+
+
 def routing_concurrency(web_concurrency: str | None) -> int:
-    return max(1, int(web_concurrency or 5) - 2)
+    workers = int(web_concurrency or DEFAULT_WEB_CONCURRENCY)
+    return max(1, workers - 2 - GEOCODE_CONCURRENCY)
 
 
 ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
 
 
 # How many stress tiles the api may draw from the segment table at once; a
-# tile served from the cache (core.tile_cache) takes no slot. What routing's
-# slots leave of the worker count less one, at least one - so from three
-# workers up, with every routing slot and every tile slot taken, one worker is
-# still free for /healthz, sign-in, the admin and cache hits. At compose's five
-# workers that is three routes and one tile draw. Below three workers the two
-# pools can hold every worker between them (one route and one draw), as
-# routing alone can at one worker.
+# tile served from the cache (core.tile_cache) takes no slot. What routing's and
+# geocoding's slots leave of the worker count less one, at least one: one draw
+# at compose's seven workers, and one at every count from five up (routing takes
+# each worker added above that). With every route, lookup and draw running,
+# one worker is left - for /healthz, sign-in, the admin and cache hits - and
+# the one geocoding request allowed to wait for a slot (ratelimit
+# GEOCODE_IN_FLIGHT.max_waiters) may take it for at most a second. That is the
+# owner's answer of 2026-09-28, "Free within ~1 s (Recommended)": 3 routes + 2
+# lookups + 1 waiter + 1 draw may hold all seven workers, and a worker is free
+# again within about a second. Below five workers the pools can hold every
+# worker between them, as routing alone can at one worker.
 def tile_concurrency(web_concurrency: str | None) -> int:
-    workers = int(web_concurrency or 5)
-    return max(1, workers - 1 - routing_concurrency(web_concurrency))
+    workers = int(web_concurrency or DEFAULT_WEB_CONCURRENCY)
+    return max(1, workers - 1 - routing_concurrency(web_concurrency) - GEOCODE_CONCURRENCY)
 
 
 TILE_CONCURRENCY = tile_concurrency(os.environ.get("WEB_CONCURRENCY"))
@@ -261,6 +281,21 @@ TILE_CONCURRENCY = tile_concurrency(os.environ.get("WEB_CONCURRENCY"))
 # planned, a signed-out visitor confirming first; one at a time is the
 # implementation's choice, since each holds a worker for up to 50 s.
 LONG_ROUTING_CONCURRENCY = 1
+
+# The geocoder the API proxies place search and place names to (core.geocode):
+# Photon, on the compose network only (PLAN.md:65). Measured through the proof
+# stack on a busy host (2026-09-27, docs/DEPLOYMENT.md "Photon"), a warm search
+# takes a median 0.48 s and at most 2.7 s, which two seconds refused; the first
+# searches after Photon starts, reading its index from disk, took 4-5 s, past
+# even this, and the front end tries such a search once more. Four seconds is
+# past every warm search, and the geocoding slots (GEOCODE_CONCURRENCY) bound
+# how many workers a stalled Photon can hold: two.
+PHOTON_URL = os.environ.get("PHOTON_URL", "http://photon:2322")
+PHOTON_TIMEOUT_S = 4.0
+
+# The languages scripts/import_photon.sh imports names in, and so the only ones
+# a search may ask for; Photon falls back to the local name for the rest.
+PHOTON_LANGUAGES = ("en",)
 
 # The disk gate. A rebuild refuses to start unless a second full tile set fits
 # beside the current one without taking the data volume past the alert

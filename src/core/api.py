@@ -41,14 +41,14 @@ from typing import Annotated, Literal
 
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
-from ninja import Field, NinjaAPI, Schema, Status
+from ninja import Field, NinjaAPI, Query, Schema, Status
 from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
-from pydantic import ConfigDict, StrictBool, field_validator
+from pydantic import ConfigDict, StrictBool, field_validator, model_validator
 
 from routemaker.geo import Point, haversine
 
-from . import presets, ratelimit, routing
+from . import geocode, presets, ratelimit, routing
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +264,13 @@ def unexpected(request, exc: Exception):
     SQL, paths and settings, to anyone who can make a request fail.
     """
     logger.exception("unhandled error in %s %s", request.method, request.path)
+    if request.path.startswith(GEOCODE_PATHS):
+        return _error(500, "Something went wrong looking up the place.")
     return _error(500, "Something went wrong planning this route.")
+
+
+# The place-search endpoints, whose unexpected failure is not a route's.
+GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 
 
 def errors_as_json(view):
@@ -449,3 +455,169 @@ def coverage(request, response: HttpResponse):
         "geometry": {"type": "Polygon", "coordinates": [coverage_ring()]},
         "properties": {},
     }
+
+
+# --- Place search and place names ---------------------------------------------
+#
+# GET /api/geocode and GET /api/reverse proxy the self-hosted Photon
+# (core.geocode), signed out by the owner's decision of 2026-09-27. They are
+# GETs, and a GET is what any page on any site can make a visitor's browser
+# send - an <img>, a prefetch - without a preflight; counting those would let
+# a foreign page spend the visitor's search budget. A browser says where a
+# request came from in Sec-Fetch-Site, which a page cannot set, so a request
+# that says it is cross-site is refused before it is counted. A client that is
+# not a browser sends no such header and is counted like anyone else.
+
+MAX_QUERY_CHARS = 200
+MIN_QUERY_CHARS = 2
+LanguageName = Literal[tuple(settings.PHOTON_LANGUAGES)]  # type: ignore[valid-type]
+
+# Seconds a browser may reuse an answer. The index changes monthly at most.
+SEARCH_MAX_AGE_S = 300
+REVERSE_MAX_AGE_S = 3600
+
+
+def _check_inside(lat: float | None, lon: float | None) -> None:
+    if (lat is None) != (lon is None):
+        raise ValueError("send both lat and lon, or neither")
+    if lat is not None and lon is not None and not geocode.inside(lon, lat):
+        raise ValueError("the point is outside the area this map covers")
+
+
+class GeocodeIn(Schema):
+    q: str = Field(description="What to search for: a place, an address or a street.")
+    lat: Coordinate | None = Field(default=None, description="Bias results towards this point.")
+    lon: Coordinate | None = None
+    limit: int = Field(default=geocode.DEFAULT_RESULTS, ge=1, le=geocode.MAX_RESULTS)
+    lang: LanguageName = settings.PHOTON_LANGUAGES[0]
+
+    @field_validator("q")
+    @classmethod
+    def a_real_query(cls, q: str) -> str:
+        q = " ".join(q.split())
+        if len(q) < MIN_QUERY_CHARS:
+            raise ValueError(f"type at least {MIN_QUERY_CHARS} characters to search")
+        if len(q) > MAX_QUERY_CHARS:
+            raise ValueError(f"a search is at most {MAX_QUERY_CHARS} characters")
+        return q
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class ReverseIn(Schema):
+    lat: Coordinate
+    lon: Coordinate
+    lang: LanguageName = settings.PHOTON_LANGUAGES[0]
+
+    @model_validator(mode="after")
+    def point_inside(self):
+        _check_inside(self.lat, self.lon)
+        return self
+
+
+class PlaceOut(Schema):
+    name: str = Field(description="A short name: the place, the street or trail, or 'near X'.")
+    label: str = Field(description="One line naming it with its neighbourhood or town.")
+    lon: float
+    lat: float
+    kind: str = Field(
+        description=(
+            "Search: Photon's layer (house, street, city, district, other, ...). Names for a"
+            " point: 'street' or 'trail' when named from the route network, 'near' when not."
+        )
+    )
+    osm_type: Literal["N", "W", "R"] | None = Field(
+        default=None, description="The OSM element type of the result, when known."
+    )
+    osm_id: int | None = Field(default=None, description="The OSM element id, when known.")
+    osm_key: str | None = Field(
+        default=None, description="The OSM tag key that makes it a place (railway, shop, ...)."
+    )
+    osm_value: str | None = Field(
+        default=None, description="That tag's value (station, bicycle, park, cycleway, ...)."
+    )
+
+
+class PlacesOut(Schema):
+    results: list[PlaceOut]
+    attribution: list[str]
+
+
+def same_site_only(view):
+    """Refuse a request the browser says a foreign page sent, before it is counted."""
+
+    @wraps(view)
+    def wrapped(request, *args, **kwargs):
+        site = request.META.get("HTTP_SEC_FETCH_SITE", "").strip().lower()
+        if site and site not in ("same-origin", "none"):
+            return _error(403, "place search answers this site's own pages only")
+        return view(request, *args, **kwargs)
+
+    return wrapped
+
+
+GEOCODE_RESPONSES = {
+    200: PlacesOut,
+    400: ErrorOut,
+    403: ErrorOut,
+    429: ErrorOut,
+    500: ErrorOut,
+    502: ErrorOut,
+    503: ErrorOut,
+}
+
+GEOCODER_DOWN = "Place search is not available right now; try again shortly."
+
+
+def _places(response: HttpResponse, found: list[dict], max_age_s: int) -> Status:
+    response["Cache-Control"] = f"private, max-age={max_age_s}"
+    return Status(200, {"results": found, "attribution": list(geocode.ATTRIBUTION)})
+
+
+@api.get(
+    "/geocode",
+    response=GEOCODE_RESPONSES,
+    summary="Search for a place inside the coverage area",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.search_slots),
+    ratelimit.rate_limited(ratelimit.GEOCODE),
+    ratelimit.rate_limited(ratelimit.GEOCODE_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
+    try:
+        found = geocode.search(
+            params.q, lat=params.lat, lon=params.lon, limit=params.limit, lang=params.lang
+        )
+    except geocode.Unavailable as unavailable:
+        # Expected while Photon restarts or is being refreshed: one line, no
+        # traceback per request.
+        logger.warning("place search: the geocoder did not answer: %s", unavailable)
+        return Status(502, {"error": GEOCODER_DOWN})
+    return _places(response, found, SEARCH_MAX_AGE_S)
+
+
+@api.get(
+    "/reverse",
+    response=GEOCODE_RESPONSES,
+    summary="Name the place or street at a point inside the coverage area",
+)
+@decorate_view(
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
+    ratelimit.rate_limited(ratelimit.REVERSE),
+    ratelimit.rate_limited(ratelimit.REVERSE_BURST),
+    same_site_only,
+    errors_as_json,
+)
+def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
+    try:
+        found = geocode.reverse(params.lat, params.lon, lang=params.lang)
+    except geocode.Unavailable as unavailable:
+        logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
+        return Status(502, {"error": GEOCODER_DOWN})
+    return _places(response, found, REVERSE_MAX_AGE_S)

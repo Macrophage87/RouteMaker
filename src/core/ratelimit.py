@@ -38,19 +38,22 @@ PostgreSQL advisory lock, one of `total` for the deployment and one of
 lock lives on the worker's database connection, so it is correct across
 workers and dies with a killed worker; a lock that cannot be released closes
 that connection, which ends it. `total` is the worker count less two
-(`config.settings.routing_concurrency`), so from three workers up, however the
-router is loaded, two workers are left to everything else. Stress tile draws
-(`TILES_IN_FLIGHT`) take their own slots from those two -
-`config.settings.tile_concurrency`, one at compose's five workers - so with
-every route and every draw running, one worker is still free for `/healthz`,
-sign-in, the admin and tiles served from the cache. One or two workers still
-get one routing slot and one tile slot, and keep fewer free.
+(`config.settings.routing_concurrency`) less the two geocoding slots
+(`GEOCODE_IN_FLIGHT`), so from five workers up, however the router and the
+geocoder are loaded, two workers are left to everything else. Stress tile draws
+(`TILES_IN_FLIGHT`) take one of those two - `config.settings.tile_concurrency`,
+one at compose's seven workers - and one geocoding request may wait up to a
+second for a slot on the other. So with everything running, all seven can be
+held, and a worker is free again within about a second: the owner's answer of
+2026-09-28, "Free within ~1 s (Recommended)". A small worker count still gets
+one routing slot and one tile slot, and keeps fewer free.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import logging
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import wraps
@@ -71,6 +74,8 @@ _KEY_SALT = "routemaker/rate-limit/v1"
 # the database that uses advisory locks can collide with these.
 _LOCK_CLASS_TOTAL = 0x524D0000
 _LOCK_CLASS_CLIENT = 0x524D1000
+# Waiting-room places for a limit with a wait (InFlight.max_waiters).
+_LOCK_CLASS_WAIT = 0x524D2000
 
 # How long a refused client is told to wait for a slot. An ordinary route takes
 # about a second, one near 150 km from a few seconds to over twenty under load,
@@ -119,6 +124,20 @@ TILES = Limit(scope="tiles", requests=600, window_s=60)
 # GET /api/coverage, the covered area the map greys out the rest of: one
 # request per page load, so PLAN's figure for unauthenticated paths.
 COVERAGE = Limit(scope="coverage", requests=60, window_s=60)
+
+# Place search (GET /api/geocode), signed out by the owner's decision of
+# 2026-09-27. PLAN.md:65's figures for the geocoding proxy: "roughly 5 requests
+# per second burst and 60 per minute", "since ... a typeahead box does not need
+# more". The burst is counted first, so a request it refuses does not also
+# spend the minute.
+GEOCODE_BURST = Limit(scope="geocode-s", requests=5, window_s=1)
+GEOCODE = Limit(scope="geocode", requests=60, window_s=60)
+
+# Place names for route points (GET /api/reverse). A plan opened from a link
+# asks for a name for each of its points at once - up to 25 - so the burst is
+# sized to let that through in one go, while the minute keeps PLAN.md:65's 60.
+REVERSE_BURST = Limit(scope="reverse-10s", requests=30, window_s=10)
+REVERSE = Limit(scope="reverse", requests=60, window_s=60)
 
 
 def _normalise(candidate: str) -> str | None:
@@ -236,10 +255,35 @@ class InFlight:
     deployment_busy: str = "The planner is busy; try again in a few seconds."
     client_retry_s: int = CLIENT_BUSY_RETRY_S
     deployment_retry_s: int = DEPLOYMENT_BUSY_RETRY_S
+    # How long a request waits for a slot before it is refused, polling every
+    # WAIT_STEP_S. Routing refuses at once (0): a route holds its slot for
+    # seconds, and the planner waits out the Retry-After instead. Geocoding
+    # waits: its slots are held for tens of milliseconds, so a short wait turns
+    # a collision into a slightly slower answer rather than "busy".
+    wait_s: float = 0.0
+    # How many requests may wait at once, across the deployment. A waiting
+    # request holds a gunicorn worker without holding a slot, so an unbounded
+    # waiting room spends the workers the slots keep free: with Photon stalled
+    # and 12 searches waiting, /healthz took 5.4 s (round-2 review). Beyond
+    # this many, a request is refused at once.
+    max_waiters: int = 0
 
     @property
     def total(self) -> int:
         return int(getattr(settings, self.total_setting))
+
+
+def search_slots() -> tuple[int, ...]:
+    """Place search may take any geocoding slot, the last first."""
+    return tuple(reversed(range(GEOCODE_IN_FLIGHT.total)))
+
+
+def name_slots() -> tuple[int, ...]:
+    """Point names take only the first geocoding slot, so a plan being named
+    - up to 25 lookups in a row - never holds the slot a search needs (the
+    round-1 review's two-visitor probe: 5 of 10 searches "busy" while another
+    visitor's link was named). With one slot in all, names share it."""
+    return (0,)
 
 
 # A client's second slot must leave at least this many deployment slots free.
@@ -268,8 +312,9 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
 # PostgreSQL takes, and the ops review of round 1 measured one address, inside
 # its 600 a minute, holding all five workers with cold z10 draws for 50 s -
 # routing and /healthz with them. So a draw takes a slot: at most
-# `settings.TILE_CONCURRENCY` in the deployment (what routing's slots leave of
-# the worker count less one, at least one), at most two per client while the
+# `settings.TILE_CONCURRENCY` in the deployment (what routing's and
+# geocoding's slots leave of the worker count less one, at least one), at most
+# two per client while the
 # pool is roomy. A refused tile
 # is answered at once with Retry-After: 1, and the front end asks again later,
 # backing off, with at most two tile requests of its own in flight
@@ -284,6 +329,31 @@ TILES_IN_FLIGHT = InFlight(
     client_retry_s=1,
     deployment_retry_s=1,
 )
+
+
+# Place search and place names, one slot per client and `GEOCODE_CONCURRENCY`
+# in all (two, see settings), so a stalled Photon holds two workers at most,
+# plus at most `max_waiters` waiting for them. The front end keeps one
+# geocoding request in flight at a time.
+GEOCODE_IN_FLIGHT = InFlight(
+    # 3 is wip/tiles's TILES_IN_FLIGHT; tests/test_ratelimit.py holds every
+    # InFlight's scope_id apart, since two pools on one id share their locks.
+    scope_id=4,
+    per_client=1,
+    total_setting="GEOCODE_CONCURRENCY",
+    client_busy="A place search from this address is already running; try again shortly.",
+    deployment_busy="Place search is busy; try again in a moment.",
+    wait_s=1.0,
+    # One: on 7 workers 3 routes + 2 lookups leave two, one of them the tile
+    # draw's; the waiter may hold the other for up to a second, and a worker is
+    # free again within that second (the owner's answer of 2026-09-28, "Free
+    # within ~1 s"). With two waiters both spare workers were held and /healthz
+    # waited 5.4 s behind them (round-3 stall probe).
+    max_waiters=1,
+)
+
+# How often a waiting request tries for a slot again.
+WAIT_STEP_S = 0.05
 
 
 def _client_lock_id(client: str) -> int:
@@ -350,39 +420,75 @@ def _busy(status: int, retry_after_s: int, message: str) -> JsonResponse:
     return response
 
 
-def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
+def acquire(
+    request, limit: InFlight, *, slots: tuple[int, ...] | None = None
+) -> tuple[list, JsonResponse | None]:
     """Take a deployment slot and a client slot for `request` under `limit`.
 
     Returns the pairs held, to hand to `release`, and a refusal to send
     instead of running the request, or None. On a refusal nothing is held.
     The deployment slot is taken first, so the count of what is free already
-    includes this request.
+    includes this request. `slots` names the deployment slots this request
+    may take, in the order it tries them (all of them by default); a limit
+    with a `wait_s` tries again until that has passed.
     """
     client = _client_lock_id(client_key(client_address(request)))
-    held: list = []
+    deadline = time.monotonic() + limit.wait_s
+    waiting: list = []
     try:
-        if _take(limit, client, held):
-            return held, None
-    except BaseException:
-        # A failure between the two takes would otherwise leave the first
-        # held on a connection that outlives the request.
+        return _acquire(limit, client, slots, deadline, waiting)
+    finally:
+        release(waiting)
+
+
+def _waiting_room(limit: InFlight, waiting: list) -> bool:
+    """Take one of `limit`'s waiting places into `waiting`; false if all are taken."""
+    if limit.max_waiters <= 0:
+        return True
+    with connection.cursor() as cursor:
+        place = _take_one(
+            cursor, [(_LOCK_CLASS_WAIT + limit.scope_id, n) for n in range(limit.max_waiters)]
+        )
+    if place is None:
+        return False
+    waiting.append(place)
+    return True
+
+
+def _acquire(limit: InFlight, client: int, slots, deadline: float, waiting: list):
+    first = True
+    while True:
+        held: list = []
+        try:
+            if _take(limit, client, held, slots):
+                return held, None
+        except BaseException:
+            # A failure between the two takes would otherwise leave the first
+            # held on a connection that outlives the request.
+            release(held)
+            raise
+        deployment_full = not held
         release(held)
-        raise
-    deployment_full = not held
-    release(held)
+        if time.monotonic() + WAIT_STEP_S > deadline:
+            break
+        if first and not _waiting_room(limit, waiting):
+            break
+        first = False
+        time.sleep(WAIT_STEP_S)
     if deployment_full:
         return [], _busy(503, limit.deployment_retry_s, limit.deployment_busy)
     return [], _busy(429, limit.client_retry_s, limit.client_busy)
 
 
-def _take(limit: InFlight, client: int, held: list) -> bool:
+def _take(limit: InFlight, client: int, held: list, slots=None) -> bool:
     """Take the slots into `held`; true if the request may run. False with
     nothing held means the deployment is full, false with the deployment slot
     held means the client is."""
     total_class = _LOCK_CLASS_TOTAL + limit.scope_id
     client_class = _LOCK_CLASS_CLIENT + limit.scope_id * 64
+    order = range(limit.total) if slots is None else slots
     with connection.cursor() as cursor:
-        shared = _take_one(cursor, [(total_class, slot) for slot in range(limit.total)])
+        shared = _take_one(cursor, [(total_class, slot) for slot in order])
         if shared is None:
             return False
         held.append(shared)
@@ -405,15 +511,19 @@ def release(held) -> None:
     _release(held)
 
 
-def in_flight_limited(limit: InFlight):
+def in_flight_limited(limit: InFlight, slots=None):
     """A view decorator: hold `limit`'s slots for the request, or refuse it -
     429 when this client already has its routes running, 503 when the
-    deployment has `total` running."""
+    deployment has `total` running. `slots`, a callable, names the deployment
+    slots the request may take (see `acquire`)."""
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            held, refusal = acquire(request, limit)
+            if slots is None:
+                held, refusal = acquire(request, limit)
+            else:
+                held, refusal = acquire(request, limit, slots=slots())
             if refusal is not None:
                 return refusal
             try:

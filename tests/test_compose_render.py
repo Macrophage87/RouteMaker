@@ -38,13 +38,13 @@ ENV_EXAMPLE = REPO / ".env.example"
 # The services that import Django settings and open a database connection.
 DJANGO_SERVICES = ("api", "worker", "migrate", "rebuild")
 
-# The services a default `up` must not start, for two different reasons.
-# `bot` and `renderer` have no source in this repository and therefore no image
-# anywhere; `photon` has an image and a pin, and what that image does on a
-# fresh host is the reason it is here (see the photon tests below).
-# docs/DEPLOYMENT.md and handoff.md section 7 carry the same three names.
+# The services a default `up` must not start: `bot` and `renderer` have no
+# source in this repository and therefore no image anywhere. `photon` used to
+# be here too, for what its image does on a fresh host; it serves place search
+# now, with that image's downloader replaced (see the photon tests below).
+# docs/DEPLOYMENT.md and handoff.md section 7 carry the same names.
 UNBUILT_PROFILE = "unbuilt"
-UNBUILT_SERVICES = {"bot", "renderer", "photon"}
+UNBUILT_SERVICES = {"bot", "renderer"}
 NO_IMAGE_ANYWHERE = {"bot", "renderer"}
 
 # The registry namespace this project's own four images live under: the GitHub
@@ -239,51 +239,98 @@ def test_the_profile_is_how_those_services_come_back(env_file) -> None:
 # --- Photon: what the pinned image does on a fresh host -----------------------
 
 
-def test_the_default_up_does_not_start_the_planet_downloader(rendered) -> None:
-    """The first `up` on every new deployment, which is the whole of this.
+def test_photon_serves_without_the_images_download_manager(rendered) -> None:
+    """The first `up` on every new deployment, and every one after it.
 
-    `rtuszik/photon-docker:2.4.0` defaults INITIAL_DOWNLOAD to True
-    (`src/utils/config.py:23` in that tag) and this stack sets no REGION, so the
-    entrypoint's first act is to fetch the whole-planet index: ~61 GB
-    compressed, ~104 GB free needed to unpack. It kept its data at
-    `/photon/data` (`config.py:36`) while compose bound `${DATA_ROOT}/photon` at
-    the 1.x `/photon/photon_data`, so the mount was inert and the download would
-    have landed on the container's writable layer - the *root* volume, which
-    PLAN:293 sizes small. Short of the space the entrypoint exits 75, and
-    `restart: unless-stopped` makes that a crash loop from the first `up`.
-
-    Nothing in phase 1 calls Photon and PLAN:60's index import is unbuilt, so
-    the service is parked rather than repaired into usefulness.
+    `rtuszik/photon-docker:2.4.0`'s own command is `python -m
+    src.process_manager`, which downloads before it serves: INITIAL_DOWNLOAD
+    defaults to True (`src/utils/config.py:23`) with REGION unset, which is the
+    whole-planet index - ~61 GB compressed, ~104 GB to unpack - and with an
+    index present MIN_INDEX_DATE and the 30-day update schedule fetch a
+    replacement. Photon is started by default now, because place search needs
+    it (owner decision of 2026-09-27), so the service runs Photon's own `serve`
+    and never the manager; nothing in it can fetch an index.
     """
-    assert "photon" not in rendered["services"], (
-        "a default `docker compose up -d` starts photon again, which on a fresh host is a "
-        "61 GB planet download onto the root volume"
+    photon = rendered["services"]["photon"]
+    command = " ".join(photon["command"])
+    assert "process_manager" not in command and "src." not in command, (
+        "photon runs the image's download manager again: on a fresh host that is a 61 GB "
+        "planet download, and on a served one a monthly replacement of the trimmed index"
     )
+    assert "/photon/photon.jar serve" in command
+    assert "photon.jar import" not in command, "scripts/import_photon.sh imports; this serves"
 
 
-def test_enabling_the_profile_gets_an_index_mount_that_the_image_uses(env_file) -> None:
-    """The profile has to be safe to turn on, or it is only a deferral.
+def test_photon_with_no_index_waits_rather_than_starting_empty(rendered) -> None:
+    """Before the import, starting Photon would create an empty cluster in the
+    index directory; the service says there is no index and waits instead."""
+    command = " ".join(rendered["services"]["photon"]["command"])
+    guard = command.index("/photon/data/photon_data/node_1")
+    assert "sleep infinity" in command[guard:]
+    assert guard < command.index("photon.jar")
 
-    Two corrections, both read off the pinned tag's own source: the index lands
-    at `/photon/data`, where 2.4.0 keeps it, so it goes on the data volume
-    rather than the container's writable layer; and INITIAL_DOWNLOAD is off, so
-    enabling the profile starts a geocoder with an empty index instead of a
-    61 GB download.
-    """
-    photon = render(env_file, UNBUILT_PROFILE)["services"]["photon"]
 
+def test_photon_downloads_nothing_even_under_its_own_command(rendered) -> None:
+    """Belt and braces: the variables the manager reads are off as well, so a
+    revert of the command is a geocoder that serves, not a planet download."""
+    env = rendered["services"]["photon"].get("environment", {})
+    assert str(env.get("INITIAL_DOWNLOAD", "")).lower() in {"false", "0", "no"}, (
+        "the image defaults INITIAL_DOWNLOAD to True (src/utils/config.py:23), and with "
+        "REGION unset that is the planet"
+    )
+    assert env.get("UPDATE_STRATEGY") == "DISABLED"
+
+
+def test_photons_index_mount_is_the_one_the_image_uses(rendered) -> None:
+    """The index lands at `/photon/data`, where 2.4.0 keeps it (`config.py:36`),
+    so it is on the data volume rather than the container's writable layer."""
+    photon = rendered["services"]["photon"]
     targets = {volume["target"] for volume in photon["volumes"]}
     assert "/photon/data" in targets, (
         f"photon binds {sorted(targets)}; 2.4.0 reads its index from /photon/data "
         "(src/utils/config.py:36), and a mount anywhere else is inert"
     )
     assert "/photon/photon_data" not in targets, "that is the 1.x path; nothing reads it in 2.4.0"
+    assert "/photon/data/photon_data/node_1" in " ".join(photon["command"])
 
-    initial = str(photon.get("environment", {}).get("INITIAL_DOWNLOAD", "")).lower()
-    assert initial in {"false", "0", "no"}, (
-        f"photon renders INITIAL_DOWNLOAD={initial!r}; the image defaults it to True "
-        "(src/utils/config.py:23) and with REGION unset that is the planet"
-    )
+
+def _size(text: str) -> int:
+    units = {"k": 1 << 10, "m": 1 << 20, "g": 1 << 30}
+    text = str(text).strip().lower().removesuffix("b")
+    return int(float(text[:-1]) * units[text[-1]]) if text[-1] in units else int(text)
+
+
+def test_photon_serves_inside_its_limit_with_no_swap(rendered) -> None:
+    """The heap is inside the 3 GB with room for OpenSearch's off-heap, and
+    no swap: a swapped-out heap made searches outlast the API's timeout."""
+    photon = rendered["services"]["photon"]
+    limit = _size(photon["deploy"]["resources"]["limits"]["memory"])
+    assert _size(photon["memswap_limit"]) == limit
+    command = " ".join(photon["command"])
+    (heap,) = re.findall(r"-Xmx(\d+[kmg])", command)
+    assert _size(heap) <= limit // 2
+
+
+def test_photons_own_limits_match_the_apis(rendered) -> None:
+    """The API asks Photon for at most PHOTON_MAX_RESULTS, which is
+    Photon's -max-results; and Photon gives up on a query before the API
+    gives up on Photon."""
+    from django.conf import settings
+
+    from core import geocode
+
+    command = " ".join(rendered["services"]["photon"]["command"])
+    (most,) = re.findall(r"-max-results (\d+)", command)
+    assert int(most) == geocode.PHOTON_MAX_RESULTS
+    (timeout,) = re.findall(r"-query-timeout (\d+)", command)
+    assert int(timeout) < settings.PHOTON_TIMEOUT_S
+
+
+def test_photon_publishes_no_port_and_the_api_finds_it(rendered) -> None:
+    """PLAN.md:65: reachable only through the API, which proxies it."""
+    services = rendered["services"]
+    assert not services["photon"].get("ports")
+    assert services["api"]["environment"]["PHOTON_URL"] == "http://photon:2322"
 
 
 # --- The data volume, scoped per service -------------------------------------
@@ -787,12 +834,10 @@ def test_the_health_gate_has_a_start_period_as_well_as_retries(rendered) -> None
 # every test below and the stack, so each can be narrowed with the suite still
 # green and nothing anywhere would say so: drop `rebuild` from DJANGO_SERVICES
 # and the service that runs the six-hour rebuild stops being asked whether it
-# can reach the database at all; drop `photon` from UNBUILT_SERVICES and the
-# heaviest image in the stack quietly goes back to starting on a default `up`;
-# drop `http` from DEFAULT_PORTS and a redirect URI written without a port is
-# checked against nothing; drop `renderer` from NO_IMAGE_ANYWHERE and the test
-# that a default `up` reaches for no image that exists nowhere goes on passing
-# with the renderer back in the default stack.
+# can reach the database at all; drop `http` from DEFAULT_PORTS and a redirect
+# URI written without a port is checked against nothing; drop `renderer` from
+# NO_IMAGE_ANYWHERE and the test that a default `up` reaches for no image that
+# exists nowhere goes on passing with the renderer back in the default stack.
 #
 # So each is asserted equal to a derivation from the rendered configuration.
 # The lists stay hand-written - they are what this file claims the stack is,
@@ -883,10 +928,8 @@ def test_the_imageless_services_are_the_ones_nothing_builds(env_file) -> None:
         f"NO_IMAGE_ANYWHERE names {sorted(NO_IMAGE_ANYWHERE)} and the stack declares "
         f"{sorted(imageless)} with an image nothing builds and no registry holds"
     )
-    assert NO_IMAGE_ANYWHERE < UNBUILT_SERVICES, (
-        "every service with no image anywhere has to be behind the profile, and there "
-        "has to be something else behind it too - photon, which has an image and is "
-        "parked for a different reason"
+    assert NO_IMAGE_ANYWHERE <= UNBUILT_SERVICES, (
+        "every service with no image anywhere has to be behind the profile"
     )
 
 

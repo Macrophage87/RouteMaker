@@ -22,6 +22,9 @@ import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from ".
 import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
+import { PlaceSearch } from "./PlaceSearch.tsx";
+import { usePlaceNames } from "./usePlaceNames.ts";
+import { applyPlace, coordinatesText, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 registerStressProtocol(maplibregl);
@@ -105,6 +108,7 @@ export function App() {
   const pointsHeadingRef = useRef<HTMLHeadingElement>(null);
   const focusAfterRemove = useRef<number | null>(null);
   const writtenHash = useRef<string>("");
+  const { gate: geoGate, namer } = usePlaceNames(points);
 
   // One scheduler for the page: one request in flight, the latest plan only,
   // Retry-After waited out (routeScheduler.ts).
@@ -310,6 +314,23 @@ export function App() {
     announce(`${pointName(edit.index, edit.next.length)} set at the station.`);
   }, [commit, announce]);
 
+  // A place picked from search: the start, the destination or a stop, as chosen
+  // (geocode.ts, applyPlace), named as it was found, and the map goes there.
+  const pickPlace = (found: Place, choice: PlaceChoice) => {
+    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label));
+    if (point === null) return;
+    setNotice(null);
+    setPoints((current) => applyPlace(current, point, choice));
+    const map = mapRef.current;
+    map?.flyTo({ center: point, zoom: Math.max(map.getZoom(), 14) });
+  };
+  const searchBias = (): LonLat | undefined => {
+    const centre = mapRef.current?.getCenter();
+    if (!centre) return undefined;
+    const point: LonLat = [centre.lng, centre.lat];
+    return insideCoverage(point) ? point : undefined;
+  };
+
   const removeAt = (index: number) => {
     focusAfterRemove.current = index;
     commit(pointsRef.current.filter((_, i) => i !== index));
@@ -445,24 +466,38 @@ export function App() {
       <h2 id="points-heading" ref={pointsHeadingRef} tabIndex={-1}>
         Points
       </h2>
+      <PlaceSearch
+        pointCount={points.length}
+        full={points.length >= MAX_POINTS}
+        gate={geoGate}
+        bias={searchBias}
+        onPick={pickPlace}
+      />
       {points.length === 0 ? (
         <p className="hint">
-          Click the map to set a start, then an end. Later clicks add a via point on the
-          nearest leg. Drag any marker to move it, or drag the route line to pull it through
-          somewhere else (on a phone, press and hold the line first). Click a via point for
-          Remove. From the keyboard, move the map with the arrow keys and use "Add point at
-          map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
+          Search for a place, or click the map to set a start, then an end. Later clicks add a
+          via point on the nearest leg. Drag any marker to move it, or drag the route line to
+          pull it through somewhere else (on a phone, press and hold the line first). Click a
+          via point for Remove. From the keyboard, move the map with the arrow keys and use
+          "Add point at map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
         </p>
       ) : (
         <ol className="points">
           {points.map((point, index) => {
             const name = pointName(index, points.length);
+            const place = namer.name(point);
+            const coords = coordinatesText(point);
             return (
               <li key={index}>
                 <span className="point-name">{name}</span>
-                <span className="coords">
-                  {point[1].toFixed(4)}, {point[0].toFixed(4)}
-                </span>
+                {place ? (
+                  <span className="point-place" title={`${place.label} (${coords})`}>
+                    <span className="place-name">{place.name}</span>
+                    <span className="coords">{coords}</span>
+                  </span>
+                ) : (
+                  <span className="coords">{coords}</span>
+                )}
                 <button
                   type="button"
                   className="link"

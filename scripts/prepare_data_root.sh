@@ -171,10 +171,10 @@ rebuild
 #             host has a reason to read them, and the rebuild container - which
 #             binds five directories under ${DATA_ROOT} and used to bind the
 #             whole volume - least of all.
-#   photon    The geocoder's index, for a service parked behind the `unbuilt`
-#             profile (see compose.yaml). Nothing in this repository writes it
-#             and the image is not ours, so its owner is a question for
-#             whoever enables that profile.
+#   photon    The geocoder's index, which scripts/import_photon.sh builds and
+#             the operator moves into place (docs/DEPLOYMENT.md, "Photon"). The
+#             image is not ours, and its entrypoint re-owns the directory to
+#             its own uid on every start.
 #
 # The directory is still created for each of them: a bind-mount source that
 # does not exist is manufactured by the daemon on the first `up`, which is the
