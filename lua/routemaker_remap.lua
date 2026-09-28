@@ -380,29 +380,38 @@ function M.remap_way(tags, derived)
   end
 
   -- Graded (the owner, 2026-09-28: "Yes, grade them (Recommended)" - "LTS 4
-  -- penalised more than LTS 3 at every slider position"). With the penalty
-  -- above alone, LTS 3 and LTS 4 cost the same, so a slider move could swap a
-  -- tier-3 street for a shorter tier-4 one. LTS 4 and up are also marked as a
-  -- truck route (`hgv:state_network`, which upstream reads onto
-  -- `truck_route` and nothing else: truck access comes from `hgv` alone), and
-  -- Valhalla adds `kTruckStress` (0.5) to such an edge's roadway stress before
-  -- the speed penalty and the accommodation factor multiply it
-  -- (sif/bicyclecost.cc): a cost at the fastest-legal end too, growing as the
-  -- slider rises, and no change to speed or access. Only where the stress
-  -- penalty holds (the way is open to a bicycle), never on a trail-class way,
-  -- never over a network the way already declares, and not on the no-trail
-  -- variant: Mass Ride's slider is locked at 0 and a mass ride takes the big
-  -- roads by design.
+  -- penalised more than LTS 3 at every slider position" - and "I'd probably
+  -- want LTS 4 to be twice the stress level of LTS 3 at least."). A way's
+  -- stress level is the cost its tier adds per metre over the same edge with
+  -- no tier, as a multiple of the time cost (docs/DEVELOPMENT.md, "Graded
+  -- stress"). With the penalty above alone the two tiers add the same, so a
+  -- slider move could swap a tier-3 street for a shorter tier-4 one.
+  --
+  -- Valhalla 3.5.1's bicycle costing has no per-tier weight; what it prices
+  -- per edge is fixed by the edge (sif/bicyclecost.cc): the roadway stress
+  -- grows with the lane count (`0.05 * road_factor` a lane) and is multiplied
+  -- by a speed penalty that rises with the edge's speed, and both are then
+  -- multiplied by the accommodation factor the `use_sidepath` penalty lifts.
+  -- So LTS 4 and up are given the graph's top speed and lane count - speed
+  -- `maxspeed:practical` 140 (kMaxOSMSpeed), 15 lanes each way
+  -- (kMaxLaneCount) - which lifts their added cost to at least twice LTS 3's
+  -- at every slider position above 0 on roads posted up to 50 mph (the table
+  -- in docs/DEVELOPMENT.md; faster tier-4 roads come to 1.75 or more). Only the
+  -- cost moves: a bicycle's time comes from its own speed, not the edge's, and
+  -- access from the bicycle keys. Only where the stress penalty holds (the
+  -- way is open to a bicycle), never on a trail-class way, and not on the
+  -- no-trail variant: Mass Ride's slider is locked at 0 and a mass ride takes
+  -- the big roads by design.
   if
     derived.stress_tier ~= nil
     and derived.stress_tier >= M.GRADED_TIER
     and not derived.is_trail_class
     and not derived.facility_neutral
     and (out.bicycle or tags.bicycle) == M.STRESS_PENALTY_BICYCLE
-    and tags["hgv:state_network"] == nil
-    and tags["hgv:national_network"] == nil
   then
-    out["hgv:state_network"] = M.GRADED_VALUE
+    out["maxspeed:practical"] = M.GRADED_SPEED
+    out["lanes:forward"] = M.GRADED_LANES
+    out["lanes:backward"] = M.GRADED_LANES
   end
 
   -- "Legal but avoid" (stress tier 5; the owner, 2026-09-27: "Maybe make a
@@ -745,9 +754,11 @@ end
 -- says most adults will not ride in mixed traffic.
 M.STRESS_PENALTY_TIER = 3
 
--- The tier that costs more again (see `remap_way`): LTS 4, and so 5.
+-- The tier that costs more again (see `remap_way`): LTS 4, and so 5, at the
+-- graph's top speed (kph) and lane count.
 M.GRADED_TIER = 4
-M.GRADED_VALUE = "yes"
+M.GRADED_SPEED = "140"
+M.GRADED_LANES = "15"
 
 -- "Legal but avoid", and the write that carries it (see `remap_way`).
 M.AVOID_TIER = 5
