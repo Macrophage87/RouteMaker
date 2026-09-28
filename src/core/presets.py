@@ -6,18 +6,23 @@ the costing fork, candidate search and ranking - do not exist yet, so what a
 preset does today is exactly what is written here, and the view that proxies to
 Valhalla reads nothing else.
 
-What the table says, and how each value below follows from it:
+The stress and hills sliders (PUBLIC-DIALS, owner requests of 2026-09-27)
+set `use_roads` and `use_hills` per request; each preset below states where
+they start, and the other dials stay the preset's own:
 
-- **Default**: "L2: Hybrid, mid use_roads, mid use_hills". Mid is the middle of
-  Valhalla's 0..1 scale, 0.5.
+- **Default**: stress 90 (`use_roads` 0.10), the owner's "90"; hills at the
+  middle of the slider. The owner, 2026-09-27: "For hilliness, we can go from
+  a default which is basically fastest time for most people in the middle, to
+  hill avoidant, and even hill seeking." Mapping that middle to `use_hills` 1.0
+  (Valhalla's hills weight off) is an implementation choice.
 - **Group Ride**: "L1: standard variant, trails allowed" (its "Allow bike paths
   and trails" toggle ships on, and the toggle is not offered yet); "L2: Cross,
   mid use_roads, high maneuver_penalty, high gate_cost". Cross rather than
   Hybrid so that the rural references' gravel is cheap rather than merely
   permitted (PLAN, Presets).
 - **Mass Ride**: "L1: no-trail variant"; "L2: use_roads at max, use_hills near
-  zero, high maneuver_penalty"; Hybrid (PLAN, Presets: "Mass Ride, Fast,
-  Beginner, Recovery, and Cargo are Hybrid"). Its planning speed is 6 mph, the
+  zero, high maneuver_penalty"; Hybrid (PLAN, Presets). Its stress slider is
+  locked at 0 (the owner's "Lock at 0 (Recommended)"). Its planning speed is 6 mph, the
   default of the mass ride speed band, so the duration it reports is moving
   time at parade pace rather than at Hybrid's 18 km/h.
 
@@ -36,7 +41,7 @@ under "State crossing penalty" is that the router does not avoid state lines
 for any modality, and Valhalla's default of 600 s would otherwise apply at
 every border control node the pipeline inserts.
 
-None of the three arms the hard surface exclusion, which only engages when
+No preset arms the hard surface exclusion, which only engages when
 `avoid_bad_surfaces` is exactly 1.0 (PLAN, Presets).
 """
 
@@ -88,9 +93,10 @@ DEFAULT_STRESS = 90
 #   bicycles.
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
-# - Stress: carrying cargo starts at a moderate 75; carrying people at the top
-#   of the slider, where a tier 3 or 4 way costs about five times its length
-#   and a path or protected lane wins unless there is no other way.
+# - Stress: carrying cargo starts where Default does (the owner, 2026-09-28:
+#   "Same as Default, 90 (Recommended)"); carrying people at the top of the
+#   slider, 100, where a tier 3 or 4 way costs several times its length and a
+#   path or protected lane wins unless avoiding it takes much longer.
 # - Electric assist (the owner, 2026-09-27: "Cargo bikes with E assist still
 #   have problems on hills. They tend to be very heavy. The assist doesn't
 #   cancel out the hill in many cases. People with more powerful motors can
@@ -99,9 +105,8 @@ DEFAULT_STRESS = 90
 #   hill-averse start; a rider with a strong motor moves the hills slider.
 CARRYING_CARGO = "cargo"
 CARRYING_PEOPLE = "people"
-# Carrying cargo is moderate (the owner's words: "cargo = moderate"), and
-# carrying people is the top of the slider, "unless there's no other option".
-CARGO_CARRYING_STRESS = {CARRYING_CARGO: 75, CARRYING_PEOPLE: 100}
+# Carrying cargo tracks Default; carrying people is the top of the slider.
+CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 100}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0
 CARGO_GATE_COST_S = 300
@@ -294,7 +299,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.NO_TRAIL,
                 # use_roads at max: the direct end of the stress slider.
                 stress=0,
-                # "Near zero" rather than zero: zero is Recovery's value, and
+                # "Near zero" rather than zero (PLAN's Mass Ride row), and
                 # Mass Ride's grade limit is the layer 4 cap, not this dial.
                 hills=-95,
                 hills_seek=False,

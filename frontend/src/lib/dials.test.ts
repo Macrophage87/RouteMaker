@@ -35,10 +35,11 @@ test("the starts say what the owner said", () => {
   assert.ok(STARTS.cargo.hills < STARTS.default.hills);
 });
 
-test("carrying people starts markedly more stress-averse than carrying cargo", () => {
+test("carrying cargo starts where Default does, carrying people at the top", () => {
   const cargo = startDials("cargo", "cargo");
   const people = startDials("cargo", "people");
-  assert.ok(people.stress - cargo.stress >= 15);
+  assert.equal(cargo.stress, STARTS.default.stress);
+  assert.equal(people.stress, STRESS_MAX);
   assert.equal(people.hills, cargo.hills);
   assert.equal(startDials("cargo").carrying, "cargo");
   assert.equal(startDials("default", "people").carrying, null);

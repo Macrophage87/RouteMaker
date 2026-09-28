@@ -7,6 +7,7 @@
  * (`Preset.stress`, `Preset.hills`, `CARGO_CARRYING_STRESS`), repeated here
  * so the sliders can sit at them before any route has come back; every
  * route's `dials` says what the API actually planned with.
+ * tests/test_presets.py reads STARTS and holds it equal to the API's table.
  */
 import type { PresetId } from "./presets.ts";
 
@@ -49,8 +50,8 @@ export const STARTS: Record<PresetId, Start> = {
   "mountain-goat": { stress: 50, hills: 100, seek: true },
   gravel: { stress: 50, hills: 0, seek: true },
   fast: { stress: 10, hills: 0, seek: true },
-  cargo: { stress: 75, hills: -60, seek: true, carrying: { cargo: 75, people: 100 }, assist: true },
-  ebike: { stress: 75, hills: -50, seek: true },
+  cargo: { stress: 90, hills: -60, seek: true, carrying: { cargo: 90, people: 100 }, assist: true },
+  ebike: { stress: 90, hills: -50, seek: true },
 };
 
 export const WHENS: readonly { id: When; label: string }[] = [
@@ -64,7 +65,7 @@ export const CARRYINGS: readonly { id: Carrying; label: string; hint: string }[]
   {
     id: "people",
     label: "Carrying people",
-    hint: "Paths and protected lanes; busy streets only where there is no other way.",
+    hint: "Paths and protected lanes; busy streets only where avoiding them takes much longer.",
   },
 ];
 
@@ -137,7 +138,7 @@ export function stressWords(stress: number): string {
   if (stress < 40) return "Direct, some busy streets";
   if (stress <= 60) return "Balanced";
   if (stress < 95) return "Prefers quiet streets and paths";
-  return "Low-stress only, unless there is no other way";
+  return "Low-stress, unless avoiding busy streets takes much longer";
 }
 
 export function hillsWords(hills: number): string {

@@ -9,6 +9,8 @@ what the table says passes and one that contradicts it fails.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from django.conf import settings
 
@@ -138,12 +140,62 @@ def test_cargo_is_hill_averse_slow_and_gate_shy() -> None:
     assert options("cargo")["bicycle_type"] == "Hybrid"
 
 
-def test_carrying_people_is_markedly_more_stress_averse() -> None:
+def test_carrying_cargo_is_default_and_people_the_top_of_the_slider() -> None:
+    """The owner, 2026-09-28: "Same as Default, 90 (Recommended)" for carrying
+    cargo; carrying people stays calmer, at 100."""
     people = presets.stress_start("cargo", presets.CARRYING_PEOPLE)
     cargo = presets.stress_start("cargo", presets.CARRYING_CARGO)
-    assert people - cargo >= 15
-    assert presets.use_roads_for(people) <= 0.1
+    assert cargo == presets.DEFAULT_STRESS == presets.stress_start("default")
+    assert people == presets.STRESS_MAX > cargo
     assert presets.stress_start("cargo") == cargo
+
+
+DIALS_TS = Path(__file__).resolve().parents[1] / "frontend" / "src" / "lib" / "dials.ts"
+
+
+def _front_end_starts() -> dict[str, dict]:
+    """dials.ts's STARTS table, read as data: one row per preset."""
+    import re
+
+    text = DIALS_TS.read_text()
+    table = text[text.index("export const STARTS") :]
+    table = table[: table.index("\n};") + 3]
+    starts = {}
+    for name, body in re.findall(r'^\s*"?([a-z-]+)"?: \{(.*)\},$', table, re.MULTILINE):
+        row = {}
+        for key in ("stress", "hills", "stressMax"):
+            found = re.search(rf"\b{key}: (-?\d+)", body)
+            if found:
+                row[key] = int(found.group(1))
+        row["seek"] = "seek: true" in body
+        row["assist"] = "assist: true" in body
+        carrying = re.search(r"carrying: \{ cargo: (\d+), people: (\d+) \}", body)
+        if carrying:
+            row["carrying"] = {"cargo": int(carrying.group(1)), "people": int(carrying.group(2))}
+        starts[name] = row
+    return starts
+
+
+def test_the_front_ends_starts_are_the_apis() -> None:
+    """The UI always sends `stress` and `hills`, so a start that differs from
+    the API's plans every ride of that type somewhere else (review, 2026-09-28:
+    E-bike planned at 75 against the API's 90)."""
+    starts = _front_end_starts()
+    assert set(starts) == set(CONTRACT_PRESETS)
+    for name in sorted(CONTRACT_PRESETS):
+        preset = presets.PRESETS[name]
+        row = starts[name]
+        assert row["stress"] == presets.stress_start(name), name
+        assert row["hills"] == preset.hills, name
+        assert row["seek"] == preset.hills_seek, name
+        assert row.get("stressMax", presets.STRESS_MAX) == preset.stress_max, name
+        assert row["assist"] == (preset.assist_speed_kmh is not None), name
+        if preset.carrying is None:
+            assert "carrying" not in row, name
+        else:
+            assert row["carrying"] == {
+                load: presets.stress_start(name, load) for load in ("cargo", "people")
+            }, name
 
 
 def test_only_mass_ride_stops_the_hills_slider_at_the_detent() -> None:
