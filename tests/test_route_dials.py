@@ -563,3 +563,15 @@ def test_a_mass_ride_counts_bike_lanes_as_none(client, facility_segments, router
         ordinary["none"] + ordinary["lane"] + ordinary["protected"]
     )
     assert mass["path"] == pytest.approx(ordinary["path"])
+    # And a protected lane the same way.
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"UPDATE {facility_segments}.segment SET facility = 'protected' "
+            "WHERE osm_way_id = 202 AND ordinal = 0"
+        )
+    router(standard_router())
+    ordinary = post(client, {**good_body("default"), "when": "weekday_rush"}).json()["facility_m"]
+    router(standard_router())
+    mass = post(client, {**good_body("mass-ride"), "when": "weekday_rush"}).json()["facility_m"]
+    assert ordinary["protected"] > 0
+    assert mass["protected"] == 0
