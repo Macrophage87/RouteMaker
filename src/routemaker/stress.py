@@ -357,7 +357,7 @@ class StressResult:
 
     @property
     def is_top_tier(self) -> bool:
-        """What the Beginner invariant and the road-exposure report key on."""
+        """LTS 4 and up: what the road-exposure report keys on."""
         return self.tier >= Stress.LTS4
 
 
