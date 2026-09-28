@@ -339,8 +339,8 @@ the one function that touches the network, so the suite needs neither.
 
 Two settings worth knowing. `WEB_CONCURRENCY` - gunicorn's worker count - also
 sizes `ROUTING_CONCURRENCY`, the routes the api may run at once (the count less
-two, at least one); `runserver` is one process, and the default of 5 gives it
-3. And the per-client limit keys on the last `X-Forwarded-For` entry, so a
+two, less the two geocoding slots, at least one); `runserver` is one process,
+and the default of 7 gives it 3. And the per-client limit keys on the last `X-Forwarded-For` entry, so a
 local client that sets that header chooses its own bucket - harmless here,
 because on the stack only Caddy reaches the api and Caddy overwrites it.
 
@@ -395,14 +395,19 @@ Refusals, all `{"error": "..."}`: 400 for a parameter above; 403 when the
 browser says `Sec-Fetch-Site: cross-site` or `same-site` (refused before it is
 counted: any page can make a visitor's browser send a GET); 429 with
 `Retry-After` for a spent per-client budget or a geocoding request already in
-flight from the client; 503 with `Retry-After` when the deployment's one slot
-is busy; 502 when Photon (search) or both Photon and the router (names) do not
+flight from the client past a second's wait; 503 with `Retry-After` when the
+deployment's geocoding slots are still busy after it; 502 when Photon (search) or both Photon and the router (names) do not
 answer in time; 500 for anything else. `tests/test_geocode_api.py` replaces
 Photon at `core.geocode._get` and the router at `core.geocode._locate`.
 
 **What a client should do.** Keep one geocoding request in flight for the
 page, search and names together - the per-client slot is shared, so a second
-concurrent request is refused - and send search first. Debounce the search box
+concurrent request waits (up to 1 s) and is then refused - and send search
+first. The api waits up to a second for one of its two geocoding slots before
+answering 503, and names may take only one of the two, so another visitor's
+plan being named does not make search busy. A failed name (not an empty one)
+is worth asking again later - the front end waits 30 s - rather than showing
+coordinates for the rest of the visit. Debounce the search box
 (the front end waits 250 ms) and answer only the latest query; ask a name for a
 point once, after it stops moving, and cache it by a rounded coordinate. On a
 429, 503 or 502 try once more after the `Retry-After` (at most a couple of

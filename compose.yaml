@@ -161,11 +161,15 @@ services:
       # PLAN:293's 8-vCPU host that was `8 * 2 + 1` = 17 sync gunicorn workers
       # inside the 2G/2-cpu limit below, each one a full Django process: an
       # arrangement that is memory-bound long before it is cpu-bound, and the
-      # limit it hits is the one that gets a container OOM-killed. 5 is
-      # `2 * 2 + 1` against the two cpus this service is actually given, which
-      # is the same formula read off the right number. Raise it here if the
-      # `cpus:` limit below is raised; the two are one decision.
-      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-5}
+      # limit it hits is the one that gets a container OOM-killed. 7 is
+      # `2 * 3 + 1` against the three cpus this service is given, which is the
+      # same formula read off the right number; the owner's answer of
+      # 2026-09-28 raised it from 5 so place search could have two lookups at
+      # once (config.settings: 3 routes + 2 lookups leave two workers free).
+      # Raise it here only with the `cpus:` limit below; the two are one
+      # decision. A worker is ~40 MB resident here (5 held 207 MiB), so 7 sit
+      # well inside the 2 GB.
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-7}
       # Discord sign-in, identify scope only. The client id and the redirect are
       # not secrets - they are in every authorize URL - but without them the URL
       # this service builds names an empty application and sends the browser back
@@ -258,7 +262,7 @@ services:
       migrate: { condition: service_completed_successfully }
     deploy:
       resources:
-        limits: { memory: 2G, cpus: "2" }
+        limits: { memory: 2G, cpus: "3" }
 
   # The worker runs under manage.py so Django is set up before a task runs, and
   # its schema arrives through the migrate one-shot below like every other

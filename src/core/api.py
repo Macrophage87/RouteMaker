@@ -538,7 +538,7 @@ def _places(response: HttpResponse, found: list[dict], max_age_s: int) -> Status
     summary="Search for a place inside the coverage area",
 )
 @decorate_view(
-    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT),
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.search_slots),
     ratelimit.rate_limited(ratelimit.GEOCODE),
     ratelimit.rate_limited(ratelimit.GEOCODE_BURST),
     same_site_only,
@@ -563,7 +563,7 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
     summary="Name the place or street at a point inside the coverage area",
 )
 @decorate_view(
-    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT),
+    ratelimit.in_flight_limited(ratelimit.GEOCODE_IN_FLIGHT, ratelimit.name_slots),
     ratelimit.rate_limited(ratelimit.REVERSE),
     ratelimit.rate_limited(ratelimit.REVERSE_BURST),
     same_site_only,

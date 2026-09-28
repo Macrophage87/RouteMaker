@@ -223,19 +223,33 @@ VALHALLA_UPSTREAMS = {
 }
 
 
+# How many geocoding requests may run at once across the whole api, counted
+# like the routing slots (core.ratelimit.GEOCODE_IN_FLIGHT): two, the owner's
+# answer of 2026-09-28 to "let search use 2 lookups at a time (with a short wait
+# instead of an instant 'busy')?". Point names may take only one of them
+# (core.ratelimit.name_slots), so a plan being named leaves one for search; a
+# request waits up to a second for a slot before it is refused.
+GEOCODE_CONCURRENCY = 2
+
 # How many routing requests may run at once across the whole api, counted with
 # PostgreSQL advisory locks (core.ratelimit.in_flight_limited). A routing
 # request holds a gunicorn worker for as long as the router takes, so without a
 # bound a burst of long ones - each allowed by the per-minute limit - takes every
 # worker, and `/healthz` stops answering inside compose's 5 s healthcheck. The
-# worker count less two keeps two workers free whatever the router is doing,
-# from three workers up; one or two workers still get one slot, since an empty
-# pool would refuse every route, and so keep fewer than two free.
-# WEB_CONCURRENCY is the count docker/api-entrypoint.sh hands gunicorn, declared
-# on the api service with compose's default of 5; the other services that import
-# these settings do not route, and read the same default.
+# worker count less two, less the geocoding slots, keeps two workers free
+# whatever the router and the geocoder are doing: on compose's 7 workers (the
+# owner's answer of 2026-09-28), 3 routes and 2 lookups hold 5 and two stay
+# free. A small count still gets one slot, since an empty pool would refuse
+# every route, and so keeps fewer free. WEB_CONCURRENCY is the count
+# docker/api-entrypoint.sh hands gunicorn, declared on the api service with
+# compose's default of 7; the other services that import these settings do not
+# route, and read the same default.
+DEFAULT_WEB_CONCURRENCY = 7
+
+
 def routing_concurrency(web_concurrency: str | None) -> int:
-    return max(1, int(web_concurrency or 5) - 2)
+    workers = int(web_concurrency or DEFAULT_WEB_CONCURRENCY)
+    return max(1, workers - 2 - GEOCODE_CONCURRENCY)
 
 
 ROUTING_CONCURRENCY = routing_concurrency(os.environ.get("WEB_CONCURRENCY"))
@@ -252,21 +266,14 @@ LONG_ROUTING_CONCURRENCY = 1
 # takes a median 0.48 s and at most 2.7 s, which two seconds refused; the first
 # searches after Photon starts, reading its index from disk, took 4-5 s, past
 # even this, and the front end tries such a search once more. Four seconds is
-# past every warm search, and the one geocoding slot (GEOCODE_CONCURRENCY)
-# means it is one worker held at most.
+# past every warm search, and the geocoding slots (GEOCODE_CONCURRENCY) bound
+# how many workers a stalled Photon can hold: two.
 PHOTON_URL = os.environ.get("PHOTON_URL", "http://photon:2322")
 PHOTON_TIMEOUT_S = 4.0
 
 # The languages scripts/import_photon.sh imports names in, and so the only ones
 # a search may ask for; Photon falls back to the local name for the rest.
 PHOTON_LANGUAGES = ("en",)
-
-# How many geocoding requests may run at once across the whole api, counted
-# like the routing slots (core.ratelimit.GEOCODE_IN_FLIGHT). One: at Photon's
-# tens of milliseconds a slot serves a few dozen requests a second, and if
-# Photon stalls it holds one gunicorn worker at most for PHOTON_TIMEOUT_S, not
-# every worker the routing slots leave free for /healthz, the tiles and sign-in.
-GEOCODE_CONCURRENCY = 1
 
 # The disk gate. A rebuild refuses to start unless a second full tile set fits
 # beside the current one without taking the data volume past the alert

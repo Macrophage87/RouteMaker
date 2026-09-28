@@ -235,7 +235,7 @@ the order a request meets it:
 | Content type, declared body size | `application/json`, at most 8 KB | 400 |
 | Requests per client | 60 per fixed 60 s window, per address (IPv6 per /64) | 429, `Retry-After` the rest of the window |
 | Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
-| Routes in flight, whole api | `WEB_CONCURRENCY` less 2 (3 at compose's default of 5 workers) | 503, `Retry-After: 5` |
+| Routes in flight, whole api | `WEB_CONCURRENCY` less 2, less `GEOCODE_CONCURRENCY` (3 at compose's default of 7 workers) | 503, `Retry-After: 5` |
 | Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
 | Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
@@ -251,8 +251,8 @@ signed out; the contract is in docs/DEVELOPMENT.md) have their own limits, in
 | A browser's own word that another site sent it | `Sec-Fetch-Site` `cross-site` or `same-site` | 403, not counted |
 | Searches per client | 5 per fixed 1 s window, then 60 per 60 s (PLAN.md:65); a request the first refuses does not spend the second | 429, `Retry-After` |
 | Names per client | 30 per fixed 10 s window (a shared plan's 25 points at once), then 60 per 60 s, counted apart from search | 429, `Retry-After` |
-| Geocoding in flight per client | 1, search and names together | 429, `Retry-After: 2` |
-| Geocoding in flight, whole api | `GEOCODE_CONCURRENCY`, 1 | 503, `Retry-After: 5` |
+| Geocoding in flight per client | 1, search and names together; a request waits up to 1 s for it | 429, `Retry-After: 2` |
+| Geocoding in flight, whole api | `GEOCODE_CONCURRENCY`, 2 (the owner's answer of 2026-09-28); names may take only one of them, so a plan being named always leaves one for search; a request waits up to 1 s for a slot | 503, `Retry-After: 5` |
 | Photon | 4 s per request (`PHOTON_TIMEOUT_S`); Photon's own query timeout is 3 s | 502 |
 | The router's locate, for a name | 3 s (`geocode.LOCATE_TIMEOUT_S`); past it the name is "near" a place | - |
 
@@ -263,16 +263,31 @@ the same way (below).
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
 preflight, and counting those would let it spend that visitor's budget. The
-routing in-flight limit keeps at least two gunicorn workers free of routing
-however the router is loaded (from three workers up; one or two workers get one
-routing slot and keep fewer free). Geocoding takes one more slot of its own
-(`GEOCODE_CONCURRENCY` = 1), so with routing and geocoding both saturated the
-worst case on compose's default of 5 workers is 3 routes and 1 geocoding
-request, and **one** worker free for `/healthz`, the tiles, sign-in and the
-admin, not two. That is the implementation's choice: a geocoding request
-holds its worker for tens of milliseconds warm and at most Photon's 4 s plus,
-for a name, the router's 3 s, so the second free worker is taken briefly and
-rarely; raising `WEB_CONCURRENCY` by one restores two. Without the routing
+routing and geocoding in-flight limits together keep two gunicorn workers
+free however the router and the geocoder are loaded. The owner's answer of
+2026-09-28 raised compose's worker count from 5 to 7 (with the api's `cpus`
+from 2 to 3, the two being one decision) so place search could have two
+lookups at once: the routing pool is the worker count less two less the
+geocoding slots, so on 7 workers 3 routes and 2 lookups can be held at once
+and **two** workers stay free for `/healthz`, the tiles, sign-in and the admin
+(`config.settings.routing_concurrency`; a test holds that for 5 to 16
+workers). A small worker count still gets one routing slot, and keeps fewer
+free.
+
+**When the stress tiles merge** (wip/tiles), their draws take a pool of their
+own, `TILE_CONCURRENCY`, which that branch sizes as the worker count less
+three (4 on 7 workers) on the grounds that a draw is bounded by its 2 s
+statement timeout. Combined on 7 workers: 3 routes (up to 40-50 s each) + 2
+lookups (up to Photon's 4 s, plus the router's 3 s for a name) + 4 draws can
+ask for 9 workers of 7, so every worker can be held at once and `/healthz`
+waits for the first draw to finish - up to 2 s, inside compose's 5 s
+healthcheck, but not a worker kept free. To keep one worker free outright,
+the merge should size the tile pool from what is left:
+`TILE_CONCURRENCY = max(1, WEB_CONCURRENCY - 1 - ROUTING_CONCURRENCY - GEOCODE_CONCURRENCY)`,
+which is 1 draw on 7 workers (3 + 2 + 1 = 6 held, one free); a larger tile
+pool needs more workers (each one more worker, one more draw). The two
+branches' in-flight pools must also keep distinct scope ids (tiles 3,
+geocoding 4; `tests/test_ratelimit.py` fails on a clash). Without the routing
 limit a burst
 of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a

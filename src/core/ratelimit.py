@@ -47,6 +47,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from functools import wraps
@@ -227,10 +228,29 @@ class InFlight:
     total_setting: str
     client_busy: str = "This address already has a route being planned; try again shortly."
     deployment_busy: str = "The planner is busy; try again in a few seconds."
+    # How long a request waits for a slot before it is refused, polling every
+    # WAIT_STEP_S. Routing refuses at once (0): a route holds its slot for
+    # seconds, and the planner waits out the Retry-After instead. Geocoding
+    # waits: its slots are held for tens of milliseconds, so a short wait turns
+    # a collision into a slightly slower answer rather than "busy".
+    wait_s: float = 0.0
 
     @property
     def total(self) -> int:
         return int(getattr(settings, self.total_setting))
+
+
+def search_slots() -> tuple[int, ...]:
+    """Place search may take any geocoding slot, the last first."""
+    return tuple(reversed(range(GEOCODE_IN_FLIGHT.total)))
+
+
+def name_slots() -> tuple[int, ...]:
+    """Point names take only the first geocoding slot, so a plan being named
+    - up to 25 lookups in a row - never holds the slot a search needs (the
+    round-1 review's two-visitor probe: 5 of 10 searches "busy" while another
+    visitor's link was named). With one slot in all, names share it."""
+    return (0,)
 
 
 # A client's second slot must leave at least this many deployment slots free.
@@ -259,12 +279,18 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
 # in all (one, see settings), so a stalled Photon holds one worker at most. The
 # front end keeps one geocoding request in flight at a time.
 GEOCODE_IN_FLIGHT = InFlight(
-    scope_id=3,
+    # 3 is wip/tiles's TILES_IN_FLIGHT; tests/test_ratelimit.py holds every
+    # InFlight's scope_id apart, since two pools on one id share their locks.
+    scope_id=4,
     per_client=1,
     total_setting="GEOCODE_CONCURRENCY",
     client_busy="A place search from this address is already running; try again shortly.",
     deployment_busy="Place search is busy; try again in a moment.",
+    wait_s=1.0,
 )
+
+# How often a waiting request tries for a slot again.
+WAIT_STEP_S = 0.05
 
 
 def _client_lock_id(client: str) -> int:
@@ -331,39 +357,49 @@ def _busy(status: int, retry_after_s: int, message: str) -> JsonResponse:
     return response
 
 
-def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
+def acquire(
+    request, limit: InFlight, *, slots: tuple[int, ...] | None = None
+) -> tuple[list, JsonResponse | None]:
     """Take a deployment slot and a client slot for `request` under `limit`.
 
     Returns the pairs held, to hand to `release`, and a refusal to send
     instead of running the request, or None. On a refusal nothing is held.
     The deployment slot is taken first, so the count of what is free already
-    includes this request.
+    includes this request. `slots` names the deployment slots this request
+    may take, in the order it tries them (all of them by default); a limit
+    with a `wait_s` tries again until that has passed.
     """
     client = _client_lock_id(client_key(client_address(request)))
-    held: list = []
-    try:
-        if _take(limit, client, held):
-            return held, None
-    except BaseException:
-        # A failure between the two takes would otherwise leave the first
-        # held on a connection that outlives the request.
+    deadline = time.monotonic() + limit.wait_s
+    while True:
+        held: list = []
+        try:
+            if _take(limit, client, held, slots):
+                return held, None
+        except BaseException:
+            # A failure between the two takes would otherwise leave the first
+            # held on a connection that outlives the request.
+            release(held)
+            raise
+        deployment_full = not held
         release(held)
-        raise
-    deployment_full = not held
-    release(held)
+        if time.monotonic() + WAIT_STEP_S > deadline:
+            break
+        time.sleep(WAIT_STEP_S)
     if deployment_full:
         return [], _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)
     return [], _busy(429, CLIENT_BUSY_RETRY_S, limit.client_busy)
 
 
-def _take(limit: InFlight, client: int, held: list) -> bool:
+def _take(limit: InFlight, client: int, held: list, slots=None) -> bool:
     """Take the slots into `held`; true if the request may run. False with
     nothing held means the deployment is full, false with the deployment slot
     held means the client is."""
     total_class = _LOCK_CLASS_TOTAL + limit.scope_id
     client_class = _LOCK_CLASS_CLIENT + limit.scope_id * 64
+    order = range(limit.total) if slots is None else slots
     with connection.cursor() as cursor:
-        shared = _take_one(cursor, [(total_class, slot) for slot in range(limit.total)])
+        shared = _take_one(cursor, [(total_class, slot) for slot in order])
         if shared is None:
             return False
         held.append(shared)
@@ -386,15 +422,19 @@ def release(held) -> None:
     _release(held)
 
 
-def in_flight_limited(limit: InFlight):
+def in_flight_limited(limit: InFlight, slots=None):
     """A view decorator: hold `limit`'s slots for the request, or refuse it -
     429 when this client already has its routes running, 503 when the
-    deployment has `total` running."""
+    deployment has `total` running. `slots`, a callable, names the deployment
+    slots the request may take (see `acquire`)."""
 
     def decorator(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
-            held, refusal = acquire(request, limit)
+            if slots is None:
+                held, refusal = acquire(request, limit)
+            else:
+                held, refusal = acquire(request, limit, slots=slots())
             if refusal is not None:
                 return refusal
             try:

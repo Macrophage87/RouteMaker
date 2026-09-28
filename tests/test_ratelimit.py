@@ -36,6 +36,19 @@ def _window_start(window_s: int):
         return cursor.fetchone()[0]
 
 
+def test_every_in_flight_pool_has_its_own_scope_id() -> None:
+    """Two pools on one scope_id share their advisory-lock classes: each would
+    count the other's requests as its own and refuse on them. wip/tiles's
+    TILES_IN_FLIGHT is 3, so geocoding is 4; the ids already taken on other
+    branches are listed so a merge that reuses one fails here."""
+    pools = [v for v in vars(ratelimit).values() if isinstance(v, ratelimit.InFlight)]
+    ids = [pool.scope_id for pool in pools]
+    assert len(ids) == len(set(ids)), f"scope_ids shared between pools: {sorted(ids)}"
+    elsewhere = {3}  # wip/tiles: TILES_IN_FLIGHT
+    assert not elsewhere & set(ids), "a scope_id here is already another branch's pool"
+    assert all(0 < i < 64 for i in ids), "client lock classes are scope_id * 64 apart"
+
+
 def in_one_window(window_s: int, attempt):
     """Run `attempt(n)` until one run starts and ends inside one window, and
     return what it returned; assert on that, not inside the attempt.

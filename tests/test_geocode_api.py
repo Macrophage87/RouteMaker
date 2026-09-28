@@ -13,6 +13,7 @@ import http.server
 import json
 import socket
 import threading
+import time
 import urllib.parse
 
 import pytest
@@ -468,6 +469,87 @@ class TestLimits:
             other.close()
         assert refused.status_code == 429
         assert int(refused["Retry-After"]) >= 1
+
+    def geocode_slot(self, slot: int):
+        return (ratelimit._LOCK_CLASS_TOTAL + ratelimit.GEOCODE_IN_FLIGHT.scope_id, slot)
+
+    @pytest.mark.parametrize("total", [1, 2, 3])
+    def test_search_tries_first_the_slots_names_cannot_take(self, total) -> None:
+        with override_settings(GEOCODE_CONCURRENCY=total):
+            search, names = ratelimit.search_slots(), ratelimit.name_slots()
+        assert sorted(search) == list(range(total)), "search may take any slot"
+        assert set(names) <= set(search) and len(names) == 1
+        if total > 1:
+            assert search[0] not in names, "a search leaves the names' slot for last"
+
+    @override_settings(GEOCODE_CONCURRENCY=2)
+    def test_names_leave_a_slot_for_search(self, client, photon) -> None:
+        """A plan being named holds at most the names' slot; a search from
+        another visitor takes the other (round-1 review: 5 of 10 searches
+        "busy" while another visitor's link was named)."""
+        photon(answer())
+        other = hold_slots([self.geocode_slot(0)])  # a name being looked up
+        try:
+            search = get(client, SEARCH, q="station")
+            name = get(client, REVERSE, lat=INSIDE[1], lon=INSIDE[0])
+        finally:
+            other.close()
+        assert search.status_code == 200
+        assert name.status_code == 503, "names are one at a time: the second waits, then is refused"
+
+    @override_settings(GEOCODE_CONCURRENCY=2)
+    def test_a_name_is_answered_while_a_search_runs(self, client, photon) -> None:
+        photon(answer())
+        other = hold_slots([self.geocode_slot(1)])  # a search
+        try:
+            assert get(client, REVERSE, lat=INSIDE[1], lon=INSIDE[0]).status_code == 200
+        finally:
+            other.close()
+
+    @override_settings(GEOCODE_CONCURRENCY=2)
+    def test_a_busy_moment_is_waited_out_not_refused(self, client, photon) -> None:
+        """Both slots busy for a moment: the request waits for one rather than
+        answering "busy" at once."""
+        photon(answer())
+        other = hold_slots([self.geocode_slot(0), self.geocode_slot(1)])
+        freed = threading.Timer(0.3, other.close)
+        freed.start()
+        try:
+            started = time.monotonic()
+            response = get(client, SEARCH, q="station")
+            waited = time.monotonic() - started
+        finally:
+            freed.join()
+        assert response.status_code == 200
+        assert 0.25 <= waited < ratelimit.GEOCODE_IN_FLIGHT.wait_s + 1.0
+
+    @override_settings(GEOCODE_CONCURRENCY=2)
+    def test_the_wait_is_bounded(self, client, photon) -> None:
+        photon(answer())
+        other = hold_slots([self.geocode_slot(0), self.geocode_slot(1)])
+        try:
+            started = time.monotonic()
+            response = get(client, SEARCH, q="station")
+            waited = time.monotonic() - started
+        finally:
+            other.close()
+        assert response.status_code == 503
+        assert (
+            ratelimit.GEOCODE_IN_FLIGHT.wait_s - 0.1
+            <= waited
+            < ratelimit.GEOCODE_IN_FLIGHT.wait_s + 1.5
+        )
+
+    def test_two_lookups_at_once_and_workers_left_for_healthz(self) -> None:
+        """The owner's answer of 2026-09-28: two geocoding lookups at once, on
+        seven workers, and routing and geocoding together leave two free."""
+        from config.settings import DEFAULT_WEB_CONCURRENCY, routing_concurrency
+
+        assert settings.GEOCODE_CONCURRENCY == 2
+        assert DEFAULT_WEB_CONCURRENCY == 7
+        for workers in range(5, 17):
+            held = routing_concurrency(str(workers)) + settings.GEOCODE_CONCURRENCY
+            assert held <= workers - 2, f"{workers} workers: {held} can be held"
 
     @override_settings(GEOCODE_CONCURRENCY=1)
     def test_a_busy_geocoder_is_503_and_holds_no_worker(self, client, photon) -> None:
