@@ -531,6 +531,17 @@ same way from the ride type's brake grade (approved by the owner,
 | Default, Trailmaxxing, Gravel, E-bike | 6% | most riders brake in earnest past 6% |
 | Mountain Goat, Fast | never | riders who choose these want the descent |
 
+The avoid half never answers with a route busier than the same trip at the
+middle of the slider (the owner, 2026-09-28: "Traffic wins (Recommended)"):
+the same request is made again at the middle - one /route without
+alternatives, at most 18 s - both routes are traced, and if the hill-avoiding
+one's exposure (LTS 3 + 2 x LTS 4 + 3 x tier 5 metres) is worse, the middle's
+route is the answer (`hills_avoid.kept_middle`); a middle call or trace that
+fails keeps the hill-avoiding route. On the correctness reviewer's grid (3060
+plans on the r6 box graph) the avoid-half plans busier than the middle went
+from 89 to 0, the middle's route was kept 93 times, and an avoid-half plan's
+time went from a median of 0.12 s (p95 0.53 s) to 0.25 s (p95 0.87 s).
+
 Nothing changes at the middle of the slider or above it, and nothing is
 rebuilt: the graph is the same. The limits are the seek half's - a start and
 an end only, up to 50 km apart, three alternatives - and every ride below the

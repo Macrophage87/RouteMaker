@@ -569,6 +569,17 @@ def _weekend_down() -> bool:
     return _weekend_failed_at is not None and clock() - _weekend_failed_at < WEEKEND_FAILURE_TTL_S
 
 
+def _weekend_is_promoted() -> bool:
+    """Whether a weekend build has been promoted: its settings row exists. A
+    deployment before its first four-graph rebuild, or after a rollback that
+    withdrew the weekend graph, has none."""
+    from core.models import ValhallaUpstream
+
+    return (
+        ValhallaUpstream.objects.filter(variant=Variant.WEEKEND.value).exclude(build_id="").exists()
+    )
+
+
 def _mark_weekend(ok: bool) -> None:
     global _weekend_failed_at
     _weekend_failed_at = None if ok else clock()
@@ -659,6 +670,50 @@ def calmer_or_own(
     if own is None or alternative is None or alternative > own:
         return 0
     return chosen
+
+
+def no_busier_than_middle(
+    trip: dict,
+    request: dict,
+    variant: str,
+    costing: dict,
+    middle_costing: dict,
+    when: str,
+    deadline: Deadline,
+) -> tuple[dict, bool]:
+    """The route to answer on the avoid half, and whether it is the middle's.
+
+    The owner, 2026-09-28 (OWNER-DECISIONS item 61), asked whether hill
+    avoidance may make a route busier: "Traffic wins (Recommended)". Valhalla's
+    own `use_hills` trades grade against the stress penalty inside its cost, so
+    at the avoid end the router's own route can be flatter and busier than the
+    same trip at the middle of the hills slider (89 plans of the correctness
+    reviewer's grid). So the same trip is asked for again at the middle - one
+    /route without alternatives, at most ALTERNATES_TIMEOUT_S - and both are
+    traced: if the hill-avoiding route's exposure (LTS 3 + 2 x LTS 4 + 3 x
+    tier 5 metres) is worse, the middle's route is the answer. A middle call
+    or a trace that fails, or no time left, keeps the hill-avoiding route.
+    """
+    middle_request = {key: value for key, value in request.items() if key != "alternates"} | {
+        "costing_options": middle_costing
+    }
+    try:
+        answer = _call(
+            variant,
+            "route",
+            middle_request,
+            Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+        )
+        middle = answer.get("trip") or {}
+        if not middle.get("legs"):
+            return trip, False
+        own = _exposure(variant, costing, trip, when, deadline)
+        calmer = _exposure(variant, middle_costing, middle, when, deadline)
+    except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+        return trip, False
+    if own is None or calmer is None or own <= calmer:
+        return trip, False
+    return middle, True
 
 
 def choose_climb(trips: list[dict], ratio: float) -> int:
@@ -768,8 +823,8 @@ def plan(
             seek_limited = "long_ride"
         else:
             request["alternates"] = SEEK_ALTERNATES
-    if variant == Variant.WEEKEND.value and _weekend_down():
-        logger.info("the weekend router failed recently; planning on the standard graph")
+    if variant == Variant.WEEKEND.value and (_weekend_down() or not _weekend_is_promoted()):
+        logger.info("the weekend graph is not being served; planning on the standard graph")
         variant = Variant.STANDARD.value
     try:
         try:
@@ -788,6 +843,25 @@ def plan(
             logger.warning("the weekend router did not answer; planning on the standard graph")
             variant = Variant.STANDARD.value
             answer, timed_out = _route(variant, request, deadline)
+        except RouterRefused as refusal:
+            # A weekend router with no tiles - started on an empty directory
+            # before the first weekend promotion, or after a rollback withdrew
+            # it - stays up and answers every ride 170/171, "no suitable
+            # edges" (OPS review, 2026-09-28). That is asked of the standard
+            # graph too, and only if the standard graph answers is the weekend
+            # one taken to be missing its tiles and remembered as down; a
+            # point the standard graph cannot place either is a real refusal
+            # and is reported as one.
+            if variant != Variant.WEEKEND.value or refusal.code not in NO_EDGE_CODES:
+                raise
+            answer, timed_out = _route(Variant.STANDARD.value, request, deadline)
+            variant = Variant.STANDARD.value
+            _mark_weekend(False)
+            logger.warning(
+                "the weekend router placed no edge the standard graph could (code %s); "
+                "planning on the standard graph",
+                refusal.code,
+            )
         if timed_out:
             seek_limited = "timed_out"
     except RouterRefused as refusal:
@@ -822,6 +896,17 @@ def plan(
     else:
         chosen = 0
     trip = trips[chosen]
+    kept_middle = False
+    if avoiding:
+        trip, kept_middle = no_busier_than_middle(
+            trip,
+            request,
+            variant,
+            costing,
+            presets.costing(preset_name, stress_dial, 0, assist=assist),
+            when,
+            deadline,
+        )
     legs = trip.get("legs") or []
     if not legs:
         raise NoRoute("the router returned no legs")
@@ -918,6 +1003,7 @@ def plan(
                 (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0, 1
             ),
             "limited": seek_limited,
+            "kept_middle": kept_middle,
         }
     return {
         "preset": preset.name,

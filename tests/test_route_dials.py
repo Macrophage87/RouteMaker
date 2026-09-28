@@ -383,6 +383,84 @@ class TestTheWeekendGraph:
             url.startswith(settings.VALHALLA_UPSTREAMS["standard"]) for url, _ in standard.calls
         )
 
+    def test_a_weekend_router_with_no_tiles_falls_back_to_standard(
+        self, client, facility_segments, router
+    ):
+        """OPS review, 2026-09-28: after a rollback withdrew the weekend graph,
+        or before its first promotion, the router is up on an empty directory
+        and answers 171 "No suitable edges near location"."""
+        standard = standard_router()
+        weekend_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]):
+                weekend_calls.append(url)
+                raise routing.RouterRefused(400, 171, "No suitable edges near location")
+            return standard(url, payload, timeout)
+
+        router(transport)
+        response = post(client, {**good_body(), "when": "weekend"})
+        assert response.status_code == 200
+        assert response.json()["variant"] == "standard"
+        assert len(weekend_calls) == 1
+        post(client, {**good_body(), "when": "weekend"})
+        assert len(weekend_calls) == 1, "remembered as down for a minute"
+
+    def test_a_point_neither_graph_can_place_is_still_no_route(
+        self, client, facility_segments, router
+    ):
+        weekend_calls = []
+
+        def transport(url, payload, timeout):
+            if url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]):
+                weekend_calls.append(url)
+            raise routing.RouterRefused(400, 171, "No suitable edges near location")
+
+        router(transport)
+        response = post(client, {**good_body(), "when": "weekend"})
+        assert response.status_code != 200
+        assert "error" in response.json()
+        assert routing._weekend_failed_at is None, "a real refusal is not a missing graph"
+        post(client, {**good_body(), "when": "weekend"})
+        assert len(weekend_calls) == 2, "so the weekend graph is asked again"
+
+    def test_a_real_no_path_on_the_weekend_graph_is_not_masked(
+        self, client, facility_segments, router
+    ):
+        """442 (no path) is the graph's answer, not a missing graph: reported,
+        and the standard graph is not asked in its place."""
+        calls = []
+
+        def transport(url, payload, timeout):
+            calls.append(url)
+            raise routing.RouterRefused(400, 442, "No path could be found for input")
+
+        router(transport)
+        response = post(client, {**good_body(), "when": "weekend"})
+        assert response.status_code != 200
+        assert all(url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]) for url in calls)
+
+    def test_no_weekend_settings_row_plans_on_standard(
+        self, client, facility_segments, router, weekend_rows_read
+    ):
+        """A deployment before its first four-graph promotion, or after a
+        rollback withdrew the weekend graph, has no weekend row."""
+        from core.models import ValhallaUpstream
+
+        ValhallaUpstream.objects.filter(variant="weekend").delete()
+        fake = router(standard_router())
+        body = post(client, {**good_body(), "when": "weekend"}).json()
+        assert body["variant"] == "standard"
+        assert all(url.startswith(settings.VALHALLA_UPSTREAMS["standard"]) for url, _ in fake.calls)
+        # A row naming no build is no promotion either.
+        ValhallaUpstream.objects.create(variant="weekend", url="http://valhalla-weekend:8002")
+        fake = router(standard_router())
+        assert post(client, {**good_body(), "when": "weekend"}).json()["variant"] == "standard"
+        # And once a weekend build is promoted, its row sends the ride there.
+        ValhallaUpstream.objects.filter(variant="weekend").update(build_id="20260917T080000Z")
+        fake = router(standard_router())
+        assert post(client, {**good_body(), "when": "weekend"}).json()["variant"] == "weekend"
+
     def test_a_failed_weekend_router_is_not_asked_again_for_a_minute(
         self, client, facility_segments, router, monkeypatch
     ):
@@ -830,3 +908,85 @@ class TestTheAvoidHalfNeverTradesCalmForBusy:
     def test_a_calmer_alternative_is_taken(self, client, facility_segments, router):
         router(self.router_with(202, 101))
         assert post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["chosen"] == 1
+
+
+@db
+class TestTrafficWinsOverHills:
+    """The owner, 2026-09-28 (item 61): "Traffic wins (Recommended)". Hill
+    avoidance never makes a route busier than the same trip at the middle of
+    the hills slider."""
+
+    def router_with(self, avoid_way, middle_way, middle_fails=False):
+        avoid = _trip(VERTICES, 2.0, KICK_THEN_FLAT)
+        middle = _trip(list(reversed(VERTICES)), 2.2, LONG_STEEP)
+        middle_shape = middle["legs"][0]["shape"]
+        calls = []
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                use_hills = payload["costing_options"]["bicycle"]["use_hills"]
+                calls.append((use_hills, "alternates" in payload, timeout))
+                if use_hills == 1.0:
+                    if middle_fails:
+                        raise routing.RouterUnavailable("timed out")
+                    return {"trip": middle}
+                return {"trip": avoid}
+            way = middle_way if payload["encoded_polyline"] == middle_shape else avoid_way
+            return trace_answer(VERTICES, [(way, 0, 4, 2.0)])
+
+        return transport, calls
+
+    def test_a_busier_hill_avoiding_route_gives_way_to_the_middle(
+        self, client, facility_segments, router
+    ):
+        # The hill-avoiding route on way 202 (tiers 3 and 2), the middle on 101 (tier 1).
+        transport, calls = self.router_with(202, 101)
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60}).json()
+        assert body["hills_avoid"]["kept_middle"] is True
+        assert body["distance_m"] == pytest.approx(2200.0), "the middle's route"
+        middle_call = [c for c in calls if c[0] == 1.0]
+        assert len(middle_call) == 1
+        assert middle_call[0][1] is False, "one /route, without alternatives"
+        assert middle_call[0][2] <= routing.ALTERNATES_TIMEOUT_S
+
+    def test_a_calmer_hill_avoiding_route_is_kept(self, client, facility_segments, router):
+        transport, _calls = self.router_with(101, 202)
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60}).json()
+        assert body["hills_avoid"]["kept_middle"] is False
+        assert body["distance_m"] == pytest.approx(2000.0)
+
+    def test_an_equally_busy_one_is_kept(self, client, facility_segments, router):
+        transport, _calls = self.router_with(202, 202)
+        router(transport)
+        assert (
+            post(client, {**good_body(), "hills": -60}).json()["hills_avoid"]["kept_middle"]
+            is False
+        )
+
+    def test_a_middle_call_that_fails_keeps_the_answer(self, client, facility_segments, router):
+        transport, _calls = self.router_with(202, 101, middle_fails=True)
+        router(transport)
+        response = post(client, {**good_body(), "hills": -60})
+        assert response.status_code == 200
+        assert response.json()["hills_avoid"]["kept_middle"] is False
+        assert response.json()["distance_m"] == pytest.approx(2000.0)
+
+    def test_it_applies_where_no_alternatives_were_asked_for(
+        self, client, facility_segments, router
+    ):
+        """A via point: the router's own hill-avoiding route, still no busier."""
+        transport, _calls = self.router_with(202, 101)
+        router(transport)
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        body = post(client, {"points": points, "preset": "default", "hills": -50}).json()
+        assert body["hills_avoid"]["limited"] == "two_points"
+        assert body["hills_avoid"]["kept_middle"] is True
+
+    def test_nothing_is_asked_at_the_middle_or_above(self, client, facility_segments, router):
+        for hills in (0, 60):
+            transport, calls = self.router_with(202, 101)
+            router(transport)
+            post(client, {**good_body(), "hills": hills})
+            assert len(calls) == 1, "one /route, and no second call for the middle"

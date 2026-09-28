@@ -59,6 +59,8 @@ export interface RouteResponse {
     direct_grade_cost_s: number;
     extra_distance_m: number;
     limited: "two_points" | "long_ride" | "timed_out" | null;
+    /** The hills slider's middle route, kept because the hill-avoiding one was busier. */
+    kept_middle?: boolean;
   } | null;
   attribution: string[];
   /**

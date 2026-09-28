@@ -363,9 +363,20 @@ class TestWhatIsSentToTheRouter:
         fake = router(standard_router())
         assert post(client, good_body(name)).status_code == 200
         base = settings.VALHALLA_UPSTREAMS[presets.variant_for_ride(name, routing.default_when())]
-        assert fake.endpoints() == ["route", "trace_attributes"]
+        preset = presets.PRESETS[name]
+        middle = presets.costing(name, presets.stress_start(name), 0)
+        if preset.hills < 0:
+            # The avoid half asks for the same trip at the hills middle and
+            # traces both, so a busier route gives way to the calmer one (the
+            # owner, 2026-09-28: "Traffic wins").
+            assert fake.endpoints()[:2] == ["route", "route"]
+            assert set(fake.endpoints()[2:]) == {"trace_attributes"}
+            assert fake.calls[1][1]["costing_options"] == middle
+        else:
+            assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)
-        assert all(p["costing_options"] == presets.costing(name) for _, p in fake.calls)
+        assert all(p["costing_options"] in (presets.costing(name), middle) for _, p in fake.calls)
+        assert fake.calls[0][1]["costing_options"] == presets.costing(name)
         assert all(p["costing"] == "bicycle" for _, p in fake.calls)
 
     def test_the_points_are_sent_in_order_as_lon_lat(self, client, segments, router) -> None:

@@ -340,6 +340,12 @@ class HillsAvoidOut(Schema):
     limited: Literal["two_points", "long_ride", "timed_out"] | None = Field(
         description="Why no alternatives were compared, if none were."
     )
+    kept_middle: bool = Field(
+        description=(
+            "The route is the hills slider's middle one, because the hill-avoiding route "
+            "was busier (the owner: traffic wins)."
+        )
+    )
 
 
 class RouteOut(Schema):

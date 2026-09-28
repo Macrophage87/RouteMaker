@@ -61,14 +61,30 @@ def segment_schemas():
 
 
 @pytest.fixture(autouse=True)
-def _weekend_router_state():
+def _weekend_router_state(monkeypatch):
     """core.routing remembers a failed weekend router for a minute; no test
-    inherits another's memory of one."""
+    inherits another's memory of one. And it plans a weekend ride on the
+    weekend graph only once a weekend build has been promoted (a settings
+    row), which a test database has none of: route tests take it as promoted,
+    and `weekend_rows_read` gives a test the real check."""
     try:
         from core import routing
     except Exception:  # noqa: BLE001 - modules that never load Django
         yield
         return
+    _REAL_WEEKEND_CHECK.setdefault("check", routing._weekend_is_promoted)
+    monkeypatch.setattr(routing, "_weekend_is_promoted", lambda: True)
     routing._weekend_failed_at = None
     yield
     routing._weekend_failed_at = None
+
+
+_REAL_WEEKEND_CHECK: dict = {}
+
+
+@pytest.fixture
+def weekend_rows_read(monkeypatch):
+    """The real `_weekend_is_promoted`, reading the settings rows."""
+    from core import routing
+
+    monkeypatch.setattr(routing, "_weekend_is_promoted", _REAL_WEEKEND_CHECK["check"])
