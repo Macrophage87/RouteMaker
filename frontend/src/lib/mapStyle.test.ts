@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAP_ATTRIBUTION, MAP_CREDITS, STRESS_ZOOMS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { STRESS_PROTOCOL, httpUrl } from "./stressProtocol.ts";
 
 const ORIGIN = "https://routes.example.org";
 
@@ -37,7 +38,8 @@ test("everything the style loads comes from this site", () => {
 
 test("the stress tiles are the contract's path, absolute, within its zooms", () => {
   const source = stressSource(ORIGIN);
-  assert.deepEqual(source.tiles, [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
+  assert.deepEqual(source.tiles.map(httpUrl), [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
+  assert.ok(source.tiles.every((url) => url.startsWith(`${STRESS_PROTOCOL}://`)));
   // SHARED API CONTRACT: served for z 10-16.
   assert.equal(source.minzoom, 10);
   assert.equal(source.maxzoom, 16);

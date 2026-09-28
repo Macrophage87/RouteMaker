@@ -15,6 +15,11 @@ import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSecti
 import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
+import { registerStressProtocol } from "./lib/stressProtocol.ts";
+import * as maplibregl from "maplibre-gl";
+
+// Before the map adds the stress source (MapView, after its first probe).
+registerStressProtocol(maplibregl);
 
 interface Plan {
   points: LonLat[];

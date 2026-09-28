@@ -272,3 +272,14 @@ test("the zoom is reported at once and after every zoom", () => {
   for (const listener of listeners) listener();
   assert.deepEqual(seen, [8.4, 11.2]);
 });
+
+test("each facility report is a new set, so React sees the change", () => {
+  const { map, listeners } = facilityMap(true, [[kind("path")], [kind("lane")]]);
+  const reports: ReadonlySet<string>[] = [];
+  watchForFacilities(map, (kinds) => reports.push(kinds));
+  [...listeners][0]();
+  [...listeners][0]();
+  assert.equal(reports.length, 2);
+  assert.notEqual(reports[0], reports[1]);
+  assert.deepEqual([...reports[0]], ["path"]);
+});

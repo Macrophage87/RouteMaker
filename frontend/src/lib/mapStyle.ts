@@ -8,6 +8,7 @@
  * without the package installed.
  */
 import { BASEMAP } from "../stressStyle.js";
+import { protocolUrl } from "./stressProtocol.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
@@ -69,14 +70,14 @@ export function buildStyle(origin: string, basemapLayers: readonly unknown[]): B
 }
 
 /**
- * The stress overlay's source. Tile URLs are absolute because vector tiles are
- * fetched from MapLibre's workers, where a relative URL has no page to resolve
- * against.
+ * The stress overlay's source. The tiles are fetched through the stress
+ * protocol (stressProtocol.ts), which asks again for a tile the API asks to be
+ * fetched again; the URL it carries is absolute, the contract's path.
  */
 export function stressSource(origin: string) {
   return {
     type: "vector" as const,
-    tiles: [`${origin}/tiles/stress/{z}/{x}/{y}.pbf`],
+    tiles: [protocolUrl(`${origin}/tiles/stress/{z}/{x}/{y}.pbf`)],
     minzoom: STRESS_ZOOMS.min,
     maxzoom: STRESS_ZOOMS.max,
   };

@@ -212,3 +212,18 @@ test("the contrast maths is WCAG 2's, against its published anchors", () => {
   // The linear segment below 0.04045: #0a0a0a is 10/255/12.92.
   assert.ok(Math.abs(relativeLuminance("#0a0a0a") - 10 / 255 / 12.92) < 1e-9);
 });
+
+test("each facility layer draws its own dash, or none", () => {
+  // The dash is the only thing that tells a path from a protected lane on the
+  // map: both are bold violet (mutation review, round 1).
+  facilityLayers("s").forEach((layer, i) => {
+    assert.deepEqual(layer.paint["line-dasharray"], FACILITIES[i].dash ?? undefined);
+  });
+});
+
+test("an unknown tier's rails still show beyond the casing", () => {
+  for (const layer of facilityLayers("s")) {
+    const width = layer.paint["line-width"];
+    assert.ok(width.at(-1) >= STRESS_TIERS[0].width + CASING_EXTRA_PX + 2);
+  }
+});
