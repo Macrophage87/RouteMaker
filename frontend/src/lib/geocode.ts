@@ -13,6 +13,7 @@
  */
 import { MAX_POINTS, addPoint, insideCoverage, type LonLat } from "./geo.ts";
 import { parseRetryAfter } from "./api.ts";
+import { pointName } from "./summary.ts";
 
 export interface Place {
   name: string;
@@ -483,6 +484,48 @@ export function searchView(state: {
     choice,
     effect: placeEffect(state.pointCount, choice),
   };
+}
+
+/**
+ * A place picked from search, into the plan: the point it becomes (or null
+ * when it is outside the map), named as it was found, and the plan changed
+ * through `commit` - the undo history's one way in (App.tsx), so a pick is one
+ * step Ctrl+Z takes back, like any other edit (merge re-check B1: a pick that
+ * set the points directly was not undoable, and Ctrl+Z took back the edit
+ * before it instead).
+ */
+export function pickIntoPlan(
+  found: Place,
+  choice: PlaceChoice,
+  plan: {
+    current: () => LonLat[];
+    commit: (next: LonLat[]) => void;
+    remember: (point: LonLat, name: string, label: string) => void;
+  },
+): LonLat | null {
+  const point = placeFromSearch(found, plan.remember);
+  if (point === null) return null;
+  plan.commit(applyPlace(plan.current(), point, choice));
+  return point;
+}
+
+/** One row of the points list: its role, its name if it has one, its coordinates. */
+export interface PointRow {
+  role: string;
+  place: { name: string; label: string } | undefined;
+  coords: string;
+}
+
+/** The points list the panel shows (App.tsx renders these). */
+export function pointRows(
+  points: readonly LonLat[],
+  names: { name: (point: LonLat) => { name: string; label: string } | undefined },
+): PointRow[] {
+  return points.map((point, index) => ({
+    role: pointName(index, points.length),
+    place: names.name(point),
+    coords: coordinatesText(point),
+  }));
 }
 
 export type KeyAction =

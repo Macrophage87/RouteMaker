@@ -1049,6 +1049,19 @@ the first host to run it is the first test of it.
    can cover it, so the answer is to wait or to accept the unwedge, not to
    lengthen the grace.
 
+   **Also check that no proof or test container is running from this
+   project's images.** A container started with `docker run` from
+   `ghcr.io/macrophage87/routemaker-api:<tag>` (or any image compose built)
+   inherits the image's build labels, `com.docker.compose.project=routemaker`
+   and `com.docker.compose.service=api` among them, so while it runs the live
+   project sees it as one more api container: `docker compose ps`, `up` and
+   `down` count and act on it. Tear every such stack down before a live
+   `docker compose` command - `docker ps -a --filter
+   label=com.docker.compose.project=routemaker` should list only the
+   project's own `routemaker-*` containers - or start proof containers with a
+   label of their own, `--label com.docker.compose.project=<other>`, which
+   overrides the image's (merge re-check of PUBLIC-SEARCH, 2026-09-28).
+
    **The command will also take a minute to return**, and that is the grace
    period being spent rather than something hanging. `down` and `up -d` send
    the SIGTERM, wait the full `stop_grace_period: 60s` because the worker is

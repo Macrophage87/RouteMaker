@@ -24,7 +24,7 @@ import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import { usePlaceNames } from "./usePlaceNames.ts";
-import { applyPlace, coordinatesText, placeFromSearch, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 registerStressProtocol(maplibregl);
@@ -317,10 +317,13 @@ export function App() {
   // A place picked from search: the start, the destination or a stop, as chosen
   // (geocode.ts, applyPlace), named as it was found, and the map goes there.
   const pickPlace = (found: Place, choice: PlaceChoice) => {
-    const point = placeFromSearch(found, (p, name, label) => namer.remember(p, name, label));
+    const point = pickIntoPlan(found, choice, {
+      current: () => pointsRef.current,
+      commit,
+      remember: (p, name, label) => namer.remember(p, name, label),
+    });
     if (point === null) return;
     setNotice(null);
-    setPoints((current) => applyPlace(current, point, choice));
     const map = mapRef.current;
     map?.flyTo({ center: point, zoom: Math.max(map.getZoom(), 14) });
   };
@@ -483,10 +486,7 @@ export function App() {
         </p>
       ) : (
         <ol className="points">
-          {points.map((point, index) => {
-            const name = pointName(index, points.length);
-            const place = namer.name(point);
-            const coords = coordinatesText(point);
+          {pointRows(points, namer).map(({ role: name, place, coords }, index) => {
             return (
               <li key={index}>
                 <span className="point-name">{name}</span>
