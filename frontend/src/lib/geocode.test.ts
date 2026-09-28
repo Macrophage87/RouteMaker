@@ -30,7 +30,6 @@ import {
   searchView,
   placeEffect,
   placeType,
-  pointRole,
   reverseUrl,
   searchUrl,
   type GeoResult,
@@ -54,6 +53,10 @@ class FakeTimers implements Timers {
   clear = (handle: unknown) => {
     this.pending.delete(handle as number);
   };
+  /** How many timers are set and not yet fired or cleared. */
+  count(): number {
+    return this.pending.size;
+  }
   async advance(ms: number) {
     const until = this.now + ms;
     for (;;) {
@@ -536,9 +539,7 @@ test("a result keeps its OSM identity and tag, and a malformed one is dropped", 
   assert.deepEqual([odd.osm_type, odd.osm_id, odd.osm_key, odd.osm_value], [null, null, null, null]);
 });
 
-test("roles in the points list", () => {
-  assert.deepEqual([0, 1, 2].map((i) => pointRole(i, 3)), ["Start", "Via 1", "End"]);
-  assert.equal(pointRole(0, 1), "Start");
+test("coordinates read latitude first", () => {
   assert.match(coordinatesText([-77.05, 38.89]), /38\.89.*-77\.05/);
 });
 
@@ -787,4 +788,37 @@ test("the box's view of an answered query: its places, its choice and what a pic
   assert.equal(closed.expanded, false);
   const short = searchView({ query: "Un", answered: "", result: null, open: true, pointCount: 0, full: false, chosen: null });
   assert.equal(short.searching, false, "too short to be looked up");
+});
+
+test("a point put back after its lookup failed out of the plan is asked again (undo)", async () => {
+  // The round-3 review's probe: Ctrl+Z (wip/tiles) makes this easy to reach.
+  const { timers, api, namer } = namerRig();
+  namer.want([A, B]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  namer.want([B]); // A removed while its request is in flight
+  api.calls[0].answer({ ok: false, status: 500 }); // A fails, out of the plan
+  await flush();
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[1].answer(found({ ...PLACE, name: "Bee" }));
+  await flush();
+  namer.want([A, B]); // undo: A is back, failed and not yet due
+  await timers.advance(FAILED_RETRY_MS * 4);
+  assert.equal(api.calls.length, 3, "A is asked again");
+  assert.deepEqual(api.calls[2].arg, A);
+});
+
+test("re-arming replaces the retry timer rather than adding one", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A, B]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer({ ok: false, status: 500 });
+  await flush();
+  await timers.advance(5_000);
+  api.calls[1].answer({ ok: false, status: 500 });
+  await flush();
+  assert.equal(timers.count(), 1, "one retry timer for the two failures");
+  namer.want([A, B]);
+  namer.want([A, B]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  assert.equal(timers.count(), 1, "and still one after the plan is re-sent");
 });

@@ -348,6 +348,9 @@ export class PlaceNamer {
       this.timer = null;
       this.pump();
     }, this.options.debounceMs ?? NAME_DEBOUNCE_MS);
+    // A point put back (undo, or a drag back to where it was) may have failed
+    // while it was out of the plan, when there was nothing to arm the retry for.
+    this.armRetry();
   }
 
   private now(): number {
@@ -605,13 +608,6 @@ export function placeType(place: Pick<Place, "kind" | "osm_key" | "osm_value">):
     return words.charAt(0).toUpperCase() + words.slice(1);
   }
   return "Place";
-}
-
-/** The start's, the end's or a via's name in the points list. */
-export function pointRole(index: number, count: number): string {
-  if (index === 0) return "Start";
-  if (index === count - 1 && count > 1) return "End";
-  return `Via ${index}`;
 }
 
 export function coordinatesText([lon, lat]: LonLat): string {
