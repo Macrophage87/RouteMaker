@@ -68,6 +68,8 @@ _KEY_SALT = "routemaker/rate-limit/v1"
 # the database that uses advisory locks can collide with these.
 _LOCK_CLASS_TOTAL = 0x524D0000
 _LOCK_CLASS_CLIENT = 0x524D1000
+# Waiting-room places for a limit with a wait (InFlight.max_waiters).
+_LOCK_CLASS_WAIT = 0x524D2000
 
 # How long a refused client is told to wait for a slot. An ordinary route takes
 # about a second, one near 150 km from a few seconds to over twenty under load,
@@ -234,6 +236,12 @@ class InFlight:
     # waits: its slots are held for tens of milliseconds, so a short wait turns
     # a collision into a slightly slower answer rather than "busy".
     wait_s: float = 0.0
+    # How many requests may wait at once, across the deployment. A waiting
+    # request holds a gunicorn worker without holding a slot, so an unbounded
+    # waiting room spends the workers the slots keep free: with Photon stalled
+    # and 12 searches waiting, /healthz took 5.4 s (round-2 review). Beyond
+    # this many, a request is refused at once.
+    max_waiters: int = 0
 
     @property
     def total(self) -> int:
@@ -276,8 +284,9 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
 
 
 # Place search and place names, one slot per client and `GEOCODE_CONCURRENCY`
-# in all (one, see settings), so a stalled Photon holds one worker at most. The
-# front end keeps one geocoding request in flight at a time.
+# in all (two, see settings), so a stalled Photon holds two workers at most,
+# plus at most `max_waiters` waiting for them. The front end keeps one
+# geocoding request in flight at a time.
 GEOCODE_IN_FLIGHT = InFlight(
     # 3 is wip/tiles's TILES_IN_FLIGHT; tests/test_ratelimit.py holds every
     # InFlight's scope_id apart, since two pools on one id share their locks.
@@ -287,6 +296,11 @@ GEOCODE_IN_FLIGHT = InFlight(
     client_busy="A place search from this address is already running; try again shortly.",
     deployment_busy="Place search is busy; try again in a moment.",
     wait_s=1.0,
+    # One: on 7 workers 3 routes + 2 lookups leave two, and a waiter holds one
+    # of them; the other stays free to answer /healthz and to refuse the rest
+    # at once. With two waiters both free workers were held and /healthz still
+    # waited 5.4 s behind them (round-3 stall probe).
+    max_waiters=1,
 )
 
 # How often a waiting request tries for a slot again.
@@ -371,6 +385,29 @@ def acquire(
     """
     client = _client_lock_id(client_key(client_address(request)))
     deadline = time.monotonic() + limit.wait_s
+    waiting: list = []
+    try:
+        return _acquire(limit, client, slots, deadline, waiting)
+    finally:
+        release(waiting)
+
+
+def _waiting_room(limit: InFlight, waiting: list) -> bool:
+    """Take one of `limit`'s waiting places into `waiting`; false if all are taken."""
+    if limit.max_waiters <= 0:
+        return True
+    with connection.cursor() as cursor:
+        place = _take_one(
+            cursor, [(_LOCK_CLASS_WAIT + limit.scope_id, n) for n in range(limit.max_waiters)]
+        )
+    if place is None:
+        return False
+    waiting.append(place)
+    return True
+
+
+def _acquire(limit: InFlight, client: int, slots, deadline: float, waiting: list):
+    first = True
     while True:
         held: list = []
         try:
@@ -385,6 +422,9 @@ def acquire(
         release(held)
         if time.monotonic() + WAIT_STEP_S > deadline:
             break
+        if first and not _waiting_room(limit, waiting):
+            break
+        first = False
         time.sleep(WAIT_STEP_S)
     if deployment_full:
         return [], _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)

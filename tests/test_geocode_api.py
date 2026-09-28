@@ -564,6 +564,50 @@ class TestLimits:
         assert response.status_code == 200
         assert 0.25 <= waited < ratelimit.GEOCODE_IN_FLIGHT.wait_s + 1.0
 
+    def test_the_wait_figures_are_the_ones_written_down(self) -> None:
+        """A second's wait, polled every 50 ms, and two waiting at most."""
+        assert ratelimit.GEOCODE_IN_FLIGHT.wait_s == 1.0
+        assert ratelimit.WAIT_STEP_S == 0.05
+        assert ratelimit.GEOCODE_IN_FLIGHT.max_waiters == 1
+        assert ratelimit.ROUTING_IN_FLIGHT.wait_s == 0.0, "routing refuses at once"
+
+    def waiting_place(self, n: int):
+        return (ratelimit._LOCK_CLASS_WAIT + ratelimit.GEOCODE_IN_FLIGHT.scope_id, n)
+
+    @override_settings(GEOCODE_CONCURRENCY=2)
+    def test_a_full_waiting_room_refuses_at_once(self, client, photon) -> None:
+        """With the slots busy and the waiting places taken, a request does not
+        wait holding a worker: it is refused straight away (round-2 review:
+        12 waiters pushed /healthz to 5.4 s)."""
+        fake = photon(answer())
+        limit = ratelimit.GEOCODE_IN_FLIGHT
+        other = hold_slots(
+            [self.geocode_slot(0), self.geocode_slot(1)]
+            + [self.waiting_place(n) for n in range(limit.max_waiters)]
+        )
+        try:
+            started = time.monotonic()
+            response = get(client, SEARCH, q="station")
+            waited = time.monotonic() - started
+        finally:
+            other.close()
+        assert response.status_code == 503
+        assert waited < limit.wait_s / 2
+        assert fake.calls == []
+
+    @override_settings(GEOCODE_CONCURRENCY=2)
+    def test_a_waiter_gives_its_place_back(self, client, photon) -> None:
+        from test_route_api import our_advisory_locks
+
+        photon(answer())
+        other = hold_slots([self.geocode_slot(0), self.geocode_slot(1)])
+        try:
+            assert get(client, SEARCH, q="station").status_code == 503
+        finally:
+            other.close()
+        assert our_advisory_locks() == 0
+        assert get(client, SEARCH, q="station").status_code == 200
+
     @override_settings(GEOCODE_CONCURRENCY=2)
     def test_the_wait_is_bounded(self, client, photon) -> None:
         photon(answer())
@@ -773,6 +817,9 @@ class TestEdgeName:
             (["Custis Trail"], 2.0 + margin + 0.5, "cycleway", 2),
         )
         assert geocode.edge_name(apart)["name"] == "Washington Boulevard"
+
+    def test_a_rail_ferry_does_not_name_one_either(self) -> None:
+        assert geocode.edge_name(located((["Car float"], 0.3, "rail_ferry", 1))) is None
 
     def test_a_ferry_does_not_name_a_point_on_the_water(self) -> None:
         """Round-1 review: a point in the Potomac was named for the ferry."""
