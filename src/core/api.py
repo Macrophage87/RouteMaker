@@ -149,8 +149,9 @@ class RouteIn(Schema):
         ge=presets.STRESS_MIN,
         le=presets.STRESS_MAX,
         description=(
-            "The traffic-stress slider: 0 is the most direct legal route, 100 keeps to low-stress"
-            " ways unless there is no other option. Absent: the preset's own start."
+            "The traffic-stress slider: 0 is traffic tolerant (the planner warns at 10 or"
+            " below; it is not the fastest route), 100 keeps to low-stress ways unless avoiding"
+            " them takes much longer. Absent: the preset's own start."
         ),
     )
     hills: StrictInt | None = Field(

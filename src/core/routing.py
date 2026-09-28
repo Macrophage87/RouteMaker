@@ -765,6 +765,7 @@ def plan(
             )
         raise NoRoute(str(refusal), no_path=refusal.code in NO_PATH_CODES) from refusal
 
+    routed_at = clock()
     trips = [answer.get("trip") or {}] + [
         (alternate or {}).get("trip") or {} for alternate in answer.get("alternates") or []
     ]
@@ -807,13 +808,40 @@ def plan(
             facility["unknown"] += untraced
         else:
             pieces.extend(pieces_of_trace(trace))
-    traced_stress, traced_facility = breakdown(
-        pieces, when, roadway_only=variant == Variant.NO_TRAIL.value
-    )
-    for key, metres in traced_stress.items():
-        stress[key] += metres
-    for key, metres in traced_facility.items():
-        facility[key] += metres
+    traced_at = clock()
+    # The joins over the traced pieces are the work after the routers, and the
+    # budget's reserve is for them. Once the budget itself is gone they are
+    # skipped - the route is answered with its stress unknown - rather than run
+    # past it (correctness review, 2026-09-28: one request took 49 s).
+    over_budget = traced_at >= started + budget_s
+    if over_budget:
+        untraced = sum(piece.metres for piece in pieces)
+        stress["unknown"] += untraced
+        facility["unknown"] += untraced
+        used_adjustments: list[dict] = []
+    else:
+        traced_stress, traced_facility = breakdown(
+            pieces, when, roadway_only=variant == Variant.NO_TRAIL.value
+        )
+        for key, metres in traced_stress.items():
+            stress[key] += metres
+        for key, metres in traced_facility.items():
+            facility[key] += metres
+        used_adjustments = adjustments_used(pieces)
+    joined_at = clock()
+    if joined_at - started > budget_s:
+        logger.warning(
+            "a %s plan on %s took %.1f s, past its %s s budget: route %.1f s, trace %.1f s, "
+            "joins %.1f s%s",
+            preset_name,
+            variant,
+            joined_at - started,
+            budget_s,
+            routed_at - started,
+            traced_at - routed_at,
+            joined_at - traced_at,
+            " (skipped)" if over_budget else "",
+        )
 
     summary = trip.get("summary") or {}
     climb, descent = climb_and_descent(elevations)
@@ -859,7 +887,7 @@ def plan(
         "descent_m": round(descent, 1),
         "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
         "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
-        "stress_adjustments": adjustments_used(pieces),
+        "stress_adjustments": used_adjustments,
         "dials": {
             "stress": stress_dial,
             "hills": hills_dial,

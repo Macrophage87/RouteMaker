@@ -1074,7 +1074,9 @@ class TestTimeBudget:
         no long ride - took 20.8 s and 23.5 s on /route with the host loaded,
         and a fixed 20 s per call made it a 502 with most of the budget left."""
         router(timed(clock, standard_router(), {"route": 25.0}))
-        assert post(client, good_body("mass-ride")).status_code == 200
+        # At the hills middle, so no alternatives are asked for: a request for
+        # them has ALTERNATES_TIMEOUT_S (tests/test_route_dials.py).
+        assert post(client, {**good_body("mass-ride"), "hills": 0}).status_code == 200
 
     def test_a_route_that_ends_the_budget_is_503_with_retry_after(
         self, client, segments, router, clock
@@ -1087,6 +1089,28 @@ class TestTimeBudget:
         assert int(response["Retry-After"]) >= 1
         assert set(response.json()) == {"error"}
         assert len(call.timeouts) == 1, "no call is started once the budget is gone"
+
+    def test_a_plan_past_its_budget_skips_the_joins_and_says_how_long_each_phase_took(
+        self, client, segments, router, clock, caplog
+    ) -> None:
+        """Correctness review, 2026-09-28: one request took 49 s and nothing
+        after the router calls was bounded. Past the budget the joins are
+        skipped (stress unknown) and a warning names each phase."""
+        fake = standard_router()
+
+        def slow_trace(url, payload, timeout):
+            if url.endswith("/trace_attributes"):
+                clock.now += routing.PLAN_BUDGET_S + 1
+            return fake(url, payload, timeout)
+
+        router(slow_trace)
+        with caplog.at_level("WARNING", logger="core.routing"):
+            response = post(client, {**good_body(), "hills": 0})
+        assert response.status_code == 200
+        body = response.json()
+        assert body["stress_m"]["unknown"] == pytest.approx(body["distance_m"], rel=0.01)
+        assert body["stress_adjustments"] == []
+        assert any("past its" in r.message and "trace" in r.message for r in caplog.records)
 
     def test_a_route_answered_as_the_budget_ends_is_kept(
         self, client, segments, router, clock
