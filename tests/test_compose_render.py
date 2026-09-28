@@ -294,6 +294,38 @@ def test_photons_index_mount_is_the_one_the_image_uses(rendered) -> None:
     assert "/photon/data/photon_data/node_1" in " ".join(photon["command"])
 
 
+def _size(text: str) -> int:
+    units = {"k": 1 << 10, "m": 1 << 20, "g": 1 << 30}
+    text = str(text).strip().lower().removesuffix("b")
+    return int(float(text[:-1]) * units[text[-1]]) if text[-1] in units else int(text)
+
+
+def test_photon_serves_inside_its_limit_with_no_swap(rendered) -> None:
+    """The heap is inside the 3 GB with room for OpenSearch's off-heap, and
+    no swap: a swapped-out heap made searches outlast the API's timeout."""
+    photon = rendered["services"]["photon"]
+    limit = _size(photon["deploy"]["resources"]["limits"]["memory"])
+    assert _size(photon["memswap_limit"]) == limit
+    command = " ".join(photon["command"])
+    (heap,) = re.findall(r"-Xmx(\d+[kmg])", command)
+    assert _size(heap) <= limit // 2
+
+
+def test_photons_own_limits_match_the_apis(rendered) -> None:
+    """The API asks Photon for at most PHOTON_MAX_RESULTS, which is
+    Photon's -max-results; and Photon gives up on a query before the API
+    gives up on Photon."""
+    from django.conf import settings
+
+    from core import geocode
+
+    command = " ".join(rendered["services"]["photon"]["command"])
+    (most,) = re.findall(r"-max-results (\d+)", command)
+    assert int(most) == geocode.PHOTON_MAX_RESULTS
+    (timeout,) = re.findall(r"-query-timeout (\d+)", command)
+    assert int(timeout) < settings.PHOTON_TIMEOUT_S
+
+
 def test_photon_publishes_no_port_and_the_api_finds_it(rendered) -> None:
     """PLAN.md:65: reachable only through the API, which proxies it."""
     services = rendered["services"]

@@ -311,6 +311,21 @@ class TestSearch:
         results = get(client, SEARCH, q="Union Station Drive").json()["results"]
         assert len(results) == 3
 
+    def test_the_same_place_a_kilometre_apart_is_two_rows(self, client, photon) -> None:
+        shop = dict(name="Conte's Bike Shop", osm_key="shop", osm_value="bicycle")
+        photon(answer(feature(-77.0400, 38.9000, **shop), feature(-77.0400, 38.9090, **shop)))
+        assert len(get(client, SEARCH, q="contes").json()["results"]) == 2
+
+    def test_a_result_north_of_the_box_is_dropped(self, client, photon) -> None:
+        """Harrisburg's longitude is inside the box; its latitude is not."""
+        photon(answer(feature(-76.88, 40.27, name="Harrisburg", type="city")))
+        assert get(client, SEARCH, q="Harrisburg").json()["results"] == []
+
+    def test_photon_is_never_asked_past_its_ceiling(self, client, photon) -> None:
+        fake = photon(answer())
+        get(client, SEARCH, q="station", limit=str(geocode.MAX_RESULTS))
+        assert fake.calls[0][1]["limit"] <= geocode.PHOTON_MAX_RESULTS
+
     def test_folded_rows_do_not_leave_the_list_short(self, client, photon) -> None:
         """Photon is asked for a few more than are shown, so rows folded into
         one still leave `limit` to show."""
@@ -361,7 +376,33 @@ class TestLimits:
         """PLAN.md:65: "roughly 5 requests per second burst and 60 per minute"."""
         assert (ratelimit.GEOCODE_BURST.requests, ratelimit.GEOCODE_BURST.window_s) == (5, 1)
         assert (ratelimit.GEOCODE.requests, ratelimit.GEOCODE.window_s) == (60, 60)
-        assert ratelimit.REVERSE.requests == 60
+        assert (ratelimit.REVERSE_BURST.requests, ratelimit.REVERSE_BURST.window_s) == (30, 10)
+        assert (ratelimit.REVERSE.requests, ratelimit.REVERSE.window_s) == (60, 60)
+
+    def test_the_31st_name_in_ten_seconds_is_429(self, client, photon) -> None:
+        photon(answer())
+
+        def attempt(n):
+            address = f"203.0.113.{70 + n}"
+            spend(ratelimit.REVERSE_BURST, address, ratelimit.REVERSE_BURST.requests)
+            headers = {"HTTP_X_FORWARDED_FOR": address}
+            return get(client, REVERSE, headers, lat=INSIDE[1], lon=INSIDE[0])
+
+        refused = in_one_window(ratelimit.REVERSE_BURST.window_s, attempt)
+        assert refused.status_code == 429
+        assert 1 <= int(refused["Retry-After"]) <= ratelimit.REVERSE_BURST.window_s
+
+    def test_a_name_burst_refusal_does_not_spend_the_minute(self, client, photon) -> None:
+        photon(answer())
+
+        def attempt(n):
+            address = f"203.0.113.{80 + n}"
+            spend(ratelimit.REVERSE_BURST, address, ratelimit.REVERSE_BURST.requests)
+            headers = {"HTTP_X_FORWARDED_FOR": address}
+            return get(client, REVERSE, headers, lat=INSIDE[1], lon=INSIDE[0])
+
+        assert in_one_window(ratelimit.REVERSE_BURST.window_s, attempt).status_code == 429
+        assert rows(ratelimit.REVERSE.scope) == 0
 
     def test_a_plan_of_twenty_five_points_can_be_named_at_once(self) -> None:
         """A shared link opens with up to 25 points, and each is named."""
@@ -675,6 +716,13 @@ class TestReverse:
         assert path == "/reverse"
         assert set(params) == {"lat", "lon", "lang", "limit", "radius"}
         assert params["limit"] == 1
+        assert 0 < params["radius"] <= 1, "a nearby place, in km: a kilometre is not nearby"
+
+    def test_a_nearby_place_outside_the_box_is_not_named(self, client, photon, router) -> None:
+        router(located())
+        photon(answer(feature(-77.0, 39.7215, name="Over the line", type="house")))
+        response = get(client, REVERSE, lat=39.7195, lon=-77.0)
+        assert response.json()["results"] == []
 
     @pytest.mark.parametrize(
         "params",
@@ -755,6 +803,10 @@ class TestEdgeName:
         )
         assert edge["kind"] == "street"
 
+    @pytest.mark.parametrize("use", ["cycleway", "path", "footway", "bridleway", "mountain_bike"])
+    def test_a_path_is_a_trail(self, use) -> None:
+        assert geocode.edge_name(located((["Rock Creek Trail"], 1.0, use, 5)))["kind"] == "trail"
+
     def test_a_blank_name_is_no_name(self) -> None:
         assert geocode.edge_name(located(([" "], 1.0, "road", 1))) is None
 
@@ -763,10 +815,16 @@ class TestEdgeName:
 
         seen = []
         monkeypatch.setattr(
-            routing, "_transport", lambda url, payload, timeout: seen.append((url, payload)) or []
+            routing,
+            "_transport",
+            lambda url, payload, timeout: seen.append((url, payload, timeout)) or [],
         )
         geocode._locate(38.9, -77.26)
-        ((url, payload),) = seen
+        ((url, payload, timeout),) = seen
+        # Without verbose, /locate returns no edge_info and so no names: every
+        # point would be "near X" (the mutation review, round 1).
+        assert payload["verbose"] is True
+        assert timeout <= 5, "a name waits a few seconds for the router, not a minute"
         assert url.endswith("/locate")
         assert url.startswith(settings.VALHALLA_UPSTREAMS["standard"])
         assert payload["costing"] == "bicycle"
@@ -805,6 +863,9 @@ class TestAbbreviations:
             ("N Glebe Rd", "North Glebe Road"),
             ("E St NW", "E Street Northwest"),
             ("E St Arlington", "E Street Arlington"),
+            ("Main St NW", "Main Street Northwest"),
+            ("Church St E", "Church Street East"),
+            ("14th St Arlington", "14th Street Arlington"),
             ("14th St NW", "14th Street Northwest"),
             ("E Capitol St", "East Capitol Street"),
             ("Maple Ave E", "Maple Avenue East"),

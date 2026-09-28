@@ -801,8 +801,9 @@ scripts/import_photon.sh "$DATA_ROOT/photon-import/photon-dump-usa-1.0-latest.js
     "$DATA_ROOT/photon.next"
 ```
 
-The script checks the dump against its `.md5`, then, in a throwaway container of
-the pinned image with no network, runs `scripts/photon_trim.py` over the dump
+The script checks the dump against its `.md5`, and stops if there is none;
+then, in a throwaway container of the pinned image with no network, runs
+`scripts/photon_trim.py` over the dump
 (streamed, never unpacked to disk: it keeps the header, the country lines and
 every place whose centroid is inside `settings.COVERAGE_BBOX`) and Photon's own
 `import -import-file` over what it kept, with names in English

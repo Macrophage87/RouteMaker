@@ -164,6 +164,47 @@ def test_the_import_script_names_only_the_approved_dump() -> None:
     assert not re.search(r"^\s*(curl|wget)\b", script, flags=re.MULTILINE)
 
 
+def script() -> str:
+    return (ROOT / "scripts" / "import_photon.sh").read_text()
+
+
+def test_the_import_reaches_no_network() -> None:
+    """The import has the dump already; with no network nothing in the image
+    can fetch a planet index behind its back."""
+    assert re.search(r"^\s*--network none \\$", script(), flags=re.MULTILINE)
+
+
+def test_the_import_refuses_any_file_but_a_photon_10_dump() -> None:
+    patterns = re.findall(r"^(\S+)\) ;;$", script(), flags=re.MULTILINE)
+    assert patterns == ["photon-dump-*-1.0-*.jsonl.zst"]
+    assert re.search(r"^\*\)$", script(), flags=re.MULTILINE), "anything else falls to the refusal"
+
+
+def test_the_dump_is_checked_against_its_md5_and_a_missing_md5_stops_it() -> None:
+    body = script()
+    assert 'md5sum -c "$(basename "$dump").md5"' in body
+    missing = body[body.index('if [ -f "$dump.md5" ]; then') :]
+    missing = missing[missing.index("else") : missing.index("fi")]
+    assert re.search(r"exit [1-9]", missing), "a dump with no .md5 is not imported unchecked"
+
+
+def test_an_existing_index_directory_is_never_built_over() -> None:
+    body = script()
+    guard = body[body.index('if [ -e "$index" ]; then') :]
+    assert "exit 73" in guard[: guard.index("\nfi\n")]
+
+
+def test_the_import_runs_in_the_serving_limit_with_no_swap() -> None:
+    body = script()
+    assert "--memory 3g --memory-swap 3g" in body
+
+
+def test_names_are_imported_in_the_languages_the_api_allows() -> None:
+    (value,) = re.findall(r'^LANGUAGES="([^"]+)"', script(), flags=re.MULTILINE)
+    assert tuple(value.split(",")) == tuple(settings.PHOTON_LANGUAGES)
+    assert "-languages $LANGUAGES" in script()
+
+
 def test_it_streams_rather_than_reading_the_dump_whole() -> None:
     """A 5 GB compressed dump cannot be read into memory; trim is lazy."""
     consumed = []

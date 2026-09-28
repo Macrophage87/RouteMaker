@@ -5,7 +5,8 @@
 #     scripts/import_photon.sh DUMP INDEX_DIR
 #
 # DUMP is photon-dump-usa-1.0-latest.jsonl.zst, already downloaded, with its
-# .md5 beside it when GraphHopper publishes one. This script downloads nothing:
+# .md5 beside it (GraphHopper publishes one, and it is part of the approved
+# download); without it the import stops. This script downloads nothing:
 # the owner approved that one file (PLAN.md:65, amendment of 2026-09-27; from
 # https://download1.graphhopper.com/public/north-america/usa/), and fetching it
 # is the operator's step in docs/DEPLOYMENT.md, "Photon".
@@ -80,7 +81,8 @@ if [ "$resume" = false ]; then
 		echo "checking $(basename "$dump") against its .md5"
 		(cd "$(dirname "$dump")" && md5sum -c "$(basename "$dump").md5")
 	else
-		echo "no $dump.md5 beside the dump; its md5 is not checked" >&2
+		echo "no $dump.md5 beside the dump; fetch it with the dump (docs/DEPLOYMENT.md, Photon)" >&2
+		exit 66
 	fi
 fi
 
