@@ -6,7 +6,7 @@
 # on the host is not an error: the Docker daemon creates it, as a directory,
 # owned by root, because the daemon is root. So `up` on a fresh host silently
 # manufactures ${DATA_ROOT}/backups, ${DATA_ROOT}/static, ${DATA_ROOT}/elevation
-# and the three tiles/<variant>/current directories as root:root - and both of
+# and the four tiles/<variant>/current directories as root:root - and both of
 # this project's images run as uid 10001, which then cannot write a single one
 # of them. The `chown -R` that docs/DEPLOYMENT.md used to give on its own ran
 # *before* that happened and so chowned a directory tree that did not yet
@@ -123,6 +123,7 @@ tiles/no-trail
 tiles/no-trail/current
 tiles/ebike
 tiles/ebike/current
+tiles/weekend
 tiles/weekend/current
 extracts
 reference
