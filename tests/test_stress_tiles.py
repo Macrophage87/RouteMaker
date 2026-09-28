@@ -171,6 +171,25 @@ class TestClasses:
             ({"highway": "cycleway", "separation": "solid_line"}, OPEN),
             ({"highway": "pedestrian", "bicycle": "yes"}, OPEN),
             ({"highway": "steps", "bicycle": "yes"}, None),
+            # A crossing, or its refuge, is not a path away from the road.
+            ({"highway": "footway", "footway": "crossing", "bicycle": "yes"}, None),
+            ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, None),
+            ({"highway": "footway", "footway": "traffic_island", "bicycle": "yes"}, None),
+            ({"highway": "path", "footway": "crossing"}, TrailKind.NO_FACILITY),
+            ({"highway": "path", "path": "traffic_island"}, TrailKind.NO_FACILITY),
+            ({"highway": "cycleway", "footway": "crossing"}, TrailKind.NO_FACILITY),
+            ({"highway": "path", "footway": "crossing", "bicycle": "no"}, CLOSED),
+            # A trail's own crossing of a road stays the trail's.
+            ({"highway": "cycleway", "cycleway": "crossing"}, OPEN),
+            # A sidewalk is one whichever key maps it (review cm2).
+            ({"highway": "path", "path": "sidewalk", "bicycle": "designated"}, SIDEPATH),
+            ({"highway": "cycleway", "cycleway": "sidewalk", "bicycle": "designated"}, SIDEPATH),
+            ({"highway": "cycleway", "cycleway": "sidewalk"}, TrailKind.NO_FACILITY),
+            ({"highway": "path", "path": "sidewalk", "bicycle": "yes"}, TrailKind.NO_FACILITY),
+            # A separation is read one value at a time (review cm2).
+            ({"highway": "cycleway", "separation:left": "kerb;flex_post"}, SIDEPATH),
+            ({"highway": "cycleway", "separation": "solid_line;kerb"}, SIDEPATH),
+            ({"highway": "cycleway", "separation": "solid_line;buffer"}, OPEN),
         ],
     )
     def test_what_a_bicycle_may_do_on_a_trail_is_recorded(self, tags, kind) -> None:
@@ -181,8 +200,22 @@ class TestClasses:
         assert result.tier == 1
         assert result.rule == trail_rule(tags["highway"], kind)
 
-    def test_a_trail_barred_to_bicycles_is_not_in_the_network_nor_a_path(self) -> None:
-        rule = classify({"highway": "path", "bicycle": "no", "name": "Appalachian Trail"}).rule
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            {"highway": "path", "bicycle": "no", "name": "Appalachian Trail"},
+            {"highway": "footway", "footway": "crossing", "bicycle": "designated"},
+            {"highway": "path", "footway": "crossing"},
+            {"highway": "cycleway", "cycleway": "sidewalk"},
+        ],
+    )
+    def test_a_barred_trail_a_crossing_or_a_sidewalk_is_neither_network_nor_path(
+        self, tags
+    ) -> None:
+        """Whatever the kind, the recorded rule of these is not one the zoomed-out
+        map keeps nor one the stand-in facility calls a path - including the
+        plain text a table from before the kinds holds for a cycleway or path."""
+        rule = classify(tags).rule
         assert rule not in NETWORK_RULES
         assert rule not in FACILITY_OF
 

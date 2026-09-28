@@ -78,6 +78,15 @@ PHYSICAL_SEPARATION = frozenset(
 )
 TRAIL_SEPARATION_KEYS = ("separation", "separation:left", "separation:right", "separation:both")
 
+# Footways and paths that cross a road, or are the refuge in one, rather than
+# leave it: 3,328 footway=crossing and 233 footway=traffic_island ways in the
+# extract are open to bicycles. PUBLIC-DIALS's routemaker.facility makes them
+# no facility whatever the bicycle tag, read from the footway= or path= key on
+# any trail-class way (wip/dials 4f87d7e, CROSSING_KINDS); a trail's own
+# crossing (highway=cycleway, cycleway=crossing) stays the trail's. The same
+# here, so the two agree until trail_kind calls routemaker.facility.
+CROSSING_KINDS = frozenset({"crossing", "traffic_island"})
+
 
 class TrailKind:
     """What `trail_kind` answers; None is a way no bicycle rides as a trail
@@ -86,6 +95,11 @@ class TrailKind:
     OPEN = "open to bicycles"  # an off-road path
     SIDEPATH = "sidepath for bicycles"  # the protected facility beside a road
     CLOSED = "not open to bicycles"  # a trail-network way a bicycle may not ride
+    # A cycleway, path or bridleway a bicycle may ride that is no facility: a
+    # crossing, or a sidewalk it may merely use. Named, because the plain text
+    # of a cycleway or path is what a table from before the kinds were recorded
+    # holds, and the zoomed-out map keeps those (pipeline.schema).
+    NO_FACILITY = "no bicycle facility"
 
 
 def trail_open_to_bicycle(tags: dict[str, str]) -> bool:
@@ -107,10 +121,15 @@ def trail_kind(tags: dict[str, str]) -> str | None:
     highway = tags.get("highway")
     if highway not in TRAIL_CLASS_HIGHWAY or highway == "steps":
         return None
+    network = highway in TRAIL_NETWORK_HIGHWAY
     if not trail_open_to_bicycle(tags):
-        return TrailKind.CLOSED if highway in TRAIL_NETWORK_HIGHWAY else None
+        return TrailKind.CLOSED if network else None
+    if any(tags.get(key) in CROSSING_KINDS for key in ("footway", "path")):
+        return TrailKind.NO_FACILITY if network else None
     if "sidewalk" in (tags.get("footway"), tags.get("path"), tags.get("cycleway")):
-        return TrailKind.SIDEPATH if tags.get("bicycle") == "designated" else None
+        if tags.get("bicycle") == "designated":
+            return TrailKind.SIDEPATH
+        return TrailKind.NO_FACILITY if network else None
     if tags.get("is_sidepath") == "yes" or any(
         _physical(tags.get(key)) for key in TRAIL_SEPARATION_KEYS
     ):
