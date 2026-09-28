@@ -8,6 +8,8 @@ import {
   METRO_LINES,
   SHARED_STATION_M,
   allIconLines,
+  ENTRANCE_REACH_M,
+  PENN_LABEL,
   applyCorrections,
   bikeEntrance,
   buildStations,
@@ -22,6 +24,8 @@ import {
   stationRoles,
   visibleLines,
   type BikeEntrance,
+  type LineKey,
+  type MetroLine,
   type LineCorrections,
   type MarcCollection,
   type Station,
@@ -255,10 +259,19 @@ test("the toggles decide which stations and lines are drawn, entrances with thei
 test("a station's features carry what its hover card and icon need", () => {
   const f = railFeatures(stations, ALL).features.find((x) => x.properties.name === "Metro Center")!;
   const props = f.properties as Record<string, unknown>;
-  assert.equal(props.lines, "red,orange,blue,silver");
   assert.equal(props.icon, iconId(["red", "orange", "blue", "silver"]));
   assert.equal(props.sort, 4);
-  assert.match(String(props.label), /Red.*Orange.*Blue.*Silver/);
+});
+
+test("every entrance is drawn with its station, and every station at its own point", () => {
+  const features = railFeatures(stations, ALL).features;
+  const drawn = features.filter((f) => f.properties.kind === "entrance").length;
+  assert.ok(drawn > 0);
+  assert.equal(drawn, stations.reduce((n, s) => n + s.entrances.length, 0));
+  for (const f of features.filter((x) => x.properties.kind === "station")) {
+    const station = stations.find((s) => s.id === f.properties.id)!;
+    assert.deepEqual(f.geometry.coordinates, station.point, station.name);
+  }
 });
 
 test("every icon a toggle setting can ask for is one allIconLines makes", () => {
@@ -284,11 +297,21 @@ test("icons are named by their lines, and only a MARC-only one is square", () =>
   assert.equal(iconShape(["red"]), "circle");
 });
 
-test("the lines read as words", () => {
-  assert.equal(linesLabel(["red"]), "Red line");
-  assert.equal(linesLabel(["orange", "blue", "silver"]), "Orange, Blue and Silver lines");
-  assert.equal(linesLabel(["red", "penn"]), "Red line, plus MARC Penn Line");
-  assert.equal(linesLabel(["penn"]), "MARC Penn Line");
+test("the lines read as words: each line's name once, in drawing order, the Penn Line when it calls", () => {
+  const cases: LineKey[][] = [["red"], ["orange", "blue", "silver"], ["red", "penn"], ["penn"], ["orange", "blue", "green", "yellow", "silver"]];
+  for (const lines of cases) {
+    const text = linesLabel(lines);
+    const metroLines = lines.filter((l): l is MetroLine => l !== "penn");
+    const at = metroLines.map((l) => text.indexOf(METRO_LINES[l].label));
+    assert.ok(at.every((i) => i >= 0), `${text}: a line is missing`);
+    assert.deepEqual([...at].sort((a, b) => a - b), at, `${text}: out of order`);
+    for (const l of Object.values(METRO_LINES)) {
+      if (!metroLines.includes(l.key as MetroLine)) assert.ok(!text.includes(l.label), `${text} names ${l.label}`);
+    }
+    assert.equal(text.includes(PENN_LABEL), lines.includes("penn"), text);
+    // "line" for one Metro line, "lines" for several.
+    if (metroLines.length > 0) assert.equal(/\blines\b/.test(text), metroLines.length > 1, text);
+  }
 });
 
 test("the six Metro colours are six different colours", () => {
@@ -356,4 +379,57 @@ test("a MARC station's OSM entrance joins its station's entrances", () => {
   const seabrook = buildStations(metro, entrances, withEntrance).find((s) => s.name === "Seabrook")!;
   assert.deepEqual(seabrook.entrances, [[-76.843, 38.9733]]);
   assert.deepEqual(bikeEntrance(seabrook), { point: [-76.843, 38.9733], kind: "entrance" });
+});
+
+test("a correction's lines are parsed too: a misspelt one stops the build", () => {
+  const fresh = buildStations(metro, entrances, marc);
+  assert.throws(
+    () =>
+      applyCorrections(fresh, {
+        changes: [{ add: ["sliver"], since: "2025-06-22", source: "x", stations: [["New Carrollton", "MetroStnFullPt_70"]] }],
+      }),
+    /sliver/,
+  );
+});
+
+test("an entrance further than ENTRANCE_REACH_M from every station is given to none", () => {
+  const far: LonLat = [-77.3, 38.7];
+  const nearestM = Math.min(...stations.map((s) => haversineM(s.point, far)));
+  assert.ok(nearestM > ENTRANCE_REACH_M, `${nearestM}`);
+  const withFar = {
+    ...entrances,
+    features: [
+      ...entrances.features,
+      { geometry: { type: "Point", coordinates: far }, properties: { NAME: "X", DESCRIPTION: "Metro Station Elevator", GIS_ID: "x" } },
+    ],
+  };
+  const built = buildStations(metro, withFar, marc);
+  const has = (s: Station) => [...s.elevators, ...s.entrances].some((p) => p[0] === far[0] && p[1] === far[1]);
+  assert.equal(built.some(has), false);
+  // The same point moved to within reach of a station is given to it.
+  const shady = named("Shady Grove");
+  const near: LonLat = [shady.point[0] + 0.001, shady.point[1]];
+  const withNear = { ...withFar, features: [...entrances.features, { ...withFar.features.at(-1), geometry: { type: "Point", coordinates: near } }] };
+  const rebuilt = buildStations(metro, withNear, marc).find((s) => s.name === "Shady Grove")!;
+  assert.ok(rebuilt.elevators.some((p) => p[0] === near[0] && p[1] === near[1]));
+});
+
+test("a shared station keeps MARC's own OSM elevators without the fallback fixture", () => {
+  const built = buildStations(metro, entrances, marc, { corrections });
+  const union = built.find((s) => s.name === "Union Station")!;
+  const marcUnion = marc.features.filter((f) => f.properties.kind === "elevator" && f.properties.station === 0);
+  assert.ok(marcUnion.length > 0);
+  assert.equal(union.osmElevators.length, marcUnion.length);
+});
+
+test("each card note fits its case: the two elevators say so, the other two say there is none", () => {
+  for (const kind of ["elevator", "osm-elevator"] as const) {
+    assert.match(entranceNote(kind), /elevator/i, kind);
+    assert.doesNotMatch(entranceNote(kind), /^No /, kind);
+  }
+  for (const kind of ["entrance", "station"] as const) assert.match(entranceNote(kind), /^No elevator/, kind);
+  assert.match(entranceNote("entrance"), /entrance/);
+  assert.doesNotMatch(entranceNote("entrance"), /station itself/);
+  assert.match(entranceNote("station"), /station itself/);
+  assert.doesNotMatch(entranceNote("elevator"), /OpenStreetMap/);
 });

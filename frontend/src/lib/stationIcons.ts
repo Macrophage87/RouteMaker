@@ -6,8 +6,8 @@
  *
  * A station is a pie of its lines' colours, one equal wedge per line from
  * twelve o'clock clockwise, split by thin white lines and ringed in near
- * black. The ring is what keeps the pale wedges (Yellow, Silver, the Penn
- * Line's lavender) apart from the light base map and from each other.
+ * black. The ring is what keeps the pale wedges (Yellow, Silver) apart from
+ * the light base map and from each other.
  */
 
 export interface Raster {

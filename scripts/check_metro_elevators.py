@@ -10,20 +10,18 @@ than merging the two: DC's point is the one the map uses wherever DC has one.
 Listed:
 - DC elevators with no OSM elevator of any kind within MATCH_M (moved,
   removed, or unmapped in OSM);
-- OSM street elevators (highway=elevator on a railway=subway_entrance) with no
-  DC elevator within MATCH_M - candidates DC is missing, flagged for review and
-  not used;
-- OSM's other elevators at the stations DC gives no elevator at all (surface
-  and elevated stations, mostly), which are the likeliest real gaps, also
-  flagged and not used;
-- a count of OSM's other elevators near stations (mostly platform-to-mezzanine
-  ones inside the station, which are not a way in from the street).
+- OSM street elevators (highway=elevator on a railway=subway_entrance) at
+  stations DC gives elevators, with no DC elevator within MATCH_M - candidates
+  DC is missing, flagged for review and not used (DC's are);
+- a count of OSM's other elevators at those stations (mostly
+  platform-to-mezzanine ones inside the station, not a way in from the street);
+- the OSM elevators at the stations DC gives no elevator at all (surface and
+  elevated stations, mostly). These ARE used: the owner chose (2026-09-28) to
+  send riders to them where DC has none, and to the nearest DC entrance where
+  neither has one; DC's elevator stays first wherever DC lists one.
 
-With --write it also writes frontend/src/rail-data/metro-osm-elevators.geojson:
-the OSM elevators at the stations DC gives no elevator at all. The owner
-chose (2026-09-28) to send riders to those where DC has none, and to the
-nearest DC entrance where neither has one; DC's elevator stays first wherever
-DC lists one.
+With --write it also writes that last list to
+frontend/src/rail-data/metro-osm-elevators.geojson, which the map reads.
 
 Run from the repository root with the development venv:
 
@@ -168,17 +166,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\nDC elevators with no OSM elevator within {MATCH_M:.0f} m ({len(dc_only)}):")
     for label, station, (lon, lat) in dc_only:
         print(f"  {station}: {label} at {lat:.6f}, {lon:.6f}")
-    groups = (
-        ("on a subway entrance", [o for o in osm_only if o[3]]),
-        (
-            "not on a subway entrance, at a station DC gives no elevator",
-            [o for o in osm_only if not o[3] and o[1] not in with_dc],
-        ),
+    street_only = [o for o in osm_only if o[3] and o[1] in with_dc]
+    print(
+        f"\nOSM street elevators at stations DC gives elevators, no DC one within"
+        f" {MATCH_M:.0f} m ({len(street_only)}); not used - DC's are:"
     )
-    for title, rows in groups:
-        print(f"\nOSM elevators {title}, no DC one within {MATCH_M:.0f} m ({len(rows)}); not used:")
-        for osm_id, station, (lon, lat), _ in rows:
-            print(f"  {station}: https://www.openstreetmap.org/{osm_id} at {lat:.6f}, {lon:.6f}")
+    for osm_id, station, (lon, lat), _ in street_only:
+        print(f"  {station}: https://www.openstreetmap.org/{osm_id} at {lat:.6f}, {lon:.6f}")
     rest = [o for o in osm_only if not o[3] and o[1] in with_dc]
     print(
         f"\nOther OSM-only elevators, at stations DC gives elevators (mostly inside): {len(rest)}"
@@ -188,7 +182,10 @@ def main(argv: list[str] | None = None) -> int:
         for f in metro
     ]
     rows = fallback_elevators(with_ids, dc, osm, marc.distance_m)
-    print(f"\nOSM elevators used where DC lists none ({len(rows)}):")
+    print(
+        f"\nOSM elevators at the stations DC gives no elevator ({len(rows)}); used by the map"
+        f" ({FALLBACK_OUT.name}):"
+    )
     for osm_id, name, _, _, metres in rows:
         print(f"  {name}: {osm_id}, {metres:.0f} m from the station point")
     if args.write:

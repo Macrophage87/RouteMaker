@@ -357,8 +357,6 @@ export interface StationFeatureProps {
   kind: "station";
   id: string;
   name: string;
-  lines: string;
-  label: string;
   icon: string;
   /** Interchanges drawn over single-line stations where they touch. */
   sort: number;
@@ -390,8 +388,6 @@ export function railFeatures(
         kind: "station",
         id: station.id,
         name: station.name,
-        lines: lines.join(","),
-        label: linesLabel(lines),
         icon: iconId(lines),
         sort: lines.length,
       },

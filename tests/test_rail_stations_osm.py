@@ -184,7 +184,6 @@ def test_the_committed_fixture_is_the_line_as_far_as_baltimore_penn() -> None:
     doc = json.loads(FIXTURE.read_text(encoding="utf-8"))
     stations = [f for f in doc["features"] if f["properties"]["kind"] == "station"]
     names = [f["properties"]["name"] for f in stations]
-    assert doc["colour"].startswith("#"), "the route relation's own colour= tag"
     assert names[0] == "Washington Union Station"
     assert names[-1] == "Baltimore Penn Station"
     assert [f["properties"]["order"] for f in stations] == list(range(len(stations)))
@@ -262,3 +261,121 @@ def test_the_committed_fallback_elevators_are_at_stations_dc_lists_none_for() ->
             station_of(f["geometry"]["coordinates"])["properties"]["GIS_ID"]
             == f["properties"]["station_gis_id"]
         )
+
+
+def test_a_short_working_calling_at_a_new_station_stops_the_run() -> None:
+    # A variant that never reaches Baltimore Penn is checked whole.
+    data = _world()
+    data.nodes[2100] = ({"public_transport": "stop_position", "name": "Echo"}, -76.99, 38.905)
+    data.relations[4] = (
+        {"type": "route", "route": "train", "network": "MARC", "ref": "Penn"},
+        [("n", 2000, "stop"), ("n", 2100, "stop")],
+    )
+    data.relations[9][1].append(("r", 4, ""))
+    with pytest.raises(marc.StationError, match="Echo"):
+        marc.penn_stations(data)
+
+
+def test_geojson_points_are_lon_lat() -> None:
+    stations, route = marc.penn_stations(_world())
+    doc = marc.geojson(stations, [], route, None)
+    for s, f in zip(stations, doc["features"], strict=True):
+        assert f["geometry"]["coordinates"] == pytest.approx([s.lon, s.lat], abs=1e-5)
+
+
+def test_a_repeated_stop_is_one_call_but_a_station_called_at_twice_stops_the_run() -> None:
+    data = _world()
+    tags, members = data.relations[1]
+    data.relations[1] = (tags, members[:2] + [members[1]] + members[2:])  # Alpha, Alpha
+    stations, _ = marc.penn_stations(data)
+    assert [s.name for s in stations] == LINE[:4]
+    data.relations[1] = (tags, members[:3] + [members[1]] + members[3:])  # Alpha, Bravo, Alpha
+    with pytest.raises(marc.StationError, match="twice"):
+        marc.penn_stations(data)
+
+
+def test_entry_only_and_exit_only_calls_count() -> None:
+    data = _world()
+    tags, members = data.relations[1]
+    members = [
+        ("n", members[0][1], "stop_entry_only"),
+        *members[1:3],
+        ("n", members[3][1], "stop_exit_only"),
+        *members[4:],
+    ]
+    data.relations[1] = (tags, members)
+    stations, route = marc.penn_stations(data)
+    assert route == 1
+    assert [s.name for s in stations] == LINE[:4]
+
+
+def test_the_run_stops_rather_than_guessing() -> None:
+    data = _world()
+    for rid in (1, 2, 3):
+        data.relations[rid] = (data.relations[rid][0] | {"route": "bus"}, data.relations[rid][1])
+    with pytest.raises(marc.StationError, match="no route=train"):
+        marc.penn_stations(data)
+    data = _world()
+    data.relations[1] = (data.relations[1][0], data.relations[1][1][1:])  # no longer from Union
+    data.relations[3] = (data.relations[3][0], data.relations[3][1][1:])
+    with pytest.raises(marc.StationError, match="starts at"):
+        marc.penn_stations(data)
+    data = _world()
+    data.relations[1] = (data.relations[1][0], data.relations[1][1][:3])  # never reaches Baltimore
+    data.relations[3] = (data.relations[3][0], data.relations[3][1][:1])
+    with pytest.raises(marc.StationError, match="does not call"):
+        marc.penn_stations(data)
+
+
+def test_a_stop_area_with_several_stops_and_no_station_node_is_placed_at_their_middle() -> None:
+    data = _world()
+    tags, members = data.relations[3002]
+    data.nodes[2202] = ({"public_transport": "stop_position"}, -76.997, 38.922)
+    data.relations[3002] = (tags, [m for m in members if m[1] != 1002] + [("n", 2202, "stop")])
+    stations, _ = marc.penn_stations(data)
+    assert (stations[2].lon, stations[2].lat) == (pytest.approx(-76.998), pytest.approx(38.921))
+
+
+def test_build_main_writes_the_route_colour_and_the_elevators(tmp_path, monkeypatch) -> None:
+    data = _world()
+    data.relations[1] = (data.relations[1][0] | {"colour": "#BDBADC"}, data.relations[1][1])
+    data.nodes[5001] = ({"highway": "elevator"}, -77.0, 38.91045)
+    monkeypatch.setattr(marc, "read_extract", lambda path: data)
+    out = tmp_path / "out.geojson"
+    assert marc.main(["--pbf", str(tmp_path / "x.pbf"), "--out", str(out)]) == 0
+    doc = json.loads(out.read_text())
+    assert doc["colour"] == "#BDBADC"
+    kinds = [f["properties"]["kind"] for f in doc["features"]]
+    assert kinds.count("station") == 4
+    assert kinds.count("elevator") == 1
+
+
+def test_check_main_writes_only_with_write_and_only_where_dc_lists_no_elevator(
+    tmp_path, monkeypatch
+) -> None:
+    def station(name):
+        features = json.loads((elevators.DATA / "metro-stations.geojson").read_text())["features"]
+        return next(f for f in features if f["properties"]["NAME"] == name)
+
+    wheaton, metro_center = station("Wheaton"), station("Metro Center")
+    data = marc.OsmData()
+    lon, lat = wheaton["geometry"]["coordinates"]
+    data.nodes[77] = ({"elevator": "yes"}, lon, lat + 0.0003)
+    lon, lat = metro_center["geometry"]["coordinates"]
+    data.nodes[78] = ({"highway": "elevator"}, lon, lat + 0.0003)  # DC has elevators here
+    out = tmp_path / "fallback.geojson"
+    monkeypatch.setattr(elevators, "FALLBACK_OUT", out)
+    original = elevators._marc_module
+
+    def patched():
+        module = original()
+        module.read_extract = lambda path: data
+        return module
+
+    monkeypatch.setattr(elevators, "_marc_module", patched)
+    assert elevators.main(["--pbf", str(tmp_path / "x.pbf")]) == 0
+    assert not out.exists()
+    assert elevators.main(["--pbf", str(tmp_path / "x.pbf"), "--write"]) == 0
+    doc = json.loads(out.read_text())
+    assert [f["properties"]["osm"] for f in doc["features"]] == ["node/77"]
+    assert doc["features"][0]["properties"]["station_gis_id"] == wheaton["properties"]["GIS_ID"]

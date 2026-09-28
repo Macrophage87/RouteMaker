@@ -17,7 +17,11 @@ import {
   setRailVisibility,
   type RailMap,
 } from "./railLayer.ts";
-import { iconId, type Station } from "./railStations.ts";
+import { readFileSync } from "node:fs";
+import { OPENING_ZOOM } from "./mapStyle.ts";
+import { STATION_MIN_ZOOM, railImages } from "./railLayer.ts";
+import { stationsFromTexts, RAIL_FIXTURE_FILES, type RailTexts } from "./railFixtures.ts";
+import { PENN_COLOUR, iconId, iconShape, lineStyle, visibleLines, type Station } from "./railStations.ts";
 
 function fakeMap(initial: Array<{ id: string; type: string }>) {
   const layers = [...initial];
@@ -82,7 +86,7 @@ const ALL = { metro: true, marc: true };
 
 test("the stations go over the base map and its labels, directly under the route", () => {
   const { map, layers } = fakeMap([...BASE, ...ROUTE]);
-  assert.equal(addRailStations(map, STATIONS, ALL, "#bdbadc", 2), true);
+  assert.equal(addRailStations(map, STATIONS, ALL, PENN_COLOUR, 2), true);
   const ids = layers.map((l) => l.id);
   assert.deepEqual(ids, [
     ...BASE.map((l) => l.id),
@@ -95,7 +99,7 @@ test("the stations go over the base map and its labels, directly under the route
 
 test("the stress overlay, added after them (it waits on its endpoint), still goes under them", () => {
   const { map, layers } = fakeMap([...BASE, ...ROUTE]);
-  addRailStations(map, STATIONS, ALL, "#bdbadc", 2);
+  addRailStations(map, STATIONS, ALL, PENN_COLOUR, 2);
   addStressOverlay(map, "https://example.test", true);
   const ids = layers.map((l) => l.id);
   const lastStress = Math.max(...ids.map((id, i) => (id.startsWith("stress") ? i : -1)));
@@ -106,9 +110,9 @@ test("the stress overlay, added after them (it waits on its endpoint), still goe
 
 test("the stations are added once, with an icon for every line combination and the elevator", () => {
   const { map, images, layers } = fakeMap([...BASE, ...ROUTE]);
-  addRailStations(map, STATIONS, ALL, "#bdbadc", 2);
+  addRailStations(map, STATIONS, ALL, PENN_COLOUR, 2);
   const count = layers.length;
-  assert.equal(addRailStations(map, STATIONS, ALL, "#bdbadc", 2), false);
+  assert.equal(addRailStations(map, STATIONS, ALL, PENN_COLOUR, 2), false);
   assert.equal(layers.length, count);
   for (const lines of [["red", "blue"], ["red", "penn"], ["red"], ["penn"]] as const) {
     assert.ok(images.has(iconId(lines)), iconId(lines));
@@ -143,7 +147,7 @@ test("elevators come in at street zoom and plain entrances later, de-emphasised"
 
 test("the toggles replace what the source holds", () => {
   const { map, sources } = fakeMap([...BASE, ...ROUTE]);
-  addRailStations(map, STATIONS, ALL, "#bdbadc", 2);
+  addRailStations(map, STATIONS, ALL, PENN_COLOUR, 2);
   const stationsIn = () =>
     (sources.get(RAIL_SOURCE_ID)?.data as { features: Array<{ properties: { kind: string; id: string } }> }).features
       .filter((f) => f.properties.kind === "station")
@@ -159,7 +163,7 @@ test("the toggles replace what the source holds", () => {
 
 test("added before the route exists, the stations go on top rather than failing", () => {
   const { map, layers } = fakeMap(BASE);
-  addRailStations(map, STATIONS, ALL, "#bdbadc", 1);
+  addRailStations(map, STATIONS, ALL, PENN_COLOUR, 1);
   assert.deepEqual(
     layers.slice(-3).map((l) => l.id),
     [RAIL_LAYERS.entrances, RAIL_LAYERS.stations, RAIL_LAYERS.elevators],
@@ -178,4 +182,45 @@ test("a tap names the station, or the elevator tapped and where it is", () => {
     { id: "a", elevator: [-77.001, 38.9] },
   );
   assert.equal(railHitFrom([{ properties: { kind: "station" } }]), null, "a feature with no id is not a station");
+});
+
+const texts = Object.fromEntries(
+  Object.entries(RAIL_FIXTURE_FILES).map(([key, file]) => [
+    key,
+    readFileSync(new URL(`../rail-data/${file}`, import.meta.url), "utf8"),
+  ]),
+) as RailTexts;
+const REAL = stationsFromTexts(texts);
+
+test("every station's icon is its lines' colours, wedge by wedge in order; only a MARC-only one is square", () => {
+  const images = new Map(railImages(REAL, PENN_COLOUR, 2).map((i) => [i.id, i.raster]));
+  for (const station of REAL) {
+    for (const visibility of [ALL, { metro: true, marc: false }, { metro: false, marc: true }]) {
+      const lines = visibleLines(station, visibility);
+      if (lines.length === 0) continue;
+      const r = images.get(iconId(lines));
+      assert.ok(r, `${station.name}: no icon ${iconId(lines)}`);
+      const c = r.width / 2;
+      lines.forEach((line, k) => {
+        const a = (2 * Math.PI * (k + 0.5)) / lines.length;
+        const x = Math.floor(c + 0.5 * c * Math.sin(a));
+        const y = Math.floor(c - 0.5 * c * Math.cos(a));
+        const i = (y * r.width + x) * 4;
+        const hex = `#${[...r.data.slice(i, i + 3)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+        assert.equal(hex, lineStyle(line, PENN_COLOUR).color.toLowerCase(), `${station.name} wedge ${k}`);
+      });
+      const corner = Math.floor(r.width * 0.1);
+      const opaque = r.data[(corner * r.width + corner) * 4 + 3] > 0;
+      assert.equal(opaque, iconShape(lines) === "square", `${station.name} shape`);
+      assert.equal(iconShape(lines) === "square", lines.every((l) => l === "penn"));
+    }
+  }
+});
+
+test("the stations show from the zoom the map opens at, and are never hidden by a collision", () => {
+  assert.ok(STATION_MIN_ZOOM <= OPENING_ZOOM);
+  const layer = railLayers().find((l) => l.id === RAIL_LAYERS.stations) as { layout: Record<string, unknown> };
+  assert.equal(layer.layout["icon-allow-overlap"], true);
+  assert.equal(layer.layout["icon-ignore-placement"], true);
+  assert.equal(layer.layout["text-optional"], true, "a label that does not fit must not take its icon with it");
 });
