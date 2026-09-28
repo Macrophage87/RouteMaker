@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAP_ATTRIBUTION, MAP_CREDITS, RAIL_CREDITS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { MAP_ATTRIBUTION, MAP_CREDITS, RAIL_CREDITS, STRESS_ZOOMS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { STRESS_PROTOCOL, httpUrl } from "./stressProtocol.ts";
 
 const ORIGIN = "https://routes.example.org";
 
@@ -37,7 +38,8 @@ test("everything the style loads comes from this site", () => {
 
 test("the stress tiles are the contract's path, absolute, within its zooms", () => {
   const source = stressSource(ORIGIN);
-  assert.deepEqual(source.tiles, [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
+  assert.deepEqual(source.tiles.map(httpUrl), [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
+  assert.ok(source.tiles.every((url) => url.startsWith(`${STRESS_PROTOCOL}://`)));
   // SHARED API CONTRACT: served for z 10-16.
   assert.equal(source.minzoom, 10);
   assert.equal(source.maxzoom, 16);
@@ -78,4 +80,12 @@ test("the rail stations' source is credited on every map, after the base map's",
 
 test("the rail credit links the CC BY 4.0 licence itself", () => {
   assert.match(RAIL_CREDITS.join(" "), /href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/"/);
+});
+
+test("the stress source starts and ends where the zoom levels say", () => {
+  const source = stressSource("https://example.test");
+  assert.equal(source.minzoom, STRESS_ZOOMS.min);
+  assert.equal(source.maxzoom, STRESS_ZOOMS.max);
+  assert.ok(STRESS_ZOOMS.min < STRESS_ZOOMS.streets && STRESS_ZOOMS.streets < STRESS_ZOOMS.full);
+  assert.ok(STRESS_ZOOMS.full <= STRESS_ZOOMS.max);
 });

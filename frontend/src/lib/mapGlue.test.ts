@@ -2,7 +2,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  COVERAGE_MASK_LAYERS,
+  COVERAGE_SOURCE_ID,
+  addCoverageMask,
   addStressOverlay,
+  coverageMask,
+  facilitiesOnMap,
+  fetchCoverage,
   focusBackTarget,
   hoverChanged,
   mapClickAction,
@@ -13,10 +19,15 @@ import {
   runClick,
   runHover,
   setStressVisibility,
+  watchForFacilities,
+  watchZoom,
+  type Coverage,
+  type FacilityMap,
   type OverlayMap,
 } from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 import { stressOverlayLayers } from "../stressStyle.js";
+import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
 
 function fakeMap(styleLayers: Array<{ id: string; type: string }>) {
   const sources = new Map<string, unknown>();
@@ -316,4 +327,190 @@ test("the hover handle is drawn again only when it appears, goes or moves", () =
   assert.equal(hoverChanged([-77, 38.9], null), true);
   assert.equal(hoverChanged([-77, 38.9], [-77.001, 38.9]), true);
   assert.equal(hoverChanged([-77, 38.9], [-77, 38.901]), true);
+});
+
+// The coverage mask (owner request of 2026-09-27, "grey out all the parts of
+// the map that don't have support").
+const COVERAGE: Coverage = {
+  type: "Feature",
+  geometry: {
+    type: "Polygon",
+    coordinates: [
+      [
+        [-78, 38.2],
+        [-76.02, 38.2],
+        [-76.02, 39.72],
+        [-78, 39.72],
+        [-78, 38.2],
+      ],
+    ],
+  },
+  properties: {},
+};
+
+function signedArea(ring: number[][]): number {
+  let sum = 0;
+  for (let i = 0; i + 1 < ring.length; i += 1) sum += ring[i][0] * ring[i + 1][1] - ring[i + 1][0] * ring[i][1];
+  return sum / 2;
+}
+
+test("the mask is the world with exactly the coverage cut out, and the edge is the coverage ring", () => {
+  const mask = coverageMask(COVERAGE);
+  const [fill, edge] = mask.features;
+  const [outer, hole] = fill.geometry.coordinates;
+  assert.equal(fill.geometry.coordinates.length, 2, "one outer ring, one hole");
+  const lons = outer.map((p) => p[0]);
+  const lats = outer.map((p) => p[1]);
+  assert.deepEqual([Math.min(...lons), Math.max(...lons)], [-180, 180]);
+  assert.ok(Math.min(...lats) <= -85 && Math.max(...lats) >= 85);
+  const ring = COVERAGE.geometry.coordinates[0];
+  assert.deepEqual([...hole].reverse(), ring, "the hole is the coverage ring");
+  assert.ok(Math.sign(signedArea(outer)) !== Math.sign(signedArea(hole)), "a hole winds against its ring");
+  assert.deepEqual(edge.geometry.coordinates, ring);
+  assert.deepEqual(
+    COVERAGE_MASK_LAYERS.map((l) => [l.filter[2], mask.features.filter((f) => f.properties.part === l.filter[2]).length]),
+    [
+      ["mask", 1],
+      ["edge", 1],
+    ],
+  );
+});
+
+test("the mask goes over the base map and under its labels, fill before edge, once", () => {
+  const { map, added, sources } = fakeMap(BASE);
+  assert.equal(addCoverageMask(map, COVERAGE), true);
+  assert.deepEqual(
+    added.map((a) => [a.layer.id, a.before]),
+    COVERAGE_MASK_LAYERS.map((l) => [l.id, "road-labels"]),
+  );
+  assert.ok(sources.get(COVERAGE_SOURCE_ID));
+  assert.equal(addCoverageMask(map, COVERAGE), false);
+  assert.equal(added.length, COVERAGE_MASK_LAYERS.length);
+});
+
+test("the mask goes under the stress overlay when the overlay reached the map first", () => {
+  const overlay = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string; type: string }) => ({
+    id: l.id,
+    type: l.type,
+  }));
+  const { map, added } = fakeMap([BASE[0], BASE[1], ...overlay, BASE[2], BASE[3]]);
+  addCoverageMask(map, COVERAGE);
+  for (const a of added) assert.equal(a.before, overlay[0].id);
+});
+
+test("the coverage is read from the API, and anything else is no mask", async () => {
+  const answer = (status: number, body: unknown) => async () =>
+    new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  let asked = "";
+  const good = await fetchCoverage("https://example.test", (async (url: string) => {
+    asked = url;
+    return answer(200, COVERAGE)();
+  }) as typeof fetch);
+  assert.equal(asked, "https://example.test/api/coverage");
+  assert.deepEqual(good, COVERAGE);
+  assert.equal(await fetchCoverage("o", answer(429, { error: "slow down" }) as typeof fetch), null);
+  assert.equal(await fetchCoverage("o", answer(200, { type: "Feature", geometry: { type: "Point" } }) as typeof fetch), null);
+  assert.equal(
+    await fetchCoverage("o", (async () => {
+      throw new Error("offline");
+    }) as typeof fetch),
+    null,
+  );
+});
+
+type Feature = { properties?: Record<string, unknown> | null };
+
+function facilityMap(withSource: boolean, featuresByCall: Feature[][]) {
+  const listeners = new Set<() => void>();
+  const queries: Array<{ id: string; options: unknown }> = [];
+  const map: FacilityMap = {
+    getSource: (id) => (withSource && id === STRESS_SOURCE_ID ? {} : undefined),
+    querySourceFeatures: (id, options) => {
+      queries.push({ id, options });
+      return featuresByCall.shift() ?? [];
+    },
+    on: (_event, listener) => listeners.add(listener),
+    off: (_event, listener) => listeners.delete(listener),
+  };
+  return { map, listeners, queries };
+}
+
+const kind = (facility: unknown): Feature => ({ properties: { facility } });
+
+test("the facility legend lists the kinds the map has drawn, as it draws them, and stops once it has all", () => {
+  const { map, listeners, queries } = facilityMap(true, [
+    [],
+    [kind("path"), kind("none"), kind("path")],
+    [kind("path")],
+    [kind("lane"), kind("protected")],
+  ]);
+  const reports: string[][] = [];
+  watchForFacilities(map, (kinds) => reports.push([...kinds].sort()));
+  const settle = () => [...listeners][0]();
+  settle();
+  assert.deepEqual(reports, [], "no facility data yet");
+  settle();
+  assert.deepEqual(reports, [["path"]], "'none' is not a kind the legend shows");
+  settle();
+  assert.equal(reports.length, 1, "nothing new, nothing reported");
+  assert.equal(listeners.size, 1);
+  settle();
+  assert.deepEqual(reports.at(-1), ["lane", "path", "protected"]);
+  assert.equal(listeners.size, 0, "every kind seen: the watch ends");
+  assert.deepEqual(queries[0], {
+    id: STRESS_SOURCE_ID,
+    options: { sourceLayer: "stress", filter: ["has", "facility"] },
+  });
+});
+
+test("before the stress overlay exists there is nothing to ask", () => {
+  const { map, queries } = facilityMap(false, [[kind("path")]]);
+  assert.equal(facilitiesOnMap(map).size, 0);
+  assert.equal(queries.length, 0);
+});
+
+test("the zoom is reported at once and after every zoom", () => {
+  let z = 8.4;
+  const listeners: Array<() => void> = [];
+  const seen: number[] = [];
+  watchZoom({ getZoom: () => z, on: (_event, listener) => listeners.push(listener) }, (value) => seen.push(value));
+  assert.deepEqual(seen, [8.4]);
+  z = 11.2;
+  for (const listener of listeners) listener();
+  assert.deepEqual(seen, [8.4, 11.2]);
+});
+
+test("each facility report is a new set, so React sees the change", () => {
+  const { map, listeners } = facilityMap(true, [[kind("path")], [kind("lane")]]);
+  const reports: ReadonlySet<string>[] = [];
+  watchForFacilities(map, (kinds) => reports.push(kinds));
+  [...listeners][0]();
+  [...listeners][0]();
+  assert.equal(reports.length, 2);
+  assert.notEqual(reports[0], reports[1]);
+  assert.deepEqual([...reports[0]], ["path"]);
+});
+
+test("the stress overlay and the coverage mask go under the rail stations and the route, whichever came first", () => {
+  // MapView adds the route and the rail stations on load, and the stress
+  // overlay only once its availability check answers: the overlay still has
+  // to go under both, and under the base map's labels (merge of PUBLIC-TILES
+  // with DRAG and METRO).
+  const rail = railLayers().map((l: { id: string; type: string }) => ({ id: l.id, type: l.type }));
+  const route = [
+    { id: ROUTE_BOTTOM_LAYER, type: "line" },
+    { id: "route-line", type: "line" },
+  ];
+  const style = [...BASE, ...rail, ...route];
+  const order = (ids: string[], before: string | undefined) => (before === undefined ? style.length : ids.indexOf(before));
+  const ids = style.map((l) => l.id);
+
+  const { map, added } = fakeMap(style);
+  addStressOverlay(map, "https://example.test", true);
+  addCoverageMask(map, COVERAGE);
+  for (const a of added) {
+    const at = order(ids, a.before);
+    assert.ok(at <= ids.indexOf("road-labels"), `${a.layer.id} goes in at ${a.before}`);
+    for (const r of [...rail, ...route]) assert.ok(at < ids.indexOf(r.id), `${a.layer.id} over ${r.id}`);
+  }
 });

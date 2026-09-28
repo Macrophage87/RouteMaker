@@ -332,6 +332,175 @@ The table arrives with migration `core.0008_rate_limit_window`, which the
 `migrate` one-shot applies before the api starts; nothing else is needed on
 deploy.
 
+## The stress tiles
+
+`GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic
+stress overlay from the live segment table with PostGIS's `ST_AsMVT`, for
+anyone, signed in or not. Zooms 10 to 16 are drawn; any other zoom, and any
+tile outside `COVERAGE_BBOX`, is an empty 200, and a tile straddling the box's
+edge is drawn from its segments clipped to the box, so nothing is drawn in the
+map's grey area. A coordinate that is not a tile is 400, and a deployment with
+no live segment table yet is 404 with `no-store`, which the front end reads as
+"no overlay".
+
+| Zoom | What is drawn | Measured on the first promoted build, downtown DC tile |
+| --- | --- | --- |
+| 10-11 | LTS 3 and 4, and the trails a bicycle may ride and the sidepaths; one feature per class, simplified | z10 245 KB (165 KB gzipped) |
+| 12-13 | everything but footways, pedestrian ways and steps not open to bicycles; one feature per class, simplified | z12 151 KB, z13 51 KB |
+| 14-16 | every segment | z14 124 KB (55 KB gzipped), 5,062 features |
+
+Below zoom 10 nothing is drawn; the legend says "Zoom in to see traffic
+stress" there (owner decision of 2026-09-27: busy roads and trails at region
+zoom, nothing below it).
+
+**Trails.** The rebuild records on each trail-class way what a bicycle may do
+on it (`routemaker.classes.trail_kind`, in the text of `stress_rule`): open to
+bicycles, a sidepath for bicycles, or not open to bicycles, by the routing
+lane's rule for trails. A trail barred to bicycles - the Appalachian Trail,
+the Potomac Heritage Trail, the Bull Run-Occoquan Trail, 3,831 ways in the
+2026-09-25 extract - is not in the zoomed-out trail network and is not drawn
+as a bike path. A table promoted before this was recorded has only the plain
+texts: there every cycleway, path and bridleway stays in the zoomed-out
+network, as before, and only a cycleway is drawn as a path, until the next
+rebuild.
+
+**Bike facilities.** Until the live table has a `facility` column the tiles
+derive one (`pipeline.schema.TRAIL_NETWORK_FACILITY`): a trail open to bicycles
+is a path, a sidepath is protected, and nothing else carries one. Where the
+live table has the column (path, protected, lane or none - the routing lane
+adds it) every feature carries it as `facility`, and the zoomed-out levels also
+keep the paths and protected lanes whatever their tier
+(`pipeline.schema.keeping_facilities`). The overview index is built on the
+widened predicate only once `pipeline.schema.SEGMENT_HAS_FACILITY` says the
+schema declares the column (a test fails while the two disagree).
+
+**The tile cache.** A tile, once drawn, is kept in the `stress_tile_cache`
+table (`core/tile_cache.py`, migration `core.0009`) under its ETag and z/x/y,
+and served from there without a draw. z10-13 over the box are drawn ahead
+after every promotion - the weekly rebuild does it after the swap and says so
+on its run row ("Stress tile cache pre-drawn: N drawn, M already there") - and
+kept: 2,693 tiles and 32.6 MB on the first promoted build. A z14-16 tile drawn
+on request is kept too, up to 256 MB of them, oldest out first. Rows for an
+older table or tile format are deleted by the next pre-draw or eviction. The
+table is left out of the nightly dump; it refills itself.
+
+Run the pre-draw by hand on a deployment whose live table was promoted before
+the cache existed (the first deploy of this change), and after
+`rollback_rebuild`, which puts back a table the last pre-draw cleared the tiles
+of. It skips what is already cached, so it is safe to re-run:
+
+```sh
+docker compose exec -T api python manage.py predraw_stress_tiles
+```
+
+On a host at load 5-9 it took 56 s with the overview index and 76 s without;
+the round-2 reviews measured 135-216 s on a host at load 10-27. Its default
+budget is 30 minutes; in the weekly rebuild it gets whatever is left of the
+rebuild's six hours if that is less, and the run row says when it stopped
+short ("stopped at its time budget with N left", "N timed out"), in which
+case run it by hand.
+Until it has run, a z10-12 tile over a dense area can be refused: see the next
+paragraph.
+
+**Draw slots and the draw timeout.** A tile not in the cache is drawn under an
+in-flight slot (`core.ratelimit.TILES_IN_FLIGHT`): at most `TILE_CONCURRENCY`
+draws in the deployment - what routing's slots leave of the worker count less
+one, at least one: one at compose's five workers (three routes, one draw, one
+worker always free from three workers up; `config.settings.tile_concurrency`).
+A draw that finds no slot is refused at once: 503 (the deployment's slot) or
+429 (the client's), with `Retry-After: 1` and `no-store`. A draw runs under a
+2 s statement timeout (`DRAW_TIMEOUT_MS`), inside the promotion swap's 3 s
+lock timeout, so a swap waiting for its lock behind a tile draw normally gets
+it on its first attempt. That is not a hard bound - PostgreSQL acts on the
+cancel between steps, and one cold draw on a busy host ended at 5.46 s - and
+the swap's five attempts cover it. A draw cut off is 503 with `Retry-After: 1`.
+
+The map fetches tiles through a protocol of its own
+(`frontend/src/lib/stressProtocol.ts`): at most two tile requests from a page
+at once, and a refused tile waits the longer of its Retry-After and 1, 2, 4,
+8, 8... seconds, each stretched at random by 0.5-1.5, for up to 30 s before
+MapLibre is left to show the parent tile there. The map's availability check
+at load goes the same way. Without the overview index a cold z10 downtown draw
+takes 6.7 s (3.1 s warm, quiet host), past the timeout: those tiles come only
+from the pre-draw.
+
+What this bought, measured on a copy of the first promoted build (5 workers, 2
+CPUs; one route every 2 s and `/healthz` every second from other addresses,
+alongside the ops review's session - 10 views of 20 tiles over 6 connections
+from one address - and hammer - the z10 downtown tile 120 times over 32
+connections from one address):
+
+| | routes p50 / max | `/healthz` p50 / max |
+| --- | --- | --- |
+| No tile load | 0.19 s / 1.36 s | 0.006 s / 0.83 s |
+| Round 1 (no cache, no index), session | 1.07 s / 14.3 s | 0.08 s / 15.2 s |
+| Round 1 (no cache, no index), hammer | 10.8 s / 13.5 s | 9.7 s / 11.9 s |
+| No index, empty cache, session | 0.19 s / 0.71 s | 0.006 s / 0.11 s |
+| No index, empty cache, hammer | 0.43 s | 0.015 s / 0.09 s |
+| No index, pre-drawn, session | 0.29 s / 1.02 s | 0.007 s / 0.51 s |
+| No index, pre-drawn, hammer (120 tiles in 1.1 s, all 200) | 0.31 s | 0.03 s / 0.06 s |
+| Index, pre-drawn, session | 0.12 s / 0.22 s | 0.005 s / 0.06 s |
+| Index, pre-drawn, hammer (120 tiles in 0.8 s, all 200) | 0.29 s | 0.03 s |
+
+(The round-1 rows are the ops review's, on the same copy and hardware; the host
+here was at load 5-10 from other work. These runs used round 2's pool of two
+draws; the pool is now one, with the page queue and backoff below. The ops
+review of round 2 measured the same shape at load 10-27, its worst sustained
+case - 32 connections for 30 s on the z10 downtown tile, no index, empty cache
+- at routes max 4.5 s and `/healthz` max 3.9 s, against round 1's 13.5 s and
+11.9 s.)
+
+**Limits.** Counted per address like routing, under a scope of their own
+(`core.ratelimit.TILES`): 600 per 60 s window (owner decision of 2026-09-27),
+429 with `Retry-After` past it. A map fetches tiles by the screenful - a
+vigorous minute of zooming and panning a 1920x1080 window fetched 87 - so the
+figure is several people's worth behind one address. Cache hits are counted
+like any other request.
+
+**Caching in the browser.** `Cache-Control: public, max-age=3600` and a weak
+ETag naming the live table (its oid, which a promotion changes), the optional
+columns it has, and the tile format version, so after the hour a client
+revalidates and gets a 304 without the tile being drawn or read, and a column
+added in place is not a 304.
+Caddy compresses the tiles (an `encode` in the api's block matched on the
+vector-tile content type); nothing else the api answers is compressed.
+
+**The overview index.** The zoomed-out tiles read through a partial GiST index,
+`segment_overview_geom_idx`, which `pipeline.schema.create_segment_schema`
+creates with the rest of the schema on every rebuild. The figures above the
+table of zooms are with it; without it the z10 downtown tile takes 6.7 s cold
+and 3.1 s warm to draw, single-threaded, against 1.6 s and 0.25 s with it, and
+the pre-draw takes 76 s rather than 56 s (both at load 5-9). A live table promoted before this
+change does not have it, and the next rebuild brings it. To add it to a live
+table by hand, build it concurrently so reads carry on. The predicate is
+`pipeline.schema.OVERVIEW_INDEX_PREDICATE`; `-v 0` keeps the shell's own
+banner out of what is printed:
+
+```sh
+docker compose exec -T api python manage.py shell -v 0 -c "from pipeline.schema import OVERVIEW_INDEX_PREDICATE as p; print(p)"
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "CREATE INDEX CONCURRENTLY IF NOT EXISTS segment_overview_geom_idx ON live.segment USING gist (geometry) WHERE <the predicate>"
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "SELECT indisvalid FROM pg_index WHERE indexrelid = 'live.segment_overview_geom_idx'::regclass"
+```
+
+The last must print `t`. A concurrent build that was interrupted leaves an
+index that exists but is invalid (`f`), which the planner never uses and which
+`IF NOT EXISTS` then skips over without a word; drop it the same way and build
+it again:
+
+```sh
+docker compose exec -T postgis psql -U routemaker -d routemaker -c "DROP INDEX CONCURRENTLY live.segment_overview_geom_idx"
+```
+
+The build took 6 s on a copy at load 5-9 and 22-63 s at load 10-27. Run the pre-draw
+afterwards if the cache was empty; it does not need redoing for the index.
+
+**The covered area.** `GET /api/coverage` answers the area routes may be
+planned in as a GeoJSON polygon feature - `settings.COVERAGE_BBOX`, the box the
+route endpoint's validator enforces - with an hour's `Cache-Control`, limited
+to 60 a minute per address (`core.ratelimit.COVERAGE`). The map greys out
+everything outside it. Should the region become a drawn polygon, the validator
+and this endpoint change together (`core.api.coverage_ring`).
+
 ## Backups
 
 `pg_dump -Fc` to `<DATA_ROOT>/backups/routemaker-<UTC instant>.dump`, excluding
@@ -440,6 +609,12 @@ remove. What empties PGDATA is `rm`, which is why step 2 is spelled out.
   (`run_rebuild_now`, below) rather than waiting for Tuesday.
 - **Collected static assets** are on the data volume too and not in the dump,
   which is why `collectstatic` is the last line above.
+- **An empty stress tile cache.** `stress_tile_cache` is in the dump without
+  its rows, and the restored segment table is a new relation, so every cached
+  tile would be stale anyway. Until the pre-draw has run, dense z10-12 tiles are
+  refused (their draws do not fit the api's 2 s timeout) and the map shows no
+  overlay there. Draw them: `docker compose exec -T api python manage.py
+  predraw_stress_tiles` ("The stress tiles", above).
 
 ### It will page for the first few hours, and that is the restore
 
@@ -1323,7 +1498,13 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose exec -T api python manage.py predraw_stress_tiles
 ```
+
+The last line draws the stress tiles of the table put back: the pre-draw after
+the rolled-away rebuild's swap cleared that table's tiles from the cache, and
+until they are drawn again dense z10-12 tiles are refused ("The stress tiles",
+above).
 
 **In `rebuild`, not in `api` or `worker`.** The command rewrites the promotion
 symlinks under `settings.TILES_DIR`, which is `/data/tiles` in all three Django

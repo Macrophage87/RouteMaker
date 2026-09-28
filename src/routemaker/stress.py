@@ -97,7 +97,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, replace
 from enum import IntEnum
 
-from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY
+from .classes import MOTOR_ONLY_HIGHWAY, TRAIL_CLASS_HIGHWAY, trail_kind
 from .tags import (
     PAINTED_CYCLEWAY,
     SEPARATED_CYCLEWAY,
@@ -468,6 +468,25 @@ def legal_but_avoid(tags: dict[str, str]) -> str | None:
     return f"legal but avoid: expressway posted {posted:g} mph"
 
 
+def trail_rule(highway: str, kind: str | None = None) -> str:
+    """The rule recorded on a trail-class way of `highway` and `kind`
+    (`classes.trail_kind`). The tier is LTS 1 whatever the kind.
+
+    THIS TEXT IS JOINED AGAINST STORED DATA. The rebuild writes it into
+    `segment.stress_rule`, and the stress tiles select the trail network and
+    derive its facility by comparing that column with these strings
+    (`pipeline.schema`'s overview predicate and TRAIL_NETWORK_FACILITY, and the
+    overview's partial index). Changing a word here silently drops every trail
+    from the zoomed-out map until the next rebuild writes the new text - and
+    the tests, which build their expectations from this function, will not
+    notice. Add a new text beside the old one (as `LEGACY_TRAIL_RULES` keeps the
+    texts from before `kind` existed) rather than editing one.
+    """
+    if kind is not None:
+        return f"trail-class way ({highway}, {kind})"
+    return f"trail-class way ({highway})"
+
+
 def classify(
     tags: dict[str, str],
     aadt: int | None = None,
@@ -508,7 +527,7 @@ def _classify(
     assumed: list[str] = []
 
     if highway in TRAIL_CLASS:
-        return StressResult(Stress.LTS1, f"trail-class way ({highway})")
+        return StressResult(Stress.LTS1, trail_rule(highway, trail_kind(tags)))
 
     if highway in MOTOR_ONLY:
         return StressResult(Stress.LTS4, f"motor-only classification ({highway})")

@@ -39,8 +39,12 @@ lock lives on the worker's database connection, so it is correct across
 workers and dies with a killed worker; a lock that cannot be released closes
 that connection, which ends it. `total` is the worker count less two
 (`config.settings.routing_concurrency`), so from three workers up, however the
-router is loaded, two workers are free for `/healthz`, the tiles, sign-in and
-the admin; one or two workers still get one slot, and keep fewer free.
+router is loaded, two workers are left to everything else. Stress tile draws
+(`TILES_IN_FLIGHT`) take their own slots from those two -
+`config.settings.tile_concurrency`, one at compose's five workers - so with
+every route and every draw running, one worker is still free for `/healthz`,
+sign-in, the admin and tiles served from the cache. One or two workers still
+get one routing slot and one tile slot, and keep fewer free.
 """
 
 from __future__ import annotations
@@ -98,6 +102,23 @@ class Decision:
 # unauthenticated paths are 60 per minute per client address. A signed-out
 # planner is both, so it is the one figure.
 ROUTING = Limit(scope="route", requests=60, window_s=60)
+
+# The stress tiles, counted apart from routing so that looking at the map never
+# spends the routing budget (nor routing the tiles'). PLAN's 60 per minute is a
+# figure for requests a person makes one at a time; a map makes them by the
+# screenful. A 1920x1080 view of 512-pixel tiles is up to 5 x 4 = 20 tiles,
+# and every zoom step or long pan fetches most of a screenful again: a minute
+# of zooming in and out four levels and panning, in a 1920x1080 window with an
+# empty cache, fetched 87 (2026-09-27, against the first promoted build). 600
+# a minute is several times that, for a household or an office behind one
+# address; the browser's cache (an hour, then a 304 that draws nothing) keeps
+# a return to a place from counting twice in the hour. This is above PLAN's
+# 60 for unauthenticated paths, which a map could not work inside.
+TILES = Limit(scope="tiles", requests=600, window_s=60)
+
+# GET /api/coverage, the covered area the map greys out the rest of: one
+# request per page load, so PLAN's figure for unauthenticated paths.
+COVERAGE = Limit(scope="coverage", requests=60, window_s=60)
 
 
 def _normalise(candidate: str) -> str | None:
@@ -213,6 +234,8 @@ class InFlight:
     total_setting: str
     client_busy: str = "This address already has a route being planned; try again shortly."
     deployment_busy: str = "The planner is busy; try again in a few seconds."
+    client_retry_s: int = CLIENT_BUSY_RETRY_S
+    deployment_retry_s: int = DEPLOYMENT_BUSY_RETRY_S
 
     @property
     def total(self) -> int:
@@ -238,6 +261,28 @@ LONG_ROUTING_IN_FLIGHT = InFlight(
     total_setting="LONG_ROUTING_CONCURRENCY",
     client_busy="A long ride is already being planned from this address; try again shortly.",
     deployment_busy="A long ride is already being planned; try again in a few seconds.",
+)
+
+# Stress tiles drawn from the segment table rather than served from the tile
+# cache (core.tile_cache). A draw holds a gunicorn worker for as long as
+# PostgreSQL takes, and the ops review of round 1 measured one address, inside
+# its 600 a minute, holding all five workers with cold z10 draws for 50 s -
+# routing and /healthz with them. So a draw takes a slot: at most
+# `settings.TILE_CONCURRENCY` in the deployment (what routing's slots leave of
+# the worker count less one, at least one), at most two per client while the
+# pool is roomy. A refused tile
+# is answered at once with Retry-After: 1, and the front end asks again later,
+# backing off, with at most two tile requests of its own in flight
+# (frontend/src/lib/stressProtocol.ts), so a refusal is a wait and not a blank
+# tile. Cache hits take no slot.
+TILES_IN_FLIGHT = InFlight(
+    scope_id=3,
+    per_client=2,
+    total_setting="TILE_CONCURRENCY",
+    client_busy="This address is already drawing stress tiles; try again in a moment.",
+    deployment_busy="The stress map is busy; try again in a moment.",
+    client_retry_s=1,
+    deployment_retry_s=1,
 )
 
 
@@ -326,8 +371,8 @@ def acquire(request, limit: InFlight) -> tuple[list, JsonResponse | None]:
     deployment_full = not held
     release(held)
     if deployment_full:
-        return [], _busy(503, DEPLOYMENT_BUSY_RETRY_S, limit.deployment_busy)
-    return [], _busy(429, CLIENT_BUSY_RETRY_S, limit.client_busy)
+        return [], _busy(503, limit.deployment_retry_s, limit.deployment_busy)
+    return [], _busy(429, limit.client_retry_s, limit.client_busy)
 
 
 def _take(limit: InFlight, client: int, held: list) -> bool:

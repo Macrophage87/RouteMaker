@@ -281,6 +281,8 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   default from Node 22.18; `tests/test_frontend.py` runs the same files inside
   pytest, skips on a machine without Node (WSL here) and fails in CI if the
   Node there is older or missing.
+- `frontend/.npmrc` turns off npm's update notifier, which otherwise asks the
+  registry for npm's latest version on every run in a fresh container.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
   is not committed; `npm run typecheck` is the first half alone.
 - `npm run dev` serves the UI with hot reload and proxies `/api`, `/tiles` and
@@ -628,6 +630,29 @@ each leg (one fewer than the points) the index in `geometry.coordinates` of its
 last vertex, so leg k runs from `leg_ends[k - 1]` (0 for the first) to
 `leg_ends[k]`. The planner uses it to put a via dragged off the line into the
 leg that was grabbed. It is additive; a client that predates it ignores it.
+
+**The stress tiles.** `GET /tiles/stress/{z}/{x}/{y}.pbf` is a plain Django
+view (`core/stress_tiles.py`), not Ninja: a Mapbox Vector Tile drawn by
+PostGIS's `ST_AsMVT` from the live segment table, one layer `stress` with
+`tier`, `trail`, `unpaved` and `facility` on each feature. It needs only a
+populated live schema, no router:
+
+```sh
+curl -s -o /tmp/t.pbf -w '%{http_code} %{size_download}\n' http://localhost:8000/tiles/stress/14/4686/6267.pbf
+```
+
+A tile is served from the `stress_tile_cache` table once drawn
+(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z10-13 for
+the live table, and a local `runserver` with an empty cache draws on request.
+What each zoom draws, the limits, the cache, the draw slots and timeout and the
+overview index are in docs/OPERATIONS.md, "The stress tiles". `tests/mvt.py` decodes a tile for
+the tests (`tests/test_stress_tiles.py`) and for looking at one by hand.
+
+**The covered area.** `GET /api/coverage` (Ninja, in `core/api.py`) is the
+area routes may be planned in, as a GeoJSON polygon feature - the
+`settings.COVERAGE_BBOX` the route validator enforces, which the map greys
+out the rest of. `tests/test_coverage_api.py` holds every edge of it to the
+validator.
 
 ## The worker
 

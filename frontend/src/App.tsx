@@ -14,7 +14,7 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { CASING_EXTRA_PX, STRESS_TIERS } from "./stressStyle.js";
+import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
@@ -22,6 +22,13 @@ import type { Dials } from "./lib/dials.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
+import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
+import { STRESS_ZOOMS } from "./lib/mapStyle.ts";
+import { registerStressProtocol } from "./lib/stressProtocol.ts";
+import * as maplibregl from "maplibre-gl";
+
+// Before the map adds the stress source (MapView, after its first probe).
+registerStressProtocol(maplibregl);
 
 interface Plan {
   points: LonLat[];
@@ -74,6 +81,11 @@ export function App() {
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
+  // Whether the grey coverage mask is on the map, and whether the stress tiles
+  // carry bike-facility data; each legend line is shown only when it is true.
+  const [coverageShown, setCoverageShown] = useState(false);
+  const [facilitiesShown, setFacilitiesShown] = useState<ReadonlySet<string>>(new Set());
+  const [zoom, setZoom] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(true);
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
@@ -461,6 +473,7 @@ export function App() {
         </ol>
       )}
       {points.length === 1 && <p className="hint">Now click the map where you want to finish.</p>}
+      {coverageShown && <p className="hint">Grey areas are outside what RouteMaker covers.</p>}
       <div className="actions">
         <button
           type="button"
@@ -580,6 +593,11 @@ export function App() {
         markerReset={markerReset}
         onReady={(map) => {
           mapRef.current = map;
+          void fetchCoverage(window.location.origin).then((coverage) => {
+            if (coverage && mapRef.current === map && addCoverageMask(map, coverage)) setCoverageShown(true);
+          });
+          watchForFacilities(map, setFacilitiesShown);
+          watchZoom(map, setZoom);
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
@@ -638,7 +656,7 @@ export function App() {
                   />
                   Show traffic stress on the map
                 </label>
-                <StressLegend />
+                <StressLegend facilities={facilitiesShown} zoom={zoom} />
               </>
             )}
             {stress === "checking" && <p className="hint">Checking the stress map…</p>}
@@ -737,7 +755,7 @@ function RouteSummary({ route, points, narrow }: { route: RouteResponse; points:
   );
 }
 
-function StressLegend() {
+function StressLegend({ facilities, zoom }: { facilities: ReadonlySet<string>; zoom: number | null }) {
   return (
     <>
       <ul className="legend" aria-label="Traffic stress legend">
@@ -760,7 +778,49 @@ function StressLegend() {
           </li>
         ))}
       </ul>
-      <p className="hint">Streets with no stress rating are not drawn.</p>
+      {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
+          below street zoom only LTS 3-4 roads and the trail network, and
+          footways only from zoom 14. */}
+      {zoom !== null && zoom < STRESS_ZOOMS.min && (
+        <p className="notice" role="status">
+          Zoom in to see traffic stress.
+        </p>
+      )}
+      <p className="hint">
+        At zoom {STRESS_ZOOMS.min} and {STRESS_ZOOMS.streets - 1} only LTS 3 and 4 roads and the trails are drawn;
+        quiet streets appear from zoom {STRESS_ZOOMS.streets}, footways and sidewalks from zoom {STRESS_ZOOMS.full}, and
+        further out than zoom {STRESS_ZOOMS.min} nothing is drawn. Streets with no stress rating are not drawn.
+        {zoom !== null && ` The map is at zoom ${Math.floor(zoom)}.`}
+      </p>
+      {facilities.size > 0 && (
+        <>
+          <p className="hint">Bike facilities are violet edges on either side of the stress line:</p>
+          <ul className="legend" aria-label="Bike facility legend">
+            {FACILITIES.filter((facility) => facilities.has(facility.facility)).map((facility) => {
+              const rails = facilityWidth(facility, STRESS_TIERS[0].width);
+              return (
+                <li key={facility.facility}>
+                  <svg width="44" height="14" aria-hidden="true">
+                    <line
+                      x1="2"
+                      y1="7"
+                      x2="42"
+                      y2="7"
+                      stroke={facility.color}
+                      strokeWidth={rails}
+                      strokeDasharray={facility.dash ? facility.dash.map((d: number) => d * rails).join(" ") : undefined}
+                    />
+                    <line x1="2" y1="7" x2="42" y2="7" stroke="#ffffff" strokeWidth={STRESS_TIERS[0].width + CASING_EXTRA_PX} />
+                  </svg>
+                  <span className="stress-name">{facility.short}</span>
+                  <span className="stress-label">{facility.label}</span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="hint">Sharrows count as ordinary streets. Paths and protected lanes stay on the map zoomed out.</p>
+        </>
+      )}
     </>
   );
 }
