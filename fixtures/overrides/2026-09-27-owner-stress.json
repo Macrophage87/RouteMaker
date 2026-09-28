@@ -2,7 +2,7 @@
   "version": 1,
   "decided": "2026-09-27",
   "decided_by": "the deployment owner",
-  "annotations": "Each row's category and public_note were proposed by this repository on 2026-09-27; the owner approved them the same day for a route's summary only (\"In many cases there's an acceptable trail. Only provide the warnings if the route goes over the road.\"), so every row is display \"route_only\". US 340 is \"speed\", the category the owner added (\"Yes, add 'speed' (Recommended)\"). The westbound rows of 2026-09-28 carry a proposed category and note, not yet approved: until the owner confirms the wording the stretch is served as adjusted and nothing more.",
+  "annotations": "Each row's category and public_note were proposed by this repository on 2026-09-27; the owner approved them the same day for a route's summary only (\"In many cases there's an acceptable trail. Only provide the warnings if the route goes over the road.\"), so every row is display \"route_only\". US 340 is \"speed\", the category the owner added (\"Yes, add 'speed' (Recommended)\"). The westbound rows of 2026-09-28 (intersection, \"Ramp traffic to and from DC 295 merges in and crosses the lanes.\") were approved by the owner the same day: \"Approve as written\".",
   "rows": [
     {
       "kind": "stress",
@@ -327,7 +327,7 @@
         "adjustment_id": "pennsylvania-ave-se-dc-295-ramps-westbound",
         "category": "intersection",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
         "display": "route_only",
         "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
       },
@@ -342,7 +342,7 @@
         "adjustment_id": "pennsylvania-ave-se-dc-295-ramps-westbound",
         "category": "intersection",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
         "display": "route_only",
         "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
       },
@@ -357,7 +357,7 @@
         "adjustment_id": "pennsylvania-ave-se-dc-295-ramps-westbound",
         "category": "intersection",
         "visibility": "public",
-        "annotation_status": "proposed",
+        "annotation_status": "approved",
         "display": "route_only",
         "public_note": "Ramp traffic to and from DC 295 merges in and crosses the lanes."
       },

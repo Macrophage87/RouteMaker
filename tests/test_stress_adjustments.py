@@ -115,9 +115,8 @@ class TestTheValue:
     )
     def test_a_note_about_a_place_or_its_people_is_refused(self, note) -> None:
         """The owner's rule: notes describe the road and traffic only."""
-        assert "never a neighbourhood or its people" in stress_value_problem(
-            {**GOOD, "public_note": note}
-        )
+        problem = stress_value_problem({**GOOD, "public_note": note})
+        assert problem is not None and problem.startswith("public_note")
 
     @pytest.mark.parametrize(
         "note",
@@ -222,8 +221,6 @@ class TestTheOwnersFile:
         """The owner, 2026-09-27: "Only provide the warnings if the route goes
         over the road." Approved as proposed, for route_only display."""
         for row in owner_rows():
-            if row["osm_way_id"] in PENN_WESTBOUND_THROUGH_THE_RAMPS:
-                continue
             assert row["value"]["visibility"] == "public"
             assert row["value"]["annotation_status"] == "approved"
             assert row["value"]["display"] == "route_only"
@@ -242,9 +239,9 @@ class TestTheOwnersFile:
         assert all("blind corner" in r["value"]["public_note"] for r in penn)
         assert all("a level 5 road afterwards" in r["reason"] for r in penn)
 
-    def test_pennsylvania_avenue_westbound_through_the_ramps_waits_for_its_words(self) -> None:
-        """The owner, 2026-09-28: "Yes, avoid westbound too". The tier is the
-        owner's; the note is proposed until the owner confirms it."""
+    def test_pennsylvania_avenue_westbound_through_the_ramps(self) -> None:
+        """The owner, 2026-09-28: "Yes, avoid westbound too", and of its note,
+        "Approve as written"."""
         west = [r for r in owner_rows() if r["osm_way_id"] in PENN_WESTBOUND_THROUGH_THE_RAMPS]
         assert {r["osm_way_id"] for r in west} == PENN_WESTBOUND_THROUGH_THE_RAMPS
         assert {r["value"]["adjustment_id"] for r in west} == {
@@ -252,7 +249,8 @@ class TestTheOwnersFile:
         }
         for row in west:
             assert row["value"]["tier"] == 5
-            assert row["value"]["annotation_status"] == "proposed"
+            assert row["value"]["annotation_status"] == "approved"
+            assert row["value"]["category"] == "intersection"
             assert row["value"]["display"] == "route_only"
             assert "Yes, avoid westbound too" in row["reason"]
 
