@@ -739,26 +739,26 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
     A request with alternatives gets at most ALTERNATES_TIMEOUT_S; if it does
     not answer in that, the same route is asked again without them inside what
     is left of the budget, and the ride keeps the router's own route. The
-    weekend router gets at most WEEKEND_TIMEOUT_S a call, so a hung one leaves
-    the standard graph time to answer.
+    weekend router gets at most WEEKEND_TIMEOUT_S in all, so a hung one leaves
+    the standard graph time to answer: a request for alternatives it does not
+    answer is not asked again there, and the caller falls back to the
+    standard graph (correctness review, round 2: the retry made it 30 s).
     """
     limit = deadline.per_call_s
     if variant == Variant.WEEKEND.value:
         limit = min(limit, WEEKEND_TIMEOUT_S)
     if "alternates" not in request:
         return _call(variant, "route", request, Deadline(deadline.at, limit)), False
+    alternates_limit = min(limit, ALTERNATES_TIMEOUT_S)
     try:
-        return (
-            _call(
-                variant, "route", request, Deadline(deadline.at, min(limit, ALTERNATES_TIMEOUT_S))
-            ),
-            False,
-        )
+        return _call(variant, "route", request, Deadline(deadline.at, alternates_limit)), False
     except RouterUnavailable:
+        if variant == Variant.WEEKEND.value:
+            raise
         logger.warning(
             "the %s router did not answer a request for alternatives in %s s; asking without",
             variant,
-            ALTERNATES_TIMEOUT_S,
+            alternates_limit,
         )
         plain = {key: value for key, value in request.items() if key != "alternates"}
         return _call(variant, "route", plain, Deadline(deadline.at, limit)), True

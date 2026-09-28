@@ -990,3 +990,104 @@ class TestTrafficWinsOverHills:
             router(transport)
             post(client, {**good_body(), "hills": hills})
             assert len(calls) == 1, "one /route, and no second call for the middle"
+
+
+# --- Correctness review, round 2 (S1, S2) -------------------------------------
+
+
+def test_a_hung_weekend_router_costs_at_most_its_limit_then_standard_has_the_rest():
+    """The weekend router's limit and the standard graph's share after it both
+    fit the budget the routers have (R17)."""
+    routers_s = routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
+    assert routing.WEEKEND_TIMEOUT_S <= routing.ALTERNATES_TIMEOUT_S
+    assert routing.WEEKEND_TIMEOUT_S + routing.ALTERNATES_TIMEOUT_S <= routers_s
+
+
+@db
+def test_a_hung_weekend_router_is_asked_once_on_a_ride_with_alternatives(
+    client, facility_segments, router
+):
+    """Round 2, S1: a request for alternatives the weekend router did not
+    answer was asked again there without them - 15 s and 15 s more."""
+    standard = standard_router()
+    weekend_calls = []
+
+    def transport(url, payload, timeout):
+        if url.startswith(settings.VALHALLA_UPSTREAMS["weekend"]):
+            weekend_calls.append(("alternates" in payload, timeout))
+            raise routing.RouterUnavailable("timed out")
+        return standard(url, payload, timeout)
+
+    router(transport)
+    body = post(client, {**good_body(), "when": "weekend", "hills": -50}).json()
+    assert body["variant"] == "standard"
+    assert weekend_calls == [(True, routing.WEEKEND_TIMEOUT_S)]
+
+
+def test_exposure_weights_lts_4_twice_and_tier_5_three_times(monkeypatch):
+    """R2, R3: the exposure the guards compare is LTS 3 + 2 x LTS 4 + 3 x tier 5."""
+    monkeypatch.setattr(routing, "trace_leg", lambda *args: {"edges": []})
+    monkeypatch.setattr(
+        routing,
+        "breakdown",
+        lambda pieces, when, roadway_only=False: (
+            {"1": 1000.0, "2": 1000.0, "3": 100.0, "4": 10.0, "5": 1.0, "unknown": 0.0},
+            {},
+        ),
+    )
+    trip = _trip(VERTICES, 2.0, FLAT)
+    deadline = routing.Deadline(routing.clock() + 30, 10)
+    assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) == 123.0
+
+
+def test_an_untraceable_leg_has_no_exposure_at_all(monkeypatch):
+    """R7: a leg that cannot be traced makes the whole trip's exposure None -
+    not the exposure of the legs that could be, which would make it look calm."""
+    calls = []
+
+    def trace(variant, costing, shape, deadline):
+        calls.append(shape)
+        return None if len(calls) == 1 else {"edges": []}
+
+    monkeypatch.setattr(routing, "trace_leg", trace)
+    monkeypatch.setattr(
+        routing,
+        "breakdown",
+        lambda pieces, when, roadway_only=False: (dict.fromkeys("12345", 0.0), {}),
+    )
+    trip = route_answer([(VERTICES, 1.0, FLAT), (VERTICES, 1.0, FLAT)])["trip"]
+    deadline = routing.Deadline(routing.clock() + 30, 10)
+    assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) is None
+
+
+class TestTheCalmerOrOwnFallbacks:
+    """R5, R6: a trace that cannot be made, or runs out of time, keeps the
+    router's own route - and never raises."""
+
+    trips = [_trip(VERTICES, 2.0, LONG_STEEP), _trip(VERTICES, 2.4, KICK_THEN_FLAT)]
+    deadline = routing.Deadline(1e12, 10)
+
+    def test_an_untraceable_own_route_keeps_it(self, monkeypatch):
+        exposures = iter([None, 5.0])
+        monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
+        assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 0
+
+    def test_an_untraceable_alternative_is_not_taken(self, monkeypatch):
+        exposures = iter([5.0, None])
+        monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
+        assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 0
+
+    @pytest.mark.parametrize(
+        "failure", [routing.RouterUnavailable("down"), routing.DeadlineExceeded("no time")]
+    )
+    def test_a_trace_that_fails_keeps_the_router_route(self, monkeypatch, failure):
+        def fail(*args):
+            raise failure
+
+        monkeypatch.setattr(routing, "_exposure", fail)
+        assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 0
+
+    def test_a_calmer_alternative_is_taken(self, monkeypatch):
+        exposures = iter([5.0, 4.0])
+        monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
+        assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 1

@@ -1108,6 +1108,12 @@ class TestTimeBudget:
         after the router calls was bounded. Past the budget the joins are
         skipped (stress unknown) and a warning names each phase."""
         fake = standard_router()
+        # An adjustment on the route, so a join run past the budget would show.
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET stress_adjustment_id = 'a-stretch' "
+                "WHERE osm_way_id = 101"
+            )
 
         def slow_trace(url, payload, timeout):
             if url.endswith("/trace_attributes"):
