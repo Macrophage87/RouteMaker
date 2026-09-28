@@ -262,59 +262,46 @@ the same way (below).
 
 The content type is checked before the count on purpose: a page on any site
 can make a visitor's browser send a `text/plain` or form POST here without a
-preflight, and counting those would let it spend that visitor's budget. The
-routing and geocoding in-flight limits together keep two gunicorn workers
-free however the router and the geocoder are loaded. The owner's answer of
-2026-09-28 raised compose's worker count from 5 to 7 (with the api's `cpus`
-from 2 to 3, the two being one decision) so place search could have two
-lookups at once: the routing pool is the worker count less two less the
-geocoding slots, so on 7 workers 3 routes and 2 lookups can be held at once
-and **two** workers stay free for `/healthz`, the tiles, sign-in and the admin
-(`config.settings.routing_concurrency`; a test holds that for 5 to 16
-workers). A small worker count still gets one routing slot, and keeps fewer
-free.
+preflight, and counting those would let it spend that visitor's budget.
 
-**When the stress tiles merge** (wip/tiles), their draws take a pool of their
-own, `TILE_CONCURRENCY`. That branch (at 96b9af2) sizes it as
-`max(1, workers - 1 - routing_concurrency(...))`, with its worker count
-defaulting to 5. That formula looks right but leaves geocoding out: merged
-with this branch's `routing_concurrency` (the worker count less two less the
-two geocoding slots, 3 on 7 workers) it gives 3 draws on 7 workers, and 3
-routes + 2 lookups + 3 draws is 8 slots on 7 workers - none free for
-`/healthz`. The merge must size the tile pool from what routing and
-geocoding leave, keeping one worker free, and default the worker count to
-this branch's `DEFAULT_WEB_CONCURRENCY` (7) rather than 5:
+**How the workers are shared.** Compose runs 7 gunicorn workers (on 3 cpus;
+the owner's answer of 2026-09-28 raised them from 5 so place search could
+have two lookups at once). Four pools take them, each an advisory-lock slot
+held for the length of a request:
 
-```python
-def tile_concurrency(web_concurrency: str | None) -> int:
-    workers = int(web_concurrency or DEFAULT_WEB_CONCURRENCY)
-    return max(1, workers - 1 - routing_concurrency(web_concurrency) - GEOCODE_CONCURRENCY)
-```
+| Pool | Slots on 7 workers | Held for at most |
+| --- | --- | --- |
+| Routes (`ROUTING_CONCURRENCY`, the workers less two less the geocoding slots) | 3 | 40-50 s (the time budget) |
+| Geocoding (`GEOCODE_CONCURRENCY`) | 2 | Photon's 4 s, plus the router's 3 s for a name |
+| Geocoding waiting room (`GEOCODE_IN_FLIGHT.max_waiters`) | 1 | 1 s (the wait), then served or refused |
+| Stress tile draws (`TILE_CONCURRENCY`, the workers less one less routes less geocoding) | 1 | the 2 s draw timeout (one cold draw on a busy host ran to 5.46 s) |
 
-That is 1 draw on 7 workers (3 + 2 + 1 = 6 held, one free), and 1 at every
-worker count from 5 up: routing takes each worker added above that, so a
-second draw means taking a routing slot, a decision for the owner. At 3 or 4
-workers the pools can hold every worker between them. The two branches'
-in-flight pools must also keep distinct scope ids (tiles 3, geocoding 4;
-`tests/test_ratelimit.py` fails on a clash), and `InFlight` must carry both
-this branch's `wait_s` and `max_waiters` and that branch's `client_retry_s`
-and `deployment_retry_s`.
+So at worst all 7 are held at once - 3 + 2 + 1 + 1 - and a worker is free
+again within about a second, when the waiter is served or refused. That is
+the owner's answer of 2026-09-28, "Free within ~1 s (Recommended)", refining
+the earlier "a worker always free for /healthz" after routing, tiles and
+search merged; `/healthz`'s 5 s healthcheck waits out that second. Without the
+waiter, routes, lookups and draws leave one worker free outright; that is
+what `tests/test_tile_cache.py` holds for every worker count from 5 to 16,
+with the waiter as the only thing that may take it. Below five workers the
+pools can hold every worker between them.
 
 **Geocoding waiters.** A geocoding request that finds both slots busy waits up
 to a second for one, polling every 50 ms, and a waiting request holds a
-gunicorn worker without holding a slot. So the waiting room is capped
-(`GEOCODE_IN_FLIGHT.max_waiters`, 1, counted like the slots with advisory
-locks): with one already waiting across the deployment, a request is refused
-at once with 503. With Photon stalled, routing full and more searches
-arriving, at most 3 routes + 2 lookups + 1 waiter hold workers, and the
-seventh answers `/healthz` and refuses the rest at once (round-2 review:
-uncapped, 12 waiters pushed `/healthz` to 5.4 s; the round-3 stall probe
-found two waiters still held both spare workers, and one keeps it under a
-second).
+gunicorn worker without holding a slot. So the waiting room is capped at one
+(counted like the slots with advisory locks): with one already waiting across
+the deployment, a request is refused at once with 503. Uncapped, 12 waiters
+pushed `/healthz` to 5.4 s during a Photon stall (round-2 review); with two,
+both spare workers were held and it still waited 5.45 s; with one, the
+round-3 stall probe (3 routes held, Photon paused, 12 searches) had `/healthz`
+answer in 0.13-0.33 s.
 
 **Setting `WEB_CONCURRENCY` by hand.** The routing pool follows it: 5 workers
-give 1 routing slot (5 - 2 - 2), not the 3 they gave before geocoding had two
-slots; 7 (compose's default) gives 3. Without the routing
+give 1 routing slot (5 - 2 - 2) and 1 tile draw, not the 3 routes they gave
+before geocoding had two slots; 7 (compose's default) gives 3 and 1; each
+worker above 7 is one more routing slot. The routing, geocoding and tile
+pools keep distinct scope ids (routing 1, long rides 2, tiles 3, geocoding 4);
+`tests/test_ratelimit.py` fails on a clash. Without the routing
 limit a burst
 of long routes inside one client's per-minute budget held every worker and
 `/healthz` went unanswered for 19 s, past compose's 5 s healthcheck. It is a
@@ -472,9 +459,11 @@ paragraph.
 
 **Draw slots and the draw timeout.** A tile not in the cache is drawn under an
 in-flight slot (`core.ratelimit.TILES_IN_FLIGHT`): at most `TILE_CONCURRENCY`
-draws in the deployment - what routing's slots leave of the worker count less
-one, at least one: one at compose's five workers (three routes, one draw, one
-worker always free from three workers up; `config.settings.tile_concurrency`).
+draws in the deployment - what routing's and geocoding's slots leave of the
+worker count less one, at least one: one at compose's seven workers (three
+routes, two lookups, one draw; `config.settings.tile_concurrency`), which with
+the one geocoding waiter can hold all seven, a worker free again within about a
+second - see "How the workers are shared" above).
 A draw that finds no slot is refused at once: 503 (the deployment's slot) or
 429 (the client's), with `Retry-After: 1` and `no-store`. A draw runs under a
 2 s statement timeout (`DRAW_TIMEOUT_MS`), inside the promotion swap's 3 s

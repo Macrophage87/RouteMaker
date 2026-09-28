@@ -565,7 +565,7 @@ class TestLimits:
         assert 0.25 <= waited < ratelimit.GEOCODE_IN_FLIGHT.wait_s + 1.0
 
     def test_the_wait_figures_are_the_ones_written_down(self) -> None:
-        """A second's wait, polled every 50 ms, and two waiting at most."""
+        """A second's wait, polled every 50 ms, and one waiting at most."""
         assert ratelimit.GEOCODE_IN_FLIGHT.wait_s == 1.0
         assert ratelimit.WAIT_STEP_S == 0.05
         assert ratelimit.GEOCODE_IN_FLIGHT.max_waiters == 1
@@ -627,7 +627,8 @@ class TestLimits:
 
     def test_two_lookups_at_once_and_workers_left_for_healthz(self) -> None:
         """The owner's answer of 2026-09-28: two geocoding lookups at once, on
-        seven workers, and routing and geocoding together leave two free."""
+        seven workers, routing and geocoding together leaving two to the tile
+        draw and the one waiter."""
         from config.settings import DEFAULT_WEB_CONCURRENCY, routing_concurrency
 
         assert settings.GEOCODE_CONCURRENCY == 2

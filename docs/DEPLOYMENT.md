@@ -937,9 +937,10 @@ missing deploy step, not a broken stack.
   public routing API". It needs the `rate_limit_window` table from migration
   `core.0008`, which the `migrate` one-shot applies on the next `up`, and it
   reads `WEB_CONCURRENCY` - already on the api service - to size how many
-  routes may run at once: the worker count less two, at least one. Below three
-  workers that leaves fewer than two workers free while routes run, so keep
-  `WEB_CONCURRENCY` at 3 or more on any host that serves the public. Its time
+  routes may run at once: the worker count less two, less the two geocoding
+  slots, at least one (docs/OPERATIONS.md, "How the workers are shared"). Keep
+  `WEB_CONCURRENCY` at compose's 7 on any host that serves the public; below 5
+  the pools can hold every worker between them. Its time
   budgets (40 s, 50 s for a long ride, counted from arrival) are sized under
   gunicorn's `--timeout`, which the entrypoint takes from `GUNICORN_TIMEOUT`
   (default 60): leave that at 60 or above, or a slow long ride is killed

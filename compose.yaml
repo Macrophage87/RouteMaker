@@ -165,7 +165,8 @@ services:
       # `2 * 3 + 1` against the three cpus this service is given, which is the
       # same formula read off the right number; the owner's answer of
       # 2026-09-28 raised it from 5 so place search could have two lookups at
-      # once (config.settings: 3 routes + 2 lookups leave two workers free).
+      # once (config.settings: 3 routes + 2 lookups + 1 waiter + 1 tile draw at
+      # worst, and a worker free again within about a second).
       # Raise it here only with the `cpus:` limit below; the two are one
       # decision. A worker is ~40 MB resident here (5 held 207 MiB), so 7 sit
       # well inside the 2 GB.
