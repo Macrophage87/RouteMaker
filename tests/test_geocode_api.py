@@ -213,8 +213,15 @@ class TestSearch:
         """Photon returns a long street once per way; a list of five identical
         lines is no use to anyone."""
         street = dict(name="Wilson Boulevard", type="street", city="Arlington")
-        photon(answer(feature(-77.1, 38.88, **street), feature(-77.09, 38.881, **street)))
+        photon(answer(feature(-77.1, 38.88, **street), feature(-77.098, 38.8805, **street)))
         assert len(get(client, SEARCH, q="wilson blvd").json()["results"]) == 1
+
+    def test_two_places_with_one_label_far_apart_are_two_rows(self, client, photon) -> None:
+        """Round-1 review: two Starbucks 417 m apart, both labelled "Starbucks,
+        Ward 2, Golden Triangle", showed as one."""
+        shop = dict(name="Starbucks", osm_key="amenity", osm_value="cafe", district="Ward 2")
+        photon(answer(feature(-77.0400, 38.9020, **shop), feature(-77.0400, 38.9058, **shop)))
+        assert len(get(client, SEARCH, q="starbucks").json()["results"]) == 2
 
     @pytest.mark.parametrize(
         "params",
@@ -524,6 +531,16 @@ class TestReverse:
         (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
         assert (place["name"], place["kind"]) == ("Maple Avenue East", "street")
 
+    def test_near_a_street_from_an_unnamed_trail_is_worded_near(
+        self, client, photon, router
+    ) -> None:
+        photon(answer(NEARBY_HOUSE))
+        router(located(([], 0.0, "cycleway", 1), (["Kingman Place"], 13.0, "road", 2)))
+        (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
+        assert place["name"] == "near Kingman Place"
+        assert place["label"].startswith("near Kingman Place")
+        assert place["kind"] == "near"
+
     def test_a_named_edge_too_far_away_does_not_name_the_point(
         self, client, photon, router
     ) -> None:
@@ -626,6 +643,35 @@ class TestEdgeName:
             (["Custis Trail"], 2.0 + margin + 0.5, "cycleway", 2),
         )
         assert geocode.edge_name(apart)["name"] == "Washington Boulevard"
+
+    def test_a_ferry_does_not_name_a_point_on_the_water(self) -> None:
+        """Round-1 review: a point in the Potomac was named for the ferry."""
+        river = located((["Alexandria, VA - Georgetown, DC"], 0.3, "ferry", 1))
+        assert geocode.edge_name(river) is None
+        both = located((["Georgetown ferry"], 0.3, "ferry", 1), (["Water Street"], 12.0, "road", 2))
+        assert geocode.edge_name(both)["name"] == "Water Street"
+
+    def test_a_point_on_an_unnamed_trail_is_near_the_street(self) -> None:
+        """Round-1 review: an unnamed cycleway at 0 m took the name of a street
+        13 m away, as if the point were on it."""
+        edge = geocode.edge_name(
+            located(([], 0.0, "cycleway", 1), (["Kingman Place"], 13.0, "road", 2))
+        )
+        assert (edge["name"], edge["kind"]) == ("Kingman Place", "near")
+
+    def test_an_unnamed_sidewalk_is_its_street(self) -> None:
+        """A sidewalk is the street's own; its name is the street's."""
+        edge = geocode.edge_name(
+            located(([], 0.0, "sidewalk", 1), (["Kingman Place"], 13.0, "road", 2))
+        )
+        assert (edge["name"], edge["kind"]) == ("Kingman Place", "street")
+
+    def test_a_street_right_beside_an_unnamed_trail_still_names_it(self) -> None:
+        margin = geocode.TRAIL_PREFERENCE_M
+        edge = geocode.edge_name(
+            located(([], 1.0, "cycleway", 1), (["Kingman Place"], 1.0 + margin, "road", 2))
+        )
+        assert edge["kind"] == "street"
 
     def test_a_blank_name_is_no_name(self) -> None:
         assert geocode.edge_name(located(([" "], 1.0, "road", 1))) is None

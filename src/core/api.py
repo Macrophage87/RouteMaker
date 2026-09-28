@@ -549,8 +549,10 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
         found = geocode.search(
             params.q, lat=params.lat, lon=params.lon, limit=params.limit, lang=params.lang
         )
-    except geocode.Unavailable:
-        logger.warning("place search: the geocoder did not answer", exc_info=True)
+    except geocode.Unavailable as unavailable:
+        # Expected while Photon restarts or is being refreshed: one line, no
+        # traceback per request.
+        logger.warning("place search: the geocoder did not answer: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})
     return _places(response, found, SEARCH_MAX_AGE_S)
 
@@ -570,7 +572,7 @@ def geocode_search(request, params: Query[GeocodeIn], response: HttpResponse):
 def geocode_reverse(request, params: Query[ReverseIn], response: HttpResponse):
     try:
         found = geocode.reverse(params.lat, params.lon, lang=params.lang)
-    except geocode.Unavailable:
-        logger.warning("place name: the geocoder did not answer", exc_info=True)
+    except geocode.Unavailable as unavailable:
+        logger.warning("place name: neither the router nor the geocoder answered: %s", unavailable)
         return Status(502, {"error": GEOCODER_DOWN})
     return _places(response, found, REVERSE_MAX_AGE_S)

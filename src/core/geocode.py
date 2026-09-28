@@ -82,6 +82,9 @@ _ROUTE_REF = re.compile(
     r"^(?:US|I|VA|MD|DC|SR|CR|Route|Rte)[ -]?\d+[A-Z]?(?: (?:Alt|Bus|Business|Truck))?$"
 )
 
+# Edge uses that are a crossing of water, not a place on land to be named for.
+FERRY_USES = frozenset({"ferry", "rail_ferry"})
+
 # Edge uses (Valhalla's classification.use) that are a trail or path to a rider.
 TRAIL_USES = frozenset({"cycleway", "path", "footway", "mountain_bike", "bridleway", "pedestrian"})
 
@@ -247,29 +250,43 @@ def search(
 
 
 def edge_name(located: list) -> dict | None:
-    """The nearest named edge within EDGE_NAME_RADIUS_M of the point, from a
-    `/locate` answer: {name, kind, way_id}, a trail winning a tie."""
-    named = []
+    """The name for a point from a `/locate` answer: {name, kind, way_id}.
+
+    The nearest named edge within EDGE_NAME_RADIUS_M, a named trail winning
+    within TRAIL_PREFERENCE_M of it. Ferry edges are not what a point on the
+    water is on (round-1 review: a point in the Potomac was named for the
+    Georgetown ferry). And when the point is on an unnamed trail - the nearest
+    edge of all is a path with no name - a street further off is only what it
+    is near: kind "near", which the caller words "near <street>" (round-1
+    review: an unnamed cycleway at 0 m took the name of a street 13 m away).
+    """
+    edges = []
     for location in located[:1]:
         for edge in (location or {}).get("edges") or []:
             info = edge.get("edge_info") or {}
-            names = [n.strip() for n in info.get("names") or [] if isinstance(n, str) and n.strip()]
             distance = edge.get("distance")
-            if not names or not isinstance(distance, (int, float)):
-                continue
-            if distance > EDGE_NAME_RADIUS_M:
+            if not isinstance(distance, (int, float)) or distance > EDGE_NAME_RADIUS_M:
                 continue
             use = ((edge.get("edge") or {}).get("classification") or {}).get("use", "")
-            name = next((n for n in names if not _ROUTE_REF.match(n)), names[0])
-            named.append((float(distance), use in TRAIL_USES, name, info.get("way_id")))
+            if use in FERRY_USES:
+                continue
+            names = [n.strip() for n in info.get("names") or [] if isinstance(n, str) and n.strip()]
+            name = next((n for n in names if not _ROUTE_REF.match(n)), names[0]) if names else None
+            edges.append((float(distance), use in TRAIL_USES, name, info.get("way_id")))
+    named = [e for e in edges if e[2]]
     if not named:
         return None
     nearest = min(d for d, *_ in named)
     trails = [e for e in named if e[1] and e[0] <= nearest + TRAIL_PREFERENCE_M]
     distance, trail, name, way_id = min(trails or named, key=lambda e: e[0])
+    closest = min(edges, key=lambda e: e[0])
+    # The nearest edge is a trail and the name is a street further off. (A
+    # named trail as the nearest edge would itself be the name: a trail within
+    # TRAIL_PREFERENCE_M of the nearest named edge wins.)
+    on_unnamed_trail = closest[1] and distance > closest[0] + TRAIL_PREFERENCE_M
     return {
         "name": name,
-        "kind": "trail" if trail else "street",
+        "kind": "near" if on_unnamed_trail else "trail" if trail else "street",
         "way_id": way_id if isinstance(way_id, int) and not isinstance(way_id, bool) else None,
     }
 
@@ -319,10 +336,11 @@ def reverse(lat: float, lon: float, *, lang: str) -> list[dict]:
     properties = feature["properties"] if feature else {}
     point = {"lon": round(lon, 6), "lat": round(lat, 6)}
     if edge is not None:
+        name = f"near {edge['name']}" if edge["kind"] == "near" else edge["name"]
         return [
             {
-                "name": edge["name"],
-                "label": ", ".join([edge["name"], *_area(properties, edge["name"])]),
+                "name": name,
+                "label": ", ".join([name, *_area(properties, edge["name"])]),
                 **point,
                 "kind": edge["kind"],
                 "osm_type": "W" if edge["way_id"] else None,
@@ -411,7 +429,6 @@ def describe(properties: dict, *, reverse: bool) -> tuple[str, str]:
 def results(answer: dict, *, reverse: bool) -> list[dict]:
     """Photon's GeoJSON as the API's list: in the box, named, one row per place."""
     out: list[dict] = []
-    labels: set[str] = set()
     for feature in answer.get("features", []):
         if not isinstance(feature, dict):
             continue
@@ -422,12 +439,14 @@ def results(answer: dict, *, reverse: bool) -> list[dict]:
         if not isinstance(properties, dict):
             continue
         name, label = describe(properties, reverse=reverse)
-        if not name or label.casefold() in labels:
+        if not name:
             continue
         osm = _osm(properties)
+        # Only one name, one kind of tag and 300 m make a row a repeat: two
+        # Starbucks 417 m apart share a label and are two places (round-1
+        # review), so a label alone folds nothing.
         if any(_same_place(row, name, osm, point) for row in out):
             continue
-        labels.add(label.casefold())
         out.append(
             {
                 "name": name,
