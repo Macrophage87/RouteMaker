@@ -140,7 +140,7 @@ class SwapUndoIncomplete(RuntimeError):
     true - one variant is on this week's tiles and two on last week's, or the
     settings rows name a build no tile directory describes - and a retry then
     promotes over a deployment nothing has a consistent picture of, five times,
-    at six hours a go. `config.procrastinate.terminal_causes` names this class,
+    at up to eight hours a go. `config.procrastinate.terminal_causes` names this class,
     so the rebuild is abandoned and the alert is what the operator gets.
 
     It carries the original failure as `cause` as well as `__cause__`: the

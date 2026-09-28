@@ -1,7 +1,7 @@
 """`manage.py unwedge_job <id>` - put back a job whose worker died holding it.
 
 The hole this fills is the one a `docker compose up -d` opens. The rebuild
-service has no `stop_grace_period` long enough for a six-hour build, so a
+service has no `stop_grace_period` long enough for an eight-hour build, so a
 `down`, an `up -d` that recreates the container, a host reboot or an OOM kill
 takes the worker out with SIGKILL in the middle of a run. Procrastinate marks a
 job `doing` when it is picked up and writes its terminal status from the worker
@@ -27,7 +27,7 @@ the next worker to pick up.
 "Provably gone" is the workers table, which is the only evidence there is.
 A running worker updates `procrastinate_workers.last_heartbeat` every
 `update_heartbeat_interval` seconds (10 by default) from its own asyncio task,
-and a sync task body runs in a thread, so a worker six hours into a rebuild is
+and a sync task body runs in a thread, so a worker hours into a rebuild is
 still beating. A job whose worker row is missing - because another worker
 pruned it, or because it was never registered - has no worker. A job whose
 worker last beat longer ago than `STALLED_WORKER_TIMEOUT_S` is the definition

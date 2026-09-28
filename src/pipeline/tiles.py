@@ -244,7 +244,7 @@ def tile_build_commands(
 
     The extra reason is that this one is not just slow: three parses of the
     merged extract inside the same rebuild are three chances to be killed by
-    the rebuild's six-hour budget at a stage that has already succeeded once.
+    the rebuild's eight-hour budget at a stage that has already succeeded once.
     """
     if admin_source is not None:
         admins = ["cp", str(admin_source), str(admin_db)]
@@ -490,7 +490,7 @@ class CommandOutput(NamedTuple):
         """The end of each stream, labelled, for the report of a failed command.
 
         The end rather than the whole of it because these streams are unbounded:
-        `valhalla_build_tiles` writes progress for six hours, `curl` retries a
+        `valhalla_build_tiles` writes progress for hours, `curl` retries a
         1-2 GB transfer three times, and this text goes into an exception
         message, a log record and a Procrastinate job row. What says why a
         command stopped is at the end of what it wrote - osmium's "Could not

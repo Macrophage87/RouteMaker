@@ -198,7 +198,7 @@ class CommandFailed(RuntimeError):
     reason was discarded with the object. That covered the first rebuild on a
     fresh deployment end to end - curl on a 404 from a mirror, `osmium merge`
     on "Could not detect file format for filename", gdalwarp on an HGT it could
-    not read, and `valhalla_build_tiles` failing six hours in - every one of
+    not read, and `valhalla_build_tiles` failing hours in - every one of
     which says why on a stream that was captured and thrown away.
 
     Deliberately not in `config.procrastinate.terminal_causes`, which keeps the

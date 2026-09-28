@@ -13,7 +13,7 @@
 # contain any of the directories the problem is about.
 #
 # The symptom is late and does not read as an ownership problem: the nightly
-# dump fails on a file it cannot create, and a rebuild gets six hours in before
+# dump fails on a file it cannot create, and a rebuild gets hours in before
 # a Valhalla binary reports a permission error on a tile directory.
 #
 # If you have already run `up` and skipped this: stop the stack, run this same

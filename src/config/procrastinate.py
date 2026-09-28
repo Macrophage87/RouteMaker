@@ -176,7 +176,7 @@ def weekly_rebuild(context=None, *, timestamp: int) -> None:
 
     Queued under a lock because two concurrent rebuilds would write the same
     staging schema and the same tile directory. It gets its own queue so the
-    six-hour build does not sit in front of the sweep - and so that the
+    eight-hour build does not sit in front of the sweep - and so that the
     container with the Valhalla binaries and the data mounts is the one that
     runs it: compose's `rebuild` service is a worker on this queue alone.
 
@@ -364,7 +364,7 @@ def terminal_causes() -> tuple[type[Exception], ...]:
     The two timeouts are here for a harder reason than the others. A rebuild
     killed by its own deadline - `RebuildTimedOut` from the stage boundary
     check, `subprocess.TimeoutExpired` from a binary handed the remaining
-    budget - is not going to finish inside six hours on the next attempt
+    budget - is not going to finish inside eight hours on the next attempt
     either; the budget is the same and the work is the same. Left retryable it
     was retried five times, and a retry re-runs the whole rebuild including
     SWAP, whose `DROP SCHEMA live_old` destroys the very schema a rollback

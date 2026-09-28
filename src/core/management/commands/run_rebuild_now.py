@@ -11,7 +11,7 @@ is not an edge case at all: nothing else creates the tiles the routers serve.
 
 This defers the job and returns. It does not run the rebuild: the job is picked
 up by the `rebuild` service, which is the container with the Valhalla binaries,
-the data mounts and the six-hour budget, and it is picked up within seconds if
+the data mounts and the eight-hour budget, and it is picked up within seconds if
 that service is up. Watch it with `docker compose logs -f rebuild`.
 
 Single-flight is two checks, because one of them covers less than it was once
@@ -110,7 +110,7 @@ class Command(BaseCommand):
         # actor is None, which is the honest value and is what the log's own
         # "worker or host operator" row means. Nothing under src/pipeline or in
         # these commands wrote an audit row before, so the one action that
-        # starts six hours of work over the served graph left no record at all.
+        # starts hours of work over the served graph left no record at all.
         record(
             None,
             "run_rebuild_now",
