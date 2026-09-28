@@ -28,7 +28,7 @@ db = pytest.mark.django_db(transaction=True)
 
 SEARCH = "/api/geocode"
 REVERSE = "/api/reverse"
-PLACE_KEYS = {"name", "label", "lon", "lat", "kind"}
+PLACE_KEYS = {"name", "label", "lon", "lat", "kind", "osm_type", "osm_id", "osm_key", "osm_value"}
 
 INSIDE = (-77.0502, 38.8893)  # the Lincoln Memorial
 OUTSIDE = (-80.0, 40.44)  # Pittsburgh
@@ -73,8 +73,50 @@ class FakePhoton:
         return self.reply
 
 
+class FakeRouter:
+    """The standard router's /locate: records each call, answers `reply`."""
+
+    def __init__(self, reply) -> None:
+        self.reply = reply
+        self.calls: list[tuple[float, float]] = []
+
+    def __call__(self, lat: float, lon: float) -> list:
+        self.calls.append((lat, lon))
+        if isinstance(self.reply, Exception):
+            raise self.reply
+        return self.reply
+
+
+def located(*edges) -> list:
+    """A /locate answer for one point: `edges` are (names, distance_m, use, way_id)."""
+    return [
+        {
+            "edges": [
+                {
+                    "distance": distance,
+                    "edge_info": {"names": list(names), "way_id": way_id},
+                    "edge": {"classification": {"use": use}},
+                }
+                for names, distance, use, way_id in edges
+            ]
+        }
+    ]
+
+
 @pytest.fixture
-def photon(monkeypatch):
+def router(monkeypatch):
+    def install(reply) -> FakeRouter:
+        fake = FakeRouter(reply)
+        monkeypatch.setattr(geocode, "_locate", fake)
+        return fake
+
+    # By default the router finds nothing named near the point.
+    install(located())
+    return install
+
+
+@pytest.fixture
+def photon(monkeypatch, router):
     def install(reply) -> FakePhoton:
         fake = FakePhoton(reply)
         monkeypatch.setattr(geocode, "_get", fake)
@@ -144,7 +186,10 @@ class TestSearch:
         ((_path, params),) = fake.calls
         assert set(params) == {"q", "lat", "lon", "limit", "lang", "bbox"}
         assert params["q"] == "Purcellville"
-        assert (params["lat"], params["lon"], params["limit"]) == (39.1, -77.5, 3)
+        assert (params["lat"], params["lon"]) == (39.1, -77.5)
+        # A few more than asked for, to fold near-identical rows, within
+        # Photon's own ceiling.
+        assert 3 <= params["limit"] <= geocode.PHOTON_MAX_RESULTS
         assert params["bbox"] != "-180,-90,180,90"
 
     def test_without_a_bias_none_is_sent(self, client, photon) -> None:
@@ -200,6 +245,62 @@ class TestSearch:
         response = get(client, SEARCH, q="Union Station")
         assert response.status_code == 502
         assert set(response.json()) == {"error"}
+
+    @pytest.mark.parametrize(
+        ("typed", "sent"),
+        [
+            ("1100 Wilson Blvd", "1100 Wilson Boulevard"),
+            ("1100 Wilson Blvd Arlington", "1100 Wilson Boulevard Arlington"),
+            ("3300 Wilson Blvd.", "3300 Wilson Boulevard"),
+            ("1600 Pennsylvania Ave NW", "1600 Pennsylvania Avenue Northwest"),
+        ],
+    )
+    def test_street_abbreviations_are_spelled_out_before_photon(
+        self, client, photon, typed, sent
+    ) -> None:
+        """Round-1 review: "1100 Wilson Blvd" found bus stops and the spelled
+        out "1100 Wilson Boulevard" found the address."""
+        fake = photon(answer())
+        get(client, SEARCH, q=typed)
+        assert fake.calls[0][1]["q"] == sent
+
+    def test_each_result_says_what_it_is_in_osm(self, client, photon) -> None:
+        photon(
+            answer(
+                feature(
+                    -77.0064,
+                    38.8971,
+                    name="Union Station",
+                    type="house",
+                    osm_type="N",
+                    osm_id=1234,
+                    osm_key="railway",
+                    osm_value="station",
+                    city="Washington",
+                )
+            )
+        )
+        (place,) = get(client, SEARCH, q="Union Station").json()["results"]
+        assert (place["osm_type"], place["osm_id"]) == ("N", 1234)
+        assert (place["osm_key"], place["osm_value"]) == ("railway", "station")
+
+    def test_one_place_split_into_several_ways_is_one_row(self, client, photon) -> None:
+        """ "Union Station Drive Northeast" twice, once per way and each with a
+        different neighbourhood, is one row; the same name far away, or the
+        same name on another kind of place, is not."""
+        drive = dict(name="Union Station Drive Northeast", osm_key="highway", osm_value="tertiary")
+        photon(
+            answer(
+                feature(-77.00762, 38.89719, district="Near Northeast", **drive),
+                feature(
+                    -77.00722, 38.89701, district="Ward 6", **{**drive, "osm_value": "unclassified"}
+                ),
+                feature(-76.9, 38.95, district="Elsewhere", **drive),
+                feature(-77.0074, 38.8971, district="NoMa", **{**drive, "osm_key": "amenity"}),
+            )
+        )
+        results = get(client, SEARCH, q="Union Station Drive").json()["results"]
+        assert len(results) == 3
 
     def test_an_answer_may_be_kept_by_the_browser_only(self, client, photon) -> None:
         photon(answer(LINCOLN))
@@ -348,44 +449,106 @@ class TestLimits:
         assert fake.calls == []
 
 
+TRAIL_POINT = (-77.260598, 38.90133)  # on the W&OD in Vienna
+
+WOOD = "Washington & Old Dominion Trail"
+NEARBY_HOUSE = feature(
+    -77.2608,
+    38.9011,
+    type="house",
+    housenumber="1500",
+    street="Mill Street Southeast",
+    city="Vienna",
+    county="Fairfax County",
+)
+
+
 @db
 class TestReverse:
-    def test_a_point_is_named_by_what_it_is_on(self, client, photon) -> None:
-        fake = photon(
-            answer(
-                feature(
-                    -77.0869,
-                    38.8870,
-                    type="house",
-                    housenumber="3100",
-                    street="Wilson Boulevard",
-                    district="Clarendon",
-                    city="Arlington",
-                )
-            )
+    def test_a_point_on_a_trail_is_named_for_the_trail(self, client, photon, router) -> None:
+        """Round-1 review: named from Photon's nearest object, the W&OD in
+        Vienna was "Mill Street Southeast"."""
+        fake_router = router(
+            located(([], 0.0, "service_road", 1), ([WOOD], 1.5, "cycleway", 117513092))
         )
-        response = get(client, REVERSE, lat="38.887", lon="-77.0869")
+        photon(answer(NEARBY_HOUSE))
+        response = get(client, REVERSE, lat=TRAIL_POINT[1], lon=TRAIL_POINT[0])
         assert response.status_code == 200
         (place,) = response.json()["results"]
         assert set(place) == PLACE_KEYS
-        assert place["name"] == "Wilson Boulevard"
-        assert "3100" not in place["label"]
-        assert "Clarendon" in place["label"] or "Arlington" in place["label"]
-        ((path, params),) = fake.calls
-        assert path == "/reverse"
-        assert set(params) == {"lat", "lon", "lang", "limit", "radius"}
-        assert params["limit"] == 1
+        assert place["name"] == WOOD
+        assert place["kind"] == "trail"
+        assert (place["osm_type"], place["osm_id"]) == ("W", 117513092)
+        assert "Vienna" in place["label"]
+        assert "Mill Street" not in place["label"]
+        assert fake_router.calls == [pytest.approx((TRAIL_POINT[1], TRAIL_POINT[0]))]
 
-    def test_a_named_place_keeps_its_name(self, client, photon) -> None:
+    def test_the_nearest_named_edge_wins_and_a_trail_wins_a_tie(
+        self, client, photon, router
+    ) -> None:
+        photon(answer())
+        router(located((["Maple Avenue East"], 9.9, "road", 2), ([WOOD], 3.0, "cycleway", 3)))
+        (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
+        assert place["name"] == WOOD
+        router(located((["Maple Avenue East"], 3.0, "road", 2), ([WOOD], 3.0, "cycleway", 3)))
+        (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
+        assert place["name"] == WOOD
+        router(located((["Maple Avenue East"], 2.0, "road", 2), ([WOOD], 9.0, "cycleway", 3)))
+        (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
+        assert (place["name"], place["kind"]) == ("Maple Avenue East", "street")
+
+    def test_a_named_edge_too_far_away_does_not_name_the_point(
+        self, client, photon, router
+    ) -> None:
+        photon(answer(NEARBY_HOUSE))
+        router(located(([WOOD], geocode.EDGE_NAME_RADIUS_M + 1, "cycleway", 3)))
+        (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
+        assert WOOD not in place["name"]
+        assert place["kind"] == "near"
+
+    def test_with_no_named_edge_it_is_near_a_place_with_no_house_number(
+        self, client, photon, router
+    ) -> None:
+        photon(answer(NEARBY_HOUSE))
+        router(located(([], 0.0, "footway", 4)))
+        (place,) = get(client, REVERSE, lat=38.9, lon=-77.26).json()["results"]
+        assert place["name"].startswith("near ")
+        assert "Mill Street Southeast" in place["name"]
+        assert "1500" not in place["label"]
+
+    def test_a_router_that_does_not_answer_falls_back_to_near(self, client, photon, router) -> None:
         photon(answer(LINCOLN))
+        router(geocode.Unavailable("router down"))
         (place,) = get(client, REVERSE, lat=INSIDE[1], lon=INSIDE[0]).json()["results"]
-        assert place["name"] == "Lincoln Memorial"
+        assert place["name"] == "near Lincoln Memorial"
+
+    def test_a_geocoder_that_does_not_answer_still_leaves_the_edge_name(
+        self, client, photon, router
+    ) -> None:
+        photon(geocode.Unavailable("photon down"))
+        router(located(([WOOD], 1.0, "cycleway", 3)))
+        response = get(client, REVERSE, lat=38.9, lon=-77.26)
+        assert response.status_code == 200
+        assert response.json()["results"][0]["name"] == WOOD
+
+    def test_neither_answering_is_502(self, client, photon, router) -> None:
+        photon(geocode.Unavailable("photon down"))
+        router(geocode.Unavailable("router down"))
+        assert get(client, REVERSE, lat=38.9, lon=-77.26).status_code == 502
 
     def test_nothing_nearby_is_an_empty_list(self, client, photon) -> None:
         photon(answer())
         response = get(client, REVERSE, lat=INSIDE[1], lon=INSIDE[0])
         assert response.status_code == 200
         assert response.json()["results"] == []
+
+    def test_what_photon_is_asked(self, client, photon) -> None:
+        fake = photon(answer())
+        get(client, REVERSE, lat="38.887", lon="-77.0869")
+        ((path, params),) = fake.calls
+        assert path == "/reverse"
+        assert set(params) == {"lat", "lon", "lang", "limit", "radius"}
+        assert params["limit"] == 1
 
     @pytest.mark.parametrize(
         "params",
@@ -397,14 +560,127 @@ class TestReverse:
             {"lat": "38.9", "lon": "-77", "lang": "fr"},
         ],
     )
-    def test_a_point_it_will_not_name_is_400(self, client, photon, params) -> None:
+    def test_a_point_it_will_not_name_is_400(self, client, photon, router, params) -> None:
         fake = photon(answer())
+        fake_router = router(located())
         assert get(client, REVERSE, **params).status_code == 400
-        assert fake.calls == []
+        assert fake.calls == [] and fake_router.calls == []
 
-    def test_a_geocoder_that_does_not_answer_is_502(self, client, photon) -> None:
-        photon(geocode.Unavailable("timed out"))
-        assert get(client, REVERSE, lat=INSIDE[1], lon=INSIDE[0]).status_code == 502
+
+class TestEdgeName:
+    def test_an_answer_with_no_edges_names_nothing(self) -> None:
+        assert geocode.edge_name([]) is None
+        assert geocode.edge_name([{"edges": None}]) is None
+        assert geocode.edge_name([{}]) is None
+
+    def test_only_the_first_location_counts(self) -> None:
+        answer_ = located(([], 1.0, "road", 1)) + located((["Elsewhere Road"], 1.0, "road", 2))
+        assert geocode.edge_name(answer_) is None
+
+    @pytest.mark.parametrize("ref", ["US 29", "VA 237", "I-66", "MD 355", "Route 7", "US 1 Bus"])
+    def test_a_street_is_named_by_its_name_not_its_route_number(self, ref) -> None:
+        """Georgia Avenue's edges list "US 29" first (measured 2026-09-28)."""
+        edge = geocode.edge_name(located(([ref, "Georgia Avenue Northwest"], 1.0, "road", 1)))
+        assert edge["name"] == "Georgia Avenue Northwest"
+
+    def test_a_route_number_alone_is_still_a_name(self) -> None:
+        assert geocode.edge_name(located((["US 29"], 1.0, "road", 1)))["name"] == "US 29"
+
+    def test_a_trail_beside_its_road_is_the_trail(self) -> None:
+        """The Custis Trail and Washington Boulevard, 2.6 m apart at one
+        sample: a point on the pair is named for the trail."""
+        pair = located(
+            (["Washington Boulevard"], 2.0, "road", 1), (["Custis Trail"], 4.6, "cycleway", 2)
+        )
+        assert geocode.edge_name(pair)["name"] == "Custis Trail"
+        margin = geocode.TRAIL_PREFERENCE_M
+        apart = located(
+            (["Washington Boulevard"], 2.0, "road", 1),
+            (["Custis Trail"], 2.0 + margin + 0.5, "cycleway", 2),
+        )
+        assert geocode.edge_name(apart)["name"] == "Washington Boulevard"
+
+    def test_a_blank_name_is_no_name(self) -> None:
+        assert geocode.edge_name(located(([" "], 1.0, "road", 1))) is None
+
+    def test_the_locate_request_is_bicycle_within_the_radius(self, monkeypatch) -> None:
+        from core import routing
+
+        seen = []
+        monkeypatch.setattr(
+            routing, "_transport", lambda url, payload, timeout: seen.append((url, payload)) or []
+        )
+        geocode._locate(38.9, -77.26)
+        ((url, payload),) = seen
+        assert url.endswith("/locate")
+        assert url.startswith(settings.VALHALLA_UPSTREAMS["standard"])
+        assert payload["costing"] == "bicycle"
+        assert payload["locations"] == [
+            {"lat": 38.9, "lon": -77.26, "radius": geocode.EDGE_NAME_RADIUS_M}
+        ]
+
+    def test_a_router_error_is_unavailable(self, monkeypatch) -> None:
+        from core import routing
+
+        def down(url, payload, timeout):
+            raise routing.RouterUnavailable("no")
+
+        monkeypatch.setattr(routing, "_transport", down)
+        with pytest.raises(geocode.Unavailable):
+            geocode._locate(38.9, -77.26)
+        monkeypatch.setattr(routing, "_transport", lambda url, payload, timeout: {"not": "a list"})
+        with pytest.raises(geocode.Unavailable):
+            geocode._locate(38.9, -77.26)
+
+
+class TestAbbreviations:
+    @pytest.mark.parametrize(
+        ("typed", "sent"),
+        [
+            ("1100 Wilson Blvd", "1100 Wilson Boulevard"),
+            ("3300 Wilson Blvd Arlington", "3300 Wilson Boulevard Arlington"),
+            ("1600 Pennsylvania Ave", "1600 Pennsylvania Avenue"),
+            ("1000 N Glebe Rd", "1000 North Glebe Road"),
+            ("N Glebe Rd", "North Glebe Road"),
+            ("E St NW", "E Street Northwest"),
+            ("14th St NW", "14th Street Northwest"),
+            ("E Capitol St", "East Capitol Street"),
+            ("Maple Ave E", "Maple Avenue East"),
+            ("Main St, Vienna", "Main Street, Vienna"),
+            ("Rock Creek Pkwy", "Rock Creek Parkway"),
+            ("Leesburg Pike Hwy", "Leesburg Pike Highway"),
+            ("Oak Ct", "Oak Court"),
+            ("Elm Ln", "Elm Lane"),
+            ("Logan Pl", "Logan Place"),
+            ("Dupont Sq", "Dupont Square"),
+            ("Fort Ter", "Fort Terrace"),
+            ("Massachusetts Ave SE", "Massachusetts Avenue Southeast"),
+            ("K St SW", "K Street Southwest"),
+            ("H St NE", "H Street Northeast"),
+            ("Old Dominion Dr", "Old Dominion Drive"),
+            ("S Four Mile Run Dr", "South Four Mile Run Drive"),
+            ("Lee Hwy W", "Lee Highway West"),
+        ],
+    )
+    def test_abbreviations_are_spelled_out(self, typed, sent) -> None:
+        assert geocode.expand_abbreviations(typed) == sent
+
+    @pytest.mark.parametrize(
+        "kept",
+        [
+            "St Elmo Ave",  # a saint first; only the Ave changes
+            "Mount St Mary's",
+            "Dr Martin Luther King",
+            "Union Station",
+            "W&OD Trail",
+            "S",
+            "NW",
+        ],
+    )
+    def test_what_is_not_an_abbreviation_is_left(self, kept) -> None:
+        assert geocode.expand_abbreviations(kept).split()[0] == kept.split()[0]
+        if kept != "St Elmo Ave":
+            assert geocode.expand_abbreviations(kept) == kept
 
 
 class TestDescribe:
@@ -477,6 +753,21 @@ class TestDescribe:
             "properties": {"name": "y"},
         }
         assert geocode.results(answer(bad, broken, "junk"), reverse=False) == []
+
+
+@db
+def test_an_unexpected_failure_says_it_was_the_place_lookup(client, photon, monkeypatch) -> None:
+    """The 500 a geocoding endpoint answers is about finding a place, not
+    about planning a route."""
+    photon(answer())
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(geocode, "search", broken)
+    response = get(client, SEARCH, q="Union Station")
+    assert response.status_code == 500
+    assert "route" not in response.json()["error"].lower()
 
 
 def test_both_are_in_the_openapi_schema(client) -> None:

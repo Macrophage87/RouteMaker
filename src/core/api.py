@@ -261,7 +261,13 @@ def unexpected(request, exc: Exception):
     SQL, paths and settings, to anyone who can make a request fail.
     """
     logger.exception("unhandled error in %s %s", request.method, request.path)
+    if request.path.startswith(GEOCODE_PATHS):
+        return _error(500, "Something went wrong looking up the place.")
     return _error(500, "Something went wrong planning this route.")
+
+
+# The place-search endpoints, whose unexpected failure is not a route's.
+GEOCODE_PATHS = ("/api/geocode", "/api/reverse")
 
 
 def errors_as_json(view):
@@ -468,11 +474,26 @@ class ReverseIn(Schema):
 
 
 class PlaceOut(Schema):
-    name: str = Field(description="A short name: the place, or the street.")
+    name: str = Field(description="A short name: the place, the street or trail, or 'near X'.")
     label: str = Field(description="One line naming it with its neighbourhood or town.")
     lon: float
     lat: float
-    kind: str = Field(description="Photon's layer: house, street, city, district, other, ...")
+    kind: str = Field(
+        description=(
+            "Search: Photon's layer (house, street, city, district, other, ...). Names for a"
+            " point: 'street' or 'trail' when named from the route network, 'near' when not."
+        )
+    )
+    osm_type: Literal["N", "W", "R"] | None = Field(
+        default=None, description="The OSM element type of the result, when known."
+    )
+    osm_id: int | None = Field(default=None, description="The OSM element id, when known.")
+    osm_key: str | None = Field(
+        default=None, description="The OSM tag key that makes it a place (railway, shop, ...)."
+    )
+    osm_value: str | None = Field(
+        default=None, description="That tag's value (station, bicycle, park, cycleway, ...)."
+    )
 
 
 class PlacesOut(Schema):
