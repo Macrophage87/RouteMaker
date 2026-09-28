@@ -330,3 +330,30 @@ test("how many stations route to each kind of bike entrance (README.md's counts)
   // the six MARC-only stations OSM tags nothing at.
   assert.deepEqual(counts, { elevator: 64, "osm-elevator": 8, entrance: 27, station: 6 });
 });
+
+test("a corrected station's lines stay in drawing order", () => {
+  const fresh = buildStations(metro, entrances, marc);
+  // Ashburn is Silver only, last in drawing order: lines added to it go before.
+  const ashburn = fresh.find((s) => s.name === "Ashburn")!;
+  assert.deepEqual(ashburn.metro, ["silver"]);
+  const gis = ashburn.id.replace(/^metro-/, "");
+  applyCorrections(fresh, {
+    changes: [{ add: ["orange", "red"], since: "2030-01-01", source: "x", stations: [["Ashburn", gis]] }],
+  });
+  assert.deepEqual(ashburn.metro, ["red", "orange", "silver"]);
+});
+
+test("a MARC station's OSM entrance joins its station's entrances", () => {
+  const withEntrance: MarcCollection = {
+    features: [
+      ...marc.features,
+      {
+        geometry: { type: "Point", coordinates: [-76.843, 38.9733] },
+        properties: { kind: "entrance", station: 2, osm: "node/1" },
+      },
+    ],
+  };
+  const seabrook = buildStations(metro, entrances, withEntrance).find((s) => s.name === "Seabrook")!;
+  assert.deepEqual(seabrook.entrances, [[-76.843, 38.9733]]);
+  assert.deepEqual(bikeEntrance(seabrook), { point: [-76.843, 38.9733], kind: "entrance" });
+});
