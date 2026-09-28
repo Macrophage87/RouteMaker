@@ -5,7 +5,7 @@ Owner request (2026-09-27): the map shows the MARC Penn Line's stations "up to
 Penn Station, but not more north" - Washington Union Station northward to
 Baltimore Penn Station inclusive, and nothing past it. They come from
 OpenStreetMap, which the map already credits (ODbL), and not from Maryland's
-own MARC layer, whose redistribution terms PLAN.md:30-35 bars until a waiver
+own MARC layer, which PLAN.md's Maryland terms (Region and data) bar until a waiver
 exists.
 
 The list is derived, never typed: the Penn Line's route_master
@@ -188,7 +188,7 @@ def _south_of_north_end(stations: list[Station]) -> list[Station]:
     """The part of one variant's calls from SOUTH_END up to NORTH_END, either direction."""
     names = [s.name for s in stations]
     if NORTH_END not in names:
-        return [s for s in stations]  # a short working that never reaches it
+        return list(stations)  # a short working that never reaches it
     cut = names.index(NORTH_END)
     if SOUTH_END in names and names.index(SOUTH_END) > cut:
         return stations[cut:]  # southbound: from Baltimore Penn on
@@ -283,7 +283,6 @@ def geojson(
     stations: list[Station], entrances: list[Entrance], route: int, colour: str | None
 ) -> dict:
     """The fixture. `colour` is the route's own colour= tag, the colour the map draws it in."""
-    point = _point
     return {
         "type": "FeatureCollection",
         "source": (
@@ -294,7 +293,7 @@ def geojson(
         "features": [
             {
                 "type": "Feature",
-                "geometry": point(s.lon, s.lat),
+                "geometry": _point(s.lon, s.lat),
                 "properties": {"kind": "station", "name": s.name, "order": i, "osm": s.osm},
             }
             for i, s in enumerate(stations)
@@ -302,7 +301,7 @@ def geojson(
         + [
             {
                 "type": "Feature",
-                "geometry": point(e.lon, e.lat),
+                "geometry": _point(e.lon, e.lat),
                 "properties": {"kind": e.kind, "station": e.station, "osm": e.osm},
             }
             for e in entrances

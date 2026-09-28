@@ -598,8 +598,8 @@ The rail stations drawn over the base map carry one more credit on every map
 view, "Metro stations and entrances: District of Columbia (Open Data DC),
 CC BY 4.0" (`RAIL_CREDITS` in `frontend/src/lib/mapStyle.ts`). Their sources,
 licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
-the MARC Penn Line's stations are OpenStreetMap's and need nothing beyond the
-ODbL credit.
+the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
+none, are OpenStreetMap's and need nothing beyond the ODbL credit.
 
 ### Fetching it
 

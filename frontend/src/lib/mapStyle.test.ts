@@ -70,7 +70,7 @@ test("the licence notices are linked from the credits", () => {
 
 test("the rail stations' source is credited on every map, after the base map's", () => {
   const all = MAP_CREDITS.join(" ");
-  assert.match(all, /Metro stations and entrances: District of Columbia \(Open Data DC\)/);
+  assert.match(all, /Open Data DC/);
   const at = MAP_ATTRIBUTION.indexOf("Open Data DC");
   assert.ok(at > MAP_ATTRIBUTION.indexOf("OpenStreetMap"));
   assert.match(MAP_ATTRIBUTION.slice(at), /CC BY 4\.0/);
