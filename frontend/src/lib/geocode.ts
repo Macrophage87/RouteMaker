@@ -276,7 +276,18 @@ export function placeKey([lon, lat]: LonLat): string {
   return `${lon.toFixed(4)},${lat.toFixed(4)}`;
 }
 
-type Named = { state: "named"; name: string; label: string } | { state: "none" } | { state: "failed" };
+type Named =
+  | { state: "named"; name: string; label: string }
+  | { state: "none" }
+  | { state: "failed"; at: number };
+
+/**
+ * A lookup that failed (not one that found nothing) is asked again after this
+ * long, while its point is still in the plan: a geocoder restarting or a busy
+ * minute should not leave a point in coordinates until the page is reloaded
+ * (round-1 review).
+ */
+export const FAILED_RETRY_MS = 30_000;
 
 /**
  * Names for route points, one lookup per point: a cache by `placeKey`, one
@@ -289,6 +300,7 @@ export class PlaceNamer {
   private wanted: LonLat[] = [];
   private running = false;
   private timer: unknown = null;
+  private retryTimer: unknown = null;
   private retried = new Set<string>();
 
   private readonly options: {
@@ -296,6 +308,8 @@ export class PlaceNamer {
     onChange: () => void;
     timers?: Timers;
     debounceMs?: number;
+    /** Milliseconds now; Date.now by default. */
+    now?: () => number;
   };
 
   constructor(options: PlaceNamer["options"]) {
@@ -327,9 +341,19 @@ export class PlaceNamer {
     }, this.options.debounceMs ?? NAME_DEBOUNCE_MS);
   }
 
+  private now(): number {
+    return (this.options.now ?? Date.now)();
+  }
+
+  /** Whether `point` should be looked up: never asked, or failed long enough ago. */
+  private due(point: LonLat): boolean {
+    const named = this.cache.get(placeKey(point));
+    return named === undefined || (named.state === "failed" && this.now() - named.at >= FAILED_RETRY_MS);
+  }
+
   private pump() {
     if (this.running) return;
-    const point = this.wanted.find((p) => !this.cache.has(placeKey(p)));
+    const point = this.wanted.find((p) => this.due(p));
     if (!point) return;
     const key = placeKey(point);
     this.running = true;
@@ -343,16 +367,28 @@ export class PlaceNamer {
         }, retryDelayMs(result));
         return;
       }
-      if (!this.cache.has(key)) {
+      const cached = this.cache.get(key);
+      if (cached === undefined || cached.state === "failed") {
         const first = result.ok ? result.places[0] : undefined;
-        this.cache.set(
-          key,
-          first ? { state: "named", name: first.name, label: first.label } : { state: result.ok ? "none" : "failed" },
-        );
+        if (first) this.cache.set(key, { state: "named", name: first.name, label: first.label });
+        else if (result.ok) this.cache.set(key, { state: "none" });
+        else {
+          this.cache.set(key, { state: "failed", at: this.now() });
+          this.retried.delete(key);
+          this.retryLater();
+        }
         this.options.onChange();
       }
       this.pump();
     });
+  }
+
+  private retryLater() {
+    if (this.retryTimer !== null) return;
+    this.retryTimer = this.timers.set(() => {
+      this.retryTimer = null;
+      this.pump();
+    }, FAILED_RETRY_MS);
   }
 }
 

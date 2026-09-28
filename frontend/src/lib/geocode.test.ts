@@ -11,6 +11,7 @@ import {
   PlaceSearchRunner,
   RETRY_CAP_MS,
   SEARCH_DEBOUNCE_MS,
+  FAILED_RETRY_MS,
   applyPlace,
   choicesFor,
   coordinatesText,
@@ -35,7 +36,9 @@ class FakeTimers implements Timers {
   now = 0;
   private id = 1;
   private pending = new Map<number, { at: number; fn: () => void }>();
+  delays: number[] = [];
   set = (fn: () => void, ms: number) => {
+    this.delays.push(ms);
     const id = this.id++;
     this.pending.set(id, { at: this.now + ms, fn });
     return id;
@@ -247,7 +250,7 @@ function namerRig() {
   const timers = new FakeTimers();
   const api = fakeSend<LonLat>();
   let changes = 0;
-  const namer = new PlaceNamer({ send: api.send, onChange: () => (changes += 1), timers });
+  const namer = new PlaceNamer({ send: api.send, onChange: () => (changes += 1), timers, now: () => timers.now });
   return { timers, api, namer, changes: () => changes };
 }
 
@@ -294,19 +297,46 @@ test("a point chosen from search keeps the search's name", async () => {
   assert.ok(changes() >= 1);
 });
 
-test("a failed or empty lookup falls back to coordinates and is not asked again", async () => {
+test("an empty lookup falls back to coordinates and is not asked again", async () => {
   const { timers, api, namer } = namerRig();
-  namer.want([A, B]);
+  namer.want([B]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  api.calls[0].answer(found());
+  await flush();
+  assert.equal(namer.name(B), undefined);
+  namer.want([B]);
+  await timers.advance(FAILED_RETRY_MS * 2);
+  assert.equal(api.calls.length, 1);
+});
+
+test("several failed lookups wait on one timer, not one each", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A, B, C]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  for (let i = 0; i < 3; i += 1) {
+    api.calls[i].answer({ ok: false, status: 500 });
+    await flush();
+  }
+  assert.equal(timers.delays.filter((ms) => ms === FAILED_RETRY_MS).length, 1);
+  await timers.advance(FAILED_RETRY_MS);
+  assert.equal(api.calls.length, 4, "the three are asked again, one at a time");
+});
+
+test("a failed lookup shows coordinates, then is asked again later, not for the session", async () => {
+  const { timers, api, namer } = namerRig();
+  namer.want([A]);
   await timers.advance(NAME_DEBOUNCE_MS);
   api.calls[0].answer({ ok: false, status: 500 });
   await flush();
-  api.calls[1].answer(found());
+  assert.equal(namer.name(A), undefined, "coordinates meanwhile");
+  namer.want([A]);
+  await timers.advance(NAME_DEBOUNCE_MS);
+  assert.equal(api.calls.length, 1, "not asked again at once");
+  await timers.advance(FAILED_RETRY_MS);
+  assert.equal(api.calls.length, 2, "asked again once the wait is over, with no new change to the plan");
+  api.calls[1].answer(found({ ...PLACE, name: "Lincoln Memorial" }));
   await flush();
-  assert.equal(namer.name(A), undefined);
-  assert.equal(namer.name(B), undefined);
-  namer.want([A, B]);
-  await timers.advance(NAME_DEBOUNCE_MS * 2);
-  assert.equal(api.calls.length, 2);
+  assert.equal(namer.name(A)?.name, "Lincoln Memorial");
 });
 
 test("a point no longer in the plan is not looked up", async () => {
