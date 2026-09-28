@@ -32,7 +32,7 @@ import { PENN_COLOUR, RAIL_STATIONS, stationById } from "./lib/railData.ts";
 import { addRailStations, setRailVisibility } from "./lib/railLayer.ts";
 import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
-import { stressTilesAnswer } from "./lib/stressProtocol.ts";
+import { stressProbe } from "./lib/stressProtocol.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -198,7 +198,6 @@ export function MapView(props: Props) {
     });
     mapRef.current = map;
     let disposed = false;
-    let recheck: ReturnType<typeof setTimeout> | null = null;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
     const canvas = map.getCanvas();
@@ -421,23 +420,13 @@ export function MapView(props: Props) {
     const addStress = () => addStressOverlay(map, origin, callbacks.current.stressVisible);
 
     // Ask the endpoint; if it does not answer, say so and ask again later, so
-    // one bad minute does not take the overlay away for the whole visit.
-    const probeStress = async () => {
-      const available = await stressTilesAnswer(origin);
-      if (disposed) return;
-      if (available) {
-        addStress();
-        callbacks.current.onStressAvailability("available");
-      } else {
-        callbacks.current.onStressAvailability("unavailable");
-        if (recheck === null) {
-          recheck = setTimeout(() => {
-            recheck = null;
-            void probeStress();
-          }, STRESS_RECHECK_MS);
-        }
-      }
-    };
+    // one bad minute does not take the overlay away for the whole visit
+    // (stressProtocol.ts, stressProbe).
+    const stressCheck = stressProbe(origin, STRESS_RECHECK_MS, {
+      add: addStress,
+      report: (availability) => callbacks.current.onStressAvailability(availability),
+      disposed: () => disposed,
+    });
 
     map.on("load", () => {
       loaded.current = true;
@@ -492,25 +481,20 @@ export function MapView(props: Props) {
       syncRoute(map, callbacks.current, fitted);
       callbacks.current.onReady(map);
       callbacks.current.onStressAvailability("checking");
-      void probeStress();
+      void stressCheck.probe();
     });
 
     map.on("error", (event) => {
       // A stress tile that failed after the endpoint had answered: check the
       // endpoint again rather than trusting one tile's failure either way.
       const source = (event as { sourceId?: string }).sourceId;
-      if (source === STRESS_SOURCE_ID && recheck === null) {
-        recheck = setTimeout(() => {
-          recheck = null;
-          void probeStress();
-        }, 5_000);
-      }
+      if (source === STRESS_SOURCE_ID) stressCheck.later(5_000);
     });
 
     return () => {
       disposed = true;
       rail?.close();
-      if (recheck !== null) clearTimeout(recheck);
+      stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
       window.removeEventListener("mousemove", onMouseMove);

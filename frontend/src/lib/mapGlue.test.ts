@@ -514,3 +514,19 @@ test("the stress overlay and the coverage mask go under the rail stations and th
     for (const r of [...rail, ...route]) assert.ok(at < ids.indexOf(r.id), `${a.layer.id} over ${r.id}`);
   }
 });
+
+test("a coverage ring needs four positions, first and last the same; three is no mask", async () => {
+  // MERGE-TILES re-check M12: the boundary was untested.
+  const ring = (n: number) => {
+    const all = [
+      [-78, 38.2],
+      [-76.02, 38.2],
+      [-76.02, 39.72],
+      [-78, 38.2],
+    ];
+    return { type: "Feature", geometry: { type: "Polygon", coordinates: [all.slice(4 - n)] } };
+  };
+  const serve = (body: unknown) => (async () => new Response(JSON.stringify(body), { status: 200 })) as typeof fetch;
+  assert.notEqual(await fetchCoverage("o", serve(ring(4))), null);
+  assert.equal(await fetchCoverage("o", serve(ring(3))), null);
+});

@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   GIVE_UP_S,
   MAX_ATTEMPTS,
@@ -13,6 +14,7 @@ import {
   protocolUrl,
   registerStressProtocol,
   retryAfterS,
+  stressProbe,
   stressTilesAnswer,
 } from "./stressProtocol.ts";
 
@@ -230,4 +232,90 @@ test("the availability check waits out refusals, and fails only on what retrying
     assert.equal(await stressTilesAnswer(origin, { get: gone.get, queue: new Queue(2) }), false);
     assert.equal(gone.asked.length, 1);
   }
+});
+
+function probeHarness(answers: boolean[]) {
+  const timers: Array<{ run: () => void; ms: number }> = [];
+  const events: string[] = [];
+  let gone = false;
+  const check = stressProbe("https://example.test", 60_000, {
+    answer: async () => answers.shift() ?? false,
+    add: () => events.push("add"),
+    report: (a) => events.push(a),
+    disposed: () => gone,
+    setTimer: (run, ms) => {
+      const timer = { run, ms };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimer: (timer) => {
+      timers.splice(timers.indexOf(timer as (typeof timers)[number]), 1);
+    },
+  });
+  return { check, timers, events, dispose: () => (gone = true) };
+}
+
+test("MapView's check: the overlay goes on when the endpoint answers, and not when it does not", async () => {
+  const up = probeHarness([true]);
+  await up.check.probe();
+  assert.deepEqual(up.events, ["add", "available"]);
+  assert.equal(up.timers.length, 0);
+
+  const down = probeHarness([false, true]);
+  await down.check.probe();
+  assert.deepEqual(down.events, ["unavailable"]);
+  assert.deepEqual(down.timers.map((t) => t.ms), [60_000], "asked again a minute later");
+  down.timers.shift()!.run();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(down.events, ["unavailable", "add", "available"]);
+});
+
+test("a check already waiting is not doubled, a cancelled one never runs, a late answer is dropped", async () => {
+  const h = probeHarness([false]);
+  await h.check.probe();
+  h.check.later(5_000);
+  assert.equal(h.timers.length, 1, "the minute's recheck is already waiting");
+  h.check.cancel();
+  assert.equal(h.timers.length, 0);
+  h.check.later(5_000);
+  assert.deepEqual(h.timers.map((t) => t.ms), [5_000]);
+
+  const late = probeHarness([true]);
+  late.dispose();
+  await late.check.probe();
+  assert.deepEqual(late.events, []);
+});
+
+test("by default the check asks the tile endpoint itself, and a 404 leaves the overlay off", async () => {
+  // MERGE-TILES re-check M19: a probe that answered yes without asking passed.
+  const real = globalThis.fetch;
+  const asked: string[] = [];
+  globalThis.fetch = (async (url: string) => {
+    asked.push(url);
+    return new Response(null, { status: 404 });
+  }) as typeof fetch;
+  try {
+    const events: string[] = [];
+    const check = stressProbe("https://example.test", 60_000, {
+      add: () => events.push("add"),
+      report: (a) => events.push(a),
+      disposed: () => false,
+      setTimer: () => null,
+    });
+    await check.probe();
+    assert.deepEqual(events, ["unavailable"]);
+    assert.equal(asked.length, 1);
+    assert.match(asked[0], /^https:\/\/example\.test\/tiles\/stress\/12\/\d+\/\d+\.pbf$/);
+  } finally {
+    globalThis.fetch = real;
+  }
+});
+
+test("MapView checks through stressProbe with its own answer, and cancels on the way out", () => {
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  const call = view.match(/stressProbe\(origin, STRESS_RECHECK_MS, \{([^}]*)\}\)/);
+  assert.ok(call, "MapView no longer checks through stressProbe");
+  assert.doesNotMatch(call[1], /answer/, "MapView must not stand its own answer in for the endpoint's");
+  assert.match(view, /stressCheck\.cancel\(\);/);
+  assert.match(view, /void stressCheck\.probe\(\);/);
 });
