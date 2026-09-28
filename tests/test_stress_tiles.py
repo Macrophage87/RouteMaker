@@ -757,6 +757,30 @@ class TestCoverageClip:
             assert not stress_tiles.straddles_coverage(*tile_of(*CENTRE, z), margin)
             assert stress_tiles.straddles_coverage(*self.east_edge_tile(z), margin)
 
+    def test_an_edge_inside_the_buffer_alone_still_clips(self, client, segment_schemas) -> None:
+        """A tile wholly inside the box whose buffer reaches past its edge: a
+        line in that part of the buffer is past the edge, and not drawn. (No
+        tile of the real box falls so; a box moved to make one does.)"""
+        from django.test import override_settings
+
+        live, _ = segment_schemas
+        z, x, y = tile_of(*CENTRE, 14)
+        level = stress_tiles.level_for(z)
+        west, south, east, north = stress_tiles.tile_bounds(z, x, y)
+        unit = (east - west) / level.extent
+        edge = east + unit * level.buffer / 4
+        _line(live, (edge + unit * 2, south + 0.3 * (north - south)),
+              (edge + unit * 2, south + 0.7 * (north - south)))  # fmt: skip
+        box = (
+            settings.COVERAGE_BBOX[0],
+            settings.COVERAGE_BBOX[1],
+            edge,
+            settings.COVERAGE_BBOX[3],
+        )
+        with override_settings(COVERAGE_BBOX=box):
+            layer = decode(client.get(url(z, x, y)).content).get("stress")
+        assert layer is None or not layer.features
+
     @pytest.mark.parametrize(
         ("lon", "lat"), [(-78.0, 39.0), (-76.02, 39.0), (-77.0, 38.2), (-77.0, 39.72)]
     )

@@ -100,14 +100,20 @@ class TestCache:
         for n in range(4):
             tile_cache.put("new", 15, n, 0, b"x" * 100)
             time.sleep(0.01)
-        tile_cache.put("new", 12, 0, 0, b"x" * 1000)
+        # The deepest pre-drawn zoom is kept whatever its size, even newest.
+        tile_cache.put("new", tile_cache.PREDRAW_MAX_ZOOM, 0, 0, b"x" * 1000)
         tile_cache.put("old", 15, 9, 9, b"x")
-        dropped = tile_cache.evict("new", max_bytes=250)
+        # Exactly the two newest z15 tiles fit.
+        dropped = tile_cache.evict("new", max_bytes=200)
         assert dropped == 3  # the stale row, and the two oldest z15 tiles
         with connection.cursor() as cursor:
             cursor.execute("SELECT version, z, x FROM stress_tile_cache ORDER BY z, x")
             kept = cursor.fetchall()
-        assert kept == [("new", 12, 0), ("new", 15, 2), ("new", 15, 3)]
+        assert kept == [
+            ("new", tile_cache.PREDRAW_MAX_ZOOM, 0),
+            ("new", 15, 2),
+            ("new", 15, 3),
+        ]
 
     def test_predraw_draws_z10_to_13_once(self, live) -> None:
         drawn, cached = tile_cache.predraw()
