@@ -172,4 +172,3 @@ change.
   "(most of beach drive in DC is closed to car traffic permanantly)". The owner
   approved loading it on 2026-09-28 ("Yes, load it"), at the next deploy.
   Montgomery County's Beach Drive stays as OSM tags it, closed at weekends.
-

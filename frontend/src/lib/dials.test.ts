@@ -134,4 +134,3 @@ test("the bottom of the traffic slider is traffic tolerant and warns", () => {
   // Mass Ride's slider is locked at 0 and says why; it does not warn.
   assert.ok(!warnsTrafficTolerant("mass-ride", 0));
 });
-

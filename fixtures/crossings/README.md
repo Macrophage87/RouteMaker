@@ -226,7 +226,7 @@ agree.
   trail-class ways from the name match for that reason. Without the exclusion
   the column barred the path as well as the roadway, on every variant, and the
   remap's `bicycle=no` then deleted the only bicycle crossing of the Potomac at
-  those points from all three graphs.
+  those points from every graph.
 
 * `ordinary_ride_penalty_way_ids` — retired on 2026-09-27 (the owner: "Retire
   it (Recommended)"). It put a routing penalty on the 11th Street local span

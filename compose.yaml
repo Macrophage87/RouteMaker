@@ -572,9 +572,6 @@ services:
       resources:
         limits: { memory: 1G, cpus: "1" }
 
-  # The only component that holds the bot token, and the source of authorization
-  # truth. Exposes its membership interface on the internal network behind a
-  # shared secret, read-only.
   # The standard graph at the weekend (pipeline.variants.Variant.WEEKEND). The
   # owner's "Build the weekend graph" of 2026-09-27. The same limits as its
   # siblings; measured resident on a DC box graph, see docs/OPERATIONS.md.
@@ -610,6 +607,9 @@ services:
       resources:
         limits: { memory: 2G, cpus: "2" }
 
+  # The only component that holds the bot token, and the source of authorization
+  # truth. Exposes its membership interface on the internal network behind a
+  # shared secret, read-only.
   # Behind the same profile as the renderer and for the same reason: there is no
   # bot source in this repository, so there is no routemaker/bot image to pull.
   # handoff.md section 7's first row. What follows from its absence is written

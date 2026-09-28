@@ -227,9 +227,9 @@ def tile_build_commands(
     `valhalla_build_tiles` is started against it.
 
     It also downloads roughly a hundred megabytes from GitHub each time, and the
-    database is identical for all three variants - it is a function of the
+    database is identical for every variant - it is a function of the
     world, not of the extract. So the first variant of a rebuild builds it and
-    the other two copy that file (`timezone_source`): one download per rebuild
+    the others copy that file (`timezone_source`): one download per rebuild
     rather than three, and two fewer chances for the fetch to fail.
 
     The admin database is copied the same way, for the same reason and with one
@@ -715,8 +715,9 @@ def check_disk_gate(
 ) -> DiskGate:
     """Refuse a rebuild that cannot fit a second full set on the data volume.
 
-    A second set is the served tiles again, plus the three variant extracts the
-    build writes from the source, plus the source once more for scratch. With
+    A second set is the served tiles again, plus the four variant extracts the
+    build writes from the source (the weekend twin among them), plus the
+    source once more for scratch. With
     no served set yet there is nothing to measure, so the configured floor
     stands in until the first build has been sized. The gate is the plan's
     80 percent alert made hard: the build may not take the volume past it.
@@ -724,7 +725,7 @@ def check_disk_gate(
     tiles_dir = Path(tiles_dir)
     tiles_dir.mkdir(parents=True, exist_ok=True)
     usage = disk_usage(str(tiles_dir))
-    required = max(current_set_bytes(tiles_dir) + 4 * source_bytes, minimum_free)
+    required = max(current_set_bytes(tiles_dir) + (len(Variant) + 1) * source_bytes, minimum_free)
     fraction_after = (usage.used + required) / usage.total if usage.total else 1.0
     gate = DiskGate(usage.total, usage.used, usage.free, required, fraction_after)
     if usage.free < required or fraction_after > fraction:

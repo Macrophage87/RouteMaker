@@ -125,8 +125,10 @@ def test_the_gate_sizes_a_second_set_from_the_served_one(tmp_path) -> None:
         fraction=0.8,
         disk_usage=usage(100 * GIB, 10 * GIB),
     )
-    assert gate.required == served + 4 * GIB
-    assert gate.fraction_after == pytest.approx((10 * GIB + served + 4 * GIB) / (100 * GIB))
+    # Four variant extracts (the weekend twin among them) and scratch: five
+    # times the source (OPS review, 2026-09-28).
+    assert gate.required == served + 5 * GIB
+    assert gate.fraction_after == pytest.approx((10 * GIB + served + 5 * GIB) / (100 * GIB))
 
 
 def test_the_floor_applies_until_a_first_set_has_been_measured(tmp_path) -> None:
@@ -182,12 +184,12 @@ def test_a_build_landing_exactly_on_the_gate_is_allowed(tmp_path) -> None:
     alert fires when it finishes".
 
     Chosen so the arithmetic is exact rather than nearly so: a 100 GiB volume
-    20 GiB used, and a required 60 GiB, is 80 percent after, in floating point
-    as well as on paper.
+    20 GiB used, and a required 60 GiB (five times a 12 GiB source), is 80
+    percent after, in floating point as well as on paper.
     """
     at_the_gate = tiles.check_disk_gate(
         tmp_path,
-        source_bytes=15 * GIB,
+        source_bytes=12 * GIB,
         minimum_free=0,
         fraction=0.8,
         disk_usage=usage(100 * GIB, 20 * GIB),
@@ -199,7 +201,7 @@ def test_a_build_landing_exactly_on_the_gate_is_allowed(tmp_path) -> None:
     with pytest.raises(tiles.DiskGateRefused):
         tiles.check_disk_gate(
             tmp_path,
-            source_bytes=15 * GIB,
+            source_bytes=12 * GIB,
             minimum_free=0,
             fraction=0.8,
             disk_usage=usage(100 * GIB, 20 * GIB + 1),

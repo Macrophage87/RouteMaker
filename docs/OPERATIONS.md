@@ -560,7 +560,7 @@ volume the gate measures, so a gate placed after the extract had been produced
 would be a gate on a volume the rebuild had already filled. With no extract on
 disk there is nothing to measure, so the gate is sized from
 `pipeline.source.ESTIMATED_BYTES` (2 GiB, which `check_disk_gate` multiplies by
-four for the build's own three variant extracts and its scratch); once there is
+five for the build's own four variant extracts and its scratch); once there is
 one, its real size is what the gate charges. A rebuild refused by the gate has
 downloaded nothing.
 
@@ -742,7 +742,7 @@ operator. `rollback_rebuild --confirm` writes one the same way.
 ## First rebuild on a fresh host
 
 A new deployment serves no routes at all until this has been done once: nothing
-but a rebuild creates the tiles the three Valhalla containers mount, and the
+but a rebuild creates the tiles the four Valhalla containers mount, and the
 `current` symlinks they read do not exist yet. The order below is the order the
 code forces, not a preference — each step exists because the one after it fails
 without it.
@@ -974,7 +974,7 @@ the first host to run it is the first test of it.
    itself.
 
 9. **Restart the routers.** `valhalla_service` opens its tile extract once at
-   start, so until this runs the three containers are serving the empty
+   start, so until this runs the four containers are serving the empty
    directories they started against.
 
    ```sh
@@ -1108,22 +1108,41 @@ Drive NW; 19 ways in the DC box) are off-road paths at tier 1. A weekend ride
 on a preset whose graph is the standard one routes on it; the e-bike and
 no-trail graphs have no twin. If the weekend router does not answer, the api
 plans the ride on the standard graph and the answer's `variant` says
-`standard`, so a stack without it degrades rather than failing.
+`standard`, so a stack without it degrades rather than failing. One call to it
+may take at most 15 s (`routing.WEEKEND_TIMEOUT_S`) and a failure is remembered
+for a minute (`WEEKEND_FAILURE_TTL_S`), so between the deploy and
+`up -d valhalla-weekend` - when the name does not resolve and each attempt
+cost 2.5 s - one weekend ride a minute pays for the failure and the others go
+straight to the standard graph, with one WARNING a minute in the api's log.
+`docker compose restart ... valhalla-weekend` exits 0 and does nothing for a
+service with no container yet: `up -d valhalla-weekend` is what starts it.
+
+The first rebuild that builds four graphs is the first that has a weekend
+build at all, so `rollback_rebuild` after it goes back on the other three and
+withdraws the weekend graph - no `current` link, no settings row - which is
+the deployment before that rebuild; its dry run says so.
 
 What it costs, measured on 2026-09-27. On the DC box graph
 (-77.22,38.78,-76.90,39.02) the weekend tile build took 530-568 s against the
 standard graph's 549-555 s, and writing its extract about as long as any
 other variant's. The first live build (2026-09-25) took 21 min for the
 standard tiles, 7 min for no-trail and 20 min for e-bike, so the weekend
-graph adds about 20-25 minutes to a rebuild of about four hours, and another
-tile set of about 0.5 GB (`tiles.tar`, 481 MB for standard) beside each
+graph adds about 20-25 minutes to a rebuild of about four hours on a quiet
+host, and much more on a loaded one (a box weekend build took 2365 s at load
+20-30 against 530-568 s quiet), which is why the rebuild's limit is now 8
+hours. On disk it is another build directory of about 1.1 GB - `tiles.tar`,
+503 MB, and the loose `tiles/` it was made from, which is kept - beside each
 promoted build and each one retained. Resident memory is the standard
 router's again: the live standard router sat at 239-387 MiB and no-trail at
 80-188 MiB when read; the box routers after a trip set were 74-199 MiB. Its
 compose limit is 2 GB like its siblings, which puts the sum of limits at 29 GB
 on a 12 GB host: `scripts/check_compose_limits.py` still checks against its
-32 GB figure, and on this host the limits are ceilings nothing reaches
-together, not a reservation.
+32 GB figure. On this host the limits are not a reservation, and one of them is
+reached: the live rebuild container ran at its 8 GiB limit (`memory.peak`
+8589934592, `memory.events` max 12060, no OOM kill), relying on reclaim; the
+routers' share is small (the weekend one 0.1 GB on weekdays, 0.3-1 GB at the
+weekend). Steady state is about 8 GB and a Tuesday rebuild takes the host to
+about 15 GB, into swap - an open owner question (PLAN.md:293's 32 GB).
 
 On weekdays the weekend router is idle; restart it with the others after a
 promotion (below).

@@ -474,7 +474,7 @@ def a4_first_rebuild(ctx: Context, out: list[str], *, second: bool = False) -> N
     time.sleep(10)
     for variant in VARIANTS:
         _canary(ctx, variant)
-    out.append("canary route answered on all three variants")
+    out.append("canary route answered on all four variants")
     ops = ctx.exec_in("worker", "./manage.py", "check_operations", check=False, timeout=120)
     if ops.returncode != 0:
         raise Fail("check_operations after the rebuild: " + ops.stdout.strip().splitlines()[-1])
@@ -669,7 +669,7 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
         raise Fail("rollback dry run: " + (dry.stderr or dry.stdout).strip().splitlines()[-1])
     targets = dict(re.findall(r"^(\S+): would go back to build (\S+)", dry.stdout, re.M))
     out.append(
-        "dry run names a target for all three variants: "
+        "dry run names a target for all four variants: "
         + ", ".join(f"{k}={v}" for k, v in targets.items())
     )
     if not ctx.args.confirm_rollback:
@@ -686,7 +686,7 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
             )
         _canary(ctx, variant)
     out.append(
-        "rolled back; current links match the targets; canary answered on all three variants"
+        "rolled back; current links match the targets; canary answered on all four variants"
     )
 
 

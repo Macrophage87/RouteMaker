@@ -9,7 +9,7 @@ Every command is copied from those guides; where this document and a guide disag
 is wrong and this document is the newer one, so fix the guide.
 
 Budget for a first pass: an afternoon to the first rebuild, then the rebuild itself (hours; the
-elevation download and three Valhalla tile builds), then an hour for the rest. The checklist can be
+elevation download and four Valhalla tile builds), then an hour for the rest. The checklist can be
 resumed across that (`--resume`).
 
 ## 0. What you need before you start
@@ -45,7 +45,7 @@ What changes locally:
   its true peak for a DC-region build is unmeasured (`handoff.md` §7), which is why the plan sizes
   the host at 32 GB; 16 GB will probably do, less is a gamble. Disk: 50 GB free for the extract,
   the elevation tiles and two tile sets, and the rebuild refuses to start under 20 GiB.
-- **Time.** The same as on a server; the elevation download and the three tile builds take hours
+- **Time.** The same as on a server; the elevation download and the four tile builds take hours
   wherever they run.
 - **What it cannot tell you.** Whether the certificate is issued, the name resolves, the firewall
   is right, or the sizing holds under real traffic. Everything else in A1 to A6 is the same path.
@@ -172,7 +172,7 @@ python3 scripts/acceptance.py --dry-run          # prints every command the chec
 python3 scripts/acceptance.py --only A1 A2       # preflight; build; up; wait for healthy
 ```
 
-A2 builds the two images (minutes) and starts nine services. It waits for `postgis` healthy,
+A2 builds the two images (minutes) and starts ten services. It waits for `postgis` healthy,
 `migrate` exited 0, `api` healthy, `worker` and `rebuild` running. **The four routers will be
 restarting** until the first rebuild gives them tiles; A2 reports their state without judging it.
 
@@ -229,7 +229,7 @@ On a fresh host this is the runbook's two-phase first rebuild, and the script fo
           --volume-source ddot --volume-year 2024
   ```
 
-- **Second run** (hours): elevation tiles from 3DEP, the three variant tile builds, validation,
+- **Second run** (hours): elevation tiles from 3DEP, the four variant tile builds, validation,
   the swap. The script polls the run row every minute up to eight hours; `docker compose logs -f
   rebuild` in another terminal shows the stages. When it succeeds the script checks the promotion
   links, restarts the four routers, sends a canary route to each, and runs `check_operations`.
