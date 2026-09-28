@@ -814,7 +814,12 @@ the front end has not been published yet `/` is Caddy's 404, and that is the
 missing deploy step, not a broken stack.
 
 - **`/tiles/stress/*`** is the stress overlay (the map hides its toggle while
-  that answers 404).
+  that answers 404). It needs the `stress_tile_cache` table from migration
+  `core.0009`, which the `migrate` one-shot applies, and on the first deploy of
+  the tile cache one `docker compose exec -T api python manage.py
+  predraw_stress_tiles` to draw the live table's z10-13 tiles into it; the
+  weekly rebuild does it after every promotion from then on
+  (docs/OPERATIONS.md, "The stress tiles").
 - **`/api/coverage`** (GET) is the area routes may be planned in, as GeoJSON;
   the map greys out everything outside it. No sign-in, an hour's cache.
 - **`/auth/login`** is the sign-in entry, and the only one. It starts the
@@ -1049,8 +1054,11 @@ What the map shows and credits:
   "Zoom in to see traffic stress". Bike facilities are violet rails either
   side of the stress line - off-road paths bold and solid, protected lanes
   bold and broken, painted lanes thin - listed in the legend once the map has
-  drawn one; until the segment table carries a facility class, the trails
-  are the paths. The app asks for one tile over central DC at
+  drawn one; until the segment table carries a facility class, the trails a
+  bicycle may ride are the paths and the sidepaths the protected lanes, and a
+  trail barred to bicycles is neither. Nothing is drawn in the grey area. The
+  tiles are fetched through the app's own protocol, which waits out a 429 or
+  503's Retry-After and asks again. The app asks for one tile over central DC at
   load; if that is not a 200 (a 404 while the endpoint is not deployed, a 502
   while the API is down) it hides the toggle and the legend and says the stress
   map is unavailable, and planning carries on - every route still reports its

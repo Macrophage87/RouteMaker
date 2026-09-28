@@ -370,8 +370,11 @@ populated live schema, no router:
 curl -s -o /tmp/t.pbf -w '%{http_code} %{size_download}\n' http://localhost:8000/tiles/stress/14/4686/6267.pbf
 ```
 
-What each zoom draws, the limits, the caching and the overview index are in
-docs/OPERATIONS.md, "The stress tiles". `tests/mvt.py` decodes a tile for
+A tile is served from the `stress_tile_cache` table once drawn
+(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z10-13 for
+the live table, and a local `runserver` with an empty cache draws on request.
+What each zoom draws, the limits, the cache, the draw slots and timeout and the
+overview index are in docs/OPERATIONS.md, "The stress tiles". `tests/mvt.py` decodes a tile for
 the tests (`tests/test_stress_tiles.py`) and for looking at one by hand.
 
 **The covered area.** `GET /api/coverage` (Ninja, in `core/api.py`) is the
