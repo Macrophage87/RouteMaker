@@ -154,6 +154,17 @@
 	# would publish them to the internet, which is the one thing this file's
 	# service exists to avoid.
 	handle {
+		# The stress tiles (GET /tiles/stress/..., core/stress_tiles.py) are
+		# compressed here: a vector tile is protobuf, and the z14 tile over
+		# downtown DC measured 124 KB raw and 55 KB gzipped. Caddy's default
+		# list of compressible types does not include the vector-tile type,
+		# hence the match - which is also what keeps every other answer of
+		# the API's as it is.
+		encode zstd gzip {
+			match {
+				header Content-Type application/vnd.mapbox-vector-tile*
+			}
+		}
 		reverse_proxy api:8000 {
 			# Caddy terminates TLS, so the request reaching Django is plain
 			# HTTP. settings.SECURE_PROXY_SSL_HEADER reads

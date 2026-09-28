@@ -8,6 +8,7 @@
  * without the package installed.
  */
 import { BASEMAP } from "../stressStyle.js";
+import { protocolUrl } from "./stressProtocol.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
 export const STRESS_SOURCE_ID = "stress";
@@ -80,15 +81,23 @@ export function buildStyle(origin: string, basemapLayers: readonly unknown[]): B
 }
 
 /**
- * The stress overlay's source. Tile URLs are absolute because vector tiles are
- * fetched from MapLibre's workers, where a relative URL has no page to resolve
- * against.
+ * The stress overlay's source. The tiles are fetched through the stress
+ * protocol (stressProtocol.ts), which asks again for a tile the API asks to be
+ * fetched again; the URL it carries is absolute, the contract's path.
  */
 export function stressSource(origin: string) {
   return {
     type: "vector" as const,
-    tiles: [`${origin}/tiles/stress/{z}/{x}/{y}.pbf`],
-    minzoom: 10,
-    maxzoom: 16,
+    tiles: [protocolUrl(`${origin}/tiles/stress/{z}/{x}/{y}.pbf`)],
+    minzoom: STRESS_ZOOMS.min,
+    maxzoom: STRESS_ZOOMS.max,
   };
 }
+
+/**
+ * The zooms the stress tiles are drawn at, and where each level of detail
+ * starts (core/stress_tiles.py, whose levels tests/test_stress_tiles.py holds
+ * equal to these): below `min` nothing is drawn, from `min` the busy roads and
+ * the trails, from `streets` every street, from `full` footways too.
+ */
+export const STRESS_ZOOMS = { min: 10, streets: 12, full: 14, max: 16 } as const;

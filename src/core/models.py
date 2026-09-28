@@ -1117,3 +1117,32 @@ class RateLimitWindow(models.Model):
 
     def __str__(self) -> str:
         return f"{self.scope}: {self.hits} since {self.window_start:%H:%M:%S}"
+
+
+class StressTileCache(models.Model):
+    """A drawn stress tile, kept so it is not drawn again (core.tile_cache).
+
+    `version` is the tile's ETag, which names the live segment table's oid,
+    the optional columns it has and the tile format, so a promotion, a column
+    added in place or a format change makes every older row stale; stale rows
+    are deleted by the next pre-draw or eviction. Nothing here is personal and
+    nothing is lost with it: the table is excluded from the nightly dump and
+    refills itself.
+    """
+
+    version = models.CharField(max_length=64)
+    z = models.SmallIntegerField()
+    x = models.IntegerField()
+    y = models.IntegerField()
+    body = models.BinaryField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "stress_tile_cache"
+        constraints = [
+            models.UniqueConstraint(fields=["version", "z", "x", "y"], name="stress_tile_cache_key")
+        ]
+        indexes = [models.Index(fields=["created_at"], name="stress_tile_cache_created")]
+
+    def __str__(self) -> str:
+        return f"{self.z}/{self.x}/{self.y} ({self.version})"

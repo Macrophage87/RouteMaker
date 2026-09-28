@@ -142,13 +142,60 @@ export function stressCasingLayers(sourceId = "stress") {
 export const CASING_EXTRA_PX = 2;
 
 /**
+ * Bike facilities (owner request of 2026-09-27: off-road paths, then protected
+ * lanes, well above painted lanes, above ordinary streets; sharrows count as
+ * nothing). The tiles carry a "facility" of path, protected, lane or none once
+ * the segment table has it (core/stress_tiles.py), and nothing before.
+ *
+ * Each is drawn as a pair of violet rails either side of the stress line - a
+ * wider line under the tier's casing - so the tier's own colour and dash stay
+ * readable on the same street and the route's blue is not reused. Width and
+ * dash tell the three apart without colour: a path's rails are bold and solid,
+ * a protected lane's bold and broken like a row of posts, a painted lane's
+ * thin. "none" (sharrows included) draws nothing.
+ */
+export const FACILITIES = [
+  { facility: "path", short: "Path", label: "Off-road bike path", color: "#4c1d95", rail: 3, dash: null },
+  { facility: "protected", short: "Protected", label: "Protected bike lane", color: "#4c1d95", rail: 3, dash: [0.5, 0.35] },
+  { facility: "lane", short: "Painted", label: "Painted bike lane", color: "#8b5cf6", rail: 1.5, dash: null },
+];
+
+/** A facility's rails: wide enough to show `rail` px beyond each side of the casing. */
+export function facilityWidth(facility, tierWidth) {
+  return tierWidth + CASING_EXTRA_PX + 2 * facility.rail;
+}
+
+// A tier the style has no entry for (one added later) is drawn at LTS 1's width.
+const DEFAULT_TIER_WIDTH = STRESS_TIERS[0].width;
+
+export function facilityLayers(sourceId = "stress") {
+  return FACILITIES.map((facility) => {
+    const byTier = STRESS_TIERS.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width)]);
+    const paint = {
+      "line-color": facility.color,
+      "line-width": ["match", ["get", "tier"], ...byTier, facilityWidth(facility, DEFAULT_TIER_WIDTH)],
+    };
+    if (facility.dash) paint["line-dasharray"] = facility.dash;
+    return {
+      id: `facility-${facility.facility}`,
+      type: "line",
+      source: sourceId,
+      "source-layer": STRESS_TILE_LAYER,
+      filter: ["==", ["get", "facility"], facility.facility],
+      paint,
+    };
+  });
+}
+
+/**
  * The overlay's layers in the order they are added to the map, bottom first:
- * every casing, then every tier. A casing drawn after a tier would paint over
- * it, solid, wherever the two meet - including its own tier, which would then
- * vanish under its casing.
+ * the facility rails, every casing, then every tier. A casing drawn after a
+ * tier would paint over it, solid, wherever the two meet - including its own
+ * tier, which would then vanish under its casing; rails drawn over a casing
+ * would do the same to the whole line.
  */
 export function stressOverlayLayers(sourceId = "stress") {
-  return [...stressCasingLayers(sourceId), ...stressLayers(sourceId)];
+  return [...facilityLayers(sourceId), ...stressCasingLayers(sourceId), ...stressLayers(sourceId)];
 }
 
 /** Legend entries, which carry the label the colour alone cannot. */
