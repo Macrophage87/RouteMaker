@@ -1359,6 +1359,12 @@ class TestStressSpans:
         )
         assert [s["tier"] for s in spans] == [2, 4, 3]
 
+    def test_many_short_pieces_of_one_class_are_one_section(self):
+        """A trace cuts its edges at every shape vertex: 50 m of LTS 4 made of
+        ten 5 m pieces is a section, not ten short ones folded away."""
+        stretches = [(100.0, "2", "none"), *[(5.0, "4", "none")] * 10, (100.0, "2", "none")]
+        assert [s["tier"] for s in routing.stress_spans(stretches)] == [2, 4, 2]
+
     def test_a_short_crossing_between_two_equal_sections_leaves_one(self):
         spans = routing.stress_spans(
             [(200.0, "1", "path"), (6.0, "3", "none"), (300.0, "1", "path")]

@@ -435,10 +435,11 @@ def stress_spans(stretches: list[tuple[float, str, str]]) -> list[dict]:
     into the one before (or, first on the route, the one after). `tier` is 1-5
     or null (unknown); `facility` is the class or null.
     """
+    # Pieces are cut at every shape vertex, so a long stretch of one class
+    # arrives as many short pieces: they are joined before anything is judged
+    # too short to show.
     spans: list[list] = []  # [length, tier, facility]
     for metres, tier, kind in stretches:
-        if metres <= 0:
-            continue
         if spans and spans[-1][1:] == [tier, kind]:
             spans[-1][0] += metres
         else:
@@ -467,8 +468,6 @@ def stress_spans(stretches: list[tuple[float, str, str]]) -> list[dict]:
                 "facility": kind if kind != "unknown" else None,
             }
         )
-    for previous, span in zip(out, out[1:], strict=False):
-        span["from_m"] = previous["to_m"]
     return out
 
 
