@@ -289,7 +289,7 @@ class TestContract:
         assert classes_in(response.content) == expected(lambda tier, rule: True)
         for feature in layer.features:
             assert feature.type == 2  # LINESTRING
-            assert set(feature.properties) <= {"tier", "trail", "unpaved", "facility"}
+            assert set(feature.properties) <= {"tier", "trail", "unpaved", "facility", "car_free"}
             assert isinstance(feature.properties["trail"], bool)
 
     def test_an_unknown_surface_is_left_out_rather_than_called_paved(self, client, live) -> None:
@@ -1046,3 +1046,116 @@ class TestProbes:
         response = client.get(url(14, 2**14, 0))
         assert response.status_code == 400
         assert "no-store" in response["Cache-Control"]
+
+
+@db
+class TestCarFree:
+    """The owner, 2026-09-29: "One note: Car-free roads should be regarded the
+    same as an off-road path on a map." (OWNER-DECISIONS 67). A road closed for
+    good is a path in the table (the rebuild's car_free_tier_1); one closed at
+    set times carries those ride times, and the map's style draws it as a path
+    in them ("Path on weekends only")."""
+
+    ROADS = [
+        # (osm way, tier, rule, facility, car_free_when, is_trail_class)
+        (
+            4001,
+            1,
+            "mixed traffic, 20 mph or below, single lane",
+            "path",
+            [],
+            False,
+        ),  # Beach Drive NW
+        (
+            4002,
+            3,
+            "mixed traffic, 30 mph, single lane",
+            "none",
+            ["weekend"],
+            False,
+        ),  # Sligo Creek Pkwy
+        (
+            4003,
+            2,
+            "mixed traffic, 25 mph, single lane",
+            "none",
+            ["weekday_rush"],
+            False,
+        ),  # Clark Pl
+        (4004, 1, trail_rule("cycleway", OPEN), "path", [], True),  # a trail
+        (4005, 4, "mixed traffic, 35 mph or above", "none", [], False),  # a road
+    ]
+
+    @pytest.fixture
+    def roads(self, segment_schemas):
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            for i, (way, tier, rule, facility, when, trail) in enumerate(self.ROADS):
+                lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.0003
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, is_trail_class, is_unpaved, facility, car_free_when) VALUES "
+                    "(%s, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), %s, %s, "
+                    "%s, false, %s, %s)",
+                    [way, lon, lat, lon + 0.002, lat, tier, rule, trail, facility, when],
+                )
+        return live
+
+    @staticmethod
+    def features(client, z):
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        return sorted(
+            (
+                f.properties.get("tier"),
+                f.properties.get("facility"),
+                f.properties.get("car_free"),
+                f.properties.get("car_free_only"),
+            )
+            for f in layer.features
+            for _line in f.lines
+        )
+
+    @pytest.mark.parametrize("z", [13, 14])
+    def test_street_level_carries_each_roads_ride_times(self, client, roads, z) -> None:
+        assert self.features(client, z) == sorted(
+            [
+                (1, "path", None, None),  # Beach Drive: a path, whatever the time
+                (3, "none", "weekend", None),
+                (2, "none", "weekday_rush", None),
+                (1, "path", None, None),
+                (4, "none", None, None),
+            ]
+        )
+
+    @pytest.mark.parametrize("z", [10, 11, 12])
+    def test_zoomed_out_the_timed_roads_come_for_their_times_only(self, client, roads, z):
+        """The trails and Beach Drive are paths; the timed closures are there
+        to be drawn in their ride times alone (`car_free_only`); a road is not."""
+        assert self.features(client, z) == sorted(
+            [
+                (1, "path", None, None),
+                (1, "path", None, None),
+                (3, "none", None, "weekend"),
+                (2, "none", None, "weekday_rush"),
+            ]
+        )
+
+    def test_the_trails_predicate_and_its_index_take_the_timed_roads(self, roads) -> None:
+        from pipeline import schema
+
+        assert schema.trails_predicate(True, True) == (
+            "((facility = 'path' OR (facility = 'protected' AND is_trail_class)) "
+            "OR cardinality(car_free_when) > 0)"
+        )
+        assert schema.OVERVIEW_INDEX_PREDICATE == schema.trails_predicate(True, True)
+        assert "segment_overview_geom_idx" in trails_plan(frozenset({"facility", "car_free_when"}))
+
+    def test_the_etag_names_the_column(self, client, roads) -> None:
+        assert "+car_free_when+facility-v" in client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
+
+    def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
+        """No ride time in the address or the ETag: the pre-draw draws each
+        tile once, and the style chooses."""
+        path = url(*tile_of(*CENTRE, 11))
+        first, again = client.get(path), client.get(path)
+        assert first["ETag"] == again["ETag"] and first.content == again.content

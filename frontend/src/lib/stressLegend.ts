@@ -19,6 +19,16 @@ export const ZOOMED_OUT = "Zoomed out, only traffic-free paths and trails are sh
 /** The bike-facility legend's note on the protected lanes the zoomed-out map leaves out. */
 export const ROADWAY_LANES = `Protected lanes in the roadway show from zoom ${STRESS_ZOOMS.roads}.`;
 
+/**
+ * Roads closed to cars (the owner, 2026-09-29: "One note: Car-free roads
+ * should be regarded the same as an off-road path on a map."), and those
+ * closed at set times, which follow the ride time chosen ("Path on weekends
+ * only").
+ */
+export const CAR_FREE_NOTE =
+  "Roads closed to cars are shown as traffic-free paths, and roads closed only at set times, such as Sligo Creek " +
+  "Parkway on weekends, are too when that ride time is chosen.";
+
 /** The notice for the zoom the map is at, when the overlay is shown; null when there is none. */
 export function stressZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
@@ -45,5 +55,6 @@ export function StressZoomNotes({ zoom, shown }: { zoom: number | null; shown: b
     null,
     notice && h("p", { className: "notice", role: "status" }, notice),
     h("p", { className: "hint" }, stressZoomHint(zoom)),
+    h("p", { className: "hint" }, CAR_FREE_NOTE),
   );
 }

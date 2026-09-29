@@ -72,6 +72,7 @@ from django.utils.http import parse_etags
 from django.views.decorators.http import require_http_methods
 
 from pipeline.schema import (
+    CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     STREETS_PREDICATE,
     TRAIL_NETWORK_FACILITY,
@@ -195,7 +196,18 @@ PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_u
 # (`pipeline.schema.keeping_facilities`) and the zoomed-out one draws its
 # paths. Where it is not, a stand-in is carried in its place (`FALLBACKS`)
 # and the zoomed-out paths are the ones that stand-in calls a path.
-OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN}
+OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN, "car_free": CAR_FREE_COLUMN}
+
+# How an optional property is drawn from its column, where it is not the
+# column as it is. `car_free`: the ride times a road closed to motor traffic
+# at set times is car-free in, comma-separated ("weekend"), and left out of a
+# feature that has none - a road closed for good is a path already. The map's
+# style reads it against the ride time it follows (frontend/src/stressStyle.js,
+# `stressFilters`): in one of them the road draws as an off-road path, tier 1,
+# and otherwise with its own stress (the owner, 2026-09-29: "Car-free roads
+# should be regarded the same as an off-road path on a map."; OWNER-DECISIONS
+# 67). One tile serves every ride time, so the pre-draw draws each tile once.
+OPTIONAL_EXPRESSIONS = {"car_free": f"NULLIF(array_to_string(s.{CAR_FREE_COLUMN}, ','), '')"}
 
 # What an optional property is drawn from on a table without its column: the
 # facility is derived from the trail network (an off-road path, or nothing),
@@ -255,12 +267,21 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     carried = {name: f"s.{column}" for name, column in PROPERTIES.items()}
     for name, column in OPTIONAL_PROPERTIES.items():
         if column in optional:
-            carried[name] = f"s.{column}"
+            carried[name] = OPTIONAL_EXPRESSIONS.get(name, f"s.{column}")
         elif name in FALLBACKS:
             carried[name] = FALLBACKS[name]
     has_facility = FACILITY_COLUMN in optional
+    has_car_free = CAR_FREE_COLUMN in optional
     if level.trails_only:
-        where = trails_predicate(has_facility)
+        where = trails_predicate(has_facility, has_car_free)
+        if has_car_free:
+            # A road closed to cars at set times is in the zoomed-out tiles only
+            # for those times: it carries them as `car_free_only`, and the map
+            # draws it only in one of them. A trail keeps `car_free` as it is.
+            trails = trails_predicate(has_facility)
+            expression = carried.pop("car_free")
+            carried["car_free"] = f"CASE WHEN {trails} THEN {expression} END"
+            carried["car_free_only"] = f"CASE WHEN NOT {trails} THEN {expression} END"
     else:
         where = level.where or "true"
         if level.where and has_facility:

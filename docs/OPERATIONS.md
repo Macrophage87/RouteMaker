@@ -450,9 +450,28 @@ parts of the Anacostia Riverwalk, Rock Creek, Rhode Island Avenue Trolley and
 Bethesda Trolley trails, and DC's separately mapped cycle tracks. The Custis,
 Capital Crescent and Mount Vernon trails are paths there already. Without the
 column, the stand-in's sidepaths (`trail_kind`) are the roadside trails.
+**Car-free roads.** The owner, 2026-09-29: "One note: Car-free roads should
+be regarded the same as an off-road path on a map." (OWNER-DECISIONS 67). A
+road closed to motor traffic for good (Beach Drive NW in Rock Creek Park, the
+Capitol grounds drives) is a path in the table - the rebuild writes it so, at
+tier 1 - and draws as one at every zoom. A road closed only at set times
+(`segment.car_free_when`: Sligo Creek Parkway and Beach Drive in Montgomery
+County on weekends) follows the ride time the map is set to - the one chosen
+in the panel, or the moment's for "when I'm planning" (`lib/rideTime.ts`, as
+`routemaker.ridetime.when_at`): the owner chose "Path on weekends only", so
+on Weekend it draws as an off-road path, zoomed out too, and otherwise as the
+road it is. The tiles carry the ride times as a property (`car_free`, and
+`car_free_only` in a zoomed-out tile, which holds such a road for those times
+alone) and the map's style decides (`stressStyle.js`, `stressFilters`): one
+tile serves every ride time, so the pre-draw draws each tile once and the
+cache and ETags are unchanged. A weekday-rush closure (Clark Place) follows
+the same rule on Weekday rush. On the dials pipeline's box table the timed
+closures are 3 mi of 20 segments, all weekend.
+
 The overview index is built on the facility's predicate
 only once `pipeline.schema.SEGMENT_HAS_FACILITY` says the schema declares the
-column (a test fails while the two disagree).
+column (a test fails while the two disagree); with it, the index also holds
+the timed closures (`cardinality(car_free_when) > 0`).
 
 **The tile cache.** A tile, once drawn, is kept in the `stress_tile_cache`
 table (`core/tile_cache.py`, migration `core.0009`) under its ETag and z/x/y,

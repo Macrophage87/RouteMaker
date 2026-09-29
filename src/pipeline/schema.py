@@ -139,6 +139,15 @@ FACILITY_COLUMN = "facility"
 TRAIL_FACILITY = "path"
 ROADSIDE_TRAIL_FACILITY = "protected"
 
+# The ride times a road closed to motor traffic only at set times is car-free
+# in (`routemaker.ridetime`, written by the rebuild beside the facility). The
+# owner, 2026-09-29: "One note: Car-free roads should be regarded the same as
+# an off-road path on a map." (OWNER-DECISIONS 67) - a road closed for good is
+# a path already (`facility`); one closed on weekends is a path when the map's
+# ride time is Weekend ("Path on weekends only"), so the zoomed-out tiles
+# carry it too and the map's style decides (`core.stress_tiles`).
+CAR_FREE_COLUMN = "car_free_when"
+
 # A live table promoted before the facility column has no such column, and the
 # tiles derive the facility from the rule the rebuild recorded
 # (`routemaker.classes.trail_kind`, in the text of `stress_rule`), by the
@@ -160,18 +169,23 @@ TRAIL_NETWORK_FACILITY = (
 )
 
 
-def trails_predicate(has_facility: bool) -> str:
+def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     """The zoomed-out tiles' condition on a table with or without the facility
     column: its paths, and the protected ways that are trails of their own.
     Also the overview index's predicate on that table. Without the column the
     recorded rule says it: a sidepath for bicycles is a trail-class way beside
-    a road (`routemaker.classes.trail_kind`)."""
+    a road (`routemaker.classes.trail_kind`). With `has_car_free`, the roads
+    closed to cars at set times as well, which are paths in those ride times."""
     if has_facility:
-        return (
+        trails = (
             f"({FACILITY_COLUMN} = '{TRAIL_FACILITY}' OR "
             f"({FACILITY_COLUMN} = '{ROADSIDE_TRAIL_FACILITY}' AND is_trail_class))"
         )
-    return "stress_rule IN (" + _text_list(PATH_RULES | SIDEPATH_RULES) + ")"
+    else:
+        trails = "stress_rule IN (" + _text_list(PATH_RULES | SIDEPATH_RULES) + ")"
+    if has_car_free:
+        return f"({trails} OR cardinality({CAR_FREE_COLUMN}) > 0)"
+    return trails
 
 
 # What they draw at street zoom (`core.stress_tiles.STREETS`): everything but
@@ -205,8 +219,9 @@ def keeping_facilities(predicate: str) -> str:
 
 def overview_index_predicate(has_facility: bool) -> str:
     """The overview index's predicate on a table with or without the facility
-    column: the one the zoomed-out tile query uses on that table."""
-    return trails_predicate(has_facility)
+    column: the one the zoomed-out tile query uses on that table. SEGMENT_DDL
+    declares `car_free_when` with the facility, so the one flag says both."""
+    return trails_predicate(has_facility, has_car_free=has_facility)
 
 
 OVERVIEW_INDEX_PREDICATE = overview_index_predicate(SEGMENT_HAS_FACILITY)

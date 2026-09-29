@@ -25,6 +25,7 @@ import {
   runClick,
   runHover,
   setStressVisibility,
+  setStressWhen,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -33,6 +34,7 @@ import { addRailStations, setRailVisibility } from "./lib/railLayer.ts";
 import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
+import type { When } from "./lib/dials.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -56,6 +58,8 @@ interface Props {
   route: RouteResponse | null;
   stale: boolean;
   stressVisible: boolean;
+  /** The ride time the overlay follows, for the roads closed to cars at set times (lib/rideTime.ts). */
+  when: When;
   /** Screen space the panel covers, so a route is framed in what is left. */
   framePadding: () => Frame;
   onStressAvailability: (availability: StressAvailability) => void;
@@ -417,7 +421,7 @@ export function MapView(props: Props) {
 
     // Under the base map's labels and the route, over its roads, in the
     // order stressOverlayLayers gives: every casing under every tier.
-    const addStress = () => addStressOverlay(map, origin, callbacks.current.stressVisible);
+    const addStress = () => addStressOverlay(map, origin, callbacks.current.stressVisible, callbacks.current.when);
 
     // Ask the endpoint; if it does not answer, say so and ask again later, so
     // one bad minute does not take the overlay away for the whole visit
@@ -617,6 +621,13 @@ export function MapView(props: Props) {
     if (!map || !loaded.current || !map.getSource(STRESS_SOURCE_ID)) return;
     setStressVisibility(map, props.stressVisible);
   }, [props.stressVisible]);
+
+  // The ride time: a road closed to cars at set times is a path in them.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded.current || !map.getSource(STRESS_SOURCE_ID)) return;
+    setStressWhen(map, props.when);
+  }, [props.when]);
 
   // The rail stations' toggles.
   useEffect(() => {

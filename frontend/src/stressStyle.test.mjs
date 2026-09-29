@@ -14,7 +14,22 @@ import {
   CASING_EXTRA_PX,
   relativeLuminance,
   contrastRatio,
+  stressFilters,
 } from "./stressStyle.js";
+import * as spec from "@maplibre/maplibre-gl-style-spec";
+
+/** Whether `layer` draws a feature with `properties`, as MapLibre decides it. */
+function draws(layer, properties) {
+  const { filter } = spec.featureFilter(layer.filter, `layers[${layer.id}].filter`);
+  return filter({ zoom: 12 }, { type: 2, properties, geometry: [] });
+}
+
+/** A paint expression's value for a feature with `properties`. */
+function paintValue(layer, name, properties) {
+  const expression = spec.createExpression(layer.paint[name], `layers[${layer.id}].paint.${name}`, spec.latest.paint_line[name]);
+  assert.equal(expression.result, "success", JSON.stringify(expression.value));
+  return expression.value.evaluate({ zoom: 12 }, { type: 2, properties, geometry: [] });
+}
 
 test("every stress tier is distinguishable without colour", () => {
   // The accessibility rule, and also what makes the overlay readable on the
@@ -86,8 +101,9 @@ test("one layer per tier, each filtered to its own tier", () => {
   const layers = stressLayers();
   assert.equal(layers.length, STRESS_TIERS.length);
   layers.forEach((layer, i) => {
-    assert.equal(layer.filter[0], "==");
-    assert.equal(layer.filter[2], STRESS_TIERS[i].tier);
+    for (const tier of STRESS_TIERS) {
+      assert.equal(draws(layer, { tier: tier.tier }), tier.tier === STRESS_TIERS[i].tier, `${layer.id} and LTS ${tier.tier}`);
+    }
   });
 });
 
@@ -98,7 +114,8 @@ test("the layers read the shared contract's tile layer and property", () => {
   for (const layer of stressLayers("stress-src")) {
     assert.equal(layer.source, "stress-src");
     assert.equal(layer["source-layer"], "stress");
-    assert.deepEqual(layer.filter[1], ["get", "tier"]);
+    assert.ok(JSON.stringify(layer.filter).includes('["get","tier"]'));
+    assert.equal(draws(layer, {}), false, "a feature with no tier is drawn by no tier's layer");
   }
 });
 
@@ -195,15 +212,16 @@ test("each facility is told apart from the others without colour, and the strong
 test("each facility layer reads the tile's facility property and shows beyond the casing", () => {
   const layers = facilityLayers("s");
   layers.forEach((layer, i) => {
-    assert.deepEqual(layer.filter, ["==", ["get", "facility"], FACILITIES[i].facility]);
+    for (const f of FACILITIES) {
+      assert.equal(draws(layer, { tier: 1, facility: f.facility }), f === FACILITIES[i], `${layer.id} and ${f.facility}`);
+    }
+    assert.equal(draws(layer, { tier: 1, facility: "none" }), false);
     assert.equal(layer["source-layer"], "stress");
-    const width = layer.paint["line-width"];
-    assert.deepEqual(width.slice(0, 2), ["match", ["get", "tier"]]);
     for (const tier of STRESS_TIERS) {
-      const w = width[width.indexOf(tier.tier, 2) + 1];
+      const w = paintValue(layer, "line-width", { tier: tier.tier, facility: FACILITIES[i].facility });
       assert.ok(w >= tier.width + CASING_EXTRA_PX + 2, `${layer.id} at LTS ${tier.tier} hides under the casing`);
     }
-    assert.ok(width.at(-1) > 0, "a tier the style does not know still gets rails");
+    assert.ok(paintValue(layer, "line-width", { tier: 9 }) > 0, "a tier the style does not know still gets rails");
   });
 });
 
@@ -241,4 +259,65 @@ test("an unknown tier's rails still show beyond the casing", () => {
     const width = layer.paint["line-width"];
     assert.ok(width.at(-1) >= STRESS_TIERS[0].width + CASING_EXTRA_PX + 2);
   }
+});
+
+// The owner, 2026-09-29: "One note: Car-free roads should be regarded the same
+// as an off-road path on a map." and, for the weekend closures, "Path on
+// weekends only" (OWNER-DECISIONS 67).
+function drawnBy(when, properties) {
+  return stressOverlayLayers("stress", when)
+    .filter((layer) => draws(layer, properties))
+    .map((layer) => layer.id)
+    .sort();
+}
+
+const ASPATH = ["facility-path", "stress-1", "stress-casing-1"];
+
+test("a road closed to cars for good draws as an off-road path in every ride time", () => {
+  // The tiles carry it as a path already (routemaker.facility, the rebuild).
+  const beachDrive = { tier: 1, facility: "path", trail: false };
+  const trail = { tier: 1, facility: "path", trail: true };
+  for (const when of ["weekend", "weekday_rush", "weekday_offpeak"]) {
+    assert.deepEqual(drawnBy(when, beachDrive), ASPATH);
+    assert.deepEqual(drawnBy(when, beachDrive), drawnBy(when, trail));
+  }
+});
+
+test("a road closed on weekends is a path on weekends and its own road otherwise", () => {
+  const sligo = { tier: 3, facility: "none", car_free: "weekend" };
+  assert.deepEqual(drawnBy("weekend", sligo), ASPATH);
+  assert.deepEqual(drawnBy("weekday_offpeak", sligo), ["stress-3", "stress-casing-3"]);
+  assert.deepEqual(drawnBy("weekday_rush", sligo), ["stress-3", "stress-casing-3"]);
+  const withLane = { tier: 2, facility: "lane", car_free: "weekend" };
+  assert.deepEqual(drawnBy("weekday_offpeak", withLane), ["facility-lane", "stress-2", "stress-casing-2"]);
+  assert.deepEqual(drawnBy("weekend", withLane), ASPATH);
+});
+
+test("zoomed out, such a road is drawn only in the ride times it is closed in", () => {
+  const sligo = { tier: 3, facility: "none", car_free_only: "weekend" };
+  assert.deepEqual(drawnBy("weekend", sligo), ASPATH);
+  assert.deepEqual(drawnBy("weekday_offpeak", sligo), []);
+  const clark = { tier: 2, facility: "none", car_free_only: "weekday_rush" };
+  assert.deepEqual(drawnBy("weekday_rush", clark), ASPATH);
+  assert.deepEqual(drawnBy("weekend", clark), []);
+  const both = { tier: 3, facility: "none", car_free_only: "weekday_rush,weekend" };
+  assert.deepEqual(drawnBy("weekend", both), ASPATH);
+  assert.deepEqual(drawnBy("weekday_offpeak", both), []);
+});
+
+test("a path's rails are a path's width when a closure makes a road one", () => {
+  const [path] = facilityLayers("stress", "weekend");
+  const tier1 = paintValue(path, "line-width", { tier: 1, facility: "path" });
+  assert.equal(paintValue(path, "line-width", { tier: 4, facility: "none", car_free: "weekend" }), tier1);
+});
+
+test("stressFilters covers every overlay layer, and a style with them validates", () => {
+  const filters = stressFilters("weekend");
+  assert.deepEqual(Object.keys(filters).sort(), stressOverlayLayers("stress").map((l) => l.id).sort());
+  const style = {
+    version: 8,
+    sources: { stress: { type: "vector", tiles: ["https://example.test/{z}/{x}/{y}.pbf"] } },
+    layers: stressOverlayLayers("stress", "weekday_rush"),
+  };
+  assert.deepEqual(spec.validateStyleMin(style), []);
 });

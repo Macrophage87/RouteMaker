@@ -2,7 +2,8 @@
  * What MapView does to the map, as functions of a small map interface, so a
  * test can run them against a stand-in (MapView itself needs WebGL).
  */
-import { FACILITIES, STRESS_TILE_LAYER, stressOverlayLayers } from "../stressStyle.js";
+import { FACILITIES, STRESS_TILE_LAYER, facilityWidthAt, stressFilters, stressOverlayLayers } from "../stressStyle.js";
+import type { When } from "./dials.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
 
 /** The parts of a MapLibre map these use. */
@@ -13,6 +14,8 @@ export interface OverlayMap {
   addLayer(layer: object, beforeId?: string): void;
   getLayer(id: string): unknown;
   setLayoutProperty(id: string, name: string, value: string): void;
+  setFilter(id: string, filter: unknown): void;
+  setPaintProperty(id: string, name: string, value: unknown): void;
 }
 
 /**
@@ -20,15 +23,32 @@ export interface OverlayMap {
  * added later), over its roads, in exactly the order stressOverlayLayers
  * gives - every casing under every tier. Returns whether it was added.
  */
-export function addStressOverlay(map: OverlayMap, origin: string, visible: boolean): boolean {
+export function addStressOverlay(map: OverlayMap, origin: string, visible: boolean, when?: When): boolean {
   if (map.getSource(STRESS_SOURCE_ID)) return false;
   map.addSource(STRESS_SOURCE_ID, stressSource(origin));
   const firstSymbol = map.getStyle().layers.find((layer) => layer.type === "symbol")?.id;
   const layout = { visibility: visible ? "visible" : "none" };
-  for (const layer of stressOverlayLayers(STRESS_SOURCE_ID)) {
+  for (const layer of stressOverlayLayers(STRESS_SOURCE_ID, when)) {
     map.addLayer({ ...layer, layout }, firstSymbol);
   }
   return true;
+}
+
+/**
+ * Draw the overlay for the ride time `when`: a road closed to cars then draws
+ * as an off-road path, and one the zoomed-out tiles carry only for other ride
+ * times is not drawn (stressStyle.js, stressFilters). The tiles are the same
+ * whatever the ride time; only the style's filters change.
+ */
+export function setStressWhen(map: OverlayMap, when: When): void {
+  const filters = stressFilters(when);
+  for (const [id, filter] of Object.entries(filters)) {
+    if (map.getLayer(id)) map.setFilter(id, filter);
+  }
+  for (const facility of FACILITIES) {
+    const id = `facility-${facility.facility}`;
+    if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+  }
 }
 
 /** Show or hide every overlay layer that is on the map. */

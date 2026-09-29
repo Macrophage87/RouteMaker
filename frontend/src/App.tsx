@@ -26,6 +26,7 @@ import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from ".
 import { ROADWAY_LANES, StressZoomNotes } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { planEdits, travelSaid } from "./lib/planEdits.ts";
+import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
@@ -603,6 +604,7 @@ export function App() {
         route={shown}
         stale={stale}
         stressVisible={stressVisible && stress === "available"}
+        when={mapWhen(dials.when ?? null)}
         framePadding={framePadding}
         onStressAvailability={setStress}
         onMapClick={place}

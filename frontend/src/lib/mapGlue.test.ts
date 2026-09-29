@@ -530,3 +530,27 @@ test("a coverage ring needs four positions, first and last the same; three is no
   assert.notEqual(await fetchCoverage("o", serve(ring(4))), null);
   assert.equal(await fetchCoverage("o", serve(ring(3))), null);
 });
+
+test("the ride time changes the overlay's filters and the rails' widths, and nothing else", async () => {
+  const { setStressWhen } = await import("./mapGlue.ts");
+  const { stressFilters, facilityWidthAt, FACILITIES: F } = await import("../stressStyle.js");
+  const ids = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id);
+  const filters: Record<string, unknown> = {};
+  const paints: Record<string, unknown> = {};
+  const map = {
+    getLayer: (id: string) => (ids.includes(id) ? {} : undefined),
+    setFilter: (id: string, filter: unknown) => {
+      filters[id] = filter;
+    },
+    setPaintProperty: (id: string, name: string, value: unknown) => {
+      paints[`${id}.${name}`] = value;
+    },
+  } as unknown as OverlayMap;
+  setStressWhen(map, "weekend");
+  assert.deepEqual(filters, stressFilters("weekend"));
+  assert.deepEqual(
+    paints,
+    Object.fromEntries(F.map((f: { facility: string }) => [`facility-${f.facility}.line-width`, facilityWidthAt(f, "weekend")])),
+  );
+  assert.notDeepEqual(stressFilters("weekend"), stressFilters("weekday_rush"));
+});

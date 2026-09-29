@@ -124,13 +124,61 @@ export const BASEMAP = {
 // null on each feature (5 is "legal but avoid", added 2026-09-27).
 export const STRESS_TILE_LAYER = "stress";
 
-export function stressLayers(sourceId = "stress") {
+/**
+ * Roads closed to motor traffic at set times (the tiles' "car_free", or
+ * "car_free_only" in a zoomed-out tile, which carries such a road for those
+ * times alone: core/stress_tiles.py). The owner, 2026-09-29: "One note:
+ * Car-free roads should be regarded the same as an off-road path on a map."
+ * and, for the weekend closures, "Path on weekends only" - so in one of those
+ * ride times the road draws exactly as an off-road path, tier 1, and in any
+ * other with its own stress, and a zoomed-out tile's road is not drawn then.
+ * A road closed for good is a path in the tiles already. `when` is the ride
+ * time the map follows: "weekend", "weekday_rush" or "weekday_offpeak".
+ */
+const carFreeNow = (when) => [
+  "in",
+  when,
+  ["coalesce", ["get", "car_free"], ["get", "car_free_only"], ""],
+];
+
+/** The tier a feature draws at in the ride time `when`. */
+export const tierAt = (when) => ["case", carFreeNow(when), 1, ["get", "tier"]];
+
+/** The bike facility a feature draws as in the ride time `when`. */
+export const facilityAt = (when) => ["case", carFreeNow(when), "path", ["get", "facility"]];
+
+/** Whether a feature is drawn at all in the ride time `when`. */
+export const drawnAt = (when) => [
+  "any",
+  ["!", ["has", "car_free_only"]],
+  ["in", when, ["get", "car_free_only"]],
+];
+
+/** Until the map knows the ride time; App gives it at once (lib/rideTime.ts). */
+export const DEFAULT_WHEN = "weekday_offpeak";
+
+/** Each overlay layer's filter in the ride time `when`, by layer id. */
+export function stressFilters(when = DEFAULT_WHEN) {
+  const filters = {};
+  for (const tier of STRESS_TIERS) {
+    const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
+    filters[`stress-${tier.tier}`] = filter;
+    filters[`stress-casing-${tier.tier}`] = filter;
+  }
+  for (const facility of FACILITIES) {
+    filters[`facility-${facility.facility}`] = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
+  }
+  return filters;
+}
+
+export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+  const filters = stressFilters(when);
   return STRESS_TIERS.map((tier) => ({
     id: `stress-${tier.tier}`,
     type: "line",
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
-    filter: ["==", ["get", "tier"], tier.tier],
+    filter: filters[`stress-${tier.tier}`],
     paint: {
       "line-color": tier.color,
       "line-width": tier.width,
@@ -140,13 +188,14 @@ export function stressLayers(sourceId = "stress") {
 }
 
 /** The casing under each tier's line, drawn first so the tier sits on it. */
-export function stressCasingLayers(sourceId = "stress") {
+export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+  const filters = stressFilters(when);
   return STRESS_TIERS.map((tier) => ({
     id: `stress-casing-${tier.tier}`,
     type: "line",
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
-    filter: ["==", ["get", "tier"], tier.tier],
+    filter: filters[`stress-casing-${tier.tier}`],
     paint: {
       "line-color": tier.casing,
       "line-width": tier.width + CASING_EXTRA_PX,
@@ -184,12 +233,18 @@ export function facilityWidth(facility, tierWidth) {
 // A tier the style has no entry for (one added later) is drawn at LTS 1's width.
 const DEFAULT_TIER_WIDTH = STRESS_TIERS[0].width;
 
-export function facilityLayers(sourceId = "stress") {
+/** A facility's rail width, by the tier its feature draws at in `when`. */
+export function facilityWidthAt(facility, when = DEFAULT_WHEN) {
+  const byTier = STRESS_TIERS.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width)]);
+  return ["match", tierAt(when), ...byTier, facilityWidth(facility, DEFAULT_TIER_WIDTH)];
+}
+
+export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+  const filters = stressFilters(when);
   return FACILITIES.map((facility) => {
-    const byTier = STRESS_TIERS.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width)]);
     const paint = {
       "line-color": facility.color,
-      "line-width": ["match", ["get", "tier"], ...byTier, facilityWidth(facility, DEFAULT_TIER_WIDTH)],
+      "line-width": facilityWidthAt(facility, when),
     };
     if (facility.dash) paint["line-dasharray"] = facility.dash;
     return {
@@ -197,7 +252,7 @@ export function facilityLayers(sourceId = "stress") {
       type: "line",
       source: sourceId,
       "source-layer": STRESS_TILE_LAYER,
-      filter: ["==", ["get", "facility"], facility.facility],
+      filter: filters[`facility-${facility.facility}`],
       paint,
     };
   });
@@ -210,8 +265,8 @@ export function facilityLayers(sourceId = "stress") {
  * tier, which would then vanish under its casing; rails drawn over a casing
  * would do the same to the whole line.
  */
-export function stressOverlayLayers(sourceId = "stress") {
-  return [...facilityLayers(sourceId), ...stressCasingLayers(sourceId), ...stressLayers(sourceId)];
+export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+  return [...facilityLayers(sourceId, when), ...stressCasingLayers(sourceId, when), ...stressLayers(sourceId, when)];
 }
 
 /** Legend entries, which carry the label the colour alone cannot. */
