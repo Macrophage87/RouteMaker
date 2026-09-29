@@ -1231,7 +1231,7 @@ class TestNoBusierThanMiddleFallbacks:
     middle = _trip(list(reversed(VERTICES)), 2.2, LONG_STEEP)
 
     def check(self, monkeypatch, answer, exposures=None, variant="standard", deadline=None):
-        seen = {"exposures": 0, "limits": []}
+        seen = {"exposures": 0, "limits": [], "trace_deadlines": []}
 
         def call(variant_, endpoint, payload, deadline_):
             seen["limits"].append(deadline_.per_call_s)
@@ -1243,6 +1243,7 @@ class TestNoBusierThanMiddleFallbacks:
 
         def exposure(*args):
             seen["exposures"] += 1
+            seen["trace_deadlines"].append(args[4].at)
             return next(values)
 
         monkeypatch.setattr(routing, "_call", call)
@@ -1288,6 +1289,8 @@ class TestNoBusierThanMiddleFallbacks:
             monkeypatch, {"trip": self.middle}, [5.0, 5.0], deadline=deadline
         )
         assert seen["limits"] == [pytest.approx(6.0, abs=0.5)]
+        # Both routes' traces are inside the same step, not the whole budget.
+        assert seen["trace_deadlines"] == [deadline.at - routing.MIDDLE_TRACE_RESERVE_S] * 2
 
     def test_with_less_than_its_minimum_left_it_is_not_asked(self, monkeypatch):
         left = routing.MIDDLE_TRACE_RESERVE_S + routing.MIDDLE_MIN_S - 1.0
