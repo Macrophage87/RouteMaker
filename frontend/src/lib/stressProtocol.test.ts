@@ -319,3 +319,17 @@ test("MapView checks through stressProbe with its own answer, and cancels on the
   assert.match(view, /stressCheck\.cancel\(\);/);
   assert.match(view, /void stressCheck\.probe\(\);/);
 });
+
+test("an outage longer than one recheck is asked about again, and again, until it answers", async () => {
+  // Round-1 mutant F18: a timer that did not clear itself left the check
+  // waiting on nothing after its first recheck.
+  const h = probeHarness([false, false, false, true]);
+  await h.check.probe();
+  for (let round = 1; round <= 3; round += 1) {
+    assert.deepEqual(h.timers.map((t) => t.ms), [60_000], `recheck ${round} is waiting`);
+    h.timers.shift()!.run();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+  assert.deepEqual(h.events, ["unavailable", "unavailable", "unavailable", "add", "available"]);
+  assert.equal(h.timers.length, 0);
+});

@@ -426,6 +426,28 @@ class TestPredrawProbes:
         assert result.drawn == 0 and result.left == 5
         assert rows() == 0
 
+    @pytest.mark.parametrize("workers", [2, 3])
+    def test_every_worker_stops_at_a_promotion(self, live, monkeypatch, workers) -> None:
+        """Round-1 mutants P04 and P08: after a promotion one worker stopped and
+        the others drew the rest of the box for a table no longer served."""
+        import threading
+
+        oid, _ = stress_tiles.live_table()
+        calls = []
+        lock = threading.Lock()
+
+        def promoted(*args, **kwargs):
+            with lock:
+                calls.append(args)
+            time.sleep(0.05)  # each worker holds a tile when the promotion shows
+            return oid + 1, b"new-table"
+
+        monkeypatch.setattr(stress_tiles, "render", promoted)
+        result = tile_cache.predraw(workers=workers)
+        assert len(calls) <= workers, calls
+        assert result.drawn == 0 and result.left == 5
+        assert rows() == 0
+
     def test_a_spent_budget_draws_nothing_and_says_how_much_is_left(self, live) -> None:
         result = tile_cache.predraw(budget_s=-1)
         assert result == (0, 0, 0, 5)

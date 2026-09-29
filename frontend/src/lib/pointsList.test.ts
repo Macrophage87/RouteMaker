@@ -38,3 +38,26 @@ test("App shows the list from pointRows, with its removal and focus wiring", () 
   assert.match(app, /<PointsList\s+rows=\{pointRows\(points, namer\)\}\s+onRemove=\{removeAt\}/);
   assert.match(app, /removeRefs\.current\[index\] = button;/);
 });
+
+test("each Remove button removes its own point, and hands its own row's button for the focus", () => {
+  // Round-1 mutants F13 and F14: every button removing point 0, or every
+  // button registered as point 0's, passed a test that only rendered markup.
+  const removed: number[] = [];
+  const refs: Array<[number, unknown]> = [];
+  const list = PointsList({
+    rows: ROWS,
+    onRemove: (index) => removed.push(index),
+    removeRef: (index, button) => refs.push([index, button]),
+  }) as unknown as { props: { children: Array<{ props: { children: unknown[] } }> } };
+  const items = list.props.children;
+  assert.equal(items.length, ROWS.length);
+  items.forEach((item, index) => {
+    const button = item.props.children.at(-1) as { props: { onClick: () => void; ref: (b: unknown) => void } };
+    button.props.onClick();
+    const stand_in = { index };
+    button.props.ref(stand_in);
+    assert.deepEqual(removed.at(-1), index);
+    assert.deepEqual(refs.at(-1), [index, stand_in]);
+  });
+  assert.deepEqual(removed, [0, 1, 2]);
+});
