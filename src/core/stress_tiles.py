@@ -13,9 +13,11 @@ measured on the first promoted build, the z10 tile over downtown DC held
 228,854 of them in 6.0 MB and took 3.5 s, and the z12 tile 47,392 in 1.2 MB.
 
 - `TRAILS`, z10 to ROAD_STRESS_MIN_ZOOM - 1: the traffic-free paths and
-  nothing else (`pipeline.schema.trails_predicate`: what `routemaker.facility`
-  calls a path). The owner, 2026-09-28: "It looks way too busy zoomed out
-  though." and "Zoomed out just show the trails." (OWNER-DECISIONS 64, 65).
+  trails and nothing else (`pipeline.schema.trails_predicate`: what
+  `routemaker.facility` calls a path, and the protected ways that are trails
+  of their own beside a road). The owner, 2026-09-28: "It looks way too busy
+  zoomed out though." and "Zoomed out just show the trails." (OWNER-DECISIONS
+  64, 65), and 2026-09-29: "Show roadside trails (Recommended)" (66).
 - `STREETS`, from ROAD_STRESS_MIN_ZOOM to z13: the full stress colours, every
   segment except the sidewalk class (footways, pedestrian ways, steps;
   `SIDEWALK_CLASS_HIGHWAY`), which in DC is a second copy of the street grid
@@ -102,7 +104,7 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # Bumped whenever what a tile holds changes for the same table, so a client's
 # cached tiles - and the tile cache's rows (core.tile_cache) - are not served
 # as current against a different encoding. 3: the zoomed-out tiles became the
-# trails alone (OWNER-DECISIONS 65), for a live table whose oid the deploy
+# paths and trails alone (OWNER-DECISIONS 65, 66), for a live table whose oid the deploy
 # does not change.
 FORMAT_VERSION = 3
 
@@ -139,7 +141,7 @@ class Level:
     where: str | None
     # One feature per class, simplified, rather than one per segment.
     merged: bool
-    # Only the paths (`pipeline.schema.trails_predicate`), in place of `where`.
+    # Only the paths and trails (`pipeline.schema.trails_predicate`), in place of `where`.
     trails_only: bool = False
 
 

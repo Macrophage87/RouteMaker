@@ -110,14 +110,26 @@ def _text_list(values) -> str:
 
 
 # What the stress tiles draw zoomed out (`core.stress_tiles.TRAILS`, below
-# `core.stress_tiles.ROAD_STRESS_MIN_ZOOM`): the traffic-free paths and
-# nothing else. The owner, 2026-09-28: "It looks way too busy zoomed out
+# `core.stress_tiles.ROAD_STRESS_MIN_ZOOM`): the traffic-free paths and trails
+# and nothing else. The owner, 2026-09-28: "It looks way too busy zoomed out
 # though." and then "Zoomed out just show the trails." (OWNER-DECISIONS 64,
-# 65). A path is what `routemaker.facility` calls one - the rule routing
-# reads, written by the rebuild to `segment.facility` - so a car-free road
-# (Beach Drive in DC) is on the zoomed-out map and a hiking trail barred to
-# bicycles is not. Protected lanes are not: they are on the roadway or beside
-# it, and zoomed out they would draw the street grid again.
+# 65); and 2026-09-29, "Show roadside trails (Recommended)" (66).
+#
+# - A path is what `routemaker.facility` calls one - the rule routing reads,
+#   written by the rebuild to `segment.facility` - so a car-free road (Beach
+#   Drive in DC) is on the zoomed-out map and a hiking trail barred to
+#   bicycles is not.
+# - A roadside trail is a way of its own - trail class, `is_trail_class` -
+#   that `routemaker.facility` calls protected because it runs beside a road:
+#   a sidewalk or path designated for bicycles, an `is_sidepath`, a cycleway
+#   along a road whose own tags say its facility is mapped separately. The
+#   Cross County Trail's sidewalk stretches, the Old Georgetown Road sidepath.
+# - A protected lane tagged on the road way itself (`cycleway=track`, a lane
+#   with posts) is not trail class, and waits for z13 with the roads.
+#
+# The segment table records no more than that: a cycle track in DC's roadway
+# mapped as a way of its own (15th Street NW) is trail class too, and is drawn
+# zoomed out like the trail beside a road.
 #
 # Written once because the partial index below is created with it and the tile
 # query filters with it, and PostgreSQL uses a partial index only when it can
@@ -125,6 +137,7 @@ def _text_list(values) -> str:
 # expression.
 FACILITY_COLUMN = "facility"
 TRAIL_FACILITY = "path"
+ROADSIDE_TRAIL_FACILITY = "protected"
 
 # A live table promoted before the facility column has no such column, and the
 # tiles derive the facility from the rule the rebuild recorded
@@ -149,10 +162,16 @@ TRAIL_NETWORK_FACILITY = (
 
 def trails_predicate(has_facility: bool) -> str:
     """The zoomed-out tiles' condition on a table with or without the facility
-    column: its paths. Also the overview index's predicate on that table."""
+    column: its paths, and the protected ways that are trails of their own.
+    Also the overview index's predicate on that table. Without the column the
+    recorded rule says it: a sidepath for bicycles is a trail-class way beside
+    a road (`routemaker.classes.trail_kind`)."""
     if has_facility:
-        return f"{FACILITY_COLUMN} = '{TRAIL_FACILITY}'"
-    return "stress_rule IN (" + _text_list(PATH_RULES) + ")"
+        return (
+            f"({FACILITY_COLUMN} = '{TRAIL_FACILITY}' OR "
+            f"({FACILITY_COLUMN} = '{ROADSIDE_TRAIL_FACILITY}' AND is_trail_class))"
+        )
+    return "stress_rule IN (" + _text_list(PATH_RULES | SIDEPATH_RULES) + ")"
 
 
 # What they draw at street zoom (`core.stress_tiles.STREETS`): everything but
@@ -268,7 +287,7 @@ CREATE TABLE {schema}.segment (
 CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
 CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
--- The stress tiles' zoomed-out level draws only the paths
+-- The stress tiles' zoomed-out level draws only the paths and trails
 -- (trails_predicate); this index holds only those rows, so a z10 tile's scan
 -- does not read the whole region's streets to find them.
 CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)

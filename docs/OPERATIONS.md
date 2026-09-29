@@ -400,15 +400,17 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 
 | Zoom | What is drawn | Measured on a copy of the promoted build, 2026-09-28 |
 | --- | --- | --- |
-| 10-12 | only the traffic-free paths (`pipeline.schema.trails_predicate`); one feature per class, simplified | z10 downtown 38 KB; all 762 tiles 0.5 MB |
+| 10-12 | only the traffic-free paths and trails, roadside trails included (`pipeline.schema.trails_predicate`); one feature per class, simplified | z10 downtown 38 KB; all 762 tiles 0.5 MB |
 | 13 | the full stress colours: everything but footways, pedestrian ways and steps not open to bicycles; one feature per class, simplified | 2,116 tiles, 16 MB, at most 51 KB |
 | 14-16 | every segment | z14: 8,190 tiles, 49 MB, at most 125 KB (downtown, 55 KB gzipped) |
 
 The owner, 2026-09-28: "It looks way too busy zoomed out though." and then
-"Zoomed out just show the trails." (OWNER-DECISIONS 64, 65). So below
+"Zoomed out just show the trails." (OWNER-DECISIONS 64, 65); 2026-09-29: "Show
+roadside trails (Recommended)" (66). So below
 `core.stress_tiles.ROAD_STRESS_MIN_ZOOM` - 13, the orchestrator's default,
-neighbourhood scale - the overlay draws only the paths, and the legend says
-"Zoom in to see traffic stress on roads" there. To move it, change
+neighbourhood scale - the overlay draws only the traffic-free paths and
+trails, and the legend says "Zoom in to see traffic stress on roads.
+Zoomed out, only traffic-free paths and trails are shown." there. To move it, change
 `ROAD_STRESS_MIN_ZOOM` and `STRESS_ZOOMS.roads` in
 `frontend/src/lib/mapStyle.ts` together (a test fails while they differ),
 rebuild the api image and the front end, and run the pre-draw. Below zoom 10
@@ -431,12 +433,24 @@ until the next rebuild records the kinds or writes the facility.
 derive one (`pipeline.schema.TRAIL_NETWORK_FACILITY`): a trail open to bicycles
 is a path, a sidepath is protected, and nothing else carries one. Where the
 live table has the column (path, protected, lane or none - the routing lane
-adds it) every feature carries it as `facility`, the zoomed-out tiles are its
-paths - a car-free road such as Beach Drive in DC included - and z13 also
-keeps the paths and protected lanes whatever their kind of way
-(`pipeline.schema.keeping_facilities`). Protected lanes are not on the
-zoomed-out map: they are on the roadway or beside it, and would draw the
-street grid again. The overview index is built on the facility's predicate
+adds it) every feature carries it as `facility`, and z13 also keeps the
+paths and protected lanes whatever their kind of way
+(`pipeline.schema.keeping_facilities`). The zoomed-out tiles are its paths -
+a car-free road such as Beach Drive in DC included - and its protected ways
+that are trails of their own (`is_trail_class`): a sidewalk or path
+designated for bicycles, an `is_sidepath`, a cycleway along a road whose tags
+say its facility is mapped separately. A protected lane tagged on the road
+way itself (`cycleway=track`, a lane with posts) waits for z13 with the roads.
+The table records no more than that, so a cycle track in DC's roadway mapped
+as a way of its own (15th Street NW, Pennsylvania Avenue NW) is drawn zoomed
+out like a trail beside a road. On a copy of the dials pipeline's box table
+(2026-09-29) the roadside trails added 82 mi to the 871 mi of paths: the
+Cross County Trail's sidewalk stretches, the Old Georgetown Road sidepath,
+parts of the Anacostia Riverwalk, Rock Creek, Rhode Island Avenue Trolley and
+Bethesda Trolley trails, and DC's separately mapped cycle tracks. The Custis,
+Capital Crescent and Mount Vernon trails are paths there already. Without the
+column, the stand-in's sidepaths (`trail_kind`) are the roadside trails.
+The overview index is built on the facility's predicate
 only once `pipeline.schema.SEGMENT_HAS_FACILITY` says the schema declares the
 column (a test fails while the two disagree).
 
@@ -457,7 +471,7 @@ refills itself.
 Run the pre-draw by hand on a deployment whose live table was promoted before
 the cache existed (the first deploy of this change), after a deploy that
 changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale;
-3 is the zoomed-out tiles becoming the trails alone), and after
+3 is the zoomed-out tiles becoming the paths and trails alone), and after
 `rollback_rebuild`, which puts back a table the last pre-draw cleared the tiles
 of. The weekly rebuild's own pre-draw runs in the `rebuild` service, so a
 change to what it draws reaches it with the pipeline image. It skips what is
@@ -480,6 +494,41 @@ stopped short ("stopped at its time budget with N left", "N timed out"), in
 which case run it by hand. Until it has run, a tile is drawn on request
 through the one draw slot, and a street-level screen takes 20-30 s: see the
 next paragraph.
+
+**Deploying a change to what the tiles draw** (a new `FORMAT_VERSION`, as
+format 3 was; corrected by the FOLLOWUP-TILES-ZOOM review). Never a plain
+`docker compose up -d`: api, worker and rebuild depend on migrate and
+postgis, and a plain `up` would recreate them too.
+
+0. Check first, read-only: no job is queued or running
+   (`SELECT id, task_name, status FROM procrastinate_jobs WHERE status IN
+   ('todo', 'doing')` prints nothing); the last `weekly_rebuild` in
+   `scheduled_run` has finished; it is not the 07:00 UTC backup. And whether
+   the live table has the facility column (`SELECT count(*) FROM
+   information_schema.columns WHERE table_schema = 'live' AND table_name =
+   'segment' AND column_name = 'facility'`): without it the zoomed-out map
+   shows the cycleways alone until the next rebuild writes it - deploy after a
+   rebuild that has, or accept that.
+1. Tag the running images for a rollback
+   (`docker tag ghcr.io/macrophage87/routemaker-api:dev
+   ghcr.io/macrophage87/routemaker-api:pre-<change>`, and the same for
+   `routemaker-pipeline`), then `docker compose build api rebuild`.
+2. `docker compose up -d --no-deps api worker`. No migration comes with a
+   format change; migrate is not run.
+3. At once, the pre-draw: `docker compose exec -T api python manage.py
+   predraw_stress_tiles` (about 11,000 tiles in 1.5-3 min). After it,
+   `SELECT version, count(*) FROM stress_tile_cache GROUP BY 1` shows only the
+   new format. Until it ends, tiles are drawn on request through the one slot.
+4. Re-run step 0's job query (it must print nothing), then
+   `docker compose up -d --no-deps rebuild`, so the next rebuild's own
+   pre-draw is the new code's.
+5. The overview index: nothing (see "The overview index" below). Caddy: not
+   recreated.
+6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
+7. Check: a z11 tile answers 200 with an ETag ending in the new format
+   (`-v3"`, or `+facility-v3"`) and a repeat with `If-None-Match` is 304; a
+   z14 tile is a cache hit; the map at z11 shows only paths and trails with
+   the zoomed-out notice, and z13 the full colours.
 
 **Draw slots and the draw timeout.** A tile not in the cache is drawn under an
 in-flight slot (`core.ratelimit.TILES_IN_FLIGHT`): at most `TILE_CONCURRENCY`
@@ -545,21 +594,17 @@ Caddy compresses the tiles (an `encode` in the api's block matched on the
 vector-tile content type); nothing else the api answers is compressed.
 
 **The overview index.** The zoomed-out tiles read through a partial GiST index,
-`segment_overview_geom_idx`, holding only the paths
+`segment_overview_geom_idx`, holding only the paths and trails
 (`pipeline.schema.OVERVIEW_INDEX_PREDICATE`), which
 `pipeline.schema.create_segment_schema` creates with the rest of the schema on
-every rebuild. It only speeds the pre-draw now that the zoomed-out tiles are
-the paths alone: without it the z10 downtown tile took 0.27 s rather than
-0.06 s, and z10-12 took 8.7 s rather than 5.9 s. A live table promoted before
-this change has the index built on the old predicate (busy roads and the trail
-network), which the paths' query cannot use; nothing needs doing, and the next
-rebuild brings the new one. It may be dropped by hand - concurrently, so
-reads carry on, and only when no rebuild is queued or running, since the
-swap's `LOCK TABLE` waits behind it:
-
-```sh
-docker compose exec -T postgis psql -U routemaker -d routemaker -c "DROP INDEX CONCURRENTLY IF EXISTS live.segment_overview_geom_idx"
-```
+every rebuild. It speeds the pre-draw: without an index the z10 downtown tile
+took 0.27 s rather than 0.06 s, and z10-12 took 8.7 s rather than 5.9 s. A live
+table promoted before this change has the index built on the old predicate
+(busy roads and the trail network). **Do nothing, and do not drop it:** it
+serves the new query too - on a table without the facility column the trails'
+rules are a subset of the old predicate's, and `EXPLAIN` shows a bitmap
+index scan on it (FOLLOWUP-TILES-ZOOM review, round 1). The next rebuild
+creates the index on the facility's predicate.
 
 **The covered area.** `GET /api/coverage` answers the area routes may be
 planned in as a GeoJSON polygon feature - `settings.COVERAGE_BBOX`, the box the
@@ -1584,8 +1629,9 @@ docker compose exec -T api python manage.py predraw_stress_tiles
 
 The last line draws the stress tiles of the table put back: the pre-draw after
 the rolled-away rebuild's swap cleared that table's tiles from the cache, and
-until they are drawn again dense z10-12 tiles are refused ("The stress tiles",
-above).
+until they are drawn again every tile is drawn on request through the api's
+one draw slot, and a street-level screen takes 20-30 s to fill ("The stress
+tiles", above).
 
 **In `rebuild`, not in `api` or `worker`.** The command rewrites the promotion
 symlinks under `settings.TILES_DIR`, which is `/data/tiles` in all three Django

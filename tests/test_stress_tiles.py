@@ -144,6 +144,10 @@ FACILITY_OF = {
 # rules the stand-in calls a path (owner, 2026-09-28: "Zoomed out just show the
 # trails.").
 PATH_RULES = {rule for rule, facility in FACILITY_OF.items() if facility == "path"}
+# And the roadside trails (owner, 2026-09-29: "Show roadside trails
+# (Recommended)"): the protected ways that are trails of their own - every
+# protected rule the stand-in has is a sidepath, a trail-class way.
+TRAILS_RULES = PATH_RULES | {r for r, facility in FACILITY_OF.items() if facility == "protected"}
 
 
 class TestClasses:
@@ -420,12 +424,21 @@ class TestLevels:
         assert got == expected(lambda tier, rule: rule not in SIDEWALK_RULES)
 
     @pytest.mark.parametrize("z", [10, 11, 12])
-    def test_zoomed_out_only_the_paths(self, client, live, z) -> None:
+    def test_zoomed_out_only_the_paths_and_trails(self, client, live, z) -> None:
         """The owner, 2026-09-28: "Zoomed out just show the trails." - no
-        road, however busy, and no trail a bicycle may not ride."""
+        road, however busy, and no trail a bicycle may not ride; and
+        2026-09-29, "Show roadside trails (Recommended)" - the sidepath is
+        kept."""
         got = classes_in(client.get(url(*tile_of(*CENTRE, z))).content)
-        assert got == expected(lambda tier, rule: rule in PATH_RULES)
+        assert got == expected(lambda tier, rule: rule in TRAILS_RULES)
+        assert expected(lambda tier, rule: rule in TRAILS_RULES and rule not in PATH_RULES)
         assert got
+
+    def test_the_trails_level_draws_at_a_z12_tiles_detail(self) -> None:
+        """Round-1 mutant P13: 2048 units a side at z12 is a unit of 4.8 m, which
+        merges the two carriageways of a trail beside a road into one line."""
+        assert (stress_tiles.TRAILS.extent, stress_tiles.TRAILS.buffer) == (4096, 32)
+        assert stress_tiles.TRAILS.merged and stress_tiles.TRAILS.trails_only
 
     def test_the_road_stress_starts_at_its_one_named_zoom(self) -> None:
         assert stress_tiles.ROAD_STRESS_MIN_ZOOM == 13
@@ -707,12 +720,13 @@ class TestFacility:
             for _l, tier, rule, _t, _u in CLASSES
             if level is stress_tiles.FULL
             or (level is stress_tiles.STREETS and rule not in SIDEWALK_RULES)
-            or (level is stress_tiles.TRAILS and rule in PATH_RULES)
+            or (level is stress_tiles.TRAILS and rule in TRAILS_RULES)
         ]
         want = Counter(FACILITY_OF.get(rule, "(absent)") for rule in kept)
         assert drawn == want
         assert drawn["path"] >= 3
-        assert drawn["protected"] == (0 if level is stress_tiles.TRAILS else 1)
+        # The sidepath, a roadside trail, is kept at every level.
+        assert drawn["protected"] == 1
 
     def test_the_column_added_in_place_changes_the_etag(self, client, live) -> None:
         """Added by hand to a live table, the column changes the tiles but not
@@ -735,9 +749,40 @@ class TestFacility:
     @pytest.mark.parametrize("z", [10, 11, 12])
     def test_zoomed_out_only_the_paths_are_kept(self, client, with_facility, z):
         """The path on a footway is kept by its facility, whatever its kind of
-        way; the protected lane, a street, is not (owner, 2026-09-28: "Zoomed
-        out just show the trails.")."""
+        way; the protected lane tagged on its street is not (owner, 2026-09-28:
+        "Zoomed out just show the trails.")."""
         assert self.facilities(client, z) == Counter({"path": 1})
+
+    @pytest.mark.parametrize("z", [10, 11, 12])
+    def test_zoomed_out_a_roadside_trail_is_kept_and_a_track_on_the_road_is_not(
+        self, client, with_facility, z
+    ):
+        """The owner, 2026-09-29: "Show roadside trails (Recommended)". A
+        protected way that is a way of its own - a cycleway beside a road, a
+        sidewalk designated for bicycles - is a trail; the protected lane
+        tagged on the road way is not, and waits for z13."""
+        with connection.cursor() as cursor:
+            lon, lat = CENTRE[0] - 0.001, CENTRE[1] + 0.0015
+            cursor.execute(
+                f"INSERT INTO {with_facility}.segment (osm_way_id, ordinal, geometry, "
+                "stress_tier, stress_rule, is_trail_class, is_unpaved, facility) VALUES "
+                "(3000, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, %s, "
+                "true, false, 'protected')",
+                [lon, lat, lon + 0.002, lat, trail_rule("cycleway")],
+            )
+        assert self.facilities(client, z) == Counter({"path": 1, "protected": 1})
+        assert self.facilities(client, 13)["protected"] == 2
+
+    def test_the_trails_predicate_names_the_roadside_trails(self) -> None:
+        from pipeline import schema
+
+        with_column = schema.trails_predicate(True)
+        assert with_column == ("(facility = 'path' OR (facility = 'protected' AND is_trail_class))")
+        without = schema.trails_predicate(False)
+        for rule in TRAILS_RULES:
+            assert f"'{rule}'" in without
+        for rule in SIDEWALK_RULES:
+            assert f"'{rule}'" not in without
 
     @pytest.mark.parametrize("z", [13])
     def test_at_street_zoom_a_path_on_a_footway_is_kept(self, client, with_facility, z):

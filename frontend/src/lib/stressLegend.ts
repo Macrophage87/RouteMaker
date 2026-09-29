@@ -9,11 +9,21 @@
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
 
+/**
+ * The one phrase for what the map shows zoomed out, wherever the legend says
+ * it (review of round 1: it had three names for one thing). Roadside trails
+ * are in it: the owner, 2026-09-29, "Show roadside trails (Recommended)".
+ */
+export const ZOOMED_OUT = "Zoomed out, only traffic-free paths and trails are shown.";
+
+/** The bike-facility legend's note on the protected lanes the zoomed-out map leaves out. */
+export const ROADWAY_LANES = `Protected lanes in the roadway show from zoom ${STRESS_ZOOMS.roads}.`;
+
 /** The notice for the zoom the map is at, when the overlay is shown; null when there is none. */
 export function stressZoomNotice(zoom: number | null, shown: boolean): string | null {
   if (zoom === null || !shown) return null;
-  if (zoom < STRESS_ZOOMS.min) return "Zoom in to see the trails and traffic stress.";
-  if (zoom < STRESS_ZOOMS.roads) return "Zoom in to see traffic stress on roads. Zoomed out, only the trails are shown.";
+  if (zoom < STRESS_ZOOMS.min) return "Zoom in to see traffic-free paths, trails and traffic stress.";
+  if (zoom < STRESS_ZOOMS.roads) return `Zoom in to see traffic stress on roads. ${ZOOMED_OUT}`;
   return null;
 }
 
@@ -21,9 +31,9 @@ export function stressZoomNotice(zoom: number | null, shown: boolean): string | 
 export function stressZoomHint(zoom: number | null): string {
   const { min, roads, full } = STRESS_ZOOMS;
   let text =
-    `Zoomed out, only the traffic-free trails and paths are drawn. Traffic stress on roads and streets shows ` +
-    `from zoom ${roads}, and footways and sidewalks from zoom ${full}. Further out than zoom ${min} nothing is ` +
-    `drawn, and streets with no stress rating are not drawn.`;
+    `${ZOOMED_OUT} Trails beside a road are among them. From zoom ${roads} traffic stress on roads and streets ` +
+    `shows, protected lanes in the roadway with it, and from zoom ${full} footways and sidewalks. Further out than ` +
+    `zoom ${min} nothing is drawn, and streets with no stress rating are not drawn.`;
   if (zoom !== null) text += ` The map is at zoom ${Math.floor(zoom)}.`;
   return text;
 }

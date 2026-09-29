@@ -23,7 +23,7 @@ import { stationEdit, type RailVisibility, type StationRole } from "./lib/railSt
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
-import { StressZoomNotes } from "./lib/stressLegend.ts";
+import { ROADWAY_LANES, StressZoomNotes } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { planEdits, travelSaid } from "./lib/planEdits.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
@@ -807,7 +807,7 @@ function StressLegend({
         ))}
       </ul>
       {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
-          only the trails below STRESS_ZOOMS.roads (lib/stressLegend.ts). */}
+          traffic-free paths and trails alone below STRESS_ZOOMS.roads (lib/stressLegend.ts). */}
       <StressZoomNotes zoom={zoom} shown={shown} />
       {facilities.size > 0 && (
         <>
@@ -835,7 +835,7 @@ function StressLegend({
               );
             })}
           </ul>
-          <p className="hint">Sharrows count as ordinary streets. Zoomed out, only the paths stay on the map.</p>
+          <p className="hint">Sharrows count as ordinary streets. {ROADWAY_LANES}</p>
         </>
       )}
     </>
