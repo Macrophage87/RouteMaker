@@ -87,10 +87,18 @@ CONFIRM_SPAN_M = 150_000
 MAX_SPAN_M = 200_000
 
 
+# Human sentences give US customary first, metric in brackets (the owner,
+# 2026-09-27: "This is a US-based map, so people are more used to miles over
+# km. Have both, but metric should be secondary."; OWNER-DECISIONS 85). The
+# fields (`span_km`, every `_m`) stay metric.
+METRES_PER_MILE = 1609.344
+
+
 def too_long() -> str:
     """The refusal past MAX_SPAN_M, naming the figure so a rider knows the limit."""
     return (
-        f"the route is longer than {MAX_SPAN_M // 1000} km in straight lines, which is too "
+        f"the route is longer than {round(MAX_SPAN_M / METRES_PER_MILE)} mi "
+        f"({MAX_SPAN_M // 1000} km) in straight lines, which is too "
         "long to plan in one request; split it into shorter parts"
     )
 
@@ -512,7 +520,8 @@ def route(request, body: RouteIn, response: HttpResponse):
             409,
             {
                 "error": (
-                    f"This is a long ride, about {round(span / 1000)} km in straight lines. "
+                    f"This is a long ride, about {round(span / METRES_PER_MILE)} mi "
+                    f"({round(span / 1000)} km) in straight lines. "
                     "Planning it takes longer; send the request again with confirm_long "
                     "set to plan it."
                 ),

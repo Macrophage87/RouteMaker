@@ -10,11 +10,11 @@ const ROSSLYN: LonLat = [-77.0707, 38.8966];
 /** The numbers in a sentence, in order: what these tests hold, not the wording. */
 const numbers = (text: string | null) => (text ?? "").match(/\d+(?:\.\d+)?/g) ?? [];
 
-test("the pace is the answer's own distance over time, in km/h and mph", () => {
-  // 5 km in 20 min is 15 km/h, 9.3 mph.
-  assert.deepEqual(numbers(paceText({ distance_m: 5000, duration_s: 1200, preset: "default" })), ["15", "9"]);
-  // 4 km in 26 min is 9.2 km/h, 5.7 mph.
-  assert.deepEqual(numbers(paceText({ distance_m: 4000, duration_s: 1560, preset: "default" })), ["9", "6"]);
+test("the pace is the answer's own distance over time, in mph and then km/h", () => {
+  // 5 km in 20 min is 9.3 mph, 15 km/h.
+  assert.equal(paceText({ distance_m: 5000, duration_s: 1200, preset: "default" }), "about 9 mph (15 km/h)");
+  // 4 km in 26 min is 5.7 mph, 9.2 km/h.
+  assert.deepEqual(numbers(paceText({ distance_m: 4000, duration_s: 1560, preset: "default" })), ["6", "9"]);
 });
 
 test("Mass Ride's pace says what it is on top of the same figures", () => {
@@ -32,9 +32,10 @@ test("no pace without both a distance and a time", () => {
 
 test("a detour notice gives distances, not a ratio", () => {
   const text = detourNotice({ distance_m: 141_100, preset: "mass-ride" }, [GEORGETOWN, ROSSLYN]) ?? "";
-  const [route, straight] = numbers(text);
-  assert.equal(route, "141");
-  assert.match(straight, /^1\.\d$/);
+  const [routeMi, routeKm, straight] = numbers(text);
+  assert.deepEqual([routeMi, routeKm], ["87.7", "141.1"]);
+  assert.match(text, /^This route is 87\.7 mi \(141\.1 km\) for points /);
+  assert.match(straight, /^0\.\d$/);
   assert.doesNotMatch(text, /×|\dx\b/);
 });
 

@@ -384,7 +384,7 @@ export function parseDialsComment(cmt: string | undefined): Record<string, strin
 }
 
 export interface GpxExport {
-  /** The route's name, e.g. "Group Ride route, 12.3 km". */
+  /** The route's name, e.g. "Group Ride route, 7.6 mi (12.3 km)". */
   name: string;
   /** One line about the ride: type, distance, climb. */
   description: string;

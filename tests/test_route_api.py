@@ -2230,3 +2230,11 @@ def test_a_trace_in_miles_is_converted() -> None:
     trace = trace_answer([VERTICES[0], VERTICES[1]], [(101, 0, 1, 1.0)])
     trace["units"] = "miles"
     assert sum(p.metres for p in routing.pieces_of_trace(trace)) == pytest.approx(1609.344)
+
+
+def test_the_refusals_name_miles_first_and_kilometres_in_brackets() -> None:
+    """OWNER-DECISIONS 85: US customary first in every sentence a rider reads."""
+    from core.api import MAX_SPAN_M, too_long
+
+    assert MAX_SPAN_M == 200_000
+    assert too_long().startswith("the route is longer than 124 mi (200 km) in straight lines")

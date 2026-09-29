@@ -6,6 +6,7 @@ import type { ExportDials, GpxExport } from "./gpx.ts";
 import type { ImportNote, ImportedPlan } from "./gpxPlan.ts";
 import { presetLabel } from "./presets.ts";
 import { FIDELITY_WITHIN_M, type Fidelity } from "./trackMatch.ts";
+import { formatClimb, formatDistance, milesFigure } from "./format.ts";
 
 type ExportedRoute = Pick<
   RouteResponse,
@@ -14,27 +15,14 @@ type ExportedRoute = Pick<
   Partial<Pick<RouteResponse, "dials">>;
 
 // US units first, metric in brackets (owner decision), in everything the
-// file and this section say.
-const METRES_PER_MILE = 1609.344;
-const FEET_PER_METRE = 3.28084;
-
-function mi(metres: number): string {
-  return (metres / METRES_PER_MILE).toFixed(1);
-}
-
-function km(metres: number): string {
-  return (metres / 1000).toFixed(1);
-}
+// file and this section say: the app's one formatter (format.ts).
+const mi = milesFigure;
 
 /** "4.7 mi (7.6 km)". */
-export function milesText(metres: number): string {
-  return `${mi(metres)} mi (${km(metres)} km)`;
-}
+export const milesText = formatDistance;
 
 /** "266 ft (81 m)". */
-export function feetText(metres: number): string {
-  return `${Math.round(metres * FEET_PER_METRE)} ft (${Math.round(metres)} m)`;
-}
+export const feetText = formatClimb;
 
 export function exportName(route: Pick<RouteResponse, "preset" | "distance_m">): string {
   return `${presetLabel(route.preset)} route, ${milesText(route.distance_m)}`;

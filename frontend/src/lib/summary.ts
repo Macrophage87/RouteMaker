@@ -1,7 +1,7 @@
 /** Sentences the route panel says about a route. */
 import type { RouteResponse } from "./api.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
-import { formatClimb, formatDistance, formatDuration } from "./format.ts";
+import { formatClimb, formatDistance, formatDuration, formatSpeed } from "./format.ts";
 
 /**
  * The pace the moving time assumes, derived from the answer itself (distance
@@ -11,13 +11,8 @@ import { formatClimb, formatDistance, formatDuration } from "./format.ts";
 export function paceText(route: Pick<RouteResponse, "distance_m" | "duration_s" | "preset">): string | null {
   if (!(route.distance_m > 0) || !(route.duration_s > 0)) return null;
   const kmh = route.distance_m / 1000 / (route.duration_s / 3600);
-  const text = `about ${Math.round(kmh)} km/h (${Math.round(kmh / 1.609344)} mph)`;
+  const text = `about ${formatSpeed(kmh)}`;
   return route.preset === "mass-ride" ? `parade pace, ${text}` : text;
-}
-
-function kmText(metres: number): string {
-  const km = metres / 1000;
-  return km < 10 ? `${km.toFixed(1)} km` : `${Math.round(km)} km`;
 }
 
 /**
@@ -30,7 +25,7 @@ function kmText(metres: number): string {
  */
 export function detourNotice(route: Pick<RouteResponse, "distance_m" | "preset">, points: readonly LonLat[]): string | null {
   if (!detour(points, route.distance_m).flagged) return null;
-  const head = `This route is ${kmText(route.distance_m)} for points ${kmText(pathLengthM(points))} apart in straight lines.`;
+  const head = `This route is ${formatDistance(route.distance_m)} for points ${formatDistance(pathLengthM(points))} apart in straight lines.`;
   if (route.preset === "mass-ride") {
     return (
       `${head} Mass Ride keeps to roadways and skips trails and sidepaths, and many river crossings ` +
