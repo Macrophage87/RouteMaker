@@ -3,7 +3,7 @@
  * climbs, what that search found. A component of its own so App.tsx only
  * places it (another lane is changing App.tsx).
  */
-import { formatClimb, formatDistance } from "./lib/format.ts";
+import { SEEK_MAX_SPAN_M, formatClimb, formatDistance, formatRoughDistance } from "./lib/format.ts";
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
@@ -58,7 +58,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
           {seek.limited === "two_points"
             ? "Looking for climbs works on routes with just a start and an end; this one has via points, so it is the fastest route."
             : seek.limited === "long_ride"
-              ? "Looking for climbs is done only when the start and end are within 50 km of each other; this is the fastest route."
+              ? `Looking for climbs is done only when the start and end are within ${formatRoughDistance(SEEK_MAX_SPAN_M)} of each other; this is the fastest route.`
               : seek.limited === "timed_out"
                 ? "Looking for climbs took too long this time; this is the fastest route."
               : seek.chosen === 0

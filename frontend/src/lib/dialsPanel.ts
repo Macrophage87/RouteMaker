@@ -6,6 +6,7 @@
  * went unnoticed while the decisions lived in DialsPanel.tsx and
  * FacilityBreakdown.tsx).
  */
+import { AVOID_MAX_SPAN_M, SEEK_MAX_SPAN_M, formatRoughDistance } from "./format.ts";
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
@@ -49,9 +50,9 @@ export const MASS_RIDE_TRAFFIC_NOTE =
 export const MASS_RIDE_HILLS_NOTE =
   "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed.";
 export const SEEK_NOTE =
-  "Looks for climbs among a few alternative routes, up to half again as long; for a start and an end only, up to 50 km apart.";
+  `Looks for climbs among a few alternative routes, up to half again as long; for a start and an end only, up to ${formatRoughDistance(SEEK_MAX_SPAN_M)} apart.`;
 export const AVOID_NOTE =
-  "Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to 50 km apart.";
+  `Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
 
 /**
  * The panel for a ride type, the committed dials, and the position being

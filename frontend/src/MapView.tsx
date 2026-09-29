@@ -203,7 +203,10 @@ export function MapView(props: Props) {
     mapRef.current = map;
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // Both scales, miles and feet over kilometres and metres (OWNER-DECISIONS 85):
+    // a bottom corner stacks its controls upwards, so the one added last is on top.
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
+    map.addControl(new maplibregl.ScaleControl({ unit: "imperial" }), "bottom-right");
     const canvas = map.getCanvas();
     canvas.setAttribute("aria-label", "Map. Use arrow keys to pan and plus or minus to zoom.");
     canvas.addEventListener("focus", () => callbacks.current.onCanvasFocus(true));

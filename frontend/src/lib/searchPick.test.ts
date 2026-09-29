@@ -4,7 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { EditHistory } from "./editHistory.ts";
-import { planEdits } from "./planEdits.ts";
+import { planEdits, type Snapshot } from "./planEdits.ts";
 import { pickIntoPlan, pointRows, type Place } from "./geocode.ts";
 import type { LonLat } from "./geo.ts";
 
@@ -15,15 +15,17 @@ const at = (p: Place): LonLat => [p.lon, p.lat];
 
 /** App.tsx's plan: its own commit and undo and redo (planEdits.ts), over a stand-in for its state. */
 function plan(start: LonLat[] = []) {
-  const history = new EditHistory<LonLat[]>();
+  const history = new EditHistory<Snapshot<LonLat[], null>>();
   let points = start;
   const remembered: string[] = [];
-  const edits = planEdits<LonLat[]>({
+  const edits = planEdits<LonLat[], null>({
     history,
     current: () => points,
+    ride: () => null,
     set: (next) => {
       points = next;
     },
+    applyRide: () => {},
     sync: () => {},
   });
   const deps = {

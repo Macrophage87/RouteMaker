@@ -1446,6 +1446,10 @@ class TestLongRide:
         assert body["code"] == "confirm_long"
         assert body["span_km"] == 160
         assert body["error"]
+        # US customary first, metric in brackets (OWNER-DECISIONS 85).
+        assert body["error"].startswith(
+            "This is a long ride, about 99 mi (160 km) in straight lines. "
+        )
         assert fake.calls == []
 
     def test_the_span_is_reported_rounded_to_a_kilometre(self, client, router) -> None:
@@ -2230,3 +2234,11 @@ def test_a_trace_in_miles_is_converted() -> None:
     trace = trace_answer([VERTICES[0], VERTICES[1]], [(101, 0, 1, 1.0)])
     trace["units"] = "miles"
     assert sum(p.metres for p in routing.pieces_of_trace(trace)) == pytest.approx(1609.344)
+
+
+def test_the_refusals_name_miles_first_and_kilometres_in_brackets() -> None:
+    """OWNER-DECISIONS 85: US customary first in every sentence a rider reads."""
+    from core.api import MAX_SPAN_M, too_long
+
+    assert MAX_SPAN_M == 200_000
+    assert too_long().startswith("the route is longer than 124 mi (200 km) in straight lines")

@@ -25,16 +25,26 @@ import { RAIL_STATIONS } from "./lib/railData.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { ROADWAY_LANES, StressZoomNotes } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
-import { planEdits, travelSaid } from "./lib/planEdits.ts";
+import { planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
 import { registerStressProtocol } from "./lib/stressProtocol.ts";
 import * as maplibregl from "maplibre-gl";
 import { PlaceSearch } from "./PlaceSearch.tsx";
 import { usePlaceNames } from "./usePlaceNames.ts";
 import { pickIntoPlan, pointRows, type Place, type PlaceChoice } from "./lib/geocode.ts";
+import { GpxPanel } from "./GpxPanel.tsx";
+import type { ImportedPlan } from "./lib/gpxPlan.ts";
+import { namesToKeep, rideAfterImport, type Ride } from "./lib/gpxEdit.ts";
 
 // Before the map adds the stress source (MapView, after its first probe).
 registerStressProtocol(maplibregl);
+
+/**
+ * One entry of the undo history: the points as they were, and, for an edit
+ * that also changed the ride type or the opened file (a GPX import, or Clear
+ * of an imported plan), those too, so undo takes the whole edit back.
+ */
+type Snapshot = PlanSnapshot<LonLat[], Ride>;
 
 interface Plan {
   points: LonLat[];
@@ -101,11 +111,17 @@ export function App() {
   const [markerReset, setMarkerReset] = useState(0);
   // Undo and redo (editHistory.ts), and whether each has anything to give
   // back, which is what their buttons need to know.
-  const history = useRef(new EditHistory<LonLat[]>());
+  const history = useRef(new EditHistory<Snapshot>());
   const [can, setCan] = useState({ undo: false, redo: false });
   // What an edit on the map did, for a screen reader: the map itself says
   // nothing. The count makes the same sentence twice a new announcement.
   const [said, setSaid] = useState({ text: "", count: 0 });
+  // The GPX file opened last (GpxPanel), until the plan is cleared.
+  const [imported, setImported] = useState<ImportedPlan | null>(null);
+  // The ride type, the sliders and the opened file as they are now, for the
+  // undo history (kept current at once by applyRide, like pointsRef).
+  const rideRef = useRef<Ride>({ preset, dials, imported });
+  rideRef.current = { preset, dials, imported };
   const narrow = useNarrow();
   const mapRef = useRef<MapLibreMap | null>(null);
   const panelRef = useRef<HTMLElement>(null);
@@ -162,6 +178,8 @@ export function App() {
       // Another plan: undo does not reach back into the one before it.
       history.current.clear();
       setCan({ undo: false, redo: false });
+      rideRef.current = { preset: plan.preset, dials: plan.dials, imported: null };
+      setImported(null);
       setPoints(plan.points);
       setPreset(plan.preset);
       setDials(plan.dials);
@@ -215,20 +233,32 @@ export function App() {
     [],
   );
 
-  // The plan's edits and its undo and redo (lib/planEdits.ts, where they are tested).
+  const applyRide = useCallback((ride: Ride) => {
+    rideRef.current = ride;
+    setPreset(ride.preset);
+    setDials(ride.dials);
+    setImported(ride.imported);
+  }, []);
+
+  // The plan's edits and its undo and redo (lib/planEdits.ts, where they are
+  // tested). An edit that also sets the ride type or the opened file (`ride`)
+  // records those as they were too, and undo restores them with the points:
+  // one step.
   const edits = useMemo(
     () =>
-      planEdits<LonLat[]>({
+      planEdits<LonLat[], Ride>({
         history: history.current,
         current: () => pointsRef.current,
+        ride: () => rideRef.current,
         set: (next) => {
           // Kept current at once, so a second edit before the next render builds on this one.
           pointsRef.current = next;
           setPoints(next);
         },
+        applyRide,
         sync: syncHistory,
       }),
-    [syncHistory],
+    [syncHistory, applyRide],
   );
 
   /** Every edit of the points goes through here, so undo can give the list before it back. */
@@ -366,8 +396,28 @@ export function App() {
   );
   const clearAll = () => {
     setConfirmedKm(null);
-    commit([]);
+    // Clearing an opened file's plan puts the file away too; undo brings both back.
+    const ride = rideRef.current;
+    commit([], ride.imported ? { ...ride, imported: null } : undefined);
   };
+  // An opened GPX file (GpxPanel): one edit, so one undo takes it back -
+  // its points, the ride type it names (through the ride-type choice, which
+  // moves the sliders; gpxEdit.ts) and its faint line. It holds at most
+  // MAX_POINTS points (gpxPlan.ts); names the file gives its points are kept
+  // like a search pick's, and the rest are looked up as any point is.
+  const openImported = (plan: ImportedPlan) => {
+    setConfirmedKm(null);
+    setNotice(null);
+    for (const [point, name] of namesToKeep(plan)) namer.remember(point, name);
+    commit(plan.points.slice(0, MAX_POINTS), { ...rideAfterImport(plan, rideRef.current), imported: plan });
+  };
+  const getMap = useCallback(() => mapRef.current, []);
+  // A fitting round for an opened track: part of the same edit as the import
+  // (the rider did not make it), so it is not an undo step of its own.
+  const refineImported = useCallback((next: LonLat[]) => {
+    pointsRef.current = next;
+    setPoints(next);
+  }, []);
   const addAtCentre = () => {
     const map = mapRef.current;
     if (!map) return;
@@ -665,6 +715,17 @@ export function App() {
         </header>
         <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
           {order.map((id) => sections[id])}
+
+          <GpxPanel
+            route={shown}
+            routedPoints={routedPoints}
+            points={points}
+            planStatus={status.kind}
+            imported={imported}
+            onImport={openImported}
+            onRefine={refineImported}
+            getMap={getMap}
+          />
 
           <section aria-labelledby="layers-heading">
             <h2 id="layers-heading">Traffic stress</h2>

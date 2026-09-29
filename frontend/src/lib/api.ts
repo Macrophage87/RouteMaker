@@ -5,6 +5,7 @@
  * types generated from the API's OpenAPI schema; until that step exists they
  * are written out here, against the contract rather than against a guess.
  */
+import { formatRoughDistance } from "./format.ts";
 import type { LonLat } from "./geo.ts";
 import type { PresetId } from "./presets.ts";
 import type { StressMetres } from "./stressBar.ts";
@@ -198,7 +199,7 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       message:
         spanKm === undefined
           ? "This is a long ride. Planning it may take a little longer."
-          : `This is a long ride (about ${spanKm} km in straight lines). Planning it may take a little longer.`,
+          : `This is a long ride: about ${formatRoughDistance(spanKm * 1000)} in straight lines. Planning it may take a little longer.`,
       ...(spanKm === undefined ? {} : { spanKm }),
     };
   }
