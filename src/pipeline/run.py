@@ -1304,6 +1304,8 @@ def build_handlers(
                         lit=lit_value(way.tags),
                         facility=context.facility_by_way.get(way.osm_id, "none"),
                         car_free_when=sorted(context.car_free_by_way.get(way.osm_id, ())),
+                        map_class=facility.map_class(way.tags).value,
+                        separate_bikeway=facility.has_separate_bikeway(way.tags),
                     )
                 )
         context.rows = rows

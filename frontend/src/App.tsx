@@ -14,7 +14,7 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, detourNotice, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
+import { BARRED, CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
@@ -807,9 +807,17 @@ function StressLegend({
             <span className="stress-label">{tier.label}</span>
           </li>
         ))}
+        <li key="barred">
+          <svg width="44" height="12" aria-hidden="true">
+            <line x1="2" y1="6" x2="42" y2="6" stroke={BARRED.casing} strokeWidth={BARRED.width + CASING_EXTRA_PX} />
+            <line x1="2" y1="6" x2="42" y2="6" stroke={BARRED.color} strokeWidth={BARRED.width} />
+          </svg>
+          <span className="stress-name">{BARRED.short}</span>
+          <span className="stress-label">{BARRED.label}</span>
+        </li>
       </ul>
       {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
-          traffic-free paths and trails alone below STRESS_ZOOMS.roads (lib/stressLegend.ts). */}
+          traffic-free paths and trails alone below STRESS_ZOOMS.busy (lib/stressLegend.ts). */}
       <StressZoomNotes zoom={zoom} shown={shown} />
       {facilities.size > 0 && (
         <>

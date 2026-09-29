@@ -12,20 +12,27 @@ segments and a tile holding every one of them is useless at region scale:
 measured on the first promoted build, the z10 tile over downtown DC held
 228,854 of them in 6.0 MB and took 3.5 s, and the z12 tile 47,392 in 1.2 MB.
 
-- `TRAILS`, z10 to ROAD_STRESS_MIN_ZOOM - 1: the traffic-free paths and
-  trails and nothing else (`pipeline.schema.trails_predicate`: what
-  `routemaker.facility` calls a path, and the protected ways that are trails
-  of their own beside a road). The owner, 2026-09-28: "It looks way too busy
-  zoomed out though." and "Zoomed out just show the trails." (OWNER-DECISIONS
-  64, 65), and 2026-09-29: "Show roadside trails (Recommended)" (66).
-- `STREETS`, from ROAD_STRESS_MIN_ZOOM to z13: the full stress colours, every
-  segment except the sidewalk class (footways, pedestrian ways, steps;
-  `SIDEWALK_CLASS_HIGHWAY`), which in DC is a second copy of the street grid
-  beside the first.
-- `FULL`, z14-16: every segment, one feature each. The map asks for nothing
-  past z14 - it draws z15-16 from the z14 tile (`STRESS_ZOOMS.max` in the front
-  end's mapStyle.ts) - so z14 is the deepest zoom drawn ahead; z15-16 are
-  still served, for the contract, and drawn on request.
+The owner, 2026-09-29: "Zoom less than 12, show just bike paths and the
+metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
+(OWNER-DECISIONS 73; "Zoomed out just show the trails." before it, 65, and
+"Show roadside trails (Recommended)", 66):
+
+- `TRAILS`, z10 to BUSY_ROADS_MIN_ZOOM - 1: the traffic-free paths and trails
+  and nothing else (`pipeline.schema.trails_predicate`: what
+  `routemaker.facility` calls a path, the protected ways that are trails of
+  their own beside a road, and the roads closed to cars at set times, for
+  those times). The rail stations draw over them from the front end.
+- `BUSY`, from BUSY_ROADS_MIN_ZOOM to QUIET_STREETS_MIN_ZOOM - 1: those, and
+  the roads at LTS 3 and above - Avoid and the expressways included
+  (`pipeline.schema.busy_predicate`). The map draws them faint there (the
+  owner: "The high LTS roads aren't that important because you aren't going
+  to route around them.", "Show them faintly", then "Make solid at 14";
+  OWNER-DECISIONS 76, 77).
+- `FULL`, from QUIET_STREETS_MIN_ZOOM: every segment, one feature each, the
+  quiet streets and footways with the rest. The map asks for nothing past z14
+  - it draws z15-16 from the z14 tile (`STRESS_ZOOMS.max` in the front end's
+  mapStyle.ts) - so z14 is the deepest zoom drawn ahead; z15-16 are still
+  served, for the contract, and drawn on request.
 
 At the first two levels a tile carries one feature per distinct (tier, trail,
 unpaved, facility) - every segment of a class collected into one multi-line
@@ -74,9 +81,11 @@ from django.views.decorators.http import require_http_methods
 from pipeline.schema import (
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
-    STREETS_PREDICATE,
+    MAP_CLASS_COLUMN,
+    MAP_CLASS_FALLBACK,
+    SEPARATE_BIKEWAY_COLUMN,
     TRAIL_NETWORK_FACILITY,
-    keeping_facilities,
+    busy_predicate,
     trails_predicate,
     validate_schema_name,
 )
@@ -87,16 +96,16 @@ LAYER = "stress"
 MIN_ZOOM = 10
 MAX_ZOOM = 16
 
-# THE ZOOM THE ROADS' STRESS COLOURS START AT. Further out the overlay draws
-# only the traffic-free paths (the owner, 2026-09-28: "Zoomed out just show
-# the trails."; the orchestrator's default of z13, neighbourhood scale, which
-# the owner may move). The front end's legend says so from its own copy,
-# `STRESS_ZOOMS.roads` in frontend/src/lib/mapStyle.ts, which a test holds
-# equal to this: change both. Between MIN_ZOOM + 1 and FULL_MIN_ZOOM.
-ROAD_STRESS_MIN_ZOOM = 13
+# THE ZOOMS THE ROADS COME IN AT (the owner, 2026-09-29, OWNER-DECISIONS 73).
+# Further out than BUSY_ROADS_MIN_ZOOM only the traffic-free paths and trails;
+# from it the roads at LTS 3 and above; from QUIET_STREETS_MIN_ZOOM the quiet
+# streets (LTS 1-2) and every segment. The front end's legend says so from its
+# own copies, `STRESS_ZOOMS.busy` and `STRESS_ZOOMS.quiet` in
+# frontend/src/lib/mapStyle.ts, which a test holds equal to these: change
+# both, and run the pre-draw.
+BUSY_ROADS_MIN_ZOOM = 12
+QUIET_STREETS_MIN_ZOOM = 14
 
-# Where a tile stops merging a class's segments and carries each one.
-FULL_MIN_ZOOM = 14
 # ST_TileEnvelope's own ceiling; a larger zoom is not a tile address.
 MAX_ADDRESSABLE_ZOOM = 30
 
@@ -106,8 +115,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # cached tiles - and the tile cache's rows (core.tile_cache) - are not served
 # as current against a different encoding. 3: the zoomed-out tiles became the
 # paths and trails alone (OWNER-DECISIONS 65, 66), for a live table whose oid the deploy
-# does not change.
-FORMAT_VERSION = 3
+# does not change. 4: the busy roads at z12-13 and the quiet streets from z14
+# (73), with the expressway and separate-bikeway properties.
+FORMAT_VERSION = 4
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -142,14 +152,15 @@ class Level:
     where: str | None
     # One feature per class, simplified, rather than one per segment.
     merged: bool
-    # Only the paths and trails (`pipeline.schema.trails_predicate`), in place of `where`.
-    trails_only: bool = False
+    # The predicate drawn from `pipeline.schema`, by (has facility, has car_free),
+    # in place of `where`: the trails', or the busy roads'.
+    predicate: object = None
 
 
-TRAILS = Level("trails", MIN_ZOOM, 4096, 32, None, merged=True, trails_only=True)
-STREETS = Level("streets", ROAD_STRESS_MIN_ZOOM, 4096, 32, STREETS_PREDICATE, merged=True)
-FULL = Level("full", FULL_MIN_ZOOM, 4096, 64, None, merged=False)
-LEVELS = (FULL, STREETS, TRAILS)
+TRAILS = Level("trails", MIN_ZOOM, 4096, 32, None, merged=True, predicate=trails_predicate)
+BUSY = Level("busy", BUSY_ROADS_MIN_ZOOM, 4096, 32, None, merged=True, predicate=busy_predicate)
+FULL = Level("full", QUIET_STREETS_MIN_ZOOM, 4096, 64, None, merged=False)
+LEVELS = (FULL, BUSY, TRAILS)
 
 
 def level_for(z: int) -> Level:
@@ -192,11 +203,19 @@ PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_u
 # Properties carried only from a live table that has the column: the bike
 # facility (path, protected, lane, none), which the rebuild writes from
 # `routemaker.facility`, and a table promoted before it has no such column. Where it is
-# there, the street-zoom level also keeps the paths and protected lanes
-# (`pipeline.schema.keeping_facilities`) and the zoomed-out one draws its
-# paths. Where it is not, a stand-in is carried in its place (`FALLBACKS`)
-# and the zoomed-out paths are the ones that stand-in calls a path.
-OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN, "car_free": CAR_FREE_COLUMN}
+# there, the zoomed-out levels draw its paths and trails. Where it is not, a
+# stand-in is carried in its place (`FALLBACKS`) and the zoomed-out paths are
+# the ones that stand-in calls a path. `map_class` ("barred", or left out for a
+# road) and `separate_bikeway` (true, or left out) are the two facts the map
+# draws the roads a bicycle may not use white and the roads beside a
+# separately mapped bike facility faint by (OWNER-DECISIONS 73, 78, 80); a
+# way whose map class is "hidden" is not in the tiles at all.
+OPTIONAL_PROPERTIES = {
+    "facility": FACILITY_COLUMN,
+    "car_free": CAR_FREE_COLUMN,
+    "map_class": MAP_CLASS_COLUMN,
+    "separate_bikeway": SEPARATE_BIKEWAY_COLUMN,
+}
 
 # How an optional property is drawn from its column, where it is not the
 # column as it is. `car_free`: the ride times a road closed to motor traffic
@@ -207,12 +226,19 @@ OPTIONAL_PROPERTIES = {"facility": FACILITY_COLUMN, "car_free": CAR_FREE_COLUMN}
 # and otherwise with its own stress (the owner, 2026-09-29: "Car-free roads
 # should be regarded the same as an off-road path on a map."; OWNER-DECISIONS
 # 67). One tile serves every ride time, so the pre-draw draws each tile once.
-OPTIONAL_EXPRESSIONS = {"car_free": f"NULLIF(array_to_string(s.{CAR_FREE_COLUMN}, ','), '')"}
+OPTIONAL_EXPRESSIONS = {
+    "car_free": f"NULLIF(array_to_string(s.{CAR_FREE_COLUMN}, ','), '')",
+    "map_class": f"NULLIF(s.{MAP_CLASS_COLUMN}, 'road')",
+    "separate_bikeway": f"NULLIF(s.{SEPARATE_BIKEWAY_COLUMN}, false)",
+}
 
 # What an optional property is drawn from on a table without its column: the
 # facility is derived from the trail network (an off-road path, or nothing),
-# so the trails carry the path's rails at every zoom before the column exists.
-FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
+# so the trails carry the path's rails at every zoom before the column exists;
+# a road a bicycle may not use is a motorway (`pipeline.schema.
+# MAP_CLASS_FALLBACK`); and a road beside a separate bikeway is not known, so
+# none is drawn faint for it.
+FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY, "map_class": MAP_CLASS_FALLBACK}
 
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
@@ -272,20 +298,22 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
             carried[name] = FALLBACKS[name]
     has_facility = FACILITY_COLUMN in optional
     has_car_free = CAR_FREE_COLUMN in optional
-    if level.trails_only:
-        where = trails_predicate(has_facility, has_car_free)
+    if level.predicate is not None:
+        where = level.predicate(has_facility, has_car_free)
         if has_car_free:
-            # A road closed to cars at set times is in the zoomed-out tiles only
-            # for those times: it carries them as `car_free_only`, and the map
-            # draws it only in one of them. A trail keeps `car_free` as it is.
-            trails = trails_predicate(has_facility)
+            # A road closed to cars at set times is in a zoomed-out tile that
+            # would not otherwise hold it only for those times: it carries them
+            # as `car_free_only`, and the map draws it only in one of them. A
+            # way the level holds anyway keeps `car_free` as it is.
+            kept = level.predicate(has_facility)
             expression = carried.pop("car_free")
-            carried["car_free"] = f"CASE WHEN {trails} THEN {expression} END"
-            carried["car_free_only"] = f"CASE WHEN NOT {trails} THEN {expression} END"
+            carried["car_free"] = f"CASE WHEN {kept} THEN {expression} END"
+            carried["car_free_only"] = f"CASE WHEN NOT {kept} THEN {expression} END"
     else:
         where = level.where or "true"
-        if level.where and has_facility:
-            where = keeping_facilities(where)
+    if MAP_CLASS_COLUMN in optional:
+        # No road or path at all (a terminal hallway): not in the tiles.
+        where = f"({where}) AND s.{MAP_CLASS_COLUMN} <> 'hidden'"
     return template.format(
         table=_table(),
         where=where,

@@ -212,6 +212,85 @@ def declares_separate(tags: dict[str, str]) -> bool:
     return any(tags.get(key) == "separate" for key in CYCLEWAY_KEYS)
 
 
+class MapClass(StrEnum):
+    """How the stress map draws a way, beside its tier (OWNER-DECISIONS 73, 80)."""
+
+    ROAD = "road"
+    # A road a bicycle may not use: drawn white, neutral, not by its tier.
+    BARRED = "barred"
+    # Not a road or path a bicycle could use at all: not drawn.
+    HIDDEN = "hidden"
+
+
+# Ways that are not roads or paths a bicycle could use, whatever their tags:
+# an airport terminal's hallways (BWI, `highway=corridor` + `indoor=yes`,
+# rated "mixed traffic, 30 mph" and drawn LTS 3 - the owner, 2026-09-29: "For
+# some strange reason BWI has TLS 3 inside the terminal."; OWNER-DECISIONS
+# 80), a lift, a platform, a road not built yet. Valhalla's transform does not
+# route them either (lua/graph.lua: corridor is bike_forward = false).
+NOT_A_WAY_HIGHWAY = frozenset(
+    {
+        "corridor",
+        "elevator",
+        "platform",
+        "bus_stop",
+        "proposed",
+        "construction",
+        "raceway",
+        "escape",
+    }
+)
+
+# A motorway and its ramps bar bicycles unless a bicycle tag opens them.
+BARRED_HIGHWAY = frozenset({"motorway", "motorway_link"})
+
+# A bicycle tag that keeps a bicycle off the roadway: barred, private, or sent
+# to the sidepath beside it.
+BARRING_BICYCLE = frozenset({"no", "private", "use_sidepath"})
+
+# Access values that bar every vehicle, a bicycle included, unless the
+# bicycle tag says otherwise.
+BARRING_ACCESS = frozenset({"no", "private"})
+
+
+def map_class(tags: dict[str, str]) -> MapClass:
+    """How the stress map draws a way. The owner, 2026-09-29: "there are several
+    expressways shown as LTS4. just show them in white." (OWNER-DECISIONS 73),
+    widened to every road a bicycle may not use (80): a motorway, a trunk road
+    barred to bicycles (the George Washington, Suitland and Clara Barton
+    parkways), `motorroad=yes`, and a private road a bicycle is not let onto -
+    and not drawn at all, a way that is no road or path (a terminal hallway,
+    `indoor=yes`). A trail-class way's access is its facility's business
+    (`facility`); "legal but avoid" (US 340) is a road a bicycle may use, and
+    keeps its tier."""
+    highway = tags.get("highway")
+    if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
+        return MapClass.HIDDEN
+    if highway in TRAIL_CLASS_HIGHWAY or highway is None:
+        return MapClass.ROAD
+    bicycle = tags.get("bicycle")
+    if bicycle in BICYCLE_ALLOWED:
+        return MapClass.ROAD
+    if highway in BARRED_HIGHWAY or bicycle in BARRING_BICYCLE or tags.get("motorroad") == "yes":
+        return MapClass.BARRED
+    if bicycle is None and any(tags.get(key) in BARRING_ACCESS for key in ("access", "vehicle")):
+        return MapClass.BARRED
+    return MapClass.ROAD
+
+
+def has_separate_bikeway(tags: dict[str, str]) -> bool:
+    """Whether a road says its bike facility is mapped as a way of its own
+    beside it (`cycleway*=separate`): 15th Street NW and Pennsylvania Avenue NW
+    beside their cycle tracks. The stress map draws such a road faint and only
+    from close in, so the facility beside it is the main line (the owner,
+    2026-09-29: "there's several cases of a protected bike lane next to LTS3
+    or 4. In that case, don't show the road, perhaps hide it until zoom 15-16.
+    The bike lane should show up as the main." and "Keep it faint if it
+    parallels a protected bike path."; OWNER-DECISIONS 73, 78). A trail-class
+    way is the facility, not the road."""
+    return tags.get("highway") not in TRAIL_CLASS_HIGHWAY and declares_separate(tags)
+
+
 def _xy(lon: float, lat: float, lat0: float) -> tuple[float, float]:
     return (
         math.radians(lon) * _EARTH_M * math.cos(math.radians(lat0)),

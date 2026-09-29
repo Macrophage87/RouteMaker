@@ -15,6 +15,14 @@ import {
   relativeLuminance,
   contrastRatio,
   stressFilters,
+  BARRED,
+  BESIDE_ROAD_MIN_ZOOM,
+  DEFAULT_PALETTE,
+  FAINT,
+  PALETTES,
+  SOLID_MIN_ZOOM,
+  paletteFrom,
+  tiersFor,
 } from "./stressStyle.js";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 
@@ -24,12 +32,18 @@ function draws(layer, properties) {
   return filter({ zoom: 12 }, { type: 2, properties, geometry: [] });
 }
 
-/** A paint expression's value for a feature with `properties`. */
-function paintValue(layer, name, properties) {
-  const expression = spec.createExpression(layer.paint[name], `layers[${layer.id}].paint.${name}`, spec.latest.paint_line[name]);
+/** A paint expression's value for a feature with `properties`, at `zoom`. */
+function paintValue(layer, name, properties, zoom = 12) {
+  const value = layer.paint[name];
+  if (value === undefined) return name === "line-opacity" ? 1 : undefined;
+  if (typeof value === "number" || typeof value === "string") return value;
+  const expression = spec.createExpression(value, `layers[${layer.id}].paint.${name}`, spec.latest.paint_line[name]);
   assert.equal(expression.result, "success", JSON.stringify(expression.value));
-  return expression.value.evaluate({ zoom: 12 }, { type: 2, properties, geometry: [] });
+  return expression.value.evaluate({ zoom }, { type: 2, properties, geometry: [] });
 }
+
+/** The tiers' own layers, without the roads a bicycle may not use. */
+const tierLayers = (layers) => layers.filter((l) => !l.id.endsWith("-barred"));
 
 test("every stress tier is distinguishable without colour", () => {
   // The accessibility rule, and also what makes the overlay readable on the
@@ -61,11 +75,15 @@ test("luminance is computed from the colour and falls monotonically with stress"
 
 test("adjacent tiers are separable in greyscale, not merely ordered", () => {
   // Monotonic is not enough: four tiers one grey level apart are ordered and
-  // unreadable. 1.4:1 between neighbours keeps them apart on a photocopy.
+  // unreadable. 1.4:1 between neighbours keeps them apart on a photocopy -
+  // but for LTS 2 and 3 since the owner's amber (OWNER-DECISIONS 74): an amber
+  // 1.4:1 from LTS 2's green is brown. Their dashes (long, even) differ.
   for (let i = 1; i < FURTH_TIERS.length; i += 1) {
     const ratio = contrastRatio(FURTH_TIERS[i].color, FURTH_TIERS[i - 1].color);
-    assert.ok(ratio >= 1.4, `tiers ${i} and ${i + 1} are ${ratio.toFixed(2)}:1 apart`);
+    const floor = FURTH_TIERS[i].tier === 3 ? 1.15 : 1.4;
+    assert.ok(ratio >= floor, `tiers ${i} and ${i + 1} are ${ratio.toFixed(2)}:1 apart`);
   }
+  assert.notDeepEqual(FURTH_TIERS[1].dash, FURTH_TIERS[2].dash);
 });
 
 test("every tier is legible against the map background", () => {
@@ -98,7 +116,7 @@ test("legal-but-avoid stands apart from every Furth tier", () => {
 });
 
 test("one layer per tier, each filtered to its own tier", () => {
-  const layers = stressLayers();
+  const layers = tierLayers(stressLayers());
   assert.equal(layers.length, STRESS_TIERS.length);
   layers.forEach((layer, i) => {
     for (const tier of STRESS_TIERS) {
@@ -111,7 +129,7 @@ test("the layers read the shared contract's tile layer and property", () => {
   // SHARED API CONTRACT: /tiles/stress/{z}/{x}/{y}.pbf carries one layer named
   // "stress" whose features have a "tier" property. A layer or property name
   // the tiles do not carry draws nothing and raises nothing.
-  for (const layer of stressLayers("stress-src")) {
+  for (const layer of tierLayers(stressLayers("stress-src"))) {
     assert.equal(layer.source, "stress-src");
     assert.equal(layer["source-layer"], "stress");
     assert.ok(JSON.stringify(layer.filter).includes('["get","tier"]'));
@@ -143,15 +161,18 @@ test("the legend carries what colour alone cannot", () => {
 });
 
 test("each tier has a casing layer drawn wider, in its own casing colour, on the same features", () => {
-  const casings = stressCasingLayers("stress-src");
-  const tiers = stressLayers("stress-src");
+  const casings = tierLayers(stressCasingLayers("stress-src"));
+  const tiers = tierLayers(stressLayers("stress-src"));
   assert.equal(casings.length, tiers.length);
   casings.forEach((casing, i) => {
     assert.deepEqual(casing.filter, tiers[i].filter);
     assert.equal(casing["source-layer"], tiers[i]["source-layer"]);
     assert.equal(casing.paint["line-color"], STRESS_TIERS[i].casing);
     assert.notEqual(casing.paint["line-color"], STRESS_TIERS[i].color);
-    assert.ok(casing.paint["line-width"] > tiers[i].paint["line-width"]);
+    for (const zoom of [12, 14, 16]) {
+      const f = { tier: STRESS_TIERS[i].tier };
+      assert.ok(paintValue(casing, "line-width", f, zoom) > paintValue(tiers[i], "line-width", f, zoom));
+    }
     assert.equal(casing.paint["line-dasharray"], undefined, "a casing is solid");
   });
   assert.equal(new Set([...casings, ...tiers].map((l) => l.id)).size, casings.length * 2);
@@ -160,9 +181,10 @@ test("each tier has a casing layer drawn wider, in its own casing colour, on the
 test("a casing shows at least a pixel on each side of its tier", () => {
   // The 3:1 figures in stressContrast.test.ts assume a visible halo; a casing
   // a tenth of a pixel wider is a casing in name only.
-  const tiers = stressLayers();
-  stressCasingLayers().forEach((casing, i) => {
-    const extra = casing.paint["line-width"] - tiers[i].paint["line-width"];
+  const tiers = tierLayers(stressLayers());
+  tierLayers(stressCasingLayers()).forEach((casing, i) => {
+    const f = { tier: STRESS_TIERS[i].tier };
+    const extra = paintValue(casing, "line-width", f, 14) - paintValue(tiers[i], "line-width", f, 14);
     assert.ok(extra >= 2, `LTS ${i + 1}'s casing is only ${extra} px wider`);
   });
 });
@@ -170,10 +192,12 @@ test("a casing shows at least a pixel on each side of its tier", () => {
 test("a casing is a halo, not a band: no wider on the two sides together than its tier's own line", () => {
   // A casing wider than the line it frames swallows the streets beside it at
   // the zooms the overlay is read at, and the tier becomes a stripe on a band.
-  const tiers = stressLayers();
-  stressCasingLayers().forEach((casing, i) => {
-    const extra = casing.paint["line-width"] - tiers[i].paint["line-width"];
-    assert.ok(extra <= tiers[i].paint["line-width"], `LTS ${i + 1}'s casing is ${extra} px wider than a ${tiers[i].paint["line-width"]} px line`);
+  const tiers = tierLayers(stressLayers());
+  tierLayers(stressCasingLayers()).forEach((casing, i) => {
+    const f = { tier: STRESS_TIERS[i].tier };
+    const line = paintValue(tiers[i], "line-width", f, 14);
+    const extra = paintValue(casing, "line-width", f, 14) - line;
+    assert.ok(extra <= line, `LTS ${i + 1}'s casing is ${extra} px wider than a ${line} px line`);
   });
 });
 
@@ -320,4 +344,126 @@ test("stressFilters covers every overlay layer, and a style with them validates"
     layers: stressOverlayLayers("stress", "weekday_rush"),
   };
   assert.deepEqual(spec.validateStyleMin(style), []);
+});
+
+// The owner, 2026-09-29 (OWNER-DECISIONS 73, 76, 77, 78, 80).
+function drawnAtZoom(properties, zoom) {
+  const out = {};
+  for (const layer of stressOverlayLayers("stress")) {
+    if (!draws(layer, properties)) continue;
+    const opacity = paintValue(layer, "line-opacity", properties, zoom);
+    if (opacity > 0) out[layer.id] = { opacity, width: paintValue(layer, "line-width", properties, zoom) };
+  }
+  return out;
+}
+
+test("a road a bicycle may not use is white, not its tier; Avoid keeps its colour", () => {
+  // "there are several expressways shown as LTS4. just show them in white."
+  const motorway = { tier: 4, map_class: "barred" };
+  assert.deepEqual(Object.keys(drawnAtZoom(motorway, 14)).sort(), ["stress-barred", "stress-casing-barred"]);
+  const barred = stressLayers().find((l) => l.id === "stress-barred");
+  assert.equal(barred.paint["line-color"], BARRED.color);
+  assert.equal(BARRED.color, "#ffffff");
+  const us340 = { tier: 5 };
+  assert.deepEqual(Object.keys(drawnAtZoom(us340, 14)).sort(), ["stress-5", "stress-casing-5"]);
+});
+
+test("busy roads are faint at z12-13 and solid from z14; quiet streets and paths are never faint", () => {
+  // "Show them faintly" (76), then "Make solid at 14" (77).
+  assert.equal(SOLID_MIN_ZOOM, 14);
+  for (const tier of [3, 4, 5]) {
+    const f = { tier };
+    const faint = drawnAtZoom(f, 12)[`stress-${tier}`];
+    const solid = drawnAtZoom(f, 14)[`stress-${tier}`];
+    const shape = STRESS_TIERS.find((t) => t.tier === tier);
+    assert.equal(faint.opacity, FAINT.opacity);
+    assert.ok(Math.abs(faint.width - shape.width * FAINT.widthScale) < 1e-9);
+    assert.equal(drawnAtZoom(f, 13)[`stress-${tier}`].opacity, FAINT.opacity);
+    assert.deepEqual(solid, { opacity: 1, width: shape.width });
+    assert.deepEqual(drawnAtZoom(f, 16)[`stress-${tier}`], { opacity: 1, width: shape.width });
+  }
+  for (const properties of [{ tier: 1 }, { tier: 2 }, { tier: 1, facility: "path", trail: true }]) {
+    for (const zoom of [10, 12, 14]) {
+      for (const [id, line] of Object.entries(drawnAtZoom(properties, zoom))) assert.equal(line.opacity, 1, id);
+    }
+  }
+});
+
+test("a busy road beside a separately mapped bike lane is hidden until z15 and then faint for good", () => {
+  // "hide it until zoom 15-16. The bike lane should show up as the main." (73)
+  // and "Keep it faint if it parallels a protected bike path." (78)
+  assert.equal(BESIDE_ROAD_MIN_ZOOM, 15);
+  for (const tier of [3, 4, 5]) {
+    const f = { tier, separate_bikeway: true };
+    for (const zoom of [12, 13, 14]) assert.deepEqual(drawnAtZoom(f, zoom), {}, `z${zoom}`);
+    for (const zoom of [15, 16, 18]) assert.equal(drawnAtZoom(f, zoom)[`stress-${tier}`].opacity, FAINT.opacity, `z${zoom}`);
+  }
+  // The cycle track beside it, a trail of its own, is drawn full at every zoom.
+  const track = { tier: 1, facility: "protected", trail: true };
+  for (const zoom of [10, 12, 14]) {
+    const lines = drawnAtZoom(track, zoom);
+    assert.deepEqual(Object.keys(lines).sort(), ["facility-protected", "stress-1", "stress-casing-1"]);
+    for (const line of Object.values(lines)) assert.equal(line.opacity, 1);
+  }
+});
+
+test("Avoid is told from LTS 4 at a glance, faint or solid, in both palettes", () => {
+  for (const palette of Object.keys(PALETTES)) {
+    const tiers = tiersFor(palette);
+    const [lts4, avoid] = [tiers[3], tiers[4]];
+    assert.notDeepEqual(avoid.dash, lts4.dash);
+    assert.ok(avoid.width > lts4.width);
+    assert.ok(contrastRatio(avoid.color, lts4.color) >= 1.8, `${palette}: ${contrastRatio(avoid.color, lts4.color).toFixed(2)}:1`);
+  }
+});
+
+test("the colours are in one place: LTS 1 and 2 as they were, two readings of the owner's for 3-5", () => {
+  // "I like LTS 1 and 2. Maybe yellow and orange for LTS 3, orange and red for
+  // LTS 4, and red and black for Avoid." (74)
+  const { blended, twotone } = PALETTES;
+  for (const palette of [blended, twotone]) {
+    assert.deepEqual(palette[1], { color: "#9ed3ac", casing: "#17301f" });
+    assert.deepEqual(palette[2], { color: "#57a06c", casing: "#17301f" });
+    assert.deepEqual(Object.keys(palette).sort(), ["1", "2", "3", "4", "5"]);
+  }
+  // Two-tone: the first colour the line, the second its casing.
+  assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f2c21b", "#f28c28"]);
+  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#d42020"]);
+  assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d42020", "#111111"]);
+  assert.equal(DEFAULT_PALETTE, "blended");
+  assert.equal(paletteFrom("?palette=twotone"), "twotone");
+  assert.equal(paletteFrom("?x=1&palette=blended"), "blended");
+  assert.equal(paletteFrom("?palette=__proto__"), DEFAULT_PALETTE);
+  assert.equal(paletteFrom(""), DEFAULT_PALETTE);
+  assert.deepEqual(STRESS_TIERS, tiersFor(DEFAULT_PALETTE));
+});
+
+// Machado, Oliveira and Fernandes (2009), deuteranopia at full severity, on
+// linear RGB: what a deuteranope sees of a colour.
+function deuteranopia(hex) {
+  const lin = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const m = [
+    [0.367322, 0.860646, -0.227968],
+    [0.280085, 0.672501, 0.047413],
+    [-0.01182, 0.04294, 0.968881],
+  ];
+  const out = m.map((row) => Math.max(0, Math.min(1, row[0] * lin[0] + row[1] * lin[1] + row[2] * lin[2])));
+  const srgb = out.map((v) => (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055));
+  return "#" + srgb.map((v) => Math.round(v * 255).toString(16).padStart(2, "0")).join("");
+}
+
+test("for a deuteranope the default palette's tiers stay apart", () => {
+  // Measured, 2026-09-29: seen through the simulation, LTS 2's green and LTS 3's
+  // amber are one olive (1.03:1), told apart only by their dashes (and they
+  // share a screen only from z14, LTS 3 being the faint background at z12-13);
+  // every other neighbour is 1.4:1 or more apart in luminance.
+  const seen = STRESS_TIERS.map((t) => deuteranopia(t.color));
+  for (let i = 1; i < seen.length; i += 1) {
+    const ratio = contrastRatio(seen[i], seen[i - 1]);
+    if (i === 2) {
+      assert.notDeepEqual(STRESS_TIERS[1].dash, STRESS_TIERS[2].dash);
+      continue;
+    }
+    assert.ok(ratio >= 1.4, `${STRESS_TIERS[i - 1].short} and ${STRESS_TIERS[i].short}: ${ratio.toFixed(2)}:1`);
+  }
 });

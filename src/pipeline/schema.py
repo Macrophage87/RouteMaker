@@ -18,7 +18,6 @@ import re
 from django.db import connection
 
 from routemaker.classes import (
-    SIDEWALK_CLASS_HIGHWAY,
     TRAIL_CLASS_HIGHWAY,
     TrailKind,
 )
@@ -110,7 +109,7 @@ def _text_list(values) -> str:
 
 
 # What the stress tiles draw zoomed out (`core.stress_tiles.TRAILS`, below
-# `core.stress_tiles.ROAD_STRESS_MIN_ZOOM`): the traffic-free paths and trails
+# `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the traffic-free paths and trails
 # and nothing else. The owner, 2026-09-28: "It looks way too busy zoomed out
 # though." and then "Zoomed out just show the trails." (OWNER-DECISIONS 64,
 # 65); and 2026-09-29, "Show roadside trails (Recommended)" (66).
@@ -188,21 +187,37 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return trails
 
 
-# What they draw at street zoom (`core.stress_tiles.STREETS`): everything but
-# the sidewalk class. `stress_rule` is NOT NULL, so NOT IN keeps every street.
-STREETS_PREDICATE = (
-    "stress_rule NOT IN (" + _text_list(trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY) + ")"
-)
+# What they draw at busy-road zoom (`core.stress_tiles.BUSY`, from
+# `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the paths and trails, and the roads
+# at LTS 3 and above - Avoid (tier 5) and the expressways included. The owner,
+# 2026-09-29: "Zoom less than 12, show just bike paths and the metro/MARC. 12
+# and 13, show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73).
+BUSY_MIN_TIER = 3
 
-# The bike-facility class of a segment - off-road path, protected lane,
-# painted lane, or none, sharrows counting as none (owner request of
-# 2026-09-27), written by the rebuild from `routemaker.facility` - the rule
-# routing reads. A live table promoted before the column has none: the stress
-# tiles carry it from a table that has it and derive it
-# (TRAIL_NETWORK_FACILITY) on one that does not. At street zoom the paths and
-# protected lanes are kept whatever their kind of way - a sidewalk designated
-# for bicycles beside a road is the protected lane there.
-FACILITIES_KEPT_AT_STREET_ZOOM = ("path", "protected")
+
+def busy_predicate(has_facility: bool, has_car_free: bool = False) -> str:
+    """The busy-road tiles' condition: the trails' (with the timed closures when
+    `has_car_free`), or a road at LTS 3 and above. Also the overview index's
+    predicate: the trails' condition implies it, so the one index serves both
+    zoomed-out levels."""
+    return f"({trails_predicate(has_facility, has_car_free)} OR stress_tier >= {BUSY_MIN_TIER})"
+
+
+# Two facts about a way the map draws from, written by the rebuild beside the
+# facility (routemaker.facility.map_class and has_separate_bikeway). The
+# owner, 2026-09-29: "there are several expressways shown as LTS4. just show
+# them in white." and "there's several cases of a protected bike lane next to
+# LTS3 or 4. In that case, don't show the road, perhaps hide it until zoom
+# 15-16. The bike lane should show up as the main." (OWNER-DECISIONS 73), "Keep
+# it faint if it parallels a protected bike path." (78), and "For some strange
+# reason BWI has TLS 3 inside the terminal." (80).
+MAP_CLASS_COLUMN = "map_class"
+SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
+
+# On a table from before those columns, a road a bicycle may not use is what
+# the classifier recorded as motor-only: a motorway or its ramp. A trunk road
+# barred to bicycles, a private road and a terminal hallway need the column.
+MAP_CLASS_FALLBACK = "CASE WHEN stress_rule LIKE 'motor-only classification (%' THEN 'barred' END"
 
 # Whether SEGMENT_DDL declares the facility column. Set it True in the change
 # that adds the column, so the overview index is created with the predicate
@@ -211,17 +226,12 @@ FACILITIES_KEPT_AT_STREET_ZOOM = ("path", "protected")
 SEGMENT_HAS_FACILITY = True
 
 
-def keeping_facilities(predicate: str) -> str:
-    """`predicate`, widened to keep the facilities a street-zoom map shows."""
-    kept = _text_list(FACILITIES_KEPT_AT_STREET_ZOOM)
-    return f"({predicate} OR {FACILITY_COLUMN} IN ({kept}))"
-
-
 def overview_index_predicate(has_facility: bool) -> str:
     """The overview index's predicate on a table with or without the facility
-    column: the one the zoomed-out tile query uses on that table. SEGMENT_DDL
-    declares `car_free_when` with the facility, so the one flag says both."""
-    return trails_predicate(has_facility, has_car_free=has_facility)
+    column: the busy-road one, which the trails' implies, so both zoomed-out
+    levels read through it. SEGMENT_DDL declares `car_free_when` with the
+    facility, so the one flag says both."""
+    return busy_predicate(has_facility, has_car_free=has_facility)
 
 
 OVERVIEW_INDEX_PREDICATE = overview_index_predicate(SEGMENT_HAS_FACILITY)
@@ -271,6 +281,16 @@ CREATE TABLE {schema}.segment (
     facility        text        NOT NULL DEFAULT 'none'
                     CHECK (facility IN ('path', 'protected', 'lane', 'none')),
     car_free_when   text[]      NOT NULL DEFAULT '{{}}',
+    -- How the stress map draws the way (`routemaker.facility.map_class`): a
+    -- road; `barred`, a road a bicycle may not use, drawn white rather than by
+    -- its tier; `hidden`, no road or path at all (a terminal hallway), not
+    -- drawn. And whether a road's own tags say its bike facility is mapped as a
+    -- way of its own beside it (`routemaker.facility.has_separate_bikeway`),
+    -- which the map draws faint and late so that facility is the main line
+    -- (the owner, 2026-09-29; OWNER-DECISIONS 73, 78, 80).
+    map_class       text        NOT NULL DEFAULT 'road'
+                    CHECK (map_class IN ('road', 'barred', 'hidden')),
+    separate_bikeway boolean    NOT NULL DEFAULT false,
     -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
     -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).
     -- `stress_adjustment_id` is stable across rebuilds and shared by the ways
@@ -302,8 +322,9 @@ CREATE TABLE {schema}.segment (
 CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
 CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
--- The stress tiles' zoomed-out level draws only the paths and trails
--- (trails_predicate); this index holds only those rows, so a z10 tile's scan
+-- The stress tiles' zoomed-out levels draw only the paths and trails
+-- (trails_predicate) and then the busy roads (busy_predicate); this index
+-- holds only the busy-road level's rows, which include the trails', so a z10 tile's scan
 -- does not read the whole region's streets to find them.
 CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {overview};

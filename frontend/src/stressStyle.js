@@ -29,57 +29,87 @@
  * against the base map's own fill colours.
  */
 
-export const STRESS_TIERS = [
-  {
-    tier: 1,
-    label: "Comfortable for most people",
-    short: "LTS 1",
-    color: "#9ed3ac",
-    dash: [1],
-    width: 3,
-    casing: "#17301f",
-  },
-  {
-    tier: 2,
-    label: "Comfortable for most adults",
-    short: "LTS 2",
-    color: "#57a06c",
-    dash: [4, 1],
-    width: 3,
-    casing: "#17301f",
-  },
-  {
-    tier: 3,
-    label: "For confident riders",
-    short: "LTS 3",
-    color: "#8a4a10",
-    dash: [2, 2],
-    width: 3.5,
-    casing: "#ffffff",
-  },
-  {
-    tier: 4,
-    label: "Heavy or fast traffic",
-    short: "LTS 4",
-    color: "#340808",
-    dash: [1, 2],
-    width: 4,
-    casing: "#ffffff",
-  },
+// The tiers' shapes: what tells them apart without colour.
+const TIER_SHAPES = [
+  { tier: 1, label: "Comfortable for most people", short: "LTS 1", dash: [1], width: 3 },
+  { tier: 2, label: "Comfortable for most adults", short: "LTS 2", dash: [4, 1], width: 3 },
+  { tier: 3, label: "For confident riders", short: "LTS 3", dash: [2, 2], width: 3.5 },
+  { tier: 4, label: "Heavy or fast traffic", short: "LTS 4", dash: [1, 2], width: 4 },
   // Not a Furth tier: legal for a bicycle and best avoided (the owner's fifth
-  // category, 2026-09-27). It cannot be darker than LTS 4 by a readable step,
-  // so it stands apart instead: a colour no other tier is near, the widest
-  // line, and a dash-dot pattern nothing else uses, over a white casing.
-  {
-    tier: 5,
-    label: "Legal, but best avoided",
-    short: "Avoid",
-    color: "#b0006a",
-    dash: [3, 1, 0.5, 1],
-    width: 4.5,
-    casing: "#ffffff",
-  },
+  // category, 2026-09-27): the widest line and a dash-dot nothing else uses.
+  { tier: 5, label: "Legal, but best avoided", short: "Avoid", dash: [3, 1, 0.5, 1], width: 4.5 },
 ];
+
+/**
+ * THE STRESS COLOURS, in one place. The owner, 2026-09-29: "Also, let's change
+ * the color scheme. I like LTS 1 and 2. Maybe yellow and orange for LTS 3,
+ * orange and red for LTS 4, and red and black for Avoid." (OWNER-DECISIONS
+ * 74). LTS 1 and 2 are kept as they were; two readings of "X and Y" are built
+ * for the owner to choose between, `?palette=twotone` in the address showing
+ * the second:
+ *
+ * - "blended": one colour per tier between the two named - LTS 3 amber (over
+ *   a dark casing, since amber is not 3:1 on the base map's greens), LTS 4
+ *   red-orange and Avoid dark red (over white). Relative luminance still falls
+ *   tier by tier (0.57, 0.28, 0.23, 0.09, 0.02), so greyscale print keeps the
+ *   order; LTS 2 and 3 are only 1.17:1 apart in grey, where their dashes
+ *   (long, even) tell them apart - an amber dark enough for 1.4:1 is brown.
+ * - "twotone": the first colour as the line, the second as its casing - LTS 3
+ *   yellow on orange, LTS 4 orange on red, Avoid red on black. Closer to the
+ *   owner's words; LTS 3 is not 3:1 on the base map (its casing 2.2:1, the line
+ *   on its casing 1.5:1) and the greyscale order is lost (stressContrast.test.ts
+ *   holds the chosen palette to the rule, and reports the other).
+ */
+export const PALETTES = {
+  blended: {
+    1: { color: "#9ed3ac", casing: "#17301f" },
+    2: { color: "#57a06c", casing: "#17301f" },
+    3: { color: "#bf730b", casing: "#2b1a05" },
+    4: { color: "#a32814", casing: "#ffffff" },
+    5: { color: "#4a0810", casing: "#ffffff" },
+  },
+  twotone: {
+    1: { color: "#9ed3ac", casing: "#17301f" },
+    2: { color: "#57a06c", casing: "#17301f" },
+    3: { color: "#f2c21b", casing: "#f28c28" },
+    4: { color: "#f28c28", casing: "#d42020" },
+    5: { color: "#d42020", casing: "#111111" },
+  },
+};
+
+/** The palette the map uses unless the address asks for another. */
+export const DEFAULT_PALETTE = "blended";
+
+/** The palette an address's query string names (`?palette=twotone`), or the default. */
+export function paletteFrom(search) {
+  const match = /(?:^|[?&])palette=([a-z]+)/.exec(search ?? "");
+  return match && Object.hasOwn(PALETTES, match[1]) ? match[1] : DEFAULT_PALETTE;
+}
+
+/** The palette this page uses. */
+export const PALETTE = paletteFrom(typeof location === "undefined" ? "" : location.search);
+
+/** The tiers, with a palette's colours. */
+export function tiersFor(palette) {
+  return TIER_SHAPES.map((shape) => ({ ...shape, ...PALETTES[palette][shape.tier] }));
+}
+
+export const STRESS_TIERS = tiersFor(PALETTE);
+
+/**
+ * A road a bicycle may not use - an expressway, a road barred to bicycles, a
+ * private road - draws white over a grey casing, neutral, not by its tier (the
+ * owner, 2026-09-29: "there are several expressways shown as LTS4. just show
+ * them in white."; OWNER-DECISIONS 73, widened by 80). The tiles' "map_class"
+ * says "barred" (core/stress_tiles.py).
+ */
+export const BARRED = {
+  short: "No bikes",
+  label: "Bikes not allowed: expressways, private roads",
+  color: "#ffffff",
+  casing: "#8a8f98",
+  width: 3.5,
+};
 
 /** The Furth tiers, the ones ordered by luminance for greyscale print. */
 export const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
@@ -157,50 +187,110 @@ export const drawnAt = (when) => [
 /** Until the map knows the ride time; App gives it at once (lib/rideTime.ts). */
 export const DEFAULT_WHEN = "weekday_offpeak";
 
+/** A road a bicycle may not use (the tiles' "map_class"). */
+const isBarred = ["==", ["get", "map_class"], "barred"];
+
+/** A road whose bike facility is mapped as a way of its own beside it (the tiles' "separate_bikeway"). */
+const besideBikeway = ["==", ["get", "separate_bikeway"], true];
+
+/**
+ * The busy roads - LTS 3, LTS 4, Avoid and the roads bicycles may not use - are background.
+ * The owner, 2026-09-29: "The high LTS roads aren't that important because you
+ * aren't going to route around them." - "Show them faintly" (OWNER-DECISIONS
+ * 76) - then "Make solid at 14" (77): faint at z12-13, where the tiles first
+ * carry them, and solid from SOLID_MIN_ZOOM. One beside a separately mapped
+ * bike facility (15th Street NW beside its cycle track) is not drawn until
+ * BESIDE_ROAD_MIN_ZOOM and then faint at every zoom, so the facility is the
+ * main line: "In that case, don't show the road, perhaps hide it until zoom
+ * 15-16. The bike lane should show up as the main." (73) and "Keep it faint if
+ * it parallels a protected bike path." (78). 15 of the owner's 15-16: at 15 a
+ * street and its cycle track are 10-15 px apart on screen, room for both.
+ */
+export const BUSY_MIN_TIER = 3;
+export const SOLID_MIN_ZOOM = 14;
+export const BESIDE_ROAD_MIN_ZOOM = 15;
+export const FAINT = { opacity: 0.4, widthScale: 0.6 };
+
+/** A busy road's `full` value (opacity or width) by zoom: faint or not drawn where the rules say. */
+function busyByZoom(full, faint) {
+  return [
+    "step",
+    ["zoom"],
+    ["case", besideBikeway, 0, faint],
+    SOLID_MIN_ZOOM,
+    ["case", besideBikeway, 0, full],
+    BESIDE_ROAD_MIN_ZOOM,
+    ["case", besideBikeway, faint, full],
+  ];
+}
+
+/** A busy line's paint, faint and late as busyByZoom says; a quiet one's as it is. */
+function linePaint(color, width, busy) {
+  if (!busy) return { "line-color": color, "line-width": width };
+  return {
+    "line-color": color,
+    "line-width": busyByZoom(width, width * FAINT.widthScale),
+    "line-opacity": busyByZoom(1, FAINT.opacity),
+  };
+}
+
 /** Each overlay layer's filter in the ride time `when`, by layer id. */
 export function stressFilters(when = DEFAULT_WHEN) {
   const filters = {};
   for (const tier of STRESS_TIERS) {
-    const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
+    const filter = ["all", drawnAt(when), ["!", isBarred], ["==", tierAt(when), tier.tier]];
     filters[`stress-${tier.tier}`] = filter;
     filters[`stress-casing-${tier.tier}`] = filter;
   }
+  filters["stress-barred"] = ["all", drawnAt(when), isBarred];
+  filters["stress-casing-barred"] = filters["stress-barred"];
   for (const facility of FACILITIES) {
     filters[`facility-${facility.facility}`] = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
   }
   return filters;
 }
 
-export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
   const filters = stressFilters(when);
-  return STRESS_TIERS.map((tier) => ({
+  const lines = tiers.map((tier) => ({
     id: `stress-${tier.tier}`,
     type: "line",
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
-    paint: {
-      "line-color": tier.color,
-      "line-width": tier.width,
-      "line-dasharray": tier.dash,
-    },
+    paint: { ...linePaint(tier.color, tier.width, tier.tier >= BUSY_MIN_TIER), "line-dasharray": tier.dash },
   }));
+  lines.push({
+    id: "stress-barred",
+    type: "line",
+    source: sourceId,
+    "source-layer": STRESS_TILE_LAYER,
+    filter: filters["stress-barred"],
+    paint: linePaint(BARRED.color, BARRED.width, true),
+  });
+  return lines;
 }
 
 /** The casing under each tier's line, drawn first so the tier sits on it. */
-export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN) {
+export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
   const filters = stressFilters(when);
-  return STRESS_TIERS.map((tier) => ({
+  const casings = tiers.map((tier) => ({
     id: `stress-casing-${tier.tier}`,
     type: "line",
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-casing-${tier.tier}`],
-    paint: {
-      "line-color": tier.casing,
-      "line-width": tier.width + CASING_EXTRA_PX,
-    },
+    paint: linePaint(tier.casing, tier.width + CASING_EXTRA_PX, tier.tier >= BUSY_MIN_TIER),
   }));
+  casings.push({
+    id: "stress-casing-barred",
+    type: "line",
+    source: sourceId,
+    "source-layer": STRESS_TILE_LAYER,
+    filter: filters["stress-casing-barred"],
+    paint: linePaint(BARRED.casing, BARRED.width + CASING_EXTRA_PX, true),
+  });
+  return casings;
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */
@@ -265,13 +355,17 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN) {
  * tier, which would then vanish under its casing; rails drawn over a casing
  * would do the same to the whole line.
  */
-export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN) {
-  return [...facilityLayers(sourceId, when), ...stressCasingLayers(sourceId, when), ...stressLayers(sourceId, when)];
+export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
+  return [
+    ...facilityLayers(sourceId, when),
+    ...stressCasingLayers(sourceId, when, tiers),
+    ...stressLayers(sourceId, when, tiers),
+  ];
 }
 
 /** Legend entries, which carry the label the colour alone cannot. */
-export function legend() {
-  return STRESS_TIERS.map(({ tier, short, label, color, dash, width, casing }) => ({
+export function legend(tiers = STRESS_TIERS) {
+  return tiers.map(({ tier, short, label, color, dash, width, casing }) => ({
     tier,
     short,
     label,
