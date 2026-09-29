@@ -214,12 +214,9 @@ def busy_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 MAP_CLASS_COLUMN = "map_class"
 SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
 
-# On a table from before those columns, a road a bicycle may not use is what
-# the classifier recorded as motor-only: a motorway or its ramp. A trunk road
-# barred to bicycles, a private road and a terminal hallway need the column.
-MAP_CLASS_FALLBACK = (
-    "CASE WHEN starts_with(stress_rule, 'motor-only classification (') THEN 'barred' END"
-)
+# On a table from before those columns, the public roads a bicycle may not
+# use are what the classifier recorded as motor-only: a motorway or its ramp.
+MOTOR_ONLY_RULE = "starts_with(stress_rule, 'motor-only classification (')"
 
 # Whether SEGMENT_DDL declares the facility column. Set it True in the change
 # that adds the column, so the overview index is created with the predicate

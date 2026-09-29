@@ -96,20 +96,6 @@ export function tiersFor(palette) {
 
 export const STRESS_TIERS = tiersFor(PALETTE);
 
-/**
- * A road a bicycle may not use - an expressway, a road barred to bicycles, a
- * private road - draws white over a grey casing, neutral, not by its tier (the
- * owner, 2026-09-29: "there are several expressways shown as LTS4. just show
- * them in white."; OWNER-DECISIONS 73, widened by 80). The tiles' "map_class"
- * says "barred" (core/stress_tiles.py).
- */
-export const BARRED = {
-  short: "No bikes",
-  label: "Bikes not allowed: expressways, private roads",
-  color: "#ffffff",
-  casing: "#8a8f98",
-  width: 3.5,
-};
 
 /** The Furth tiers, the ones ordered by luminance for greyscale print. */
 export const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
@@ -187,14 +173,11 @@ export const drawnAt = (when) => [
 /** Until the map knows the ride time; App gives it at once (lib/rideTime.ts). */
 export const DEFAULT_WHEN = "weekday_offpeak";
 
-/** A road a bicycle may not use (the tiles' "map_class"). */
-const isBarred = ["==", ["get", "map_class"], "barred"];
-
 /** A road whose bike facility is mapped as a way of its own beside it (the tiles' "separate_bikeway"). */
 const besideBikeway = ["==", ["get", "separate_bikeway"], true];
 
 /**
- * The busy roads - LTS 3, LTS 4, Avoid and the roads bicycles may not use - are background.
+ * The busy roads - LTS 3, LTS 4 and Avoid - are background.
  * The owner, 2026-09-29: "The high LTS roads aren't that important because you
  * aren't going to route around them." - "Show them faintly" (OWNER-DECISIONS
  * 76) - then "Make solid at 14" (77): faint at z12-13, where the tiles first
@@ -238,12 +221,10 @@ function linePaint(color, width, busy) {
 export function stressFilters(when = DEFAULT_WHEN) {
   const filters = {};
   for (const tier of STRESS_TIERS) {
-    const filter = ["all", drawnAt(when), ["!", isBarred], ["==", tierAt(when), tier.tier]];
+    const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
     filters[`stress-${tier.tier}`] = filter;
     filters[`stress-casing-${tier.tier}`] = filter;
   }
-  filters["stress-barred"] = ["all", drawnAt(when), isBarred];
-  filters["stress-casing-barred"] = filters["stress-barred"];
   for (const facility of FACILITIES) {
     filters[`facility-${facility.facility}`] = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
   }
@@ -252,7 +233,7 @@ export function stressFilters(when = DEFAULT_WHEN) {
 
 export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
   const filters = stressFilters(when);
-  const lines = tiers.map((tier) => ({
+  return tiers.map((tier) => ({
     id: `stress-${tier.tier}`,
     type: "line",
     source: sourceId,
@@ -260,21 +241,12 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = S
     filter: filters[`stress-${tier.tier}`],
     paint: { ...linePaint(tier.color, tier.width, tier.tier >= BUSY_MIN_TIER), "line-dasharray": tier.dash },
   }));
-  lines.push({
-    id: "stress-barred",
-    type: "line",
-    source: sourceId,
-    "source-layer": STRESS_TILE_LAYER,
-    filter: filters["stress-barred"],
-    paint: linePaint(BARRED.color, BARRED.width, true),
-  });
-  return lines;
 }
 
 /** The casing under each tier's line, drawn first so the tier sits on it. */
 export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
   const filters = stressFilters(when);
-  const casings = tiers.map((tier) => ({
+  return tiers.map((tier) => ({
     id: `stress-casing-${tier.tier}`,
     type: "line",
     source: sourceId,
@@ -282,15 +254,6 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     filter: filters[`stress-casing-${tier.tier}`],
     paint: linePaint(tier.casing, tier.width + CASING_EXTRA_PX, tier.tier >= BUSY_MIN_TIER),
   }));
-  casings.push({
-    id: "stress-casing-barred",
-    type: "line",
-    source: sourceId,
-    "source-layer": STRESS_TILE_LAYER,
-    filter: filters["stress-casing-barred"],
-    paint: linePaint(BARRED.casing, BARRED.width + CASING_EXTRA_PX, true),
-  });
-  return casings;
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */

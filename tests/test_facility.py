@@ -348,9 +348,21 @@ def test_beside_needs_most_of_the_way():
         ({"highway": "trunk"}, "road"),  # US 1, US 50: bicycle-legal
         ({"highway": "trunk", "expressway": "yes", "maxspeed": "55 mph"}, "road"),  # US 340: Avoid
         ({"highway": "secondary", "bicycle": "no", "covered": "yes"}, "barred"),  # BWI arrivals
-        ({"highway": "service", "access": "private", "bicycle": "no"}, "barred"),
-        ({"highway": "service", "access": "private"}, "barred"),
+        # "Don't show roads that most typical people can't ride on" (88): the
+        # public may not enter, so the road is hidden, not a barred public road.
+        ({"highway": "service", "access": "private", "bicycle": "no"}, "hidden"),
+        ({"highway": "service", "access": "private"}, "hidden"),  # BWI's 790013218
+        ({"highway": "tertiary", "access": "private"}, "hidden"),  # Pentagon Access Road
+        ({"highway": "unclassified", "access": "no", "foot": "private"}, "hidden"),
+        ({"highway": "residential", "access": "military"}, "hidden"),
+        ({"highway": "residential", "access": "restricted"}, "hidden"),
+        ({"highway": "residential", "access": "permit"}, "hidden"),
+        ({"highway": "residential", "vehicle": "private"}, "hidden"),
+        ({"highway": "residential", "bicycle": "private"}, "hidden"),
         ({"highway": "service", "access": "private", "bicycle": "yes"}, "road"),
+        ({"highway": "residential", "access": "no", "bicycle": "designated"}, "road"),  # car-free
+        ({"highway": "tertiary", "access": "permissive"}, "road"),  # Patton Drive
+        ({"highway": "residential", "access": "destination"}, "road"),
         ({"highway": "primary", "bicycle": "use_sidepath"}, "barred"),
         ({"highway": "residential"}, "road"),
         ({"highway": "corridor", "indoor": "yes", "level": "1"}, "hidden"),  # BWI's terminal
@@ -359,8 +371,14 @@ def test_beside_needs_most_of_the_way():
         ({"highway": "footway", "indoor": "no"}, "road"),
         ({"highway": "elevator"}, "hidden"),
         ({"highway": "construction"}, "hidden"),
-        ({"highway": "footway", "bicycle": "no"}, "road"),  # a trail's access is its facility's
-        ({"highway": "path", "access": "private"}, "road"),
+        (
+            {"highway": "footway", "bicycle": "no"},
+            "road",
+        ),  # a public path; its facility says the rest
+        ({"highway": "path", "access": "private"}, "hidden"),  # inside the fence
+        ({"highway": "footway", "access": "private", "foot": "yes"}, "road"),
+        ({"highway": "cycleway", "access": "no", "bicycle": "designated"}, "road"),
+        ({"highway": "footway", "access": "private", "bicycle": "private"}, "hidden"),
     ],
 )
 def test_the_map_class_of_a_way(tags, drawn_as) -> None:
@@ -393,6 +411,22 @@ def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
             "road",
         ),  # a roadside trail
         ({"highway": "path", "path": "sidewalk"}, "hidden"),
+        # The Anacostia Riverwalk Trail's sidewalk stretches (ways 1165002638, 1444409547).
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "bicycle": "yes",
+                "name": "Anacostia Riverwalk Trail",
+            },
+            "road",
+        ),
+        ({"highway": "footway", "footway": "sidewalk", "name": "K Street Northwest"}, "hidden"),
+        # A trail not yet built (the Mount Vernon Trail's 2030 section) is not drawn.
+        (
+            {"highway": "construction", "construction": "cycleway", "name": "Mount Vernon Trail"},
+            "hidden",
+        ),
         ({"highway": "cycleway", "cycleway": "sidewalk", "bicycle": "designated"}, "road"),
         ({"highway": "footway", "footway": "crossing"}, "hidden"),
         ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, "road"),
@@ -448,3 +482,39 @@ def test_short_unnamed_paths_are_hidden_unless_they_join_two_kept_trails() -> No
     assert facility_rules.short_paths_to_hide(
         [ways[0], ways[8], (11, link, [12, 21], _west_east(0, 0, 30))]
     ) == {11}
+
+
+def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() -> None:
+    """ "Don't show roads that most typical people can't ride on, such as within
+    military bases, or the pentagon" (OWNER-DECISIONS 88)."""
+    from pipeline import military
+
+    square = [(-77.06, 38.866), (-77.05, 38.866), (-77.05, 38.876), (-77.06, 38.876)]
+    hole = [(-77.057, 38.869), (-77.053, 38.869), (-77.053, 38.873), (-77.057, 38.873)]
+    pentagon = ((-77.06, 38.866, -77.05, 38.876), [square], [hole])
+    assert military.is_military_area({"landuse": "military", "name": "The Pentagon"})
+    assert military.is_military_area({"military": "base"})
+    assert not military.is_military_area({"military": "no"})
+    assert not military.is_military_area({"landuse": "residential"})
+    ways = [
+        (
+            1,
+            {"highway": "tertiary", "name": "Connector Road"},
+            [(-77.059, 38.867), (-77.058, 38.868)],
+        ),
+        (2, {"highway": "tertiary"}, [(-77.055, 38.871), (-77.054, 38.872)]),  # in the hole
+        (
+            3,
+            {"highway": "secondary"},
+            [(-77.059, 38.867), (-77.04, 38.867), (-77.03, 38.867)],
+        ),  # mostly out
+        (
+            4,
+            {"highway": "cycleway", "name": "Mount Vernon Trail"},
+            [(-77.059, 38.867), (-77.058, 38.868)],
+        ),
+        (5, {"highway": "tertiary"}, [(-77.07, 38.86), (-77.069, 38.861)]),  # outside
+        (6, {"building": "yes"}, [(-77.059, 38.867)]),
+    ]
+    assert military.roads_inside(ways, [pentagon]) == {1}
+    assert military.roads_inside(ways, []) == set()

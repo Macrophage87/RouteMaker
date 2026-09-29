@@ -47,7 +47,7 @@ export function stressZoomHint(zoom: number | null): string {
   let text =
     `${ZOOMED_OUT} Trails beside a road are among them. From zoom ${busy} the busy roads at LTS 3 and above ` +
     `show, faintly, and from zoom ${quiet} the quiet streets, footways and sidewalks, with every line solid ` +
-    `from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are white. A busy road with a bike lane ` +
+    `from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
     `main line. Further out than zoom ${min} nothing is drawn, and streets with no stress rating are not drawn.`;
   if (zoom !== null) text += ` The map is at zoom ${Math.floor(zoom)}.`;

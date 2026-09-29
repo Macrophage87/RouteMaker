@@ -1191,10 +1191,13 @@ class TestCarFree:
 
 @db
 class TestMapClass:
-    """The owner, 2026-09-29: "there are several expressways shown as LTS4. just
-    show them in white." (OWNER-DECISIONS 73) and "For some strange reason BWI
-    has TLS 3 inside the terminal." (80); and "Keep it faint if it parallels a
-    protected bike path." (78), which the map draws from `separate_bikeway`."""
+    """Only a road is drawn. The owner, 2026-09-29: "You can just leave the
+    public roads where bikes aren't allowed as unmarked, using the base map"
+    (OWNER-DECISIONS 89, superseding 73's white line), "For some strange reason
+    BWI has TLS 3 inside the terminal." (80) and "Don't show roads that most
+    typical people can't ride on, such as within military bases, or the
+    pentagon" (88); and "Keep it faint if it parallels a protected bike path."
+    (78), which the map draws from `separate_bikeway`."""
 
     ROWS = [
         # (way, tier, rule, map_class, separate_bikeway)
@@ -1222,35 +1225,22 @@ class TestMapClass:
     @staticmethod
     def drawn(client, z):
         layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        assert all("map_class" not in f.properties for f in layer.features)
         return sorted(
-            (
-                f.properties.get("tier"),
-                f.properties.get("map_class", ""),
-                f.properties.get("separate_bikeway", False),
-            )
+            (f.properties.get("tier"), f.properties.get("separate_bikeway", False))
             for f in layer.features
             for _line in f.lines
         )  # fmt: skip
 
     @pytest.mark.parametrize("z", [12, 14])
-    def test_barred_roads_are_marked_hidden_ways_left_out(self, client, ways, z) -> None:
-        assert self.drawn(client, z) == sorted(
-            [(4, "barred", False), (4, "barred", False), (4, "", True), (5, "", False)]
-        )
+    def test_only_the_roads_are_drawn(self, client, ways, z) -> None:
+        assert self.drawn(client, z) == [(4, True), (5, False)]
 
-    def test_without_the_column_a_motorway_is_barred_by_its_recorded_rule(self, client, ways):
+    def test_without_the_column_a_motorway_is_left_out_by_its_recorded_rule(self, client, ways):
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {ways}.segment DROP COLUMN map_class")
             cursor.execute(f"ALTER TABLE {ways}.segment DROP COLUMN separate_bikeway")
-        assert self.drawn(client, 14) == sorted(
-            [
-                (4, "barred", False),
-                (4, "", False),
-                (3, "", False),
-                (4, "", False),
-                (5, "", False),
-            ]
-        )
+        assert self.drawn(client, 14) == [(3, False), (4, False), (4, False), (5, False)]
 
     def test_the_columns_are_the_schemas(self) -> None:
         from pipeline import schema

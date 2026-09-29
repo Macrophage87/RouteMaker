@@ -15,7 +15,6 @@ import {
   relativeLuminance,
   contrastRatio,
   stressFilters,
-  BARRED,
   BESIDE_ROAD_MIN_ZOOM,
   DEFAULT_PALETTE,
   FAINT,
@@ -42,8 +41,8 @@ function paintValue(layer, name, properties, zoom = 12) {
   return expression.value.evaluate({ zoom }, { type: 2, properties, geometry: [] });
 }
 
-/** The tiers' own layers, without the roads a bicycle may not use. */
-const tierLayers = (layers) => layers.filter((l) => !l.id.endsWith("-barred"));
+/** The tiers' own layers. */
+const tierLayers = (layers) => layers;
 
 test("every stress tier is distinguishable without colour", () => {
   // The accessibility rule, and also what makes the overlay readable on the
@@ -357,13 +356,11 @@ function drawnAtZoom(properties, zoom) {
   return out;
 }
 
-test("a road a bicycle may not use is white, not its tier; Avoid keeps its colour", () => {
-  // "there are several expressways shown as LTS4. just show them in white."
-  const motorway = { tier: 4, map_class: "barred" };
-  assert.deepEqual(Object.keys(drawnAtZoom(motorway, 14)).sort(), ["stress-barred", "stress-casing-barred"]);
-  const barred = stressLayers().find((l) => l.id === "stress-barred");
-  assert.equal(barred.paint["line-color"], BARRED.color);
-  assert.equal(BARRED.color, "#ffffff");
+test("the overlay has no layer for a road a bicycle may not use: the base map shows it; Avoid keeps its colour", () => {
+  // "You can just leave the public roads where bikes aren't allowed as
+  // unmarked, using the base map" (OWNER-DECISIONS 89): such roads are not in
+  // the tiles, and no layer waits for them.
+  assert.ok(stressOverlayLayers("stress").every((l) => !/barred|expressway/.test(l.id)));
   const us340 = { tier: 5 };
   assert.deepEqual(Object.keys(drawnAtZoom(us340, 14)).sort(), ["stress-5", "stress-casing-5"]);
 });

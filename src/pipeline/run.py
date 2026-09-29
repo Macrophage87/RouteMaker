@@ -43,6 +43,7 @@ from . import (
     conflation,
     elevation,
     extract,
+    military,
     overrides,
     promotion,
     reconcile,
@@ -443,7 +444,9 @@ class RebuildContext:
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
-    # The short unnamed paths the stress map leaves out (facility.short_paths_to_hide).
+    # The ways the stress map leaves out by their length or their place: the
+    # short unnamed paths (facility.short_paths_to_hide) and the roads inside a
+    # military base (military.roads_inside).
     short_paths_hidden: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
@@ -1061,6 +1064,12 @@ def build_handlers(
         )
         context.short_paths_hidden = facility.short_paths_to_hide(
             (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
+        )
+        # The roads inside a military base, many with no access tag of their
+        # own (the Pentagon's): left off the stress map (OWNER-DECISIONS 88).
+        context.short_paths_hidden |= military.roads_inside(
+            ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
+            military.military_areas(context.source_pbf),
         )
         car_free_for_good = 0
         for way in context.ways:

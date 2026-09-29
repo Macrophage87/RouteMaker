@@ -431,30 +431,47 @@ the same whatever the style decides):
   NW) is not drawn until `BESIDE_ROAD_MIN_ZOOM` (15, of the owner's "15-16")
   and then faint at every zoom, so the cycle track is the main line (73, and
   "Keep it faint if it parallels a protected bike path.", 78);
-- a road a bicycle may not use (`segment.map_class = 'barred'`: a motorway, a
-  trunk road barred to bicycles such as the George Washington Parkway,
-  `motorroad=yes`, a private road, `bicycle=use_sidepath`) draws white over a
-  grey casing, not by its tier ("there are several expressways shown as LTS4.
-  just show them in white.", 73); "legal but avoid" (US 340) keeps its own
-  colour; a way that is no road or path at all (`map_class = 'hidden'`: BWI's
-  terminal hallways, `highway=corridor` + `indoor=yes`; any `indoor` way; an
-  elevator, platform or road under construction) is left out of the tiles
-  ("For some strange reason BWI has TLS 3 inside the terminal.", 80). Also
-  left out (map only; routing is unchanged): sidewalks and crosswalk lines
-  that are not a trail's, parking aisles, driveways and drive-throughs, and
-  unnamed footways and paths not designated for bicycles shorter than
-  `routemaker.facility.SHORT_PATH_M` (150 m) unless both their ends touch a
-  trail the map keeps, so a short link between two trails stays ("There's a
-  lot of side paths and parking lots that probably don't need to show up." -
-  "Sidewalks + small paths", 82). Named trails, long paths, shared-use paths,
-  roadside trails and car-free roads stay. Route-relation membership is not
-  read: an unnamed short piece of a signed route is left out like any other.
+- only a road (`segment.map_class = 'road'`) is drawn at all. A public road a
+  bicycle may not use (`'barred'`: a motorway, a trunk road with
+  `bicycle=no` such as the George Washington Parkway, `motorroad=yes`,
+  `bicycle=use_sidepath`) is left to the base map, unmarked ("You can just
+  leave the public roads where bikes aren't allowed as unmarked, using the base
+  map", OWNER-DECISIONS 89, which replaced 73's white line); "legal but avoid"
+  (US 340) is a road and keeps its colour. A way no typical rider could use
+  (`'hidden'`) is not drawn either:
+  - no road or path at all: BWI's terminal hallways (`highway=corridor` +
+    `indoor=yes`), any `indoor` way, an elevator, a platform, a road or trail
+    under construction ("For some strange reason BWI has TLS 3 inside the
+    terminal.", 80);
+  - sidewalks and crosswalk lines that are not a trail's (a named trail's
+    sidewalk stretch open to bicycles, the Anacostia Riverwalk Trail's, stays),
+    parking aisles, driveways and drive-throughs, and unnamed footways and
+    paths not designated for bicycles shorter than
+    `routemaker.facility.SHORT_PATH_M` (150 m) unless both their ends touch a
+    trail the map keeps ("There's a lot of side paths and parking lots that
+    probably don't need to show up." - "Sidewalks + small paths", 82);
+  - a road or path the public may not enter - `access` or `vehicle` of no,
+    private, military, restricted or permit, unless a bicycle or foot tag
+    opens it - and every road inside an area tagged `landuse=military` or
+    `military=*` (`pipeline.military`: the Pentagon, which is
+    `landuse=military` + `military=base`, way 916068128, and whose inner roads
+    - Connector Road, North Rotary Road - carry no access tag of their own;
+    Joint Base Anacostia-Bolling, Joint Base Myer-Henderson Hall, Fort McNair,
+    Joint Base Andrews, the Navy Yard). A trail is not tested by area, so the
+    Mount Vernon Trail past the Pentagon and the Anacostia Riverwalk past
+    Bolling stay ("Don't show roads that most typical people can't ride on,
+    such as within military bases, or the pentagon", 88). On the dials
+    pipeline's box extract: 61 military areas, 2,715 roads inside them.
+
+  Route-relation membership is not read: an unnamed short piece of a signed
+  route is left out like any other. Routing is unchanged: Valhalla reads the
+  ways' own access tags.
 
 `map_class` and `separate_bikeway` are **segment columns the rebuild writes**
 (`routemaker.facility.map_class`, `has_separate_bikeway`): they reach the map
 only after a rebuild with this code. On a table without them a road a bicycle
-may not use is a motorway alone (its recorded rule), nothing is left out, and
-no road is known to have a bikeway beside it.
+may not use is a motorway alone (its recorded rule, and it is not drawn),
+nothing else is left out, and no road is known to have a bikeway beside it.
 
 **The colours** (`PALETTES` in `stressStyle.js`, the one place they are kept).
 The owner, 2026-09-29: "I like LTS 1 and 2. Maybe yellow and orange for LTS 3,

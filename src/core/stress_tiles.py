@@ -82,7 +82,7 @@ from pipeline.schema import (
     CAR_FREE_COLUMN,
     FACILITY_COLUMN,
     MAP_CLASS_COLUMN,
-    MAP_CLASS_FALLBACK,
+    MOTOR_ONLY_RULE,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_NETWORK_FACILITY,
     busy_predicate,
@@ -205,11 +205,10 @@ PROPERTIES = {"tier": "stress_tier", "trail": "is_trail_class", "unpaved": "is_u
 # `routemaker.facility`, and a table promoted before it has no such column. Where it is
 # there, the zoomed-out levels draw its paths and trails. Where it is not, a
 # stand-in is carried in its place (`FALLBACKS`) and the zoomed-out paths are
-# the ones that stand-in calls a path. `map_class` ("barred", or left out for a
-# road) and `separate_bikeway` (true, or left out) are the two facts the map
-# draws the roads a bicycle may not use white and the roads beside a
-# separately mapped bike facility faint by (OWNER-DECISIONS 73, 78, 80); a
-# way whose map class is "hidden" is not in the tiles at all.
+# the ones that stand-in calls a path. `separate_bikeway` (true, or left out)
+# is what the map draws a road beside a separately mapped bike facility faint
+# by (OWNER-DECISIONS 73, 78). `map_class` is not carried: only a road is in
+# the tiles at all (80, 82, 88, 89).
 OPTIONAL_PROPERTIES = {
     "facility": FACILITY_COLUMN,
     "car_free": CAR_FREE_COLUMN,
@@ -228,17 +227,15 @@ OPTIONAL_PROPERTIES = {
 # 67). One tile serves every ride time, so the pre-draw draws each tile once.
 OPTIONAL_EXPRESSIONS = {
     "car_free": f"NULLIF(array_to_string(s.{CAR_FREE_COLUMN}, ','), '')",
-    "map_class": f"NULLIF(s.{MAP_CLASS_COLUMN}, 'road')",
     "separate_bikeway": f"NULLIF(s.{SEPARATE_BIKEWAY_COLUMN}, false)",
 }
 
 # What an optional property is drawn from on a table without its column: the
 # facility is derived from the trail network (an off-road path, or nothing),
 # so the trails carry the path's rails at every zoom before the column exists;
-# a road a bicycle may not use is a motorway (`pipeline.schema.
-# MAP_CLASS_FALLBACK`); and a road beside a separate bikeway is not known, so
-# none is drawn faint for it.
-FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY, "map_class": MAP_CLASS_FALLBACK}
+# and a road beside a separate bikeway is not known, so none is drawn faint
+# for it.
+FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
@@ -311,9 +308,16 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
             carried["car_free_only"] = f"CASE WHEN NOT {kept} THEN {expression} END"
     else:
         where = level.where or "true"
+    # Only a road is drawn: a public road a bicycle may not use is left to the
+    # base map ("You can just leave the public roads where bikes aren't allowed
+    # as unmarked, using the base map", OWNER-DECISIONS 89), and a way no
+    # typical rider could use is not drawn (80, 82, 88). On a table without
+    # the column the motorways are what the classifier recorded as motor-only.
+    carried.pop("map_class", None)
     if MAP_CLASS_COLUMN in optional:
-        # No road or path at all (a terminal hallway): not in the tiles.
-        where = f"({where}) AND s.{MAP_CLASS_COLUMN} <> 'hidden'"
+        where = f"({where}) AND s.{MAP_CLASS_COLUMN} = 'road'"
+    else:
+        where = f"({where}) AND NOT {MOTOR_ONLY_RULE}"
     return template.format(
         table=_table(),
         where=where,

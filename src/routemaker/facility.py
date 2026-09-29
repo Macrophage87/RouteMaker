@@ -213,12 +213,19 @@ def declares_separate(tags: dict[str, str]) -> bool:
 
 
 class MapClass(StrEnum):
-    """How the stress map draws a way, beside its tier (OWNER-DECISIONS 73, 80)."""
+    """How the stress map draws a way, beside its tier (OWNER-DECISIONS 73, 80,
+    82, 88, 89). Only a road is drawn; the other two are kept apart for what
+    they mean, not for how they draw."""
 
     ROAD = "road"
-    # A road a bicycle may not use: drawn white, neutral, not by its tier.
+    # A public road a bicycle may not use - a motorway, bicycle=no,
+    # motorroad=yes: not drawn, the base map shows it as it is ("You can just
+    # leave the public roads where bikes aren't allowed as unmarked, using the
+    # base map", 89, superseding the white line of 73 and 80).
     BARRED = "barred"
-    # Not a road or path a bicycle could use at all: not drawn.
+    # No road or path a typical rider could use: a terminal hallway, a
+    # sidewalk, a parking aisle, a private road, a road inside a military base
+    # (80, 82, 88). Not drawn.
     HIDDEN = "hidden"
 
 
@@ -248,9 +255,15 @@ BARRED_HIGHWAY = frozenset({"motorway", "motorway_link"})
 # to the sidepath beside it.
 BARRING_BICYCLE = frozenset({"no", "private", "use_sidepath"})
 
-# Access values that bar every vehicle, a bicycle included, unless the
-# bicycle tag says otherwise.
-BARRING_ACCESS = frozenset({"no", "private"})
+# Access values that keep the public out, a bicycle included, unless the
+# bicycle tag says otherwise: the road is no one's to ride, and is left off the
+# map (the owner, 2026-09-29: "Don't show roads that most typical people can't
+# ride on, such as within military bases, or the pentagon"; OWNER-DECISIONS
+# 88). `permit` is taken as private-like: a gate and a pass.
+NO_PUBLIC_ACCESS = frozenset({"no", "private", "military", "restricted", "permit"})
+
+# A way's own tags that open it to someone on foot or on a bicycle.
+PUBLIC_WAY = frozenset({"yes", "designated", "permissive", "official", "public"})
 
 
 # The service roads a map of where to ride has no use for (the owner,
@@ -271,6 +284,11 @@ def _sidewalk_or_crossing(tags: dict[str, str]) -> bool:
     kinds = {tags.get(key) for key in CROSSING_KEYS}
     if tags.get("bicycle") == "designated":
         return False
+    # A stretch of a named trail mapped as the sidewalk it runs along (the
+    # Anacostia Riverwalk Trail's, footway=sidewalk + bicycle=yes) is the
+    # trail's: a named trail stays on the map (OWNER-DECISIONS 82).
+    if tags.get("name") and tags.get("bicycle") in BICYCLE_ALLOWED:
+        return False
     if SIDEWALK in kinds:
         return True
     return bool(kinds & {CROSSING, TRAFFIC_ISLAND}) and tags.get("highway") != "cycleway"
@@ -287,30 +305,38 @@ def short_path_candidate(tags: dict[str, str]) -> bool:
 
 
 def map_class(tags: dict[str, str]) -> MapClass:
-    """How the stress map draws a way. The owner, 2026-09-29: "there are several
-    expressways shown as LTS4. just show them in white." (OWNER-DECISIONS 73),
-    widened to every road a bicycle may not use (80): a motorway, a trunk road
-    barred to bicycles (the George Washington, Suitland and Clara Barton
-    parkways), `motorroad=yes`, and a private road a bicycle is not let onto -
-    and not drawn at all, a way that is no road or path (a terminal hallway,
-    `indoor=yes`). A trail-class way's access is its facility's business
-    (`facility`); "legal but avoid" (US 340) is a road a bicycle may use, and
-    keeps its tier."""
+    """How the stress map draws a way, by its own tags; a road inside a
+    military base is found by its place (`pipeline.military`). BARRED: a
+    public road a bicycle may not use - a motorway, `bicycle=no` (the George
+    Washington, Suitland and Clara Barton parkways), `motorroad=yes`,
+    `bicycle=use_sidepath`. HIDDEN: a way no typical rider could use - no road
+    or path at all (a terminal hallway, `indoor`), a sidewalk or crosswalk, a
+    parking aisle or driveway, and a road or path the public may not enter
+    (`access` or `vehicle` of no, private, military, restricted, permit), a
+    bicycle or foot tag reopening it. Neither is drawn (OWNER-DECISIONS 89).
+    "Legal but avoid" (US 340) is a road a bicycle may use, and keeps its
+    tier."""
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
         return MapClass.HIDDEN
     if highway == "service" and tags.get("service") in HIDDEN_SERVICE:
         return MapClass.HIDDEN
-    if highway in TRAIL_CLASS_HIGHWAY and _sidewalk_or_crossing(tags):
-        return MapClass.HIDDEN
-    if highway in TRAIL_CLASS_HIGHWAY or highway is None:
+    closed = any(tags.get(key) in NO_PUBLIC_ACCESS for key in ("access", "vehicle"))
+    if highway in TRAIL_CLASS_HIGHWAY:
+        if _sidewalk_or_crossing(tags):
+            return MapClass.HIDDEN
+        # A private path (inside the Pentagon's fence) is no one's; a public
+        # one is a trail, whatever its facility.
+        opened = tags.get("bicycle") in PUBLIC_WAY or tags.get("foot") in PUBLIC_WAY
+        return MapClass.HIDDEN if closed and not opened else MapClass.ROAD
+    if highway is None:
         return MapClass.ROAD
     bicycle = tags.get("bicycle")
     if bicycle in BICYCLE_ALLOWED:
         return MapClass.ROAD
+    if closed or bicycle == "private":
+        return MapClass.HIDDEN
     if highway in BARRED_HIGHWAY or bicycle in BARRING_BICYCLE or tags.get("motorroad") == "yes":
-        return MapClass.BARRED
-    if bicycle is None and any(tags.get(key) in BARRING_ACCESS for key in ("access", "vehicle")):
         return MapClass.BARRED
     return MapClass.ROAD
 
