@@ -458,8 +458,9 @@ the same whatever the style decides):
     - Connector Road, North Rotary Road - carry no access tag of their own;
     Joint Base Anacostia-Bolling, Joint Base Myer-Henderson Hall, Fort McNair,
     Joint Base Andrews, the Navy Yard). A trail is not tested by area, so the
-    Mount Vernon Trail past the Pentagon and the Anacostia Riverwalk past
-    Bolling stay ("Don't show roads that most typical people can't ride on,
+    Mount Vernon Trail past the Pentagon, the Anacostia Riverwalk past
+    Bolling and through the Navy Yard along the water (a designated cycleway
+    with no access tag: "There's a trail that open near the water.", 94) stay ("Don't show roads that most typical people can't ride on,
     such as within military bases, or the pentagon", 88). On the dials
     pipeline's box extract: 61 military areas, 2,715 roads inside them.
 

@@ -518,3 +518,46 @@ def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() ->
     ]
     assert military.roads_inside(ways, [pentagon]) == {1}
     assert military.roads_inside(ways, []) == set()
+
+
+def test_the_riverwalk_through_the_navy_yard_stays_and_the_streets_beside_it() -> None:
+    """The owner, 2026-09-29, of the Washington Navy Yard: "There's a trail that
+    open near the water." (OWNER-DECISIONS 94). On the dials box extract the
+    Anacostia Riverwalk Trail's two ways inside the Navy Yard's area are
+    highway=cycleway, bicycle=designated, foot=designated, no access or
+    opening_hours tag: a public trail, routable, and never area-tested."""
+    from pipeline import military
+
+    riverwalk = {
+        "highway": "cycleway",
+        "name": "Anacostia Riverwalk Trail",
+        "bicycle": "designated",
+        "foot": "designated",
+    }
+    assert facility_rules.map_class(riverwalk).value == "road"
+    yard = (
+        (-77.0, 38.871, -76.991, 38.8765),
+        [[(-77.0, 38.871), (-76.991, 38.871), (-76.991, 38.8765), (-77.0, 38.8765)]],
+        [],
+    )
+    ways = [
+        (1, riverwalk, [(-76.998, 38.8715), (-76.994, 38.8715)]),  # along the water, inside
+        (
+            2,
+            {"highway": "service", "name": "Dahlgren Avenue Southeast"},
+            [(-76.996, 38.874), (-76.995, 38.874)],
+        ),
+        (
+            3,
+            {"highway": "primary", "name": "M Street Southeast"},
+            [(-77.0, 38.877), (-76.99, 38.877)],
+        ),  # outside
+        (
+            4,
+            {"highway": "unclassified", "name": "Water Street Southeast"},
+            [(-77.003, 38.873), (-77.001, 38.873)],
+        ),
+    ]
+    assert military.roads_inside(ways, [yard]) == {2}
+    for tags in (ways[2][1], ways[3][1]):
+        assert facility_rules.map_class(tags).value == "road"
