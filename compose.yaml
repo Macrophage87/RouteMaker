@@ -85,6 +85,10 @@ x-django-env: &django-env
   PGDATABASE: ${PGDATABASE:-routemaker}
   PGUSER: ${PGUSER:-routemaker}
   DJANGO_CONN_MAX_AGE: ${DJANGO_CONN_MAX_AGE:-60}
+  # How many stress tiles the pre-draw draws at once (config.settings): in the
+  # rebuild after its swap, and in `manage.py predraw_stress_tiles` run in the
+  # api. A PostgreSQL core each; two measured fastest, a third bought nothing.
+  STRESS_PREDRAW_WORKERS: ${STRESS_PREDRAW_WORKERS:-2}
 
 services:
   caddy:
