@@ -439,7 +439,16 @@ the same whatever the style decides):
   colour; a way that is no road or path at all (`map_class = 'hidden'`: BWI's
   terminal hallways, `highway=corridor` + `indoor=yes`; any `indoor` way; an
   elevator, platform or road under construction) is left out of the tiles
-  ("For some strange reason BWI has TLS 3 inside the terminal.", 80).
+  ("For some strange reason BWI has TLS 3 inside the terminal.", 80). Also
+  left out (map only; routing is unchanged): sidewalks and crosswalk lines
+  that are not a trail's, parking aisles, driveways and drive-throughs, and
+  unnamed footways and paths not designated for bicycles shorter than
+  `routemaker.facility.SHORT_PATH_M` (150 m) unless both their ends touch a
+  trail the map keeps, so a short link between two trails stays ("There's a
+  lot of side paths and parking lots that probably don't need to show up." -
+  "Sidewalks + small paths", 82). Named trails, long paths, shared-use paths,
+  roadside trails and car-free roads stay. Route-relation membership is not
+  read: an unnamed short piece of a signed route is left out like any other.
 
 `map_class` and `separate_bikeway` are **segment columns the rebuild writes**
 (`routemaker.facility.map_class`, `has_separate_bikeway`): they reach the map

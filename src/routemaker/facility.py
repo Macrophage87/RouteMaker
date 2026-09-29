@@ -253,6 +253,39 @@ BARRING_BICYCLE = frozenset({"no", "private", "use_sidepath"})
 BARRING_ACCESS = frozenset({"no", "private"})
 
 
+# The service roads a map of where to ride has no use for (the owner,
+# 2026-09-29: "There's a lot of side paths and parking lots that probably
+# don't need to show up." - "Sidewalks + small paths"; OWNER-DECISIONS 82).
+HIDDEN_SERVICE = frozenset({"parking_aisle", "driveway", "drive-through"})
+
+# How short an unnamed footway or path has to be for the map to leave it out
+# (82), unless it joins two trails the map keeps (`short_paths_to_hide`).
+SHORT_PATH_M = 150.0
+
+
+def _sidewalk_or_crossing(tags: dict[str, str]) -> bool:
+    """A sidewalk, or a crosswalk's line across a road, that is not a trail: a
+    sidewalk designated for bicycles is a roadside trail (OWNER-DECISIONS 66),
+    and a crossing signed for bicycles, or a cycleway's own, carries its trail
+    across the road (the facility rule's CROSSING_KEYS)."""
+    kinds = {tags.get(key) for key in CROSSING_KEYS}
+    if tags.get("bicycle") == "designated":
+        return False
+    if SIDEWALK in kinds:
+        return True
+    return bool(kinds & {CROSSING, TRAFFIC_ISLAND}) and tags.get("highway") != "cycleway"
+
+
+def short_path_candidate(tags: dict[str, str]) -> bool:
+    """An unnamed footway or path not designated for bicycles: left out of the
+    map when it is short and joins no two kept trails (`short_paths_to_hide`)."""
+    return (
+        tags.get("highway") in ("footway", "path")
+        and not tags.get("name")
+        and tags.get("bicycle") != "designated"
+    )
+
+
 def map_class(tags: dict[str, str]) -> MapClass:
     """How the stress map draws a way. The owner, 2026-09-29: "there are several
     expressways shown as LTS4. just show them in white." (OWNER-DECISIONS 73),
@@ -265,6 +298,10 @@ def map_class(tags: dict[str, str]) -> MapClass:
     keeps its tier."""
     highway = tags.get("highway")
     if highway in NOT_A_WAY_HIGHWAY or tags.get("indoor", "no") != "no":
+        return MapClass.HIDDEN
+    if highway == "service" and tags.get("service") in HIDDEN_SERVICE:
+        return MapClass.HIDDEN
+    if highway in TRAIL_CLASS_HIGHWAY and _sidewalk_or_crossing(tags):
         return MapClass.HIDDEN
     if highway in TRAIL_CLASS_HIGHWAY or highway is None:
         return MapClass.ROAD
@@ -348,3 +385,43 @@ def beside_separate_roads(
         if near >= BESIDE_FRACTION * len(points):
             found.add(osm_id)
     return found
+
+
+def _length_m(coords: Sequence[tuple[float, float]]) -> float:
+    if len(coords) < 2:
+        return 0.0
+    lat0 = coords[0][1]
+    points = [_xy(lon, lat, lat0) for lon, lat in coords]
+    return sum(math.dist(a, b) for a, b in zip(points, points[1:], strict=False))
+
+
+def short_paths_to_hide(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[int], Sequence[tuple[float, float]]]],
+    max_m: float = SHORT_PATH_M,
+) -> set[int]:
+    """The short unnamed footways and paths the map leaves out (OWNER-DECISIONS
+    82): a `short_path_candidate` shorter than `max_m`, unless both its ends
+    touch a trail-class way the map keeps - a short link between two trails
+    stays, so the trails do not look broken where it joins them.
+
+    `ways` is (osm id, tags, node ids, [(lon, lat), ...]). A kept trail is a
+    trail-class way that is not a candidate and that `map_class` draws (a named
+    trail, a long path, a shared-use path, a roadside trail).
+    """
+    ways = list(ways)
+    short: dict[int, tuple[int, int]] = {}
+    kept_nodes: set[int] = set()
+    for osm_id, tags, node_ids, coords in ways:
+        if tags.get("highway") not in TRAIL_CLASS_HIGHWAY or not node_ids:
+            continue
+        if map_class(tags) is not MapClass.ROAD:
+            continue
+        if short_path_candidate(tags) and _length_m(coords) < max_m:
+            short[osm_id] = (node_ids[0], node_ids[-1])
+        else:
+            kept_nodes.update(node_ids)
+    return {
+        osm_id
+        for osm_id, (first, last) in short.items()
+        if not (first in kept_nodes and last in kept_nodes)
+    }

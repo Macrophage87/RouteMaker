@@ -443,6 +443,8 @@ class RebuildContext:
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
+    # The short unnamed paths the stress map leaves out (facility.short_paths_to_hide).
+    short_paths_hidden: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1057,6 +1059,9 @@ def build_handlers(
         beside = facility.beside_separate_roads(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
+        context.short_paths_hidden = facility.short_paths_to_hide(
+            (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
+        )
         car_free_for_good = 0
         for way in context.ways:
             context.facility_by_way[way.osm_id] = facility.facility(
@@ -1304,7 +1309,11 @@ def build_handlers(
                         lit=lit_value(way.tags),
                         facility=context.facility_by_way.get(way.osm_id, "none"),
                         car_free_when=sorted(context.car_free_by_way.get(way.osm_id, ())),
-                        map_class=facility.map_class(way.tags).value,
+                        map_class=(
+                            facility.MapClass.HIDDEN
+                            if way.osm_id in context.short_paths_hidden
+                            else facility.map_class(way.tags)
+                        ).value,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                     )
                 )

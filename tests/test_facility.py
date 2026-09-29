@@ -379,3 +379,72 @@ def test_the_map_class_of_a_way(tags, drawn_as) -> None:
 )
 def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
     assert facility_rules.has_separate_bikeway(tags) is beside
+
+
+@pytest.mark.parametrize(
+    ("tags", "drawn_as"),
+    [
+        # "There's a lot of side paths and parking lots that probably don't need
+        # to show up." - "Sidewalks + small paths" (OWNER-DECISIONS 82).
+        ({"highway": "footway", "footway": "sidewalk"}, "hidden"),
+        ({"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}, "hidden"),
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "designated"},
+            "road",
+        ),  # a roadside trail
+        ({"highway": "path", "path": "sidewalk"}, "hidden"),
+        ({"highway": "cycleway", "cycleway": "sidewalk", "bicycle": "designated"}, "road"),
+        ({"highway": "footway", "footway": "crossing"}, "hidden"),
+        ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, "road"),
+        ({"highway": "cycleway", "cycleway": "crossing"}, "road"),  # the trail's own crossing
+        ({"highway": "footway", "footway": "traffic_island"}, "hidden"),
+        ({"highway": "service", "service": "parking_aisle"}, "hidden"),
+        ({"highway": "service", "service": "driveway"}, "hidden"),
+        ({"highway": "service", "service": "drive-through"}, "hidden"),
+        ({"highway": "service", "service": "alley"}, "road"),
+        ({"highway": "service"}, "road"),
+        ({"highway": "footway"}, "road"),  # its length and ends decide (short_paths_to_hide)
+    ],
+)
+def test_sidewalks_crossings_and_parking_lots_are_left_off_the_map(tags, drawn_as) -> None:
+    assert facility_rules.map_class(tags).value == drawn_as
+
+
+def _west_east(lon0, lat, metres):
+    """A west-east line `metres` long at latitude `lat`."""
+    import math
+
+    return [(lon0, lat), (lon0 + metres / (111_320 * math.cos(math.radians(lat))), lat)]
+
+
+def test_short_unnamed_paths_are_hidden_unless_they_join_two_kept_trails() -> None:
+    trail = {"highway": "cycleway", "name": "Rock Creek Trail"}
+    link = {"highway": "footway"}
+    ways = [
+        (1, trail, [10, 11, 12], _west_east(-77.05, 38.95, 900)),
+        (2, trail, [20, 21], _west_east(-77.04, 38.95, 900)),
+        (3, link, [12, 20], _west_east(-77.045, 38.95, 60)),  # joins the two: kept
+        (4, link, [12, 30], _west_east(-77.045, 38.951, 60)),  # a spur: hidden
+        (5, link, [40, 41], _west_east(-77.03, 38.95, 140)),  # alone, short: hidden
+        (6, link, [50, 51], _west_east(-77.02, 38.95, 400)),  # long: kept
+        (
+            7,
+            {"highway": "path", "name": "Glover Trail"},
+            [60, 61],
+            _west_east(-77.01, 38.95, 50),
+        ),  # named
+        (
+            8,
+            {"highway": "footway", "bicycle": "designated"},
+            [70, 71],
+            _west_east(-77.0, 38.95, 50),
+        ),
+        (9, {"highway": "footway", "footway": "sidewalk"}, [12, 21], _west_east(-77.0, 38.96, 50)),
+        (10, {"highway": "residential"}, [80, 81], _west_east(-76.99, 38.95, 50)),
+    ]
+    assert facility_rules.short_paths_to_hide(ways) == {4, 5}
+    assert facility_rules.SHORT_PATH_M == 150
+    # A sidewalk is not a kept trail for the joining rule: a link to one is a spur.
+    assert facility_rules.short_paths_to_hide(
+        [ways[0], ways[8], (11, link, [12, 21], _west_east(0, 0, 30))]
+    ) == {11}
