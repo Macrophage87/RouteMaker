@@ -281,6 +281,23 @@ class FacilityOut(Schema):
     unknown: float
 
 
+class StressSpanOut(Schema):
+    """One coloured section of the route (OWNER-DECISIONS item 81: "Could we
+    also get a color on the route for what LTS it is?"), in whole metres along
+    the route's traced length, in route order. Sections of one class are
+    merged, and a section under 10 m is folded into its neighbour; `stress_m`
+    and `facility_m` stay the exact totals. A leg that could not be traced,
+    and every section of a plan whose joins ran past the budget, is one
+    section with tier and facility null."""
+
+    from_m: int
+    to_m: int
+    tier: int | None = Field(description="1-4, or 5 (legal but avoid); null: unknown.")
+    facility: Literal["path", "protected", "lane", "none"] | None = Field(
+        description="The facility class; null: unknown."
+    )
+
+
 class DialsOut(Schema):
     """The slider positions and ride time the route was planned with."""
 
@@ -364,6 +381,7 @@ class RouteOut(Schema):
     stress_m: StressOut
     facility_m: FacilityOut
     stress_adjustments: list[StressAdjustmentOut]
+    stress_spans: list[StressSpanOut]
     dials: DialsOut
     hills_seek: HillsSeekOut | None
     hills_avoid: HillsAvoidOut | None
