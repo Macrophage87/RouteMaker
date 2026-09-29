@@ -199,7 +199,7 @@ export function describeError(status: number, body: unknown, retryAfter: string 
       message:
         spanKm === undefined
           ? "This is a long ride. Planning it may take a little longer."
-          : `This is a long ride (about ${formatRoughDistance(spanKm * 1000)} in straight lines). Planning it may take a little longer.`,
+          : `This is a long ride: about ${formatRoughDistance(spanKm * 1000)} in straight lines. Planning it may take a little longer.`,
       ...(spanKm === undefined ? {} : { spanKm }),
     };
   }

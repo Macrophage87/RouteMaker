@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  AVOID_MAX_SPAN_M,
   FEET_BELOW_M,
   SEEK_MAX_SPAN_M,
   formatClimb,
@@ -38,6 +39,7 @@ test("a round limit or span is whole miles and kilometres", () => {
   assert.equal(formatRoughDistance(SEEK_MAX_SPAN_M), "31 mi (50 km)");
   assert.equal(formatRoughDistance(162_000), "101 mi (162 km)");
   assert.equal(formatRoughDistance(200_000), "124 mi (200 km)");
+  assert.equal(formatRoughDistance(AVOID_MAX_SPAN_M), "16 mi (25 km)");
 });
 
 test("a climb is feet first, metres in brackets, rounded", () => {
@@ -98,7 +100,10 @@ test("nothing in the app writes a unit but this module", async () => {
           .replace(/^\s*\*.*$/, "")
           .replace(/\/\*\*.*\*\//, "")
           .replace(/\}mi\.gpx/, "}");
-        if (/\$\{[^}]*\}\s*(km|mi|ft|m|mph|km\/h)\b|\d\s*(km|mi|mph|km\/h)\b/.test(code)) offenders.push(`${path}:${i + 1}: ${line.trim()}`);
+        // Spelled-out units and JSX text too (the units review, round 1: M16, M18, M19).
+        if (/(\}|\d)\s*(km|mi|ft|m|mph|km\/h|kilomet(re|er)s?|metres?|meters?|miles?|feet|foot)\b/.test(code)) {
+          offenders.push(`${path}:${i + 1}: ${line.trim()}`);
+        }
       });
     }
   };
@@ -113,4 +118,10 @@ test("the map's scale shows miles and feet over kilometres and metres", async ()
   const imperial = view.indexOf('new maplibregl.ScaleControl({ unit: "imperial" })');
   // A bottom corner stacks upwards: the control added last is on top.
   assert.ok(metric > 0 && imperial > metric);
+});
+
+test("the hills slider's notes name their own limits", async () => {
+  const { AVOID_NOTE, SEEK_NOTE } = await import("./dialsPanel.ts");
+  assert.match(SEEK_NOTE, /up to 31 mi \(50 km\) apart\.$/);
+  assert.match(AVOID_NOTE, /up to 16 mi \(25 km\) apart\.$/);
 });

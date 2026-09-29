@@ -18,8 +18,11 @@ export const KMH_PER_MPH = 1.609344;
  */
 export const FEET_BELOW_M = METRES_PER_MILE / 10;
 
-/** How far apart a start and an end may be for the hills slider to look for climbs (src/core/api.py). */
+/** How far apart a start and an end may be for the hills slider to look for climbs (src/core/routing.py). */
 export const SEEK_MAX_SPAN_M = 50_000;
+
+/** How far apart a start and an end may be for the hills slider to weigh alternatives when avoiding hills (src/core/routing.py). */
+export const AVOID_MAX_SPAN_M = 25_000;
 
 function usable(value: number): boolean {
   return Number.isFinite(value) && value >= 0;

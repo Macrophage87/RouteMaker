@@ -1446,6 +1446,10 @@ class TestLongRide:
         assert body["code"] == "confirm_long"
         assert body["span_km"] == 160
         assert body["error"]
+        # US customary first, metric in brackets (OWNER-DECISIONS 85).
+        assert body["error"].startswith(
+            "This is a long ride, about 99 mi (160 km) in straight lines. "
+        )
         assert fake.calls == []
 
     def test_the_span_is_reported_rounded_to_a_kilometre(self, client, router) -> None:
