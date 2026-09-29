@@ -204,6 +204,31 @@ class TestCache:
             tile_cache.predraw()
         assert seen == {threading.current_thread().name}, "one worker draws on the caller's thread"
 
+    def test_each_worker_closes_its_own_connection(self, live) -> None:
+        """A worker thread's connection is its own; left open, every pre-draw
+        would leave its workers' backends behind in the worker process."""
+
+        def backends() -> int:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid()"
+                )
+                return cursor.fetchone()[0]
+
+        before = backends()
+        assert tile_cache.predraw(workers=3).drawn == 5
+        for _ in range(50):
+            if backends() <= before:
+                break
+            time.sleep(0.1)
+        assert backends() <= before
+
+    def test_the_budget_is_an_hour(self) -> None:
+        """40 times the 89 s the whole box took with two workers, and inside
+        what the rebuild's eight hours leave after its three and a half."""
+        assert tile_cache.PREDRAW_BUDGET_S == 3600
+
     def test_the_predraw_takes_none_of_the_apis_draw_slots(self, live) -> None:
         """It runs in the worker, not gunicorn: every request-time draw slot
         held, it still draws, and holds none of them itself."""

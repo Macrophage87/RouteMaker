@@ -455,9 +455,13 @@ next pre-draw or eviction. The table is left out of the nightly dump; it
 refills itself.
 
 Run the pre-draw by hand on a deployment whose live table was promoted before
-the cache existed (the first deploy of this change), and after
+the cache existed (the first deploy of this change), after a deploy that
+changes `core.stress_tiles.FORMAT_VERSION` (every cached tile is then stale;
+3 is the zoomed-out tiles becoming the trails alone), and after
 `rollback_rebuild`, which puts back a table the last pre-draw cleared the tiles
-of. It skips what is already cached, so it is safe to re-run:
+of. The weekly rebuild's own pre-draw runs in the `rebuild` service, so a
+change to what it draws reaches it with the pipeline image. It skips what is
+already cached, so it is safe to re-run:
 
 ```sh
 docker compose exec -T api python manage.py predraw_stress_tiles

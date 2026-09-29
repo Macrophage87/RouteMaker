@@ -100,8 +100,11 @@ MAX_ADDRESSABLE_ZOOM = 30
 CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 
 # Bumped whenever what a tile holds changes for the same table, so a client's
-# cached tiles are not revalidated as current against a different encoding.
-FORMAT_VERSION = 2
+# cached tiles - and the tile cache's rows (core.tile_cache) - are not served
+# as current against a different encoding. 3: the zoomed-out tiles became the
+# trails alone (OWNER-DECISIONS 65), for a live table whose oid the deploy
+# does not change.
+FORMAT_VERSION = 3
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.

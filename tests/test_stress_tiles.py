@@ -916,6 +916,13 @@ class TestProbes:
             control = client.get(path)["Cache-Control"]
             assert int(re.search(r"max-age=(\d+)", control)[1]) >= 600, path
 
+    def test_the_trails_only_tiles_are_a_new_format(self) -> None:
+        """The live table keeps its oid across the deploy that made the
+        zoomed-out tiles the trails alone, so only the format version keeps its
+        cached z10-12 tiles - roads and all - from being served, from the tile
+        cache or as a browser's 304, for a week."""
+        assert stress_tiles.FORMAT_VERSION >= 3
+
     def test_a_format_bump_changes_the_etag(self, client, live, monkeypatch) -> None:
         path = url(*tile_of(*CENTRE, 14))
         before = client.get(path)["ETag"]
