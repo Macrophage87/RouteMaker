@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from routemaker import facility as facility_rules
 from routemaker import ridetime
 from routemaker.facility import (
     Facility,
@@ -333,3 +334,48 @@ def test_beside_needs_most_of_the_way():
     # Crosses the road and runs off: two of eight vertices near it.
     crossing = (2, {"highway": "cycleway"}, [(-77.0298, 38.8999 + i * 0.0003) for i in range(8)])
     assert beside_separate_roads([road, crossing]) == set()
+
+
+# The owner, 2026-09-29 (OWNER-DECISIONS 73, 78, 80): how the stress map draws a way.
+@pytest.mark.parametrize(
+    ("tags", "drawn_as"),
+    [
+        ({"highway": "motorway"}, "barred"),
+        ({"highway": "motorway_link"}, "barred"),
+        ({"highway": "motorway", "bicycle": "yes"}, "road"),
+        ({"highway": "trunk", "bicycle": "no"}, "barred"),  # the George Washington Parkway
+        ({"highway": "trunk", "motorroad": "yes"}, "barred"),
+        ({"highway": "trunk"}, "road"),  # US 1, US 50: bicycle-legal
+        ({"highway": "trunk", "expressway": "yes", "maxspeed": "55 mph"}, "road"),  # US 340: Avoid
+        ({"highway": "secondary", "bicycle": "no", "covered": "yes"}, "barred"),  # BWI arrivals
+        ({"highway": "service", "access": "private", "bicycle": "no"}, "barred"),
+        ({"highway": "service", "access": "private"}, "barred"),
+        ({"highway": "service", "access": "private", "bicycle": "yes"}, "road"),
+        ({"highway": "primary", "bicycle": "use_sidepath"}, "barred"),
+        ({"highway": "residential"}, "road"),
+        ({"highway": "corridor", "indoor": "yes", "level": "1"}, "hidden"),  # BWI's terminal
+        ({"highway": "corridor"}, "hidden"),
+        ({"highway": "footway", "indoor": "yes"}, "hidden"),
+        ({"highway": "footway", "indoor": "no"}, "road"),
+        ({"highway": "elevator"}, "hidden"),
+        ({"highway": "construction"}, "hidden"),
+        ({"highway": "footway", "bicycle": "no"}, "road"),  # a trail's access is its facility's
+        ({"highway": "path", "access": "private"}, "road"),
+    ],
+)
+def test_the_map_class_of_a_way(tags, drawn_as) -> None:
+    assert facility_rules.map_class(tags).value == drawn_as
+
+
+@pytest.mark.parametrize(
+    ("tags", "beside"),
+    [
+        ({"highway": "primary", "cycleway:left": "separate"}, True),  # 15th Street NW
+        ({"highway": "primary", "cycleway:both": "separate"}, True),
+        ({"highway": "primary", "cycleway": "track"}, False),  # the lane is on the road way
+        ({"highway": "primary"}, False),
+        ({"highway": "cycleway", "cycleway": "separate"}, False),  # the facility itself
+    ],
+)
+def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
+    assert facility_rules.has_separate_bikeway(tags) is beside

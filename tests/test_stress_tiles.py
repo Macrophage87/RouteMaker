@@ -19,7 +19,12 @@ from mvt import decode
 from test_ratelimit import in_one_window
 
 from core import ratelimit, stress_tiles
-from pipeline.schema import create_segment_schema, drop_segment_schema
+from pipeline.schema import (
+    busy_predicate,
+    create_segment_schema,
+    drop_segment_schema,
+    trails_predicate,
+)
 from routemaker.classes import (
     SIDEWALK_CLASS_HIGHWAY,
     TRAIL_CLASS_HIGHWAY,
@@ -289,7 +294,9 @@ class TestContract:
         assert classes_in(response.content) == expected(lambda tier, rule: True)
         for feature in layer.features:
             assert feature.type == 2  # LINESTRING
-            assert set(feature.properties) <= {"tier", "trail", "unpaved", "facility", "car_free"}
+            assert set(feature.properties) <= {
+                "tier", "trail", "unpaved", "facility", "car_free", "map_class", "separate_bikeway"
+            }  # fmt: skip
             assert isinstance(feature.properties["trail"], bool)
 
     def test_an_unknown_surface_is_left_out_rather_than_called_paved(self, client, live) -> None:
@@ -418,12 +425,14 @@ class TestLevels:
             lambda tier, rule: True
         )
 
-    @pytest.mark.parametrize("z", [13])
-    def test_at_street_zoom_every_class_but_the_sidewalks(self, client, live, z) -> None:
+    @pytest.mark.parametrize("z", [12, 13])
+    def test_at_busy_road_zoom_the_trails_and_the_roads_at_lts_3_and_above(self, client, live, z):
+        """The owner, 2026-09-29: "12 and 13, show LTS 3+" (OWNER-DECISIONS 73)."""
         got = classes_in(client.get(url(*tile_of(*CENTRE, z))).content)
-        assert got == expected(lambda tier, rule: rule not in SIDEWALK_RULES)
+        assert got == expected(lambda tier, rule: rule in TRAILS_RULES or tier >= 3)
+        assert expected(lambda tier, rule: tier >= 3) and not got[(1, False, False)]
 
-    @pytest.mark.parametrize("z", [10, 11, 12])
+    @pytest.mark.parametrize("z", [10, 11])
     def test_zoomed_out_only_the_paths_and_trails(self, client, live, z) -> None:
         """The owner, 2026-09-28: "Zoomed out just show the trails." - no
         road, however busy, and no trail a bicycle may not ride; and
@@ -438,13 +447,17 @@ class TestLevels:
         """Round-1 mutant P13: 2048 units a side at z12 is a unit of 4.8 m, which
         merges the two carriageways of a trail beside a road into one line."""
         assert (stress_tiles.TRAILS.extent, stress_tiles.TRAILS.buffer) == (4096, 32)
-        assert stress_tiles.TRAILS.merged and stress_tiles.TRAILS.trails_only
+        assert stress_tiles.TRAILS.merged
+        assert stress_tiles.TRAILS.predicate is trails_predicate
 
-    def test_the_road_stress_starts_at_its_one_named_zoom(self) -> None:
-        assert stress_tiles.ROAD_STRESS_MIN_ZOOM == 13
-        assert stress_tiles.STREETS.min_zoom == stress_tiles.ROAD_STRESS_MIN_ZOOM
-        assert stress_tiles.level_for(stress_tiles.ROAD_STRESS_MIN_ZOOM - 1) is stress_tiles.TRAILS
-        assert stress_tiles.level_for(stress_tiles.ROAD_STRESS_MIN_ZOOM) is stress_tiles.STREETS
+    def test_the_roads_come_in_at_their_named_zooms(self) -> None:
+        """ "Zoom less than 12, show just bike paths and the metro/MARC. 12 and
+        13, show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73)"""
+        assert (stress_tiles.BUSY_ROADS_MIN_ZOOM, stress_tiles.QUIET_STREETS_MIN_ZOOM) == (12, 14)
+        assert stress_tiles.level_for(11) is stress_tiles.TRAILS
+        assert stress_tiles.level_for(12) is stress_tiles.level_for(13) is stress_tiles.BUSY
+        assert stress_tiles.level_for(14) is stress_tiles.FULL
+        assert stress_tiles.BUSY.predicate is busy_predicate
 
     @pytest.mark.parametrize(
         ("z", "rows", "want"),
@@ -499,8 +512,8 @@ class TestLevels:
         zooms = {k: int(v) for k, v in re.findall(r"(\w+):\s*(\d+)", block.group(1))}
         assert zooms == {
             "min": stress_tiles.MIN_ZOOM,
-            "roads": stress_tiles.ROAD_STRESS_MIN_ZOOM,
-            "full": stress_tiles.FULL.min_zoom,
+            "busy": stress_tiles.BUSY_ROADS_MIN_ZOOM,
+            "quiet": stress_tiles.QUIET_STREETS_MIN_ZOOM,
             "max": tile_cache.PREDRAW_MAX_ZOOM,
         }
 
@@ -719,7 +732,7 @@ class TestFacility:
             rule
             for _l, tier, rule, _t, _u in CLASSES
             if level is stress_tiles.FULL
-            or (level is stress_tiles.STREETS and rule not in SIDEWALK_RULES)
+            or (level is stress_tiles.BUSY and (rule in TRAILS_RULES or tier >= 3))
             or (level is stress_tiles.TRAILS and rule in TRAILS_RULES)
         ]
         want = Counter(FACILITY_OF.get(rule, "(absent)") for rule in kept)
@@ -746,21 +759,21 @@ class TestFacility:
             {"protected": 1, "lane": 1, "none": 1, "path": 1, "(absent)": 1}
         )
 
-    @pytest.mark.parametrize("z", [10, 11, 12])
+    @pytest.mark.parametrize("z", [10, 11, 12, 13])
     def test_zoomed_out_only_the_paths_are_kept(self, client, with_facility, z):
         """The path on a footway is kept by its facility, whatever its kind of
         way; the protected lane tagged on its street is not (owner, 2026-09-28:
         "Zoomed out just show the trails.")."""
         assert self.facilities(client, z) == Counter({"path": 1})
 
-    @pytest.mark.parametrize("z", [10, 11, 12])
+    @pytest.mark.parametrize("z", [10, 11, 12, 13])
     def test_zoomed_out_a_roadside_trail_is_kept_and_a_track_on_the_road_is_not(
         self, client, with_facility, z
     ):
         """The owner, 2026-09-29: "Show roadside trails (Recommended)". A
         protected way that is a way of its own - a cycleway beside a road, a
         sidewalk designated for bicycles - is a trail; the protected lane
-        tagged on the road way is not, and waits for z13."""
+        tagged on a quiet road way is not, and waits for z14 with its street."""
         with connection.cursor() as cursor:
             lon, lat = CENTRE[0] - 0.001, CENTRE[1] + 0.0015
             cursor.execute(
@@ -771,7 +784,7 @@ class TestFacility:
                 [lon, lat, lon + 0.002, lat, trail_rule("cycleway")],
             )
         assert self.facilities(client, z) == Counter({"path": 1, "protected": 1})
-        assert self.facilities(client, 13)["protected"] == 2
+        assert self.facilities(client, 14)["protected"] == 2
 
     def test_the_trails_predicate_names_the_roadside_trails(self) -> None:
         from pipeline import schema
@@ -784,7 +797,7 @@ class TestFacility:
         for rule in SIDEWALK_RULES:
             assert f"'{rule}'" not in without
 
-    @pytest.mark.parametrize("z", [13])
+    @pytest.mark.parametrize("z", [14])
     def test_at_street_zoom_a_path_on_a_footway_is_kept(self, client, with_facility, z):
         assert self.facilities(client, z) == Counter(
             {"protected": 1, "lane": 1, "none": 1, "path": 1, "(absent)": 1}
@@ -1019,7 +1032,7 @@ class TestProbes:
         assert xs
         assert all(-level.buffer <= px <= layer.extent + level.buffer for px in xs)
 
-    @pytest.mark.parametrize("name", ["TRAILS", "STREETS", "FULL"])
+    @pytest.mark.parametrize("name", ["TRAILS", "BUSY", "FULL"])
     @pytest.mark.parametrize("clip", [False, True])
     def test_every_level_filters_by_the_tile_box(self, segment_schemas, name, clip) -> None:
         level = getattr(stress_tiles, name)
@@ -1115,7 +1128,7 @@ class TestCarFree:
             for _line in f.lines
         )
 
-    @pytest.mark.parametrize("z", [13, 14])
+    @pytest.mark.parametrize("z", [14])
     def test_street_level_carries_each_roads_ride_times(self, client, roads, z) -> None:
         assert self.features(client, z) == sorted(
             [
@@ -1127,7 +1140,21 @@ class TestCarFree:
             ]
         )
 
-    @pytest.mark.parametrize("z", [10, 11, 12])
+    @pytest.mark.parametrize("z", [12, 13])
+    def test_at_busy_road_zoom_a_busy_timed_road_is_a_road_and_a_quiet_one_comes_for_its_times(
+        self, client, roads, z
+    ):
+        assert self.features(client, z) == sorted(
+            [
+                (1, "path", None, None),
+                (1, "path", None, None),
+                (3, "none", "weekend", None),  # Sligo Creek Parkway at LTS 3: a busy road
+                (2, "none", None, "weekday_rush"),  # Clark Place at LTS 2: only as a path
+                (4, "none", None, None),
+            ]
+        )
+
+    @pytest.mark.parametrize("z", [10, 11])
     def test_zoomed_out_the_timed_roads_come_for_their_times_only(self, client, roads, z):
         """The trails and Beach Drive are paths; the timed closures are there
         to be drawn in their ride times alone (`car_free_only`); a road is not."""
@@ -1147,11 +1174,12 @@ class TestCarFree:
             "((facility = 'path' OR (facility = 'protected' AND is_trail_class)) "
             "OR cardinality(car_free_when) > 0)"
         )
-        assert schema.OVERVIEW_INDEX_PREDICATE == schema.trails_predicate(True, True)
+        assert schema.OVERVIEW_INDEX_PREDICATE == schema.busy_predicate(True, True)
         assert "segment_overview_geom_idx" in trails_plan(frozenset({"facility", "car_free_when"}))
 
     def test_the_etag_names_the_column(self, client, roads) -> None:
-        assert "+car_free_when+facility-v" in client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
+        etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
+        assert "+cfms-v" in etag
 
     def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
         """No ride time in the address or the ETag: the pre-draw draws each
@@ -1159,3 +1187,75 @@ class TestCarFree:
         path = url(*tile_of(*CENTRE, 11))
         first, again = client.get(path), client.get(path)
         assert first["ETag"] == again["ETag"] and first.content == again.content
+
+
+@db
+class TestMapClass:
+    """The owner, 2026-09-29: "there are several expressways shown as LTS4. just
+    show them in white." (OWNER-DECISIONS 73) and "For some strange reason BWI
+    has TLS 3 inside the terminal." (80); and "Keep it faint if it parallels a
+    protected bike path." (78), which the map draws from `separate_bikeway`."""
+
+    ROWS = [
+        # (way, tier, rule, map_class, separate_bikeway)
+        (5001, 4, "motor-only classification (motorway)", "barred", False),
+        (5002, 4, "mixed traffic, 35 mph or above", "barred", False),  # a parkway, bicycle=no
+        (5003, 3, "mixed traffic, 30 mph, single lane", "hidden", False),  # a terminal hallway
+        (5004, 4, "mixed traffic, 35 mph or above", "road", True),  # beside its cycle track
+        (5005, 5, "legal but avoid: expressway posted 55 mph", "road", False),  # US 340
+    ]
+
+    @pytest.fixture
+    def ways(self, segment_schemas):
+        live, _ = segment_schemas
+        with connection.cursor() as cursor:
+            for i, (way, tier, rule, map_class, beside) in enumerate(self.ROWS):
+                lon, lat = CENTRE[0] - 0.001, CENTRE[1] - 0.0018 + i * 0.0003
+                cursor.execute(
+                    f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                    "stress_rule, map_class, separate_bikeway) VALUES (%s, 0, "
+                    "ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), %s, %s, %s, %s)",
+                    [way, lon, lat, lon + 0.002, lat, tier, rule, map_class, beside],
+                )
+        return live
+
+    @staticmethod
+    def drawn(client, z):
+        layer = decode(client.get(url(*tile_of(*CENTRE, z))).content)["stress"]
+        return sorted(
+            (
+                f.properties.get("tier"),
+                f.properties.get("map_class", ""),
+                f.properties.get("separate_bikeway", False),
+            )
+            for f in layer.features
+            for _line in f.lines
+        )  # fmt: skip
+
+    @pytest.mark.parametrize("z", [12, 14])
+    def test_barred_roads_are_marked_hidden_ways_left_out(self, client, ways, z) -> None:
+        assert self.drawn(client, z) == sorted(
+            [(4, "barred", False), (4, "barred", False), (4, "", True), (5, "", False)]
+        )
+
+    def test_without_the_column_a_motorway_is_barred_by_its_recorded_rule(self, client, ways):
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {ways}.segment DROP COLUMN map_class")
+            cursor.execute(f"ALTER TABLE {ways}.segment DROP COLUMN separate_bikeway")
+        assert self.drawn(client, 14) == sorted(
+            [
+                (4, "barred", False),
+                (4, "", False),
+                (3, "", False),
+                (4, "", False),
+                (5, "", False),
+            ]
+        )
+
+    def test_the_columns_are_the_schemas(self) -> None:
+        from pipeline import schema
+
+        ddl = schema.SEGMENT_DDL
+        assert "map_class       text        NOT NULL DEFAULT 'road'" in ddl
+        assert "CHECK (map_class IN ('road', 'barred', 'hidden'))" in ddl
+        assert "separate_bikeway boolean    NOT NULL DEFAULT false" in ddl

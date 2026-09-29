@@ -400,23 +400,71 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 
 | Zoom | What is drawn | Measured on a copy of the promoted build, 2026-09-28 |
 | --- | --- | --- |
-| 10-12 | only the traffic-free paths and trails, roadside trails included (`pipeline.schema.trails_predicate`); one feature per class, simplified | z10 downtown 38 KB; all 762 tiles 0.5 MB |
-| 13 | the full stress colours: everything but footways, pedestrian ways and steps not open to bicycles; one feature per class, simplified | 2,116 tiles, 16 MB, at most 51 KB |
-| 14-16 | every segment | z14: 8,190 tiles, 49 MB, at most 125 KB (downtown, 55 KB gzipped) |
+| 10-11 | only the traffic-free paths and trails, roadside trails and car-free roads included (`pipeline.schema.trails_predicate`); one feature per class, simplified | not yet measured with this rule |
+| 12-13 | those, and the roads at LTS 3 and above, Avoid and the roads bikes may not use included (`pipeline.schema.busy_predicate`); one feature per class, simplified | not yet measured |
+| 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
-The owner, 2026-09-28: "It looks way too busy zoomed out though." and then
-"Zoomed out just show the trails." (OWNER-DECISIONS 64, 65); 2026-09-29: "Show
-roadside trails (Recommended)" (66). So below
-`core.stress_tiles.ROAD_STRESS_MIN_ZOOM` - 13, the orchestrator's default,
-neighbourhood scale - the overlay draws only the traffic-free paths and
-trails, and the legend says "Zoom in to see traffic stress on roads.
-Zoomed out, only traffic-free paths and trails are shown." there. To move it, change
-`ROAD_STRESS_MIN_ZOOM` and `STRESS_ZOOMS.roads` in
-`frontend/src/lib/mapStyle.ts` together (a test fails while they differ),
-rebuild the api image and the front end, and run the pre-draw. Below zoom 10
-nothing is drawn. The map asks for nothing past z14 (the source's `maxzoom`):
-it draws z15-16 from the z14 tile, whose 4,096 units a side are half a pixel
-each at z16. z15-16 are still served, for the contract.
+The owner, 2026-09-29: "Zoom less than 12, show just bike paths and the
+metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
+(OWNER-DECISIONS 73; before it, "Zoomed out just show the trails.", 65, and
+"Show roadside trails (Recommended)", 66). The zooms are
+`core.stress_tiles.BUSY_ROADS_MIN_ZOOM` (12) and `QUIET_STREETS_MIN_ZOOM`
+(14), paired with `STRESS_ZOOMS.busy` and `.quiet` in
+`frontend/src/lib/mapStyle.ts` (a test fails while they differ): change both,
+rebuild the api image and the front end, and run the pre-draw. The rail
+stations draw from z8 over everything, so zoomed out the map is the paths
+and the Metro and MARC stations; the app has station points, not rail lines.
+Below zoom 10 nothing of the overlay is drawn. The map asks for nothing past
+z14 (the source's `maxzoom`): it draws z15-16 from the z14 tile, whose 4,096
+units a side are half a pixel each at z16. z15-16 are still served, for the
+contract.
+
+**How the busy roads draw** (the front end's `stressStyle.js`; the tiles are
+the same whatever the style decides):
+
+- faint - 40% opacity and 60% width (`FAINT`) - at z12-13, and solid from
+  `SOLID_MIN_ZOOM` (14): "The high LTS roads aren't that important because
+  you aren't going to route around them." - "Show them faintly", then "Make
+  solid at 14" (OWNER-DECISIONS 76, 77);
+- a road whose own tags say its bike facility is mapped as a way of its own
+  beside it (`segment.separate_bikeway`: 15th Street NW, Pennsylvania Avenue
+  NW) is not drawn until `BESIDE_ROAD_MIN_ZOOM` (15, of the owner's "15-16")
+  and then faint at every zoom, so the cycle track is the main line (73, and
+  "Keep it faint if it parallels a protected bike path.", 78);
+- a road a bicycle may not use (`segment.map_class = 'barred'`: a motorway, a
+  trunk road barred to bicycles such as the George Washington Parkway,
+  `motorroad=yes`, a private road, `bicycle=use_sidepath`) draws white over a
+  grey casing, not by its tier ("there are several expressways shown as LTS4.
+  just show them in white.", 73); "legal but avoid" (US 340) keeps its own
+  colour; a way that is no road or path at all (`map_class = 'hidden'`: BWI's
+  terminal hallways, `highway=corridor` + `indoor=yes`; any `indoor` way; an
+  elevator, platform or road under construction) is left out of the tiles
+  ("For some strange reason BWI has TLS 3 inside the terminal.", 80).
+
+`map_class` and `separate_bikeway` are **segment columns the rebuild writes**
+(`routemaker.facility.map_class`, `has_separate_bikeway`): they reach the map
+only after a rebuild with this code. On a table without them a road a bicycle
+may not use is a motorway alone (its recorded rule), nothing is left out, and
+no road is known to have a bikeway beside it.
+
+**The colours** (`PALETTES` in `stressStyle.js`, the one place they are kept).
+The owner, 2026-09-29: "I like LTS 1 and 2. Maybe yellow and orange for LTS 3,
+orange and red for LTS 4, and red and black for Avoid." (OWNER-DECISIONS 74).
+LTS 1 and 2 are as they were. Two readings are built for the owner to choose
+between: `blended` (the default: LTS 3 amber over a dark casing, LTS 4
+red-orange, Avoid dark red) and `twotone` (the first colour as the line, the
+second as its casing), which a page shows with `?palette=twotone` in its
+address. The blended palette keeps every tier 3:1 on the base map and the
+greyscale order; LTS 2 and 3 are only 1.17:1 apart in grey and one olive to a
+deuteranope, told apart by their dashes. The two-tone LTS 3 is not 3:1 on the
+base map.
+
+These choices are for the main ride types. The owner, 2026-09-29: "We might
+need to change things for mass rides, but let's focus on the main use cases."
+(OWNER-DECISIONS 79). A Mass Ride rides the roadway and ignores facilities, so
+for it the faint busy roads and the road hidden beside its cycle track hide
+exactly the roads it uses: a backlog item, not built.
+
 
 **Trails.** The rebuild records on each trail-class way what a bicycle may do
 on it (`routemaker.classes.trail_kind`, in the text of `stress_rule`): open to
@@ -545,7 +593,7 @@ postgis, and a plain `up` would recreate them too.
    recreated.
 6. The front end last, as in docs/DEPLOYMENT.md, "The public front end".
 7. Check: a z11 tile answers 200 with an ETag ending in the new format
-   (`-v3"`, or `+facility-v3"`) and a repeat with `If-None-Match` is 304; a
+   (`-v4"`, or `+cfms-v4"` with all four optional columns) and a repeat with `If-None-Match` is 304; a
    z14 tile is a cache hit; the map at z11 shows only paths and trails with
    the zoomed-out notice, and z13 the full colours.
 

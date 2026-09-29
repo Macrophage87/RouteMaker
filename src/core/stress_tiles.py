@@ -384,6 +384,14 @@ def live_table() -> tuple[int | None, frozenset[str]]:
     return oid, frozenset(columns or ())
 
 
+ETAG_LETTERS = {
+    FACILITY_COLUMN: "f",
+    CAR_FREE_COLUMN: "c",
+    MAP_CLASS_COLUMN: "m",
+    SEPARATE_BIKEWAY_COLUMN: "s",
+}
+
+
 def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # Weak: the same table always draws the same features, but not always the
     # same bytes - ST_AsMVT's feature and value order follows the scan's row
@@ -391,8 +399,11 @@ def etag_for(oid: int, optional: frozenset[str] = frozenset()) -> str:
     # A strong tag promises byte-identical bodies (RFC 9110 8.8.1). The
     # optional columns are in it because a column added to the live table in
     # place (the facility, by hand) changes the tiles but not the table's oid.
-    carried = "".join(f"+{column}" for column in sorted(optional))
-    return f'W/"stress-{oid}{carried}-v{FORMAT_VERSION}"'
+    # Each column by a letter of its own, so the tag fits the cache's 64-character
+    # key with all four (`+cfms`): the facility, the car-free times, the map
+    # class, the separate bikeway.
+    carried = "".join(ETAG_LETTERS[column] for column in sorted(optional))
+    return f'W/"stress-{oid}{"+" + carried if carried else ""}-v{FORMAT_VERSION}"'
 
 
 def _matches(request, etag: str) -> bool:

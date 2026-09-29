@@ -217,7 +217,9 @@ SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
 # On a table from before those columns, a road a bicycle may not use is what
 # the classifier recorded as motor-only: a motorway or its ramp. A trunk road
 # barred to bicycles, a private road and a terminal hallway need the column.
-MAP_CLASS_FALLBACK = "CASE WHEN stress_rule LIKE 'motor-only classification (%' THEN 'barred' END"
+MAP_CLASS_FALLBACK = (
+    "CASE WHEN starts_with(stress_rule, 'motor-only classification (') THEN 'barred' END"
+)
 
 # Whether SEGMENT_DDL declares the facility column. Set it True in the change
 # that adds the column, so the overview index is created with the predicate
