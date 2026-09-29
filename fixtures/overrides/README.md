@@ -157,10 +157,11 @@ as a hidden adjustment named `way-<id>`.
   NE that's north of florida avenue as AVOID."), 71 ways, 6.7 mi, both
   carriageways; hidden, category `speed`, no public note (no wording approved).
   The owner approved loading it before the rebuild of 2026-09-29.
-- `2026-09-29-owner-montana-ave-ne.proposed.json`: PROPOSED, not for loading.
-  Montana Avenue NE between Bladensburg Road NE and New York Avenue NE down to
+- `2026-09-29-owner-montana-ave-ne.json`: Montana Avenue NE between Bladensburg Road NE and New York Avenue NE down to
   tier 3 ("However, montana avenue between bladensburg and NY ave is actually
-  the better route to take"), its twelve LTS 4 ways; the tier awaits the owner.
+  the better route to take"), its twelve LTS 4 ways; asked, the owner confirmed
+  "Yes, set it to LTS 3 (Recommended)" and approved loading it before the
+  rebuild of 2026-09-29.
 
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and

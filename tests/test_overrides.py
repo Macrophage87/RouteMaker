@@ -972,21 +972,22 @@ def test_the_ny_ave_ne_file_is_tier_5_hidden_and_has_no_public_note() -> None:
         assert "New York Avenue Northeast" in row["evidence"]
 
 
-def test_the_montana_ave_ne_file_is_a_proposal_that_parses() -> None:
+def test_the_montana_ave_ne_file_is_approved_at_tier_3() -> None:
     """Prepared, not loaded: the owner, 2026-09-29 (OWNER-DECISIONS 97), "However,
     montana avenue between bladensburg and NY ave is actually the better route to
-    take"; the tier awaits the owner."""
+    take"; asked, the owner confirmed "Yes, set it to LTS 3 (Recommended)"."""
     import json
 
     from core.management.commands.load_access_overrides import parse_file
 
-    path = NY_AVE_NE.with_name("2026-09-29-owner-montana-ave-ne.proposed.json")
+    path = NY_AVE_NE.with_name("2026-09-29-owner-montana-ave-ne.json")
     document = json.loads(path.read_text())
-    assert document["status"].startswith("PROPOSED, not for loading")
+    assert "status" not in document
+    assert "Yes, set it to LTS 3 (Recommended)" in document["annotations"]
     rows = parse_file(path.read_text(), path.name)
     assert len(rows) == 12
     for row in rows:
         assert row["value"]["tier"] == 3
         assert row["value"]["category"] == "better_among_alternatives"
-        assert row["value"]["annotation_status"] == "proposed"
+        assert row["value"]["annotation_status"] == "approved"
         assert "public_note" not in row["value"]
