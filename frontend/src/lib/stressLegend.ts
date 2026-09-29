@@ -10,7 +10,7 @@
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
-import { BESIDE_ROAD_MIN_ZOOM, SOLID_MIN_ZOOM } from "../stressStyle.js";
+import { ALLEY_MIN_ZOOM, BESIDE_ROAD_MIN_ZOOM, SOLID_MIN_ZOOM } from "../stressStyle.js";
 
 /**
  * The one phrase for what the map shows zoomed out, wherever the legend says
@@ -49,7 +49,9 @@ export function stressZoomHint(zoom: number | null): string {
     `show, faintly, and from zoom ${quiet} the quiet streets, footways and sidewalks, with every line solid ` +
     `from zoom ${SOLID_MIN_ZOOM}. Roads bikes may not use, such as expressways, are left unmarked. A busy road with a bike lane ` +
     `or path mapped beside it shows only from zoom ${BESIDE_ROAD_MIN_ZOOM}, and faintly, so the bike lane is the ` +
-    `main line. Further out than zoom ${min} nothing is drawn, and streets with no stress rating are not drawn.`;
+    `main line. Alleys show only from zoom ${ALLEY_MIN_ZOOM}, faintly, and the roads inside cemeteries, military ` +
+    `bases and parking lots not at all. Further out than zoom ${min} nothing is drawn, and streets with no ` +
+    `stress rating are not drawn.`;
   if (zoom !== null) text += ` The map is at zoom ${Math.floor(zoom)}.`;
   return text;
 }

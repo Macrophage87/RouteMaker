@@ -227,6 +227,14 @@ class MapClass(StrEnum):
     # sidewalk, a parking aisle, a private road, a road inside a military base
     # (80, 82, 88). Not drawn.
     HIDDEN = "hidden"
+    # An alley (`service=alley`): drawn only close in, faint, as context. The
+    # owner, 2026-09-29: "Alley cut throughs should only be used if the roads
+    # are very problematic nearby. Cut down on showing them, and only use them
+    # if nessicary. Because people don't think of these as intersections, alley
+    # dodging is dangerous." (OWNER-DECISIONS 100). From the source tags: the
+    # tier-5 roads the transform marks service=alley in Valhalla's extract are
+    # not alleys here.
+    ALLEY = "alley"
 
 
 # Ways that are not roads or paths a bicycle could use, whatever their tags:
@@ -338,6 +346,8 @@ def map_class(tags: dict[str, str]) -> MapClass:
         return MapClass.HIDDEN
     if highway in BARRED_HIGHWAY or bicycle in BARRING_BICYCLE or tags.get("motorroad") == "yes":
         return MapClass.BARRED
+    if highway == "service" and tags.get("service") == "alley":
+        return MapClass.ALLEY
     return MapClass.ROAD
 
 

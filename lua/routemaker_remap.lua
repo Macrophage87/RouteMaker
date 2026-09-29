@@ -267,6 +267,9 @@ function M.bounded_surface(current, proposed)
 end
 
 --- Remap one way's tags. Returns a table of *changes* only.
+-- What a way inside a cemetery is made (remap_way): destination-only.
+M.CEMETERY_ACCESS = "destination"
+
 function M.remap_way(tags, derived)
   derived = derived or {}
   local out = {}
@@ -452,6 +455,18 @@ function M.remap_way(tags, derived)
 
   for key, value in pairs(M.remap_conditional_access(tags)) do
     out[key] = value
+  end
+
+  -- A way inside a cemetery (`rm:cemetery`, pipeline.restricted_areas): no
+  -- through-route, only a trip that starts or ends inside. The owner,
+  -- 2026-09-29: "I don't want to encourage a cemetary cut through as it's
+  -- disrespectful." (OWNER-DECISIONS 98). `access=destination` is upstream's
+  -- destination-only (its `private` flag), so a route may enter only to reach
+  -- a point inside. Written only where the way's own `access` leaves it open:
+  -- a stricter statement (no, private) stays as it is, and a narrowing is
+  -- never a widening.
+  if derived.cemetery and (tags.access == nil or M.PERMISSIVE_ACCESS[tags.access]) then
+    out.access = M.CEMETERY_ACCESS
   end
 
   return out

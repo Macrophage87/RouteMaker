@@ -435,7 +435,7 @@ def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
         ({"highway": "service", "service": "parking_aisle"}, "hidden"),
         ({"highway": "service", "service": "driveway"}, "hidden"),
         ({"highway": "service", "service": "drive-through"}, "hidden"),
-        ({"highway": "service", "service": "alley"}, "road"),
+        ({"highway": "service", "service": "alley"}, "alley"),  # item 100: close in, faint
         ({"highway": "service"}, "road"),
         ({"highway": "footway"}, "road"),  # its length and ends decide (short_paths_to_hide)
     ],
@@ -487,7 +487,7 @@ def test_short_unnamed_paths_are_hidden_unless_they_join_two_kept_trails() -> No
 def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() -> None:
     """ "Don't show roads that most typical people can't ride on, such as within
     military bases, or the pentagon" (OWNER-DECISIONS 88)."""
-    from pipeline import military
+    from pipeline import restricted_areas as military
 
     square = [(-77.06, 38.866), (-77.05, 38.866), (-77.05, 38.876), (-77.06, 38.876)]
     hole = [(-77.057, 38.869), (-77.053, 38.869), (-77.053, 38.873), (-77.057, 38.873)]
@@ -526,7 +526,7 @@ def test_the_riverwalk_through_the_navy_yard_stays_and_the_streets_beside_it() -
     Anacostia Riverwalk Trail's two ways inside the Navy Yard's area are
     highway=cycleway, bicycle=designated, foot=designated, no access or
     opening_hours tag: a public trail, routable, and never area-tested."""
-    from pipeline import military
+    from pipeline import restricted_areas as military
 
     riverwalk = {
         "highway": "cycleway",
@@ -561,3 +561,126 @@ def test_the_riverwalk_through_the_navy_yard_stays_and_the_streets_beside_it() -
     assert military.roads_inside(ways, [yard]) == {2}
     for tags in (ways[2][1], ways[3][1]):
         assert facility_rules.map_class(tags).value == "road"
+
+
+@pytest.mark.parametrize(
+    ("tags", "drawn_as"),
+    [
+        # "Alley cut throughs should only be used if the roads are very problematic
+        # nearby. Cut down on showing them" (OWNER-DECISIONS 100).
+        ({"highway": "service", "service": "alley"}, "alley"),
+        ({"highway": "service", "service": "alley", "access": "private"}, "hidden"),
+        ({"highway": "service"}, "road"),
+        ({"highway": "residential", "name": "Alley Street"}, "road"),
+        # The Lua marks tier-5 roads service=alley in Valhalla's extract only; the
+        # source road is what map_class reads.
+        ({"highway": "trunk", "expressway": "yes", "maxspeed": "55 mph"}, "road"),
+    ],
+)
+def test_an_alley_is_its_own_map_class(tags, drawn_as) -> None:
+    assert facility_rules.map_class(tags).value == drawn_as
+
+
+def _box(west, south, east, north):
+    ring = [(west, south), (east, south), (east, north), (west, north)]
+    return ((west, south, east, north), [ring], [])
+
+
+def test_the_kinds_of_restricted_area() -> None:
+    from pipeline import restricted_areas as areas
+
+    assert areas.area_kind({"landuse": "military"}) == "military"
+    assert (
+        areas.area_kind({"landuse": "cemetery", "name": "Arlington National Cemetery"})
+        == "cemetery"
+    )
+    assert (
+        areas.area_kind({"amenity": "grave_yard", "name": "Congressional Cemetery"}) == "cemetery"
+    )
+    assert areas.area_kind({"amenity": "parking"}) == "parking"
+    assert areas.area_kind({"parking": "surface"}) == "parking"
+    assert areas.area_kind({"parking": "multi-storey"}) == "parking"
+    assert areas.area_kind({"parking": "street_side"}) is None
+    assert areas.area_kind({"landuse": "residential"}) is None
+
+
+def test_every_way_inside_a_cemetery_is_found_but_a_signed_trail_and_a_trail_beside_it():
+    """ "There's a lot of cemetary roads, such as arlington national cemetary. We
+    shouldn't have these roads on here, even if some of them can be technically
+    ridden. I don't want to encourage a cemetary cut through as it's
+    disrespectful." (OWNER-DECISIONS 98)"""
+    from pipeline import restricted_areas as areas
+
+    arlington = _box(-77.08, 38.87, -77.06, 38.885)
+    ways = [
+        (
+            1,
+            {"highway": "service", "name": "Eisenhower Drive"},
+            [(-77.07, 38.875), (-77.069, 38.876)],
+        ),
+        (2, {"highway": "footway"}, [(-77.075, 38.878), (-77.074, 38.879)]),
+        (
+            3,
+            {"highway": "cycleway", "bicycle": "designated"},
+            [(-77.075, 38.872), (-77.074, 38.873)],
+        ),
+        # The Mount Vernon Trail and Memorial Avenue run outside the boundary.
+        (
+            4,
+            {"highway": "cycleway", "name": "Mount Vernon Trail"},
+            [(-77.055, 38.875), (-77.054, 38.88)],
+        ),
+        (
+            5,
+            {"highway": "secondary", "name": "Memorial Avenue"},
+            [(-77.059, 38.881), (-77.05, 38.882)],
+        ),
+        (6, {"building": "yes"}, [(-77.07, 38.875)]),
+    ]
+    assert areas.cemetery_ways(ways, [arlington]) == {1, 2}
+    assert areas.cemetery_ways(ways, []) == set()
+
+
+def test_a_parking_lots_own_ways_are_found_and_the_street_past_it_is_not():
+    """ "Also, no need to stripe through all the parking lots." (OWNER-DECISIONS 99)"""
+    from pipeline import restricted_areas as areas
+
+    lot = _box(-77.12, 39.05, -77.11, 39.056)
+    ways = [
+        (1, {"highway": "service"}, [(-77.118, 39.052), (-77.112, 39.052)]),  # an aisle, no tag
+        (2, {"highway": "footway"}, [(-77.117, 39.053), (-77.116, 39.054)]),
+        (
+            3,
+            {"highway": "footway", "name": "Bethesda Trolley Trail"},
+            [(-77.117, 39.051), (-77.116, 39.052)],
+        ),
+        (
+            4,
+            {"highway": "footway", "bicycle": "designated"},
+            [(-77.115, 39.051), (-77.114, 39.052)],
+        ),
+        (
+            5,
+            {"highway": "primary", "name": "Rockville Pike"},
+            [(-77.119, 39.0505), (-77.105, 39.0505)],
+        ),
+        (6, {"highway": "residential"}, [(-77.119, 39.055), (-77.111, 39.055)]),  # a street through
+        (
+            7,
+            {"highway": "service", "name": "Capitol Circle Drive"},
+            [(-77.118, 39.054), (-77.113, 39.054)],
+        ),
+    ]
+    assert areas.parking_ways(ways, [lot]) == {1, 2}
+
+
+def test_the_index_finds_an_area_across_its_cells_and_misses_one_far_away():
+    from pipeline import restricted_areas as areas
+
+    big = _box(-77.2, 38.8, -76.9, 39.0)  # many grid cells
+    far = _box(-76.0, 39.5, -75.99, 39.51)
+    ways = [
+        (1, {"highway": "service"}, [(-77.1, 38.9)]),
+        (2, {"highway": "service"}, [(-76.5, 39.3)]),
+    ]
+    assert areas.parking_ways(ways, [big, far]) == {1}

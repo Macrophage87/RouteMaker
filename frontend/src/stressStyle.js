@@ -194,26 +194,51 @@ export const SOLID_MIN_ZOOM = 14;
 export const BESIDE_ROAD_MIN_ZOOM = 15;
 export const FAINT = { opacity: 0.4, widthScale: 0.6 };
 
-/** A busy road's `full` value (opacity or width) by zoom: faint or not drawn where the rules say. */
-function busyByZoom(full, faint) {
+/** An alley (the tiles' "alley"). */
+const isAlley = ["==", ["get", "alley"], true];
+
+/**
+ * Alleys draw only from ALLEY_MIN_ZOOM, faint, as context: "Alley cut
+ * throughs should only be used if the roads are very problematic nearby. Cut
+ * down on showing them, and only use them if nessicary. Because people don't
+ * think of these as intersections, alley dodging is dangerous." (the owner,
+ * 2026-09-29; OWNER-DECISIONS 100). 16: close enough that an alley reads as
+ * the lane behind the houses it is, not as a street.
+ */
+export const ALLEY_MIN_ZOOM = 16;
+
+/**
+ * A line's `full` value (opacity or width) by zoom: an alley not drawn below
+ * ALLEY_MIN_ZOOM and faint from it; a busy road faint, or not drawn, where the
+ * rules above say; any other line as it is.
+ */
+function byZoom(full, faint, busy) {
+  const at = (zoom) => {
+    const alley = zoom >= ALLEY_MIN_ZOOM ? faint : 0;
+    const road = !busy
+      ? full
+      : ["case", besideBikeway, zoom >= BESIDE_ROAD_MIN_ZOOM ? faint : 0, zoom >= SOLID_MIN_ZOOM ? full : faint];
+    return ["case", isAlley, alley, road];
+  };
   return [
     "step",
     ["zoom"],
-    ["case", besideBikeway, 0, faint],
+    at(SOLID_MIN_ZOOM - 1),
     SOLID_MIN_ZOOM,
-    ["case", besideBikeway, 0, full],
+    at(SOLID_MIN_ZOOM),
     BESIDE_ROAD_MIN_ZOOM,
-    ["case", besideBikeway, faint, full],
+    at(BESIDE_ROAD_MIN_ZOOM),
+    ALLEY_MIN_ZOOM,
+    at(ALLEY_MIN_ZOOM),
   ];
 }
 
-/** A busy line's paint, faint and late as busyByZoom says; a quiet one's as it is. */
+/** A line's paint, faint and late as byZoom says. */
 function linePaint(color, width, busy) {
-  if (!busy) return { "line-color": color, "line-width": width };
   return {
     "line-color": color,
-    "line-width": busyByZoom(width, width * FAINT.widthScale),
-    "line-opacity": busyByZoom(1, FAINT.opacity),
+    "line-width": byZoom(width, width * FAINT.widthScale, busy),
+    "line-opacity": byZoom(1, FAINT.opacity, busy),
   };
 }
 

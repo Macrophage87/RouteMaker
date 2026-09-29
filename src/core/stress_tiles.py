@@ -315,7 +315,13 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     # the column the motorways are what the classifier recorded as motor-only.
     carried.pop("map_class", None)
     if MAP_CLASS_COLUMN in optional:
-        where = f"({where}) AND s.{MAP_CLASS_COLUMN} = 'road'"
+        # An alley is carried only at street level, marked `alley`, where the
+        # map draws it only from close in, faint (OWNER-DECISIONS 100).
+        if level.merged:
+            where = f"({where}) AND s.{MAP_CLASS_COLUMN} = 'road'"
+        else:
+            where = f"({where}) AND s.{MAP_CLASS_COLUMN} IN ('road', 'alley')"
+            carried["alley"] = f"CASE WHEN s.{MAP_CLASS_COLUMN} = 'alley' THEN true END"
     else:
         where = f"({where}) AND NOT {MOTOR_ONLY_RULE}"
     return template.format(

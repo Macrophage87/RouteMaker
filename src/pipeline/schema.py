@@ -280,15 +280,17 @@ CREATE TABLE {schema}.segment (
     facility        text        NOT NULL DEFAULT 'none'
                     CHECK (facility IN ('path', 'protected', 'lane', 'none')),
     car_free_when   text[]      NOT NULL DEFAULT '{{}}',
-    -- How the stress map draws the way (`routemaker.facility.map_class`): a
-    -- road; `barred`, a road a bicycle may not use, drawn white rather than by
-    -- its tier; `hidden`, no road or path at all (a terminal hallway), not
-    -- drawn. And whether a road's own tags say its bike facility is mapped as a
-    -- way of its own beside it (`routemaker.facility.has_separate_bikeway`),
-    -- which the map draws faint and late so that facility is the main line
-    -- (the owner, 2026-09-29; OWNER-DECISIONS 73, 78, 80).
+    -- How the stress map draws the way (`routemaker.facility.map_class`):
+    -- `road`; `barred`, a public road a bicycle may not use, and `hidden`, a
+    -- way no typical rider could use (a terminal hallway, a sidewalk, a
+    -- private road, a road inside a base, a cemetery or a parking lot), both
+    -- not drawn; `alley`, drawn only close in and faint. And whether a road's
+    -- own tags say its bike facility is mapped as a way of its own beside it
+    -- (`routemaker.facility.has_separate_bikeway`), which the map draws faint
+    -- and late so that facility is the main line (the owner, 2026-09-29;
+    -- OWNER-DECISIONS 73, 78, 80, 82, 88, 89, 98, 99, 100).
     map_class       text        NOT NULL DEFAULT 'road'
-                    CHECK (map_class IN ('road', 'barred', 'hidden')),
+                    CHECK (map_class IN ('road', 'barred', 'hidden', 'alley')),
     separate_bikeway boolean    NOT NULL DEFAULT false,
     -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
     -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).

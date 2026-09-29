@@ -20,6 +20,7 @@ import {
   FAINT,
   PALETTES,
   SOLID_MIN_ZOOM,
+  ALLEY_MIN_ZOOM,
   paletteFrom,
   tiersFor,
 } from "./stressStyle.js";
@@ -463,4 +464,21 @@ test("for a deuteranope the default palette's tiers stay apart", () => {
     }
     assert.ok(ratio >= 1.4, `${STRESS_TIERS[i - 1].short} and ${STRESS_TIERS[i].short}: ${ratio.toFixed(2)}:1`);
   }
+});
+
+test("an alley is not drawn below z16 and is faint from it; a tier-5 road keeps the Avoid colour", () => {
+  // "Cut down on showing them, and only use them if nessicary." (OWNER-DECISIONS 100)
+  assert.equal(ALLEY_MIN_ZOOM, 16);
+  assert.ok(SOLID_MIN_ZOOM < BESIDE_ROAD_MIN_ZOOM && BESIDE_ROAD_MIN_ZOOM < ALLEY_MIN_ZOOM, "the stops rise");
+  for (const tier of [1, 2, 3]) {
+    const alley = { tier, alley: true };
+    for (const zoom of [14, 15]) assert.deepEqual(drawnAtZoom(alley, zoom), {}, `LTS ${tier} alley at z${zoom}`);
+    for (const zoom of [16, 18]) assert.equal(drawnAtZoom(alley, zoom)[`stress-${tier}`].opacity, FAINT.opacity);
+  }
+  // Not an alley in the source: a tier-5 road the transform marks service=alley
+  // in Valhalla's extract reaches the tiles as a road.
+  const avoid = drawnAtZoom({ tier: 5 }, 14)["stress-5"];
+  assert.deepEqual(avoid, { opacity: 1, width: STRESS_TIERS[4].width });
+  const avoidLayer = stressLayers().find((l) => l.id === "stress-5");
+  assert.equal(avoidLayer.paint["line-color"], STRESS_TIERS[4].color);
 });

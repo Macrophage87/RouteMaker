@@ -1236,6 +1236,22 @@ class TestMapClass:
     def test_only_the_roads_are_drawn(self, client, ways, z) -> None:
         assert self.drawn(client, z) == [(4, True), (5, False)]
 
+    def test_an_alley_is_in_the_street_level_tiles_only_and_marked(self, client, ways) -> None:
+        """ "Cut down on showing them, and only use them if nessicary." (OWNER-DECISIONS 100)"""
+        with connection.cursor() as cursor:
+            lon, lat = CENTRE[0] - 0.001, CENTRE[1] + 0.0012
+            cursor.execute(
+                f"INSERT INTO {ways}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, map_class) VALUES (5006, 0, ST_MakeLine(ST_MakePoint(%s, %s), "
+                "ST_MakePoint(%s, %s)), 3, 'x', 'alley')",
+                [lon, lat, lon + 0.002, lat],
+            )
+        assert self.drawn(client, 12) == [(4, True), (5, False)]
+        layer = decode(client.get(url(*tile_of(*CENTRE, 14))).content)["stress"]
+        alleys = [f for f in layer.features if f.properties.get("alley") is True]
+        assert [f.properties["tier"] for f in alleys] == [3]
+        assert all("alley" not in f.properties for f in layer.features if f not in alleys)
+
     def test_without_the_column_a_motorway_is_left_out_by_its_recorded_rule(self, client, ways):
         with connection.cursor() as cursor:
             cursor.execute(f"ALTER TABLE {ways}.segment DROP COLUMN map_class")
@@ -1247,5 +1263,5 @@ class TestMapClass:
 
         ddl = schema.SEGMENT_DDL
         assert "map_class       text        NOT NULL DEFAULT 'road'" in ddl
-        assert "CHECK (map_class IN ('road', 'barred', 'hidden'))" in ddl
+        assert "CHECK (map_class IN ('road', 'barred', 'hidden', 'alley'))" in ddl
         assert "separate_bikeway boolean    NOT NULL DEFAULT false" in ddl

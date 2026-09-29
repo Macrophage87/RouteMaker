@@ -464,6 +464,33 @@ the same whatever the style decides):
     such as within military bases, or the pentagon", 88). On the dials
     pipeline's box extract: 61 military areas, 2,715 roads inside them.
 
+  - every road and path inside a cemetery (`landuse=cemetery`,
+    `amenity=grave_yard`: Arlington National, Congressional, Rock Creek,
+    Glenwood, Oak Hill, Mount Olivet) but a trail signed for bicycles ("There's
+    a lot of cemetary roads, such as arlington national cemetary. We shouldn't
+    have these roads on here, even if some of them can be technically ridden. I
+    don't want to encourage a cemetary cut through as it's disrespectful.",
+    98), and a parking lot's own unnamed service roads, footways and paths
+    (`amenity=parking`, `parking=surface` or `multi-storey`; "Also, no need to
+    stripe through all the parking lots.", 99). All of these by place are
+    `pipeline.restricted_areas`: a way counts as inside when half its vertices
+    are, so a trail or street that only borders the area stays. On the dials
+    box extract: 86 cemeteries (1,466 ways, 93 mi), 12,067 lots (17,749 ways,
+    762 mi before named ways inside lots were kept).
+
+  Alleys (`service=alley`, `map_class = 'alley'`) are in the z14 tiles only,
+  marked `alley`, and the map draws them from `ALLEY_MIN_ZOOM` (16) and faint
+  ("Alley cut throughs should only be used if the roads are very problematic
+  nearby. Cut down on showing them, and only use them if nessicary. Because
+  people don't think of these as intersections, alley dodging is dangerous.",
+  100): 5,263 ways, 390 mi on the box extract.
+
+  Routing: a way inside a cemetery is **destination-only** - the rebuild writes
+  `rm:cemetery=yes`, and the transform (`lua/routemaker_remap.lua`) makes it
+  `access=destination` where its own access leaves it open, upstream's
+  destination-only flag, so a route enters only to reach a point inside. The
+  rest of this is map only.
+
   Route-relation membership is not read: an unnamed short piece of a signed
   route is left out like any other. Routing is unchanged: Valhalla reads the
   ways' own access tags.

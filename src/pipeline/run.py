@@ -43,10 +43,10 @@ from . import (
     conflation,
     elevation,
     extract,
-    military,
     overrides,
     promotion,
     reconcile,
+    restricted_areas,
     retention,
     source,
     tiles,
@@ -444,10 +444,14 @@ class RebuildContext:
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
-    # The ways the stress map leaves out by their length or their place: the
-    # short unnamed paths (facility.short_paths_to_hide) and the roads inside a
-    # military base (military.roads_inside).
+    # The ways the stress map leaves out by their length or their place
+    # (pipeline.restricted_areas): the short unnamed paths
+    # (facility.short_paths_to_hide), the roads inside a military base, every
+    # way inside a cemetery, and a parking lot's own ways.
     short_paths_hidden: set[int] = field(default_factory=set)
+    # The ways inside a cemetery, routed only to or from a point inside one
+    # (`rm:cemetery`; OWNER-DECISIONS 98).
+    cemetery_ways: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1065,12 +1069,16 @@ def build_handlers(
         context.short_paths_hidden = facility.short_paths_to_hide(
             (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
         )
-        # The roads inside a military base, many with no access tag of their
-        # own (the Pentagon's): left off the stress map (OWNER-DECISIONS 88).
-        context.short_paths_hidden |= military.roads_inside(
-            ((way.osm_id, way.tags, way.coordinates) for way in context.ways),
-            military.military_areas(context.source_pbf),
-        )
+        # By their place: the roads inside a military base, many with no access
+        # tag of their own (the Pentagon's; OWNER-DECISIONS 88), every way inside
+        # a cemetery (98), and a parking lot's own ways (99). Map only, but for
+        # the cemeteries, which are also destination-only for routing.
+        areas = restricted_areas.restricted_areas(context.source_pbf)
+        placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
+        context.short_paths_hidden |= restricted_areas.roads_inside(placed, areas["military"])
+        context.short_paths_hidden |= context.cemetery_ways
+        context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         car_free_for_good = 0
         for way in context.ways:
             context.facility_by_way[way.osm_id] = facility.facility(
@@ -1217,6 +1225,9 @@ def build_handlers(
                         variant, way.osm_id, context.facility_by_way, context.car_free_by_way
                     )
                 )
+                if way.osm_id in context.cemetery_ways:
+                    # No cut-through: reached only from or to a point inside.
+                    derived["cemetery"] = True
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
