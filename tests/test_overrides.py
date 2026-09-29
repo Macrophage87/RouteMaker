@@ -922,3 +922,71 @@ class TestACarFreeRoadIsTier1:
         stress = {1: StressResult(Stress.LTS3, "x")}
         assert car_free_tier_1(Way(1, **tags), stress) is False
         assert stress[1].tier is Stress.LTS3
+
+
+# --- New York Avenue NE (the owner, 2026-09-29, OWNER-DECISIONS 96) -------------
+
+NY_AVE_NE = (
+    Path(__file__).resolve().parents[1]
+    / "fixtures"
+    / "overrides"
+    / "2026-09-29-owner-ny-ave-ne.json"
+)
+# Every way named New York Avenue Northeast east of the Florida Avenue NE
+# junction in the 2026-09-24 District extract, to the District line.
+NY_AVE_NE_WAYS = {
+    6062880, 50710311, 50710313, 50710314, 50710315, 50712448, 50712452, 50712455, 50712457,
+    50712476, 50712477, 50712478, 50712479, 50712484, 50712485, 50712486, 50713040, 50713041,
+    131446920, 164125733, 164125736, 367202615, 397295665, 397295666, 435273174, 468424387,
+    468424390, 468424410, 468424413, 468424419, 468424432, 468428553, 468428566, 468428569,
+    468441495, 468441498, 469090502, 469090503, 507284301, 507284302, 509327300, 581574255,
+    589905587, 695997792, 870817865, 870817866, 871089760, 871089761, 939985258, 939985259,
+    977620504, 1019882424, 1021865585, 1062845318, 1121987019, 1183327491, 1273812290,
+    1317523593, 1317523594, 1445810670, 1445810671, 1445810672, 1445810673, 1503484324,
+    1503484325, 1503484326, 1503484329, 1503623208, 1503623210, 1503623215, 1507377459,
+}  # fmt: skip
+
+
+def test_the_ny_ave_ne_file_is_tier_5_hidden_and_has_no_public_note() -> None:
+    import json
+
+    from core.management.commands.load_access_overrides import parse_file
+
+    document = json.loads(NY_AVE_NE.read_text())
+    quote = "I'd put all of NY Avenue NE that's north of florida avenue as AVOID."
+    assert quote in document["annotations"]
+    rows = parse_file(NY_AVE_NE.read_text(), NY_AVE_NE.name)
+    assert {r["osm_way_id"] for r in rows} == NY_AVE_NE_WAYS
+    assert len(rows) == 71
+    for row in rows:
+        assert row["kind"] == "stress"
+        assert row["value"] == {
+            "tier": 5,
+            "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+            "category": "speed",
+            "visibility": "hidden",
+            "annotation_status": "approved",
+            "display": "route_only",
+        }
+        assert quote in row["reason"]
+        assert "New York Avenue Northeast" in row["evidence"]
+
+
+def test_the_montana_ave_ne_file_is_a_proposal_that_parses() -> None:
+    """Prepared, not loaded: the owner, 2026-09-29 (OWNER-DECISIONS 97), "However,
+    montana avenue between bladensburg and NY ave is actually the better route to
+    take"; the tier awaits the owner."""
+    import json
+
+    from core.management.commands.load_access_overrides import parse_file
+
+    path = NY_AVE_NE.with_name("2026-09-29-owner-montana-ave-ne.proposed.json")
+    document = json.loads(path.read_text())
+    assert document["status"].startswith("PROPOSED, not for loading")
+    rows = parse_file(path.read_text(), path.name)
+    assert len(rows) == 12
+    for row in rows:
+        assert row["value"]["tier"] == 3
+        assert row["value"]["category"] == "better_among_alternatives"
+        assert row["value"]["annotation_status"] == "proposed"
+        assert "public_note" not in row["value"]
