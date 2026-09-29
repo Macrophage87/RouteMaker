@@ -1,0 +1,1003 @@
+{
+  "version": 1,
+  "decided": "2026-09-29",
+  "decided_by": "the deployment owner",
+  "status": "approved for loading by the owner on 2026-09-29, before that night's rebuild",
+  "annotations": "The owner, 2026-09-29 (OWNER-DECISIONS 96): \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" Every way named New York Avenue Northeast from the Florida Avenue NE junction northeast to the District line: both carriageways, trunk and then motorway (US 50). No ramp or service road carries the name. The adjustment is hidden and has no public_note: the owner has not approved wording. Category speed.",
+  "rows": [
+    {
+      "kind": "stress",
+      "osm_way_id": 50710311,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50710311, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 244 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 435273174,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 435273174, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 225 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50710314,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50710314, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 157 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50710315,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50710315, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 169 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1445810670,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1445810670, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 67 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1445810671,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1445810671, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 46 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468441495,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468441495, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=no, no bicycle tag, 134 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468441498,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468441498, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=no, no bicycle tag, 48 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 397295666,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 397295666, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=no, no bicycle tag, 475 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1445810672,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1445810672, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 98 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1445810673,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1445810673, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 147 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468428553,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468428553, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 61 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503623215,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503623215, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 12 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 397295665,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 397295665, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 124 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 507284301,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 507284301, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 566 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1507377459,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1507377459, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 72 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503623208,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503623208, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 105 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503623210,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503623210, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 23 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 507284302,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 507284302, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 243 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1317523593,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1317523593, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 212 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 589905587,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 589905587, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 346 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1317523594,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1317523594, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 57 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 367202615,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 367202615, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 348 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50710313,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50710313, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 223 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424419,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424419, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 42 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424410,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424410, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 37 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424390,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424390, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 29 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424387,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424387, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 33 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1273812290,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1273812290, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 26 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 509327300,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 509327300, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 39 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424413,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424413, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 21 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468428569,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468428569, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 31 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424432,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424432, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 264 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 6062880,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 6062880, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 379 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712484,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712484, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 113 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503484324,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503484324, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 33 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468428566,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468428566, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 40 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 581574255,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 581574255, New York Avenue Northeast, highway=trunk, ref US 50;US 1 Alternate, oneway=yes, no bicycle tag, 10 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712485,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712485, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 24 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503484326,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503484326, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 22 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503484325,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503484325, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 8 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1183327491,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1183327491, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 67 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 164125736,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 164125736, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 46 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 695997792,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 695997792, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 80 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1121987019,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1121987019, New York Avenue Northeast, highway=trunk, ref US 50, oneway=yes, no bicycle tag, 109 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1062845318,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1062845318, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, no bicycle tag, 115 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 164125733,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 164125733, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, no bicycle tag, 630 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 131446920,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 131446920, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, no bicycle tag, 728 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 939985259,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 939985259, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, no bicycle tag, 290 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1503484329,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1503484329, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 123 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1019882424,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1019882424, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 147 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1021865585,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1021865585, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, no bicycle tag, 72 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 939985258,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 939985258, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 111 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712448,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712448, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 72 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 977620504,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 977620504, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 64 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712452,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712452, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 104 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712479,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712479, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 100 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712455,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712455, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 97 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712478,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712478, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 81 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712457,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712457, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 22 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712477,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712477, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 22 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 871089760,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 871089760, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 712 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712476,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712476, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 66 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 870817866,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 870817866, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 44 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 870817865,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 870817865, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 494 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 469090502,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 469090502, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 72 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 469090503,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 469090503, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 343 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 871089761,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 871089761, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 78 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50713041,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50713041, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 251 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50713040,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50713040, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 172 m."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50712486,
+      "value": {
+        "tier": 5,
+        "adjustment_id": "new-york-ave-ne-florida-to-dc-line",
+        "category": "speed",
+        "visibility": "hidden",
+        "annotation_status": "approved",
+        "display": "route_only"
+      },
+      "reason": "Legal but avoid. The owner, 2026-09-29: \"I'd put all of NY Avenue NE that's north of florida avenue as AVOID.\" New York Avenue NE from the Florida Avenue NE junction out to the District line, both carriageways.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50712486, New York Avenue Northeast, highway=motorway, ref US 50, oneway=yes, bicycle=no, 174 m."
+    }
+  ]
+}

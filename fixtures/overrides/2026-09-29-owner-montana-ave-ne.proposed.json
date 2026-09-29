@@ -1,0 +1,177 @@
+{
+  "version": 1,
+  "decided": "2026-09-29",
+  "decided_by": "the deployment owner",
+  "status": "PROPOSED, not for loading: the tier (3) awaits the owner's confirmation",
+  "annotations": "The owner, 2026-09-29 (OWNER-DECISIONS 97): \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" The twelve ways of Montana Avenue NE between Bladensburg Road NE and New York Avenue NE that the classifier rates LTS 4 (unposted, four lanes, read as 35 mph or above); its four ways already at LTS 2 or 3 (the 25 mph stretch) are left as they are. Hidden, no public_note.",
+  "rows": [
+    {
+      "kind": "stress",
+      "osm_way_id": 1051265939,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1051265939, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1378242187,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1378242187, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424407,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424407, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50711296,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50711296, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424394,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424394, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468424397,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468424397, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50711290,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50711290, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 468428575,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 468428575, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 50711292,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 50711292, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 6059340,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 6059340, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1133081815,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1133081815, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    },
+    {
+      "kind": "stress",
+      "osm_way_id": 1275402854,
+      "value": {
+        "tier": 3,
+        "adjustment_id": "montana-ave-ne-bladensburg-to-ny-ave",
+        "category": "better_among_alternatives",
+        "visibility": "hidden",
+        "annotation_status": "proposed",
+        "display": "route_only"
+      },
+      "reason": "Down-adjusted from LTS 4. The owner, 2026-09-29, right after putting New York Avenue NE north of Florida Avenue at Avoid: \"However, montana avenue between bladensburg and NY ave is actually the better route to take\" Montana Avenue NE between Bladensburg Road NE and New York Avenue NE; the tier (3) is proposed and awaits the owner.",
+      "evidence": "OSM, Geofabrik District of Columbia extract of 2026-09-24: way 1275402854, Montana Avenue Northeast, highway=secondary, no posted speed; the live segment table (2026-09-29) rates it LTS 4, \"mixed traffic, 35 mph or above\"."
+    }
+  ]
+}
