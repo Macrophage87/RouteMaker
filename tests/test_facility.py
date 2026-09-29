@@ -153,6 +153,10 @@ def test_a_timed_closure_is_not_a_path_on_its_own():
         ("no @ (Sa-Su); no @ (sunset-sunrise)", set()),
         ("no @ (sunset-sunrise); no @ (Sa-Su)", set()),
         ("no @ (Mo-Su 00:00-24:00); no @ (sunset-sunrise)", set()),
+        # A setting closed by the second `no` branch alone: the branches are a
+        # union (the re-check of 152261f, R2). The morning rush branch does not
+        # cover 17:30, so rush is open.
+        ("no @ (Mo-Fr 07:00-10:00); no @ (Sa-Su)", {"weekend"}),
         # Only the `no` branches are read.
         ("destination @ (sunset-sunrise); no @ (Sa-Su)", {"weekend"}),
         # Local traffic only is not car-free.

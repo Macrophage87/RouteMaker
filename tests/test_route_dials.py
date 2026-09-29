@@ -1114,6 +1114,31 @@ class TestTrafficWinsOverHills:
         assert len(traced) == 2
         assert len(set(traced)) == 2
 
+    def test_a_chosen_alternative_is_traced_once_too(self, client, facility_segments, router):
+        """The re-check of 152261f (P12): with an alternative chosen, the
+        router's own route and the alternative are traced by calmer_or_own,
+        the middle by the traffic-wins check, and the alternative answered
+        reuses its trace - three traces, not four."""
+        own = _trip(VERTICES, 2.0, LONG_STEEP)
+        alternative = _trip(list(reversed(VERTICES)), 2.4, KICK_THEN_FLAT)
+        traced = []
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                if payload["costing_options"]["bicycle"]["use_hills"] == 1.0:
+                    return {"trip": own}
+                return {"trip": own, "alternates": [{"trip": alternative}]}
+            use_hills = payload["costing_options"]["bicycle"]["use_hills"]
+            traced.append((payload["encoded_polyline"], use_hills))
+            return trace_answer(VERTICES, [(101, 0, 4, 2.0)])
+
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60}).json()
+        assert body["hills_avoid"]["chosen"] == 1
+        assert body["hills_avoid"]["kept_middle"] is False
+        assert len(traced) == 3
+        assert len(set(traced)) == 3, "each route once, under the costing it was routed with"
+
     def test_nothing_is_asked_at_the_middle_or_above(self, client, facility_segments, router):
         for hills in (0, 60):
             transport, calls = self.router_with(202, 101)
