@@ -544,7 +544,12 @@ the same request is made again at the middle - one /route without
 alternatives, at most 18 s - both routes are traced, and if the hill-avoiding
 one's exposure (LTS 3 + 2 x LTS 4 + 3 x tier 5 metres) is worse, the middle's
 route is the answer (`hills_avoid.kept_middle`); a middle call or trace that
-fails keeps the hill-avoiding route. On the correctness reviewer's grid (3060
+fails keeps the hill-avoiding route. The check leaves the answer's own traces
+8 s of the budget (`MIDDLE_TRACE_RESERVE_S`): the middle call gets at most what
+is left less that (and 15 s on the weekend graph), and is not made when that is
+under 4 s, so a slow first route no longer leaves the breakdown "unknown". The
+route answered is traced once; the check's trace is reused. On the correctness
+reviewer's grid (3060
 plans on the r6 box graph) the avoid-half plans busier than the middle went
 from 89 to 0, the middle's route was kept 93 times, and an avoid-half plan's
 time went from a median of 0.12 s (p95 0.53 s) to 0.25 s (p95 0.87 s).

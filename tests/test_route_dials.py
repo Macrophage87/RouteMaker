@@ -16,10 +16,12 @@ from django.db import connection
 from test_route_api import (
     VERTICES,
     FakeRouter,
+    clock,  # noqa: F401, F811 - a fixture, used by name
     good_body,
     post,
     route_answer,
     standard_router,
+    timed,
     trace_answer,
 )
 
@@ -1054,6 +1056,89 @@ class TestTrafficWinsOverHills:
         assert body["hills_avoid"]["limited"] == "two_points"
         assert body["hills_avoid"]["kept_middle"] is True
 
+    def test_a_slow_first_route_leaves_the_answers_traces_their_time(
+        self,
+        client,
+        facility_segments,
+        router,
+        clock,  # noqa: F811
+    ):
+        """Correctness review, round 3 (S1): a 3-point Cargo ride whose first
+        route took 21 s and whose middle call hung was answered at 37 s with
+        every metre "unknown". The middle call now gets what is left less the
+        traces' reserve, and the answer is traced."""
+        transport, calls = self.router_with(202, 101)
+        slow = timed(clock, transport, {"route": [21.0, 100.0]})
+        router(slow)
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        started = clock.now
+        body = post(client, {"points": points, "preset": "cargo", "hills": -60}).json()
+        assert body["hills_avoid"]["kept_middle"] is False
+        assert body["stress_m"]["unknown"] == 0
+        assert body["facility_m"]["unknown"] == 0
+        middle_timeout = slow.timeouts[1]
+        budget_end = started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S
+        assert middle_timeout <= budget_end - routing.MIDDLE_TRACE_RESERVE_S - (started + 21.0)
+        assert clock.now - started < routing.PLAN_BUDGET_S
+
+    def test_with_too_little_time_left_the_middle_is_not_asked(
+        self,
+        client,
+        facility_segments,
+        router,
+        clock,  # noqa: F811
+    ):
+        transport, calls = self.router_with(202, 101)
+        router(timed(clock, transport, {"route": [27.0]}))
+        points = [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[-1])]
+        body = post(client, {"points": points, "preset": "cargo", "hills": -60}).json()
+        assert [c for c in calls if c[0] == 1.0] == [], "no middle call"
+        assert body["hills_avoid"]["kept_middle"] is False
+        assert body["stress_m"]["unknown"] == 0
+
+    @pytest.mark.parametrize(("avoid_way", "middle_way"), [(202, 101), (101, 202)])
+    def test_the_answers_route_is_traced_once(
+        self, avoid_way, middle_way, client, facility_segments, router
+    ):
+        """The check traced both routes; the one answered is not traced again."""
+        transport, _calls = self.router_with(avoid_way, middle_way)
+        traced = []
+
+        def counting(url, payload, timeout):
+            if url.endswith("/trace_attributes"):
+                traced.append(payload["encoded_polyline"])
+            return transport(url, payload, timeout)
+
+        router(counting)
+        post(client, {**good_body(), "hills": -60})
+        assert len(traced) == 2
+        assert len(set(traced)) == 2
+
+    def test_a_chosen_alternative_is_traced_once_too(self, client, facility_segments, router):
+        """The re-check of 152261f (P12): with an alternative chosen, the
+        router's own route and the alternative are traced by calmer_or_own,
+        the middle by the traffic-wins check, and the alternative answered
+        reuses its trace - three traces, not four."""
+        own = _trip(VERTICES, 2.0, LONG_STEEP)
+        alternative = _trip(list(reversed(VERTICES)), 2.4, KICK_THEN_FLAT)
+        traced = []
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                if payload["costing_options"]["bicycle"]["use_hills"] == 1.0:
+                    return {"trip": own}
+                return {"trip": own, "alternates": [{"trip": alternative}]}
+            use_hills = payload["costing_options"]["bicycle"]["use_hills"]
+            traced.append((payload["encoded_polyline"], use_hills))
+            return trace_answer(VERTICES, [(101, 0, 4, 2.0)])
+
+        router(transport)
+        body = post(client, {**good_body(), "hills": -60}).json()
+        assert body["hills_avoid"]["chosen"] == 1
+        assert body["hills_avoid"]["kept_middle"] is False
+        assert len(traced) == 3
+        assert len(set(traced)) == 3, "each route once, under the costing it was routed with"
+
     def test_nothing_is_asked_at_the_middle_or_above(self, client, facility_segments, router):
         for hills in (0, 60):
             transport, calls = self.router_with(202, 101)
@@ -1161,3 +1246,80 @@ class TestTheCalmerOrOwnFallbacks:
         exposures = iter([5.0, 4.0])
         monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
         assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 1
+
+
+class TestNoBusierThanMiddleFallbacks:
+    """Correctness review, round 3 (S2: X2, X3, X4, X8): every way the check
+    can fail keeps the hill-avoiding route and never raises."""
+
+    trip = _trip(VERTICES, 2.0, KICK_THEN_FLAT)
+    middle = _trip(list(reversed(VERTICES)), 2.2, LONG_STEEP)
+
+    def check(self, monkeypatch, answer, exposures=None, variant="standard", deadline=None):
+        seen = {"exposures": 0, "limits": [], "trace_deadlines": []}
+
+        def call(variant_, endpoint, payload, deadline_):
+            seen["limits"].append(deadline_.per_call_s)
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        values = iter(exposures or [])
+
+        def exposure(*args):
+            seen["exposures"] += 1
+            seen["trace_deadlines"].append(args[4].at)
+            return next(values)
+
+        monkeypatch.setattr(routing, "_call", call)
+        monkeypatch.setattr(routing, "_exposure", exposure)
+        deadline = deadline or routing.Deadline(routing.clock() + 37, routing.ROUTER_TIMEOUT_S)
+        result = routing.no_busier_than_middle(
+            self.trip, {"alternates": 3}, variant, {}, {}, "weekday_rush", deadline
+        )
+        return result, seen
+
+    @pytest.mark.parametrize("exposures", [[None, 5.0], [5.0, None]], ids=["own", "middle"])
+    def test_an_untraceable_route_keeps_the_answer(self, monkeypatch, exposures):
+        (trip, kept), _seen = self.check(monkeypatch, {"trip": self.middle}, exposures)
+        assert (trip, kept) == (self.trip, False)
+
+    def test_a_refused_middle_call_keeps_the_answer(self, monkeypatch):
+        refused = routing.RouterRefused(400, 442, "No path could be found")
+        (trip, kept), seen = self.check(monkeypatch, refused)
+        assert (trip, kept) == (self.trip, False)
+        assert seen["exposures"] == 0
+
+    def test_a_middle_with_no_legs_keeps_the_answer(self, monkeypatch):
+        (trip, kept), seen = self.check(monkeypatch, {"trip": {"legs": []}})
+        assert (trip, kept) == (self.trip, False)
+        assert seen["exposures"] == 0, "a legless middle is not measured, so never taken"
+
+    def test_a_busier_answer_gives_way(self, monkeypatch):
+        (trip, kept), _seen = self.check(monkeypatch, {"trip": self.middle}, [9.0, 5.0])
+        assert (trip, kept) == (self.middle, True)
+
+    def test_the_middle_call_is_held_to_the_alternates_limit(self, monkeypatch):
+        _result, seen = self.check(monkeypatch, {"trip": self.middle}, [5.0, 5.0])
+        assert seen["limits"] == [routing.ALTERNATES_TIMEOUT_S]
+
+    def test_on_the_weekend_graph_to_the_weekend_limit(self, monkeypatch):
+        _result, seen = self.check(monkeypatch, {"trip": self.middle}, [5.0, 5.0], "weekend")
+        assert seen["limits"] == [routing.WEEKEND_TIMEOUT_S]
+
+    def test_it_leaves_the_traces_reserve(self, monkeypatch):
+        left = routing.MIDDLE_TRACE_RESERVE_S + 6.0
+        deadline = routing.Deadline(routing.clock() + left, routing.ROUTER_TIMEOUT_S)
+        _result, seen = self.check(
+            monkeypatch, {"trip": self.middle}, [5.0, 5.0], deadline=deadline
+        )
+        assert seen["limits"] == [pytest.approx(6.0, abs=0.5)]
+        # Both routes' traces are inside the same step, not the whole budget.
+        assert seen["trace_deadlines"] == [deadline.at - routing.MIDDLE_TRACE_RESERVE_S] * 2
+
+    def test_with_less_than_its_minimum_left_it_is_not_asked(self, monkeypatch):
+        left = routing.MIDDLE_TRACE_RESERVE_S + routing.MIDDLE_MIN_S - 1.0
+        deadline = routing.Deadline(routing.clock() + left, routing.ROUTER_TIMEOUT_S)
+        (trip, kept), seen = self.check(monkeypatch, {"trip": self.middle}, deadline=deadline)
+        assert (trip, kept) == (self.trip, False)
+        assert seen["limits"] == []
