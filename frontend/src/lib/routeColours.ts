@@ -142,12 +142,6 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
   };
 }
 
-/** Miles first, kilometres beside them (US units first). */
-export function milesFirst(metres: number): string {
-  if (!(Number.isFinite(metres) && metres >= 0)) return "–";
-  return `${(metres / 1609.344).toFixed(1)} mi (${(metres / 1000).toFixed(1)} km)`;
-}
-
 export interface RouteLegendRow extends RouteClass {
   metres: number;
 }

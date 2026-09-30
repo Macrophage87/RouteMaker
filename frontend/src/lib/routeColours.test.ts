@@ -7,7 +7,6 @@ import {
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
   ROUTE_CLASSES,
-  milesFirst,
   routeLegend,
   routePaint,
   routeSections,
@@ -121,8 +120,6 @@ test("the legend lists this route's classes with their length, miles first", () 
     ],
   );
   assert.deepEqual(routeLegend(undefined), []);
-  assert.equal(milesFirst(1609.344), "1.0 mi (1.6 km)");
-  assert.equal(milesFirst(Number.NaN), "–");
 });
 
 test("with sections the casing is the route's blue and the one-colour line is hidden", () => {

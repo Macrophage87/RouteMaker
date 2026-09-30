@@ -7,7 +7,7 @@ import { SEEK_MAX_SPAN_M, formatClimb, formatDistance, formatRoughDistance } fro
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
-import { ROUTE_BLUE, ROUTE_CASING_WIDTH, ROUTE_LINE_WIDTH, milesFirst, routeLegend } from "./lib/routeColours.ts";
+import { ROUTE_BLUE, ROUTE_CASING_WIDTH, ROUTE_LINE_WIDTH, routeLegend } from "./lib/routeColours.ts";
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
   const rows = facilityRows(route.facility_m);
@@ -29,7 +29,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
                 </svg>
                 <span className="stress-name">{row.short}</span>
                 <span className="stress-label">{row.label}</span>
-                <span className="stress-pct">{milesFirst(row.metres)}</span>
+                <span className="stress-pct">{formatDistance(row.metres)}</span>
               </li>
             ))}
           </ul>
