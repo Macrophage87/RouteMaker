@@ -276,6 +276,12 @@ UNPAVED_RURAL_DEFAULT_MPH = 30.0
 # in a finished score.
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000
+# The speed at and below which a count between the two is a tier (v2.2).
+MID_VOLUME_MAX_MPH = 20.0
+# The road classes OWNER-DECISIONS 141 floors at LTS 3 without a facility.
+ARTERIAL_HIGHWAY = frozenset(
+    {"trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"}
+)
 
 # Surfaces a road bike will not hold a line on. Surface never sets the tier on
 # its own: gravel here is usually a low-traffic choice rather than a hazard, and
@@ -569,6 +575,8 @@ DECENT_LANE_MAX_MPH = 40.0
 # Where Furth's bike-lane table stops giving a lane any credit (`_bike_lane_tier`).
 FURTH_LANE_NO_CREDIT_MPH = 40.0
 DECENT_LANE_MIN_M = 1.5
+# From this many through lanes a direction a decent lane earns nothing.
+DECENT_LANE_MAX_LANES = 3
 BUFFER_KEYS = (
     "cycleway:buffer",
     "cycleway:both:buffer",
@@ -642,14 +650,20 @@ def classify(
     aadt_year: int | None = None,
     jurisdiction: str | None = None,
     divided: bool = False,
+    separate_facility: bool = False,
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
     `jurisdiction` is the state the way lies in ("DC", "MD", "VA"), for the
     speed a way with no posted limit is read at (`default_speed_mph`).
     `divided` says a one-way way is one carriageway of a two-way road
-    (`routemaker.divided`): it is scored as the two-way road it is."""
-    result = _classify(tags, aadt, aadt_source, urban, aadt_year, jurisdiction, divided)
+    (`routemaker.divided`): it is scored as the two-way road it is.
+    `separate_facility` says the road's bike facility is mapped as its own way
+    and lies beside it (`routemaker.facility.separate_pairs`), which the
+    arterial floor counts as bike infrastructure."""
+    result = _classify(
+        tags, aadt, aadt_source, urban, aadt_year, jurisdiction, divided, separate_facility
+    )
     reason = legal_but_avoid(tags)
     if reason is None:
         return result
@@ -664,6 +678,7 @@ def _classify(
     aadt_year: int | None = None,
     jurisdiction: str | None = None,
     divided: bool = False,
+    separate_facility: bool = False,
 ) -> StressResult:
     """Classify one way by the Furth tables.
 
@@ -778,11 +793,15 @@ def _classify(
         if width is None:
             assumed.append("cycleway width")
         tier, rule = _bike_lane_tier(speed_mph, scored_lanes, width, parking)
-        if FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH and decent_lane(
-            tags, cycleways, width
+        if (
+            FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
+            and lanes < DECENT_LANE_MAX_LANES
+            and decent_lane(tags, cycleways, width)
         ):
             # Mixed traffic is LTS 4 at these speeds on any lane count, and so
-            # is Furth's table for the lane: a tier below it.
+            # is Furth's table for the lane: a tier below it. Not from three
+            # lanes a direction, where Montgomery's Appendix D keeps LTS 4
+            # whatever the lane (review r1).
             tier = Stress.LTS3
             rule = f"bike lane, decent, {speed_mph:g} mph: a tier below mixed traffic"
     else:
@@ -952,6 +971,29 @@ def _classify(
         # every speed band rather than only in the low ones.
         elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
             tier, rule = Stress(tier + 1), rule + ", high volume"
+        # Furth v2.2's middle band at the lowest speeds: below 23.5 mph a
+        # street is LTS 1 only under 1,000-1,500 vehicles a day, so between
+        # VOLUME_QUIET and VOLUME_BUSY it is LTS 2 (review r1, B2; the
+        # District's 20 mph put 61 mi of such streets at LTS 1).
+        elif speed_mph <= MID_VOLUME_MAX_MPH and aadt > VOLUME_QUIET and tier is Stress.LTS1:
+            tier, rule = Stress.LTS2, rule + ", mid volume"
+
+    # Arterials (OWNER-DECISIONS 141: "Make arterials LTS 3 or greater unless
+    # there s bike infrastructure"): a trunk, primary or secondary road, or its
+    # link, is LTS 3 at least unless it carries a painted, buffered or
+    # protected lane, or its facility is mapped as its own way beside it. The
+    # District's 20 mph had put 23 mi of unposted arterials with no count at
+    # LTS 1. Everywhere, not only in the District. A rideable paved shoulder
+    # the bike-lane table credited counts as a provision here too
+    # (`has_facility`): Furth scores the two as one, and the floor must not
+    # rate a road with a shoulder worse than the same road with a lane.
+    if (
+        highway in ARTERIAL_HIGHWAY
+        and tier < Stress.LTS3
+        and not has_facility
+        and not separate_facility
+    ):
+        tier, rule = Stress.LTS3, rule + ", arterial floor"
 
     # A surface that sheds riders is not tolerable to a child, which is what
     # LTS1 asserts, so it floors at LTS2. This is narrower than treating surface

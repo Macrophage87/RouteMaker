@@ -4,21 +4,28 @@ The owner, item 68: "In many of these cases, there's a nearby trail. It's
 better to go on that trail during the week." And item 69: "it depends on the
 ride. People riding at 20 mph will probably use the road anyways." Measured on
 the r6 box graph (FOLLOWUP-WEEKDAY-TRAILS) the router already does this; this
-check holds it there on the promoted graph, at every rebuild review.
+check reports it on the promoted graph, at every rebuild review.
+
+REPORT-ONLY. The owner has not approved this as a pass/fail gate (review r1,
+S6: it was r0's "choice 6", unanswered, and its 330 ft [100 m] and 200 ft
+[60 m] thresholds are the developer's), so it never exits non-zero on what it
+finds: it prints the table and lists as findings what a gate would have
+failed, for a reviewer to read.
 
 For each corridor - a road closed to cars at weekends with an off-road path
 beside it - trips along it are planned on each ride type at the two weekday
-settings, both directions. It fails when:
+settings, both directions. It reports a finding when:
 
-- Default, Cargo, E-bike or Trailmaxxing puts more than MAX_ROAD_M on a
-  weekday parkway that has a path within 60 m for most of its length; or
+- Default, Cargo, E-bike or Trailmaxxing puts more than MAX_ROAD_M (330 ft
+  [100 m]) on a weekday parkway that has a path within 200 ft [60 m] for most
+  of its length; or
 - Fast stops taking lower Sligo Creek Parkway on the sligo-lower trip.
 
 Group Ride and Mass Ride are reported, not asserted ("likely" in item 69; Mass
 Ride routes on the no-trail graph, which has no trails). The parkway ways come
 from the segment table (car_free_when, and a path within 60 m for at least half
-their length), not from a list of ids. Prints the road/trail table, then one
-JSON line with the verdict; exits 1 on a failure.
+their length), not from a list of ids. Prints the road/trail table (feet
+first, metres in brackets), then one JSON line with the findings.
 """
 
 from __future__ import annotations
@@ -42,8 +49,9 @@ TRIPS = {
 STRESS_AVERSE = ("default", "cargo", "ebike", "trailmaxxing")
 REPORTED = ("group-ride", "fast", "mass-ride")
 WHENS = ("weekday_rush", "weekday_offpeak")
-MAX_ROAD_M = 100.0
-NEAR_M = 60.0
+MAX_ROAD_M = 100.0  # 330 ft
+NEAR_M = 60.0  # 200 ft
+FT_PER_M = 3.28084
 
 PARKWAYS_WITH_TRAILS = """
 WITH cf AS (
@@ -89,7 +97,7 @@ class Command(BaseCommand):
             captured["per_way"] = per_way
             return real(pieces, when, roadway_only)
 
-        failures = []
+        findings = []
         rows = []
         routing.breakdown = spy
         try:
@@ -108,16 +116,18 @@ class Command(BaseCommand):
                             )
                             rows.append((trip, preset, when, round(on_road), ""))
                             if preset in STRESS_AVERSE and on_road > MAX_ROAD_M:
-                                failures.append(
-                                    f"{preset} {when} {trip}: {on_road:.0f} m on a parkway"
+                                findings.append(
+                                    f"{preset} {when} {trip}: {on_road * FT_PER_M:,.0f} ft "
+                                    f"[{on_road:.0f} m] on a parkway"
                                 )
         finally:
             routing.breakdown = real
         fast = [r for r in rows if r[0] == "sligo-lower" and r[1] == "fast" and r[3] is not None]
         if not fast or max(r[3] for r in fast) < MAX_ROAD_M:
-            failures.append("fast no longer takes lower Sligo Creek Parkway on sligo-lower")
+            findings.append("fast no longer takes lower Sligo Creek Parkway on sligo-lower")
         for trip, preset, when, metres, error in rows:
-            self.stdout.write(f"{trip:18} {preset:13} {when:16} parkway {metres!s:>6} m {error}")
-        self.stdout.write(json.dumps({"parkway_ways": len(roads), "failures": failures}))
-        if failures:
-            raise SystemExit(1)
+            shown = "-" if metres is None else f"{metres * FT_PER_M:,.0f} ft [{metres} m]"
+            self.stdout.write(f"{trip:18} {preset:13} {when:16} parkway {shown:>16} {error}")
+        self.stdout.write(
+            json.dumps({"parkway_ways": len(roads), "report_only": True, "findings": findings})
+        )

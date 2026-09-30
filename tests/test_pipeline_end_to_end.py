@@ -588,6 +588,39 @@ def test_the_district_default_and_a_divided_road_reach_the_classifier(
     one_way = context.stress_by_way[ONE_WAY_ID]
     assert one_way.rule == "mixed traffic, 20 mph or below, urban multilane"
     assert int(one_way.tier) == 1
+    # OWNER-DECISIONS 141: the secondary whose lane is mapped as the trail 5 m
+    # beside it has bike infrastructure, so the arterial floor passes it by.
+    beside = context.stress_by_way[SEPARATE_ROAD_ID]
+    assert "arterial floor" not in beside.rule
+    assert int(beside.tier) == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_states_come_from_the_extract_not_the_jurisdiction_table(
+    tmp_path, segment_schemas
+) -> None:
+    """Review r1, B1 (OWNER-DECISIONS 137): with the admin's jurisdiction table
+    empty, as it is on live, the District's 20 mph still applies, from the
+    merged extract's own admin_level=4 boundary."""
+    from core.models import Jurisdiction
+
+    assert not Jurisdiction.objects.exists()
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.stress_by_way[ONE_WAY_ID].rule.startswith("mixed traffic, 20 mph or below")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_required_state_missing_from_the_extract_stops_the_rebuild(
+    tmp_path, segment_schemas, monkeypatch
+) -> None:
+    """The toy region has no Maryland road; required, Maryland stops it."""
+    from pipeline import states
+
+    monkeypatch.setattr(states, "REQUIRED_STATES", ("DC", "MD", "VA"))
+    with pytest.raises(RebuildFailed) as caught:
+        run_dials_extract(tmp_path)
+    assert "no way placed in MD" in str(caught.value)
+    assert caught.value.stage is Stage.CLASSIFY_STRESS
 
 
 def test_a_curated_speed_limit_reaches_the_classifier(

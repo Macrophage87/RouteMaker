@@ -691,7 +691,9 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
 def a7_weekday_trails(ctx: Context, out: list[str]) -> None:
     """A7 — on a weekday the stress-averse ride types take the trail beside a
     weekend-car-free parkway, and Fast keeps the parkway (OWNER-DECISIONS 68,
-    69; `manage.py check_weekday_trails`)."""
+    69; `manage.py check_weekday_trails`). Report-only: the owner has not
+    approved it as a gate (review r1, S6), so its findings are listed and it
+    fails only when the command itself does."""
     proc = ctx.exec_in("api", "./manage.py", "check_weekday_trails", check=False, timeout=1800)
     if ctx.args.dry_run:
         return
@@ -702,8 +704,10 @@ def a7_weekday_trails(ctx: Context, out: list[str]) -> None:
         raise Fail("check_weekday_trails: " + (proc.stderr or proc.stdout)[-200:]) from error
     out.append(f"{verdict['parkway_ways']} weekend-car-free parkway ways with a trail beside them")
     out.extend(lines[:-1])
-    if verdict["failures"] or proc.returncode != 0:
-        raise Fail("; ".join(verdict["failures"]) or f"exit {proc.returncode}")
+    if proc.returncode != 0:
+        raise Fail(f"check_weekday_trails exited {proc.returncode}")
+    for finding in verdict["findings"]:
+        out.append(f"finding (report-only): {finding}")
 
 
 ITEMS = [

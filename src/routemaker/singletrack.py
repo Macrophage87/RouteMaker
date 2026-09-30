@@ -34,6 +34,14 @@ NO_BICYCLE = "singletrack"
 _GRADE = re.compile(r"^\s*(\d+)")
 
 
+PAVED_SURFACES = frozenset({"asphalt", "concrete", "paved", "paving_stones", "chipseal"})
+
+
+def is_paved(tags: dict[str, str]) -> bool:
+    surface = tags.get("surface") or ""
+    return surface in PAVED_SURFACES or surface.startswith("concrete:")
+
+
 def grade(value: str | None) -> int | None:
     """The number an MTB scale value starts with (`2+`, `1-` read as 2, 1)."""
     if value is None:
@@ -44,5 +52,10 @@ def grade(value: str | None) -> int | None:
 
 def is_singletrack(tags: dict[str, str]) -> bool:
     if tags.get("highway") not in TRAIL_CLASS_HIGHWAY:
+        return False
+    # A paved trail is not singletrack whatever its rating: Upper Rock Creek,
+    # Northwest Branch, Muddy Branch, Gunpowder Falls and the Cross County
+    # Trail carry an mtb:scale on asphalt (review r1).
+    if is_paved(tags):
         return False
     return any((g := grade(tags.get(key))) is not None and g >= 1 for key in SCALE_KEYS)

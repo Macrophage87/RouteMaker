@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from routemaker import divided
 
 # About 20 m of latitude and longitude here.
@@ -66,3 +68,71 @@ def test_a_jogged_junction_is_not() -> None:
 def test_a_narrow_median_still_counts() -> None:
     near = [(x - LON_20M + LON_20M / 4, y) for x, y in SOUTH]  # 5 m apart
     assert divided.carriageways([way(1, NORTH), way(2, near)]) == {1, 2}
+
+
+def test_the_approved_45_m_is_the_limit() -> None:
+    """Item 132 approved "within about 45 m": 40 m apart is a divided road,
+    50 m is not."""
+    forty = [(x + LON_20M, y) for x, y in SOUTH]
+    fifty = [(x + LON_20M * 1.5, y) for x, y in SOUTH]
+    assert divided.carriageways([way(1, NORTH), way(2, forty)]) == {1, 2}
+    assert divided.carriageways([way(1, NORTH), way(2, fifty)]) == set()
+
+
+@pytest.mark.parametrize("highway", ["trunk", "primary", "secondary", "tertiary", "unclassified"])
+def test_every_divided_class_is_read(highway) -> None:
+    pair = [way(1, NORTH, highway=highway), way(2, SOUTH, highway=highway)]
+    assert divided.carriageways(pair) == {1, 2}
+
+
+def ring(radius_m, lon0=-77.03, lat0=39.00, n=24):
+    """A circle, counter-clockwise, as two one-way halves joined end to end."""
+    import math
+
+    pts = [
+        (
+            lon0 + radius_m * math.cos(2 * math.pi * i / n) / 86_700,
+            lat0 + radius_m * math.sin(2 * math.pi * i / n) / 111_195,
+        )
+        for i in range(n + 1)
+    ]
+    pts[-1] = pts[0]
+    half = n // 2
+    return pts[: half + 1], pts[half:]
+
+
+def test_a_small_same_named_circle_is_not_a_divided_road() -> None:
+    """Ward, Tenley and Blair Circles, and a one-way loop road: the two halves
+    face each other across the ring (review r1)."""
+    first, second = ring(20)
+    circle = [way(1, first, name="Ward Circle"), way(2, second, name="Ward Circle")]
+    assert divided.carriageways(circle) == set()
+    whole = way(3, first + second[1:], name="Blair Circle")
+    assert divided.carriageways([whole]) == set()
+
+
+def test_a_short_pair_that_does_not_close_is_still_divided() -> None:
+    """Only a closed ring is a loop: 300 m of median, not joined at the ends."""
+    north = [(-77.03, 39.000), (-77.03, 39.0027)]
+    south = [(-77.03 + LON_20M, 39.0027), (-77.03 + LON_20M, 39.000)]
+    assert divided.carriageways([way(1, north), way(2, south)]) == {1, 2}
+
+
+def test_a_long_pair_joined_at_both_ends_is_still_divided() -> None:
+    """A median over 1 km: the carriageways close a ring too, but a long one."""
+    north = [(-77.03, 39.00), (-77.03, 39.01)]
+    south = [
+        (-77.03, 39.01),
+        (-77.03 + LON_20M, 39.009),
+        (-77.03 + LON_20M, 39.001),
+        (-77.03, 39.00),
+    ]
+    assert divided.carriageways([way(1, north), way(2, south)]) == {1, 2}
+    short_north = [(-77.03, 39.000), (-77.03, 39.003)]
+    short_south = [
+        (-77.03, 39.003),
+        (-77.03 + LON_20M, 39.0025),
+        (-77.03 + LON_20M, 39.0005),
+        (-77.03, 39.000),
+    ]
+    assert divided.carriageways([way(1, short_north), way(2, short_south)]) == set()

@@ -1096,7 +1096,11 @@ def plan(
 # volume layer states no licence and is credited plainly. USGS 3DEP for the
 # elevation the climb is computed from. DDOT's Central Business District boundary
 # (fixtures/cbd, CC BY 4.0) decides which sidewalks bicycles may not ride
-# (routemaker.cbd), so it shares DDOT's line. Protomaps is credited by the map,
+# (routemaker.cbd), so it shares DDOT's line. The Architect of the Capitol's
+# jurisdiction polygon (fixtures/cbd, Open Data DC, DC GIS, CC BY 4.0) decides
+# which of those sidewalks are the Capitol grounds' and exempt, and has a line of
+# its own; it is used as published, so it is not marked adapted. Protomaps is
+# credited by the map,
 # which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
     "© OpenStreetMap contributors, ODbL",
@@ -1104,5 +1108,7 @@ ATTRIBUTION = (
     " from the District Department of Transportation, adapted, CC BY 4.0"
     " (https://creativecommons.org/licenses/by/4.0/)",
     "Traffic volume: Virginia Department of Transportation",
+    "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia"
+    " (Open Data DC), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
     "Elevation: USGS 3D Elevation Program",
 )

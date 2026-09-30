@@ -281,6 +281,18 @@ def test_a_cycleway_along_a_road_that_says_separate_is_protected():
     assert facility(beside[1], beside_separate_road=True) is PR
 
 
+def test_the_road_a_separate_facility_lies_beside_is_named_too():
+    """The arterial floor (OWNER-DECISIONS 141) reads the road's side of the
+    pair: a road that says `separate` and has the facility along it."""
+    from routemaker.facility import separate_pairs
+
+    road = (1, {"highway": "primary", "cycleway:right": "separate"}, _line(-77.03, 38.90))
+    beside = (2, {"highway": "cycleway"}, _line(-77.03, 38.9001))
+    lonely = (3, {"highway": "primary", "cycleway:right": "separate"}, _line(-77.03, 38.91))
+    assert separate_pairs([road, beside, lonely]) == ({2}, {1})
+    assert separate_pairs([]) == (set(), set())
+
+
 def test_beside_is_within_twenty_metres():
     """F17: 15 m is the lane; 30 m is the far side of a boulevard."""
     road = (1, {"highway": "primary", "cycleway:right": "separate"}, _line(-77.03, 38.90))

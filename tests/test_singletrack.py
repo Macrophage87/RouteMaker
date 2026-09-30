@@ -66,3 +66,15 @@ def test_grade_reads_the_leading_number() -> None:
     assert grade("0") == 0
     assert grade("none") is None
     assert grade(None) is None
+
+
+@pytest.mark.parametrize(
+    "surface", ["asphalt", "concrete", "paved", "paving_stones", "concrete:plates", "chipseal"]
+)
+def test_a_paved_trail_is_not_singletrack_whatever_its_rating(surface) -> None:
+    """Upper Rock Creek Trail (way 1262786822): asphalt, bicycle=designated,
+    carrying an mtb:scale - closed on every graph until the review (r1)."""
+    tags = {"highway": "cycleway", "surface": surface, "mtb:scale": "1", "bicycle": "designated"}
+    assert not is_singletrack(tags)
+    assert is_singletrack({**tags, "surface": "dirt"})
+    assert is_singletrack({k: v for k, v in tags.items() if k != "surface"})

@@ -332,7 +332,7 @@ def build_dials_extract(path: Path) -> None:
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
         divided_avenue = {
-            "highway": "primary",
+            "highway": "tertiary",  # not an arterial (item 141 floors those)
             "lanes": "2",
             "oneway": "yes",
             "name": "Divided Avenue",
@@ -424,6 +424,7 @@ def fake_download(destination: Path) -> None:
     destination = Path(destination)
     built = destination.with_name("download.osm.pbf")
     build_toy_extract(built)
+    add_state_boundaries(built, built)
     built.replace(destination)
 
 
@@ -447,6 +448,94 @@ def write_sqlite_database(path: Path, table: str, rows: bool = True) -> None:
         connection.close()
 
 
+# The toy region's states as boundary relations (OWNER-DECISIONS 137: the
+# rebuild reads its states from the extract's admin_level=4 relations): the
+# District's box, Virginia east of it (the toy border is -77.00, as in
+# `state_polygons`), and Maryland north of both.
+STATE_BOXES = {
+    "DC": (-77.10, -77.00, 38.85, 38.95),
+    "VA": (-77.00, -76.90, 38.85, 38.95),
+    "MD": (-77.10, -76.90, 38.95, 39.05),
+}
+BOUNDARY_ID = 9_900_000
+
+
+def add_state_boundaries(source: Path, destination: Path, boxes=None) -> None:
+    """`source` with one boundary=administrative, admin_level=4 relation per
+    state box added, written to `destination` (which may be `source`)."""
+    boxes = STATE_BOXES if boxes is None else boxes
+    nodes, ways, relations = [], [], []
+
+    class Copy(osmium.SimpleHandler):
+        def node(self, n):
+            nodes.append(
+                osmium.osm.mutable.Node(
+                    id=n.id,
+                    location=(n.location.lon, n.location.lat),
+                    tags=dict(n.tags),
+                    version=1,
+                )
+            )
+
+        def way(self, w):
+            ways.append(
+                osmium.osm.mutable.Way(
+                    id=w.id, nodes=[n.ref for n in w.nodes], tags=dict(w.tags), version=1
+                )
+            )
+
+        def relation(self, r):
+            relations.append(
+                osmium.osm.mutable.Relation(
+                    id=r.id,
+                    members=[(m.type, m.ref, m.role) for m in r.members],
+                    tags=dict(r.tags),
+                    version=1,
+                )
+            )
+
+    Copy().apply_file(str(source))
+    for index, (state, (west, east, south, north)) in enumerate(sorted(boxes.items())):
+        base = BOUNDARY_ID + 10 * index
+        corners = [(west, south), (east, south), (east, north), (west, north)]
+        for offset, location in enumerate(corners):
+            nodes.append(
+                osmium.osm.mutable.Node(id=base + offset, location=location, tags={}, version=1)
+            )
+        ways.append(
+            osmium.osm.mutable.Way(
+                id=base, nodes=[base, base + 1, base + 2, base + 3, base], tags={}, version=1
+            )
+        )
+        relations.append(
+            osmium.osm.mutable.Relation(
+                id=base,
+                members=[("w", base, "outer")],
+                tags={
+                    "type": "boundary",
+                    "boundary": "administrative",
+                    "admin_level": "4",
+                    "ISO3166-2": f"US-{state}",
+                    "name": state,
+                },
+                version=1,
+            )
+        )
+    partial = Path(destination).with_name("boundaries.osm.pbf")
+    partial.unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(str(partial))
+    try:
+        for n in sorted(nodes, key=lambda o: o.id):
+            writer.add_node(n)
+        for w in sorted(ways, key=lambda o: o.id):
+            writer.add_way(w)
+        for r in sorted(relations, key=lambda o: o.id):
+            writer.add_relation(r)
+    finally:
+        writer.close()
+    partial.replace(destination)
+
+
 def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -> Path:
     """A deployment whose extract stage has already run this week.
 
@@ -464,7 +553,8 @@ def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -
     directory.mkdir(parents=True, exist_ok=True)
     clipped = directory / source_module.CLIPPED_NAME
     build(clipped, **kwargs)
-    shutil.copyfile(clipped, directory / source_module.MERGED_NAME)
+    # The merged file carries the state boundaries the rebuild reads.
+    add_state_boundaries(clipped, directory / source_module.MERGED_NAME)
     return clipped
 
 

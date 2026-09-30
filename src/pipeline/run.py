@@ -48,6 +48,7 @@ from . import (
     reconcile,
     retention,
     source,
+    states,
     tiles,
     variants,
     writers,
@@ -887,11 +888,30 @@ def build_handlers(
     def classify_stress() -> None:
         reference = context.require_reference()
         # Whose statutory speed default an unposted way takes (the District's
-        # 20 mph, OWNER-DECISIONS 108): the state layer, once for every way.
-        state_of = way_states(context.ways)
+        # 20 mph, OWNER-DECISIONS 108): state polygons from this rebuild's own
+        # merged extract (OWNER-DECISIONS 137), not the admin's jurisdiction
+        # table, and a refusal when a required state is missing.
+        try:
+            polygons = states.state_polygons(context.merged_pbf or context.source_pbf)
+            state_of = states.way_states(context.ways, polygons)
+        except states.StatesMissing as missing:
+            # Terminal, like a refused override: a fifth attempt reads the
+            # same extract and finds the same boundaries.
+            raise ValidationFailed(str(missing)) from missing
         # One-way ways that are a carriageway of a divided road, which item
         # 109's one-way relief does not apply to.
+        started = time.monotonic()
         divided_ways = divided.carriageways(context.ways)
+        logger.info(
+            "divided roads: %d carriageways in %.1f s",
+            len(divided_ways),
+            time.monotonic() - started,
+        )
+        # Roads whose bike facility is mapped as its own way and lies beside
+        # them: bike infrastructure to the arterial floor (OWNER-DECISIONS 141).
+        _trails, separate_roads = facility.separate_pairs(
+            (way.osm_id, way.tags, way.coordinates) for way in context.ways
+        )
         # The curated speed limits the map is missing (OWNER-DECISIONS 131),
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
@@ -912,6 +932,7 @@ def build_handlers(
                 urban=way.osm_id in reference.urban_way_ids,
                 jurisdiction=state_of.get(way.osm_id),
                 divided=way.osm_id in divided_ways,
+                separate_facility=way.osm_id in separate_roads,
             )
         context.speed_corrected = used
         unused = sorted(set(speeds) - used)
@@ -1545,29 +1566,6 @@ def _run_command(
         logger.warning("%s", failure)
         raise failure from error
     return tiles.CommandOutput(result.stdout, result.stderr)
-
-
-def way_states(ways) -> dict[int, str]:
-    """Each way's state (DC, MD, VA), by its middle vertex on the state layer,
-    in one query rather than one a way."""
-    from django.db import connection
-
-    points = [
-        (way.osm_id, *way.coordinates[len(way.coordinates) // 2]) for way in ways if way.coordinates
-    ]
-    if not points:
-        return {}
-    with connection.cursor() as cursor:
-        cursor.execute(
-            """SELECT DISTINCT ON (p.id) p.id, j.state
-               FROM unnest(%s::bigint[], %s::float8[], %s::float8[]) AS p(id, lon, lat)
-               JOIN jurisdiction AS j
-                 ON j.layer = 'state' AND j.state IS NOT NULL
-                AND ST_Contains(j.geometry, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326))
-               ORDER BY p.id, j.id""",
-            [[p[0] for p in points], [p[1] for p in points], [p[2] for p in points]],
-        )
-        return dict(cursor.fetchall())
 
 
 def _state_at(lon: float, lat: float) -> str | None:

@@ -17,7 +17,10 @@ the opposite direction alongside it: between MIN_LATERAL_M and PAIR_M to one
 side, within a step along. A one-way couplet (two parallel one-way streets a
 block apart) is further apart than that, and its two streets are almost always
 named differently; a street that changes direction at a junction meets itself
-end to end, not alongside.
+end to end, not alongside. Same-named ways that close into a short ring are
+circles and loops, not divided roads (`small_loops`, review r1), and a partner
+must be alongside at MIN_ALONGSIDE points. Memory on the region: 133 MiB for
+56,352 candidates, 19 s.
 """
 
 from __future__ import annotations
@@ -38,6 +41,10 @@ CELL_DEG = 0.001  # about 110 m north-south, 85 m east-west here
 M_PER_DEG_LAT = 111_195.0
 STEP_M = 20.0
 MIN_LATERAL_M = 4.0
+# A same-named ring shorter than this round is a circle or loop, not a road.
+LOOP_MAX_M = 1_000.0
+# Sample points a partner must be alongside at (fewer on a way that short).
+MIN_ALONGSIDE = 2
 
 
 def _candidate(tags: dict[str, str]) -> bool:
@@ -63,43 +70,105 @@ def _steps(coordinates, reverse: bool):
             yield a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, dx / norm, dy / norm
 
 
+def _length_m(coordinates) -> float:
+    k = math.cos(math.radians(coordinates[0][1]))
+    return sum(
+        math.hypot((b[0] - a[0]) * k, b[1] - a[1]) * M_PER_DEG_LAT
+        for a, b in zip(coordinates, coordinates[1:], strict=False)
+    )
+
+
+def _end(point) -> tuple[float, float]:
+    return round(point[0], 7), round(point[1], 7)
+
+
+def small_loops(ways) -> set[int]:
+    """Same-named one-way ways that close on each other into a ring under
+    LOOP_MAX_M round: a circle (Ward, Tenley, Blair Circles) or a one-way loop
+    road (Americana Circle), whose two sides face each other across the ring
+    without being a divided road (review r1). A short split round a traffic
+    island closes the same way and is no divided arterial either."""
+    parent: dict[int, int] = {}
+
+    def find(i):
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    ends: dict[tuple, list[int]] = defaultdict(list)
+    length: dict[int, float] = {}
+    for way in ways:
+        parent[way.osm_id] = way.osm_id
+        length[way.osm_id] = _length_m(way.coordinates)
+        for point in (way.coordinates[0], way.coordinates[-1]):
+            ends[(way.tags["name"], *_end(point))].append(way.osm_id)
+    for ids in ends.values():
+        for other in ids[1:]:
+            parent[find(other)] = find(ids[0])
+    members: dict[int, list[int]] = defaultdict(list)
+    for osm_id in parent:
+        members[find(osm_id)].append(osm_id)
+    closed_ends: dict[int, bool] = defaultdict(lambda: True)
+    for ids in ends.values():
+        # A ring uses every end exactly twice; a dangling end opens it.
+        closed_ends[find(ids[0])] &= len(ids) == 2
+    loops: set[int] = set()
+    for root, ids in members.items():
+        if closed_ends[root] and sum(length[i] for i in ids) <= LOOP_MAX_M:
+            loops.update(ids)
+    return loops
+
+
 def carriageways(ways: Iterable) -> set[int]:
     """The ids of the ways (anything with osm_id, tags and coordinates) that
     are one carriageway of a divided road."""
+    candidates = [w for w in ways if len(w.coordinates) >= 2 and _candidate(w.tags)]
+    loops = small_loops(candidates)
+    candidates = [w for w in candidates if w.osm_id not in loops]
     cells: dict[tuple, list] = defaultdict(list)
-    candidates = []
-    for way in ways:
-        if len(way.coordinates) < 2 or not _candidate(way.tags):
-            continue
+    for way in candidates:
         name = way.tags["name"]
-        steps = list(_steps(way.coordinates, way.tags.get("oneway") == "-1"))
-        candidates.append((way.osm_id, name, steps))
-        for lon, lat, ux, uy in steps:
+        for lon, lat, ux, uy in _steps(way.coordinates, way.tags.get("oneway") == "-1"):
             key = (name, int(lon // CELL_DEG), int(lat // CELL_DEG))
             cells[key].append((way.osm_id, lon, lat, ux, uy))
     found: set[int] = set()
-    for osm_id, name, steps in candidates:
-        if _has_partner(osm_id, name, steps, cells):
-            found.add(osm_id)
+    for way in candidates:
+        steps = _steps(way.coordinates, way.tags.get("oneway") == "-1")
+        if _has_partner(way.osm_id, way.tags["name"], steps, cells):
+            found.add(way.osm_id)
     return found
 
 
 def _has_partner(osm_id, name, steps, cells) -> bool:
+    """Alongside an opposite same-named way at MIN_ALONGSIDE sample points, or
+    at every point of a way too short to have that many."""
+    steps = list(steps)
+    need = min(MIN_ALONGSIDE, len(steps))
+    hits = 0
     for lon, lat, ux, uy in steps:
-        k = math.cos(math.radians(lat))
-        cx, cy = int(lon // CELL_DEG), int(lat // CELL_DEG)
-        for ix in (cx - 1, cx, cx + 1):
-            for iy in (cy - 1, cy, cy + 1):
-                for other, olon, olat, ox, oy in cells.get((name, ix, iy), ()):
-                    if other == osm_id or ux * ox + uy * oy > OPPOSITE_COS:
-                        continue
-                    ex = (olon - lon) * k * M_PER_DEG_LAT
-                    ey = (olat - lat) * M_PER_DEG_LAT
-                    # Alongside, not end to end: a street that is one-way north
-                    # for a block and one-way south for the next meets itself
-                    # head on at the junction, with no lateral offset.
-                    lateral = abs(ex * uy - ey * ux)
-                    along = abs(ex * ux + ey * uy)
-                    if MIN_LATERAL_M <= lateral <= PAIR_M and along <= STEP_M:
-                        return True
+        if _alongside(osm_id, name, lon, lat, ux, uy, cells):
+            hits += 1
+            if hits >= need:
+                return True
+    return False
+
+
+def _alongside(osm_id, name, lon, lat, ux, uy, cells) -> bool:
+    k = math.cos(math.radians(lat))
+    cx, cy = int(lon // CELL_DEG), int(lat // CELL_DEG)
+    for ix in (cx - 1, cx, cx + 1):
+        for iy in (cy - 1, cy, cy + 1):
+            for other, olon, olat, ox, oy in cells.get((name, ix, iy), ()):
+                if other == osm_id or ux * ox + uy * oy > OPPOSITE_COS:
+                    continue
+                ex = (olon - lon) * k * M_PER_DEG_LAT
+                ey = (olat - lat) * M_PER_DEG_LAT
+                # Alongside, not end to end: a street that is one-way north
+                # for a block and one-way south for the next meets itself
+                # head on at the junction, with no lateral offset.
+                lateral = abs(ex * uy - ey * ux)
+                along = abs(ex * ux + ey * uy)
+                if MIN_LATERAL_M <= lateral <= PAIR_M and along <= STEP_M:
+                    return True
     return False

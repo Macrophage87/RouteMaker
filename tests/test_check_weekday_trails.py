@@ -39,9 +39,10 @@ def test_a_parkway_is_a_weekend_closure_with_a_path_beside_it(segment_schemas) -
 
 
 @db
-def test_the_command_fails_when_a_stress_averse_ride_takes_a_parkway(
+def test_a_stress_averse_ride_on_a_parkway_is_reported_not_failed(
     segment_schemas, monkeypatch
 ) -> None:
+    """Report-only (review r1, S6): the owner has not approved it as a gate."""
     live, _ = segment_schemas
     monkeypatch.setattr(check, "parkways", lambda schema: {101})
 
@@ -53,16 +54,17 @@ def test_the_command_fails_when_a_stress_averse_ride_takes_a_parkway(
 
     monkeypatch.setattr(check.routing, "plan", plan)
     out = io.StringIO()
-    with pytest.raises(SystemExit) as failed:
-        call_command("check_weekday_trails", stdout=out)
-    assert failed.value.code == 1
+    call_command("check_weekday_trails", stdout=out)  # no SystemExit
     verdict = json.loads(out.getvalue().strip().splitlines()[-1])
-    assert any(f.startswith("cargo ") for f in verdict["failures"])
-    assert not any("fast no longer" in f for f in verdict["failures"])
+    assert verdict["report_only"] is True
+    cargo = [f for f in verdict["findings"] if f.startswith("cargo ")]
+    assert cargo and "1,640 ft [500 m]" in cargo[0], "feet first, metres in brackets"
+    assert not any("fast no longer" in f for f in verdict["findings"])
+    assert "ft [" in out.getvalue().splitlines()[0]
 
 
 @db
-def test_it_fails_when_fast_stops_taking_the_parkway(segment_schemas, monkeypatch) -> None:
+def test_fast_leaving_the_parkway_is_a_finding(segment_schemas, monkeypatch) -> None:
     monkeypatch.setattr(check, "parkways", lambda schema: {101})
 
     def plan(points, preset, dials=None):
@@ -71,7 +73,6 @@ def test_it_fails_when_fast_stops_taking_the_parkway(segment_schemas, monkeypatc
 
     monkeypatch.setattr(check.routing, "plan", plan)
     out = io.StringIO()
-    with pytest.raises(SystemExit):
-        call_command("check_weekday_trails", stdout=out)
+    call_command("check_weekday_trails", stdout=out)
     verdict = json.loads(out.getvalue().strip().splitlines()[-1])
-    assert verdict["failures"] == ["fast no longer takes lower Sligo Creek Parkway on sligo-lower"]
+    assert verdict["findings"] == ["fast no longer takes lower Sligo Creek Parkway on sligo-lower"]

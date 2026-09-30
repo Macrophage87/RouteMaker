@@ -379,3 +379,22 @@ def test_avoid_gravel_raises_every_presets_surface_avoidance_and_arms_no_exclusi
         assert steered == max(plain, presets.AVOID_GRAVEL_SURFACES), name
         assert steered < 1.0, name
         assert presets.costing(name, avoid_gravel=False) == presets.costing(name), name
+
+
+def test_avoid_gravel_rides_as_road_at_the_presets_own_speed() -> None:
+    """Review r1, S1: the dial prices only surfaces worse than the type's
+    minimum, and Cross admits gravel, Hybrid dirt; so the box rides as Road,
+    which admits compacted and better, without changing the ride's speed."""
+    for name in presets.PRESETS:
+        plain = presets.costing(name)["bicycle"]
+        steered = presets.costing(name, avoid_gravel=True)["bicycle"]
+        assert steered["bicycle_type"] == "Road", name
+        own = plain.get("cycling_speed")
+        expected = (
+            own if own is not None else presets.VALHALLA_DEFAULT_SPEED_KMH[plain["bicycle_type"]]
+        )
+        assert steered["cycling_speed"] == expected, name
+        for key in set(plain) - {"bicycle_type", "cycling_speed", "avoid_bad_surfaces"}:
+            assert steered[key] == plain[key], (name, key)
+    assistless = presets.costing("cargo", assist=True, avoid_gravel=True)["bicycle"]
+    assert assistless["cycling_speed"] == presets.PRESETS["cargo"].assist_speed_kmh

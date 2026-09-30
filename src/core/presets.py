@@ -466,6 +466,10 @@ def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
 # making it impassable, so a ride that starts or ends on gravel is still
 # planned, and a preset already avoiding more keeps its own value.
 AVOID_GRAVEL_SURFACES = 0.9
+# Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
+# Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
+# names none; kept when the box switches the type to Road.
+VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
 
 
 def costing(
@@ -492,4 +496,14 @@ def costing(
         options["cycling_speed"] = speed
     if avoid_gravel:
         options["avoid_bad_surfaces"] = max(options["avoid_bad_surfaces"], AVOID_GRAVEL_SURFACES)
+        # The dial prices only surfaces worse than the bicycle type's own
+        # minimum, and Cross admits gravel, Hybrid dirt (PLAN, "Every preset
+        # states its bicycle_type"), so on those types the box steered off
+        # nothing it was asked to (review r1, S1). Road admits compacted and
+        # better, so the box rides as Road; the preset's own speed is kept, so
+        # the time estimate does not jump to Road's default.
+        kind = options.get("bicycle_type", "Hybrid")
+        if kind != "Road":
+            options.setdefault("cycling_speed", VALHALLA_DEFAULT_SPEED_KMH[kind])
+            options["bicycle_type"] = "Road"
     return {"bicycle": options}

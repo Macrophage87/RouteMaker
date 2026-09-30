@@ -63,8 +63,27 @@ def areas() -> tuple[list[Polygon], list[Polygon]]:
     return load(CBD_FILE), load(EXEMPT_FILE) + load(AOC_FILE)
 
 
+# Each ring's bounding box, by the ring's identity; the ring is kept beside its
+# box so the id cannot be reused while the entry lives.
+_BOXES: dict[int, tuple[Ring, tuple[float, float, float, float]]] = {}
+
+
+def _bbox(ring: Ring) -> tuple[float, float, float, float]:
+    entry = _BOXES.get(id(ring))
+    if entry is None or entry[0] is not ring:
+        xs = [x for x, _ in ring]
+        ys = [y for _, y in ring]
+        entry = _BOXES[id(ring)] = (ring, (min(xs), min(ys), max(xs), max(ys)))
+    return entry[1]
+
+
 def _in_ring(point: tuple[float, float], ring: Ring) -> bool:
     x, y = point
+    # A box test first: the CBD's ring has 937 vertices and nearly every
+    # sidewalk in the region lies outside its box (review r1, S8).
+    west, south, east, north = _bbox(ring)
+    if not (west <= x <= east and south <= y <= north):
+        return False
     inside = False
     for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1], strict=True):
         if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):

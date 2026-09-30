@@ -28,6 +28,8 @@ export const VOLUME_CREDITS: readonly string[] = [
     'District Department of Transportation (DDOT), adapted, ' +
     '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
   "Traffic volume: Virginia Department of Transportation (VDOT)",
+  "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia " +
+    '(Open Data DC), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
 ];
 
 /**

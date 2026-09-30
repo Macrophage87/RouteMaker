@@ -844,6 +844,8 @@ check("an alley is not graded", ungraded(alley))
 check("an alley loses the alley use (no tier-5 entry charge)", alley.service == M.REMOVE)
 check("a driveway does not pay the alley penalty",
   M.remap_way({ highway = "service", service = "driveway" }, { stress_tier = 1 }).bicycle == nil)
+check("only a service road is an alley: service=alley on a track is not",
+  M.remap_way({ highway = "track", service = "alley" }, { stress_tier = 1 }).bicycle == nil)
 check("an alley a bicycle may not ride stays closed",
   M.remap_way({ highway = "service", service = "alley", bicycle = "no" }, { stress_tier = 1 }).bicycle == nil)
 check("a tier-5 road still gets the entry charge",
