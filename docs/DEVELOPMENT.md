@@ -437,6 +437,20 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   public, approved one `direction`, `category`, `public_note` and `display`
   (the owner: "Only provide the warnings if the route goes over the road").
   Empty until the live table has the columns. The tiles do not read them.
+- `stress_spans` (OWNER-DECISIONS item 81: "Could we also get a color on the
+  route for what LTS it is?"): the route's sections, in route order,
+  `[{from_m, to_m, tier, facility}]` in whole metres along the traced length
+  from 0, each starting where the one before ends. `tier` is 1-5 or null
+  (unknown), `facility` the class or null. They come from the same per-piece
+  join as `stress_m` and `facility_m` (`routing.classify`; a road closed to cars
+  at the ride's time is tier 1 and a path, and on the no-trail variant a lane is
+  "none"), with adjacent equal sections merged and a section under 10 m
+  (`routing.MIN_SPAN_M`) folded into its neighbour, so a long ride stays a
+  short list; the totals are summed from the pieces and stay exact. A leg that
+  could not be traced is one null section of its length, and a plan whose
+  joins ran past the budget is one null section over the whole route. The map
+  scales the sections to the line it draws (`frontend/src/lib/routeColours.ts`)
+  and colours them with the stress map's own tokens (`stressStyle.js`).
 - The graph a ride routes on (`variant` in the answer): a weekend ride on a
   preset whose graph is the standard one routes on the weekend graph
   (`Variant.WEEKEND`), where roads closed to cars at the weekend are off-road

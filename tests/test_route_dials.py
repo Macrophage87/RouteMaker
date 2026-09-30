@@ -1349,3 +1349,131 @@ class TestAvoidGravel:
         fake = router(standard_router())
         assert post(client, {**good_body(), "avoid_gravel": "yes"}).status_code == 400
         assert fake.calls == []
+
+
+# --- The route's coloured sections (FOLLOWUP-ROUTE-COLOURS, item 81) ---------
+
+
+class TestStressSpans:
+    """routing.stress_spans: the sections the route line is drawn in."""
+
+    def test_adjacent_equal_stretches_are_one_section(self):
+        spans = routing.stress_spans(
+            [(100.0, "2", "none"), (150.0, "2", "none"), (50.0, "3", "lane")]
+        )
+        assert spans == [
+            {"from_m": 0, "to_m": 250, "tier": 2, "facility": "none"},
+            {"from_m": 250, "to_m": 300, "tier": 3, "facility": "lane"},
+        ]
+
+    def test_the_same_tier_on_another_facility_is_another_section(self):
+        spans = routing.stress_spans([(100.0, "1", "path"), (100.0, "1", "none")])
+        assert [(s["tier"], s["facility"]) for s in spans] == [(1, "path"), (1, "none")]
+
+    def test_a_short_section_is_folded_into_the_one_before(self):
+        spans = routing.stress_spans(
+            [(100.0, "2", "none"), (9.9, "4", "none"), (100.0, "3", "none")]
+        )
+        assert spans == [
+            {"from_m": 0, "to_m": 110, "tier": 2, "facility": "none"},
+            {"from_m": 110, "to_m": 210, "tier": 3, "facility": "none"},
+        ]
+
+    def test_ten_metres_is_a_section(self):
+        spans = routing.stress_spans(
+            [(100.0, "2", "none"), (routing.MIN_SPAN_M, "4", "none"), (100.0, "3", "none")]
+        )
+        assert [s["tier"] for s in spans] == [2, 4, 3]
+
+    def test_many_short_pieces_of_one_class_are_one_section(self):
+        """A trace cuts its edges at every shape vertex: 50 m of LTS 4 made of
+        ten 5 m pieces is a section, not ten short ones folded away."""
+        stretches = [(100.0, "2", "none"), *[(5.0, "4", "none")] * 10, (100.0, "2", "none")]
+        assert [s["tier"] for s in routing.stress_spans(stretches)] == [2, 4, 2]
+
+    def test_a_short_crossing_between_two_equal_sections_leaves_one(self):
+        spans = routing.stress_spans(
+            [(200.0, "1", "path"), (6.0, "3", "none"), (300.0, "1", "path")]
+        )
+        assert spans == [{"from_m": 0, "to_m": 506, "tier": 1, "facility": "path"}]
+
+    def test_a_short_first_section_takes_the_next_ones_class(self):
+        spans = routing.stress_spans([(4.0, "4", "none"), (3.0, "3", "none"), (100.0, "1", "path")])
+        assert spans == [{"from_m": 0, "to_m": 107, "tier": 1, "facility": "path"}]
+
+    def test_unknown_is_null_and_tier_5_is_5(self):
+        spans = routing.stress_spans([(100.0, "unknown", "unknown"), (100.0, "5", "none")])
+        assert spans == [
+            {"from_m": 0, "to_m": 100, "tier": None, "facility": None},
+            {"from_m": 100, "to_m": 200, "tier": 5, "facility": "none"},
+        ]
+
+    def test_empty_and_zero_length_stretches(self):
+        assert routing.stress_spans([]) == []
+        assert routing.stress_spans([(0.0, "1", "none"), (50.0, "2", "none")]) == [
+            {"from_m": 0, "to_m": 50, "tier": 2, "facility": "none"}
+        ]
+
+    def test_sections_meet_end_to_end_in_whole_metres(self):
+        stretches = [(33.3, str(1 + i % 4), "none") for i in range(30)]
+        spans = routing.stress_spans(stretches)
+        assert spans[0]["from_m"] == 0
+        assert spans[-1]["to_m"] == round(sum(m for m, _t, _f in stretches))
+        for a, b in zip(spans, spans[1:], strict=False):
+            assert a["to_m"] == b["from_m"]
+            assert isinstance(a["to_m"], int)
+
+    def test_a_long_ride_stays_compact(self):
+        """10,000 pieces alternating every 5 m between two classes fold away."""
+        stretches = [(5.0, "1" if i % 2 else "2", "none") for i in range(10_000)]
+        assert len(routing.stress_spans(stretches)) == 1
+
+
+@db
+class TestStressSpansThroughThePlan:
+    def test_a_car_free_road_is_a_path_section_at_the_weekend_only(
+        self, client, facility_segments, router
+    ):
+        """Way 202's second segment is closed to cars at weekends
+        (facility_segments): a tier-1 path then, a tier-2 street otherwise."""
+        router(standard_router())
+        weekend = post(client, {**good_body(), "when": "weekend"}).json()["stress_spans"]
+        router(standard_router())
+        weekday = post(client, {**good_body(), "when": "weekday_rush"}).json()["stress_spans"]
+        assert (1, "path") in [(s["tier"], s["facility"]) for s in weekend]
+        assert [(s["tier"], s["facility"]) for s in weekday] == [
+            (1, "path"),
+            (3, "lane"),
+            (2, "none"),
+            (None, None),
+        ]
+
+    def test_a_mass_ride_counts_its_lanes_as_the_roadway(self, client, facility_segments, router):
+        """On the no-trail variant a lane is "none", in the sections as in the totals."""
+        router(standard_router())
+        spans = post(client, {**good_body("mass-ride"), "when": "weekday_rush"}).json()[
+            "stress_spans"
+        ]
+        assert "lane" not in [s["facility"] for s in spans]
+
+    def test_an_untraced_leg_is_one_unknown_section_between_the_traced_ones(
+        self, client, facility_segments, router
+    ):
+        legs = [(VERTICES, 2.2, FLAT), (list(reversed(VERTICES)), 1.0, FLAT)]
+        trace = trace_answer(VERTICES, [(101, 0, 4, 2.2)])
+        calls = []
+
+        def transport(url, payload, timeout):
+            if url.endswith("/route"):
+                return route_answer(legs)
+            calls.append(payload["encoded_polyline"])
+            if len(calls) > 1:
+                raise routing.RouterRefused(400, 444, "no")
+            return trace
+
+        router(transport)
+        points = [list(VERTICES[0]), list(VERTICES[-1]), list(VERTICES[0])]
+        body = post(client, {"points": points, "preset": "default", "when": "weekday_rush"}).json()
+        spans = body["stress_spans"]
+        assert spans[0] == {"from_m": 0, "to_m": 2200, "tier": 1, "facility": "path"}
+        assert spans[-1] == {"from_m": 2200, "to_m": 3200, "tier": None, "facility": None}

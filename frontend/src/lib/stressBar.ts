@@ -20,7 +20,9 @@ export interface StressSegment {
   percent: number;
 }
 
-const UNKNOWN = { short: "Not rated", label: "No stress rating on these segments", color: "#9aa0a6" };
+/** What no segment rated: the breakdown's and the route line's colour for it. */
+export const UNRATED = { short: "Not rated", label: "No stress rating on these segments", color: "#9aa0a6" };
+const UNKNOWN = UNRATED;
 
 function metresOf(stress: StressMetres, key: StressKey): number {
   const value = stress[key];

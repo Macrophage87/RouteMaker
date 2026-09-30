@@ -12,6 +12,18 @@ import type { StressMetres } from "./stressBar.ts";
 import type { FacilityMetres } from "./facilityBar.ts";
 import { dialFields, type Carrying, type Dials, type When } from "./dials.ts";
 
+/**
+ * One coloured section of the route, in whole metres along its traced length
+ * (core.api.StressSpanOut; OWNER-DECISIONS item 81). `tier` 1-5 or null
+ * (unknown), `facility` the class or null.
+ */
+export interface StressSpan {
+  from_m: number;
+  to_m: number;
+  tier: number | null;
+  facility: "path" | "protected" | "lane" | "none" | null;
+}
+
 export interface RouteResponse {
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend";
@@ -77,6 +89,12 @@ export interface RouteResponse {
    * checks it against the line before trusting it.
    */
   leg_ends?: number[];
+  /**
+   * The route's sections by traffic stress, in route order, meeting end to
+   * end from 0; one unknown section for a plan whose joins ran past the
+   * budget. Absent from an older API, when the route is drawn in one colour.
+   */
+  stress_spans?: StressSpan[];
 }
 
 export type ErrorKind =

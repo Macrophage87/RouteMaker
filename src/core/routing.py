@@ -310,10 +310,13 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
     return pieces
 
 
+# One row per piece, in the pieces' order: the tier and facility class of the
+# segment nearest the piece on its way. The breakdown sums them; the route's
+# coloured sections (`stress_spans`) keep their order.
 _STRESS_JOIN = """
-SELECT {tier}, {facility}, sum(p.metres)
-FROM unnest(%s::bigint[], %s::float8[], %s::float8[], %s::float8[])
-     AS p(way_id, lon, lat, metres)
+SELECT {tier}, {facility}
+FROM unnest(%s::bigint[], %s::float8[], %s::float8[])
+     WITH ORDINALITY AS p(way_id, lon, lat, ordinality)
 LEFT JOIN LATERAL (
     SELECT s.stress_tier, {columns}
     FROM {schema}.segment AS s
@@ -321,7 +324,7 @@ LEFT JOIN LATERAL (
     ORDER BY s.geometry <-> ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326)
     LIMIT 1
 ) AS seg ON true
-GROUP BY 1, 2
+ORDER BY p.ordinality
 """
 
 # A road closed to motor traffic only at set times is a path for a ride inside
@@ -359,20 +362,14 @@ def _has_facility_columns(schema: str) -> bool:
 ROADWAY_ONLY_AS_NONE = frozenset({"protected", "lane"})
 
 
-def breakdown(
-    pieces: list[Piece], when: str, roadway_only: bool = False
-) -> tuple[dict[str, float], dict[str, float]]:
-    """Metres per stress tier and per facility class, for a ride at `when`.
-
-    Stress is keyed "1".."4" and "unknown", facility "path", "protected",
-    "lane", "none" and "unknown"; each sums to the traced length. With
-    `roadway_only` (a ride on the no-trail variant), bicycle lanes of either
-    class count as "none"; a road closed to cars is still a path.
-    """
-    stress = dict.fromkeys(STRESS_KEYS, 0.0)
-    facility = dict.fromkeys(FACILITY_KEYS, 0.0)
+def classify(pieces: list[Piece], when: str, roadway_only: bool = False) -> list[tuple[str, str]]:
+    """Each piece's stress key ("1".."5" or "unknown") and facility key
+    ("path", "protected", "lane", "none" or "unknown"), in the pieces' order,
+    for a ride at `when`. With `roadway_only` (a ride on the no-trail
+    variant), bicycle lanes of either class are "none"; a road closed to cars
+    is still a path."""
     if not pieces:
-        return stress, facility
+        return []
     # The schema name comes from settings and is validated the way every DDL
     # that names it is; an identifier cannot be a query parameter.
     schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
@@ -383,20 +380,95 @@ def breakdown(
         facility=_FACILITY_AT if with_facility else "NULL",
         columns="s.facility, s.car_free_when" if with_facility else "NULL",
     )
-    arrays = [
-        [p.way_id for p in pieces],
-        [p.lon for p in pieces],
-        [p.lat for p in pieces],
-        [p.metres for p in pieces],
-    ]
+    arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
+    classes = []
     with connection.cursor() as cursor:
         cursor.execute(query, ([when, when] if with_facility else []) + arrays)
-        for tier, kind, metres in cursor.fetchall():
-            stress[str(tier) if tier in (1, 2, 3, 4, 5) else "unknown"] += float(metres)
+        for tier, kind in cursor.fetchall():
             if roadway_only and kind in ROADWAY_ONLY_AS_NONE:
                 kind = "none"
-            facility[kind if kind in FACILITY_KEYS else "unknown"] += float(metres)
+            classes.append(
+                (
+                    str(tier) if tier in (1, 2, 3, 4, 5) else "unknown",
+                    kind if kind in FACILITY_KEYS else "unknown",
+                )
+            )
+    return classes
+
+
+def breakdown(
+    pieces: list[Piece], when: str, roadway_only: bool = False
+) -> tuple[dict[str, float], dict[str, float]]:
+    """Metres per stress tier and per facility class, for a ride at `when`.
+
+    Stress is keyed "1".."5" and "unknown", facility "path", "protected",
+    "lane", "none" and "unknown"; each sums to the traced length
+    (`classify`, summed).
+    """
+    return totals(zip(pieces, classify(pieces, when, roadway_only), strict=True))
+
+
+def totals(classified) -> tuple[dict[str, float], dict[str, float]]:
+    """Metres per stress key and per facility key of (piece, (tier, facility)) pairs."""
+    stress = dict.fromkeys(STRESS_KEYS, 0.0)
+    facility = dict.fromkeys(FACILITY_KEYS, 0.0)
+    for piece, (tier, kind) in classified:
+        stress[tier] += piece.metres
+        facility[kind] += piece.metres
     return stress, facility
+
+
+# A coloured section shorter than this is folded into its neighbour: a few
+# metres of a crossing or a driveway cannot be seen on the map at any zoom the
+# planner is used at, and a long ride would otherwise carry thousands of them.
+# The totals (`stress_m`, `facility_m`) are summed from the pieces, not from
+# the sections, so they stay exact.
+MIN_SPAN_M = 10.0
+
+
+def stress_spans(stretches: list[tuple[float, str, str]]) -> list[dict]:
+    """The route's coloured sections, in route order.
+
+    `stretches` is (metres, stress key, facility key) in the order ridden;
+    the answer is [{from_m, to_m, tier, facility}] in whole metres along the
+    route, adjacent equal sections merged and those under MIN_SPAN_M folded
+    into the one before (or, first on the route, the one after). `tier` is 1-5
+    or null (unknown); `facility` is the class or null.
+    """
+    # Pieces are cut at every shape vertex, so a long stretch of one class
+    # arrives as many short pieces: they are joined before anything is judged
+    # too short to show.
+    spans: list[list] = []  # [length, tier, facility]
+    for metres, tier, kind in stretches:
+        if spans and spans[-1][1:] == [tier, kind]:
+            spans[-1][0] += metres
+        else:
+            spans.append([metres, tier, kind])
+    folded: list[list] = []
+    for span in spans:
+        if folded and (span[0] < MIN_SPAN_M or folded[-1][1:] == span[1:]):
+            folded[-1][0] += span[0]
+        elif folded and folded[-1][0] < MIN_SPAN_M:
+            # The first section was the short one: it takes this one's class.
+            folded[-1] = [folded[-1][0] + span[0], span[1], span[2]]
+        else:
+            folded.append(list(span))
+    out = []
+    at = 0.0
+    for length, tier, kind in folded:
+        start, at = at, at + length
+        if out and out[-1]["to_m"] == round(at):
+            out[-1]["to_m"] = round(at)
+            continue
+        out.append(
+            {
+                "from_m": round(start),
+                "to_m": round(at),
+                "tier": int(tier) if tier != "unknown" else None,
+                "facility": kind if kind != "unknown" else None,
+            }
+        )
+    return out
 
 
 _ADJUSTMENT_JOIN = """
@@ -969,6 +1041,9 @@ def plan(
     stress = dict.fromkeys(STRESS_KEYS, 0.0)
     facility = dict.fromkeys(FACILITY_KEYS, 0.0)
     pieces: list[Piece] = []
+    # The route in the order ridden, for its coloured sections: each leg is
+    # either a run of traced pieces (start, end) or an untraced length.
+    leg_runs: list[tuple[int, int] | float] = []
     # The index in `coordinates` of each leg's last vertex: the joints are
     # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
     # front end reads which leg a point on the line belongs to from these.
@@ -989,8 +1064,11 @@ def plan(
             untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
             stress["unknown"] += untraced
             facility["unknown"] += untraced
+            leg_runs.append(untraced)
         else:
+            start = len(pieces)
             pieces.extend(pieces_of_trace(trace))
+            leg_runs.append((start, len(pieces)))
     traced_at = clock()
     # The joins over the traced pieces are the work after the routers, and the
     # budget's reserve is for them. Once the budget itself is gone they are
@@ -1002,15 +1080,23 @@ def plan(
         stress["unknown"] += untraced
         facility["unknown"] += untraced
         used_adjustments: list[dict] = []
+        # Unknown along its whole length, as its totals are.
+        classes = [("unknown", "unknown")] * len(pieces)
     else:
-        traced_stress, traced_facility = breakdown(
-            pieces, when, roadway_only=variant == Variant.NO_TRAIL.value
-        )
+        classes = classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
+        traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
         for key, metres in traced_stress.items():
             stress[key] += metres
         for key, metres in traced_facility.items():
             facility[key] += metres
         used_adjustments = adjustments_used(pieces)
+    stretches: list[tuple[float, str, str]] = []
+    for run in leg_runs:
+        if isinstance(run, tuple):
+            stretches.extend((pieces[i].metres, *classes[i]) for i in range(run[0], run[1]))
+        else:
+            stretches.append((run, "unknown", "unknown"))
+    spans = stress_spans(stretches)
     joined_at = clock()
     if joined_at - started > budget_s:
         logger.warning(
@@ -1072,6 +1158,7 @@ def plan(
         "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
         "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
         "stress_adjustments": used_adjustments,
+        "stress_spans": spans,
         "dials": {
             "stress": stress_dial,
             "hills": hills_dial,

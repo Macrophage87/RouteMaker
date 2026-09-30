@@ -47,6 +47,8 @@ CONTRACT_KEYS = {
     "hills_seek",
     "hills_avoid",
     "leg_ends",
+    # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
+    "stress_spans",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
@@ -192,6 +194,41 @@ class TestAnswer:
         assert body["geometry"]["type"] == "LineString"
         assert body["preset"] == "default"
         assert body["variant"] == presets.variant_for_ride("default", routing.default_when())
+
+    def test_the_route_is_coloured_by_stretch_in_route_order(self, client, segments, router):
+        """OWNER-DECISIONS item 81: "Could we also get a color on the route for
+        what LTS it is?" Way 101 (tier 3), way 202's two segments (tier 1, then
+        tier 4), way 303 with no segment row (unknown), in the order ridden."""
+        router(standard_router())
+        body = post(client, good_body()).json()
+        assert body["stress_spans"] == [
+            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none"},
+            {"from_m": 900, "to_m": 1300, "tier": 1, "facility": "none"},
+            {"from_m": 1300, "to_m": 1700, "tier": 4, "facility": "none"},
+            {"from_m": 1700, "to_m": 2200, "tier": None, "facility": None},
+        ]
+        # The sections agree with the totals.
+        by_tier = {}
+        for span in body["stress_spans"]:
+            key = str(span["tier"]) if span["tier"] else "unknown"
+            by_tier[key] = by_tier.get(key, 0) + span["to_m"] - span["from_m"]
+        assert by_tier == {k: v for k, v in body["stress_m"].items() if v}
+
+    def test_a_route_reversed_is_coloured_reversed(self, client, segments, router):
+        """Route order, not table order: the same edges ridden the other way."""
+        vertices = list(reversed(VERTICES))
+        edges = [(303, 0, 1, 0.5), (202, 1, 3, 0.8), (101, 3, 4, 0.9)]
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer([(vertices, 2.2, [1.0])]),
+                    "trace_attributes": trace_answer(vertices, edges),
+                }
+            )
+        )
+        spans = post(client, good_body()).json()["stress_spans"]
+        assert [s["tier"] for s in spans] == [None, 4, 1, 3]
+        assert spans[-1]["to_m"] == 2200
 
     def test_the_geometry_is_lon_lat(self, client, segments, router) -> None:
         router(standard_router())
@@ -352,6 +389,9 @@ class TestStressBreakdown:
         stress = response.json()["stress_m"]
         assert stress["unknown"] == pytest.approx(2200.0)
         assert sum(v for k, v in stress.items() if k != "unknown") == 0
+        assert response.json()["stress_spans"] == [
+            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None}
+        ]
         # And the facility breakdown, which must sum to the same distance
         # (mutation review r1, RT15).
         facility = response.json()["facility_m"]
@@ -1132,6 +1172,8 @@ class TestTimeBudget:
         body = response.json()
         assert body["stress_m"]["unknown"] == pytest.approx(body["distance_m"], rel=0.01)
         assert body["stress_adjustments"] == []
+        # And the route is one unknown section, as its totals are.
+        assert body["stress_spans"] == [{"from_m": 0, "to_m": 2200, "tier": None, "facility": None}]
         assert any("past its" in r.message and "trace" in r.message for r in caplog.records)
 
     def test_a_route_answered_as_the_budget_ends_is_kept(

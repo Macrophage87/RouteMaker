@@ -17,6 +17,15 @@ import {
 } from "./lib/mapStyle.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import {
+  ROUTE_BLUE,
+  ROUTE_CASING_PLAIN,
+  ROUTE_CASING_WIDTH,
+  ROUTE_LINE_WIDTH,
+  routePaint,
+  routeSections,
+  sectionFeatures,
+} from "./lib/routeColours.ts";
+import {
   addStressOverlay,
   focusBackTarget,
   markerDeps,
@@ -91,6 +100,8 @@ function registerPmtiles(): void {
 
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
+/** The route's sections by traffic stress (lib/routeColours.ts). */
+const ROUTE_STRESS_SOURCE = "route-stress";
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
@@ -450,14 +461,29 @@ export function MapView(props: Props) {
         type: "line",
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#ffffff", "line-width": 9, "line-opacity": 0.9 },
+        paint: { "line-color": ROUTE_CASING_PLAIN, "line-width": ROUTE_CASING_WIDTH, "line-opacity": 0.9 },
+      });
+      // The route in its traffic stress, between the casing and the line: one
+      // feature per section, each in its class's colour. The line itself
+      // stays, drawn in the route's blue only when there are no sections (an
+      // older API); it is also what the stale dimming and the rail and
+      // reference layers are placed against, and the pointer's hit test is
+      // made against the route's geometry, not against any layer, so a
+      // second line layer changes nothing about grabbing or dragging it.
+      map.addSource(ROUTE_STRESS_SOURCE, { type: "geojson", data: sectionFeatures(null) });
+      map.addLayer({
+        id: "route-stress",
+        type: "line",
+        source: ROUTE_STRESS_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["get", "color"], "line-width": ROUTE_LINE_WIDTH },
       });
       map.addLayer({
         id: "route-line",
         type: "line",
         source: ROUTE_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": "#1d4ed8", "line-width": 5 },
+        paint: { "line-color": ROUTE_BLUE, "line-width": ROUTE_LINE_WIDTH },
       });
       map.addSource(EDIT_SOURCE, { type: "geojson", data: editData(null, []) });
       map.addLayer({
@@ -660,7 +686,12 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
       ? { type: "Feature", properties: {}, geometry: route.geometry }
       : { type: "FeatureCollection", features: [] },
   );
-  map.setPaintProperty("route-line", "line-opacity", stale ? 0.45 : 1);
+  const sections = route ? routeSections(route.geometry.coordinates, route.stress_spans) : null;
+  (map.getSource(ROUTE_STRESS_SOURCE) as GeoJSONSource | undefined)?.setData(sectionFeatures(sections));
+  const paint = routePaint(sections !== null, stale);
+  map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
+  map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
+  map.setPaintProperty("route-casing", "line-color", paint.casingColor);
   if (!route || stale || route.geometry.coordinates.length < 2) return;
   const padding = props.framePadding();
   if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;
