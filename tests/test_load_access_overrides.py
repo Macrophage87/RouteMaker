@@ -91,6 +91,51 @@ class TestTheOwnersFile:
         assert AuditLogEntry.objects.count() == 2 * 12
 
 
+CAPITOL_FILE = REPO / "fixtures" / "overrides" / "2026-09-30-owner-capitol-drives.json"
+# Typed in from the survey of the AOC polygon, not read from the file.
+CAPITOL_CIRCLE_DRIVE = {6054909, 6054780, 6061713, 297214549, 1013992304}
+CAPITOL_PEDESTRIAN_DRIVES = {903994651, 903994652, 904481923, 904481924}
+# A pedestrian area on the grounds (area=yes): upstream does not route it.
+CAPITOL_PLAZA = 1263873629
+
+
+class TestTheCapitolDrivesFile:
+    """OWNER-DECISIONS 130, "Yes, open them"."""
+
+    def rows(self) -> dict[int, dict]:
+        return {r["osm_way_id"]: r for r in json.loads(CAPITOL_FILE.read_text())["rows"]}
+
+    def test_the_private_drives_are_opened_through_not_only_to_bicycles(self) -> None:
+        rows = self.rows()
+        assert CAPITOL_CIRCLE_DRIVE <= set(rows)
+        drives = [r for r in rows.values() if "access" in r["value"]]
+        assert len(drives) == 25
+        for r in drives:
+            # bicycle=yes alone leaves upstream's destination-only flag on.
+            assert r["value"] == {"access": "permissive", "bicycle": "yes", "motor_vehicle": "no"}
+
+    def test_the_pedestrian_drives_get_bicycle_yes_and_the_plazas_nothing(self) -> None:
+        rows = self.rows()
+        pedestrian = {w for w, r in rows.items() if r["value"] == {"bicycle": "yes"}}
+        assert pedestrian == CAPITOL_PEDESTRIAN_DRIVES
+        assert CAPITOL_PLAZA not in rows
+        assert len(rows) == 29
+
+    def test_every_row_quotes_the_owner(self) -> None:
+        for r in self.rows().values():
+            assert r["kind"] == "access"
+            assert '"Yes, open them"' in r["reason"]
+            assert "2026-09-30" in r["reason"]
+
+    def test_a_dry_run_would_create_every_row_and_writes_nothing(self, admin) -> None:
+        from core.models import AuditLogEntry, Override
+
+        out = load(str(CAPITOL_FILE), "--actor", str(admin.discord_user_id))
+        assert out.count("create: way ") == 29
+        assert "dry run: nothing written" in out
+        assert Override.objects.count() == AuditLogEntry.objects.count() == 0
+
+
 @pytest.fixture
 def admin(db):
     from core.models import User

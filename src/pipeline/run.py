@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
-from routemaker import cbd, divided, facility, ridetime, singletrack
+from routemaker import cbd, divided, facility, ridetime, singletrack, speed_corrections
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
@@ -447,6 +447,8 @@ class RebuildContext:
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
     singletracks: set[int] = field(default_factory=set)
+    # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
+    speed_corrected: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -890,10 +892,17 @@ def build_handlers(
         # One-way ways that are a carriageway of a divided road, which item
         # 109's one-way relief does not apply to.
         divided_ways = divided.carriageways(context.ways)
+        # The curated speed limits the map is missing (OWNER-DECISIONS 131),
+        # read here because the tier is what they are for; a posted speed wins.
+        speeds = speed_corrections.load()
+        used: set[int] = set()
         for way in context.ways:
             match = context.aadt_by_way.get(way.osm_id)
+            tags, applied = speed_corrections.corrected(way.tags, speeds.get(way.osm_id))
+            if applied:
+                used.add(way.osm_id)
             context.stress_by_way[way.osm_id] = classify(
-                way.tags,
+                tags,
                 aadt=match.aadt if match else None,
                 # The agency, not the precedence tier: the tier is what
                 # `conflate` ranked two counts with and says nothing about who
@@ -904,6 +913,12 @@ def build_handlers(
                 jurisdiction=state_of.get(way.osm_id),
                 divided=way.osm_id in divided_ways,
             )
+        context.speed_corrected = used
+        unused = sorted(set(speeds) - used)
+        if unused:
+            # Posted since, or gone from the extract: either way the row is no
+            # longer what sets the way's speed, which a reviewer should know.
+            logger.warning("curated speed limits not applied (posted, or no such way): %s", unused)
 
     def tag_jurisdictions() -> None:
         """Annotate each way with the authorities its geometry falls under.

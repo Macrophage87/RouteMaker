@@ -183,3 +183,19 @@ change.
   "(most of beach drive in DC is closed to car traffic permanantly)". The owner
   approved loading it on 2026-09-28 ("Yes, load it"), at the next deploy.
   Montgomery County's Beach Drive stays as OSM tags it, closed at weekends.
+
+An access row may also write `access`, where the way's own `access` is what
+blocks it. `access=private` makes upstream's transform mark a way private -
+destination-only, for every mode - whatever its `bicycle` key says: it reads
+the flag from `access`, `motor_vehicle` and `motorcar` alone. So opening such a
+way to riders takes `access=permissive` beside `bicycle=yes`, and
+`motor_vehicle=no` to keep it closed to cars (pinned in
+`tests/lua/test_graph_entry.lua`).
+
+- `2026-09-30-owner-capitol-drives.json`: Capitol Circle Drive and the
+  Capitol Driveways, inside the Architect of the Capitol's polygon. The owner
+  (OWNER-DECISIONS 130): "Yes, open them". 25 service drives mapped
+  `access=private`, `bicycle=yes` (1.6 km) take `access=permissive`,
+  `bicycle=yes`, `motor_vehicle=no`; four linear `highway=pedestrian` drives
+  with no bicycle tag (263 m) take `bicycle=yes`. The thirteen pedestrian
+  areas on the grounds are not in it: upstream does not route an area.

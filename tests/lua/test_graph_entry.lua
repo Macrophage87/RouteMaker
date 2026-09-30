@@ -150,6 +150,30 @@ check("a private way is still routable", private_out.bike_forward == "true")
 check("but carries no cycleway write", private_out.cycleway == nil, private_out.cycleway)
 check("and is marked private by upstream", private_out.private == "true", private_out.private)
 
+-- OWNER-DECISIONS 130, the Capitol drives. As mapped (access=private,
+-- bicycle=yes, motor_vehicle=no) upstream still marks the way private -
+-- destination-only - whatever the bicycle key says, since it reads the flag
+-- from access and motor_vehicle alone. The approved override's
+-- access=permissive clears it; motor_vehicle=no keeps cars off.
+local capitol = { highway = "service", access = "private", bicycle = "yes",
+  motor_vehicle = "no", ["rm:stress_tier"] = "1", ["rm:facility"] = "path" }
+local _, capitol_out = transform_way(capitol)
+check("a Capitol drive as mapped is destination-only despite bicycle=yes",
+  capitol_out.private == "true" and capitol_out.bike_forward == "true", capitol_out.private)
+local opened = {}
+for k, v in pairs(capitol) do opened[k] = v end
+opened.access = "permissive"
+local _, opened_out = transform_way(opened)
+check("the override opens it to bicycles, through",
+  opened_out.private == "false" and opened_out.bike_forward == "true", opened_out.private)
+check("and not to cars", opened_out.auto_forward == "false", opened_out.auto_forward)
+local _, plaza_out = transform_way({ highway = "pedestrian", ["rm:stress_tier"] = "1" })
+local _, drive_out = transform_way({ highway = "pedestrian", bicycle = "yes",
+  ["rm:stress_tier"] = "1" })
+check("a pedestrian drive is closed to bicycles by default, and opened by bicycle=yes",
+  plaza_out.bike_forward == "false" and drive_out.bike_forward == "true",
+  tostring(plaza_out.bike_forward) .. " " .. tostring(drive_out.bike_forward))
+
 -- The way the guard must not catch: an ordinary low-stress street still gets
 -- its write, and a permissively tagged one does too.
 local open_filter, open_out = transform_way({ highway = "residential", access = "yes",

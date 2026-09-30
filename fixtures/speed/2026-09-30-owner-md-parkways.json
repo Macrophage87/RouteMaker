@@ -1,0 +1,212 @@
+{
+  "version": 1,
+  "decided": "2026-09-30",
+  "decided_by": "the deployment owner",
+  "annotations": "The owner, 2026-09-30 (OWNER-DECISIONS 131): \"Set them to 25 mph (Recommended)\". Every road-class way named Sligo Creek Parkway, Little Falls Parkway or Beach Drive in Montgomery County with no maxspeed; the posted stretches already carry 25 mph. One service way named Beach Drive (991825926, a spur) is left out: it is not the parkway, and 25 mph would read it higher than its default. Read at classify time only (routemaker.speed_corrections); a posted maxspeed on the way wins.",
+  "rows": [
+    {
+      "osm_way_id": 321471607,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Beach Drive, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 321471607, Beach Drive, highway=tertiary, lanes=3, no maxspeed, 41 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 423367703,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Beach Drive, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 423367703, Beach Drive, highway=tertiary, lanes=2, no maxspeed, 209 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 521153190,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Beach Drive, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 521153190, Beach Drive, highway=tertiary, lanes=2, no maxspeed, 553 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 535515391,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Beach Drive, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 535515391, Beach Drive, highway=tertiary, lanes=2, no maxspeed, 47 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1302737520,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Beach Drive, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1302737520, Beach Drive, highway=tertiary, lanes=2, no maxspeed, 90 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 362186677,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 362186677, Little Falls Parkway, highway=secondary, lanes=2, oneway=yes, no maxspeed, 28 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 362425652,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 362425652, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 282 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 362425656,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 362425656, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 16 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 697039127,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 697039127, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 91 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 848074250,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 848074250, Little Falls Parkway, highway=secondary, lanes=2, oneway=yes, no maxspeed, 590 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 968032417,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 968032417, Little Falls Parkway, highway=secondary, lanes=2, oneway=yes, no maxspeed, 582 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1128122707,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1128122707, Little Falls Parkway, highway=secondary, lanes=2, oneway=yes, no maxspeed, 74 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1128122708,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1128122708, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 178 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1128122709,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1128122709, Little Falls Parkway, highway=secondary, lanes=3, oneway=yes, no maxspeed, 52 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1364764599,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1364764599, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 79 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1382926683,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1382926683, Little Falls Parkway, highway=secondary, lanes=4, oneway=yes, no maxspeed, 63 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1455205184,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1455205184, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 451 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1455205185,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1455205185, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 94 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1455205186,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1455205186, Little Falls Parkway, highway=secondary, lanes=1, oneway=yes, no maxspeed, 18 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1455205187,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Little Falls Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1455205187, Little Falls Parkway, highway=tertiary, lanes=1, oneway=yes, no maxspeed, 130 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 5988543,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 5988543, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 1103 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 42564818,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 42564818, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 438 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 50030477,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 50030477, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 1012 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 454979872,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 454979872, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 58 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 454979873,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 454979873, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 240 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 696971728,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 696971728, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 270 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 763371542,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 763371542, Sligo Creek Parkway, highway=tertiary, no maxspeed, 15 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 981618619,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 981618619, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 1266 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 981618621,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 981618621, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 52 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 981618622,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 981618622, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 16 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 981618623,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 981618623, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 944 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 986994441,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 986994441, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 23 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1073217209,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1073217209, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 111 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    },
+    {
+      "osm_way_id": 1073217211,
+      "maxspeed": "25 mph",
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 131), of the Montgomery County parkways with no posted speed: \"Set them to 25 mph (Recommended)\". Sligo Creek Parkway, unposted in OSM, read at Maryland's urban default until now.",
+      "evidence": "OSM, Geofabrik Maryland extract of 2026-09-25: way 1073217211, Sligo Creek Parkway, highway=tertiary, lanes=2, no maxspeed, 19 m, in Montgomery County. The posted stretches of the same road carry maxspeed=25 mph."
+    }
+  ]
+}

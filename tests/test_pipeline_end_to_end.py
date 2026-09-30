@@ -590,6 +590,29 @@ def test_the_district_default_and_a_divided_road_reach_the_classifier(
     assert int(one_way.tier) == 1
 
 
+def test_a_curated_speed_limit_reaches_the_classifier(
+    tmp_path, segment_schemas, states, monkeypatch
+) -> None:
+    """OWNER-DECISIONS 131, through the rebuild: a speed file's row sets the
+    speed an unposted way is classified at, and a posted speed wins over it."""
+    from routemaker import speed_corrections
+
+    speeds = tmp_path / "speed"
+    speeds.mkdir()
+    rows = [
+        {"osm_way_id": way, "maxspeed": "25 mph", "reason": "test", "evidence": "test"}
+        for way in (ONE_WAY_ID, WEEKEND_CLOSED_ID)  # the second is posted 30 mph
+    ]
+    (speeds / "test.json").write_text(json.dumps({"version": 1, "rows": rows}))
+    monkeypatch.setattr(speed_corrections, "SPEED_DIR", speeds)
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.speed_corrected == {ONE_WAY_ID}
+    one_way = context.stress_by_way[ONE_WAY_ID]
+    assert one_way.rule == "mixed traffic, 25 mph, urban multilane"
+    assert int(one_way.tier) == 2
+    assert context.stress_by_way[WEEKEND_CLOSED_ID].rule.startswith("mixed traffic, 30 mph")
+
+
 def test_a_trail_beside_a_road_that_maps_its_lane_separately_is_protected(
     tmp_path, segment_schemas, states
 ) -> None:
