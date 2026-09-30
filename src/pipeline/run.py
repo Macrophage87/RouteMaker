@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
-from routemaker import facility, ridetime
+from routemaker import cbd, facility, ridetime
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
@@ -443,6 +443,8 @@ class RebuildContext:
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
+    # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
+    cbd_sidewalks: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1065,15 +1067,19 @@ def build_handlers(
             closed = facility.car_free_when(way.tags)
             if closed:
                 context.car_free_by_way[way.osm_id] = closed
+            if cbd.barred_sidewalk(way.tags, way.coordinates):
+                context.cbd_sidewalks.add(way.osm_id)
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         logger.info(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
-            "(tier 1), %d beside a road that maps its facility separately",
+            "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
+            "barred to bicycles",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
             len(beside),
+            len(context.cbd_sidewalks),
         )
 
     def inject_tags() -> None:
@@ -1206,6 +1212,8 @@ def build_handlers(
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
+                if way.osm_id in context.cbd_sidewalks:
+                    derived["no_bicycle"] = cbd.NO_BICYCLE
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 

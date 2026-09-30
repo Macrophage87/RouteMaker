@@ -834,6 +834,14 @@ licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
 the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
 none, are OpenStreetMap's and need nothing beyond the ODbL credit.
 
+DDOT's Central Business District boundary (Open Data DC, CC BY 4.0), which
+decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS
+104), shares DDOT's traffic-volume line in both credit lists: "Stress tiers use
+traffic volume, and routing the Central Business District boundary, from the
+District Department of Transportation, adapted, CC BY 4.0"
+(`routing.ATTRIBUTION`, `VOLUME_CREDITS`). Its source, retrieval and refresh by
+hand are in `fixtures/cbd/README.md`.
+
 ### Fetching it
 
 `scripts/fetch_basemap.sh` makes all of it and pins every input at its top: the

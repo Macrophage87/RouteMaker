@@ -1087,12 +1087,15 @@ def plan(
 # adaptation say it was modified and link the licence: the counts are
 # normalised and fed to the classifier, so the credit says "adapted". VDOT's
 # volume layer states no licence and is credited plainly. USGS 3DEP for the
-# elevation the climb is computed from. Protomaps is credited by the map,
+# elevation the climb is computed from. DDOT's Central Business District boundary
+# (fixtures/cbd, CC BY 4.0) decides which sidewalks bicycles may not ride
+# (routemaker.cbd), so it shares DDOT's line. Protomaps is credited by the map,
 # which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
     "© OpenStreetMap contributors, ODbL",
-    "Stress tiers use traffic volume from the District Department of Transportation,"
-    " adapted, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+    "Stress tiers use traffic volume, and routing the Central Business District boundary,"
+    " from the District Department of Transportation, adapted, CC BY 4.0"
+    " (https://creativecommons.org/licenses/by/4.0/)",
     "Traffic volume: Virginia Department of Transportation",
     "Elevation: USGS 3D Elevation Program",
 )

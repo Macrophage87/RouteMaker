@@ -248,6 +248,20 @@ check("and upstream reads the grant in both directions",
 check("the derived tag itself never reaches the tile build",
   legal_out["rm:bridge_bicycle"] == nil)
 
+-- OWNER-DECISIONS 104: `rm:no_bicycle` (a CBD sidewalk) bars the way both ways,
+-- through upstream's own reading, and is stripped.
+local _, cbd_out = transform_way({
+  highway = "footway", footway = "sidewalk", bicycle = "yes", ["rm:no_bicycle"] = "cbd_sidewalk",
+  ["rm:trail_class"] = "yes",
+})
+check("a CBD sidewalk reaches the graph barred to bicycles",
+  cbd_out.bicycle == "no" and cbd_out.bike_forward == "false" and cbd_out.bike_backward == "false",
+  tostring(cbd_out.bicycle) .. " " .. tostring(cbd_out.bike_forward) .. "/" .. tostring(cbd_out.bike_backward))
+check("and the mark itself never reaches the tile build", cbd_out["rm:no_bicycle"] == nil)
+local _, open_out = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" })
+check("an unmarked sidewalk open to bicycles stays open",
+  open_out.bike_forward == "true", tostring(open_out.bike_forward))
+
 local _, illegal_out = transform_way({
   highway = "secondary", bridge = "yes", name = "Memorial Bridge",
   ["rm:bridge_bicycle"] = "no",

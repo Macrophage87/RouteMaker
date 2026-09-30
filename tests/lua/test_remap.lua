@@ -836,5 +836,13 @@ check("nor off one whose access is restricted",
   fac({ highway = "residential", access = "private", cycleway = "track" }, nil,
       { facility_neutral = true }).cycleway == nil)
 
+-- OWNER-DECISIONS 104: a CBD sidewalk is barred to bicycles, and nothing else is.
+check("a CBD sidewalk is bicycle=no",
+  M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" },
+    { no_bicycle = "cbd_sidewalk", is_trail_class = true }).bicycle == "no")
+check("without the mark a sidewalk keeps its bicycle tag",
+  M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" },
+    { is_trail_class = true }).bicycle == nil)
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

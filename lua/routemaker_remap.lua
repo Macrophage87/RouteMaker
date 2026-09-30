@@ -338,6 +338,13 @@ function M.remap_way(tags, derived)
     out.bicycle = "yes"
   end
 
+  -- A sidewalk bicycles may not ride (the District's Central Business
+  -- District, OWNER-DECISIONS 104; `routemaker.cbd` decides which, and never
+  -- a way signed bicycle=designated or a road). Only narrows.
+  if derived.no_bicycle then
+    out.bicycle = "no"
+  end
+
   -- The stress penalty: `bicycle=use_sidepath` on every way the classifier or
   -- a curated override rates tier 3 or more (never a trail-class way).
   -- Upstream's transform reads `use_sidepath` as bicycle access in both

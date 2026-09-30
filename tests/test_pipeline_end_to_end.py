@@ -29,6 +29,8 @@ from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
     BESIDE_TRAIL_ID,
+    CBD_CYCLE_TRACK_ID,
+    CBD_SIDEWALK_ID,
     GIB,
     LUA_LOADED_LOG,
     PARALLEL_COUNT,
@@ -480,7 +482,13 @@ def test_the_facility_class_reaches_the_extracts_and_the_segment_table(workspace
 
 def run_dials_extract(tmp_path):
     source = install_source_extract(tmp_path, build_dials_extract)
-    ids = (WEEKEND_CLOSED_ID, SEPARATE_ROAD_ID, BESIDE_TRAIL_ID)
+    ids = (
+        WEEKEND_CLOSED_ID,
+        SEPARATE_ROAD_ID,
+        BESIDE_TRAIL_ID,
+        CBD_SIDEWALK_ID,
+        CBD_CYCLE_TRACK_ID,
+    )
     context, _ = run_pipeline(source, tmp_path, urban=ids, skip=NOT_SWAPPED)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -514,6 +522,24 @@ def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
         else:
             assert tags.get("rm:stress_tier") == str(tier), variant.value
             assert tags.get("rm:facility") != "path", variant.value
+
+
+def test_a_downtown_sidewalk_is_barred_to_bicycles_in_every_graph(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 104: no sidewalk riding in the Central Business
+    District. The sidewalk is marked on every variant's extract; the cycle track
+    beside it, signed bicycle=designated, is not."""
+    from pipeline.extract import read_ways
+
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.cbd_sidewalks == {CBD_SIDEWALK_ID}
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if CBD_SIDEWALK_ID in tags:
+            assert tags[CBD_SIDEWALK_ID].get("rm:no_bicycle") == "cbd_sidewalk", variant.value
+        if CBD_CYCLE_TRACK_ID in tags:
+            assert tags[CBD_CYCLE_TRACK_ID].get("rm:no_bicycle") is None, variant.value
 
 
 def test_a_trail_beside_a_road_that_maps_its_lane_separately_is_protected(

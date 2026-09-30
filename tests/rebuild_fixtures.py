@@ -273,6 +273,8 @@ def build_parallel_extract(path: Path, *, road_id: int, trail_id: int) -> None:
 
 
 WEEKEND_CLOSED_ID = 600
+CBD_SIDEWALK_ID = 800
+CBD_CYCLE_TRACK_ID = 801
 SEPARATE_ROAD_ID = 700
 BESIDE_TRAIL_ID = 701
 
@@ -298,6 +300,11 @@ def build_dials_extract(path: Path) -> None:
             4: (-77.030, road_lat),
             5: (-77.040, trail_lat),
             6: (-77.030, trail_lat),
+            # K Street NW at 15th, inside DDOT's Central Business District.
+            7: (-77.0335, 38.9025),
+            8: (-77.0325, 38.9025),
+            9: (-77.0335, 38.9024),
+            10: (-77.0325, 38.9024),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
@@ -323,6 +330,16 @@ def build_dials_extract(path: Path) -> None:
                 },
             ),
             BESIDE_TRAIL_ID: ([5, 6], {"highway": "cycleway", "name": "Separate Avenue lane"}),
+            # OWNER-DECISIONS 104: a downtown sidewalk open to bicycles by its
+            # tags, and a cycle track beside it signed for them.
+            CBD_SIDEWALK_ID: (
+                [7, 8],
+                {"highway": "footway", "footway": "sidewalk", "bicycle": "yes"},
+            ),
+            CBD_CYCLE_TRACK_ID: (
+                [9, 10],
+                {"highway": "cycleway", "bicycle": "designated", "name": "K Street cycle track"},
+            ),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]
