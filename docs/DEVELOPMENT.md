@@ -582,6 +582,39 @@ model priced into every edge from the pipeline's elevation - would need a fork
 of the costing (PLAN's layer 3); the owner chose "Ship this, fork later
 (Recommended)".
 
+**Calibration of the tiers** (OWNER-DECISIONS 83, 84, 86, 87, 101, 105;
+`routemaker.stress`):
+
+- *Lane count in a city.* Inside the urban-area layer
+  (`reference/urban-areas.json`) a street with more than one through lane per
+  direction is read on Furth's single-lane row, and the volume gate then
+  applies to it as to a two-lane road: speed and volume decide ("Multi-lane in a
+  city isn't nearly that problematic"). The rule text says `urban multilane`.
+  Outside urban areas Furth's multilane rule stands. Lanes are counted per
+  direction as before (`tags.lanes_per_direction`: `lanes` on a one-way is every
+  lane in its one direction, on a two-way road the total halved unless
+  `lanes:forward`/`lanes:backward` say otherwise), which is also Montgomery
+  County's count of a road's total through lanes for a divided road mapped as
+  two one-way carriageways.
+- *A decent painted lane.* At 40 mph, where Furth's bike-lane table gives a lane
+  no credit and mixed traffic is LTS 4, a decent lane is LTS 3, one tier below
+  (MD 450: "I'd probably say that's LTS3"; Montgomery County's revised table
+  reads a 40 mph lane as level 3 too, and none from 45). Decent: buffered
+  (`cycleway*=buffered_lane`, or a `cycleway*:buffer` other than no), or not
+  tagged narrower than 5 ft (`DECENT_LANE_MIN_M`); an untagged width counts,
+  since the owner's example is untagged. From 45 mph a painted lane stays LTS 4.
+
+Measured over the region's source extract (2026-09-30, 934,318 road ways,
+98,638 mi; AADT and urban flags as the rebuild reads them): 10,180 ways
+(694 mi) move from LTS 4 to LTS 3, 4,907 (301 mi) from LTS 3 to LTS 2, 1,429
+(53 mi) from LTS 2 to LTS 1, and 137 (9 mi) further; nothing moves up. Of the
+LTS 4 to 3 moves, 598 mi are the urban lane rule and 93 mi the decent-lane rule.
+Routing: a road moved to LTS 3 loses the LTS 4 grading, so on the stress-averse
+positions it costs what the table below gives an LTS 3 road of its class and
+speed - for a 40 mph primary with a painted lane, 7.39 against 26.08 at stress
+90, still 1.8 times an ordinary 30 mph LTS 3 street (4.13) - and the LTS 4 to
+LTS 3 ratio on the roads that stay LTS 4 is unchanged.
+
 **Graded stress** (the owner, 2026-09-28: "Yes, grade them (Recommended)" and
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
 A way's *stress level* at a slider position is the cost its tier adds per

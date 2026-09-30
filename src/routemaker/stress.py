@@ -361,8 +361,29 @@ class StressResult:
         return self.tier >= Stress.LTS4
 
 
-def _mixed_traffic_tier(speed_mph: float, lanes: int) -> tuple[Stress, str]:
-    """Furth mixed-traffic criteria: speed first, then lane count."""
+# Lane count inside an urban area (OWNER-DECISIONS 87 and 101: "Multi-lane in a
+# city isn't nearly that problematic", "We should change the rules, those are
+# wrong"). Furth's mixed-traffic table makes a second through lane each way worth
+# a full tier at every speed, which put a 30 mph two-lane one-way District street
+# at LTS 4 on its lane count alone. Inside the urban-area layer
+# (reference/urban-areas.json) the lane count is not scored: the street is read
+# on the single-lane row, and its speed and its volume decide - the volume gate,
+# which Furth applies to two-lane roads, applies there too, so a multi-lane city
+# street carrying more than VOLUME_BUSY still comes out a tier higher. Outside
+# urban areas the multilane rule stands.
+URBAN_SCORED_LANES = 1
+
+
+def _mixed_traffic_tier(
+    speed_mph: float, lanes: int, urban_multilane: bool = False
+) -> tuple[Stress, str]:
+    """Furth mixed-traffic criteria: speed first, then lane count.
+
+    `urban_multilane` names the row in the rule text: a multi-lane urban street
+    is read on the single-lane row (`URBAN_SCORED_LANES`), and says so."""
+    if urban_multilane:
+        tier, rule = _mixed_traffic_tier(speed_mph, URBAN_SCORED_LANES)
+        return tier, rule.replace("single lane", "urban multilane")
     if speed_mph >= 35:
         return Stress.LTS4, "mixed traffic, 35 mph or above"
     if speed_mph >= 30:
@@ -441,6 +462,49 @@ def _bike_lane_tier(
     if narrow:
         return Stress.LTS2, f"{facility}, narrow at 25 mph or below"
     return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
+
+
+# A decent painted lane (OWNER-DECISIONS 83, 84 and 101: MD 450 near Annapolis,
+# 40 mph with a painted lane, "I'd probably say that's LTS3. Perhaps reduce it
+# by 1 or so."). Furth's bike-lane table gives no credit at all at 40 mph and
+# above, where mixed traffic is LTS 4; a decent lane there is one tier below it,
+# LTS 3. Montgomery County's revised table (Montgomery Planning, Bicycle Master
+# Plan Appendix D, 2017; OWNER-DECISIONS 105) reads a lane the same way at 40
+# mph - level 3 on two or three lanes, and on four or five with a raised median
+# - and gives none from 45 mph, so the credit stops at DECENT_LANE_MAX_MPH: at
+# 45 mph and more a painted lane stays LTS 4, and an expressway posted 50 or
+# more is "legal but avoid" whatever it carries (`legal_but_avoid`). Below 40
+# mph Furth's table already reads a lane at least a tier below mixed traffic.
+#
+# "Decent" is read from the tags the lane carries, as far as they go: a buffered
+# lane (`cycleway*=buffered_lane`, or a `cycleway*:buffer` other than no), or a
+# lane whose surveyed width is at least DECENT_LANE_MIN_M (5 ft, the usual
+# minimum for a lane beside a curb). A lane with no width tagged is decent: the
+# owner's example, MD 450, is tagged `cycleway:right=lane` and nothing more,
+# and he calls it wide. A lane tagged narrower than 5 ft is not.
+DECENT_LANE_MAX_MPH = 40.0
+# Where Furth's bike-lane table stops giving a lane any credit (`_bike_lane_tier`).
+FURTH_LANE_NO_CREDIT_MPH = 40.0
+DECENT_LANE_MIN_M = 1.5
+BUFFER_KEYS = (
+    "cycleway:buffer",
+    "cycleway:both:buffer",
+    "cycleway:left:buffer",
+    "cycleway:right:buffer",
+)
+
+
+def lane_is_buffered(tags: dict[str, str], cycleways: set[str]) -> bool:
+    """A painted lane with a buffer: `buffered_lane`, or a buffer tag that is not "no"."""
+    if "buffered_lane" in cycleways:
+        return True
+    return any(tags.get(key) not in (None, "no", "none", "0") for key in BUFFER_KEYS)
+
+
+def decent_lane(tags: dict[str, str], cycleways: set[str], width_m: float | None) -> bool:
+    """Whether a painted lane is decent (see DECENT_LANE_MIN_M): buffered, or not
+    tagged narrower than 5 ft."""
+    return lane_is_buffered(tags, cycleways) or width_m is None or width_m >= DECENT_LANE_MIN_M
 
 
 # "Legal but avoid", by rule. OSM's `expressway=yes` is a divided highway with
@@ -554,6 +618,10 @@ def _classify(
     if lanes is None:
         lanes = DEFAULT_LANES_PER_DIRECTION
         assumed.append("lanes")
+    # The lane count the tables read (see URBAN_SCORED_LANES): inside an urban
+    # area a multi-lane street is read on the single-lane row.
+    urban_multilane = urban and lanes > URBAN_SCORED_LANES
+    scored_lanes = URBAN_SCORED_LANES if urban_multilane else lanes
 
     # The provision on the *worst side a rider may be made to use*, not every
     # value tagged anywhere on the way. On a two-way street the sides are the
@@ -603,9 +671,16 @@ def _classify(
         width = cycleway_width_m(tags)
         if width is None:
             assumed.append("cycleway width")
-        tier, rule = _bike_lane_tier(speed_mph, lanes, width, parking)
+        tier, rule = _bike_lane_tier(speed_mph, scored_lanes, width, parking)
+        if FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH and decent_lane(
+            tags, cycleways, width
+        ):
+            # Mixed traffic is LTS 4 at these speeds on any lane count, and so
+            # is Furth's table for the lane: a tier below it.
+            tier = Stress.LTS3
+            rule = f"bike lane, decent, {speed_mph:g} mph: a tier below mixed traffic"
     else:
-        tier, rule = _mixed_traffic_tier(speed_mph, lanes)
+        tier, rule = _mixed_traffic_tier(speed_mph, scored_lanes, urban_multilane)
         # A rideable paved shoulder is scored on the *bike-lane* table, not by
         # subtracting a tier from mixed traffic.
         #
@@ -692,7 +767,7 @@ def _classify(
                 shoulder_parking = parking if parking is True else False
                 shoulder_tier, shoulder_rule = _bike_lane_tier(
                     speed_mph,
-                    lanes,
+                    scored_lanes,
                     shoulder_width,
                     shoulder_parking,
                     facility="paved shoulder",
@@ -727,7 +802,7 @@ def _classify(
     # not the modifier below moved the tier.
     volume_source = aadt_source if aadt is not None else None
     volume_year = aadt_year if aadt is not None else None
-    if aadt is not None and lanes <= 1 and not has_facility:
+    if aadt is not None and scored_lanes <= 1 and not has_facility:
         # A guessed speed may not be improved by a guess, but a measured count is
         # evidence: the conservative rule is about missing evidence, not about
         # refusing what is there. So a real AADT relieves an assumed speed, while

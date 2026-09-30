@@ -58,7 +58,7 @@ class TestSpeedOutranksVolume:
         """Furth applies volume as a modifier on two-lane roads, so a multilane
         arterial's tier must not move when a count is attached."""
         tags = {"highway": "primary", "maxspeed": "30 mph", "lanes": "4"}
-        assert classify(tags).tier == classify(tags, aadt=200).tier
+        assert classify_rural(tags).tier == classify_rural(tags, aadt=200).tier
 
 
 class TestFacility:
@@ -125,9 +125,13 @@ class TestFacility:
         assert classify({**street, "cycleway": "track"}).tier is Stress.LTS1
 
     def test_bike_lane_does_not_rescue_a_fast_road(self) -> None:
-        """A painted lane at 40 mph is still LTS4: paint is not separation."""
-        result = classify({"highway": "primary", "maxspeed": "45 mph", "cycleway": "lane"})
+        """A painted lane at 45 mph is still LTS4: paint is not separation. At 40
+        mph a decent one is a tier below mixed traffic (OWNER-DECISIONS 84, 101;
+        Montgomery County's table, 105), and that is all it is."""
+        result = classify_rural({"highway": "primary", "maxspeed": "45 mph", "cycleway": "lane"})
         assert result.tier is Stress.LTS4
+        result = classify_rural({"highway": "primary", "maxspeed": "40 mph", "cycleway": "lane"})
+        assert result.tier is Stress.LTS3
 
 
 class TestConservativeDefaults:
@@ -142,7 +146,7 @@ class TestConservativeDefaults:
     def test_unknown_parking_is_read_as_present(self) -> None:
         """Absence of a parking tag is not evidence that parking is absent, and the
         higher-stress reading is the one with the door zone in it."""
-        untagged = classify(
+        untagged = classify_rural(
             {
                 "highway": "tertiary",
                 "maxspeed": "25 mph",
@@ -150,7 +154,7 @@ class TestConservativeDefaults:
                 "cycleway:width": "2.0",
             }
         )
-        no_parking = classify(
+        no_parking = classify_rural(
             {
                 "highway": "tertiary",
                 "maxspeed": "25 mph",
@@ -259,8 +263,8 @@ class TestLanesPerDirection:
         with them tagged forward - one tier of difference decided by which side
         a mapper wrote first."""
         road = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "4"}
-        forward = classify({**road, "lanes:forward": "1", "lanes:backward": "3"})
-        backward = classify({**road, "lanes:forward": "3", "lanes:backward": "1"})
+        forward = classify_rural({**road, "lanes:forward": "1", "lanes:backward": "3"})
+        backward = classify_rural({**road, "lanes:forward": "3", "lanes:backward": "1"})
         assert forward.tier is backward.tier is Stress.LTS4
         assert "single lane" not in forward.rule
         assert "single lane" not in backward.rule
@@ -534,11 +538,13 @@ class TestRulesThatHadNoTest:
     def test_an_unknown_bike_lane_width_is_read_as_narrow(self) -> None:
         """The conservative default, and the common case in this region's
         tagging."""
-        unmeasured = classify({"highway": "tertiary", "maxspeed": "25 mph", "cycleway": "lane"})
+        unmeasured = classify_rural(
+            {"highway": "tertiary", "maxspeed": "25 mph", "cycleway": "lane"}
+        )
         assert unmeasured.tier is Stress.LTS2
         assert "cycleway width" in unmeasured.assumed
 
-        surveyed = classify(
+        surveyed = classify_rural(
             {
                 "highway": "tertiary",
                 "maxspeed": "25 mph",
@@ -754,18 +760,22 @@ class TestTheProvisionHierarchy:
         road = {"highway": "secondary", "maxspeed": "30 mph"}
         surveyed = {"shoulder": "both", "shoulder:width": "2.4"}
 
-        assert classify(road).tier is Stress.LTS3
-        assert classify({**road, **surveyed}).tier is Stress.LTS2, (
+        assert classify_rural(road).tier is Stress.LTS3
+        assert classify_rural({**road, **surveyed}).tier is Stress.LTS2, (
             "an eight-foot shoulder on a 30 mph two-lane road is not a door zone"
         )
         # The same width of painted lane, on the same untagged road, stays at the
         # conservative reading - there may be a parking lane beside it.
-        assert classify({**road, "cycleway": "lane", "cycleway:width": "2.4"}).tier is Stress.LTS3
+        assert (
+            classify_rural({**road, "cycleway": "lane", "cycleway:width": "2.4"}).tier
+            is Stress.LTS3
+        )
         # Declare the parking absent and the two provisions agree exactly.
         declared = {**road, "parking:both": "no"}
-        assert classify({**declared, **surveyed}).tier is Stress.LTS2
+        assert classify_rural({**declared, **surveyed}).tier is Stress.LTS2
         assert (
-            classify({**declared, "cycleway": "lane", "cycleway:width": "2.4"}).tier is Stress.LTS2
+            classify_rural({**declared, "cycleway": "lane", "cycleway:width": "2.4"}).tier
+            is Stress.LTS2
         )
 
     def test_a_shoulder_beside_declared_parking_is_measured_against_the_wider_width(
@@ -787,8 +797,8 @@ class TestTheProvisionHierarchy:
         then wrote `cycleway=track` onto a street that declares a parking lane.
         """
         street = {"highway": "residential", "maxspeed": "25 mph", "parking:both": "parallel"}
-        shoulder = classify({**street, "shoulder": "both", "shoulder:width": "2.4"})
-        painted = classify({**street, "cycleway": "lane", "cycleway:width": "2.4"})
+        shoulder = classify_rural({**street, "shoulder": "both", "shoulder:width": "2.4"})
+        painted = classify_rural({**street, "cycleway": "lane", "cycleway:width": "2.4"})
 
         assert shoulder.tier is Stress.LTS2
         assert painted.tier is Stress.LTS2
@@ -797,13 +807,13 @@ class TestTheProvisionHierarchy:
         )
         # Not denied outright: a strip that clears the beside-parking criterion
         # earns exactly what a bike lane of that width earns.
-        wide = classify({**street, "shoulder": "both", "shoulder:width": "4.5"})
+        wide = classify_rural({**street, "shoulder": "both", "shoulder:width": "4.5"})
         assert wide.tier is Stress.LTS1
         assert "paved shoulder" in wide.rule
 
         # And the unknown-parking road keeps the wave-3 reading, unchanged.
         untagged = {"highway": "residential", "maxspeed": "25 mph"}
-        assert classify({**untagged, "shoulder": "both", "shoulder:width": "2.4"}).tier is (
+        assert classify_rural({**untagged, "shoulder": "both", "shoulder:width": "2.4"}).tier is (
             Stress.LTS1
         )
 
@@ -1004,22 +1014,29 @@ class TestThePathsToTopTier:
     def test_thirty_is_the_multilane_boundary(self) -> None:
         single = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "2"}
         multi = {"highway": "secondary", "maxspeed": "30 mph", "lanes": "4"}
-        assert classify(single).tier is Stress.LTS3
-        assert classify(multi).tier is Stress.LTS4
-        assert classify({**multi, "maxspeed": "29 mph"}).tier is Stress.LTS3
+        assert classify_rural(single).tier is Stress.LTS3
+        assert classify_rural(multi).tier is Stress.LTS4
+        assert classify_rural({**multi, "maxspeed": "29 mph"}).tier is Stress.LTS3
 
     def test_twenty_is_the_quiet_street_boundary(self) -> None:
         single = {"highway": "residential", "lanes": "2"}
-        assert classify({**single, "maxspeed": "20 mph"}).tier is Stress.LTS1
-        assert classify({**single, "maxspeed": "21 mph"}).tier is Stress.LTS2
+        assert classify_rural({**single, "maxspeed": "20 mph"}).tier is Stress.LTS1
+        assert classify_rural({**single, "maxspeed": "21 mph"}).tier is Stress.LTS2
         multi = {"highway": "residential", "lanes": "4"}
-        assert classify({**multi, "maxspeed": "20 mph"}).tier is Stress.LTS2
-        assert classify({**multi, "maxspeed": "21 mph"}).tier is Stress.LTS3
+        assert classify_rural({**multi, "maxspeed": "20 mph"}).tier is Stress.LTS2
+        assert classify_rural({**multi, "maxspeed": "21 mph"}).tier is Stress.LTS3
 
     def test_forty_is_the_bike_lane_boundary(self) -> None:
+        """Furth's table gives a lane nothing from 40 mph; a decent lane keeps
+        a tier at 40 (OWNER-DECISIONS 84, 101; Montgomery County's 40 mph row,
+        105), none from 41, and a narrow one none at all."""
         lane = {"highway": "primary", "cycleway": "lane", "cycleway:width": "2.0"}
-        assert classify({**lane, "maxspeed": "40 mph"}).tier is Stress.LTS4
-        assert classify({**lane, "maxspeed": "39 mph"}).tier is Stress.LTS3
+        assert classify_rural({**lane, "maxspeed": "39 mph"}).tier is Stress.LTS3
+        assert classify_rural({**lane, "maxspeed": "40 mph"}).tier is Stress.LTS3
+        assert classify_rural({**lane, "maxspeed": "41 mph"}).tier is Stress.LTS4
+        assert classify_rural({**lane, "maxspeed": "45 mph"}).tier is Stress.LTS4
+        narrow = {**lane, "cycleway:width": "1.2", "maxspeed": "40 mph"}
+        assert classify_rural(narrow).tier is Stress.LTS4
 
     def test_a_motor_only_classification_is_top_tier_whatever_else_it_carries(self) -> None:
         assert classify({"highway": "motorway", "cycleway": "track"}).tier is Stress.LTS4
@@ -1277,18 +1294,22 @@ class TestThePinnedFurthWidths:
         the exact width at which the tier moves, so rescaling either one moves a
         tier here even if the flat assertions above were edited to match."""
         beside = {"highway": "tertiary", "maxspeed": "25 mph", "cycleway": "lane"}
-        assert classify({**beside, "cycleway:width": str(FURTH_LANE_BESIDE_PARKING_M)}).tier is (
-            Stress.LTS1
-        )
+        assert classify_rural(
+            {**beside, "cycleway:width": str(FURTH_LANE_BESIDE_PARKING_M)}
+        ).tier is (Stress.LTS1)
         assert (
-            classify({**beside, "cycleway:width": str(FURTH_LANE_BESIDE_PARKING_M - 0.01)}).tier
+            classify_rural(
+                {**beside, "cycleway:width": str(FURTH_LANE_BESIDE_PARKING_M - 0.01)}
+            ).tier
             is Stress.LTS2
         )
 
         alone = {**beside, "parking:both": "no"}
-        assert classify({**alone, "cycleway:width": str(FURTH_LANE_ALONE_M)}).tier is Stress.LTS1
         assert (
-            classify({**alone, "cycleway:width": str(FURTH_LANE_ALONE_M - 0.01)}).tier
+            classify_rural({**alone, "cycleway:width": str(FURTH_LANE_ALONE_M)}).tier is Stress.LTS1
+        )
+        assert (
+            classify_rural({**alone, "cycleway:width": str(FURTH_LANE_ALONE_M - 0.01)}).tier
             is Stress.LTS2
         )
 
@@ -1434,12 +1455,12 @@ class TestTheCyclewayWidthIsTheCyclewaysOwn:
     }
 
     def test_a_surveyed_carriageway_does_not_widen_the_bike_lane(self) -> None:
-        surveyed_roadway = classify({**self.ARTERIAL, "width": "12"})
+        surveyed_roadway = classify_rural({**self.ARTERIAL, "width": "12"})
         assert surveyed_roadway.tier is Stress.LTS3, "the roadway's width was read as the lane's"
         assert "cycleway width" in surveyed_roadway.assumed
         # And the way it is meant to work: the cycleway's own width, which on
         # this road is the difference between LTS3 and LTS2.
-        assert classify({**self.ARTERIAL, "cycleway:width": "2.0"}).tier is Stress.LTS2
+        assert classify_rural({**self.ARTERIAL, "cycleway:width": "2.0"}).tier is Stress.LTS2
 
     def test_a_surveyed_carriageway_changes_nothing_at_all(self) -> None:
         """Not merely "does not help": `width` is not an input to this table in
@@ -1452,7 +1473,7 @@ class TestTheCyclewayWidthIsTheCyclewaysOwn:
         ["cycleway:width", "cycleway:both:width", "cycleway:left:width", "cycleway:right:width"],
     )
     def test_every_cycleway_width_key_is_read(self, key: str) -> None:
-        result = classify({**self.ARTERIAL, key: "2.0"})
+        result = classify_rural({**self.ARTERIAL, key: "2.0"})
         assert result.tier is Stress.LTS2, f"{key} was not read"
         assert "cycleway width" not in result.assumed
 
@@ -1733,18 +1754,18 @@ class TestTheCyclewayValueSets:
     @pytest.mark.parametrize("key", KEYS)
     @pytest.mark.parametrize("value", PAINTED)
     def test_every_painted_member_takes_the_bike_lane_table(self, value: str, key: str) -> None:
-        """Paint is not separation: the bike-lane table still rates 45 mph LTS4,
+        """Paint is not separation: the bike-lane table still rates 50 mph LTS4,
         and a wide lane on a quiet street LTS1, which mixed traffic would not.
 
         The width is tagged on the matching key form - `cycleway:left=lane` with
         `cycleway:left:width` - which is how a mapper writes a one-sided lane.
         """
         street = {"highway": "residential", "maxspeed": "25 mph", "parking:both": "no"}
-        result = classify({**self.way(street, key, value), f"{key}:width": "2.0"})
+        result = classify_rural({**self.way(street, key, value), f"{key}:width": "2.0"})
         assert result.tier is Stress.LTS1, f"{key}={value} did not read as a painted lane"
         assert "bike lane" in result.rule
-        fast = {"highway": "primary", "maxspeed": "45 mph"}
-        assert classify(self.way(fast, key, value)).tier is Stress.LTS4
+        fast = {"highway": "primary", "maxspeed": "50 mph"}
+        assert classify_rural(self.way(fast, key, value)).tier is Stress.LTS4
 
     @pytest.mark.parametrize("key", KEYS)
     @pytest.mark.parametrize("value", SEPARATED + PAINTED)
@@ -1766,8 +1787,8 @@ class TestTheCyclewayValueSets:
         shape of a contraflow or one-sided protected lane downtown.
         """
         street = {"highway": "secondary", "maxspeed": "25 mph", "oneway": "yes", "lanes": "2"}
-        assert classify(street).tier is Stress.LTS3, "what the road is without the track"
-        assert classify({**street, "cycleway:left": "track"}).tier is Stress.LTS1
+        assert classify_rural(street).tier is Stress.LTS3, "what the road is without the track"
+        assert classify_rural({**street, "cycleway:left": "track"}).tier is Stress.LTS1
 
 
 class TestTheWorstSideIsTheOneScored:
@@ -1957,20 +1978,23 @@ class TestTheWorstSideIsTheOneScored:
         District's downtown protected network - and there is no second direction
         of travel to strand, so the one-sided reading is the correct one."""
         oneway = {"highway": "secondary", "maxspeed": "25 mph", "oneway": "yes", "lanes": "2"}
-        assert classify(oneway).tier is Stress.LTS3
-        assert classify({**oneway, "cycleway:left": "opposite_track"}).tier is Stress.LTS1
+        assert classify_rural(oneway).tier is Stress.LTS3
+        assert classify_rural({**oneway, "cycleway:left": "opposite_track"}).tier is Stress.LTS1
         single = {**oneway, "lanes": "1", "parking:both": "no"}
-        assert classify(single).tier is Stress.LTS2
-        contraflow = classify(
+        assert classify_rural(single).tier is Stress.LTS2
+        contraflow = classify_rural(
             {**single, "cycleway:left": "opposite_lane", "cycleway:left:width": "2.0"}
         )
         assert contraflow.tier is Stress.LTS1
         assert "bike lane" in contraflow.rule
         # `oneway=-1` is the same street drawn the other way round.
-        assert classify({**oneway, "oneway": "-1", "cycleway:right": "track"}).tier is Stress.LTS1
+        assert (
+            classify_rural({**oneway, "oneway": "-1", "cycleway:right": "track"}).tier
+            is Stress.LTS1
+        )
         # And a one-way street with a shoulder on the side it has.
         shouldered = {**oneway, "maxspeed": "35 mph", "shoulder:right": "yes"}
-        assert classify({**shouldered, "shoulder:right:width": "2.4"}).tier is Stress.LTS3
+        assert classify_rural({**shouldered, "shoulder:right:width": "2.4"}).tier is Stress.LTS3
 
 
 # --- "Legal but avoid" (the owner's fifth category, 2026-09-27) --------------
@@ -2006,6 +2030,21 @@ def test_everything_else_keeps_its_furth_tier(tags):
     assert result == _classify(tags)
 
 
+def classify_rural(tags, *args, **kwargs):
+    """`classify` outside an urban area, where Furth's multilane rule stands
+    (OWNER-DECISIONS 87/101: inside one the lane count is not scored). The
+    Furth-table tests read the table as Furth wrote it."""
+    from routemaker.stress import classify
+
+    return classify(tags, *args, **{"urban": False, **kwargs})
+
+
+def _classify_rural(tags, *args, **kwargs):
+    from routemaker.stress import _classify
+
+    return _classify(tags, *args, **{"urban": False, **kwargs})
+
+
 def test_the_category_sits_above_the_furth_scale():
     from routemaker.stress import Stress
 
@@ -2021,3 +2060,133 @@ def test_every_class_of_the_avoid_rule_takes_it(highway):
 
     tags = {"highway": highway, "expressway": "yes", "maxspeed": "50 mph"}
     assert legal_but_avoid(tags) == "legal but avoid: expressway posted 50 mph"
+
+
+# --- OWNER-DECISIONS 87 and 101: lane count in an urban area ------------------
+
+
+class TestUrbanMultilane:
+    """Inside an urban area a multi-lane street is read on the single-lane row;
+    its speed and volume decide. Outside one, Furth's multilane rule stands."""
+
+    street = {"highway": "tertiary", "maxspeed": "30 mph", "lanes": "2", "oneway": "yes"}
+
+    def test_a_thirty_mph_two_lane_one_way_city_street_is_lts3(self) -> None:
+        # 22nd Street NW's tertiary stretch, way 1047590271's shape.
+        result = classify(self.street, urban=True)
+        assert result.tier is Stress.LTS3
+        assert result.rule == "mixed traffic, 30 mph, urban multilane"
+
+    def test_outside_an_urban_area_the_multilane_rule_stands(self) -> None:
+        result = classify(self.street, urban=False)
+        assert result.tier is Stress.LTS4
+        assert result.rule == "mixed traffic, 30 mph, multilane"
+
+    @pytest.mark.parametrize(
+        ("speed", "tier"),
+        [("20 mph", Stress.LTS1), ("25 mph", Stress.LTS2), ("35 mph", Stress.LTS4)],
+    )
+    def test_speed_still_decides(self, speed, tier) -> None:
+        assert classify({**self.street, "maxspeed": speed}, urban=True).tier is tier
+
+    def test_volume_decides_too(self) -> None:
+        """16th Street NW's shape: 30 mph, two lanes one way, AADT 29,000."""
+        busy = classify(self.street, aadt=29_000, urban=True)
+        assert busy.tier is Stress.LTS4
+        assert busy.rule == "mixed traffic, 30 mph, urban multilane, high volume"
+        quiet = classify(self.street, aadt=VOLUME_QUIET, urban=True)
+        assert quiet.tier is Stress.LTS2
+        # Outside, volume is not read on a multilane road (Furth).
+        assert classify(self.street, aadt=29_000, urban=False).tier is Stress.LTS4
+        assert classify(self.street, aadt=VOLUME_QUIET, urban=False).tier is Stress.LTS4
+
+    def test_a_shoulder_on_a_multilane_city_street_is_read_on_the_single_lane_row(self) -> None:
+        road = {
+            "highway": "primary",
+            "maxspeed": "25 mph",
+            "lanes": "4",
+            "shoulder": "both",
+            "shoulder:width": "2.0",
+        }
+        assert classify(road, urban=True).tier is Stress.LTS1
+        assert "paved shoulder" in classify(road, urban=True).rule
+        assert classify(road, urban=False).tier is Stress.LTS2
+
+    def test_a_single_lane_street_is_unchanged(self) -> None:
+        one = {**self.street, "lanes": "1"}
+        assert classify(one, urban=True) == classify(one, urban=False)
+
+    def test_a_bike_lane_on_a_multilane_city_street_is_read_on_the_single_lane_row(self) -> None:
+        lane = {
+            **self.street,
+            "maxspeed": "25 mph",
+            "cycleway:right": "lane",
+            "cycleway:right:width": "2.0",
+            "parking:both": "no",
+        }
+        assert classify(lane, urban=True).tier is Stress.LTS1
+        assert classify(lane, urban=False).tier is Stress.LTS2
+
+
+# --- OWNER-DECISIONS 83, 84 and 101: a decent painted lane --------------------
+
+
+class TestADecentLane:
+    """MD 450 near Annapolis: 40 mph, two lanes one way, `cycleway:right=lane`
+    and nothing more. The owner: "I'd probably say that's LTS3"."""
+
+    md450 = {
+        "highway": "primary",
+        "maxspeed": "40 mph",
+        "lanes": "2",
+        "oneway": "yes",
+        "cycleway:right": "lane",
+    }
+
+    @pytest.mark.parametrize("urban", [True, False])
+    def test_md_450_is_lts3(self, urban) -> None:
+        result = classify(self.md450, urban=urban)
+        assert result.tier is Stress.LTS3
+        assert result.rule == "bike lane, decent, 40 mph: a tier below mixed traffic"
+
+    def test_a_lane_tagged_narrower_than_five_feet_is_not_decent(self) -> None:
+        narrow = {**self.md450, "cycleway:right:width": "1.4"}
+        assert classify(narrow).tier is Stress.LTS4
+        assert classify({**narrow, "cycleway:right:width": "1.5"}).tier is Stress.LTS3
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"cycleway:right": "buffered_lane"},
+            {"cycleway:right:buffer": "yes"},
+            {"cycleway:both:buffer": "0.5"},
+            {"cycleway:buffer": "yes"},
+            {"cycleway:left:buffer": "yes"},
+        ],
+    )
+    def test_a_buffered_lane_is_decent_at_any_width(self, extra) -> None:
+        narrow = {**self.md450, "cycleway:right:width": "1.2", **extra}
+        assert classify(narrow).tier is Stress.LTS3
+
+    @pytest.mark.parametrize("value", ["no", "none", "0"])
+    def test_a_buffer_tag_saying_none_is_not_a_buffer(self, value) -> None:
+        narrow = {**self.md450, "cycleway:right:width": "1.2", "cycleway:right:buffer": value}
+        assert classify(narrow).tier is Stress.LTS4
+
+    def test_from_45_mph_a_lane_is_no_credit(self) -> None:
+        """Montgomery County's table (OWNER-DECISIONS 105): level 4 from 45 mph."""
+        assert classify({**self.md450, "maxspeed": "45 mph"}).tier is Stress.LTS4
+        assert classify({**self.md450, "maxspeed": "40 mph"}).tier is Stress.LTS3
+
+    def test_an_expressway_is_still_legal_but_avoid(self) -> None:
+        road = {**self.md450, "highway": "trunk", "expressway": "yes", "maxspeed": "55 mph"}
+        assert classify(road).tier is Stress.AVOID
+
+    def test_below_forty_furths_table_is_unchanged(self) -> None:
+        """Below 40 mph the table already gives a lane its credit; the rule
+        never lowers a narrow lane at 30 or 35 (the door zone stands)."""
+        for speed in ("25 mph", "30 mph", "35 mph"):
+            road = {**self.md450, "maxspeed": speed, "cycleway:right:width": "1.0"}
+            assert classify(road, urban=False) == classify(road, urban=False)
+        assert classify({**self.md450, "maxspeed": "30 mph"}, urban=False).tier is Stress.LTS3
+        assert classify({**self.md450, "maxspeed": "35 mph"}, urban=False).tier is Stress.LTS3
