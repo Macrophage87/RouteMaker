@@ -191,6 +191,10 @@ class RouteIn(Schema):
             " pace; the hills slider keeps Cargo Bike's start."
         ),
     )
+    avoid_gravel: StrictBool = Field(
+        default=False,
+        description="Steer off unpaved surfaces where there is a paved way round. Any ride type.",
+    )
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
@@ -297,6 +301,7 @@ class DialsOut(Schema):
     when: WhenName
     carrying: CarryingName | None
     assist: bool
+    avoid_gravel: bool = False
 
 
 class HillsSeekOut(Schema):
@@ -547,6 +552,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
             when=body.when,
             carrying=body.carrying,
             assist=body.assist,
+            avoid_gravel=body.avoid_gravel,
         )
         return Status(
             200,

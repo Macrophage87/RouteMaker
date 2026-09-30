@@ -9,8 +9,11 @@ the rebuild; `lua/routemaker_remap.lua` turns it into `bicycle=no`).
 The boundary is DDOT's own, "DDOT Central Business District" on Open Data DC
 (fixtures/cbd/README.md has its source, licence and retrieval). The exempt
 areas are the National Mall, the Washington Monument Grounds and President's
-Park from OpenStreetMap, and the Capitol grounds, which OSM does not map as an
-area, hand-drawn from the streets around them (fixtures/cbd/federal-exempt.geojson).
+Park from OpenStreetMap (fixtures/cbd/federal-exempt.geojson), and the
+Architect of the Capitol's jurisdiction from Open Data DC, which is the Capitol
+grounds and the buildings around them (OWNER-DECISIONS 113: "The capitol
+grounds are a very good place to ride and avoid some major roads, so
+definitely include.").
 
 A sidewalk is a way mapped as one (`footway`, `path` or `cycleway` =
 `sidewalk`), and only where it is not signed for bicycles: a way tagged
@@ -29,6 +32,7 @@ from pathlib import Path
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "cbd"
 CBD_FILE = FIXTURES / "dc-central-business-district.geojson"
 EXEMPT_FILE = FIXTURES / "federal-exempt.geojson"
+AOC_FILE = FIXTURES / "architect-of-the-capitol.geojson"
 
 SIDEWALK_KEYS = ("footway", "path", "cycleway")
 SIDEWALK_HIGHWAY = frozenset({"footway", "path", "cycleway"})
@@ -56,7 +60,7 @@ def load(path: Path) -> list[Polygon]:
 @lru_cache(maxsize=1)
 def areas() -> tuple[list[Polygon], list[Polygon]]:
     """The CBD and the exempt federal areas, read once."""
-    return load(CBD_FILE), load(EXEMPT_FILE)
+    return load(CBD_FILE), load(EXEMPT_FILE) + load(AOC_FILE)
 
 
 def _in_ring(point: tuple[float, float], ring: Ring) -> bool:

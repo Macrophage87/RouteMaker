@@ -367,3 +367,15 @@ def test_use_roads_follows_every_slider_step(stress, use_roads) -> None:
 @pytest.mark.parametrize(("hills", "use_hills"), [(-33, 0.67), (-95, 0.05), (-5, 0.95), (40, 1.0)])
 def test_use_hills_follows_every_slider_step(hills, use_hills) -> None:
     assert presets.use_hills_for(hills) == use_hills
+
+
+def test_avoid_gravel_raises_every_presets_surface_avoidance_and_arms_no_exclusion() -> None:
+    """OWNER-DECISIONS 91, 92, 111: any ride type, off by default; at most
+    AVOID_GRAVEL_SURFACES, never the hard exclusion at 1.0; a preset already
+    avoiding more keeps its own."""
+    for name in presets.PRESETS:
+        plain = presets.costing(name)["bicycle"]["avoid_bad_surfaces"]
+        steered = presets.costing(name, avoid_gravel=True)["bicycle"]["avoid_bad_surfaces"]
+        assert steered == max(plain, presets.AVOID_GRAVEL_SURFACES), name
+        assert steered < 1.0, name
+        assert presets.costing(name, avoid_gravel=False) == presets.costing(name), name

@@ -33,7 +33,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
-from routemaker import cbd, facility, ridetime
+from routemaker import cbd, divided, facility, ridetime, singletrack
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
@@ -445,6 +445,8 @@ class RebuildContext:
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
+    # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
+    singletracks: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -882,6 +884,12 @@ def build_handlers(
 
     def classify_stress() -> None:
         reference = context.require_reference()
+        # Whose statutory speed default an unposted way takes (the District's
+        # 20 mph, OWNER-DECISIONS 108): the state layer, once for every way.
+        state_of = way_states(context.ways)
+        # One-way ways that are a carriageway of a divided road, which item
+        # 109's one-way relief does not apply to.
+        divided_ways = divided.carriageways(context.ways)
         for way in context.ways:
             match = context.aadt_by_way.get(way.osm_id)
             context.stress_by_way[way.osm_id] = classify(
@@ -893,6 +901,8 @@ def build_handlers(
                 aadt_source=match.agency if match else None,
                 aadt_year=match.year if match else None,
                 urban=way.osm_id in reference.urban_way_ids,
+                jurisdiction=state_of.get(way.osm_id),
+                divided=way.osm_id in divided_ways,
             )
 
     def tag_jurisdictions() -> None:
@@ -1069,17 +1079,20 @@ def build_handlers(
                 context.car_free_by_way[way.osm_id] = closed
             if cbd.barred_sidewalk(way.tags, way.coordinates):
                 context.cbd_sidewalks.add(way.osm_id)
+            if singletrack.is_singletrack(way.tags):
+                context.singletracks.add(way.osm_id)
             if car_free_tier_1(way, context.stress_by_way):
                 car_free_for_good += 1
         logger.info(
             "facility classes: %s; %d ways car-free at set times, %d car-free for good "
             "(tier 1), %d beside a road that maps its facility separately, %d CBD sidewalks "
-            "barred to bicycles",
+            "barred to bicycles, %d singletrack ways avoided",
             dict(sorted(Counter(context.facility_by_way.values()).items())),
             len(context.car_free_by_way),
             car_free_for_good,
             len(beside),
             len(context.cbd_sidewalks),
+            len(context.singletracks),
         )
 
     def inject_tags() -> None:
@@ -1214,6 +1227,8 @@ def build_handlers(
                     derived["lit"] = lit
                 if way.osm_id in context.cbd_sidewalks:
                     derived["no_bicycle"] = cbd.NO_BICYCLE
+                if way.osm_id in context.singletracks:
+                    derived["no_bicycle"] = singletrack.NO_BICYCLE
 
                 per_way_tags[way.osm_id] = {**changes, **extract.derived_tags(derived)}
 
@@ -1515,6 +1530,29 @@ def _run_command(
         logger.warning("%s", failure)
         raise failure from error
     return tiles.CommandOutput(result.stdout, result.stderr)
+
+
+def way_states(ways) -> dict[int, str]:
+    """Each way's state (DC, MD, VA), by its middle vertex on the state layer,
+    in one query rather than one a way."""
+    from django.db import connection
+
+    points = [
+        (way.osm_id, *way.coordinates[len(way.coordinates) // 2]) for way in ways if way.coordinates
+    ]
+    if not points:
+        return {}
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """SELECT DISTINCT ON (p.id) p.id, j.state
+               FROM unnest(%s::bigint[], %s::float8[], %s::float8[]) AS p(id, lon, lat)
+               JOIN jurisdiction AS j
+                 ON j.layer = 'state' AND j.state IS NOT NULL
+                AND ST_Contains(j.geometry, ST_SetSRID(ST_MakePoint(p.lon, p.lat), 4326))
+               ORDER BY p.id, j.id""",
+            [[p[0] for p in points], [p[1] for p in points], [p[2] for p in points]],
+        )
+        return dict(cursor.fetchall())
 
 
 def _state_at(lon: float, lat: float) -> str | None:

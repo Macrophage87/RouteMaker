@@ -63,7 +63,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const seek = hillsMax(preset) > 0;
   // The ride type's start for what the bike carries, at the ride time and
   // with the assist the rider chose: going back resets the sliders only.
-  const start = startDials(preset, dials.carrying, dials.when, dials.assist);
+  const plain = startDials(preset, dials.carrying, dials.when, dials.assist);
+  const start = dials.avoidGravel ? { ...plain, avoidGravel: true } : plain;
   const moved = dials.stress !== start.stress || dials.hills !== start.hills;
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;

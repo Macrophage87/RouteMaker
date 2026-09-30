@@ -31,11 +31,17 @@ from rebuild_fixtures import (
     BESIDE_TRAIL_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
+    DIVIDED_NORTH_ID,
+    DIVIDED_SOUTH_ID,
     GIB,
     LUA_LOADED_LOG,
+    ONE_WAY_ID,
     PARALLEL_COUNT,
     REPO,
     SEPARATE_ROAD_ID,
+    SINGLETRACK_ID,
+    TOWPATH_ABOVE_ID,
+    TOWPATH_BELOW_ID,
     WEEKEND_CLOSED_ID,
     FakeBinaries,
     box,
@@ -488,6 +494,12 @@ def run_dials_extract(tmp_path):
         BESIDE_TRAIL_ID,
         CBD_SIDEWALK_ID,
         CBD_CYCLE_TRACK_ID,
+        SINGLETRACK_ID,
+        TOWPATH_ABOVE_ID,
+        TOWPATH_BELOW_ID,
+        DIVIDED_NORTH_ID,
+        DIVIDED_SOUTH_ID,
+        ONE_WAY_ID,
     )
     context, _ = run_pipeline(source, tmp_path, urban=ids, skip=NOT_SWAPPED)
     with connection.cursor() as cursor:
@@ -540,6 +552,42 @@ def test_a_downtown_sidewalk_is_barred_to_bicycles_in_every_graph(
             assert tags[CBD_SIDEWALK_ID].get("rm:no_bicycle") == "cbd_sidewalk", variant.value
         if CBD_CYCLE_TRACK_ID in tags:
             assert tags[CBD_CYCLE_TRACK_ID].get("rm:no_bicycle") is None, variant.value
+
+
+def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 111 and 93, through the rebuild."""
+    from pipeline.extract import read_ways
+
+    context, stored = run_dials_extract(tmp_path)
+    assert context.singletracks == {SINGLETRACK_ID}
+    for way_id in (TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID):
+        assert stored[way_id][0] == "path", way_id
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SINGLETRACK_ID in tags:
+            assert tags[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+        for way_id in (TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID):
+            if way_id in tags:
+                assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
+
+
+def test_the_district_default_and_a_divided_road_reach_the_classifier(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 108 and 109, through the rebuild: an unposted District
+    way is read at 20 mph from the state layer, a two-lane one-way street on
+    the single-lane row, and a carriageway of a divided road as the two-way
+    road it is."""
+    context, _stored = run_dials_extract(tmp_path)
+    for way_id in (DIVIDED_NORTH_ID, DIVIDED_SOUTH_ID):
+        stress = context.stress_by_way[way_id]
+        assert stress.rule == "mixed traffic, 20 mph or below, urban multilane, two-way floor"
+        assert int(stress.tier) == 3, way_id
+    one_way = context.stress_by_way[ONE_WAY_ID]
+    assert one_way.rule == "mixed traffic, 20 mph or below, urban multilane"
+    assert int(one_way.tier) == 1
 
 
 def test_a_trail_beside_a_road_that_maps_its_lane_separately_is_protected(

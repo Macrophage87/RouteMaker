@@ -275,6 +275,12 @@ def build_parallel_extract(path: Path, *, road_id: int, trail_id: int) -> None:
 WEEKEND_CLOSED_ID = 600
 CBD_SIDEWALK_ID = 800
 CBD_CYCLE_TRACK_ID = 801
+SINGLETRACK_ID = 900
+TOWPATH_ABOVE_ID = 901
+TOWPATH_BELOW_ID = 902
+DIVIDED_NORTH_ID = 1000
+DIVIDED_SOUTH_ID = 1001
+ONE_WAY_ID = 1002
 SEPARATE_ROAD_ID = 700
 BESIDE_TRAIL_ID = 701
 
@@ -305,11 +311,32 @@ def build_dials_extract(path: Path) -> None:
             8: (-77.0325, 38.9025),
             9: (-77.0335, 38.9024),
             10: (-77.0325, 38.9024),
+            # West of the District's box, by the Potomac.
+            11: (-77.120, 38.930),
+            12: (-77.115, 38.930),
+            13: (-77.120, 38.935),
+            14: (-77.115, 38.935),
+            15: (-77.120, 38.940),
+            16: (-77.115, 38.940),
+            # A divided avenue, its carriageways 20 m apart, and a one-way
+            # street two blocks west: in the District, nothing posted.
+            17: (-77.0600, 38.920),
+            18: (-77.0600, 38.925),
+            19: (-77.05977, 38.925),
+            20: (-77.05977, 38.920),
+            21: (-77.0620, 38.920),
+            22: (-77.0620, 38.925),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
+        divided_avenue = {
+            "highway": "primary",
+            "lanes": "2",
+            "oneway": "yes",
+            "name": "Divided Avenue",
+        }
         ways = {
             WEEKEND_CLOSED_ID: (
                 [1, 2],
@@ -340,6 +367,32 @@ def build_dials_extract(path: Path) -> None:
                 [9, 10],
                 {"highway": "cycleway", "bicycle": "designated", "name": "K Street cycle track"},
             ),
+            # OWNER-DECISIONS 111 and 93: singletrack is closed; the C&O towpath,
+            # either side of lock 21, is not.
+            SINGLETRACK_ID: ([11, 12], {"highway": "path", "mtb:scale": "2", "surface": "dirt"}),
+            TOWPATH_ABOVE_ID: (
+                [13, 14],
+                {
+                    "highway": "path",
+                    "bicycle": "designated",
+                    "surface": "dirt",
+                    "mtb:scale:imba": "0",
+                    "name": "Chesapeake and Ohio Canal Towpath",
+                },
+            ),
+            TOWPATH_BELOW_ID: (
+                [15, 16],
+                {
+                    "highway": "cycleway",
+                    "surface": "fine_gravel",
+                    "name": "Chesapeake and Ohio Canal Towpath",
+                },
+            ),
+            # OWNER-DECISIONS 108 and 109: read at the District's 20 mph; the
+            # one-way street is a one-way, the carriageways are a two-way road.
+            DIVIDED_NORTH_ID: ([17, 18], {**divided_avenue}),
+            DIVIDED_SOUTH_ID: ([19, 20], {**divided_avenue}),
+            ONE_WAY_ID: ([21, 22], {**divided_avenue, "name": "One Way Street"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]

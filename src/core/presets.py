@@ -459,8 +459,21 @@ def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
     return preset.variant
 
 
+# "Avoid gravel" (OWNER-DECISIONS 91, 92, 111: "We can have an 'avoid gravel'
+# check"; off by default on every ride type, Cargo Bike included - "Cargo tends
+# to have pretty wide tires"). Valhalla's `avoid_bad_surfaces` at this value
+# prices every surface worse than the bicycle type's own minimum steeply without
+# making it impassable, so a ride that starts or ends on gravel is still
+# planned, and a preset already avoiding more keeps its own value.
+AVOID_GRAVEL_SURFACES = 0.9
+
+
 def costing(
-    name: str, stress: int | None = None, hills: int | None = None, assist: bool = False
+    name: str,
+    stress: int | None = None,
+    hills: int | None = None,
+    assist: bool = False,
+    avoid_gravel: bool = False,
 ) -> dict:
     """The `costing_options` block for one preset, as a fresh copy.
 
@@ -477,4 +490,6 @@ def costing(
     speed = PRESETS[name].assist_speed_kmh
     if assist and speed is not None:
         options["cycling_speed"] = speed
+    if avoid_gravel:
+        options["avoid_bad_surfaces"] = max(options["avoid_bad_surfaces"], AVOID_GRAVEL_SURFACES)
     return {"bicycle": options}

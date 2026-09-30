@@ -836,6 +836,26 @@ check("nor off one whose access is restricted",
   fac({ highway = "residential", access = "private", cycleway = "track" }, nil,
       { facility_neutral = true }).cycleway == nil)
 
+-- OWNER-DECISIONS 110: an OSM alley is priced like LTS 3 (the stress
+-- penalty), not graded, and does not pay the tier-5 entry charge.
+local alley = M.remap_way({ highway = "service", service = "alley" }, { stress_tier = 1 })
+check("an alley pays the LTS 3 penalty", alley.bicycle == "use_sidepath")
+check("an alley is not graded", ungraded(alley))
+check("an alley loses the alley use (no tier-5 entry charge)", alley.service == M.REMOVE)
+check("a driveway does not pay the alley penalty",
+  M.remap_way({ highway = "service", service = "driveway" }, { stress_tier = 1 }).bicycle == nil)
+check("an alley a bicycle may not ride stays closed",
+  M.remap_way({ highway = "service", service = "alley", bicycle = "no" }, { stress_tier = 1 }).bicycle == nil)
+check("a tier-5 road still gets the entry charge",
+  M.remap_way({ highway = "primary" }, { stress_tier = 5 }).service == M.AVOID_SERVICE)
+
+-- OWNER-DECISIONS 111: singletrack is closed to every current ride type.
+check("singletrack is bicycle=no",
+  M.remap_way({ highway = "path", ["mtb:scale"] = "2" },
+    { no_bicycle = "singletrack", is_trail_class = true, stress_tier = 1 }).bicycle == "no")
+check("an unmarked dirt path is not",
+  M.remap_way({ highway = "path", surface = "dirt" }, { is_trail_class = true, stress_tier = 1 }).bicycle == nil)
+
 -- OWNER-DECISIONS 104: a CBD sidewalk is barred to bicycles, and nothing else is.
 check("a CBD sidewalk is bicycle=no",
   M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" },

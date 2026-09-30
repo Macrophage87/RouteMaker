@@ -30,14 +30,15 @@ class TestTheFixtures:
         data = json.loads(cbd.CBD_FILE.read_text())
         assert [f["properties"]["GIS_ID"] for f in data["features"]] == ["DDOT_CBD_1"]
 
-    def test_the_exempt_areas_are_the_four_named(self) -> None:
+    def test_the_exempt_areas_are_the_three_named_and_the_aocs(self) -> None:
         data = json.loads(cbd.EXEMPT_FILE.read_text())
         assert sorted(f["properties"]["name"] for f in data["features"]) == [
             "National Mall",
             "The White House and President's Park",
-            "United States Capitol grounds (approximate)",
             "Washington Monument Grounds",
         ]
+        aoc = json.loads(cbd.AOC_FILE.read_text())
+        assert [f["properties"]["GIS_ID"] for f in aoc["features"]] == ["AOCPly_1"]
 
     @pytest.mark.parametrize(
         "point",
@@ -100,11 +101,11 @@ class TestTheRule:
             (K_STREET[0] + 0.0015, K_STREET[1]),
         ]
         assert cbd.barred_sidewalk(SIDEWALK, mostly_in)
-        mostly_out = [NAVY_YARD, (NAVY_YARD[0] + 0.01, NAVY_YARD[1]), (K_STREET[0], K_STREET[1])]
-        assert cbd.midpoint(mostly_out) != mostly_out[-1]
-        assert not cbd.in_polygons(cbd.midpoint(mostly_out), _cbd) or cbd.barred_sidewalk(
-            SIDEWALK, mostly_out
-        )
+        # Starting at K Street but running 6 km west, past the CBD's west edge
+        # (-77.051): its middle is outside, so it is not barred.
+        mostly_out = [K_STREET, (K_STREET[0] - 0.07, K_STREET[1])]
+        assert not cbd.in_polygons(cbd.midpoint(mostly_out), _cbd)
+        assert not cbd.barred_sidewalk(SIDEWALK, mostly_out)
 
     def test_midpoint_is_halfway_by_length(self) -> None:
         assert cbd.midpoint([(0.0, 0.0), (1.0, 0.0), (3.0, 0.0)]) == (1.5, 0.0)

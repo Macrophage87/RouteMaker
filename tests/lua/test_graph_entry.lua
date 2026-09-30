@@ -262,6 +262,22 @@ local _, open_out = transform_way({ highway = "footway", footway = "sidewalk", b
 check("an unmarked sidewalk open to bicycles stays open",
   open_out.bike_forward == "true", tostring(open_out.bike_forward))
 
+-- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
+local _, single_out = transform_way({
+  highway = "path", surface = "dirt", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",
+  ["rm:trail_class"] = "yes",
+})
+check("singletrack reaches the graph closed to bicycles",
+  single_out.bike_forward == "false" and single_out.bike_backward == "false",
+  tostring(single_out.bike_forward))
+local _, towpath_out = transform_way({
+  highway = "path", bicycle = "designated", surface = "dirt", ["mtb:scale:imba"] = "0",
+  ["rm:trail_class"] = "yes",
+})
+check("the C&O towpath above lock 21 stays an open path (use 27)",
+  tostring(towpath_out.use) == "27" and towpath_out.bike_forward == "true",
+  tostring(towpath_out.use) .. " " .. tostring(towpath_out.bike_forward))
+
 local _, illegal_out = transform_way({
   highway = "secondary", bridge = "yes", name = "Memorial Bridge",
   ["rm:bridge_bicycle"] = "no",

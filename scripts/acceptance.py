@@ -9,7 +9,7 @@ Run on the deploy host, from the repository checkout, with Docker and a filled
     python3 scripts/acceptance.py --only A1 A2    # a subset
     python3 scripts/acceptance.py --resume acceptance-reports/<earlier>.json
 
-Six items, numbered A1 to A6, each answering PASS, FAIL or SKIP with the
+Seven items, numbered A1 to A7, each answering PASS, FAIL or SKIP with the
 evidence beside it, written to a JSON and a Markdown report. The exit code is
 non-zero when anything failed. `docs/ACCEPTANCE.md` says what each item means
 and what the operator does by hand in the middle of A3.
@@ -685,9 +685,25 @@ def a6_rollback(ctx: Context, out: list[str]) -> None:
                 f"{variant}: current is {current}, the rollback target was {targets.get(variant)}"
             )
         _canary(ctx, variant)
-    out.append(
-        "rolled back; current links match the targets; canary answered on all four variants"
-    )
+    out.append("rolled back; current links match the targets; canary answered on all four variants")
+
+
+def a7_weekday_trails(ctx: Context, out: list[str]) -> None:
+    """A7 — on a weekday the stress-averse ride types take the trail beside a
+    weekend-car-free parkway, and Fast keeps the parkway (OWNER-DECISIONS 68,
+    69; `manage.py check_weekday_trails`)."""
+    proc = ctx.exec_in("api", "./manage.py", "check_weekday_trails", check=False, timeout=1800)
+    if ctx.args.dry_run:
+        return
+    lines = proc.stdout.strip().splitlines()
+    try:
+        verdict = json.loads(lines[-1])
+    except (IndexError, json.JSONDecodeError) as error:
+        raise Fail("check_weekday_trails: " + (proc.stderr or proc.stdout)[-200:]) from error
+    out.append(f"{verdict['parkway_ways']} weekend-car-free parkway ways with a trail beside them")
+    out.extend(lines[:-1])
+    if verdict["failures"] or proc.returncode != 0:
+        raise Fail("; ".join(verdict["failures"]) or f"exit {proc.returncode}")
 
 
 ITEMS = [
@@ -697,6 +713,7 @@ ITEMS = [
     ("A4", "First rebuild, promotion, routers, canary", a4_first_rebuild),
     ("A5", "Backup and restore into an empty database", a5_backup_and_restore),
     ("A6", "Rollback after a second rebuild", a6_rollback),
+    ("A7", "Weekday trails beside the weekend parkways", a7_weekday_trails),
 ]
 
 
@@ -707,7 +724,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--only", nargs="+", metavar="ITEM", help="run only these items (A1..A6)")
+    parser.add_argument("--only", nargs="+", metavar="ITEM", help="run only these items (A1..A7)")
     parser.add_argument("--dry-run", action="store_true", help="print what each item would run")
     parser.add_argument("--no-build", action="store_true", help="A2: skip `docker compose build`")
     parser.add_argument("--skip-manual", action="store_true", help="A3: skip the browser steps")

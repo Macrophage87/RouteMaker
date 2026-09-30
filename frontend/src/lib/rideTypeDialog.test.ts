@@ -59,3 +59,9 @@ test("the old browsers' Esc closes the dialog too, and an unknown ride type open
   assert.ok(closesDialog("Esc"));
   assert.equal(initialCard("no-such-ride" as (typeof PRESETS)[number]["id"]), 0);
 });
+
+test("choosing another ride type keeps avoid gravel", () => {
+  const current = { ...startDials("default"), avoidGravel: true };
+  assert.equal(choose("cargo", "cargo", current).avoidGravel, true);
+  assert.equal(choose("cargo", "cargo", startDials("default")).avoidGravel, undefined);
+});

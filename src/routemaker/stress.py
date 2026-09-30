@@ -105,6 +105,7 @@ from .tags import (
     cycleway_width_m,
     has_parking_lane,
     has_shoulder,
+    is_oneway,
     lanes_per_direction,
     maxspeed_is_unitless,
     parse_maxspeed_mph,
@@ -192,6 +193,49 @@ DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN = 30.0
 DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL = 50.0
 
 DEFAULT_LANES_PER_DIRECTION = 1
+
+# The District's statutory default (OWNER-DECISIONS 108: "the default speed
+# limit in DC on all streets and highways is 20 mph, or 15 mph in alleys";
+# DDOT, "Speeding laws, fines and safety tips",
+# https://ddot.dc.gov/page/speeding-laws-fines-and-safety-tips). Inside the
+# District a way with no posted limit is read at these, whatever its class.
+# Maryland's and Virginia's follow.
+DC_DEFAULT_MPH = 20.0
+DC_ALLEY_MPH = 15.0
+
+# Maryland's and Virginia's, in their urban areas (OWNER-DECISIONS 112: "Use MD
+# and VA defaults there"): 25 mph on residential streets, 30 on minor through
+# roads, 35 on major roads - MDOT's own imputation for local roads and
+# collectors (MDOT LTS methodology), as the literature review proposed. Other
+# classes, and every class outside the urban areas, keep the tables above: the
+# rural figures are the states' statutory ones, which the rural references
+# depend on, and the owner's answer was about the urban roads in question.
+MD_VA_URBAN_DEFAULT_MPH = {
+    "residential": 25.0,
+    "unclassified": 30.0,
+    "tertiary": 30.0,
+    "tertiary_link": 30.0,
+    "secondary": 35.0,
+    "secondary_link": 35.0,
+    "primary": 35.0,
+    "primary_link": 35.0,
+}
+# The keys a mapper records the legal basis of a limit in (OSM's
+# `maxspeed:type`, and its older `source:maxspeed`), as `US-DC:urban` and the
+# like: where one names the District it is read as the District's default, as
+# the jurisdiction is.
+SPEED_ZONE_KEYS = ("maxspeed:type", "source:maxspeed")
+
+
+def speed_zone(tags: dict[str, str], jurisdiction: str | None) -> str | None:
+    """Whose statutory default an unposted way takes: a zone tag naming a
+    state, else the state the way lies in."""
+    for key in SPEED_ZONE_KEYS:
+        value = tags.get(key) or ""
+        if value.upper().startswith("US-"):
+            return value[3:5].upper()
+    return jurisdiction
+
 
 # `SEPARATED_CYCLEWAY` and `PAINTED_CYCLEWAY` are defined in `tags` and
 # re-exported here, where the facility step reads them. They moved because
@@ -372,6 +416,45 @@ class StressResult:
 # street carrying more than VOLUME_BUSY still comes out a tier higher. Outside
 # urban areas the multilane rule stands.
 URBAN_SCORED_LANES = 1
+
+# One-way and two-way are not the same street (OWNER-DECISIONS 109: "we
+# shouldn't have the same criteria for 2 way traffic vs 1 way. 1 Way is
+# typically lower stress at similar characteristics"; and of Connecticut Avenue
+# NW, "definitely 3, and possibly 4").
+#
+# - A two-way multi-lane city street is at least LTS 3, as Furth's v2.2 table
+#   rates two lanes a direction at every speed up to 38.5 mph (Furth, "Level of
+#   Traffic Stress Criteria for Road Segments", v2.2, 2022), and LTS 4 from 30
+#   mph where the count is over URBAN_TWO_WAY_BUSY_AADT - v2.2's own threshold
+#   for the step to LTS 4 from 28.5 mph. At 35 mph and more mixed traffic is
+#   LTS 4 anyway.
+# - A one-way city street with up to URBAN_ONEWAY_MAX_LANES is read on the
+#   single-lane row, speed and volume deciding: no oncoming traffic, and San
+#   Francisco's comfort index (SFMTA 2017) counts lanes against a one-way only
+#   from three where it counts them against a two-way street from two. Furth's
+#   v2.0 went the other way, reading a one-way's ADT at 1.5 times; v2.2
+#   dropped that, and the owner's steer is followed here. A wider one-way takes
+#   the two-way floor.
+URBAN_ONEWAY_MAX_LANES = 2
+URBAN_TWO_WAY_BUSY_AADT = 8_000
+
+
+def urban_two_way_floor(
+    tier: Stress, rule: str, speed_mph: float, aadt: int | None, kind: str = "two-way"
+) -> tuple[Stress, str]:
+    """A two-way (or three-lane one-way) multi-lane city street: LTS 3 at
+    least, LTS 4 from 30 mph over URBAN_TWO_WAY_BUSY_AADT. `kind` names which
+    in the rule text ("two-way", or "wide one-way")."""
+    if (
+        speed_mph >= 30
+        and aadt is not None
+        and aadt > URBAN_TWO_WAY_BUSY_AADT
+        and tier < Stress.LTS4
+    ):
+        return Stress.LTS4, rule + f", {kind} busy"
+    if tier < Stress.LTS3:
+        return Stress.LTS3, rule + f", {kind} floor"
+    return tier, rule
 
 
 def _mixed_traffic_tier(
@@ -557,9 +640,16 @@ def classify(
     aadt_source: str | None = None,
     urban: bool = True,
     aadt_year: int | None = None,
+    jurisdiction: str | None = None,
+    divided: bool = False,
 ) -> StressResult:
-    """Classify one way: its Furth tier, or "legal but avoid" where the rule says so."""
-    result = _classify(tags, aadt, aadt_source, urban, aadt_year)
+    """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
+
+    `jurisdiction` is the state the way lies in ("DC", "MD", "VA"), for the
+    speed a way with no posted limit is read at (`default_speed_mph`).
+    `divided` says a one-way way is one carriageway of a two-way road
+    (`routemaker.divided`): it is scored as the two-way road it is."""
+    result = _classify(tags, aadt, aadt_source, urban, aadt_year, jurisdiction, divided)
     reason = legal_but_avoid(tags)
     if reason is None:
         return result
@@ -572,6 +662,8 @@ def _classify(
     aadt_source: str | None = None,
     urban: bool = True,
     aadt_year: int | None = None,
+    jurisdiction: str | None = None,
+    divided: bool = False,
 ) -> StressResult:
     """Classify one way by the Furth tables.
 
@@ -601,7 +693,14 @@ def _classify(
         # The number was surveyed; the unit was not. Read as mph, which is the
         # higher-stress reading and the only one that exists on a US sign.
         assumed.append("maxspeed unit")
-    if speed_mph is None:
+    zone = speed_zone(tags, jurisdiction) if speed_mph is None else None
+    if zone == "DC":
+        speed_mph = DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
+        assumed.append("maxspeed")
+    elif zone in ("MD", "VA") and urban and highway in MD_VA_URBAN_DEFAULT_MPH:
+        speed_mph = MD_VA_URBAN_DEFAULT_MPH[highway]
+        assumed.append("maxspeed")
+    elif speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
         unknown = (
             DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN if urban else DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL
@@ -620,7 +719,14 @@ def _classify(
         assumed.append("lanes")
     # The lane count the tables read (see URBAN_SCORED_LANES): inside an urban
     # area a multi-lane street is read on the single-lane row.
+    # A carriageway of a divided road is not a one-way street: the other
+    # direction's traffic is across the median (`routemaker.divided`).
+    oneway = is_oneway(tags) and not divided
+    # Inside an urban area a one-way street with up to URBAN_ONEWAY_MAX_LANES
+    # is read on the single-lane row; a two-way multi-lane street, or a wider
+    # one-way, keeps a floor of LTS 3 (`urban_two_way_floor`, below).
     urban_multilane = urban and lanes > URBAN_SCORED_LANES
+    oneway_relief = urban_multilane and oneway and lanes <= URBAN_ONEWAY_MAX_LANES
     scored_lanes = URBAN_SCORED_LANES if urban_multilane else lanes
 
     # The provision on the *worst side a rider may be made to use*, not every
@@ -681,6 +787,9 @@ def _classify(
             rule = f"bike lane, decent, {speed_mph:g} mph: a tier below mixed traffic"
     else:
         tier, rule = _mixed_traffic_tier(speed_mph, scored_lanes, urban_multilane)
+        if urban_multilane and not oneway_relief:
+            kind = "wide one-way" if oneway else "two-way"
+            tier, rule = urban_two_way_floor(tier, rule, speed_mph, aadt, kind)
         # A rideable paved shoulder is scored on the *bike-lane* table, not by
         # subtracting a tier from mixed traffic.
         #
@@ -802,7 +911,17 @@ def _classify(
     # not the modifier below moved the tier.
     volume_source = aadt_source if aadt is not None else None
     volume_year = aadt_year if aadt is not None else None
-    if aadt is not None and scored_lanes <= 1 and not has_facility:
+    # A two-way multi-lane city street has had its busy volume read by
+    # `urban_two_way_floor` (v2.2's own threshold) and is not bumped again here;
+    # a quiet one keeps the low-volume relief, but not below the floor - v2.2
+    # rates two lanes a direction LTS 3 to 38.5 mph at a low count, so a quiet
+    # 35 mph four-lane street is LTS 3, as it was before item 109.
+    two_way_floored = urban_multilane and not oneway_relief and not has_facility
+    if two_way_floored and aadt is not None and aadt <= VOLUME_QUIET and tier > Stress.LTS3:
+        speed_was_measured = "maxspeed" not in assumed
+        if speed_mph <= 35 or not speed_was_measured:
+            tier, rule = Stress(tier - 1), rule + ", low volume"
+    if aadt is not None and scored_lanes <= 1 and not has_facility and not two_way_floored:
         # A guessed speed may not be improved by a guess, but a measured count is
         # evidence: the conservative rule is about missing evidence, not about
         # refusing what is there. So a real AADT relieves an assumed speed, while

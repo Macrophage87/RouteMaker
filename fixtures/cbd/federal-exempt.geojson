@@ -394,43 +394,6 @@
   {
    "type": "Feature",
    "properties": {
-    "name": "United States Capitol grounds (approximate)",
-    "source": "hand-drawn from the bounding streets; OSM has no area for the grounds",
-    "licence": "this project's"
-   },
-   "geometry": {
-    "type": "MultiPolygon",
-    "coordinates": [
-     [
-      [
-       [
-        -77.0127,
-        38.8925
-       ],
-       [
-        -77.0045,
-        38.8925
-       ],
-       [
-        -77.0045,
-        38.8873
-       ],
-       [
-        -77.0127,
-        38.8873
-       ],
-       [
-        -77.0127,
-        38.8925
-       ]
-      ]
-     ]
-    ]
-   }
-  },
-  {
-   "type": "Feature",
-   "properties": {
     "name": "Washington Monument Grounds",
     "source": "OpenStreetMap way 1552426509",
     "licence": "ODbL 1.0, (c) OpenStreetMap contributors"
