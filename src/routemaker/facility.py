@@ -297,6 +297,13 @@ def _sidewalk_or_crossing(tags: dict[str, str]) -> bool:
     # trail's: a named trail stays on the map (OWNER-DECISIONS 82).
     if tags.get("name") and tags.get("bicycle") in BICYCLE_ALLOWED:
         return False
+    # A sidewalk open to bicycles that carries a segregated tag is a shared-use
+    # sidepath someone mapped with care, not a plain sidewalk: it stays (the
+    # owner, 2026-09-30: "Keep tagged sidepaths"; OWNER-DECISIONS 115, after the
+    # Veirs Mill Road sidepath was found hidden). 551 such ways in the source
+    # extract of 2026-09-24.
+    if tags.get("bicycle") in BICYCLE_ALLOWED and tags.get("segregated") is not None:
+        return False
     if SIDEWALK in kinds:
         return True
     return bool(kinds & {CROSSING, TRAFFIC_ISLAND}) and tags.get("highway") != "cycleway"

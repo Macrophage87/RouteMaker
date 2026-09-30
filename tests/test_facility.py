@@ -422,6 +422,42 @@ def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
             "road",
         ),
         ({"highway": "footway", "footway": "sidewalk", "name": "K Street Northwest"}, "hidden"),
+        # "Keep tagged sidepaths" (OWNER-DECISIONS 115): open to bicycles and segregated-tagged.
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "yes", "segregated": "no"},
+            "road",
+        ),
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "yes", "segregated": "yes"},
+            "road",
+        ),
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "bicycle": "permissive",
+                "segregated": "no",
+            },
+            "road",
+        ),
+        (
+            {"highway": "footway", "footway": "sidewalk", "segregated": "no"},
+            "hidden",
+        ),  # no bicycle tag
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "no", "segregated": "no"},
+            "hidden",
+        ),
+        # The Veirs Mill Road sidepath once the owner's access row is applied.
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "surface": "concrete",
+                "bicycle": "designated",
+            },
+            "road",
+        ),
         # A trail not yet built (the Mount Vernon Trail's 2030 section) is not drawn.
         (
             {"highway": "construction", "construction": "cycleway", "name": "Mount Vernon Trail"},

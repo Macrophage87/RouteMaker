@@ -444,7 +444,9 @@ the same whatever the style decides):
     under construction ("For some strange reason BWI has TLS 3 inside the
     terminal.", 80);
   - sidewalks and crosswalk lines that are not a trail's (a named trail's
-    sidewalk stretch open to bicycles, the Anacostia Riverwalk Trail's, stays),
+    sidewalk stretch open to bicycles, the Anacostia Riverwalk Trail's, stays,
+    and so does a sidewalk open to bicycles that carries a `segregated` tag, a
+    shared-use sidepath mapped with care: "Keep tagged sidepaths", 115),
     parking aisles, driveways and drive-throughs, and unnamed footways and
     paths not designated for bicycles shorter than
     `routemaker.facility.SHORT_PATH_M` (150 m) unless both their ends touch a
