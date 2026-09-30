@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "decided": "2026-09-30",
+  "decided_by": "the deployment owner",
+  "status": "approved for loading by the owner on 2026-09-30 (\"Local override (Recommended)\")",
+  "annotations": "bicycle=designated only: segregated=no, which the owner's answer also names, is not an access key (pipeline.overrides.ACCESS_KEYS), so the loader would refuse it; it changes nothing the rebuild reads. With bicycle=designated the sidewalk is a sidepath for bicycles (routemaker.classes.trail_kind), the protected facility, and a roadside trail on the stress map (OWNER-DECISIONS 66).",
+  "rows": [
+    {
+      "kind": "access",
+      "osm_way_id": 468762518,
+      "value": {
+        "bicycle": "designated"
+      },
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 115), on the path along Veirs Mill Road between the Rock Creek Trail and the Twinbrook Connector Trail (item 114: \"There seems to be some protected bike lanes missed, for instance a path between rock creek trail and twinbrook connector trail.\"), chose \"Local override (Recommended)\" and \"I'll fix OSM\": a local correction until the owner retags it upstream. The paved shared-use sidepath is tagged in OSM as a plain sidewalk with no bicycle tag.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 468762518, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 485 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road."
+    },
+    {
+      "kind": "access",
+      "osm_way_id": 791422825,
+      "value": {
+        "bicycle": "designated"
+      },
+      "reason": "The owner, 2026-09-30 (OWNER-DECISIONS 115), on the path along Veirs Mill Road between the Rock Creek Trail and the Twinbrook Connector Trail (item 114: \"There seems to be some protected bike lanes missed, for instance a path between rock creek trail and twinbrook connector trail.\"), chose \"Local override (Recommended)\" and \"I'll fix OSM\": a local correction until the owner retags it upstream. The paved shared-use sidepath is tagged in OSM as a plain sidewalk with no bicycle tag.",
+      "evidence": "OSM, Geofabrik DC+MD+VA extract of 2026-09-24: way 791422825, highway=footway, footway=sidewalk, surface=concrete, no bicycle tag, 30 m, along the north side of Veirs Mill Road (MD 586) from the Twinbrook Connector Trail's end to the Rock Creek Trail's crossing of Veirs Mill Road."
+    }
+  ]
+}

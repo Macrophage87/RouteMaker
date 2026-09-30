@@ -163,6 +163,12 @@ as a hidden adjustment named `way-<id>`.
   "Yes, set it to LTS 3 (Recommended)" and approved loading it before the
   rebuild of 2026-09-29.
 
+- `2026-09-30-owner-veirs-mill-sidepath.json`: the Veirs Mill Road sidepath
+  between the Rock Creek Trail and the Twinbrook Connector Trail, which OSM
+  tags as a plain sidewalk, made `bicycle=designated` (ways 468762518 and
+  791422825; "Local override (Recommended)", 2026-09-30) until the owner
+  retags it upstream. `segregated=no` is not an access key and is left out.
+
 An access file of the same day, `bicycle=no` on Pennsylvania Avenue SE east of
 the bridge, was never loaded and is gone: the owner looked at the road and
 chose tier 5 instead, so the road stays legal.

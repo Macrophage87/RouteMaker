@@ -991,3 +991,27 @@ def test_the_montana_ave_ne_file_is_approved_at_tier_3() -> None:
         assert row["value"]["category"] == "better_among_alternatives"
         assert row["value"]["annotation_status"] == "approved"
         assert "public_note" not in row["value"]
+
+
+def test_the_veirs_mill_sidepath_file_designates_the_two_sidewalks() -> None:
+    """The owner, 2026-09-30 (OWNER-DECISIONS 115): "Local override (Recommended)"
+    for the Veirs Mill Road sidepath between the Rock Creek Trail and the
+    Twinbrook Connector Trail, tagged in OSM as a plain sidewalk."""
+    import json
+
+    from core.management.commands.load_access_overrides import parse_file
+    from routemaker.facility import Facility, facility
+
+    path = BEACH_DRIVE_NW.with_name("2026-09-30-owner-veirs-mill-sidepath.json")
+    document = json.loads(path.read_text())
+    assert "Local override (Recommended)" in document["status"]
+    rows = parse_file(path.read_text(), path.name)
+    assert {r["osm_way_id"] for r in rows} == {468762518, 791422825}
+    for row in rows:
+        assert row["kind"] == "access" and row["value"] == {"bicycle": "designated"}
+        assert "Local override (Recommended)" in row["reason"]
+    # As the rebuild reads the way once the row is applied: a sidepath.
+    way = Way(468762518, highway="footway", footway="sidewalk", surface="concrete")
+    assert facility(way.tags) is Facility.NONE, "the control"
+    apply_access([way], [Override("access", 468762518, {"bicycle": "designated"})])
+    assert facility(way.tags) is Facility.PROTECTED
