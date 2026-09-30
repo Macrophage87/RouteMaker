@@ -202,10 +202,17 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   most of Capitol Driveway NE/SE as mapped, are not in it: upstream does not
   route an area, so no access row can open one.
 
-`proposed/` holds drafts for the owner, **not for loading**: nothing loads a
-file there, and each says PROPOSED in its status and in every row's reason.
-
-- `proposed/2026-09-30-PROPOSED-arterials-east-of-anacostia.json`: the owner's
-  "I d put most of the Arterials east of the Anacostia river as avoid"
-  (OWNER-DECISIONS 141 (b)) as tier-5 stress rows, hidden, no public_note,
-  grouped by corridor so the owner can strike some ("most").
+- `2026-09-30-owner-arterials-east-of-anacostia.json`: 779 stress rows at
+  tier 5 (Avoid), hidden, no public_note, category other, annotation
+  approved, one adjustment per corridor. The owner (OWNER-DECISIONS 141): "I d
+  put most of the Arterials east of the Anacostia river as avoid"; asked which
+  to strike (144): struck "11th St SE", "Ridge Rd SE", "River bridges";
+  everything else, South Capitol St SW included, approved to load as Avoid.
+  The District's trunk, primary and secondary ways east of the river (812 in
+  the draft, 57.4 mi) less 11th Street SE (7 ways), Ridge Road SE (13), the
+  four ways that cross the river (Benning Road's and the Douglass Bridge's
+  spans, both Whitney Young Memorial Bridge ways), and the nine ways the
+  2026-09-27 file already curates: three of MLK Jr Ave SE at 4, a different
+  tier, which the loader would refuse, and six of Pennsylvania Ave SE already
+  at 5. Overpass bridges away from the river stay in. Load it after the
+  2026-09-27 file.

@@ -618,7 +618,7 @@ unless named; PLAN.md quotes the owner's words):
   a vertex on a shared line goes to Maryland or Virginia, the higher default).
 - *Arterials* (item 141): a trunk, primary or secondary road or its link is
   LTS 3 at least without a painted, buffered or protected lane, a paved shoulder
-  the bike-lane table credited, or a facility mapped as its own way beside it
+  the bike-lane table credited (item 145: "Yes, count it"), or a facility mapped as its own way beside it
   (`facility.separate_pairs`) - everywhere (`arterial floor`). And v2.2's middle
   band at 20 mph and below: 1,500-8,000 vehicles a day is LTS 2 (`mid volume`);
   it is not redundant after the floor, since it moves the non-arterials.

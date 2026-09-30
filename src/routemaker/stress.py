@@ -985,7 +985,8 @@ def _classify(
     # District's 20 mph had put 23 mi of unposted arterials with no count at
     # LTS 1. Everywhere, not only in the District. A rideable paved shoulder
     # the bike-lane table credited counts as a provision here too
-    # (`has_facility`): Furth scores the two as one, and the floor must not
+    # (`has_facility`; the owner, item 145: "Yes, count it"): Furth scores the
+    # two as one, and the floor must not
     # rate a road with a shoulder worse than the same road with a lane.
     if (
         highway in ARTERIAL_HIGHWAY

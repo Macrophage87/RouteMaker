@@ -99,6 +99,100 @@ CAPITOL_PEDESTRIAN_DRIVES = {903994651, 903994652, 904481923, 904481924}
 CAPITOL_PLAZA = 1263873629
 
 
+EAST_FILE = REPO / "fixtures" / "overrides" / "2026-09-30-owner-arterials-east-of-anacostia.json"
+STRESS_FILE = REPO / "fixtures" / "overrides" / "2026-09-27-owner-stress.json"
+# Typed in from the survey, not read from the file (OWNER-DECISIONS 144).
+EAST_STRUCK = {
+    # "11th St SE"
+    546095991,
+    546095992,
+    546095993,
+    546095994,
+    546095995,
+    546095996,
+    546096006,
+    # "Ridge Rd SE"
+    6054136,
+    203010872,
+    203010879,
+    590581494,
+    590581503,
+    590581523,
+    661646845,
+    661647036,
+    695842773,
+    1111067879,
+    1409720439,
+    1526267910,
+    1526267933,
+    # "River bridges": Benning Road, the Douglass Bridge, Whitney Young Memorial Bridge
+    135146249,
+    910656491,
+    50716085,
+    130714970,
+}
+# Already approved in the 2026-09-27 file: MLK Jr Ave SE at 4 (a different
+# tier, so left out) and Pennsylvania Ave SE at 5 (left to that file).
+EAST_ALREADY_CURATED = {
+    371431399,
+    589551026,
+    589551027,
+    50715834,
+    696737927,
+    919160290,
+    936339897,
+    946400435,
+    1120042712,
+}
+
+
+class TestTheArterialsEastOfTheAnacostiaFile:
+    """OWNER-DECISIONS 141 (b) and 144."""
+
+    def rows(self) -> list[dict]:
+        return json.loads(EAST_FILE.read_text())["rows"]
+
+    def test_it_parses_as_approved_hidden_tier_5_rows(self) -> None:
+        from core.management.commands.load_access_overrides import parse_file
+
+        rows = parse_file(EAST_FILE.read_text(), EAST_FILE.name)
+        assert len(rows) == 779
+        for row in rows:
+            assert row["kind"] == "stress"
+            value = row["value"]
+            assert value["tier"] == 5
+            assert value["visibility"] == "hidden"
+            assert value["annotation_status"] == "approved"
+            assert "public_note" not in value
+            assert value["adjustment_id"].startswith("east-anacostia-")
+
+    def test_the_struck_and_curated_ways_are_left_out(self) -> None:
+        ways = {row["osm_way_id"] for row in self.rows()}
+        assert not ways & EAST_STRUCK
+        assert not ways & EAST_ALREADY_CURATED
+        curated = {r["osm_way_id"] for r in json.loads(STRESS_FILE.read_text())["rows"]}
+        assert not ways & curated
+
+    def test_every_row_quotes_items_141_and_144(self) -> None:
+        document = json.loads(EAST_FILE.read_text())
+        assert "PROPOSED" not in json.dumps(document)
+        for row in self.rows():
+            assert (
+                "I d put most of the Arterials east of the Anacostia river as avoid"
+                in row["reason"]
+            )
+            assert '"River bridges"' in row["reason"]
+
+    def test_it_loads_beside_the_curated_tiers_without_a_conflict(self, admin) -> None:
+        from core.models import Override
+
+        load(str(STRESS_FILE), "--actor", str(admin.discord_user_id), "--confirm")
+        before = Override.objects.count()
+        out = load(str(EAST_FILE), "--actor", str(admin.discord_user_id))
+        assert out.count("create: way ") == 779
+        assert Override.objects.count() == before
+
+
 class TestTheCapitolDrivesFile:
     """OWNER-DECISIONS 130, "Yes, open them"."""
 

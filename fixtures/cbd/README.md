@@ -26,10 +26,17 @@ https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Administrative_Other_B
 The AOC file was retrieved 2026-09-30, 09:34 UTC (the one download the owner
 approved, OWNER-DECISIONS 113), with the same query on `MapServer/5`.
 
-**The licence evidence is incomplete** (review r1, S2). CC BY 4.0 above is
-what the ArcGIS search reported for each item at retrieval;
-neither item page's licence statement was kept verbatim, and the GeoJSON files
-carry no licence metadata. The statement is to be copied here verbatim at the
-next fetch of the two item pages, which waits for the owner's go-ahead.
+**The licence statements, verbatim** (review r1, S2; re-read once each with
+the owner's go-ahead, OWNER-DECISIONS 146: "Yes, re-read them"; item metadata
+only, no data downloaded). The GeoJSON files carry no licence metadata, so
+these are the record:
+
+| Item | Read from | Retrieved (UTC) | `licenseInfo`, as text | `accessInformation` (credit) |
+| --- | --- | --- | --- | --- |
+| DDOT Central Business District (32143ca8983d4476b64f4202162bf61e, modified 2024-09-05) | <https://www.arcgis.com/sharing/rest/content/items/32143ca8983d4476b64f4202162bf61e?f=json> | 2026-09-30 12:22:29 | "This work is licensed under a Creative Commons Attribution 4.0 International License." (linking <https://creativecommons.org:443/licenses/by/4.0/>) | "District Department of Transportation" |
+| Architect of the Capitol (d9e8c786c9694e47979ef71a5c2f1a7a, modified 2024-09-05) | <https://www.arcgis.com/sharing/rest/content/items/d9e8c786c9694e47979ef71a5c2f1a7a?f=json> | 2026-09-30 12:22:29 | "This work is licensed under a Creative Commons Attribution 4.0 International License." (linking <http://creativecommons.org/licenses/by/4.0/>) | "DC GIS" |
+
+The CBD item's own description also says: "Bicycles are not permitted on
+sidewalks within the central business district."
 
 Refresh: re-run the query when DDOT revises the boundary, and update this table.
