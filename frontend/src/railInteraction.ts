@@ -9,7 +9,7 @@ import type { Map as MapLibreMap, PointLike } from "maplibre-gl";
 import type { LonLat } from "./lib/geo.ts";
 import { focusBackTarget } from "./lib/mapGlue.ts";
 import { RailCards } from "./lib/railCards.ts";
-import { RAIL_LAYERS, railHitFrom, type RailHit } from "./lib/railLayer.ts";
+import { RAIL_LAYERS, STATION_MIN_ZOOM, railHitFrom, stationNear, type RailHit } from "./lib/railLayer.ts";
 import {
   bikeEntrance,
   entranceNote,
@@ -24,6 +24,8 @@ import {
 
 export interface RailInteractionOptions {
   station(id: string): Station | undefined;
+  /** Every station, for the tap that the rendered-feature query misses (stationAt). */
+  stations: readonly Station[];
   pennColour: string;
   visibility(): RailVisibility;
   pointCount(): number;
@@ -93,7 +95,15 @@ export function attachRailInteraction(map: MapLibreMap, options: RailInteraction
       [x - TAP_SLOP, y - TAP_SLOP],
       [x + TAP_SLOP, y + TAP_SLOP],
     ];
-    const hit = railHitFrom(map.queryRenderedFeatures(box, { layers: ids }));
+    let hit = railHitFrom(map.queryRenderedFeatures(box, { layers: ids }));
+    // The query reads what the last frame placed, and with the stress overlay
+    // on a cold page it missed a station right under the tap in 16 of 46
+    // samples for about a second (MERGE-TILES re-check SHOULD_FIX 1), so the
+    // tap added a via instead of opening the card. The stations' own points,
+    // projected, do not depend on the frame.
+    if (!hit && map.getLayer(RAIL_LAYERS.stations) && map.getZoom() >= STATION_MIN_ZOOM) {
+      hit = stationNear(options.stations, options.visibility(), (p) => map.project(p), point, TAP_SLOP);
+    }
     const station = hit && options.station(hit.id);
     return hit && station ? { hit, station } : null;
   }

@@ -1,4 +1,5 @@
-"""Draw the z10-13 stress tiles of the live table into the tile cache.
+"""Draw the z10-14 stress tiles of the live table into the tile cache: every
+tile the map asks for.
 
 The weekly rebuild does this after every promotion (config.procrastinate); run
 it by hand on a deployment whose live table was promoted before the cache
@@ -17,7 +18,7 @@ from core import tile_cache
 
 
 class Command(BaseCommand):
-    help = "Draw the z10-13 stress tiles of the live table into the tile cache."
+    help = "Draw the z10-14 stress tiles of the live table into the tile cache."
 
     def add_arguments(self, parser) -> None:
         parser.add_argument(

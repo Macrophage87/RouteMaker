@@ -761,7 +761,7 @@ curl -s -o /tmp/t.pbf -w '%{http_code} %{size_download}\n' http://localhost:8000
 ```
 
 A tile is served from the `stress_tile_cache` table once drawn
-(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z10-13 for
+(`core/tile_cache.py`); `python manage.py predraw_stress_tiles` fills z10-14 for
 the live table, and a local `runserver` with an empty cache draws on request.
 What each zoom draws, the limits, the cache, the draw slots and timeout and the
 overview index are in docs/OPERATIONS.md, "The stress tiles". `tests/mvt.py` decodes a tile for

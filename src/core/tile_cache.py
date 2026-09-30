@@ -1,4 +1,5 @@
-"""The stress tile cache: a drawn tile is kept, and z10-13 are drawn ahead.
+"""The stress tile cache: a drawn tile is kept, and every tile the map asks
+for is drawn ahead.
 
 Revision round 2 (ops review, blocker): with no cache, every tile request drew
 from the segment table, a cold z10 draw took seconds, and one address inside its
@@ -12,12 +13,15 @@ a drawn tile is good until then.
   already reaches the database from every worker, a lookup is one indexed
   read, and a new file tree would need its own writer, volume and Caddy route.
   It is excluded from the nightly dump and refills itself.
-- What is kept for good: z10-13 over the coverage box, drawn ahead by
-  `predraw` after every promotion (the weekly rebuild calls it; so does
-  `manage.py predraw_stress_tiles`), about 3,000 tiles and 34 MB on the first
-  promoted build. These are the expensive ones: a z10 tile holds a whole
-  city's segments.
-- What is kept while there is room: a z14-16 tile the api draws on request,
+- What is kept for good: every z10-14 tile over the coverage box, drawn ahead
+  by `predraw` after every promotion (the weekly rebuild calls it; so does
+  `manage.py predraw_stress_tiles`). The map asks for nothing past z14 (it
+  draws z15-16 from the z14 tile), so once the pre-draw has run no tile the
+  map asks for is drawn on request. The owner, 2026-09-28: "It takes a very
+  long time to load those roads.", and where: "Zoomed in (street level)"
+  (OWNER-DECISIONS 63) - a cold z14 tile took 1.4 s to draw, through the
+  api's one draw slot, and a street-level screen 20-30 s.
+- What is kept while there is room: a z15-16 tile the api draws on request,
   up to `MAX_BYTES` of them; past that the oldest go first.
 - Stale rows (another table, another format) are deleted by `predraw` and by
   every eviction.
@@ -26,20 +30,24 @@ a drawn tile is good until then.
 from __future__ import annotations
 
 import logging
+import math
 import random
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from typing import NamedTuple
 
+from django.conf import settings
 from django.db import connection
 
 logger = logging.getLogger(__name__)
 
-# The zooms drawn ahead and kept for good.
-PREDRAW_MAX_ZOOM = 13
+# The zooms drawn ahead and kept for good: every one the map asks for
+# (`STRESS_ZOOMS.max` in the front end's mapStyle.ts, which a test holds equal).
+PREDRAW_MAX_ZOOM = 14
 
-# The byte budget for tiles drawn on request past PREDRAW_MAX_ZOOM. A z14 tile
-# over downtown DC is about 125 KB and a suburban one a few KB; 256 MB holds
-# every z14 tile in the box several times over.
+# The byte budget for tiles drawn on request past PREDRAW_MAX_ZOOM, which the
+# map does not ask for.
 MAX_BYTES = 256 * 1024 * 1024
 
 # One insert in this many runs the eviction, so its scan is not paid per tile.
@@ -100,34 +108,35 @@ def evict(version: str, max_bytes: int = MAX_BYTES) -> int:
         return stale + cursor.rowcount
 
 
-def _tiles_with_segments(table: str, max_zoom: int) -> dict[int, set[tuple[int, int]]]:
-    """Every tile from z10 to `max_zoom` holding a segment's end, by zoom.
+def tile_index(lon: float, lat: float, z: int) -> tuple[int, int]:
+    """The (x, y) of the z tile holding a point (Web Mercator, as the map)."""
+    n = 2**z
+    x = int((lon + 180) / 360 * n)
+    y = int((1 - math.asinh(math.tan(math.radians(lat))) / math.pi) / 2 * n)
+    return min(max(x, 0), n - 1), min(max(y, 0), n - 1)
 
-    Read once at `max_zoom` and halved for each zoom out. A tile that a segment
-    only crosses is not listed; it is drawn on first request like any other.
+
+def tiles_in_coverage(max_zoom: int) -> list[tuple[int, int, int]]:
+    """Every tile from z10 to `max_zoom` that the coverage box reaches, in
+    zoom order.
+
+    Every one, not only those holding a segment's end: a long segment crosses
+    tiles where it has no vertex, and a tile with nothing in it is drawn empty
+    in a moment and then served from the cache rather than drawn on request.
     """
-    n = 2**max_zoom
-    with connection.cursor() as cursor:
-        cursor.execute(
-            f"""
-            WITH ends AS (
-                SELECT ST_StartPoint(geometry) AS p FROM {table}
-                UNION ALL SELECT ST_EndPoint(geometry) FROM {table}
-            )
-            SELECT DISTINCT
-                floor((ST_X(p) + 180) / 360 * %(n)s)::int,
-                floor((1 - ln(tan(radians(ST_Y(p))) + 1 / cos(radians(ST_Y(p)))) / pi()) / 2
-                      * %(n)s)::int
-            FROM ends
-            """,
-            {"n": n},
-        )
-        deepest = set(cursor.fetchall())
-    from .stress_tiles import MIN_ZOOM
+    from .stress_tiles import MIN_ZOOM, outside_coverage
 
-    tiles = {max_zoom: deepest}
-    for z in range(max_zoom - 1, MIN_ZOOM - 1, -1):
-        tiles[z] = {(x >> 1, y >> 1) for x, y in tiles[z + 1]}
+    west, south, east, north = settings.COVERAGE_BBOX
+    tiles = []
+    for z in range(MIN_ZOOM, max_zoom + 1):
+        x0, y0 = tile_index(west, north, z)
+        x1, y1 = tile_index(east, south, z)
+        tiles.extend(
+            (z, x, y)
+            for x in range(x0, x1 + 1)
+            for y in range(y0, y1 + 1)
+            if not outside_coverage(z, x, y)
+        )
     return tiles
 
 
@@ -149,59 +158,109 @@ class Predrawn(NamedTuple):
         return text
 
 
-# The pre-draw's default time budget, well past what a whole box takes (56 s on
-# a quiet host, 135-216 s on a loaded one, with or without the overview index).
-PREDRAW_BUDGET_S = 1800.0
+# The pre-draw's default time budget, an hour: far past what the whole box
+# takes. Its 11,068 tiles, z10-14, took 89 s with two workers (155 s with one,
+# 89 s with three, 97 s with four) on a copy of the promoted build at load 4-6
+# (2026-09-28); z10-13 alone took 135-216 s on a host at load 10-27 before the
+# zoomed-out tiles were cut to the trails. The rebuild cuts it further to what
+# its own 8 h limit leaves (config.procrastinate), and the rebuild itself takes
+# about 3.5 h of those.
+PREDRAW_BUDGET_S = 3600.0
 
 
-def predraw(max_zoom: int = PREDRAW_MAX_ZOOM, budget_s: float = PREDRAW_BUDGET_S) -> Predrawn:
-    """Draw every z10-`max_zoom` tile of the live table not yet cached.
+def predraw(
+    max_zoom: int = PREDRAW_MAX_ZOOM,
+    budget_s: float = PREDRAW_BUDGET_S,
+    workers: int | None = None,
+) -> Predrawn:
+    """Draw every z10-`max_zoom` tile over the coverage box not yet cached.
 
     Stops when `budget_s` is spent, counting what it did not reach, which is
     drawn on first request instead. Each draw runs under
     `stress_tiles.PREDRAW_TIMEOUT_MS`; one that runs past it is skipped and
     counted, and the pre-draw goes on.
+
+    `workers` tiles are drawn at once (settings.STRESS_PREDRAW_WORKERS if none
+    is given), each on a database connection of its own. The pre-draw runs in
+    the worker or a management command, never in gunicorn, so it holds none of
+    the api's draw slots (`ratelimit.TILES_IN_FLIGHT`), which stay the owner's
+    arithmetic for draws on request; what it takes is a database core per draw,
+    which is what the setting bounds.
     """
     from . import stress_tiles
 
+    if workers is None:
+        workers = settings.STRESS_PREDRAW_WORKERS
+    workers = max(1, workers)
     oid, optional = stress_tiles.live_table()
     if oid is None:
         return Predrawn(0, 0)
     version = stress_tiles.etag_for(oid, optional)
     evict(version)
     deadline = time.monotonic() + budget_s
-    by_zoom = _tiles_with_segments(stress_tiles._table(), max_zoom)
-    tiles = [
-        (z, x, y)
-        for z in sorted(by_zoom)
-        for x, y in sorted(by_zoom[z])
-        if not stress_tiles.outside_coverage(z, x, y)
-    ]
-    drawn = cached = timed_out = 0
-    for done, (z, x, y) in enumerate(tiles):
-        if get(version, z, x, y) is not None:
-            cached += 1
-            continue
-        if time.monotonic() > deadline:
-            left = len(tiles) - done
-            logger.warning(
-                "stress tile pre-draw stopped at its %ss budget: %d drawn, %d left",
-                budget_s,
-                drawn,
-                left,
-            )
-            return Predrawn(drawn, cached, timed_out, left)
+    tiles = tiles_in_coverage(max_zoom)
+    counts = {"drawn": 0, "cached": 0, "timed_out": 0, "reached": 0}
+    lock = threading.Lock()
+    stop = threading.Event()
+    queue = iter(tiles)
+
+    def take() -> tuple[int, int, int] | None:
+        with lock:
+            if stop.is_set():
+                return None
+            if time.monotonic() > deadline:
+                stop.set()
+                return None
+            tile = next(queue, None)
+            if tile is not None:
+                counts["reached"] += 1
+            return tile
+
+    def count(key: str, by: int = 1) -> None:
+        with lock:
+            counts[key] += by
+
+    def draw_until_done() -> None:
+        while (tile := take()) is not None:
+            z, x, y = tile
+            if get(version, z, x, y) is not None:
+                count("cached")
+                continue
+            try:
+                drawn_oid, body = stress_tiles.render(
+                    z, x, y, optional, timeout_ms=stress_tiles.PREDRAW_TIMEOUT_MS
+                )
+            except stress_tiles.DrawTimedOut:
+                logger.warning("stress tile %d/%d/%d timed out in the pre-draw", z, x, y)
+                count("timed_out")
+                continue
+            if drawn_oid != oid:
+                # A promotion landed mid-way; the next pre-draw is for that
+                # table. This tile was not drawn for this one.
+                count("reached", -1)
+                stop.set()
+                return
+            put(version, z, x, y, body)
+            count("drawn")
+
+    def on_its_own_connection() -> None:
         try:
-            drawn_oid, body = stress_tiles.render(
-                z, x, y, optional, timeout_ms=stress_tiles.PREDRAW_TIMEOUT_MS
-            )
-        except stress_tiles.DrawTimedOut:
-            logger.warning("stress tile %d/%d/%d timed out in the pre-draw", z, x, y)
-            timed_out += 1
-            continue
-        if drawn_oid != oid:
-            # A promotion landed mid-way; the next pre-draw is for that table.
-            return Predrawn(drawn, cached, timed_out, len(tiles) - done)
-        put(version, z, x, y, body)
-        drawn += 1
-    return Predrawn(drawn, cached, timed_out)
+            draw_until_done()
+        finally:
+            connection.close()
+
+    if workers == 1:
+        draw_until_done()
+    else:
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="predraw") as pool:
+            for future in [pool.submit(on_its_own_connection) for _ in range(workers)]:
+                future.result()
+    left = len(tiles) - counts["reached"]
+    if left:
+        logger.warning(
+            "stress tile pre-draw stopped with %d drawn and %d left (budget %ss)",
+            counts["drawn"],
+            left,
+            budget_s,
+        )
+    return Predrawn(counts["drawn"], counts["cached"], counts["timed_out"], left)

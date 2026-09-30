@@ -3,7 +3,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { EditHistory, step } from "./editHistory.ts";
+import { EditHistory } from "./editHistory.ts";
+import { planEdits, type Snapshot } from "./planEdits.ts";
 import { pickIntoPlan, pointRows, type Place } from "./geocode.ts";
 import type { LonLat } from "./geo.ts";
 
@@ -12,24 +13,30 @@ const UNION: Place = { name: "Union Station", label: "Union Station, NoMa", lon:
 const DUPONT: Place = { name: "Dupont Circle", label: "Dupont Circle, Washington", lon: -77.0434, lat: 38.9096, kind: "other" };
 const at = (p: Place): LonLat => [p.lon, p.lat];
 
-/** App.tsx's plan in miniature: its commit (the history's one way in) and its undo and redo. */
+/** App.tsx's plan: its own commit and undo and redo (planEdits.ts), over a stand-in for its state. */
 function plan(start: LonLat[] = []) {
-  const history = new EditHistory<LonLat[]>();
+  const history = new EditHistory<Snapshot<LonLat[], null>>();
   let points = start;
   const remembered: string[] = [];
-  const deps = {
+  const edits = planEdits<LonLat[], null>({
+    history,
     current: () => points,
-    commit: (next: LonLat[]) => {
-      history.record(points);
+    ride: () => null,
+    set: (next) => {
       points = next;
     },
+    applyRide: () => {},
+    sync: () => {},
+  });
+  const deps = {
+    current: () => points,
+    commit: edits.commit,
     remember: (_p: LonLat, name: string) => {
       remembered.push(name);
     },
   };
   const travel = (direction: "undo" | "redo") => {
-    const next = step(history, direction, points);
-    if (next !== undefined) points = next;
+    edits.travel(direction);
   };
   return { deps, history, remembered, travel, points: () => points };
 }

@@ -41,9 +41,10 @@ test("the stress tiles are the contract's path, absolute, within its zooms", () 
   const source = stressSource(ORIGIN);
   assert.deepEqual(source.tiles.map(httpUrl), [`${ORIGIN}/tiles/stress/{z}/{x}/{y}.pbf`]);
   assert.ok(source.tiles.every((url) => url.startsWith(`${STRESS_PROTOCOL}://`)));
-  // SHARED API CONTRACT: served for z 10-16.
+  // SHARED API CONTRACT: served for z 10-16; the map asks for z10-14 and
+  // draws z15-16 from the z14 tile (every one of them drawn ahead).
   assert.equal(source.minzoom, 10);
-  assert.equal(source.maxzoom, 16);
+  assert.equal(source.maxzoom, 14);
   assert.equal(STRESS_SOURCE_ID.length > 0, true);
 });
 
@@ -87,6 +88,16 @@ test("the stress source starts and ends where the zoom levels say", () => {
   const source = stressSource("https://example.test");
   assert.equal(source.minzoom, STRESS_ZOOMS.min);
   assert.equal(source.maxzoom, STRESS_ZOOMS.max);
-  assert.ok(STRESS_ZOOMS.min < STRESS_ZOOMS.streets && STRESS_ZOOMS.streets < STRESS_ZOOMS.full);
-  assert.ok(STRESS_ZOOMS.full <= STRESS_ZOOMS.max);
+  assert.ok(STRESS_ZOOMS.min < STRESS_ZOOMS.busy && STRESS_ZOOMS.busy < STRESS_ZOOMS.quiet);
+  assert.ok(STRESS_ZOOMS.quiet <= STRESS_ZOOMS.max);
+});
+
+test("the map asks for no stress tile past z14: z15-16 are drawn from it (owner, 2026-09-28)", () => {
+  // Every tile the map asks for is drawn ahead (core/tile_cache.py); a
+  // source reaching z16 would ask for 16 times as many, drawn on request.
+  assert.equal(stressSource("https://example.test").maxzoom, 14);
+  // "Zoom less than 12, show just bike paths and the metro/MARC. 12 and 13,
+  // show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73)
+  assert.equal(STRESS_ZOOMS.busy, 12);
+  assert.equal(STRESS_ZOOMS.quiet, 14);
 });

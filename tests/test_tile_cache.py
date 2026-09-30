@@ -3,9 +3,13 @@
 The ops review of round 1 measured one address, inside its tile budget,
 holding every gunicorn worker with cold draws: routes took 10-13 s and /healthz
 9.7 s for 50 s. What stops that now is here: a tile drawn once is served from
-`stress_tile_cache` without a draw, z10-13 are drawn ahead after a promotion, a
-draw takes one of a few slots or is refused at once, and a draw is cut off
-well before the swap's lock timeout.
+`stress_tile_cache` without a draw, every tile the map asks for (z10-14) is
+drawn ahead after a promotion, a draw takes one of a few slots or is refused at
+once, and a draw is cut off well before the swap's lock timeout.
+
+The pre-draw covers the whole coverage box, 11,068 tiles; here the box is
+shrunk to one tile at each zoom around CENTRE (`one_tile_box`), so a pre-draw
+draws five.
 """
 
 from __future__ import annotations
@@ -31,6 +35,17 @@ def live(segment_schemas):
     live, _staging = segment_schemas
     insert(live, CLASSES)
     return live
+
+
+# A coverage box inside one z16 tile around CENTRE: one tile at each zoom.
+ONE_TILE_BOX = (CENTRE[0] - 0.0005, CENTRE[1] - 0.0005, CENTRE[0] + 0.0005, CENTRE[1] + 0.0005)
+PREDRAWN_ZOOMS = [10, 11, 12, 13, 14]
+
+
+@pytest.fixture(autouse=True)
+def one_tile_box():
+    with override_settings(COVERAGE_BBOX=ONE_TILE_BOX):
+        yield
 
 
 def rows(version: str | None = None) -> int:
@@ -115,13 +130,113 @@ class TestCache:
             ("new", 15, 3),
         ]
 
-    def test_predraw_draws_z10_to_13_once(self, live) -> None:
+    def test_predraw_draws_z10_to_14_once(self, live) -> None:
         result = tile_cache.predraw()
-        assert result == (4, 0, 0, 0)  # one tile at each zoom holds the fixture
+        assert result == (5, 0, 0, 0)  # one tile at each zoom in the box
         with connection.cursor() as cursor:
             cursor.execute("SELECT z FROM stress_tile_cache ORDER BY z")
-            assert [z for (z,) in cursor.fetchall()] == [10, 11, 12, 13]
-        assert tile_cache.predraw() == (0, 4, 0, 0)
+            assert [z for (z,) in cursor.fetchall()] == PREDRAWN_ZOOMS
+        assert tile_cache.predraw() == (0, 5, 0, 0)
+
+    def test_the_predraw_reaches_every_zoom_the_map_asks_for(self) -> None:
+        """The map asks for nothing past z14 (mapStyle.ts's source maxzoom,
+        which test_stress_tiles holds equal to this), and z13-14 - street
+        level, where it felt slow (OWNER-DECISIONS 63) - are drawn ahead."""
+        assert tile_cache.PREDRAW_MAX_ZOOM == 14
+        assert tile_cache.PREDRAW_MAX_ZOOM >= stress_tiles.FULL.min_zoom
+
+    def test_every_tile_of_the_box_is_listed_not_only_those_holding_a_segment_end(self) -> None:
+        """A long segment crosses tiles it has no vertex in; each of them is
+        drawn ahead too, and one with nothing in it is drawn empty in a moment."""
+        with override_settings(COVERAGE_BBOX=(-78.0, 38.2, -76.02, 39.72)):
+            tiles = tile_cache.tiles_in_coverage(14)
+        by_zoom = {z: sum(1 for t in tiles if t[0] == z) for z in PREDRAWN_ZOOMS}
+        assert by_zoom == {10: 42, 11: 144, 12: 576, 13: 2116, 14: 8190}
+        assert len(set(tiles)) == len(tiles) == 11068
+        assert [t[0] for t in tiles] == sorted(t[0] for t in tiles), "zoom by zoom"
+        west, south, east, north = -78.0, 38.2, -76.02, 39.72
+        for z, x, y in tiles:
+            t_west, t_south, t_east, t_north = stress_tiles.tile_bounds(z, x, y)
+            assert t_east >= west and t_west <= east and t_north >= south and t_south <= north
+
+    def test_an_empty_tile_is_kept_so_its_request_is_not_a_draw(self, segment_schemas) -> None:
+        assert tile_cache.predraw() == (5, 0, 0, 0)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT count(*) FROM stress_tile_cache WHERE octet_length(body) = 0")
+            assert cursor.fetchone()[0] == 5
+
+    @pytest.mark.parametrize("workers", [2, 3])
+    def test_several_workers_draw_the_same_tiles_each_on_its_own_connection(
+        self, live, monkeypatch, workers
+    ) -> None:
+        import threading
+
+        real = stress_tiles.render
+        threads = set()
+
+        def spy(*args, **kwargs):
+            threads.add(threading.current_thread().name)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(stress_tiles, "render", spy)
+        assert tile_cache.predraw(workers=workers) == (5, 0, 0, 0)
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT z FROM stress_tile_cache ORDER BY z")
+            assert [z for (z,) in cursor.fetchall()] == PREDRAWN_ZOOMS
+        assert threads and all(name.startswith("predraw") for name in threads)
+        assert len(threads) > 1 or workers == 1
+
+    def test_the_workers_are_the_setting(self, live, monkeypatch) -> None:
+        import threading
+
+        from django.conf import settings
+
+        assert settings.STRESS_PREDRAW_WORKERS == 2
+        seen = set()
+        real = stress_tiles.render
+
+        def spy(*args, **kwargs):
+            seen.add(threading.current_thread().name)
+            return real(*args, **kwargs)
+
+        monkeypatch.setattr(stress_tiles, "render", spy)
+        with override_settings(STRESS_PREDRAW_WORKERS=1):
+            tile_cache.predraw()
+        assert seen == {threading.current_thread().name}, "one worker draws on the caller's thread"
+
+    def test_each_worker_closes_its_own_connection(self, live) -> None:
+        """A worker thread's connection is its own; left open, every pre-draw
+        would leave its workers' backends behind in the worker process."""
+
+        def backends() -> int:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid()"
+                )
+                return cursor.fetchone()[0]
+
+        before = backends()
+        assert tile_cache.predraw(workers=3).drawn == 5
+        for _ in range(50):
+            if backends() <= before:
+                break
+            time.sleep(0.1)
+        assert backends() <= before
+
+    def test_the_budget_is_an_hour(self) -> None:
+        """40 times the 89 s the whole box took with two workers, and inside
+        what the rebuild's eight hours leave after its three and a half."""
+        assert tile_cache.PREDRAW_BUDGET_S == 3600
+
+    def test_the_predraw_takes_none_of_the_apis_draw_slots(self, live) -> None:
+        """It runs in the worker, not gunicorn: every request-time draw slot
+        held, it still draws, and holds none of them itself."""
+        other = hold_slots(deployment_slots())
+        try:
+            assert tile_cache.predraw(workers=2).drawn == 5
+        finally:
+            other.close()
 
     def test_predraw_draws_nothing_before_any_build(self, segment_schemas) -> None:
         from pipeline.schema import drop_segment_schema
@@ -141,7 +256,7 @@ class TestCache:
 
         out = StringIO()
         call_command("predraw_stress_tiles", stdout=out)
-        assert "4 drawn" in out.getvalue()
+        assert "5 drawn" in out.getvalue()
 
     def test_the_cache_is_left_out_of_the_nightly_dump(self) -> None:
         from config.procrastinate import BACKUP_EXCLUDED_TABLES
@@ -298,8 +413,8 @@ class TestPredrawProbes:
             return real(*args, **kwargs)
 
         monkeypatch.setattr(stress_tiles, "render", first_times_out)
-        result = tile_cache.predraw()
-        assert (result.drawn, result.timed_out, result.left) == (3, 1, 0)
+        result = tile_cache.predraw(workers=1)
+        assert (result.drawn, result.timed_out, result.left) == (4, 1, 0)
         assert "1 timed out" in result.summary()
 
     def test_a_promotion_mid_predraw_stores_nothing_under_the_old_version(
@@ -308,14 +423,36 @@ class TestPredrawProbes:
         oid, _ = stress_tiles.live_table()
         monkeypatch.setattr(stress_tiles, "render", lambda *a, **k: (oid + 1, b"new-table"))
         result = tile_cache.predraw()
-        assert result.drawn == 0 and result.left == 4
+        assert result.drawn == 0 and result.left == 5
+        assert rows() == 0
+
+    @pytest.mark.parametrize("workers", [2, 3])
+    def test_every_worker_stops_at_a_promotion(self, live, monkeypatch, workers) -> None:
+        """Round-1 mutants P04 and P08: after a promotion one worker stopped and
+        the others drew the rest of the box for a table no longer served."""
+        import threading
+
+        oid, _ = stress_tiles.live_table()
+        calls = []
+        lock = threading.Lock()
+
+        def promoted(*args, **kwargs):
+            with lock:
+                calls.append(args)
+            time.sleep(0.05)  # each worker holds a tile when the promotion shows
+            return oid + 1, b"new-table"
+
+        monkeypatch.setattr(stress_tiles, "render", promoted)
+        result = tile_cache.predraw(workers=workers)
+        assert len(calls) <= workers, calls
+        assert result.drawn == 0 and result.left == 5
         assert rows() == 0
 
     def test_a_spent_budget_draws_nothing_and_says_how_much_is_left(self, live) -> None:
         result = tile_cache.predraw(budget_s=-1)
-        assert result == (0, 0, 0, 4)
+        assert result == (0, 0, 0, 5)
         assert rows() == 0
-        assert "stopped at its time budget with 4 left" in result.summary()
+        assert "stopped at its time budget with 5 left" in result.summary()
 
     def test_the_rebuild_row_says_when_the_predraw_is_incomplete(self, live, monkeypatch) -> None:
         from config import procrastinate

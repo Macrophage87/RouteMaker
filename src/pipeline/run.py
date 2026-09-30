@@ -46,6 +46,7 @@ from . import (
     overrides,
     promotion,
     reconcile,
+    restricted_areas,
     retention,
     source,
     states,
@@ -450,6 +451,14 @@ class RebuildContext:
     singletracks: set[int] = field(default_factory=set)
     # Ways classified at a curated speed limit (`routemaker.speed_corrections`).
     speed_corrected: set[int] = field(default_factory=set)
+    # The ways the stress map leaves out by their length or their place
+    # (pipeline.restricted_areas): the short unnamed paths
+    # (facility.short_paths_to_hide), the roads inside a military base, every
+    # way inside a cemetery, and a parking lot's own ways.
+    short_paths_hidden: set[int] = field(default_factory=set)
+    # The ways inside a cemetery, routed only to or from a point inside one
+    # (`rm:cemetery`; OWNER-DECISIONS 98).
+    cemetery_ways: set[int] = field(default_factory=set)
     border_nodes_by_way: dict[int, list[borders.BorderNode]] = field(default_factory=dict)
     override_report: overrides.OverrideReport | None = None
     # The fixture ways an approved access override wrote a `bicycle`,
@@ -1105,6 +1114,19 @@ def build_handlers(
         beside = facility.beside_separate_roads(
             (way.osm_id, way.tags, way.coordinates) for way in context.ways
         )
+        context.short_paths_hidden = facility.short_paths_to_hide(
+            (way.osm_id, way.tags, way.node_ids, way.coordinates) for way in context.ways
+        )
+        # By their place: the roads inside a military base, many with no access
+        # tag of their own (the Pentagon's; OWNER-DECISIONS 88), every way inside
+        # a cemetery (98), and a parking lot's own ways (99). Map only, but for
+        # the cemeteries, which are also destination-only for routing.
+        areas = restricted_areas.restricted_areas(context.source_pbf)
+        placed = [(way.osm_id, way.tags, way.coordinates) for way in context.ways]
+        context.cemetery_ways = restricted_areas.cemetery_ways(placed, areas["cemetery"])
+        context.short_paths_hidden |= restricted_areas.roads_inside(placed, areas["military"])
+        context.short_paths_hidden |= context.cemetery_ways
+        context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         car_free_for_good = 0
         for way in context.ways:
             context.facility_by_way[way.osm_id] = facility.facility(
@@ -1258,6 +1280,9 @@ def build_handlers(
                         variant, way.osm_id, context.facility_by_way, context.car_free_by_way
                     )
                 )
+                if way.osm_id in context.cemetery_ways:
+                    # No cut-through: reached only from or to a point inside.
+                    derived["cemetery"] = True
                 lit = lit_value(way.tags)
                 if lit is not None:
                     derived["lit"] = lit
@@ -1334,6 +1359,21 @@ def build_handlers(
             admin_source = admin_source or admin_db
             timezone_source = timezone_source or timezone_db
 
+    def map_class_of(osm_id: int, tags: dict[str, str]) -> facility.MapClass:
+        """The map's class for a way, agreeing with what routing does with it.
+
+        A sidewalk the CBD rule bars to bicycles (OWNER-DECISIONS 104) is a way
+        a bicycle may not use, left to the base map like any other (89); a
+        singletrack every ride type avoids (90, 91, 111) is not drawn as a
+        trail the router will never send anyone down. The paved trails the
+        singletrack rule exempts stay trails on both.
+        """
+        if osm_id in context.cbd_sidewalks:
+            return facility.MapClass.BARRED
+        if osm_id in context.short_paths_hidden or osm_id in context.singletracks:
+            return facility.MapClass.HIDDEN
+        return facility.map_class(tags)
+
     def write_segments() -> None:
         from .schema import schema_exists
 
@@ -1363,6 +1403,8 @@ def build_handlers(
                         lit=lit_value(way.tags),
                         facility=context.facility_by_way.get(way.osm_id, "none"),
                         car_free_when=sorted(context.car_free_by_way.get(way.osm_id, ())),
+                        map_class=map_class_of(way.osm_id, way.tags).value,
+                        separate_bikeway=facility.has_separate_bikeway(way.tags),
                     )
                 )
         context.rows = rows

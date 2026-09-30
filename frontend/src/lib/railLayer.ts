@@ -14,6 +14,7 @@ import {
   iconShape,
   lineStyle,
   railFeatures,
+  visibleLines,
   type RailVisibility,
   type Station,
 } from "./railStations.ts";
@@ -175,4 +176,26 @@ export function railHitFrom(
     if (props.kind === "station") return { id: props.id };
   }
   return null;
+}
+
+/**
+ * The station a tap at `point` is on, from the stations' own points: the
+ * nearest shown one within `reach` pixels of it, projected by `project`. What
+ * stationAt falls back to when the rendered-feature query misses.
+ */
+export function stationNear(
+  stations: readonly Station[],
+  visibility: RailVisibility,
+  project: (point: [number, number]) => { x: number; y: number },
+  point: { x: number; y: number },
+  reach: number,
+): RailHit | null {
+  let best: { id: string; d: number } | null = null;
+  for (const station of stations) {
+    if (visibleLines(station, visibility).length === 0) continue;
+    const at = project(station.point);
+    const d = Math.hypot(at.x - point.x, at.y - point.y);
+    if (d <= reach && (best === null || d < best.d)) best = { id: station.id, d };
+  }
+  return best && { id: best.id };
 }

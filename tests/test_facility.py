@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 
 import pytest
 
+from routemaker import facility as facility_rules
 from routemaker import ridetime
 from routemaker.facility import (
     Facility,
@@ -345,3 +346,394 @@ def test_beside_needs_most_of_the_way():
     # Crosses the road and runs off: two of eight vertices near it.
     crossing = (2, {"highway": "cycleway"}, [(-77.0298, 38.8999 + i * 0.0003) for i in range(8)])
     assert beside_separate_roads([road, crossing]) == set()
+
+
+# The owner, 2026-09-29 (OWNER-DECISIONS 73, 78, 80): how the stress map draws a way.
+@pytest.mark.parametrize(
+    ("tags", "drawn_as"),
+    [
+        ({"highway": "motorway"}, "barred"),
+        ({"highway": "motorway_link"}, "barred"),
+        ({"highway": "motorway", "bicycle": "yes"}, "road"),
+        ({"highway": "trunk", "bicycle": "no"}, "barred"),  # the George Washington Parkway
+        ({"highway": "trunk", "motorroad": "yes"}, "barred"),
+        ({"highway": "trunk"}, "road"),  # US 1, US 50: bicycle-legal
+        ({"highway": "trunk", "expressway": "yes", "maxspeed": "55 mph"}, "road"),  # US 340: Avoid
+        ({"highway": "secondary", "bicycle": "no", "covered": "yes"}, "barred"),  # BWI arrivals
+        # "Don't show roads that most typical people can't ride on" (88): the
+        # public may not enter, so the road is hidden, not a barred public road.
+        ({"highway": "service", "access": "private", "bicycle": "no"}, "hidden"),
+        ({"highway": "service", "access": "private"}, "hidden"),  # BWI's 790013218
+        ({"highway": "tertiary", "access": "private"}, "hidden"),  # Pentagon Access Road
+        ({"highway": "unclassified", "access": "no", "foot": "private"}, "hidden"),
+        ({"highway": "residential", "access": "military"}, "hidden"),
+        ({"highway": "residential", "access": "restricted"}, "hidden"),
+        ({"highway": "residential", "access": "permit"}, "hidden"),
+        ({"highway": "residential", "vehicle": "private"}, "hidden"),
+        ({"highway": "residential", "bicycle": "private"}, "hidden"),
+        ({"highway": "service", "access": "private", "bicycle": "yes"}, "road"),
+        ({"highway": "residential", "access": "no", "bicycle": "designated"}, "road"),  # car-free
+        ({"highway": "tertiary", "access": "permissive"}, "road"),  # Patton Drive
+        ({"highway": "residential", "access": "destination"}, "road"),
+        ({"highway": "primary", "bicycle": "use_sidepath"}, "barred"),
+        ({"highway": "residential"}, "road"),
+        ({"highway": "corridor", "indoor": "yes", "level": "1"}, "hidden"),  # BWI's terminal
+        ({"highway": "corridor"}, "hidden"),
+        ({"highway": "footway", "indoor": "yes"}, "hidden"),
+        ({"highway": "footway", "indoor": "no"}, "road"),
+        ({"highway": "elevator"}, "hidden"),
+        ({"highway": "construction"}, "hidden"),
+        (
+            {"highway": "footway", "bicycle": "no"},
+            "road",
+        ),  # a public path; its facility says the rest
+        ({"highway": "path", "access": "private"}, "hidden"),  # inside the fence
+        ({"highway": "footway", "access": "private", "foot": "yes"}, "road"),
+        ({"highway": "cycleway", "access": "no", "bicycle": "designated"}, "road"),
+        ({"highway": "footway", "access": "private", "bicycle": "private"}, "hidden"),
+    ],
+)
+def test_the_map_class_of_a_way(tags, drawn_as) -> None:
+    assert facility_rules.map_class(tags).value == drawn_as
+
+
+@pytest.mark.parametrize(
+    ("tags", "beside"),
+    [
+        ({"highway": "primary", "cycleway:left": "separate"}, True),  # 15th Street NW
+        ({"highway": "primary", "cycleway:both": "separate"}, True),
+        ({"highway": "primary", "cycleway": "track"}, False),  # the lane is on the road way
+        ({"highway": "primary"}, False),
+        ({"highway": "cycleway", "cycleway": "separate"}, False),  # the facility itself
+    ],
+)
+def test_a_road_with_its_bikeway_mapped_beside_it(tags, beside) -> None:
+    assert facility_rules.has_separate_bikeway(tags) is beside
+
+
+@pytest.mark.parametrize(
+    ("tags", "drawn_as"),
+    [
+        # "There's a lot of side paths and parking lots that probably don't need
+        # to show up." - "Sidewalks + small paths" (OWNER-DECISIONS 82).
+        ({"highway": "footway", "footway": "sidewalk"}, "hidden"),
+        ({"highway": "footway", "footway": "sidewalk", "bicycle": "yes"}, "hidden"),
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "designated"},
+            "road",
+        ),  # a roadside trail
+        ({"highway": "path", "path": "sidewalk"}, "hidden"),
+        # The Anacostia Riverwalk Trail's sidewalk stretches (ways 1165002638, 1444409547).
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "bicycle": "yes",
+                "name": "Anacostia Riverwalk Trail",
+            },
+            "road",
+        ),
+        ({"highway": "footway", "footway": "sidewalk", "name": "K Street Northwest"}, "hidden"),
+        # "Keep tagged sidepaths" (OWNER-DECISIONS 115): open to bicycles and segregated-tagged.
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "yes", "segregated": "no"},
+            "road",
+        ),
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "yes", "segregated": "yes"},
+            "road",
+        ),
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "bicycle": "permissive",
+                "segregated": "no",
+            },
+            "road",
+        ),
+        (
+            {"highway": "footway", "footway": "sidewalk", "segregated": "no"},
+            "hidden",
+        ),  # no bicycle tag
+        (
+            {"highway": "footway", "footway": "sidewalk", "bicycle": "no", "segregated": "no"},
+            "hidden",
+        ),
+        # The Veirs Mill Road sidepath once the owner's access row is applied.
+        (
+            {
+                "highway": "footway",
+                "footway": "sidewalk",
+                "surface": "concrete",
+                "bicycle": "designated",
+            },
+            "road",
+        ),
+        # A trail not yet built (the Mount Vernon Trail's 2030 section) is not drawn.
+        (
+            {"highway": "construction", "construction": "cycleway", "name": "Mount Vernon Trail"},
+            "hidden",
+        ),
+        ({"highway": "cycleway", "cycleway": "sidewalk", "bicycle": "designated"}, "road"),
+        ({"highway": "footway", "footway": "crossing"}, "hidden"),
+        ({"highway": "footway", "footway": "crossing", "bicycle": "designated"}, "road"),
+        ({"highway": "cycleway", "cycleway": "crossing"}, "road"),  # the trail's own crossing
+        ({"highway": "footway", "footway": "traffic_island"}, "hidden"),
+        ({"highway": "service", "service": "parking_aisle"}, "hidden"),
+        ({"highway": "service", "service": "driveway"}, "hidden"),
+        ({"highway": "service", "service": "drive-through"}, "hidden"),
+        ({"highway": "service", "service": "alley"}, "alley"),  # item 100: close in, faint
+        ({"highway": "service"}, "road"),
+        ({"highway": "footway"}, "road"),  # its length and ends decide (short_paths_to_hide)
+    ],
+)
+def test_sidewalks_crossings_and_parking_lots_are_left_off_the_map(tags, drawn_as) -> None:
+    assert facility_rules.map_class(tags).value == drawn_as
+
+
+def _west_east(lon0, lat, metres):
+    """A west-east line `metres` long at latitude `lat`."""
+    import math
+
+    return [(lon0, lat), (lon0 + metres / (111_320 * math.cos(math.radians(lat))), lat)]
+
+
+def test_short_unnamed_paths_are_hidden_unless_they_join_two_kept_trails() -> None:
+    trail = {"highway": "cycleway", "name": "Rock Creek Trail"}
+    link = {"highway": "footway"}
+    ways = [
+        (1, trail, [10, 11, 12], _west_east(-77.05, 38.95, 900)),
+        (2, trail, [20, 21], _west_east(-77.04, 38.95, 900)),
+        (3, link, [12, 20], _west_east(-77.045, 38.95, 60)),  # joins the two: kept
+        (4, link, [12, 30], _west_east(-77.045, 38.951, 60)),  # a spur: hidden
+        (5, link, [40, 41], _west_east(-77.03, 38.95, 140)),  # alone, short: hidden
+        (6, link, [50, 51], _west_east(-77.02, 38.95, 400)),  # long: kept
+        (
+            7,
+            {"highway": "path", "name": "Glover Trail"},
+            [60, 61],
+            _west_east(-77.01, 38.95, 50),
+        ),  # named
+        (
+            8,
+            {"highway": "footway", "bicycle": "designated"},
+            [70, 71],
+            _west_east(-77.0, 38.95, 50),
+        ),
+        (9, {"highway": "footway", "footway": "sidewalk"}, [12, 21], _west_east(-77.0, 38.96, 50)),
+        (10, {"highway": "residential"}, [80, 81], _west_east(-76.99, 38.95, 50)),
+    ]
+    assert facility_rules.short_paths_to_hide(ways) == {4, 5}
+    assert facility_rules.SHORT_PATH_M == 150
+    # A sidewalk is not a kept trail for the joining rule: a link to one is a spur.
+    assert facility_rules.short_paths_to_hide(
+        [ways[0], ways[8], (11, link, [12, 21], _west_east(0, 0, 30))]
+    ) == {11}
+
+
+def test_roads_inside_a_military_base_are_found_and_trails_along_it_are_not() -> None:
+    """ "Don't show roads that most typical people can't ride on, such as within
+    military bases, or the pentagon" (OWNER-DECISIONS 88)."""
+    from pipeline import restricted_areas as military
+
+    square = [(-77.06, 38.866), (-77.05, 38.866), (-77.05, 38.876), (-77.06, 38.876)]
+    hole = [(-77.057, 38.869), (-77.053, 38.869), (-77.053, 38.873), (-77.057, 38.873)]
+    pentagon = ((-77.06, 38.866, -77.05, 38.876), [square], [hole])
+    assert military.is_military_area({"landuse": "military", "name": "The Pentagon"})
+    assert military.is_military_area({"military": "base"})
+    assert not military.is_military_area({"military": "no"})
+    assert not military.is_military_area({"landuse": "residential"})
+    ways = [
+        (
+            1,
+            {"highway": "tertiary", "name": "Connector Road"},
+            [(-77.059, 38.867), (-77.058, 38.868)],
+        ),
+        (2, {"highway": "tertiary"}, [(-77.055, 38.871), (-77.054, 38.872)]),  # in the hole
+        (
+            3,
+            {"highway": "secondary"},
+            [(-77.059, 38.867), (-77.04, 38.867), (-77.03, 38.867)],
+        ),  # mostly out
+        (
+            4,
+            {"highway": "cycleway", "name": "Mount Vernon Trail"},
+            [(-77.059, 38.867), (-77.058, 38.868)],
+        ),
+        (5, {"highway": "tertiary"}, [(-77.07, 38.86), (-77.069, 38.861)]),  # outside
+        (6, {"building": "yes"}, [(-77.059, 38.867)]),
+    ]
+    assert military.roads_inside(ways, [pentagon]) == {1}
+    assert military.roads_inside(ways, []) == set()
+
+
+def test_the_riverwalk_through_the_navy_yard_stays_and_the_streets_beside_it() -> None:
+    """The owner, 2026-09-29, of the Washington Navy Yard: "There's a trail that
+    open near the water." (OWNER-DECISIONS 94). On the dials box extract the
+    Anacostia Riverwalk Trail's two ways inside the Navy Yard's area are
+    highway=cycleway, bicycle=designated, foot=designated, no access or
+    opening_hours tag: a public trail, routable, and never area-tested."""
+    from pipeline import restricted_areas as military
+
+    riverwalk = {
+        "highway": "cycleway",
+        "name": "Anacostia Riverwalk Trail",
+        "bicycle": "designated",
+        "foot": "designated",
+    }
+    assert facility_rules.map_class(riverwalk).value == "road"
+    yard = (
+        (-77.0, 38.871, -76.991, 38.8765),
+        [[(-77.0, 38.871), (-76.991, 38.871), (-76.991, 38.8765), (-77.0, 38.8765)]],
+        [],
+    )
+    ways = [
+        (1, riverwalk, [(-76.998, 38.8715), (-76.994, 38.8715)]),  # along the water, inside
+        (
+            2,
+            {"highway": "service", "name": "Dahlgren Avenue Southeast"},
+            [(-76.996, 38.874), (-76.995, 38.874)],
+        ),
+        (
+            3,
+            {"highway": "primary", "name": "M Street Southeast"},
+            [(-77.0, 38.877), (-76.99, 38.877)],
+        ),  # outside
+        (
+            4,
+            {"highway": "unclassified", "name": "Water Street Southeast"},
+            [(-77.003, 38.873), (-77.001, 38.873)],
+        ),
+    ]
+    assert military.roads_inside(ways, [yard]) == {2}
+    for tags in (ways[2][1], ways[3][1]):
+        assert facility_rules.map_class(tags).value == "road"
+
+
+@pytest.mark.parametrize(
+    ("tags", "drawn_as"),
+    [
+        # "Alley cut throughs should only be used if the roads are very problematic
+        # nearby. Cut down on showing them" (OWNER-DECISIONS 100).
+        ({"highway": "service", "service": "alley"}, "alley"),
+        ({"highway": "service", "service": "alley", "access": "private"}, "hidden"),
+        # Routing prices an alley whatever its bicycle tag (is_real_alley), so
+        # one open to bicycles is still drawn as an alley.
+        ({"highway": "service", "service": "alley", "bicycle": "yes"}, "alley"),
+        ({"highway": "service", "service": "alley", "bicycle": "designated"}, "alley"),
+        ({"highway": "service", "bicycle": "yes"}, "road"),
+        ({"highway": "service"}, "road"),
+        ({"highway": "residential", "name": "Alley Street"}, "road"),
+        # The Lua marks tier-5 roads service=alley in Valhalla's extract only; the
+        # source road is what map_class reads.
+        ({"highway": "trunk", "expressway": "yes", "maxspeed": "55 mph"}, "road"),
+    ],
+)
+def test_an_alley_is_its_own_map_class(tags, drawn_as) -> None:
+    assert facility_rules.map_class(tags).value == drawn_as
+
+
+def _box(west, south, east, north):
+    ring = [(west, south), (east, south), (east, north), (west, north)]
+    return ((west, south, east, north), [ring], [])
+
+
+def test_the_kinds_of_restricted_area() -> None:
+    from pipeline import restricted_areas as areas
+
+    assert areas.area_kind({"landuse": "military"}) == "military"
+    assert (
+        areas.area_kind({"landuse": "cemetery", "name": "Arlington National Cemetery"})
+        == "cemetery"
+    )
+    assert (
+        areas.area_kind({"amenity": "grave_yard", "name": "Congressional Cemetery"}) == "cemetery"
+    )
+    assert areas.area_kind({"amenity": "parking"}) == "parking"
+    assert areas.area_kind({"parking": "surface"}) == "parking"
+    assert areas.area_kind({"parking": "multi-storey"}) == "parking"
+    assert areas.area_kind({"parking": "street_side"}) is None
+    assert areas.area_kind({"landuse": "residential"}) is None
+
+
+def test_every_way_inside_a_cemetery_is_found_but_a_signed_trail_and_a_trail_beside_it():
+    """ "There's a lot of cemetary roads, such as arlington national cemetary. We
+    shouldn't have these roads on here, even if some of them can be technically
+    ridden. I don't want to encourage a cemetary cut through as it's
+    disrespectful." (OWNER-DECISIONS 98)"""
+    from pipeline import restricted_areas as areas
+
+    arlington = _box(-77.08, 38.87, -77.06, 38.885)
+    ways = [
+        (
+            1,
+            {"highway": "service", "name": "Eisenhower Drive"},
+            [(-77.07, 38.875), (-77.069, 38.876)],
+        ),
+        (2, {"highway": "footway"}, [(-77.075, 38.878), (-77.074, 38.879)]),
+        (
+            3,
+            {"highway": "cycleway", "bicycle": "designated"},
+            [(-77.075, 38.872), (-77.074, 38.873)],
+        ),
+        # The Mount Vernon Trail and Memorial Avenue run outside the boundary.
+        (
+            4,
+            {"highway": "cycleway", "name": "Mount Vernon Trail"},
+            [(-77.055, 38.875), (-77.054, 38.88)],
+        ),
+        (
+            5,
+            {"highway": "secondary", "name": "Memorial Avenue"},
+            [(-77.059, 38.881), (-77.05, 38.882)],
+        ),
+        (6, {"building": "yes"}, [(-77.07, 38.875)]),
+    ]
+    assert areas.cemetery_ways(ways, [arlington]) == {1, 2}
+    assert areas.cemetery_ways(ways, []) == set()
+
+
+def test_a_parking_lots_own_ways_are_found_and_the_street_past_it_is_not():
+    """ "Also, no need to stripe through all the parking lots." (OWNER-DECISIONS 99)"""
+    from pipeline import restricted_areas as areas
+
+    lot = _box(-77.12, 39.05, -77.11, 39.056)
+    ways = [
+        (1, {"highway": "service"}, [(-77.118, 39.052), (-77.112, 39.052)]),  # an aisle, no tag
+        (2, {"highway": "footway"}, [(-77.117, 39.053), (-77.116, 39.054)]),
+        (
+            3,
+            {"highway": "footway", "name": "Bethesda Trolley Trail"},
+            [(-77.117, 39.051), (-77.116, 39.052)],
+        ),
+        (
+            4,
+            {"highway": "footway", "bicycle": "designated"},
+            [(-77.115, 39.051), (-77.114, 39.052)],
+        ),
+        (
+            5,
+            {"highway": "primary", "name": "Rockville Pike"},
+            [(-77.119, 39.0505), (-77.105, 39.0505)],
+        ),
+        (6, {"highway": "residential"}, [(-77.119, 39.055), (-77.111, 39.055)]),  # a street through
+        (
+            7,
+            {"highway": "service", "name": "Capitol Circle Drive"},
+            [(-77.118, 39.054), (-77.113, 39.054)],
+        ),
+    ]
+    assert areas.parking_ways(ways, [lot]) == {1, 2}
+
+
+def test_the_index_finds_an_area_across_its_cells_and_misses_one_far_away():
+    from pipeline import restricted_areas as areas
+
+    big = _box(-77.2, 38.8, -76.9, 39.0)  # many grid cells
+    far = _box(-76.0, 39.5, -75.99, 39.51)
+    ways = [
+        (1, {"highway": "service"}, [(-77.1, 38.9)]),
+        (2, {"highway": "service"}, [(-76.5, 39.3)]),
+    ]
+    assert areas.parking_ways(ways, [big, far]) == {1}

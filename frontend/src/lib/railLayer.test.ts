@@ -15,6 +15,7 @@ import {
   railHitFrom,
   railLayers,
   setRailVisibility,
+  stationNear,
   type RailMap,
 } from "./railLayer.ts";
 import { readFileSync } from "node:fs";
@@ -223,4 +224,36 @@ test("the stations show from the zoom the map opens at, and are never hidden by 
   assert.equal(layer.layout["icon-allow-overlap"], true);
   assert.equal(layer.layout["icon-ignore-placement"], true);
   assert.equal(layer.layout["text-optional"], true, "a label that does not fit must not take its icon with it");
+});
+
+test("a tap the rendered-feature query misses finds the nearest shown station within reach", () => {
+  // MERGE-TILES re-check SHOULD_FIX 1: with the overlay on, a cold page's
+  // query missed a station right under the tap; its own point does not.
+  const station = (id: string, point: [number, number], metro: string[], penn = false) =>
+    ({ id, name: id, point, metro, penn, elevators: [], osmElevators: [], entrances: [] }) as unknown as Station;
+  const stations = [
+    station("a", [0, 0], ["red"]),
+    station("b", [4, 0], ["red"]),
+    station("marc", [0, 3], [], true),
+  ];
+  const project = ([x, y]: [number, number]) => ({ x, y });
+  const all = { metro: true, marc: true };
+  assert.deepEqual(stationNear(stations, all, project, { x: 1, y: 0 }, 6), { id: "a" });
+  assert.deepEqual(stationNear(stations, all, project, { x: 3, y: 0 }, 6), { id: "b" }, "the nearest");
+  assert.deepEqual(stationNear(stations, all, project, { x: 0, y: 2.9 }, 6), { id: "marc" });
+  assert.equal(stationNear(stations, all, project, { x: 20, y: 20 }, 6), null, "out of reach");
+  assert.deepEqual(stationNear(stations, all, project, { x: 0, y: 6 }, 3), { id: "marc" }, "at the edge of reach");
+  assert.equal(stationNear(stations, all, project, { x: 0, y: 6.1 }, 3), null);
+  const noMarc = { metro: true, marc: false };
+  assert.deepEqual(stationNear(stations, noMarc, project, { x: 0, y: 2.9 }, 6), { id: "a" }, "a hidden station is not tapped");
+});
+
+test("stationAt falls back to the stations' points when the query misses, from the zoom they show", () => {
+  const source = readFileSync(new URL("../railInteraction.ts", import.meta.url), "utf8");
+  assert.match(
+    source,
+    /if \(!hit && map\.getLayer\(RAIL_LAYERS\.stations\) && map\.getZoom\(\) >= STATION_MIN_ZOOM\) \{\s*hit = stationNear\(options\.stations, options\.visibility\(\), \(p\) => map\.project\(p\), point, TAP_SLOP\);/,
+  );
+  const view = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
+  assert.match(view, /stations: RAIL_STATIONS,/);
 });

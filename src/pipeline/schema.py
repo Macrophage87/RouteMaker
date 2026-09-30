@@ -18,9 +18,7 @@ import re
 from django.db import connection
 
 from routemaker.classes import (
-    SIDEWALK_CLASS_HIGHWAY,
     TRAIL_CLASS_HIGHWAY,
-    TRAIL_NETWORK_HIGHWAY,
     TrailKind,
 )
 from routemaker.stress import trail_rule
@@ -110,56 +108,115 @@ def _text_list(values) -> str:
     return ", ".join(f"'{item}'" for item in items)
 
 
-# What the stress tiles draw zoomed out (`core.stress_tiles.OVERVIEW`): the
-# roads of LTS 3 and 4 and the trail network. Written once because the partial
-# index below is created with it and the tile query filters with it, and
-# PostgreSQL uses a partial index only when it can prove the query's condition
-# implies the index's - which it does for the same expression.
+# What the stress tiles draw zoomed out (`core.stress_tiles.TRAILS`, below
+# `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the traffic-free paths and trails
+# and nothing else. The owner, 2026-09-28: "It looks way too busy zoomed out
+# though." and then "Zoomed out just show the trails." (OWNER-DECISIONS 64,
+# 65); and 2026-09-29, "Show roadside trails (Recommended)" (66).
 #
-# The trail network is the trail-class ways a bicycle may ride away from the
-# road, and the sidepaths beside it (`routemaker.classes.trail_kind`): a
-# bike-barred hiking trail is not in it. A table built before the kinds were
-# recorded holds the plain texts, which cannot tell the Appalachian Trail from
-# the W&OD; its cycleways, paths and bridleways stay in the network, as they
-# were, until the next rebuild writes the kinds (LEGACY_TRAIL_RULES).
+# - A path is what `routemaker.facility` calls one - the rule routing reads,
+#   written by the rebuild to `segment.facility` - so a car-free road (Beach
+#   Drive in DC) is on the zoomed-out map and a hiking trail barred to
+#   bicycles is not.
+# - A roadside trail is a way of its own - trail class, `is_trail_class` -
+#   that `routemaker.facility` calls protected because it runs beside a road:
+#   a sidewalk or path designated for bicycles, an `is_sidepath`, a cycleway
+#   along a road whose own tags say its facility is mapped separately. The
+#   Cross County Trail's sidewalk stretches, the Old Georgetown Road sidepath.
+# - A protected lane tagged on the road way itself (`cycleway=track`, a lane
+#   with posts) is not trail class, and waits for z13 with the roads.
+#
+# The segment table records no more than that: a cycle track in DC's roadway
+# mapped as a way of its own (15th Street NW) is trail class too, and is drawn
+# zoomed out like the trail beside a road.
+#
+# Written once because the partial index below is created with it and the tile
+# query filters with it, and PostgreSQL uses a partial index only when it can
+# prove the query's condition implies the index's - which it does for the same
+# expression.
+FACILITY_COLUMN = "facility"
+TRAIL_FACILITY = "path"
+ROADSIDE_TRAIL_FACILITY = "protected"
+
+# The ride times a road closed to motor traffic only at set times is car-free
+# in (`routemaker.ridetime`, written by the rebuild beside the facility). The
+# owner, 2026-09-29: "One note: Car-free roads should be regarded the same as
+# an off-road path on a map." (OWNER-DECISIONS 67) - a road closed for good is
+# a path already (`facility`); one closed on weekends is a path when the map's
+# ride time is Weekend ("Path on weekends only"), so the zoomed-out tiles
+# carry it too and the map's style decides (`core.stress_tiles`).
+CAR_FREE_COLUMN = "car_free_when"
+
+# A live table promoted before the facility column has no such column, and the
+# tiles derive the facility from the rule the rebuild recorded
+# (`routemaker.classes.trail_kind`, in the text of `stress_rule`), by the
+# routing lane's rule for trails: a trail a bicycle may ride is a path, a
+# sidepath is the protected facility, and nothing else is anything. On a table
+# from before the kinds were recorded only a cycleway is a path; a plain
+# "path" there may be a hiking trail barred to bicycles.
 TRAILS = sorted(TRAIL_CLASS_HIGHWAY - {"steps"})
 OPEN_TRAIL_RULES = frozenset(trail_rule(h, TrailKind.OPEN) for h in TRAILS)
 SIDEPATH_RULES = frozenset(trail_rule(h, TrailKind.SIDEPATH) for h in TRAILS)
-LEGACY_TRAIL_RULES = frozenset(trail_rule(h) for h in TRAIL_NETWORK_HIGHWAY)
-TRAIL_NETWORK_RULES = OPEN_TRAIL_RULES | SIDEPATH_RULES | LEGACY_TRAIL_RULES
+PATH_RULES = OPEN_TRAIL_RULES | {trail_rule("cycleway")}
 
-OVERVIEW_PREDICATE = (
-    "(stress_tier >= 3 OR stress_rule IN (" + _text_list(TRAIL_NETWORK_RULES) + "))"
-)
-
-# Until the live table has a facility column the tiles derive one, by the
-# routing lane's rule for trails: a trail a bicycle may ride is an off-road
-# path, a sidepath is the protected facility, and nothing else is anything.
-# On a table from before the kinds were recorded only a cycleway is a path;
-# a plain "path" there may be a hiking trail barred to bicycles.
 TRAIL_NETWORK_FACILITY = (
     "CASE WHEN stress_rule IN ("
-    + _text_list(OPEN_TRAIL_RULES | {trail_rule("cycleway")})
+    + _text_list(PATH_RULES)
     + ") THEN 'path' WHEN stress_rule IN ("
     + _text_list(SIDEPATH_RULES)
     + ") THEN 'protected' END"
 )
 
-# What they draw at street zoom (`core.stress_tiles.STREETS`): everything but
-# the sidewalk class. `stress_rule` is NOT NULL, so NOT IN keeps every street.
-STREETS_PREDICATE = (
-    "stress_rule NOT IN (" + _text_list(trail_rule(h) for h in SIDEWALK_CLASS_HIGHWAY) + ")"
-)
 
-# The bike-facility class of a segment - off-road path, protected lane,
-# painted lane, or none, sharrows counting as none (owner request of
-# 2026-09-27), written by the rebuild from `routemaker.facility` - the rule
-# routing reads. A live table promoted before the column has none: the stress
-# tiles carry it from a table that has it and derive it
-# (TRAIL_NETWORK_FACILITY) on one that does not. Paths and protected lanes are
-# the ones a zoomed-out map keeps, whatever their tier or kind of way.
-FACILITY_COLUMN = "facility"
-FACILITIES_KEPT_ZOOMED_OUT = ("path", "protected")
+def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
+    """The zoomed-out tiles' condition on a table with or without the facility
+    column: its paths, and the protected ways that are trails of their own.
+    Also the overview index's predicate on that table. Without the column the
+    recorded rule says it: a sidepath for bicycles is a trail-class way beside
+    a road (`routemaker.classes.trail_kind`). With `has_car_free`, the roads
+    closed to cars at set times as well, which are paths in those ride times."""
+    if has_facility:
+        trails = (
+            f"({FACILITY_COLUMN} = '{TRAIL_FACILITY}' OR "
+            f"({FACILITY_COLUMN} = '{ROADSIDE_TRAIL_FACILITY}' AND is_trail_class))"
+        )
+    else:
+        trails = "stress_rule IN (" + _text_list(PATH_RULES | SIDEPATH_RULES) + ")"
+    if has_car_free:
+        return f"({trails} OR cardinality({CAR_FREE_COLUMN}) > 0)"
+    return trails
+
+
+# What they draw at busy-road zoom (`core.stress_tiles.BUSY`, from
+# `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the paths and trails, and the roads
+# at LTS 3 and above - Avoid (tier 5) and the expressways included. The owner,
+# 2026-09-29: "Zoom less than 12, show just bike paths and the metro/MARC. 12
+# and 13, show LTS 3+, 14+ show show the quiet streets." (OWNER-DECISIONS 73).
+BUSY_MIN_TIER = 3
+
+
+def busy_predicate(has_facility: bool, has_car_free: bool = False) -> str:
+    """The busy-road tiles' condition: the trails' (with the timed closures when
+    `has_car_free`), or a road at LTS 3 and above. Also the overview index's
+    predicate: the trails' condition implies it, so the one index serves both
+    zoomed-out levels."""
+    return f"({trails_predicate(has_facility, has_car_free)} OR stress_tier >= {BUSY_MIN_TIER})"
+
+
+# Two facts about a way the map draws from, written by the rebuild beside the
+# facility (routemaker.facility.map_class and has_separate_bikeway). The
+# owner, 2026-09-29: "there are several expressways shown as LTS4. just show
+# them in white." and "there's several cases of a protected bike lane next to
+# LTS3 or 4. In that case, don't show the road, perhaps hide it until zoom
+# 15-16. The bike lane should show up as the main." (OWNER-DECISIONS 73), "Keep
+# it faint if it parallels a protected bike path." (78), and "For some strange
+# reason BWI has TLS 3 inside the terminal." (80).
+MAP_CLASS_COLUMN = "map_class"
+SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
+
+# On a table from before those columns, the public roads a bicycle may not
+# use are what the classifier recorded as motor-only: a motorway or its ramp.
+MOTOR_ONLY_RULE = "starts_with(stress_rule, 'motor-only classification (')"
 
 # Whether SEGMENT_DDL declares the facility column. Set it True in the change
 # that adds the column, so the overview index is created with the predicate
@@ -168,16 +225,12 @@ FACILITIES_KEPT_ZOOMED_OUT = ("path", "protected")
 SEGMENT_HAS_FACILITY = True
 
 
-def keeping_facilities(predicate: str) -> str:
-    """`predicate`, widened to keep the facilities a zoomed-out map shows."""
-    kept = _text_list(FACILITIES_KEPT_ZOOMED_OUT)
-    return f"({predicate} OR {FACILITY_COLUMN} IN ({kept}))"
-
-
 def overview_index_predicate(has_facility: bool) -> str:
     """The overview index's predicate on a table with or without the facility
-    column: the one the tile query uses on that table."""
-    return keeping_facilities(OVERVIEW_PREDICATE) if has_facility else OVERVIEW_PREDICATE
+    column: the busy-road one, which the trails' implies, so both zoomed-out
+    levels read through it. SEGMENT_DDL declares `car_free_when` with the
+    facility, so the one flag says both."""
+    return busy_predicate(has_facility, has_car_free=has_facility)
 
 
 OVERVIEW_INDEX_PREDICATE = overview_index_predicate(SEGMENT_HAS_FACILITY)
@@ -227,6 +280,18 @@ CREATE TABLE {schema}.segment (
     facility        text        NOT NULL DEFAULT 'none'
                     CHECK (facility IN ('path', 'protected', 'lane', 'none')),
     car_free_when   text[]      NOT NULL DEFAULT '{{}}',
+    -- How the stress map draws the way (`routemaker.facility.map_class`):
+    -- `road`; `barred`, a public road a bicycle may not use, and `hidden`, a
+    -- way no typical rider could use (a terminal hallway, a sidewalk, a
+    -- private road, a road inside a base, a cemetery or a parking lot), both
+    -- not drawn; `alley`, drawn only close in and faint. And whether a road's
+    -- own tags say its bike facility is mapped as a way of its own beside it
+    -- (`routemaker.facility.has_separate_bikeway`), which the map draws faint
+    -- and late so that facility is the main line (the owner, 2026-09-29;
+    -- OWNER-DECISIONS 73, 78, 80, 82, 88, 89, 98, 99, 100).
+    map_class       text        NOT NULL DEFAULT 'road'
+                    CHECK (map_class IN ('road', 'barred', 'hidden', 'alley')),
+    separate_bikeway boolean    NOT NULL DEFAULT false,
     -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
     -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).
     -- `stress_adjustment_id` is stable across rebuilds and shared by the ways
@@ -258,10 +323,10 @@ CREATE TABLE {schema}.segment (
 CREATE INDEX segment_way_idx ON {schema}.segment (osm_way_id);
 CREATE INDEX segment_geom_idx ON {schema}.segment USING gist (geometry);
 CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
--- The stress tiles' zoomed-out level reads about one row in seven of those in
--- its bounding box; this index holds only those rows (OVERVIEW_PREDICATE).
--- Measured on the first promoted build, the scan of the z10 tile over
--- downtown DC: 285 ms through segment_geom_idx, 7 ms through this.
+-- The stress tiles' zoomed-out levels draw only the paths and trails
+-- (trails_predicate) and then the busy roads (busy_predicate); this index
+-- holds only the busy-road level's rows, which include the trails', so a z10 tile's scan
+-- does not read the whole region's streets to find them.
 CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {overview};
 

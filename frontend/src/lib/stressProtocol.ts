@@ -191,3 +191,60 @@ export async function stressTilesAnswer(origin: string, options: Fetching = {}):
     return false;
   }
 }
+
+export type StressAvailability = "available" | "unavailable";
+
+export interface StressProbeDeps {
+  /** Put the overlay on the map (once: MapView's addStressOverlay does nothing the second time). */
+  add(): void;
+  report(availability: StressAvailability): void;
+  /** Whether the map has gone; an answer that comes after is dropped. */
+  disposed(): boolean;
+  /** How the endpoint is asked; `stressTilesAnswer` unless a test says otherwise. */
+  answer?: (origin: string) => Promise<boolean>;
+  setTimer?: (run: () => void, ms: number) => unknown;
+  clearTimer?: (timer: unknown) => void;
+}
+
+/**
+ * MapView's check of the stress tiles: ask the endpoint; if it answers, put
+ * the overlay on; if not, say so and ask again after `recheckMs`, so one bad
+ * minute does not take the overlay away for the whole visit. `later` asks
+ * again after `ms` unless a check is already waiting (a tile that failed
+ * after the endpoint had answered); `cancel` drops the waiting one.
+ */
+export function stressProbe(origin: string, recheckMs: number, deps: StressProbeDeps) {
+  const answer = deps.answer ?? ((o: string) => stressTilesAnswer(o));
+  const setTimer = deps.setTimer ?? ((run: () => void, ms: number) => setTimeout(run, ms));
+  const clearTimer = deps.clearTimer ?? ((timer: unknown) => clearTimeout(timer as ReturnType<typeof setTimeout>));
+  let waiting: unknown = null;
+
+  const later = (ms: number) => {
+    if (waiting !== null) return;
+    waiting = setTimer(() => {
+      waiting = null;
+      void probe();
+    }, ms);
+  };
+
+  async function probe(): Promise<void> {
+    const available = await answer(origin);
+    if (deps.disposed()) return;
+    if (available) {
+      deps.add();
+      deps.report("available");
+    } else {
+      deps.report("unavailable");
+      later(recheckMs);
+    }
+  }
+
+  return {
+    probe,
+    later,
+    cancel() {
+      if (waiting !== null) clearTimer(waiting);
+      waiting = null;
+    },
+  };
+}

@@ -132,6 +132,27 @@ def rebuild_environment(monkeypatch, tmp_path, segment_schemas):
         "pipeline.run._run_command", lambda command, deadline=None, clock=None: binaries(command)
     )
     monkeypatch.setattr("pipeline.elevation.fetch_3dep", fake_fetch)
+    # The pre-draw covers every tile of the coverage box, 11,068 of them; the
+    # toy table's five segments are in a handful, so only those are listed.
+    from core import tile_cache
+
+    every_tile = tile_cache.tiles_in_coverage
+
+    def tiles_holding_a_segment(max_zoom):
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT ST_X(ST_StartPoint(geometry)), ST_Y(ST_StartPoint(geometry)) "
+                f"FROM {settings.SEGMENT_SCHEMA_LIVE}.segment"
+            )
+            starts = cursor.fetchall()
+        held = {
+            (z, *tile_cache.tile_index(lon, lat, z))
+            for lon, lat in starts
+            for z in range(10, max_zoom + 1)
+        }
+        return [tile for tile in every_tile(max_zoom) if tile in held]
+
+    monkeypatch.setattr(tile_cache, "tiles_in_coverage", tiles_holding_a_segment)
     return tmp_path, binaries
 
 
@@ -177,7 +198,7 @@ def test_the_rebuild_task_runs_the_real_handler_set(
         "valhalla-weekend" in run.detail
     ), f"the run that promoted a build must say what still has to happen: {run.detail}"
 
-    # The promoted table's z10-13 stress tiles are drawn into the tile cache
+    # The promoted table's z10-14 stress tiles are drawn into the tile cache
     # after the swap (core.tile_cache), so the map does not draw them on request.
     from core import stress_tiles
 
@@ -188,7 +209,7 @@ def test_the_rebuild_task_runs_the_real_handler_set(
             [version],
         )
         tiles, zooms = cursor.fetchone()
-    assert tiles > 0 and zooms == 4, (tiles, zooms)
+    assert tiles > 0 and zooms == 5, (tiles, zooms)
     assert f"{tiles} drawn" in run.detail, run.detail
 
     with connection.cursor() as cursor:

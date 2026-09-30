@@ -511,6 +511,15 @@ def run_dials_extract(tmp_path):
     return context, stored
 
 
+def stored_map_class(context) -> dict[int, str]:
+    """Each way's map class as the rebuild wrote it to the segment table."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT DISTINCT osm_way_id, map_class FROM {context.staging_schema}.segment"
+        )
+        return dict(cursor.fetchall())
+
+
 def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
     tmp_path, segment_schemas, states
 ) -> None:
@@ -552,6 +561,11 @@ def test_a_downtown_sidewalk_is_barred_to_bicycles_in_every_graph(
             assert tags[CBD_SIDEWALK_ID].get("rm:no_bicycle") == "cbd_sidewalk", variant.value
         if CBD_CYCLE_TRACK_ID in tags:
             assert tags[CBD_CYCLE_TRACK_ID].get("rm:no_bicycle") is None, variant.value
+    # The map agrees (integration of calibration and tiles-zoom): the barred
+    # sidewalk is left to the base map, the cycle track is drawn.
+    drawn = stored_map_class(context)
+    assert drawn[CBD_SIDEWALK_ID] == "barred"
+    assert drawn[CBD_CYCLE_TRACK_ID] == "road"
 
 
 def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
@@ -571,6 +585,11 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
         for way_id in (TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID):
             if way_id in tags:
                 assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
+    # The map agrees: no singletrack drawn as a trail nobody is routed down,
+    # and the towpath either side of lock 21 is.
+    drawn = stored_map_class(context)
+    assert drawn[SINGLETRACK_ID] == "hidden"
+    assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
 
 
 def test_the_district_default_and_a_divided_road_reach_the_classifier(
