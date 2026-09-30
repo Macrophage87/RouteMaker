@@ -582,38 +582,100 @@ model priced into every edge from the pipeline's elevation - would need a fork
 of the costing (PLAN's layer 3); the owner chose "Ship this, fork later
 (Recommended)".
 
-**Calibration of the tiers** (OWNER-DECISIONS 83, 84, 86, 87, 101, 105;
-`routemaker.stress`):
+**Calibration of the tiers** (OWNER-DECISIONS 83-143; `routemaker.stress`
+unless named; PLAN.md quotes the owner's words):
 
 - *Lane count in a city.* Inside the urban-area layer
-  (`reference/urban-areas.json`) a street with more than one through lane per
-  direction is read on Furth's single-lane row, and the volume gate then
-  applies to it as to a two-lane road: speed and volume decide ("Multi-lane in a
-  city isn't nearly that problematic"). The rule text says `urban multilane`.
-  Outside urban areas Furth's multilane rule stands. Lanes are counted per
-  direction as before (`tags.lanes_per_direction`: `lanes` on a one-way is every
-  lane in its one direction, on a two-way road the total halved unless
-  `lanes:forward`/`lanes:backward` say otherwise), which is also Montgomery
-  County's count of a road's total through lanes for a divided road mapped as
-  two one-way carriageways.
-- *A decent painted lane.* At 40 mph, where Furth's bike-lane table gives a lane
-  no credit and mixed traffic is LTS 4, a decent lane is LTS 3, one tier below
-  (MD 450: "I'd probably say that's LTS3"; Montgomery County's revised table
-  reads a 40 mph lane as level 3 too, and none from 45). Decent: buffered
-  (`cycleway*=buffered_lane`, or a `cycleway*:buffer` other than no), or not
-  tagged narrower than 5 ft (`DECENT_LANE_MIN_M`); an untagged width counts,
-  since the owner's example is untagged. From 45 mph a painted lane stays LTS 4.
+  (`reference/urban-areas.json`) a one-way street with up to two through lanes
+  is read on Furth's single-lane row, speed and volume deciding ("Multi-lane in
+  a city isn t nearly that problematic"; "1 Way is typically lower stress at
+  similar characteristics"). A two-way multi-lane street, a one-way of three
+  lanes or more (`wide one-way floor`, item 143) and a carriageway of a divided
+  road are LTS 3 at least (`two-way floor`), and LTS 4 from 30 mph over 8,000
+  vehicles a day (`two-way busy`, Furth v2.2's threshold). A quiet one (1,500 a
+  day or fewer) keeps its low-volume relief down to the floor, so a 35 mph
+  four-lane street at a low count is LTS 3 (item 140, owner-approved, as v2.2
+  rates it). Outside urban areas Furth's multilane rule stands. Lanes are
+  counted per direction (`tags.lanes_per_direction`).
+- *Divided roads* (`routemaker.divided`, item 132). OSM maps a road with a
+  median as two one-way ways; a one-way of a divided class (trunk to
+  unclassified), named, with a same-named way running the other direction
+  alongside it - 13-150 ft (4-45 m) to one side, at two or more points 65 ft
+  (20 m) apart - is scored as the two-way road it is. Same-named ways that close
+  into a ring under 0.6 mi (1 km) round are circles or loops (Ward, Tenley,
+  Blair and Americana Circles) and are left out. 46,343 ways on the region; 133
+  MiB and 19 s on this host.
+- *A decent painted lane.* At 40 mph a decent lane is LTS 3, a tier below
+  mixed traffic (item 84), and not from three through lanes a direction, where
+  Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
+  than 5 ft; an untagged width counts.
+- *Missing speed limits* take the state's default (items 108, 112): the
+  District 20 mph on every class, 15 in alleys; Maryland and Virginia urban
+  areas 25 residential, 30 tertiary and unclassified, 35 secondary and primary;
+  elsewhere the old class tables. A `maxspeed:type` or `source:maxspeed` naming a
+  state (`US-DC:urban`) says the same. The state is the one each way's middle
+  vertex lies in, from the rebuild's own extract (`pipeline.states`, item 137;
+  a vertex on a shared line goes to Maryland or Virginia, the higher default).
+- *Arterials* (item 141): a trunk, primary or secondary road or its link is
+  LTS 3 at least without a painted, buffered or protected lane, a paved shoulder
+  the bike-lane table credited, or a facility mapped as its own way beside it
+  (`facility.separate_pairs`) - everywhere (`arterial floor`). And v2.2's middle
+  band at 20 mph and below: 1,500-8,000 vehicles a day is LTS 2 (`mid volume`);
+  it is not redundant after the floor, since it moves the non-arterials.
+- *Curated speed limits* (`routemaker.speed_corrections`, `fixtures/speed/`,
+  item 131): the Montgomery County parkways with no posted speed are read at
+  25 mph; a posted speed wins.
+- *Alleys* keep their tier and pay the LTS 3 stress penalty in routing (item
+  110, `lua/routemaker_remap.lua`), on top of the tier-5 alley charge.
+- *Singletrack* (`routemaker.singletrack`, item 111): a trail rated 1 or more on
+  `mtb:scale` or `mtb:scale:imba`, unless paved, is closed to bicycles on every
+  graph (`rm:no_bicycle=singletrack`). The C&O towpath stays a path either side
+  of lock 21.
+- *The CBD rule* (`routemaker.cbd`, item 104): a sidewalk inside DDOT's Central
+  Business District and outside the federal areas and the Architect of the
+  Capitol's polygon is closed to bicycles (`rm:no_bicycle=cbd_sidewalk`).
+- *Avoid gravel* (items 91, 92): the box raises `avoid_bad_surfaces` to 0.9 and
+  rides the route as a Road bicycle at the preset's own speed, so every surface
+  worse than compacted is priced steeply on every preset; a ride that starts or
+  ends on gravel is still planned.
 
-Measured over the region's source extract (2026-09-30, 934,318 road ways,
-98,638 mi; AADT and urban flags as the rebuild reads them): 10,180 ways
-(694 mi) move from LTS 4 to LTS 3, 4,907 (301 mi) from LTS 3 to LTS 2, 1,429
-(53 mi) from LTS 2 to LTS 1, and 137 (9 mi) further; nothing moves up. Of the
-LTS 4 to 3 moves, 598 mi are the urban lane rule and 93 mi the decent-lane rule.
-Routing: a road moved to LTS 3 loses the LTS 4 grading, so on the stress-averse
-positions it costs what the table below gives an LTS 3 road of its class and
-speed - for a 40 mph primary with a painted lane, 7.39 against 26.08 at stress
-90, still 1.8 times an ordinary 30 mph LTS 3 street (4.13) - and the LTS 4 to
-LTS 3 ratio on the roads that stay LTS 4 is unchanged.
+Measured over the region's source extract (2026-09-30, the current head's
+rules; 98,411 road miles, proposed, construction, platform and corridor ways
+left out; states from the merged extract's boundaries): LTS 1 goes from 47.6%
+to 48.1% of the miles against 20d975d, LTS 4 from 17.8% to 17.0%; in the
+District LTS 1 from 44.9% to 71.3%, LTS 3 from 10.6% to 12.2% and LTS 4 from
+12.8% to 6.3%. Against the 0889eee rules the arterial floor moves 286 mi region-wide (the
+District 70 mi, 32 mi of it from LTS 1) and the middle band 73 mi (the District
+50 mi). 261 mi of the coverage
+lie in West Virginia and Pennsylvania, whose boundaries do not close in the
+merged extract; they keep the class tables.
+
+**Deviations from the literature review**
+(`reports/LTS-literature-review.md`), kept here because each is a decision,
+not an oversight:
+
+1. A one-way street with up to two lanes stays on the single-lane row; the
+   review reads two lanes a direction on the multilane rows (items 106, 109).
+2. The District's default is a flat 20 mph on every class; the review suggests
+   20/25/25 by class. The arterial floor (item 141) covers the arterials that a
+   flat 20 would have put at LTS 1.
+3. Lanes on a two-way road are halved with floor, not ceil, and
+   `lanes:both_ways` is not subtracted.
+4. v2.2's bike-lane table is not built; a decent lane at 40 mph is one tier
+   below mixed traffic, and an untagged lane width counts as decent.
+5. Alleys keep their tier and are priced like LTS 3 in routing; the review
+   suggests LTS 2 and a penalty ("Stronger", item 110).
+6. A curated 25 mph on the named parkways replaces Montgomery's parkway rule
+   (item 131).
+7. A quiet multi-lane street at 35 mph keeps its low-volume relief down to
+   LTS 3; the review's summary table says LTS 4 at 35 mph and above, while v2.2
+   itself agrees with the branch (item 140).
+8. Road class is an input: arterials are LTS 3 at least without a facility
+   (item 141). Furth's tables read speed, lanes and volume, not class.
+9. A one-way of three lanes or more takes the two-way floor, after SFMTA's
+   comfort index rather than Furth (item 143).
+10. A carriageway of a divided road is scored as two-way, lanes per direction
+    from its own `lanes` (item 132).
 
 **Graded stress** (the owner, 2026-09-28: "Yes, grade them (Recommended)" and
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").

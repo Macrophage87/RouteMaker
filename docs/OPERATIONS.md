@@ -839,8 +839,12 @@ decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS
 104), shares DDOT's traffic-volume line in both credit lists: "Stress tiers use
 traffic volume, and routing the Central Business District boundary, from the
 District Department of Transportation, adapted, CC BY 4.0"
-(`routing.ATTRIBUTION`, `VOLUME_CREDITS`). Its source, retrieval and refresh by
-hand are in `fixtures/cbd/README.md`.
+(`routing.ATTRIBUTION`, `VOLUME_CREDITS`). The Architect of the Capitol's
+jurisdiction polygon (Open Data DC, DC GIS, CC BY 4.0), which exempts the
+Capitol grounds from that rule (OWNER-DECISIONS 113), has its own line in both
+lists: "Routing the Capitol grounds: Architect of the Capitol boundary,
+District of Columbia (Open Data DC), CC BY 4.0". Their sources, retrieval and
+refresh by hand are in `fixtures/cbd/README.md`.
 
 ### Fetching it
 
@@ -1244,6 +1248,61 @@ the first host to run it is the first test of it.
 
 After that the weekly schedule carries it: Tuesdays 08:00 UTC, with the alert
 windows in the table above watching that it keeps happening.
+
+## What the stress calibration reads, and what it logs
+
+Since the calibration (OWNER-DECISIONS 101-143) the classifier reads three
+things beyond the tags, and none of them comes from the reference install:
+
+- **The states, from the rebuild's own extract.** Each unposted way takes its
+  state's speed default (the District's 20 mph, 15 in alleys; Maryland's and
+  Virginia's 25/30/35 in urban areas). The states are built each run from the
+  `boundary=administrative`, `admin_level=4` relations in the *merged* extract
+  (`pipeline.states`; the owner, item 137: "From our OSM data
+  (Recommended)"), not from the `jurisdiction` table, which stays the admin's
+  and is empty on a fresh deployment. The merged extract holds only the three
+  Geofabrik states, so the District, Maryland and Virginia close and West
+  Virginia's and Pennsylvania's relations do not: their ways inside the
+  coverage take the old class tables, and the log says so ("state WV: ... do
+  not close and were dropped").
+- **`fixtures/cbd/`** (the DDOT CBD boundary, the federal exemptions and the
+  Architect of the Capitol's polygon) and **`fixtures/speed/`** (curated speed
+  limits, OWNER-DECISIONS 131), both baked into the pipeline image
+  (`COPY fixtures` in `docker/pipeline.Dockerfile`). A change to either is a
+  rebuild-image deploy; there is nothing to reinstall.
+
+The rebuild refuses, terminally (not retried), when the District, Maryland or
+Virginia has no closed boundary in the merged extract, or holds no way:
+
+    no state polygon for MD in the extract's admin_level=4 boundaries; the
+    District's and the states' speed defaults (OWNER-DECISIONS 108, 112)
+    cannot be applied, so the rebuild stops here
+
+That is a broken or truncated extract, not a setting: re-fetch it
+(`run_rebuild_now` after deleting `<DATA_ROOT>/extracts/merged.osm.pbf`
+refreshes all three downloads) and look at the relation in OSM if it recurs.
+
+**Adding a curated speed limit.** A row in a file under `fixtures/speed/`
+(`routemaker.speed_corrections`): `osm_way_id`, `maxspeed` with its unit
+(`"25 mph"`), and a `reason` quoting the decision and `evidence` naming the
+extract and the way. Rows are validated when the rebuild loads them - a bad
+row or two files disagreeing about one way fails the classify stage - and a
+posted `maxspeed` on the way always wins.
+
+**Log lines to read after a rebuild** (the classify and facility stages):
+
+| Line | What to look for |
+|---|---|
+| `state polygons from .../merged.osm.pbf: DC, MD, VA in N s` | all three; about 150 s on this host |
+| `way states: DC 33,xxx, MD ..., VA ...; N of M ways outside every state; N s` | the District around 34,000 road ways; the outside count is the WV/PA edges |
+| `divided roads: N carriageways in N s` | about 51,000 on the region |
+| `curated speed limits not applied (posted, or no such way): [...]` | should not appear; a way listed was posted since or left the extract, and its row can go |
+| `facility classes: ...; N CBD sidewalks barred to bicycles, N singletrack ways avoided` | about 2,000 CBD sidewalks; singletrack in the hundreds |
+
+`manage.py check_weekday_trails` (acceptance A7) is **report-only**: it prints
+the weekday trips along the weekend-car-free parkways in feet, metres in
+brackets, and lists findings; it does not fail, because the owner has not
+approved it as a gate.
 
 ## A deploy that changes the crossings fixture or loads access overrides
 

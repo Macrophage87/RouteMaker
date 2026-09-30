@@ -195,7 +195,17 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
 - `2026-09-30-owner-capitol-drives.json`: Capitol Circle Drive and the
   Capitol Driveways, inside the Architect of the Capitol's polygon. The owner
   (OWNER-DECISIONS 130): "Yes, open them". 25 service drives mapped
-  `access=private`, `bicycle=yes` (1.6 km) take `access=permissive`,
+  `access=private`, `bicycle=yes` (0.99 mi, 1.6 km) take `access=permissive`,
   `bicycle=yes`, `motor_vehicle=no`; four linear `highway=pedestrian` drives
-  with no bicycle tag (263 m) take `bicycle=yes`. The thirteen pedestrian
-  areas on the grounds are not in it: upstream does not route an area.
+  with no bicycle tag (0.16 mi, 263 m) take `bicycle=yes`: 1.15 mi in all, not
+  the 1.9 mi first estimated. The thirteen pedestrian areas on the grounds,
+  most of Capitol Driveway NE/SE as mapped, are not in it: upstream does not
+  route an area, so no access row can open one.
+
+`proposed/` holds drafts for the owner, **not for loading**: nothing loads a
+file there, and each says PROPOSED in its status and in every row's reason.
+
+- `proposed/2026-09-30-PROPOSED-arterials-east-of-anacostia.json`: the owner's
+  "I d put most of the Arterials east of the Anacostia river as avoid"
+  (OWNER-DECISIONS 141 (b)) as tier-5 stress rows, hidden, no public_note,
+  grouped by corridor so the owner can strike some ("most").
