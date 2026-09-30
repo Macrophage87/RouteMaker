@@ -236,13 +236,25 @@ def beside_separate_roads(
     such a road when at least `BESIDE_FRACTION` of its vertices are within
     `BESIDE_M` of one. Only the ways that would otherwise be a `path` are asked.
     """
+    return separate_pairs(ways)[0]
+
+
+def separate_pairs(
+    ways: Iterable[tuple[int, dict[str, str], Sequence[tuple[float, float]]]],
+) -> tuple[set[int], set[int]]:
+    """(the trails `beside_separate_roads` finds, the roads they lie beside).
+
+    The second set is what the arterial floor (OWNER-DECISIONS 141) reads as
+    "bike infrastructure": a road that says its facility is mapped separately
+    and has such a trail along it.
+    """
     ways = list(ways)
     if not ways:
-        return set()
+        return set(), set()
     lat0 = 38.9
     cell = BESIDE_M
-    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float]]]] = {}
-    for _, tags, coords in ways:
+    grid: dict[tuple[int, int], list[tuple[tuple[float, float], tuple[float, float], int]]] = {}
+    for road_id, tags, coords in ways:
         if tags.get("highway") in TRAIL_CLASS_HIGHWAY or not declares_separate(tags):
             continue
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
@@ -251,10 +263,11 @@ def beside_separate_roads(
             y0, y1 = sorted((a[1], b[1]))
             for gx in range(int(x0 // cell) - 1, int(x1 // cell) + 2):
                 for gy in range(int(y0 // cell) - 1, int(y1 // cell) + 2):
-                    grid.setdefault((gx, gy), []).append((a, b))
+                    grid.setdefault((gx, gy), []).append((a, b, road_id))
     if not grid:
-        return set()
-    found = set()
+        return set(), set()
+    found: set[int] = set()
+    roads: set[int] = set()
     for osm_id, tags, coords in ways:
         if tags.get("highway") not in TRAIL_CLASS_HIGHWAY or len(coords) < 2:
             continue
@@ -262,10 +275,14 @@ def beside_separate_roads(
             continue
         points = [_xy(lon, lat, lat0) for lon, lat in coords]
         near = 0
+        beside: set[int] = set()
         for p in points:
             candidates = grid.get((int(p[0] // cell), int(p[1] // cell)), ())
-            if any(_point_segment_m(p, a, b) <= BESIDE_M for a, b in candidates):
+            hits = {road for a, b, road in candidates if _point_segment_m(p, a, b) <= BESIDE_M}
+            if hits:
                 near += 1
+                beside |= hits
         if near >= BESIDE_FRACTION * len(points):
             found.add(osm_id)
-    return found
+            roads |= beside
+    return found, roads

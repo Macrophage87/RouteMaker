@@ -13,6 +13,7 @@ test("every map carries both base map credits and the volume sources' credits", 
   assert.match(all, /District Department of Transportation|DDOT/);
   assert.match(all, /CC BY 4\.0/);
   assert.match(all, /Virginia Department of Transportation|VDOT/);
+  assert.match(all, /Architect of the Capitol boundary, District of Columbia \(Open Data DC\)/);
 });
 
 test("the base map source states its own credit, not the archive's half of it", () => {

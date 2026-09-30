@@ -150,6 +150,30 @@ check("a private way is still routable", private_out.bike_forward == "true")
 check("but carries no cycleway write", private_out.cycleway == nil, private_out.cycleway)
 check("and is marked private by upstream", private_out.private == "true", private_out.private)
 
+-- OWNER-DECISIONS 130, the Capitol drives. As mapped (access=private,
+-- bicycle=yes, motor_vehicle=no) upstream still marks the way private -
+-- destination-only - whatever the bicycle key says, since it reads the flag
+-- from access and motor_vehicle alone. The approved override's
+-- access=permissive clears it; motor_vehicle=no keeps cars off.
+local capitol = { highway = "service", access = "private", bicycle = "yes",
+  motor_vehicle = "no", ["rm:stress_tier"] = "1", ["rm:facility"] = "path" }
+local _, capitol_out = transform_way(capitol)
+check("a Capitol drive as mapped is destination-only despite bicycle=yes",
+  capitol_out.private == "true" and capitol_out.bike_forward == "true", capitol_out.private)
+local opened = {}
+for k, v in pairs(capitol) do opened[k] = v end
+opened.access = "permissive"
+local _, opened_out = transform_way(opened)
+check("the override opens it to bicycles, through",
+  opened_out.private == "false" and opened_out.bike_forward == "true", opened_out.private)
+check("and not to cars", opened_out.auto_forward == "false", opened_out.auto_forward)
+local _, plaza_out = transform_way({ highway = "pedestrian", ["rm:stress_tier"] = "1" })
+local _, drive_out = transform_way({ highway = "pedestrian", bicycle = "yes",
+  ["rm:stress_tier"] = "1" })
+check("a pedestrian drive is closed to bicycles by default, and opened by bicycle=yes",
+  plaza_out.bike_forward == "false" and drive_out.bike_forward == "true",
+  tostring(plaza_out.bike_forward) .. " " .. tostring(drive_out.bike_forward))
+
 -- The way the guard must not catch: an ordinary low-stress street still gets
 -- its write, and a permissively tagged one does too.
 local open_filter, open_out = transform_way({ highway = "residential", access = "yes",
@@ -247,6 +271,36 @@ check("and upstream reads the grant in both directions",
   tostring(legal_out.bike_forward) .. "/" .. tostring(legal_out.bike_backward))
 check("the derived tag itself never reaches the tile build",
   legal_out["rm:bridge_bicycle"] == nil)
+
+-- OWNER-DECISIONS 104: `rm:no_bicycle` (a CBD sidewalk) bars the way both ways,
+-- through upstream's own reading, and is stripped.
+local _, cbd_out = transform_way({
+  highway = "footway", footway = "sidewalk", bicycle = "yes", ["rm:no_bicycle"] = "cbd_sidewalk",
+  ["rm:trail_class"] = "yes",
+})
+check("a CBD sidewalk reaches the graph barred to bicycles",
+  cbd_out.bicycle == "no" and cbd_out.bike_forward == "false" and cbd_out.bike_backward == "false",
+  tostring(cbd_out.bicycle) .. " " .. tostring(cbd_out.bike_forward) .. "/" .. tostring(cbd_out.bike_backward))
+check("and the mark itself never reaches the tile build", cbd_out["rm:no_bicycle"] == nil)
+local _, open_out = transform_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" })
+check("an unmarked sidewalk open to bicycles stays open",
+  open_out.bike_forward == "true", tostring(open_out.bike_forward))
+
+-- OWNER-DECISIONS 111: singletrack reaches the graph with upstream's alley use.
+local _, single_out = transform_way({
+  highway = "path", surface = "dirt", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",
+  ["rm:trail_class"] = "yes",
+})
+check("singletrack reaches the graph closed to bicycles",
+  single_out.bike_forward == "false" and single_out.bike_backward == "false",
+  tostring(single_out.bike_forward))
+local _, towpath_out = transform_way({
+  highway = "path", bicycle = "designated", surface = "dirt", ["mtb:scale:imba"] = "0",
+  ["rm:trail_class"] = "yes",
+})
+check("the C&O towpath above lock 21 stays an open path (use 27)",
+  tostring(towpath_out.use) == "27" and towpath_out.bike_forward == "true",
+  tostring(towpath_out.use) .. " " .. tostring(towpath_out.bike_forward))
 
 local _, illegal_out = transform_way({
   highway = "secondary", bridge = "yes", name = "Memorial Bridge",

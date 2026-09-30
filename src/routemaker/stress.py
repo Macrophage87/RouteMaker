@@ -105,6 +105,7 @@ from .tags import (
     cycleway_width_m,
     has_parking_lane,
     has_shoulder,
+    is_oneway,
     lanes_per_direction,
     maxspeed_is_unitless,
     parse_maxspeed_mph,
@@ -193,6 +194,49 @@ DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL = 50.0
 
 DEFAULT_LANES_PER_DIRECTION = 1
 
+# The District's statutory default (OWNER-DECISIONS 108: "the default speed
+# limit in DC on all streets and highways is 20 mph, or 15 mph in alleys";
+# DDOT, "Speeding laws, fines and safety tips",
+# https://ddot.dc.gov/page/speeding-laws-fines-and-safety-tips). Inside the
+# District a way with no posted limit is read at these, whatever its class.
+# Maryland's and Virginia's follow.
+DC_DEFAULT_MPH = 20.0
+DC_ALLEY_MPH = 15.0
+
+# Maryland's and Virginia's, in their urban areas (OWNER-DECISIONS 112: "Use MD
+# and VA defaults there"): 25 mph on residential streets, 30 on minor through
+# roads, 35 on major roads - MDOT's own imputation for local roads and
+# collectors (MDOT LTS methodology), as the literature review proposed. Other
+# classes, and every class outside the urban areas, keep the tables above: the
+# rural figures are the states' statutory ones, which the rural references
+# depend on, and the owner's answer was about the urban roads in question.
+MD_VA_URBAN_DEFAULT_MPH = {
+    "residential": 25.0,
+    "unclassified": 30.0,
+    "tertiary": 30.0,
+    "tertiary_link": 30.0,
+    "secondary": 35.0,
+    "secondary_link": 35.0,
+    "primary": 35.0,
+    "primary_link": 35.0,
+}
+# The keys a mapper records the legal basis of a limit in (OSM's
+# `maxspeed:type`, and its older `source:maxspeed`), as `US-DC:urban` and the
+# like: where one names the District it is read as the District's default, as
+# the jurisdiction is.
+SPEED_ZONE_KEYS = ("maxspeed:type", "source:maxspeed")
+
+
+def speed_zone(tags: dict[str, str], jurisdiction: str | None) -> str | None:
+    """Whose statutory default an unposted way takes: a zone tag naming a
+    state, else the state the way lies in."""
+    for key in SPEED_ZONE_KEYS:
+        value = tags.get(key) or ""
+        if value.upper().startswith("US-"):
+            return value[3:5].upper()
+    return jurisdiction
+
+
 # `SEPARATED_CYCLEWAY` and `PAINTED_CYCLEWAY` are defined in `tags` and
 # re-exported here, where the facility step reads them. They moved because
 # `tags.cycleway_values` has to rank one side of a road against the other before
@@ -232,6 +276,12 @@ UNPAVED_RURAL_DEFAULT_MPH = 30.0
 # in a finished score.
 VOLUME_QUIET = 1_500
 VOLUME_BUSY = 8_000
+# The speed at and below which a count between the two is a tier (v2.2).
+MID_VOLUME_MAX_MPH = 20.0
+# The road classes OWNER-DECISIONS 141 floors at LTS 3 without a facility.
+ARTERIAL_HIGHWAY = frozenset(
+    {"trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"}
+)
 
 # Surfaces a road bike will not hold a line on. Surface never sets the tier on
 # its own: gravel here is usually a low-traffic choice rather than a hazard, and
@@ -361,8 +411,68 @@ class StressResult:
         return self.tier >= Stress.LTS4
 
 
-def _mixed_traffic_tier(speed_mph: float, lanes: int) -> tuple[Stress, str]:
-    """Furth mixed-traffic criteria: speed first, then lane count."""
+# Lane count inside an urban area (OWNER-DECISIONS 87 and 101: "Multi-lane in a
+# city isn't nearly that problematic", "We should change the rules, those are
+# wrong"). Furth's mixed-traffic table makes a second through lane each way worth
+# a full tier at every speed, which put a 30 mph two-lane one-way District street
+# at LTS 4 on its lane count alone. Inside the urban-area layer
+# (reference/urban-areas.json) the lane count is not scored: the street is read
+# on the single-lane row, and its speed and its volume decide - the volume gate,
+# which Furth applies to two-lane roads, applies there too, so a multi-lane city
+# street carrying more than VOLUME_BUSY still comes out a tier higher. Outside
+# urban areas the multilane rule stands.
+URBAN_SCORED_LANES = 1
+
+# One-way and two-way are not the same street (OWNER-DECISIONS 109: "we
+# shouldn't have the same criteria for 2 way traffic vs 1 way. 1 Way is
+# typically lower stress at similar characteristics"; and of Connecticut Avenue
+# NW, "definitely 3, and possibly 4").
+#
+# - A two-way multi-lane city street is at least LTS 3, as Furth's v2.2 table
+#   rates two lanes a direction at every speed up to 38.5 mph (Furth, "Level of
+#   Traffic Stress Criteria for Road Segments", v2.2, 2022), and LTS 4 from 30
+#   mph where the count is over URBAN_TWO_WAY_BUSY_AADT - v2.2's own threshold
+#   for the step to LTS 4 from 28.5 mph. At 35 mph and more mixed traffic is
+#   LTS 4 anyway.
+# - A one-way city street with up to URBAN_ONEWAY_MAX_LANES is read on the
+#   single-lane row, speed and volume deciding: no oncoming traffic, and San
+#   Francisco's comfort index (SFMTA 2017) counts lanes against a one-way only
+#   from three where it counts them against a two-way street from two. Furth's
+#   v2.0 went the other way, reading a one-way's ADT at 1.5 times; v2.2
+#   dropped that, and the owner's steer is followed here. A wider one-way takes
+#   the two-way floor.
+URBAN_ONEWAY_MAX_LANES = 2
+URBAN_TWO_WAY_BUSY_AADT = 8_000
+
+
+def urban_two_way_floor(
+    tier: Stress, rule: str, speed_mph: float, aadt: int | None, kind: str = "two-way"
+) -> tuple[Stress, str]:
+    """A two-way (or three-lane one-way) multi-lane city street: LTS 3 at
+    least, LTS 4 from 30 mph over URBAN_TWO_WAY_BUSY_AADT. `kind` names which
+    in the rule text ("two-way", or "wide one-way")."""
+    if (
+        speed_mph >= 30
+        and aadt is not None
+        and aadt > URBAN_TWO_WAY_BUSY_AADT
+        and tier < Stress.LTS4
+    ):
+        return Stress.LTS4, rule + f", {kind} busy"
+    if tier < Stress.LTS3:
+        return Stress.LTS3, rule + f", {kind} floor"
+    return tier, rule
+
+
+def _mixed_traffic_tier(
+    speed_mph: float, lanes: int, urban_multilane: bool = False
+) -> tuple[Stress, str]:
+    """Furth mixed-traffic criteria: speed first, then lane count.
+
+    `urban_multilane` names the row in the rule text: a multi-lane urban street
+    is read on the single-lane row (`URBAN_SCORED_LANES`), and says so."""
+    if urban_multilane:
+        tier, rule = _mixed_traffic_tier(speed_mph, URBAN_SCORED_LANES)
+        return tier, rule.replace("single lane", "urban multilane")
     if speed_mph >= 35:
         return Stress.LTS4, "mixed traffic, 35 mph or above"
     if speed_mph >= 30:
@@ -443,6 +553,51 @@ def _bike_lane_tier(
     return Stress.LTS1, f"{facility}, adequate width at 25 mph or below"
 
 
+# A decent painted lane (OWNER-DECISIONS 83, 84 and 101: MD 450 near Annapolis,
+# 40 mph with a painted lane, "I'd probably say that's LTS3. Perhaps reduce it
+# by 1 or so."). Furth's bike-lane table gives no credit at all at 40 mph and
+# above, where mixed traffic is LTS 4; a decent lane there is one tier below it,
+# LTS 3. Montgomery County's revised table (Montgomery Planning, Bicycle Master
+# Plan Appendix D, 2017; OWNER-DECISIONS 105) reads a lane the same way at 40
+# mph - level 3 on two or three lanes, and on four or five with a raised median
+# - and gives none from 45 mph, so the credit stops at DECENT_LANE_MAX_MPH: at
+# 45 mph and more a painted lane stays LTS 4, and an expressway posted 50 or
+# more is "legal but avoid" whatever it carries (`legal_but_avoid`). Below 40
+# mph Furth's table already reads a lane at least a tier below mixed traffic.
+#
+# "Decent" is read from the tags the lane carries, as far as they go: a buffered
+# lane (`cycleway*=buffered_lane`, or a `cycleway*:buffer` other than no), or a
+# lane whose surveyed width is at least DECENT_LANE_MIN_M (5 ft, the usual
+# minimum for a lane beside a curb). A lane with no width tagged is decent: the
+# owner's example, MD 450, is tagged `cycleway:right=lane` and nothing more,
+# and he calls it wide. A lane tagged narrower than 5 ft is not.
+DECENT_LANE_MAX_MPH = 40.0
+# Where Furth's bike-lane table stops giving a lane any credit (`_bike_lane_tier`).
+FURTH_LANE_NO_CREDIT_MPH = 40.0
+DECENT_LANE_MIN_M = 1.5
+# From this many through lanes a direction a decent lane earns nothing.
+DECENT_LANE_MAX_LANES = 3
+BUFFER_KEYS = (
+    "cycleway:buffer",
+    "cycleway:both:buffer",
+    "cycleway:left:buffer",
+    "cycleway:right:buffer",
+)
+
+
+def lane_is_buffered(tags: dict[str, str], cycleways: set[str]) -> bool:
+    """A painted lane with a buffer: `buffered_lane`, or a buffer tag that is not "no"."""
+    if "buffered_lane" in cycleways:
+        return True
+    return any(tags.get(key) not in (None, "no", "none", "0") for key in BUFFER_KEYS)
+
+
+def decent_lane(tags: dict[str, str], cycleways: set[str], width_m: float | None) -> bool:
+    """Whether a painted lane is decent (see DECENT_LANE_MIN_M): buffered, or not
+    tagged narrower than 5 ft."""
+    return lane_is_buffered(tags, cycleways) or width_m is None or width_m >= DECENT_LANE_MIN_M
+
+
 # "Legal but avoid", by rule. OSM's `expressway=yes` is a divided highway with
 # partial access control; at a posted 50 mph or more it is the road the owner's
 # US 340 question was about - legal for a bicycle, and nothing a planner should
@@ -493,9 +648,22 @@ def classify(
     aadt_source: str | None = None,
     urban: bool = True,
     aadt_year: int | None = None,
+    jurisdiction: str | None = None,
+    divided: bool = False,
+    separate_facility: bool = False,
 ) -> StressResult:
-    """Classify one way: its Furth tier, or "legal but avoid" where the rule says so."""
-    result = _classify(tags, aadt, aadt_source, urban, aadt_year)
+    """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
+
+    `jurisdiction` is the state the way lies in ("DC", "MD", "VA"), for the
+    speed a way with no posted limit is read at (`default_speed_mph`).
+    `divided` says a one-way way is one carriageway of a two-way road
+    (`routemaker.divided`): it is scored as the two-way road it is.
+    `separate_facility` says the road's bike facility is mapped as its own way
+    and lies beside it (`routemaker.facility.separate_pairs`), which the
+    arterial floor counts as bike infrastructure."""
+    result = _classify(
+        tags, aadt, aadt_source, urban, aadt_year, jurisdiction, divided, separate_facility
+    )
     reason = legal_but_avoid(tags)
     if reason is None:
         return result
@@ -508,6 +676,9 @@ def _classify(
     aadt_source: str | None = None,
     urban: bool = True,
     aadt_year: int | None = None,
+    jurisdiction: str | None = None,
+    divided: bool = False,
+    separate_facility: bool = False,
 ) -> StressResult:
     """Classify one way by the Furth tables.
 
@@ -537,7 +708,14 @@ def _classify(
         # The number was surveyed; the unit was not. Read as mph, which is the
         # higher-stress reading and the only one that exists on a US sign.
         assumed.append("maxspeed unit")
-    if speed_mph is None:
+    zone = speed_zone(tags, jurisdiction) if speed_mph is None else None
+    if zone == "DC":
+        speed_mph = DC_ALLEY_MPH if tags.get("service") == "alley" else DC_DEFAULT_MPH
+        assumed.append("maxspeed")
+    elif zone in ("MD", "VA") and urban and highway in MD_VA_URBAN_DEFAULT_MPH:
+        speed_mph = MD_VA_URBAN_DEFAULT_MPH[highway]
+        assumed.append("maxspeed")
+    elif speed_mph is None:
         table = DEFAULT_MAXSPEED_MPH_URBAN if urban else DEFAULT_MAXSPEED_MPH_RURAL
         unknown = (
             DEFAULT_MAXSPEED_MPH_UNKNOWN_URBAN if urban else DEFAULT_MAXSPEED_MPH_UNKNOWN_RURAL
@@ -554,6 +732,17 @@ def _classify(
     if lanes is None:
         lanes = DEFAULT_LANES_PER_DIRECTION
         assumed.append("lanes")
+    # The lane count the tables read (see URBAN_SCORED_LANES): inside an urban
+    # area a multi-lane street is read on the single-lane row.
+    # A carriageway of a divided road is not a one-way street: the other
+    # direction's traffic is across the median (`routemaker.divided`).
+    oneway = is_oneway(tags) and not divided
+    # Inside an urban area a one-way street with up to URBAN_ONEWAY_MAX_LANES
+    # is read on the single-lane row; a two-way multi-lane street, or a wider
+    # one-way, keeps a floor of LTS 3 (`urban_two_way_floor`, below).
+    urban_multilane = urban and lanes > URBAN_SCORED_LANES
+    oneway_relief = urban_multilane and oneway and lanes <= URBAN_ONEWAY_MAX_LANES
+    scored_lanes = URBAN_SCORED_LANES if urban_multilane else lanes
 
     # The provision on the *worst side a rider may be made to use*, not every
     # value tagged anywhere on the way. On a two-way street the sides are the
@@ -603,9 +792,23 @@ def _classify(
         width = cycleway_width_m(tags)
         if width is None:
             assumed.append("cycleway width")
-        tier, rule = _bike_lane_tier(speed_mph, lanes, width, parking)
+        tier, rule = _bike_lane_tier(speed_mph, scored_lanes, width, parking)
+        if (
+            FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
+            and lanes < DECENT_LANE_MAX_LANES
+            and decent_lane(tags, cycleways, width)
+        ):
+            # Mixed traffic is LTS 4 at these speeds on any lane count, and so
+            # is Furth's table for the lane: a tier below it. Not from three
+            # lanes a direction, where Montgomery's Appendix D keeps LTS 4
+            # whatever the lane (review r1).
+            tier = Stress.LTS3
+            rule = f"bike lane, decent, {speed_mph:g} mph: a tier below mixed traffic"
     else:
-        tier, rule = _mixed_traffic_tier(speed_mph, lanes)
+        tier, rule = _mixed_traffic_tier(speed_mph, scored_lanes, urban_multilane)
+        if urban_multilane and not oneway_relief:
+            kind = "wide one-way" if oneway else "two-way"
+            tier, rule = urban_two_way_floor(tier, rule, speed_mph, aadt, kind)
         # A rideable paved shoulder is scored on the *bike-lane* table, not by
         # subtracting a tier from mixed traffic.
         #
@@ -692,7 +895,7 @@ def _classify(
                 shoulder_parking = parking if parking is True else False
                 shoulder_tier, shoulder_rule = _bike_lane_tier(
                     speed_mph,
-                    lanes,
+                    scored_lanes,
                     shoulder_width,
                     shoulder_parking,
                     facility="paved shoulder",
@@ -727,7 +930,17 @@ def _classify(
     # not the modifier below moved the tier.
     volume_source = aadt_source if aadt is not None else None
     volume_year = aadt_year if aadt is not None else None
-    if aadt is not None and lanes <= 1 and not has_facility:
+    # A two-way multi-lane city street has had its busy volume read by
+    # `urban_two_way_floor` (v2.2's own threshold) and is not bumped again here;
+    # a quiet one keeps the low-volume relief, but not below the floor - v2.2
+    # rates two lanes a direction LTS 3 to 38.5 mph at a low count, so a quiet
+    # 35 mph four-lane street is LTS 3, as it was before item 109.
+    two_way_floored = urban_multilane and not oneway_relief and not has_facility
+    if two_way_floored and aadt is not None and aadt <= VOLUME_QUIET and tier > Stress.LTS3:
+        speed_was_measured = "maxspeed" not in assumed
+        if speed_mph <= 35 or not speed_was_measured:
+            tier, rule = Stress(tier - 1), rule + ", low volume"
+    if aadt is not None and scored_lanes <= 1 and not has_facility and not two_way_floored:
         # A guessed speed may not be improved by a guess, but a measured count is
         # evidence: the conservative rule is about missing evidence, not about
         # refusing what is there. So a real AADT relieves an assumed speed, while
@@ -758,6 +971,30 @@ def _classify(
         # every speed band rather than only in the low ones.
         elif aadt >= VOLUME_BUSY and tier < Stress.LTS4:
             tier, rule = Stress(tier + 1), rule + ", high volume"
+        # Furth v2.2's middle band at the lowest speeds: below 23.5 mph a
+        # street is LTS 1 only under 1,000-1,500 vehicles a day, so between
+        # VOLUME_QUIET and VOLUME_BUSY it is LTS 2 (review r1, B2; the
+        # District's 20 mph put 61 mi of such streets at LTS 1).
+        elif speed_mph <= MID_VOLUME_MAX_MPH and aadt > VOLUME_QUIET and tier is Stress.LTS1:
+            tier, rule = Stress.LTS2, rule + ", mid volume"
+
+    # Arterials (OWNER-DECISIONS 141: "Make arterials LTS 3 or greater unless
+    # there s bike infrastructure"): a trunk, primary or secondary road, or its
+    # link, is LTS 3 at least unless it carries a painted, buffered or
+    # protected lane, or its facility is mapped as its own way beside it. The
+    # District's 20 mph had put 23 mi of unposted arterials with no count at
+    # LTS 1. Everywhere, not only in the District. A rideable paved shoulder
+    # the bike-lane table credited counts as a provision here too
+    # (`has_facility`; the owner, item 145: "Yes, count it"): Furth scores the
+    # two as one, and the floor must not
+    # rate a road with a shoulder worse than the same road with a lane.
+    if (
+        highway in ARTERIAL_HIGHWAY
+        and tier < Stress.LTS3
+        and not has_facility
+        and not separate_facility
+    ):
+        tier, rule = Stress.LTS3, rule + ", arterial floor"
 
     # A surface that sheds riders is not tolerable to a child, which is what
     # LTS1 asserts, so it floors at LTS2. This is narrower than treating surface

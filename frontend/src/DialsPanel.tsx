@@ -90,6 +90,14 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
           rarely makes a climb easy. With a strong motor, move the hills slider toward Fastest yourself.
         </p>
       )}
+      <label className="toggle">
+        <input
+          type="checkbox"
+          checked={dials.avoidGravel === true}
+          onChange={(event) => onCommit({ ...dials, avoidGravel: event.target.checked })}
+        />
+        Avoid gravel
+      </label>
       <Slider
         label="Traffic"
         view={view.traffic}

@@ -82,6 +82,18 @@ def _weekend_router_state(monkeypatch):
 _REAL_WEEKEND_CHECK: dict = {}
 
 
+@pytest.fixture(autouse=True)
+def _toy_required_states(monkeypatch):
+    """The rebuild refuses a region missing a required state's boundary, or
+    whose boundary holds no way (pipeline.states). The toy extracts carry DC,
+    Virginia and Maryland boundaries (rebuild_fixtures.STATE_BOXES), but their
+    roads are all in the District and Virginia, so the toy region requires the
+    District only; tests/test_states.py holds the refusal to the real list."""
+    from pipeline import states
+
+    monkeypatch.setattr(states, "REQUIRED_STATES", ("DC",))
+
+
 @pytest.fixture
 def weekend_rows_read(monkeypatch):
     """The real `_weekend_is_promoted`, reading the settings rows."""

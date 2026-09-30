@@ -2161,9 +2161,15 @@ def test_the_attribution_names_ddot_its_licence_and_the_change() -> None:
     assert len(ddot) == 1
     assert "CC BY 4.0" in ddot[0]
     assert "adapted" in ddot[0]
+    assert "Central Business District" in ddot[0], "the CBD boundary (routemaker.cbd) is DDOT's"
     assert "creativecommons.org/licenses/by/4.0" in ddot[0]
     assert any("USGS" in line for line in routing.ATTRIBUTION)
     assert not any("courtesy" in line for line in routing.ATTRIBUTION)
+    # Review r1, B2: the Capitol grounds polygon decides CBD exemptions too.
+    aoc = [line for line in routing.ATTRIBUTION if "Architect of the Capitol" in line]
+    assert len(aoc) == 1
+    assert "Open Data DC" in aoc[0] and "CC BY 4.0" in aoc[0]
+    assert "creativecommons.org/licenses/by/4.0" in aoc[0]
 
 
 @db

@@ -40,7 +40,14 @@ export interface RouteResponse {
     display: "route_only" | "map" | null;
   }[];
   /** The positions the route was planned with. Absent from an older API. */
-  dials?: { stress: number; hills: number; when: When; carrying: Carrying | null; assist?: boolean };
+  dials?: {
+    stress: number;
+    hills: number;
+    when: When;
+    carrying: Carrying | null;
+    assist?: boolean;
+    avoid_gravel?: boolean;
+  };
   /** Present when the hills slider was past its detent. */
   hills_seek?: {
     candidates: number;

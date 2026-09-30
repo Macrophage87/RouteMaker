@@ -182,3 +182,18 @@ test("an empty stress or hills in a link is the ride type's start, not 0", () =>
     assert.equal(decodePlan(`#preset=${preset}&stress=%20`).dials.stress, plan.dials.stress, preset);
   }
 });
+
+test("avoid gravel is off by default, travels in the link and the request, and survives a ride-type change", () => {
+  // OWNER-DECISIONS 91, 92, 111.
+  for (const preset of PRESETS) {
+    assert.equal(startDials(preset.id).avoidGravel, undefined, preset.id);
+    assert.equal(dialFields(startDials(preset.id)).avoid_gravel, undefined, preset.id);
+  }
+  const dials = { ...startDials("default"), avoidGravel: true };
+  assert.equal(dialFields(dials).avoid_gravel, true);
+  const back = decodePlan(encodePlan([], "default", dials)).dials;
+  assert.equal(back.avoidGravel, true);
+  assert.equal(decodePlan(encodePlan([], "default", startDials("default"))).dials.avoidGravel, undefined);
+  assert.equal(decodePlan("#preset=cargo&avoidgravel=0").dials.avoidGravel, undefined);
+  assert.equal(fitDials("gravel", { avoidGravel: true }).avoidGravel, true);
+});

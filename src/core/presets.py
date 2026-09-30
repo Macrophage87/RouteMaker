@@ -459,8 +459,25 @@ def variant_for_ride(name: str, when: str, assist: bool = False) -> str:
     return preset.variant
 
 
+# "Avoid gravel" (OWNER-DECISIONS 91, 92, 111: "We can have an 'avoid gravel'
+# check"; off by default on every ride type, Cargo Bike included - "Cargo tends
+# to have pretty wide tires"). Valhalla's `avoid_bad_surfaces` at this value
+# prices every surface worse than the bicycle type's own minimum steeply without
+# making it impassable, so a ride that starts or ends on gravel is still
+# planned, and a preset already avoiding more keeps its own value.
+AVOID_GRAVEL_SURFACES = 0.9
+# Valhalla's default cycling speed by bicycle type (km/h; Road 15.5 mph,
+# Cross 12.4, Hybrid 11.2, Mountain 9.9), which a ride takes when its preset
+# names none; kept when the box switches the type to Road.
+VALHALLA_DEFAULT_SPEED_KMH = {"Road": 25.0, "Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}
+
+
 def costing(
-    name: str, stress: int | None = None, hills: int | None = None, assist: bool = False
+    name: str,
+    stress: int | None = None,
+    hills: int | None = None,
+    assist: bool = False,
+    avoid_gravel: bool = False,
 ) -> dict:
     """The `costing_options` block for one preset, as a fresh copy.
 
@@ -477,4 +494,16 @@ def costing(
     speed = PRESETS[name].assist_speed_kmh
     if assist and speed is not None:
         options["cycling_speed"] = speed
+    if avoid_gravel:
+        options["avoid_bad_surfaces"] = max(options["avoid_bad_surfaces"], AVOID_GRAVEL_SURFACES)
+        # The dial prices only surfaces worse than the bicycle type's own
+        # minimum, and Cross admits gravel, Hybrid dirt (PLAN, "Every preset
+        # states its bicycle_type"), so on those types the box steered off
+        # nothing it was asked to (review r1, S1). Road admits compacted and
+        # better, so the box rides as Road; the preset's own speed is kept, so
+        # the time estimate does not jump to Road's default.
+        kind = options.get("bicycle_type", "Hybrid")
+        if kind != "Road":
+            options.setdefault("cycling_speed", VALHALLA_DEFAULT_SPEED_KMH[kind])
+            options["bicycle_type"] = "Road"
     return {"bicycle": options}

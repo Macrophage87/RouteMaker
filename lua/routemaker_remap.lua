@@ -338,6 +338,17 @@ function M.remap_way(tags, derived)
     out.bicycle = "yes"
   end
 
+  -- A way bicycles may not ride on any current ride type: a sidewalk in the
+  -- District's Central Business District (OWNER-DECISIONS 104; `routemaker.cbd`
+  -- decides which, and never a way signed bicycle=designated or a road), or
+  -- mountain-bike singletrack (OWNER-DECISIONS 111; `routemaker.singletrack`).
+  -- Only narrows. Singletrack is closed rather than charged: upstream sets a
+  -- trail's use from its highway class and ignores `service` there, so the
+  -- tier-5 entry charge cannot reach it, and `highway` may not be rewritten.
+  if derived.no_bicycle then
+    out.bicycle = "no"
+  end
+
   -- The stress penalty: `bicycle=use_sidepath` on every way the classifier or
   -- a curated override rates tier 3 or more (never a trail-class way).
   -- Upstream's transform reads `use_sidepath` as bicycle access in both
@@ -369,9 +380,15 @@ function M.remap_way(tags, derived)
   -- would open a way the class keeps closed. Nor on an untagged
   -- `impassable=yes` way of an open class: upstream closes every mode there,
   -- and then reads `use_sidepath` as "true" all the same.
+  --
+  -- OSM's own alleys pay it too, whatever their tier (OWNER-DECISIONS 100 and
+  -- 110: "Alley cut throughs should only be used if the roads are very
+  -- problematic nearby", then "Stronger"): an alley is priced like an LTS 3
+  -- street, so a route takes one only where the way round is LTS 4 or worse.
+  -- Its stress tier - what the map shows - is unchanged, and it is not graded.
   if
     derived.stress_tier ~= nil
-    and derived.stress_tier >= M.STRESS_PENALTY_TIER
+    and (derived.stress_tier >= M.STRESS_PENALTY_TIER or M.is_real_alley(tags))
     and not derived.is_trail_class
   then
     if M.may_penalise(tags, out.bicycle or tags.bicycle) then
@@ -763,6 +780,12 @@ M.GRADED_LANES = "15"
 -- "Legal but avoid", and the write that carries it (see `remap_way`).
 M.AVOID_TIER = 5
 M.AVOID_SERVICE = "alley"
+
+--- An alley as OSM maps it, as distinct from the tier-5 roads this file marks
+-- `service=alley` for the entry charge (`M.AVOID_TIER`).
+function M.is_real_alley(tags)
+  return tags.highway == "service" and tags.service == M.AVOID_SERVICE
+end
 
 -- --- Facility ------------------------------------------------------------------
 --

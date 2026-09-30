@@ -273,6 +273,14 @@ def build_parallel_extract(path: Path, *, road_id: int, trail_id: int) -> None:
 
 
 WEEKEND_CLOSED_ID = 600
+CBD_SIDEWALK_ID = 800
+CBD_CYCLE_TRACK_ID = 801
+SINGLETRACK_ID = 900
+TOWPATH_ABOVE_ID = 901
+TOWPATH_BELOW_ID = 902
+DIVIDED_NORTH_ID = 1000
+DIVIDED_SOUTH_ID = 1001
+ONE_WAY_ID = 1002
 SEPARATE_ROAD_ID = 700
 BESIDE_TRAIL_ID = 701
 
@@ -298,11 +306,37 @@ def build_dials_extract(path: Path) -> None:
             4: (-77.030, road_lat),
             5: (-77.040, trail_lat),
             6: (-77.030, trail_lat),
+            # K Street NW at 15th, inside DDOT's Central Business District.
+            7: (-77.0335, 38.9025),
+            8: (-77.0325, 38.9025),
+            9: (-77.0335, 38.9024),
+            10: (-77.0325, 38.9024),
+            # West of the District's box, by the Potomac.
+            11: (-77.120, 38.930),
+            12: (-77.115, 38.930),
+            13: (-77.120, 38.935),
+            14: (-77.115, 38.935),
+            15: (-77.120, 38.940),
+            16: (-77.115, 38.940),
+            # A divided avenue, its carriageways 20 m apart, and a one-way
+            # street two blocks west: in the District, nothing posted.
+            17: (-77.0600, 38.920),
+            18: (-77.0600, 38.925),
+            19: (-77.05977, 38.925),
+            20: (-77.05977, 38.920),
+            21: (-77.0620, 38.920),
+            22: (-77.0620, 38.925),
         }
         for node_id, (lon, lat) in nodes.items():
             writer.add_node(
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
+        divided_avenue = {
+            "highway": "tertiary",  # not an arterial (item 141 floors those)
+            "lanes": "2",
+            "oneway": "yes",
+            "name": "Divided Avenue",
+        }
         ways = {
             WEEKEND_CLOSED_ID: (
                 [1, 2],
@@ -323,6 +357,42 @@ def build_dials_extract(path: Path) -> None:
                 },
             ),
             BESIDE_TRAIL_ID: ([5, 6], {"highway": "cycleway", "name": "Separate Avenue lane"}),
+            # OWNER-DECISIONS 104: a downtown sidewalk open to bicycles by its
+            # tags, and a cycle track beside it signed for them.
+            CBD_SIDEWALK_ID: (
+                [7, 8],
+                {"highway": "footway", "footway": "sidewalk", "bicycle": "yes"},
+            ),
+            CBD_CYCLE_TRACK_ID: (
+                [9, 10],
+                {"highway": "cycleway", "bicycle": "designated", "name": "K Street cycle track"},
+            ),
+            # OWNER-DECISIONS 111 and 93: singletrack is closed; the C&O towpath,
+            # either side of lock 21, is not.
+            SINGLETRACK_ID: ([11, 12], {"highway": "path", "mtb:scale": "2", "surface": "dirt"}),
+            TOWPATH_ABOVE_ID: (
+                [13, 14],
+                {
+                    "highway": "path",
+                    "bicycle": "designated",
+                    "surface": "dirt",
+                    "mtb:scale:imba": "0",
+                    "name": "Chesapeake and Ohio Canal Towpath",
+                },
+            ),
+            TOWPATH_BELOW_ID: (
+                [15, 16],
+                {
+                    "highway": "cycleway",
+                    "surface": "fine_gravel",
+                    "name": "Chesapeake and Ohio Canal Towpath",
+                },
+            ),
+            # OWNER-DECISIONS 108 and 109: read at the District's 20 mph; the
+            # one-way street is a one-way, the carriageways are a two-way road.
+            DIVIDED_NORTH_ID: ([17, 18], {**divided_avenue}),
+            DIVIDED_SOUTH_ID: ([19, 20], {**divided_avenue}),
+            ONE_WAY_ID: ([21, 22], {**divided_avenue, "name": "One Way Street"}),
         }
         for way_id in sorted(ways):
             node_ids, tags = ways[way_id]
@@ -354,6 +424,7 @@ def fake_download(destination: Path) -> None:
     destination = Path(destination)
     built = destination.with_name("download.osm.pbf")
     build_toy_extract(built)
+    add_state_boundaries(built, built)
     built.replace(destination)
 
 
@@ -377,6 +448,94 @@ def write_sqlite_database(path: Path, table: str, rows: bool = True) -> None:
         connection.close()
 
 
+# The toy region's states as boundary relations (OWNER-DECISIONS 137: the
+# rebuild reads its states from the extract's admin_level=4 relations): the
+# District's box, Virginia east of it (the toy border is -77.00, as in
+# `state_polygons`), and Maryland north of both.
+STATE_BOXES = {
+    "DC": (-77.10, -77.00, 38.85, 38.95),
+    "VA": (-77.00, -76.90, 38.85, 38.95),
+    "MD": (-77.10, -76.90, 38.95, 39.05),
+}
+BOUNDARY_ID = 9_900_000
+
+
+def add_state_boundaries(source: Path, destination: Path, boxes=None) -> None:
+    """`source` with one boundary=administrative, admin_level=4 relation per
+    state box added, written to `destination` (which may be `source`)."""
+    boxes = STATE_BOXES if boxes is None else boxes
+    nodes, ways, relations = [], [], []
+
+    class Copy(osmium.SimpleHandler):
+        def node(self, n):
+            nodes.append(
+                osmium.osm.mutable.Node(
+                    id=n.id,
+                    location=(n.location.lon, n.location.lat),
+                    tags=dict(n.tags),
+                    version=1,
+                )
+            )
+
+        def way(self, w):
+            ways.append(
+                osmium.osm.mutable.Way(
+                    id=w.id, nodes=[n.ref for n in w.nodes], tags=dict(w.tags), version=1
+                )
+            )
+
+        def relation(self, r):
+            relations.append(
+                osmium.osm.mutable.Relation(
+                    id=r.id,
+                    members=[(m.type, m.ref, m.role) for m in r.members],
+                    tags=dict(r.tags),
+                    version=1,
+                )
+            )
+
+    Copy().apply_file(str(source))
+    for index, (state, (west, east, south, north)) in enumerate(sorted(boxes.items())):
+        base = BOUNDARY_ID + 10 * index
+        corners = [(west, south), (east, south), (east, north), (west, north)]
+        for offset, location in enumerate(corners):
+            nodes.append(
+                osmium.osm.mutable.Node(id=base + offset, location=location, tags={}, version=1)
+            )
+        ways.append(
+            osmium.osm.mutable.Way(
+                id=base, nodes=[base, base + 1, base + 2, base + 3, base], tags={}, version=1
+            )
+        )
+        relations.append(
+            osmium.osm.mutable.Relation(
+                id=base,
+                members=[("w", base, "outer")],
+                tags={
+                    "type": "boundary",
+                    "boundary": "administrative",
+                    "admin_level": "4",
+                    "ISO3166-2": f"US-{state}",
+                    "name": state,
+                },
+                version=1,
+            )
+        )
+    partial = Path(destination).with_name("boundaries.osm.pbf")
+    partial.unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(str(partial))
+    try:
+        for n in sorted(nodes, key=lambda o: o.id):
+            writer.add_node(n)
+        for w in sorted(ways, key=lambda o: o.id):
+            writer.add_way(w)
+        for r in sorted(relations, key=lambda o: o.id):
+            writer.add_relation(r)
+    finally:
+        writer.close()
+    partial.replace(destination)
+
+
 def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -> Path:
     """A deployment whose extract stage has already run this week.
 
@@ -394,7 +553,8 @@ def install_source_extract(directory: Path, build=build_toy_extract, **kwargs) -
     directory.mkdir(parents=True, exist_ok=True)
     clipped = directory / source_module.CLIPPED_NAME
     build(clipped, **kwargs)
-    shutil.copyfile(clipped, directory / source_module.MERGED_NAME)
+    # The merged file carries the state boundaries the rebuild reads.
+    add_state_boundaries(clipped, directory / source_module.MERGED_NAME)
     return clipped
 
 

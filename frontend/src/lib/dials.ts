@@ -23,6 +23,12 @@ export interface Dials {
   carrying: Carrying | null;
   /** Cargo Bike only: electric assist (e-bike rules, a faster pace, the same hills start). */
   assist: boolean;
+  /**
+   * "Avoid gravel" (OWNER-DECISIONS 91, 92, 111): steer off unpaved surfaces.
+   * Any ride type, off by default on all of them; absent is off. It is about
+   * the ride, not the bike, so it stays when the ride type changes.
+   */
+  avoidGravel?: boolean;
 }
 
 export const STRESS_MIN = 0;
@@ -120,6 +126,7 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     when: start.when,
     carrying: start.carrying,
     assist: start.assist,
+    ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
   };
 }
 
@@ -129,6 +136,7 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.when) fields.when = dials.when;
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
+  if (dials.avoidGravel) fields.avoid_gravel = true;
   return fields;
 }
 

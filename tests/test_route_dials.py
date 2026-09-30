@@ -1323,3 +1323,29 @@ class TestNoBusierThanMiddleFallbacks:
         (trip, kept), seen = self.check(monkeypatch, {"trip": self.middle}, deadline=deadline)
         assert (trip, kept) == (self.trip, False)
         assert seen["limits"] == []
+
+
+@db
+class TestAvoidGravel:
+    """OWNER-DECISIONS 91, 92, 111: the "Avoid gravel" box."""
+
+    def test_off_by_default_and_echoed(self, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, good_body("cargo")).json()
+        assert body["dials"]["avoid_gravel"] is False
+        sent = fake.calls[0][1]["costing_options"]["bicycle"]["avoid_bad_surfaces"]
+        assert sent == presets.costing("cargo")["bicycle"]["avoid_bad_surfaces"]
+
+    @pytest.mark.parametrize("name", ["default", "gravel", "cargo", "mass-ride"])
+    def test_checked_it_steers_off_unpaved_surfaces(self, name, client, facility_segments, router):
+        fake = router(standard_router())
+        body = post(client, {**good_body(name), "avoid_gravel": True}).json()
+        assert body["dials"]["avoid_gravel"] is True
+        for _url, payload in fake.calls:
+            options = payload["costing_options"]["bicycle"]
+            assert options["avoid_bad_surfaces"] >= presets.AVOID_GRAVEL_SURFACES
+
+    def test_only_a_boolean(self, client, facility_segments, router):
+        fake = router(standard_router())
+        assert post(client, {**good_body(), "avoid_gravel": "yes"}).status_code == 400
+        assert fake.calls == []

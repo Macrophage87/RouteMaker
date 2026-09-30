@@ -29,11 +29,19 @@ from django.conf import settings
 from django.db import connection
 from rebuild_fixtures import (
     BESIDE_TRAIL_ID,
+    CBD_CYCLE_TRACK_ID,
+    CBD_SIDEWALK_ID,
+    DIVIDED_NORTH_ID,
+    DIVIDED_SOUTH_ID,
     GIB,
     LUA_LOADED_LOG,
+    ONE_WAY_ID,
     PARALLEL_COUNT,
     REPO,
     SEPARATE_ROAD_ID,
+    SINGLETRACK_ID,
+    TOWPATH_ABOVE_ID,
+    TOWPATH_BELOW_ID,
     WEEKEND_CLOSED_ID,
     FakeBinaries,
     box,
@@ -480,7 +488,19 @@ def test_the_facility_class_reaches_the_extracts_and_the_segment_table(workspace
 
 def run_dials_extract(tmp_path):
     source = install_source_extract(tmp_path, build_dials_extract)
-    ids = (WEEKEND_CLOSED_ID, SEPARATE_ROAD_ID, BESIDE_TRAIL_ID)
+    ids = (
+        WEEKEND_CLOSED_ID,
+        SEPARATE_ROAD_ID,
+        BESIDE_TRAIL_ID,
+        CBD_SIDEWALK_ID,
+        CBD_CYCLE_TRACK_ID,
+        SINGLETRACK_ID,
+        TOWPATH_ABOVE_ID,
+        TOWPATH_BELOW_ID,
+        DIVIDED_NORTH_ID,
+        DIVIDED_SOUTH_ID,
+        ONE_WAY_ID,
+    )
     context, _ = run_pipeline(source, tmp_path, urban=ids, skip=NOT_SWAPPED)
     with connection.cursor() as cursor:
         cursor.execute(
@@ -514,6 +534,116 @@ def test_a_road_closed_every_weekend_is_a_path_on_the_weekend_graph_only(
         else:
             assert tags.get("rm:stress_tier") == str(tier), variant.value
             assert tags.get("rm:facility") != "path", variant.value
+
+
+def test_a_downtown_sidewalk_is_barred_to_bicycles_in_every_graph(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 104: no sidewalk riding in the Central Business
+    District. The sidewalk is marked on every variant's extract; the cycle track
+    beside it, signed bicycle=designated, is not."""
+    from pipeline.extract import read_ways
+
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.cbd_sidewalks == {CBD_SIDEWALK_ID}
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if CBD_SIDEWALK_ID in tags:
+            assert tags[CBD_SIDEWALK_ID].get("rm:no_bicycle") == "cbd_sidewalk", variant.value
+        if CBD_CYCLE_TRACK_ID in tags:
+            assert tags[CBD_CYCLE_TRACK_ID].get("rm:no_bicycle") is None, variant.value
+
+
+def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 111 and 93, through the rebuild."""
+    from pipeline.extract import read_ways
+
+    context, stored = run_dials_extract(tmp_path)
+    assert context.singletracks == {SINGLETRACK_ID}
+    for way_id in (TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID):
+        assert stored[way_id][0] == "path", way_id
+    for variant in Variant:
+        tags = {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        if SINGLETRACK_ID in tags:
+            assert tags[SINGLETRACK_ID].get("rm:no_bicycle") == "singletrack", variant.value
+        for way_id in (TOWPATH_ABOVE_ID, TOWPATH_BELOW_ID):
+            if way_id in tags:
+                assert tags[way_id].get("rm:no_bicycle") is None, (variant.value, way_id)
+
+
+def test_the_district_default_and_a_divided_road_reach_the_classifier(
+    tmp_path, segment_schemas, states
+) -> None:
+    """OWNER-DECISIONS 108 and 109, through the rebuild: an unposted District
+    way is read at 20 mph from the state layer, a two-lane one-way street on
+    the single-lane row, and a carriageway of a divided road as the two-way
+    road it is."""
+    context, _stored = run_dials_extract(tmp_path)
+    for way_id in (DIVIDED_NORTH_ID, DIVIDED_SOUTH_ID):
+        stress = context.stress_by_way[way_id]
+        assert stress.rule == "mixed traffic, 20 mph or below, urban multilane, two-way floor"
+        assert int(stress.tier) == 3, way_id
+    one_way = context.stress_by_way[ONE_WAY_ID]
+    assert one_way.rule == "mixed traffic, 20 mph or below, urban multilane"
+    assert int(one_way.tier) == 1
+    # OWNER-DECISIONS 141: the secondary whose lane is mapped as the trail 5 m
+    # beside it has bike infrastructure, so the arterial floor passes it by.
+    beside = context.stress_by_way[SEPARATE_ROAD_ID]
+    assert "arterial floor" not in beside.rule
+    assert int(beside.tier) == 2
+
+
+@pytest.mark.django_db(transaction=True)
+def test_the_states_come_from_the_extract_not_the_jurisdiction_table(
+    tmp_path, segment_schemas
+) -> None:
+    """Review r1, B1 (OWNER-DECISIONS 137): with the admin's jurisdiction table
+    empty, as it is on live, the District's 20 mph still applies, from the
+    merged extract's own admin_level=4 boundary."""
+    from core.models import Jurisdiction
+
+    assert not Jurisdiction.objects.exists()
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.stress_by_way[ONE_WAY_ID].rule.startswith("mixed traffic, 20 mph or below")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_a_required_state_missing_from_the_extract_stops_the_rebuild(
+    tmp_path, segment_schemas, monkeypatch
+) -> None:
+    """The toy region has no Maryland road; required, Maryland stops it."""
+    from pipeline import states
+
+    monkeypatch.setattr(states, "REQUIRED_STATES", ("DC", "MD", "VA"))
+    with pytest.raises(RebuildFailed) as caught:
+        run_dials_extract(tmp_path)
+    assert "no way placed in MD" in str(caught.value)
+    assert caught.value.stage is Stage.CLASSIFY_STRESS
+
+
+def test_a_curated_speed_limit_reaches_the_classifier(
+    tmp_path, segment_schemas, states, monkeypatch
+) -> None:
+    """OWNER-DECISIONS 131, through the rebuild: a speed file's row sets the
+    speed an unposted way is classified at, and a posted speed wins over it."""
+    from routemaker import speed_corrections
+
+    speeds = tmp_path / "speed"
+    speeds.mkdir()
+    rows = [
+        {"osm_way_id": way, "maxspeed": "25 mph", "reason": "test", "evidence": "test"}
+        for way in (ONE_WAY_ID, WEEKEND_CLOSED_ID)  # the second is posted 30 mph
+    ]
+    (speeds / "test.json").write_text(json.dumps({"version": 1, "rows": rows}))
+    monkeypatch.setattr(speed_corrections, "SPEED_DIR", speeds)
+    context, _stored = run_dials_extract(tmp_path)
+    assert context.speed_corrected == {ONE_WAY_ID}
+    one_way = context.stress_by_way[ONE_WAY_ID]
+    assert one_way.rule == "mixed traffic, 25 mph, urban multilane"
+    assert int(one_way.tier) == 2
+    assert context.stress_by_way[WEEKEND_CLOSED_ID].rule.startswith("mixed traffic, 30 mph")
 
 
 def test_a_trail_beside_a_road_that_maps_its_lane_separately_is_protected(

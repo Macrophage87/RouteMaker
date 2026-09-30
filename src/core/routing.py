@@ -530,6 +530,7 @@ class Dials:
     when: str | None = None
     carrying: str | None = None
     assist: bool = False
+    avoid_gravel: bool = False
 
 
 # How many alternatives a climb search asks the router for, besides its best
@@ -839,7 +840,10 @@ def plan(
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     variant = presets.variant_for_ride(preset_name, when, assist)
-    costing = presets.costing(preset_name, stress_dial, hills_dial, assist=assist)
+    avoid_gravel = bool(dials.avoid_gravel)
+    costing = presets.costing(
+        preset_name, stress_dial, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+    )
     request = {
         "locations": [{"lon": lon, "lat": lat, "type": "break"} for lon, lat in points],
         "costing": "bicycle",
@@ -946,7 +950,9 @@ def plan(
     kept_middle = False
     trace_costing = costing
     if avoiding:
-        middle_costing = presets.costing(preset_name, stress_dial, 0, assist=assist)
+        middle_costing = presets.costing(
+            preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel
+        )
         trip, kept_middle = no_busier_than_middle(
             trip, request, variant, costing, middle_costing, when, deadline, traces
         )
@@ -1072,6 +1078,7 @@ def plan(
             "when": when,
             "carrying": presets.carrying_of(preset_name, dials.carrying),
             "assist": assist,
+            "avoid_gravel": avoid_gravel,
         },
         "hills_seek": hills_seek,
         "hills_avoid": hills_avoid,
@@ -1087,12 +1094,21 @@ def plan(
 # adaptation say it was modified and link the licence: the counts are
 # normalised and fed to the classifier, so the credit says "adapted". VDOT's
 # volume layer states no licence and is credited plainly. USGS 3DEP for the
-# elevation the climb is computed from. Protomaps is credited by the map,
+# elevation the climb is computed from. DDOT's Central Business District boundary
+# (fixtures/cbd, CC BY 4.0) decides which sidewalks bicycles may not ride
+# (routemaker.cbd), so it shares DDOT's line. The Architect of the Capitol's
+# jurisdiction polygon (fixtures/cbd, Open Data DC, DC GIS, CC BY 4.0) decides
+# which of those sidewalks are the Capitol grounds' and exempt, and has a line of
+# its own; it is used as published, so it is not marked adapted. Protomaps is
+# credited by the map,
 # which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
     "© OpenStreetMap contributors, ODbL",
-    "Stress tiers use traffic volume from the District Department of Transportation,"
-    " adapted, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+    "Stress tiers use traffic volume, and routing the Central Business District boundary,"
+    " from the District Department of Transportation, adapted, CC BY 4.0"
+    " (https://creativecommons.org/licenses/by/4.0/)",
     "Traffic volume: Virginia Department of Transportation",
+    "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia"
+    " (Open Data DC), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
     "Elevation: USGS 3D Elevation Program",
 )
