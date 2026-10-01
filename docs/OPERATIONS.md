@@ -1012,6 +1012,24 @@ licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
 the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
 none, are OpenStreetMap's and need nothing beyond the ODbL credit.
 
+Two more credits ride with the agency street layers
+(`docs/DEVELOPMENT.md`, "Agency street layers"; sources and licences in
+`fixtures/datasets/README.md`), in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
+"Street speeds, lanes, one-way streets, bike lanes and parking in the District:
+Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data
+DC), adapted, CC BY 4.0" (the layer is parsed and combined with OSM, so it is
+"adapted", and the licence is linked), and "Street speeds and one-way streets in
+Baltimore: City of Baltimore, Open Baltimore" (open licence by Baltimore City
+Code Art. 1 s.9-1(h), OWNER-DECISIONS 159). **Montgomery County Planning is not
+credited, deliberately:** nothing derived from its Bicycle LTS layer is
+published (it is a comparison set, and the LTS 5 Avoid file is only proposed).
+The day any row derived from it is loaded, add "Bicycle Level of Traffic Stress:
+Montgomery County Planning Department" to both lists, in the same change; the
+layer's licence asks for attribution to the Montgomery County Planning
+Department. Arlington's Bike Comfort Index and Alexandria's Transport Streets are
+internal comparison only and are never credited because nothing of them is
+published.
+
 DDOT's Central Business District boundary (Open Data DC, CC BY 4.0), which
 decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS
 104), shares DDOT's traffic-volume line in both credit lists: "Stress tiers use
@@ -1365,6 +1383,22 @@ the first host to run it is the first test of it.
    the waiver mechanism PLAN.md:31-34 describes exists; handoff.md section 7
    carries the row. docs/DEVELOPMENT.md, "Reference data", has what each one is
    and how the counts have to be normalised before they get here.
+
+   **Optional, the agency street layers.** Add `--roadway-block
+   /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
+   --baltimore-centerline
+   /data/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson`
+   to the same command to write `reference/roadway.json`: DC's and Baltimore's
+   own posted speeds, lanes by direction, one-way streets, bike lanes and
+   parking, which then take precedence over OSM's tags at the rebuild's
+   classification (docs/DEVELOPMENT.md, "Agency street layers"). The files are
+   fetched once with `scripts/fetch_agency_layer.py`, which refuses to fetch a
+   layer twice, with the owner's go for each download. Without `roadway.json`
+   the rebuild runs as before and logs `roadway.json is absent`; with it the
+   log carries `agency street blocks: N of M blocks matched ways`, and each
+   matched segment's `attr_sources` says which inputs came from the agency.
+   Install it before the next rebuild, never after: the tiers change only when a
+   rebuild runs. Reinstalling is idempotent.
 
    `--extract` is the clipped `source.osm.pbf`, and the clipped one is right:
    the script reads ways out of it to decide which way ids fall inside a Census

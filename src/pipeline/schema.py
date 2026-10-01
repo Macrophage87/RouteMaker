@@ -317,6 +317,15 @@ CREATE TABLE {schema}.segment (
         OR (stress_computed_tier IS NULL AND stress_adjustment_direction IS NULL
             AND stress_adjustment_category IS NULL AND stress_adjustment_note IS NULL
             AND stress_adjustment_display IS NULL)),
+    -- Where each input the classifier read came from, on a way an agency's
+    -- street layer (DC's Roadway Block, Baltimore's street centerline) was
+    -- matched to: an object of attribute to source (maxspeed, lanes, oneway,
+    -- bike, parking, aadt), with `blocks` the matched block ids. An agency name
+    -- means the agency's value took precedence over OSM's and over the
+    -- project's defaults; `osm` that the way's own tag stood; `default` that
+    -- nothing said and the classifier assumed. Null on a way no layer reached,
+    -- which reads as `stress_assumed` already does.
+    attr_sources    jsonb,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

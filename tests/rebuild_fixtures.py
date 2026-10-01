@@ -193,7 +193,7 @@ def build_named_bridge_extract(
 
 
 def write_reference_data(
-    root: Path, *, urban=(), sidepath=(), volume=(), legality=(), crossings=()
+    root: Path, *, urban=(), sidepath=(), volume=(), legality=(), crossings=(), roadway=()
 ) -> Path:
     """The reference inputs the rebuild refuses to run without.
 
@@ -226,6 +226,10 @@ def write_reference_data(
         )
     )
     (directory / "volume.json").write_text(json.dumps(list(volume)))
+    # Optional, unlike the three above: a rebuild without agency street blocks
+    # classifies from OSM and the defaults, and warns.
+    if roadway:
+        (directory / "roadway.json").write_text(json.dumps(list(roadway)))
     return directory
 
 

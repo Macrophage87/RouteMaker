@@ -31,9 +31,10 @@ between two agencies about the same road is a thing a reviewer needs to see.
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
+from routemaker.agency_roads import RoadFacts, names_agree
 from routemaker.geo import (
     EARTH_RADIUS_M,
     Point,
@@ -275,6 +276,48 @@ def _probes(coordinates: Sequence[tuple[float, float]], tolerance_m: float) -> l
     return [Point(*point) for point in _densify(coordinates, tolerance_m)]
 
 
+# The shortest stretch a heading is taken over: a one-metre segment in a curve
+# points anywhere.
+_MIN_HEADING_SPAN_M = 8.0
+
+
+def _probes_with_headings(
+    coordinates: Sequence[tuple[float, float]], spacing_m: float
+) -> tuple[list[Point], list[float]]:
+    """`_probes` and, for each, the bearing of the way there.
+
+    The bearing of the segment the probe lies on, widened to the neighbouring
+    vertices where the segment is shorter than `_MIN_HEADING_SPAN_M`.
+    """
+    points = [Point(*point) for point in coordinates]
+    probes: list[Point] = []
+    headings: list[float] = []
+    for number in range(len(points) - 1):
+        low, high = number, number + 1
+        while haversine(points[low], points[high]) < _MIN_HEADING_SPAN_M and (
+            low > 0 or high < len(points) - 1
+        ):
+            if low > 0:
+                low -= 1
+            if (
+                high < len(points) - 1
+                and haversine(points[low], points[high]) < _MIN_HEADING_SPAN_M
+            ):
+                high += 1
+        heading = bearing(points[low], points[high])
+        a, b = coordinates[number], coordinates[number + 1]
+        length = haversine(points[number], points[number + 1])
+        steps = max(1, int(length // spacing_m))
+        if number == 0:
+            probes.append(points[0])
+            headings.append(heading)
+        for step in range(1, steps + 1):
+            t = step / steps
+            probes.append(Point(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t))
+            headings.append(heading)
+    return probes, headings
+
+
 class _PreparedFeature:
     """An agency line made ready to be measured against many ways.
 
@@ -323,13 +366,17 @@ class _PreparedFeature:
                 )
             )
 
-    def overlap(
-        self,
-        probes: Sequence[Point],
-        box: tuple[float, float, float, float],
-        tolerance_m: float,
-    ) -> tuple[float, tuple[float, float] | None, float]:
-        """`_overlap` of the way whose probes these are and whose box `box` is."""
+    def measure(
+        self, probes: Sequence[Point], box: tuple[float, float, float, float]
+    ) -> list[tuple[float, float, float]] | None:
+        """(distance to the line, position along it as a fraction, bearing of
+        the nearest segment) for each probe, or None when no segment of the
+        line can be near any probe.
+
+        The distance is the nearest measured segment's, whether or not it is
+        within the tolerance; the caller applies the tolerance. A probe that no
+        measured segment's widened box holds is at infinity.
+        """
         west, south, east, north = box
         # The segments that can be near any probe at all: every probe lies in
         # the way's box, so a segment whose widened box misses it is out.
@@ -342,15 +389,13 @@ class _PreparedFeature:
             and segment[3] >= south
         ]
         if not segments:
-            return 0.0, None, float("inf")
+            return None
 
         cumulative, total = self.cumulative, self.total
-        positions = []
-        distances = []
-        near = 0
+        measured = []
         for probe in probes:
             lon, lat = probe[0], probe[1]
-            best, best_along = float("inf"), 0.0
+            best, best_along, best_segment = float("inf"), 0.0, None
             for seg_west, seg_south, seg_east, seg_north, index, a, b in segments:
                 if lon < seg_west or lon > seg_east or lat < seg_south or lat > seg_north:
                     continue
@@ -358,6 +403,26 @@ class _PreparedFeature:
                 if distance < best:
                     along = cumulative[index] + (cumulative[index + 1] - cumulative[index]) * t
                     best, best_along = distance, along / total if total else 0.0
+                    best_segment = (a, b)
+            heading = bearing(*best_segment) if best_segment else 0.0
+            measured.append((best, best_along, heading))
+        return measured
+
+    def overlap(
+        self,
+        probes: Sequence[Point],
+        box: tuple[float, float, float, float],
+        tolerance_m: float,
+    ) -> tuple[float, tuple[float, float] | None, float]:
+        """`_overlap` of the way whose probes these are and whose box `box` is."""
+        measured = self.measure(probes, box)
+        if measured is None:
+            return 0.0, None, float("inf")
+
+        positions = []
+        distances = []
+        near = 0
+        for best, best_along, _heading in measured:
             if best <= tolerance_m:
                 near += 1
                 positions.append(best_along)
@@ -541,3 +606,239 @@ def conflate(
 
     unmatched = [f.feature_id for f in features if f.feature_id not in used_features]
     return ConflationResult(matched=matched, rejected=rejected, unmatched_features=unmatched)
+
+
+# -- block layers: a road's facts, not a count ------------------------------------
+#
+# `conflate` attaches one number to one way and lets a count be claimed once,
+# which is right for a bidirectional AADT and wrong for everything else an
+# agency's block layer says. A posted speed or a lane count describes every way
+# along the block: both carriageways of a divided boulevard are drawn as a
+# single block, and each of them is that speed. And OSM ways and agency blocks
+# do not break at the same places - a way can run for three blocks - so "the
+# fraction of the way near this one feature" is not the question either, and a
+# way matched to three blocks at a third apiece would match none.
+#
+# So the question put here is per stretch of the way: for each probe along it,
+# which block is the one it is running along? The nearest, preferring a block
+# whose street name agrees. A way's blocks are those that won enough of its
+# probes to be a block it lies along rather than one it merely crosses, and the
+# way is matched when they between them cover it.
+
+# A block must win at least this many of a way's probes - one every
+# `MAX_SEPARATION_M`, so about two spans of that, forty metres of the way - to
+# count as one of its blocks. Not a fraction of the way: a way can run past
+# twenty blocks and each is a twentieth of it, and still every one of them is
+# the road the way lies along. What the count excludes is a block that only
+# touches the way's end, as a way ending beside a block's end shares a probe or
+# two with it.
+MIN_BLOCK_PROBES = 2
+
+# Of a way's length, how much the blocks it lies along must cover for the way to
+# count as matched. The same half as `MIN_OVERLAP_FRACTION`.
+MIN_BLOCK_COVERAGE = 0.5
+
+# A name that agrees outranks one nobody has, which outranks one that
+# disagrees; geometry then decides between candidates of equal rank.
+_NAME_AGREES, _NAME_UNKNOWN, _NAME_DISAGREES = 0, 1, 2
+
+
+@dataclass(frozen=True)
+class RoadFeature:
+    """One agency block: a line, a name and the facts it records."""
+
+    feature_id: str
+    coordinates: Sequence[tuple[float, float]]
+    facts: RoadFacts
+
+
+@dataclass(frozen=True)
+class BlockShare:
+    """One block a way lies along, and how much of the way it covers."""
+
+    feature_id: str
+    share: float
+    names_agree: bool | None
+
+
+@dataclass(frozen=True)
+class BlockConflation:
+    # Way id -> the blocks it lies along, most covering first.
+    matched: dict[int, tuple[BlockShare, ...]]
+    # Way id -> the fraction of the way those blocks cover.
+    coverage: dict[int, float]
+    # Blocks that won no probe on any matched way: the agency's miles that OSM
+    # does not have a way for, or that the geometry did not reconcile.
+    unmatched_features: list[str]
+
+
+def conflate_blocks(
+    ways: Sequence[WayEntry],
+    features: Sequence[RoadFeature],
+    way_names: Mapping[int, str | None] | None = None,
+    name_required: Collection[int] = (),
+    name_vetoed: Collection[int] = (),
+    bearing_tolerance_deg: float = BEARING_TOLERANCE_DEG,
+    min_coverage: float = MIN_BLOCK_COVERAGE,
+    min_probes: int = MIN_BLOCK_PROBES,
+    max_separation_m: float = MAX_SEPARATION_M,
+) -> BlockConflation:
+    """Attach agency blocks to the OSM ways that lie along them.
+
+    Per direction in the only sense the layer allows: the block's two directions
+    are kept on its facts and a way takes both, so a one-way carriageway of a
+    divided road and its opposite carriageway each take the block's facts rather
+    than one of them winning the block. Trail-class ways are never candidates,
+    for the reason given at `conflate`.
+
+    `name_required` is the ways that may take a block only where its street name
+    agrees with the way's: a service road or a farm track, which runs beside a
+    street all the time (a parking aisle, a driveway, an alley behind the
+    houses) and is not that street. Measured on Baltimore, where the unnamed
+    service ways beside streets took 118 miles of the street's 25 mph.
+
+    `name_vetoed` is the ways that may not take a block whose street name is a
+    different street's. A frontage road lies beside a freeway with the same
+    heading a few metres away, and without the veto a large mistake follows:
+    DC's 36th Place NE, beside New York Avenue, took that avenue's 45 mph,
+    three lanes and 53,745 vehicles a day and went from LTS 1 to LTS 4. A way
+    whose block has no name, or that has none itself, is not vetoed (nothing
+    contradicts it). The veto is left off the classes agencies and OSM
+    name differently on purpose - `agency_roads.NAME_FREE_HIGHWAYS`: an
+    interstate is "Anacostia Freeway" to OSM and "INTERSTATE 295" to DC - and a
+    way left unmatched falls back to OSM's own tags, the safe answer.
+    """
+    required = frozenset(name_required)
+    vetoed = frozenset(name_vetoed)
+    names = way_names or {}
+    index = _FeatureIndex(features, max_separation_m)  # type: ignore[arg-type]
+    prepared: list[_PreparedFeature | None] = [None] * len(features)
+
+    matched: dict[int, tuple[BlockShare, ...]] = {}
+    coverage: dict[int, float] = {}
+    used: set[str] = set()
+    entries_by_id: dict[int, Sequence[tuple[float, float]]] = {}
+
+    for entry in ways:
+        way_id, coordinates, *rest = entry
+        if rest and rest[0]:
+            continue
+        if len(coordinates) < 2:
+            continue
+        entries_by_id[way_id] = coordinates
+        way_name = names.get(way_id)
+        probes, headings = _probes_with_headings(coordinates, max_separation_m)
+        box = _bounds(coordinates)
+
+        # Per probe: the best (rank, distance, id) among the blocks near it.
+        # "Near" includes running the same way: the probe's heading and the
+        # block's at its nearest point agree to within the tolerance, taken
+        # locally, because a long way that bends has no single bearing and a
+        # block meeting a way at a junction crosses it rather than lying along it.
+        best: list[tuple[int, float, str] | None] = [None] * len(probes)
+        agreement: dict[str, bool | None] = {}
+        for position in index.near(coordinates):
+            feature = features[position]
+            if prepared[position] is None:
+                prepared[position] = _PreparedFeature(feature.coordinates, max_separation_m)
+            measured = prepared[position].measure(probes, box)
+            if measured is None:
+                continue
+            agrees = names_agree(way_name, feature.facts.name)
+            if way_id in required and agrees is not True:
+                continue
+            if way_id in vetoed and agrees is False:
+                continue
+            agreement[feature.feature_id] = agrees
+            rank = _NAME_UNKNOWN if agrees is None else _NAME_AGREES if agrees else _NAME_DISAGREES
+            for slot, (distance, _along, heading) in enumerate(measured):
+                if distance > max_separation_m:
+                    continue
+                delta = bearing_delta(headings[slot], heading)
+                if min(delta, 180.0 - delta) > bearing_tolerance_deg:
+                    continue
+                candidate = (rank, distance, feature.feature_id)
+                if best[slot] is None or candidate < best[slot]:
+                    best[slot] = candidate
+
+        wins: dict[str, int] = {}
+        for choice in best:
+            if choice is not None:
+                wins[choice[2]] = wins.get(choice[2], 0) + 1
+        shares = [
+            BlockShare(block, count / len(probes), agreement.get(block))
+            for block, count in wins.items()
+            if count >= min(min_probes, len(probes))
+        ]
+        covered = sum(share.share for share in shares)
+        if covered < min_coverage:
+            continue
+        shares.sort(key=lambda share: (-share.share, share.feature_id))
+        matched[way_id] = tuple(shares)
+        coverage[way_id] = min(1.0, covered)
+        used.update(share.feature_id for share in shares)
+
+    # A block that won no probe may still lie along a matched way: a twelve-metre
+    # connector between two long blocks falls between the way's probes and is
+    # described by its neighbours. So the blocks left over are measured the other
+    # way round, by probes along the block, against the ways that were matched:
+    # it is covered if half of it runs along one with the heading its own has.
+    leftover = [f for f in features if f.feature_id not in used and len(f.coordinates) >= 2]
+    if leftover and matched:
+        used.update(
+            _covered_blocks(
+                leftover,
+                entries_by_id,
+                matched,
+                max_separation_m,
+                bearing_tolerance_deg,
+                min_coverage,
+            )
+        )
+
+    unmatched = [f.feature_id for f in features if f.feature_id not in used]
+    return BlockConflation(matched=matched, coverage=coverage, unmatched_features=unmatched)
+
+
+class _Line:
+    """A way's line, for the index that finds ways near a block."""
+
+    __slots__ = ("coordinates",)
+
+    def __init__(self, coordinates: Sequence[tuple[float, float]]) -> None:
+        self.coordinates = coordinates
+
+
+def _covered_blocks(
+    blocks: Sequence[RoadFeature],
+    lines: Mapping[int, Sequence[tuple[float, float]]],
+    matched: Mapping[int, object],
+    tolerance_m: float,
+    bearing_tolerance_deg: float,
+    min_coverage: float,
+) -> set[str]:
+    """The blocks that run along an already matched way for half their length."""
+    ids = sorted(matched)
+    index = _FeatureIndex([_Line(lines[way_id]) for way_id in ids], tolerance_m)  # type: ignore[list-item]
+    prepared: dict[int, _PreparedFeature] = {}
+    covered: set[str] = set()
+    spacing = max(tolerance_m / 4.0, 1.0)
+    for block in blocks:
+        probes, headings = _probes_with_headings(block.coordinates, spacing)
+        box = _bounds(block.coordinates)
+        along = [False] * len(probes)
+        for position in index.near(block.coordinates):
+            if position not in prepared:
+                prepared[position] = _PreparedFeature(lines[ids[position]], tolerance_m)
+            measured = prepared[position].measure(probes, box)
+            if measured is None:
+                continue
+            for slot, (distance, _along, heading) in enumerate(measured):
+                if along[slot] or distance > tolerance_m:
+                    continue
+                delta = bearing_delta(headings[slot], heading)
+                if min(delta, 180.0 - delta) <= bearing_tolerance_deg:
+                    along[slot] = True
+        if sum(along) / len(probes) >= min_coverage:
+            covered.add(block.feature_id)
+    return covered

@@ -68,6 +68,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("map_class", "road"),
             row.get("separate_bikeway", False),
             *_adjustment_columns(row["stress"]),
+            _attr_sources_json(row["stress"]),
         )
         for row in rows
     ]
@@ -78,7 +79,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
                     (
                         way_id,
                         ordinal,
@@ -131,7 +132,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      car_free_when, map_class, separate_bikeway,
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
-                     stress_adjustment_note, stress_adjustment_display)
+                     stress_adjustment_note, stress_adjustment_display, attr_sources)
                     VALUES {args}"""
             )
             written += len(batch)
@@ -154,6 +155,24 @@ def _adjustment_columns(stress: StressResult) -> tuple:
         exposed.get("public_note"),
         exposed.get("display"),
     )
+
+
+def _attr_sources_json(stress: StressResult) -> str | None:
+    """The input provenance as a JSON object, or None where no agency layer
+    reached the way (`StressResult.attr_sources`)."""
+    import json
+
+    pairs = getattr(stress, "attr_sources", ())
+    if not pairs:
+        return None
+    sources: dict[str, object] = {}
+    for key, value in pairs:
+        # `blocks` is the one repeated key: a way can lie along several.
+        if key == "blocks":
+            sources.setdefault("blocks", []).append(value)
+        else:
+            sources[key] = value
+    return json.dumps(sources, sort_keys=True)
 
 
 def _json_list(values: Iterable[str]) -> str:

@@ -222,3 +222,27 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   tier, which the loader would refuse, and six of Pennsylvania Ave SE already
   at 5. Overpass bridges away from the river stay in. Load it after the
   2026-09-27 file.
+
+## Proposed files, `proposed/` (not loaded)
+
+Files the owner has not decided. They sit in a subdirectory so nothing that
+reads the approved files can pick them up, are marked `PROPOSED, not loaded` in
+their `decided_by`, `status` and every row's `reason`, and their stress rows are
+`annotation_status: proposed`, hidden, with no public note.
+`tests/test_proposed_overrides.py` holds them to that and to the loader's own
+validation. To load one, the owner approves it, it is moved up beside the others
+in a reviewed change with `decided` filled in and the rows' wording changed to
+the owner's decision, and the order above is followed.
+
+- `PROPOSED-moco-lts5-avoid.json`: the Montgomery Planning layer's existing-
+  condition LTS 5 ("I think this version does not. They also have an LTS5, which
+  we can mark as avoid.", OWNER-DECISIONS 149) as Avoid: 411 ways, 44.7 mi,
+  where our tier is below 5. If it is loaded, add "Bicycle Level of Traffic
+  Stress: Montgomery County Planning Department" to the credits in the same
+  change (docs/OPERATIONS.md, "Licences, and the credits every map must carry").
+- `PROPOSED-baltimore-facilities.json`: stress rows (the tier the classifier gives
+  with the City of Baltimore's recorded bike lane or separated lane tagged, where
+  OSM has none and the tier would fall) and `bicycle=designated` access rows (the
+  footways and paths the city records as multiuse trails or paths, the Veirs Mill
+  correction again). OSM edits upstream are the durable fix; the candidate list
+  is `reports/data-comparison/baltimore-facility-candidates.csv`.

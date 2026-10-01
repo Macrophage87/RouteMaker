@@ -2430,3 +2430,58 @@ class TestADecentLaneStopsAtThreeLanes:
         assert classify({**lane, "lanes": "4"}, urban=False).tier is Stress.LTS3
         assert classify({**lane, "lanes": "6"}, urban=False).tier is Stress.LTS4
         assert classify({**lane, "lanes": "8"}).tier is Stress.LTS4
+
+
+class TestParkingWidthBesideABikeLane:
+    """An agency's parking-lane width (agency_roads; DC's Roadway Block): Furth
+    measures a lane beside parking as the lane plus the parking lane, 13.5 ft."""
+
+    LANE = {
+        "highway": "residential",
+        "maxspeed": "25 mph",
+        "cycleway:both": "lane",
+        "parking:both": "parallel",
+    }
+
+    def tier(self, width_m: float, parking_width_m: float | None, **extra) -> int:
+        tags = {**self.LANE, "cycleway:both:width": str(width_m), **extra}
+        return int(classify(tags, parking_width_m=parking_width_m).tier)
+
+    def test_a_six_foot_lane_beside_eight_feet_of_parking_is_adequate(self) -> None:
+        # 1.83 m + 2.44 m = 4.27 m, over Furth's 4.1 m (13.5 ft).
+        assert self.tier(1.83, 2.44) == 1
+
+    def test_the_same_lane_is_narrow_when_the_parking_lane_is_not_known(self) -> None:
+        assert self.tier(1.83, None) == 2
+
+    def test_a_five_foot_lane_beside_eight_feet_of_parking_is_still_a_door_zone(self) -> None:
+        # 1.52 m + 2.44 m = 3.96 m, under 4.1 m.
+        assert self.tier(1.52, 2.44) == 2
+
+    def test_a_lane_with_nothing_parked_beside_it_is_judged_on_its_own_width(self) -> None:
+        # Parking tagged absent: the criterion is 1.7 m, and the parking width given
+        # for it is not added.
+        assert self.tier(1.83, 2.44, **{"parking:both": "no"}) == 1
+        assert self.tier(1.52, 2.44, **{"parking:both": "no"}) == 2
+
+    def test_an_unknown_lane_width_is_narrow_whatever_the_parking_width(self) -> None:
+        tags = {**self.LANE}
+        assert int(classify(tags, parking_width_m=2.44).tier) == 2
+
+    def test_whether_a_lane_is_decent_is_about_the_lane_alone(self) -> None:
+        """At 40 mph a decent lane is a tier below mixed traffic; a 1.2 m lane is not
+        decent however wide the parking lane beside it."""
+        tags = {
+            "highway": "secondary",
+            "maxspeed": "40 mph",
+            "cycleway:both": "lane",
+            "cycleway:both:width": "1.2",
+            "parking:both": "parallel",
+        }
+        assert int(classify(tags, parking_width_m=2.44).tier) == 4
+        assert int(classify({**tags, "cycleway:both:width": "1.6"}, parking_width_m=2.44).tier) == 3
+
+    def test_a_wider_parking_lane_never_makes_a_lane_worse(self) -> None:
+        narrow = self.tier(1.83, 0.5)
+        wide = self.tier(1.83, 2.44)
+        assert wide <= narrow

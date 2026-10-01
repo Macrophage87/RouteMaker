@@ -1186,7 +1186,17 @@ def plan(
 # (routemaker.cbd), so it shares DDOT's line. The Architect of the Capitol's
 # jurisdiction polygon (fixtures/cbd, Open Data DC, DC GIS, CC BY 4.0) decides
 # which of those sidewalks are the Capitol grounds' and exempt, and has a line of
-# its own; it is used as published, so it is not marked adapted. Protomaps is
+# its own; it is used as published, so it is not marked adapted. DC's Roadway
+# Block (fixtures/datasets, Open Data DC, DDOT / DC GIS, CC BY 4.0) sets the
+# posted speed, the lanes each way, one-way streets, bike lanes and parking the
+# District's stress tiers are scored on (routemaker.agency_roads), and is
+# parsed and combined with OSM, so it is credited as adapted. Baltimore's street
+# centerline (Open Baltimore; open licence by Baltimore City Code Art. 1
+# s.9-1(h), OWNER-DECISIONS 159) sets Baltimore's speeds and one-way streets and
+# is credited as the city asks. Montgomery County Planning's Bicycle Level of
+# Traffic Stress needs "Bicycle Level of Traffic Stress: Montgomery County
+# Planning Department" here the day any row derived from it is loaded (the
+# proposed LTS 5 Avoid file); nothing derived from it is published today. Protomaps is
 # credited by the map,
 # which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
@@ -1197,5 +1207,9 @@ ATTRIBUTION = (
     "Traffic volume: Virginia Department of Transportation",
     "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia"
     " (Open Data DC), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+    "Street speeds, lanes, one-way streets, bike lanes and parking in the District: Roadway Block,"
+    " District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0"
+    " (https://creativecommons.org/licenses/by/4.0/)",
+    "Street speeds and one-way streets in Baltimore: City of Baltimore, Open Baltimore",
     "Elevation: USGS 3D Elevation Program",
 )

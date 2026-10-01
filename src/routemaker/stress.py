@@ -404,6 +404,13 @@ class StressResult:
     volume_year: int | None = None
     # The curated adjustment that set this tier, if one did.
     adjustment: StressAdjustment | None = None
+    # Where each input the classifier read came from, as (attribute, source)
+    # pairs, on a way an agency's street layer was matched to: `maxspeed`,
+    # `lanes`, `oneway`, `bike`, `parking` and `aadt` each name the agency
+    # (`dc-roadway-block`, `baltimore-centerline`) where its value took
+    # precedence, `osm` where the way's own tag stood, `default` where neither
+    # said and the classifier assumed. Empty on a way no agency layer reached.
+    attr_sources: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_top_tier(self) -> bool:
@@ -652,6 +659,7 @@ def classify(
     jurisdiction: str | None = None,
     divided: bool = False,
     separate_facility: bool = False,
+    parking_width_m: float | None = None,
 ) -> StressResult:
     """Classify one way: its Furth tier, or "legal but avoid" where the rule says so.
 
@@ -661,9 +669,25 @@ def classify(
     (`routemaker.divided`): it is scored as the two-way road it is.
     `separate_facility` says the road's bike facility is mapped as its own way
     and lies beside it (`routemaker.facility.separate_pairs`), which the
-    arterial floor counts as bike infrastructure."""
+    arterial floor counts as bike infrastructure.
+
+    `parking_width_m` is the width of one parking lane where an agency's street
+    record gives it (`routemaker.agency_roads`). Furth measures a bike lane
+    beside parking as the lane *plus* the parking lane, 13.5 ft, and OSM's
+    `cycleway:width` is the lane alone, so without it the criterion is read
+    against the lane's own width and almost no lane beside parking passes. With
+    it the two are added where a lane runs beside parking, for the table only:
+    whether a lane is decent (`decent_lane`) is about the lane itself."""
     result = _classify(
-        tags, aadt, aadt_source, urban, aadt_year, jurisdiction, divided, separate_facility
+        tags,
+        aadt,
+        aadt_source,
+        urban,
+        aadt_year,
+        jurisdiction,
+        divided,
+        separate_facility,
+        parking_width_m,
     )
     reason = legal_but_avoid(tags)
     if reason is None:
@@ -680,6 +704,7 @@ def _classify(
     jurisdiction: str | None = None,
     divided: bool = False,
     separate_facility: bool = False,
+    parking_width_m: float | None = None,
 ) -> StressResult:
     """Classify one way by the Furth tables.
 
@@ -793,7 +818,12 @@ def _classify(
         width = cycleway_width_m(tags)
         if width is None:
             assumed.append("cycleway width")
-        tier, rule = _bike_lane_tier(speed_mph, scored_lanes, width, parking)
+        # Furth's criterion beside parking is the lane plus the parking lane; the
+        # decent-lane test below stays on the lane's own width.
+        table_width = width
+        if width is not None and parking is True and parking_width_m:
+            table_width = width + parking_width_m
+        tier, rule = _bike_lane_tier(speed_mph, scored_lanes, table_width, parking)
         if (
             FURTH_LANE_NO_CREDIT_MPH <= speed_mph <= DECENT_LANE_MAX_MPH
             and lanes < DECENT_LANE_MAX_LANES
