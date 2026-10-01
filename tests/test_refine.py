@@ -30,8 +30,13 @@ def analysis(
     cost_s: float = 4000.0,
     events: list | None = None,
     climb_m: float = 0.0,
+    shift: int = 0,
 ) -> refine.Analysis:
-    pieces, classes = zip(*[piece(i * 100.0, tier) for i, tier in enumerate(tiers)], strict=True)
+    """A candidate read: `tiers` is one letter a 100 m piece, and `shift` moves it
+    along (in pieces) so that two candidates can have busy stretches in different places."""
+    pieces, classes = zip(
+        *[piece((i + shift) * 100.0, tier) for i, tier in enumerate(tiers)], strict=True
+    )
     stress = {"3": 1, "4": 2, "5": 3}
     return refine.Analysis(
         length_m=100.0 * len(tiers),
@@ -339,6 +344,73 @@ class TestNoRoute:
         assert info["rounds"] >= 2 and kept["legs"][0]["shape"] in {"a", "b"}
 
 
+class TestTrafficWins:
+    """The owner's "Traffic wins" (OWNER-DECISIONS 61, of hill avoidance), carried
+    to this search: it never makes a route busier, however much it saves."""
+
+    def routes(self, monkeypatch, candidate: refine.Analysis, rate: float = 0.0) -> str:
+        original = analysis(
+            "o", "1" * 10 + "3" * 5 + "1" * 25, cost_s=4000.0, events=[event(1500.0, 4500.0)]
+        )
+        World(monkeypatch, {"o": original, "c": candidate}, [trip_of("c", 4.0)] * 4)
+        kept, _ = refine.refine(trip_of("o", 4.0), context(rate=rate))
+        return kept["legs"][0]["shape"]
+
+    def test_fewer_crossings_do_not_buy_more_busy_road(self, monkeypatch) -> None:
+        busier = analysis("c", "1" * 10 + "4" * 10 + "1" * 20, cost_s=4000.0, events=[])
+        assert busier.score(context()) < analysis(
+            "o", "1" * 10 + "3" * 5 + "1" * 25, cost_s=4000.0, events=[event(1500.0, 4500.0)]
+        ).score(context()), "it would win on score alone"
+        assert self.routes(monkeypatch, busier) == "o"
+
+    def test_the_same_exposure_is_fine(self, monkeypatch) -> None:
+        same = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
+        assert self.routes(monkeypatch, same) == "c"
+
+    def test_a_little_more_is_within_the_tolerance(self, monkeypatch) -> None:
+        # 5 pieces of LTS 3 is 500 weighted metres; a sixth piece is 20 per cent more.
+        a_bit = 500.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M
+        assert a_bit > 500.0
+        within = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
+        within.exposure_m = a_bit
+        assert self.routes(monkeypatch, within) == "c"
+        over = analysis("c", "1" * 20 + "3" * 5 + "1" * 15, cost_s=4000.0, events=[])
+        over.exposure_m = a_bit + 1
+        assert self.routes(monkeypatch, over) == "o"
+
+    def test_the_calm_search_does_not_trade_lts3_for_lts4_either(self, monkeypatch) -> None:
+        swap = analysis("c", "1" * 10 + "4" * 6 + "1" * 24, cost_s=3000.0, events=[])
+        assert self.routes(monkeypatch, swap, rate=10.0) == "o"
+
+    def test_a_calmer_route_is_taken_as_before(self, monkeypatch) -> None:
+        calm = analysis("c", "1" * 40, cost_s=4100.0, events=[])
+        assert self.routes(monkeypatch, calm) == "c"
+
+
+class TestMargins:
+    """A candidate has to beat the best by a margin: a few seconds of cost are not
+    a reason to send a rider a different way."""
+
+    def original_score(self) -> float:
+        return analysis("o", TestCalmDetour().stretch()).score(context(rate=0.0001))
+
+    def run(self, monkeypatch, candidate_cost: float) -> str:
+        orig = analysis("o", TestCalmDetour().stretch(), cost_s=4000.0)
+        cand = analysis("c", "1" * 40, cost_s=candidate_cost)
+        World(monkeypatch, {"o": orig, "c": cand}, [trip_of("c", 4.0)] * 5)
+        kept, _ = refine.refine(trip_of("o", 4.0), context(rate=0.0001))
+        return kept["legs"][0]["shape"]
+
+    def test_better_by_more_than_the_margin_is_taken(self, monkeypatch) -> None:
+        assert self.run(monkeypatch, self.original_score() - refine.IMPROVEMENT_EPS_S - 1) == "c"
+
+    def test_better_by_less_is_not(self, monkeypatch) -> None:
+        assert self.run(monkeypatch, self.original_score() - refine.IMPROVEMENT_EPS_S / 2) == "o"
+
+    def test_slightly_worse_is_not_taken_either(self, monkeypatch) -> None:
+        assert self.run(monkeypatch, self.original_score() + refine.IMPROVEMENT_EPS_S / 2) == "o"
+
+
 class TestStopping:
     def test_two_rounds_without_improvement_end_the_search(self, monkeypatch) -> None:
         orig = analysis("o", TestCalmDetour().stretch(), cost_s=4000.0)
@@ -348,6 +420,65 @@ class TestStopping:
         assert kept["legs"][0]["shape"] == "o"
         assert info["rounds"] == refine.REFINE_PATIENCE == 2
         assert len(world.requests) == 2
+
+    def test_the_patience_counts_rounds_not_targets(self, monkeypatch) -> None:
+        """Each candidate has a new busy stretch, so there is always something to
+        exclude: only the patience ends the search, after exactly two rounds that
+        do not beat the best."""
+        orig = analysis("o", "1" * 5 + "3" * 8 + "1" * 27, cost_s=4000.0)
+        worse = {
+            name: analysis(name, "1" * 5 + "3" * 8 + "1" * 27, cost_s=9000.0, shift=shift)
+            for name, shift in (("w1", 100), ("w2", 200), ("w3", 300), ("w4", 400))
+        }
+        world = World(monkeypatch, {"o": orig, **worse}, [trip_of(n, 4.0) for n in worse])
+        kept, info = refine.refine(trip_of("o", 4.0), context(rate=0.001))
+        assert kept["legs"][0]["shape"] == "o"
+        assert info["rounds"] == 2 and len(world.requests) == 2
+
+    def test_a_better_candidate_resets_the_patience(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 5 + "3" * 8 + "1" * 27, cost_s=5000.0)
+        steps = {
+            "w1": analysis("w1", "1" * 5 + "3" * 8 + "1" * 27, cost_s=9000.0, shift=100),
+            "b": analysis("b", "1" * 5 + "3" * 8 + "1" * 27, cost_s=4100.0, shift=200),
+            "w2": analysis("w2", "1" * 5 + "3" * 8 + "1" * 27, cost_s=9000.0, shift=300),
+            "w3": analysis("w3", "1" * 5 + "3" * 8 + "1" * 27, cost_s=9000.0, shift=400),
+            "w4": analysis("w4", "1" * 5 + "3" * 8 + "1" * 27, cost_s=9000.0, shift=500),
+        }
+        world = World(monkeypatch, {"o": orig, **steps}, [trip_of(n, 4.0) for n in steps])
+        refine.refine(trip_of("o", 4.0), context(rate=1.0))
+        # w1 is worse (1 stale), b is better (reset), w2 and w3 are worse (2 stale): four rounds.
+        assert len(world.requests) == 4
+
+    def test_the_exclusions_sent_are_capped_at_what_the_router_takes(self, monkeypatch) -> None:
+        shapes = {
+            "o": analysis("o", "3" * 200, cost_s=4000.0),
+            "c1": analysis("c1", "3" * 200, cost_s=3900.0, shift=300),
+            "c2": analysis("c2", "3" * 200, cost_s=3800.0, shift=600),
+            "c3": analysis("c3", "3" * 200, cost_s=3700.0, shift=900),
+        }
+        routes = [trip_of(n, 4.0) for n in ("c1", "c2", "c3", "c3", "c3")]
+        world = World(monkeypatch, shapes, routes)
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert len(world.requests) >= 3
+        sent = [len(r["exclude_locations"]) for r in world.requests]
+        assert sent[0] == refine.CALM_POINTS_PER_ROUND
+        assert sent[2] == refine.MAX_EXCLUDES < 3 * refine.CALM_POINTS_PER_ROUND
+
+    def test_later_rounds_exclude_stretches_not_crossings(self, monkeypatch) -> None:
+        """Crossing avoidance is the first round's: after it the search is about
+        the busy stretches alone."""
+        later = (BASE[0] + 0.0009, BASE[1] + 1e-5)
+        orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, cost_s=4000.0, events=[event(1500.0)])
+        step = analysis(
+            "s",
+            "1" * 15 + "3" * 8 + "1" * 17,
+            cost_s=4300.0,
+            events=[event(2500.0, 3000.0, approach=later)],
+        )
+        world = World(monkeypatch, {"o": orig, "s": step}, [trip_of("s", 4.3)] * 3)
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert len(world.requests) >= 2
+        assert later not in set(world.excluded(1)) - set(world.excluded(0))
 
     def test_a_round_is_not_started_without_the_time_for_it(self, monkeypatch) -> None:
         orig = analysis("o", TestCalmDetour().stretch())

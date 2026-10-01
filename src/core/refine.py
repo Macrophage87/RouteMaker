@@ -90,6 +90,14 @@ CALM_SAMPLE_M = 40.0
 # router: a Bethesda start whose only exit was an LTS 4 road 150 m long made
 # every calm round "no route" at the 120 m this was first.)
 ENDPOINT_CLEARANCE_M = 500.0
+# "Traffic wins" (OWNER-DECISIONS 61, on hill avoidance): the search never makes
+# a route busier. A candidate whose LTS 3, 4 and Avoid exposure (the weighted
+# metres) is more than this share, and `EXPOSURE_SLACK_M` metres, over the
+# router's own route's is not taken, however many crossings it avoids: measured on
+# the live router, Rockville to Silver Spring at the old top of the slider
+# traded 1.6 mi more LTS 3-4 for fewer crossings.
+EXPOSURE_TOLERANCE = 0.02
+EXPOSURE_SLACK_M = 50.0
 # A candidate must beat the best by this (cost seconds) to replace it.
 IMPROVEMENT_EPS_S = 10.0
 # What a metre of quiet-street riding costs the router, as a multiple of its
@@ -288,7 +296,6 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     of the candidate before, so the candidates are nested, each calmer and
     longer than the last, and the slider's rate picks among them. A round the
     router has no route for is asked again with only the LTS 4 stretches."""
-    started = routing.clock()
     info = {
         "rate": ctx.rate,
         "rounds": 0,
@@ -299,7 +306,6 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         "exposure_before_m": None,
         "exposure_after_m": None,
     }
-    stop_at = min(started + REFINE_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     # The route the router gave is read inside the plan's own budget, exactly as
     # the answer would read it, and what it traced is remembered for the answer:
     # a trace that fails here is not asked for again (`routing._trace`). Only the
@@ -312,7 +318,11 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     if best is None:
         info["limited"] = "untraceable"
         return trip, info
+    # The search's own time starts once the route is read: reading it is the
+    # answer's work, done whether or not anything is searched.
+    stop_at = min(routing.clock() + REFINE_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     best_trip = trip
+    first_exposure = best.exposure_m
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
     best_score = best.score(ctx)
@@ -368,7 +378,8 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
             break
         info["rounds"] += 1
         score = current.score(ctx)
-        if score < best_score - IMPROVEMENT_EPS_S:
+        busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        if score < best_score - IMPROVEMENT_EPS_S and not busier:
             best, best_trip, best_score, stale = current, candidate, score, 0
         else:
             stale += 1

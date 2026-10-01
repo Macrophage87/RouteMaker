@@ -488,7 +488,9 @@ and use_hills 0.5), which reproduced the live Dupont Circle to Capitol answer
 | Falls Church - DC | 9%, 48.9 | 92%, 41.6 | 1%, 50.2 | 1%, 50.2 | 1%, 50.2 | 1%, 50.2 |
 
 Stress 0 is within 3% of the time of Valhalla's `shortest` route on every
-trip, so the direct end is the fastest legal route. Default starts at 90, the
+trip, so the direct end is the fastest legal route. (Positions in this table
+and the paragraph below are on the scale before the 2026-10-01 rescale: the
+old 90 is 70 now.) Default starts at 90, the
 owner's answer of 2026-09-27 to "75 or 90?": against 75 it takes Dupont
 Circle - Capitol from 17% to 6% on LTS 3-4 for 0.1 min, and Logan Circle -
 Eastern Market from 18% to 9% for 7.4 min; the other trips do not move. The hills slider below
@@ -1017,8 +1019,13 @@ half (`-hills / 100` x 12 m of riding a metre of climb), so a relaxed ride is no
 a zig-zag over a hill. Turn costs and hill costs are costing options and are
 sent at every position.
 
-There is no cap on the detour. The search keeps the best-scoring candidate,
-stops after two rounds that do not improve it, when no route is left (every way
+There is no cap on the detour. The search keeps the best-scoring candidate, and
+never one that is busier than the router's own route ("Traffic wins", OWNER-DECISIONS
+61, said of hill avoidance and carried here): a candidate with more than 2 per
+cent and 50 m more LTS 3, 4 and Avoid exposure (`EXPOSURE_TOLERANCE`,
+`EXPOSURE_SLACK_M`) is not taken however many crossings it avoids (measured on
+the live router, before the guard: Rockville to Silver Spring at the old top of the
+slider traded 1.6 mi more LTS 3-4 for fewer crossings). It stops after two rounds that do not improve it, when no route is left (every way
 out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy

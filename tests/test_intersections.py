@@ -100,6 +100,25 @@ class TestCrossing:
         """ "scaled by the crossed road's stress, speed and volume" (item 165)."""
         assert m.crossing_ft(slower, Control.NONE, 1) < m.crossing_ft(faster, Control.NONE, 1)
 
+    @pytest.mark.parametrize(
+        ("mph", "factor"),
+        [
+            (25, 0.8),
+            (26, 0.9),
+            (30, 0.9),
+            (31, 1.0),
+            (35, 1.0),
+            (36, 1.1),
+            (40, 1.1),
+            (41, 1.2),
+            (45, 1.2),
+        ],
+    )
+    def test_the_speed_bands_include_their_upper_edge(self, mph, factor) -> None:
+        """25 mph is the lowest band, not the next one up."""
+        assert m.scale(Road(3, speed_mph=mph), stopped_side=False) == pytest.approx(factor)
+        assert m.scale(Road(3, speed_mph=46), stopped_side=False) == m.SPEED_FACTOR_FASTER
+
     def test_unknown_speed_width_and_volume_are_not_guessed(self) -> None:
         assert m.scale(Road(3), stopped_side=True) == 1.0
 
@@ -181,6 +200,19 @@ class TestMovementCosts:
         ratio = m.MOVEMENT_FACTOR_ONTO["left"] / max(m.MOVEMENT_FACTOR_ONTO["right"], 1e-9)
         assert ratio >= 2
 
+    def test_a_left_from_one_busy_road_onto_another_is_still_a_left_across_oncoming(self) -> None:
+        turn = junction(movement=Movement.LEFT, incoming=LTS3, outgoing=LTS4)
+        assert m.cost_of(turn)[1] == "left_from"
+        assert m.cost_of(turn)[0] == pytest.approx(m.left_from_ft(LTS3, Control.NONE))
+
+    def test_a_left_off_a_busy_road_is_not_also_a_crossing_of_the_road_it_meets(self) -> None:
+        """The rider on LTS 3 turning left onto a quiet street, past a crossed LTS 4
+        road at the same node: the left's own cost, not the crossing's (a left
+        from a quiet street is the one that crosses)."""
+        turn = junction(movement=Movement.LEFT, incoming=LTS3, outgoing=QUIET, crossed=(LTS4,))
+        assert m.cost_of(turn)[1] == "left_from"
+        assert m.cost_of(turn)[0] == pytest.approx(m.left_from_ft(LTS3, Control.NONE))
+
     def test_a_left_from_a_busy_road_crosses_its_oncoming_lanes(self) -> None:
         turn = cost(movement=Movement.LEFT, incoming=LTS3)
         assert turn >= m.LEFT_ACROSS_ONCOMING_FT[3]
@@ -235,6 +267,7 @@ class TestSlipLanes:
 
     def test_a_slip_lane_beside_a_quiet_street_is_nothing(self) -> None:
         assert m.assess(junction(slip_lane=True)) is None
+        assert cost(slip_lane=True) == 0
 
 
 class TestNeighbourhoodStopSigns:
@@ -247,6 +280,11 @@ class TestNeighbourhoodStopSigns:
             assert value <= m.NEIGHBOURHOOD_STOP_FT
             assert m.assess(junction(crossed=(QUIET,), control=control)) is None
         assert m.NEIGHBOURHOOD_STOP_FT < m.ORANGE_MIN_FT / 10
+        # A stop (or an all-way stop) is what costs the little there is.
+        for control in (Control.STOP, Control.ALL_STOP):
+            assert cost(crossed=(QUIET,), control=control) == m.NEIGHBOURHOOD_STOP_FT
+        for control in (Control.NONE, Control.SIGNAL, Control.CROSS_STOP):
+            assert cost(crossed=(QUIET,), control=control) == 0
 
     def test_the_stop_sign_cost_is_below_every_busy_crossing_cost(self) -> None:
         assert m.NEIGHBOURHOOD_STOP_FT < m.PRIORITY_SIDE_FT * 2
@@ -344,11 +382,24 @@ class TestRoute:
         assert len(events) == 2
 
     def test_a_merge_can_raise_the_colour(self) -> None:
-        a = junction(m=0.0, crossed=(Road(3, speed_mph=40),))
+        """Two LTS 3 carriageways at 45 mph, each orange alone, are a red crossing
+        together: the colour follows the merged cost."""
+        fast = Road(3, speed_mph=45)
+        a = junction(m=0.0, crossed=(fast,))
         one = m.assess(a)
-        merged = m.assess_route([a, junction(m=10.0, crossed=(Road(3, speed_mph=40),))])[0]
-        assert one.severity == m.ORANGE
-        assert merged.cost_ft > one.cost_ft
+        merged = m.assess_route([a, junction(m=10.0, crossed=(fast,))])[0]
+        assert one.severity == m.ORANGE and one.cost_ft < m.RED_MIN_FT
+        assert merged.cost_ft == pytest.approx(one.cost_ft * (1 + m.MERGED_SHARE))
+        assert merged.severity == m.RED
+
+    def test_junctions_exactly_the_merge_distance_apart_are_one(self) -> None:
+        events = m.assess_route(
+            [
+                junction(m=0.0, crossed=(LTS3,)),
+                junction(m=m.MERGE_WITHIN_M, crossed=(LTS3,)),
+            ]
+        )
+        assert len(events) == 1
 
     def test_the_total_cost_is_in_metres_of_riding(self) -> None:
         events = m.assess_route([junction(crossed=(LTS3,))])

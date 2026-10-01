@@ -12,6 +12,13 @@ Needs the native test environment (`docs/DEVELOPMENT.md`, "The native loop"):
 PGDATABASE should name a private database. Each line of MUTANTS is
 (name, file, old text, new text, test files); `old` must occur exactly once.
 Survivors are printed last and the exit status is the number of them.
+
+Four mutants that were tried and are not in the list are equivalent, not
+survivors: `use_roads_for` and `calm_rate_for` are continuous at the positions
+the first pass moved (70, 80: both branches give the same value there), and
+`rounds = REFINE_MAX_ROUNDS if ctx.rate > 0 else CROSSING_ONLY_ROUNDS` is
+guarded twice (crossing targets are only taken in the first
+`CROSSING_ONLY_ROUNDS`), so removing either guard alone changes nothing.
 """
 
 # ruff: noqa: E501
@@ -321,28 +328,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         DETOUR,
     ),
     # --- the slider --------------------------------------------------------
-    (
-        "default edge",
-        P,
-        "    if stress <= STRESS_DEFAULT_AT:\n        old = stress",
-        "    if stress < STRESS_DEFAULT_AT:\n        old = stress",
-        SLIDER,
-    ),
     ("old default position", P, "_OLD_DEFAULT_POSITION = 90", "_OLD_DEFAULT_POSITION = 85", SLIDER),
-    (
-        "top edge",
-        P,
-        "    elif stress <= STRESS_TODAYS_TOP:",
-        "    elif stress < STRESS_TODAYS_TOP:",
-        SLIDER,
-    ),
-    (
-        "calm starts at the old top minus",
-        P,
-        "    if stress <= STRESS_TODAYS_TOP:\n        return 0.0",
-        "    if stress < STRESS_TODAYS_TOP:\n        return 0.0",
-        SLIDER,
-    ),
     ("calm is linear", P, "math.expm1(CALM_CURVE * t) / math.expm1(CALM_CURVE)", "t", SLIDER),
     (
         "calm not capped",
@@ -418,15 +404,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "improvement margin",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S:",
-        "if score < best_score:",
+        "if score < best_score - IMPROVEMENT_EPS_S and not busier:",
+        "if score < best_score and not busier:",
         REFINE,
     ),
     (
         "any improvement wins nothing",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S:",
-        "if score <= best_score + IMPROVEMENT_EPS_S:",
+        "if score < best_score - IMPROVEMENT_EPS_S and not busier:",
+        "if score <= best_score + IMPROVEMENT_EPS_S and not busier:",
         REFINE,
     ),
     (
@@ -448,13 +434,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         R,
         'if tier not in ("3", "4", "5") or int(tier) < min_tier:',
         'if tier not in ("3", "4", "5") or int(tier) <= min_tier:',
-        REFINE,
-    ),
-    (
-        "calm rounds without a rate",
-        R,
-        "rounds = REFINE_MAX_ROUNDS if ctx.rate > 0 else CROSSING_ONLY_ROUNDS",
-        "rounds = REFINE_MAX_ROUNDS",
         REFINE,
     ),
     (
@@ -490,6 +469,27 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         R,
         'request = {k: v for k, v in ctx.request.items() if k != "alternates"}',
         "request = dict(ctx.request)",
+        REFINE,
+    ),
+    (
+        "busier routes allowed",
+        R,
+        "if score < best_score - IMPROVEMENT_EPS_S and not busier:",
+        "if score < best_score - IMPROVEMENT_EPS_S:",
+        REFINE,
+    ),
+    (
+        "tolerance unscaled",
+        R,
+        "busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M",
+        "busier = current.exposure_m > first_exposure",
+        REFINE,
+    ),
+    (
+        "tolerance edge",
+        R,
+        "first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M",
+        "first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M - 1",
         REFINE,
     ),
     # --- the roads and the controls (database) -----------------------------

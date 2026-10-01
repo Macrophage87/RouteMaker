@@ -10,7 +10,8 @@ The stress and hills sliders (PUBLIC-DIALS, owner requests of 2026-09-27)
 set `use_roads` and `use_hills` per request; each preset below states where
 they start, and the other dials stay the preset's own:
 
-- **Default**: stress 90 (`use_roads` 0.10), the owner's "90"; hills at the
+- **Default**: stress 70 (`use_roads` 0.10), the owner's "90" of 2026-09-27 on the
+  scale before the rescale of 2026-10-01 (below); hills at the
   middle of the slider. The owner, 2026-09-27: "For hilliness, we can go from
   a default which is basically fastest time for most people in the middle, to
   hill avoidant, and even hill seeking." Mapping that middle to `use_hills` 1.0
