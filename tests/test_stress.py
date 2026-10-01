@@ -654,7 +654,9 @@ class TestTheProvisionHierarchy:
         `parking:both=parallel` and a 2.4 m shoulder rating LTS1 against LTS2
         for the same width of paint.
         """
-        road = {"highway": "secondary", "maxspeed": speed, "lanes": lanes}
+        # Unclassified: the hierarchy of the tables themselves, below the class
+        # floors (items 141, 176), which `TestTheFloorsAndAShoulder` holds.
+        road = {"highway": "unclassified", "maxspeed": speed, "lanes": lanes}
         if parking is not None:
             road["parking:both"] = parking
         # The unknown-parking case, and only it, is compared against a lane that
@@ -2070,7 +2072,7 @@ class TestUrbanMultilane:
     """Inside an urban area a multi-lane street is read on the single-lane row;
     its speed and volume decide. Outside one, Furth's multilane rule stands."""
 
-    street = {"highway": "tertiary", "maxspeed": "30 mph", "lanes": "2", "oneway": "yes"}
+    street = {"highway": "unclassified", "maxspeed": "30 mph", "lanes": "2", "oneway": "yes"}
 
     def test_a_thirty_mph_two_lane_one_way_city_street_is_lts3(self) -> None:
         # 22nd Street NW's tertiary stretch, way 1047590271's shape.
@@ -2223,7 +2225,7 @@ class TestSpeedDefaults:
         assert classify(road, urban=True, jurisdiction="DC").tier is Stress.LTS1
 
     def test_volume_still_decides_on_a_busy_unposted_arterial(self) -> None:
-        road = {"highway": "tertiary", "lanes": "1", "oneway": "yes"}
+        road = {"highway": "unclassified", "lanes": "1", "oneway": "yes"}
         assert classify(road, jurisdiction="DC").tier is Stress.LTS1
         assert classify(road, aadt=18_000, jurisdiction="DC").tier is Stress.LTS2
 
@@ -2307,7 +2309,7 @@ class TestOneWayAndTwoWay:
         assert not classify(wide, urban=True, divided=True).rule.endswith("wide one-way floor")
 
     def test_a_one_way_at_20_mph_in_dc_is_lts1_unless_busy(self) -> None:
-        one_way = {"highway": "tertiary", "lanes": "2", "oneway": "yes"}
+        one_way = {"highway": "unclassified", "lanes": "2", "oneway": "yes"}
         assert classify(one_way, urban=True, jurisdiction="DC").tier is Stress.LTS1
         assert classify(one_way, aadt=10_000, urban=True, jurisdiction="DC").tier is Stress.LTS2
 
@@ -2318,7 +2320,7 @@ class TestOneWayAndTwoWay:
         assert classify(carriageway, urban=True, divided=True).tier is Stress.LTS3
         assert classify(carriageway, aadt=20_000, urban=True).tier is Stress.LTS4
         assert classify(carriageway, aadt=5_000, urban=True, divided=True).tier is Stress.LTS3
-        unposted = {"highway": "tertiary", "lanes": "2", "oneway": "yes"}
+        unposted = {"highway": "unclassified", "lanes": "2", "oneway": "yes"}
         assert classify(unposted, urban=True, jurisdiction="DC").tier is Stress.LTS1
         assert classify(unposted, urban=True, jurisdiction="DC", divided=True).tier is Stress.LTS3
         single = {**unposted, "lanes": "1"}
@@ -2358,7 +2360,7 @@ class TestArterialFloor:
         assert result.tier is Stress.LTS3
         assert result.rule.endswith(", arterial floor")
 
-    @pytest.mark.parametrize("highway", ["tertiary", "unclassified", "residential", "service"])
+    @pytest.mark.parametrize("highway", ["unclassified", "residential", "service"])
     def test_other_classes_keep_the_district_default(self, highway) -> None:
         assert classify({"highway": highway}, jurisdiction="DC").tier is Stress.LTS1
 
@@ -2403,7 +2405,7 @@ class TestMidVolume:
     """v2.2 at 20 mph and below: LTS 1 only under VOLUME_QUIET, LTS 2 up to
     VOLUME_BUSY, a tier more from there."""
 
-    street = {"highway": "tertiary", "lanes": "2"}
+    street = {"highway": "unclassified", "lanes": "2"}
 
     def test_the_middle_band_is_lts2(self) -> None:
         assert classify(self.street, aadt=1_500, jurisdiction="DC").tier is Stress.LTS1
@@ -2430,3 +2432,67 @@ class TestADecentLaneStopsAtThreeLanes:
         assert classify({**lane, "lanes": "4"}, urban=False).tier is Stress.LTS3
         assert classify({**lane, "lanes": "6"}, urban=False).tier is Stress.LTS4
         assert classify({**lane, "lanes": "8"}).tier is Stress.LTS4
+
+
+class TestTheFloorsAndAShoulder:
+    """The class floors (items 141, 176) and a shoulder: a rideable shoulder is
+    bike infrastructure (item 145: "Yes, count it") whether or not the table
+    credited it, and reads as a lane of its width - never worse than the same
+    road with that lane, never better (review r2)."""
+
+    def test_the_review_case(self) -> None:
+        road = {"highway": "secondary", "lanes": "2"}
+        shoulder = classify(
+            {**road, "shoulder": "both", "shoulder:width": "2.0"}, jurisdiction="DC"
+        )
+        lane = classify(
+            {**road, "cycleway:both": "lane", "cycleway:width": "2.0"}, jurisdiction="DC"
+        )
+        assert shoulder.tier <= lane.tier
+        assert "arterial floor" not in shoulder.rule
+
+    @pytest.mark.parametrize("highway", ["secondary", "tertiary"])
+    @pytest.mark.parametrize("speed", ["15 mph", "20 mph", "25 mph", "30 mph"])
+    @pytest.mark.parametrize("width", ["1.3", "1.4", "2.4", "4.5"])
+    @pytest.mark.parametrize("parking", ["no", "parallel"])
+    def test_a_shoulder_never_rates_worse_than_the_lane(self, highway, speed, width, parking):
+        road = {"highway": highway, "maxspeed": speed, "lanes": "2", "parking:both": parking}
+        shoulder = classify({**road, "shoulder": "both", "shoulder:width": width}).tier
+        lane = classify({**road, "cycleway:both": "lane", "cycleway:width": width}).tier
+        bare = classify(road).tier
+        # Read as a lane of its width: the same tier, on the same table.
+        assert shoulder == lane, (shoulder, lane)
+        assert shoulder <= bare
+
+    def test_an_unrideable_shoulder_is_no_provision(self) -> None:
+        road = {"highway": "secondary", "lanes": "2", "shoulder": "both", "shoulder:width": "0.5"}
+        assert classify(road, jurisdiction="DC").rule.endswith(", arterial floor")
+
+
+class TestCollectorFloor:
+    """OWNER-DECISIONS 176: "At least LTS 2 (Recommended)". A collector
+    (tertiary, or its link) without bike infrastructure is LTS 2 at least, and
+    a count may push it higher."""
+
+    @pytest.mark.parametrize("highway", ["tertiary", "tertiary_link"])
+    def test_an_unposted_district_collector_is_lts2(self, highway) -> None:
+        result = classify({"highway": highway, "lanes": "2"}, jurisdiction="DC")
+        assert result.tier is Stress.LTS2
+        assert result.rule.endswith(", collector floor")
+
+    def test_a_count_still_pushes_it_higher(self) -> None:
+        road = {"highway": "tertiary", "lanes": "2"}
+        assert classify(road, aadt=12_000, jurisdiction="DC").tier is Stress.LTS2
+        busy = {**road, "maxspeed": "25 mph"}
+        assert classify(busy, aadt=12_000, jurisdiction="DC").tier is Stress.LTS3
+
+    def test_bike_infrastructure_lifts_it(self) -> None:
+        road = {"highway": "tertiary", "lanes": "2", "cycleway:both": "track"}
+        assert classify(road, jurisdiction="DC").tier is Stress.LTS1
+        separate = {"highway": "tertiary", "lanes": "2", "cycleway:right": "separate"}
+        assert classify(separate, jurisdiction="DC", separate_facility=True).tier is Stress.LTS1
+
+    def test_not_an_arterial_floor_and_not_other_classes(self) -> None:
+        assert classify({"highway": "tertiary"}, jurisdiction="DC").tier is not Stress.LTS3
+        for highway in ("unclassified", "residential"):
+            assert classify({"highway": highway}, jurisdiction="DC").tier is Stress.LTS1

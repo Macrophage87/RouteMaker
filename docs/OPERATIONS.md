@@ -1293,9 +1293,10 @@ posted `maxspeed` on the way always wins.
 
 | Line | What to look for |
 |---|---|
-| `state polygons from .../merged.osm.pbf: DC, MD, VA in N s` | all three; about 150 s on this host |
+| `state polygons from .../merged.osm.pbf: DC, MD, VA in N s` | all three; 150-400 s on this host (384 s measured under memory pressure, peak 234 MB) |
+| `state DE: 1 outer chain(s) do not close and were dropped` (and KY, NC, PA, TN, WV), then `state DE: no closed outer ring; not placed` | expected every rebuild: neighbouring states' relations reach the three-state merge only in part |
 | `way states: DC 33,xxx, MD ..., VA ...; N of M ways outside every state; N s` | the District around 34,000 road ways; the outside count is the WV/PA edges |
-| `divided roads: N carriageways in N s` | about 51,000 on the region |
+| `divided roads: N carriageways in N s` | about 46,000 on the region, under 30 s |
 | `curated speed limits not applied (posted, or no such way): [...]` | should not appear; a way listed was posted since or left the extract, and its row can go |
 | `facility classes: ...; N CBD sidewalks barred to bicycles, N singletrack ways avoided` | about 2,000 CBD sidewalks; singletrack in the hundreds |
 

@@ -282,6 +282,8 @@ MID_VOLUME_MAX_MPH = 20.0
 ARTERIAL_HIGHWAY = frozenset(
     {"trunk", "trunk_link", "primary", "primary_link", "secondary", "secondary_link"}
 )
+# The road classes OWNER-DECISIONS 176 floors at LTS 2 without a facility.
+COLLECTOR_HIGHWAY = frozenset({"tertiary", "tertiary_link"})
 
 # Surfaces a road bike will not hold a line on. Surface never sets the tier on
 # its own: gravel here is usually a low-traffic choice rather than a hazard, and
@@ -775,6 +777,8 @@ def _classify(
     # Set by the shoulder branch below when the bike-lane table is what produced
     # the tier. See `has_facility`, after the facility step.
     shoulder_credited = False
+    # The bike-lane table's tier for a rideable shoulder, credited or not.
+    shoulder_table_tier: Stress | None = None
 
     # Facility, in descending order of separation.
     if cycleways & SEPARATED_CYCLEWAY:
@@ -900,6 +904,7 @@ def _classify(
                     shoulder_parking,
                     facility="paved shoulder",
                 )
+                shoulder_table_tier = shoulder_tier
                 if shoulder_tier < tier:
                     tier, rule = shoulder_tier, shoulder_rule
                     shoulder_credited = True
@@ -988,13 +993,29 @@ def _classify(
     # (`has_facility`; the owner, item 145: "Yes, count it"): Furth scores the
     # two as one, and the floor must not
     # rate a road with a shoulder worse than the same road with a lane.
-    if (
-        highway in ARTERIAL_HIGHWAY
-        and tier < Stress.LTS3
-        and not has_facility
-        and not separate_facility
-    ):
-        tier, rule = Stress.LTS3, rule + ", arterial floor"
+    # Collectors (OWNER-DECISIONS 176: "At least LTS 2 (Recommended)"): a
+    # tertiary street or its link without bike infrastructure is LTS 2 at
+    # least; a count may push it higher. The District's 20 mph had left 51 mi
+    # of them at LTS 1, most with no count.
+    floor = (
+        (Stress.LTS3, "arterial floor")
+        if highway in ARTERIAL_HIGHWAY
+        else (Stress.LTS2, "collector floor")
+        if highway in COLLECTOR_HIGHWAY
+        else None
+    )
+    if floor is not None and tier < floor[0] and not (has_facility or separate_facility):
+        if rideable_shoulder and shoulder_table_tier is not None:
+            # A rideable shoulder is bike infrastructure (item 145), whether or
+            # not the table credited it: on a 20 mph road mixed traffic is LTS
+            # 1 already and the shoulder never is. Such a road takes the tier
+            # the bike-lane table gives its shoulder - the tier the same road
+            # with a lane of that width would have - so the floor neither rates
+            # it worse than the lane nor better (review r2).
+            if shoulder_table_tier > tier:
+                tier, rule = shoulder_table_tier, rule + ", shoulder read as a lane"
+        else:
+            tier, rule = floor[0], rule + ", " + floor[1]
 
     # A surface that sheds riders is not tolerable to a child, which is what
     # LTS1 asserts, so it floors at LTS2. This is narrower than treating surface
