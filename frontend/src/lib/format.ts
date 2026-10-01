@@ -47,6 +47,12 @@ export function formatDistance(metres: number): string {
   return `${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
 }
 
+/** An extra distance inside a sentence, miles first: "+1.2 mi, 1.9 km". */
+export function formatExtra(metres: number): string {
+  if (!usable(metres)) return DASH;
+  return `+${milesFigure(metres)} mi, ${(metres / 1000).toFixed(1)} km`;
+}
+
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
 export function formatRoughDistance(metres: number): string {
   if (!usable(metres)) return DASH;

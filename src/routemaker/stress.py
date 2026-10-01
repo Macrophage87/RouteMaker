@@ -404,6 +404,13 @@ class StressResult:
     volume_year: int | None = None
     # The curated adjustment that set this tier, if one did.
     adjustment: StressAdjustment | None = None
+    # What the classifier read the road at, kept for the intersection model
+    # (`routemaker.intersections`; OWNER-DECISIONS 165-167): the posted or
+    # assumed speed, the through lanes a direction, and whether it is one-way.
+    # None where the way is a trail or a motor-only class, which have none.
+    speed_mph: float | None = None
+    lanes: int | None = None
+    oneway: bool | None = None
 
     @property
     def is_top_tier(self) -> bool:
@@ -1013,7 +1020,17 @@ def _classify(
     if tier is Stress.LTS1 and is_rough(tags):
         tier, rule = Stress.LTS2, rule + ", rough surface"
 
-    return StressResult(tier, rule, tuple(assumed), volume_source, aadt, volume_year)
+    return StressResult(
+        tier,
+        rule,
+        tuple(assumed),
+        volume_source,
+        aadt,
+        volume_year,
+        speed_mph=speed_mph,
+        lanes=lanes,
+        oneway=oneway,
+    )
 
 
 def is_rough(tags: dict[str, str]) -> bool:

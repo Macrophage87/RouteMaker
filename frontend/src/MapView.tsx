@@ -44,6 +44,7 @@ import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import type { When } from "./lib/dials.ts";
+import { junctionItems, junctionsOnMap, warningIconSvg, ICON_PX, type JunctionItem } from "./lib/intersectionMarkers.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -82,6 +83,8 @@ interface Props {
   onRemovePoint: (index: number) => void;
   /** Changes when the markers must be put back on the points as they are. */
   markerReset: number;
+  /** The junction the route summary's list asked the map to show (nonce: again), or null. */
+  junctionFocus: { index: number; nonce: number } | null;
   onReady: (map: MapLibreMap) => void;
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
@@ -161,6 +164,9 @@ export function MapView(props: Props) {
   const mapRef = useRef<MapLibreMap | null>(null);
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
+  // The route's junction markers (OWNER-DECISIONS 172) and the card one of them has open.
+  const junctionMarkers = useRef<{ item: JunctionItem; marker: Marker }[]>([]);
+  const junctionCard = useRef<Popup | null>(null);
   // The hover handle as last drawn (null: none), so an unchanged answer is
   // not drawn again; anything else that redraws the edit layer resets it.
   const hoverShown = useRef<LonLat | null>(null);
@@ -632,6 +638,46 @@ export function MapView(props: Props) {
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
 
+  // The route's stressful junctions: orange and red warning markers on the line,
+  // a click on one showing why (OWNER-DECISIONS 172). They go while the route
+  // is being planned again, as the line's own colours dim.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    junctionCard.current?.remove();
+    junctionCard.current = null;
+    junctionMarkers.current.forEach(({ marker }) => marker.remove());
+    junctionMarkers.current = [];
+    if (!props.route || props.stale) return;
+    junctionMarkers.current = junctionsOnMap(junctionItems(props.route)).map((item) => {
+      const element = document.createElement("button");
+      element.type = "button";
+      element.className = `junction-marker junction-${item.severity}`;
+      element.innerHTML = warningIconSvg(item.severity, ICON_PX);
+      element.setAttribute("aria-label", item.label);
+      element.title = item.reason;
+      const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
+      element.addEventListener("click", (event) => {
+        // A click on a marker is not a click on the map: it must not add a via point.
+        event.stopPropagation();
+        showJunctionCard(map, item, junctionCard);
+      });
+      element.addEventListener("dblclick", (event) => event.stopPropagation());
+      return { item, marker };
+    });
+  }, [props.route, props.stale]);
+
+  // A click on the summary's list: take the map there and say why.
+  useEffect(() => {
+    const map = mapRef.current;
+    const focus = props.junctionFocus;
+    if (!map || !focus) return;
+    const found = junctionMarkers.current.find(({ item }) => item.index === focus.index);
+    if (!found) return;
+    map.easeTo({ center: [found.item.lon, found.item.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+    showJunctionCard(map, found.item, junctionCard);
+  }, [props.junctionFocus]);
+
   // A route that can no longer be dragged (it is being planned again) takes
   // its hover handle with it.
   useEffect(() => {
@@ -666,6 +712,25 @@ export function MapView(props: Props) {
   }, [props.rail.metro, props.rail.marc]);
 
   return <div ref={container} className="map" role="region" aria-label="Map" />;
+}
+
+/** The card a junction marker opens: its reason, and the way to avoid it. */
+function showJunctionCard(map: MapLibreMap, item: JunctionItem, card: { current: Popup | null }): void {
+  card.current?.remove();
+  const body = document.createElement("div");
+  body.className = "junction-card";
+  const title = document.createElement("strong");
+  title.textContent = item.label.split(":")[0];
+  const reason = document.createElement("p");
+  reason.textContent = item.reason;
+  const where = document.createElement("p");
+  where.className = "hint";
+  where.textContent = `${item.where}. Drag the route away to plan around it.`;
+  body.append(title, reason, where);
+  card.current = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 16, className: `junction-popup junction-popup-${item.severity}` })
+    .setLngLat([item.lon, item.lat])
+    .setDOMContent(body)
+    .addTo(map);
 }
 
 /** Station icons are drawn for the screen's pixel density, whole numbers only. */

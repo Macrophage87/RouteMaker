@@ -459,3 +459,35 @@ def test_the_remap_reads_each_side_as_the_classifier_does() -> None:
         left, right = (str(sides[s].value) if sides[s].value else "nil" for s in ("left", "right"))
         declared = "true" if sides["left"].value or sides["right"].value else "false"
         assert line.split() == [left, right, declared], case
+
+
+# --- The intersection model's one dependence on the transform ---------------
+#
+# `routemaker.intersections` reads a junction's signal from the router's tiles
+# (`/locate`'s `traffic_signal`), and the transform decides what a signal is.
+# Upstream's `nodes_proc` reads `highway=traffic_signals` and
+# `traffic_signals:direction`; a mapped crossing way tagged
+# `crossing=traffic_signals` (a signal or a HAWK on a trail crossing) is not one,
+# which is why the model counts a marked crossing with no signal flag at
+# `MARKED_CROSSING_FACTOR` (docs/DEVELOPMENT.md, "Known gaps"). These two tests
+# are the tripwire for that gap: when either side changes, the factor should too.
+
+
+def test_upstream_reads_signals_from_traffic_signals_nodes_only() -> None:
+    upstream = (REPO / "lua" / "vendor" / "graph_upstream.lua").read_text()
+    reads = {m.group(0) for m in re.finditer(r"traffic_signals[:\w]*", upstream)}
+    assert reads == {"traffic_signals", "traffic_signals:direction"}, (
+        "upstream now reads another signal tag: a signalised trail crossing may reach the "
+        "router's signal flag, and routemaker.intersections.MARKED_CROSSING_FACTOR is stale"
+    )
+    assert not re.search(r"crossing\W+\]?\s*==\s*[\"']traffic_signals", upstream)
+
+
+def test_the_remap_derives_no_signal() -> None:
+    """Nothing here writes `forward_signal` or `backward_signal`, so a node's
+    signal flag is upstream's. Deriving one from `crossing=traffic_signals` is a
+    recorded follow-up that needs a rebuild to verify (OPERATIONS.md, "Intersection
+    costs and the calm search")."""
+    source = (REPO / "lua" / "routemaker_remap.lua").read_text()
+    assert "forward_signal" not in source and "backward_signal" not in source
+    assert "traffic_signals" not in source

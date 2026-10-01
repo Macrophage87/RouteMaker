@@ -478,3 +478,13 @@ def test_the_build_writes_where_the_serving_container_reads() -> None:
             host_path_for(tile_extract, serving)
             == f"${{DATA_ROOT}}/tiles/{variant}/current/tiles.tar"
         )
+
+
+def test_the_router_takes_as_many_exclusions_as_the_calm_search_sends(config: dict) -> None:
+    """`core.refine` steers the router with `exclude_locations` (OWNER-DECISIONS
+    163 and 165: the calm detour and crossing avoidance); a request with more than
+    the limit is refused whole, which ends the search with `no_route` and no
+    calmer route."""
+    from core import refine
+
+    assert config["service_limits"]["max_exclude_locations"] >= refine.MAX_EXCLUDES

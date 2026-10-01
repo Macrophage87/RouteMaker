@@ -213,6 +213,7 @@ def busy_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 # reason BWI has TLS 3 inside the terminal." (80).
 MAP_CLASS_COLUMN = "map_class"
 SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
+ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
 
 # On a table from before those columns, the public roads a bicycle may not
 # use are what the classifier recorded as motor-only: a motorway or its ramp.
@@ -292,6 +293,15 @@ CREATE TABLE {schema}.segment (
     map_class       text        NOT NULL DEFAULT 'road'
                     CHECK (map_class IN ('road', 'barred', 'hidden', 'alley')),
     separate_bikeway boolean    NOT NULL DEFAULT false,
+    -- What the classifier read the road at, for the intersection model
+    -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the posted or
+    -- assumed speed, the through lanes a direction, and whether it is one-way.
+    -- Null on a trail or a motor-only class, and on every row of a table built
+    -- before this column existed (the route's intersection reasons then name
+    -- the tier alone; `core.routing` checks for the columns).
+    road_speed_mph  smallint,
+    road_lanes      smallint,
+    road_oneway     boolean,
     -- A curated stress adjustment (`routemaker.stress.StressAdjustment`; the
     -- owner, 2026-09-27, asking for a clickable "why", perhaps hidden).
     -- `stress_adjustment_id` is stable across rebuilds and shared by the ways

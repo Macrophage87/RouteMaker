@@ -48,16 +48,36 @@ interface Start {
   assist?: boolean;
 }
 
+/**
+ * Where the traffic slider's positions fall, after the rescale of 2026-10-01
+ * (OWNER-DECISIONS 163 and 164; src/core/presets.py says why). The old 0-100
+ * slider ran to its end at 90; the old positions now sit at 0-80, Default (the
+ * old 90) at 70, and the new top end above 80 is the calm detour search.
+ * tests/test_calm_slider.py and tests/test_presets.py hold these equal to the API's.
+ */
+export const STRESS_DEFAULT_AT = 70;
+export const STRESS_TODAYS_TOP = 80;
+/** Metres of detour accepted per metre of LTS 3 avoided at the top (a proposal for the owner). */
+export const CALM_RATE_MAX = 10;
+export const CALM_CURVE = 3;
+
+/** How many metres of detour a position accepts per metre of LTS 3 avoided: 0 up to 80, then exponential. */
+export function calmRate(stress: number): number {
+  if (stress <= STRESS_TODAYS_TOP) return 0;
+  const t = (Math.min(stress, STRESS_MAX) - STRESS_TODAYS_TOP) / (STRESS_MAX - STRESS_TODAYS_TOP);
+  return Math.round((CALM_RATE_MAX * Math.expm1(CALM_CURVE * t)) / Math.expm1(CALM_CURVE) * 1000) / 1000;
+}
+
 export const STARTS: Record<PresetId, Start> = {
-  default: { stress: 90, hills: 0, seek: true },
-  trailmaxxing: { stress: 100, hills: 0, seek: true },
-  "group-ride": { stress: 50, hills: -50, seek: true },
+  default: { stress: 70, hills: 0, seek: true },
+  trailmaxxing: { stress: 80, hills: 0, seek: true },
+  "group-ride": { stress: 40, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
-  "mountain-goat": { stress: 50, hills: 100, seek: true },
-  gravel: { stress: 50, hills: 0, seek: true },
-  fast: { stress: 10, hills: 0, seek: true },
-  cargo: { stress: 90, hills: -60, seek: true, carrying: { cargo: 90, people: 100 }, assist: true },
-  ebike: { stress: 90, hills: -50, seek: true },
+  "mountain-goat": { stress: 40, hills: 100, seek: true },
+  gravel: { stress: 40, hills: 0, seek: true },
+  fast: { stress: 5, hills: 0, seek: true },
+  cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
+  ebike: { stress: 70, hills: -50, seek: true },
 };
 
 export const WHENS: readonly { id: When; label: string }[] = [
@@ -155,13 +175,18 @@ export function warnsTrafficTolerant(preset: PresetId, stress: number): boolean 
   return stressMax(preset) > 0 && stress <= TRAFFIC_TOLERANT_MAX;
 }
 
+/** Where the calm detour words change: the old top is "low-stress", past it the route goes out of its way. */
+export const CALM_FAR_FROM = 95;
+
 /** The words for a stress position: both ends and the middle are named. */
 export function stressWords(stress: number): string {
   if (stress <= TRAFFIC_TOLERANT_MAX) return "Traffic tolerant";
-  if (stress < 40) return "Direct, some busy streets";
-  if (stress <= 60) return "Balanced";
-  if (stress < 95) return "Prefers quiet streets and paths";
-  return "Low-stress, unless avoiding busy streets takes much longer";
+  if (stress < 30) return "Direct, some busy streets";
+  if (stress <= 50) return "Balanced";
+  if (stress < 75) return "Prefers quiet streets and paths";
+  if (stress <= STRESS_TODAYS_TOP) return "Low-stress, unless avoiding busy streets takes much longer";
+  if (stress < CALM_FAR_FROM) return "Calm: will go well out of the way to avoid busy roads";
+  return "Calmest: detours many times the straight line to avoid busy roads";
 }
 
 export function hillsWords(hills: number): string {

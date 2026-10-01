@@ -8,6 +8,7 @@ import {
   formatClimb,
   formatDistance,
   formatDuration,
+  formatExtra,
   formatRoughDistance,
   formatSeconds,
   formatSpeed,
@@ -124,4 +125,12 @@ test("the hills slider's notes name their own limits", async () => {
   const { AVOID_NOTE, SEEK_NOTE } = await import("./dialsPanel.ts");
   assert.match(SEEK_NOTE, /up to 31 mi \(50 km\) apart\.$/);
   assert.match(AVOID_NOTE, /up to 16 mi \(25 km\) apart\.$/);
+});
+
+test("an extra distance reads miles first, with a sign, and nothing for what cannot be one", () => {
+  assert.equal(formatExtra(1931.2), "+1.2 mi, 1.9 km");
+  assert.equal(formatExtra(0), "+0.0 mi, 0.0 km");
+  assert.equal(formatExtra(28968.2), "+18.0 mi, 29.0 km");
+  assert.equal(formatExtra(-5), "–");
+  assert.equal(formatExtra(Number.NaN), "–");
 });

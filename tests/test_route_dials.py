@@ -80,7 +80,7 @@ class TestTheSlidersReachTheRouter:
         assert sent_options(fake)["use_hills"] == presets.use_hills_for(start.hills)
 
     @pytest.mark.parametrize("name", sorted(set(presets.PRESETS) - {"mass-ride"}))
-    @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (50, 0.5), (100, 0.0)])
+    @pytest.mark.parametrize(("stress", "use_roads"), [(0, 1.0), (35, 0.55), (70, 0.1), (100, 0.0)])
     def test_stress_is_use_roads_run_backwards(
         self, name, stress, use_roads, client, facility_segments, router
     ):
@@ -112,7 +112,9 @@ class TestTheSlidersReachTheRouter:
         expected = presets.costing("group-ride", 10, -10)["bicycle"]
         assert sent_options(fake) == expected
         # The preset's own table is not retuned by a request.
-        assert presets.PRESETS["group-ride"].costing_options["use_roads"] == 0.5
+        assert presets.PRESETS["group-ride"].costing_options["use_roads"] == presets.use_roads_for(
+            40
+        )
 
     def test_carrying_people_starts_the_stress_slider_higher(
         self, client, facility_segments, router

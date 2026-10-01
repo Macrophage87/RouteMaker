@@ -49,6 +49,11 @@ CONTRACT_KEYS = {
     "leg_ends",
     # Additive, FOLLOWUP-ROUTE-COLOURS (OWNER-DECISIONS item 81).
     "stress_spans",
+    # Additive, FOLLOWUP-INTERSECTIONS (OWNER-DECISIONS items 163-172):
+    # the stressful junctions, the calm search and the detour.
+    "intersections",
+    "calm_search",
+    "detour",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

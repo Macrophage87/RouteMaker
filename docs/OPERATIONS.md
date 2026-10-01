@@ -387,6 +387,54 @@ The table arrives with migration `core.0008_rate_limit_window`, which the
 `migrate` one-shot applies before the api starts; nothing else is needed on
 deploy.
 
+## Intersection costs and the calm search: what to watch
+
+FOLLOWUP-INTERSECTIONS (2026-10-01; docs/DEVELOPMENT.md, "Intersection costs,
+the calm search and the detour warning" is the long form). What an operator
+needs:
+
+**Nothing new to deploy, one new column set to build.** The route's junctions
+are read from the live `segment` table and the existing routers (`/locate` and
+`/trace_attributes` are among the endpoints the config already serves), so the
+code works the day it is deployed. The segment table gains `road_speed_mph`,
+`road_lanes` and `road_oneway` (`pipeline.schema.SEGMENT_DDL`) with the next
+rebuild; until a rebuilt table is promoted the junction reasons name the road's
+LTS and not its lanes and speed ("Crossing a road (LTS 4), no signal"), and
+nothing else changes. `core.junctions.has_trait_columns` reads the live schema
+once and remembers the answer, as `core.routing` does for the facility columns,
+so no restart is needed after the swap beyond the one that restarts the routers
+anyway.
+
+**Cost per plan.** A plan that crosses a busy road without a signal now asks the
+router for one more route (the search, `core.refine`), one `/trace_attributes`
+for it and up to four `/locate`s, and one more route for the detour warning
+when the plan is long for its straight line. Measured on the live host, loaded:
+an ordinary plan 1 to 3 s before and 3 to 6 s now; at the top of the stress
+slider 6 to 12 s. The budget is unchanged (40 s, 50 s for a long ride). If the
+api's workers are saturated, the search is the first thing to drop: it does not
+start with less than 11 s left (`REFINE_ROUND_MIN_S` plus
+`REFINE_TRACE_RESERVE_S`) and a round is not begun with less than 5 s, and the
+answer then says `calm_search.limited` is `time`.
+
+**Reading the log.** `core.refine` logs at warning level, "the intersection
+events could not be read", when the segment query or `/locate` failed for a
+reason other than the budget; the route is answered without its junction list
+(`intersections` null or empty). A `/locate` batch that fails leaves its
+junctions as "no signal", the cautious reading. `core.routing` logs the same
+"took ... past its budget" line as before.
+
+**The routers.** The search sends `exclude_locations` (the config's
+`max_exclude_locations` is 200; `scripts/build_valhalla_configs.py` sets it) and
+`/locate` with `verbose`. Both are in the configs this repository builds, and
+`tests/test_valhalla_config.py` holds the limit above what the search sends; a
+hand-made config that lowers `max_exclude_locations` below 150 makes a calm
+round refuse (400, the search ends with `no_route`), which is safe but quiet.
+
+**What is not done.** Signalised trail crossings tagged `crossing=traffic_signals`
+read as unsignalised until the tag transform derives the signal (a rebuild to
+verify; docs/DEVELOPMENT.md, "Known gaps"), so a rider may see a marker at a
+crossing that has a light. It is the one place the markers over-warn.
+
 ## The stress tiles
 
 `GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic

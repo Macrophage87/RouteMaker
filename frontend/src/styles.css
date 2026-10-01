@@ -889,3 +889,95 @@ dialog.ride-types::backdrop {
     border-radius: 0;
   }
 }
+
+/* The route's stressful junctions (OWNER-DECISIONS 172): warning markers on the
+   map, and the list in the route summary. Orange is "higher stress", red "very
+   high"; the colours and their dark outlines are lib/intersectionMarkers.ts's. */
+.junction-marker {
+  display: block;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  line-height: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+.junction-marker:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.junction-popup .maplibregl-popup-content {
+  padding: 8px 28px 8px 10px;
+  max-width: 260px;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  border-left: 5px solid #f59e0b;
+}
+.junction-popup-red .maplibregl-popup-content {
+  border-left-color: #dc2626;
+}
+.junction-popup .maplibregl-popup-close-button {
+  color: var(--text);
+}
+.junction-card p {
+  margin: 4px 0 0;
+}
+.junctions {
+  margin: 12px 0;
+}
+.junction-list {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+.junction-item {
+  display: grid;
+  grid-template-columns: 18px auto 1fr;
+  gap: 2px 8px;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+  border-left-width: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.junction-item.junction-orange {
+  border-left-color: #f59e0b;
+}
+.junction-item.junction-red {
+  border-left-color: #dc2626;
+}
+.junction-icon {
+  line-height: 0;
+}
+.junction-where {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.junction-reason {
+  min-width: 0;
+}
+.notice.detour-warning {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+.notice.detour-strong {
+  background: var(--error-bg);
+  color: var(--error-text);
+  border-left: 5px solid #dc2626;
+  font-weight: 600;
+}

@@ -6,13 +6,14 @@
  * went unnoticed while the decisions lived in DialsPanel.tsx and
  * FacilityBreakdown.tsx).
  */
-import { AVOID_MAX_SPAN_M, SEEK_MAX_SPAN_M, formatRoughDistance } from "./format.ts";
+import { AVOID_MAX_SPAN_M, METRES_PER_MILE, SEEK_MAX_SPAN_M, formatRoughDistance } from "./format.ts";
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
   STRESS_MAX,
   STRESS_MIN,
   TRAFFIC_TOLERANT_WARNING,
+  calmRate,
   hillsMax,
   hillsWords,
   offersAssist,
@@ -47,6 +48,21 @@ export interface PanelView {
 
 export const MASS_RIDE_TRAFFIC_NOTE =
   "A mass ride takes the most direct roadway; it is not steered onto side streets.";
+/**
+ * What the top of the traffic slider does (OWNER-DECISIONS 163, 164): past the
+ * old top it stops pricing the router's own roads harder and starts searching
+ * for calmer, longer routes, and says so before it plans one.
+ */
+export function calmNote(stress: number): string | undefined {
+  const rate = calmRate(stress);
+  if (rate <= 0) return undefined;
+  return (
+    `Calm detour: up to about ${formatRoughDistance(rate * METRES_PER_MILE)} of extra riding ` +
+    "for every mile of LTS 3 road avoided, and twice that for LTS 4. The route can be many times the straight " +
+    "line, and says how much longer it is."
+  );
+}
+
 export const MASS_RIDE_HILLS_NOTE =
   "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed.";
 export const SEEK_NOTE =
@@ -79,9 +95,9 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       // direct end rather than filling the track.
       max: locked ? STRESS_MAX : stressMax(preset),
       words: stressWords(draft.stress),
-      ends: ["Traffic tolerant", "Balanced", "Quiet roads"],
+      ends: ["Traffic tolerant", "Balanced", "Calm at any cost"],
       disabled: locked,
-      note: locked ? MASS_RIDE_TRAFFIC_NOTE : undefined,
+      note: locked ? MASS_RIDE_TRAFFIC_NOTE : calmNote(draft.stress),
     },
     warning: warnsTrafficTolerant(preset, draft.stress) ? TRAFFIC_TOLERANT_WARNING : null,
     hills: {

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { announceRoute, detourNotice, paceText } from "./summary.ts";
+import { announceRoute, detourNotice, detourView, paceText } from "./summary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 
@@ -57,4 +57,60 @@ test("the announcement carries distance, moving time and climb", () => {
   const said = announceRoute(route);
   const figures = numbers(said);
   for (const figure of ["5.0", "20", "31"]) assert.ok(figures.includes(figure), `${figure} missing from ${said}`);
+});
+
+// The direct-route notice (OWNER-DECISIONS 164: "just warn people"). The API decides
+// the level (src/routemaker/detour.py); these hold what the words say.
+const MI = 1609.344;
+const direct = (extraMi: number, directMi: number, level: "note" | "warning" | "strong" | null, avoidedMi?: number) => ({
+  distance_m: (directMi + extraMi) * MI,
+  preset: "default" as const,
+  detour: {
+    basis: "direct_route" as const,
+    reference_m: directMi * MI,
+    ratio: Math.round(((directMi + extraMi) / directMi) * 100) / 100,
+    extra_m: extraMi * MI,
+    level,
+    avoided_m: avoidedMi === undefined ? null : avoidedMi * MI,
+  },
+});
+
+test("a strong warning reads like the owner's example, miles first", () => {
+  const view = detourView(direct(18, 11.25, "strong"), [GEORGETOWN, ROSSLYN]);
+  assert.equal(view?.level, "strong");
+  assert.match(view?.text ?? "", /^This calm route is 2\.6× the direct distance \(\+18\.0 mi, 29\.0 km\)\./);
+  assert.match(view?.text ?? "", /more than twice as far/);
+});
+
+test("a warning is a level of its own, and a note says what the extra distance buys", () => {
+  const warning = detourView(direct(6, 10, "warning"), [GEORGETOWN, ROSSLYN]);
+  assert.equal(warning?.level, "warning");
+  assert.match(warning?.text ?? "", /^This calm route is 1\.6× the direct distance \(\+6\.0 mi, 9\.7 km\)\./);
+  assert.match(warning?.text ?? "", /longer than most everyday trips/);
+  const note = detourView(direct(1.2, 4, "note", 0.8), [GEORGETOWN, ROSSLYN]);
+  assert.equal(note?.level, "note");
+  assert.equal(note?.text, "This calm route is 1.3× the direct distance (+1.2 mi, 1.9 km), to avoid 0.8 mi (1.3 km) of LTS 3-4 roads.");
+});
+
+test("no notice within the allowance, and none where the API says there is nothing to say", () => {
+  assert.equal(detourView(direct(1, 10, null), [GEORGETOWN, ROSSLYN]), null);
+  assert.equal(detourView({ distance_m: 141_100, preset: "default", detour: null }, [GEORGETOWN, ROSSLYN]), null);
+});
+
+test("without the direct route the old straight-line notice is what is said", () => {
+  const fallback = {
+    distance_m: 141_100,
+    preset: "default" as const,
+    detour: { basis: "straight_line" as const, reference_m: 1000, ratio: 141, extra_m: 140_100, level: "warning" as const },
+  };
+  assert.match(detourNotice(fallback, [GEORGETOWN, ROSSLYN]) ?? "", /^This route is 87\.7 mi \(141\.1 km\) for points /);
+  // An API older than the field has none, and gets the same.
+  assert.equal(detourNotice({ distance_m: 141_100, preset: "default" }, [GEORGETOWN, ROSSLYN]), detourNotice(fallback, [GEORGETOWN, ROSSLYN]));
+  assert.equal(detourView(fallback, [GEORGETOWN, ROSSLYN])?.level, "warning");
+});
+
+test("Mass Ride keeps its own words even if a direct-route block were sent", () => {
+  const mass = { ...direct(60, 20, "strong"), preset: "mass-ride" as const };
+  const text = detourNotice({ ...mass, distance_m: 141_100 }, [GEORGETOWN, ROSSLYN]) ?? "";
+  assert.match(text, /roadways/);
 });

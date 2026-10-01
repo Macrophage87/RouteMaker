@@ -383,6 +383,67 @@ class HillsAvoidOut(Schema):
     )
 
 
+class IntersectionOut(Schema):
+    """One stressful junction of the route (OWNER-DECISIONS item 172: "put
+    markers on intersections in a route, such as an orange marker for higher
+    stress intersections and a red one for very high stress intersections.
+    That way people know where to watch out or reroute."). Only flagged ones
+    are here: a neighbourhood stop sign is never flagged, and a junction below
+    the thresholds (`routemaker.intersections.ORANGE_MIN_FT`, `RED_MIN_FT`) is
+    not either. On a Mass Ride the colour is the crossed road's tier (item
+    138), orange for LTS 3 and red for LTS 4 or Avoid."""
+
+    m: int = Field(description="Metres along the route's traced length.")
+    lon: float
+    lat: float
+    severity: Literal["orange", "red"]
+    reason: str = Field(
+        description='What a click shows, US units first: "Left turn across a 4-lane 35 mph '
+        '(56 km/h) road, no signal".'
+    )
+    crossed_tier: int | None = Field(description="The busy road's LTS, 3-5; null if unknown.")
+    movement: Literal["left", "straight", "right"]
+    control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
+    kind: str
+    cost_ft: int = Field(description="The model's cost, in feet of equivalent quiet riding.")
+
+
+class CalmSearchOut(Schema):
+    """What the search over the router's routes did (`core.refine`): the calm
+    detour at the top of the stress slider and the avoidance of the worst
+    crossings. `limited` says why it stopped short, or why it did not run:
+    `time`, `no_route` (every way out was excluded), `untraceable`, `span`,
+    `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to its end."""
+
+    rate: float = Field(description="Metres of detour accepted per metre of LTS 3 avoided.")
+    rounds: int
+    excluded: int
+    limited: str | None
+    original_m: float | None = None
+    extra_distance_m: float | None = None
+    exposure_before_m: float | None = None
+    exposure_after_m: float | None = None
+
+
+class DetourOut(Schema):
+    """How much longer the route is than the most direct legal one
+    (`routemaker.detour`; OWNER-DECISIONS item 164: "just warn people"). `level`
+    is null within the allowance of the larger of 1.25 times or 0.33 mi, then
+    `note` up to 1.5 times, `warning` above, `strong` above 2 times. `basis` is
+    what it was compared with: `direct_route`, or `straight_line` where the
+    direct route could not be had (then only a route twice as long and 3 km more
+    says `warning`)."""
+
+    basis: Literal["direct_route", "straight_line"]
+    reference_m: float
+    ratio: float | None
+    extra_m: float
+    level: Literal["note", "warning", "strong"] | None
+    avoided_m: float | None = Field(
+        default=None, description="Metres of LTS 3 and worse the detour avoids, where known."
+    )
+
+
 class RouteOut(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend"]
@@ -402,6 +463,11 @@ class RouteOut(Schema):
     # Index in geometry.coordinates of each leg's last vertex, one per leg
     # (points - 1); a leg starts where the one before it ends.
     leg_ends: list[int]
+    # The route's stressful junctions, in route order; null where they could not
+    # be read in time (the route is answered all the same).
+    intersections: list[IntersectionOut] | None
+    calm_search: CalmSearchOut | None
+    detour: DetourOut | None
 
 
 # What Pydantic puts before the text of a ValueError raised in a validator.

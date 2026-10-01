@@ -142,11 +142,12 @@ def test_cargo_is_hill_averse_slow_and_gate_shy() -> None:
 
 def test_carrying_cargo_is_default_and_people_the_top_of_the_slider() -> None:
     """The owner, 2026-09-28: "Same as Default, 90 (Recommended)" for carrying
-    cargo; carrying people stays calmer, at 100."""
+    cargo; carrying people stays calmer, at the old top of the slider - 80 now
+    that the slider runs on to 100 (OWNER-DECISIONS 163)."""
     people = presets.stress_start("cargo", presets.CARRYING_PEOPLE)
     cargo = presets.stress_start("cargo", presets.CARRYING_CARGO)
     assert cargo == presets.DEFAULT_STRESS == presets.stress_start("default")
-    assert people == presets.STRESS_MAX > cargo
+    assert people == presets.STRESS_TODAYS_TOP > cargo
     assert presets.stress_start("cargo") == cargo
 
 
@@ -313,8 +314,10 @@ def test_the_dropped_presets_are_not_offered(name: str) -> None:
 
 
 def test_default_starts_at_the_owners_ninety() -> None:
-    """The owner's answer of 2026-09-27: "90"."""
-    assert presets.PRESETS["default"].stress == 90
+    """The owner's answer of 2026-09-27: "90" - which is 70 on the slider since
+    the rescale of 2026-10-01, with the same `use_roads` (tests/test_calm_slider.py)."""
+    assert presets.PRESETS["default"].stress == 70
+    assert presets.PRESETS["default"].costing_options["use_roads"] == 0.1
 
 
 def test_the_weekend_graph_only_twins_the_standard_graph() -> None:
@@ -357,7 +360,7 @@ def test_every_ride_types_brake_grade_is_the_owners_approved_table() -> None:
 
 
 @pytest.mark.parametrize(
-    ("stress", "use_roads"), [(33, 0.67), (95, 0.05), (5, 0.95), (1, 0.99), (100, 0.0)]
+    ("stress", "use_roads"), [(33, 0.576), (75, 0.05), (5, 0.936), (1, 0.987), (100, 0.0)]
 )
 def test_use_roads_follows_every_slider_step(stress, use_roads) -> None:
     """Not only at multiples of ten (PR24: rounding to one decimal passed)."""
