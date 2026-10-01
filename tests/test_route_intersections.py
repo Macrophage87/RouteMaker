@@ -400,6 +400,14 @@ class TestWhyTheSearchDoesNotRun:
     def test_the_reasons(self, kwargs, why) -> None:
         assert self.limit(**kwargs) == why
 
+    def test_exactly_the_span_still_runs(self, monkeypatch) -> None:
+        from core import refine
+        from routemaker.geo import Point, haversine
+
+        points = [[0, 0], [0.1, 0]]
+        monkeypatch.setattr(refine, "REFINE_MAX_SPAN_M", haversine(Point(0, 0), Point(0.1, 0)))
+        assert self.limit(points=points) is None
+
     def test_without_the_time_for_a_round(self) -> None:
         assert self.limit(deadline=routing.Deadline(routing.clock() + 3, 35)) == "time"
 

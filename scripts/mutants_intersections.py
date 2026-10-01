@@ -19,6 +19,8 @@ the first pass moved (70, 80: both branches give the same value there), and
 `rounds = REFINE_MAX_ROUNDS if ctx.rate > 0 else CROSSING_ONLY_ROUNDS` is
 guarded twice (crossing targets are only taken in the first
 `CROSSING_ONLY_ROUNDS`), so removing either guard alone changes nothing.
+`slip lane beside a quiet street` (always pricing the slip lane) is masked: a
+junction with no busy road is reset to the neighbourhood cost afterwards.
 """
 
 # ruff: noqa: E501
@@ -224,13 +226,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         INTERSECTIONS,
         "cost = NEIGHBOURHOOD_STOP_FT if j.control in {Control.STOP, Control.ALL_STOP} else 0.0",
         "cost = NEIGHBOURHOOD_STOP_FT if j.control is Control.STOP else 0.0",
-        PURE,
-    ),
-    (
-        "slip lane beside a quiet street",
-        INTERSECTIONS,
-        'take(slip_ft(j.control) if busiest else 0.0, "slip_lane", busiest)',
-        'take(slip_ft(j.control), "slip_lane", busiest)',
         PURE,
     ),
     (

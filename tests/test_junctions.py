@@ -92,6 +92,10 @@ class TestRoadsAt:
     def test_a_road_far_from_the_node_is_not_there(self, grid) -> None:
         assert 40 not in junctions.roads_at([raw()], "weekend", False)[0]
 
+    def test_a_road_a_hundred_metres_away_is_not_at_the_node(self, grid) -> None:
+        near_miss = raw(lon=LON + 0.001, lat=LAT + 0.001)
+        assert junctions.roads_at([near_miss], "weekend", False) == {}
+
     def test_a_junction_no_segment_touches_has_no_entry(self, grid) -> None:
         assert junctions.roads_at([raw(lon=LON + 1)], "weekend", False) == {}
 

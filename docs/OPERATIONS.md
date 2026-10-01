@@ -408,9 +408,9 @@ anyway.
 **Cost per plan.** A plan that crosses a busy road without a signal now asks the
 router for one more route (the search, `core.refine`), one `/trace_attributes`
 for it and up to four `/locate`s, and one more route for the detour warning
-when the plan is long for its straight line. Measured on the live host, loaded:
-an ordinary plan 1 to 3 s before and 3 to 6 s now; at the top of the stress
-slider 6 to 12 s. The budget is unchanged (40 s, 50 s for a long ride). If the
+when the plan is long for its straight line. Measured on the live host: a quiet
+one, an ordinary plan 0.2 to 3 s and above 80 on the stress slider 1 to 8 s; with
+other jobs loading it, 4 to 17 s. The budget is unchanged (40 s, 50 s for a long ride). If the
 api's workers are saturated, the search is the first thing to drop: it does not
 start with less than 11 s left (`REFINE_ROUND_MIN_S` plus
 `REFINE_TRACE_RESERVE_S`) and a round is not begun with less than 5 s, and the

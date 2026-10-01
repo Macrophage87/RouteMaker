@@ -281,6 +281,16 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   default from Node 22.18; `tests/test_frontend.py` runs the same files inside
   pytest, skips on a machine without Node (WSL here) and fails in CI if the
   Node there is older or missing.
+- The junction markers (OWNER-DECISIONS 172) are `lib/intersectionMarkers.ts`
+  (what is listed, worded and drawn, tested without a DOM), `IntersectionList.tsx`
+  (the route summary's list) and `MapView.tsx` (a DOM marker for each, a card on
+  click, the list's click opening the same card); the slider's words, its note at
+  the top end and the detour tiers are `lib/dials.ts`, `lib/dialsPanel.ts` and
+  `lib/summary.ts`. A look at them without the live stack: build the front end,
+  serve it from a Caddy (the repository's Caddyfile, `CADDY_SITE_ADDRESS=:80`) on a
+  private network beside an api container started from the api image with
+  `PYTHONPATH` at the checkout's `src` (`python -m django runserver`), label every
+  container of the check `com.docker.compose.project=isect`, and remove them after.
 - `frontend/.npmrc` turns off npm's update notifier, which otherwise asks the
   registry for npm's latest version on every run in a fresh container.
 - `npm run build` typechecks (`tsc --noEmit`) and then builds `dist/`, which
@@ -1039,12 +1049,13 @@ Crossing avoidance is the same search with the approaches to the worst junctions
 position but Mass Ride's: the new route is kept if its score, router cost plus
 the junction events, is lower.
 
-**Time, alternates and limits** (live router, 2026-10-01, host loaded): an
-ordinary plan answered in 1 to 3 s before; a calm round is a `/route` (0.5 to
-1.5 s), a `/trace_attributes` (0.1 to 0.3 s), the stress and road joins (0.1 to
-0.5 s) and up to four `/locate` calls (0.3 to 0.6 s each), about 2 to 3 s a
-round, so a default plan with a bad crossing is 4 to 6 s and a top-of-slider
-plan 6 to 12 s, inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
+**Time, alternates and limits** (live router, 2026-10-01): a calm round is a
+`/route` (0.5 to 1.5 s), a `/trace_attributes` (0.1 to 0.3 s), the stress and road
+joins (0.1 to 0.5 s) and up to four `/locate` calls (0.3 to 0.6 s each), 1 to 3 s a
+round. On a quiet host a Default plan took 0.2 to 3 s (1 to 3 s before) and a plan
+above 80 1 to 8 s over the 16 trips above; the same plans with other jobs loading
+the host took 4 to 17 s, and the first plan after a process starts a few seconds
+more. All inside the 40 s budget (`routing.PLAN_BUDGET_S`; the search's own
 is `REFINE_BUDGET_S`, 14 s, and it keeps `REFINE_TRACE_RESERVE_S` for the answer).
 The router's limits are not in the way: `max_exclude_locations` is 200,
 `max_alternates` 3 (the search does not use alternates; Valhalla's alternates
@@ -1062,7 +1073,46 @@ are near-optimal in its own cost, which is not where a calmer route is) and
 - where the router's best route is already the calmest it can find, which is not
   a failure (Old Town to Mount Vernon, Reston to Leesburg).
 
-@@AFTER_TABLE@@
+**Measured before and after** (live router and segment table, 2026-10-01, a
+quiet host, `when=weekend`, Default's other settings; each cell is the route's
+length and the miles of it on LTS 3, 4 and Avoid; "before" is the deployed
+code at the old positions 90 and 100, "after" this branch at the same routes'
+new positions 70 and 80 and above them):
+
+| Trip (straight line) | Before, old 90 | Before, old 100 | After, 70 | After, 80 | After, 90 | After, 100 |
+|---|---|---|---|---|---|---|
+| Rockville - Silver Spring (9.2 mi) | 11.0, 5.2 | 12.5, 3.1 | 11.0, 5.2 | 12.5, 3.1 | 13.7, 1.7 | 14.1, 1.9 |
+| Bethesda - Capitol (8.0 mi) | 12.0, 1.3 | 12.0, 1.1 | 12.0, 1.3 | 12.0, 1.1 | 13.3, 1.7 | 13.3, 1.7 |
+| Falls Church - Union Station (8.9 mi) | 11.5, 1.5 | 11.5, 1.5 | 11.5, 1.5 | 12.7, 0.9 | 12.7, 0.9 | 12.7, 0.9 |
+| Vienna - Georgetown (10.9 mi) | 12.9, 0.5 | 12.9, 0.5 | 13.3, 0.3 | 13.3, 0.3 | 13.6, 0.2 | 13.6, 0.2 |
+| Laurel - College Park (9.5 mi) | 13.4, 6.0 | 13.7, 5.9 | 13.4, 6.0 | 13.7, 5.9 | 16.6, 5.3 | 16.6, 5.3 |
+| Old Town - Mount Vernon (7.1 mi) | 10.5, 0.0 | 10.5, 0.0 | 10.5, 0.0 | 10.5, 0.0 | 10.5, 0.0 | 10.5, 0.0 |
+| Reston - Leesburg (15.5 mi) | 16.9, 0.0 | 16.9, 0.0 | 16.9, 0.0 | 16.9, 0.0 | 16.9, 0.0 | 16.9, 0.0 |
+| Columbia - Baltimore (14.5 mi) | 20.2, 7.7 | 20.3, 7.6 | 20.2, 7.7 | 20.3, 7.6 | 20.3, 7.6 | 20.3, 7.6 |
+| Silver Spring - College Park (4.8 mi) | | | | 6.3, 2.3 | 7.1, 0.6 | 7.1, 0.6 |
+| Courthouse - Mount Vernon (12.5 mi) | | | | 19.3, 0.3 | 20.0, 0.1 | 20.0, 0.1 |
+| Bowie - Annapolis (15.6 mi) | | | | 21.7, 13.1 | 31.4, 10.5 | 31.4, 10.5 |
+| Silver Spring - Laurel (12.0 mi) | | | | 16.9, 8.5 | 17.4, 8.3 | 17.4, 8.3 |
+
+What it shows. Positions 70 and 80 plan the old 90 and 100's routes, to the
+mile (Falls Church - Union Station at 80 is the one place crossing avoidance found
+a calmer route, 1.2 mi longer with 0.6 mi less LTS 3-4). Above 80 the slider now
+does what the old top could not: Rockville - Silver Spring goes from 5.2 mi on
+LTS 3-4 at Default to 1.7 mi at 90 for 2.7 mi more riding, Silver Spring - College
+Park from 2.3 to 0.6 mi, and Bowie - Annapolis takes 31.4 mi (1.72 times the direct route's
+18.3 mi, so the planner warns) where position 80's route is 21.7, to cut its LTS 3-4
+from 13.1 to 10.5 mi. Where it does not: 90 and 100 plan the same route on most
+trips, because the search's candidates are nested and the detour per metre of
+busy road a calm candidate costs is almost always under the rate at 90 (1.8); only
+the rare candidate dearer than that (Rockville - Silver Spring) needs the top. And
+on trips whose busy stretches have no calmer way round within the router's reach
+(Columbia - Baltimore, where every exclusion leaves no route; Laurel - College
+Park, where excluding its LTS 3 edges sends the router onto LTS 4 roads, which
+the guard against a busier route refuses) the route stays; Alexandria - Fort
+Washington and Frederick - Urbana did not move above 80 either. Time, a quiet host, `core.routing.plan` in a proof container
+against the live routers: 0.2 to 3 s at Default and 1 to 8 s above 80
+(the same container under load from other jobs: up to 17 s at Default).
+
 
 ### The detour warning
 
