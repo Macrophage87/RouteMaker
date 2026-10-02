@@ -13,10 +13,15 @@ import { formatDistance } from "./format.ts";
 
 export type Severity = JunctionWarning["severity"];
 
-/** The two colours, as the stress map's tokens do: an orange and a red that stay apart on a blue line. */
-export const SEVERITY_COLOURS: Record<Severity, { fill: string; stroke: string; label: string }> = {
-  orange: { fill: "#f59e0b", stroke: "#7c4a03", label: "Higher stress" },
-  red: { fill: "#dc2626", stroke: "#7f1d1d", label: "Very high stress" },
+/**
+ * The two colours, as the stress map's tokens do: an orange and a red that stay
+ * apart on a blue line. Never the colour alone (review r1): each has its own
+ * shape (an orange triangle, a red octagon) and its own word in every list row
+ * (`short`).
+ */
+export const SEVERITY_COLOURS: Record<Severity, { fill: string; stroke: string; label: string; short: string }> = {
+  orange: { fill: "#f59e0b", stroke: "#7c4a03", label: "Higher stress", short: "Higher" },
+  red: { fill: "#dc2626", stroke: "#7f1d1d", label: "Very high stress", short: "Very high" },
 };
 
 /** The icon is this many CSS pixels on a side. */
@@ -32,6 +37,8 @@ export interface JunctionItem extends JunctionWarning {
   where: string;
   /** What a screen reader hears for the marker. */
   label: string;
+  /** The severity in a word, shown at the start of the list row: "Very high". */
+  severityText: string;
 }
 
 /** The route's junctions, in route order, worded; empty when the API had none to say or is older. */
@@ -43,6 +50,7 @@ export function junctionItems(route: Pick<RouteResponse, "intersections"> | null
     index,
     where: `At ${formatDistance(junction.m)}`,
     label: `${SEVERITY_COLOURS[junction.severity].label}: ${junction.reason}`,
+    severityText: SEVERITY_COLOURS[junction.severity].short,
   }));
 }
 
@@ -70,19 +78,30 @@ export function junctionHeadline(counts: JunctionCounts): string {
 export const JUNCTION_HINT =
   "Drag the route away from a marker to plan around the junction. A stop sign on a quiet street is never marked.";
 
+/** The two shapes: a warning triangle for orange, an octagon for red. */
+export const SEVERITY_SHAPES: Record<Severity, string> = {
+  orange: "M12 2.5 22.5 20.5H1.5Z",
+  red: "M8.1 1.5h7.8l5.6 5.6v7.8l-5.6 5.6H8.1l-5.6-5.6V7.1Z",
+};
+
 /**
- * A warning triangle with an exclamation mark, as inline SVG markup for a map
+ * The warning icon with an exclamation mark, as inline SVG markup for a map
  * marker's element: nothing is fetched, so the Content-Security-Policy is
- * unchanged. The same icon for both colours; only the fill differs, and the
- * dark outline keeps either apart from the blue route line and the base map.
+ * unchanged. Orange is a triangle and red an octagon, so the two are told apart
+ * without their colours (an orange and a red are the pair colour-blind riders
+ * most often confuse); the dark outline keeps either apart from the blue route
+ * line and the base map.
  */
 export function warningIconSvg(severity: Severity, size = ICON_PX): string {
   const { fill, stroke } = SEVERITY_COLOURS[severity];
+  const mark =
+    severity === "red"
+      ? `<rect x="11" y="5.5" width="2" height="8" rx="1" fill="#fff"/><circle cx="12" cy="16.6" r="1.3" fill="#fff"/>`
+      : `<rect x="11" y="8.5" width="2" height="6" rx="1" fill="${stroke}"/><circle cx="12" cy="17" r="1.2" fill="${stroke}"/>`;
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" aria-hidden="true" focusable="false">` +
-    `<path d="M12 2.5 22.5 20.5H1.5Z" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-linejoin="round"/>` +
-    `<rect x="11" y="8.5" width="2" height="6" rx="1" fill="${stroke}"/>` +
-    `<circle cx="12" cy="17" r="1.2" fill="${stroke}"/>` +
+    `<path d="${SEVERITY_SHAPES[severity]}" fill="${fill}" stroke="${stroke}" stroke-width="1.6" stroke-linejoin="round"/>` +
+    mark +
     "</svg>"
   );
 }

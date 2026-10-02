@@ -940,7 +940,7 @@ dialog.ride-types::backdrop {
 }
 .junction-item {
   display: grid;
-  grid-template-columns: 18px auto 1fr;
+  grid-template-columns: 18px auto auto 1fr;
   gap: 2px 8px;
   align-items: center;
   width: 100%;
@@ -963,6 +963,10 @@ dialog.ride-types::backdrop {
 }
 .junction-icon {
   line-height: 0;
+}
+.junction-severity {
+  font-weight: 600;
+  white-space: nowrap;
 }
 .junction-where {
   color: var(--text-muted);

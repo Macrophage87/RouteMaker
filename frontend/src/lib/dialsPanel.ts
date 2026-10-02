@@ -6,7 +6,7 @@
  * went unnoticed while the decisions lived in DialsPanel.tsx and
  * FacilityBreakdown.tsx).
  */
-import { AVOID_MAX_SPAN_M, METRES_PER_MILE, SEEK_MAX_SPAN_M, formatRoughDistance } from "./format.ts";
+import { AVOID_MAX_SPAN_M, SEEK_MAX_SPAN_M, formatPerMile, formatRoughDistance } from "./format.ts";
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
@@ -57,11 +57,12 @@ export function calmNote(stress: number): string | undefined {
   const rate = calmRate(stress);
   if (rate <= 0) return undefined;
   return (
-    `Calm detour: up to about ${formatRoughDistance(rate * METRES_PER_MILE)} of extra riding ` +
-    "for every mile of LTS 3 road avoided, and twice that for LTS 4. The route can be many times the straight " +
-    "line, and says how much longer it is."
+    `Calm detour: up to about ${formatPerMile(rate)} of extra riding for every mile of busy road (LTS 3) ` +
+    "avoided, twice that for a heavy-traffic road (LTS 4) and three times for a road best avoided. " +
+    "The route can be many times the straight line, and says how much longer it is."
   );
 }
+
 
 export const MASS_RIDE_HILLS_NOTE =
   "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed.";

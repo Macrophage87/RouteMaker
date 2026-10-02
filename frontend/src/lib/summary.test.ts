@@ -62,9 +62,16 @@ test("the announcement carries distance, moving time and climb", () => {
 // The direct-route notice (OWNER-DECISIONS 164: "just warn people"). The API decides
 // the level (src/routemaker/detour.py); these hold what the words say.
 const MI = 1609.344;
-const direct = (extraMi: number, directMi: number, level: "note" | "warning" | "strong" | null, avoidedMi?: number) => ({
+const direct = (
+  extraMi: number,
+  directMi: number,
+  level: "note" | "warning" | "strong" | null,
+  avoidedMi?: number,
+  stress = 100,
+) => ({
   distance_m: (directMi + extraMi) * MI,
   preset: "default" as const,
+  dials: { stress, hills: 0, when: "weekend" as const, carrying: null, assist: false, avoid_gravel: false },
   detour: {
     basis: "direct_route" as const,
     reference_m: directMi * MI,
@@ -78,18 +85,32 @@ const direct = (extraMi: number, directMi: number, level: "note" | "warning" | "
 test("a strong warning reads like the owner's example, miles first", () => {
   const view = detourView(direct(18, 11.25, "strong"), [GEORGETOWN, ROSSLYN]);
   assert.equal(view?.level, "strong");
-  assert.match(view?.text ?? "", /^This calm route is 2\.6× the direct distance \(\+18\.0 mi, 29\.0 km\)\./);
+  assert.match(view?.text ?? "", /^This calm route is 2\.6× the direct distance, \+18\.0 mi \(29\.0 km\)\./);
   assert.match(view?.text ?? "", /more than twice as far/);
 });
 
 test("a warning is a level of its own, and a note says what the extra distance buys", () => {
   const warning = detourView(direct(6, 10, "warning"), [GEORGETOWN, ROSSLYN]);
   assert.equal(warning?.level, "warning");
-  assert.match(warning?.text ?? "", /^This calm route is 1\.6× the direct distance \(\+6\.0 mi, 9\.7 km\)\./);
-  assert.match(warning?.text ?? "", /longer than most everyday trips/);
+  assert.match(warning?.text ?? "", /^This calm route is 1\.6× the direct distance, \+6\.0 mi \(9\.7 km\)\./);
+  assert.match(warning?.text ?? "", /That is more than 1\.5 times the direct route\./);
   const note = detourView(direct(1.2, 4, "note", 0.8), [GEORGETOWN, ROSSLYN]);
   assert.equal(note?.level, "note");
-  assert.equal(note?.text, "This calm route is 1.3× the direct distance (+1.2 mi, 1.9 km), to avoid 0.8 mi (1.3 km) of LTS 3-4 roads.");
+  assert.equal(
+    note?.text,
+    "This calm route is 1.3× the direct distance, +1.2 mi (1.9 km), to avoid 0.8 mi (1.3 km) of busy roads (LTS 3-4).",
+  );
+});
+
+test("at Default or below the route is not called calm", () => {
+  // Review r1: the detour probe also runs at Default for a route twice the
+  // straight line, and that route was not asked to be calm.
+  const view = detourView(direct(6, 5, "strong", undefined, 70), [GEORGETOWN, ROSSLYN]);
+  assert.match(view?.text ?? "", /^This route is 2\.2× the direct distance/);
+  const top = detourView(direct(6, 5, "strong", undefined, 80), [GEORGETOWN, ROSSLYN]);
+  assert.match(top?.text ?? "", /^This route is/);
+  const calm = detourView(direct(6, 5, "strong", undefined, 81), [GEORGETOWN, ROSSLYN]);
+  assert.match(calm?.text ?? "", /^This calm route is/);
 });
 
 test("no notice within the allowance, and none where the API says there is nothing to say", () => {

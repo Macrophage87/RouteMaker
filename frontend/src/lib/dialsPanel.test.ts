@@ -89,11 +89,12 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.equal(calmNote(80), undefined);
   assert.equal(panelView("default", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   const top = panelView("default", dials, { ...dials, stress: 100 }).traffic.note ?? "";
-  assert.match(top, /^Calm detour: up to about 10 mi \(16 km\) of extra riding for every mile of LTS 3/);
+  assert.match(top, /^Calm detour: up to about 10 mi \(16 km\) of extra riding for every mile of busy road \(LTS 3\)/);
+  assert.match(top, /twice that for a heavy-traffic road \(LTS 4\) and three times for a road best avoided/);
   assert.match(top, /many times the straight line/);
-  // Miles first, and a rate that rises with the position.
-  const middle = calmNote(90) ?? "";
-  assert.match(middle, /about 2 mi \(3 km\)/);
+  // Miles first, to a tenth below ten miles, and a rate that rises with the position.
+  assert.match(calmNote(90) ?? "", /about 1\.8 mi \(2\.9 km\)/);
+  assert.match(calmNote(85) ?? "", /about 0\.6 mi \(1\.0 km\)/);
   // Mass Ride's slider is locked and keeps its own note.
   assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.note, MASS_RIDE_TRAFFIC_NOTE);
 });

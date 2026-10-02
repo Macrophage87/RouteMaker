@@ -8,7 +8,24 @@
  */
 import { MAX_POINTS, insideCoverage, type LonLat } from "./geo.ts";
 import { parsePreset, type PresetId } from "./presets.ts";
-import { fitDials, isCarrying, isWhen, type Dials } from "./dials.ts";
+import { STRESS_DEFAULT_AT, fitDials, isCarrying, isWhen, type Dials } from "./dials.ts";
+
+/**
+ * The link's version. 2 is the traffic slider after its rescale of 2026-10-01
+ * (OWNER-DECISIONS 163): the old 0-100 now sits at 0-80, the old 90 (Default)
+ * at 70, and above 80 is the calm detour search. A link with no `v` is from
+ * before, and its `stress` is mapped onto the new scale (`stressFromV1`), so an
+ * old Default link still opens Default's route and an old Trailmaxxing link the
+ * old top, not the new calm search (review r1, B4).
+ */
+export const PLAN_VERSION = "2";
+
+/** The old slider's position on the new one: old x 70/90 up to 90, then 70 + (old - 90). */
+export function stressFromV1(old: number): number {
+  const OLD_DEFAULT = 90;
+  if (old <= OLD_DEFAULT) return Math.round((old * STRESS_DEFAULT_AT) / OLD_DEFAULT);
+  return STRESS_DEFAULT_AT + Math.round(old - OLD_DEFAULT);
+}
 
 export interface Plan {
   points: LonLat[];
@@ -22,6 +39,7 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
   if (points.length) params.set("p", points.map(([lon, lat]) => `${lon.toFixed(5)},${lat.toFixed(5)}`).join(";"));
   params.set("preset", preset);
   if (dials) {
+    params.set("v", PLAN_VERSION);
     params.set("stress", String(dials.stress));
     params.set("hills", String(dials.hills));
     if (dials.when) params.set("when", dials.when);
@@ -52,8 +70,10 @@ export function decodePlan(hash: string): Plan {
   const preset = parsePreset(params.get("preset"));
   const when = params.get("when");
   const carrying = params.get("carrying");
+  const linked = numberOrUndefined(params.get("stress"));
+  const stress = linked === undefined || params.get("v") === PLAN_VERSION ? linked : stressFromV1(linked);
   const dials = fitDials(preset, {
-    stress: numberOrUndefined(params.get("stress")),
+    stress,
     hills: numberOrUndefined(params.get("hills")),
     when: isWhen(when) ? when : null,
     carrying: isCarrying(carrying) ? carrying : null,

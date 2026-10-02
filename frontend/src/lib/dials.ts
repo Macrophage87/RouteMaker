@@ -75,7 +75,7 @@ export const STARTS: Record<PresetId, Start> = {
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
   "mountain-goat": { stress: 40, hills: 100, seek: true },
   gravel: { stress: 40, hills: 0, seek: true },
-  fast: { stress: 5, hills: 0, seek: true },
+  fast: { stress: 10, hills: 0, seek: true },
   cargo: { stress: 70, hills: -60, seek: true, carrying: { cargo: 70, people: 80 }, assist: true },
   ebike: { stress: 70, hills: -50, seek: true },
 };

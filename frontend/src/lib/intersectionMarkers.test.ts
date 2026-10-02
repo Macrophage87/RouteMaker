@@ -5,6 +5,7 @@ import {
   JUNCTION_HINT,
   MAX_ON_MAP,
   SEVERITY_COLOURS,
+  SEVERITY_SHAPES,
   junctionCounts,
   junctionHeadline,
   junctionItems,
@@ -76,10 +77,26 @@ test("the two colours are an orange and a red, and stay apart", () => {
   assert.notEqual(orange.fill, red.fill);
   assert.match(orange.fill, /^#f59e0b$/);
   assert.match(red.fill, /^#dc2626$/);
-  // The same icon, only the fill differs: the style the Mass Ride plan uses.
+  // Never the colour alone (review r1): a triangle for orange, an octagon for red.
   const a = warningIconSvg("orange");
   const b = warningIconSvg("red");
-  assert.equal(a.replaceAll(orange.fill, "X").replaceAll(orange.stroke, "Y"), b.replaceAll(red.fill, "X").replaceAll(red.stroke, "Y"));
+  assert.ok(a.includes(SEVERITY_SHAPES.orange) && !a.includes(SEVERITY_SHAPES.red));
+  assert.ok(b.includes(SEVERITY_SHAPES.red) && !b.includes(SEVERITY_SHAPES.orange));
+  assert.notEqual(a.replaceAll(orange.fill, "X").replaceAll(orange.stroke, "Y"), b.replaceAll(red.fill, "X").replaceAll(red.stroke, "Y"));
+  // The octagon has eight corners.
+  assert.equal((SEVERITY_SHAPES.red.match(/[hvlHVL]/g) ?? []).length + 1, 8);
+});
+
+test("every list row says its severity in words", () => {
+  const items = junctionItems({
+    intersections: [
+      { m: 100, lon: -77, lat: 38.9, severity: "red", reason: "Crossing a heavy-traffic road (LTS 4), no signal mapped", crossed_tier: 4, movement: "straight", control: "none", kind: "crossing", cost_ft: 3000 },
+      { m: 900, lon: -77, lat: 38.9, severity: "orange", reason: "Slip lane beside a busy road (LTS 3), traffic signal", crossed_tier: 3, movement: "straight", control: "signal", kind: "slip_lane", cost_ft: 800 },
+    ],
+  });
+  assert.deepEqual(items.map((i) => i.severityText), ["Very high", "Higher"]);
+  assert.equal(SEVERITY_COLOURS.red.short, "Very high");
+  assert.equal(SEVERITY_COLOURS.orange.short, "Higher");
 });
 
 test("the icon is inline SVG with nothing to fetch, sized as asked, and hidden from screen readers", () => {

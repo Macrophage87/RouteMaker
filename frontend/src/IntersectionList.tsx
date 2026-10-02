@@ -34,6 +34,7 @@ export function IntersectionList({ route, onSelect }: Props) {
               <li key={item.index}>
                 <button type="button" className={`junction-item junction-${item.severity}`} onClick={() => onSelect(item.index)}>
                   <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(item.severity, 18) }} />
+                  <span className="junction-severity">{item.severityText}</span>
                   <span className="junction-where">{item.where}</span>
                   <span className="junction-reason">{item.reason}</span>
                 </button>

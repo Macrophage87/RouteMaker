@@ -229,6 +229,6 @@ test("the calm rate is nothing up to the old top, then rises exponentially to it
 test("every ride type still starts where it planned before the rescale", () => {
   assert.deepEqual(
     Object.fromEntries(PRESETS.map((p) => [p.id, STARTS[p.id].stress])),
-    { default: 70, trailmaxxing: 80, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 5, cargo: 70, ebike: 70 },
+    { default: 70, trailmaxxing: 80, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70 },
   );
 });
