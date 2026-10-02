@@ -192,7 +192,7 @@ CASES = {
 @pytest.mark.django_db
 @pytest.mark.parametrize("case", list(CASES))
 def test_a_directional_override_keeps_the_fixture_in_the_other_direction(tmp_path, case) -> None:
-    from pipeline.variants import Variant
+    from pipeline.variants import BICYCLE_BACKWARD_CLOSED_VALUE, Variant, is_motor_oneway
 
     source_tags, legal, values, expected, fixture_survives = CASES[case]
     rows = [Override("access", BRIDGE, value) for value in values]
@@ -201,9 +201,23 @@ def test_a_directional_override_keeps_the_fixture_in_the_other_direction(tmp_pat
     assert set(by_variant) == set(Variant)
     for variant, ways in by_variant.items():
         tags = ways[BRIDGE]
+        want, written_rows = expected, values
+        if variant is Variant.NO_TRAIL and is_motor_oneway(source_tags):
+            # The no-trail graph closes contraflow after every approved row and
+            # the fixture (items 192, 193; `pipeline.variants.close_contraflow`):
+            # a row still decides the direction of travel, never the reverse,
+            # and its `bicycle:backward` is rewritten to the closed value.
+            want = (expected[0], False)
+            written_rows = [
+                {
+                    key: BICYCLE_BACKWARD_CLOSED_VALUE if key == "bicycle:backward" else written
+                    for key, written in value.items()
+                }
+                for value in values
+            ]
         # What Valhalla derives first, so the probe fails on the access it
         # would serve rather than on the tag that leads to it.
-        assert _valhalla_access(tags) == expected, (
+        assert _valhalla_access(tags) == want, (
             f"{variant.value}: Valhalla derives the wrong bicycle access from {tags}"
         )
         carried = "rm:bridge_bicycle" in tags
@@ -211,7 +225,7 @@ def test_a_directional_override_keeps_the_fixture_in_the_other_direction(tmp_pat
             f"{variant.value}: the fixture's legality {'is' if carried else 'is not'} "
             f"handed to the transform: {tags}"
         )
-        for value in values:
+        for value in written_rows:
             for key, written in value.items():
                 assert tags.get(key) == written, f"{variant.value}: the approved row is lost"
 
