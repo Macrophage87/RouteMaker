@@ -1168,7 +1168,7 @@ def plan(
     # The calm detour and crossing avoidance (core.refine): the router's own
     # routes, searched for a better score. Only where it can run inside the
     # budget; `refined` says what it did, or why it did not.
-    from . import refine
+    from . import refine, trailseek
 
     refine_context = refine.Context(
         variant=variant,
@@ -1186,6 +1186,9 @@ def plan(
         climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
+        seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
+        schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
+        avoid_gravel=avoid_gravel,
     )
     refined = None
     refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline)

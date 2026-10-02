@@ -52,7 +52,7 @@ from routemaker import intersections as model
 from routemaker import trace_junctions
 from routemaker.geo import Point, haversine
 
-from . import junctions, presets, routing
+from . import junctions, presets, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +209,14 @@ class Context:
     analyses: dict = field(default_factory=dict)
     # Whether the wider search runs after the exclusion rounds (`wide_search_for`).
     wide: bool = False
+    # Whether the trail seek runs after them (`trailseek.seek_for`), the segment
+    # schema it reads, and whether the rider asked to avoid gravel.
+    seek: bool = False
+    schema: str = ""
+    avoid_gravel: bool = False
+    # The ways the exclusion search kept excluding for its best route, which the
+    # seek keeps excluding (set by the search).
+    kept_excludes: list = field(default_factory=list)
 
 
 @dataclass
@@ -411,9 +419,157 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     best, best_trip = _search(trip, best, best_score, first_exposure, stop_at, ctx, info)
     if ctx.wide:
         best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
+    if ctx.seek:
+        best, best_trip = _seek(best, best_trip, first_exposure, ctx, info)
     info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
     info["exposure_after_m"] = round(best.exposure_m, 1)
     return best_trip, info
+
+
+def _through(vias, stop_at, ctx: Context, excludes=()):
+    """The router's route through `vias` (each a `through` location between the
+    start and the end), read: (reading, trip), (None, None) where there is no
+    route or it could not be read, or "time" where the budget or the router ran
+    out. The reading's junctions may be None (the caller decides)."""
+    locations = ctx.request.get("locations") or []
+    request = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}
+    if excludes:
+        request["exclude_locations"] = [{"lon": lon, "lat": lat} for lon, lat in excludes]
+    request["locations"] = [
+        locations[0],
+        *({"lon": lon, "lat": lat, "type": "through"} for lon, lat in vias),
+        locations[-1],
+    ]
+    round_deadline = routing.Deadline(
+        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    )
+    try:
+        answer = routing._call(ctx.variant, "route", request, round_deadline)
+        candidate = answer.get("trip") or {}
+        if not candidate.get("legs"):
+            return None, None
+        read = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+    except routing.RouterRefused:
+        return None, None
+    except (routing.DeadlineExceeded, routing.RouterUnavailable):
+        return "time", None
+    return read, candidate
+
+
+# What a metre of each tier counts in the score (Analysis.exposure_m).
+EXPOSURE_WEIGHTS = {"3": 1.0, "4": 2.0, "5": 3.0}
+
+
+def exposure_spans(analysis: Analysis) -> tuple[list[tuple[float, float, float]], float | None]:
+    """The route's busy stretches as (from, to, weight) in traced metres, and
+    its traced length (None for a route with no pieces)."""
+    spans, along = [], 0.0
+    for piece, (tier, _kind) in zip(analysis.pieces, analysis.classes, strict=False):
+        weight = EXPOSURE_WEIGHTS.get(tier, 0.0)
+        if weight:
+            spans.append((along, along + piece.metres, weight))
+        along += piece.metres
+    return spans, along or None
+
+
+def _seek(best, best_trip, first_exposure, ctx: Context, info: dict):
+    """The trail seek (`core.trailseek`): the router's route through the entry
+    and exit of the best corridors of trail and protected lane near the line,
+    each kept where it scores better and is not busier (the same score and the
+    same Traffic-wins guard as every other candidate). `info["seek"]` says what
+    was found and asked; its own budget is SEEK_BUDGET_S, past the search's."""
+    seek = info["seek"] = {
+        "corridors": 0,
+        "asked": 0,
+        "taken": False,
+        "limited": None,
+        "tried": [],
+    }
+    locations = ctx.request.get("locations") or []
+    if len(ctx.points) != 2 or len(locations) != 2:
+        seek["limited"] = "points"
+        return best, best_trip
+    start, end = ctx.points[0][:2], ctx.points[-1][:2]
+    span = haversine(Point(*start), Point(*end))
+    if span < trailseek.SEEK_MIN_SPAN_M:
+        seek["limited"] = "span"
+        return best, best_trip
+    stop_at = min(
+        routing.clock() + trailseek.SEEK_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S
+    )
+    if stop_at - routing.clock() < trailseek.SEEK_ROUND_MIN_S:
+        seek["limited"] = "time"
+        return best, best_trip
+    shape = [
+        point
+        for leg in best_trip.get("legs") or []
+        for point in routing.decode_polyline6(leg.get("shape", ""))
+    ]
+    step = max(1, len(shape) // 400)
+    guide = [[tuple(start), tuple(end)]] + ([shape[::step] + [shape[-1]]] if shape else [])
+    try:
+        segments = trailseek.corridor_segments(
+            ctx.schema,
+            guide,
+            trailseek.band_m(span),
+            ctx.with_facility,
+            ctx.when,
+            ctx.avoid_gravel,
+        )
+    except Exception:  # noqa: BLE001 - a plan is answered without the seek
+        logger.warning("the trail seek could not read the segment table", exc_info=True)
+        seek["limited"] = "table"
+        return best, best_trip
+    segments = trailseek.in_band(
+        segments, start, end, shape or [tuple(start)], trailseek.band_m(span)
+    )
+    spans, traced_m = exposure_spans(best)
+    corridors = trailseek.find_corridors(segments, start, end, shape, spans, traced_m, ctx.rate)
+    seek["corridors"] = len(corridors)
+    best_score = best.score(ctx)
+    for proposal in trailseek.propose(corridors):
+        if stop_at - routing.clock() < trailseek.SEEK_ROUND_MIN_S:
+            seek["limited"] = "time"
+            break
+        seek["asked"] += 1
+        # With the exclusions the best route so far was found under (so that the
+        # way to a trail is as calm as the way the search found), then, if the
+        # router has no route with them, without.
+        kept = list(ctx.kept_excludes)
+        read, candidate = _through(proposal.vias, stop_at, ctx, kept)
+        if read is None and kept:
+            read, candidate = _through(proposal.vias, stop_at, ctx)
+            kept = []
+        if read == "time":
+            seek["limited"] = "time"
+            break
+        tried = {
+            "excluded": len(kept),
+            "corridors": len(proposal.corridors),
+            "gain_m": round(proposal.gain_m),
+            "detour_m": round(proposal.detour_m),
+            "outcome": "no_route",
+        }
+        seek["tried"].append(tried)
+        if read is None:
+            continue
+        tried["length_m"] = round(read.length_m)
+        tried["exposure_m"] = round(read.exposure_m)
+        if read.events is None:
+            tried["outcome"] = "unread"
+            continue
+        busier = read.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        score = read.score(ctx)
+        tried["score_gain_s"] = round(best_score - score, 1)
+        if busier:
+            tried["outcome"] = "busier"
+        elif score < best_score - IMPROVEMENT_EPS_S:
+            tried["outcome"] = "taken"
+            best, best_trip, best_score = read, candidate, score
+            seek["taken"] = True
+        else:
+            tried["outcome"] = "not_better"
+    return best, best_trip
 
 
 def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
@@ -543,6 +699,7 @@ def _search(trip, best, best_score, first_exposure, stop_at, ctx: Context, info:
         unread = current.events is None
         if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:
             best, best_trip, best_score, stale = current, candidate, score, 0
+            ctx.kept_excludes = [t.point for t in excluded]
         else:
             stale += 1
             if stale >= REFINE_PATIENCE:

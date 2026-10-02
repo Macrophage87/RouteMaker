@@ -381,6 +381,17 @@ class TestTheSearchInTheAnswer:
         assert body["calm_search"]["rate"] == presets.CALM_RATE_MAX
         assert body["dials"]["stress"] == 100
 
+    def test_the_trail_seek_runs_from_the_top_of_the_old_slider(
+        self, client, arterial, router
+    ) -> None:
+        """FOLLOWUP-TRAIL-SEEK: at 100 (rate 10) the search also looks for trail
+        corridors, and says so; below that it does not."""
+        router(world())
+        top = post(client, {**good_body(), "stress": 100}).json()["calm_search"]
+        assert set(top["seek"]) == {"corridors", "asked", "taken", "limited", "tried"}
+        below = post(client, {**good_body(), "stress": 95}).json()["calm_search"]
+        assert below["seek"] is None
+
     def test_a_long_ride_says_why_the_calm_search_did_not_run(
         self, client, arterial, router
     ) -> None:

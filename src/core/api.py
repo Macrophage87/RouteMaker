@@ -412,6 +412,24 @@ class IntersectionOut(Schema):
     cost_ft: int = Field(description="The model's cost, in feet of equivalent quiet riding.")
 
 
+class SeekOut(Schema):
+    """What the trail seek did (`core.trailseek`, OWNER-DECISIONS 194): how many
+    corridors of trail and protected lane it found beside the route, how many
+    routes through them it asked the router for, whether one was kept, and why it
+    stopped short (`points`, `span`, `time`, `table`; null when it ran to its
+    end). `tried` has one row for each route asked for: the corridors it went
+    through, the exposure (weighted metres of LTS 3 and worse) the corridors
+    replaced and the detour they added as the seek estimated them, the route's
+    length and exposure, and `outcome`: `taken`, `not_better`, `busier`,
+    `unread` or `no_route`."""
+
+    corridors: int
+    asked: int
+    taken: bool
+    limited: str | None = None
+    tried: list[dict] = Field(default_factory=list)
+
+
 class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
@@ -431,6 +449,7 @@ class CalmSearchOut(Schema):
     extra_distance_m: float | None = None
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
+    seek: SeekOut | None = None
 
 
 class DetourOut(Schema):

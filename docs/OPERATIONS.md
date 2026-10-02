@@ -447,6 +447,48 @@ can queue inside the routers. Round 1's per-container lock files
 `calm_search.limited` `busy`; a `routemaker-calm-search` directory left in a
 container's or host's temporary directory by round 1 may be deleted.
 
+**The trail seek (FOLLOWUP-TRAIL-SEEK, OWNER-DECISIONS 194, 201).** From a calm rate
+of 10 (stress 100: Trailmaxxing's start and the slider's top) a plan, after the
+exclusion rounds, reads the segment table once and may ask the router for up to
+three more routes (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek"):
+
+- **One query.** `SELECT ... FROM live.segment` for the paths, protected ways
+  and car-free roads at LTS 1 or 2 within 0.9 to 2.5 mi (1.5 to 4 km) of the
+  straight line and the best route so far, at most 30,000 rows, on the
+  geometry index (`ST_DWithin` on the segment geometry index). A few thousand rows on a 20 mi
+  band. The scratch table the measurement used was filled from the stress tiles,
+  not the live table, so the query's own time on the full live table is not
+  measured; if it is slow, the plan's clock shows it as
+  `calm_search.seek` and the plan is answered without it
+  (`limited: "table"` where the query fails).
+- **Up to three router routes**, each with its `/trace_attributes` and its
+  junctions' `/locate`s, about 1 to 2.5 s each on the live host. The seek has
+  its own 6 s budget past the exclusion search's 14 s, and does not start a
+  candidate with less than 2 s of it left; so a plan at the top of the slider
+  is at most 20 s of searching in the budget of 40 s, the same ceiling as
+  before plus the seek. Measured, the seek's own time was within the noise (about 1 s) on most trips and up
+  to 4.8 s on Rockville to Silver Spring at Trailmaxxing; it asks nothing on a route
+  with no busy road on it, which is most plans (6 of 12 trips at Default's costing, 7 at Trailmaxxing's). There is no
+  limit of its own: it runs inside the plan's `ROUTING_CONCURRENCY` slot, so
+  at most that many seeks run at once, as for the search; the router calls are
+  the same one-after-another calls, so the thread notes under "Concurrency"
+  hold.
+- **Reading it.** `calm_search.seek` in the answer says `corridors` found,
+  `asked`, `taken`, why it stopped short (`points`, `span`, `time`, `table`)
+  and one row in `tried` per route asked, with its `outcome`. A run of `table`
+  is a database problem, not a routing one (the log says "the trail seek could
+  not read the segment table" at warning level). A run of `no_route` outcomes
+  means the router refuses the through points (an entry on a way a bicycle
+  cannot use); the plan is unaffected.
+- **Not applicable** to a start and an end with a via point, to a long ride, to
+  a Mass Ride, to a span over 18.6 mi (the search's own limit), or to one under
+  1.2 mi.
+- **Facility.** On a table without the facility column (the live table until
+  the rebuild) the trails are found by their recorded stress rule, so a cycle
+  track mapped on the road itself, which is not trail class, is not a corridor
+  until the rebuild.
+
+
 **Reading the log.** `core.refine` logs at warning level, "the intersection
 events could not be read", when the segment query or `/locate` failed for a
 reason other than the budget; the route is answered without its junction list

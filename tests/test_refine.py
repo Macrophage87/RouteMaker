@@ -12,7 +12,7 @@ import tempfile
 
 import pytest
 
-from core import presets, refine, routing
+from core import presets, refine, routing, trailseek
 from routemaker import intersections as model
 from routemaker.intersections import Control, Event, Movement
 
@@ -767,3 +767,361 @@ class TestWideSearch:
         ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1, 35)
         _kept, info = refine.refine(trip_of("o", 4.0), ctx)
         assert world.requests == [] and info["wide"] == {"asked": 0, "taken": False}
+
+
+class SeekWorld(World):
+    """A World that also records each route request's deadline."""
+
+    def __init__(self, monkeypatch, analyses: dict, routes: list) -> None:
+        super().__init__(monkeypatch, analyses, routes)
+        self.deadlines: list[float] = []
+
+    def call(self, variant, endpoint, payload, deadline):
+        if asks_through(payload):
+            self.deadlines.append(deadline.at - routing.clock())
+        return super().call(variant, endpoint, payload, deadline)
+
+
+KY = 110_540.0
+
+
+def asks_through(request: dict) -> bool:
+    return any(p.get("type") == "through" for p in request["locations"])
+
+
+def trail_segments(lon0=0.01, lon1=0.09, north_m=100.0, step=0.002) -> list:
+    """A trail beside the straight line from BASE 0.1 degrees east, as the
+    segment table's rows (two vertices each)."""
+    n = round((lon1 - lon0) / step)
+    lat = BASE[1] + north_m / KY
+    pts = [(BASE[0] + lon0 + (lon1 - lon0) * i / n, lat) for i in range(n + 1)]
+    return [[a, b] for a, b in zip(pts, pts[1:], strict=False)]
+
+
+ALL_BUSY = analysis("o", "3" * 40, cost_s=4000.0)
+BUSY = "1" * 5 + "4" * 4 + "1" * 5 + "3" * 8 + "1" * 18
+NO_ROUTE = routing.RouterRefused(400, 442, "no path")
+
+
+class TestTrailSeek:
+    """OWNER-DECISIONS 194, FOLLOWUP-TRAIL-SEEK: after the exclusion rounds, the
+    router's route through the entry and exit of the best corridors of trail near
+    the line, each scored and guarded as every other candidate."""
+
+    @pytest.fixture(autouse=True)
+    def trails(self, monkeypatch):
+        self.asked: list[tuple] = []
+        self.segments = trail_segments()
+
+        def table(schema, guide, width_m, has_facility, when, avoid_unpaved=False):
+            self.asked.append((schema, guide, width_m, has_facility, when, avoid_unpaved))
+            if isinstance(self.segments, Exception):
+                raise self.segments
+            return self.segments
+
+        monkeypatch.setattr(trailseek, "corridor_segments", table)
+        route = [(BASE[0] + i * 0.01, BASE[1]) for i in range(11)]
+        monkeypatch.setattr(routing, "decode_polyline6", lambda shape: route)
+
+    def seek_context(self, rate=10.0, deadline_s=40.0) -> refine.Context:
+        ctx = context(rate=rate)
+        ctx.request["locations"] = [
+            {"lon": BASE[0], "lat": BASE[1]},
+            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
+        ]
+        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
+        ctx.deadline = routing.Deadline(routing.clock() + deadline_s, 35)
+        ctx.seek = True
+        ctx.schema = "live"
+        ctx.with_facility = True
+        ctx.when = "weekend"
+        return ctx
+
+    def orig(self, **kw) -> refine.Analysis:
+        return analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0, **kw)
+
+    def run(self, monkeypatch, analyses, routes, ctx=None):
+        # At this rate the exclusion search runs first; the router has no route
+        # for its one round, so what follows is the seek's.
+        world = SeekWorld(monkeypatch, {"o": self.orig(), **analyses}, [NO_ROUTE, *routes])
+        kept, info = refine.refine(trip_of("o", 4.0), ctx or self.seek_context())
+        world.searches = [r for r in world.requests if not asks_through(r)]
+        world.requests = [r for r in world.requests if asks_through(r)]
+        return world, kept["legs"][0]["shape"], info
+
+    def test_off_unless_the_plan_asks(self, monkeypatch) -> None:
+        ctx = self.seek_context()
+        ctx.seek = False
+        world, shape, info = self.run(monkeypatch, {}, [], ctx)
+        assert shape == "o" and world.requests == [] and "seek" not in info and self.asked == []
+
+    def test_the_route_is_asked_for_through_the_corridors_entry_and_exit(self, monkeypatch) -> None:
+        calm = analysis("t", "1" * 45, cost_s=3000.0, shift=100)
+        world, shape, info = self.run(monkeypatch, {"t": calm}, [trip_of("t", 4.5)])
+        assert shape == "t"
+        (request,) = world.requests
+        start, entry, leave, end = request["locations"]
+        assert (entry["type"], leave["type"]) == ("through", "through")
+        assert "alternates" not in request
+        # On the trail, a little inside its ends, in the order ridden.
+        lat = BASE[1] + 100 / KY
+        assert entry["lat"] == pytest.approx(lat) and leave["lat"] == pytest.approx(lat)
+        # The route's busy stretch is 0.025 to 0.05 degrees along: the trail leaves
+        # the route by its start and rejoins it past its end.
+        assert BASE[0] + 0.01 < entry["lon"] <= BASE[0] + 0.0275
+        assert BASE[0] + 0.0475 <= leave["lon"] < BASE[0] + 0.09
+        assert start == {"lon": BASE[0], "lat": BASE[1]}
+        assert end == {"lon": BASE[0] + 0.1, "lat": BASE[1]}
+        seek = info["seek"]
+        assert seek["corridors"] == 1 and seek["asked"] == 1 and seek["taken"] is True
+        assert seek["limited"] is None
+        (tried,) = seek["tried"]
+        assert tried["outcome"] == "taken" and tried["corridors"] == 1
+        assert tried["gain_m"] == pytest.approx(2165, abs=100) and tried["length_m"] == 4500
+        # 1,000 s of cost and 1,000 m of exposure at the rate.
+        assert tried["score_gain_s"] == pytest.approx(1000.0 + QUIET_COST * 10.0 * 1000.0, abs=1.0)
+
+    def test_the_table_is_read_for_the_straight_line_and_the_route(self, monkeypatch) -> None:
+        ctx = self.seek_context()
+        ctx.avoid_gravel = True
+        self.run(monkeypatch, {}, [NO_ROUTE], ctx)
+        ((schema, guide, width, has_facility, when, avoid_unpaved),) = self.asked
+        assert (schema, has_facility, when, avoid_unpaved) == ("live", True, "weekend", True)
+        straight, route = guide
+        assert straight == [tuple(ctx.points[0]), tuple(ctx.points[1])]
+        assert route[0] == (BASE[0], BASE[1]) and route[-1] == (BASE[0] + 0.1, BASE[1])
+        span = 0.1 * 111_320.0 * 0.7782
+        assert width == pytest.approx(trailseek.band_m(span), rel=0.01)
+
+    def test_a_long_route_is_thinned_for_the_query(self, monkeypatch) -> None:
+        long = [(BASE[0] + i * 1e-5, BASE[1]) for i in range(4000)]
+        monkeypatch.setattr(routing, "decode_polyline6", lambda shape: long)
+        self.run(monkeypatch, {}, [NO_ROUTE])
+        route = self.asked[0][1][1]
+        assert 350 <= len(route) <= 450 and route[-1] == long[-1]
+
+    def test_the_best_of_the_candidates_is_kept(self, monkeypatch) -> None:
+        # Two trails one after the other, and a third over the first: three asks.
+        self.segments = (
+            trail_segments(0.01, 0.04)
+            + trail_segments(0.06, 0.09, north_m=-100.0)
+            + trail_segments(0.012, 0.038, north_m=180.0)
+        )
+        better = analysis("a", "1" * 40, cost_s=3500.0, shift=100)
+        best = analysis("b", "1" * 40, cost_s=3000.0, shift=200)
+        worse = analysis("c", "1" * 40, cost_s=4500.0, shift=300)
+        world, shape, info = self.run(
+            monkeypatch,
+            {"o": ALL_BUSY, "a": better, "b": best, "c": worse},
+            [trip_of("a", 4.0), trip_of("b", 4.0), trip_of("c", 4.0)],
+        )
+        assert len(world.requests) == info["seek"]["asked"] == trailseek.SEEK_MAX_CANDIDATES
+        assert shape == "b"
+        assert [t["outcome"] for t in info["seek"]["tried"]] == ["taken", "taken", "not_better"]
+
+    def test_two_corridors_are_asked_for_together_in_order(self, monkeypatch) -> None:
+        self.segments = trail_segments(0.01, 0.04) + trail_segments(0.06, 0.09, north_m=-100.0)
+        analyses = {"o": ALL_BUSY}
+        world, _shape, info = self.run(monkeypatch, analyses, [trip_of("o", 4.0)] * 3)
+        assert info["seek"]["corridors"] == 2
+        first = world.requests[0]["locations"]
+        types = [p.get("type") for p in first]
+        assert types == [None, "through", "through", "through", "through", None]
+        lons = [p["lon"] for p in first]
+        assert lons == sorted(lons)
+        # Then the best alone.
+        assert len(world.requests[1]["locations"]) == 4
+
+    def test_a_busier_route_is_never_taken(self, monkeypatch) -> None:
+        busy = analysis("t", "1" * 10 + "4" * 10 + "1" * 20, cost_s=100.0, shift=100)
+        _w, shape, info = self.run(monkeypatch, {"t": busy}, [trip_of("t", 4.0)])
+        assert shape == "o"
+        assert info["seek"]["tried"][0]["outcome"] == "busier"
+        assert info["seek"]["taken"] is False
+
+    def test_a_route_busier_by_less_than_the_tolerance_is_not_busier(self, monkeypatch) -> None:
+        # The router's own route has 1,000 m of exposure; the allowance is 2% and 50 m.
+        limit = 1000.0 * (1 + refine.EXPOSURE_TOLERANCE) + refine.EXPOSURE_SLACK_M
+        assert limit == pytest.approx(1070.0)
+        for extra, outcome in ((0, "taken"), (1, "busier")):
+            candidate = analysis("t", "1" * 30 + "3" * 10, cost_s=100.0, shift=100)
+            candidate.exposure_m = limit + extra
+            _w, _shape, info = self.run(monkeypatch, {"t": candidate}, [trip_of("t", 4.0)])
+            assert info["seek"]["tried"][0]["outcome"] == outcome
+
+    def test_a_route_that_does_not_beat_the_best_by_the_margin_is_not_taken(
+        self, monkeypatch
+    ) -> None:
+        eps = refine.IMPROVEMENT_EPS_S
+        for gain, outcome in ((eps / 2, "not_better"), (eps + 1, "taken")):
+            cand = analysis("t", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0 - gain, shift=100)
+            _w, shape, info = self.run(monkeypatch, {"t": cand}, [trip_of("t", 4.0)])
+            assert info["seek"]["tried"][0]["outcome"] == outcome
+            assert shape == ("t" if outcome == "taken" else "o")
+
+    def test_a_route_whose_junctions_could_not_be_read_is_not_taken(self, monkeypatch) -> None:
+        unread = analysis("t", "1" * 40, cost_s=100.0, shift=100, events=None)
+        _w, shape, info = self.run(monkeypatch, {"t": unread}, [trip_of("t", 4.0)])
+        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "unread"
+
+    def test_junction_costs_still_count(self, monkeypatch) -> None:
+        # Quieter on paper, but through a worse crossing.
+        crossing = analysis(
+            "t", "1" * 40, cost_s=3900.0, shift=100, events=[event(1500.0, 60_000.0)]
+        )
+        _w, shape, info = self.run(monkeypatch, {"t": crossing}, [trip_of("t", 4.0)])
+        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "not_better"
+
+    def test_no_route_through_the_points_keeps_the_route(self, monkeypatch) -> None:
+        _w, shape, info = self.run(monkeypatch, {}, [NO_ROUTE])
+        assert shape == "o"
+        assert info["seek"]["tried"][0]["outcome"] == "no_route"
+        assert "length_m" not in info["seek"]["tried"][0]
+
+    def test_a_route_with_no_legs_is_no_route(self, monkeypatch) -> None:
+        _w, shape, info = self.run(monkeypatch, {}, [{"legs": []}])
+        assert shape == "o" and info["seek"]["tried"][0]["outcome"] == "no_route"
+
+    def test_the_search_keeps_the_ways_it_excluded_and_asks_with_them(self, monkeypatch) -> None:
+        analyses = {
+            "o": analysis("o", BUSY, cost_s=4000.0),
+            "c": analysis("c", "1" * 20 + "3" * 8 + "1" * 12, cost_s=4300.0),
+            "t": analysis("t", "1" * 40, cost_s=3000.0, shift=100),
+        }
+        routes = [trip_of("c", 4.0), NO_ROUTE, trip_of("t", 4.0)]
+        world = SeekWorld(monkeypatch, analyses, routes)
+        kept, info = refine.refine(trip_of("o", 4.0), self.seek_context(rate=10.0))
+        assert kept["legs"][0]["shape"] == "t"
+        searched = [r for r in world.requests if not asks_through(r)]
+        seek = [r for r in world.requests if asks_through(r)]
+        assert len(seek) == 1 and searched
+        wanted = searched[0]["exclude_locations"]
+        assert seek[0]["exclude_locations"] == wanted and len(wanted) > 0
+        assert info["seek"]["tried"][0]["excluded"] == len(wanted)
+
+    def test_with_no_route_under_the_exclusions_it_asks_again_without(self, monkeypatch) -> None:
+        analyses = {
+            "o": analysis("o", BUSY, cost_s=4000.0),
+            "c": analysis("c", "1" * 20 + "3" * 8 + "1" * 12, cost_s=4300.0),
+            "t": analysis("t", "1" * 40, cost_s=3000.0, shift=100),
+        }
+        routes = [trip_of("c", 4.0), NO_ROUTE, NO_ROUTE, trip_of("t", 4.0)]
+        world = SeekWorld(monkeypatch, analyses, routes)
+        kept, info = refine.refine(trip_of("o", 4.0), self.seek_context(rate=10.0))
+        assert kept["legs"][0]["shape"] == "t"
+        seek = [r for r in world.requests if asks_through(r)]
+        assert len(seek) == 2
+        assert "exclude_locations" in seek[0] and "exclude_locations" not in seek[1]
+        assert info["seek"]["tried"][0]["excluded"] == 0
+
+    def test_no_trail_no_ask(self, monkeypatch) -> None:
+        self.segments = []
+        world, shape, info = self.run(monkeypatch, {}, [])
+        assert world.requests == [] and shape == "o"
+        empty = {"corridors": 0, "asked": 0, "taken": False, "limited": None, "tried": []}
+        assert info["seek"] == empty
+
+    def test_a_table_that_cannot_be_read_keeps_the_route(self, monkeypatch) -> None:
+        self.segments = RuntimeError("the database is down")
+        world, shape, info = self.run(monkeypatch, {}, [])
+        assert world.requests == [] and shape == "o" and info["seek"]["limited"] == "table"
+
+    def test_only_a_start_and_an_end(self, monkeypatch) -> None:
+        ctx = self.seek_context()
+        ctx.points.append([BASE[0] + 0.2, BASE[1]])
+        ctx.request["locations"].append({"lon": BASE[0] + 0.2, "lat": BASE[1]})
+        world, _shape, info = self.run(monkeypatch, {}, [], ctx)
+        assert info["seek"]["limited"] == "points" and self.asked == [] and world.requests == []
+
+    def test_the_points_and_the_locations_must_both_be_two(self, monkeypatch) -> None:
+        ctx = self.seek_context()
+        ctx.points.append([BASE[0] + 0.2, BASE[1]])
+        _w, _shape, info = self.run(monkeypatch, {}, [], ctx)
+        assert info["seek"]["limited"] == "points"
+        ctx = self.seek_context()
+        ctx.request["locations"].append({"lon": BASE[0] + 0.2, "lat": BASE[1]})
+        _w, _shape, info = self.run(monkeypatch, {}, [], ctx)
+        assert info["seek"]["limited"] == "points"
+
+    def test_a_short_span_has_no_room(self, monkeypatch) -> None:
+        ctx = self.seek_context()
+        ctx.points[1] = [BASE[0] + 0.01, BASE[1]]
+        ctx.request["locations"][1] = {"lon": BASE[0] + 0.01, "lat": BASE[1]}
+        _world, _shape, info = self.run(monkeypatch, {}, [], ctx)
+        assert info["seek"]["limited"] == "span" and self.asked == []
+
+    def test_its_own_budget_is_past_the_searchs(self, monkeypatch) -> None:
+        calm = analysis("t", "1" * 40, cost_s=3000.0, shift=100)
+        world, _shape, _info = self.run(monkeypatch, {"t": calm}, [trip_of("t", 4.0)])
+        assert world.deadlines[0] == pytest.approx(trailseek.SEEK_BUDGET_S, abs=0.5)
+
+    def test_the_budget_is_cut_to_what_the_request_has_left(self, monkeypatch) -> None:
+        calm = analysis("t", "1" * 40, cost_s=3000.0, shift=100)
+        ctx = self.seek_context(deadline_s=refine.REFINE_TRACE_RESERVE_S + 3.0)
+        world, _shape, _info = self.run(monkeypatch, {"t": calm}, [trip_of("t", 4.0)], ctx)
+        assert world.deadlines[0] == pytest.approx(3.0, abs=0.5)
+
+    def test_not_asked_without_the_time(self, monkeypatch) -> None:
+        ctx = self.seek_context(deadline_s=refine.REFINE_TRACE_RESERVE_S + 1.0)
+        world, _shape, info = self.run(monkeypatch, {}, [], ctx)
+        assert world.requests == [] and info["seek"]["limited"] == "time"
+        assert self.asked == []
+
+    def test_the_time_running_out_mid_search_ends_it(self, monkeypatch) -> None:
+        self.segments = trail_segments(0.01, 0.04) + trail_segments(0.06, 0.09, north_m=500.0)
+        ran_out = routing.DeadlineExceeded("out of time")
+        world, shape, info = self.run(monkeypatch, {}, [ran_out])
+        assert shape == "o" and info["seek"]["limited"] == "time"
+        assert len(world.requests) == 1 and info["seek"]["tried"] == []
+
+    def test_a_router_that_stops_answering_keeps_the_route(self, monkeypatch) -> None:
+        down = routing.RouterUnavailable("down")
+        _w, shape, info = self.run(monkeypatch, {}, [down])
+        assert shape == "o" and info["seek"]["limited"] == "time"
+
+    def test_a_candidate_is_not_started_with_less_than_the_least(self, monkeypatch) -> None:
+        # Two candidates; the clock jumps after the first one's route is asked.
+        self.segments = trail_segments(0.01, 0.04) + trail_segments(0.06, 0.09, north_m=-100.0)
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        ctx = self.seek_context()
+        routes = [NO_ROUTE] + [trip_of("o", 4.0)] * 3
+        world = SeekWorld(monkeypatch, {"o": ALL_BUSY}, routes)
+        real_call = world.call
+
+        def call(variant, endpoint, payload, deadline):
+            answer = real_call(variant, endpoint, payload, deadline)
+            if asks_through(payload):
+                now[0] += trailseek.SEEK_BUDGET_S - trailseek.SEEK_ROUND_MIN_S + 0.5
+            return answer
+
+        monkeypatch.setattr(routing, "_call", call)
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        asks = [r for r in world.requests if asks_through(r)]
+        assert info["seek"]["limited"] == "time" and len(asks) == 1
+
+
+class TestExposureSpans:
+    def test_each_busy_piece_is_a_span_weighted_by_its_tier(self) -> None:
+        a = analysis("a", "1334155")
+        spans, traced = refine.exposure_spans(a)
+        assert traced == 700.0
+        assert spans == [
+            (100.0, 200.0, 1.0),
+            (200.0, 300.0, 1.0),
+            (300.0, 400.0, 2.0),
+            (500.0, 600.0, 3.0),
+            (600.0, 700.0, 3.0),
+        ]
+
+    def test_a_route_with_no_pieces_has_no_length(self) -> None:
+        a = analysis("a", "1")
+        a.pieces, a.classes = [], []
+        assert refine.exposure_spans(a) == ([], None)
+
+
+class TestSeekRuns:
+    def test_the_plan_runs_it_from_the_top_of_the_old_slider(self) -> None:
+        assert trailseek.seek_for(presets.calm_rate_for(100))
+        assert not trailseek.seek_for(presets.calm_rate_for(99))
+        assert not trailseek.seek_for(presets.calm_rate_for(80))
