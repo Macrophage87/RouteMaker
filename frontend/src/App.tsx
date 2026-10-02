@@ -12,7 +12,7 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
-import { announceRoute, detourView, paceText, pointName } from "./lib/summary.ts";
+import { announceRoute, calmSearchNote, detourView, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
 import { DialsPanel } from "./DialsPanel.tsx";
@@ -793,12 +793,18 @@ function RouteSummary({
 }) {
   const segments = stressSegments(route.stress_m);
   const detour = detourView(route, points);
+  const calmNote = calmSearchNote(route);
   const pace = paceText(route);
   return (
     <div className="summary">
       {detour && (
         <p className={`notice detour detour-${detour.level}`} role="note">
           {detour.text}
+        </p>
+      )}
+      {calmNote && (
+        <p className="hint calm-search" role="note">
+          {calmNote}
         </p>
       )}
       <dl className="stats">

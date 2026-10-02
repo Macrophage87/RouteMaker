@@ -8,6 +8,8 @@ it, what is kept, and why the search stops.
 
 from __future__ import annotations
 
+import tempfile
+
 import pytest
 
 from core import presets, refine, routing
@@ -595,58 +597,30 @@ class TestUnreadJunctions:
         assert kept["legs"][0]["shape"] == "r"
 
 
-class TestSearchSlots:
-    """Review r1, SHOULD_FIX 2: a limit on searches at once, in a process and
-    across the API's processes on the host."""
+class TestNoLimitOfItsOwn:
+    """Review r2, SHOULD_FIX 3: the search runs inside an API routing request,
+    which holds one of the deployment's `ROUTING_CONCURRENCY` advisory-lock
+    slots, so it has no slot of its own; round 1's lock files were dropped."""
 
-    @pytest.fixture(autouse=True)
-    def slots(self, monkeypatch, tmp_path):
-        monkeypatch.setattr(refine, "CALM_SLOT_DIR", str(tmp_path / "slots"))
-        return tmp_path / "slots"
-
-    def test_a_free_slot_is_held_and_given_back(self) -> None:
-        with refine.search_slot() as free:
-            assert free
-        with refine.search_slot() as again:
-            assert again
-
-    def test_one_search_at_a_time_in_a_process(self) -> None:
-        with refine.search_slot() as first, refine.search_slot() as second:
-            assert first and not second
-
-    def test_every_host_slot_taken_is_busy(self, slots) -> None:
-        import fcntl
-
-        slots.mkdir()
-        held = []
-        for number in range(refine.CALM_SEARCHES_PER_HOST):
-            handle = open(slots / f"slot-{number}", "a")  # noqa: SIM115
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            held.append(handle)
-        try:
-            with refine.search_slot() as free:
-                assert not free
-        finally:
-            for handle in held:
-                handle.close()
-        with refine.search_slot() as free:
-            assert free
-
-    def test_a_busy_host_answers_with_the_routers_route_at_once(self, monkeypatch) -> None:
+    def test_the_search_takes_no_slot_and_writes_no_file(self, monkeypatch, tmp_path) -> None:
+        monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
         orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, events=[event(1500.0)])
-        world = World(monkeypatch, {"o": orig}, [])
-        with refine.search_slot():
-            kept, info = refine.refine(trip_of("o", 4.0), context(rate=10.0))
-        assert kept["legs"][0]["shape"] == "o"
-        assert info["limited"] == "busy" and world.requests == []
-        assert info["exposure_before_m"] == orig.exposure_m
+        calm = analysis("c", "1" * 50, cost_s=3000.0, events=[])
+        world = World(monkeypatch, {"o": orig, "c": calm}, [trip_of("c", 5.0)] * 3)
+        kept, info = refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert world.requests and kept["legs"][0]["shape"] == "c"
+        assert info["limited"] != "busy"
+        assert list(tmp_path.iterdir()) == []
+        for name in ("search_slot", "CALM_SLOT_DIR", "CALM_SEARCHES_PER_HOST"):
+            assert not hasattr(refine, name)
 
-    def test_an_unwritable_directory_leaves_the_process_limit(self, monkeypatch, tmp_path) -> None:
-        blocker = tmp_path / "file"
-        blocker.write_text("")
-        monkeypatch.setattr(refine, "CALM_SLOT_DIR", str(blocker / "under-a-file"))
-        with refine.search_slot() as free:
-            assert free
+    def test_a_long_ride_never_runs_it(self) -> None:
+        """Long rides have a pool of their own (`LONG_ROUTING_IN_FLIGHT`); they
+        do not search, so every search is inside a `ROUTING_CONCURRENCY` slot."""
+        deadline = routing.Deadline(routing.clock() + 60, 30)
+        points = [[-77.0, 38.9], [-77.01, 38.91]]
+        assert routing._refine_limit("default", points, True, False, deadline) == "long_ride"
+        assert routing._refine_limit("default", points, False, False, deadline) is None
 
 
 class TestTargets:

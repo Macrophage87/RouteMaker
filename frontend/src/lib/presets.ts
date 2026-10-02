@@ -33,7 +33,8 @@ export const PRESETS: readonly PresetOption[] = [
   {
     id: "trailmaxxing",
     label: "Trailmaxxing",
-    description: "Paths and protected lanes wherever they exist; busy streets only where avoiding them takes much longer, directness second.",
+    description:
+      "The calmest route: paths, protected lanes and quiet streets even when that adds miles, with busy streets only where there is no other way.",
   },
   {
     id: "group-ride",

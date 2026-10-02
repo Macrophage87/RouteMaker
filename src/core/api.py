@@ -417,10 +417,11 @@ class CalmSearchOut(Schema):
     detour at the top of the stress slider and the avoidance of the worst
     crossings. `limited` says why it stopped short, or why it did not run:
     `time`, `no_route` (every way out was excluded), `untraceable`,
-    `excludes` (the router's limit on exclusions was reached), `busy` (other
-    plans held every search slot, so the router's own route was kept at once),
-    `span`, `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to
-    its end."""
+    `excludes` (the router's limit on exclusions was reached), `span`,
+    `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to its
+    end. The planner says `time`, `untraceable`, `span`, `long_ride` and
+    `seeking` to the rider in plain words where the rider asked for the calm
+    detour (frontend/src/lib/summary.ts, `calmSearchNote`)."""
 
     rate: float = Field(description="Metres of detour accepted per metre of LTS 3 avoided.")
     rounds: int

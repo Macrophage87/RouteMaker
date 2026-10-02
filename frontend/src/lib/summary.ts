@@ -46,7 +46,7 @@ export function detourView(
     // of the slider); a route at Default that is long for other reasons is just
     // "this route".
     const calm = (route.dials?.stress ?? 0) > STRESS_TODAYS_TOP;
-    const head = `This ${calm ? "calm " : ""}route is ${ratio.toFixed(1)}× the direct distance, ${formatExtra(found.extra_m)}`;
+    const head = `This ${calm ? "calm " : ""}route is ${ratioText(ratio, found.level)}× the direct distance, ${formatExtra(found.extra_m)}`;
     const buys =
       found.avoided_m && found.avoided_m > 0
         ? `, to avoid ${formatDistance(found.avoided_m)} of busy roads (LTS 3-4).`
@@ -61,6 +61,38 @@ export function detourView(
   const text = straightLineNotice(route, points);
   return text === null ? null : { level: "warning", text };
 }
+
+/**
+ * The ratio as the notice says it: to one decimal, or to two where one would
+ * read as the very threshold the next sentence says it is beyond ("1.5× ...
+ * more than 1.5 times", review r2).
+ */
+function ratioText(ratio: number, level: DetourView["level"]): string {
+  const short = ratio.toFixed(1);
+  const threshold = level === "strong" ? "2.0" : level === "warning" ? "1.5" : null;
+  return short === threshold ? ratio.toFixed(2) : short;
+}
+
+/**
+ * Plain words for a calmer-route search the rider asked for (Traffic above
+ * the old top of the slider) that did not run, or stopped before it was done
+ * (the API's `calm_search.limited`, core.refine), or null where there is
+ * nothing to say: it ran to its end, or was not asked for.
+ */
+export function calmSearchNote(route: Pick<RouteResponse, "calm_search" | "dials" | "preset">): string | null {
+  if (route.preset === "mass-ride" || (route.dials?.stress ?? 0) <= STRESS_TODAYS_TOP) return null;
+  const limited = route.calm_search?.limited;
+  const why = limited ? CALM_SEARCH_LIMITS[limited] : undefined;
+  return why ?? null;
+}
+
+const CALM_SEARCH_LIMITS: Record<string, string> = {
+  time: "The calmer-route search ran out of time, so there may be a calmer route than this one.",
+  untraceable: "The calmer-route search could not read this route, so it is the router's own.",
+  span: `The calmer-route search does not run on trips over ${formatDistance(30_000)} in a straight line, so this is the router's own route.`,
+  long_ride: "The calmer-route search does not run on long rides, so this is the router's own route.",
+  seeking: "The calmer-route search does not run while the Hills slider looks for climbs.",
+};
 
 function straightLineNotice(route: Pick<RouteResponse, "distance_m" | "preset">, points: readonly LonLat[]): string | null {
   if (!detour(points, route.distance_m).flagged) return null;

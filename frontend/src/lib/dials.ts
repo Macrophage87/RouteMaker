@@ -70,7 +70,7 @@ export function calmRate(stress: number): number {
 
 export const STARTS: Record<PresetId, Start> = {
   default: { stress: 70, hills: 0, seek: true },
-  trailmaxxing: { stress: 80, hills: 0, seek: true },
+  trailmaxxing: { stress: 100, hills: 0, seek: true },
   "group-ride": { stress: 40, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
   "mountain-goat": { stress: 40, hills: 100, seek: true },

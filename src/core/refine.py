@@ -44,12 +44,8 @@ looked for and not found.
 from __future__ import annotations
 
 import bisect
-import contextlib
 import logging
 import math
-import os
-import tempfile
-import threading
 from dataclasses import dataclass, field
 
 from routemaker import intersections as model
@@ -120,15 +116,18 @@ QUIET_COST_FACTOR = 2.2
 CLIMB_EQUIVALENT_M = 12.0
 INTERSECTION_WEIGHT_AT_ZERO = 0.25
 
-# How many searches may run at once. Each makes up to about 20 router calls
-# (review r1: 5 rounds of a route, its trace and a /locate, and the detour
-# probe), and the API's sync workers (`WEB_CONCURRENCY` 7 in compose.yaml)
-# outnumber each router's threads (`concurrency` 4 in valhalla/*.json): four
-# concurrent calm plans saturate the standard router. So one search at a time
-# in a process, and CALM_SEARCHES_PER_HOST across the API's processes on the
-# host, by a lock file each (`CALM_SLOT_DIR`). A plan that finds no slot free
-# is answered with the router's own route at once and says so
-# (`limited: "busy"`), rather than queueing behind the others.
+# How many searches run at once. Each makes up to about 20 router calls (review
+# r1: 5 rounds of a route, its trace and the /locates, and the detour probe), one
+# after another, and four at once saturate a router's threads (`concurrency` 4
+# in valhalla/*.json). There is no limit of the search's own: it runs only
+# inside an API routing request, which holds one of the deployment's
+# `ROUTING_CONCURRENCY` slots (`core.ratelimit.ROUTING_IN_FLIGHT`, PostgreSQL
+# advisory locks, 3 on compose's 7 workers), and a long ride - the only
+# request with a pool of its own - never runs it (`routing._refine_limit`);
+# the weekday trail check (`check_weekday_trails`) plans one route at a time. So
+# at most `ROUTING_CONCURRENCY` searches run at once across the deployment,
+# below the router's threads (review r2: the per-process and per-container lock
+# files round 1 added could never all be taken, and were dropped).
 # The wider search (OWNER-DECISIONS 187, an exploration: "Make max calm even
 # higher. Let's see what 150 would do."). The exclusion rounds' candidates are
 # nested - each excludes what the last one rode - so above a rate of about 2 the
@@ -144,64 +143,6 @@ WIDE_SEARCH_FROM_RATE: float | None = None
 WIDE_OFFSETS = (0.25, -0.25, 0.5, -0.5)
 # Spans shorter than this have no room to go wide in.
 WIDE_MIN_SPAN_M = 3000.0
-
-CALM_SEARCHES_PER_PROCESS = 1
-CALM_SEARCHES_PER_HOST = 3
-CALM_SLOT_DIR = os.path.join(tempfile.gettempdir(), "routemaker-calm-search")
-_process_slots = threading.BoundedSemaphore(CALM_SEARCHES_PER_PROCESS)
-
-
-class _Unlocked:
-    """The stand-in for a slot file where files cannot be locked."""
-
-    def close(self) -> None:
-        pass
-
-
-def _host_slot():
-    """An open, locked slot file, or None where every slot is taken. Where
-    locking files is not possible at all (no `fcntl`, an unwritable directory)
-    the per-process limit alone holds, and a stand-in is returned."""
-    try:
-        import fcntl
-    except ImportError:  # pragma: no cover - not on the Linux hosts this runs on
-        return _Unlocked()
-    try:
-        os.makedirs(CALM_SLOT_DIR, exist_ok=True)
-    except OSError:
-        return _Unlocked()
-    for number in range(CALM_SEARCHES_PER_HOST):
-        try:
-            handle = open(os.path.join(CALM_SLOT_DIR, f"slot-{number}"), "a")  # noqa: SIM115
-        except OSError:
-            return _Unlocked()
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            handle.close()
-            continue
-        return handle
-    return None
-
-
-@contextlib.contextmanager
-def search_slot():
-    """True inside while this plan holds a search slot, False where none is
-    free (and then nothing is held)."""
-    if not _process_slots.acquire(blocking=False):
-        yield False
-        return
-    try:
-        held = _host_slot()
-        if held is None:
-            yield False
-            return
-        try:
-            yield True
-        finally:
-            held.close()
-    finally:
-        _process_slots.release()
 
 
 def quiet_cost_per_m(costing: dict) -> float:
@@ -467,13 +408,9 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
     best_score = best.score(ctx)
-    with search_slot() as free:
-        if not free:
-            info["limited"] = "busy"
-            return trip, info
-        best, best_trip = _search(trip, best, best_score, first_exposure, stop_at, ctx, info)
-        if ctx.wide:
-            best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
+    best, best_trip = _search(trip, best, best_score, first_exposure, stop_at, ctx, info)
+    if ctx.wide:
+        best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
     info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
     info["exposure_after_m"] = round(best.exposure_m, 1)
     return best_trip, info

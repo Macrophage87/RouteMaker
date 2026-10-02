@@ -370,11 +370,11 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # "Lowest stress ride, directness secondary": use_roads near
                 # zero, living streets on, low surface avoidance, Cross. The
                 # owner, 2026-09-27, dropping Beginner and Recovery: Trailmaxxing
-                # is the stress slider at its maximum - the maximum of that
-                # day, which is STRESS_TODAYS_TOP now that the slider runs
-                # past it. Whether it should start at the new top is an owner
-                # question (PLAN); hills stay the rider's.
-                stress=STRESS_TODAYS_TOP,
+                # is the stress slider at its maximum; and 2026-10-02 (item 194,
+                # after 187's "Trailmaxxing is about relaxation, not
+                # commuting"), the new maximum, STRESS_MAX, where the calm
+                # detour search runs at CALM_RATE_MAX. Hills stay the rider's.
+                stress=STRESS_MAX,
                 hills=0,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,

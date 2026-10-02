@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { announceRoute, detourNotice, detourView, paceText } from "./summary.ts";
+import { announceRoute, calmSearchNote, detourNotice, detourView, paceText } from "./summary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 
@@ -100,6 +100,39 @@ test("a warning is a level of its own, and a note says what the extra distance b
     note?.text,
     "This calm route is 1.3× the direct distance, +1.2 mi (1.9 km), to avoid 0.8 mi (1.3 km) of busy roads (LTS 3-4).",
   );
+});
+
+test("a ratio that rounds to the threshold it is beyond keeps a second decimal", () => {
+  // Review r2: "1.5× ... more than 1.5 times" when the ratio was 1.52.
+  const warning = detourView(direct(5.2, 10, "warning"), [GEORGETOWN, ROSSLYN]);
+  assert.match(warning?.text ?? "", /^This calm route is 1\.52× the direct distance/);
+  assert.match(warning?.text ?? "", /more than 1\.5 times/);
+  const strong = detourView(direct(10.4, 10, "strong"), [GEORGETOWN, ROSSLYN]);
+  assert.match(strong?.text ?? "", /^This calm route is 2\.04× the direct distance/);
+  // Elsewhere, one decimal.
+  assert.match(detourView(direct(4.4, 10, "note"), [GEORGETOWN, ROSSLYN])?.text ?? "", /is 1\.4×/);
+  assert.match(detourView(direct(5.2, 10, "note"), [GEORGETOWN, ROSSLYN])?.text ?? "", /is 1\.5×/);
+});
+
+test("a calmer-route search that stopped short says so in plain words", () => {
+  const route = (limited: string | null, stress = 100, preset: "default" | "mass-ride" = "default") => ({
+    ...direct(1, 10, null, undefined, stress),
+    preset,
+    calm_search: { rate: 10, rounds: 1, excluded: 2, limited },
+  });
+  assert.match(calmSearchNote(route("time")) ?? "", /^The calmer-route search ran out of time/);
+  assert.match(calmSearchNote(route("untraceable")) ?? "", /could not read this route/);
+  assert.match(calmSearchNote(route("span")) ?? "", /over 18\.6 mi \(30\.0 km\) in a straight line/);
+  assert.match(calmSearchNote(route("long_ride")) ?? "", /long rides/);
+  assert.match(calmSearchNote(route("seeking")) ?? "", /Hills slider/);
+  // Nothing to say: it ran to its end, or ended where the router had no more.
+  for (const limited of [null, "no_route", "excludes", "rounds", "points", "mass_ride"]) {
+    assert.equal(calmSearchNote(route(limited)), null, String(limited));
+  }
+  // Not asked for: at the old top or below, or a Mass Ride; or an older API.
+  assert.equal(calmSearchNote(route("time", 80)), null);
+  assert.equal(calmSearchNote(route("time", 100, "mass-ride")), null);
+  assert.equal(calmSearchNote({ preset: "default", dials: direct(1, 10, null).dials }), null);
 });
 
 test("at Default or below the route is not called calm", () => {
