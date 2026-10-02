@@ -2,18 +2,25 @@
 # ruff: noqa: E501 - report prose and table rows run long
 """Our tier against other agencies' bicycle stress layers, and Baltimore's facility records.
 
-    python scripts/analysis/compare_agency_lts.py moco|arlington|alexandria|baltimore \\
-        --datasets DIR --ways-dir DIR --state-polygons FILE --urban FILE --live-ways FILE --out DIR
+    python scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore \\
+        --datasets DIR --ways-dir DIR --state-polygons FILE --urban FILE --live-ways FILE \\
+        [--roadway reference/roadway.json] --out DIR [--overrides-out fixtures/overrides]
+    python scripts/analysis/compare_agency_lts.py arlington|alexandria ... --internal-out DIR
 
 Each subcommand reads one agency's layer as `scripts/fetch_agency_layer.py` stored it,
-matches it to the OSM ways that lie along it (`pipeline.conflation.conflate_blocks`), classifies
-those ways as the rebuild would (the same inputs `data_before_after.py` uses), and writes a
-Markdown report: a confusion matrix in miles, the disagreement by OSM road class, and the
-largest disagreements, grouped by street and by the pair of tiers.
+matches it to the OSM ways that lie along it (`pipeline.conflation.conflate_blocks`, with the
+rebuild's name rules), classifies those ways as the rebuild would (the same inputs
+`data_before_after.py` uses; with `--roadway`, DC's Roadway Block and Baltimore's centerline
+conflated onto the ways they reach), and writes a Markdown report: a confusion matrix in
+miles, the disagreement by OSM road class, and the largest disagreements, grouped by street
+and by the pair of tiers. `moco` and `baltimore` also write the override files the owner
+approved (OWNER-DECISIONS 181, 182) to `--overrides-out`.
 
 Arlington's Bike Comfort Index and Alexandria's Transport Streets are for INTERNAL
 comparison only (OWNER-DECISIONS 152, 153, 155): their reports name no value that could be
-copied into a fixture, and are written outside the repository.
+copied into a fixture, and go only to `--internal-out`, which is refused inside the
+repository (`internal_output_dir`). The published subcommands refuse a layer under
+`internal-only/` (`agency_roads.refuse_internal_only`).
 """
 
 from __future__ import annotations
@@ -41,7 +48,55 @@ from routemaker.geo import Point, haversine  # noqa: E402
 from routemaker.stress import classify  # noqa: E402
 
 MI = 1609.344
+FT_PER_M = 3.28084
 SKIP = {"proposed", "construction", "platform", "corridor"}
+OVERRIDES = REPO / "fixtures" / "overrides"
+MOCO_FILE = "2026-10-01-owner-moco-lts5-avoid.json"
+BALTIMORE_FILE = "2026-10-01-owner-baltimore-facilities.json"
+
+
+class RefusedOutput(SystemExit):
+    """An internal report pointed somewhere it could be committed."""
+
+
+def internal_output_dir(path: str | Path | None, repo: Path = REPO) -> Path:
+    """Where an internal-only report may be written: anywhere but the repository.
+
+    Review r1: `--out reports/data-comparison` put the Alexandria Transport Streets report
+    into the working tree, untracked and not ignored. OWNER-DECISIONS 155: that data is
+    for internal comparison and is not copied into anything published."""
+    if not path:
+        raise RefusedOutput("an internal comparison needs --internal-out, outside the repository")
+    resolved = Path(path).resolve()
+    root = repo.resolve()
+    if resolved == root or root in resolved.parents:
+        raise RefusedOutput(
+            f"refusing to write an internal-only report inside the repository ({resolved}); "
+            "use a directory outside it, such as /home/steph/rmdata/data/reports/internal"
+        )
+    return resolved
+
+
+def published_layer(path: Path) -> Path:
+    """A layer a published report or override file may be made from."""
+    return agency_roads.refuse_internal_only(path)
+
+
+def existing_override_ways(directory: Path, skip: set[str]) -> dict[str, set[int]]:
+    """The ways each kind of approved override row already names, so a new file never
+    puts a second row of one kind on a way (the loader would refuse a disagreeing one)."""
+    found: dict[str, set[int]] = defaultdict(set)
+    for path in sorted(Path(directory).glob("*.json")):
+        if path.name in skip:
+            continue
+        for row in json.loads(path.read_text()).get("rows", []):
+            found[row["kind"]].add(int(row["osm_way_id"]))
+    return found
+
+
+def slug(text: str) -> str:
+    words = "".join(c if c.isalnum() else "-" for c in text.lower()).split("-")
+    return "-".join(word for word in words if word)
 
 
 def length_m(coords) -> float:
@@ -103,6 +158,38 @@ class Context:
         _t, self.separate = facility.separate_pairs(
             (w.osm_id, w.tags, w.coordinates) for w in self.ways
         )
+        # The agency street layers, as the rebuild conflates them (`--roadway`).
+        self.road_facts: dict[int, agency_roads.WayFacts] = {}
+        self.block_match: dict[int, conflation.Match] = {}
+        roadway = getattr(args, "roadway", None)
+        if roadway:
+            lons = [c[0] for w in self.ways for c in w.coordinates]
+            lats = [c[1] for w in self.ways for c in w.coordinates]
+            west, east, south, north = min(lons), max(lons), min(lats), max(lats)
+            blocks = []
+            for row in json.loads(Path(roadway).read_text()):
+                lon, lat = row["coordinates"][len(row["coordinates"]) // 2]
+                if west <= lon <= east and south <= lat <= north:
+                    blocks.append(
+                        conflation.RoadFeature(
+                            row["id"],
+                            [tuple(c) for c in row["coordinates"]],
+                            agency_roads.RoadFacts.from_json(row["facts"]),
+                        )
+                    )
+            if blocks:
+                entries = [
+                    (w.osm_id, w.coordinates, variants.is_trail_class(w.tags)) for w in self.ways
+                ]
+                self.road_facts, result = conflation.road_facts_by_way(self.ways, entries, blocks)
+                counted = set(self.aadt)
+                for way_id, facts in self.road_facts.items():
+                    filled = conflation.block_count(
+                        way_id, self.by_id[way_id].tags, facts, result, counted
+                    )
+                    if filled is not None:
+                        self.block_match[way_id] = filled
+            print("agency street blocks", len(blocks), "ways matched", len(self.road_facts))
 
     def state_of(self, coords) -> str | None:
         lon, lat = coords[len(coords) // 2]
@@ -115,10 +202,24 @@ class Context:
         hw = way.tags.get("highway")
         return bool(hw) and hw not in SKIP and hw not in TRAIL_CLASS_HIGHWAY
 
+    def class_tags(self, way) -> dict[str, str]:
+        """The tags the classifier reads: the way's own, with the agency street layer's
+        facts overlaid where a block reached it."""
+        facts = self.road_facts.get(way.osm_id)
+        if facts is None:
+            return dict(way.tags)
+        return agency_roads.overlay(
+            dict(way.tags), facts, separate_road=way.osm_id in self.separate
+        ).tags
+
     def classify(self, way, tags=None):
-        tags = dict(way.tags) if tags is None else tags
+        tags = self.class_tags(way) if tags is None else tags
         tags, _ = speed_corrections.corrected(tags, self.speeds.get(way.osm_id))
         aadt = self.aadt.get(way.osm_id)
+        if aadt is None and way.osm_id in self.block_match:
+            block = self.block_match[way.osm_id]
+            aadt = (block.aadt, block.agency, block.year)
+        facts = self.road_facts.get(way.osm_id)
         return classify(
             tags,
             aadt=aadt[0] if aadt else None,
@@ -128,6 +229,7 @@ class Context:
             jurisdiction=self.state_of(way.coordinates),
             divided=way.osm_id in self.divided,
             separate_facility=way.osm_id in self.separate,
+            parking_width_m=facts.parking_reach_m if facts is not None else None,
         )
 
 
@@ -138,11 +240,9 @@ def match(ctx: Context, features: list[conflation.RoadFeature], only_state: str 
     required = {
         w.osm_id for w in ways if w.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
     }
-    vetoed = {
-        w.osm_id for w in ways if w.tags.get("highway") not in agency_roads.NAME_FREE_HIGHWAYS
-    }
+    free = {w.osm_id for w in ways if w.tags.get("highway") in agency_roads.NAME_FREE_HIGHWAYS}
     return conflation.conflate_blocks(
-        entries, features, names, name_required=required, name_vetoed=vetoed
+        entries, features, names, name_required=required, name_free=free
     )
 
 
@@ -272,6 +372,7 @@ def build_records(ctx, result, level_of, ours_of=None):
                 "state": state,
                 "mixed": len({level_of(s.feature_id) for s in shares}) > 1,
                 "share": shares[0].share,
+                "record": shares[0].feature_id,
             }
         )
     return records
@@ -285,8 +386,9 @@ MOCO_OFF_ROAD_BIKEWAYS = {"Sidepath", "Off-Street Trail", "Park Trail", "Stream 
 
 
 def moco(args, ctx: Context) -> None:
-    layer = Path(args.datasets) / "moco-bicycle-lts" / "moco-bicycle-lts.geojson"
+    layer = published_layer(Path(args.datasets) / "moco-bicycle-lts" / "moco-bicycle-lts.geojson")
     features, level, kept, dropped = [], {}, Counter(), Counter()
+    record_name: dict[str, str | None] = {}
     values = Counter()
     for feature in agency_roads.iter_features(layer):
         p = feature["properties"]
@@ -317,6 +419,7 @@ def moco(args, ctx: Context) -> None:
                 conflation.RoadFeature(fid, line, agency_roads.RoadFacts(agency="moco", name=name))
             )
             level[fid] = lts
+            record_name[fid] = name
             kept[lts] += 1
     result = match(ctx, features)
     records = build_records(ctx, result, level.get)
@@ -336,8 +439,14 @@ def moco(args, ctx: Context) -> None:
         "",
         'Source: Montgomery County Planning Department, "Bicycle Level of Traffic Stress" (ArcGIS item '
         "fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01; attribution: Montgomery County Planning "
-        "Department. Our tier is the integration branch's classifier (33ff4da) on the 2026-09-25 extract, "
-        "before the Roadway Block and Baltimore conflations (neither touches Montgomery County).",
+        "Department. Our tier is this branch's classifier on the 2026-09-25 extract, with DC's Roadway "
+        "Block and Baltimore's centerline conflated where they reach (neither covers Montgomery County).",
+        "",
+        "**Owner decisions of 2026-10-01.** Item 180: the largest gap below (we rate LTS 2 where MoCo "
+        "says LTS 1, mostly residential streets) is not changed in this rebuild; it goes to the backlog "
+        "item FOLLOWUP-DECIMAL-STRESS, the routing-only decimal stress model that takes MoCo's levels "
+        "as reference labels. Item 181: MoCo's LTS 5 is loaded as Avoid, in "
+        f"`fixtures/overrides/{MOCO_FILE}` (below).",
         "",
         "## Are LTS 3 and LTS 4 separate? (OWNER-DECISIONS 149)",
         "",
@@ -384,62 +493,115 @@ def moco(args, ctx: Context) -> None:
         disagreements(records, 50, "MoCo LTS"),
         "",
     ]
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "moco-lts-comparison.md").write_text("\n".join(out))
-
-    # The proposed Avoid file: MoCo's LTS 5 roads, a bicycle may legally ride, that we rate below 5.
-    five = [r for r in records if r["theirs"] == 5 and r["ours"] < 5 and r["share"] >= 0.5]
-    rows, seen = [], set()
-    for r in sorted(five, key=lambda r: r["way"]):
+    # The Avoid file (OWNER-DECISIONS 149, 181): MoCo's LTS 5 roads, a bicycle may legally ride,
+    # that we rate below 5. A way is in it where the record it lies along most is LTS 5 and covers
+    # at least half of it; motorways (no bicycle may ride them) and ways an approved file already
+    # curates are left out.
+    cell = [r for r in records if r["theirs"] == 5 and r["ours"] < 5]
+    curated = existing_override_ways(Path(args.overrides_out), {MOCO_FILE})["stress"]
+    rows, kept_records, left_out = [], [], Counter()
+    for r in sorted(cell, key=lambda r: r["way"]):
         way = ctx.by_id[r["way"]]
-        if way.tags.get("highway") in ("motorway", "motorway_link") or r["way"] in seen:
-            continue
-        seen.add(r["way"])
-        slug = "".join(c if c.isalnum() else "-" for c in (way.name or "unnamed").lower()).strip(
-            "-"
+        reason = (
+            "the LTS 5 record covers under half the way"
+            if r["share"] < 0.5
+            else "motorway"
+            if way.tags.get("highway") in ("motorway", "motorway_link")
+            else "already curated"
+            if r["way"] in curated
+            else None
         )
-        slug = "-".join(part for part in slug.split("-") if part)[:40] or "unnamed"
+        if reason:
+            left_out[reason] += r["miles"]
+            continue
+        kept_records.append(r)
+        street = way.name or record_name.get(r["record"])
+        if street:
+            group = slug(street)[:40]
+        else:
+            # An unnamed way is grouped with the unnamed ways near it, not with every unnamed
+            # way in the county (review r1: "moco-lts5-unnamed" held 39 unrelated ways).
+            lon, lat = way.coordinates[len(way.coordinates) // 2]
+            group = f"unnamed-{lat:.2f}n-{abs(lon):.2f}w".replace(".", "-")
         rows.append(
             {
                 "kind": "stress",
                 "osm_way_id": r["way"],
                 "value": {
                     "tier": 5,
-                    "adjustment_id": f"moco-lts5-{slug}",
+                    "adjustment_id": f"moco-lts5-{group}",
                     "category": "other",
                     "visibility": "hidden",
-                    "annotation_status": "proposed",
+                    "annotation_status": "approved",
                     "display": "route_only",
                 },
                 "reason": (
-                    "PROPOSED, not loaded. The owner, 2026-09-30 (OWNER-DECISIONS 149): the Montgomery "
-                    'Planning layer\'s "LTS5, which we can mark as avoid".'
+                    "Legal but avoid. The owner, 2026-09-30 (OWNER-DECISIONS 149), of the Montgomery "
+                    'Planning layer: "They also have an LTS5, which we can mark as avoid." And '
+                    '2026-10-01 (OWNER-DECISIONS 181): "Load it (Recommended)".'
                 ),
                 "evidence": (
-                    f"Montgomery County Planning, Bicycle Level of Traffic Stress (item "
+                    f"Montgomery County Planning Department, Bicycle Level of Traffic Stress (item "
                     f"fb903d1ffbc84b219bdb47629bd02b82), retrieved 2026-10-01: LTS_EXIST 5 along way "
                     f"{r['way']} ({way.name or 'unnamed'}, highway={way.tags.get('highway')}, "
-                    f"{r['miles']:.2f} mi); our tier is {r['ours']} ({r['rule']})."
+                    f"{r['miles']:.2f} mi); tier now {r['ours']} ({r['rule']})."
                 ),
             }
         )
-    proposed = Path(args.out) / "proposed"
-    proposed.mkdir(parents=True, exist_ok=True)
+    file_miles = sum(r["miles"] for r in kept_records)
+    groups = Counter(row["value"]["adjustment_id"] for row in rows)
+    out += [
+        "## LTS 5 as Avoid (OWNER-DECISIONS 149, 181)",
+        "",
+        f"`fixtures/overrides/{MOCO_FILE}`: {len(rows)} ways, {file_miles:.1f} mi, tier 5 (Avoid), hidden, "
+        f"no public note, in {len(groups)} adjustments (one per street; unnamed ways by the "
+        "neighbourhood of about 0.6 mi [1 km] they lie in). Its miles are fewer than the confusion "
+        f"matrix's cell of MoCo LTS 5 with ours below 5 ({sum(r['miles'] for r in cell):.1f} mi), "
+        "because of these filters: "
+        + "; ".join(f"{why}, {m:.1f} mi" for why, m in left_out.most_common())
+        + ". The share filter keeps a way only where the LTS 5 record is the one it lies along for at "
+        "least half its length, so a way that merely ends on an LTS 5 road is not made Avoid.",
+        "",
+        table(
+            ["adjustment", "ways", "miles"],
+            [
+                [
+                    aid,
+                    n,
+                    f"{sum(r['miles'] for r, row in zip(kept_records, rows, strict=True) if row['value']['adjustment_id'] == aid):.2f}",
+                ]
+                for aid, n in sorted(groups.items(), key=lambda kv: (-kv[1], kv[0]))[:40]
+            ],
+        ),
+        "",
+    ]
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "moco-lts-comparison.md").write_text("\n".join(out))
     document = {
         "version": 1,
-        "decided": None,
-        "decided_by": "PROPOSED for the deployment owner; not approved, not loaded",
-        "status": 'proposed (OWNER-DECISIONS 149: "LTS5 ... we can mark as avoid"); needs the owner\'s go before loading',
+        "decided": "2026-10-01",
+        "decided_by": "the deployment owner",
+        "status": (
+            'approved for loading by the owner on 2026-10-01 (OWNER-DECISIONS 181: "Load it '
+            '(Recommended)"), with the Montgomery County Planning Department credit added in the '
+            "same change"
+        ),
         "annotations": (
-            f"{len(rows)} ways, {sum(r['miles'] for r in five if r['way'] in seen):.1f} mi, where the "
-            "county's existing-condition LTS is 5 and ours is below 5. Tier 5 (Avoid), hidden, no public "
-            "note, category other, annotation proposed. Motorways are left out (a bicycle may not ride them)."
+            f"{len(rows)} ways, {file_miles:.1f} mi, where Montgomery County Planning's existing-condition "
+            "LTS (LTS_EXIST) is 5 on the record the way lies along for at least half its length and our "
+            "tier is below 5. Tier 5 (Avoid), hidden, no public note, category other. Motorways (a bicycle "
+            "may not ride them) and ways an approved file already curates are left out. One adjustment per "
+            "street (an unnamed way takes the name of the county record it lies along; a way with neither is grouped by the 0.01-degree cell its midpoint lies in). Licence: "
+            "Montgomery Planning's open terms with attribution to the Montgomery County Planning "
+            "Department (fixtures/datasets/README.md; PLAN.md, the three-question gate of 2026-10-01)."
         ),
         "rows": rows,
     }
-    (proposed / "PROPOSED-moco-lts5-avoid.json").write_text(json.dumps(document, indent=1))
-    print("moco", len(records), f"{miles:.0f} mi; proposed avoid rows {len(rows)}")
+    target = Path(args.overrides_out)
+    target.mkdir(parents=True, exist_ok=True)
+    (target / MOCO_FILE).write_text(json.dumps(document, indent=1) + "\n")
+    print("moco", len(records), f"{miles:.0f} mi; avoid rows {len(rows)}, {file_miles:.1f} mi")
 
 
 # ---------------------------------------------------------------------------------------
@@ -448,6 +610,7 @@ def moco(args, ctx: Context) -> None:
 
 
 def arlington(args, ctx: Context) -> None:
+    out_dir = internal_output_dir(args.internal_out)
     layer = (
         Path(args.datasets)
         / "internal-only"
@@ -514,7 +677,7 @@ def arlington(args, ctx: Context) -> None:
         disagreements(records, 50, "Arlington LTS"),
         "",
     ]
-    out_dir = Path(args.out) / "internal"
+    out_dir = internal_output_dir(args.internal_out)
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "arlington-internal-comparison.md").write_text("\n".join(out))
     print("arlington", len(records), f"{miles:.0f} mi")
@@ -526,6 +689,7 @@ def arlington(args, ctx: Context) -> None:
 
 
 def alexandria(args, ctx: Context) -> None:
+    out_dir = internal_output_dir(args.internal_out)
     streets = (
         Path(args.datasets)
         / "internal-only"
@@ -690,13 +854,15 @@ def alexandria(args, ctx: Context) -> None:
         ),
         "",
     ]
-    out_dir = Path(args.out) / "internal"
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "alexandria-internal-comparison.md").write_text("\n".join(out))
     print("alexandria transport streets", len(records), f"{total:.0f} mi")
 
-    # -- Bike Lane Routes (CC0): OSM ways that lack a lane the city records
-    lanes_layer = (
+
+def alexandria_lanes(args, ctx: Context) -> None:
+    """Bike Lane Routes (CC0): OSM ways that lack a lane the city records. Published; kept apart
+    from the internal Transport Streets comparison so the two never share an output."""
+    lanes_layer = published_layer(
         Path(args.datasets) / "alexandria-bike-lane-routes" / "alexandria-bike-lane-routes.geojson"
     )
     lane_features, lane_kind, kinds = [], {}, Counter()
@@ -740,6 +906,15 @@ def alexandria(args, ctx: Context) -> None:
         [name, kind, f"{m['miles']:.2f}", len(m["ways"]), ", ".join(map(str, m["ways"][:4]))]
         for (name, kind), m in sorted(missing.items(), key=lambda kv: -kv[1]["miles"])[:60]
     ]
+    sharrow = {k: m for k, m in missing.items() if k[1] == "Route Shared Lane"}
+    lanes_only = {k: m for k, m in missing.items() if k[1] != "Route Shared Lane"}
+
+    def total(groups) -> str:
+        return (
+            f"{len(groups)} street/type groups, {sum(len(m['ways']) for m in groups.values())} ways, "
+            f"{sum(m['miles'] for m in groups.values()):.1f} mi"
+        )
+
     out = [
         "# Alexandria Bike Lane Routes against OSM's bike lanes",
         "",
@@ -748,12 +923,27 @@ def alexandria(args, ctx: Context) -> None:
         + ", ".join(f"{k} {v}" for k, v in kinds.most_common())
         + ".",
         "",
-        f"OSM road ways that lie along a city lane, shared-lane or climbing-lane route: those that already "
-        f"carry a `cycleway` lane, track or shared-lane tag total {present:.1f} mi; those that carry none, "
-        f"and so are candidates for a missed facility, are below (grouped by street and record type; "
-        f"`Route Shared Lane` is a sharrow, which the classifier does not credit).",
+        f"OSM road ways that lie along a city lane, shared-lane or climbing-lane route and already carry a "
+        f"`cycleway` lane, track or shared-lane tag: {present:.1f} mi. Those that carry none:",
         "",
-        table(["street", "city record", "miles", "ways", "example ways"], lane_rows),
+        f"* **Candidates for a missed bike lane** (`Route Bike Lanes`, `Route Climbing Lanes`): {total(lanes_only)}.",
+        f"* **Sharrows** (`Route Shared Lane`): {total(sharrow)}. A shared-lane marking is neither a lane "
+        "nor a track, and the classifier does not credit one (the owner: \"Sharrows don't count as "
+        'anything"), so these change no tier; they are listed for OSM completeness only.',
+        "",
+        "### Missed bike lanes",
+        "",
+        table(
+            ["street", "city record", "miles", "ways", "example ways"],
+            [r for r in lane_rows if r[1] != "Route Shared Lane"],
+        ),
+        "",
+        "### Sharrows OSM does not tag",
+        "",
+        table(
+            ["street", "city record", "miles", "ways", "example ways"],
+            [r for r in lane_rows if r[1] == "Route Shared Lane"],
+        ),
         "",
     ]
     (Path(args.out) / "alexandria-bike-lanes-check.md").write_text("\n".join(out))
@@ -789,8 +979,12 @@ def osm_cycleway_values(tags) -> set[str]:
 
 def baltimore(args, ctx: Context) -> None:
     base = Path(args.datasets)
-    facilities = base / "baltimore-bike-facilities" / "baltimore-bike-facilities.geojson"
-    trails = base / "baltimore-multiuse-trails" / "baltimore-multiuse-trails.geojson"
+    facilities = published_layer(
+        base / "baltimore-bike-facilities" / "baltimore-bike-facilities.geojson"
+    )
+    trails = published_layer(
+        base / "baltimore-multiuse-trails" / "baltimore-multiuse-trails.geojson"
+    )
 
     fac_features, fac_kind, counts = [], {}, Counter()
     for feature in agency_roads.iter_features(facilities):
@@ -953,13 +1147,17 @@ def baltimore(args, ctx: Context) -> None:
                     }
                 )
 
+    lane_gaps = [c for c in candidates if c["expected"] in ("lane", "track", "opposite_lane")]
+    sharrow_gaps = [c for c in candidates if c["expected"] in ("shared_lane", "share_busway")]
+    curated = existing_override_ways(Path(args.overrides_out), {BALTIMORE_FILE})
     # Which OSM roads' tiers would change if the city's facility were tagged.
     proposals = []
     for c in candidates:
         if c["expected"] not in ("lane", "track", "opposite_lane"):
             continue
         way = ctx.by_id[c["way"]]
-        tags = dict(way.tags)
+        # The tags the rebuild classifies, the centerline's speed and one-way included.
+        tags = ctx.class_tags(way)
         value = "track" if c["expected"] == "track" else "lane"
         # On both sides where the city records both (FAC_SIDE 2), else on one: on a
         # two-way street a facility on one side earns nothing, on a one-way it does.
@@ -973,13 +1171,13 @@ def baltimore(args, ctx: Context) -> None:
         new = ctx.classify(way, tags)
         c["tier_with"] = int(new.tier)
         c["rule_with"] = new.rule
-        if int(new.tier) < c["tier"]:
+        if int(new.tier) < c["tier"] and c["way"] not in curated["stress"]:
             proposals.append(c)
 
     out = [
         "# Baltimore: the city's bike facilities and trails against OSM",
         "",
-        "Sources, all open-licensed by Baltimore City Code Art. 1 s.9-1(h) (OWNER-DECISIONS 159), credit "
+        "Sources, all open-licensed by Baltimore City Code Art. 1 §9-1(h) (OWNER-DECISIONS 159), credit "
         '"City of Baltimore, Open Baltimore": DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c; '
         f"{sum(counts.values()):.0f} mi of existing facilities, `STATUS1` 4) and Multiuse Trails (item "
         "34260bfb3df74d3994e0c73fde47630b; proposed trails, `mainSpur` of Future Alignment, were excluded at "
@@ -1038,16 +1236,60 @@ def baltimore(args, ctx: Context) -> None:
                             key,
                             (sum(c["miles"] for c in group), [c["way"] for c in group]),
                         )
-                        for key, group in _group(candidates).items()
+                        for key, group in _group(lane_gaps).items()
                     ),
                     key=lambda kv: -kv[1][0],
                 )[:60]
             ],
         ),
         "",
-        f"{len(candidates)} OSM ways ({sum(c['miles'] for c in candidates):.1f} mi) in all; "
-        f"{len(proposals)} of them ({sum(c['miles'] for c in proposals):.1f} mi) would be rated lower "
-        "with the facility tagged, and are in the proposed override file.",
+        "### Shared-lane markings and bus-bike lanes OSM lacks (no tier effect; top 30 by miles)",
+        "",
+        table(
+            [
+                "street",
+                "city facility",
+                "OSM class",
+                "OSM cycleway",
+                "miles",
+                "our tier",
+                "tier with the facility",
+                "ways",
+            ],
+            [
+                [
+                    street,
+                    kind,
+                    klass,
+                    have,
+                    f"{miles:.2f}",
+                    f"LTS {tier}",
+                    f"LTS {tier_with}" if tier_with is not None else "-",
+                    ", ".join(map(str, ways[:3])),
+                ]
+                for (street, kind, klass, have, tier, tier_with), (miles, ways) in sorted(
+                    (
+                        (
+                            key,
+                            (sum(c["miles"] for c in group), [c["way"] for c in group]),
+                        )
+                        for key, group in _group(sharrow_gaps).items()
+                    ),
+                    key=lambda kv: -kv[1][0],
+                )[:30]
+            ],
+        ),
+        "",
+        f"{len(candidates)} OSM ways ({sum(c['miles'] for c in candidates):.1f} mi) in all. Of them, "
+        f"**{len(lane_gaps)} ways ({sum(c['miles'] for c in lane_gaps):.1f} mi) lack the bike lane or track** "
+        "the city records (bike lane, buffered, separated or contraflow lane), and "
+        f"{len(sharrow_gaps)} ways ({sum(c['miles'] for c in sharrow_gaps):.1f} mi) lack only a shared-lane "
+        "marking or a shared bus-bike lane, which is neither a lane nor a track and which the classifier "
+        "does not credit. "
+        f"{len(proposals)} of the lane and track ways ({sum(c['miles'] for c in proposals):.1f} mi) would be "
+        f"rated lower with the facility tagged, and are the stress rows of `fixtures/overrides/{BALTIMORE_FILE}` "
+        "(OWNER-DECISIONS 182, loaded). The tiers are this branch's, with the city's centerline conflated "
+        "(its speed only where OSM has none, OWNER-DECISIONS 184).",
         "",
         "## Paths, sidepaths and multiuse trails",
         "",
@@ -1064,10 +1306,10 @@ def baltimore(args, ctx: Context) -> None:
         "",
         f"OSM footways and paths that lie along a city path or trail and carry no bicycle permission "
         f"(`bicycle` is not yes, designated or permissive, and not a mapper's `no` or `dismount`), lying along "
-        f"the city line for at least 80% of their length and at least 15 m long: {len({a['way'] for a in access_rows})} ways, "
+        f"the city line for at least 80% of their length and at least 50 ft [15 m] long: {len({a['way'] for a in access_rows})} ways, "
         f"{sum(a['miles'] for a in {a['way']: a for a in access_rows}.values()):.1f} mi. The Veirs Mill case "
-        "(OWNER-DECISIONS 115) was this: a paved sidepath mapped as a sidewalk. They are in the proposed file "
-        "as `bicycle=designated` access rows.",
+        "(OWNER-DECISIONS 115) was this: a paved sidepath mapped as a sidewalk. They are the "
+        f"`bicycle=designated` access rows of `fixtures/overrides/{BALTIMORE_FILE}`.",
         "",
         table(
             ["street or trail", "city layer", "OSM class", "OSM bicycle", "miles", "way"],
@@ -1120,34 +1362,29 @@ def baltimore(args, ctx: Context) -> None:
                 ]
             )
 
-    # The proposed override file: stress rows for the roads, access rows for the sidepaths.
+    # The override file (OWNER-DECISIONS 182): stress rows for the roads, access rows for the
+    # sidepaths.
     rows = []
     for c in sorted(proposals, key=lambda c: c["way"]):
-        slug = "-".join(
-            part
-            for part in "".join(ch if ch.isalnum() else "-" for ch in c["street"].lower()).split(
-                "-"
-            )
-            if part
-        )[:40]
+        street = slug(c["street"])[:40] or "unnamed"
         rows.append(
             {
                 "kind": "stress",
                 "osm_way_id": c["way"],
                 "value": {
                     "tier": c["tier_with"],
-                    "adjustment_id": f"baltimore-{c['expected']}-{slug or 'unnamed'}-lts{c['tier_with']}"[
+                    "adjustment_id": f"baltimore-{c['expected']}-{street}-lts{c['tier_with']}"[
                         :64
-                    ],
+                    ].rstrip("-"),
                     "category": "other",
                     "visibility": "hidden",
-                    "annotation_status": "proposed",
+                    "annotation_status": "approved",
                     "display": "route_only",
                 },
                 "reason": (
-                    "PROPOSED, not loaded. The City of Baltimore's DOT records a "
-                    f"{c['kind'].lower()} on this street that OSM does not carry; the tier is what the classifier "
-                    "gives with the facility tagged. The durable fix is the OSM edit."
+                    'The owner, 2026-10-01 (OWNER-DECISIONS 182): "Load Baltimore facilities". The City of '
+                    f"Baltimore's DOT records a {c['kind'].lower()} on this street that OSM does not carry; the "
+                    "tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit."
                 ),
                 "evidence": (
                     f"Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved "
@@ -1158,14 +1395,17 @@ def baltimore(args, ctx: Context) -> None:
         )
     access = []
     for a in sorted({a["way"]: a for a in access_rows}.values(), key=lambda a: a["way"]):
+        if a["way"] in curated["access"]:
+            continue
         access.append(
             {
                 "kind": "access",
                 "osm_way_id": a["way"],
                 "value": {"bicycle": "designated"},
                 "reason": (
-                    "PROPOSED, not loaded. The City of Baltimore records a path or multiuse trail along this way "
-                    "and OSM tags it without bicycle access; the same correction as the Veirs Mill sidepath."
+                    'The owner, 2026-10-01 (OWNER-DECISIONS 182): "Load Baltimore facilities". The City of '
+                    "Baltimore records a path or multiuse trail along this way and OSM tags it without bicycle "
+                    "access; the same correction as the Veirs Mill sidepath (OWNER-DECISIONS 115)."
                 ),
                 "evidence": (
                     f"Open Baltimore ({a['label']}): {a['street']}; OSM way {a['way']} highway={a['highway']}, "
@@ -1173,30 +1413,37 @@ def baltimore(args, ctx: Context) -> None:
                 ),
             }
         )
-    proposed = out_dir / "proposed"
-    proposed.mkdir(exist_ok=True)
-    (proposed / "PROPOSED-baltimore-facilities.json").write_text(
+    target = Path(args.overrides_out)
+    target.mkdir(parents=True, exist_ok=True)
+    (target / BALTIMORE_FILE).write_text(
         json.dumps(
             {
                 "version": 1,
-                "decided": None,
-                "decided_by": "PROPOSED for the deployment owner; not approved, not loaded",
-                "status": "proposed; needs the owner's go before loading. OSM edits upstream are the durable fix.",
+                "decided": "2026-10-01",
+                "decided_by": "the deployment owner",
+                "status": (
+                    'approved for loading by the owner on 2026-10-01 (OWNER-DECISIONS 182: "Load Baltimore '
+                    'facilities"). OSM edits upstream are the durable fix.'
+                ),
                 "annotations": (
                     f"{len(rows)} stress rows (roads whose city bike lane or track OSM lacks, tier from the "
-                    f"classifier with the facility tagged, hidden, no public note) and {len(access)} access rows "
-                    "(bicycle=designated on footways and paths the city records as paths or trails)."
+                    "classifier with the facility tagged and the city's centerline conflated, hidden, no public "
+                    f"note) and {len(access)} access rows (bicycle=designated on footways and paths the city "
+                    "records as paths or trails). Source: Open Baltimore, DOT BMC Bike Facilities and "
+                    "Multiuse Trails, open-licensed by Baltimore City Code Art. 1 §9-1(h) (OWNER-DECISIONS "
+                    "159), credit City of Baltimore, Open Baltimore."
                 ),
                 "rows": rows + access,
             },
             indent=1,
         )
+        + "\n"
     )
     print(
         "baltimore candidates",
         len(candidates),
-        "proposals",
-        len(proposals),
+        "stress rows",
+        len(rows),
         "access",
         len(access),
         "missing paths",
@@ -1215,20 +1462,37 @@ def _group(candidates):
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("dataset", choices=["moco", "arlington", "alexandria", "baltimore"])
+    parser.add_argument(
+        "dataset", choices=["moco", "arlington", "alexandria", "alexandria-lanes", "baltimore"]
+    )
     parser.add_argument("--datasets", required=True)
     parser.add_argument("--ways-dir", required=True)
     parser.add_argument("--state-polygons", required=True)
     parser.add_argument("--urban", required=True)
     parser.add_argument("--live-ways", required=True)
-    parser.add_argument("--out", required=True)
+    parser.add_argument("--roadway", help="reference/roadway.json, to classify as the rebuild does")
+    parser.add_argument("--out", help="the published reports' directory")
+    parser.add_argument(
+        "--internal-out", help="internal-only reports; refused inside the repository"
+    )
+    parser.add_argument("--overrides-out", default=str(OVERRIDES))
     args = parser.parse_args()
+    internal = args.dataset in ("arlington", "alexandria")
+    if internal:
+        internal_output_dir(args.internal_out)  # refuse before the slow part
+    elif not args.out:
+        parser.error("--out is required")
     started = time.monotonic()
-    ctx = Context(args, args.dataset)
+    region = "alexandria" if args.dataset == "alexandria-lanes" else args.dataset
+    ctx = Context(args, region)
     print("context", len(ctx.ways), "ways", f"{time.monotonic() - started:.0f}s", flush=True)
-    {"moco": moco, "arlington": arlington, "alexandria": alexandria, "baltimore": baltimore}[
-        args.dataset
-    ](args, ctx)
+    {
+        "moco": moco,
+        "arlington": arlington,
+        "alexandria": alexandria,
+        "alexandria-lanes": alexandria_lanes,
+        "baltimore": baltimore,
+    }[args.dataset](args, ctx)
     print(f"{time.monotonic() - started:.0f}s")
     return 0
 

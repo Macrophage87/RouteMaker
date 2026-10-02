@@ -805,9 +805,9 @@ class TestTheProvisionHierarchy:
         assert shoulder.tier == painted.tier, (
             "with the parking declared there is no unknown left for the two to differ about"
         )
-        # Not denied outright: a strip that clears the beside-parking criterion
-        # earns exactly what a bike lane of that width earns.
-        wide = classify_rural({**street, "shoulder": "both", "shoulder:width": "4.5"})
+        # Not denied outright: a strip that clears the beside-parking criterion (15 ft,
+        # 4.57 m) earns exactly what a bike lane of that width earns.
+        wide = classify_rural({**street, "shoulder": "both", "shoulder:width": "4.6"})
         assert wide.tier is Stress.LTS1
         assert "paved shoulder" in wide.rule
 
@@ -1273,17 +1273,19 @@ class TestThePinnedFurthWidths:
     nothing measured a road near either boundary, so a door-zone stripe and a
     usable lane scored the same.
 
-    The right-hand sides below are typed in from Furth, "Level of Traffic Stress
-    Criteria for Road Segments, version 2.0" (2017), bike-lane table, converted
-    from the published feet: a lane alongside a parking lane is measured as the
-    bike lane plus the parking lane at 13.5 ft, and a lane with nothing parked
-    beside it is measured on its own at 5.5 ft. They do not move when the
-    constants do, which is what makes rescaling either one a failure here.
+    The right-hand sides below are typed in from the published feet: a lane
+    alongside a parking lane is measured by its reach, the bike lane plus the
+    parking lane, and is adequate at 15 ft (Mekuria, Furth & Nixon, MTI Report
+    11-19, 2012, Table 2: 15 ft or more LTS 1, 14 to 14.5 ft LTS 2, 13.5 ft or
+    less LTS 3; the same line in Furth's v2.0 and v2.2 tables). Review r1 found
+    it at 13.5 ft, the top of the narrow bin. A lane with nothing parked beside
+    it is measured on its own at 5.5 ft. They do not move when the constants
+    do, which is what makes rescaling either one a failure here.
     """
 
     def test_the_beside_parking_criterion_is_furths(self) -> None:
-        assert FURTH_LANE_BESIDE_PARKING_M == 4.1
-        assert FURTH_LANE_BESIDE_PARKING_M == pytest.approx(13.5 * 0.3048, abs=0.03)
+        assert FURTH_LANE_BESIDE_PARKING_M == pytest.approx(4.572, abs=0.001)
+        assert FURTH_LANE_BESIDE_PARKING_M == pytest.approx(15 * 0.3048, abs=0.001)
 
     def test_the_lane_alone_criterion_is_furths(self) -> None:
         assert FURTH_LANE_ALONE_M == 1.7
@@ -2434,7 +2436,8 @@ class TestADecentLaneStopsAtThreeLanes:
 
 class TestParkingWidthBesideABikeLane:
     """An agency's parking-lane width (agency_roads; DC's Roadway Block): Furth
-    measures a lane beside parking as the lane plus the parking lane, 13.5 ft."""
+    measures a lane beside parking by its reach, the lane plus the parking lane,
+    adequate at 15 ft (MTI 11-19, Table 2)."""
 
     LANE = {
         "highway": "residential",
@@ -2447,15 +2450,21 @@ class TestParkingWidthBesideABikeLane:
         tags = {**self.LANE, "cycleway:both:width": str(width_m), **extra}
         return int(classify(tags, parking_width_m=parking_width_m).tier)
 
-    def test_a_six_foot_lane_beside_eight_feet_of_parking_is_adequate(self) -> None:
-        # 1.83 m + 2.44 m = 4.27 m, over Furth's 4.1 m (13.5 ft).
-        assert self.tier(1.83, 2.44) == 1
+    def test_a_seven_foot_lane_beside_eight_feet_of_parking_is_adequate(self) -> None:
+        # 2.14 m + 2.44 m = 4.58 m (15 ft), Furth's adequate reach.
+        assert self.tier(2.14, 2.44) == 1
+
+    def test_a_reach_of_fourteen_feet_is_furths_lts_2(self) -> None:
+        # 5 ft + 9 ft = 14 ft (1.52 m + 2.74 m = 4.27 m): LTS 2 in MTI 11-19's
+        # table, which the 13.5 ft criterion of review r1 had as LTS 1.
+        assert self.tier(1.52, 2.74) == 2
+        assert self.tier(1.83, 2.44) == 2
 
     def test_the_same_lane_is_narrow_when_the_parking_lane_is_not_known(self) -> None:
-        assert self.tier(1.83, None) == 2
+        assert self.tier(2.14, None) == 2
 
     def test_a_five_foot_lane_beside_eight_feet_of_parking_is_still_a_door_zone(self) -> None:
-        # 1.52 m + 2.44 m = 3.96 m, under 4.1 m.
+        # 1.52 m + 2.44 m = 3.96 m (13 ft), under 15 ft.
         assert self.tier(1.52, 2.44) == 2
 
     def test_a_lane_with_nothing_parked_beside_it_is_judged_on_its_own_width(self) -> None:

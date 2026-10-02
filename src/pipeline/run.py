@@ -925,50 +925,19 @@ def build_handlers(
         reference = context.require_reference()
         if not reference.road_blocks:
             return
-        names = {way.osm_id: way.name for way in context.ways}
-        result = conflation.conflate_blocks(
-            entries,
-            reference.road_blocks,
-            names,
-            name_required={
-                way.osm_id
-                for way in context.ways
-                if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
-            },
-            name_vetoed={
-                way.osm_id
-                for way in context.ways
-                if way.tags.get("highway") not in agency_roads.NAME_FREE_HIGHWAYS
-            },
-        )
-        blocks = {block.feature_id: block for block in reference.road_blocks}
-        by_way: dict[int, agency_roads.WayFacts] = {}
-        for way_id, shares in result.matched.items():
-            members = [(share.feature_id, blocks[share.feature_id].facts) for share in shares]
-            agreements = [share.names_agree for share in shares]
-            names_agree = (
-                None
-                if all(a is None for a in agreements)
-                else all(a is not False for a in agreements)
-            )
-            facts = agency_roads.aggregate(members, names_agree)
-            by_way[way_id] = facts
-            if facts.aadt and way_id not in context.aadt_by_way:
-                context.aadt_by_way[way_id] = conflation.Match(
-                    osm_way_id=way_id,
-                    feature_id=shares[0].feature_id,
-                    aadt=facts.aadt,
-                    source="inventory",
-                    year=facts.aadt_year,
-                    score=result.coverage[way_id],
-                    agency=facts.agency,
-                )
+        by_way, result = conflation.road_facts_by_way(context.ways, entries, reference.road_blocks)
+        tags_of = {way.osm_id: way.tags for way in context.ways if way.osm_id in by_way}
+        counted = set(context.aadt_by_way)
+        for way_id, facts in by_way.items():
+            match = conflation.block_count(way_id, tags_of[way_id], facts, result, counted)
+            if match is not None:
+                context.aadt_by_way[way_id] = match
         context.road_facts_by_way = by_way
         per_agency = Counter(facts.agency for facts in by_way.values())
         logger.info(
             "agency street blocks: %d of %d blocks matched ways (%s), %d ways matched",
-            len(blocks) - len(result.unmatched_features),
-            len(blocks),
+            len(reference.road_blocks) - len(result.unmatched_features),
+            len(reference.road_blocks),
             ", ".join(f"{agency} {count}" for agency, count in sorted(per_agency.items())),
             len(by_way),
         )
@@ -1042,11 +1011,19 @@ def build_handlers(
                 # speed, lanes, one-way, bike lane and parking it records take
                 # precedence, and the curated speed below fills only what is
                 # still missing.
-                overlaid = agency_roads.overlay(tags, facts)
+                # A bike facility OSM maps as its own way beside the road
+                # stays there, never written onto the road (review r1).
+                overlaid = agency_roads.overlay(
+                    tags, facts, separate_road=way.osm_id in separate_roads
+                )
                 tags = overlaid.tags
                 context.class_tags_by_way[way.osm_id] = tags
+                # The count's source is the count the classifier reads below:
+                # DDOT's or VDOT's where a count layer reached the way, the
+                # block's only where none did.
+                sources = {**overlaid.sources, "aadt": agency_roads.aadt_source(match)}
                 context.road_attr_sources[way.osm_id] = (
-                    *sorted(overlaid.sources.items()),
+                    *sorted(sources.items()),
                     *(("blocks", block) for block in facts.blocks[:MAX_RECORDED_BLOCKS]),
                 )
                 if overlaid.disagreements:
@@ -1066,11 +1043,7 @@ def build_handlers(
                 jurisdiction=state_of.get(way.osm_id),
                 divided=way.osm_id in divided_ways,
                 separate_facility=way.osm_id in separate_roads,
-                parking_width_m=(
-                    facts.parking_width_ft * agency_roads.METRES_PER_FOOT
-                    if facts is not None and facts.parking_width_ft
-                    else None
-                ),
+                parking_width_m=facts.parking_reach_m if facts is not None else None,
             )
             if overlaid is not None:
                 context.stress_by_way[way.osm_id] = replace(

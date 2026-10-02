@@ -17,9 +17,12 @@ from pipeline.conflation import (
     MAX_SEPARATION_M,
     MIN_BLOCK_COVERAGE,
     MIN_BLOCK_PROBES,
+    Match,
     RoadFeature,
     _probes_with_headings,
+    block_count,
     conflate_blocks,
+    road_facts_by_way,
 )
 from routemaker.agency_roads import DC_AGENCY, RoadFacts
 
@@ -300,7 +303,7 @@ def test_a_frontage_road_is_not_the_arterial_beside_it() -> None:
     avenue = block("avenue", line((0, 0), (200, 0)), "NEW YORK AVE NE")
     frontage = way(1, line((0, 12), (200, 12)))
     assert conflate_blocks([frontage], [avenue], {1: "36th Place Northeast"}).matched != {}
-    vetoed = conflate_blocks([frontage], [avenue], {1: "36th Place Northeast"}, name_vetoed={1})
+    vetoed = conflate_blocks([frontage], [avenue], {1: "36th Place Northeast"}, name_free=set())
     assert vetoed.matched == {}
     assert vetoed.unmatched_features == ["avenue"]
 
@@ -312,7 +315,7 @@ def test_the_veto_leaves_the_block_whose_name_agrees() -> None:
         [way(1, line((0, 12), (200, 12)))],
         [avenue, frontage],
         {1: "36th Place Northeast"},
-        name_vetoed={1},
+        name_free=set(),
     )
     assert [s.feature_id for s in result.matched[1]] == ["frontage"]
 
@@ -322,23 +325,23 @@ def test_the_veto_does_not_reach_a_way_with_no_name_or_a_block_with_none() -> No
     assert (
         1
         in conflate_blocks(
-            [way(1, line((0, 3), (200, 3)))], [street], {1: "K Street"}, name_vetoed={1}
+            [way(1, line((0, 3), (200, 3)))], [street], {1: "K Street"}, name_free=set()
         ).matched
     )
     named = block("k", line((0, 0), (200, 0)), "K ST NW")
     assert (
         1
         in conflate_blocks(
-            [way(1, line((0, 3), (200, 3)))], [named], {1: None}, name_vetoed={1}
+            [way(1, line((0, 3), (200, 3)))], [named], {1: None}, name_free=set()
         ).matched
     )
 
 
-def test_a_way_outside_the_vetoed_set_keeps_a_mismatched_name() -> None:
+def test_a_name_free_way_keeps_a_mismatched_name() -> None:
     """An interstate is OSM's 'Anacostia Freeway' and DC's 'INTERSTATE 295'."""
     interstate = block("i295", line((0, 0), (200, 0)), "INTERSTATE 295 I BN")
     result = conflate_blocks(
-        [way(1, line((0, 8), (200, 8)))], [interstate], {1: "Anacostia Freeway"}, name_vetoed=set()
+        [way(1, line((0, 8), (200, 8)))], [interstate], {1: "Anacostia Freeway"}, name_free={1}
     )
     assert result.matched[1][0].names_agree is False
 
@@ -380,3 +383,102 @@ def test_a_block_that_only_touches_the_end_of_a_matched_way_is_unmatched() -> No
     result = conflate_blocks([way(1, line((0, 0), (200, 0)))], [along, beyond])
     assert [s.feature_id for s in result.matched[1]] == ["along"]
     assert result.unmatched_features == ["beyond"]
+
+
+# -- review r1 ------------------------------------------------------------------------
+
+
+def test_a_share_says_whether_the_way_runs_with_the_block_s_line() -> None:
+    """DC's outbound is the block's digitising direction (review r1), so the
+    matcher records which way along the block each way is drawn."""
+    with_line = conflate_blocks([way(1, line((0, 3), (200, 3)))], [BLOCK_A], {})
+    against = conflate_blocks([way(1, line((200, 3), (0, 3)))], [BLOCK_A], {})
+    assert with_line.matched[1][0].along is True
+    assert against.matched[1][0].along is False
+
+
+def test_a_block_naming_another_street_is_dropped_where_one_that_agrees_is_kept() -> None:
+    """A way free of the veto, or one whose cross street won a few probes, keeps
+    only the blocks of its own name once one of them agrees (review r1: North
+    Capitol Street took Clermont Drive's block beside its own)."""
+    own = block("own", line((0, 0), (120, 0)), "NORTH CAPITOL ST")
+    other = block("other", line((120, 2), (200, 2)), "CLERMONT DR NE")
+    result = conflate_blocks(
+        [way(1, line((0, 3), (200, 3)))], [own, other], {1: "North Capitol Street"}, name_free={1}
+    )
+    assert [share.feature_id for share in result.matched[1]] == ["own"]
+    assert all(share.names_agree is True for share in result.matched[1])
+
+
+def test_with_no_name_free_set_nothing_is_vetoed() -> None:
+    avenue = block("avenue", line((0, 0), (200, 0)), "NEW YORK AVE NE")
+    result = conflate_blocks([way(1, line((0, 12), (200, 12)))], [avenue], {1: "36th Place"})
+    assert 1 in result.matched
+
+
+class _Way:
+    def __init__(self, osm_id: int, tags: dict, coordinates) -> None:
+        self.osm_id, self.tags, self.coordinates = osm_id, tags, coordinates
+        self.name = tags.get("name")
+
+
+def _facts_for(*ways: _Way, blocks) -> dict:
+    entries = [(w.osm_id, w.coordinates, False) for w in ways]
+    facts, _ = road_facts_by_way(ways, entries, blocks)
+    return facts
+
+
+def test_the_rebuild_s_matching_rules_are_wired_by_class() -> None:
+    """`road_facts_by_way` is the one place the rules meet the classes: an
+    unnamed service way does not take the street beside it, a residential or a
+    primary way is vetoed by a block naming another street, and a motorway is
+    not (review r1: primary and secondary ways were free of the veto)."""
+    avenue = RoadFeature(
+        "avenue", line((0, 0), (200, 0)), RoadFacts(agency=DC_AGENCY, name="NEW YORK AVE NE")
+    )
+    beside = line((0, 8), (200, 8))
+    assert _facts_for(_Way(1, {"highway": "service"}, beside), blocks=[avenue]) == {}
+    for highway in ("residential", "primary", "secondary"):
+        named = _Way(2, {"highway": highway, "name": "36th Place Northeast"}, beside)
+        assert _facts_for(named, blocks=[avenue]) == {}, highway
+    freeway = _Way(3, {"highway": "motorway", "name": "Anacostia Freeway"}, beside)
+    assert 3 in _facts_for(freeway, blocks=[avenue])
+    # A named service way still takes its own street's block.
+    own = _Way(4, {"highway": "service", "name": "New York Avenue Northeast"}, beside)
+    assert 4 in _facts_for(own, blocks=[avenue])
+
+
+def test_the_way_s_direction_reaches_its_facts() -> None:
+    """A one-way carriageway drawn against a block takes the block's inbound lanes."""
+    block_facts = RoadFacts(agency=DC_AGENCY, name="K ST NW", lanes={"ib": 3, "ob": 1})
+    street = RoadFeature("k", line((0, 0), (200, 0)), block_facts)
+    eastbound = _Way(1, {"highway": "primary", "name": "K Street"}, line((0, 3), (200, 3)))
+    westbound = _Way(2, {"highway": "primary", "name": "K Street"}, line((200, -3), (0, -3)))
+    facts = _facts_for(eastbound, westbound, blocks=[street])
+    assert (facts[1].lanes_forward, facts[1].lanes_backward) == (1, 3)
+    assert (facts[2].lanes_forward, facts[2].lanes_backward) == (3, 1)
+
+
+def _match_result(way_id: int, block_id: str):
+    return conflate_blocks(
+        [way(way_id, line((0, 3), (200, 3)))], [block(block_id, line((0, 0), (200, 0)))], {}
+    )
+
+
+def test_a_block_s_count_fills_only_where_no_count_reached_the_way_and_never_a_ramp() -> None:
+    from routemaker.agency_roads import aggregate
+
+    result = _match_result(1, "a")
+    facts = aggregate([("a", RoadFacts(agency=DC_AGENCY, aadt=9000, aadt_year=2020))])
+    filled = block_count(1, {"highway": "primary"}, facts, result, counted=set())
+    assert isinstance(filled, Match)
+    assert (filled.aadt, filled.year, filled.agency, filled.source) == (
+        9000,
+        2020,
+        DC_AGENCY,
+        "inventory",
+    )
+    assert block_count(1, {"highway": "primary"}, facts, result, counted={1}) is None
+    assert block_count(1, {"highway": "primary_link"}, facts, result, counted=set()) is None
+    no_count = aggregate([("a", RoadFacts(agency=DC_AGENCY))])
+    assert block_count(1, {"highway": "primary"}, no_count, result, counted=set()) is None

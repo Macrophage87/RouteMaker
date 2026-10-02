@@ -58,7 +58,9 @@ def pct(a: float, b: float) -> str:
     return f"{100 * a / b:.1f}%" if b else "-"
 
 
-def region_section(rows: list[dict], stats: dict, label: str, agency_lanes: bool) -> list[str]:
+def region_section(
+    rows: list[dict], stats: dict, label: str, agency_lanes: bool, baltimore: bool = False
+) -> list[str]:
     area = [r for r in rows if r["in_area"] == "1"]
     miles = lambda rs: sum(int(r["m"]) for r in rs) / MI  # noqa: E731
     matched = [r for r in area if r["matched"] == "1"]
@@ -229,8 +231,14 @@ def region_section(rows: list[dict], stats: dict, label: str, agency_lanes: bool
         "",
     ]
     if speed_pairs:
+        used = (
+            "OSM's posted speed is kept and the city's fills only where OSM has none, "
+            "OWNER-DECISIONS 184"
+            if baltimore
+            else "the agency's is used, OWNER-DECISIONS 151"
+        )
         out += [
-            "Where OSM's posted speed and the agency's differ (the agency's is used), the most common pairs:",
+            f"Where OSM's posted speed and the agency's differ ({used}), the most common pairs:",
             "",
             table(
                 ["OSM maxspeed", "agency", "miles"],
@@ -242,22 +250,57 @@ def region_section(rows: list[dict], stats: dict, label: str, agency_lanes: bool
             "",
         ]
     if lanes_differs:
+        caveat = (
+            [
+                f"Baltimore's `lane_count` is filled on only {stats.get('blocks_with_lanes', 0):,} of the "
+                f"{stats['blocks']:,} centerline blocks installed, so this table covers "
+                f"{sum(lanes_differs.values()):,} ways and its shares say nothing about the city's streets "
+                "at large.",
+                "",
+            ]
+            if baltimore
+            else []
+        )
         out += [
             "### Lanes per direction: agency against OSM",
             "",
+            *caveat,
             table(["", "ways", "miles", "share"], rows(lanes_differs, lanes_miles)),
             "",
         ]
     if oneway:
+        caveat = (
+            [
+                "The centerline marks one-way streets only (`oneway` FT or TF) and says nothing of a "
+                f"two-way street ({stats.get('blocks_one_way', 0):,} one-way blocks, "
+                f"{stats.get('blocks_two_way', 0):,} marked two-way), so the shares below are of the ways "
+                "along a one-way record, not of all matched ways. Where OSM tags a way two-way in so many "
+                "words (`oneway=no`, or lanes counted each way) the city's one-way is not applied and is "
+                "counted as a disagreement.",
+                "",
+            ]
+            if baltimore
+            else [
+                "Where OSM tags a way two-way in so many words (`oneway=no`, or lanes counted each way) "
+                "the agency's one-way is not applied and is counted as a disagreement.",
+                "",
+            ]
+        )
         out += [
             "### One-way streets",
             "",
+            *caveat,
             table(["", "ways", "miles", "share"], rows(oneway, oneway_miles)),
             "",
         ]
     if agency_lanes:
+        separate = [r for r in matched if "separate way" in (r.get("agree") or "")]
         out += [
             "### Bike lane or track: agency against OSM",
+            "",
+            f"Where OSM maps the way's bike facility as a way of its own (`cycleway*=separate`, or a "
+            f"separately mapped facility beside it), the agency's facility is that way and is never written "
+            f"onto the road: {len(separate):,} matched ways ({miles(separate):,.1f} mi), counted as agreement.",
             "",
             table(["", "ways", "miles", "share"], rows(bike, bike_miles)),
             "",
@@ -291,9 +334,11 @@ def main() -> int:
         "# Conflation of DC's Roadway Block and Baltimore's street centerline onto OSM ways",
         "",
         "Match statistics on the source extract of 2026-09-25, from `scripts/analysis/data_before_after.py` "
-        "(the rebuild's own conflation, `pipeline.conflation.conflate_blocks`). A block is matched when it "
-        "lies along a matched OSM way, by geometry (within 20 m, heading agreeing locally) and street name; a way "
-        "is matched when its blocks cover half of it.",
+        "(the rebuild's own conflation, `pipeline.conflation.road_facts_by_way`). A block is matched when it "
+        "lies along a matched OSM way, by geometry (within 66 ft [20 m], heading agreeing locally) and street "
+        "name; a way is matched when its blocks cover half of it. A block naming a different street vetoes "
+        "every way but a freeway's (motorway and trunk and their links), and a service or track way needs "
+        "an agreeing name.",
         "",
     ]
     out += region_section(
@@ -307,13 +352,15 @@ def main() -> int:
         stats["baltimore"],
         "Baltimore: street centerline (Open Baltimore)",
         False,
+        baltimore=True,
     )
     out += [
         "## AADT",
         "",
         f"Roadway Block AADT (2020) is on {stats['dc']['blocks_with_aadt']:,} blocks. A matched way takes the busiest of its "
-        f"blocks' counts where no count layer reached it: {stats['dc']['inventory_aadt_ways']:,} ways do. DDOT's own 2024 "
-        "counts (the volume layer) are the newer survey and are never replaced.",
+        f"blocks' counts where no count layer reached it, and never on a slip road: "
+        f"{stats['dc']['inventory_aadt_ways']:,} ways do. DDOT's own 2024 counts (the volume layer) are the "
+        "newer survey and are never replaced. `segment.attr_sources` names the count the classifier read.",
         "",
     ]
     args.out.write_text("\n".join(out))

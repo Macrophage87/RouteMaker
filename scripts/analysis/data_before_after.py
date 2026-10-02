@@ -14,7 +14,9 @@ loaded anywhere; the output is a table and the match statistics.
         --state-polygons state-polys.json --urban reference/urban-areas.json \\
         --live-ways live-ways.csv --out DIR
 
-Writes `dcbal.tsv` (one row per road way) and `match-stats.json`.
+Writes `dcbal.tsv` (one row per road way) and `match-stats.json`. `tier1_noreach` is the
+"after" tier with the parking lane's width left out of a painted lane's reach, so the effect of
+`classify(parking_width_m=)` can be told apart from the rest of the layer's.
 """
 
 from __future__ import annotations
@@ -42,7 +44,7 @@ from routemaker.stress import classify  # noqa: E402
 
 MI = 1609.344
 SKIP = {"proposed", "construction", "platform", "corridor"}
-# About 150 m: how near a street centerline an OSM way must be to count as in Baltimore.
+# About 500 ft [150 m]: how near a street centerline an OSM way must be to count as in Baltimore.
 CITY_NEAR_DEG = 0.0015
 
 
@@ -148,22 +150,8 @@ def main() -> int:
         entries = [(w.osm_id, w.coordinates, variants.is_trail_class(w.tags)) for w in ways]
         before_match = conflation.conflate(entries, volume).matched
         after_match = dict(before_match)
-        names = {w.osm_id: w.name for w in ways}
-        result = conflation.conflate_blocks(
-            entries,
-            region_blocks,
-            names,
-            name_required={
-                w.osm_id
-                for w in ways
-                if w.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
-            },
-            name_vetoed={
-                w.osm_id
-                for w in ways
-                if w.tags.get("highway") not in agency_roads.NAME_FREE_HIGHWAYS
-            },
-        )
+        # The rebuild's own wiring (`pipeline.run`'s volume-conflation stage).
+        agg, result = conflation.road_facts_by_way(ways, entries, region_blocks)
         print(
             region,
             "volume",
@@ -192,27 +180,13 @@ def main() -> int:
             (w.osm_id, w.tags, w.coordinates) for w in ways
         )
 
-        agg = {}
-        for way_id, shares in result.matched.items():
-            members = [(s.feature_id, block_by_id[s.feature_id].facts) for s in shares]
-            agreements = [s.names_agree for s in shares]
-            agree = (
-                None
-                if all(a is None for a in agreements)
-                else all(a is not False for a in agreements)
-            )
-            agg[way_id] = agency_roads.aggregate(members, agree)
-            # The block's count fills where no count layer reached the way.
-            if agg[way_id].aadt and way_id not in after_match:
-                after_match[way_id] = conflation.Match(
-                    osm_way_id=way_id,
-                    feature_id=shares[0].feature_id,
-                    aadt=agg[way_id].aadt,
-                    source="inventory",
-                    year=agg[way_id].aadt_year,
-                    score=result.coverage[way_id],
-                    agency=agg[way_id].agency,
-                )
+        tags_of = {w.osm_id: w.tags for w in ways}
+        counted = set(before_match)
+        for way_id, facts in agg.items():
+            # The block's count fills where no count layer reached the way, never on a ramp.
+            filled = conflation.block_count(way_id, tags_of[way_id], facts, result, counted)
+            if filled is not None:
+                after_match[way_id] = filled
 
         check_live = Counter()
         for w in ways:
@@ -252,23 +226,24 @@ def main() -> int:
             )
             facts = agg.get(w.osm_id)
             a = after_match.get(w.osm_id)
-            sources, disagree, tags1 = {}, (), dict(w.tags)
+            sources, disagree, agree, tags1 = {}, (), (), dict(tags0)
             if facts is not None:
-                ov = agency_roads.overlay(dict(w.tags), facts)
+                ov = agency_roads.overlay(
+                    dict(w.tags), facts, separate_road=w.osm_id in separate_roads
+                )
                 tags1, _ = speed_corrections.corrected(ov.tags, speeds.get(w.osm_id))
-                sources, disagree = ov.sources, ov.disagreements
-            after = classify(
-                tags1,
+                sources = {**ov.sources, "aadt": agency_roads.aadt_source(a)}
+                disagree, agree = ov.disagreements, ov.agreements
+            after_kw = dict(
                 aadt=a.aadt if a else None,
                 aadt_source=a.agency if a else None,
                 aadt_year=a.year if a else None,
-                parking_width_m=(
-                    facts.parking_width_ft * agency_roads.METRES_PER_FOOT
-                    if facts is not None and facts.parking_width_ft
-                    else None
-                ),
                 **kw,
             )
+            reach = facts.parking_reach_m if facts is not None else None
+            after = classify(tags1, parking_width_m=reach, **after_kw)
+            # The same, without the parking lane added to the lane's reach.
+            noreach = after if reach is None else classify(tags1, **after_kw)
             rows.append(
                 {
                     "way": w.osm_id,
@@ -285,6 +260,8 @@ def main() -> int:
                     "rule0": before.rule,
                     "tier1": int(after.tier),
                     "rule1": after.rule,
+                    "tier1_noreach": int(noreach.tier),
+                    "reach_ft": round(reach / agency_roads.METRES_PER_FOOT, 1) if reach else "",
                     "aadt0": b.aadt if b else "",
                     "aadt1": a.aadt if a else "",
                     "aadt1_agency": a.agency if a else "",
@@ -299,6 +276,7 @@ def main() -> int:
                     if not facts or facts.names_agree is None
                     else int(facts.names_agree),
                     "disagree": "; ".join(disagree),
+                    "agree": "; ".join(agree),
                     "tags": json.dumps(
                         {
                             k: v
@@ -319,8 +297,12 @@ def main() -> int:
                         {
                             "speed": facts.speed_by_direction,
                             "lanes": facts.lanes_by_direction,
+                            "lanes_fwd": facts.lanes_forward,
+                            "lanes_back": facts.lanes_backward,
                             "one_way": facts.one_way,
                             "bike": facts.bike,
+                            "bike_fwd": facts.bike_forward,
+                            "bike_back": facts.bike_backward,
                             "bike_ft": facts.bike_width_ft,
                             "parking": facts.parking_lanes,
                             "aadt": facts.aadt,
@@ -348,6 +330,9 @@ def main() -> int:
             "volume_features": len(volume),
             "inventory_aadt_ways": sum(1 for m in after_match.values() if m.source == "inventory"),
             "blocks_with_aadt": sum(1 for b in region_blocks if b.facts.aadt),
+            "blocks_with_lanes": sum(1 for b in region_blocks if b.facts.lanes),
+            "blocks_one_way": sum(1 for b in region_blocks if b.facts.way == "one"),
+            "blocks_two_way": sum(1 for b in region_blocks if b.facts.way == "both"),
             "live_check": dict(check_live),
         }
         print(

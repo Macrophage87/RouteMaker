@@ -37,13 +37,26 @@ trusts the field names reads them wrongly:
   lanes, in feet (two bike lanes of five feet are `10`); they are divided by the
   count here. The `BIKELANE_*` fields hold the direction the facility serves,
   `IB`, `OB` or `BD`.
-* DC's inbound and outbound are not compass or digitising directions, so a
-  one-way block says only that it is one-way (`SUMMARYDIRECTION` `IB` or `OB`).
+* DC's outbound is the block's digitising direction and inbound is against it,
+  as measured on the one-way blocks (review r1: `SUMMARYDIRECTION` `OB` runs
+  with the line 1,023 times to 49, `IB` against it 888 to 33). The matcher says
+  whether each OSM way runs with its block or against it (`BlockShare.along`),
+  so a one-way carriageway of a divided road takes its own direction's lanes
+  and bike lane, and a lane against a one-way's traffic is a contraflow lane.
 * Baltimore's `fr_speed_limit` and `to_speed_limit` are filled on 19 of 48,522
   centerlines, all zero; its `speed` attribute is the number the city keeps on
   the line (25 on 26,722 of them, `1` on its alleys), and is read as the speed
   limit with that source named, so a reviewer sees that it is the city's field
-  and not a posted-sign survey.
+  and not a posted-sign survey. It fills only where OSM has no `maxspeed`: OSM's
+  posted speed wins (OWNER-DECISIONS 184, "Fill gaps only").
+
+`functional_class` is parsed and stored but nothing reads it, deliberately.
+Item 151 lists it among the Roadway Block's facts, but the Furth tables the
+classifier applies take speed, lanes, volume and the facility, not a class. The
+road class the classifier does read (for the speed defaults and the arterial
+floor) is OSM's `highway`, which exists everywhere in the region, not only on
+the matched streets. The class is kept for the reports and as a feature for the
+decimal stress model (FOLLOWUP-DECIMAL-STRESS, item 156).
 """
 
 from __future__ import annotations
@@ -79,22 +92,48 @@ DIRECTIONS = ("ib", "ob")
 NAME_REQUIRED_HIGHWAYS = frozenset({"service", "track"})
 
 # Ways of these classes are matched to a block whatever the two names say:
-# agencies and OSM name freeways, bridges and parkways differently (OSM's
-# "Anacostia Freeway" is DC's "INTERSTATE 295"), and there is no street beside one
-# for it to be mistaken for. Every other class is vetoed by a block that names
-# a different street (`conflate_blocks(name_vetoed=...)`).
-NAME_FREE_HIGHWAYS = frozenset(
-    {
-        "motorway",
-        "motorway_link",
-        "trunk",
-        "trunk_link",
-        "primary",
-        "primary_link",
-        "secondary",
-        "secondary_link",
-    }
-)
+# agencies and OSM name freeways differently (OSM's "Anacostia Freeway" is DC's
+# "INTERSTATE 295"), and there is no street beside one for it to be mistaken
+# for. Every other class is vetoed by a block that names a different street
+# (`conflate_blocks(name_free=...)`). Primary and secondary roads were in this
+# set until review r1 found them taking a neighbour's or a cross street's block
+# where no agreeing block was near (North Capitol Street took Clermont Drive's;
+# Ohio Drive SW took East Basin Drive's 33,679 vehicles a day).
+NAME_FREE_HIGHWAYS = frozenset({"motorway", "motorway_link", "trunk", "trunk_link"})
+
+# The agencies whose posted speed only fills a gap in OSM's. Baltimore's `speed`
+# field is the city's attribute, not a survey of signs, and the owner chose
+# "Fill gaps only (Recommended)" (OWNER-DECISIONS 184). DC's posted limits take
+# precedence over OSM's (item 151).
+SPEED_FILLS_ONLY = frozenset({BALTIMORE_AGENCY})
+
+# The directory the internal-comparison layers are kept in. Arlington's Bike
+# Comfort Index and Alexandria's Transport Streets are for internal comparison
+# only (OWNER-DECISIONS 153, 155) and are never a source: nothing that feeds the
+# rebuild, a fixture or a published report reads from it (`refuse_internal_only`).
+INTERNAL_ONLY_DIR = "internal-only"
+
+
+class InternalOnlySource(ValueError):
+    """An internal-comparison layer offered where a published input is read."""
+
+
+def refuse_internal_only(path: str | Path) -> Path:
+    """`path`, or `InternalOnlySource` when it lies under an `internal-only`
+    directory."""
+    if INTERNAL_ONLY_DIR in Path(path).parts or INTERNAL_ONLY_DIR in Path(path).resolve().parts:
+        raise InternalOnlySource(
+            f"{path} is under {INTERNAL_ONLY_DIR}/: internal comparison only "
+            "(OWNER-DECISIONS 155), never a source for the rebuild or published output"
+        )
+    return Path(path)
+
+
+def is_link(tags: Mapping[str, str]) -> bool:
+    """A slip road (`*_link`). It keeps its own lanes and is given no block's
+    count: review r1 found unnamed ramps taking the main road's block, and a
+    one-lane ramp read as two to four lanes."""
+    return str(tags.get("highway", "")).endswith("_link")
 
 
 @dataclass(frozen=True)
@@ -102,10 +141,10 @@ class RoadFacts:
     """What one agency block says about its stretch of road.
 
     Per-direction values keep the layer's own labels as dict keys (`ib`/`ob` for
-    DC), because which of them is which way along an OSM way is not recorded
-    and is not needed: the classifier scores a way on the worse of its two
-    directions. Everything is optional; an agency that does not publish a
-    field simply leaves it out and the way keeps OSM's value.
+    DC); which of them runs which way along an OSM way is the matcher's to say
+    (`aggregate`'s `along`), because a way can be digitised either way along its
+    block. Everything is optional; an agency that does not publish a field
+    simply leaves it out and the way keeps OSM's value.
     """
 
     agency: str
@@ -116,10 +155,16 @@ class RoadFacts:
     lanes: dict[str, int] = field(default_factory=dict)
     # "one" or "both"; None where the layer does not say.
     way: str | None = None
+    # On a one-way block, whether its traffic runs with the line's digitising
+    # direction (DC `OB`, Baltimore `FT`) or against it (`IB`, `TF`).
+    oneway_with: bool | None = None
     # Bike facility rank by direction label (BIKE_LANE, BIKE_BUFFERED, BIKE_PROTECTED).
     bike: dict[str, int] = field(default_factory=dict)
     contraflow: bool = False
     bike_width_ft: float | None = None
+    # The direction labels whose bike lane runs beside a parking lane (DC's
+    # `BIKELANE_PARKINGLANE_ADJACENT`): where Furth measures the lane's reach.
+    bike_beside_parking: tuple[str, ...] = ()
     parking_lanes: int | None = None
     parking_width_ft: float | None = None
     lane_width_ft: float | None = None
@@ -133,19 +178,20 @@ class RoadFacts:
         """Only what is present, so a block with little to say costs little."""
         out = {}
         for key, value in asdict(self).items():
-            # Identity, not membership:  is true, and a block with
+            # Identity, not equality: `0 == False` is true, and a block with
             # no parking lanes is saying so.
-            if (value is None or value is False or value == {} or value == "") and (
-                key != "agency"
-            ):
+            if (value is None or value is False or value in ({}, (), "")) and (key != "agency"):
                 continue
-            out[key] = value
+            out[key] = list(value) if isinstance(value, tuple) else value
         return out
 
     @classmethod
     def from_json(cls, row: Mapping) -> RoadFacts:
         known = cls.__dataclass_fields__
-        return cls(**{key: value for key, value in row.items() if key in known})
+        values = {key: value for key, value in row.items() if key in known}
+        if "bike_beside_parking" in values:
+            values["bike_beside_parking"] = tuple(values["bike_beside_parking"])
+        return cls(**values)
 
 
 # -- parsing ----------------------------------------------------------------------
@@ -256,13 +302,17 @@ def parse_dc_roadway_block(properties: Mapping) -> RoadFacts:
 
     bike = _dc_bike(properties)
     parking = _int(properties.get("TOTALPARKINGLANES"))
+    adjacent = (properties.get("BIKELANE_PARKINGLANE_ADJACENT") or "").strip().upper()
+    beside_parking = {"BD": DIRECTIONS, "IB": ("ib",), "OB": ("ob",)}.get(adjacent, ())
     return RoadFacts(
         agency=DC_AGENCY,
         name=dc_street_name(properties),
         speed_mph=speeds,
         lanes=lanes,
         way=way,
+        oneway_with={"OB": True, "IB": False}.get(summary),
         bike=bike,
+        bike_beside_parking=tuple(d for d in beside_parking if d in bike),
         contraflow=bool(properties.get("BIKELANE_CONTRAFLOW")),
         bike_width_ft=(
             _per_lane(properties.get("TOTALBIKELANEWIDTH"), properties.get("TOTALBIKELANES"))
@@ -330,6 +380,7 @@ def parse_baltimore_centerline(properties: Mapping) -> RoadFacts | None:
         speed_mph=speeds,
         lanes=lanes,
         way="one" if direction in ("FT", "TF") else None,
+        oneway_with={"FT": True, "TF": False}.get(direction),
         aadt=_int(properties.get("traffic_count_aadt")) or None,
         aadt_year=_int(properties.get("traffic_count_year")),
         functional_class=(properties.get("sha_class") or "").strip() or None,
@@ -415,19 +466,50 @@ _GENERIC = (
     | frozenset(_DIRECTION_WORDS.values())
     | {"way", "bend", "pike", "turnpike"}
 )
+# The words that end a street name as its type ("Street", "AVE"). A compass word
+# just before one is the street's own name, not a quadrant: "E Street", "N ST
+# NW", "W Place", Baltimore's "North Avenue".
+_STREET_TYPES = (frozenset(_SUFFIXES) | frozenset(_SUFFIXES.values()) | {"way", "bend"}) - {
+    "jr",
+    "sr",
+    "junior",
+    "senior",
+}
+
+
+def _singular(word: str) -> str:
+    """A plural street word made singular, so "East Meadow Court" and "EAST
+    MEADOWS CT" are one street (review r1). Both names pass through it, so a
+    name that only looks plural ("Adams") changes the same way on both sides."""
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
 
 
 @functools.lru_cache(maxsize=65536)
 def name_tokens(name: str | None) -> frozenset[str]:
     """The words of a street name that identify it: abbreviations expanded,
-    punctuation dropped, and the street type and the quadrant left out, because
-    OSM writes "4th Street Northeast" where the agency writes "4TH ST NE" and
-    either may omit the quadrant."""
+    punctuation dropped, plurals made singular, and the street type and the
+    quadrant left out, because OSM writes "4th Street Northeast" where the
+    agency writes "4TH ST NE" and either may omit the quadrant.
+
+    A compass word directly followed by the street type is the street's name and
+    is kept, so "E Street" and "N Street" are different streets (review r1: they
+    had no identifying word at all, so neither agreed nor disagreed)."""
     if not name:
         return frozenset()
     words = re.findall(r"[a-z0-9]+", name.lower().replace("&", " and "))
-    expanded = [_SUFFIXES.get(word, _DIRECTION_WORDS.get(word, word)) for word in words]
-    return frozenset(word for word in expanded if word not in _GENERIC)
+    kept = []
+    for number, word in enumerate(words):
+        expanded = _SUFFIXES.get(word, _DIRECTION_WORDS.get(word, word))
+        following = words[number + 1] if number + 1 < len(words) else None
+        if word in _DIRECTION_WORDS or word in _DIRECTION_WORDS.values():
+            if following in _STREET_TYPES:
+                kept.append(expanded)
+            continue
+        if expanded not in _GENERIC:
+            kept.append(_singular(expanded))
+    return frozenset(kept)
 
 
 def names_agree(a: str | None, b: str | None) -> bool | None:
@@ -460,18 +542,45 @@ class WayFacts:
     blocks: tuple[str, ...]
     speed_mph: int | None = None
     speed_by_direction: dict[str, int] = field(default_factory=dict)
+    # The busiest direction's through lanes on any block, direction unknown.
     lanes_per_direction: int | None = None
     lanes_by_direction: dict[str, int] = field(default_factory=dict)
+    # Through lanes in the way's own digitising direction and against it, where
+    # the matcher knows which way the way runs along each block; None where it
+    # does not or a block records no lanes for that direction.
+    lanes_forward: int | None = None
+    lanes_backward: int | None = None
     # True when every block that says so is one-way, False when any is two-way.
     one_way: bool | None = None
+    # On an agency one-way, whether its traffic runs the way's digitising
+    # direction (True) or against it (False); None where unknown or mixed.
+    oneway_forward: bool | None = None
     bike: dict[str, int] = field(default_factory=dict)
+    # The weakest facility rank in the way's own direction and against it, and
+    # whether those are known (every block's direction along the way is).
+    bike_forward: int = BIKE_NONE
+    bike_backward: int = BIKE_NONE
+    direction_known: bool = False
     contraflow: bool = False
     bike_width_ft: float | None = None
     parking_lanes: int | None = None
     parking_width_ft: float | None = None
+    # Whether every painted lane on the way runs beside a parking lane by the
+    # agency's own record (DC's `BIKELANE_PARKINGLANE_ADJACENT`).
+    lane_beside_parking: bool = False
     aadt: int | None = None
     aadt_year: int | None = None
     names_agree: bool | None = None
+
+    @property
+    def parking_reach_m(self) -> float | None:
+        """The parking lane's width, in metres, to add to a painted lane's for
+        Furth's reach beside parking: only where the agency records the lane as
+        beside a parking lane and gives the parking lane's width. None
+        otherwise, and the lane is measured on its own, the narrower reading."""
+        if not self.lane_beside_parking or not self.parking_width_ft:
+            return None
+        return self.parking_width_ft * METRES_PER_FOOT
 
 
 def lanes_per_direction(facts: RoadFacts) -> int | None:
@@ -495,11 +604,39 @@ def lanes_per_direction(facts: RoadFacts) -> int | None:
     return total if facts.way == "one" else max(1, total // 2)
 
 
-def aggregate(blocks: list[tuple[str, RoadFacts]], names: bool | None = None) -> WayFacts:
-    """`WayFacts` for a way from the (block id, facts) pairs lying along it."""
+def _labels(along: bool | None) -> tuple[str, str] | None:
+    """The block's direction labels for the way's (forward, backward): DC's `OB`
+    is the line's digitising direction, so a way running with the line goes
+    outbound."""
+    if along is None:
+        return None
+    return ("ob", "ib") if along else ("ib", "ob")
+
+
+def _directional_lanes(facts: RoadFacts, label: str) -> int | None:
+    """Through lanes one direction of a block has at its busiest: its own lanes
+    plus the reversible ones. None where the block records none that way."""
+    count = facts.lanes.get(label)
+    if not count:
+        return None
+    return count + facts.lanes.get("reversible", 0)
+
+
+def aggregate(
+    blocks: list[tuple[str, RoadFacts]] | list[tuple[str, RoadFacts, bool | None]],
+    names: bool | None = None,
+) -> WayFacts:
+    """`WayFacts` for a way from the (block id, facts[, along]) lying along it.
+
+    `along` is whether the way runs with the block's digitising direction
+    (`pipeline.conflation.BlockShare.along`); without it the directions are
+    unknown and the way takes the busier one in both.
+    """
     if not blocks:
         raise ValueError("a way with no blocks has no facts")
-    facts = [f for _, f in blocks]
+    facts = [entry[1] for entry in blocks]
+    alongs = [entry[2] if len(entry) > 2 else None for entry in blocks]
+    direction_known = all(along is not None for along in alongs)
 
     speeds: dict[str, int] = {}
     for f in facts:
@@ -514,8 +651,28 @@ def aggregate(blocks: list[tuple[str, RoadFacts]], names: bool | None = None) ->
     known = [count for count in per_block if count]
     per_direction = max(known) if known else None
 
+    # Each direction of the way: the block's own count that way where the way's
+    # direction along the block is known and the block records one, else the
+    # block's busier direction (the more stressful reading).
+    forward: list[int] = []
+    backward: list[int] = []
+    for f, along, fallback in zip(facts, alongs, per_block, strict=True):
+        labels = _labels(along)
+        ahead = _directional_lanes(f, labels[0]) if labels else None
+        behind = _directional_lanes(f, labels[1]) if labels else None
+        if ahead or fallback:
+            forward.append(ahead or fallback)
+        if behind or fallback:
+            backward.append(behind or fallback)
+
     ways = {f.way for f in facts if f.way}
     one_way = None if not ways else ways == {"one"}
+    flows = {
+        f.oneway_with == along
+        for f, along in zip(facts, alongs, strict=True)
+        if f.way == "one" and f.oneway_with is not None and along is not None
+    }
+    oneway_forward = next(iter(flows)) if one_way and len(flows) == 1 else None
 
     # The weakest facility in each direction across the blocks; a block with no
     # facility in a direction counts as none there.
@@ -524,26 +681,49 @@ def aggregate(blocks: list[tuple[str, RoadFacts]], names: bool | None = None) ->
         ranks = [f.bike.get(direction, BIKE_NONE) for f in facts]
         if min(ranks) > BIKE_NONE:
             bike[direction] = min(ranks)
+    bike_forward = bike_backward = BIKE_NONE
+    if direction_known:
+        bike_forward = min(
+            f.bike.get(_labels(along)[0], BIKE_NONE) for f, along in zip(facts, alongs, strict=True)
+        )
+        bike_backward = min(
+            f.bike.get(_labels(along)[1], BIKE_NONE) for f, along in zip(facts, alongs, strict=True)
+        )
     widths = [f.bike_width_ft for f in facts if f.bike_width_ft]
     parking = [f.parking_lanes for f in facts if f.parking_lanes is not None]
+    # The narrowest parking lane, as the narrowest bike lane: the reach a rider
+    # has on the way is the worst block's (review r1: the widest let one 9 ft
+    # block lift a way whose other four blocks were 8 ft).
     parking_widths = [f.parking_width_ft for f in facts if f.parking_width_ft]
+    painted = (BIKE_LANE, BIKE_BUFFERED)
+    lane_beside_parking = any(rank in painted for f in facts for rank in f.bike.values()) and all(
+        set(f.bike_beside_parking) >= {d for d, rank in f.bike.items() if rank in painted}
+        for f in facts
+    )
 
     counted = [f for f in facts if f.aadt]
     busiest = max(counted, key=lambda f: f.aadt) if counted else None
 
     return WayFacts(
         agency=facts[0].agency,
-        blocks=tuple(block for block, _ in blocks),
+        blocks=tuple(entry[0] for entry in blocks),
         speed_mph=max(speeds.values()) if speeds else None,
         speed_by_direction=speeds,
         lanes_per_direction=per_direction,
         lanes_by_direction=lanes,
+        lanes_forward=max(forward) if direction_known and forward else None,
+        lanes_backward=max(backward) if direction_known and backward else None,
         one_way=one_way,
+        oneway_forward=oneway_forward,
         bike=bike,
+        bike_forward=bike_forward,
+        bike_backward=bike_backward,
+        direction_known=direction_known,
         contraflow=all(f.contraflow for f in facts),
         bike_width_ft=min(widths) if widths else None,
         parking_lanes=max(parking) if parking else None,
-        parking_width_ft=max(parking_widths) if parking_widths else None,
+        parking_width_ft=min(parking_widths) if parking_widths else None,
+        lane_beside_parking=lane_beside_parking,
         aadt=busiest.aadt if busiest else None,
         aadt_year=busiest.aadt_year if busiest else None,
         names_agree=names,
@@ -569,56 +749,146 @@ class Overlay:
     sources: dict[str, str]
     # Where the agency and the way disagree and the way was left alone.
     disagreements: tuple[str, ...] = ()
+    # Where the way's own tags already say what the agency does, in a form the
+    # overlay must not rewrite (a bike facility OSM maps as its own way).
+    agreements: tuple[str, ...] = ()
 
 
 def _oneway_tag(tags: Mapping[str, str]) -> bool:
     return tags.get("oneway") in ("yes", "1", "-1", "true")
 
 
-def overlay(tags: Mapping[str, str], facts: WayFacts) -> Overlay:
+def _osm_two_way(tags: Mapping[str, str]) -> bool:
+    """OSM saying in so many words that the way carries traffic both ways:
+    `oneway=no`, or lanes counted in each direction."""
+    return tags.get("oneway") == "no" or ("lanes:forward" in tags and "lanes:backward" in tags)
+
+
+def _osm_separate(tags: Mapping[str, str]) -> bool:
+    """The way's bike facility is mapped as its own way (`cycleway*=separate`)."""
+    return any(
+        value == "separate" for key, value in tags.items() if key.startswith(_CYCLEWAY_PREFIX)
+    )
+
+
+def _write_facility(out: dict[str, str], side: str, rank: int, width_m: float | None) -> None:
+    out[f"cycleway:{side}"] = "track" if rank == BIKE_PROTECTED else "lane"
+    if rank == BIKE_BUFFERED:
+        out[f"cycleway:{side}:buffer"] = "yes"
+    if width_m and rank != BIKE_PROTECTED:
+        out[f"cycleway:{side}:width"] = str(width_m)
+
+
+def _facility_tags(facts: WayFacts, one_way: bool, travel_forward: bool) -> dict[str, str]:
+    """The `cycleway*` tags the agency's facility reads as on this way; empty where
+    it records none the way's riders can use.
+
+    On a one-way the facility running with the traffic is the rider's, on the
+    right. One running against it is a contraflow lane only where the street
+    itself is one-way by the agency's record (or the agency flags a contraflow
+    lane): it lets bicycles ride the other way and is no facility for the rider
+    going with the traffic. Where the agency's block is two-way, the other
+    direction's lane is the other carriageway's (a divided road's two one-way
+    ways share one block), and this way takes nothing from it.
+    """
+    out: dict[str, str] = {}
+    width_m = round(facts.bike_width_ft * METRES_PER_FOOT, 2) if facts.bike_width_ft else None
+    if facts.direction_known:
+        ahead, behind = facts.bike_forward, facts.bike_backward
+        if one_way:
+            with_flow, against = (ahead, behind) if travel_forward else (behind, ahead)
+            if with_flow:
+                _write_facility(out, "right", with_flow, width_m)
+            if against and (facts.one_way is True or facts.contraflow):
+                out["cycleway:left"] = (
+                    "opposite_track" if against == BIKE_PROTECTED else "opposite_lane"
+                )
+                out["oneway:bicycle"] = "no"
+        elif ahead and ahead == behind:
+            _write_facility(out, "both", ahead, width_m)
+        else:
+            # Two-way: the way's own direction runs on its right-hand side.
+            if ahead:
+                _write_facility(out, "right", ahead, width_m)
+            if behind:
+                _write_facility(out, "left", behind, width_m)
+        return out
+    if len(facts.bike) == len(DIRECTIONS):
+        rank, side = min(facts.bike.values()), "both"
+    elif facts.bike:
+        rank, side = next(iter(facts.bike.values())), "right"
+    else:
+        rank, side = None, None
+    if rank:
+        _write_facility(out, side, rank, width_m)
+    if facts.contraflow and side != "both":
+        out["cycleway:left"] = "opposite_lane"
+    return out
+
+
+def overlay(tags: Mapping[str, str], facts: WayFacts, separate_road: bool = False) -> Overlay:
     """The way's tags as the classifier should read them, given its blocks' facts.
 
     A layer that publishes no bike facility (the Baltimore centerline) has
-    nothing to say about one, and the way's own tags stand.
+    nothing to say about one, and the way's own tags stand. So do they where OSM
+    maps the way's bike facility as a way of its own, beside it: a
+    `cycleway*=separate` tag, or `separate_road` (`routemaker.facility.
+    separate_pairs` found the facility's own way alongside). The agency's
+    protected lane there is that separate way, and writing it onto the road
+    would rate the motor lanes as a track (review r1: 15th Street NW went from
+    LTS 3 to 1); it is counted as agreement.
     """
     allow_bike = facts.agency in BIKE_AGENCIES
     out = dict(tags)
     sources: dict[str, str] = {}
     disagreements: list[str] = []
+    agreements: list[str] = []
     agency = facts.agency
 
-    # -- one-way: an agency that says one-way where OSM does not is believed;
-    # one that says two-way where OSM says one-way is not, because a divided
-    # road's carriageways are one-way ways on a two-way block.
+    # -- one-way: an agency that says one-way where OSM says nothing is believed,
+    # in the direction the agency's traffic runs. One that says two-way where
+    # OSM says one-way is not, because a divided road's carriageways are one-way
+    # ways on a two-way block; and one that says one-way where OSM says in so
+    # many words that the way is two-way (`oneway=no`, or lanes counted each
+    # way) is not either: a mapper looked (review r1: Key Highway, mapped 3 and
+    # 2 lanes, read as one-way). Both are counted.
     osm_oneway = _oneway_tag(tags)
-    if facts.one_way is True and not osm_oneway:
-        out["oneway"] = "yes"
+    if facts.one_way is True and not osm_oneway and not _osm_two_way(tags):
+        out["oneway"] = "-1" if facts.oneway_forward is False else "yes"
         sources["oneway"] = agency
     else:
-        sources["oneway"] = SOURCE_OSM if "oneway" in tags else SOURCE_DEFAULT
+        sources["oneway"] = SOURCE_OSM if "oneway" in tags or _osm_two_way(tags) else SOURCE_DEFAULT
         if facts.one_way is False and osm_oneway:
             disagreements.append("oneway: agency two-way, OSM one-way")
+        elif facts.one_way is True and not osm_oneway:
+            disagreements.append("oneway: agency one-way, OSM two-way")
     one_way = _oneway_tag(out)
+    # Which of the way's directions its traffic runs in, on a one-way.
+    travel_forward = out.get("oneway") != "-1"
 
     # -- posted speed
-    if facts.speed_mph is not None:
+    osm_speed = tags.get("maxspeed")
+    if facts.speed_mph is not None and not (agency in SPEED_FILLS_ONLY and osm_speed):
         out["maxspeed"] = f"{facts.speed_mph} mph"
         sources["maxspeed"] = agency
     else:
-        sources["maxspeed"] = SOURCE_OSM if tags.get("maxspeed") else SOURCE_DEFAULT
+        sources["maxspeed"] = SOURCE_OSM if osm_speed else SOURCE_DEFAULT
+        if facts.speed_mph is not None and osm_speed != f"{facts.speed_mph} mph":
+            disagreements.append("maxspeed: agency and OSM differ, OSM's posted speed kept")
 
     # -- lanes in each direction. The classifier reads the larger of
     # `lanes:forward` and `lanes:backward` where either is present, and `lanes`
-    # (halved on a two-way road) otherwise.
-    if facts.lanes_per_direction:
+    # (halved on a two-way road) otherwise. A slip road keeps its own.
+    if facts.lanes_per_direction and not is_link(tags):
         per = facts.lanes_per_direction
         for key in ("lanes", "lanes:forward", "lanes:backward"):
             out.pop(key, None)
         if one_way:
-            out["lanes"] = str(per)
+            own = facts.lanes_forward if travel_forward else facts.lanes_backward
+            out["lanes"] = str(own or per)
         else:
-            out["lanes:forward"] = str(per)
-            out["lanes:backward"] = str(per)
+            out["lanes:forward"] = str(facts.lanes_forward or per)
+            out["lanes:backward"] = str(facts.lanes_backward or per)
         sources["lanes"] = agency
     else:
         has_lanes = any(key in tags for key in ("lanes", "lanes:forward", "lanes:backward"))
@@ -627,24 +897,18 @@ def overlay(tags: Mapping[str, str], facts: WayFacts) -> Overlay:
     # -- bike facility, only where the agency has one to give: its absence is
     # not evidence the OSM lane is gone (a lane painted since the layer was
     # cut), and where the two disagree the report says so.
-    if allow_bike and (facts.bike or facts.contraflow):
+    has_facility = bool(facts.bike or facts.contraflow)
+    separate = separate_road or _osm_separate(tags)
+    written: dict[str, str] = {}
+    if allow_bike and has_facility and not separate:
+        written = _facility_tags(facts, one_way, travel_forward)
+    if allow_bike and has_facility and separate:
+        sources["bike"] = SOURCE_OSM
+        agreements.append("bike facility: OSM maps it as a separate way")
+    elif written:
         for key in [k for k in out if k.startswith(_CYCLEWAY_PREFIX)]:
             del out[key]
-        width_m = round(facts.bike_width_ft * METRES_PER_FOOT, 2) if facts.bike_width_ft else None
-        if len(facts.bike) == len(DIRECTIONS):
-            rank, side = min(facts.bike.values()), "both"
-        elif facts.bike:
-            rank, side = next(iter(facts.bike.values())), "right"
-        else:
-            rank, side = None, None
-        if rank:
-            out[f"cycleway:{side}"] = "track" if rank == BIKE_PROTECTED else "lane"
-            if rank == BIKE_BUFFERED:
-                out[f"cycleway:{side}:buffer"] = "yes"
-            if width_m and rank != BIKE_PROTECTED:
-                out[f"cycleway:{side}:width"] = str(width_m)
-        if facts.contraflow and side != "both":
-            out["cycleway:left"] = "opposite_lane"
+        out.update(written)
         sources["bike"] = agency
     elif allow_bike:
         has_osm = any(k.startswith(_CYCLEWAY_PREFIX) for k in tags)
@@ -672,5 +936,23 @@ def overlay(tags: Mapping[str, str], facts: WayFacts) -> Overlay:
         has_parking = any(k.startswith(_PARKING_PREFIXES) for k in tags)
         sources["parking"] = SOURCE_OSM if has_parking else SOURCE_DEFAULT
 
-    sources["aadt"] = agency if facts.aadt else "none"
-    return Overlay(out, sources, tuple(disagreements))
+    # The count's source is not the overlay's to say: a block's count is used
+    # only where no count layer reached the way, so the caller records the
+    # count it actually used (`aadt_source`).
+    return Overlay(out, sources, tuple(disagreements), tuple(agreements))
+
+
+def block_count_applies(tags: Mapping[str, str]) -> bool:
+    """Whether a block's daily count may stand for the way: not on a slip road,
+    which carries a fraction of its parent's traffic (review r1)."""
+    return not is_link(tags)
+
+
+def aadt_source(match) -> str:
+    """What `attr_sources` says supplied the count the classifier read: the
+    agency of the count actually used (`pipeline.conflation.Match`), or `none`.
+    Review r1: the overlay said the block's agency wherever the block had a
+    count, while the classifier used DDOT's on 44% of matched DC ways."""
+    if match is None:
+        return "none"
+    return getattr(match, "agency", None) or getattr(match, "source", None) or "none"

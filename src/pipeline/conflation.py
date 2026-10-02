@@ -34,7 +34,8 @@ import math
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
-from routemaker.agency_roads import RoadFacts, names_agree
+from routemaker import agency_roads
+from routemaker.agency_roads import RoadFacts, WayFacts, names_agree
 from routemaker.geo import (
     EARTH_RADIUS_M,
     Point,
@@ -659,6 +660,11 @@ class BlockShare:
     feature_id: str
     share: float
     names_agree: bool | None
+    # Whether the way runs with the block's digitising direction (most of the
+    # probes the block won point the way the block's line does) or against it.
+    # DC's outbound is the line's direction, so this says which of the block's
+    # two directions is the way's (`routemaker.agency_roads.aggregate`).
+    along: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -677,7 +683,7 @@ def conflate_blocks(
     features: Sequence[RoadFeature],
     way_names: Mapping[int, str | None] | None = None,
     name_required: Collection[int] = (),
-    name_vetoed: Collection[int] = (),
+    name_free: Collection[int] | None = None,
     bearing_tolerance_deg: float = BEARING_TOLERANCE_DEG,
     min_coverage: float = MIN_BLOCK_COVERAGE,
     min_probes: int = MIN_BLOCK_PROBES,
@@ -685,10 +691,10 @@ def conflate_blocks(
 ) -> BlockConflation:
     """Attach agency blocks to the OSM ways that lie along them.
 
-    Per direction in the only sense the layer allows: the block's two directions
-    are kept on its facts and a way takes both, so a one-way carriageway of a
-    divided road and its opposite carriageway each take the block's facts rather
-    than one of them winning the block. Trail-class ways are never candidates,
+    A block is not claimed once: a one-way carriageway of a divided road and its
+    opposite carriageway each take the block, and each share says whether its
+    way runs with the block's line or against it (`BlockShare.along`), so each
+    carriageway is given its own direction's facts. Trail-class ways are never candidates,
     for the reason given at `conflate`.
 
     `name_required` is the ways that may take a block only where its street name
@@ -697,19 +703,27 @@ def conflate_blocks(
     houses) and is not that street. Measured on Baltimore, where the unnamed
     service ways beside streets took 118 miles of the street's 25 mph.
 
-    `name_vetoed` is the ways that may not take a block whose street name is a
-    different street's. A frontage road lies beside a freeway with the same
-    heading a few metres away, and without the veto a large mistake follows:
-    DC's 36th Place NE, beside New York Avenue, took that avenue's 45 mph,
-    three lanes and 53,745 vehicles a day and went from LTS 1 to LTS 4. A way
-    whose block has no name, or that has none itself, is not vetoed (nothing
-    contradicts it). The veto is left off the classes agencies and OSM
-    name differently on purpose - `agency_roads.NAME_FREE_HIGHWAYS`: an
+    `name_free` is the ways a block naming a different street does *not* veto;
+    every other way may not take such a block. A frontage road lies beside a
+    freeway with the same heading a few metres away, and without the veto a
+    large mistake follows: DC's 36th Place NE, beside New York Avenue, took that
+    avenue's 45 mph, three lanes and 53,745 vehicles a day and went from LTS 1
+    to LTS 4. A way whose block has no name, or that has none itself, is not
+    vetoed (nothing contradicts it). The free ways are the classes agencies and
+    OSM name differently on purpose - `agency_roads.NAME_FREE_HIGHWAYS`: an
     interstate is "Anacostia Freeway" to OSM and "INTERSTATE 295" to DC - and a
-    way left unmatched falls back to OSM's own tags, the safe answer.
+    way left unmatched falls back to OSM's own tags, the safe answer. The few
+    free ways are passed rather than the many vetoed ones (review r1: a vetoed
+    set held nearly every way id in the region). `None` vetoes nothing, for a
+    layer whose names are not worth comparing.
+
+    Where one of a way's blocks has a name that agrees, a block naming a
+    different street is dropped from its shares even though it won probes
+    (review r1: a free way kept a cross street's block beside its own).
     """
     required = frozenset(name_required)
-    vetoed = frozenset(name_vetoed)
+    veto = name_free is not None
+    free = frozenset(name_free or ())
     names = way_names or {}
     index = _FeatureIndex(features, max_separation_m)  # type: ignore[arg-type]
     prepared: list[_PreparedFeature | None] = [None] * len(features)
@@ -717,7 +731,8 @@ def conflate_blocks(
     matched: dict[int, tuple[BlockShare, ...]] = {}
     coverage: dict[int, float] = {}
     used: set[str] = set()
-    entries_by_id: dict[int, Sequence[tuple[float, float]]] = {}
+    # Only the matched ways' lines are kept, for the leftover-block pass below.
+    lines_by_id: dict[int, Sequence[tuple[float, float]]] = {}
 
     for entry in ways:
         way_id, coordinates, *rest = entry
@@ -725,19 +740,23 @@ def conflate_blocks(
             continue
         if len(coordinates) < 2:
             continue
-        entries_by_id[way_id] = coordinates
+        near = index.near(coordinates)
+        if not near:
+            continue
         way_name = names.get(way_id)
+        vetoed = veto and way_id not in free
         probes, headings = _probes_with_headings(coordinates, max_separation_m)
         box = _bounds(coordinates)
 
-        # Per probe: the best (rank, distance, id) among the blocks near it.
-        # "Near" includes running the same way: the probe's heading and the
+        # Per probe: the best (rank, distance, id, with) among the blocks near
+        # it. "Near" includes running the same way: the probe's heading and the
         # block's at its nearest point agree to within the tolerance, taken
         # locally, because a long way that bends has no single bearing and a
         # block meeting a way at a junction crosses it rather than lying along it.
-        best: list[tuple[int, float, str] | None] = [None] * len(probes)
+        # `with` is whether the way's heading there is the block's, not its reverse.
+        best: list[tuple[int, float, str, bool] | None] = [None] * len(probes)
         agreement: dict[str, bool | None] = {}
-        for position in index.near(coordinates):
+        for position in near:
             feature = features[position]
             if prepared[position] is None:
                 prepared[position] = _PreparedFeature(feature.coordinates, max_separation_m)
@@ -747,7 +766,7 @@ def conflate_blocks(
             agrees = names_agree(way_name, feature.facts.name)
             if way_id in required and agrees is not True:
                 continue
-            if way_id in vetoed and agrees is False:
+            if vetoed and agrees is False:
                 continue
             agreement[feature.feature_id] = agrees
             rank = _NAME_UNKNOWN if agrees is None else _NAME_AGREES if agrees else _NAME_DISAGREES
@@ -757,25 +776,30 @@ def conflate_blocks(
                 delta = bearing_delta(headings[slot], heading)
                 if min(delta, 180.0 - delta) > bearing_tolerance_deg:
                     continue
-                candidate = (rank, distance, feature.feature_id)
+                candidate = (rank, distance, feature.feature_id, delta <= 90.0)
                 if best[slot] is None or candidate < best[slot]:
                     best[slot] = candidate
 
-        wins: dict[str, int] = {}
+        wins: dict[str, list[int]] = {}
         for choice in best:
             if choice is not None:
-                wins[choice[2]] = wins.get(choice[2], 0) + 1
+                tally = wins.setdefault(choice[2], [0, 0])
+                tally[0] += 1
+                tally[1] += int(choice[3])
         shares = [
-            BlockShare(block, count / len(probes), agreement.get(block))
-            for block, count in wins.items()
+            BlockShare(block, count / len(probes), agreement.get(block), with_line * 2 >= count)
+            for block, (count, with_line) in wins.items()
             if count >= min(min_probes, len(probes))
         ]
+        if any(share.names_agree is True for share in shares):
+            shares = [share for share in shares if share.names_agree is not False]
         covered = sum(share.share for share in shares)
         if covered < min_coverage:
             continue
         shares.sort(key=lambda share: (-share.share, share.feature_id))
         matched[way_id] = tuple(shares)
         coverage[way_id] = min(1.0, covered)
+        lines_by_id[way_id] = coordinates
         used.update(share.feature_id for share in shares)
 
     # A block that won no probe may still lie along a matched way: a twelve-metre
@@ -788,7 +812,7 @@ def conflate_blocks(
         used.update(
             _covered_blocks(
                 leftover,
-                entries_by_id,
+                lines_by_id,
                 matched,
                 max_separation_m,
                 bearing_tolerance_deg,
@@ -798,6 +822,64 @@ def conflate_blocks(
 
     unmatched = [f.feature_id for f in features if f.feature_id not in used]
     return BlockConflation(matched=matched, coverage=coverage, unmatched_features=unmatched)
+
+
+def road_facts_by_way(
+    ways: Sequence, entries: Sequence[WayEntry], blocks: Sequence[RoadFeature]
+) -> tuple[dict[int, WayFacts], BlockConflation]:
+    """What the agency street blocks say about each way they lie along.
+
+    `ways` are the extract's ways (`osm_id`, `tags`, `name`) and `entries` the
+    same ways as `conflate_blocks` takes them. The one place the matching rules
+    are wired - service and track ways need an agreeing name, every class but a
+    freeway's is vetoed by a disagreeing one - shared by the rebuild and the
+    analysis scripts so the two cannot drift apart.
+    """
+    result = conflate_blocks(
+        entries,
+        blocks,
+        {way.osm_id: way.name for way in ways},
+        name_required={
+            way.osm_id
+            for way in ways
+            if way.tags.get("highway") in agency_roads.NAME_REQUIRED_HIGHWAYS
+        },
+        name_free={
+            way.osm_id for way in ways if way.tags.get("highway") in agency_roads.NAME_FREE_HIGHWAYS
+        },
+    )
+    by_id = {block.feature_id: block for block in blocks}
+    facts: dict[int, WayFacts] = {}
+    for way_id, shares in result.matched.items():
+        agreements = [share.names_agree for share in shares]
+        names = (
+            None if all(a is None for a in agreements) else all(a is not False for a in agreements)
+        )
+        facts[way_id] = agency_roads.aggregate(
+            [(share.feature_id, by_id[share.feature_id].facts, share.along) for share in shares],
+            names,
+        )
+    return facts, result
+
+
+def block_count(
+    way_id: int, tags, facts: WayFacts, result: BlockConflation, counted: Collection[int]
+) -> Match | None:
+    """The block's daily count as the way's count, where it may stand for it:
+    the block has one, no count layer reached the way (`counted`; DDOT's own
+    counts are the newer survey and are never replaced), and the way is not a
+    slip road (`agency_roads.block_count_applies`)."""
+    if not facts.aadt or way_id in counted or not agency_roads.block_count_applies(tags):
+        return None
+    return Match(
+        osm_way_id=way_id,
+        feature_id=result.matched[way_id][0].feature_id,
+        aadt=facts.aadt,
+        source="inventory",
+        year=facts.aadt_year,
+        score=result.coverage[way_id],
+        agency=facts.agency,
+    )
 
 
 class _Line:

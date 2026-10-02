@@ -70,6 +70,16 @@ def test_a_stress_override_replaces_the_tier_and_says_so() -> None:
     assert classified[1].assumed == ("maxspeed",), "the provenance of the inputs survives"
 
 
+def test_a_stress_override_keeps_the_agency_audit_of_the_inputs() -> None:
+    """M42 (review r1): a curated row sets the tier, and the record of which agency,
+    OSM or default supplied each input the classifier read stays on the segment."""
+    audit = (("aadt", "ddot"), ("maxspeed", "dc-roadway-block"), ("blocks", "dc-1-0"))
+    classified = {1: StressResult(Stress.LTS4, "x", attr_sources=audit)}
+    apply_stress(classified, [Override("stress", 1, {"tier": 5})])
+    assert classified[1].tier is Stress.AVOID
+    assert classified[1].attr_sources == audit
+
+
 def test_a_jurisdiction_override_replaces_the_authority_assignment() -> None:
     way = Way(1, highway="secondary")
     way.tags["_jurisdictions"] = "Fairfax County"

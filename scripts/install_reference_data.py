@@ -367,6 +367,10 @@ def roadway_rows(roadway_block: Path | None, baltimore: Path | None) -> list[dic
     for path, prefix, parse in layers:
         if path is None:
             continue
+        # The internal-comparison layers (Arlington's Bike Comfort Index,
+        # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a
+        # rebuild input.
+        agency_roads.refuse_internal_only(path)
         kept = 0
         for number, feature in enumerate(agency_roads.iter_features(path)):
             properties = feature.get("properties") or {}
@@ -513,7 +517,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
 
     if args.roadway_block or args.baltimore_centerline:
-        blocks = roadway_rows(args.roadway_block, args.baltimore_centerline)
+        from routemaker.agency_roads import InternalOnlySource
+
+        try:
+            blocks = roadway_rows(args.roadway_block, args.baltimore_centerline)
+        except InternalOnlySource as refused:
+            parser.error(str(refused))
         if len({row["id"] for row in blocks}) != len(blocks):
             parser.error("two street blocks share an id")
         (reference / "roadway.json").write_text(json.dumps(blocks, separators=(",", ":")))

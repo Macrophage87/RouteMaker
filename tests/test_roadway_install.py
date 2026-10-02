@@ -170,3 +170,18 @@ def test_the_loader_warns_and_returns_nothing_where_no_blocks_are_installed(
         blocks = ReferenceData.load_road_blocks(tmp_path / "roadway.json")
     assert blocks == ()
     assert "roadway.json is absent" in caplog.text
+
+
+def test_an_internal_only_layer_is_refused_and_nothing_is_written(tmp_path, layers) -> None:
+    """OWNER-DECISIONS 155: Arlington's and Alexandria's Transport Streets layers are
+    internal comparison only. Review r1 found them kept out only because their field
+    names differ; the installer now refuses anything under internal-only/."""
+    dc, _balt = layers
+    hidden = tmp_path / "internal-only" / "alexandria-transport-streets" / "layer.geojson"
+    hidden.parent.mkdir(parents=True)
+    hidden.write_text(dc.read_text())
+    for flag in ("--roadway-block", "--baltimore-centerline"):
+        done = install(tmp_path, flag, str(hidden))
+        assert done.returncode == 2, flag
+        assert "internal comparison only" in done.stderr
+        assert not (tmp_path / "data" / "reference" / "roadway.json").exists()

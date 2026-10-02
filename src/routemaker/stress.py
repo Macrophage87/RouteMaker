@@ -249,14 +249,22 @@ def speed_zone(tags: dict[str, str], jurisdiction: str | None) -> str | None:
 RIDEABLE_SHOULDER_M = 1.2
 
 # Furth's two bike-lane width criteria, in metres, and the only thing separating
-# a door-zone stripe from a lane a rider can use. Furth, "Level of Traffic Stress
-# Criteria for Road Segments, version 2.0" (2017), the bike-lane table: a lane
-# running alongside a parking lane is measured as the bike lane *plus* the
-# parking lane, 13.5 ft; a lane with nothing parked beside it is measured on its
-# own, 5.5 ft. Named rather than written inline at the comparison because a
-# reviewer replaced them with 2.1 and 0.7 - half and a third of the published
-# figures - and the whole suite stayed green.
-FURTH_LANE_BESIDE_PARKING_M = 4.1
+# a door-zone stripe from a lane a rider can use. A lane running alongside a
+# parking lane is measured by its *reach*, the bike lane plus the parking lane
+# (and any marked buffer), and is adequate at 15 ft [4.57 m] or more: Mekuria,
+# Furth & Nixon, "Low-Stress Bicycling and Network Connectivity", MTI Report
+# 11-19 (2012), Table 2, p.18 - reach 15 ft or more LTS 1, 14 or 14.5 ft LTS 2,
+# 13.5 ft or less LTS 3 - and the same 15 ft line in Furth's LTS v2.0 (2017) and
+# v2.2 (2022) tables (the literature notes, research_notes/"Bicycle traffic
+# stress methods"/core_methods.md). Review r1 found this at 13.5 ft, the top of
+# the narrow bin, which once an agency's parking width was added rated a 5 ft
+# lane beside a 9 ft parking lane LTS 1 where Furth gives it LTS 2. Below 15 ft
+# the table here is v2.2's two bins: LTS 2 up to 25 mph, LTS 3 at 30. A lane
+# with nothing parked beside it is measured on its own, 5.5 ft. Named rather
+# than written inline at the comparison because a reviewer replaced them with
+# 2.1 and 0.7 - half and a third of the published figures - and the whole
+# suite stayed green.
+FURTH_LANE_BESIDE_PARKING_M = 15 * 0.3048
 FURTH_LANE_ALONE_M = 1.7
 
 # An unsurveyed unpaved rural lane. Deliberately below the 35 mph boundary at
@@ -673,7 +681,7 @@ def classify(
 
     `parking_width_m` is the width of one parking lane where an agency's street
     record gives it (`routemaker.agency_roads`). Furth measures a bike lane
-    beside parking as the lane *plus* the parking lane, 13.5 ft, and OSM's
+    beside parking as the lane *plus* the parking lane, 15 ft, and OSM's
     `cycleway:width` is the lane alone, so without it the criterion is read
     against the lane's own width and almost no lane beside parking passes. With
     it the two are added where a lane runs beside parking, for the table only:
@@ -912,7 +920,7 @@ def _classify(
                 # parking lane, the door zone beside it, or the two together -
                 # which is exactly the quantity Furth's beside-parking criterion
                 # is written against, the bike lane plus the parking lane at
-                # 13.5 ft. So the road's own value is passed and the wider
+                # 15 ft. So the road's own value is passed and the wider
                 # criterion applies. Furth is followed rather than the credit
                 # simply denied because his table already has the right reading
                 # for this case: a strip wide enough to hold a parked car *and*

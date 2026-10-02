@@ -361,6 +361,16 @@ def test_a_file_with_no_features_key_yields_nothing(tmp_path) -> None:
         ("", "K ST NW", None),
         # Only a street type and a quadrant: nothing identifies it.
         ("Street Northwest", "K ST NW", None),
+        # Review r1: a single-letter street is named by its letter, and a
+        # compass word before the street type is the street's name.
+        ("E Street Northwest", "E ST NW", True),
+        ("E Street", "N ST NW", False),
+        ("W Place Northwest", "W PL NW", True),
+        ("North Avenue", "NORTH AVE", True),
+        ("North Charles Street", "CHARLES ST", True),
+        ("East Capitol Street", "E ST NE", False),
+        # Plurals are the same street.
+        ("East Meadow Court", "EAST MEADOWS CT", True),
     ],
 )
 def test_two_street_names_agree_when_their_identifying_words_do(a, b, expected) -> None:
@@ -586,9 +596,18 @@ def test_a_layer_with_no_bike_facility_field_does_not_touch_the_way_s() -> None:
     assert "bike" not in result.sources
 
 
-def test_the_count_is_sourced_to_the_agency() -> None:
-    assert A.overlay({"highway": "primary"}, way_facts(aadt=500)).sources["aadt"] == A.DC_AGENCY
-    assert A.overlay({"highway": "primary"}, way_facts()).sources["aadt"] == "none"
+def test_the_count_is_sourced_to_the_count_actually_used_not_the_block() -> None:
+    """Review r1: the overlay named the block's agency wherever the block had a
+    count, while the classifier read DDOT's. The overlay says nothing about the
+    count now; the caller names the `Match` it used."""
+    from pipeline.conflation import Match
+
+    assert "aadt" not in A.overlay({"highway": "primary"}, way_facts(aadt=500)).sources
+    ddot = Match(1, "f", 9000, "ddot", 2024, 1.0, "ddot")
+    block = Match(1, "b", 500, "inventory", 2020, 1.0, A.DC_AGENCY)
+    assert A.aadt_source(ddot) == "ddot"
+    assert A.aadt_source(block) == A.DC_AGENCY
+    assert A.aadt_source(None) == "none"
 
 
 # -- the overlay, through the classifier --------------------------------------------
@@ -615,7 +634,7 @@ def test_a_surveyed_protected_track_makes_a_busy_road_low_stress() -> None:
 
 
 def test_no_parking_widens_what_a_lane_can_earn() -> None:
-    """Furth's lane-beside-parking width is 13.5 ft and without parking 5.5 ft:
+    """Furth.s lane-beside-parking reach is 15 ft and without parking 5.5 ft:
     a five-foot... lane on a street the agency says has no parking is judged on the
     narrower criterion."""
     base = {"highway": "tertiary", "maxspeed": "25 mph"}
@@ -651,3 +670,243 @@ def test_a_block_with_only_reversible_or_only_shared_lanes_keeps_them() -> None:
     assert shared.lanes == {"ib": 0, "ob": 0, "bidirectional": 1}
     # A centre turn lane alone is no through lane.
     assert A.lanes_per_direction(shared) is None
+
+
+# -- review r1 ----------------------------------------------------------------------
+
+
+def test_the_way_s_speed_is_the_highest_of_any_direction_label() -> None:
+    """M11: the way is scored on its fastest posted direction, never the slowest."""
+    way = A.aggregate([("a", facts(speed_mph={"ib": 25, "ob": 35}))])
+    assert way.speed_mph == 35
+
+
+def test_the_narrowest_parking_lane_describes_the_way() -> None:
+    """M16 / review r1: one 9 ft block must not lift a way whose others are 8 ft."""
+    way = A.aggregate(
+        [
+            ("a", facts(parking_width_ft=8.0)),
+            ("b", facts(parking_width_ft=9.0)),
+            ("c", facts(parking_width_ft=8.0)),
+        ]
+    )
+    assert way.parking_width_ft == 8.0
+
+
+def test_the_parking_reach_is_added_only_where_the_agency_puts_the_lane_beside_parking() -> None:
+    """DC's `BIKELANE_PARKINGLANE_ADJACENT`: a lane the agency does not record
+    beside parking is measured on its own, the narrower reading. M36: the width
+    reaches the classifier in metres."""
+    lane = {"ib": A.BIKE_LANE, "ob": A.BIKE_LANE}
+    beside = A.aggregate(
+        [("a", facts(bike=lane, bike_beside_parking=("ib", "ob"), parking_width_ft=8.0))]
+    )
+    assert beside.lane_beside_parking is True
+    assert beside.parking_reach_m == pytest.approx(8.0 * 0.3048)
+    half = A.aggregate([("a", facts(bike=lane, bike_beside_parking=("ib",), parking_width_ft=8.0))])
+    assert half.parking_reach_m is None
+    unrecorded = A.aggregate([("a", facts(bike=lane, parking_width_ft=8.0))])
+    assert unrecorded.parking_reach_m is None
+    no_width = A.aggregate([("a", facts(bike=lane, bike_beside_parking=("ib", "ob")))])
+    assert no_width.parking_reach_m is None
+    protected = A.aggregate([("a", facts(bike={"ib": A.BIKE_PROTECTED}, parking_width_ft=8.0))])
+    assert protected.parking_reach_m is None
+
+
+def test_the_parking_adjacent_field_is_read_by_direction() -> None:
+    parsed = A.parse_dc_roadway_block(
+        dc(BIKELANE_CONVENTIONAL="BD", BIKELANE_PARKINGLANE_ADJACENT="BD", TOTALBIKELANES=2)
+    )
+    assert parsed.bike_beside_parking == ("ib", "ob")
+    one = A.parse_dc_roadway_block(
+        dc(BIKELANE_CONVENTIONAL="IB", BIKELANE_PARKINGLANE_ADJACENT="BD", TOTALBIKELANES=1)
+    )
+    assert one.bike_beside_parking == ("ib",)
+    assert A.parse_dc_roadway_block(dc()).bike_beside_parking == ()
+    assert A.RoadFacts.from_json(json.loads(json.dumps(parsed.to_json()))) == parsed
+
+
+def test_a_one_way_block_says_which_way_its_traffic_runs() -> None:
+    assert A.parse_dc_roadway_block(dc(SUMMARYDIRECTION="OB")).oneway_with is True
+    assert A.parse_dc_roadway_block(dc(SUMMARYDIRECTION="IB")).oneway_with is False
+    assert A.parse_dc_roadway_block(dc(SUMMARYDIRECTION="BD")).oneway_with is None
+    assert A.parse_baltimore_centerline(baltimore(oneway="FT")).oneway_with is True
+    assert A.parse_baltimore_centerline(baltimore(oneway="TF")).oneway_with is False
+
+
+def test_a_carriageway_takes_its_own_direction_s_lanes() -> None:
+    """Review r1: a one-way carriageway on a two-way block took the larger
+    direction's lanes. Outbound is the block's line, so a way drawn along it
+    goes outbound."""
+    block = facts(lanes={"ib": 3, "ob": 1}, way="both")
+    along = A.aggregate([("a", block, True)])
+    against = A.aggregate([("a", block, False)])
+    assert (along.lanes_forward, along.lanes_backward) == (1, 3)
+    assert (against.lanes_forward, against.lanes_backward) == (3, 1)
+    assert A.overlay({"highway": "primary", "oneway": "yes"}, along).tags["lanes"] == "1"
+    assert A.overlay({"highway": "primary", "oneway": "-1"}, along).tags["lanes"] == "3"
+    assert A.overlay({"highway": "primary", "oneway": "yes"}, against).tags["lanes"] == "3"
+    two_way = A.overlay({"highway": "primary"}, along).tags
+    assert (two_way["lanes:forward"], two_way["lanes:backward"]) == ("1", "3")
+    # Direction unknown: the busier direction, as before.
+    unknown = A.aggregate([("a", block)])
+    assert unknown.lanes_forward is None
+    assert A.overlay({"highway": "primary", "oneway": "yes"}, unknown).tags["lanes"] == "3"
+
+
+def test_reversible_lanes_count_in_both_directions_of_the_way() -> None:
+    way = A.aggregate([("a", facts(lanes={"ib": 1, "ob": 1, "reversible": 2}), True)])
+    assert (way.lanes_forward, way.lanes_backward) == (3, 3)
+
+
+def test_a_carriageway_takes_its_own_direction_s_bike_lane() -> None:
+    """Review r1: a carriageway took the other direction's lane, the lower-stress error."""
+    block = facts(bike={"ib": A.BIKE_LANE}, way="both")
+    eastbound = A.aggregate([("a", block, True)])  # outbound, no lane
+    westbound = A.aggregate([("a", block, False)])  # inbound, the lane
+    assert (eastbound.bike_forward, eastbound.bike_backward) == (A.BIKE_NONE, A.BIKE_LANE)
+    east = A.overlay({"highway": "primary", "oneway": "yes"}, eastbound).tags
+    west = A.overlay({"highway": "primary", "oneway": "yes"}, westbound).tags
+    assert east.get("cycleway:right") is None
+    assert west["cycleway:right"] == "lane"
+
+
+def test_a_lane_against_a_one_way_s_traffic_is_a_contraflow_lane() -> None:
+    """6th St NE (review r1): an inbound lane on an outbound one-way block was
+    written as a with-flow lane. It is a contraflow lane, which opens the street
+    to bicycles both ways and is no facility for the rider going with traffic."""
+    from routemaker.tags import cycleway_values
+
+    block = facts(bike={"ib": A.BIKE_LANE}, way="one", oneway_with=True)
+    way = A.aggregate([("a", block, True)])
+    tags = A.overlay({"highway": "residential"}, way).tags
+    assert tags["oneway"] == "yes"
+    assert tags["cycleway:left"] == "opposite_lane"
+    assert tags["oneway:bicycle"] == "no"
+    assert "cycleway:right" not in tags
+    assert not ({"lane", "track"} & cycleway_values(tags))
+
+
+def test_a_one_way_with_lanes_both_ways_has_a_with_flow_and_a_contraflow_lane() -> None:
+    """M25: both directions having a lane is a with-flow lane and a contraflow
+    lane on a one-way, and a lane on each side on a two-way."""
+    block = facts(bike={"ib": A.BIKE_LANE, "ob": A.BIKE_LANE}, way="one", oneway_with=True)
+    way = A.aggregate([("a", block, True)])
+    one_way = A.overlay({"highway": "residential", "oneway": "yes"}, way).tags
+    assert one_way["cycleway:right"] == "lane"
+    assert one_way["cycleway:left"] == "opposite_lane"
+    two_way_block = facts(bike={"ib": A.BIKE_LANE, "ob": A.BIKE_LANE}, way="both")
+    two_way = A.overlay({"highway": "residential"}, A.aggregate([("a", two_way_block, True)])).tags
+    assert two_way["cycleway:both"] == "lane"
+    assert "opposite_lane" not in two_way.values()
+    assert "oneway:bicycle" not in two_way
+
+
+def test_an_agency_one_way_runs_the_way_its_traffic_runs() -> None:
+    block = facts(way="one", oneway_with=True)
+    along = A.overlay({"highway": "residential"}, A.aggregate([("a", block, True)]))
+    against = A.overlay({"highway": "residential"}, A.aggregate([("a", block, False)]))
+    assert along.tags["oneway"] == "yes"
+    assert against.tags["oneway"] == "-1"
+
+
+def test_an_agency_two_way_never_makes_an_untagged_way_one_way() -> None:
+    """M17."""
+    result = A.overlay({"highway": "residential"}, way_facts(one_way=False))
+    assert "oneway" not in result.tags
+    assert result.sources["oneway"] == A.SOURCE_DEFAULT
+    assert result.disagreements == ()
+
+
+@pytest.mark.parametrize(
+    "tags",
+    [
+        {"highway": "primary", "oneway": "no"},
+        {"highway": "primary", "lanes:forward": "3", "lanes:backward": "2"},
+    ],
+)
+def test_an_agency_one_way_does_not_undo_explicit_osm_two_way_tagging(tags) -> None:
+    """Review r1: Key Highway, mapped 3 and 2 lanes, was read as one-way. A
+    mapper said two-way in so many words; it is counted as a disagreement."""
+    result = A.overlay(tags, way_facts(one_way=True))
+    assert result.tags.get("oneway") == tags.get("oneway")
+    assert result.sources["oneway"] == A.SOURCE_OSM
+    assert result.disagreements == ("oneway: agency one-way, OSM two-way",)
+
+
+def test_a_bike_facility_osm_maps_as_its_own_way_is_never_written_onto_the_road() -> None:
+    """Blocker 1 of review r1: 15th Street NW went from LTS 3 to 1 when the
+    agency's protected lane, mapped in OSM as a separate way, was written onto
+    the carriageway. It is counted as agreement and the road keeps its tags."""
+    protected = way_facts(bike={"ib": A.BIKE_PROTECTED, "ob": A.BIKE_PROTECTED})
+    tags = {"highway": "primary", "maxspeed": "30 mph", "lanes": "4", "cycleway:left": "separate"}
+    result = A.overlay(tags, protected)
+    assert result.tags["cycleway:left"] == "separate"
+    facility_values = {v for k, v in result.tags.items() if k.startswith("cycleway")}
+    assert not ({"track", "lane"} & facility_values)
+    assert result.sources["bike"] == A.SOURCE_OSM
+    assert result.agreements == ("bike facility: OSM maps it as a separate way",)
+    assert result.disagreements == ()
+    for key in ("cycleway", "cycleway:both", "cycleway:right"):
+        kept = A.overlay({"highway": "primary", key: "separate"}, protected)
+        assert kept.tags[key] == "separate"
+    beside = A.overlay({"highway": "primary", "maxspeed": "30 mph"}, protected, separate_road=True)
+    assert not any(k.startswith("cycleway") for k in beside.tags)
+    assert classify(beside.tags, jurisdiction="DC").tier > Stress.LTS1
+
+
+def test_baltimore_s_speed_fills_only_where_osm_has_none() -> None:
+    """OWNER-DECISIONS 184: "Fill gaps only (Recommended)"."""
+    city = A.WayFacts(agency=A.BALTIMORE_AGENCY, blocks=("b",), speed_mph=25)
+    posted = A.overlay({"highway": "primary", "maxspeed": "30 mph"}, city)
+    assert posted.tags["maxspeed"] == "30 mph"
+    assert posted.sources["maxspeed"] == A.SOURCE_OSM
+    assert posted.disagreements == ("maxspeed: agency and OSM differ, OSM's posted speed kept",)
+    gap = A.overlay({"highway": "primary"}, city)
+    assert gap.tags["maxspeed"] == "25 mph"
+    assert gap.sources["maxspeed"] == A.BALTIMORE_AGENCY
+    same = A.overlay({"highway": "primary", "maxspeed": "25 mph"}, city)
+    assert same.disagreements == ()
+
+
+def test_a_slip_road_keeps_its_own_lanes() -> None:
+    """Review r1: a one-lane ramp took its parent's block and read as 2 to 4 lanes."""
+    ramp = A.overlay({"highway": "primary_link", "lanes": "1"}, way_facts(lanes_per_direction=3))
+    assert ramp.tags["lanes"] == "1"
+    assert ramp.sources["lanes"] == A.SOURCE_OSM
+    assert A.block_count_applies({"highway": "primary_link"}) is False
+    assert A.block_count_applies({"highway": "primary"}) is True
+
+
+def test_an_internal_only_layer_is_refused(tmp_path) -> None:
+    """OWNER-DECISIONS 155: the internal-comparison layers never reach the rebuild."""
+    inside = tmp_path / "datasets" / "internal-only" / "x" / "x.geojson"
+    with pytest.raises(A.InternalOnlySource):
+        A.refuse_internal_only(inside)
+    assert A.refuse_internal_only(tmp_path / "datasets" / "dc" / "dc.geojson")
+
+
+def test_a_reversed_one_way_takes_the_lane_running_its_way() -> None:
+    """`oneway=-1`: the way's traffic runs against its own digitising, so the lane
+    the block records in that direction is the with-flow lane, not a contraflow one."""
+    block = facts(bike={"ib": A.BIKE_LANE})
+    way = A.aggregate([("a", block, True)])  # the lane runs inbound, against the way
+    tags = A.overlay({"highway": "residential", "oneway": "-1"}, way).tags
+    assert tags["cycleway:right"] == "lane"
+    assert "cycleway:left" not in tags
+    assert "oneway:bicycle" not in tags
+
+
+def test_a_divided_road_s_carriageway_takes_nothing_from_the_other_carriageway() -> None:
+    """Review r1: a one-way carriageway on a two-way block took the other direction's
+    lane. That lane is the other carriageway's, not a contraflow lane on this one, and
+    an OSM lane on this carriageway is left alone (the agency's silence about it is
+    not evidence it is gone)."""
+    block = facts(bike={"ib": A.BIKE_LANE}, way="both")
+    eastbound = A.aggregate([("a", block, True)])
+    bare = A.overlay({"highway": "primary", "oneway": "yes"}, eastbound)
+    assert not any(k.startswith("cycleway") for k in bare.tags)
+    assert "oneway:bicycle" not in bare.tags
+    mapped = A.overlay({"highway": "primary", "oneway": "yes", "cycleway:right": "lane"}, eastbound)
+    assert mapped.tags["cycleway:right"] == "lane"
+    assert mapped.sources["bike"] == A.SOURCE_OSM

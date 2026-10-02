@@ -3337,6 +3337,10 @@ def test_a_block_count_ranks_below_the_districts_own_count_layer(workspace, stat
             skip=NOT_SWAPPED,
         )
     assert (both.aadt_by_way[100].aadt, both.aadt_by_way[100].agency) == (9100, "ddot")
+    # Review r1, blocker 2: the provenance names the count the classifier read, not
+    # the block that also had one.
+    assert dict(context.stress_by_way[100].attr_sources)["aadt"] == "dc-roadway-block"
+    assert dict(both.stress_by_way[100].attr_sources)["aadt"] == "ddot"
 
 
 def test_a_trail_does_not_take_a_streets_speed(workspace, states) -> None:
@@ -3350,15 +3354,18 @@ def test_a_trail_does_not_take_a_streets_speed(workspace, states) -> None:
 
 
 def test_the_parking_lane_width_reaches_the_bike_lane_criterion(workspace, states) -> None:
-    """Furth measures a lane beside parking as the lane plus the parking lane
-    (13.5 ft): a six-foot lane beside eight feet of parking passes, and the same
-    block without the parking width is read against the lane alone."""
+    """Furth measures a lane beside parking by its reach, the lane plus the parking
+    lane (15 ft, MTI 11-19 Table 2): a 7.5 ft lane the block records beside eight
+    feet of parking passes, and the same block without the parking width is read
+    against the lane alone. M36 (review r1): the width reaches the classifier in
+    metres, not feet."""
     source, root = workspace
     lane = {
         "speed_mph": {"ob": 25},
         "lanes": {"ib": 1, "ob": 1},
         "bike": {"ib": 1, "ob": 1},
-        "bike_width_ft": 6.0,
+        "bike_width_ft": 7.5,
+        "bike_beside_parking": ["ib", "ob"],
         "parking_lanes": 2,
     }
     with_width, _ = run_pipeline(
@@ -3376,6 +3383,16 @@ def test_the_parking_lane_width_reaches_the_bike_lane_criterion(workspace, state
         )
     assert int(with_width.stress_by_way[100].tier) < int(without.stress_by_way[100].tier)
     assert "adequate width" in with_width.stress_by_way[100].rule
+    # A five-foot lane beside eight feet of parking is a 13 ft reach, a door zone.
+    # Eight feet read as eight metres would clear the 15 ft criterion twice over.
+    with tempfile.TemporaryDirectory() as other:
+        narrow, _ = run_pipeline(
+            install_source_extract(Path(other)),
+            Path(other),
+            roadway=[street_block("dc-1", {**lane, "bike_width_ft": 5.0, "parking_width_ft": 8.0})],
+            skip=NOT_SWAPPED,
+        )
+    assert "narrow" in narrow.stress_by_way[100].rule
 
 
 def test_the_rebuild_logs_what_the_street_blocks_reached(workspace, states, caplog) -> None:
@@ -3394,7 +3411,9 @@ def test_the_rebuild_logs_what_the_street_blocks_reached(workspace, states, capl
     assert "agency street blocks classified 1 ways" in caplog.text
 
 
-def build_one_road_extract(path: Path, *, highway: str, name: str = "Frontage Road") -> None:
+def build_one_road_extract(
+    path: Path, *, highway: str, name: str = "Frontage Road", extra: dict | None = None
+) -> None:
     """The toy extract with way 100 of the class and name given. Everything else
     is the toy's, because the rebuild refuses a region with no way in a state."""
     Path(path).unlink(missing_ok=True)
@@ -3412,7 +3431,7 @@ def build_one_road_extract(path: Path, *, highway: str, name: str = "Frontage Ro
             writer.add_node(
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
-        tags = {"highway": highway, **({"name": name} if name else {})}
+        tags = {"highway": highway, **({"name": name} if name else {}), **(extra or {})}
         writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=tags))
         for way_id, way_nodes, way_tags in (
             (200, [3, 4], {"highway": "cycleway", "name": "Test Trail"}),
@@ -3429,7 +3448,17 @@ def build_one_road_extract(path: Path, *, highway: str, name: str = "Frontage Ro
 
 @pytest.mark.parametrize(
     ("highway", "reaches"),
-    [("residential", False), ("tertiary", False), ("primary", True), ("motorway", True)],
+    [
+        ("residential", False),
+        ("tertiary", False),
+        # Review r1: primary and secondary roads took a neighbour's block when they
+        # were free of the veto (North Capitol Street, Clermont Drive's).
+        ("primary", False),
+        ("secondary", False),
+        ("service", False),
+        ("motorway", True),
+        ("trunk", True),
+    ],
 )
 def test_a_frontage_road_does_not_take_the_arterial_beside_it_but_a_freeway_may(
     highway, reaches, workspace, states
@@ -3457,3 +3486,38 @@ def test_a_way_with_no_name_is_not_vetoed(workspace, states) -> None:
     block = street_block("dc-1", {"speed_mph": {"ob": 25}})
     context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
     assert 100 in context.road_facts_by_way
+
+
+def test_an_unnamed_service_way_does_not_take_the_street_beside_it(workspace, states) -> None:
+    """M38 (review r1): the rebuild requires a service way's name to agree, so a
+    parking aisle or alley beside a street keeps its own tags (Baltimore's unnamed
+    service ways took 118 mi of the street's 25 mph without it). An unnamed
+    residential way, which the requirement does not cover, still matches."""
+    block = street_block("dc-1", {"speed_mph": {"ob": 25}})
+    service = install_source_extract(
+        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway="service", name=""
+    )
+    context, _ = run_pipeline(service, service.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 not in context.road_facts_by_way
+
+
+def test_a_track_osm_maps_as_its_own_way_is_never_written_onto_the_road(workspace, states) -> None:
+    """Review r1, blocker 1: the block's protected lane is the separate way OSM maps
+    beside the road. Writing it onto the road rated the motor lanes LTS 1 (15th
+    Street NW) and drew the carriageway as a track."""
+    clipped = install_source_extract(
+        Path(tempfile.mkdtemp()),
+        build=build_one_road_extract,
+        highway="primary",
+        name="Test Road",
+        extra={"maxspeed": "30 mph", "lanes": "4", "cycleway:left": "separate"},
+    )
+    block = street_block("dc-1", {"bike": {"ib": 3, "ob": 3}, "lanes": {"ib": 2, "ob": 2}})
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 in context.road_facts_by_way
+    read = context.class_tags_by_way[100]
+    assert read["cycleway:left"] == "separate"
+    assert "track" not in {v for k, v in read.items() if k.startswith("cycleway")}
+    assert dict(context.stress_by_way[100].attr_sources)["bike"] == "osm"
+    assert int(context.stress_by_way[100].tier) > 1
+    assert context.facility_by_way[100] != "protected"

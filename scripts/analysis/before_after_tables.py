@@ -165,12 +165,12 @@ def main() -> int:
     for row in dcbal:
         if row["region"] == "baltimore" and row["in_area"] == "1":
             miles = int(row["m"]) / MI
-            before["Baltimore City (within about 150 m of its centerline)"][int(row["tier0"])] += (
-                miles
-            )
-            after["Baltimore City (within about 150 m of its centerline)"][int(row["tier1"])] += (
-                miles
-            )
+            before["Baltimore City (within about 500 ft [150 m] of its centerline)"][
+                int(row["tier0"])
+            ] += miles
+            after["Baltimore City (within about 500 ft [150 m] of its centerline)"][
+                int(row["tier1"])
+            ] += miles
     for row in dcbal:
         if row["region"] == "dc" and row["matched"] == "1":
             miles = int(row["m"]) / MI
@@ -184,18 +184,24 @@ def main() -> int:
         "VA",
         "no state",
         "DC ways a Roadway Block was matched to",
-        "Baltimore City (within about 150 m of its centerline)",
+        "Baltimore City (within about 500 ft [150 m] of its centerline)",
     ]
     out = [
         "# Before and after: DC Roadway Block and Baltimore street centerline conflated",
         "",
-        "Before: the integration branch (33ff4da) classifier on the 2026-09-25 extract, as the earlier "
-        "calibration tables were made (classification only: the 886 loaded stress rows and 52 access rows "
-        "are overrides applied at the rebuild and are in neither column). After: the same classifier with "
-        "the agency layers conflated (`pipeline.conflation.conflate_blocks`, `agency_roads.overlay`) and the "
-        "Roadway Block's AADT filling where no count layer reached the way. Only DC's and Baltimore's ways can change; "
-        "every other way is the baseline's. Road ways only (proposed, construction, platform and corridor "
-        "ways and trail-class ways are not classified here). Miles.",
+        "Before: this branch's classifier on the 2026-09-25 extract without the agency layers, as the "
+        "earlier calibration tables were made (classification only: the loaded stress and access rows, and "
+        "the 2026-10-01 MoCo and Baltimore override files, are overrides applied at the rebuild and are in "
+        "neither column). After: the same classifier with the agency layers conflated "
+        "(`pipeline.conflation.road_facts_by_way`, `agency_roads.overlay`) and the Roadway Block's AADT "
+        "filling where no count layer reached the way. Since review r1 the overlay never writes a bike "
+        "facility OSM maps as its own way onto the road, gives each carriageway its own direction's lanes "
+        "and bike lane, keeps a slip road's own lanes, does not make a way OSM tags two-way one-way, and "
+        "takes Baltimore's speed only where OSM has none (OWNER-DECISIONS 184); a painted lane's reach "
+        "beside parking is the lane plus the parking lane only where DC records the lane beside parking, "
+        "against Furth's 15 ft [4.6 m]. Only DC's and Baltimore's ways can change; every other way is the "
+        "baseline's. Road ways only (proposed, construction, platform and corridor ways and trail-class "
+        "ways are not classified here). Miles.",
         "",
         f"The two runs agree on the baseline tier of all but {mismatch:,} of the {len(by_id):,} DC and Baltimore ways "
         "(the baseline did not know a separately mapped bike facility the way the rebuild's own pairing does).",
@@ -229,6 +235,37 @@ def main() -> int:
     for (region, cause), (ways, miles) in sorted(moved.items(), key=lambda kv: -kv[1][1])[:24]:
         up, down = direction[(region, cause)]
         out.append(f"| {region} | {cause} | {ways:,} | {miles:,.1f} | {up:,.1f} | {down:,.1f} |")
+    out.append("")
+
+    # -- The parking reach on its own (review r1: separate it from the rest)
+    reach_moves = Counter()
+    reach_ways = 0
+    for row in dcbal:
+        if row.get("tier1_noreach", row["tier1"]) == row["tier1"]:
+            continue
+        reach_ways += 1
+        reach_moves[(int(row["tier1_noreach"]), int(row["tier1"]))] += int(row["m"]) / MI
+    with_reach = sum(1 for row in dcbal if row.get("reach_ft"))
+    out += [
+        "## The parking reach on its own (`classify(parking_width_m=)`)",
+        "",
+        f"The one change outside the data plumbing: where DC records a painted lane beside a parking "
+        f"lane (`BIKELANE_PARKINGLANE_ADJACENT`), the parking lane's width is added to the lane's for "
+        f"Furth's reach, adequate at 15 ft [4.6 m] (MTI 11-19, Table 2). It applies on {with_reach:,} "
+        f"ways and changes the tier of {reach_ways:,} of them "
+        f'({sum(reach_moves.values()):,.1f} mi), against the same "after" with the lane measured on its '
+        "own. Every other change in this report is the layer's data. The criterion itself moved from "
+        "13.5 ft to Furth's 15 ft in the same change; no way in the extract carries a lane or shoulder "
+        "width between the two [4.1 to 4.57 m], so no OSM-only way outside DC and Baltimore moves and the "
+        "region baseline stands.",
+        "",
+        "| without the reach | with it | miles |",
+        "| --- | --- | --- |",
+    ]
+    out += [
+        f"| LTS {a} | LTS {b} | {m:,.1f} |"
+        for (a, b), m in sorted(reach_moves.items(), key=lambda kv: -kv[1])
+    ]
     out.append("")
 
     # -- By tier movement, per area
@@ -289,7 +326,17 @@ def main() -> int:
         lines.append("")
         return lines
 
-    out += ["## The owner's example roads (DC)", ""]
+    out += [
+        "## The owner's example roads (DC)",
+        "",
+        "16th Street NW and Connecticut Avenue NW stay at LTS 4 where the Roadway Block's lanes and counts "
+        'put them there (OWNER-DECISIONS 179, "Keep LTS 4 (Recommended)"). Two readings behind that, '
+        "recorded for the owner: DC's lane totals include bus lanes (`BUSLANE_*` on 16th Street), which "
+        "are counted as travel lanes, the conservative reading; and Connecticut Avenue's reversible lanes "
+        "are assumed to be operating, so they count as lanes in the peak direction (1 + 1 + 2 reversible "
+        "is 3 a direction).",
+        "",
+    ]
     for label, pattern in DC_EXAMPLES.items():
         rows = [r for r in dcbal if r["region"] == "dc" and re.match(pattern, r["name"])]
         out += example(label, rows) if rows else [f"### {label}: no ways found", ""]
