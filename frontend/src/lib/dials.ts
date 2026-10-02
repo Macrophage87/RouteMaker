@@ -46,6 +46,11 @@ interface Start {
   stressMax?: number;
   /** Cargo Bike offers electric assist. */
   assist?: boolean;
+  /**
+   * Trailmaxxing alone favours trails (OWNER-DECISIONS 202): the API credits each
+   * mile of trail (`Preset.trail_credit`), so the route may add miles to ride one.
+   */
+  trails?: boolean;
 }
 
 /**
@@ -70,7 +75,7 @@ export function calmRate(stress: number): number {
 
 export const STARTS: Record<PresetId, Start> = {
   default: { stress: 70, hills: 0, seek: true },
-  trailmaxxing: { stress: 100, hills: 0, seek: true },
+  trailmaxxing: { stress: 100, hills: 0, seek: true, trails: true },
   "group-ride": { stress: 40, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
   "mountain-goat": { stress: 40, hills: 100, seek: true },
@@ -105,6 +110,11 @@ export function stressMax(preset: PresetId): number {
 
 export function offersAssist(preset: PresetId): boolean {
   return STARTS[preset].assist === true;
+}
+
+/** Whether the ride type favours trails (Trailmaxxing's trail credit). */
+export function favoursTrails(preset: PresetId): boolean {
+  return STARTS[preset].trails === true;
 }
 
 export function carries(preset: PresetId): boolean {

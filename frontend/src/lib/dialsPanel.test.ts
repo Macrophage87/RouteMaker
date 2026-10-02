@@ -36,7 +36,7 @@ test("Mass Ride's traffic slider is locked, and says why; no other ride type's i
     if (preset.id === "mass-ride") continue;
     const traffic = panelView(preset.id, startDials(preset.id)).traffic;
     assert.equal(traffic.disabled, false, preset.id);
-    assert.equal(traffic.note, calmNote(startDials(preset.id).stress), preset.id);
+    assert.equal(traffic.note, calmNote(startDials(preset.id).stress, preset.id), preset.id);
     assert.equal(traffic.note === undefined, preset.id !== "trailmaxxing", preset.id);
     assert.equal(traffic.max, STRESS_MAX, preset.id);
   }
@@ -100,6 +100,24 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.match(calmNote(85) ?? "", /about 0\.6 mi \(1\.0 km\)/);
   // Mass Ride's slider is locked and keeps its own note.
   assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.note, MASS_RIDE_TRAFFIC_NOTE);
+});
+
+test("Trailmaxxing's note says in plain words that it favours trails and may add miles", () => {
+  // OWNER-DECISIONS 202: only Trailmaxxing rewards each mile of trail.
+  const dials = startDials("trailmaxxing");
+  const note = panelView("trailmaxxing", dials).traffic.note ?? "";
+  assert.match(note, /^Calm detour: up to about 10 mi \(16 km\)/);
+  assert.match(note, /Trailmaxxing also favours trails, so it may add miles to ride one/);
+  // It fades with the slider, and is gone where there is no calm detour.
+  assert.match(panelView("trailmaxxing", dials, { ...dials, stress: 90 }).traffic.note ?? "", /favours trails/);
+  assert.equal(panelView("trailmaxxing", dials, { ...dials, stress: 80 }).traffic.note, undefined);
+  // No other ride type says it, even at the top of the slider.
+  for (const preset of PRESETS) {
+    if (preset.id === "trailmaxxing" || preset.id === "mass-ride") continue;
+    const top = panelView(preset.id, startDials(preset.id), { ...startDials(preset.id), stress: 100 }).traffic.note ?? "";
+    assert.doesNotMatch(top, /favours trails/, preset.id);
+  }
+  assert.doesNotMatch(calmNote(100) ?? "", /favours trails/);
 });
 
 test("the slider's right-hand label is the calm end", () => {

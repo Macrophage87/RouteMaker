@@ -1189,6 +1189,7 @@ def plan(
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
+        trail_credit=presets.trail_credit_for(preset_name, stress_dial),
     )
     refined = None
     refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline)

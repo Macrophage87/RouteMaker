@@ -1617,6 +1617,93 @@ kept, the guard, the budget, the exclusions, the failures). `scripts/mutants_tra
 has 56 mutants run against whole test files.
 
 
+### The trail credit and the seek leg by leg (FOLLOWUP-TRAIL-SEEK part 2, items 202, 203)
+
+The owner, 2026-10-02: 202, "Trail bonus for Trailmaxxing only (Recommended)" (only
+Trailmaxxing rewards each mile of trail), and 203, "Now, before rebuild" (the seek
+runs leg by leg on plans with stops).
+
+**The credit.** `Preset.trail_credit`, a preset dial: 0.5 on Trailmaxxing, 0 on
+every other ride type, not a slider value and not in the router's costing. The
+search's score is
+
+    router cost + QUIET COST x (CALM RATE x exposure + ... - TRAIL CREDIT x trail metres)
+
+so a metre of trail takes the credit, in metres of quiet riding, off a route. Trail
+is the seek's own predicate (`refine.trail_flags`): a path or protected way, or a
+road closed to cars at the ride time (facility `path`), at LTS 1 or 2; before the
+facility column exists, the table's recorded trail rule. The seek's corridor score
+gains the credit: a corridor is worth `rate x exposure replaced + credit x (trail it
+rides - trail it replaces) - detour`, each trail step costing `1 - credit` of a
+detour metre (the credit is held under 0.95), and a corridor needs only 400 m more
+trail than it replaces when it replaces nothing busy. The Traffic-wins guard
+(2% and 50 m) and the detour warning are untouched, so the credit buys no LTS 3 or 4.
+
+**The slider.** The link carries the ride type and the slider position, never the
+credit, so a shared link and the plan hash need no change; the API works the credit
+out (`presets.trail_credit_for`). A rider who moves Trailmaxxing's Traffic slider
+down gets the credit in proportion to the calm rate: all of it at 100, a fifth at 90,
+none at 80 and below (no calm search there). The seek itself still runs only at 100.
+Another ride type's slider at 100 has no credit.
+
+**Leg by leg.** For a plan with stops the seek runs for each stretch between
+consecutive locations that is at least 1.2 mi apart: its table read, corridors and
+candidates are the leg's, the router is asked for the leg alone (start, `through`
+points, end), the candidate is scored against the leg's own reading and guarded
+against the leg's exposure as the router first gave it, and a leg taken is spliced
+into the trip. The 6 s is shared by the legs that can run, by straight-line span of
+what is left, at least 2.5 s each; a leg's unused time goes to the next. A taken
+splice is read once as a whole for the answer to reuse.
+
+**Measured**, Trailmaxxing at 100 (stress 100, Cross), the twelve trips, each cell
+miles / miles of LTS 3+ / trail miles (path and protected) / ratio to the direct
+route / red and orange markers / plan time:
+
+| Trip | credit 0 | 0.25 | 0.5 | 0.75 |
+|---|---|---|---|---|
+| Rockville - Silver Spring | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 12.2 s | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 12.3 s | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 9.5 s | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 12.3 s |
+| Bethesda - Capitol | 12.2 / 0.87 / 9.9 / 1.24x / 0r 2o / 6.5 s | 12.4 / 0.81 / 9.9 / 1.27x / 0r 2o / 15.2 s | 12.4 / 0.81 / 9.9 / 1.27x / 0r 2o / 11.8 s | 12.4 / 0.81 / 9.9 / 1.27x / 0r 2o / 10.3 s |
+| Falls Church - Union Station | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 7.1 s | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 13.7 s | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 9.6 s | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 9.7 s |
+| Silver Spring - College Park | 10.1 / 1.04 / 6.3 / 1.52x / 1r 6o / 9.9 s | 10.1 / 1.04 / 6.3 / 1.52x / 1r 6o / 12.8 s | 11.1 / 0.79 / 8.0 / 1.67x / 0r 2o / 18.0 s | 11.1 / 0.79 / 8.0 / 1.67x / 0r 2o / 10.0 s |
+| Bethesda - Silver Spring | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 3.4 s | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 3.4 s | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 4.5 s | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 3.2 s |
+| Laurel - College Park | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 7.0 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 6.6 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 7.0 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 6.1 s |
+| Poolesville - Darnestown | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 1.7 s | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 1.1 s | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 2.5 s | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 1.3 s |
+| Bowie - Annapolis | 21.2 / 13.41 / 1.8 / 1.04x / 3r 3o / 2.0 s | 21.9 / 13.32 / 2.6 / 1.08x / 3r 3o / 4.6 s | 21.9 / 13.32 / 2.6 / 1.08x / 3r 3o / 4.5 s | 21.9 / 13.32 / 2.6 / 1.08x / 3r 3o / 4.7 s |
+| Tysons - Ballston (W&OD) | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 6.4 s | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 4.6 s | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 6.5 s | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 5.8 s |
+| Eastern Market - PG Plaza (Anacostia) | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 11.2 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 8.2 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 9.5 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 8.2 s |
+| Friendship Heights - Rosslyn (Capital Crescent) | 5.3 / 1.79 / 1.3 / - / 0r 3o / 2.4 s | 5.3 / 1.79 / 1.3 / - / 0r 3o / 1.0 s | 5.3 / 1.79 / 1.3 / - / 0r 3o / 1.0 s | 5.3 / 1.79 / 1.3 / - / 0r 3o / 1.2 s |
+| Takoma - Hyattsville (Sligo) | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 4.3 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 3.6 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 3.5 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 4.3 s |
+
+- **The credit changes three of twelve routes**: Bethesda - Capitol (+0.2 mi, 0.06 mi
+  less LTS 3+), Bowie - Annapolis (+0.7 mi, 0.8 mi more trail) and, from 0.5, Silver
+  Spring - College Park (+1.0 mi, 1.7 mi more trail, 0.25 mi less LTS 3+, 5 markers
+  fewer; its ratio goes from 1.52 to 1.67, past the detour warning's 1.5, which says
+  so). 0.25 takes the first two; 0.5 and 0.75 plan the same routes on all twelve.
+- **The W&OD, Capital Crescent, Anacostia and Sligo trips do not change**: the seek
+  now asks (the credit finds a corridor on four trips where it asked nothing) but the
+  routes already ride the trails beside them, so there is no 400 m of trail to add.
+  Of the others, the candidate through the corridor was busier or dearer.
+- **Recommended: 0.5.** It takes every change 0.25 does and the one more that is
+  clearly a trail route, and 0.75 adds nothing. Typical trips stay under 1.6 times
+  the direct route (ten of twelve; Laurel - College Park was 1.65 before the credit).
+  The plan times are within the run-to-run noise (1 to 5 s, runs overlapped).
+- **Plans with stops** (credit 0.5, seek on against off, one process): a plan with no
+  stop, Bethesda to College Park, 10.9 s on against 9.2 s off (+1.7 s); one stop
+  (Bethesda, Silver Spring, College Park) 13.1 s against 8.3 s (+4.8 s); three stops
+  (Tysons, Ballston, Rosslyn, Union Station, Takoma, 25 mi) 20.0 s against 15.2 s
+  (+4.8 s). With one stop the seek read the table for both legs and asked once; with
+  three the exclusion search used its time (`limited: time`), the seek read its
+  corridors (3) and had under the least left to ask: it adds the table reads and the
+  legs' readings and asks nothing. The one candidate asked with a stop was the 150
+  kept exclusions' detour (24.9 km for a 14.5 mi trip): not better.
+
+Tests: `TestSeekLegByLeg`, `TestRouteSpansAndLegs`, `TestTrailCredit*` in
+`tests/test_refine.py`, `TestTheTrailCredit` in `tests/test_trailseek.py`,
+`TestTrailCredit` in `tests/test_presets.py`, the link and the notes in the front
+end's `planHash`, `dialsPanel` and `presets` tests. `scripts/mutants_trailseek.py`
+now has 98 mutants, 42 of them on this code.
+
+
 ### The detour warning
 
 `routemaker.detour` (item 164: "just warn people"): the route's length against

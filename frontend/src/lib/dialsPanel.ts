@@ -14,6 +14,7 @@ import {
   STRESS_MIN,
   TRAFFIC_TOLERANT_WARNING,
   calmRate,
+  favoursTrails,
   hillsMax,
   hillsWords,
   offersAssist,
@@ -53,13 +54,18 @@ export const MASS_RIDE_TRAFFIC_NOTE =
  * old top it stops pricing the router's own roads harder and starts searching
  * for calmer, longer routes, and says so before it plans one.
  */
-export function calmNote(stress: number): string | undefined {
+export function calmNote(stress: number, preset?: PresetId): string | undefined {
   const rate = calmRate(stress);
   if (rate <= 0) return undefined;
+  const trails =
+    preset !== undefined && favoursTrails(preset)
+      ? " Trailmaxxing also favours trails, so it may add miles to ride one; that pull fades as the slider comes down."
+      : "";
   return (
     `Calm detour: up to about ${formatPerMile(rate)} of extra riding for every mile of busy road (LTS 3) ` +
     "avoided, twice that for a heavy-traffic road (LTS 4) and three times for a road best avoided. " +
-    "The route can be many times the straight line, and says how much longer it is."
+    "The route can be many times the straight line, and says how much longer it is." +
+    trails
   );
 }
 
@@ -98,7 +104,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       words: stressWords(draft.stress),
       ends: ["Traffic tolerant", "Balanced", "Calm at any cost"],
       disabled: locked,
-      note: locked ? MASS_RIDE_TRAFFIC_NOTE : calmNote(draft.stress),
+      note: locked ? MASS_RIDE_TRAFFIC_NOTE : calmNote(draft.stress, preset),
     },
     warning: warnsTrafficTolerant(preset, draft.stress) ? TRAFFIC_TOLERANT_WARNING : null,
     hills: {

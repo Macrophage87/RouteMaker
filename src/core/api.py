@@ -428,6 +428,13 @@ class SeekOut(Schema):
     taken: bool
     limited: str | None = None
     tried: list[dict] = Field(default_factory=list)
+    legs: int | None = Field(
+        default=None,
+        description=(
+            "How many legs (stretches between consecutive locations) the seek ran over"
+            " (OWNER-DECISIONS 203); each `tried` row names its `leg`."
+        ),
+    )
 
 
 class CalmSearchOut(Schema):
@@ -450,6 +457,16 @@ class CalmSearchOut(Schema):
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
     seek: SeekOut | None = None
+    trail_credit: float | None = Field(
+        default=None,
+        description=(
+            "Trailmaxxing only (OWNER-DECISIONS 202): metres of quiet riding each metre of"
+            " trail was worth in the search, which tapers with the traffic slider below its"
+            " top. Absent on every other ride type."
+        ),
+    )
+    trail_before_m: float | None = None
+    trail_after_m: float | None = None
 
 
 class DetourOut(Schema):

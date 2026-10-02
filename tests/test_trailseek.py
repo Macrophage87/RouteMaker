@@ -522,3 +522,113 @@ class TestWhenItRuns:
     def test_the_budget_is_six_seconds_over_the_search(self) -> None:
         assert ts.SEEK_BUDGET_S == 6
         assert ts.SEEK_MAX_CANDIDATES == 3
+
+
+def credit_seek(segments, credit=0.5, spans=(), trail=(), rate=10.0, route=None):
+    return ts.find_corridors(
+        segments, START, END, route or route_xy(), spans, LENGTH, rate, credit, trail
+    )
+
+
+class TestTheTrailCredit:
+    """OWNER-DECISIONS 202, "Trail bonus for Trailmaxxing only": a metre of trail
+    is worth the credit in metres of detour, so a route with nothing busy on it
+    still finds a trail."""
+
+    def test_the_route_counts_its_own_trail_in_metres_along(self) -> None:
+        line_ = ts.RouteLine(
+            [(0.0, 0.0), (5000.0, 0.0), (10_000.0, 0.0)],
+            [],
+            None,
+            trail_spans=[(1000.0, 2000.0, 1.0), (3000.0, 4000.0, 1.0)],
+        )
+        assert line_.trail_to(500.0) == 0.0
+        assert line_.trail_to(1500.0) == pytest.approx(500.0)
+        assert line_.trail_to(2500.0) == pytest.approx(1000.0)
+        assert line_.trail_to(3500.0) == pytest.approx(1500.0)
+        assert line_.trail_to(9000.0) == pytest.approx(2000.0)
+        # Busy road and trail are counted apart.
+        assert line_.busy_to(9000.0) == 0.0
+
+    def test_the_trail_is_scaled_to_the_lines_length_like_the_busy_road(self) -> None:
+        scaled = ts.RouteLine(
+            [(0.0, 0.0), (10_000.0, 0.0)], [], 20_000.0, trail_spans=[(2000.0, 4000.0, 1.0)]
+        )
+        assert scaled.trail_to(5000.0) == pytest.approx(1000.0)
+
+    def test_overlapping_and_empty_trail_spans_are_not_counted_twice(self) -> None:
+        line_ = ts.RouteLine(
+            [(0.0, 0.0), (10_000.0, 0.0)],
+            [],
+            None,
+            trail_spans=[(1000.0, 3000.0, 1.0), (2000.0, 4000.0, 1.0), (5000.0, 5000.0, 1.0)],
+        )
+        assert line_.trail_to(10_000.0) == pytest.approx(3000.0)
+        assert (
+            ts.RouteLine([(0.0, 0.0), (1.0, 0.0)], [], None, trail_spans=[(0, 1, 0.0)]).t_starts
+            == []
+        )
+
+    def test_a_route_with_nothing_busy_finds_a_trail_only_with_a_credit(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        assert credit_seek(trail, credit=0.0) == []
+        (c,) = credit_seek(trail, credit=0.5)
+        assert c.gain_m == 0.0
+        assert c.trail_gain_m == pytest.approx(c.trail_m) and c.trail_m > 0.07 * KX
+        # What the corridor is worth is the credit on its trail less the detour it adds.
+        assert c.score == pytest.approx(0.5 * c.trail_m - c.detour_m)
+
+    def test_a_bigger_credit_is_worth_more(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        scores = [credit_seek(trail, credit=credit)[0].score for credit in (0.25, 0.5, 0.75)]
+        assert scores == sorted(scores) and len(set(scores)) == 3
+
+    def test_a_trail_the_route_already_rides_is_not_a_gain(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        assert credit_seek(trail, trail=[(0.0, LENGTH, 1.0)]) == []
+
+    def test_the_gain_is_net_of_the_trail_the_corridor_replaces(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        (c,) = credit_seek(trail, trail=[(0.0, 3000.0, 1.0)])
+        replaced = max(0.0, min(c.t_out, 3000.0) - c.t_in)
+        assert replaced > 0
+        assert c.trail_gain_m == pytest.approx(c.trail_m - replaced, abs=2.0)
+        # The score pays for the trail it adds and loses the trail it replaces.
+        assert c.score == pytest.approx(0.5 * c.trail_m - c.detour_m - 0.5 * replaced, abs=2.0)
+
+    def test_a_corridor_without_busy_road_must_add_enough_trail(self, monkeypatch) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        assert credit_seek(trail)
+        monkeypatch.setattr(ts, "MIN_TRAIL_GAIN_M", 1e6)
+        assert credit_seek(trail) == []
+        # Busy road replaced is its own reason: it needs no trail gain.
+        assert credit_seek(trail, spans=[(3000.0, 6000.0, 1.0)])
+
+    def test_a_corridor_must_still_clear_the_score(self, monkeypatch) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        monkeypatch.setattr(ts, "MIN_SCORE_M", 1e9)
+        assert credit_seek(trail) == []
+
+    def test_a_credit_leaves_the_busy_road_corridors_as_they_were(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        busy = [(3000.0, 6000.0, 1.0)]
+        assert credit_seek(trail, credit=0.0, spans=busy) == seek(trail, spans=busy)
+        (plain,) = credit_seek(trail, credit=0.0, spans=busy)
+        (credited,) = credit_seek(trail, credit=0.5, spans=busy)
+        assert credited.gain_m == plain.gain_m and credited.score > plain.score
+
+    def test_the_credit_is_held_under_the_detours_weight(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        assert credit_seek(trail, credit=7.0) == credit_seek(trail, credit=0.95)
+        assert credit_seek(trail, credit=-1.0) == credit_seek(trail, credit=0.0) == []
+        busy = [(3000.0, 6000.0, 1.0)]
+        assert credit_seek(trail, credit=-1.0, spans=busy) == credit_seek(
+            trail, credit=0.0, spans=busy
+        )
+        assert 0.95 < 1.0 and ts.DETOUR_WEIGHT == 1.0
+
+    def test_the_detour_cap_still_holds(self, monkeypatch) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        monkeypatch.setattr(ts, "DETOUR_CAP_MIN_M", 5.0)
+        monkeypatch.setattr(ts, "DETOUR_CAP_SPAN", 0.0)
+        assert credit_seek(trail) == []

@@ -480,7 +480,22 @@ three more routes (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek"):
   not read the segment table" at warning level). A run of `no_route` outcomes
   means the router refuses the through points (an entry on a way a bicycle
   cannot use); the plan is unaffected.
-- **Not applicable** to a start and an end with a via point, to a long ride, to
+- **The trail credit and the seek on plans with stops** (OWNER-DECISIONS 202, 203;
+  docs/DEVELOPMENT.md, "The trail credit and the seek leg by leg"). Trailmaxxing has
+  a trail credit (0.5); no other ride type does, and the router is not told. Load: no
+  new queries or calls for a plan with a start and an end. A plan with stops runs the
+  seek once per leg of at least 1.2 mi: one table read per leg (each up to 30,000
+  rows) and, per candidate, one route for the leg alone with its trace and `/locate`s,
+  within the same 6 s as before, plus one reading of the whole trip when a leg is
+  taken. Measured one stop +4.8 s and three stops +4.8 s over a plan without the seek
+  (three stops: the exclusion search had used the time, and the seek added only its
+  reads). Still no limit of its own: it is inside the plan's `ROUTING_CONCURRENCY`
+  slot. `calm_search.seek.legs` and each `tried` row's `leg` say which legs it ran
+  over; `calm_search.trail_credit`, `trail_before_m` and `trail_after_m` say what the
+  credit was and the trail the route had. Before the facility column exists the
+  trail credit reads the table's trail rule through one more join over the traced
+  pieces (Trailmaxxing plans only).
+- **Not applicable** to a long ride, to
   a Mass Ride, to a span over 18.6 mi (the search's own limit), or to one under
   1.2 mi.
 - **Facility.** On a table without the facility column (the live table until

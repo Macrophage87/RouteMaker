@@ -388,9 +388,31 @@ class TestTheSearchInTheAnswer:
         corridors, and says so; below that it does not."""
         router(world())
         top = post(client, {**good_body(), "stress": 100}).json()["calm_search"]
-        assert set(top["seek"]) == {"corridors", "asked", "taken", "limited", "tried"}
+        assert set(top["seek"]) == {"corridors", "asked", "taken", "limited", "tried", "legs"}
+        assert top["seek"]["legs"] == 1
         below = post(client, {**good_body(), "stress": 95}).json()["calm_search"]
         assert below["seek"] is None
+
+    def test_only_trailmaxxing_has_a_trail_credit_and_the_answer_says_so(
+        self, client, arterial, router
+    ) -> None:
+        """OWNER-DECISIONS 202: a preset dial, carried in by the ride type and
+        faded by the slider (`presets.trail_credit_for`)."""
+        router(world())
+        top = post(client, {**good_body("trailmaxxing"), "stress": 100}).json()["calm_search"]
+        assert top["trail_credit"] == presets.TRAIL_CREDIT
+        assert top["trail_before_m"] is not None and top["trail_after_m"] is not None
+        for name in sorted(presets.PRESETS):
+            if name in ("trailmaxxing", "mass-ride"):
+                continue
+            other = post(client, {**good_body(name), "stress": 100}).json()["calm_search"]
+            assert other["trail_credit"] is None, name
+            assert other["trail_before_m"] is None, name
+        moved = post(client, {**good_body("trailmaxxing"), "stress": 90}).json()["calm_search"]
+        assert moved["trail_credit"] == presets.trail_credit_for("trailmaxxing", 90)
+        assert 0 < moved["trail_credit"] < presets.TRAIL_CREDIT
+        below = post(client, {**good_body("trailmaxxing"), "stress": 70}).json()["calm_search"]
+        assert below["trail_credit"] is None
 
     def test_a_long_ride_says_why_the_calm_search_did_not_run(
         self, client, arterial, router

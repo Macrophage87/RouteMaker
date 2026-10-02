@@ -29,6 +29,13 @@ test("each preset explains itself in a sentence", () => {
   assert.equal(new Set(PRESETS.map((p) => p.label)).size, PRESETS.length);
 });
 
+test("only Trailmaxxing's card says it favours trails and may add miles (OWNER-DECISIONS 202)", () => {
+  for (const preset of PRESETS) {
+    const says = /favours trails, so it may add miles/.test(preset.description);
+    assert.equal(says, preset.id === "trailmaxxing", preset.id);
+  }
+});
+
 test("the default is one of the offered presets", () => {
   assert.ok(isPreset(DEFAULT_PRESET));
   assert.equal(DEFAULT_PRESET, "default");

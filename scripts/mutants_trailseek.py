@@ -36,27 +36,31 @@ ROOT = Path(__file__).resolve().parents[1]
 SEEK = ["tests/test_trailseek.py"]
 REFINE = ["tests/test_refine.py"]
 PLAN = ["tests/test_route_intersections.py"]
+PRESET_TESTS = ["tests/test_presets.py"]
 
 TS = "src/core/trailseek.py"
 RF = "src/core/refine.py"
 RT = "src/core/routing.py"
+PR = "src/core/presets.py"
 
 NL = "\n"
+# The longest a test file may take against a mutant (the slowest takes about 70 s).
+TEST_TIMEOUT_S = 300
 
 MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # --- the route line ----------------------------------------------------
     (
         "busy: weight ignored",
         TS,
-        "before += (s - self.starts[i]) * self.weights[i]",
-        "before += (s - self.starts[i]) * 1.0",
+        "before += (s - starts[i]) * weights[i]",
+        "before += (s - starts[i]) * 1.0",
         SEEK,
     ),
     (
         "busy: part span from the wrong side",
         TS,
-        "if i < len(self.starts) and s > self.starts[i]:",
-        "if i < len(self.starts) and s < self.starts[i]:",
+        "if i < len(starts) and s > starts[i]:",
+        "if i < len(starts) and s < starts[i]:",
         SEEK,
     ),
     (
@@ -121,40 +125,40 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "entry: distance along ignored",
         TS,
-        "label[node] = rate * line.busy_to(s) + DETOUR_WEIGHT * (s + c)",
-        "label[node] = rate * line.busy_to(s) + DETOUR_WEIGHT * c",
+        "rate * line.busy_to(s) + DETOUR_WEIGHT * (s + c) - credit * line.trail_to(s)",
+        "rate * line.busy_to(s) + DETOUR_WEIGHT * c - credit * line.trail_to(s)",
         SEEK,
     ),
     (
         "exit: wrong side of the join",
         TS,
-        "value = rate * line.busy_to(s_out) + DETOUR_WEIGHT * (s_out - c_out) - cost",
-        "value = rate * line.busy_to(s_out) + DETOUR_WEIGHT * (s_out + c_out) - cost",
+        "+ DETOUR_WEIGHT * (s_out - c_out)",
+        "+ DETOUR_WEIGHT * (s_out + c_out)",
         SEEK,
     ),
     (
         "exit: exposure not counted",
         TS,
-        "value = rate * line.busy_to(s_out) + DETOUR_WEIGHT * (s_out - c_out) - cost",
-        "value = DETOUR_WEIGHT * (s_out - c_out) - cost",
+        "                    rate * line.busy_to(s_out)",
+        "                    0.0 * line.busy_to(s_out)",
         SEEK,
     ),
     ("replaced: no least", TS, "replaced >= MIN_REPLACED_M", "replaced >= 0", SEEK),
     ("cap: not applied", TS, "and detour <= cap_m", "and detour <= cap_m * 1000", SEEK),
-    ("trail: length is free", TS, "moved = cost + DETOUR_WEIGHT * length", "moved = cost", SEEK),
+    ("trail: length is free", TS, "moved = cost + step_weight * length", "moved = cost", SEEK),
     ("detour: negative kept", TS, "detour_m=max(0.0, detour),", "detour_m=detour,", SEEK),
     (
         "corridor: score not required",
         TS,
-        "if best is not None and best.gain_m >= MIN_EXPOSURE_M and best.score >= MIN_SCORE_M:",
-        "if best is not None and best.gain_m >= MIN_EXPOSURE_M:",
+        "if best is None or best.score < MIN_SCORE_M:",
+        "if best is None:",
         SEEK,
     ),
     (
         "corridor: exposure not required",
         TS,
-        "if best is not None and best.gain_m >= MIN_EXPOSURE_M and best.score >= MIN_SCORE_M:",
-        "if best is not None and best.score >= MIN_SCORE_M:",
+        "if best.gain_m >= MIN_EXPOSURE_M or (credit > 0 and best.trail_gain_m >= MIN_TRAIL_GAIN_M):",
+        "if True:",
         SEEK,
     ),
     (
@@ -270,11 +274,17 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "spans: half the edge",
         RF,
-        "spans.append((along, along + piece.metres, weight))",
-        "spans.append((along, along + piece.metres / 2, weight))",
+        "busy.append((a - lo, b - lo, weight))",
+        "busy.append((a - lo, b - lo - (b - a) / 2, weight))",
         REFINE,
     ),
-    ("spans: traced length lost", RF, "return spans, along or None", "return spans, None", REFINE),
+    (
+        "spans: traced length lost",
+        RF,
+        "return busy, trail, (traced or None)",
+        "return busy, trail, None",
+        REFINE,
+    ),
     (
         "seek: runs without the flag",
         RF,
@@ -285,15 +295,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: more than two points",
         RF,
-        "if len(ctx.points) != 2 or len(locations) != 2:",
-        "if len(locations) != 2:",
+        "if count < 1 or len(ctx.points) != len(locations) or len(legs) != count:",
+        "if count < 1 or len(ctx.points) != len(locations):",
         REFINE,
     ),
     (
         "seek: any span",
         RF,
-        "    if span < trailseek.SEEK_MIN_SPAN_M:" + NL + '        seek["limited"] = "span"',
-        "    if False:" + NL + '        seek["limited"] = "span"',
+        "runnable = [k for k in range(count) if spans[k] >= trailseek.SEEK_MIN_SPAN_M]",
+        "runnable = [k for k in range(count) if True]",
         REFINE,
     ),
     (
@@ -310,8 +320,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "step = max(1, len(shape) // 40000)",
         REFINE,
     ),
-    ("seek: exclusions dropped", RF, "kept = list(ctx.kept_excludes)", "kept = []", REFINE),
-    ("seek: no second ask without", RF, "if read is None and kept:", "if False:", REFINE),
+    ("seek: exclusions dropped", RF, "excluded = list(ctx.kept_excludes)", "excluded = []", REFINE),
+    ("seek: no second ask without", RF, "if read is None and excluded:", "if False:", REFINE),
     (
         "seek: exclusions not remembered",
         RF,
@@ -322,7 +332,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: busier is fine",
         RF,
-        "        busier = read.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M"
+        "        busier = read.exposure_m > reference * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M"
         + NL
         + "        score = read.score(ctx)"
         + NL
@@ -353,10 +363,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: best not updated",
         RF,
-        "            best, best_trip, best_score = read, candidate, score"
-        + NL
-        + '            seek["taken"] = True',
-        "            best, best_trip = read, candidate" + NL + '            seek["taken"] = True',
+        "            kept, best_score = (read, candidate), score",
+        "            kept = (read, candidate)",
         REFINE,
     ),
     (
@@ -395,6 +403,304 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "seek=True,",
         PLAN,
     ),
+    # --- the trail credit (OWNER-DECISIONS 202) -------------------------------------
+    (
+        "credit: ignored in the score",
+        RF,
+        "            - ctx.trail_credit * self.trail_m",
+        "            - 0.0 * self.trail_m",
+        REFINE,
+    ),
+    (
+        "credit: a penalty, not a credit",
+        RF,
+        "            - ctx.trail_credit * self.trail_m",
+        "            + ctx.trail_credit * self.trail_m",
+        REFINE,
+    ),
+    (
+        "trail: a bicycle lane counts",
+        RF,
+        'TRAIL_KINDS = frozenset({"path", "protected"})',
+        'TRAIL_KINDS = frozenset({"path", "protected", "lane"})',
+        REFINE,
+    ),
+    (
+        "trail: a protected lane does not",
+        RF,
+        'TRAIL_KINDS = frozenset({"path", "protected"})',
+        'TRAIL_KINDS = frozenset({"path"})',
+        REFINE,
+    ),
+    (
+        "trail: LTS 3 counts",
+        RF,
+        'TRAIL_TIERS = frozenset({"1", "2"})',
+        'TRAIL_TIERS = frozenset({"1", "2", "3"})',
+        REFINE,
+    ),
+    (
+        "trail: LTS 2 does not",
+        RF,
+        'TRAIL_TIERS = frozenset({"1", "2"})',
+        'TRAIL_TIERS = frozenset({"1"})',
+        REFINE,
+    ),
+    (
+        "trail: looked for with no credit",
+        RF,
+        "flags = trail_flags(pieces, classes, ctx) if ctx.trail_credit > 0 else []",
+        "flags = trail_flags(pieces, classes, ctx)",
+        REFINE,
+    ),
+    (
+        "trail: every piece counted",
+        RF,
+        "trail_m=sum(p.metres for p, on in zip(pieces, flags, strict=False) if on),",
+        "trail_m=sum(p.metres for p, on in zip(pieces, flags, strict=False)),",
+        REFINE,
+    ),
+    (
+        "trail: rule fallback takes LTS 3",
+        RF,
+        "return [rule in rules and tier in (1, 2) for tier, rule in cursor.fetchall()]",
+        "return [rule in rules and tier in (1, 2, 3) for tier, rule in cursor.fetchall()]",
+        REFINE,
+    ),
+    (
+        "trail: rule fallback takes any rule",
+        RF,
+        "return [rule in rules and tier in (1, 2) for tier, rule in cursor.fetchall()]",
+        "return [rule is not None and tier in (1, 2) for tier, rule in cursor.fetchall()]",
+        REFINE,
+    ),
+    (
+        "credit: reported wrong",
+        RF,
+        'info["trail_credit"] = ctx.trail_credit',
+        'info["trail_credit"] = 0.0',
+        REFINE,
+    ),
+    (
+        "credit: not reported after",
+        RF,
+        'info["trail_after_m"] = round(best.trail_m, 1)',
+        'info["trail_after_m"] = info["trail_before_m"]',
+        REFINE,
+    ),
+    (
+        "corridor: credit not held under the weight",
+        TS,
+        "credit = min(max(credit, 0.0), DETOUR_WEIGHT * 0.95)",
+        "credit = max(credit, 0.0)",
+        SEEK,
+    ),
+    (
+        "corridor: a negative credit",
+        TS,
+        "credit = min(max(credit, 0.0), DETOUR_WEIGHT * 0.95)",
+        "credit = min(credit, DETOUR_WEIGHT * 0.95)",
+        SEEK,
+    ),
+    (
+        "corridor: the trail replaced is free",
+        TS,
+        "                    - credit * line.trail_to(s_out)",
+        "                    - 0.0 * line.trail_to(s_out)",
+        SEEK,
+    ),
+    (
+        "corridor: entry trail not counted",
+        TS,
+        "rate * line.busy_to(s) + DETOUR_WEIGHT * (s + c) - credit * line.trail_to(s)",
+        "rate * line.busy_to(s) + DETOUR_WEIGHT * (s + c)",
+        SEEK,
+    ),
+    (
+        "corridor: the credit is not on the trail",
+        TS,
+        "step_weight = DETOUR_WEIGHT - credit",
+        "step_weight = DETOUR_WEIGHT",
+        SEEK,
+    ),
+    (
+        "corridor: no trail gain needed",
+        TS,
+        "(credit > 0 and best.trail_gain_m >= MIN_TRAIL_GAIN_M)",
+        "(credit > 0)",
+        SEEK,
+    ),
+    (
+        "corridor: the gain is gross",
+        TS,
+        "trail_gain_m=trail[node] - (line.trail_to(s_out) - line.trail_to(s_in)),",
+        "trail_gain_m=trail[node],",
+        SEEK,
+    ),
+    (
+        "corridor: a quiet route has none",
+        TS,
+        "if not line.starts and credit <= 0:",
+        "if not line.starts:",
+        SEEK,
+    ),
+    (
+        "route line: trail spans dropped",
+        TS,
+        "self._cumulate(trail_spans, scale)",
+        "self._cumulate((), scale)",
+        SEEK,
+    ),
+    (
+        "route line: trail spans not scaled",
+        TS,
+        "self._cumulate(trail_spans, scale)",
+        "self._cumulate(trail_spans, 1.0)",
+        SEEK,
+    ),
+    (
+        "spans: the cut is not clipped",
+        RF,
+        "a, b = max(a, lo), b if hi is None else min(b, hi)",
+        "a, b = a, b",
+        REFINE,
+    ),
+    (
+        "spans: trail kept off",
+        RF,
+        "if number < len(analysis.trail_pieces) and analysis.trail_pieces[number]:",
+        "if False:",
+        REFINE,
+    ),
+    (
+        "plan: no credit",
+        RT,
+        "trail_credit=presets.trail_credit_for(preset_name, stress_dial),",
+        "trail_credit=0.0,",
+        PLAN,
+    ),
+    (
+        "preset: everyone has the credit",
+        PR,
+        "credit = min(PRESETS[preset_name].trail_credit, TRAIL_CREDIT_MAX)",
+        "credit = min(TRAIL_CREDIT, TRAIL_CREDIT_MAX)",
+        PRESET_TESTS,
+    ),
+    (
+        "preset: no fade with the slider",
+        PR,
+        "return round(credit * min(1.0, calm_rate_for(stress) / CALM_RATE_MAX), 4)",
+        "return round(credit, 4)",
+        PRESET_TESTS,
+    ),
+    (
+        "preset: no cap",
+        PR,
+        "credit = min(PRESETS[preset_name].trail_credit, TRAIL_CREDIT_MAX)",
+        "credit = PRESETS[preset_name].trail_credit",
+        PRESET_TESTS,
+    ),
+    # --- leg by leg (OWNER-DECISIONS 203) ---------------------------------------------
+    (
+        "legs: the first location always starts",
+        RF,
+        "        locations[leg],",
+        "        locations[0],",
+        REFINE,
+    ),
+    (
+        "legs: the last location always ends",
+        RF,
+        "        locations[leg + 1],",
+        "        locations[-1],",
+        REFINE,
+    ),
+    (
+        "legs: budget not floored",
+        RF,
+        "leg_stop = min(stop_at, now + max(share, trailseek.SEEK_LEG_MIN_S))",
+        "leg_stop = min(stop_at, now + share)",
+        REFINE,
+    ),
+    (
+        "legs: share over every leg",
+        RF,
+        "share = left * spans[k] / sum(spans[j] for j in runnable[turn:])",
+        "share = left * spans[k] / sum(spans)",
+        REFINE,
+    ),
+    (
+        "legs: share by count, not span",
+        RF,
+        "share = left * spans[k] / sum(spans[j] for j in runnable[turn:])",
+        "share = left / (len(runnable) - turn)",
+        REFINE,
+    ),
+    (
+        "legs: guard against the whole trip",
+        RF,
+        "reference = first_legs[k] if first_legs else incumbent.exposure_m",
+        "reference = first_exposure",
+        REFINE,
+    ),
+    (
+        "legs: guard against what the search left",
+        RF,
+        "reference = first_legs[k] if first_legs else incumbent.exposure_m",
+        "reference = incumbent.exposure_m",
+        REFINE,
+    ),
+    (
+        "legs: the splice adds the old leg",
+        RF,
+        "summary[key] = summary[key] - before[key] + after[key]",
+        "summary[key] = summary[key] + before[key] + after[key]",
+        REFINE,
+    ),
+    (
+        "legs: the whole route need not be read",
+        RF,
+        "        if read is None or read.events is None:"
+        + NL
+        + '            seek["taken"] = False',
+        "        if read is None:" + NL + '            seek["taken"] = False',
+        REFINE,
+    ),
+    (
+        "legs: the splice is not read",
+        RF,
+        "    if count > 1 and taken:",
+        "    if False:",
+        REFINE,
+    ),
+    (
+        "legs: via points ignored",
+        RF,
+        "edges = [0.0, *analysis.via_m, total]",
+        "edges = [0.0, total]",
+        REFINE,
+    ),
+    (
+        "legs: first reading's legs not used",
+        RF,
+        "if count > 1 and original is not None and len(original.via_m) == count - 1:",
+        "if False:",
+        REFINE,
+    ),
+    (
+        "legs: a leg that is taken is not spliced",
+        RF,
+        "                trip = _splice(trip, k, got[1])",
+        "                pass",
+        REFINE,
+    ),
+    (
+        "legs: the time ends only the leg",
+        RF,
+        '        if seek["limited"] in ("time", "table"):',
+        "        if False:",
+        REFINE,
+    ),
 ]
 
 
@@ -402,12 +708,19 @@ def _passes(copy: Path, tests: list[str]) -> bool:
     """Whether every test file passes, each in a process of its own (one test
     file per process: the lane's rule), stopping at the first that fails."""
     for test in tests:
-        result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", test],
-            cwd=copy,
-            capture_output=True,
-            text=True,
-        )
+        # A mutant can loop for ever (a negative edge in the corridor search): a
+        # file that has not finished in TEST_TIMEOUT_S is a failure, and the
+        # process is killed, which also bounds its memory.
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", test],
+                cwd=copy,
+                capture_output=True,
+                text=True,
+                timeout=TEST_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            return False
         if result.returncode != 0:
             return False
     return True
