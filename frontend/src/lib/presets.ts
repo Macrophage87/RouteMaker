@@ -34,7 +34,7 @@ export const PRESETS: readonly PresetOption[] = [
     id: "trailmaxxing",
     label: "Trailmaxxing",
     description:
-      "The calmest route: paths, protected lanes and quiet streets even when that adds miles, with busy streets only where there is no other way.",
+      "The calmest route: paths, protected lanes and quiet streets, with busy streets only where there is no other way. It favors trails, so it may add miles to ride them.",
   },
   {
     id: "group-ride",

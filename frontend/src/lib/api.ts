@@ -55,6 +55,10 @@ export interface CalmSearch {
   extra_distance_m?: number | null;
   exposure_before_m?: number | null;
   exposure_after_m?: number | null;
+  /** Trailmaxxing only (core.presets.trail_credit_for): metres of quiet riding a metre of trail was worth. */
+  trail_credit?: number | null;
+  trail_before_m?: number | null;
+  trail_after_m?: number | null;
 }
 
 /** How much longer the route is than the most direct legal one (core.api.DetourOut). */

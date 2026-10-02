@@ -254,6 +254,32 @@ def calm_rate_for(stress: int) -> float:
     return round(CALM_RATE_MAX * math.expm1(CALM_CURVE * t) / math.expm1(CALM_CURVE), 3)
 
 
+# The trail credit (OWNER-DECISIONS 202, "Trail bonus for Trailmaxxing only"):
+# how many metres of quiet riding a metre of trail is worth in the search's
+# score, as the calm rate is how many metres of detour a metre of LTS 3 is. It
+# is a PRESET dial (`Preset.trail_credit`), not a slider value: only
+# Trailmaxxing has one, so its routes go out of their way to ride trails, and
+# every other ride type plans as it did. Below 1, so that a trail is never free
+# (the search's own corridors are bounded by it: `core.trailseek`).
+TRAIL_CREDIT = 0.5
+# At most this much is ever credited by the seek's corridor search (the credit
+# is an edge weight there and must stay under the detour's own weight of 1).
+TRAIL_CREDIT_MAX = 0.95
+
+
+def trail_credit_for(preset_name: str, stress: int) -> float:
+    """The trail credit a plan has: the preset's, tapering with the traffic
+    slider so that moving it away from the Trailmaxxing top has a defined
+    effect. At the top (calm rate CALM_RATE_MAX) it is the preset's in full;
+    below, in proportion to the calm rate (a fifth at 90 and nothing at 80 or
+    below, where there is no calm search); the preset's own start is the full
+    credit. Other ride types have none at any position."""
+    credit = min(PRESETS[preset_name].trail_credit, TRAIL_CREDIT_MAX)
+    if credit <= 0:
+        return 0.0
+    return round(credit * min(1.0, calm_rate_for(stress) / CALM_RATE_MAX), 4)
+
+
 def use_hills_for(hills: int) -> float:
     return round(1.0 + min(hills, 0) / 100, 3)
 
@@ -286,6 +312,9 @@ class Preset:
     assist_speed_kmh: float | None = None
     # The grade past which a sustained descent costs (`BRAKE_GRADES`).
     brake_grade: float | None = None
+    # Metres of quiet riding a metre of trail is worth in the search's score
+    # (TRAIL_CREDIT): Trailmaxxing's alone (OWNER-DECISIONS 202).
+    trail_credit: float = 0.0
 
 
 # Where a sustained descent starts to cost, per ride type, on the avoid half
@@ -328,6 +357,7 @@ def _preset(
     carrying: dict[str, int] | None = None,
     stress_max: int = 100,
     assist_speed_kmh: float | None = None,
+    trail_credit: float = 0.0,
     **options: Any,
 ) -> Preset:
     return Preset(
@@ -349,6 +379,7 @@ def _preset(
         stress_max=stress_max,
         assist_speed_kmh=assist_speed_kmh,
         brake_grade=BRAKE_GRADES[name],
+        trail_credit=trail_credit,
     )
 
 
@@ -380,6 +411,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # detour search runs at CALM_RATE_MAX. Hills stay the rider's.
                 stress=STRESS_MAX,
                 hills=0,
+                # And item 202: "only the Trailmaxxing preset rewards each
+                # mile of trail, so its routes go out of their way to ride
+                # trails."
+                trail_credit=TRAIL_CREDIT,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,

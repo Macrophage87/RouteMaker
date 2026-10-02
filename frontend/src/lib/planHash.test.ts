@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodePlan, encodePlan, stressFromV1 } from "./planHash.ts";
-import { STRESS_DEFAULT_AT, STRESS_TODAYS_TOP } from "./dials.ts";
+import { STRESS_DEFAULT_AT, STRESS_TODAYS_TOP, startDials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 
 test("a plan survives a round trip through the link", () => {
@@ -29,6 +29,26 @@ test("a link carries its version, and the sliders survive a round trip as they a
   assert.match(hash, /(^#|&)v=2(&|$)/);
   assert.equal(decodePlan(hash).dials.stress, 95);
   assert.equal(decodePlan(encodePlan([], "default", { ...dials, stress: 70 })).dials.stress, 70);
+});
+
+test("the trail credit travels with the ride type, and a moved slider travels as the position (OWNER-DECISIONS 202)", () => {
+  // The credit is a preset dial: the link carries the preset and the slider, and
+  // the API works the credit out from them (core.presets.trail_credit_for). There
+  // is no credit in the link to disagree with the preset's.
+  const points: LonLat[] = [[-77.0434, 38.9096], [-77.0091, 38.8899]];
+  const start = startDials("trailmaxxing");
+  const hash = encodePlan(points, "trailmaxxing", start);
+  assert.doesNotMatch(hash, /credit|trail(?!maxxing)/i);
+  const plan = decodePlan(hash);
+  assert.equal(plan.preset, "trailmaxxing");
+  assert.equal(plan.dials.stress, 100);
+  // A slider moved down from the ride type's top is the same ride type at that position,
+  // and a link that carries another ride type's slider cannot give it the credit.
+  const moved = decodePlan(encodePlan(points, "trailmaxxing", { ...start, stress: 90 }));
+  assert.deepEqual([moved.preset, moved.dials.stress], ["trailmaxxing", 90]);
+  const other = decodePlan(encodePlan(points, "default", { ...start, stress: 100 }));
+  assert.deepEqual([other.preset, other.dials.stress], ["default", 100]);
+  assert.equal(decodePlan(hash.replace("preset=trailmaxxing", "preset=default")).preset, "default");
 });
 
 test("an old link's traffic position is mapped onto the rescaled slider", () => {

@@ -412,6 +412,46 @@ class IntersectionOut(Schema):
     cost_ft: int = Field(description="The model's cost, in feet of equivalent quiet riding.")
 
 
+class SeekOut(Schema):
+    """What the trail seek did (`core.trailseek`, OWNER-DECISIONS 194): how many
+    corridors of trail and protected lane it found beside the route, how many
+    proposals through them it asked the router for, whether one was kept, and why it
+    stopped short (`points`, `span`, `time`, `table`; null when it ran to its
+    end). `tried` has one row for each route asked for: the corridors it went
+    through, the exposure (weighted metres of LTS 3 and worse) the corridors
+    replaced and the detour they added as the seek estimated them, the route's
+    length and exposure, and `outcome`: `taken`, `not_better`, `busier`,
+    `unread` or `no_route`."""
+
+    corridors: int
+    asked: int
+    routes: int | None = Field(
+        default=None,
+        description=(
+            "How many routes the router was asked for: `asked` counts the proposals,"
+            " and a proposal asked again without the search's exclusions is two routes."
+        ),
+    )
+    taken: bool
+    limited: str | None = None
+    whole_trip: str | None = Field(
+        default=None,
+        description=(
+            "On a plan with stops whose legs were spliced: `taken`, `busier` (past the"
+            " whole trip's Traffic-wins allowance) or `unread`; null where nothing was"
+            " spliced. Shown even where `limited` names an earlier stop, such as `time`."
+        ),
+    )
+    tried: list[dict] = Field(default_factory=list)
+    legs: int | None = Field(
+        default=None,
+        description=(
+            "How many legs (stretches between consecutive locations) the seek ran over"
+            " (OWNER-DECISIONS 203); each `tried` row names its `leg`."
+        ),
+    )
+
+
 class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
@@ -431,6 +471,17 @@ class CalmSearchOut(Schema):
     extra_distance_m: float | None = None
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
+    seek: SeekOut | None = None
+    trail_credit: float | None = Field(
+        default=None,
+        description=(
+            "Trailmaxxing only (OWNER-DECISIONS 202): metres of quiet riding each metre of"
+            " trail was worth in the search, which tapers with the traffic slider below its"
+            " top. Absent on every other ride type."
+        ),
+    )
+    trail_before_m: float | None = None
+    trail_after_m: float | None = None
 
 
 class DetourOut(Schema):

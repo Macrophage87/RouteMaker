@@ -1566,6 +1566,307 @@ which is what would make a calm setting above 100 mean something. So:
 - The rate stays at 10 at 100, and the wider search stays built and off, until
   FOLLOWUP-TRAIL-SEEK gives the top end candidates worth a higher rate.
 
+### The trail seek (FOLLOWUP-TRAIL-SEEK, items 187, 194, 201)
+
+The owner, 2026-10-02: item 194 asked for a candidate generator that seeks
+trails and protected lanes near the line, and 201 for it before the rebuild.
+`core.trailseek` is that generator; `core.refine._seek` runs it. Round 2 had shown
+why one was needed: the exclusion rounds' candidates are nested, and the wider
+search's points at fixed offsets asked for places nobody rides.
+
+**What it does.**
+
+1. After the exclusion rounds, from a calm rate of 10 (stress 100), it reads from
+   the segment table the paths and trails, the protected ways and the car-free
+   roads at LTS 1 or 2 (`pipeline.schema.trails_predicate`'s rule; with the
+   facility column, `facility` `path` or `protected`, and the roads closed to cars
+   at this ride time; gravel left out when the rider asked) within a band of
+   the straight line and of the best route so far: 15% of the span, between 0.9
+   and 2.5 mi (1.5 to 4 km), at most 30,000 rows.
+2. It joins them into a graph and looks for corridors: a run of trail that leaves
+   the route (from a point within 200 m, 650 ft, of it) and rejoins it later. The
+   route is a line with a running total of its exposure (the weighted metres of
+   LTS 3, 4 twice, Avoid three times, the search's own `Analysis.exposure_m`). A
+   corridor's score is
+
+       rate x (exposure of the stretch it replaces) - (way to the entry + trail + way from the exit - stretch replaced)
+
+   in metres of detour, so a rate of 10 values a metre of LTS 3 avoided at ten
+   metres of detour, as the slider says. The score is a part for the entry, a part
+   for the exit and the trail's length, so one Dijkstra over each network, started
+   from every node near the route at once, finds the best entry, trail and exit
+   together. A corridor must save at least 150 m of exposure, replace at least 500
+   m of the route and score 300 m, and add no more than the larger of 3.7 mi (6 km)
+   and the span. A route with nothing busy on it has no corridor: there is nothing
+   to replace.
+3. It proposes, best first: the best corridor with the best one beside it (ridden
+   in order), the best alone, and the best different trail over the same stretch;
+   at most three. Each is the entry and exit, 25 m (80 ft) inside the trail, sent as
+   `through` locations between the start and the end.
+4. `_seek` asks the router for each (with the exclusions the best route was found
+   under, so the way to the trail is as calm as the way the search found, and
+   without them where the router has no route with them), reads the route and
+   scores it with the same score as every other candidate, so the junction costs,
+   the climb price and the Traffic-wins guard (2% + 50 m over the router's own
+   route's exposure) decide. `calm_search.seek` in the answer records each try
+   and its outcome.
+
+Its own budget is 6 s past the exclusion search's 14 s, and a candidate is not
+started with less than 2 s of it left. As first built it ran for a start and an end
+only (superseded by part 2, "The trail credit and the seek leg by leg": it now runs
+once per leg of a plan with stops). The
+measurement harness filled a scratch segment table from the live stress tiles
+(the paths and protected ways with LTS 1 or 2, about 2,500 segments over the twelve
+trips' bands); the live table has no facility column until the rebuild, so on-road
+cycle tracks that are not trail class are not corridors yet.
+
+**What it found** (Default, `when` the moment of planning, the second of two plans
+of each trip so the tables are warm, the harness's own work excluded; each cell is
+miles / miles of LTS 3+ / trail miles (path and protected) / length against the
+most direct route / red and orange markers / plan time):
+
+| Trip | 80 | 100 before the seek | 100 with the seek |
+|---|---|---|---|
+| Rockville - Silver Spring | 10.3 / 4.42 / 0.5 / - / 0r 3o / 1.3 s | 13.9 / 0.23 / 4.6 / 1.44x / 3r 10o / 4.5 s | the same, 4.9 s |
+| Bethesda - Capitol | 12.0 / 1.08 / 10.1 / 1.22x / 0r 3o / 1.5 s | 12.0 / 1.08 / 10.1 / 1.22x / 0r 3o / 8.8 s | 12.3 / 1.02 / 10.2 / 1.25x / 0r 3o / 5.8 s |
+| Falls Church - Union Station | 10.5 / 1.36 / 8.5 / 1.07x / 0r 2o / 1.4 s | 10.7 / 0.90 / 9.2 / 1.09x / 0r 2o / 5.3 s | 11.1 / 0.78 / 9.6 / 1.13x / 0r 3o / 5.7 s |
+| Silver Spring - College Park | 7.2 / 2.17 / 1.0 / 1.08x / 1r 2o / 1.8 s | 10.1 / 1.04 / 6.3 / 1.52x / 1r 6o / 5.1 s | the same, 5.5 s |
+| Bethesda - Silver Spring | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 1.1 s | the same, 1.8 s | the same, 1.6 s |
+| Laurel - College Park | 14.1 / 4.58 / 7.1 / 1.38x / 1r 7o / 1.6 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 3.8 s | the same, 2.4 s |
+| Poolesville - Darnestown | 8.8 / 7.34 / 0.0 / - / 0r 1o / 0.3 s | the same, 1.4 s | the same, 0.7 s |
+| Bowie - Annapolis | 21.2 / 13.41 / 1.8 / 1.04x / 3r 3o / 2.1 s | the same, 1.8 s (no route left after exclusions) | the same, 1.6 s |
+| Tysons - Ballston (the W&OD runs south of the line) | 9.2 / 1.41 / 7.3 / 1.20x / 1r 4o / 1.0 s | 10.0 / 0.97 / 7.8 / 1.31x / 2r 5o / 4.1 s | the same, 3.0 s |
+| Eastern Market - Prince George's Plaza (the Anacostia trail) | 7.9 / 4.66 / 2.6 / 1.11x / 1r 0o / 1.0 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 4.7 s | the same, 3.6 s |
+| Friendship Heights - Rosslyn (the Capital Crescent) | 5.3 / 1.79 / 1.3 / - / 0r 3o / 0.9 s | the same, 0.7 s | the same, 0.6 s |
+| Takoma - Hyattsville (the Sligo and NW Branch trails) | 3.5 / 2.60 / 0.6 / - / 0r 2o / 0.6 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 3.9 s | the same, 1.8 s |
+
+The two columns at 100 ran in different processes, some of the time at once, so
+their times differ by 1 to 3 s from run to run; the seek's own cost is better read
+from the same process, which planned each trip at a rate of 19,027 with and
+without it: less than 1.5 s apart either way on all twelve (+0.6 s on Rockville
+- Silver Spring and on Bethesda - Capitol, +0.9 s on Bowie - Annapolis, the rest
+equal or faster, which is noise). At Trailmaxxing's own costing (Cross) and
+100, 12 trips: the seek changed one route (Bethesda - Capitol, 12.2 mi and 0.87 mi of
+LTS 3+ to 12.4 and 0.81), asked nothing on seven, and took 4.8 s more than without
+on Rockville - Silver Spring, the most it added.
+
+- **The seek changed two of twelve routes**, each a little calmer and a little
+  longer: Falls Church - Union Station 0.12 mi less LTS 3+ for 0.4 mi more,
+  Bethesda - Capitol 0.06 mi less for 0.26 mi more. On four more it asked for
+  routes and none beat the best: the candidates were busier (the guard) or cost more
+  than the exposure they saved. On six it asked for nothing, because the route
+  the calm search had found had no busy road to replace, or no trail within 650 ft of
+  it: the W&OD, the Capital Crescent, the Anacostia and Sligo trails are on or
+  beside those routes already.
+- **Above 100 is the same route.** At rates of 447 and 19,027 (the "125" and "150"
+  of item 187, the current curve carried on) with the seek, all twelve trips plan
+  what 100 with the seek plans, every time: the candidates are the limit, still,
+  just more of them. The exposure the seek can replace is the same at any rate
+  above 10, and the corridors it finds are few. So the slider is not extended and
+  nothing in `dials.ts`, the calm note or the link's `v=` changes.
+- **What would make above 100 different** is something the score does not have: a
+  value for trail miles as such. A quiet street and a trail with equal exposure
+  score the same here, and the router's own costing (Cross, `use_roads` 0) is what
+  prefers the trail. A credit per metre of trail would send a rider off the quiet
+  street onto a trail that adds miles; whether that is what "relaxation, not
+  commuting" means is the owner's call, and is not built.
+
+Tests: `tests/test_trailseek.py` (62, the corridor finding, the score, the
+proposals, the via points, the band and the query against a scratch table) and
+`TestTrailSeek` in `tests/test_refine.py` (a fake router: what is asked, what is
+kept, the guard, the budget, the exclusions, the failures). `scripts/mutants_trailseek.py`
+has 56 mutants run against whole test files.
+
+
+### The trail credit and the seek leg by leg (FOLLOWUP-TRAIL-SEEK part 2, items 202, 203)
+
+The owner, 2026-10-02: 202, "Trail bonus for Trailmaxxing only (Recommended)" (only
+Trailmaxxing rewards each mile of trail), and 203, "Now, before rebuild" (the seek
+runs leg by leg on plans with stops).
+
+**The credit.** `Preset.trail_credit`, a preset dial: 0.5 on Trailmaxxing, 0 on
+every other ride type, not a slider value and not in the router's costing. The
+search's score is
+
+    router cost + QUIET COST x (CALM RATE x exposure + ... - TRAIL CREDIT x trail metres)
+
+so a metre of trail takes the credit, in metres of quiet riding, off a route. Trail
+is the seek's own predicate (`refine.trail_flags`): a path or protected way, or a
+road closed to cars at the ride time (facility `path`), at LTS 1 or 2; before the
+facility column exists, the table's recorded trail rule. The seek's corridor score
+gains the credit: a corridor is worth `rate x exposure replaced + credit x (trail it
+rides - trail it replaces) - detour`, each trail step costing `1 - credit` of a
+detour metre (the credit is held under 0.95), and a corridor needs only 400 m more
+trail than it replaces when it replaces nothing busy. The Traffic-wins guard
+(2% and 50 m) and the detour warning are untouched, so the credit buys no LTS 3 or 4.
+
+**The slider.** The link carries the ride type and the slider position, never the
+credit, so a shared link and the plan hash need no change; the API works the credit
+out (`presets.trail_credit_for`). A rider who moves Trailmaxxing's Traffic slider
+down gets the credit in proportion to the calm rate: all of it at 100, a fifth at 90,
+none at 80 and below (no calm search there). The seek itself still runs only at 100.
+Another ride type's slider at 100 has no credit.
+
+**Leg by leg.** For a plan with stops the seek runs for each stretch between
+consecutive locations that is at least 1.2 mi apart: its table read, corridors and
+candidates are the leg's, the router is asked for the leg alone (start, `through`
+points, end), the candidate is scored against the leg's own reading and guarded
+against the leg's exposure as the router first gave it, and a leg taken is spliced
+into the trip. The 6 s is shared by the legs that can run, by straight-line span of
+what is left, at least 2.5 s each; a leg's unused time goes to the next. A taken
+splice is read once as a whole for the answer to reuse.
+
+**Measured**, Trailmaxxing at 100 (stress 100, Cross), the twelve trips, each cell
+miles / miles of LTS 3+ / trail miles (path and protected) / ratio to the direct
+route / red and orange markers / plan time:
+
+| Trip | credit 0 | 0.25 | 0.5 | 0.75 |
+|---|---|---|---|---|
+| Rockville - Silver Spring | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 12.2 s | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 12.3 s | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 9.5 s | 14.3 / 0.23 / 4.8 / 1.48x / 2r 11o / 12.3 s |
+| Bethesda - Capitol | 12.2 / 0.87 / 9.9 / 1.24x / 0r 2o / 6.5 s | 12.4 / 0.81 / 9.9 / 1.27x / 0r 2o / 15.2 s | 12.4 / 0.81 / 9.9 / 1.27x / 0r 2o / 11.8 s | 12.4 / 0.81 / 9.9 / 1.27x / 0r 2o / 10.3 s |
+| Falls Church - Union Station | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 7.1 s | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 13.7 s | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 9.6 s | 10.5 / 1.36 / 8.5 / 1.09x / 0r 2o / 9.7 s |
+| Silver Spring - College Park | 10.1 / 1.04 / 6.3 / 1.52x / 1r 6o / 9.9 s | 10.1 / 1.04 / 6.3 / 1.52x / 1r 6o / 12.8 s | 11.1 / 0.79 / 8.0 / 1.67x / 0r 2o / 18.0 s | 11.1 / 0.79 / 8.0 / 1.67x / 0r 2o / 10.0 s |
+| Bethesda - Silver Spring | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 3.4 s | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 3.4 s | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 4.5 s | 4.7 / 0.82 / 0.3 / 1.11x / 1r 0o / 3.2 s |
+| Laurel - College Park | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 7.0 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 6.6 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 7.0 s | 16.9 / 4.65 / 9.8 / 1.65x / 0r 11o / 6.1 s |
+| Poolesville - Darnestown | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 1.7 s | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 1.1 s | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 2.5 s | 9.7 / 6.30 / 0.0 / 1.10x / 1r 2o / 1.3 s |
+| Bowie - Annapolis | 21.2 / 13.41 / 1.8 / 1.04x / 3r 3o / 2.0 s | 21.9 / 13.32 / 2.6 / 1.08x / 3r 3o / 4.6 s | 21.9 / 13.32 / 2.6 / 1.08x / 3r 3o / 4.5 s | 21.9 / 13.32 / 2.6 / 1.08x / 3r 3o / 4.7 s |
+| Tysons - Ballston (W&OD) | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 6.4 s | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 4.6 s | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 6.5 s | 10.0 / 0.97 / 7.8 / 1.30x / 2r 5o / 5.8 s |
+| Eastern Market - PG Plaza (Anacostia) | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 11.2 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 8.2 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 9.5 s | 8.8 / 0.45 / 4.1 / 1.24x / 0r 4o / 8.2 s |
+| Friendship Heights - Rosslyn (Capital Crescent) | 5.3 / 1.79 / 1.3 / - / 0r 3o / 2.4 s | 5.3 / 1.79 / 1.3 / - / 0r 3o / 1.0 s | 5.3 / 1.79 / 1.3 / - / 0r 3o / 1.0 s | 5.3 / 1.79 / 1.3 / - / 0r 3o / 1.2 s |
+| Takoma - Hyattsville (Sligo) | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 4.3 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 3.6 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 3.5 s | 4.8 / 0.63 / 3.4 / 1.42x / 0r 3o / 4.3 s |
+
+- **The credit changes three of twelve routes**: Bethesda - Capitol (+0.2 mi, 0.06 mi
+  less LTS 3+), Bowie - Annapolis (+0.7 mi, 0.8 mi more trail) and, from 0.5, Silver
+  Spring - College Park (+1.0 mi, 1.7 mi more trail, 0.25 mi less LTS 3+, 5 markers
+  fewer; its ratio goes from 1.52 to 1.67, past the detour warning's 1.5, which says
+  so). 0.25 takes the first two; 0.5 and 0.75 plan the same routes on all twelve.
+- **The W&OD, Capital Crescent, Anacostia and Sligo trips do not change**: the seek
+  now asks (the credit finds a corridor on four trips where it asked nothing) but the
+  routes already ride the trails beside them, so there is no 400 m of trail to add.
+  Of the others, the candidate through the corridor was busier or dearer.
+- **Recommended: 0.5.** It takes every change 0.25 does and the one more that is
+  clearly a trail route, and 0.75 adds nothing. Typical trips stay under 1.6 times
+  the direct route (ten of twelve; Laurel - College Park was 1.65 before the credit).
+  The plan times in this table come from runs that overlapped; credit 0 against 0.5
+  measured in one process is in "Round 1 revision" below.
+- **Plans with stops** (credit 0.5, seek on against off, one process): a plan with no
+  stop, Bethesda to College Park, 10.9 s on against 9.2 s off (+1.7 s); one stop
+  (Bethesda, Silver Spring, College Park) 13.1 s against 8.3 s (+4.8 s); three stops
+  (Tysons, Ballston, Rosslyn, Union Station, Takoma, 25 mi) 20.0 s against 15.2 s
+  (+4.8 s). With one stop the seek read the table for both legs and asked once; with
+  three the exclusion search used its time (`limited: time`), the seek read its
+  corridors (3) and had under the least left to ask: it adds the table reads and the
+  legs' readings and asks nothing. Corrected in round 1's review: the 24.9 km
+  (15.5 mi) candidate was the plan with no stop (Bethesda to College Park, one leg,
+  150 kept exclusions), against a best of 23.4 km (about 1.07 times); the one-stop
+  plan's candidate was leg 1 at 17.1 km with 145 exclusions. Neither was better.
+
+Tests: `TestSeekLegByLeg`, `TestRouteSpansAndLegs`, `TestTrailCredit*` in
+`tests/test_refine.py`, `TestTheTrailCredit` in `tests/test_trailseek.py`,
+`TestTrailCredit` in `tests/test_presets.py`, the link and the notes in the front
+end's `planHash`, `dialsPanel` and `presets` tests. `scripts/mutants_trailseek.py`
+now has 98 mutants, 42 of them on this code.
+
+### Round 1 revision (FOLLOWUP-TRAIL-SEEK review r1)
+
+**Hard bounds.** The corridor search no longer rests on one clamp for its
+termination. `trailseek._check_step` refuses a trail step that is not finite and
+positive (`SeekError`); the walk back from a corridor's exit is at most the
+network's node count and raises past it; the clock is read every 1,024 nodes
+settled, between networks and between components (`SeekOutOfTime`), against the
+leg's stop less a candidate's least. `refine._seek_leg` looks at the leg's
+deadline before the table and again before the corridor search, and the table
+read runs under `SET LOCAL statement_timeout` (`set_config(..., true)`, as
+`core.stress_tiles.render` does), at most 2.5 s and never past the leg's time; a
+cancelled read is `limited: "time"`, a `SeekError` is `limited: "error"` (logged),
+and the plan is answered without the seek. Proved on the mutant that froze the
+host (the clamp removed): `tests/test_trailseek.py` now fails in 20 s, under a
+300 s timeout, with `SeekError: a trail step must cost something, not -6.0`; with
+the clamp and the step check both removed, the walk's bound raises ("longer than
+its network") and the file fails in 19 s.
+
+**The table read after the rebuild.** The query is read a strip of the band at a
+time (`trailseek.band_cells`: 1 km cells within the band of either guide line,
+each row's run one index scan through a lateral join), not one `ST_DWithin` over
+the guide's bounding box. With the facility column it carries
+`pipeline.schema.SEEK_INDEX_PREDICATE` word for word, and the segment DDL builds a
+partial GiST index on it, `segment_seek_geom_idx` (paths and protected ways at LTS
+1-2, and any car-free road). Measured with `EXPLAIN (ANALYZE, BUFFERS)`, warm, three
+runs each, on a 20 mi (33 km) diagonal from (-77.20, 39.14) to (-76.93, 38.93),
+the straight line and a 400-point route wandering 0.9 mi (1.5 km) either side, a
+2.5 mi (4 km) band, 33 strips:
+
+| Table and predicate | One geometry (before) | Strips (now) |
+|---|---|---|
+| Live table, today's (trail rule, `segment_overview_geom_idx`) | 349-386 ms, 2,334 rows | 42-61 ms, 2,360 rows |
+| Live table, a proxy no partial index implies (`segment_geom_idx`) | 795-1,203 ms | 185-285 ms |
+| Copy with a facility column, post-rebuild predicate, no seek index | 740-812 ms | 227-329 ms |
+| The same copy with `segment_seek_geom_idx` | 756-1,442 ms (the old form cannot use it) | 15-42 ms |
+
+Planning took 10-42 ms in every case. The live table was read-only (SELECT and
+EXPLAIN). The copy is the live table's 1,357,800 rows in a scratch database with
+the facility derived from the recorded rule (15,207 paths; the live table records
+no sidepaths, so the on-road protected ways the rebuild adds are not in it).
+`CREATE INDEX CONCURRENTLY` of the seek index on the copy took 1.6 s and 648 kB.
+How it runs: at a rebuild the index is created in staging with the rest of the
+schema (on the empty table, before the load) and promoted by the swap, so nothing
+runs on the live table; the segment DDL is the pipeline's, not a Django migration's
+("What migrations do and do not create"). Today's live table has no facility
+column and needs no index (the overview index serves the trail rule); a table
+promoted with the column but without the index can have it added in place with the
+`CREATE INDEX CONCURRENTLY` in docs/OPERATIONS.md, "The seek index".
+
+**Traffic wins for the whole trip.** A plan with stops whose legs were taken is
+read once spliced and held to the whole trip's allowance (2% and 164 ft, 50 m, over
+the router's first exposure), as each leg is to its own: n legs can no longer add
+n x 50 m between them. A splice past it is not taken (`limited: "busier"`, and
+`whole_trip: "busier"`, which a `limited: "time"` from a later leg does not hide).
+
+**Kept exclusions.** A candidate is asked with only the search's kept exclusions
+within the leg's band (`trailseek.points_in_band`), and asked again without them
+when the route with them is more than 15% and 500 m longer than the leg and the
+corridor's detour (`refine.SEEK_RETRY_OVER`, `SEEK_RETRY_SLACK_M`), time allowing;
+both answers are scored and guarded, and the second's `tried` row says
+`retry: "longer"`. So a leg is up to six routes.
+
+**No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Group Ride
+with trails off at 100) is not seeked (`limited: "roadway_only"`).
+
+**Credit 0 against 0.5, one process.** Trailmaxxing at 100, the twelve trips, the
+harness's plan time (the second of two plans, the harness's own work excluded), two
+runs each, the runs in the order 0, 0.5, 0, 0.5, nothing else running:
+
+| Trip | credit 0 | credit 0.5 | Difference (means) | Asks (0 / 0.5) |
+|---|---|---|---|---|
+| Rockville - Silver Spring | 9.8, 7.8 s | 7.5, 7.6 s | -1.3 s | 1 / 1 |
+| Bethesda - Capitol | 10.0, 5.6 s | 6.7, 11.3 s | +1.2 s | 1 / 2 |
+| Falls Church - Union Station | 9.9, 6.1 s | 6.7, 8.1 s | -0.6 s | 2 / 2 |
+| Silver Spring - College Park | 9.6, 8.6 s | 7.3, 9.6 s | -0.6 s | 2 / 2 |
+| Bethesda - Silver Spring | 2.9, 1.9 s | 2.3, 2.6 s | +0.1 s | 1 / 2 |
+| Laurel - College Park | 5.2, 4.8 s | 5.3, 5.1 s | +0.2 s | 2 / 2 |
+| Poolesville - Darnestown | 0.9, 0.9 s | 1.1, 0.9 s | +0.1 s | 0 / 0 |
+| Bowie - Annapolis | 1.7, 1.7 s | 3.4, 3.3 s | +1.7 s | 0 / 1 |
+| Tysons - Ballston (W&OD) | 3.6, 4.0 s | 4.0, 3.7 s | +0.0 s | 0 / 0 |
+| Eastern Market - PG Plaza (Anacostia) | 6.1, 5.8 s | 6.5, 5.6 s | +0.1 s | 1 / 1 |
+| Friendship Heights - Rosslyn (Capital Crescent) | 0.8, 0.8 s | 0.9, 0.8 s | +0.1 s | 0 / 0 |
+| Takoma - Hyattsville (Sligo) | 2.5, 2.8 s | 2.5, 2.3 s | -0.2 s | 0 / 0 |
+| Mean of all | 4.8 s | 4.8 s | +0.0 s | |
+
+The routes are the ones in the table above (three change). The credit's own cost
+shows where it adds an ask: Bowie - Annapolis +1.7 s in both runs (none to one ask)
+and Bethesda - Silver Spring and Bethesda - Capitol one more each; elsewhere the
+differences are within the same trip's run-to-run spread (up to 4.6 s, Bethesda -
+Capitol at 0.5). The earlier 9.9 to 18.0 s on Silver Spring - College Park came
+from overlapping runs: here it is 9.1 s at 0 and 8.5 s at 0.5.
+
+Tests: `TestHardBounds`, `TestTheStrips`, `TestTheIndexAndTheTimeout`,
+`TestTheDetourCapExactly` and `TestPointsInTheBand` in `tests/test_trailseek.py`;
+the `review r1` tests in `TestTrailSeek` and `TestSeekLegByLeg` in
+`tests/test_refine.py` (asymmetric legs, a late leg held to the stop, a table
+failure read once, the whole-trip guard, the deadlines, the exclusions and the
+retry, the roadway-only graph). `scripts/mutants_trailseek.py` has 125 mutants.
+
+
 ### The detour warning
 
 `routemaker.detour` (item 164: "just warn people"): the route's length against

@@ -48,11 +48,14 @@ import logging
 import math
 from dataclasses import dataclass, field
 
+from django.db import connection
+
+from pipeline.schema import PATH_RULES, SIDEPATH_RULES
 from routemaker import intersections as model
 from routemaker import trace_junctions
 from routemaker.geo import Point, haversine
 
-from . import junctions, presets, routing
+from . import junctions, presets, routing, trailseek
 
 logger = logging.getLogger(__name__)
 
@@ -209,6 +212,18 @@ class Context:
     analyses: dict = field(default_factory=dict)
     # Whether the wider search runs after the exclusion rounds (`wide_search_for`).
     wide: bool = False
+    # Whether the trail seek runs after them (`trailseek.seek_for`), the segment
+    # schema it reads, and whether the rider asked to avoid gravel.
+    seek: bool = False
+    schema: str = ""
+    avoid_gravel: bool = False
+    # The ways the exclusion search kept excluding for its best route, which the
+    # seek keeps excluding (set by the search).
+    kept_excludes: list = field(default_factory=list)
+    # The trail credit (`presets.trail_credit_for`, OWNER-DECISIONS 202): metres
+    # of quiet riding each metre of trail is worth in the score. 0 on every ride
+    # type but Trailmaxxing.
+    trail_credit: float = 0.0
 
 
 @dataclass
@@ -226,11 +241,21 @@ class Analysis:
     via_m: list = field(default_factory=list)
     # The middle of each traced edge: (metres along, lon, lat, edge metres).
     marks: list = field(default_factory=list)
+    # Metres of trail (`trail_flags`) and, for each piece, whether it is one;
+    # both only where the plan has a trail credit.
+    trail_m: float = 0.0
+    trail_pieces: list = field(default_factory=list)
 
     def score(self, ctx: Context) -> float:
-        """The router's cost plus the extra price (see the module docstring)."""
+        """The router's cost plus the extra price, less the trail credit (see
+        the module docstring)."""
         penalty = model.penalty_m(self.events) if self.events else 0.0
-        extra = ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m
+        extra = (
+            ctx.rate * self.exposure_m
+            + ctx.weight * penalty
+            + ctx.climb_weight * self.climb_m
+            - ctx.trail_credit * self.trail_m
+        )
         return self.cost_s + ctx.quiet_cost * extra
 
 
@@ -255,6 +280,33 @@ def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | Non
     except Exception:  # noqa: BLE001 - a route is answered without its intersections
         logger.warning("the intersection events could not be read", exc_info=True)
         return None
+
+
+# What counts as trail in the score's credit (OWNER-DECISIONS 202): the same
+# predicate the seek reads its corridors by (`trailseek.corridor_segments`): a
+# path or protected way, or a road closed to cars at the ride time (the
+# facility is then "path"), at LTS 1 or 2.
+TRAIL_KINDS = frozenset({"path", "protected"})
+TRAIL_TIERS = frozenset({"1", "2"})
+
+
+def trail_flags(pieces: list, classes: list, ctx: Context) -> list[bool]:
+    """For each traced piece, whether it is trail. Before the facility column
+    exists (the live table until its rebuild) the table's recorded rule says it,
+    as `pipeline.schema.trails_predicate` does for the map."""
+    if ctx.with_facility:
+        return [kind in TRAIL_KINDS and tier in TRAIL_TIERS for tier, kind in classes]
+    query = routing._STRESS_JOIN.format(
+        schema=ctx.schema,
+        tier="seg.stress_tier",
+        facility="seg.stress_rule",
+        columns="s.stress_rule",
+    )
+    rules = PATH_RULES | SIDEPATH_RULES
+    arrays = [[p.way_id for p in pieces], [p.lon for p in pieces], [p.lat for p in pieces]]
+    with connection.cursor() as cursor:
+        cursor.execute(query, arrays)
+        return [rule in rules and tier in (1, 2) for tier, rule in cursor.fetchall()]
 
 
 def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | None:
@@ -283,6 +335,7 @@ def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | 
             via_m.append(offset)
     classes = routing.classify(pieces, ctx.when, ctx.roadway_only)
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
+    flags = trail_flags(pieces, classes, ctx) if ctx.trail_credit > 0 else []
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
@@ -293,6 +346,8 @@ def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | 
         events=events_of_raws(raws, ctx, deadline),
         via_m=via_m,
         marks=marks,
+        trail_m=sum(p.metres for p, on in zip(pieces, flags, strict=False) if on),
+        trail_pieces=flags,
     )
     ctx.analyses[key] = result
     return result
@@ -405,15 +460,406 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # answer's work, done whether or not anything is searched.
     stop_at = min(routing.clock() + REFINE_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     first_exposure = best.exposure_m
+    original = best
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
+    if ctx.trail_credit > 0:
+        info["trail_credit"] = ctx.trail_credit
+        info["trail_before_m"] = round(best.trail_m, 1)
     best_score = best.score(ctx)
     best, best_trip = _search(trip, best, best_score, first_exposure, stop_at, ctx, info)
     if ctx.wide:
         best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
+    if ctx.seek:
+        best, best_trip = _seek(best, best_trip, first_exposure, ctx, info, original)
     info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
     info["exposure_after_m"] = round(best.exposure_m, 1)
+    if ctx.trail_credit > 0:
+        info["trail_after_m"] = round(best.trail_m, 1)
     return best_trip, info
+
+
+def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
+    """The router's route from the leg's start through `vias` (each a `through`
+    location) to its end, read: (reading, trip), (None, None) where there is no
+    route or it could not be read, or "time" where the budget or the router ran
+    out. The reading's junctions may be None (the caller decides). `leg` is the
+    plan's leg (the stretch between consecutive locations); the one leg is asked
+    for alone."""
+    locations = ctx.request.get("locations") or []
+    request = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}
+    if excludes:
+        request["exclude_locations"] = [{"lon": lon, "lat": lat} for lon, lat in excludes]
+    request["locations"] = [
+        locations[leg],
+        *({"lon": lon, "lat": lat, "type": "through"} for lon, lat in vias),
+        locations[leg + 1],
+    ]
+    round_deadline = routing.Deadline(
+        stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+    )
+    try:
+        answer = routing._call(ctx.variant, "route", request, round_deadline)
+        candidate = answer.get("trip") or {}
+        if not candidate.get("legs"):
+            return None, None
+        read = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+    except routing.RouterRefused:
+        return None, None
+    except (routing.DeadlineExceeded, routing.RouterUnavailable):
+        return "time", None
+    return read, candidate
+
+
+# What a metre of each tier counts in the score (Analysis.exposure_m).
+EXPOSURE_WEIGHTS = {"3": 1.0, "4": 2.0, "5": 3.0}
+
+Spans = list[tuple[float, float, float]]
+
+
+def route_spans(
+    analysis: Analysis, lo: float = 0.0, hi: float | None = None
+) -> tuple[Spans, Spans, float | None]:
+    """The route's busy stretches and its trail stretches, each (from, to,
+    weight) in traced metres from `lo` (the busy stretches weighted by
+    EXPOSURE_WEIGHTS, the trail's 1), between `lo` and `hi` (the whole route by
+    default), and the traced length between them (None for a route with no
+    pieces)."""
+    busy: Spans = []
+    trail: Spans = []
+    along = 0.0
+    for number, (piece, (tier, _kind)) in enumerate(
+        zip(analysis.pieces, analysis.classes, strict=False)
+    ):
+        a, b = along, along + piece.metres
+        along = b
+        if b <= lo or (hi is not None and a >= hi):
+            continue
+        a, b = max(a, lo), b if hi is None else min(b, hi)
+        weight = EXPOSURE_WEIGHTS.get(tier, 0.0)
+        if weight:
+            busy.append((a - lo, b - lo, weight))
+        if number < len(analysis.trail_pieces) and analysis.trail_pieces[number]:
+            trail.append((a - lo, b - lo, 1.0))
+    traced = (along if hi is None else min(hi, along)) - lo
+    return busy, trail, (traced or None)
+
+
+def exposure_spans(analysis: Analysis) -> tuple[Spans, float | None]:
+    """The route's busy stretches as (from, to, weight) in traced metres, and
+    its traced length (None for a route with no pieces)."""
+    busy, _trail, traced = route_spans(analysis)
+    return busy, traced
+
+
+def leg_bounds(analysis: Analysis) -> list[tuple[float, float]]:
+    """Where each leg of the route starts and ends, in traced metres."""
+    total = sum(piece.metres for piece in analysis.pieces)
+    edges = [0.0, *analysis.via_m, total]
+    return list(zip(edges, edges[1:], strict=False))
+
+
+def _leg_trip(trip: dict, number: int) -> dict:
+    """One leg of a trip as a trip of its own."""
+    leg = (trip.get("legs") or [])[number]
+    return {"legs": [leg], "summary": leg.get("summary") or {}}
+
+
+# What a trip's summary adds up (the legs' own are summed the same way).
+SUMMED = ("length", "time", "cost")
+
+
+def _splice(trip: dict, number: int, leg_trip: dict) -> dict:
+    """The trip with its `number`th leg replaced by the one leg of `leg_trip`."""
+    legs = list(trip.get("legs") or [])
+    old, new = legs[number], leg_trip["legs"][0]
+    legs[number] = new
+    summary = dict(trip.get("summary") or {})
+    before, after = old.get("summary") or {}, new.get("summary") or {}
+    for key in SUMMED:
+        if key in summary and key in before and key in after:
+            summary[key] = summary[key] - before[key] + after[key]
+    return {**trip, "legs": legs, "summary": summary}
+
+
+def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=None):
+    """The trail seek (`core.trailseek`), leg by leg (OWNER-DECISIONS 203): for
+    each stretch between consecutive locations, the router's route through the
+    entry and exit of the best corridors of trail and protected lane near the
+    leg's line, each kept where it scores better and is not busier (the same
+    score and the same Traffic-wins guard as every other candidate, the guard
+    against the leg's own exposure as the router first gave it). A route is
+    asked for one leg at a time, and a leg taken is spliced into the trip.
+
+    The seek's whole budget is SEEK_BUDGET_S, past the search's; each leg that
+    can run gets its share of what is left, by its straight-line span, and at
+    least SEEK_LEG_MIN_S (a candidate's worth), what a leg leaves unused going to the next.
+    `info["seek"]` says what was found and asked: `asked` counts the proposals
+    asked for, `routes` the router's routes (a proposal asked again without the
+    exclusions is two), and `whole_trip` what became of a plan with stops'
+    spliced trip (`taken`, `busier`, `unread`; None where nothing was spliced)."""
+    seek = info["seek"] = {
+        "corridors": 0,
+        "asked": 0,
+        "routes": 0,
+        "taken": False,
+        "limited": None,
+        "whole_trip": None,
+        "tried": [],
+        "legs": 0,
+    }
+    if ctx.roadway_only:
+        # A ride on the no-trail graph (Group Ride with trails off): there are
+        # no trails to seek, and through points would snap to the roads beside
+        # them (review r1).
+        seek["limited"] = "roadway_only"
+        return best, best_trip
+    locations = ctx.request.get("locations") or []
+    count = len(locations) - 1
+    legs = best_trip.get("legs") or []
+    if count < 1 or len(ctx.points) != len(locations) or len(legs) != count:
+        seek["limited"] = "points"
+        return best, best_trip
+    seek["legs"] = count
+    spans = [
+        haversine(Point(*ctx.points[k][:2]), Point(*ctx.points[k + 1][:2])) for k in range(count)
+    ]
+    runnable = [k for k in range(count) if spans[k] >= trailseek.SEEK_MIN_SPAN_M]
+    if not runnable:
+        seek["limited"] = "span"
+        return best, best_trip
+    stop_at = min(
+        routing.clock() + trailseek.SEEK_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S
+    )
+    if stop_at - routing.clock() < trailseek.SEEK_ROUND_MIN_S:
+        seek["limited"] = "time"
+        return best, best_trip
+    # What the router first gave each leg: the guard's reference.
+    first_legs = None
+    if count > 1 and original is not None and len(original.via_m) == count - 1:
+        first_legs = [
+            sum(w * (b - a) for a, b, w in route_spans(original, lo, hi)[0])
+            for lo, hi in leg_bounds(original)
+        ]
+    trip, taken = best_trip, False
+    for turn, k in enumerate(runnable):
+        now = routing.clock()
+        left = stop_at - now
+        if left < trailseek.SEEK_ROUND_MIN_S:
+            seek["limited"] = "time"
+            break
+        share = left * spans[k] / sum(spans[j] for j in runnable[turn:])
+        leg_stop = min(stop_at, now + max(share, trailseek.SEEK_LEG_MIN_S))
+        if count == 1:
+            leg_trip, incumbent, reference = trip, best, first_exposure
+        else:
+            leg_trip = _leg_trip(trip, k)
+            try:
+                incumbent = analyse(
+                    leg_trip, ctx, routing.Deadline(leg_stop, ctx.deadline.per_call_s)
+                )
+            except (routing.DeadlineExceeded, routing.RouterUnavailable):
+                seek["limited"] = "time"
+                break
+            if incumbent is None:
+                continue
+            reference = first_legs[k] if first_legs else incumbent.exposure_m
+        got = _seek_leg(k, leg_trip, incumbent, reference, leg_stop, ctx, seek)
+        if got is not None:
+            seek["taken"] = taken = True
+            if count == 1:
+                best, trip = got
+            else:
+                trip = _splice(trip, k, got[1])
+        if seek["limited"] in ("time", "table"):
+            break
+    if count > 1 and taken:
+        # One reading of the whole route, which the answer reuses: the legs'
+        # traces are remembered, the junctions read once.
+        try:
+            read = analyse(trip, ctx, ctx.deadline)
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            read = None
+        if read is None or read.events is None:
+            seek["taken"] = False
+            seek["whole_trip"] = "unread"
+            seek["limited"] = seek["limited"] or "unread"
+            return best, best_trip
+        # Traffic wins for the whole trip too (OWNER-DECISIONS 61, 188: "2% +
+        # 164 ft" for the plan): each leg's allowance is its own, so n legs
+        # could otherwise add n x 50 m between them (review r1).
+        if read.exposure_m > _allowance(first_exposure):
+            seek["taken"] = False
+            # Its own key as well, so that a "time" from a later leg does not
+            # hide it (review r2).
+            seek["whole_trip"] = "busier"
+            seek["limited"] = seek["limited"] or "busier"
+            return best, best_trip
+        seek["whole_trip"] = "taken"
+        return read, trip
+    return best, trip
+
+
+def _seek_leg(k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: dict):
+    """The seek on one leg: (reading, trip) of the leg if a candidate was kept,
+    else None. `reference` is the leg's exposure as the router first gave it
+    (the Traffic-wins guard's)."""
+    start, end = ctx.points[k][:2], ctx.points[k + 1][:2]
+    span = haversine(Point(*start), Point(*end))
+    shape = [
+        point
+        for leg in leg_trip.get("legs") or []
+        for point in routing.decode_polyline6(leg.get("shape", ""))
+    ]
+    step = max(1, len(shape) // 400)
+    guide = [[tuple(start), tuple(end)]] + ([shape[::step] + [shape[-1]]] if shape else [])
+    band = trailseek.band_m(span)
+    # The leg's deadline before the table, and the table's own statement timeout
+    # inside what the leg has (review r1).
+    left = stop_at - routing.clock()
+    if left < trailseek.SEEK_ROUND_MIN_S:
+        seek["limited"] = "time"
+        return None
+    try:
+        segments = trailseek.corridor_segments(
+            ctx.schema,
+            guide,
+            band,
+            ctx.with_facility,
+            ctx.when,
+            ctx.avoid_gravel,
+            timeout_s=min(trailseek.TABLE_TIMEOUT_S, left),
+        )
+    except trailseek.SeekOutOfTime:
+        logger.warning("the trail seek's table read ran past its time")
+        seek["limited"] = "time"
+        return None
+    except Exception:  # noqa: BLE001 - a plan is answered without the seek
+        logger.warning("the trail seek could not read the segment table", exc_info=True)
+        seek["limited"] = "table"
+        return None
+    # And again before the corridor search: there is no use finding corridors
+    # there is no time to ask for.
+    if stop_at - routing.clock() < trailseek.SEEK_ROUND_MIN_S:
+        seek["limited"] = "time"
+        return None
+    route = shape or [tuple(start)]
+    segments = trailseek.in_band(segments, start, end, route, band)
+    busy, trail, traced_m = route_spans(incumbent)
+    try:
+        corridors = trailseek.find_corridors(
+            segments,
+            start,
+            end,
+            shape,
+            busy,
+            traced_m,
+            ctx.rate,
+            ctx.trail_credit,
+            trail,
+            stop_at=stop_at - trailseek.SEEK_ROUND_MIN_S,
+            clock=routing.clock,
+        )
+    except trailseek.SeekOutOfTime:
+        seek["limited"] = "time"
+        return None
+    except trailseek.SeekError:
+        logger.error("the trail seek's corridor search failed", exc_info=True)
+        seek["limited"] = "error"
+        return None
+    seek["corridors"] += len(corridors)
+    best_score = incumbent.score(ctx)
+    # The exclusions the search kept for its best route, those in this leg's
+    # band only (review r1: up to 150 were sent with every candidate, most of
+    # them nowhere near the corridor).
+    nearby = trailseek.points_in_band(ctx.kept_excludes, start, end, route, band)
+    kept = None
+    for proposal in trailseek.propose(corridors):
+        if stop_at - routing.clock() < trailseek.SEEK_ROUND_MIN_S:
+            seek["limited"] = "time"
+            break
+        seek["asked"] += 1
+        # With the exclusions the best route so far was found under (so that the
+        # way to a trail is as calm as the way the search found), then, if the
+        # router has no route with them, without; and without them as well where
+        # the route with them is much longer than the corridor's detour says.
+        excluded = list(nearby)
+        seek["routes"] += 1
+        read, candidate = _through(proposal.vias, stop_at, ctx, excluded, k)
+        answers = []
+        if read is None and excluded:
+            seek["routes"] += 1
+            read, candidate = _through(proposal.vias, stop_at, ctx, (), k)
+            excluded = []
+        elif (
+            excluded
+            and isinstance(read, Analysis)
+            and read.length_m > _expected_m(incumbent, proposal)
+            and stop_at - routing.clock() >= trailseek.SEEK_ROUND_MIN_S
+        ):
+            answers.append((read, candidate, excluded, None))
+            seek["routes"] += 1
+            read, candidate = _through(proposal.vias, stop_at, ctx, (), k)
+            excluded = []
+            answers.append((read, candidate, excluded, "longer"))
+        if not answers:
+            answers.append((read, candidate, excluded, None))
+        out_of_time = False
+        for read, candidate, excluded, retry in answers:
+            if read == "time":
+                out_of_time = True
+                continue
+            tried = {
+                "leg": k,
+                "excluded": len(excluded),
+                "corridors": len(proposal.corridors),
+                "gain_m": round(proposal.gain_m),
+                "detour_m": round(proposal.detour_m),
+                "outcome": "no_route",
+            }
+            if retry:
+                tried["retry"] = retry
+            seek["tried"].append(tried)
+            if read is None:
+                continue
+            tried["length_m"] = round(read.length_m)
+            tried["exposure_m"] = round(read.exposure_m)
+            if read.events is None:
+                tried["outcome"] = "unread"
+                continue
+            busier = read.exposure_m > _allowance(reference)
+            score = read.score(ctx)
+            tried["score_gain_s"] = round(best_score - score, 1)
+            if busier:
+                tried["outcome"] = "busier"
+            elif score < best_score - IMPROVEMENT_EPS_S:
+                tried["outcome"] = "taken"
+                kept, best_score = (read, candidate), score
+            else:
+                tried["outcome"] = "not_better"
+        if out_of_time:
+            seek["limited"] = "time"
+            break
+    return kept
+
+
+def _allowance(exposure_m: float) -> float:
+    """The most exposure a candidate may have against a reference's (the
+    Traffic-wins guard: EXPOSURE_TOLERANCE and EXPOSURE_SLACK_M over it)."""
+    return exposure_m * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+
+
+# A seek candidate asked with the search's exclusions is asked again without
+# them when it is longer than the leg and the corridor's detour by more than
+# this share and this many metres (review r1: 145 to 150 exclusions sent the
+# router round them).
+SEEK_RETRY_OVER = 0.15
+SEEK_RETRY_SLACK_M = 500.0
+
+
+def _expected_m(incumbent: Analysis, proposal) -> float:
+    """The length past which a candidate is much longer than its corridor says."""
+    return (incumbent.length_m + proposal.detour_m) * (1 + SEEK_RETRY_OVER) + SEEK_RETRY_SLACK_M
 
 
 def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
@@ -543,6 +989,7 @@ def _search(trip, best, best_score, first_exposure, stop_at, ctx: Context, info:
         unread = current.events is None
         if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:
             best, best_trip, best_score, stale = current, candidate, score, 0
+            ctx.kept_excludes = [t.point for t in excluded]
         else:
             stale += 1
             if stale >= REFINE_PATIENCE:

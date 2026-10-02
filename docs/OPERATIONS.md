@@ -447,6 +447,89 @@ can queue inside the routers. Round 1's per-container lock files
 `calm_search.limited` `busy`; a `routemaker-calm-search` directory left in a
 container's or host's temporary directory by round 1 may be deleted.
 
+**The trail seek (FOLLOWUP-TRAIL-SEEK, OWNER-DECISIONS 194, 201).** From a calm rate
+of 10 (stress 100: Trailmaxxing's start and the slider's top) a plan, after the
+exclusion rounds, reads the segment table once a leg and may ask the router for up
+to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek"):
+
+- **One query a leg.** `SELECT ... FROM live.segment` for the paths, protected
+  ways and car-free roads at LTS 1 or 2 within 0.9 to 2.5 mi (1.5 to 4 km) of the
+  leg's straight line and its best route so far, at most 30,000 rows. The band is
+  read a strip at a time (`trailseek.band_cells`: 1 km cells, each row's run one
+  index scan), not over the guide's bounding box, under its own statement timeout
+  (at most 2.5 s, and never past the leg's time); a read cancelled by the timeout
+  ends the seek as `limited: "time"`. On today's live table (no facility column) it
+  reads through `segment_overview_geom_idx`; after the rebuild through
+  `segment_seek_geom_idx` (below). Measured, read-only, on the live table (1,357,800
+  rows, a 20 mi diagonal with a 400-point route and a 2.5 mi band): 42-61 ms
+  warm, against 349-386 ms for the one-geometry query it replaced; on a copy with
+  the facility column and the seek index, 15-42 ms against 740-1,442 ms
+  (docs/DEVELOPMENT.md, "Round 1 revision").
+- **Up to six router routes a leg**: up to three candidates, each of which may be
+  asked a second time without the search's exclusions (when the router has no
+  route with them, or the route with them is more than 15% and 500 m longer than
+  the leg and the corridor's detour), each with its `/trace_attributes` and its
+  junctions' `/locate`s, about 1 to 2.5 s each on the live host. Only the kept
+  exclusions within the leg's band are sent. The seek has
+  its own 6 s budget past the exclusion search's 14 s, and does not start a
+  candidate (or a second ask) with less than 2 s of it left; so a plan at the top
+  of the slider is at most 20 s of searching in the budget of 40 s, the same
+  ceiling as before plus the seek. Measured, the seek's own time was within about
+  1 s on most trips and up to 4.8 s on Rockville to Silver Spring at Trailmaxxing.
+  Without the trail credit it asks nothing on a route with no busy road on it (6 of
+  12 trips at Default's costing); with Trailmaxxing's credit it may also ask on a
+  quiet route, for a corridor that adds 400 m of trail. There is no
+  limit of its own: it runs inside the plan's `ROUTING_CONCURRENCY` slot, so
+  at most that many seeks run at once, as for the search; the router calls are
+  the same one-after-another calls, so the thread notes under "Concurrency"
+  hold.
+- **Bounded.** The corridor search refuses a trail step that does not cost
+  something positive and finite, walks back from a corridor's exit at most its
+  network's node count, and reads the clock every 1,024 nodes; any of these ends
+  the seek (`limited: "error"`, logged at error level as "the trail seek's corridor
+  search failed", or `"time"`), and the plan is answered without it.
+- **Reading it.** `calm_search.seek` in the answer says `corridors` found,
+  `asked` (proposals) and `routes` (router routes: a proposal asked again without
+  the exclusions is two), `taken`, why it stopped short (`points`, `span`, `time`,
+  `table`, `error`, `unread`, `busier` - a plan with stops whose spliced whole trip
+  was past the Traffic-wins allowance - or `roadway_only`, a ride on the no-trail
+  graph, which is not seeked), `whole_trip` (on a plan with stops whose legs were
+  spliced: `taken`, `busier` or `unread`, shown even when `limited` is an earlier
+  `time`) and one row in `tried` per route asked, with its
+  `outcome` (a second ask without the exclusions has `retry: "longer"`). A run of `table`
+  is a database problem, not a routing one (the log says "the trail seek could
+  not read the segment table" at warning level). A run of `no_route` outcomes
+  means the router refuses the through points (an entry on a way a bicycle
+  cannot use); the plan is unaffected.
+- **The trail credit and the seek on plans with stops** (OWNER-DECISIONS 202, 203;
+  docs/DEVELOPMENT.md, "The trail credit and the seek leg by leg"). Trailmaxxing has
+  a trail credit (0.5); no other ride type does, and the router is not told. Load
+  for a plan with a start and an end: every Trailmaxxing candidate's reading has one
+  more join over its traced pieces for the trail rule (before the facility column
+  exists; after it, none), and the seek may now ask on a quiet route where it asked
+  nothing before (above). A plan with stops runs the
+  seek once per leg of at least 1.2 mi: one table read per leg (each up to 30,000
+  rows) and, per candidate, one route for the leg alone with its trace and `/locate`s,
+  within the same 6 s as before, plus one reading of the whole trip when a leg is
+  taken; the spliced trip is then held to the whole trip's Traffic-wins allowance
+  (2% and 164 ft, 50 m), as each leg is to its own. Measured one stop +4.8 s and three
+  stops +4.8 s over a plan without the seek
+  (three stops: the exclusion search had used the time, and the seek added only its
+  reads). Still no limit of its own: it is inside the plan's `ROUTING_CONCURRENCY`
+  slot. `calm_search.seek.legs` and each `tried` row's `leg` say which legs it ran
+  over; `calm_search.trail_credit`, `trail_before_m` and `trail_after_m` say what the
+  credit was and the trail the route had. Before the facility column exists the
+  trail credit reads the table's trail rule through one more join over the traced
+  pieces of every candidate (Trailmaxxing plans only).
+- **Not applicable** to a long ride, to
+  a Mass Ride, to a span over 18.6 mi (the search's own limit), or to one under
+  1.2 mi.
+- **Facility.** On a table without the facility column (the live table until
+  the rebuild) the trails are found by their recorded stress rule, so a cycle
+  track mapped on the road itself, which is not trail class, is not a corridor
+  until the rebuild.
+
+
 **Reading the log.** `core.refine` logs at warning level, "the intersection
 events could not be read", when the segment query or `/locate` failed for a
 reason other than the budget; the route is answered without its junction list
@@ -877,6 +960,38 @@ serves the new query too - on a table without the facility column the trails'
 rules are a subset of the old predicate's, and `EXPLAIN` shows a bitmap
 index scan on it (FOLLOWUP-TILES-ZOOM review, round 1). The next rebuild
 creates the index on the facility's predicate.
+
+**The seek index.** The trail seek's table read (above) goes through a partial
+GiST index, `segment_seek_geom_idx`, holding only its corridors
+(`pipeline.schema.SEEK_INDEX_PREDICATE`: path or protected at LTS 1-2, or any
+car-free road), which `create_segment_schema` creates with the rest of the schema;
+the query carries the predicate word for word so the planner can use it. It is not
+a Django migration: the segment schema's DDL is the pipeline's (docs/DEVELOPMENT.md,
+"What migrations do and do not create"). **At a rebuild** it is built in staging,
+on the empty table before the load, and promoted by the swap: nothing runs on the
+live table. **On today's live table** (no facility column) it is not needed and
+cannot be built (its predicate names the column); the seek reads that table by the
+trail rule through `segment_overview_geom_idx`. **A table promoted with the facility
+column but without this index** (a rebuild from code before it) still works, through
+the whole geometry index (about 0.2 to 0.3 s a leg read strip by strip: 200 to 329 ms
+measured on a 1.36M-row copy, inside the statement timeout); to add it in place
+without blocking reads or writes, measured at 1.6 s and 648 kB on a 1.36M-row copy:
+
+    docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+      "CREATE INDEX CONCURRENTLY IF NOT EXISTS segment_seek_geom_idx ON live.segment
+       USING gist (geometry) WHERE (facility IN ('path', 'protected') AND stress_tier <= 2)
+       OR cardinality(car_free_when) > 0"
+
+A `CONCURRENTLY` build that fails (cancelled, or the connection lost) leaves an
+INVALID index of that name behind, which the planner does not use and which `IF NOT
+EXISTS` then skips without a word. So check `indisvalid` before the build and after
+it; if it is false, drop the index and build it again:
+
+    docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+      "SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+       WHERE c.relname = 'segment_seek_geom_idx' AND c.relnamespace = 'live'::regnamespace"
+    docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+      "DROP INDEX CONCURRENTLY IF EXISTS live.segment_seek_geom_idx"
 
 **The covered area.** `GET /api/coverage` answers the area routes may be
 planned in as a GeoJSON polygon feature - `settings.COVERAGE_BBOX`, the box the
