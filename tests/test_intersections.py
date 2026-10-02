@@ -1031,6 +1031,25 @@ class TestSharedControl:
         )
         assert m.share_controls([onto, off])[1].control is Control.NONE
 
+    def test_a_turn_onto_a_divided_road_then_a_left_off_it_across_its_far_side(self) -> None:
+        """17th St SW's shape on a divided road: right onto its near carriageway
+        at a signal, then 18 m on a left off it across the far one-way
+        carriageway. The far carriageway still counts as crossed (gate 1), but
+        the rider rode the road between: the left is a junction of its own."""
+        near = Road(4, oneway=True, names=frozenset({"main st"}), ways=frozenset({1}))
+        far = Road(4, oneway=True, names=frozenset({"main st"}), ways=frozenset({2}))
+        onto = junction(
+            m=0.0,
+            movement=Movement.RIGHT,
+            incoming=self.a_st,
+            outgoing=near,
+            control=Control.SIGNAL,
+        )
+        off = junction(
+            m=18.0, movement=Movement.LEFT, incoming=near, outgoing=self.b_st, crossed=(far,)
+        )
+        assert m.share_controls([onto, off])[1].control is Control.NONE
+
     def test_a_crossing_then_a_turn_onto_the_same_road_from_a_link(self) -> None:
         """Columbus Circle NE: a left across Massachusetts Ave at a signal onto
         the circle's link, then 20 m on a left onto Massachusetts Ave. The
