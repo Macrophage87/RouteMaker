@@ -406,33 +406,46 @@ so no restart is needed after the swap beyond the one that restarts the routers
 anyway.
 
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
-busy-class road meets the route (about 1 to 6 calls a plan; round 1 asked only
-at the junctions whose right of way changed the cost). A plan with a red junction
+busy-class road meets the route, with a 1 m radius, and again, with a 30 m
+(100 ft) radius, for each 50 of those whose control is not already a signal, to
+read the signals and stop signs OSM puts on the stop lines up the approaches
+(review r2; `core.junctions.APPROACH_RADIUS_M`): about 2 to 12 calls a plan.
+Measured on the live router, a batch of 50 at 30 m took 0.1-0.3 s and 2.6 MB,
+against 0.04-0.15 s and 0.5 MB at 1 m. A plan with a red junction
 500 m or more from both ends asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
 route), one `/trace_attributes` for it and its `/locate`s, and one more route for
 the detour warning when the route is at least twice the straight line, or above
 Default when it is longer than the allowance. Above 80 on the stress slider a
-plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`,
-and the detour probe). Measured through the review harness (docs/DEVELOPMENT.md,
-"Round 1, re-measured"): Default plans 0.1 to 1.5 s and plans at 100 up to the
+plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
+and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
+every Trailmaxxing plan is one of these unless the rider moves the slider down.
+Measured through the review harness (docs/DEVELOPMENT.md, "Round 1,
+re-measured" and "Round 2, re-measured"): Default plans 0.1 to 1.5 s (0.3 to
+2.9 s in round 2, with the second `/locate` pass) and plans at 100 up to the
 figures there. The budget is unchanged (40 s, 50 s for a long ride). If the api's
 workers are saturated, the search is the first thing to drop: it does not start
 with less than 11 s left (`REFINE_ROUND_MIN_S` plus `REFINE_TRACE_RESERVE_S`)
 and a round is not begun with less than 5 s, and the answer then says
-`calm_search.limited` is `time`.
+`calm_search.limited` is `time`. Where the rider asked for the calm detour, the
+planner says so under the route: "The calmer-route search ran out of time, so
+there may be a calmer route than this one."
 
-**Concurrency.** At most one search runs at a time in an API process and three
-across the host's API processes (`core.refine.CALM_SEARCHES_PER_HOST`), by lock
-files in the system temporary directory (`CALM_SLOT_DIR`,
-`/tmp/routemaker-calm-search` in the container): seven sync workers
-(`WEB_CONCURRENCY`) against each router's four threads (`concurrency` in
-`valhalla/*.json`) would otherwise let four concurrent calm plans saturate the
-standard router. A plan that finds every slot taken is answered at once with the
-router's own route and `calm_search.limited` `busy`. Many `busy` answers in a
-row mean more riders at the top of the slider than the routers can search for;
-raising `CALM_SEARCHES_PER_HOST` past the routers' thread count only moves the
-queue into the routers.
+**Concurrency.** The search has no limit of its own. It runs only inside an
+api routing request, and each of those holds one of the deployment's routing
+slots, `ROUTING_CONCURRENCY` (3 on compose's 7 workers; the PostgreSQL
+advisory-lock pool in `core.ratelimit`, in "The public routing API: its
+limits, and clearing a client" above). A long ride, the one request with a
+pool of its own, never runs the search. So at most
+`ROUTING_CONCURRENCY` searches run at once across the whole deployment, however
+many api containers there are, and each makes its router calls one after
+another: three at once against each router's four threads (`concurrency` in
+`valhalla/*.json`). If `ROUTING_CONCURRENCY` is raised (more workers), keep it
+at or below the routers' `concurrency`, or calm plans at the top of the slider
+can queue inside the routers. Round 1's per-container lock files
+(`CALM_SEARCHES_PER_HOST`, `/tmp/routemaker-calm-search`) are gone, and so is
+`calm_search.limited` `busy`; a `routemaker-calm-search` directory left in a
+container's or host's temporary directory by round 1 may be deleted.
 
 **Reading the log.** `core.refine` logs at warning level, "the intersection
 events could not be read", when the segment query or `/locate` failed for a
@@ -454,14 +467,30 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
 **Where the markers over-warn.** Not one place, several, each a known gap
 (docs/DEVELOPMENT.md, "Known gaps"):
 
-- Signalised trail crossings tagged `crossing=traffic_signals`, and cycletracks
-  crossing at a node of their own beside a signalised junction, read as
-  unsignalised until the tag transform derives the signal. They are orange at
-  most and say "signal not mapped" (OWNER-DECISIONS 185), so a rider may see an
-  orange marker at a crossing that has a light.
+- A signal tagged on a stop line more than 30 m (100 ft) up an approach, or
+  only on an approach the junction's arms do not lead to (the far
+  carriageway's, where the route crosses one carriageway alone), is not read,
+  and the junction is priced as having none. Round 1 read signals only at the
+  junction node, and this was the commonest cause of a false red at a
+  signalised junction (review r2: 8 of 15 reds in its sample); from round 2 the
+  approaches are walked to 30 m and the nodes of one junction share its
+  strongest control. Of the 95 junctions the review found priced as having no
+  signal, 66 had a signal flag of some kind within 30 m and 63 of those now
+  read as signalised.
+- Signalised trail crossings tagged `crossing=traffic_signals` away from any
+  signalised road junction read as unsignalised until the tag transform derives
+  the signal. They are orange at most and say "no signal mapped"
+  (OWNER-DECISIONS 185), so a rider may see an orange marker at a crossing that
+  has a light.
+- A stop sign on a cross road's stop line short of the junction is not read as
+  the cross traffic's (it may be another junction's), so a junction where only
+  the cross traffic stops can be priced as if nobody does: the rider's crossing
+  is then the stopped side's.
 - Any junction whose signal or signs OSM does not have reads "no signal mapped".
-- Slip lanes are orange (item 169) whether or not the channel has its own
-  signal or a raised crossing, which are not read.
+- A slip lane the route crosses is orange (items 169 and 195) whether or not
+  the channel has its own signal or a raised crossing, which are not read.
+  Riding straight past one along the road is not flagged, except in a painted
+  or separated bike lane past a channel leaving on the right (the right hook).
 - An unnamed divided road's two carriageways are counted as two roads (half the
   second added), not once with the refuge credit.
 
