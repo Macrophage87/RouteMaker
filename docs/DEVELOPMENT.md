@@ -862,12 +862,15 @@ link is opened.
 
 ## Intersection costs, the calm search and the detour warning
 
-FOLLOWUP-INTERSECTIONS (2026-10-01; OWNER-DECISIONS 133-136, 138, 163-169, 171,
-172; the literature review is `reports/LTS-literature-review-2.md`, "Crossing
-penalties by control type and right of way", "Left turns, multi-lane merges
-capped by box turns, and slip lanes" and "The stress slider's top end"). Three
-things, built on one mechanism: the traffic slider has a top end, a junction
-costs what it costs a rider, and a route shows its stressful junctions.
+FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02 after the round-1
+review; OWNER-DECISIONS 133-136, 138, 163-169, 171, 172, 185-188; the crossing
+costs and the slider's top end are from "Bicycle stress literature in depth",
+`reports/LTS-literature-review-2.md`: "Crossing penalties by control type and
+right of way", "Left turns, multi-lane merges capped by box turns, and slip
+lanes" and "The stress slider's top end"; the Mass Ride flow figures are from
+"Mass ride flow evidence", `reports/MASSRIDE-flow-evidence.md`). Three things,
+built on one mechanism: the traffic slider has a top end, a junction costs what
+it costs a rider, and a route shows its stressful junctions.
 
 ### What Valhalla already does at a junction (measured, read-only, live router)
 
@@ -927,20 +930,47 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
 `edge.road_class` and `node.intersecting_edge.*`):
 
 1. the movement, from the headings: left, straight or right (35 degrees is
-   straight);
-2. the roads that meet there, from the live segment table (`core.junctions`,
-   one PostGIS query for the whole route): the way's LTS and, from the first
-   rebuild after this, its posted or assumed speed, through lanes a direction
-   and one-way (new `road_speed_mph`, `road_lanes`, `road_oneway` columns,
-   written from the classifier; until then the reasons name the tier alone), and
-   its count where there is one. Only roads the router also has an edge for at
-   that node count as crossed, so a sidepath that runs three metres from a
-   carriageway is not "crossing" it at every node;
-3. who has the right of way, from `/locate` at the busy junctions only
-   (batches of 50): a signal, a stop or yield on the rider's approach, a stop on
-   the cross road, or neither. A route through neighbourhood streets asks the
-   router nothing;
-4. the model's cost and severity.
+   straight). The trace's indices count in the trace's own `shape`, which the
+   router thins of repeated vertices: round 1 read them in the route's shape,
+   and on Falls Church to the Capitol 245 of 342 junctions drifted onto the
+   wrong node (`trace_junctions.trace_shape`);
+2. the roads that meet there, from `/locate` at the node (batches of 50, a
+   radius of 1 m so that a service road a fraction of a metre nearer does not
+   hide the node): its directed edges, grouped into arms by way and heading,
+   each with whether a car may drive it towards the node and away (one-way or
+   not), whether it is a turn channel or ramp, and the stop, yield and signal
+   flags of the edges that ARRIVE at the node (an edge leaving it carries its
+   far end's). The node is every node `/locate` lists at the in-edge's end point:
+   a node exists once per level of the router's hierarchy (Rockville Pike's
+   edges end at its level 0 node, Dodge St's at the level 1 node, at one point).
+   An answer that does not have the route's own arriving edge is another node,
+   and nothing in it is used: that junction is priced on its own roads alone
+   (measured: 96 to 100 per cent of busy junctions match on the eight trips
+   below, against 81 per cent in round 1);
+3. which roads the movement crosses, from the arms' sides: the rider's path
+   through the node splits the compass in two. Straight on, a road is crossed
+   only where roads leave the node on BOTH sides (a road that continues through,
+   or a one-way pair in on one side and out on the other); a road on one side
+   only is a side road joining the rider's (a T-junction, a one-way carriageway
+   merging or diverging), which the rider on the through road does not cross. A
+   left turn crosses what is on the right of its path; a right turn crosses
+   nothing. A turn channel or ramp is never a crossed road: it is a slip lane
+   (item 169). Round 1 took every road of the busiest tier within 4.4 m of the
+   node from the segment table, which read a road's own turn channel, a one-way
+   merge or a ramp as a road crossed (26 of 42 red "crossing" events in the
+   review's sample were the rider going straight along an LTS 3-4 road), and
+   picked the road under a bridge deck;
+4. how busy each road is, from the live segment table (one query for the
+   route): the segment of each way nearest the node, its LTS and, from the first
+   rebuild after this, its speed and through lanes a direction where they were
+   read from the map or an agency (`road_speed_mph`, `road_lanes`,
+   `road_oneway`; an assumed speed or lane count is not stored, so a reason never
+   states one as fact), and its count where there is one;
+5. who has the right of way: a signal at the node, on the rider's approach or on
+   any other road's approach (a signal for the cross traffic is a signalised
+   junction); else a stop or yield on the rider's approach, on another road's,
+   on both (all-way), or none;
+6. the model's cost and severity.
 
 Grade-separated crossings need no case: a bridge or underpass shares no node
 with the road it passes, so there is no junction for the model to price.
@@ -954,6 +984,7 @@ table, within its ranges, for the owner to move:
 | Situation | Constant | Proposed | Review range and basis |
 |---|---|---|---|
 | Straight across an LTS 3 road, from the stopped side | `STOPPED_CROSSING_FT[3]` | 1,200 ft | 800-1,600 ft (Eugene 818 ft; Broach 10-20k ADT 6-10% a mile) |
+| A turn off one busy road onto a busier one, or with a stop on the rider's side (review r1, B3) | `MOVEMENT_FACTOR_ONTO` on the crossing above | the stopped side's: 1,800 ft for a left onto LTS 3 from a stop, up to 4,500 ft onto LTS 4 | stopped side against free-flowing traffic (item 169) |
 | Straight across an LTS 4 or Avoid road, stopped side | `STOPPED_CROSSING_FT[4]`, `[5]` | 3,000 ft | 2,500-3,500 ft (Broach 20k+ ADT, 1,700-3,260 ft) |
 | Scaled by the crossed road's speed | `SPEED_FACTORS` | 0.8 at 25 mph, 1.0 at 35, 1.3 past 45 | Oregon's tables by speed |
 | Scaled by its width | `LANE_FACTORS` | 1.0, 1.1 (two lanes a direction), 1.25 wider | a longer crossing |
@@ -962,25 +993,30 @@ table, within its ranges, for the owner to move:
 | At a traffic signal | `SIGNALISED_CROSSING_FT` | 150 ft (LTS 3), 300 ft (LTS 4, 5) | 100-200 ft, mostly delay (Broach signal 2.1-3.6% a mile) |
 | All-way stop | `ALL_WAY_STOP_FT` | 75 ft | 50-100 ft (Broach stop 0.5-0.9%; Arlington -1) |
 | On the free-flowing side, cross traffic controlled (item 169) | `PRIORITY_SIDE_FT` | 25 ft | 0-50 ft |
-| A mapped crossing way with no signal flag | `MARKED_CROSSING_FACTOR` | x0.5 | judgement: signalised trail crossings do not reach the signal flag |
+| A trail crossing with no signal flag: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "signal not mapped" | item 185; judgement: signalised trail crossings do not reach the signal flag (measured: the Pennsylvania Ave and Virginia Ave cycletracks cross 13th, 15th and 21st St NW at nodes of their own with no flag) |
+| A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75 | item 185; Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalised divided LTS 4 crossing red |
 | Left onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["left"]` | x1.5 of the crossing | Copenhagen 154 ft left against 62 ft right; the review: lefts 2-3 times rights |
 | Right onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["right"]` | x0.1 | "close to 0" |
-| Left off an LTS 3 road, across its oncoming lanes | `LEFT_ACROSS_ONCOMING_FT[3]` | 600 ft | Oregon's vehicular left, LTS 3 |
+| Left off an LTS 3 road, across its oncoming lanes | `LEFT_ACROSS_ONCOMING_FT[3]` | 600 ft | BELOW the review's 800-1,600 ft LTS 3 crossing range (a left across one oncoming lane from a lane the rider holds, Oregon's vehicular left at LTS 3); an owner question |
 | Left off an LTS 4 road | `LEFT_ACROSS_ONCOMING_FT[4]` | 1,500 ft | Oregon, LTS 4 (capped below) |
 | ... where the road is one-way ("unless it's a 1-way", item 133) | | 0 | no oncoming traffic |
 | ... at a signal | `SIGNALISED_LEFT_FACTOR` | x0.4 | its own phase |
 | Merging across lanes to reach a left (item 167) | `MERGE_FT_PER_LANE`, `BOX_TURN_CAP_FT` | 250 ft a lane, capped at 500 ft | the review's two-stage box turn, 200-500 ft |
+| At a signal, the whole left off a busy road (item 186) | `BOX_TURN_CAP_FT` | at most 500 ft, oncoming lanes and merge together | "Cap at box turn": a left never costs more than the two-stage box turn (round 1: 910 ft for two lanes a direction on LTS 4) |
 | A right turn off a busy road | `RIGHT_FROM_BUSY_FT` | 15 ft | |
 | A slip lane (item 169) | `SLIP_LANE_FT`, `SIGNALISED_SLIP_FACTOR` | 800 ft, x0.5 at a signal | "at least an LTS 3 unsignalised crossing, about 800 ft" |
 | LTS 1-2 meeting LTS 1-2, with a stop sign (item 171) | `NEIGHBOURHOOD_STOP_FT` | 10 ft, never flagged | the owner's account that DC lets bikes roll through when safe; not legal advice |
 | Cap | `MAX_CROSSING_FT` | 4,500 ft | |
-| Junctions within 45 m along the route | `MERGE_WITHIN_M`, `MERGED_SHARE` | one junction: the costliest and half of each other | a divided road's two carriageways, a median refuge |
+| Junctions within 45 m along the route | `MERGE_WITHIN_M`, `MERGED_SHARE` | one junction: one road's events (by name) counted once with the refuge credit, then the costliest road and half of each other road's cost; the colour never above the worst single event's | item 185: "A merge must never raise the colour of one road's crossing" |
 
 Severity, `ORANGE_MIN_FT` 600 and `RED_MIN_FT` 2,000: orange is "higher stress"
 and red "very high" (item 172). An unsignalised crossing of an LTS 3 road
 (about 1,200 ft) is orange; of an LTS 4 road (3,000 ft) red; a left onto or
 across an LTS 3 road orange, red when the road is fast; any signalised
-crossing, the priority side and a neighbourhood stop sign are neither. On a
+crossing, the priority side and a neighbourhood stop sign are neither; a trail
+crossing with no signal mapped is orange at most, whatever its cost (item 185),
+and a merge never raises a colour. The thresholds are unchanged (item 185: "keep
+the thresholds for now"). On a
 Mass Ride (`assess(..., group=True)`) the colour is the crossed road's tier
 instead (item 138): orange for LTS 3, red for LTS 4 or Avoid, a left across a
 one-way road none.
@@ -1005,6 +1041,15 @@ Church to Union Station plan the same route at 90 and at 100). The rescale
 | 90 | 0.000 | | 1.824 |
 | 95 | 0.000 | | 4.447 |
 | 100 | 0.000 | | 10.0 |
+
+Links made before the rescale say nothing of it, so a link now carries `v=2`
+(`frontend/src/lib/planHash.ts`), and a link without `v` has its `stress`
+mapped onto the new scale: old x 70/90 up to the old 90, then 70 + (old - 90),
+rounded (review r1, B4). An old Default link (90) opens Default (70), an old
+Trailmaxxing link (100) the old top (80) rather than the calm search, and an old
+Group Ride link (50) 39 (`use_roads` 0.499 against the old 0.5). Fast now starts
+at 10 (`use_roads` 0.871): the old 0.90 sits between the slider's steps of five,
+and 10 is nearer than 5 (0.936).
 
 Every route the old slider could plan is one position's of the new. Above 80 the
 router's price is as high as it goes, and `core.refine` takes over: it asks the
@@ -1045,9 +1090,30 @@ road). `calm_search` in the answer says what it did; `limited` is `time`,
 slider's climb search uses the alternatives) or `mass_ride`.
 
 Crossing avoidance is the same search with the approaches to the worst junctions
-(cost from 600 ft, three a round) as the exclusions, one round, at every
-position but Mass Ride's: the new route is kept if its score, router cost plus
-the junction events, is lower.
+(the red ones, from `REFINE_MIN_EVENT_FT` = `RED_MIN_FT`, 2,000 ft; three a
+round) as the exclusions, one round, at every position but Mass Ride's: the new
+route is kept if its score, router cost plus the junction events, is lower. An
+approach is the point half way along the edge the route arrives by,
+interpolated; a calm sample is the interpolated middle of a traced edge (edges
+under 6 m are not sampled): round 1 used a vertex, which on a two-vertex edge is
+the upstream node, and an exclusion on a node takes out every edge there, the
+cross street's too.
+
+Round 1's review found four more things the search now does:
+
+- A candidate whose junctions could not be read (the database or the router
+  failing) is not taken: it would score as having none.
+- An exclusion list is never sent twice, and never longer than the router's
+  limit: what does not fit is not asked for, and a full list ends the search
+  (`limited: "excludes"`).
+- At most one search at a time in a process and `CALM_SEARCHES_PER_HOST` (3)
+  across the API's processes, by a lock file each in `CALM_SLOT_DIR` (the
+  system temporary directory): the API's seven sync workers outnumber each
+  router's four threads, and a plan above 80 can make about 20 router calls.
+  A plan that finds no slot keeps the router's own route at once and says so
+  (`limited: "busy"`) rather than queueing.
+- `limited` is then `time`, `no_route`, `untraceable`, `excludes`, `busy`, or
+  where it did not run `span`, `long_ride`, `points`, `seeking`, `mass_ride`.
 
 **Time, alternates and limits** (live router, 2026-10-01): a calm round is a
 `/route` (0.5 to 1.5 s), a `/trace_attributes` (0.1 to 0.3 s), the stress and road
@@ -1073,7 +1139,7 @@ are near-optimal in its own cost, which is not where a calmer route is) and
 - where the router's best route is already the calmest it can find, which is not
   a failure (Old Town to Mount Vernon, Reston to Leesburg).
 
-**Measured before and after** (live router and segment table, 2026-10-01, a
+**Measured before and after, round 0** (live router and segment table, 2026-10-01, a
 quiet host, `when=weekend`, Default's other settings; each cell is the route's
 length and the miles of it on LTS 3, 4 and Avoid; "before" is the deployed
 code at the old positions 90 and 100, "after" this branch at the same routes'
@@ -1114,6 +1180,149 @@ against the live routers: 0.2 to 3 s at Default and 1 to 8 s above 80
 (the same container under load from other jobs: up to 17 s at Default).
 
 
+### Round 1, re-measured (2026-10-02)
+
+**How it was measured, and what that means.** The round-1 code was run against
+the live routers and live map data without a proof container on the live
+network (which the session's permissions did not allow): `core.routing.plan`
+ran on the WSL host, its router calls forwarded read-only (`/route`,
+`/trace_attributes`, `/locate` only) through a process in `routemaker-api-1`,
+and its segment table was a scratch database filled, for every edge the router
+answered with and every edge at the nodes of every traced route, with the tier
+the live stress tiles (`/tiles/stress/14/...`, the public endpoint) draw for
+that edge, matched by geometry and heading. So the tiers are the live table's,
+as the tiles draw them, the speeds and lanes are absent (as live until the
+rebuild), and a route's facility split is not measured. Both the code before
+(c1b52e3, in a throwaway worktree) and after ran through the same harness on
+the same data; each plan was run twice and the second timed, the harness's own
+work excluded from the plan's clock. The trips' points are the harness's own,
+not round 0's, so their counts are not comparable with round 0's "15 red in 11
+mi" (the same trip from round 0's points).
+
+**Markers at Default (70)**, each route's miles and miles on LTS 3 and worse,
+then red and orange markers:
+
+| Trip | Before (c1b52e3): route | Before: red, orange | After: route | After: red, orange | After, by kind |
+|---|---|---|---|---|---|
+| Rockville - Silver Spring | 10.3 mi, 4.4 | 12, 5 | 10.3, 4.4 | 1, 9 | red: 1 crossing; orange: 3 trail crossings, 2 slip lanes, 4 turns onto or off busy roads |
+| Bethesda - Capitol | 12.0, 1.3 | 15, 12 | 12.1, 1.3 | 0, 15 | orange: 10 trail crossings (the Virginia Ave and Pennsylvania Ave cycletracks), 2 slip lanes, 3 turns |
+| Falls Church - Union Station | 10.5, 1.4 | 8, 12 | 10.5, 1.4 | 2, 14 | red: a crossing, a left across; orange: 10 trail crossings, 2 slip lanes, 2 turns |
+| Silver Spring - College Park | 8.2, 2.6 | 6, 5 | 7.2, 2.2 | 1, 5 | red: a left onto; orange: 2 slip lanes, 3 turns |
+| Bethesda - Silver Spring | 4.7, 0.8 | 4, 5 | 4.7, 0.8 | 2, 1 | red: 2 crossings; orange: a turn |
+| Laurel - College Park | 11.6, 7.2 | 17, 13 | 11.6, 7.2 | 0, 21 | orange: 15 slip lanes (US 1), 4 trail crossings, 2 others |
+| Poolesville - Darnestown (rural) | 8.8, 7.3 | 5, 1 | 8.8, 7.3 | 0, 3 | orange: 2 slip lanes, a left onto |
+| Bowie - Annapolis | 21.2, 13.4 | 17, 9 | 21.2, 13.4 | 4, 11 | red: 2 crossings, 2 joins of a busier road; orange: 11 |
+| **All eight** | | **84, 62** | | **10, 79** | |
+
+What moved them: the router's own edges at the node (B1: 77 red "crossing"
+events before, 6 after; a road's own turn channel, merge or ramp is no longer a
+crossing), the trace's own shape (B2a: before, junctions on drifting routes sat
+on the wrong nodes), the control from the right node with a signal on any
+approach (B2), the divided-road refuge and the no-raise merge (item 185), and
+trail crossings with no signal mapped capped at orange (item 185: 28 of the 79
+oranges). Slip lanes are the other large share (28), as item 169 asks: a turn
+channel the rider rides straight past is now the 800 ft slip lane, not a 3,000
+ft crossing. Six of the eight routes are the same line before and after. Two
+differ by crossing avoidance: Silver Spring - College Park, where round 1's
+false reds had taken a route 1.2 mi (1,938 m) longer and the new reading takes
+one 0.15 mi (245 m) longer, and Bethesda - Capitol, 0.1 mi (138 m) longer round
+a red crossing. /locate matched the route's own edge at 96 to 100 per cent of
+busy junctions (round 1: 81 per cent).
+
+Time at Default, the plan alone: 0.15 to 1.2 s. Router calls: on six trips the
+router's own route still had a red junction 500 m or more from both ends, so
+crossing avoidance asked for a second route (2 routes, 2 traces, 3 to 11
+`/locate`s); on the other two 1, 1 and 2 to 4. `/locate` is now asked at every
+busy-class junction (round 1: only where the right of way changed the cost),
+one call for each 50.
+
+### The top of the slider: what 150 would do (item 187, an exploration)
+
+The owner, 2026-10-01: "Make max calm even higher. Let's see what 150 would do.
+Trailmaxxing is about relaxation, not commuting." Measured through the same
+harness, Default's other settings, `when` the moment of planning, each cell the
+route's miles, its miles on LTS 3 and worse, its length against the most direct
+legal route and the plan's time (the second of two runs, the harness's own work
+excluded):
+
+| Trip | 80 (the old top) | 100 (rate 10) | "125" (rate 447) | "150" (rate 19,027) |
+|---|---|---|---|---|
+| Rockville - Silver Spring | 10.3, 4.4, -, 1.2 s | 13.9, 0.2, 1.44x, 2.3 s | 13.9, 0.2, 1.44x, 4.2 s | 13.9, 0.2, 1.44x, 3.8 s |
+| Bethesda - Capitol | 12.1, 1.1, 1.23x, 2.4 s | 14.1, 1.0, 1.43x, 4.2 s | 12.0, 1.1, 1.22x, 4.2 s | 12.0, 1.1, 1.22x, 3.1 s |
+| Falls Church - Union Station | 10.5, 1.4, 1.07x, 1.3 s | 10.5, 1.4, 1.07x, 1.8 s | 10.7, 0.9, 1.09x, 6.4 s | 10.7, 0.9, 1.09x, 4.4 s |
+| Silver Spring - College Park | 7.2, 2.2, 1.08x, 1.4 s | 10.1, 1.0, 1.52x, 3.9 s | 10.1, 1.0, 1.52x, 4.1 s | 10.1, 1.0, 1.52x, 3.6 s |
+| Bethesda - Silver Spring | 4.7, 0.8, 1.11x, 0.6 s | 4.7, 0.8, 1.11x, 1.9 s | 4.7, 0.8, 1.11x, 1.6 s | 4.7, 0.8, 1.11x, 0.9 s |
+| Laurel - College Park | 14.1, 4.6, 1.38x, 0.8 s | 16.9, 4.7, 1.65x, 2.8 s | 16.9, 4.7, 1.65x, 2.7 s | 16.9, 4.7, 1.65x, 1.9 s |
+| Poolesville - Darnestown | 8.8, 7.3, -, 0.1 s | 8.8, 7.3, -, 0.9 s | 8.8, 7.3, -, 1.0 s | 8.8, 7.3, -, 0.6 s |
+| Bowie - Annapolis | 21.2, 13.4, 1.04x, 2.1 s | 21.2, 13.4, 1.04x, 1.1 s (no route) | the same | the same |
+
+"125" and "150" are the current curve carried on (`CALM_RATE_MAX` × (e^(3t) -
+1) / (e^3 - 1), t = (position - 80) / 20): metres of detour accepted per metre
+of LTS 3 avoided. At 19,027 the rate is in effect "busy-road metres first,
+whatever the length": the score is the router's cost plus the weighted LTS 3, 4
+and Avoid metres times 19,027, so the junction costs and the length stop
+counting. "-" is where the route was within the straight line's allowance and
+no direct route was asked for. Laurel - College Park at 100 rides about the same
+LTS 3 and worse miles as at 80, but less of it LTS 4 (the score weighs LTS 4
+twice).
+
+What it shows:
+
+- 80 to 100 is where the top end works: four of the eight trips take a calmer,
+  longer route (Rockville - Silver Spring from 4.4 mi of LTS 3+ to 0.2 for 3.6 mi
+  more; Silver Spring - College Park from 2.2 to 1.0 for 2.9 mi more).
+- 100 to "150" changes two of the eight. Falls Church - Union Station rides 0.5
+  mi less LTS 3+ for 0.2 mi more. Bethesda - Capitol goes back to the shorter
+  12.0 mi route with less weighted exposure but more junction stress (one red
+  and 19 orange markers, against none and 10 at 100): at that rate the
+  crossings no longer count. The rest are the same: the candidates are nested
+  (each round excludes the last one's busy stretches), so a higher rate picks
+  among the same few routes, and on Bowie - Annapolis every exclusion leaves no
+  route at all.
+- "125" plans exactly what "150" does on these trips.
+
+**The wider search.** To give the top end routes the nesting cannot reach,
+`core.refine` can also ask the router for the route through a point off the
+straight line, either side of its middle at a quarter and a half of the span
+(`WIDE_OFFSETS`), as a `through` location, each scored and guarded as every
+other candidate (`WIDE_SEARCH_FROM_RATE`, off). Measured:
+
+| Trip | 100 | 100 + wide | "150" | "150" + wide |
+|---|---|---|---|---|
+| Rockville - Silver Spring | 13.9, 0.2, 2.3 s | the same, 5.6 s | 13.9, 0.2, 3.8 s | the same, 4.3 s |
+| Bethesda - Capitol | 14.1, 1.0, 4.2 s | the same, 8.1 s | 12.0, 1.1, 3.1 s | the same, 6.6 s |
+| Falls Church - Union Station | 10.5, 1.4, 1.8 s | the same, 5.9 s | 10.7, 0.9, 4.4 s | the same, 10.0 s |
+| Silver Spring - College Park | 10.1, 1.0, 3.9 s | the same, 5.1 s | 10.1, 1.0, 3.6 s | the same, 11.1 s (time) |
+| Bethesda - Silver Spring | 4.7, 0.8, 1.9 s | the same, 2.5 s | 4.7, 0.8, 0.9 s | the same, 3.7 s |
+| Laurel - College Park | 16.9, 4.7, 2.8 s | the same, 3.2 s | 16.9, 4.7, 1.9 s | the same, 2.7 s |
+| Poolesville - Darnestown | 8.8, 7.3, 0.9 s | the same, 1.2 s | 8.8, 7.3, 0.6 s | the same, 1.9 s |
+| Bowie - Annapolis | 21.2, 13.4, 1.1 s | 39.8, 11.9, 1.96x, 5.0 s | 21.2, 13.4, 1.6 s | 39.8, 11.9, 1.96x, 6.6 s |
+
+It adds four routes, their traces and their junctions to each plan (1 to 6 s on
+these trips, 11 s on the slowest, which then ran out of the search's budget)
+and changed one route: Bowie - Annapolis, 18.6 mi longer for 1.5 mi less LTS 3+,
+with 5 red and 29 orange markers against 4 and 11.
+
+**Not adopted.** Neither "150" nor the wider search is clearly better, so the
+slider is unchanged (100 is the top, at a rate of 10) and the wider search is
+off. The constraint at the top end is the candidates, not the rate: past about
+10 the search keeps choosing among the same nested few. What would make the
+top end differ is a candidate generator that goes looking for calm
+infrastructure (via points on the trails and protected lanes near the line,
+from the segment table) rather than points at fixed offsets, which is layer 4's
+candidate search proper. For the owner, with these numbers:
+
+- Trailmaxxing at 100 (the top): on these trips its routes would be Default's at
+  100 with Trailmaxxing's own costing (Cross, low surface avoidance), so a
+  calmer route on about half of them, up to 1.65 times the direct route, and
+  the detour warning says so. It is the owner's "about relaxation, not
+  commuting".
+- Carrying people on a Cargo Bike stays at 80: a heavy bike with a child on it
+  pays for every extra mile and every climb, and 80 already keeps to low-stress
+  ways unless avoiding them takes much longer.
+- A rate above 10 (a slider past 100, or a steeper top) only once the candidate
+  generator above exists.
+
 ### The detour warning
 
 `routemaker.detour` (item 164: "just warn people"): the route's length against
@@ -1122,6 +1331,11 @@ once, only when the route is longer than the larger of 1.25 times or 0.33 mi
 over the straight line, which the direct route cannot beat). Silent within the
 larger of 1.25 times or +0.33 mi; `note` up to 1.5 times; `warning` above;
 `strong` above 2 times (the review's "let it run long, warn at 1.5x and 2x").
+The direct route is asked for only above Default, or at any position where the
+route is at least twice the straight line (`core.routing._detour`): at Default and
+below a route between 1.25 and 2 times the straight line gets no note at all,
+which saves a second route on most plans. The planner calls the route "calm"
+only above 80, where the rider asked for the calm detour.
 The answer's `detour` has `basis`, `reference_m`, `ratio`, `extra_m`, `level` and
 `avoided_m` (metres of LTS 3 and worse the direct route has and this one does
 not, where there was time to trace it). Where the direct route could not be had
@@ -1140,7 +1354,9 @@ down" at a warning.
   null where the junctions could not be read in time (the route is answered
   all the same). Neighbourhood stop signs and anything below 600 ft are not
   listed. `reason` is US units first: "Left turn across a 4-lane 35 mph (56
-  km/h) road, no signal".
+  km/h) road, no signal mapped"; where only the tier is known, the stress map
+  legend's words, "Crossing a heavy-traffic road (LTS 4), signal not mapped".
+  `control: "none"` means no signal or sign is MAPPED, not that there is none.
 - `calm_search`: null where no search was asked for, else the object above.
 - `detour`: null within the allowance, else the block above.
 
@@ -1153,20 +1369,30 @@ does. The slider's words and its note at the top end are
 ### Known gaps, and what would close them
 
 - A trail crossing a road at a mapped crossing with `crossing=traffic_signals`
-  (a signal or a HAWK) does not reach the router's signal flag: Valhalla's
-  transform reads `highway=traffic_signals` alone. Such a crossing reads as
-  "no signal" and is counted at `MARKED_CROSSING_FACTOR`. Deriving the signal in
-  `lua/routemaker_remap.lua` (`forward_signal` and `backward_signal` on the node)
-  is the fix and needs a rebuild to verify, so it is a recorded follow-up.
-- Median refuges, raised crossings, bike signals and queue boxes are not read.
+  (a signal or a HAWK), or a cycletrack crossing at a node of its own a few
+  metres from the signalised road junction, does not reach the router's signal
+  flag: Valhalla's transform reads `highway=traffic_signals` alone. Such a
+  crossing reads "signal not mapped", is counted at `MARKED_CROSSING_FACTOR`
+  and is never red (item 185). Deriving the signal in `lua/routemaker_remap.lua`
+  (`forward_signal` and `backward_signal` on the node), or reading the signal of
+  the road junction at the far end of a crossed road's short arm, is the fix and
+  needs a rebuild (or more `/locate` calls) to verify, so it is a recorded
+  follow-up.
+- A median refuge is credited where both carriageways carry the road's name
+  (`MEDIAN_REFUGE_FACTOR`); an unnamed divided road's carriageways are two
+  roads. Raised crossings, bike signals and queue boxes are not read.
 - A residential street that is LTS 3 on its own speed or volume is not looked
   for at junctions (only tertiary and up are); its stretch still colours the
   route.
 - Valhalla's `use_sidepath` price on LTS 3-4 ways applies by tier and not by
   junction density; the calm search is the only thing above it.
 - The live segment table has no speed, lanes or one-way until the first rebuild
-  after this change; reasons say "road (LTS 4)" until then. `core.junctions.
+  after this change; reasons say "heavy-traffic road (LTS 4)" until then, and
+  the one-way reading comes from the router's own arms. `core.junctions.
   has_trait_columns` checks, as `core.routing` does for the facility columns.
+  After the rebuild, only speeds and lane counts read from the map or an agency
+  are stored (`routemaker.stress`); the merge cost assumes lanes by tier where
+  none was read. None of the post-rebuild pricing has been run live.
 
 ## The worker
 

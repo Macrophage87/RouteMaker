@@ -389,7 +389,7 @@ deploy.
 
 ## Intersection costs and the calm search: what to watch
 
-FOLLOWUP-INTERSECTIONS (2026-10-01; docs/DEVELOPMENT.md, "Intersection costs,
+FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02; docs/DEVELOPMENT.md, "Intersection costs,
 the calm search and the detour warning" is the long form). What an operator
 needs:
 
@@ -399,29 +399,50 @@ are read from the live `segment` table and the existing routers (`/locate` and
 code works the day it is deployed. The segment table gains `road_speed_mph`,
 `road_lanes` and `road_oneway` (`pipeline.schema.SEGMENT_DDL`) with the next
 rebuild; until a rebuilt table is promoted the junction reasons name the road's
-LTS and not its lanes and speed ("Crossing a road (LTS 4), no signal"), and
-nothing else changes. `core.junctions.has_trait_columns` reads the live schema
+LTS and not its lanes and speed ("Crossing a heavy-traffic road (LTS 4), no
+signal mapped"), and nothing else changes. `core.junctions.has_trait_columns` reads the live schema
 once and remembers the answer, as `core.routing` does for the facility columns,
 so no restart is needed after the swap beyond the one that restarts the routers
 anyway.
 
-**Cost per plan.** A plan that crosses a busy road without a signal now asks the
-router for one more route (the search, `core.refine`), one `/trace_attributes`
-for it and up to four `/locate`s, and one more route for the detour warning
-when the plan is long for its straight line. Measured on the live host: a quiet
-one, an ordinary plan 0.2 to 3 s and above 80 on the stress slider 1 to 8 s; with
-other jobs loading it, 4 to 17 s. The budget is unchanged (40 s, 50 s for a long ride). If the
-api's workers are saturated, the search is the first thing to drop: it does not
-start with less than 11 s left (`REFINE_ROUND_MIN_S` plus
-`REFINE_TRACE_RESERVE_S`) and a round is not begun with less than 5 s, and the
-answer then says `calm_search.limited` is `time`.
+**Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
+busy-class road meets the route (about 1 to 6 calls a plan; round 1 asked only
+at the junctions whose right of way changed the cost). A plan with a red junction
+500 m or more from both ends asks the router for one more route (crossing
+avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
+route), one `/trace_attributes` for it and its `/locate`s, and one more route for
+the detour warning when the route is at least twice the straight line, or above
+Default when it is longer than the allowance. Above 80 on the stress slider a
+plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`,
+and the detour probe). Measured through the review harness (docs/DEVELOPMENT.md,
+"Round 1, re-measured"): Default plans 0.1 to 1.5 s and plans at 100 up to the
+figures there. The budget is unchanged (40 s, 50 s for a long ride). If the api's
+workers are saturated, the search is the first thing to drop: it does not start
+with less than 11 s left (`REFINE_ROUND_MIN_S` plus `REFINE_TRACE_RESERVE_S`)
+and a round is not begun with less than 5 s, and the answer then says
+`calm_search.limited` is `time`.
+
+**Concurrency.** At most one search runs at a time in an API process and three
+across the host's API processes (`core.refine.CALM_SEARCHES_PER_HOST`), by lock
+files in the system temporary directory (`CALM_SLOT_DIR`,
+`/tmp/routemaker-calm-search` in the container): seven sync workers
+(`WEB_CONCURRENCY`) against each router's four threads (`concurrency` in
+`valhalla/*.json`) would otherwise let four concurrent calm plans saturate the
+standard router. A plan that finds every slot taken is answered at once with the
+router's own route and `calm_search.limited` `busy`. Many `busy` answers in a
+row mean more riders at the top of the slider than the routers can search for;
+raising `CALM_SEARCHES_PER_HOST` past the routers' thread count only moves the
+queue into the routers.
 
 **Reading the log.** `core.refine` logs at warning level, "the intersection
 events could not be read", when the segment query or `/locate` failed for a
 reason other than the budget; the route is answered without its junction list
 (`intersections` null or empty). A `/locate` batch that fails leaves its
-junctions as "no signal", the cautious reading. `core.routing` logs the same
-"took ... past its budget" line as before.
+junctions unknown: nothing is counted as crossed there, and only a turn onto or
+off a busy road on the route itself is priced. `core.junctions` logs "intersection
+nodes: N of M matched" at info level when some junctions' answers did not have
+the route's own edge (measured 96 to 100 per cent matched). `core.routing` logs
+the same "took ... past its budget" line as before.
 
 **The routers.** The search sends `exclude_locations` (the config's
 `max_exclude_locations` is 200; `scripts/build_valhalla_configs.py` sets it) and
@@ -430,10 +451,19 @@ junctions as "no signal", the cautious reading. `core.routing` logs the same
 hand-made config that lowers `max_exclude_locations` below 150 makes a calm
 round refuse (400, the search ends with `no_route`), which is safe but quiet.
 
-**What is not done.** Signalised trail crossings tagged `crossing=traffic_signals`
-read as unsignalised until the tag transform derives the signal (a rebuild to
-verify; docs/DEVELOPMENT.md, "Known gaps"), so a rider may see a marker at a
-crossing that has a light. It is the one place the markers over-warn.
+**Where the markers over-warn.** Not one place, several, each a known gap
+(docs/DEVELOPMENT.md, "Known gaps"):
+
+- Signalised trail crossings tagged `crossing=traffic_signals`, and cycletracks
+  crossing at a node of their own beside a signalised junction, read as
+  unsignalised until the tag transform derives the signal. They are orange at
+  most and say "signal not mapped" (OWNER-DECISIONS 185), so a rider may see an
+  orange marker at a crossing that has a light.
+- Any junction whose signal or signs OSM does not have reads "no signal mapped".
+- Slip lanes are orange (item 169) whether or not the channel has its own
+  signal or a raised crossing, which are not read.
+- An unnamed divided road's two carriageways are counted as two roads (half the
+  second added), not once with the refuge credit.
 
 ## The stress tiles
 
