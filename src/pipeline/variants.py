@@ -698,7 +698,11 @@ ONEWAY_JUNCTIONS = frozenset({"roundabout", "circular"})
 #   `bicycle:backward:conditional` is set to a bare `no`, which
 #   `remap_conditional_access` never reads as a widening and which outranks the
 #   undirected `bicycle:conditional`. A `bicycle:forward:conditional` decides
-#   the with-flow direction and is left alone.
+#   the with-flow direction and is left alone. On every graph the remap opens
+#   a one-way's reverse from a conditional only where the way itself grants
+#   contraflow or carries `bicycle:backward:conditional`
+#   (`routemaker_remap.speaks_for_reverse`), so this write is what closes
+#   those; on any other one-way it is belt and braces.
 #
 # `routemaker_remap.access_is_unrestricted` decides whether the remap treats a
 # way as restricted, and a way it calls restricted loses the stress penalty (and

@@ -609,16 +609,51 @@ function M.least_restrictive(base, conditional_value)
   return best
 end
 
+-- What on a one-way's own tags gives a bicycle the direction against the traffic,
+-- as `pipeline.variants.has_contraflow_tag` reads them: `oneway:bicycle` waived
+-- (or reversed), an `opposite*` cycleway value, a reverse-direction grant.
+M.CONTRAFLOW_ONEWAY_BICYCLE = { no = true, ["false"] = true, ["0"] = true, ["-1"] = true }
+M.REVERSE_GRANT = { yes = true, designated = true, permissive = true }
+
+--- Whether a one-way's own tags speak for the direction against its traffic:
+-- they grant contraflow, or carry a `bicycle:backward:conditional`, which is the
+-- mapper's statement about that direction and no other.
+function M.speaks_for_reverse(tags)
+  if M.CONTRAFLOW_ONEWAY_BICYCLE[tags["oneway:bicycle"]] then return true end
+  if M.REVERSE_GRANT[tags["bicycle:backward"]] or M.REVERSE_GRANT[tags["vehicle:backward"]] then
+    return true
+  end
+  if tags["bicycle:backward:conditional"] ~= nil then return true end
+  for _, key in ipairs(M.CYCLEWAY_KEYS) do
+    local value = tags[key]
+    if value ~= nil and value:sub(1, #"opposite") == "opposite" then return true end
+  end
+  return false
+end
+
 --- Resolve conditional access onto the directional keys Valhalla reads.
+--
+-- On a one-way for motor traffic the undirected `bicycle:conditional` speaks
+-- for the traffic's direction only, and the reverse is not widened from it
+-- unless the way itself speaks for the reverse (`speaks_for_reverse`). Written
+-- as `bicycle:backward`, the widening is read by upstream as a second
+-- direction: Pulaski Highway (`highway=trunk`, `oneway=yes`, `bicycle=no`,
+-- `bicycle:conditional=yes @ (Sa-Su dawn-dusk; PH dawn-dusk)`) came out
+-- rideable both ways on the standard, weekend and e-bike graphs, a remap
+-- artifact and not a contraflow lane (contraflow review r1). `forward` and
+-- `backward` are relative to the one-way's direction in upstream's reading,
+-- `oneway=-1` included, so `backward` is the reverse on every one-way.
 function M.remap_conditional_access(tags)
   local out = {}
   -- The undirected conditional applies to both directions unless a directional
   -- one is present for that direction, which is the wiki's own precedence.
   local both = tags["bicycle:conditional"]
+  local reverse_closed = M.is_motor_oneway(tags) and not M.speaks_for_reverse(tags)
 
   for _, side in ipairs({ "forward", "backward" }) do
     local key = "bicycle:" .. side
     local conditional = tags[key .. ":conditional"] or both
+    if side == "backward" and reverse_closed then conditional = nil end
     if conditional then
       -- Nothing is recorded about the condition here. An earlier version wrote
       -- `rm:access_conditional_<side>` for phase 3 to report on, and the entry

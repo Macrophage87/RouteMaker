@@ -352,7 +352,13 @@ CONTRAFLOW_FORMS = {
         "bicycle:backward": "no",
         "bicycle:backward:conditional": "yes @ (Sa,Su)",
     },
-    "undirected-conditional": {"bicycle": "no", "bicycle:conditional": "yes @ (Sa,Su)"},
+    # On a one-way the undirected conditional opens the reverse only where the
+    # way itself grants contraflow (`remap_conditional_access`), as here.
+    "undirected-conditional-waived": {
+        "bicycle": "no",
+        "oneway:bicycle": "no",
+        "bicycle:conditional": "yes @ (Sa,Su)",
+    },
     # How DC maps a contraflow lane, and the form the Roadway Block overlay
     # writes (routemaker.agency_roads), though only into the tags classification
     # reads (`class_tags_by_way`), never into a variant's routing tags.
@@ -495,7 +501,7 @@ def test_the_closure_keeps_the_ride_with_the_traffic(oneway) -> None:
         "left-contraflow-lane-and-sharrow",
         "lane-both",
         "vehicle-backward-yes",
-        "undirected-conditional",
+        "undirected-conditional-waived",
         # The closure rewrites these to `bicycle:backward=none`, which the remap
         # does not read as a restriction on a one-way (`access_is_unrestricted`).
         "bicycle-backward-yes",
@@ -552,6 +558,93 @@ def test_the_with_flow_conditional_is_not_closed() -> None:
     closed = inject(Variant.NO_TRAIL, dict(tags), 7)
     assert closed["bicycle:forward:conditional"] == "yes @ (Sa,Su)"
     assert _bike_access(closed) == ("true", "false")
+
+
+# Pulaski Highway (ways 17625594 and 50276143 in the 2026-09-25 extract): a
+# one-way trunk barred to bicycles except at weekends. The remap used to resolve
+# its undirected conditional onto `bicycle:backward=yes` as well, which upstream
+# reads as a second direction, so every graph but the no-trail one rode it
+# against the traffic (contraflow review r1). Not a contraflow lane: the way
+# grants no reverse direction of its own.
+PULASKI = {
+    "highway": "trunk",
+    "name": "Pulaski Highway",
+    "bicycle": "no",
+    "bicycle:conditional": "yes @ (Sa-Su dawn-dusk; PH dawn-dusk)",
+    "cycleway:both": "no",
+}
+
+# Every way upstream reads as one-way for motor traffic, and which of its
+# geometry's directions the traffic takes.
+ONEWAY_SHAPES = {
+    "yes": {"oneway": "yes"},
+    "true": {"oneway": "true"},
+    "1": {"oneway": "1"},
+    "-1": {"oneway": "-1"},
+    "roundabout": {"junction": "roundabout"},
+    "circular": {"junction": "circular"},
+}
+
+
+def _traffic_access(tags: dict[str, str]) -> tuple[str, str]:
+    """(with the traffic, against it) for any one-way shape."""
+    forward, backward = _bike_access(tags)
+    return (backward, forward) if tags.get("oneway") == "-1" else (forward, backward)
+
+
+@pytest.mark.parametrize("shape", sorted(ONEWAY_SHAPES))
+@pytest.mark.parametrize("variant_name", ["STANDARD", "WEEKEND", "EBIKE", "NO_TRAIL"])
+def test_a_conditional_never_opens_a_one_way_against_its_traffic(variant_name, shape) -> None:
+    """Through the shipped entry point on every variant's tags: the weekend
+    grant opens the way with the traffic and never against it."""
+    from pipeline.variants import Variant, inject
+
+    tags = {**PULASKI, **ONEWAY_SHAPES[shape]}
+    built = inject(Variant[variant_name], dict(tags), 7)
+    assert _traffic_access(built) == ("true", "false"), (variant_name, built)
+
+
+@pytest.mark.parametrize("variant_name", ["STANDARD", "WEEKEND", "EBIKE", "NO_TRAIL"])
+def test_the_same_conditional_on_a_two_way_road_opens_both_directions(variant_name) -> None:
+    """The control: the conditional resolution is unchanged on a two-way way,
+    and is what opens the road at all (the base is `bicycle=no`)."""
+    from pipeline.variants import Variant, inject
+
+    built = inject(Variant[variant_name], dict(PULASKI), 7)
+    assert _bike_access(built) == ("true", "true"), variant_name
+    bare = {k: v for k, v in PULASKI.items() if k != "bicycle:conditional"}
+    assert _bike_access(bare) == ("false", "false"), "the control's control"
+
+
+@pytest.mark.parametrize("oneway", sorted(ONEWAYS))
+@pytest.mark.parametrize(
+    "grant",
+    [
+        {"oneway:bicycle": "no"},
+        {"oneway:bicycle": "-1"},
+        {"cycleway:left": "opposite_lane"},
+        {"cycleway": "opposite"},
+        {"bicycle:backward:conditional": "yes @ (Sa,Su)"},
+    ],
+    ids=[
+        "oneway-bicycle-no",
+        "oneway-bicycle-minus-one",
+        "left-opposite-lane",
+        "opposite",
+        "backward-conditional",
+    ],
+)
+def test_a_one_way_that_grants_contraflow_keeps_its_conditional_reverse(grant, oneway) -> None:
+    """Where the way itself grants the reverse direction, the conditional still
+    opens it on the standard, weekend and e-bike graphs (the way is barred
+    without it), and the no-trail graph still closes it."""
+    from pipeline.variants import Variant, inject
+
+    tags = {**PULASKI, "oneway": oneway, **grant}
+    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+        built = inject(variant, dict(tags), 7)
+        assert _traffic_access(built)[1] == "true", (variant.value, built)
+    assert _traffic_access(inject(Variant.NO_TRAIL, dict(tags), 7)) == ("true", "false")
 
 
 # Ways upstream's highway table closes to a bicycle by class alone, found open

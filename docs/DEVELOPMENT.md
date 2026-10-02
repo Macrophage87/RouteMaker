@@ -1630,7 +1630,7 @@ direction on a one-way, measured through `lua/graph.lua` under LuaJIT
 | a lane, track or sharrow on both sides, or `cycleway:both` (the District's usual shape: `cycleway:left=lane`, `cycleway:left:oneway=-1`, a sharrow on the right) | the side against the traffic rewritten to `no`; a `:both` spoken for on the traffic's side (the right, or the left on `oneway=-1`) |
 | `vehicle:backward` | rewritten to `no` |
 | `bicycle:backward` (`yes`, `no` or any other value) | rewritten to `none` |
-| `bicycle:conditional` or `bicycle:backward:conditional`, which `remap_conditional_access` turns into a direction | `bicycle:backward:conditional=no` |
+| `bicycle:backward:conditional`, or `bicycle:conditional` on a one-way that grants contraflow, which `remap_conditional_access` turns into a direction | `bicycle:backward:conditional=no` |
 
 Three things are not obvious, and each is pinned by a test.
 
@@ -1681,19 +1681,42 @@ a District street the Roadway Block calls one-way but OSM tags two-way is
 one-way for classification (item 190) and two-way for routing, so it is not
 closed.
 
+**A conditional never opens a one-way against its traffic, on any graph.**
+`remap_conditional_access` resolves a bicycle conditional onto the directional
+keys, and it used to write the undirected `bicycle:conditional`'s least
+restrictive branch onto `bicycle:backward` too. On a one-way upstream reads that
+key as a second direction, so Pulaski Highway (two ways, 2.93 miles: `highway=trunk`,
+`oneway=yes`, `bicycle=no`, `bicycle:conditional=yes @ (Sa-Su dawn-dusk; ...)`)
+was rideable against its traffic on the standard, weekend and e-bike graphs. That
+is a remap artifact, not a contraflow lane, so item 193 does not cover it. On a
+way that is one-way for motor traffic (`routemaker_remap.is_motor_oneway`, the
+same values as `variants.is_motor_oneway`) the reverse is now widened from a
+conditional only where the way speaks for the reverse itself
+(`speaks_for_reverse`): `oneway:bicycle` of `no`, `false`, `0` or `-1`, an
+`opposite*` cycleway value, a `bicycle:backward` or `vehicle:backward` of `yes`,
+`designated` or `permissive`, or a directional `bicycle:backward:conditional`,
+which is the mapper's own statement about that direction. The with-flow side
+is resolved as before, so the weekend grant still opens Pulaski Highway with
+the traffic, and a two-way way's undirected conditional still opens both
+directions. Nothing else moves: the mass-ride bar's bare `no` conditionals
+(Key and Memorial bridges) open nothing either way, and the weekend graph's
+car-free roads come from the motor-vehicle conditionals
+(`routemaker.facility.car_free_when`), which this function does not read. `tests/test_lua_remap.py` checks it through `lua/graph.lua` on every
+variant and every one-way spelling.
+
 **Measured** on the 2026-09-25 clipped region extract
 (`scripts/contraflow_census.py`, read-only; 137,518 non-trail one-way ways):
-194 ways and 18.91 miles (30.43 km) have contraflow on the standard reading
+192 ways and 15.97 miles (25.70 km) have contraflow on the standard reading
 (the router's answer for the way's own tags) and none on the closed one. 187 of
 them (15.86 miles) are named by a contraflow tag; 5 (0.11 miles) are lanes on
 both sides, which upstream reads as two-way (Covington Street in Baltimore,
-Prince Frederick Boulevard, South Dakota Avenue NE and two more); and 2 (2.93
-miles) are Pulaski Highway, a one-way trunk tagged `bicycle=no` with
-`bicycle:conditional=yes @ (Sa-Su dawn-dusk; ...)`. Those two are not lanes:
-`remap_conditional_access` resolved the undirected conditional onto
-`bicycle:backward=yes`, which upstream reads as a reverse direction. The census
-tells them apart by asking the transform again with the bicycle conditionals
-taken off; `has_contraflow_tag` counts neither. Zero ways are still open
+Prince Frederick Boulevard, South Dakota Avenue NE and two more). The census
+also asks the transform again with the bicycle conditionals taken off, which
+`has_contraflow_tag` does not see, and lists every one-way, trail class
+included, that a conditional alone opens against the traffic on the standard
+reading: Pulaski Highway's two ways before the fix above, none after it, and
+no other way in the extract (14 one-ways carry `bicycle:conditional`, all on or
+beside Pulaski Highway; none carries `bicycle:backward:conditional`). Zero ways are still open
 after the closure, and zero lose the with-flow direction. The count is OSM's
 tags only; where the Roadway Block records a contraflow lane that OSM does not
 tag, the standard graph does not have it either.

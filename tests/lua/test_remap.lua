@@ -411,6 +411,67 @@ check("and nothing is written onto a way with no base tag",
 check("a genuinely less restrictive branch still opens",
   M.least_restrictive("destination", "yes @ (Sa,Su)") == "yes")
 
+-- On a one-way the undirected conditional speaks for the traffic's direction
+-- only, unless the way itself grants the reverse (Pulaski Highway, contraflow
+-- review r1).
+local PULASKI_CONDITIONAL = "yes @ (Sa-Su dawn-dusk; PH dawn-dusk)"
+local function pulaski(extra)
+  local tags = { highway = "trunk", bicycle = "no", ["bicycle:conditional"] = PULASKI_CONDITIONAL }
+  for k, v in pairs(extra) do tags[k] = v end
+  return M.remap_conditional_access(tags)
+end
+for _, shape in ipairs({
+  { oneway = "yes" }, { oneway = "true" }, { oneway = "1" }, { oneway = "-1" },
+  { junction = "roundabout" }, { junction = "circular" },
+}) do
+  local out = pulaski(shape)
+  local name = shape.oneway and ("oneway=" .. shape.oneway) or ("junction=" .. shape.junction)
+  check("a one-way's undirected conditional opens with the traffic (" .. name .. ")",
+    out["bicycle:forward"] == "yes")
+  check("and not against it (" .. name .. ")", out["bicycle:backward"] == nil)
+end
+for _, shape in ipairs({ {}, { oneway = "no" }, { oneway = "reversible" }, { oneway = "alternating" } }) do
+  check("a two-way way's undirected conditional still opens both directions ("
+      .. tostring(shape.oneway) .. ")",
+    pulaski(shape)["bicycle:backward"] == "yes" and pulaski(shape)["bicycle:forward"] == "yes")
+end
+for _, grant in ipairs({
+  { ["oneway:bicycle"] = "no" }, { ["oneway:bicycle"] = "false" }, { ["oneway:bicycle"] = "0" },
+  { ["oneway:bicycle"] = "-1" },
+  { cycleway = "opposite" }, { ["cycleway:left"] = "opposite_lane" },
+  { ["cycleway:right"] = "opposite_track" }, { ["cycleway:both"] = "opposite_lane" },
+  { ["vehicle:backward"] = "yes" }, { ["vehicle:backward"] = "designated" },
+  { ["vehicle:backward"] = "permissive" },
+}) do
+  local key, value = next(grant)
+  local tags = { oneway = "yes" }
+  tags[key] = value
+  check("a one-way granting contraflow (" .. key .. "=" .. value .. ") keeps the reverse",
+    pulaski(tags)["bicycle:backward"] == "yes")
+end
+check("a bicycle:backward grant speaks for the reverse",
+  M.speaks_for_reverse({ oneway = "yes", ["bicycle:backward"] = "permissive" }))
+check("a bicycle:backward restriction does not",
+  not M.speaks_for_reverse({ oneway = "yes", ["bicycle:backward"] = "no" }))
+check("nor oneway:bicycle=yes",
+  not M.speaks_for_reverse({ oneway = "yes", ["oneway:bicycle"] = "yes" }))
+check("nor a with-flow lane", not M.speaks_for_reverse({ oneway = "yes", ["cycleway:right"] = "lane" }))
+check("nor a vehicle:backward=no", not M.speaks_for_reverse({ oneway = "yes", ["vehicle:backward"] = "no" }))
+check("a directional backward conditional on a one-way is the mapper's own word for the reverse",
+  M.remap_conditional_access({
+    oneway = "yes", bicycle = "no", ["bicycle:backward:conditional"] = "yes @ (Sa,Su)",
+  })["bicycle:backward"] == "yes")
+check("and the undirected one still decides the with-flow side beside it",
+  M.remap_conditional_access({
+    oneway = "yes", bicycle = "no", ["bicycle:backward:conditional"] = "no",
+    ["bicycle:conditional"] = "yes @ (Sa,Su)",
+  })["bicycle:forward"] == "yes")
+check("the closure's bare no over the backward conditional still opens nothing against",
+  M.remap_conditional_access({
+    oneway = "yes", bicycle = "no", ["bicycle:backward:conditional"] = "no",
+    ["bicycle:conditional"] = "yes @ (Sa,Su)", ["oneway:bicycle"] = "yes",
+  })["bicycle:backward"] == nil)
+
 -- ---------------------------------------------------------------------------
 -- Access restrictions the cycleway write must not talk over.
 -- ---------------------------------------------------------------------------
