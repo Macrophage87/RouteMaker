@@ -7,8 +7,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { LIGHT } from "@protomaps/basemaps";
-import { DEFAULT_PALETTE, PALETTES, contrastRatio, relativeLuminance, tiersFor } from "./stressStyle.js";
-import { VISIONS, adjacentDeltas, closestPair } from "./testSupport/colourVision.ts";
+import { DEFAULT_PALETTE, FACILITIES, PALETTES, contrastRatio, relativeLuminance, tiersFor } from "./stressStyle.js";
+import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
+import { ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing } from "./lib/routeColours.ts";
+import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
 
@@ -131,6 +133,9 @@ for (const palette of Object.keys(PALETTES)) {
   });
 }
 
+// The search that chose the palette held each step to 1.5:1 as a target; the
+// test's floor is 1.4:1, the margin a later retune may spend (the smallest
+// step now is LTS 2 to 3, 1.51:1).
 test("cvd: relative luminance falls tier by tier, so the greyscale order holds, by at least 1.4:1 a step", () => {
   const colours = tiersFor("cvd").map((tier: Tier) => tier.color);
   for (let i = 1; i < colours.length; i += 1) {
@@ -138,4 +143,76 @@ test("cvd: relative luminance falls tier by tier, so the greyscale order holds, 
     const ratio = contrastRatio(colours[i], colours[i - 1]);
     assert.ok(ratio >= 1.4, `tiers ${i} and ${i + 1} are ${ratio.toFixed(2)}:1 apart in luminance`);
   }
+});
+
+/** The smallest CIEDE2000 between two colours over every vision, and the vision it is under. */
+function worstDelta(a: string, b: string): { delta: number; vision: string } {
+  return VISIONS.map((vision) => ({ vision, delta: deltaE2000(simulate(a, vision), simulate(b, vision)) })).reduce((x, y) => (y.delta < x.delta ? y : x));
+}
+
+/** What a route section can be drawn in under the cvd palette: the tiers, the unrated grey and the traffic-free violet. */
+function cvdRouteClasses(): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const tier of tiersFor("cvd")) out[tier.short] = tier.color;
+  out["Not rated"] = unrated("cvd").color;
+  out["Traffic-free"] = (FACILITIES.find((f: { facility: string }) => f.facility === "path") as { color: string }).color;
+  return out;
+}
+
+/** The route casing's floor against every class: the best a search of sRGB reached with LTS 2 at 3:1 and 30 apart (19.1). */
+const ROUTE_CASING_DELTA_FLOOR = 19;
+
+test("cvd: the route's casing gives LTS 2 3:1 and 30 CIEDE2000 under every vision, where the blue gave 2.22:1 and about 20", (t) => {
+  const lts2 = PALETTES.cvd[2].color;
+  assert.equal(routeCasing("cvd"), ROUTE_CASING_CVD);
+  assert.ok(contrastRatio(ROUTE_CASING_CVD, lts2) >= 3, `${contrastRatio(ROUTE_CASING_CVD, lts2).toFixed(2)}:1`);
+  const delta = worstDelta(ROUTE_CASING_CVD, lts2);
+  assert.ok(delta.delta >= 30, `${delta.delta.toFixed(1)} under ${delta.vision}`);
+  // The premise: the blue the default palette uses fails it.
+  assert.ok(contrastRatio(ROUTE_BLUE, lts2) < 2.5 && worstDelta(ROUTE_BLUE, lts2).delta < 21);
+  for (const [name, colour] of Object.entries(cvdRouteClasses())) {
+    const d = worstDelta(ROUTE_CASING_CVD, colour);
+    t.diagnostic(`${ROUTE_CASING_CVD} against ${name} ${colour}: ${contrastRatio(ROUTE_CASING_CVD, colour).toFixed(2)}:1, CIEDE2000 at least ${d.delta.toFixed(1)} (${d.vision})`);
+  }
+});
+
+test("cvd: the route's casing stands apart from every class it carries, under every vision", () => {
+  const failures: string[] = [];
+  for (const [name, colour] of Object.entries(cvdRouteClasses())) {
+    const d = worstDelta(ROUTE_CASING_CVD, colour);
+    if (d.delta < ROUTE_CASING_DELTA_FLOOR) failures.push(`${name} ${colour}: ${d.delta.toFixed(1)} under ${d.vision}`);
+  }
+  assert.deepEqual(failures, []);
+  // Better than the blue on the closest of them: the blue is 11 from the traffic-free violet under deuteranopia.
+  const closest = (casing: string) => Math.min(...Object.values(cvdRouteClasses()).map((c) => worstDelta(casing, c).delta));
+  assert.ok(closest(ROUTE_CASING_CVD) > closest(ROUTE_BLUE) + 5);
+});
+
+test("cvd: the route's casing is 3:1 from every base-map surface, so the route still stands out from the map", () => {
+  const failures: string[] = [];
+  for (const [name, colour] of Object.entries(baseMapSurfaces())) {
+    const ratio = contrastRatio(ROUTE_CASING_CVD, colour);
+    if (ratio < FLOOR) failures.push(`${name} ${colour}: ${ratio.toFixed(2)}:1`);
+  }
+  assert.deepEqual(failures, []);
+});
+
+/** "Not rated" is held to the palette's own floor against every tier and the traffic-free violet. */
+test("cvd: the unrated colour is at least 20 CIEDE2000 from every tier and the traffic-free violet, under every vision", (t) => {
+  const classes = cvdRouteClasses();
+  const failures: string[] = [];
+  for (const [name, colour] of Object.entries(classes)) {
+    if (name === "Not rated") continue;
+    const d = worstDelta(UNRATED_CVD_COLOUR, colour);
+    t.diagnostic(`${UNRATED_CVD_COLOUR} against ${name}: ${d.delta.toFixed(1)} (${d.vision}); the default grey ${UNRATED.color}: ${worstDelta(UNRATED.color, colour).delta.toFixed(1)}`);
+    if (d.delta < DELTA_E_FLOOR) failures.push(`${name}: ${d.delta.toFixed(1)} under ${d.vision}`);
+  }
+  assert.deepEqual(failures, []);
+  // The premise: the default grey is under the floor against the cvd blues.
+  assert.ok(worstDelta(UNRATED.color, PALETTES.cvd[2].color).delta < DELTA_E_FLOOR);
+  assert.ok(worstDelta(UNRATED.color, PALETTES.cvd[1].color).delta < DELTA_E_FLOOR);
+  // And it stays the grey it was, a near-neutral of about the same lightness.
+  assert.ok(Math.abs(relativeLuminance(UNRATED_CVD_COLOUR) - relativeLuminance(UNRATED.color)) < 0.02);
+  // Inside the route's casing it is 3:1.
+  assert.ok(contrastRatio(UNRATED_CVD_COLOUR, ROUTE_CASING_CVD) >= 3);
 });

@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { parseSync } from "vite";
 import {
   ACCESSIBILITY_PALETTE,
   ACCESSIBILITY_STORAGE_KEY,
@@ -27,6 +28,7 @@ import {
   facilityWidthAt,
   furthTiers,
   legend,
+  legendWidths,
   queryPalette,
   rememberAccessibility,
   resolveAccessibility,
@@ -40,8 +42,8 @@ import {
   tiersFor,
 } from "../stressStyle.js";
 import { ROUTE_STRESS_SOURCE_ID, setRouteSections, setStressPalette } from "./mapGlue.ts";
-import { routeClasses, routeLegend, spanClass } from "./routeColours.ts";
-import { stressSegments } from "./stressBar.ts";
+import { ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing, routeClasses, routeLegend, routePaint, spanClass } from "./routeColours.ts";
+import { UNRATED, UNRATED_CVD_COLOUR, stressSegments, unrated } from "./stressBar.ts";
 import {
   ACCESSIBILITY_ADDRESS_NOTE,
   ACCESSIBILITY_CLASS,
@@ -441,6 +443,67 @@ test("a flip widens the lines, the casings and the facility rails, and nothing e
   });
 });
 
+test("the legend's widths are the map's: each tier's line and casing, and the facility legend's casing and rails, plain and strong", () => {
+  const plain = legendWidths(tiersFor("blended"));
+  assert.deepEqual(plain.tiers.map((t: { line: number }) => t.line), [3, 3, 3.5, 4, 4.5]);
+  assert.deepEqual(plain.tiers.map((t: { casing: number }) => t.casing), [5, 5, 5.5, 6, 6.5]);
+  assert.equal(plain.facilityCasing, 5);
+  assert.deepEqual(plain.rails, { path: 11, protected: 11, lane: 8 });
+  const strong = legendWidths(tiersFor("cvd", true));
+  assert.deepEqual(strong.tiers.map((t: { line: number }) => t.line), [3.5, 3.5, 4, 4.5, 5]);
+  assert.deepEqual(strong.tiers.map((t: { casing: number }) => t.casing), [6.5, 6.5, 7, 7.5, 8], "the switch's casing is 3 px wider than its line");
+  assert.equal(strong.facilityCasing, 6.5);
+  assert.deepEqual(strong.rails, { path: 12.5, protected: 12.5, lane: 9.5 }, "the rails sit outside the wider casing");
+  // Without an argument, the tiers in use.
+  assert.deepEqual(legendWidths(), plain);
+  withSwitch(true, () => assert.deepEqual(legendWidths(), strong));
+});
+
+test("a facility's rails for a tier the style has no entry for are LTS 1's, casing included, plain and strong", () => {
+  const fallback = (tiers: ReturnType<typeof tiersFor>) => (facilityWidthAt(FACILITIES[0], undefined, tiers) as unknown[]).at(-1);
+  assert.equal(fallback(tiersFor("blended")), 11);
+  assert.equal(fallback(tiersFor("cvd", true)), 12.5);
+  withSwitch(true, () => assert.equal((facilityWidthAt(FACILITIES[0]) as unknown[]).at(-1), 12.5));
+});
+
+test("the panel legend draws its widths from legendWidths, not its own sums", () => {
+  const app = readFileSync(fileURLToPath(new URL("../App.tsx", import.meta.url)), "utf8");
+  const start = app.indexOf("function StressLegend(");
+  const legendFn = app.slice(start, app.indexOf("\n}\n", start));
+  assert.match(legendFn, /const widths = legendWidths\(tiers\)/);
+  assert.match(legendFn, /strokeWidth=\{widths\.tiers\[i\]\.casing\}/);
+  assert.match(legendFn, /strokeWidth=\{widths\.tiers\[i\]\.line\}/);
+  assert.match(legendFn, /const rails = widths\.rails\[facility\.facility\]/);
+  assert.match(legendFn, /strokeWidth=\{widths\.facilityCasing\}/);
+  assert.doesNotMatch(legendFn, /casingExtra|CASING_EXTRA_PX|facilityWidth\(/, "no width sums of its own");
+});
+
+test("the route's casing and the unrated grey follow the palette: the colour-blind-friendly one has its own", () => {
+  assert.equal(routeCasing(), ROUTE_BLUE);
+  assert.equal(routePaint(true, false).casingColor, ROUTE_BLUE);
+  assert.equal(unrated().color, UNRATED.color);
+  assert.equal(spanClass({ tier: null, facility: null }).color, UNRATED.color);
+  withSwitch(true, () => {
+    assert.equal(routeCasing(), ROUTE_CASING_CVD);
+    assert.equal(routePaint(true, false).casingColor, ROUTE_CASING_CVD);
+    assert.equal(routePaint(false, false).casingColor, "#ffffff", "a one-colour route keeps its white casing");
+    assert.equal(unrated().color, UNRATED_CVD_COLOUR);
+    assert.equal(unrated().short, UNRATED.short, "only the colour changes");
+    assert.equal(spanClass({ tier: null, facility: null }).color, UNRATED_CVD_COLOUR, "the route line");
+    assert.equal(stressSegments({ unknown: 5, "1": 5 }).find((seg) => seg.key === "unknown")?.color, UNRATED_CVD_COLOUR, "and the stress bar");
+    assert.equal(routeClasses().find((c) => c.key === "unknown")?.color, UNRATED_CVD_COLOUR);
+  });
+  assert.equal(spanClass({ tier: null, facility: null }).color, UNRATED.color, "and back after the flip");
+  assert.equal(routeCasing("cvd"), ROUTE_CASING_CVD);
+  assert.equal(routeCasing("twotone"), ROUTE_BLUE);
+  assert.equal(unrated("cvd").color, UNRATED_CVD_COLOUR);
+  assert.match(
+    readFileSync(fileURLToPath(new URL("../FacilityBreakdown.tsx", import.meta.url)), "utf8"),
+    /const casing = routeCasing\(\);[\s\S]*stroke=\{casing\} strokeWidth=\{ROUTE_CASING_WIDTH\}/,
+    "the route colour legend draws the same casing",
+  );
+});
+
 test("the style key, and so a component's re-render, changes with the flip and not otherwise", () => {
   const before = styleKey();
   assert.equal(styleKey(), before);
@@ -564,9 +627,11 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
     ["route-line line-opacity", "route-stress line-opacity", "route-casing line-color"],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");
+  assert.equal(paint[2][2], ROUTE_CASING_CVD, "under the colour-blind-friendly palette's own casing, not the blue its LTS 2 matches");
   assert.equal(paint[0][2], 0, "and the one-colour line is hidden");
   setRouteSections(map as never, ROUTE, true);
   assert.equal(paint[4][2], 0.45, "a stale route is still dimmed after a flip");
+  assert.equal(paint[5][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
 });
 
 test("repaint wiring: no route puts no sections in, and does not throw", () => {
@@ -603,6 +668,62 @@ function shippedSources(dir: string): string[] {
   return out;
 }
 
+/** The readers of the tiers in use; one called at a module's top level runs once, at import, and keeps the colours of that moment. */
+const TIER_READERS = new Set(["currentTiers", "furthTiers", "routeClasses", "legend"]);
+
+/**
+ * The calls to a tier reader that run when the module is imported: any not
+ * inside a function (a declaration, expression, arrow or method, whose body
+ * and default parameters run only when it is called). Parsed, not matched by
+ * pattern, so `const T = currentTiers()` is caught and `(tiers = currentTiers())`
+ * as a default parameter is not.
+ */
+function importTimeReads(file: string, source: string): string[] {
+  const { program, errors } = parseSync(file, source);
+  assert.deepEqual(errors.map((e: { message: string }) => e.message), [], `${file} parses`);
+  const found: string[] = [];
+  const visit = (node: unknown, inFunction: boolean): void => {
+    if (Array.isArray(node)) {
+      for (const child of node) visit(child, inFunction);
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const n = node as { type?: string; callee?: { type: string; name?: string; property?: { name?: string } }; start?: number };
+    const isFunction = n.type === "FunctionDeclaration" || n.type === "FunctionExpression" || n.type === "ArrowFunctionExpression";
+    if (!inFunction && n.type === "CallExpression" && n.callee) {
+      const name = n.callee.type === "Identifier" ? n.callee.name : n.callee.type === "MemberExpression" ? n.callee.property?.name : undefined;
+      if (name && TIER_READERS.has(name)) found.push(`${name}() at ${n.start}`);
+    }
+    for (const [key, child] of Object.entries(node)) {
+      if (key !== "parent" && child && typeof child === "object") visit(child, inFunction || isFunction);
+    }
+  };
+  visit(program, false);
+  return found;
+}
+
+test("the scan for import-time reads catches a top-level call, and leaves calls that run later alone", () => {
+  const caught = [
+    "const T = currentTiers();",
+    "export const ROWS = routeClasses().map((c) => c.key);",
+    "const L = { entries: legend() };",
+    "const F = style.furthTiers();",
+    "let x; x = furthTiers();",
+  ];
+  for (const source of caught) assert.equal(importTimeReads("a.ts", source).length, 1, source);
+  const later = [
+    "function f() { return currentTiers(); }",
+    "export function g(tiers = currentTiers()) { return tiers; }",
+    "const h = () => legend();",
+    "const k = function () { return routeClasses(); };",
+    "const o = { m() { return furthTiers(); } };",
+    "class C { draw() { return currentTiers(); } }",
+    "const n = currentTiersLater();",
+  ];
+  for (const source of later) assert.deepEqual(importTimeReads("b.ts", source), [], source);
+  assert.equal(importTimeReads("c.tsx", "const E = <ul>{legend().map((e) => <li>{e.short}</li>)}</ul>;").length, 1, "in TSX too");
+});
+
 test("nothing keeps the tiers from import time: a flip would not reach it", () => {
   const dir = fileURLToPath(new URL("..", import.meta.url));
   const files = shippedSources(dir);
@@ -611,6 +732,8 @@ test("nothing keeps the tiers from import time: a flip would not reach it", () =
     /\b(STRESS_TIERS|FURTH_TIERS|ROUTE_CLASSES)\b/.test(readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "")),
   );
   assert.deepEqual(offenders, []);
+  const reads = files.flatMap((file) => importTimeReads(file, readFileSync(file, "utf8")).map((at) => `${file}: ${at}`));
+  assert.deepEqual(reads, []);
 });
 
 test("the switch is a labelled role=switch button, with its state in words and a one-line description", () => {

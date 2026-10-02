@@ -1080,10 +1080,14 @@ dialog.ride-types::backdrop {
     forced-color-adjust: none;
   }
 
+  /* The .a11y selectors again: the switch's rule (.a11y .swatch) is more
+     specific than .swatch, and would otherwise set the border to --text. */
   .legend svg,
   .stress-list svg,
   .swatch,
-  .stress-bar {
+  .stress-bar,
+  .a11y .swatch,
+  .a11y .stress-bar {
     border: 1px solid CanvasText;
   }
 

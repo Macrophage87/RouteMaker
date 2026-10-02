@@ -10,10 +10,10 @@
  * stress map gives the same class, from the shared tokens (stressStyle.js), so
  * a change to the map's palette reaches the route too.
  */
-import { FACILITIES, currentTiers } from "../stressStyle.js";
+import { ACCESSIBILITY_PALETTE, FACILITIES, currentPalette, currentTiers, styleKey } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
-import { UNRATED } from "./stressBar.ts";
+import { unrated } from "./stressBar.ts";
 
 export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "unknown";
 
@@ -35,6 +35,7 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
  * old colours.
  */
 export function routeClasses(): readonly RouteClass[] {
+  const none = unrated();
   return [
     {
       key: "path",
@@ -48,12 +49,19 @@ export function routeClasses(): readonly RouteClass[] {
       label: tier.label,
       color: tier.color,
     })),
-    { key: "unknown", short: UNRATED.short, label: UNRATED.label, color: UNRATED.color },
+    { key: "unknown", short: none.short, label: none.label, color: none.color },
   ];
 }
 
+/** The classes by key, built once per look of the tiers (styleKey) rather than once per section. */
+let classes: { style: string; byKey: Map<RouteClassKey, RouteClass> } | null = null;
+
 function classByKey(key: RouteClassKey): RouteClass | undefined {
-  return routeClasses().find((c) => c.key === key);
+  const style = styleKey();
+  if (classes === null || classes.style !== style) {
+    classes = { style, byKey: new Map(routeClasses().map((c) => [c.key, c])) };
+  }
+  return classes.byKey.get(key);
 }
 
 /** A section's class: traffic-free before its tier, and unknown without one. */
@@ -166,6 +174,25 @@ export function routeLegend(spans: readonly StressSpan[] | undefined): RouteLege
 
 /** The route's own blue: its line when it has no sections, and its casing when it has. */
 export const ROUTE_BLUE = "#1d4ed8";
+/**
+ * The casing under the route's sections in the colour-blind-friendly palette,
+ * where the blue no longer stands apart: that palette's LTS 2 is a mid blue,
+ * 2.22:1 and about 20 CIEDE2000 from it, so an LTS 2 section read as a plain
+ * route (review r1, accessibility). A dark slate: LTS 2 is 3.04:1 from it and
+ * at least 32 CIEDE2000 under every simulated colour vision. No one colour is
+ * 3:1 from every class (LTS 1 is near white and Avoid near black), so the
+ * others are held apart by hue: every class, the unrated grey and the
+ * traffic-free violet at least 19 CIEDE2000 from it under every vision, the
+ * best a search of sRGB found with LTS 2 at 3:1 (docs/DEVELOPMENT.md;
+ * stressContrast.test.ts).
+ */
+export const ROUTE_CASING_CVD = "#344c4c";
+
+/** The casing under the route's sections, for the palette in use. */
+export function routeCasing(palette: string = currentPalette()): string {
+  return palette === ACCESSIBILITY_PALETTE ? ROUTE_CASING_CVD : ROUTE_BLUE;
+}
+
 /** The casing under a one-colour route, as it was before the sections. */
 export const ROUTE_CASING_PLAIN = "#ffffff";
 export const ROUTE_LINE_WIDTH = 5;
@@ -173,19 +200,21 @@ export const ROUTE_CASING_WIDTH = 9;
 
 /**
  * How the three route layers are painted. With sections, the casing is the
- * route's blue, so a route drawn in the stress map's own colours still reads
- * as one route over the stress map, and the one-colour line is hidden; without
+ * route's blue (a dark slate in the colour-blind-friendly palette), so a
+ * route drawn in the stress map's own colours still reads as one route over
+ * the stress map, and the one-colour line is hidden; without
  * them the route is drawn as it was, blue on white. A stale route is dimmed
  * either way.
  */
 export function routePaint(
   hasSections: boolean,
   stale: boolean,
+  sectionCasing: string = routeCasing(),
 ): { lineOpacity: number; sectionOpacity: number; casingColor: string } {
   const shown = stale ? 0.45 : 1;
   return {
     lineOpacity: hasSections ? 0 : shown,
     sectionOpacity: hasSections ? shown : 0,
-    casingColor: hasSections ? ROUTE_BLUE : ROUTE_CASING_PLAIN,
+    casingColor: hasSections ? sectionCasing : ROUTE_CASING_PLAIN,
   };
 }

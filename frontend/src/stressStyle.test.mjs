@@ -28,7 +28,7 @@ import * as spec from "@maplibre/maplibre-gl-style-spec";
 
 // These tests assert the default palette's tiers, which is what the module
 // starts with here (no address, no storage); the palette-switching tests are in
-// paletteChoice.test.mjs.
+// lib/accessibilitySwitch.test.ts.
 const STRESS_TIERS = tiersFor(DEFAULT_PALETTE);
 const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
 

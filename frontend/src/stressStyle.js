@@ -68,9 +68,10 @@ const TIER_SHAPES = [
  *   and the lightness falls tier by tier, so greyscale order holds too.
  *   Every adjacent pair is CIEDE2000 20 or more apart under normal vision and
  *   under each simulation (stressContrast.test.ts; the table is in
- *   docs/DEVELOPMENT.md, "The colour-blind-friendly palette"). The blue-black
- *   is not a neutral black on purpose: a protanope sees LTS 4's dark red as
- *   near-black, and a neutral black Avoid beside it measured 18 apart.
+ *   docs/DEVELOPMENT.md, "The accessibility switch and the colour-blind-friendly
+ *   palette"). The blue-black is not a neutral black on purpose: a protanope
+ *   sees LTS 4's dark red as near-black, and a neutral black Avoid beside it
+ *   measures about 17 apart (#000000, 16.9 under protanopia).
  */
 export const PALETTES = {
   blended: {
@@ -200,8 +201,10 @@ export function rememberAccessibility(on, storage = browserStorage()) {
 // What the page is drawn in, which a rider can change without a reload: the
 // accessibility switch, and the palette it and the address decide between.
 // Nothing may keep the tiers from import time: read currentTiers() when
-// drawing, and subscribePalette() to draw again (paletteChoice.test.ts's
-// source scan fails a module that imports a fixed list).
+// drawing, and subscribePalette() to draw again (the source scan in
+// lib/accessibilitySwitch.test.ts fails a module that imports a fixed list, or
+// calls currentTiers(), furthTiers(), routeClasses() or legend() at its top
+// level).
 const locationSearch = typeof location === "undefined" ? "" : location.search;
 const pinnedByAddress = queryPalette(locationSearch) !== null;
 /** The rider's own choice of the switch (stored, or made this visit): null while there is none, and the system's request decides. */
@@ -517,12 +520,17 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-casing-${tier.tier}`],
-    paint: linePaint(tier.casing, tier.width + (tier.casingExtra ?? CASING_EXTRA_PX), tier.tier >= BUSY_MIN_TIER),
+    paint: linePaint(tier.casing, casingWidth(tier), tier.tier >= BUSY_MIN_TIER),
   }));
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */
 export const CASING_EXTRA_PX = 2;
+
+/** A tier's casing width: its line and the casing's extra (wider with the accessibility switch on). */
+export function casingWidth(tier) {
+  return tier.width + (tier.casingExtra ?? CASING_EXTRA_PX);
+}
 
 /**
  * Bike facilities (owner request of 2026-09-27: off-road paths, then protected
@@ -554,10 +562,25 @@ export function facilityWidth(facility, tierWidth, casingExtra = CASING_EXTRA_PX
  * stronger, and the rails sit outside the casing). A tier the style has no
  * entry for (one added later) is drawn at LTS 1's width.
  */
-export function facilityWidthAt(facility, when = DEFAULT_WHEN) {
-  const tiers = currentTiers();
+export function facilityWidthAt(facility, when = DEFAULT_WHEN, tiers = currentTiers()) {
   const byTier = tiers.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width, tier.casingExtra)]);
   return ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra)];
+}
+
+/**
+ * The panel legend's stroke widths, as the map draws the same lines: each
+ * tier's line and casing, and for the bike-facility legend (drawn on LTS 1's
+ * line) the casing and each facility's rails. With the accessibility switch
+ * on, the casings and rails are wider; the legend reads them here so it
+ * cannot fall out of step with the map.
+ */
+export function legendWidths(tiers = currentTiers()) {
+  const base = tiers[0];
+  return {
+    tiers: tiers.map((tier) => ({ tier: tier.tier, line: tier.width, casing: casingWidth(tier) })),
+    facilityCasing: casingWidth(base),
+    rails: Object.fromEntries(FACILITIES.map((facility) => [facility.facility, facilityWidth(facility, base.width, base.casingExtra)])),
+  };
 }
 
 export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN) {

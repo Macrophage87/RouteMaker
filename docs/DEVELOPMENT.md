@@ -335,9 +335,12 @@ It was chosen by search, not by eye: random and grid search over sRGB with the
 hue of each tier held to a family (light and mid blue, orange, dark red,
 blue-black), scored by the smallest CIEDE2000 between neighbours under normal
 vision and each simulation, with the luminance falling by at least 1.5:1 a step
-and 3:1 against every base-map surface (with a casing) as constraints. Avoid is
-blue-black on purpose: a protanope sees LTS 4's dark red as near-black, and a
-neutral black Avoid beside it measured 18 apart (a figure under the floor).
+and 3:1 against every base-map surface (with a casing) as constraints. (1.5:1
+was the search's target; the test's floor is 1.4:1, which leaves a later retune
+a margin. The smallest step chosen is 1.51:1.) Avoid is blue-black on purpose:
+a protanope sees LTS 4's dark red as near-black, and a neutral black Avoid
+beside it measures about 17 apart (#000000 is 16.9 under protanopia, and
+#242424 14.1), under the floor of 20.
 Blue against orange is the pair all three deficiencies keep.
 
 CIEDE2000 between neighbouring tiers, LTS 1-2, 2-3, 3-4, 4-Avoid, and the
@@ -385,10 +388,65 @@ and the line against its casing; 3:1 needed):
 | cvd, switch on | 12.29 | 5.53 | 3.66 | 7.41 | 11.55 |
 | twotone (reported only) | 8.31 | 4.50 | 1.44 | 2.13 | 3.20 |
 
+The route line in the `cvd` palette. The route's sections are drawn in a 5 px
+line on a 9 px casing. The casing was the route's blue (#1d4ed8), which the
+`cvd` palette's LTS 2 mid blue matched: 2.22:1 and 19.5 to 25.5 CIEDE2000
+apart, so an LTS 2 section read as a plain route (review r1, accessibility).
+In the `cvd` palette the casing is a dark slate, #344c4c (`ROUTE_CASING_CVD`
+in `frontend/src/lib/routeColours.ts`). The blue stays for the other palettes.
+No one colour can be 3:1 from both LTS 1 (Y 0.796) and Avoid (Y 0.003) and also
+from LTS 2 (Y 0.298). So the casing was chosen by a grid search over sRGB: LTS 2
+at least 3:1 and 30 CIEDE2000 under every vision as constraints, and then the
+smallest CIEDE2000 to every other class as the score. A white casing also
+gives LTS 2 3:1, but it is 1.24:1 and 9.7 apart from LTS 1, and it is not 3:1
+from the base map. The casing against each class (contrast, and the smallest
+CIEDE2000 over normal vision and the three simulations; the blue it replaces in
+brackets):
+
+| Class | #344c4c | (#1d4ed8) |
+| --- | --- | --- |
+| LTS 1 #d2eafc | 7.41:1, 52.8 | (5.40:1, 38.6) |
+| LTS 2 #5d99d2 | 3.04:1, 32.3 | (2.22:1, 19.5) |
+| LTS 3 #cd4b0a | 2.02:1, 26.8 | (1.47:1, 50.4) |
+| LTS 4 #6a0a06 | 1.38:1, 19.6 | (1.89:1, 43.6) |
+| Avoid #08081e | 2.15:1, 19.1 | (2.95:1, 30.8) |
+| Not rated #9f9c93 | 3.35:1, 32.6 | (2.44:1, 32.4) |
+| Traffic-free #4c1d95 | 1.19:1, 19.3 | (1.63:1, 11.0) |
+
+The dark classes stand on the casing by hue, not lightness. The casing is also
+at least 3:1 from every base-map surface, so the route still stands out from the
+map. `stressContrast.test.ts` holds it to the following and prints the table as
+diagnostics:
+- LTS 2 at 3:1 and 30;
+- every class at least 19, the search's best with LTS 2 held there;
+- the base map at 3:1.
+
+"Not rated" (`#9aa0a6`, a cool grey) was not in the delta check. Against the
+`cvd` blues it is 16.3 (LTS 2) and 19.0 (LTS 1) apart, under the floor of 20.
+In the `cvd` palette it is `#9f9c93` (`UNRATED_CVD_COLOUR` in
+`frontend/src/lib/stressBar.ts`), a warm grey of about the same lightness, which
+is used on the route line and in the stress bar. Its smallest CIEDE2000 under
+every vision is:
+
+| Against | #9f9c93 | (#9aa0a6) |
+| --- | --- | --- |
+| LTS 1 | 24.0 | (19.0) |
+| LTS 2 | 24.8 | (16.3) |
+| LTS 3 | 24.0 | (31.3) |
+| LTS 4 | 40.5 | (45.8) |
+| Avoid | 50.0 | (50.9) |
+| Traffic-free | 38.1 | (39.5) |
+
+The test holds it to 20 against every tier and the violet.
+
 The tests: `src/lib/accessibilitySwitch.test.ts` (precedence with `location`,
 `localStorage` and `matchMedia` stubbed on a fresh copy of the module, storage
 and `matchMedia` failures, live changes, the repaint wiring against a recording
-map, the component), `src/stressContrast.test.ts` (3:1 and the delta floor, plain
+map, the component, the legend's widths through `legendWidths()` plain and
+strong, and a scan of the shipped source, parsed with the bundler's own parser,
+for a module that names a removed constant or calls `currentTiers()`,
+`furthTiers()`, `routeClasses()` or `legend()` at its top level, where the call
+would run once at import), `src/stressContrast.test.ts` (3:1 and the delta floor, plain
 and with the switch on), `src/stylesAccessibility.test.ts` (the `.a11y` and
 forced-colors blocks of `styles.css`, and that the stylesheet does not read
 `prefers-contrast`) and `src/testSupport/colourVision.test.ts` (the simulation

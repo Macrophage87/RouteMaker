@@ -67,6 +67,16 @@ test("in forced colours each swatch has a system-colour border, and the bar's se
   assert.match(forcedFor(".stress-seg + .stress-seg"), /border-left:\s*1px solid CanvasText/);
 });
 
+test("in forced colours the switch's stronger swatch borders give way to the system's: every .a11y border rule is repeated there", () => {
+  const outside = css.replace(forced ?? "", "");
+  const a11yBorders = rules(outside)
+    .filter((r) => /border/.test(r.declarations))
+    .flatMap((r) => r.selectors)
+    .filter((selector) => selector.startsWith(".a11y "));
+  assert.deepEqual(a11yBorders.sort(), [".a11y .stress-bar", ".a11y .swatch"], "the premise: the switch strengthens these borders");
+  for (const selector of a11yBorders) assert.match(forcedFor(selector), /border:\s*1px solid CanvasText/, selector);
+});
+
 test("in forced colours the junction markers keep their shape and the count its words, with a system outline", () => {
   for (const selector of MARKERS) assert.match(forcedFor(selector), /forced-color-adjust:\s*none/, selector);
   assert.match(forcedFor(".junction-marker"), /outline:\s*1px solid CanvasText/);
