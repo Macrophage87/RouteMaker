@@ -59,6 +59,19 @@ const TIER_SHAPES = [
  *   owner's words; LTS 3 is not 3:1 on the base map (its casing 2.2:1, the line
  *   on its casing 1.5:1) and the greyscale order is lost (stressContrast.test.ts
  *   holds the chosen palette to the rule, and reports the other).
+ * - "cvd" (OWNER-DECISIONS 208): the colour-blind-friendly option a rider
+ *   switches to in the panel. Not a reading of the owner's colours: it is
+ *   chosen by measurement to stay apart under protanopia, deuteranopia and
+ *   tritanopia (Machado 2009, severity 1.0). The comfortable tiers are light
+ *   and mid blue, LTS 3 a burnt orange, LTS 4 a dark red and Avoid a
+ *   blue-black: blue against orange is the pair all three deficiencies keep,
+ *   and the lightness falls tier by tier, so greyscale order holds too.
+ *   Every adjacent pair is CIEDE2000 20 or more apart under normal vision and
+ *   under each simulation (stressContrast.test.ts; the table is in
+ *   docs/DEVELOPMENT.md, "The accessibility switch and the colour-blind-friendly
+ *   palette"). The blue-black is not a neutral black on purpose: a protanope
+ *   sees LTS 4's dark red as near-black, and a neutral black Avoid beside it
+ *   measures about 17 apart (#000000, 16.9 under protanopia).
  */
 export const PALETTES = {
   blended: {
@@ -75,9 +88,16 @@ export const PALETTES = {
     4: { color: "#f28c28", casing: "#d42020" },
     5: { color: "#d42020", casing: "#111111" },
   },
+  cvd: {
+    1: { color: "#d2eafc", casing: "#0a1a2f" },
+    2: { color: "#5d99d2", casing: "#0a1a2f" },
+    3: { color: "#cd4b0a", casing: "#0a1a2f" },
+    4: { color: "#6a0a06", casing: "#ffffff" },
+    5: { color: "#08081e", casing: "#ffffff" },
+  },
 };
 
-/** The palette the map uses unless the address asks for another. */
+/** The palette the map uses unless the address or the accessibility switch asks for another. */
 export const DEFAULT_PALETTE = "blended";
 
 /** The palette an address's query string names (`?palette=twotone`), or the default. */
@@ -86,19 +106,242 @@ export function paletteFrom(search) {
   return match && Object.hasOwn(PALETTES, match[1]) ? match[1] : DEFAULT_PALETTE;
 }
 
-/** The palette this page uses. */
-export const PALETTE = paletteFrom(typeof location === "undefined" ? "" : location.search);
+/** The palette the accessibility switch turns on (OWNER-DECISIONS 208, 211). */
+export const ACCESSIBILITY_PALETTE = "cvd";
 
-/** The tiers, with a palette's colours. */
-export function tiersFor(palette) {
-  return TIER_SHAPES.map((shape) => ({ ...shape, ...PALETTES[palette][shape.tier] }));
+/** Where the switch is remembered, per browser: "on" or "off". */
+export const ACCESSIBILITY_STORAGE_KEY = "routemaker.accessibility";
+
+/** With the switch on, each line is this much wider (pixels), and its casing this much wider than that. */
+export const STRONG_WIDTH_EXTRA = 0.5;
+export const STRONG_CASING_EXTRA_PX = 3;
+
+/** The palette an address names (`?palette=cvd`), or null when it names none this page has. */
+export function queryPalette(search) {
+  const match = /(?:^|[?&])palette=([a-z]+)/.exec(search ?? "");
+  return match && Object.hasOwn(PALETTES, match[1]) ? match[1] : null;
 }
 
-export const STRESS_TIERS = tiersFor(PALETTE);
+/** The browser's localStorage, or null where reaching it throws (blocked site data, some embedded views). */
+function browserStorage() {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
 
+/**
+ * The palette to start with: the address's (`?palette=`), else the
+ * colour-blind-friendly one when the accessibility switch is on, else the
+ * default.
+ */
+export function resolvePalette(search, accessibility = false) {
+  return queryPalette(search) ?? (accessibility ? ACCESSIBILITY_PALETTE : DEFAULT_PALETTE);
+}
 
-/** The Furth tiers, the ones ordered by luminance for greyscale print. */
-export const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
+/** A casing pushed to its extreme: black under a dark one, white under a light one. */
+function strongerCasing(hex) {
+  return relativeLuminance(hex) < 0.5 ? "#000000" : "#ffffff";
+}
+
+/**
+ * The tiers, with a palette's colours. With `strong` (the accessibility
+ * switch) they are drawn stronger: lines half a pixel wider, casings black or
+ * white and a pixel wider again. Each tier carries the casing's extra width
+ * (`casingExtra`), which the layers and the legend read.
+ */
+export function tiersFor(palette, strong = false) {
+  return TIER_SHAPES.map((shape) => {
+    const colours = PALETTES[palette][shape.tier];
+    return {
+      ...shape,
+      ...colours,
+      ...(strong
+        ? { width: shape.width + STRONG_WIDTH_EXTRA, casing: strongerCasing(colours.casing), casingExtra: STRONG_CASING_EXTRA_PX }
+        : { casingExtra: CASING_EXTRA_PX }),
+    };
+  });
+}
+
+/**
+ * What this browser remembers of the accessibility switch: true (on), false
+ * (off, chosen), or null where nothing is stored, the value is not one this
+ * page wrote, or storage throws.
+ */
+export function storedAccessibility(storage = browserStorage()) {
+  try {
+    const value = storage?.getItem(ACCESSIBILITY_STORAGE_KEY);
+    return value === "on" ? true : value === "off" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the switch starts on: what the browser remembers, else whether the
+ * system asks for more contrast, else off. The rider's own choice, on or off,
+ * always wins; it is not the general default.
+ */
+export function resolveAccessibility(stored, contrastRequested = false) {
+  return stored ?? contrastRequested;
+}
+
+/** Remember the switch for this browser; false when storage refused (it then lasts the visit). */
+export function rememberAccessibility(on, storage = browserStorage()) {
+  try {
+    if (!storage) return false;
+    storage.setItem(ACCESSIBILITY_STORAGE_KEY, on ? "on" : "off");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// What the page is drawn in, which a rider can change without a reload: the
+// accessibility switch, and the palette it and the address decide between.
+// Nothing may keep the tiers from import time: read currentTiers() when
+// drawing, and subscribePalette() to draw again (the source scan in
+// lib/accessibilitySwitch.test.ts fails a module that imports a fixed list, or
+// calls currentTiers(), furthTiers(), routeClasses() or legend() at its top
+// level).
+const locationSearch = typeof location === "undefined" ? "" : location.search;
+const pinnedByAddress = queryPalette(locationSearch) !== null;
+/** The rider's own choice of the switch (stored, or made this visit): null while there is none, and the system's request decides. */
+let chosen = storedAccessibility();
+let contrastMore = false;
+let accessibility = resolveAccessibility(chosen, contrastMore);
+let active = resolvePalette(locationSearch, accessibility);
+/** @type {Map<string, ReturnType<typeof tiersFor>>} */
+const tiersByStyle = new Map();
+/** @type {Set<(name: string) => void>} */
+const listeners = new Set();
+
+function tell() {
+  for (const listener of [...listeners]) listener(active);
+}
+
+/** The palette this page is using now. */
+export function currentPalette() {
+  return active;
+}
+
+/** Whether the accessibility switch is on. */
+export function accessibilityOn() {
+  return accessibility;
+}
+
+/** What the switch's state is down to: "chosen" by the rider, "contrast" (the system asks for more), or "default" (off). */
+export function accessibilitySource() {
+  if (chosen !== null) return "chosen";
+  return contrastMore ? "contrast" : "default";
+}
+
+/** Whether the address (`?palette=`) chose the palette, which the switch does not override. */
+export function paletteSetByAddress() {
+  return pinnedByAddress;
+}
+
+/** A key that changes whenever what the tiers look like does: the palette, or the switch. */
+export function styleKey() {
+  return `${active}|${accessibility ? "strong" : "plain"}`;
+}
+
+/** The tiers, in the palette and strength in use. The same array until one of them changes. */
+export function currentTiers() {
+  const key = styleKey();
+  let tiers = tiersByStyle.get(key);
+  if (!tiers) {
+    tiers = tiersFor(active, accessibility);
+    tiersByStyle.set(key, tiers);
+  }
+  return tiers;
+}
+
+/** The Furth tiers (1-4), the ones ordered by luminance for greyscale print, in the palette in use. */
+export function furthTiers() {
+  return currentTiers().filter((t) => t.tier <= 4);
+}
+
+/**
+ * Turn the accessibility switch on or off now and tell the subscribers; with
+ * `remember` (the default) it is kept for this browser, and storage that
+ * refuses leaves it set for the visit. On, the stress colours are the
+ * colour-blind-friendly palette and the lines are drawn stronger; an address
+ * that names a palette still decides the palette. `remember: false` is a
+ * trial that leaves what is stored, and the system's say, alone.
+ */
+export function setAccessibility(on, { remember = true, storage } = {}) {
+  const next = on === true;
+  if (remember) {
+    rememberAccessibility(next, storage);
+    chosen = next;
+  }
+  apply(next);
+}
+
+function apply(next) {
+  if (next === accessibility) return;
+  accessibility = next;
+  active = resolvePalette(locationSearch, accessibility);
+  tell();
+}
+
+/** The media query for a request for more contrast: where the switch starts, until the rider chooses. */
+export const CONTRAST_MEDIA = "(prefers-contrast: more)";
+
+/** The parts of a `MediaQueryList` that are used. */
+/** @typedef {{ matches: boolean, addEventListener?: Function, removeEventListener?: Function, addListener?: Function, removeListener?: Function }} MediaQuery */
+
+let stopWatching = () => {};
+
+/**
+ * Follow the system's request for more contrast, now and as it changes (the
+ * rider turns it on in the system's settings with the page open): with no
+ * choice of the rider's own, the switch follows it. Returns the way to stop.
+ * Called once at load with the window's own matchMedia; a test passes a
+ * stand-in. A matchMedia that is missing or throws means no request.
+ *
+ * @param {((query: string) => MediaQuery) | null} [matchMediaImpl]
+ */
+export function watchContrast(matchMediaImpl = typeof matchMedia === "function" ? matchMedia : null) {
+  stopWatching();
+  stopWatching = () => {};
+  /** @type {MediaQuery | null} */
+  let query = null;
+  try {
+    query = matchMediaImpl ? matchMediaImpl(CONTRAST_MEDIA) : null;
+  } catch {
+    query = null;
+  }
+  const follow = (more) => {
+    contrastMore = more === true;
+    if (chosen === null) apply(contrastMore);
+  };
+  follow(query?.matches);
+  if (!query) return stopWatching;
+  const q = query;
+  const onChange = (event) => follow(typeof event?.matches === "boolean" ? event.matches : q.matches);
+  if (typeof q.addEventListener === "function") {
+    q.addEventListener("change", onChange);
+    stopWatching = () => q.removeEventListener?.("change", onChange);
+  } else if (typeof q.addListener === "function") {
+    q.addListener(onChange); // older Safari
+    stopWatching = () => q.removeListener?.(onChange);
+  }
+  return stopWatching;
+}
+
+watchContrast();
+
+/** Call `listener(name)` whenever the palette, or the strength the tiers are drawn at, changes; returns the way to stop. */
+/** @param {(name: string) => void} listener */
+export function subscribePalette(listener) {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
 
 /** WCAG relative luminance of a hex colour, 0 (black) to 1 (white). */
 export function relativeLuminance(hex) {
@@ -245,7 +488,7 @@ function linePaint(color, width, busy) {
 /** Each overlay layer's filter in the ride time `when`, by layer id. */
 export function stressFilters(when = DEFAULT_WHEN) {
   const filters = {};
-  for (const tier of STRESS_TIERS) {
+  for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
     filters[`stress-${tier.tier}`] = filter;
     filters[`stress-casing-${tier.tier}`] = filter;
@@ -256,7 +499,7 @@ export function stressFilters(when = DEFAULT_WHEN) {
   return filters;
 }
 
-export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
+export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);
   return tiers.map((tier) => ({
     id: `stress-${tier.tier}`,
@@ -269,7 +512,7 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = S
 }
 
 /** The casing under each tier's line, drawn first so the tier sits on it. */
-export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
+export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);
   return tiers.map((tier) => ({
     id: `stress-casing-${tier.tier}`,
@@ -277,12 +520,17 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-casing-${tier.tier}`],
-    paint: linePaint(tier.casing, tier.width + CASING_EXTRA_PX, tier.tier >= BUSY_MIN_TIER),
+    paint: linePaint(tier.casing, casingWidth(tier), tier.tier >= BUSY_MIN_TIER),
   }));
 }
 
 /** How much wider a casing is than its tier's line: a pixel on each side. */
 export const CASING_EXTRA_PX = 2;
+
+/** A tier's casing width: its line and the casing's extra (wider with the accessibility switch on). */
+export function casingWidth(tier) {
+  return tier.width + (tier.casingExtra ?? CASING_EXTRA_PX);
+}
 
 /**
  * Bike facilities (owner request of 2026-09-27: off-road paths, then protected
@@ -304,17 +552,35 @@ export const FACILITIES = [
 ];
 
 /** A facility's rails: wide enough to show `rail` px beyond each side of the casing. */
-export function facilityWidth(facility, tierWidth) {
-  return tierWidth + CASING_EXTRA_PX + 2 * facility.rail;
+export function facilityWidth(facility, tierWidth, casingExtra = CASING_EXTRA_PX) {
+  return tierWidth + casingExtra + 2 * facility.rail;
 }
 
-// A tier the style has no entry for (one added later) is drawn at LTS 1's width.
-const DEFAULT_TIER_WIDTH = STRESS_TIERS[0].width;
+/**
+ * A facility's rail width, by the tier its feature draws at in `when`, in the
+ * tiers' widths and casings in use (the accessibility switch makes both
+ * stronger, and the rails sit outside the casing). A tier the style has no
+ * entry for (one added later) is drawn at LTS 1's width.
+ */
+export function facilityWidthAt(facility, when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const byTier = tiers.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width, tier.casingExtra)]);
+  return ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra)];
+}
 
-/** A facility's rail width, by the tier its feature draws at in `when`. */
-export function facilityWidthAt(facility, when = DEFAULT_WHEN) {
-  const byTier = STRESS_TIERS.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width)]);
-  return ["match", tierAt(when), ...byTier, facilityWidth(facility, DEFAULT_TIER_WIDTH)];
+/**
+ * The panel legend's stroke widths, as the map draws the same lines: each
+ * tier's line and casing, and for the bike-facility legend (drawn on LTS 1's
+ * line) the casing and each facility's rails. With the accessibility switch
+ * on, the casings and rails are wider; the legend reads them here so it
+ * cannot fall out of step with the map.
+ */
+export function legendWidths(tiers = currentTiers()) {
+  const base = tiers[0];
+  return {
+    tiers: tiers.map((tier) => ({ tier: tier.tier, line: tier.width, casing: casingWidth(tier) })),
+    facilityCasing: casingWidth(base),
+    rails: Object.fromEntries(FACILITIES.map((facility) => [facility.facility, facilityWidth(facility, base.width, base.casingExtra)])),
+  };
 }
 
 export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN) {
@@ -343,7 +609,7 @@ export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN) {
  * tier, which would then vanish under its casing; rails drawn over a casing
  * would do the same to the whole line.
  */
-export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = STRESS_TIERS) {
+export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   return [
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),
@@ -352,7 +618,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
 }
 
 /** Legend entries, which carry the label the colour alone cannot. */
-export function legend(tiers = STRESS_TIERS) {
+export function legend(tiers = currentTiers()) {
   return tiers.map(({ tier, short, label, color, dash, width, casing }) => ({
     tier,
     short,

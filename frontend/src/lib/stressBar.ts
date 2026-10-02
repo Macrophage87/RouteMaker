@@ -4,7 +4,7 @@
  * overlay's own, and every segment carries a label and a percentage so the bar
  * does not rely on colour alone.
  */
-import { STRESS_TIERS } from "../stressStyle.js";
+import { ACCESSIBILITY_PALETTE, currentPalette, currentTiers } from "../stressStyle.js";
 
 export type StressKey = "1" | "2" | "3" | "4" | "5" | "unknown";
 export type StressMetres = Partial<Record<StressKey, number>>;
@@ -22,7 +22,20 @@ export interface StressSegment {
 
 /** What no segment rated: the breakdown's and the route line's colour for it. */
 export const UNRATED = { short: "Not rated", label: "No stress rating on these segments", color: "#9aa0a6" };
-const UNKNOWN = UNRATED;
+
+/**
+ * "Not rated" in the colour-blind-friendly palette: a warm grey of the same
+ * lightness. The cool grey is only 16 to 19 CIEDE2000 from that palette's LTS 1
+ * and LTS 2 blues under some simulated colour visions (review r1, accessibility);
+ * this one is at least 24 from every tier and from the traffic-free violet,
+ * under every vision (stressContrast.test.ts).
+ */
+export const UNRATED_CVD_COLOUR = "#9f9c93";
+
+/** What no segment rated, in the palette in use. */
+export function unrated(palette: string = currentPalette()): typeof UNRATED {
+  return palette === ACCESSIBILITY_PALETTE ? { ...UNRATED, color: UNRATED_CVD_COLOUR } : UNRATED;
+}
 
 function metresOf(stress: StressMetres, key: StressKey): number {
   const value = stress[key];
@@ -47,13 +60,13 @@ export function wholePercents(fractions: number[]): number[] {
 
 export function stressSegments(stress: StressMetres): StressSegment[] {
   const rows = [
-    ...STRESS_TIERS.map((t) => ({
+    ...currentTiers().map((t: { tier: number; short: string; label: string; color: string }) => ({
       key: String(t.tier) as StressKey,
       short: t.short,
       label: t.label,
       color: t.color,
     })),
-    { key: "unknown" as StressKey, ...UNKNOWN },
+    { key: "unknown" as StressKey, ...unrated() },
   ].map((row) => ({ ...row, metres: metresOf(stress, row.key) }));
   const total = rows.reduce((sum, row) => sum + row.metres, 0);
   if (!(total > 0)) return [];

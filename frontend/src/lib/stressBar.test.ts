@@ -53,9 +53,9 @@ test("missing, negative or non-numeric values count as zero", () => {
 });
 
 test("the tier colours are the overlay's own", async () => {
-  const { STRESS_TIERS } = await import("../stressStyle.js");
+  const { currentTiers } = await import("../stressStyle.js");
   const segments = stressSegments(sample);
-  for (const tier of STRESS_TIERS) {
+  for (const tier of currentTiers()) {
     const segment = segments.find((s) => s.key === String(tier.tier));
     assert.equal(segment?.color, tier.color);
   }

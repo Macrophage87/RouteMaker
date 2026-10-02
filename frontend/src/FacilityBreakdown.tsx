@@ -7,14 +7,17 @@ import { SEEK_MAX_SPAN_M, formatClimb, formatDistance, formatRoughDistance } fro
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
-import { ROUTE_BLUE, ROUTE_CASING_WIDTH, ROUTE_LINE_WIDTH, routeLegend } from "./lib/routeColours.ts";
+import { useStressStyle } from "./useStressStyle.ts";
+import { ROUTE_CASING_WIDTH, ROUTE_LINE_WIDTH, routeCasing, routeLegend } from "./lib/routeColours.ts";
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
+  useStressStyle(); // the route colours below follow the accessibility switch
   const rows = facilityRows(route.facility_m);
   const seek = route.hills_seek;
   const avoid = avoidMetres(route.stress_m);
   const warning = routeWarning(route.preset, route.dials);
   const colours = routeLegend(route.stress_spans);
+  const casing = routeCasing();
   return (
     <>
       {colours.length > 0 && (
@@ -24,7 +27,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
             {colours.map((row) => (
               <li key={row.key}>
                 <svg width="36" height="12" aria-hidden="true">
-                  <line x1="3" y1="6" x2="33" y2="6" stroke={ROUTE_BLUE} strokeWidth={ROUTE_CASING_WIDTH} strokeLinecap="round" />
+                  <line x1="3" y1="6" x2="33" y2="6" stroke={casing} strokeWidth={ROUTE_CASING_WIDTH} strokeLinecap="round" />
                   <line x1="3" y1="6" x2="33" y2="6" stroke={row.color} strokeWidth={ROUTE_LINE_WIDTH} strokeLinecap="round" />
                 </svg>
                 <span className="stress-name">{row.short}</span>

@@ -14,7 +14,9 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, calmSearchNote, detourView, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
+import { FACILITIES, accessibilityOn, accessibilitySource, currentTiers, legendWidths, paletteSetByAddress, setAccessibility } from "./stressStyle.js";
+import { useStressStyle } from "./useStressStyle.ts";
+import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
@@ -97,6 +99,7 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
+  useStressStyle();
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
@@ -741,6 +744,12 @@ export function App() {
 
           <section aria-labelledby="layers-heading">
             <h2 id="layers-heading">Traffic stress</h2>
+            <AccessibilitySwitch
+              on={accessibilityOn()}
+              source={accessibilitySource()}
+              paletteFromAddress={paletteSetByAddress()}
+              onChange={(on) => setAccessibility(on)}
+            />
             {stress === "available" && (
               <>
                 <label className="toggle">
@@ -791,6 +800,7 @@ function RouteSummary({
   narrow: boolean;
   onSelectJunction: (index: number) => void;
 }) {
+  useStressStyle();
   const segments = stressSegments(route.stress_m);
   const detour = detourView(route, points);
   const calmNote = calmSearchNote(route);
@@ -876,21 +886,24 @@ function StressLegend({
   zoom: number | null;
   shown: boolean;
 }) {
+  useStressStyle();
+  const tiers = currentTiers();
+  const widths = legendWidths(tiers);
   return (
     <>
       <ul className="legend" aria-label="Traffic stress legend">
-        {STRESS_TIERS.map((tier) => (
+        {tiers.map((tier, i) => (
           <li key={tier.tier}>
             <svg width="44" height="12" aria-hidden="true">
-              <line x1="2" y1="6" x2="42" y2="6" stroke={tier.casing} strokeWidth={tier.width + CASING_EXTRA_PX} />
+              <line x1="2" y1="6" x2="42" y2="6" stroke={tier.casing} strokeWidth={widths.tiers[i].casing} />
               <line
                 x1="2"
                 y1="6"
                 x2="42"
                 y2="6"
                 stroke={tier.color}
-                strokeWidth={tier.width}
-                strokeDasharray={tier.dash.map((d: number) => d * tier.width).join(" ")}
+                strokeWidth={widths.tiers[i].line}
+                strokeDasharray={tier.dash.map((d: number) => d * widths.tiers[i].line).join(" ")}
               />
             </svg>
             <span className="stress-name">{tier.short}</span>
@@ -906,7 +919,7 @@ function StressLegend({
           <p className="hint">Bike facilities are violet edges on either side of the stress line:</p>
           <ul className="legend" aria-label="Bike facility legend">
             {FACILITIES.filter((facility) => facilities.has(facility.facility)).map((facility) => {
-              const rails = facilityWidth(facility, STRESS_TIERS[0].width);
+              const rails = widths.rails[facility.facility];
               return (
                 <li key={facility.facility}>
                   <svg width="44" height="14" aria-hidden="true">
@@ -919,7 +932,7 @@ function StressLegend({
                       strokeWidth={rails}
                       strokeDasharray={facility.dash ? facility.dash.map((d: number) => d * rails).join(" ") : undefined}
                     />
-                    <line x1="2" y1="7" x2="42" y2="7" stroke="#ffffff" strokeWidth={STRESS_TIERS[0].width + CASING_EXTRA_PX} />
+                    <line x1="2" y1="7" x2="42" y2="7" stroke="#ffffff" strokeWidth={widths.facilityCasing} />
                   </svg>
                   <span className="stress-name">{facility.short}</span>
                   <span className="stress-label">{facility.label}</span>
