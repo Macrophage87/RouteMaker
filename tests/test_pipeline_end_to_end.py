@@ -640,6 +640,10 @@ def test_a_required_state_missing_from_the_extract_stops_the_rebuild(
         run_dials_extract(tmp_path)
     assert "no way placed in MD" in str(caught.value)
     assert caught.value.stage is Stage.CLASSIFY_STRESS
+    # Terminal, not retried: the rebuild's ValidationFailed, not a bare error.
+    from pipeline.run import ValidationFailed
+
+    assert isinstance(caught.value.cause, ValidationFailed)
 
 
 def test_a_curated_speed_limit_reaches_the_classifier(

@@ -69,13 +69,19 @@ def _tags(keys, values, width_keys, widths, oneway) -> dict[str, str]:
 
 
 def _grid(keys, value_choices, width_keys, width_choices):
-    """Every combination, classified once, keyed by (values, widths, oneway)."""
+    """Every combination, classified once, keyed by (values, widths, oneway).
+
+    Classified as rural (`urban=False`): the base road's `lanes=2` is two lanes a
+    direction on its one-way variants, which were the grid's only LTS 4 cells,
+    and since OWNER-DECISIONS 106/109 an urban one-way of up to two lanes is read
+    on the single-lane row. Outside urban areas Furth's multilane rule stands, so
+    the grid keeps the whole space, LTS 4 included."""
     tiers = {}
     for values in itertools.product(*value_choices):
         for widths in itertools.product(width_choices, repeat=len(width_keys)):
             for index, oneway in enumerate(ONEWAYS):
                 tags = _tags(keys, values, width_keys, widths, oneway)
-                tiers[values, widths, index] = classify(tags).tier
+                tiers[values, widths, index] = classify(tags, urban=False).tier
     return tiers
 
 

@@ -111,6 +111,16 @@ def test_a_small_same_named_circle_is_not_a_divided_road() -> None:
     assert divided.carriageways([whole]) == set()
 
 
+def test_a_long_way_needs_two_points_alongside_and_a_short_one_its_one() -> None:
+    """MIN_ALONGSIDE (2), and the fallback for a way too short to have two
+    sample points: a 6 m stub 11 m short of a long carriageway's start is
+    alongside it at one point. The stub is divided on its one point; the long
+    way, alongside at one only, is not (review r2)."""
+    long_north = [(-77.03, 39.000), (-77.03, 39.002)]
+    stub = [(-77.03 + LON_20M, 38.99990), (-77.03 + LON_20M, 38.99985)]
+    assert divided.carriageways([way(1, long_north), way(2, stub)]) == {2}
+
+
 def test_a_short_pair_that_does_not_close_is_still_divided() -> None:
     """Only a closed ring is a loop: 300 m of median, not joined at the ends."""
     north = [(-77.03, 39.000), (-77.03, 39.0027)]

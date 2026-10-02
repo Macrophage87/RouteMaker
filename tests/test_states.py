@@ -134,6 +134,11 @@ class TestWayStates:
                 required=("DC", "MD", "VA"),
             )
 
+    def test_the_required_states_are_the_coverages_three(self) -> None:
+        from conftest import REAL_REQUIRED_STATES
+
+        assert REAL_REQUIRED_STATES == ("DC", "MD", "VA")
+
     def test_the_real_list_is_the_coverages_three(self) -> None:
         assert states.STATE_PRIORITY.index("DC") == len(states.STATE_PRIORITY) - 1
         assert {"DC", "MD", "VA"} <= set(states.STATE_PRIORITY)

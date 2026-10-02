@@ -82,6 +82,15 @@ def _weekend_router_state(monkeypatch):
 _REAL_WEEKEND_CHECK: dict = {}
 
 
+# The production list, read before any test patches it (pinned in test_states).
+try:
+    from pipeline import states as _states
+
+    REAL_REQUIRED_STATES = _states.REQUIRED_STATES
+except Exception:  # noqa: BLE001 - a run that never loads the pipeline
+    REAL_REQUIRED_STATES = None
+
+
 @pytest.fixture(autouse=True)
 def _toy_required_states(monkeypatch):
     """The rebuild refuses a region missing a required state's boundary, or

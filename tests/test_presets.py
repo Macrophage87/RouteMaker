@@ -381,6 +381,24 @@ def test_avoid_gravel_raises_every_presets_surface_avoidance_and_arms_no_exclusi
         assert presets.costing(name, avoid_gravel=False) == presets.costing(name), name
 
 
+def test_valhallas_default_speeds_are_pinned_by_value() -> None:
+    """The speeds a preset with none of its own keeps when the box switches it
+    to Road (Valhalla 3.5.1's bicycle defaults, km/h): review r2."""
+    assert presets.VALHALLA_DEFAULT_SPEED_KMH == {
+        "Road": 25.0,
+        "Cross": 20.0,
+        "Hybrid": 18.0,
+        "Mountain": 16.0,
+    }
+    for name in presets.PRESETS:
+        plain = presets.costing(name)["bicycle"]
+        if "cycling_speed" not in plain:
+            steered = presets.costing(name, avoid_gravel=True)["bicycle"]["cycling_speed"]
+            assert (
+                steered == {"Cross": 20.0, "Hybrid": 18.0, "Mountain": 16.0}[plain["bicycle_type"]]
+            ), name
+
+
 def test_avoid_gravel_rides_as_road_at_the_presets_own_speed() -> None:
     """Review r1, S1: the dial prices only surfaces worse than the type's
     minimum, and Cross admits gravel, Hybrid dirt; so the box rides as Road,

@@ -332,7 +332,7 @@ def build_dials_extract(path: Path) -> None:
                 osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
             )
         divided_avenue = {
-            "highway": "tertiary",  # not an arterial (item 141 floors those)
+            "highway": "unclassified",  # below the class floors (items 141, 176)
             "lanes": "2",
             "oneway": "yes",
             "name": "Divided Avenue",

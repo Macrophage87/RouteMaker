@@ -636,6 +636,13 @@ unless named; PLAN.md quotes the owner's words):
   (`facility.separate_pairs`) - everywhere (`arterial floor`). And v2.2's middle
   band at 20 mph and below: 1,500-8,000 vehicles a day is LTS 2 (`mid volume`);
   it is not redundant after the floor, since it moves the non-arterials.
+  *Collectors* (item 176: "At least LTS 2 (Recommended)"): a tertiary street
+  or its link without bike infrastructure is LTS 2 at least (`collector
+  floor`), and a count may push it higher; this moves up to 50.6 mi of the
+  District's collectors from LTS 1 (15.0 mi in Maryland, 44.8 mi in
+  Virginia). Under either floor a rideable shoulder reads as a lane of its
+  width (`shoulder read as a lane`): never worse than the same road with that
+  lane, never better.
 - *Curated speed limits* (`routemaker.speed_corrections`, `fixtures/speed/`,
   item 131): the Montgomery County parkways with no posted speed are read at
   25 mph; a posted speed wins.
@@ -690,6 +697,11 @@ not an oversight:
    comfort index rather than Furth (item 143).
 10. A carriageway of a divided road is scored as two-way, lanes per direction
     from its own `lanes` (item 132).
+11. A rideable paved shoulder counts as bike infrastructure for the class
+    floors and reads as a lane of its width (item 145: "Yes, count it");
+    the review counts only a marked lane or track.
+12. Collectors are LTS 2 at least without a facility (item 176); like item
+    8, a class floor no Furth table has.
 
 **Graded stress** (the owner, 2026-09-28: "Yes, grade them (Recommended)" and
 "I'd probably want LTS 4 to be twice the stress level of LTS 3 at least.").
