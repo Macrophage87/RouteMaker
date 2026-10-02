@@ -889,6 +889,81 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "credit = max(credit, 0.0)" + NL + "        step_weight = DETOUR_WEIGHT - credit",
         SEEK,
     ),
+    # --- review r2's survivors --------------------------------------------
+    (
+        "V01 strips: reach without the quarter cell",
+        TS,
+        "reach = width_m + cell_m / 4",
+        "reach = width_m",
+        SEEK,
+    ),
+    (
+        "V03 strips: box east one cell short",
+        TS,
+        "lon0 + (previous + 1) * cell_m / kx,",
+        "lon0 + previous * cell_m / kx,",
+        SEEK,
+    ),
+    (
+        "V05 strips: no cos(lat) on x",
+        TS,
+        "kx = 111_320.0 * math.cos(math.radians(lat0))",
+        "kx = 111_320.0",
+        SEEK,
+    ),
+    (
+        "V07 table: timeout set session-wide",
+        TS,
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [timeout_ms])",
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [timeout_ms])",
+        SEEK,
+    ),
+    (
+        "V08 table: restore set session-wide",
+        TS,
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, true)\", [previous])",
+        "cursor.execute(\"SELECT set_config('statement_timeout', %s, false)\", [previous])",
+        SEEK,
+    ),
+    (
+        "V12 bounds: no clock in components",
+        TS,
+        "                if visited % CLOCK_EVERY == 0:"
+        + NL
+        + "                    _check_time(stop_at, clock)",
+        "                if False:" + NL + "                    _check_time(stop_at, clock)",
+        SEEK,
+    ),
+    (
+        "V18 seek: whole-trip guard on best not first",
+        RF,
+        "if read.exposure_m > _allowance(first_exposure):",
+        "if read.exposure_m > _allowance(best.exposure_m):",
+        REFINE,
+    ),
+    (
+        "V19 retry: expected ignores the detour",
+        RF,
+        "return (incumbent.length_m + proposal.detour_m) * (1 + SEEK_RETRY_OVER) + SEEK_RETRY_SLACK_M",
+        "return incumbent.length_m * (1 + SEEK_RETRY_OVER) + SEEK_RETRY_SLACK_M",
+        REFINE,
+    ),
+    (
+        "seek: a whole trip past its allowance not recorded as busier",
+        RF,
+        '            seek["whole_trip"] = "busier"' + NL,
+        "",
+        REFINE,
+    ),
+    (
+        "seek: a retry's route not counted",
+        RF,
+        "            answers.append((read, candidate, excluded, None))"
+        + NL
+        + '            seek["routes"] += 1',
+        "            answers.append((read, candidate, excluded, None))",
+        REFINE,
+    ),
 ]
 
 

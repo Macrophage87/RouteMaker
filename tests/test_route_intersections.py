@@ -388,7 +388,16 @@ class TestTheSearchInTheAnswer:
         corridors, and says so; below that it does not."""
         router(world())
         top = post(client, {**good_body(), "stress": 100}).json()["calm_search"]
-        assert set(top["seek"]) == {"corridors", "asked", "taken", "limited", "tried", "legs"}
+        assert set(top["seek"]) == {
+            "corridors",
+            "asked",
+            "routes",
+            "taken",
+            "limited",
+            "whole_trip",
+            "tried",
+            "legs",
+        }
         assert top["seek"]["legs"] == 1
         below = post(client, {**good_body(), "stress": 95}).json()["calm_search"]
         assert below["seek"] is None

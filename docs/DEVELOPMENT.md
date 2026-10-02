@@ -1760,7 +1760,8 @@ promoted with the column but without the index can have it added in place with t
 **Traffic wins for the whole trip.** A plan with stops whose legs were taken is
 read once spliced and held to the whole trip's allowance (2% and 164 ft, 50 m, over
 the router's first exposure), as each leg is to its own: n legs can no longer add
-n x 50 m between them. A splice past it is not taken (`limited: "busier"`).
+n x 50 m between them. A splice past it is not taken (`limited: "busier"`, and
+`whole_trip: "busier"`, which a `limited: "time"` from a later leg does not hide).
 
 **Kept exclusions.** A candidate is asked with only the search's kept exclusions
 within the leg's band (`trailseek.points_in_band`), and asked again without them

@@ -415,7 +415,7 @@ class IntersectionOut(Schema):
 class SeekOut(Schema):
     """What the trail seek did (`core.trailseek`, OWNER-DECISIONS 194): how many
     corridors of trail and protected lane it found beside the route, how many
-    routes through them it asked the router for, whether one was kept, and why it
+    proposals through them it asked the router for, whether one was kept, and why it
     stopped short (`points`, `span`, `time`, `table`; null when it ran to its
     end). `tried` has one row for each route asked for: the corridors it went
     through, the exposure (weighted metres of LTS 3 and worse) the corridors
@@ -425,8 +425,23 @@ class SeekOut(Schema):
 
     corridors: int
     asked: int
+    routes: int | None = Field(
+        default=None,
+        description=(
+            "How many routes the router was asked for: `asked` counts the proposals,"
+            " and a proposal asked again without the search's exclusions is two routes."
+        ),
+    )
     taken: bool
     limited: str | None = None
+    whole_trip: str | None = Field(
+        default=None,
+        description=(
+            "On a plan with stops whose legs were spliced: `taken`, `busier` (past the"
+            " whole trip's Traffic-wins allowance) or `unread`; null where nothing was"
+            " spliced. Shown even where `limited` names an earlier stop, such as `time`."
+        ),
+    )
     tried: list[dict] = Field(default_factory=list)
     legs: int | None = Field(
         default=None,

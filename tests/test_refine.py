@@ -8,6 +8,7 @@ it, what is kept, and why the search stops.
 
 from __future__ import annotations
 
+import dataclasses
 import tempfile
 
 import pytest
@@ -1033,8 +1034,10 @@ class TestTrailSeek:
         empty = {
             "corridors": 0,
             "asked": 0,
+            "routes": 0,
             "taken": False,
             "limited": None,
+            "whole_trip": None,
             "tried": [],
             "legs": 1,
         }
@@ -1223,6 +1226,8 @@ class TestTrailSeek:
             (0, "taken", "longer"),
         ]
         assert shape == "t" and info["seek"]["asked"] == 1
+        # One proposal, two routes (review r2).
+        assert info["seek"]["routes"] == 2
 
     def test_an_answer_not_much_longer_is_not_asked_again(self, monkeypatch) -> None:
         ctx = self.seek_context()
@@ -1232,6 +1237,46 @@ class TestTrailSeek:
         world, shape, info = self.run(monkeypatch, {"t": longer}, [trip_of("t", 5.0)], ctx)
         assert len(world.requests) == 1 and shape == "t"
         assert refine.SEEK_RETRY_OVER == 0.15 and refine.SEEK_RETRY_SLACK_M == 500.0
+
+    def test_the_length_expected_includes_the_corridors_detour(self, monkeypatch) -> None:
+        # Review r2, mutant V19: a corridor said to add 2 km is expected at up to
+        # 1.15 x (4 km + 2 km) + 500 m = 7.4 km, so a 6 km answer is not asked
+        # again (without the detour it would be past 5.1 km).
+        incumbent = self.orig()
+        long_way = trailseek.Proposal(
+            (
+                trailseek.Corridor(
+                    entry=BASE,
+                    exit=BASE,
+                    trail_m=1000.0,
+                    gain_m=1000.0,
+                    detour_m=2000.0,
+                    score=0.0,
+                    t_in=0.0,
+                    t_out=1000.0,
+                ),
+            )
+        )
+        assert refine._expected_m(incumbent, long_way) == pytest.approx(
+            (4000.0 + 2000.0) * 1.15 + 500.0
+        )
+        real = trailseek.propose
+
+        def detoured(corridors, *args, **kw):
+            return [
+                trailseek.Proposal(
+                    tuple(dataclasses.replace(c, detour_m=2000.0) for c in p.corridors)
+                )
+                for p in real(corridors, *args, **kw)
+            ]
+
+        monkeypatch.setattr(trailseek, "propose", detoured)
+        ctx = self.seek_context()
+        ctx.kept_excludes = [(BASE[0] + 0.03, BASE[1] + 200 / KY)]
+        six_km = analysis("t", "1" * 60, cost_s=3000.0, shift=100)
+        world, shape, info = self.run(monkeypatch, {"t": six_km}, [trip_of("t", 6.0)], ctx)
+        assert len(world.requests) == 1 and shape == "t"
+        assert info["seek"]["routes"] == 1 and info["seek"]["tried"][0]["detour_m"] == 2000
 
     def test_the_retry_is_not_started_without_the_time(self, monkeypatch) -> None:
         now = [routing.clock()]
@@ -1990,6 +2035,64 @@ class TestSeekLegByLeg:
                 assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
                 assert info["seek"]["limited"] == "busier"
                 assert info["exposure_after_m"] == info["exposure_before_m"]
+            assert info["seek"]["whole_trip"] == ("taken" if taken else "busier")
+
+    # --- review r2 -------------------------------------------------------------
+
+    def test_the_whole_trip_is_guarded_against_the_first_exposure_not_the_searchs_best(
+        self, monkeypatch
+    ) -> None:
+        # Mutant V18: the exclusion search found a calmer whole route (1,500 m of
+        # exposure) than the router's first (2,000 m). A spliced trip of 1,800 m is
+        # inside the first's allowance (2,090 m), though past the best's (1,580 m),
+        # and is taken: Traffic wins is against what the router first gave.
+        searched = analysis("s", "1" * 80, cost_s=7000.0)
+        searched.exposure_m = 1500.0
+        searched.via_m = [4000.0]
+        t1, t2 = self.calm(1), self.calm(2)
+        t1.exposure_m = t2.exposure_m = 1060.0
+        analyses = {
+            "o1": leg_orig(1),
+            "o2": leg_orig(2),
+            "o1+o2": whole_of(leg_orig(1), leg_orig(2)),
+            "s1+s2": searched,
+            "s1": leg_orig(1),
+            "s2": leg_orig(2),
+            "t1": t1,
+            "t2": t2,
+            "t1+s2": whole_of(leg_orig(1), leg_orig(2)),
+            "t1+t2": whole_of(leg_orig(1), leg_orig(2), exposure_m=1800.0),
+        }
+        routes = [
+            multi_trip(["s1", "s2"]),
+            one_leg("t1", 9.0, 3000.0),
+            one_leg("t2", 9.0, 3000.0),
+        ]
+        world = LegWorld(monkeypatch, analyses, routes)
+        kept, info = refine.refine(multi_trip(["o1", "o2"]), self.leg_context())
+        assert info["rounds"] == 1 and len(world.asked()) == 2
+        assert [t["outcome"] for t in info["seek"]["tried"]] == ["taken", "taken"]
+        assert info["seek"]["taken"] is True and info["seek"]["whole_trip"] == "taken"
+        assert [leg["shape"] for leg in kept["legs"]] == ["t1", "t2"]
+        assert info["exposure_after_m"] == 1800.0
+
+    def test_a_busier_whole_trip_is_shown_after_a_leg_ran_out_of_time(self, monkeypatch) -> None:
+        # The first leg is taken, the second runs out of time; the spliced trip is
+        # past the whole trip's allowance. `limited` keeps the first stop ("time")
+        # and `whole_trip` says why the splice was not taken.
+        t1 = self.calm(1)
+        t1.exposure_m = 1060.0
+        analyses = {
+            "t1": t1,
+            "t1+o2": whole_of(leg_orig(1), leg_orig(2), exposure_m=2120.0),
+        }
+        routes = [one_leg("t1", 9.0, 3000.0), routing.DeadlineExceeded("out of time")]
+        _w, kept, info = self.plan(monkeypatch, analyses, routes)
+        seek = info["seek"]
+        assert [t["outcome"] for t in seek["tried"]] == ["taken"]
+        assert seek["limited"] == "time" and seek["whole_trip"] == "busier"
+        assert seek["taken"] is False and seek["asked"] == seek["routes"] == 2
+        assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
 
 
 class TestRouteSpansAndLegs:

@@ -594,12 +594,17 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
     The seek's whole budget is SEEK_BUDGET_S, past the search's; each leg that
     can run gets its share of what is left, by its straight-line span, and at
     least SEEK_LEG_MIN_S (a candidate's worth), what a leg leaves unused going to the next.
-    `info["seek"]` says what was found and asked."""
+    `info["seek"]` says what was found and asked: `asked` counts the proposals
+    asked for, `routes` the router's routes (a proposal asked again without the
+    exclusions is two), and `whole_trip` what became of a plan with stops'
+    spliced trip (`taken`, `busier`, `unread`; None where nothing was spliced)."""
     seek = info["seek"] = {
         "corridors": 0,
         "asked": 0,
+        "routes": 0,
         "taken": False,
         "limited": None,
+        "whole_trip": None,
         "tried": [],
         "legs": 0,
     }
@@ -677,6 +682,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             read = None
         if read is None or read.events is None:
             seek["taken"] = False
+            seek["whole_trip"] = "unread"
             seek["limited"] = seek["limited"] or "unread"
             return best, best_trip
         # Traffic wins for the whole trip too (OWNER-DECISIONS 61, 188: "2% +
@@ -684,8 +690,12 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
         # could otherwise add n x 50 m between them (review r1).
         if read.exposure_m > _allowance(first_exposure):
             seek["taken"] = False
+            # Its own key as well, so that a "time" from a later leg does not
+            # hide it (review r2).
+            seek["whole_trip"] = "busier"
             seek["limited"] = seek["limited"] or "busier"
             return best, best_trip
+        seek["whole_trip"] = "taken"
         return read, trip
     return best, trip
 
@@ -774,9 +784,11 @@ def _seek_leg(k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: di
         # router has no route with them, without; and without them as well where
         # the route with them is much longer than the corridor's detour says.
         excluded = list(nearby)
+        seek["routes"] += 1
         read, candidate = _through(proposal.vias, stop_at, ctx, excluded, k)
         answers = []
         if read is None and excluded:
+            seek["routes"] += 1
             read, candidate = _through(proposal.vias, stop_at, ctx, (), k)
             excluded = []
         elif (
@@ -786,6 +798,7 @@ def _seek_leg(k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: di
             and stop_at - routing.clock() >= trailseek.SEEK_ROUND_MIN_S
         ):
             answers.append((read, candidate, excluded, None))
+            seek["routes"] += 1
             read, candidate = _through(proposal.vias, stop_at, ctx, (), k)
             excluded = []
             answers.append((read, candidate, excluded, "longer"))

@@ -518,6 +518,37 @@ class TestTheQuery:
         monkeypatch.setattr(ts, "MAX_SEGMENTS", 1)
         assert len(ts.corridor_segments(table, self.guide(), 1500.0, True, "weekend")) == 1
 
+    def test_trails_in_the_east_most_cell_and_near_the_bands_end_are_returned(
+        self, segment_schemas
+    ) -> None:
+        # Review r2, mutants V03 (a strip's east edge a cell short) and V05 (no
+        # cos(lat) on x, so the strips reach 78% as far east and west). An east-west
+        # guide 8,749 m long: one trail past its end at 0.94 to 0.96 of the band,
+        # one 300 m north of the line in the east-most cell, both within the band.
+        from django.db import connection
+
+        live = segment_schemas[0]
+        end = (START[0] + 8749 / KX, START[1])
+
+        def at(x0: float, x1: float, north: float) -> str:
+            lat = START[1] + north / KY
+            return f"LINESTRING({START[0] + x0 / KX} {lat}, {START[0] + x1 / KX} {lat})"
+
+        with connection.cursor() as cursor:
+            self.add(cursor, live, 21, at(8749 + 1410, 8749 + 1440, 0.0), facility="path")
+            self.add(cursor, live, 22, at(10_050, 10_080, 300.0), facility="path")
+        got = ts.corridor_segments(live, [[START, end]], 1500.0, True, "weekend")
+        assert self.north_of(got) == [0, 300]
+        # Both are in the band, which the strips are read for.
+        for seg in got:
+            x = (seg[-1][0] - end[0]) * KX
+            north = (seg[-1][1] - START[1]) * KY
+            assert math.hypot(x, north) <= 1500.0
+        # The east-most cell is the one that starts at 10 km.
+        assert max(e for _w, _s, e, _n in ts.band_cells([[START, end]], 1500.0)) == pytest.approx(
+            START[0] + 11_000 / KX
+        )
+
 
 class TestWhenItRuns:
     def test_from_the_old_top_of_the_slider(self) -> None:
@@ -730,6 +761,24 @@ class TestHardBounds:
         assert len(reads) == 3
         assert network.best_in(nodes, route, 10.0, 6000.0, stop_at=5.0, clock=lambda: 0.0)
 
+    def test_finding_the_networks_reads_the_clock_as_it_goes(self, monkeypatch) -> None:
+        # Review r2, mutant V12. The search for networks is O(V + E) and quick on
+        # any band the table can return, so this check is defensive; it is held
+        # here so that it is not lost: past the stop, the walk over a big network
+        # stops part way, not at its end.
+        monkeypatch.setattr(ts, "CLOCK_EVERY", 8)
+        network = ts.Network(line(0.01, 0.09, north_m=150.0, step=0.0002), ts.Plane(START, END))
+        reads = []
+
+        def clock() -> float:
+            reads.append(1)
+            return 10.0
+
+        with pytest.raises(ts.SeekOutOfTime):
+            network.components(stop_at=5.0, clock=clock)
+        assert reads == [1]
+        assert len(network.components(stop_at=5.0, clock=lambda: 0.0)) == 1
+
 
 class TestTheStrips:
     """Review r1: the table is read a strip of the band at a time, not over the
@@ -782,6 +831,22 @@ class TestTheStrips:
             max(a[1], b[1]) + 4000 / KY,
         )
         assert sum(area(*box) for box in boxes) < 0.5 * whole
+
+    def test_the_bands_edge_between_two_samples_is_in_a_strip(self) -> None:
+        # Review r2, mutant V01 (the reach without its quarter cell). The guide is
+        # sampled every half cell or less, so a point at the band's edge midway
+        # between two samples is up to a quarter cell further from both than from
+        # the line. Only a diagonal guide shows it: on an east-west one every cell
+        # has a sample in its own columns. Here a point 1,494 m from a guide 9.2 km
+        # long (east 8,667 m, north 3,000 m), in a cell whose nearest corner is
+        # more than 1,500 m from every sample.
+        guide = [[START, (START[0] + 8667 / KX, START[1] + 3000 / KY)]]
+        x, y = 6997.0, 4003.0
+        off = abs(-x * 3000 + y * 8667) / math.hypot(8667, 3000)
+        assert 0.99 * 1500.0 < off <= 1500.0
+        lon, lat = START[0] + x / KX, START[1] + y / KY
+        boxes = ts.band_cells(guide, 1500.0)
+        assert any(w <= lon <= e and s <= lat <= n for w, s, e, n in boxes)
 
     def test_no_guide_no_strips(self) -> None:
         assert ts.band_cells([], 1500.0) == []
@@ -885,6 +950,54 @@ class TestTheIndexAndTheTimeout:
             ts.corridor_segments(live, [[START, END]], 1500.0, True, "weekend", timeout_s=1.0)
             cursor.execute("SHOW statement_timeout")
             assert cursor.fetchone()[0] == "7s"
+
+    # --- review r2: the setting does not outlive the read on a pooled connection
+
+    def show(self) -> str:
+        from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("SHOW statement_timeout")
+            return cursor.fetchone()[0]
+
+    def test_after_a_read_outside_a_transaction_the_sessions_timeout_is_kept(
+        self, segment_schemas
+    ) -> None:
+        # Mutant V07: the read's 1 s set for the session would stay on the
+        # connection (CONN_MAX_AGE keeps it) for every later query.
+        from django.db import connection
+
+        live = segment_schemas[0]
+        assert not connection.in_atomic_block
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '7s'")
+        try:
+            ts.corridor_segments(live, [[START, END]], 1500.0, True, "weekend", timeout_s=1.0)
+            assert self.show() == "7s"
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("RESET statement_timeout")
+
+    def test_after_the_callers_transaction_commits_the_sessions_timeout_is_kept(
+        self, segment_schemas
+    ) -> None:
+        # Mutant V08: the caller's 9 s put back for the session would outlive the
+        # caller's transaction, and V07 the read's own 1 s.
+        from django.db import connection, transaction
+
+        live = segment_schemas[0]
+        with connection.cursor() as cursor:
+            cursor.execute("SET statement_timeout = '7s'")
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute("SET LOCAL statement_timeout = '9s'")
+                ts.corridor_segments(live, [[START, END]], 1500.0, True, "weekend", timeout_s=1.0)
+                assert self.show() == "9s"
+            assert self.show() == "7s"
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("RESET statement_timeout")
 
 
 class TestPointsInTheBand:

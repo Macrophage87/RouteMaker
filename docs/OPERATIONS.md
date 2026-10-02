@@ -489,10 +489,13 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   the seek (`limited: "error"`, logged at error level as "the trail seek's corridor
   search failed", or `"time"`), and the plan is answered without it.
 - **Reading it.** `calm_search.seek` in the answer says `corridors` found,
-  `asked`, `taken`, why it stopped short (`points`, `span`, `time`, `table`,
-  `error`, `unread`, `busier` - a plan with stops whose spliced whole trip was
-  past the Traffic-wins allowance - or `roadway_only`, a ride on the no-trail
-  graph, which is not seeked) and one row in `tried` per route asked, with its
+  `asked` (proposals) and `routes` (router routes: a proposal asked again without
+  the exclusions is two), `taken`, why it stopped short (`points`, `span`, `time`,
+  `table`, `error`, `unread`, `busier` - a plan with stops whose spliced whole trip
+  was past the Traffic-wins allowance - or `roadway_only`, a ride on the no-trail
+  graph, which is not seeked), `whole_trip` (on a plan with stops whose legs were
+  spliced: `taken`, `busier` or `unread`, shown even when `limited` is an earlier
+  `time`) and one row in `tried` per route asked, with its
   `outcome` (a second ask without the exclusions has `retry: "longer"`). A run of `table`
   is a database problem, not a routing one (the log says "the trail seek could
   not read the segment table" at warning level). A run of `no_route` outcomes
@@ -928,14 +931,25 @@ live table. **On today's live table** (no facility column) it is not needed and
 cannot be built (its predicate names the column); the seek reads that table by the
 trail rule through `segment_overview_geom_idx`. **A table promoted with the facility
 column but without this index** (a rebuild from code before it) still works, through
-the whole geometry index (0.7 to 1.4 s a leg, inside the statement timeout); to add it
-in place without blocking reads or writes, measured at 1.6 s and 648 kB on a 1.36M-row
-copy:
+the whole geometry index (about 0.2 to 0.3 s a leg read strip by strip: 200 to 329 ms
+measured on a 1.36M-row copy, inside the statement timeout); to add it in place
+without blocking reads or writes, measured at 1.6 s and 648 kB on a 1.36M-row copy:
 
     docker compose exec -T postgis psql -U routemaker -d routemaker -c \
       "CREATE INDEX CONCURRENTLY IF NOT EXISTS segment_seek_geom_idx ON live.segment
        USING gist (geometry) WHERE (facility IN ('path', 'protected') AND stress_tier <= 2)
        OR cardinality(car_free_when) > 0"
+
+A `CONCURRENTLY` build that fails (cancelled, or the connection lost) leaves an
+INVALID index of that name behind, which the planner does not use and which `IF NOT
+EXISTS` then skips without a word. So check `indisvalid` before the build and after
+it; if it is false, drop the index and build it again:
+
+    docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+      "SELECT c.relname, i.indisvalid FROM pg_index i JOIN pg_class c ON c.oid = i.indexrelid
+       WHERE c.relname = 'segment_seek_geom_idx' AND c.relnamespace = 'live'::regnamespace"
+    docker compose exec -T postgis psql -U routemaker -d routemaker -c \
+      "DROP INDEX CONCURRENTLY IF EXISTS live.segment_seek_geom_idx"
 
 **The covered area.** `GET /api/coverage` answers the area routes may be
 planned in as a GeoJSON polygon feature - `settings.COVERAGE_BBOX`, the box the
