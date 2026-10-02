@@ -36,14 +36,14 @@ import shapely.geometry as sg  # noqa: E402
 import shapely.wkb  # noqa: E402
 from shapely.prepared import prep  # noqa: E402
 
-from pipeline import conflation, extract, variants  # noqa: E402
+from pipeline import conflation, discrepancies, extract, variants  # noqa: E402
 from routemaker import agency_roads, divided, facility, speed_corrections  # noqa: E402
 from routemaker.classes import TRAIL_CLASS_HIGHWAY  # noqa: E402
 from routemaker.geo import Point, haversine  # noqa: E402
 from routemaker.stress import classify  # noqa: E402
 
 MI = 1609.344
-SKIP = {"proposed", "construction", "platform", "corridor"}
+SKIP = discrepancies.NOT_ROADS
 # About 500 ft [150 m]: how near a street centerline an OSM way must be to count as in Baltimore.
 CITY_NEAR_DEG = 0.0015
 
@@ -297,43 +297,9 @@ def main() -> int:
                     "item190": ",".join(rows190),
                     "item190_without": ",".join(effects),
                     "divided": int(w.osm_id in div),
-                    "tags": json.dumps(
-                        {
-                            k: v
-                            for k, v in w.tags.items()
-                            if k.startswith(("maxspeed", "lanes", "oneway", "cycleway", "parking"))
-                        },
-                        sort_keys=True,
-                    ),
-                    "tags1": json.dumps(
-                        {
-                            k: v
-                            for k, v in tags1.items()
-                            if k.startswith(("maxspeed", "lanes", "oneway", "cycleway", "parking"))
-                        },
-                        sort_keys=True,
-                    ),
-                    "facts": json.dumps(
-                        {
-                            "speed": facts.speed_by_direction,
-                            "lanes": facts.lanes_by_direction,
-                            "lanes_fwd": facts.lanes_forward,
-                            "lanes_back": facts.lanes_backward,
-                            "one_way": facts.one_way,
-                            "oneway_fwd": facts.oneway_forward,
-                            "lanes_per_dir": facts.lanes_per_direction,
-                            "speed_mph": facts.speed_mph,
-                            "contraflow": facts.contraflow,
-                            "bike_recorded": facts.bike_recorded,
-                            "bike": facts.bike,
-                            "bike_fwd": facts.bike_forward,
-                            "bike_back": facts.bike_backward,
-                            "bike_ft": facts.bike_width_ft,
-                            "parking": facts.parking_lanes,
-                            "aadt": facts.aadt,
-                        },
-                        sort_keys=True,
-                    )
+                    "tags": json.dumps(discrepancies.reported_tags(w.tags), sort_keys=True),
+                    "tags1": json.dumps(discrepancies.reported_tags(tags1), sort_keys=True),
+                    "facts": json.dumps(discrepancies.facts_summary(facts), sort_keys=True)
                     if facts
                     else "",
                 }

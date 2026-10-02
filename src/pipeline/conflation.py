@@ -838,16 +838,30 @@ def _freeway_block(feature: RoadFeature) -> bool:
 
 
 def road_facts_by_way(
-    ways: Sequence, entries: Sequence[WayEntry], blocks: Sequence[RoadFeature]
+    ways: Sequence,
+    entries: Sequence[WayEntry],
+    blocks: Sequence[RoadFeature],
+    withheld: Mapping[str, Collection[str]] | None = None,
 ) -> tuple[dict[int, WayFacts], BlockConflation]:
     """What the agency street blocks say about each way they lie along.
 
     `ways` are the extract's ways (`osm_id`, `tags`, `name`) and `entries` the
     same ways as `conflate_blocks` takes them. The one place the matching rules
     are wired - service and track ways need an agreeing name, every class but a
-    freeway's is vetoed by a disagreeing one - shared by the rebuild and the
-    analysis scripts so the two cannot drift apart.
+    freeway's is vetoed by a disagreeing one, a road that is only proposed
+    takes no block (`agency_roads.UNBUILT_HIGHWAYS`) - shared by the rebuild
+    and the analysis scripts so the two cannot drift apart.
+
+    `withheld` is the block facts the owner withholds (OWNER-DECISIONS 197);
+    by default the checked-in ones (`agency_roads.withheld_blocks`).
     """
+    if withheld is None:
+        withheld = agency_roads.withheld_blocks()
+    unbuilt = {
+        way.osm_id for way in ways if way.tags.get("highway") in agency_roads.UNBUILT_HIGHWAYS
+    }
+    if unbuilt:
+        entries = [entry for entry in entries if entry[0] not in unbuilt]
     result = conflate_blocks(
         entries,
         blocks,
@@ -862,6 +876,7 @@ def road_facts_by_way(
         },
     )
     by_id = {block.feature_id: block for block in blocks}
+    tags_of = {way.osm_id: way.tags for way in ways}
     facts: dict[int, WayFacts] = {}
     for way_id, shares in result.matched.items():
         agreements = [share.names_agree for share in shares]
@@ -871,6 +886,8 @@ def road_facts_by_way(
         facts[way_id] = agency_roads.aggregate(
             [(share.feature_id, by_id[share.feature_id].facts, share.along) for share in shares],
             names,
+            osm_forward=agency_roads.osm_forward(tags_of.get(way_id, {})),
+            withheld=withheld,
         )
     return facts, result
 
@@ -893,7 +910,7 @@ def overlay_road_facts(
     the OWNER-DECISIONS 190 rows applied (`agency_roads.overlay`).
     """
     tags_of = {way.osm_id: way.tags for way in ways if way.osm_id in facts_by_way}
-    separate, paired = agency_roads.block_context(facts_by_way, tags_of, separate_roads)
+    context = agency_roads.block_context(facts_by_way, tags_of, separate_roads)
     overlays: dict[int, agency_roads.Overlay] = {}
     for way in ways:
         facts = facts_by_way.get(way.osm_id)
@@ -902,9 +919,10 @@ def overlay_road_facts(
         overlays[way.osm_id] = agency_roads.overlay(
             dict(way.tags),
             facts,
-            separate_road=way.osm_id in separate or way.osm_id in separate_roads,
+            separate_road=way.osm_id in context.separate or way.osm_id in separate_roads,
             divided=way.osm_id in divided_ways,
-            paired=way.osm_id in paired,
+            paired=way.osm_id in context.paired,
+            side_lane=way.osm_id in context.side_lane,
             length_m=_length_m(way.coordinates),
             rows=rows,
         )

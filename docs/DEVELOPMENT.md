@@ -1057,7 +1057,9 @@ and Washington Avenue's). "BRG" is "Bridge", so the Key Bridge's name agrees. Na
 ST NW" are named by their letter (a compass word just before the street type is
 the street's name), and plurals are singular ("East Meadow Court" is "EAST
 MEADOWS CT"). A way left unmatched falls back to OSM's own tags, the safe
-answer. The wiring of these rules to the OSM classes is in one place,
+answer. A road OSM has only as `highway=proposed` takes no block
+(`UNBUILT_HIGHWAYS`; review r3: 17th Street NE and I Street NE did). The wiring
+of these rules to the OSM classes is in one place,
 `pipeline.conflation.road_facts_by_way`, shared by the rebuild and the analysis
 scripts.
 
@@ -1077,6 +1079,10 @@ it 56, while all 43 OSM-mapped contraflow lanes carry the flag (review r2) - so
 a lone lane there is the with-flow lane, whichever label it has
 (`agency_roads._block_bike`). Round 1 read the label and turned 159 ways' with-flow
 lanes (13.5 mi; R Street NW, 4th Street SE, V Street NW) into contraflow lanes.
+A flagged block whose traffic direction DC does not record (58 of the 110) puts
+its lone lane against the way's OSM one-way direction, which is what the flag
+says it is (review r3: Argonne Place, Champlain Street, T Street and 8th Street
+NW, 8 ways, had OSM's contraflow lane rewritten as a with-flow lane).
 
 **Precedence.** Where matched, the agency's posted speed, lanes per direction
 (the larger direction plus any reversible lanes: Connecticut Avenue's are
@@ -1107,7 +1113,9 @@ exception is counted as a disagreement with its reason:
 - **B. One-way recorded, OSM explicitly two-way** (`oneway=no`, or lanes counted
   each way): the way is one-way, in the direction the block's traffic runs,
   except on a block with reversible lanes (Clara Barton Parkway: one-way at the
-  peak only), a junction stub under 30 m [100 ft] (`MIN_ONE_WAY_OVERRIDE_M`), or
+  peak only), a junction stub of 30 m [100 ft] or less, to the whole metre the
+  reports print (`MIN_ONE_WAY_OVERRIDE_M`, `is_junction_stub`; review r3: New
+  Jersey Avenue NW 1508260473, listed at 30 m, was 30.2 m and overridden), or
   where the direction is not known. Outside the District an explicit two-way
   stands (review r1: Baltimore's Key Highway). A two-way way left on a one-way
   block keeps OSM's lanes: the busier direction's count is not copied into the
@@ -1115,9 +1123,13 @@ exception is counted as a disagreement with its reason:
 - **C. Two-way recorded, OSM one-way**: the way is two-way (C4) - except a
   carriageway of a divided road (C1, `routemaker.divided`), one of two opposite
   one-way ways sharing a block (C2, `agency_roads.block_context`: the pairs the
-  divided detector missed), a slip road, a motorway or a trunk road (C3), a
-  roundabout, a way that runs on onto a one-way block, a junction stub, and an
-  unnamed way (a turn channel beside the named street).
+  divided detector missed), a one-way side lane on a block whose two-way main
+  carriageway OSM maps as a way of a busier class (`block_context`'s
+  `side_lane`; review r3: K Street NW's tertiary service lanes beside its trunk
+  centre, 47 ways - such a lane also keeps OSM's lanes, the block's being the
+  main road's), a slip road, a motorway or a trunk road (C3), a roundabout, a
+  way that runs on onto a one-way block, a junction stub, and an unnamed way (a
+  turn channel beside the named street).
 - **D.** A slip road (`*_link`) keeps its own lanes and is never given a block's
   count (review r1: a one-lane ramp took its parent's block and read as 2 to 4
   lanes); the block is the parent road, not the ramp.
@@ -1136,6 +1148,14 @@ exception is counted as a disagreement with its reason:
 - **Baltimore's speed fills only where OSM has no `maxspeed`** (OWNER-DECISIONS
   184, "Fill gaps only (Recommended)"); DC's posted speed takes precedence
   (item 151).
+- **Owner overrides of a block's record.** A block the owner has corrected is
+  named, with the facts withheld, in an override file's `agency_blocks`
+  (`agency_roads.withheld_blocks`, read by `road_facts_by_way` from the image's
+  `fixtures/overrides/`; fixtures/overrides/README.md). Only the posted speed may
+  be withheld: OSM's stands on every way matched to the block, and the
+  discrepancy report lists the way as not applied, "owner override".
+  OWNER-DECISIONS 197 withholds DC's 20 mph on Canal Road NW (dc-4633425-0) and
+  the Whitehurst Freeway (dc-4636053-0), which stay LTS 4 on OSM's 35 mph.
 
 The wiring - the block context, the divided-road flag and each way's length -
 is in one place, `pipeline.conflation.overlay_road_facts`, which the rebuild and
@@ -1197,15 +1217,25 @@ classifier does read is OSM's `highway`, present everywhere in the region. Its
 one reader is the matcher's freeway check above; it is also kept for the
 reports and the decimal stress model (FOLLOWUP-DECIMAL-STRESS).
 
+**The discrepancy report** (OWNER-DECISIONS 191: "report the discrepancies when
+you see them") is written by every rebuild: the classification stage, from the
+overlay it classified with, writes `<DATA_ROOT>/rebuild/reports/dc-osm-discrepancies.md`
+and `.csv` (`pipeline.discrepancies`; `run.DISCREPANCY_REPORT_DIR`). Each
+District way where the Roadway Block and OSM disagree, by type, applied or not;
+the not-applied items (mostly item 190's carriageway exceptions) are summarised
+by reason with the longest as examples, every owner override is listed, and the
+CSV has every item. It costs one more classification of the District's matched
+ways (about 13,600) and never fails a rebuild: an error is logged as a warning
+and the stage goes on. The copy in `reports/data-comparison/` is the same report
+written from `dcbal.tsv` by the script below.
+
 **The comparison and match reports** are scripts, not stages:
 `scripts/analysis/data_before_after.py` (DC and Baltimore, with and without the
 layers, over the source extract, the rebuild's own steps; its output feeds
 `before_after_tables.py`, `match_report.py` and `dc_osm_discrepancies.py`, the
-last of which lists every District way where the Roadway Block and OSM disagree,
-by type, with whether the District's value was applied and why not, for the
-owner to review: OWNER-DECISIONS 191, regenerated with the others after each
-rebuild, `reports/data-comparison/dc-osm-discrepancies.md` and `.csv`; nothing
-in it is for importing into OSM, CC BY 4.0 into ODbL needing a waiver) and
+last of which writes the checked-in copy of the DC-against-OSM discrepancy
+report; nothing in it is for importing into OSM, CC BY 4.0 into ODbL needing a
+waiver) and
 `scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore`
 (an agency's LTS against ours, Alexandria's CC0 lanes and Baltimore's facility
 records against OSM; with `--roadway`, classified as the rebuild does, the

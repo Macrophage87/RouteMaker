@@ -1426,7 +1426,9 @@ the first host to run it is the first test of it.
 7. **Load the access overrides**, now that the admin from step 4 has signed
    in (the loader names that account with `--actor`) and step 6 has installed
    the crossings the rows depend on. Every file in `fixtures/overrides/`, each
-   dry run first, then `--confirm`, from the checkout:
+   dry run first, then `--confirm`, from the checkout (a file of block
+   corrections only, `agency_blocks`, says it has no rows to load: the rebuild
+   reads it from its image):
 
    ```sh
    docker compose exec -T api python manage.py load_access_overrides - \
@@ -1719,6 +1721,20 @@ the new containers against the new build before stopping the old ones — the
 blue/green arrangement the plan describes, which would make the swap invisible
 to a request in flight — is phase 2; it is recorded in the handoff rather than
 built here.
+
+### The DC-against-OSM discrepancy report
+
+Each rebuild writes it for the owner (OWNER-DECISIONS 191: "report the
+discrepancies when you see them"), from the overlay it classified with, to
+`${DATA_ROOT}/rebuild/reports/dc-osm-discrepancies.md` and `.csv` on the host:
+every District way where DC's Roadway Block and OSM disagree, by type, whether
+the District's value was applied (item 190) and, where not, why - the
+not-applied items summarised by reason, the owner's overrides (item 197) listed
+in full, every item in the CSV. Nothing needs running; the rebuild log says
+"DC-against-OSM discrepancy report: N items on M ways, written to ...". It
+replaces last week's. A failure to write it is a warning in the log and never
+fails the rebuild. Nothing in it is for importing into OSM (CC BY 4.0 against
+ODbL). docs/DEVELOPMENT.md, "Agency street layers", has what it lists.
 
 ## Deployment actions
 

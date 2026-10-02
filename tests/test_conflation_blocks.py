@@ -540,3 +540,50 @@ def test_a_layer_that_classes_no_road_keeps_name_free_matching() -> None:
         [way(1, line((0, 4), (200, 4)))], [record], {1: "Columbia Pike"}, name_free={1}
     )
     assert result.matched[1][0].feature_id == "moco"
+
+
+# -- review r3 ------------------------------------------------------------------------
+
+
+def test_a_proposed_road_takes_no_block() -> None:
+    """Review r3: `highway=proposed` ways (17th Street NE 1075230957, I Street NE
+    1248940124) took blocks; a road on a plan is not the street."""
+    street = block("k", line((0, 0), (200, 0)), "K ST NW")
+    along = line((0, 3), (200, 3))
+    proposed = _Way(1, {"highway": "proposed", "proposed": "residential", "name": "K St"}, along)
+    built = _Way(2, {"highway": "residential", "name": "K St"}, along)
+    facts = _facts_for(proposed, built, blocks=[street])
+    assert set(facts) == {2}
+
+
+@pytest.mark.parametrize(("oneway", "lane"), [("yes", "backward"), ("-1", "forward")])
+def test_the_way_s_osm_direction_places_a_flagged_lane(oneway, lane) -> None:
+    """Review r3, should-fix 1, through the rebuild's wiring: a flagged block with
+    no recorded direction puts its lone lane against OSM's one-way."""
+    flagged = RoadFeature(
+        "t",
+        line((0, 0), (200, 0)),
+        RoadFacts(agency=DC_AGENCY, name="T ST NW", way="one", bike={"ob": 1}, contraflow=True),
+    )
+    t_street = _Way(
+        1, {"highway": "residential", "name": "T Street", "oneway": oneway}, line((0, 3), (200, 3))
+    )
+    facts = _facts_for(t_street, blocks=[flagged])[1]
+    assert (facts.bike_forward, facts.bike_backward) == ((0, 1) if lane == "backward" else (1, 0))
+
+
+def test_the_owner_s_withheld_blocks_are_read_by_default() -> None:
+    """OWNER-DECISIONS 197: the matcher reads the checked-in `agency_blocks`
+    (fixtures/overrides/2026-10-02-owner-canal-whitehurst.json) unless told
+    otherwise, so the rebuild and the reports withhold the same speeds."""
+    canal = RoadFeature(
+        "dc-4633425-0",
+        line((0, 0), (200, 0)),
+        RoadFacts(agency=DC_AGENCY, name="CANAL RD NW", speed_mph={"ob": 20}, way="both"),
+    )
+    road = _Way(1, {"highway": "trunk", "name": "Canal Road Northwest"}, line((0, 3), (200, 3)))
+    entries = [(1, road.coordinates, False)]
+    held, _ = road_facts_by_way([road], entries, [canal])
+    assert (held[1].speed_mph, held[1].speed_withheld_mph) == (None, 20)
+    applied, _ = road_facts_by_way([road], entries, [canal], withheld={})
+    assert (applied[1].speed_mph, applied[1].speed_withheld_mph) == (20, None)

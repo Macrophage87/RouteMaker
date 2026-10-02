@@ -49,6 +49,7 @@ from routemaker.stress import classify, is_rough, is_unpaved
 from . import (
     borders,
     conflation,
+    discrepancies,
     elevation,
     extract,
     overrides,
@@ -68,6 +69,9 @@ logger = logging.getLogger(__name__)
 
 # How many matched block ids are written to a segment's `attr_sources`.
 MAX_RECORDED_BLOCKS = 12
+# Where each rebuild writes the DC-against-OSM discrepancy report (OWNER-DECISIONS
+# 191), under its work directory: `<DATA_ROOT>/rebuild/reports/` on the host.
+DISCREPANCY_REPORT_DIR = "reports"
 
 # What one of the two validation reads answers with; see `_read_back`.
 _Read = TypeVar("_Read")
@@ -1011,6 +1015,9 @@ def build_handlers(
             context.ways, context.road_facts_by_way, divided_ways, separate_roads
         )
         precedence: Counter = Counter()
+        # The District's matched ways, for the discrepancy report: (way, the
+        # tags the classifier read, its count, its overlay).
+        reported: list[tuple] = []
         for way in context.ways:
             match = context.aadt_by_way.get(way.osm_id)
             tags = way.tags
@@ -1052,6 +1059,8 @@ def build_handlers(
                     context.stress_by_way[way.osm_id],
                     attr_sources=context.road_attr_sources[way.osm_id],
                 )
+                if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
+                    reported.append((way, tags, match, overlaid))
         if context.road_facts_by_way:
             # Where an agency's record and the way's own tags disagree and the way
             # was left alone (an OSM lane the agency does not record; an OSM
@@ -1066,12 +1075,68 @@ def build_handlers(
                 dict(sorted(kinds.items())) or "none",
                 dict(sorted(precedence.items())) or "none",
             )
+        if reported:
+            write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
         context.speed_corrected = used
         unused = sorted(set(speeds) - used)
         if unused:
             # Posted since, or gone from the extract: either way the row is no
             # longer what sets the way's speed, which a reviewer should know.
             logger.warning("curated speed limits not applied (posted, or no such way): %s", unused)
+
+    def write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of) -> None:
+        """The DC-against-OSM discrepancy report for the owner, each rebuild
+        (OWNER-DECISIONS 191), from the overlay this rebuild classified with:
+        `<DATA_ROOT>/rebuild/reports/dc-osm-discrepancies.md` and `.csv`. A
+        report, not a stage's output: it never fails the rebuild. The tier with
+        OSM's tags alone is the classifier's on the way's own tags with the count
+        a count layer gave it (not a block's), as `data_before_after.py` has it."""
+        reference = context.require_reference()
+        try:
+            rows = []
+            for way, tags, match, overlaid in reported:
+                counted = match if match is not None and match.source != "inventory" else None
+                osm_tags, _ = speed_corrections.corrected(way.tags, speeds.get(way.osm_id))
+                if way.tags.get("highway") in discrepancies.NOT_ROADS:
+                    continue
+                before = classify(
+                    osm_tags,
+                    aadt=counted.aadt if counted else None,
+                    aadt_source=counted.agency if counted else None,
+                    aadt_year=counted.year if counted else None,
+                    urban=way.osm_id in reference.urban_way_ids,
+                    jurisdiction=state_of.get(way.osm_id),
+                    divided=way.osm_id in divided_ways,
+                    separate_facility=way.osm_id in separate_roads,
+                )
+                facts = context.road_facts_by_way[way.osm_id]
+                rows.append(
+                    discrepancies.row(
+                        way=way.osm_id,
+                        name=way.tags.get("name"),
+                        highway=way.tags.get("highway", ""),
+                        length_m=conflation._length_m(way.coordinates),
+                        blocks=facts.blocks,
+                        tier0=int(before.tier),
+                        tier1=int(context.stress_by_way[way.osm_id].tier),
+                        disagreements=overlaid.disagreements,
+                        agreements=overlaid.agreements,
+                        osm=way.tags,
+                        after=tags,
+                        facts=discrepancies.facts_summary(facts),
+                        sources={**overlaid.sources, "aadt": agency_roads.aadt_source(match)},
+                    )
+                )
+            out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
+            found = discrepancies.write_report(rows, out_dir, discrepancies.REBUILD_SOURCE)
+            logger.info(
+                "DC-against-OSM discrepancy report: %d items on %d ways, written to %s",
+                len(found),
+                len(rows),
+                out_dir,
+            )
+        except Exception:
+            logger.warning("DC-against-OSM discrepancy report not written", exc_info=True)
 
     def tag_jurisdictions() -> None:
         """Annotate each way with the authorities its geometry falls under.

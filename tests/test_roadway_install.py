@@ -188,3 +188,20 @@ def test_an_internal_only_layer_is_refused_and_nothing_is_written(tmp_path, laye
         # Refused before anything is written (review r2: the crossings fixture
         # was installed first).
         assert not (tmp_path / "data" / "reference").exists(), flag
+
+
+def test_an_internal_only_volume_layer_is_refused_before_anything_is_written(
+    tmp_path, layers
+) -> None:
+    """M34 of review r3: `--volume` goes through the same refusal as the street
+    layers, before the reference directory is made."""
+    dc, _balt = layers
+    hidden = tmp_path / "internal-only" / "arlington-bci" / "counts.geojson"
+    hidden.parent.mkdir(parents=True)
+    hidden.write_text(dc.read_text())
+    done = install(
+        tmp_path, "--volume", str(hidden), "--volume-source", "ddot", "--volume-year", "2024"
+    )
+    assert done.returncode == 2
+    assert "internal comparison only" in done.stderr
+    assert not (tmp_path / "data" / "reference").exists()

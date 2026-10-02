@@ -77,6 +77,12 @@ def parse_file(text: str, label: str) -> list[dict]:
     if not isinstance(document, dict) or document.get("version") != 1:
         raise CommandError(f"{label} is not a version 1 override file")
     rows = document.get("rows")
+    if rows == [] and document.get("agency_blocks"):
+        # A file of block corrections only (OWNER-DECISIONS 197): the rebuild
+        # reads its `agency_blocks` from the image, and there is nothing to load
+        # (fixtures/overrides/README.md). Accepted so every file in the directory
+        # can be passed to this command, as docs/OPERATIONS.md has it.
+        return []
     if not isinstance(rows, list) or not rows:
         raise CommandError(f"{label} has no rows")
 
@@ -240,6 +246,12 @@ class Command(BaseCommand):
         else:
             label, text = path, Path(path).read_text()
         rows = parse_file(text, label)
+        if not rows:
+            self.stdout.write(
+                f"{label} has no rows to load: its agency_blocks are read by the rebuild "
+                "from the image"
+            )
+            return
         actor = resolve_actor(options["actor"], attempt=options["confirm"])
         steps = plan(rows)
 

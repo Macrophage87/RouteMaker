@@ -721,3 +721,19 @@ class TestStressAdjustments:
                 "--confirm",
             )
         assert Override.objects.get().value["tier"] == 4
+
+
+@pytest.mark.django_db
+def test_a_file_of_block_corrections_only_has_nothing_to_load(admin, tmp_path) -> None:
+    """OWNER-DECISIONS 197: the Canal Road and Whitehurst Freeway file withholds two
+    DC blocks' speed, which the rebuild reads from the image (`agency_blocks`). The
+    loader, given every file in fixtures/overrides/, writes nothing for it."""
+    path = REPO / "fixtures" / "overrides" / "2026-10-02-owner-canal-whitehurst.json"
+    output = load(str(path), "--actor", str(admin.discord_user_id), "--confirm")
+    assert "has no rows to load" in output
+    assert counts() == (0, 0)
+    # A file with neither rows nor block corrections is still refused.
+    empty = tmp_path / "empty.json"
+    empty.write_text(json.dumps({"version": 1, "rows": [], "agency_blocks": []}))
+    with pytest.raises(CommandError, match="has no rows"):
+        load(str(empty), "--actor", str(admin.discord_user_id))

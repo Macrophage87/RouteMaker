@@ -82,6 +82,7 @@ from collections import defaultdict
 from collections.abc import Collection, Iterator, Mapping
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
+from typing import NamedTuple
 
 METRES_PER_FOOT = 0.3048
 
@@ -101,6 +102,11 @@ MAX_POSTED_MPH = 80
 BIKE_NONE, BIKE_LANE, BIKE_BUFFERED, BIKE_PROTECTED = 0, 1, 2, 3
 
 DIRECTIONS = ("ib", "ob")
+
+# Roads that are not built yet take no block: OSM's `highway=proposed` is a
+# line on a plan, and review r3 found 17th Street NE 1075230957 and I Street NE
+# 1248940124 taking blocks.
+UNBUILT_HIGHWAYS = frozenset({"proposed"})
 
 # Ways of these classes take a street block only where the street name agrees: a
 # service road or a track runs beside a street without being it.
@@ -132,7 +138,19 @@ CLASSED_AGENCIES = frozenset({DC_AGENCY, BALTIMORE_AGENCY})
 # two-way tagging, but not on a way shorter than this: a junction stub of a few
 # metres is the turn between two streets, and the block it lies along describes
 # one of them (review r2: New Jersey Avenue NW at 17 m, 1st Street NE at 9 m).
+# Inclusive, and to the whole metre the reports print (`is_junction_stub`):
+# review r3 found New Jersey Avenue NW 1508260473, listed at 30 m (30.2 m
+# measured), overridden as "not below" the threshold.
 MIN_ONE_WAY_OVERRIDE_M = 30.0
+
+
+def is_junction_stub(length_m: float | None) -> bool:
+    """Whether a way is a junction stub that a block's direction record does not
+    override (rows B and C4): at most MIN_ONE_WAY_OVERRIDE_M, measured to the
+    whole metre. A way's length is a digitising artefact well beyond a metre, so
+    the threshold is applied at the precision every report states it in."""
+    return length_m is not None and round(length_m) <= MIN_ONE_WAY_OVERRIDE_M
+
 
 # The road classes whose one-way OSM tagging a two-way block never undoes: a
 # freeway's or a trunk road's one-way ways are its carriageways, and the block
@@ -144,6 +162,47 @@ CARRIAGEWAY_HIGHWAYS = frozenset({"motorway", "trunk"})
 # "Fill gaps only (Recommended)" (OWNER-DECISIONS 184). DC's posted limits take
 # precedence over OSM's (item 151).
 SPEED_FILLS_ONLY = frozenset({BALTIMORE_AGENCY})
+
+# The owner's corrections to a District block's record (OWNER-DECISIONS 197),
+# read by the matcher from the image's `fixtures/overrides/`, the directory the
+# owner's other decided corrections are checked in to: a file's `agency_blocks`
+# (fixtures/overrides/README.md). Each names a block and the facts of it that
+# are withheld, so OSM's value stands; only the posted speed may be withheld.
+OVERRIDES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "overrides"
+WITHHOLDABLE = frozenset({"speed"})
+# How the report names a value the owner withheld (dc-osm-discrepancies).
+OWNER_OVERRIDE = "owner override"
+
+
+class WithheldBlockRefused(ValueError):
+    """An `agency_blocks` entry is malformed, or names a fact that cannot be withheld."""
+
+
+def withheld_blocks(directory: str | Path | None = None) -> dict[str, frozenset[str]]:
+    """{block id: the facts withheld} from every override file's `agency_blocks`
+    in `directory` (OVERRIDES_DIR). A file without the key has none."""
+    held: dict[str, set[str]] = defaultdict(set)
+    for path in sorted(Path(directory or OVERRIDES_DIR).glob("*.json")):
+        document = json.loads(path.read_text())
+        entries = document.get("agency_blocks", []) if isinstance(document, dict) else None
+        if not isinstance(entries, list):
+            raise WithheldBlockRefused(f"{path.name}: agency_blocks must be a list")
+        for index, entry in enumerate(entries):
+            where = f"{path.name} agency_blocks[{index}]"
+            block = entry.get("block") if isinstance(entry, dict) else None
+            if not isinstance(block, str) or not block:
+                raise WithheldBlockRefused(f"{where}: block must be a block id")
+            facts = entry.get("withhold")
+            if not isinstance(facts, list) or not facts or not set(facts) <= WITHHOLDABLE:
+                raise WithheldBlockRefused(
+                    f"{where}: withhold must list facts from {sorted(WITHHOLDABLE)}"
+                )
+            for name in ("reason", "evidence"):
+                if not isinstance(entry.get(name), str) or not entry[name].strip():
+                    raise WithheldBlockRefused(f"{where}: {name} is required")
+            held[block].update(facts)
+    return {block: frozenset(facts) for block, facts in held.items()}
+
 
 # The directory the internal-comparison layers are kept in. Arlington's Bike
 # Comfort Index and Alexandria's Transport Streets are for internal comparison
@@ -584,6 +643,9 @@ class WayFacts:
     # order of `blocks`; None where unknown.
     alongs: tuple[bool | None, ...] = ()
     speed_mph: int | None = None
+    # The posted speed of the blocks whose speed the owner withholds
+    # (`withheld_blocks`, OWNER-DECISIONS 197), for the report; never applied.
+    speed_withheld_mph: int | None = None
     speed_by_direction: dict[str, int] = field(default_factory=dict)
     # The busiest direction's through lanes on any block, direction unknown.
     lanes_per_direction: int | None = None
@@ -679,7 +741,9 @@ def _directional_lanes(facts: RoadFacts, label: str) -> int | None:
     return count + facts.lanes.get("reversible", 0)
 
 
-def _block_bike(facts: RoadFacts, along: bool | None) -> tuple[int, int] | None:
+def _block_bike(
+    facts: RoadFacts, along: bool | None, osm_forward: bool | None = None
+) -> tuple[int, int] | None:
     """One block's facility rank in the way's (forward, backward) directions, or
     None where the way's direction along the block is unknown.
 
@@ -687,7 +751,16 @@ def _block_bike(facts: RoadFacts, along: bool | None) -> tuple[int, int] | None:
     trusted (review r2, the module docstring): its lane - whichever label it
     carries - is the lane running with the block's traffic, and nothing runs
     against it. Only a flagged block keeps a lane against its traffic, which is
-    then a contraflow lane (`_facility_tags`)."""
+    then a contraflow lane (`_facility_tags`).
+
+    A flagged one-way block whose traffic direction DC does not record
+    (`oneway_with` None) has nothing to read its lone lane's label against, and
+    the flag says the lane runs against the traffic: it is put against the
+    way's own OSM one-way direction (`osm_forward`, True where OSM's traffic
+    runs the way's digitising direction). Review r3: on Argonne Place,
+    Champlain Street, T Street and 8th Street NW the label put it with the
+    traffic, and OSM's contraflow lane became a with-flow lane that is not
+    there."""
     labels = _labels(along)
     if labels is None:
         return None
@@ -698,18 +771,34 @@ def _block_bike(facts: RoadFacts, along: bool | None) -> tuple[int, int] | None:
         with_flow, against = (ahead, behind) if traffic_forward else (behind, ahead)
         rank = with_flow or against
         return (rank, BIKE_NONE) if traffic_forward else (BIKE_NONE, rank)
+    if (
+        facts.way == "one"
+        and facts.contraflow
+        and facts.oneway_with is None
+        and osm_forward is not None
+        and (ahead == BIKE_NONE) != (behind == BIKE_NONE)
+    ):
+        rank = ahead or behind
+        return (BIKE_NONE, rank) if osm_forward else (rank, BIKE_NONE)
     return ahead, behind
 
 
 def aggregate(
     blocks: list[tuple[str, RoadFacts]] | list[tuple[str, RoadFacts, bool | None]],
     names: bool | None = None,
+    *,
+    osm_forward: bool | None = None,
+    withheld: Mapping[str, Collection[str]] | None = None,
 ) -> WayFacts:
     """`WayFacts` for a way from the (block id, facts[, along]) lying along it.
 
     `along` is whether the way runs with the block's digitising direction
     (`pipeline.conflation.BlockShare.along`); without it the directions are
-    unknown and the way takes the busier one in both.
+    unknown and the way takes the busier one in both. `osm_forward` is the
+    way's OSM one-way direction (`_block_bike`), None where OSM has it two-way.
+    `withheld` is the facts the owner withholds per block (`withheld_blocks`):
+    a withheld speed is left out of `speed_mph` and kept as
+    `speed_withheld_mph`, for the report.
     """
     if not blocks:
         raise ValueError("a way with no blocks has no facts")
@@ -717,8 +806,13 @@ def aggregate(
     alongs = [entry[2] if len(entry) > 2 else None for entry in blocks]
     direction_known = all(along is not None for along in alongs)
 
+    held = withheld or {}
     speeds: dict[str, int] = {}
-    for f in facts:
+    withheld_speeds: list[int] = []
+    for entry, f in zip(blocks, facts, strict=True):
+        if "speed" in held.get(entry[0], ()):
+            withheld_speeds.extend(f.speed_mph.values())
+            continue
         for label, mph in f.speed_mph.items():
             speeds[label] = max(speeds.get(label, 0), mph)
 
@@ -769,7 +863,9 @@ def aggregate(
             bike[direction] = min(ranks)
     bike_forward = bike_backward = bike_forward_most = bike_backward_most = BIKE_NONE
     if direction_known:
-        per_block_bike = [_block_bike(f, along) for f, along in zip(facts, alongs, strict=True)]
+        per_block_bike = [
+            _block_bike(f, along, osm_forward) for f, along in zip(facts, alongs, strict=True)
+        ]
         bike_forward = min(ranks[0] for ranks in per_block_bike if ranks is not None)
         bike_backward = min(ranks[1] for ranks in per_block_bike if ranks is not None)
         bike_forward_most = max(ranks[0] for ranks in per_block_bike if ranks is not None)
@@ -794,6 +890,7 @@ def aggregate(
         blocks=tuple(entry[0] for entry in blocks),
         alongs=tuple(alongs),
         speed_mph=max(speeds.values()) if speeds else None,
+        speed_withheld_mph=max(withheld_speeds) if withheld_speeds else None,
         speed_by_direction=speeds,
         lanes_per_direction=per_direction,
         lanes_by_direction=lanes,
@@ -865,6 +962,14 @@ class Overlay:
 
 def _oneway_tag(tags: Mapping[str, str]) -> bool:
     return tags.get("oneway") in ("yes", "1", "-1", "true")
+
+
+def osm_forward(tags: Mapping[str, str]) -> bool | None:
+    """On an OSM one-way, whether its traffic runs the way's digitising
+    direction (`oneway=-1` runs against it); None on a way OSM has two-way."""
+    if not _oneway_tag(tags):
+        return None
+    return tags.get("oneway") != "-1"
 
 
 def _osm_two_way(tags: Mapping[str, str]) -> bool:
@@ -1034,7 +1139,7 @@ def _keep_osm_two_way(facts: WayFacts, length_m: float | None) -> str | None:
     if facts.lanes_by_direction.get("reversible"):
         # Clara Barton Parkway (review r2): one-way at the peak, two-way outside it.
         return "reversible lanes"
-    if length_m is not None and length_m < MIN_ONE_WAY_OVERRIDE_M:
+    if is_junction_stub(length_m):
         return "junction stub"
     if facts.oneway_forward is None:
         return "direction unknown"
@@ -1047,22 +1152,26 @@ def _keep_osm_one_way(
     divided: bool,
     paired: bool,
     length_m: float | None,
+    side_lane: bool = False,
 ) -> str | None:
     """Why a District two-way record does not override OSM's one-way tag on this
     way (OWNER-DECISIONS 190, rows C1-C3), or None where it does (row C4). The
     block is the whole road: a two-way record cannot make one carriageway of it
-    two-way."""
+    two-way, nor a one-way side lane beside its two-way main carriageway
+    (`side_lane`, `block_context`)."""
     if divided:
         return "divided carriageway"
     if is_link(tags) or tags.get("highway") in CARRIAGEWAY_HIGHWAYS:
         return "slip road or freeway"
     if paired:
         return "carriageway pair"
+    if side_lane:
+        return "side lane beside a two-way carriageway"
     if tags.get("junction") in ("roundabout", "circular"):
         return "roundabout"
     if not facts.two_way_throughout:
         return "one-way blocks along it"
-    if length_m is not None and length_m < MIN_ONE_WAY_OVERRIDE_M:
+    if is_junction_stub(length_m):
         # A turn channel or a stub at a junction, not the street.
         return "junction stub"
     if facts.names_agree is not True:
@@ -1079,6 +1188,7 @@ def overlay(
     *,
     divided: bool = False,
     paired: bool = False,
+    side_lane: bool = False,
     length_m: float | None = None,
     rows: Collection[str] = ROWS_190,
 ) -> Overlay:
@@ -1105,14 +1215,20 @@ def overlay(
       removed (a track OSM maps on the road is kept and reported);
     * B, one-way recorded where OSM says two-way in so many words: the way is
       one-way - except on a block with reversible lanes, on a junction stub
-      shorter than MIN_ONE_WAY_OVERRIDE_M (`length_m`), or where the direction
-      is not known;
+      of MIN_ONE_WAY_OVERRIDE_M or less (`length_m`, `is_junction_stub`), or
+      where the direction is not known;
     * C4, two-way recorded on every block where OSM says one-way: the way is
       two-way - except a carriageway of a divided road (`divided`, from
       `routemaker.divided`), one of a pair of opposite one-way ways sharing the
-      block (`paired`, `block_context`), a slip road, a freeway or trunk road,
-      a roundabout, a junction stub, and a way whose name does not agree with
-      its blocks' (an unnamed turn channel).
+      block (`paired`, `block_context`), a one-way side lane on a block whose
+      main carriageway OSM maps as a two-way way (`side_lane`, `block_context`;
+      review r3: K Street NW's service lane beside its two-way centre), a slip
+      road, a freeway or trunk road, a roundabout, a junction stub, and a way
+      whose name does not agree with its blocks' (an unnamed turn channel).
+
+    A posted speed the owner has withheld for a block (`withheld_blocks`,
+    OWNER-DECISIONS 197) is not applied: OSM's stands, and the disagreement is
+    reported as an owner override.
 
     `rows` is the rows applied, all of them unless a report measures what one
     of them does by leaving it out (`scripts/analysis/data_before_after.py`).
@@ -1160,7 +1276,7 @@ def overlay(
             )
     elif facts.one_way is False and osm_oneway:
         keep = (
-            _keep_osm_one_way(tags, facts, divided, paired, length_m)
+            _keep_osm_one_way(tags, facts, divided, paired, length_m, side_lane)
             if record_wins and ROW_TWO_WAY in rows
             else "agency"
         )
@@ -1189,19 +1305,28 @@ def overlay(
         sources["maxspeed"] = SOURCE_OSM if osm_speed else SOURCE_DEFAULT
         if facts.speed_mph is not None and osm_speed != f"{facts.speed_mph} mph":
             disagreements.append("maxspeed: agency and OSM differ, OSM's posted speed kept")
+        elif facts.speed_mph is None and facts.speed_withheld_mph is not None:
+            disagreements.append(
+                f"maxspeed: agency {facts.speed_withheld_mph} mph withheld by the owner, "
+                f"OSM kept ({OWNER_OVERRIDE})"
+            )
 
     # -- lanes in each direction. The classifier reads the larger of
     # `lanes:forward` and `lanes:backward` where either is present, and `lanes`
     # (halved on a two-way road) otherwise. A slip road keeps its own. A two-way
     # way whose blocks record lanes in one of its directions only (a one-way
     # block, where the way stays two-way) keeps OSM's: the busier direction's
-    # count is not copied into the other (review r2).
+    # count is not copied into the other (review r2). So does a one-way side
+    # lane beside a two-way main carriageway (`side_lane`): the block's lanes are
+    # the main road's (review r3, K Street NW).
     one_direction_only = (
         not one_way
         and facts.direction_known
         and (facts.lanes_forward is None) != (facts.lanes_backward is None)
     )
-    if facts.lanes_per_direction and not is_link(tags) and not one_direction_only:
+    # A side lane is an OSM one-way that C4 leaves one-way.
+    side = side_lane
+    if facts.lanes_per_direction and not is_link(tags) and not one_direction_only and not side:
         per = facts.lanes_per_direction
         for key in ("lanes", "lanes:forward", "lanes:backward"):
             out.pop(key, None)
@@ -1217,6 +1342,8 @@ def overlay(
         sources["lanes"] = SOURCE_OSM if has_lanes else SOURCE_DEFAULT
         if one_direction_only and facts.lanes_per_direction and not is_link(tags):
             disagreements.append("lanes: agency records one direction of a two-way way, OSM kept")
+        elif side and facts.lanes_per_direction and not is_link(tags):
+            disagreements.append("lanes: a side lane beside a two-way carriageway, OSM kept")
 
     # -- bike facility. Where the agency records one, it is written in place of
     # OSM's (unless OSM maps it as its own way, or says the road has none for a
@@ -1296,12 +1423,52 @@ def overlay(
     return Overlay(out, sources, tuple(disagreements), tuple(agreements), tuple(precedence))
 
 
+class BlockContext(NamedTuple):
+    """What the ways sharing a block say about each other (`block_context`)."""
+
+    separate: frozenset[int]
+    paired: frozenset[int]
+    side_lane: frozenset[int]
+
+
+# OSM's road classes, busiest first: a side lane is a one-way way of a lower
+# class than the two-way main carriageway on its block (`block_context`).
+HIGHWAY_RANK = {
+    highway: rank
+    for rank, classes in enumerate(
+        (
+            ("motorway",),
+            ("trunk",),
+            ("primary",),
+            ("secondary",),
+            ("tertiary",),
+            ("unclassified", "residential"),
+            ("living_street",),
+            ("service",),
+            ("track",),
+        )
+    )
+    for highway in classes
+}
+
+
+def _main_rank(tags: Mapping[str, str]) -> int | None:
+    """The class rank of a way OSM maps as a block's two-way main carriageway,
+    or None for a one-way or a class not ranked (a slip road). A service way
+    or a track ranks below every street, so a driveway or an aisle along the
+    block makes no street beside it a side lane."""
+    if _oneway_tag(tags):
+        return None
+    return HIGHWAY_RANK.get(tags.get("highway", ""))
+
+
 def block_context(
     facts_by_way: Mapping[int, WayFacts],
     tags_by_way: Mapping[int, Mapping[str, str]],
     separate_roads: Collection[int] = (),
-) -> tuple[frozenset[int], frozenset[int]]:
-    """(separate, paired): what the ways sharing a block say about each other.
+) -> BlockContext:
+    """(separate, paired, side_lane): what the ways sharing a block say about
+    each other.
 
     `separate` is the ways one of whose blocks is matched to a way whose bike
     facility OSM maps as its own way (`cycleway*=separate`, or in
@@ -1313,15 +1480,31 @@ def block_context(
     runs the other way along it: the two carriageways of one road, which
     `routemaker.divided` did not pair (review r2, item 190 row C2).
 
-    Both are read by `overlay` as the rebuild and the analysis scripts call it,
+    `side_lane` is the OSM one-way ways sharing a block with a way OSM maps as
+    the road's two-way main carriageway, of a busier class than theirs
+    (`_main_rank`): a service lane beside the through lanes, which the block's
+    record describes as part of the one road (review r3: K Street NW
+    924793627, a tertiary one-way service lane 12 m from the two-way trunk
+    centre, was made two-way with two lanes each way, LTS 1 to 3; it has no
+    opposite service lane on its block, so it is not `paired`). A one-way way
+    of the main road's own class is not one: where a road divides partway
+    along a block, its one-way carriageways and its two-way stretch share the
+    block (measured: 808 of the 855 ways a class-blind reading caught).
+
+    All three are read by `overlay` as the rebuild and the analysis scripts call it,
     so the two cannot drift apart.
     """
     separate_blocks: set[str] = set()
+    main_rank: dict[str, int] = {}
     directions: dict[str, set[bool]] = defaultdict(set)
     for way_id, facts in facts_by_way.items():
         tags = tags_by_way[way_id]
         if way_id in separate_roads or _osm_separate(tags):
             separate_blocks.update(facts.blocks)
+        rank = _main_rank(tags)
+        if rank is not None:
+            for block in facts.blocks:
+                main_rank[block] = min(rank, main_rank.get(block, rank))
         if _oneway_tag(tags):
             reverse = tags.get("oneway") == "-1"
             for block, along in zip(facts.blocks, facts.alongs, strict=False):
@@ -1339,7 +1522,15 @@ def block_context(
         if _oneway_tag(tags_by_way[way_id])
         and any(block in paired_blocks for block in facts.blocks)
     )
-    return separate, paired
+    side_lane = set()
+    for way_id, facts in facts_by_way.items():
+        tags = tags_by_way[way_id]
+        rank = HIGHWAY_RANK.get(tags.get("highway", ""))
+        if not _oneway_tag(tags) or rank is None:
+            continue
+        if any(rank > main_rank.get(block, rank) for block in facts.blocks):
+            side_lane.add(way_id)
+    return BlockContext(separate, paired, frozenset(side_lane))
 
 
 def block_count_applies(tags: Mapping[str, str]) -> bool:

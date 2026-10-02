@@ -14,16 +14,16 @@ contraflow,422204107,https://www.openstreetmap.org/way/422204107,Massachusetts A
 contraflow,807874680,https://www.openstreetmap.org/way/807874680,6th Street Northeast,tertiary,0.107,"dc-4635217-0,dc-4635863-0",cycleway=separate,contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,2,2
 contraflow,6055550,https://www.openstreetmap.org/way/6055550,17th Street Northwest,tertiary,0.105,"dc-4630610-0,dc-4632088-0,dc-4634573-0",cycleway:right=shared_lane,contraflow lane flagged,1,,2,2
 contraflow,1024231035,https://www.openstreetmap.org/way/1024231035,6th Street Northeast,tertiary,0.104,"dc-4635708-0,dc-4636594-0,dc-4635863-0",cycleway=separate,contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,2,2
-contraflow,1340682789,https://www.openstreetmap.org/way/1340682789,8th Street Northwest,residential,0.096,dc-4633771-0,cycleway=shared_lane,contraflow lane flagged,0,"carriageway: the other direction's lane, or no contraflow flag",1,2
+contraflow,1340682789,https://www.openstreetmap.org/way/1340682789,8th Street Northwest,residential,0.096,dc-4633771-0,cycleway=shared_lane,contraflow lane flagged,1,,1,1
 contraflow,265733214,https://www.openstreetmap.org/way/265733214,I Street Southeast,tertiary,0.087,dc-4642636-0,cycleway=separate,contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,1,1
 contraflow,440942565,https://www.openstreetmap.org/way/440942565,New Hampshire Avenue Northwest,secondary,0.085,dc-4631266-0,cycleway:right=shared_lane,contraflow lane flagged,1,,3,3
-contraflow,1223411289,https://www.openstreetmap.org/way/1223411289,8th Street Northwest,residential,0.080,dc-4630450-0,cycleway=shared_lane,contraflow lane flagged,0,"carriageway: the other direction's lane, or no contraflow flag",1,2
+contraflow,1223411289,https://www.openstreetmap.org/way/1223411289,8th Street Northwest,residential,0.080,dc-4630450-0,cycleway=shared_lane,contraflow lane flagged,1,,1,1
 contraflow,109663677,https://www.openstreetmap.org/way/109663677,Ontario Road Northwest,residential,0.077,dc-4634511-0,no cycleway tag,contraflow lane flagged,1,,1,1
 contraflow,1111546582,https://www.openstreetmap.org/way/1111546582,17th Street Northwest,tertiary,0.076,"dc-4634088-0,dc-4630717-0",cycleway:right=shared_lane,contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,2,2
 contraflow,1364378490,https://www.openstreetmap.org/way/1364378490,Ontario Road Northwest,residential,0.076,dc-4631122-0,no cycleway tag,contraflow lane flagged,1,,1,1
 contraflow,6061239,https://www.openstreetmap.org/way/6061239,McDonald Place Northeast,residential,0.075,dc-4637108-0,"cycleway:left=lane, cycleway:right=shared_lane",contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,2,2
 contraflow,50473187,https://www.openstreetmap.org/way/50473187,E Street Southeast,secondary,0.073,dc-4640031-0,"cycleway:both=lane, cycleway:both:lane=exclusive",contraflow lane flagged,1,,2,3
-contraflow,6060358,https://www.openstreetmap.org/way/6060358,Champlain Street Northwest,residential,0.071,"dc-4630583-0,dc-4633223-0",cycleway:right=shared_lane,contraflow lane flagged,0,"carriageway: the other direction's lane, or no contraflow flag",2,2
+contraflow,6060358,https://www.openstreetmap.org/way/6060358,Champlain Street Northwest,residential,0.071,"dc-4630583-0,dc-4633223-0",cycleway:right=shared_lane,contraflow lane flagged,1,,2,2
 contraflow,50842701,https://www.openstreetmap.org/way/50842701,4th Street Northwest,tertiary,0.067,dc-4626142-0,"cycleway:left=separate, cycleway:right=shared_lane",contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,1,1
 contraflow,1257758384,https://www.openstreetmap.org/way/1257758384,M Street Northeast,secondary,0.057,dc-4636275-0,cycleway:right=shared_lane,contraflow lane flagged,1,,3,3
 contraflow,130808359,https://www.openstreetmap.org/way/130808359,Kentucky Avenue Southeast,tertiary,0.048,dc-4641983-0,"cycleway:left=separate, cycleway:right=lane",contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,2,2
@@ -36,7 +36,7 @@ contraflow,229105895,https://www.openstreetmap.org/way/229105895,Massachusetts A
 contraflow,409551583,https://www.openstreetmap.org/way/409551583,9th Street Northwest,primary,0.028,dc-4632294-0,"cycleway:left=separate, cycleway:right=no",contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,3,3
 contraflow,1128059084,https://www.openstreetmap.org/way/1128059084,New Jersey Avenue Southeast,residential,0.028,dc-4641040-0,cycleway=separate,contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,3,1
 contraflow,331912753,https://www.openstreetmap.org/way/331912753,(unnamed),tertiary_link,0.027,dc-4636276-0,no cycleway tag,contraflow lane flagged,1,,2,1
-contraflow,49301283,https://www.openstreetmap.org/way/49301283,Champlain Street Northwest,residential,0.026,dc-4633223-0,cycleway:right=shared_lane,contraflow lane flagged,0,"carriageway: the other direction's lane, or no contraflow flag",2,2
+contraflow,49301283,https://www.openstreetmap.org/way/49301283,Champlain Street Northwest,residential,0.026,dc-4633223-0,cycleway:right=shared_lane,contraflow lane flagged,1,,2,2
 contraflow,928153007,https://www.openstreetmap.org/way/928153007,10th Street Northeast,residential,0.025,dc-4639225-0,"cycleway:left=lane, cycleway:left:oneway=-1, cycleway:right=shared_lane, cycleway:right:lane=pictogram",contraflow lane flagged,1,,2,1
 contraflow,6057312,https://www.openstreetmap.org/way/6057312,Massachusetts Avenue Northeast,primary,0.025,dc-4638852-0,cycleway:right=lane,contraflow lane flagged,1,,2,2
 contraflow,1443801106,https://www.openstreetmap.org/way/1443801106,McDonald Place Northeast,residential,0.022,dc-4637108-0,"cycleway:left=separate, cycleway:right=shared_lane",contraflow lane flagged,0,separate: OSM maps the facility as its own way beside the road or its other carriageway,1,1
@@ -323,7 +323,7 @@ lanes,793523011,https://www.openstreetmap.org/way/793523011,Foxhall Road Northwe
 lanes,121980319,https://www.openstreetmap.org/way/121980319,(unnamed),primary_link,0.198,"dc-4642972-0,dc-4641001-0",1 a direction,3 a direction,0,slip road: its own lanes,3,3
 lanes,535538703,https://www.openstreetmap.org/way/535538703,Wisconsin Avenue Northwest,primary,0.198,"dc-4634638-0,dc-4634659-0",3 a direction,2 a direction,1,,3,4
 lanes,692124727,https://www.openstreetmap.org/way/692124727,Anacostia Freeway,motorway,0.198,dc-4640519-0,3 a direction,2 a direction,1,,4,4
-lanes,321477125,https://www.openstreetmap.org/way/321477125,K Street Northwest,primary,0.196,"dc-4632688-0,dc-4631757-0",1 a direction,2 a direction,1,,3,3
+lanes,321477125,https://www.openstreetmap.org/way/321477125,K Street Northwest,primary,0.196,"dc-4632688-0,dc-4631757-0",1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,3
 lanes,220099325,https://www.openstreetmap.org/way/220099325,Southeast Freeway,motorway,0.195,dc-4640700-0,2 a direction,3 a direction,1,,4,4
 lanes,132638130,https://www.openstreetmap.org/way/132638130,Fort Lincoln Drive Northeast,tertiary,0.193,"dc-4636016-0,dc-4638684-0,dc-4638661-0",2 a direction,3 a direction,1,,3,3
 lanes,24222939,https://www.openstreetmap.org/way/24222939,3rd Street Tunnel,motorway,0.193,dc-4642838-0,3 a direction,4 a direction,1,,4,4
@@ -495,7 +495,7 @@ lanes,1527589681,https://www.openstreetmap.org/way/1527589681,(unnamed),motorway
 lanes,1531815493,https://www.openstreetmap.org/way/1531815493,North Capitol Street,primary,0.129,"dc-4641074-0,dc-4641246-0",3 a direction,2 a direction,1,,3,3
 lanes,121980323,https://www.openstreetmap.org/way/121980323,(unnamed),motorway_link,0.129,"dc-4642648-0,dc-4642306-0",1 a direction,2 a direction,0,slip road: its own lanes,4,4
 lanes,334548417,https://www.openstreetmap.org/way/334548417,Maine Avenue Southwest,primary,0.129,"dc-4639541-0,dc-4641960-0,dc-4642299-0",2 a direction,3 a direction,1,,3,3
-lanes,1093448958,https://www.openstreetmap.org/way/1093448958,Lincoln Memorial Circle Southwest,service,0.129,"dc-4639974-0,dc-4641921-0,dc-4630228-0",1 a direction,3 a direction,1,,1,3
+lanes,1093448958,https://www.openstreetmap.org/way/1093448958,Lincoln Memorial Circle Southwest,service,0.129,"dc-4639974-0,dc-4641921-0,dc-4630228-0",1 a direction,3 a direction,0,side lane beside a two-way carriageway,1,2
 lanes,6053384,https://www.openstreetmap.org/way/6053384,(unnamed),motorway_link,0.128,"dc-4640390-0,dc-4640135-0",1 a direction,2 a direction,0,slip road: its own lanes,4,4
 lanes,6062809,https://www.openstreetmap.org/way/6062809,6th Street Southwest,tertiary,0.127,"dc-4641684-0,dc-4641901-0",2 a direction,1 a direction,1,,3,2
 lanes,50506190,https://www.openstreetmap.org/way/50506190,(unnamed),motorway_link,0.127,"dc-4642838-0,dc-4642727-0",1 a direction,4 a direction,0,slip road: its own lanes,4,4
@@ -618,7 +618,7 @@ lanes,6280747,https://www.openstreetmap.org/way/6280747,Potomac Avenue Southeast
 lanes,50505144,https://www.openstreetmap.org/way/50505144,(unnamed),motorway_link,0.106,"dc-4642838-0,dc-4642727-0",2 a direction,4 a direction,0,slip road: its own lanes,4,4
 lanes,226149910,https://www.openstreetmap.org/way/226149910,K Street Northwest,trunk,0.106,"dc-4625870-0,dc-4632688-0",2 a direction,3 a direction,1,,3,3
 lanes,296127980,https://www.openstreetmap.org/way/296127980,(unnamed),motorway_link,0.106,dc-4642286-0,1 a direction,3 a direction,0,slip road: its own lanes,4,4
-lanes,436136929,https://www.openstreetmap.org/way/436136929,K Street Northwest,tertiary,0.106,dc-4632818-0,1 a direction,2 a direction,1,,1,3
+lanes,436136929,https://www.openstreetmap.org/way/436136929,K Street Northwest,tertiary,0.106,dc-4632818-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,220099334,https://www.openstreetmap.org/way/220099334,(unnamed),motorway_link,0.106,dc-4642997-0,1 a direction,4 a direction,0,slip road: its own lanes,4,4
 lanes,961511394,https://www.openstreetmap.org/way/961511394,New Jersey Avenue Northwest,secondary,0.106,"dc-4633634-0,dc-4634570-0",1 a direction,3 a direction,1,,2,3
 lanes,987283618,https://www.openstreetmap.org/way/987283618,Maine Avenue Southwest,primary,0.106,"dc-4642585-0,dc-4643101-0,dc-4639527-0",3 a direction,2 a direction,1,,3,3
@@ -691,13 +691,13 @@ lanes,397288563,https://www.openstreetmap.org/way/397288563,Alabama Avenue South
 lanes,696806636,https://www.openstreetmap.org/way/696806636,E Street Northwest,primary,0.096,"dc-4633030-0,dc-4634265-0",2 a direction,4 a direction,1,,3,3
 lanes,1280512687,https://www.openstreetmap.org/way/1280512687,North Capitol Street Northwest,primary,0.096,dc-4640862-0,1 a direction,2 a direction,1,,3,3
 lanes,130772923,https://www.openstreetmap.org/way/130772923,South Dakota Avenue Northeast,primary,0.096,"dc-4634790-0,dc-4636718-0",3 a direction,4 a direction,1,,3,3
-lanes,1340682789,https://www.openstreetmap.org/way/1340682789,8th Street Northwest,residential,0.096,dc-4633771-0,2 a direction,1 a direction,1,,1,2
+lanes,1340682789,https://www.openstreetmap.org/way/1340682789,8th Street Northwest,residential,0.096,dc-4633771-0,2 a direction,1 a direction,1,,1,1
 lanes,238392206,https://www.openstreetmap.org/way/238392206,New Hampshire Avenue Northwest,secondary,0.095,dc-4633546-0,2 a direction,1 a direction,1,,3,3
 lanes,397293016,https://www.openstreetmap.org/way/397293016,Benning Road Northeast,primary,0.095,"dc-4637847-0,dc-4639317-0",3 a direction,4 a direction,1,,4,4
 lanes,440070187,https://www.openstreetmap.org/way/440070187,Chappie James Boulevard Southwest,tertiary,0.095,dc-4642612-0,3 a direction,2 a direction,1,,3,3
 lanes,468469935,https://www.openstreetmap.org/way/468469935,L Street Northwest,secondary,0.095,dc-4626161-0,3 a direction,2 a direction,1,,3,2
 lanes,468495101,https://www.openstreetmap.org/way/468495101,M Street Southwest,primary,0.095,dc-4642166-0,3 a direction,2 a direction,1,,3,3
-lanes,583705856,https://www.openstreetmap.org/way/583705856,K Street Northwest,tertiary,0.095,dc-4631637-0,1 a direction,2 a direction,1,,2,3
+lanes,583705856,https://www.openstreetmap.org/way/583705856,K Street Northwest,tertiary,0.095,dc-4631637-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,2,1
 lanes,1411428046,https://www.openstreetmap.org/way/1411428046,Independence Avenue Southeast,primary,0.095,dc-4641521-0,4 a direction,2 a direction,1,,3,3
 lanes,6053319,https://www.openstreetmap.org/way/6053319,(unnamed),motorway_link,0.094,dc-4636997-0,1 a direction,3 a direction,0,slip road: its own lanes,4,4
 lanes,29961103,https://www.openstreetmap.org/way/29961103,T Street Northwest,tertiary,0.094,dc-4634669-0,2 a direction,1 a direction,1,,3,1
@@ -730,7 +730,7 @@ lanes,470160787,https://www.openstreetmap.org/way/470160787,South Capitol Street
 lanes,590525585,https://www.openstreetmap.org/way/590525585,Minnesota Avenue Southeast,secondary,0.091,"dc-4640492-0,dc-4642311-0",1 a direction,2 a direction,1,,3,3
 lanes,590581492,https://www.openstreetmap.org/way/590581492,Minnesota Avenue Northeast,residential,0.091,"dc-4638880-0,dc-4638644-0",1 a direction,2 a direction,1,,2,3
 lanes,50716940,https://www.openstreetmap.org/way/50716940,(unnamed),motorway_link,0.091,"dc-4636997-0,dc-4637423-0",1 a direction,3 a direction,0,slip road: its own lanes,4,4
-lanes,108060074,https://www.openstreetmap.org/way/108060074,K Street Northwest,tertiary,0.091,dc-4631711-0,1 a direction,2 a direction,1,,1,3
+lanes,108060074,https://www.openstreetmap.org/way/108060074,K Street Northwest,tertiary,0.091,dc-4631711-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,130889705,https://www.openstreetmap.org/way/130889705,M Street Northwest,secondary,0.091,dc-4630489-0,3 a direction,2 a direction,1,,3,2
 lanes,131052324,https://www.openstreetmap.org/way/131052324,D Street Southwest,tertiary,0.091,dc-4641650-0,1 a direction,2 a direction,1,,2,3
 lanes,397355152,https://www.openstreetmap.org/way/397355152,(unnamed),motorway_link,0.091,dc-4643140-0,1 a direction,3 a direction,0,slip road: its own lanes,4,4
@@ -815,7 +815,7 @@ lanes,422623165,https://www.openstreetmap.org/way/422623165,13th Street Northwes
 lanes,913074358,https://www.openstreetmap.org/way/913074358,H Street Northeast,primary,0.083,dc-4636532-0,3 a direction,4 a direction,1,,3,3
 lanes,992136001,https://www.openstreetmap.org/way/992136001,16th Street Northwest,primary,0.083,dc-4634454-0,1 a direction,3 a direction,1,,3,3
 lanes,48018646,https://www.openstreetmap.org/way/48018646,(unnamed),primary,0.082,dc-4631606-0,1 a direction,2 a direction,1,,2,2
-lanes,49999716,https://www.openstreetmap.org/way/49999716,K Street Northwest,tertiary,0.082,dc-4633407-0,1 a direction,2 a direction,1,,1,3
+lanes,49999716,https://www.openstreetmap.org/way/49999716,K Street Northwest,tertiary,0.082,dc-4633407-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,126303355,https://www.openstreetmap.org/way/126303355,I Street Northwest,secondary,0.082,dc-4632857-0,4 a direction,3 a direction,1,,3,3
 lanes,297204276,https://www.openstreetmap.org/way/297204276,D Street Southwest,tertiary,0.082,dc-4640694-0,2 a direction,3 a direction,1,,3,3
 lanes,6051315,https://www.openstreetmap.org/way/6051315,(unnamed),trunk_link,0.081,"dc-4640033-0,dc-4640482-0",1 a direction,2 a direction,0,slip road: its own lanes,3,4
@@ -836,7 +836,7 @@ lanes,50428539,https://www.openstreetmap.org/way/50428539,E Street Northwest,pri
 lanes,112192545,https://www.openstreetmap.org/way/112192545,R Street Northeast,tertiary,0.080,dc-4638328-0,2 a direction,1 a direction,1,,2,2
 lanes,203025090,https://www.openstreetmap.org/way/203025090,7th Street Northwest,primary,0.080,dc-4633135-0,3 a direction,2 a direction,1,,3,3
 lanes,1036008537,https://www.openstreetmap.org/way/1036008537,16th Street Northwest,primary,0.080,dc-4634454-0,2 a direction,3 a direction,1,,3,3
-lanes,1223411289,https://www.openstreetmap.org/way/1223411289,8th Street Northwest,residential,0.080,dc-4630450-0,2 a direction,1 a direction,1,,1,2
+lanes,1223411289,https://www.openstreetmap.org/way/1223411289,8th Street Northwest,residential,0.080,dc-4630450-0,2 a direction,1 a direction,1,,1,1
 lanes,6054479,https://www.openstreetmap.org/way/6054479,Waterside Drive Northwest,tertiary,0.079,dc-4639011-0,1 a direction,2 a direction,1,,2,2
 lanes,6056290,https://www.openstreetmap.org/way/6056290,(unnamed),motorway_link,0.079,dc-4642997-0,2 a direction,4 a direction,0,slip road: its own lanes,4,4
 lanes,48018638,https://www.openstreetmap.org/way/48018638,(unnamed),primary_link,0.079,"dc-4630616-0,dc-4631606-0",1 a direction,2 a direction,0,slip road: its own lanes,3,3
@@ -876,7 +876,7 @@ lanes,479494114,https://www.openstreetmap.org/way/479494114,South Capitol Street
 lanes,509646035,https://www.openstreetmap.org/way/509646035,12th Street Northwest,secondary,0.076,dc-4633463-0,3 a direction,2 a direction,1,,2,2
 lanes,554910721,https://www.openstreetmap.org/way/554910721,Kansas Avenue Northwest,tertiary,0.076,dc-4633219-0,2 a direction,1 a direction,1,,2,2
 lanes,1050685718,https://www.openstreetmap.org/way/1050685718,Rhode Island Avenue Northwest,trunk,0.076,"dc-4634865-0,dc-4634724-0",3 a direction,2 a direction,1,,3,3
-lanes,1163633480,https://www.openstreetmap.org/way/1163633480,K Street Northwest,tertiary,0.076,dc-4631225-0,1 a direction,2 a direction,1,,2,3
+lanes,1163633480,https://www.openstreetmap.org/way/1163633480,K Street Northwest,tertiary,0.076,dc-4631225-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,2,1
 lanes,6062201,https://www.openstreetmap.org/way/6062201,K Street Northwest,primary,0.076,dc-4632962-0,1 a direction,3 a direction,1,,3,3
 lanes,130908037,https://www.openstreetmap.org/way/130908037,Eastern Avenue Northeast,tertiary,0.076,dc-4638294-0,2 a direction,3 a direction,1,,3,3
 lanes,142432435,https://www.openstreetmap.org/way/142432435,Southeast Freeway,motorway,0.076,dc-4642997-0,3 a direction,4 a direction,1,,4,4
@@ -890,7 +890,7 @@ lanes,49085295,https://www.openstreetmap.org/way/49085295,Southwest Freeway,moto
 lanes,50758312,https://www.openstreetmap.org/way/50758312,(unnamed),primary_link,0.075,dc-4640081-0,1 a direction,3 a direction,0,slip road: its own lanes,3,3
 lanes,118727167,https://www.openstreetmap.org/way/118727167,Ohio Drive Southwest,primary,0.075,dc-4642455-0,3 a direction,2 a direction,1,,3,3
 lanes,298832235,https://www.openstreetmap.org/way/298832235,Vermont Avenue Northwest,tertiary,0.075,dc-4635549-0,2 a direction,1 a direction,1,,3,2
-lanes,354436361,https://www.openstreetmap.org/way/354436361,K Street Northwest,tertiary,0.075,dc-4631265-0,1 a direction,2 a direction,1,,1,3
+lanes,354436361,https://www.openstreetmap.org/way/354436361,K Street Northwest,tertiary,0.075,dc-4631265-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,397275297,https://www.openstreetmap.org/way/397275297,Van Ness Street Northwest,secondary,0.075,dc-4636969-0,1 a direction,2 a direction,1,,2,2
 lanes,466359338,https://www.openstreetmap.org/way/466359338,17th Street Northwest,secondary,0.075,dc-4632207-0,3 a direction,2 a direction,1,,3,3
 lanes,466359340,https://www.openstreetmap.org/way/466359340,21st Street Northwest,tertiary,0.075,dc-4631081-0,3 a direction,2 a direction,1,,3,2
@@ -953,14 +953,14 @@ lanes,50431287,https://www.openstreetmap.org/way/50431287,Virginia Avenue Northw
 lanes,343234333,https://www.openstreetmap.org/way/343234333,Rhode Island Avenue Northwest,trunk,0.070,dc-4638907-0,3 a direction,2 a direction,1,,3,3
 lanes,397292981,https://www.openstreetmap.org/way/397292981,Benning Road Northeast,primary,0.070,dc-4635677-0,2 a direction,5 a direction,1,,3,4
 lanes,520537749,https://www.openstreetmap.org/way/520537749,Connecticut Avenue Northwest,primary,0.070,dc-4626000-0,3 a direction,2 a direction,1,,3,3
-lanes,924793627,https://www.openstreetmap.org/way/924793627,K Street Northwest,tertiary,0.070,dc-4631968-0,1 a direction,2 a direction,1,,1,3
+lanes,924793627,https://www.openstreetmap.org/way/924793627,K Street Northwest,tertiary,0.070,dc-4631968-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,24222943,https://www.openstreetmap.org/way/24222943,(unnamed),motorway_link,0.069,dc-4642727-0,2 a direction,3 a direction,0,slip road: its own lanes,4,4
 lanes,47916246,https://www.openstreetmap.org/way/47916246,6th Street Northwest,trunk,0.069,dc-4633306-0,3 a direction,2 a direction,1,,3,3
 lanes,50752706,https://www.openstreetmap.org/way/50752706,North Capitol Street Northeast,primary,0.069,dc-4642105-0,3 a direction,2 a direction,1,,3,3
 lanes,121980243,https://www.openstreetmap.org/way/121980243,3rd Street Tunnel,motorway,0.069,dc-4642727-0,2 a direction,3 a direction,1,,4,4
 lanes,271594087,https://www.openstreetmap.org/way/271594087,16th Street Northwest,primary,0.069,"dc-4633677-0,dc-4634094-0",2 a direction,3 a direction,1,,3,4
 lanes,435106239,https://www.openstreetmap.org/way/435106239,Virginia Avenue Northwest,primary,0.069,dc-4636730-0,3 a direction,4 a direction,1,,3,3
-lanes,535520845,https://www.openstreetmap.org/way/535520845,K Street Northwest,tertiary,0.069,dc-4631225-0,1 a direction,2 a direction,1,,1,3
+lanes,535520845,https://www.openstreetmap.org/way/535520845,K Street Northwest,tertiary,0.069,dc-4631225-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,888235719,https://www.openstreetmap.org/way/888235719,21st Street Northwest,tertiary,0.069,dc-4630510-0,2 a direction,1 a direction,1,,2,2
 lanes,1181205311,https://www.openstreetmap.org/way/1181205311,South Capitol Street Southwest,primary,0.069,dc-4639933-0,2 a direction,4 a direction,1,,4,4
 lanes,50503648,https://www.openstreetmap.org/way/50503648,Southeast Freeway,motorway,0.068,dc-4640700-0,5 a direction,3 a direction,1,,4,4
@@ -1058,7 +1058,7 @@ lanes,1167551599,https://www.openstreetmap.org/way/1167551599,(unnamed),motorway
 lanes,1480680619,https://www.openstreetmap.org/way/1480680619,Columbia Road Northwest,secondary,0.062,"dc-4631204-0,dc-4633576-0",1 a direction,2 a direction,1,,3,3
 lanes,6057417,https://www.openstreetmap.org/way/6057417,20th Street Northwest,secondary,0.062,dc-4630312-0,3 a direction,4 a direction,1,,3,3
 lanes,24238023,https://www.openstreetmap.org/way/24238023,12th Street Southwest,secondary,0.062,dc-4641812-0,3 a direction,2 a direction,1,,3,3
-lanes,49999718,https://www.openstreetmap.org/way/49999718,K Street Northwest,tertiary,0.062,dc-4631711-0,1 a direction,2 a direction,1,,1,3
+lanes,49999718,https://www.openstreetmap.org/way/49999718,K Street Northwest,tertiary,0.062,dc-4631711-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,50427955,https://www.openstreetmap.org/way/50427955,(unnamed),motorway_link,0.062,dc-4632142-0,1 a direction,2 a direction,0,slip road: its own lanes,4,4
 lanes,130927005,https://www.openstreetmap.org/way/130927005,Butternut Street Northwest,tertiary,0.062,dc-4633035-0,2 a direction,1 a direction,1,,2,2
 lanes,590525551,https://www.openstreetmap.org/way/590525551,13th Street Southeast,tertiary,0.062,dc-4640265-0,1 a direction,2 a direction,1,,1,3
@@ -1069,7 +1069,7 @@ lanes,50473193,https://www.openstreetmap.org/way/50473193,South Capitol Street S
 lanes,87490269,https://www.openstreetmap.org/way/87490269,Alaska Avenue Northwest,secondary,0.061,"dc-4632933-0,dc-4632173-0",1 a direction,2 a direction,1,,3,3
 lanes,397295398,https://www.openstreetmap.org/way/397295398,Benning Road Northeast,primary,0.061,dc-4635677-0,2 a direction,3 a direction,1,,4,4
 lanes,481354030,https://www.openstreetmap.org/way/481354030,Massachusetts Avenue Northeast,primary,0.061,dc-4637532-0,2 a direction,1 a direction,1,,3,3
-lanes,520532361,https://www.openstreetmap.org/way/520532361,K Street Northwest,tertiary,0.061,dc-4632818-0,1 a direction,2 a direction,1,,1,3
+lanes,520532361,https://www.openstreetmap.org/way/520532361,K Street Northwest,tertiary,0.061,dc-4632818-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,521190233,https://www.openstreetmap.org/way/521190233,Massachusetts Avenue Northeast,primary,0.061,dc-4638394-0,2 a direction,1 a direction,1,,3,3
 lanes,590598906,https://www.openstreetmap.org/way/590598906,Alabama Avenue Southeast,secondary,0.061,dc-4642536-0,2 a direction,3 a direction,1,,3,3
 lanes,970554642,https://www.openstreetmap.org/way/970554642,(unnamed),motorway_link,0.061,"dc-4640026-0,dc-4640689-0",2 a direction,3 a direction,0,slip road: its own lanes,4,4
@@ -1162,7 +1162,7 @@ lanes,47916243,https://www.openstreetmap.org/way/47916243,Constitution Avenue No
 lanes,50428549,https://www.openstreetmap.org/way/50428549,(unnamed),motorway_link,0.055,"dc-4631776-0,dc-4634271-0",2 a direction,3 a direction,0,slip road: its own lanes,4,4
 lanes,51373068,https://www.openstreetmap.org/way/51373068,12th Street Southwest,secondary,0.055,dc-4642722-0,2 a direction,3 a direction,1,,3,3
 lanes,131118562,https://www.openstreetmap.org/way/131118562,Western Avenue Northwest,primary,0.055,dc-4636083-0,2 a direction,1 a direction,1,,3,3
-lanes,535546521,https://www.openstreetmap.org/way/535546521,K Street Northwest,tertiary,0.055,dc-4631968-0,1 a direction,2 a direction,1,,1,3
+lanes,535546521,https://www.openstreetmap.org/way/535546521,K Street Northwest,tertiary,0.055,dc-4631968-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,580463161,https://www.openstreetmap.org/way/580463161,North Capitol Street Northeast,primary,0.055,dc-4642090-0,3 a direction,2 a direction,1,,3,3
 lanes,590598878,https://www.openstreetmap.org/way/590598878,7th Street Southwest,primary,0.055,dc-4640783-0,3 a direction,2 a direction,1,,3,3
 lanes,835915278,https://www.openstreetmap.org/way/835915278,Benning Road Northeast,primary,0.055,dc-4636450-0,3 a direction,4 a direction,1,,4,4
@@ -1175,7 +1175,7 @@ lanes,50716886,https://www.openstreetmap.org/way/50716886,(unnamed),motorway_lin
 lanes,130889684,https://www.openstreetmap.org/way/130889684,C Street Northwest,secondary,0.055,dc-4630263-0,4 a direction,2 a direction,1,,3,3
 lanes,286689574,https://www.openstreetmap.org/way/286689574,Florida Avenue Northwest,primary,0.055,dc-4626040-0,2 a direction,3 a direction,1,,3,3
 lanes,468469890,https://www.openstreetmap.org/way/468469890,K Street Northwest,secondary,0.055,dc-4633792-0,1 a direction,2 a direction,1,,2,3
-lanes,969732759,https://www.openstreetmap.org/way/969732759,K Street Northwest,tertiary,0.055,dc-4634269-0,1 a direction,2 a direction,1,,1,3
+lanes,969732759,https://www.openstreetmap.org/way/969732759,K Street Northwest,tertiary,0.055,dc-4634269-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,1425758436,https://www.openstreetmap.org/way/1425758436,1st Street Northeast,primary,0.055,dc-4637450-0,2 a direction,5 a direction,0,DC records one direction of a two-way way,3,3
 lanes,6057311,https://www.openstreetmap.org/way/6057311,Massachusetts Avenue Northeast,primary,0.054,dc-4636645-0,3 a direction,2 a direction,1,,3,3
 lanes,49081381,https://www.openstreetmap.org/way/49081381,(unnamed),motorway_link,0.054,dc-4642799-0,1 a direction,3 a direction,0,slip road: its own lanes,4,4
@@ -1209,7 +1209,7 @@ lanes,640274774,https://www.openstreetmap.org/way/640274774,Ward Circle Northwes
 lanes,640274775,https://www.openstreetmap.org/way/640274775,Ward Circle Northwest,primary,0.053,"dc-4638283-0,dc-4636101-0",2 a direction,4 a direction,1,,3,3
 lanes,918519838,https://www.openstreetmap.org/way/918519838,Nannie Helen Burroughs Avenue Northeast,secondary,0.053,dc-4637682-0,2 a direction,1 a direction,1,,3,3
 lanes,1047824624,https://www.openstreetmap.org/way/1047824624,Pennsylvania Avenue Southeast,trunk,0.053,dc-4640905-0,4 a direction,3 a direction,1,,4,3
-lanes,1123283217,https://www.openstreetmap.org/way/1123283217,K Street Northwest,tertiary,0.053,dc-4634269-0,1 a direction,2 a direction,1,,1,3
+lanes,1123283217,https://www.openstreetmap.org/way/1123283217,K Street Northwest,tertiary,0.053,dc-4634269-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,1128409675,https://www.openstreetmap.org/way/1128409675,South Capitol Street Southeast,primary,0.053,dc-4641219-0,4 a direction,3 a direction,1,,3,3
 lanes,1497372547,https://www.openstreetmap.org/way/1497372547,Kenilworth Avenue Northeast,secondary,0.053,dc-4637417-0,1 a direction,2 a direction,1,,3,3
 lanes,24220593,https://www.openstreetmap.org/way/24220593,E Street Expressway,motorway,0.052,dc-4634271-0,2 a direction,3 a direction,1,,4,4
@@ -1220,7 +1220,7 @@ lanes,130908059,https://www.openstreetmap.org/way/130908059,F Street Northwest,t
 lanes,297294784,https://www.openstreetmap.org/way/297294784,6th Street Northwest,trunk,0.052,dc-4634348-0,1 a direction,2 a direction,1,,3,3
 lanes,298814315,https://www.openstreetmap.org/way/298814315,H Street Northwest,secondary,0.052,dc-4634480-0,2 a direction,3 a direction,1,,3,3
 lanes,353283535,https://www.openstreetmap.org/way/353283535,L Street Northwest,secondary,0.052,dc-4630533-0,3 a direction,2 a direction,1,,3,2
-lanes,438964976,https://www.openstreetmap.org/way/438964976,K Street Northwest,tertiary,0.052,dc-4633939-0,1 a direction,2 a direction,1,,1,3
+lanes,438964976,https://www.openstreetmap.org/way/438964976,K Street Northwest,tertiary,0.052,dc-4633939-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,468434119,https://www.openstreetmap.org/way/468434119,I Street Northwest,secondary,0.052,dc-4631027-0,4 a direction,3 a direction,1,,3,3
 lanes,470185474,https://www.openstreetmap.org/way/470185474,M Street Southeast,primary,0.052,dc-4641765-0,4 a direction,2 a direction,1,,3,3
 lanes,505392222,https://www.openstreetmap.org/way/505392222,(unnamed),motorway_link,0.052,dc-4630317-0,1 a direction,4 a direction,0,slip road: its own lanes,4,4
@@ -1250,12 +1250,12 @@ lanes,130908287,https://www.openstreetmap.org/way/130908287,20th Street Northwes
 lanes,130927040,https://www.openstreetmap.org/way/130927040,Michigan Avenue Northeast,primary,0.051,dc-4635865-0,2 a direction,3 a direction,1,,3,3
 lanes,298832261,https://www.openstreetmap.org/way/298832261,K Street Northwest,trunk,0.051,dc-4634167-0,2 a direction,3 a direction,1,,3,3
 lanes,409537528,https://www.openstreetmap.org/way/409537528,Pennsylvania Avenue Northwest,secondary,0.051,dc-4638371-0,4 a direction,5 a direction,1,,3,3
-lanes,583698431,https://www.openstreetmap.org/way/583698431,K Street Northwest,tertiary,0.051,dc-4631265-0,1 a direction,2 a direction,1,,3,3
+lanes,583698431,https://www.openstreetmap.org/way/583698431,K Street Northwest,tertiary,0.051,dc-4631265-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,2
 lanes,864962524,https://www.openstreetmap.org/way/864962524,North Capitol Street Northeast,primary,0.051,dc-4642744-0,3 a direction,2 a direction,1,,3,3
 lanes,1163251531,https://www.openstreetmap.org/way/1163251531,Shepherd Parkway Southwest,residential,0.051,dc-4641848-0,2 a direction,1 a direction,1,,3,2
 lanes,1468455434,https://www.openstreetmap.org/way/1468455434,MacArthur Boulevard Northwest,secondary,0.051,dc-4631585-0,3 a direction,2 a direction,1,,3,3
 lanes,24792779,https://www.openstreetmap.org/way/24792779,Q Street Northwest,tertiary,0.050,dc-4636332-0,2 a direction,1 a direction,1,,3,3
-lanes,49999717,https://www.openstreetmap.org/way/49999717,K Street Northwest,tertiary,0.050,dc-4634269-0,1 a direction,2 a direction,1,,1,3
+lanes,49999717,https://www.openstreetmap.org/way/49999717,K Street Northwest,tertiary,0.050,dc-4634269-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,130772886,https://www.openstreetmap.org/way/130772886,North Capitol Street Northwest,primary,0.050,dc-4642744-0,3 a direction,2 a direction,1,,3,3
 lanes,131448559,https://www.openstreetmap.org/way/131448559,15th Street Northwest,secondary,0.050,dc-4634239-0,4 a direction,2 a direction,1,,3,3
 lanes,296352766,https://www.openstreetmap.org/way/296352766,New Jersey Avenue Northwest,tertiary,0.050,"dc-4631592-0,dc-4632696-0",1 a direction,2 a direction,1,,2,3
@@ -1271,11 +1271,11 @@ lanes,50477470,https://www.openstreetmap.org/way/50477470,(unnamed),primary_link
 lanes,554910730,https://www.openstreetmap.org/way/554910730,Kansas Avenue Northeast,tertiary,0.050,dc-4637015-0,2 a direction,1 a direction,1,,2,2
 lanes,580463170,https://www.openstreetmap.org/way/580463170,H Street Northeast,primary,0.050,dc-4636532-0,2 a direction,3 a direction,1,,3,3
 lanes,935806772,https://www.openstreetmap.org/way/935806772,M Street Northwest,primary,0.050,dc-4633006-0,3 a direction,4 a direction,1,,3,3
-lanes,1216502213,https://www.openstreetmap.org/way/1216502213,K Street Northwest,tertiary,0.050,dc-4634269-0,1 a direction,2 a direction,1,,2,3
+lanes,1216502213,https://www.openstreetmap.org/way/1216502213,K Street Northwest,tertiary,0.050,dc-4634269-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,2,2
 lanes,1468055281,https://www.openstreetmap.org/way/1468055281,Arizona Avenue Northwest,primary,0.050,dc-4625874-0,2 a direction,1 a direction,1,,2,1
 lanes,6051320,https://www.openstreetmap.org/way/6051320,(unnamed),motorway_link,0.049,dc-4642799-0,1 a direction,3 a direction,0,slip road: its own lanes,4,4
 lanes,814294822,https://www.openstreetmap.org/way/814294822,Beach Drive Northwest,primary,0.049,dc-4631515-0,2 a direction,1 a direction,1,,3,3
-lanes,864614824,https://www.openstreetmap.org/way/864614824,K Street Northwest,tertiary,0.049,dc-4634167-0,1 a direction,2 a direction,1,,1,3
+lanes,864614824,https://www.openstreetmap.org/way/864614824,K Street Northwest,tertiary,0.049,dc-4634167-0,1 a direction,3 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,1370851132,https://www.openstreetmap.org/way/1370851132,North Capitol Street Northeast,primary,0.049,dc-4640170-0,3 a direction,2 a direction,1,,3,3
 lanes,1409720445,https://www.openstreetmap.org/way/1409720445,East Capitol Street Northeast,primary,0.049,dc-4642243-0,3 a direction,4 a direction,1,,4,4
 lanes,1457046039,https://www.openstreetmap.org/way/1457046039,Theodore Roosevelt Memorial Bridge,motorway,0.049,dc-4641592-0,2 a direction,3 a direction,1,,4,4
@@ -1286,7 +1286,7 @@ lanes,50470658,https://www.openstreetmap.org/way/50470658,South Capitol Street S
 lanes,50515727,https://www.openstreetmap.org/way/50515727,Independence Avenue Southeast,primary,0.048,dc-4642017-0,3 a direction,2 a direction,1,,3,3
 lanes,116069207,https://www.openstreetmap.org/way/116069207,South Capitol Street Southeast,primary,0.048,dc-4643032-0,2 a direction,3 a direction,1,,3,3
 lanes,130772867,https://www.openstreetmap.org/way/130772867,MacDill Boulevard Southwest,tertiary,0.048,dc-4641728-0,2 a direction,3 a direction,1,,3,3
-lanes,421077028,https://www.openstreetmap.org/way/421077028,K Street Northwest,tertiary,0.048,dc-4633407-0,1 a direction,2 a direction,1,,1,3
+lanes,421077028,https://www.openstreetmap.org/way/421077028,K Street Northwest,tertiary,0.048,dc-4633407-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,469115617,https://www.openstreetmap.org/way/469115617,14th Street Northwest,trunk,0.048,dc-4632579-0,3 a direction,4 a direction,1,,3,3
 lanes,583988064,https://www.openstreetmap.org/way/583988064,(unnamed),primary_link,0.048,dc-4641329-0,1 a direction,3 a direction,0,slip road: its own lanes,3,3
 lanes,871089761,https://www.openstreetmap.org/way/871089761,New York Avenue Northeast,motorway,0.048,dc-4635734-0,4 a direction,3 a direction,1,,4,4
@@ -1394,7 +1394,7 @@ lanes,468434113,https://www.openstreetmap.org/way/468434113,M Street Northwest,p
 lanes,468480281,https://www.openstreetmap.org/way/468480281,Massachusetts Avenue Northeast,primary,0.043,dc-4638394-0,2 a direction,1 a direction,1,,3,3
 lanes,468488475,https://www.openstreetmap.org/way/468488475,M Street Southeast,primary,0.043,dc-4642083-0,2 a direction,3 a direction,1,,3,3
 lanes,468495100,https://www.openstreetmap.org/way/468495100,Maine Avenue Southwest,primary,0.043,dc-4643038-0,1 a direction,2 a direction,1,,3,3
-lanes,520532355,https://www.openstreetmap.org/way/520532355,K Street Northwest,tertiary,0.043,dc-4632818-0,1 a direction,2 a direction,1,,1,3
+lanes,520532355,https://www.openstreetmap.org/way/520532355,K Street Northwest,tertiary,0.043,dc-4632818-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,664056259,https://www.openstreetmap.org/way/664056259,18th Street Northwest,secondary,0.043,dc-4630324-0,1 a direction,2 a direction,1,,3,3
 lanes,696806631,https://www.openstreetmap.org/way/696806631,19th Street Northwest,secondary,0.043,dc-4631055-0,4 a direction,3 a direction,1,,3,3
 lanes,775660545,https://www.openstreetmap.org/way/775660545,Memorial Avenue,primary,0.043,dc-4642708-0,1 a direction,2 a direction,1,,3,3
@@ -1488,7 +1488,7 @@ lanes,397329575,https://www.openstreetmap.org/way/397329575,F Street Northwest,t
 lanes,468479825,https://www.openstreetmap.org/way/468479825,Massachusetts Avenue Northwest,primary,0.040,dc-4632671-0,3 a direction,2 a direction,1,,3,3
 lanes,546095970,https://www.openstreetmap.org/way/546095970,11th Street Southeast,secondary,0.040,dc-4640215-0,4 a direction,2 a direction,1,,2,2
 lanes,910656496,https://www.openstreetmap.org/way/910656496,Q Street Southwest,residential,0.040,dc-4642809-0,2 a direction,1 a direction,1,,1,1
-lanes,925030587,https://www.openstreetmap.org/way/925030587,K Street Northwest,tertiary,0.040,dc-4631225-0,1 a direction,2 a direction,1,,3,3
+lanes,925030587,https://www.openstreetmap.org/way/925030587,K Street Northwest,tertiary,0.040,dc-4631225-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,2
 lanes,985356413,https://www.openstreetmap.org/way/985356413,Potomac Avenue Southeast,tertiary,0.040,dc-4640789-0,1 a direction,2 a direction,1,,2,3
 lanes,992136002,https://www.openstreetmap.org/way/992136002,Massachusetts Avenue Northwest,primary,0.040,dc-4631167-0,2 a direction,1 a direction,1,,3,3
 lanes,1144538929,https://www.openstreetmap.org/way/1144538929,Military Road Northwest,primary,0.040,dc-4631804-0,3 a direction,2 a direction,1,,4,4
@@ -1530,7 +1530,7 @@ lanes,397301597,https://www.openstreetmap.org/way/397301597,H Street Northeast,p
 lanes,440066136,https://www.openstreetmap.org/way/440066136,MacDill Boulevard Southwest,tertiary,0.039,dc-4641728-0,1 a direction,2 a direction,1,,2,3
 lanes,440066178,https://www.openstreetmap.org/way/440066178,MacDill Boulevard Southwest,tertiary,0.039,dc-4641728-0,1 a direction,2 a direction,1,,2,3
 lanes,466359339,https://www.openstreetmap.org/way/466359339,19th Street Northwest,secondary,0.039,dc-4632425-0,3 a direction,1 a direction,1,,3,3
-lanes,520537743,https://www.openstreetmap.org/way/520537743,K Street Northwest,tertiary,0.039,dc-4631757-0,1 a direction,2 a direction,1,,1,3
+lanes,520537743,https://www.openstreetmap.org/way/520537743,K Street Northwest,tertiary,0.039,dc-4631757-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,1124384288,https://www.openstreetmap.org/way/1124384288,9th Street Northwest,primary,0.039,dc-4632244-0,1 a direction,2 a direction,1,,3,3
 lanes,1174217731,https://www.openstreetmap.org/way/1174217731,Suitland Parkway Southeast,trunk,0.039,dc-4640270-0,4 a direction,3 a direction,1,,4,4
 lanes,1181247164,https://www.openstreetmap.org/way/1181247164,23rd Street Southeast,residential,0.039,dc-4640585-0,2 a direction,1 a direction,1,,3,2
@@ -1591,7 +1591,7 @@ lanes,397282225,https://www.openstreetmap.org/way/397282225,Brentwood Road North
 lanes,397283781,https://www.openstreetmap.org/way/397283781,15th Street Northeast,tertiary,0.037,dc-4636519-0,2 a direction,1 a direction,1,,2,2
 lanes,397314364,https://www.openstreetmap.org/way/397314364,Rhode Island Avenue Northeast,primary,0.037,dc-4635442-0,3 a direction,4 a direction,1,,4,3
 lanes,468432441,https://www.openstreetmap.org/way/468432441,Riggs Road Northeast,primary,0.037,dc-4637548-0,4 a direction,3 a direction,1,,3,3
-lanes,509325916,https://www.openstreetmap.org/way/509325916,K Street Northwest,primary,0.037,dc-4631757-0,1 a direction,2 a direction,1,,3,3
+lanes,509325916,https://www.openstreetmap.org/way/509325916,K Street Northwest,primary,0.037,dc-4631757-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,3
 lanes,546095945,https://www.openstreetmap.org/way/546095945,(unnamed),motorway_link,0.037,dc-4642997-0,1 a direction,4 a direction,0,slip road: its own lanes,4,4
 lanes,590525536,https://www.openstreetmap.org/way/590525536,Martin Luther King Junior Avenue Southeast,secondary,0.037,dc-4639746-0,3 a direction,2 a direction,1,,3,4
 lanes,756406654,https://www.openstreetmap.org/way/756406654,13th Street Northwest,secondary,0.037,dc-4633588-0,3 a direction,2 a direction,1,,3,3
@@ -1639,7 +1639,7 @@ lanes,696198867,https://www.openstreetmap.org/way/696198867,Constitution Avenue 
 lanes,917764881,https://www.openstreetmap.org/way/917764881,K Street Northeast,secondary,0.036,dc-4635322-0,1 a direction,2 a direction,1,,3,3
 lanes,1036231939,https://www.openstreetmap.org/way/1036231939,1st Street Northwest,tertiary,0.036,dc-4632555-0,2 a direction,3 a direction,1,,3,3
 lanes,1093448965,https://www.openstreetmap.org/way/1093448965,Lincoln Memorial Circle Northwest,primary,0.036,"dc-4630296-0,dc-4630228-0",2 a direction,3 a direction,1,,3,3
-lanes,1103289386,https://www.openstreetmap.org/way/1103289386,Lincoln Memorial Circle Northwest,tertiary,0.036,"dc-4634553-0,dc-4630296-0",1 a direction,3 a direction,1,,2,3
+lanes,1103289386,https://www.openstreetmap.org/way/1103289386,Lincoln Memorial Circle Northwest,tertiary,0.036,"dc-4634553-0,dc-4630296-0",1 a direction,3 a direction,0,side lane beside a two-way carriageway,2,2
 lanes,1216869926,https://www.openstreetmap.org/way/1216869926,Division Avenue Northeast,tertiary,0.036,"dc-4636946-0,dc-4636869-0",1 a direction,2 a direction,1,,1,2
 lanes,1314771859,https://www.openstreetmap.org/way/1314771859,20th Street Northwest,tertiary,0.036,dc-4634313-0,3 a direction,2 a direction,1,,3,2
 lanes,1363575885,https://www.openstreetmap.org/way/1363575885,7th Street Southwest,primary,0.036,dc-4642821-0,3 a direction,2 a direction,1,,3,3
@@ -1711,7 +1711,7 @@ lanes,422350335,https://www.openstreetmap.org/way/422350335,Rhode Island Avenue 
 lanes,435424520,https://www.openstreetmap.org/way/435424520,L Street Northwest,tertiary,0.034,dc-4633755-0,3 a direction,4 a direction,1,,3,3
 lanes,468495105,https://www.openstreetmap.org/way/468495105,M Street Southwest,primary,0.034,dc-4640056-0,4 a direction,2 a direction,1,,3,3
 lanes,481821726,https://www.openstreetmap.org/way/481821726,Kansas Avenue Northwest,tertiary,0.034,dc-4630314-0,1 a direction,2 a direction,1,,2,2
-lanes,516085384,https://www.openstreetmap.org/way/516085384,K Street Northwest,tertiary,0.034,dc-4633407-0,1 a direction,2 a direction,1,,2,3
+lanes,516085384,https://www.openstreetmap.org/way/516085384,K Street Northwest,tertiary,0.034,dc-4633407-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,2,2
 lanes,590581630,https://www.openstreetmap.org/way/590581630,Wisconsin Avenue Northwest,primary,0.034,dc-4637249-0,3 a direction,2 a direction,1,,4,3
 lanes,699100467,https://www.openstreetmap.org/way/699100467,Riggs Road Northeast,primary,0.034,dc-4636264-0,2 a direction,3 a direction,1,,3,3
 lanes,944079569,https://www.openstreetmap.org/way/944079569,Georgia Avenue Northwest,trunk,0.034,dc-4632725-0,2 a direction,3 a direction,1,,3,3
@@ -1746,7 +1746,7 @@ lanes,45837735,https://www.openstreetmap.org/way/45837735,H Street Northeast,pri
 lanes,121980312,https://www.openstreetmap.org/way/121980312,(unnamed),primary_link,0.033,dc-4642622-0,1 a direction,3 a direction,0,slip road: its own lanes,3,3
 lanes,130788136,https://www.openstreetmap.org/way/130788136,Florida Avenue Northeast,primary,0.033,dc-4638988-0,3 a direction,2 a direction,1,,3,3
 lanes,130889748,https://www.openstreetmap.org/way/130889748,11th Street Southeast,secondary,0.033,dc-4643240-0,1 a direction,2 a direction,1,,2,2
-lanes,323742888,https://www.openstreetmap.org/way/323742888,K Street Northwest,primary,0.033,dc-4631757-0,1 a direction,2 a direction,1,,3,3
+lanes,323742888,https://www.openstreetmap.org/way/323742888,K Street Northwest,primary,0.033,dc-4631757-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,3
 lanes,345709541,https://www.openstreetmap.org/way/345709541,Washington Circle Northwest,primary,0.033,"dc-4638236-0,dc-4638599-0",1 a direction,4 a direction,1,,3,3
 lanes,397301344,https://www.openstreetmap.org/way/397301344,Rhode Island Avenue Northeast,primary,0.033,dc-4636711-0,4 a direction,2 a direction,1,,4,4
 lanes,397345296,https://www.openstreetmap.org/way/397345296,(unnamed),motorway_link,0.033,dc-4636997-0,2 a direction,3 a direction,0,slip road: its own lanes,4,4
@@ -1908,7 +1908,7 @@ lanes,469151751,https://www.openstreetmap.org/way/469151751,Constitution Avenue 
 lanes,469219683,https://www.openstreetmap.org/way/469219683,Dalecarlia Parkway Northwest,secondary,0.030,dc-4630265-0,3 a direction,2 a direction,1,,4,4
 lanes,554910778,https://www.openstreetmap.org/way/554910778,Kansas Avenue Northwest,tertiary,0.030,dc-4634012-0,2 a direction,1 a direction,1,,3,2
 lanes,581526874,https://www.openstreetmap.org/way/581526874,Bladensburg Road Northeast,primary,0.030,dc-4637898-0,2 a direction,3 a direction,1,,3,4
-lanes,583698432,https://www.openstreetmap.org/way/583698432,K Street Northwest,tertiary,0.030,dc-4631637-0,1 a direction,2 a direction,1,,1,3
+lanes,583698432,https://www.openstreetmap.org/way/583698432,K Street Northwest,tertiary,0.030,dc-4631637-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,589905613,https://www.openstreetmap.org/way/589905613,Mount Olivet Road Northeast,secondary,0.030,dc-4634690-0,1 a direction,2 a direction,1,,3,3
 lanes,699100468,https://www.openstreetmap.org/way/699100468,3rd Street Northeast,tertiary,0.030,dc-4638633-0,3 a direction,2 a direction,1,,3,3
 lanes,920784193,https://www.openstreetmap.org/way/920784193,North Capitol Street Northwest,primary,0.030,dc-4640649-0,3 a direction,2 a direction,1,,3,3
@@ -1982,7 +1982,7 @@ lanes,468390983,https://www.openstreetmap.org/way/468390983,Benning Road Northea
 lanes,468444094,https://www.openstreetmap.org/way/468444094,4th Street Northwest,secondary,0.029,dc-4634025-0,2 a direction,1 a direction,1,,2,2
 lanes,468495098,https://www.openstreetmap.org/way/468495098,Maine Avenue Southwest,primary,0.029,dc-4641352-0,2 a direction,3 a direction,1,,3,3
 lanes,468820714,https://www.openstreetmap.org/way/468820714,South Capitol Street,primary,0.029,"dc-4642513-0,dc-4641163-0",3 a direction,4 a direction,1,,3,3
-lanes,520546834,https://www.openstreetmap.org/way/520546834,K Street Northwest,tertiary,0.029,dc-4631711-0,1 a direction,2 a direction,1,,2,3
+lanes,520546834,https://www.openstreetmap.org/way/520546834,K Street Northwest,tertiary,0.029,dc-4631711-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,2,2
 lanes,546095969,https://www.openstreetmap.org/way/546095969,11th Street Southeast,secondary,0.029,dc-4640215-0,3 a direction,2 a direction,1,,2,2
 lanes,696047669,https://www.openstreetmap.org/way/696047669,Minnesota Avenue Northeast,secondary,0.029,dc-4637649-0,3 a direction,2 a direction,1,,3,3
 lanes,905076073,https://www.openstreetmap.org/way/905076073,Naylor Road Southeast,tertiary,0.029,dc-4639687-0,1 a direction,2 a direction,1,,2,3
@@ -2128,8 +2128,8 @@ lanes,468498835,https://www.openstreetmap.org/way/468498835,Massachusetts Avenue
 lanes,468835485,https://www.openstreetmap.org/way/468835485,Alabama Avenue Southeast,secondary,0.026,dc-4643028-0,2 a direction,3 a direction,1,,3,3
 lanes,469165486,https://www.openstreetmap.org/way/469165486,17th Street Northwest,primary,0.026,dc-4630747-0,4 a direction,3 a direction,1,,3,3
 lanes,507273043,https://www.openstreetmap.org/way/507273043,North Capitol Street Northwest,primary,0.026,dc-4642841-0,3 a direction,2 a direction,1,,3,3
-lanes,520537746,https://www.openstreetmap.org/way/520537746,K Street Northwest,tertiary,0.026,dc-4631225-0,1 a direction,2 a direction,1,,1,3
-lanes,589905639,https://www.openstreetmap.org/way/589905639,K Street Northwest,tertiary,0.026,dc-4631757-0,1 a direction,2 a direction,1,,3,3
+lanes,520537746,https://www.openstreetmap.org/way/520537746,K Street Northwest,tertiary,0.026,dc-4631225-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
+lanes,589905639,https://www.openstreetmap.org/way/589905639,K Street Northwest,tertiary,0.026,dc-4631757-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,2
 lanes,590581673,https://www.openstreetmap.org/way/590581673,Wisconsin Avenue Northwest,primary,0.026,dc-4634810-0,2 a direction,1 a direction,1,,3,3
 lanes,763121352,https://www.openstreetmap.org/way/763121352,13th Street Northwest,tertiary,0.026,dc-4633898-0,2 a direction,1 a direction,1,,1,2
 lanes,954659485,https://www.openstreetmap.org/way/954659485,North Capitol Street Northwest,primary,0.026,dc-4642273-0,3 a direction,2 a direction,1,,3,3
@@ -2172,7 +2172,7 @@ lanes,468466034,https://www.openstreetmap.org/way/468466034,Benning Road Northea
 lanes,468469946,https://www.openstreetmap.org/way/468469946,L Street Northwest,secondary,0.025,dc-4633031-0,4 a direction,2 a direction,1,,3,2
 lanes,468475025,https://www.openstreetmap.org/way/468475025,K Street Northeast,secondary,0.025,dc-4635760-0,3 a direction,1 a direction,1,,3,2
 lanes,535644551,https://www.openstreetmap.org/way/535644551,North Capitol Street Northwest,primary,0.025,dc-4642841-0,3 a direction,2 a direction,1,,3,3
-lanes,583698434,https://www.openstreetmap.org/way/583698434,K Street Northwest,tertiary,0.025,dc-4631637-0,1 a direction,2 a direction,1,,1,3
+lanes,583698434,https://www.openstreetmap.org/way/583698434,K Street Northwest,tertiary,0.025,dc-4631637-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,589905413,https://www.openstreetmap.org/way/589905413,(unnamed),primary,0.025,"dc-4635595-0,dc-4637348-0",1 a direction,2 a direction,1,,3,3
 lanes,590525569,https://www.openstreetmap.org/way/590525569,M Street Southeast,primary,0.025,dc-4642195-0,2 a direction,3 a direction,1,,3,3
 lanes,590598894,https://www.openstreetmap.org/way/590598894,Benning Road Southeast,secondary,0.025,dc-4643106-0,1 a direction,2 a direction,1,,3,3
@@ -2208,7 +2208,7 @@ lanes,468434109,https://www.openstreetmap.org/way/468434109,M Street Northwest,p
 lanes,468434648,https://www.openstreetmap.org/way/468434648,Rhode Island Avenue Northeast,primary,0.025,dc-4637645-0,3 a direction,4 a direction,1,,4,4
 lanes,468495095,https://www.openstreetmap.org/way/468495095,14th Street Southwest,trunk,0.025,dc-4642999-0,4 a direction,3 a direction,1,,3,3
 lanes,469216232,https://www.openstreetmap.org/way/469216232,Wisconsin Avenue Northwest,primary,0.025,dc-4637294-0,3 a direction,2 a direction,1,,3,3
-lanes,503185206,https://www.openstreetmap.org/way/503185206,K Street Northwest,tertiary,0.025,dc-4631265-0,1 a direction,2 a direction,1,,3,3
+lanes,503185206,https://www.openstreetmap.org/way/503185206,K Street Northwest,tertiary,0.025,dc-4631265-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,3,2
 lanes,590581678,https://www.openstreetmap.org/way/590581678,4th Street Northwest,tertiary,0.025,dc-4632040-0,1 a direction,2 a direction,1,,2,3
 lanes,882237099,https://www.openstreetmap.org/way/882237099,17th Street Northeast,secondary,0.025,dc-4638830-0,1 a direction,2 a direction,1,,3,3
 lanes,922411752,https://www.openstreetmap.org/way/922411752,Kansas Avenue Northwest,tertiary,0.025,dc-4631627-0,2 a direction,1 a direction,1,,2,2
@@ -2311,7 +2311,7 @@ lanes,469165475,https://www.openstreetmap.org/way/469165475,18th Street Northwes
 lanes,469204207,https://www.openstreetmap.org/way/469204207,Wisconsin Avenue Northwest,primary,0.023,dc-4637164-0,3 a direction,2 a direction,1,,3,3
 lanes,470160776,https://www.openstreetmap.org/way/470160776,South Capitol Street,primary,0.023,dc-4640239-0,3 a direction,4 a direction,1,,4,4
 lanes,507273044,https://www.openstreetmap.org/way/507273044,North Capitol Street Northwest,primary,0.023,dc-4640186-0,3 a direction,2 a direction,1,,3,3
-lanes,583705854,https://www.openstreetmap.org/way/583705854,K Street Northwest,tertiary,0.023,dc-4631225-0,1 a direction,2 a direction,1,,1,3
+lanes,583705854,https://www.openstreetmap.org/way/583705854,K Street Northwest,tertiary,0.023,dc-4631225-0,1 a direction,2 a direction,0,side lane beside a two-way carriageway,1,1
 lanes,583988070,https://www.openstreetmap.org/way/583988070,22nd Street Northeast,primary,0.023,dc-4637487-0,2 a direction,3 a direction,1,,3,3
 lanes,589533501,https://www.openstreetmap.org/way/589533501,M Street Northwest,primary,0.023,dc-4630682-0,4 a direction,3 a direction,1,,3,3
 lanes,918238297,https://www.openstreetmap.org/way/918238297,H Street Northeast,primary,0.023,dc-4636699-0,1 a direction,2 a direction,1,,3,3
@@ -2554,7 +2554,7 @@ lanes,1377713882,https://www.openstreetmap.org/way/1377713882,11th Street Northw
 lanes,1391799161,https://www.openstreetmap.org/way/1391799161,Sherman Avenue Northwest,secondary,0.019,dc-4638922-0,2 a direction,1 a direction,1,,3,3
 lanes,1436904497,https://www.openstreetmap.org/way/1436904497,34th Street Northwest,secondary,0.019,dc-4630154-0,2 a direction,1 a direction,1,,3,3
 lanes,1457056981,https://www.openstreetmap.org/way/1457056981,George Washington Memorial Parkway,motorway,0.019,dc-4642648-0,1 a direction,2 a direction,1,,4,4
-lanes,1508260473,https://www.openstreetmap.org/way/1508260473,New Jersey Avenue Northwest,tertiary,0.019,dc-4634241-0,2 a direction,3 a direction,1,,3,2
+lanes,1508260473,https://www.openstreetmap.org/way/1508260473,New Jersey Avenue Northwest,tertiary,0.019,dc-4634241-0,2 a direction,3 a direction,0,DC records one direction of a two-way way,3,3
 lanes,50429586,https://www.openstreetmap.org/way/50429586,K Street Northwest,trunk,0.018,dc-4625870-0,2 a direction,3 a direction,1,,3,3
 lanes,50430010,https://www.openstreetmap.org/way/50430010,M Street Northwest,trunk,0.018,dc-4630739-0,2 a direction,3 a direction,1,,3,3
 lanes,130764304,https://www.openstreetmap.org/way/130764304,Sheridan Circle Northwest,primary,0.018,"dc-4634858-0,dc-4637301-0",1 a direction,2 a direction,1,,3,3
@@ -2693,7 +2693,7 @@ lanes,468446573,https://www.openstreetmap.org/way/468446573,16th Street Northwes
 lanes,468835497,https://www.openstreetmap.org/way/468835497,Branch Avenue Southeast,trunk,0.016,dc-4642824-0,2 a direction,1 a direction,1,,3,3
 lanes,468835501,https://www.openstreetmap.org/way/468835501,Branch Avenue Southeast,trunk,0.016,dc-4643047-0,2 a direction,1 a direction,1,,3,3
 lanes,469159260,https://www.openstreetmap.org/way/469159260,Pennsylvania Avenue Northwest,primary,0.016,dc-4635725-0,3 a direction,2 a direction,1,,3,3
-lanes,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,4 a direction,1 a direction,1,,3,2
+lanes,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,4 a direction,1 a direction,0,side lane beside a two-way carriageway,3,3
 lanes,583988072,https://www.openstreetmap.org/way/583988072,22nd Street Southeast,primary,0.016,dc-4641216-0,2 a direction,1 a direction,1,,3,3
 lanes,589551003,https://www.openstreetmap.org/way/589551003,13th Street Southeast,primary,0.016,dc-4640864-0,1 a direction,4 a direction,1,,2,2
 lanes,590525641,https://www.openstreetmap.org/way/590525641,Washington Circle Northwest,primary,0.016,dc-4637217-0,2 a direction,4 a direction,1,,3,3
@@ -3361,7 +3361,7 @@ oneway,397277602,https://www.openstreetmap.org/way/397277602,16th Street Northwe
 oneway,1502134924,https://www.openstreetmap.org/way/1502134924,8th Street Northeast,residential,0.190,"dc-4635142-0,dc-4638198-0",oneway=yes,two-way,1,,1,1
 oneway,581526870,https://www.openstreetmap.org/way/581526870,Bladensburg Road Northeast,primary,0.189,"dc-4635309-0,dc-4637898-0",oneway=yes,two-way,0,divided carriageway,3,4
 oneway,423118798,https://www.openstreetmap.org/way/423118798,MacArthur Boulevard Northwest,secondary,0.188,"dc-4630953-0,dc-4633485-0,dc-4631585-0",oneway=yes,two-way,0,divided carriageway,3,3
-oneway,397350557,https://www.openstreetmap.org/way/397350557,Canal Road Northwest,trunk,0.185,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,3
+oneway,397350557,https://www.openstreetmap.org/way/397350557,Canal Road Northwest,trunk,0.185,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,308710282,https://www.openstreetmap.org/way/308710282,16th Street Northwest,primary,0.183,"dc-4626004-0,dc-4634114-0",oneway=yes,two-way,0,divided carriageway,3,4
 oneway,340368804,https://www.openstreetmap.org/way/340368804,4th Avenue,service,0.180,"dc-4642738-0,dc-4640096-0",not tagged (two-way),one-way,1,,1,1
 oneway,939985259,https://www.openstreetmap.org/way/939985259,New York Avenue Northeast,motorway,0.180,dc-4635574-0,oneway=yes,two-way,0,slip road or freeway,4,4
@@ -3501,7 +3501,7 @@ oneway,397337442,https://www.openstreetmap.org/way/397337442,16th Street Northwe
 oneway,6054731,https://www.openstreetmap.org/way/6054731,Klingle Road Northwest,secondary,0.129,dc-4625906-0,oneway=yes,two-way,0,divided carriageway,2,1
 oneway,1527589681,https://www.openstreetmap.org/way/1527589681,(unnamed),motorway_link,0.129,"dc-4643140-0,dc-4642898-0",oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,334548417,https://www.openstreetmap.org/way/334548417,Maine Avenue Southwest,primary,0.129,"dc-4639541-0,dc-4641960-0,dc-4642299-0",oneway=yes,two-way,0,divided carriageway,3,3
-oneway,1093448958,https://www.openstreetmap.org/way/1093448958,Lincoln Memorial Circle Southwest,service,0.129,"dc-4639974-0,dc-4641921-0,dc-4630228-0",oneway=yes,two-way,0,carriageway pair,1,3
+oneway,1093448958,https://www.openstreetmap.org/way/1093448958,Lincoln Memorial Circle Southwest,service,0.129,"dc-4639974-0,dc-4641921-0,dc-4630228-0",oneway=yes,two-way,0,carriageway pair,1,2
 oneway,50470683,https://www.openstreetmap.org/way/50470683,South Capitol Street Southwest,primary_link,0.128,dc-4641820-0,oneway=yes,two-way,0,slip road or freeway,3,3
 oneway,130285144,https://www.openstreetmap.org/way/130285144,Pennsylvania Avenue Southeast,primary,0.128,"dc-4642514-0,dc-4640224-0",oneway=yes,two-way,0,divided carriageway,4,3
 oneway,703930730,https://www.openstreetmap.org/way/703930730,Paulding Street Southeast,service,0.128,"dc-4641324-0,dc-4639764-0",not tagged (two-way),one-way,1,,1,1
@@ -3622,7 +3622,7 @@ oneway,397252653,https://www.openstreetmap.org/way/397252653,East Capitol Street
 oneway,1460141401,https://www.openstreetmap.org/way/1460141401,New Hampshire Avenue Northwest,secondary,0.107,dc-4631759-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,6061006,https://www.openstreetmap.org/way/6061006,D Street,service,0.106,dc-4640209-0,not tagged (two-way),one-way,1,,1,1
 oneway,226149910,https://www.openstreetmap.org/way/226149910,K Street Northwest,trunk,0.106,"dc-4625870-0,dc-4632688-0",oneway=yes,two-way,0,divided carriageway,3,3
-oneway,436136929,https://www.openstreetmap.org/way/436136929,K Street Northwest,tertiary,0.106,dc-4632818-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,436136929,https://www.openstreetmap.org/way/436136929,K Street Northwest,tertiary,0.106,dc-4632818-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,1111074097,https://www.openstreetmap.org/way/1111074097,Nannie Helen Burroughs Avenue Northeast,secondary,0.106,"dc-4635663-0,dc-4635150-0",oneway=yes,two-way,0,divided carriageway,3,4
 oneway,296374852,https://www.openstreetmap.org/way/296374852,North Capitol Street Northeast,primary,0.106,dc-4640862-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,516193840,https://www.openstreetmap.org/way/516193840,North Capitol Street Northwest,primary,0.106,dc-4640862-0,oneway=yes,two-way,0,carriageway pair,3,3
@@ -3708,7 +3708,7 @@ oneway,397293016,https://www.openstreetmap.org/way/397293016,Benning Road Northe
 oneway,440070187,https://www.openstreetmap.org/way/440070187,Chappie James Boulevard Southwest,tertiary,0.095,dc-4642612-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,468495101,https://www.openstreetmap.org/way/468495101,M Street Southwest,primary,0.095,dc-4642166-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,506967618,https://www.openstreetmap.org/way/506967618,MacArthur Boulevard Northwest,secondary,0.095,dc-4631475-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,583705856,https://www.openstreetmap.org/way/583705856,K Street Northwest,tertiary,0.095,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,2,3
+oneway,583705856,https://www.openstreetmap.org/way/583705856,K Street Northwest,tertiary,0.095,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,2,1
 oneway,6060266,https://www.openstreetmap.org/way/6060266,Warrington Avenue Southeast,residential,0.094,dc-4641483-0,not tagged (two-way),one-way,1,,1,1
 oneway,51373073,https://www.openstreetmap.org/way/51373073,M Street Southwest,primary,0.094,dc-4642166-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,116824004,https://www.openstreetmap.org/way/116824004,MacArthur Boulevard Northwest,secondary,0.094,dc-4630958-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -3731,7 +3731,7 @@ oneway,97167301,https://www.openstreetmap.org/way/97167301,Scott Drive Southwest
 oneway,122208536,https://www.openstreetmap.org/way/122208536,9th Street Northeast,primary,0.093,dc-4634681-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,581526880,https://www.openstreetmap.org/way/581526880,Bladensburg Road Northeast,primary,0.093,"dc-4638942-0,dc-4638786-0",oneway=yes,two-way,0,divided carriageway,3,4
 oneway,6062867,https://www.openstreetmap.org/way/6062867,L'Enfant Plaza Southwest,tertiary,0.093,dc-4640898-0,oneway=yes,two-way,0,divided carriageway,1,1
-oneway,397350552,https://www.openstreetmap.org/way/397350552,Canal Road Northwest,trunk,0.093,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,3
+oneway,397350552,https://www.openstreetmap.org/way/397350552,Canal Road Northwest,trunk,0.093,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,1211712959,https://www.openstreetmap.org/way/1211712959,Rhode Island Avenue Northwest,primary,0.093,dc-4636312-0,oneway=yes,two-way,0,divided carriageway,4,3
 oneway,6062745,https://www.openstreetmap.org/way/6062745,Potomac Avenue Southeast,residential,0.092,dc-4643303-0,oneway=yes,two-way,1,,2,2
 oneway,122080102,https://www.openstreetmap.org/way/122080102,North Capitol Street Northeast,primary,0.092,dc-4639752-0,oneway=yes,two-way,0,carriageway pair,3,3
@@ -3749,7 +3749,7 @@ oneway,980517863,https://www.openstreetmap.org/way/980517863,Hawthorne Drive Nor
 oneway,1019882424,https://www.openstreetmap.org/way/1019882424,New York Avenue Northeast,motorway,0.091,dc-4635574-0,oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,1445810673,https://www.openstreetmap.org/way/1445810673,New York Avenue Northeast,trunk,0.091,dc-4639215-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,6053859,https://www.openstreetmap.org/way/6053859,C Street Northeast,residential,0.091,dc-4635491-0,not tagged (two-way),one-way,1,,1,1
-oneway,108060074,https://www.openstreetmap.org/way/108060074,K Street Northwest,tertiary,0.091,dc-4631711-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,108060074,https://www.openstreetmap.org/way/108060074,K Street Northwest,tertiary,0.091,dc-4631711-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,130772888,https://www.openstreetmap.org/way/130772888,North Capitol Street Northwest,primary,0.091,dc-4640862-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,296345143,https://www.openstreetmap.org/way/296345143,New Jersey Avenue Northwest,tertiary,0.091,dc-4630052-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,987879162,https://www.openstreetmap.org/way/987879162,New York Avenue Northwest,primary,0.091,dc-4631907-0,oneway=yes,two-way,0,divided carriageway,2,2
@@ -3850,7 +3850,7 @@ oneway,913074358,https://www.openstreetmap.org/way/913074358,H Street Northeast,
 oneway,992136001,https://www.openstreetmap.org/way/992136001,16th Street Northwest,primary,0.083,dc-4634454-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,45976795,https://www.openstreetmap.org/way/45976795,14th Street Southwest,trunk,0.082,dc-4642936-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,48018646,https://www.openstreetmap.org/way/48018646,(unnamed),primary,0.082,dc-4631606-0,oneway=yes,two-way,0,carriageway pair,2,2
-oneway,49999716,https://www.openstreetmap.org/way/49999716,K Street Northwest,tertiary,0.082,dc-4633407-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,49999716,https://www.openstreetmap.org/way/49999716,K Street Northwest,tertiary,0.082,dc-4633407-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,296862681,https://www.openstreetmap.org/way/296862681,N Street Southwest,residential,0.082,"dc-4641067-0,dc-4643151-0",not tagged (two-way),one-way,1,,1,1
 oneway,392388938,https://www.openstreetmap.org/way/392388938,Highland Place Northwest,residential,0.082,dc-4632296-0,oneway=yes,two-way,1,,1,1
 oneway,494175930,https://www.openstreetmap.org/way/494175930,Pennsylvania Avenue Northwest,primary,0.082,dc-4636089-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -3917,7 +3917,7 @@ oneway,479494114,https://www.openstreetmap.org/way/479494114,South Capitol Stree
 oneway,554910721,https://www.openstreetmap.org/way/554910721,Kansas Avenue Northwest,tertiary,0.076,dc-4633219-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,628332770,https://www.openstreetmap.org/way/628332770,Military Road Northwest,primary,0.076,dc-4630781-0,oneway=-1,two-way,0,divided carriageway,3,3
 oneway,1050685718,https://www.openstreetmap.org/way/1050685718,Rhode Island Avenue Northwest,trunk,0.076,"dc-4634865-0,dc-4634724-0",oneway=yes,two-way,0,divided carriageway,3,3
-oneway,1163633480,https://www.openstreetmap.org/way/1163633480,K Street Northwest,tertiary,0.076,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,2,3
+oneway,1163633480,https://www.openstreetmap.org/way/1163633480,K Street Northwest,tertiary,0.076,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,2,1
 oneway,1503484329,https://www.openstreetmap.org/way/1503484329,New York Avenue Northeast,motorway,0.076,dc-4635574-0,oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,6060903,https://www.openstreetmap.org/way/6060903,16th Street Northwest,tertiary,0.076,dc-4634008-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,6062201,https://www.openstreetmap.org/way/6062201,K Street Northwest,primary,0.076,dc-4632962-0,not tagged (two-way),one-way,1,,3,3
@@ -3930,7 +3930,7 @@ oneway,6059015,https://www.openstreetmap.org/way/6059015,(unnamed),primary_link,
 oneway,50758312,https://www.openstreetmap.org/way/50758312,(unnamed),primary_link,0.075,dc-4640081-0,oneway=yes,two-way,0,slip road or freeway,3,3
 oneway,118727167,https://www.openstreetmap.org/way/118727167,Ohio Drive Southwest,primary,0.075,dc-4642455-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,130927058,https://www.openstreetmap.org/way/130927058,Tunlaw Road Northwest,tertiary,0.075,dc-4636017-0,oneway=yes,two-way,0,divided carriageway,2,2
-oneway,354436361,https://www.openstreetmap.org/way/354436361,K Street Northwest,tertiary,0.075,dc-4631265-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,354436361,https://www.openstreetmap.org/way/354436361,K Street Northwest,tertiary,0.075,dc-4631265-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,397275297,https://www.openstreetmap.org/way/397275297,Van Ness Street Northwest,secondary,0.075,dc-4636969-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,469165492,https://www.openstreetmap.org/way/469165492,16th Street Northwest,tertiary,0.075,dc-4633975-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,1089891386,https://www.openstreetmap.org/way/1089891386,16th Street Northwest,tertiary,0.075,dc-4633975-0,oneway=yes,two-way,0,divided carriageway,1,2
@@ -4005,7 +4005,7 @@ oneway,131052383,https://www.openstreetmap.org/way/131052383,Indiana Avenue Nort
 oneway,343234333,https://www.openstreetmap.org/way/343234333,Rhode Island Avenue Northwest,trunk,0.070,dc-4638907-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,397292981,https://www.openstreetmap.org/way/397292981,Benning Road Northeast,primary,0.070,dc-4635677-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,520537749,https://www.openstreetmap.org/way/520537749,Connecticut Avenue Northwest,primary,0.070,dc-4626000-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,924793627,https://www.openstreetmap.org/way/924793627,K Street Northwest,tertiary,0.070,dc-4631968-0,oneway=yes,two-way,1,,1,3
+oneway,924793627,https://www.openstreetmap.org/way/924793627,K Street Northwest,tertiary,0.070,dc-4631968-0,oneway=yes,two-way,0,side lane beside a two-way carriageway,1,1
 oneway,50752706,https://www.openstreetmap.org/way/50752706,North Capitol Street Northeast,primary,0.069,dc-4642105-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,122079298,https://www.openstreetmap.org/way/122079298,North Capitol Street Northwest,primary,0.069,dc-4639752-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,271594087,https://www.openstreetmap.org/way/271594087,16th Street Northwest,primary,0.069,"dc-4633677-0,dc-4634094-0",oneway=yes,two-way,0,divided carriageway,3,4
@@ -4014,7 +4014,7 @@ oneway,297295058,https://www.openstreetmap.org/way/297295058,Pennsylvania Avenue
 oneway,323192769,https://www.openstreetmap.org/way/323192769,Rockwood Parkway Northwest,residential,0.069,"dc-4639508-0,dc-4635973-0",oneway=yes,two-way,0,carriageway pair,2,2
 oneway,397292972,https://www.openstreetmap.org/way/397292972,Benning Road Northeast,primary,0.069,dc-4637289-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,435106239,https://www.openstreetmap.org/way/435106239,Virginia Avenue Northwest,primary,0.069,dc-4636730-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,535520845,https://www.openstreetmap.org/way/535520845,K Street Northwest,tertiary,0.069,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,535520845,https://www.openstreetmap.org/way/535520845,K Street Northwest,tertiary,0.069,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,696806634,https://www.openstreetmap.org/way/696806634,Virginia Avenue Northwest,primary,0.069,dc-4636730-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,939985258,https://www.openstreetmap.org/way/939985258,New York Avenue Northeast,motorway,0.069,"dc-4635574-0,dc-4635734-0",oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,1181205311,https://www.openstreetmap.org/way/1181205311,South Capitol Street Southwest,primary,0.069,dc-4639933-0,oneway=yes,two-way,0,carriageway pair,4,4
@@ -4141,7 +4141,7 @@ oneway,397339185,https://www.openstreetmap.org/way/397339185,(unnamed),primary_l
 oneway,402278352,https://www.openstreetmap.org/way/402278352,Wade Road Southeast,residential,0.062,dc-4641581-0,not tagged (two-way),one-way,1,,1,1
 oneway,935701249,https://www.openstreetmap.org/way/935701249,Riggs Road Northeast,primary,0.062,dc-4636264-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,1308952631,https://www.openstreetmap.org/way/1308952631,Defense Boulevard,tertiary,0.062,dc-4643318-0,oneway=yes,two-way,0,carriageway pair,3,1
-oneway,49999718,https://www.openstreetmap.org/way/49999718,K Street Northwest,tertiary,0.062,dc-4631711-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,49999718,https://www.openstreetmap.org/way/49999718,K Street Northwest,tertiary,0.062,dc-4631711-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,296272890,https://www.openstreetmap.org/way/296272890,Delaware Avenue Southwest,unclassified,0.062,dc-4641165-0,oneway=no,one-way,0,direction unknown,1,1
 oneway,681462620,https://www.openstreetmap.org/way/681462620,Van Ness Street Northwest,secondary,0.062,dc-4638091-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,6060476,https://www.openstreetmap.org/way/6060476,Nannie Helen Burroughs Avenue Northeast,secondary,0.061,dc-4639363-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -4153,7 +4153,7 @@ oneway,397295362,https://www.openstreetmap.org/way/397295362,South Capitol Stree
 oneway,397295398,https://www.openstreetmap.org/way/397295398,Benning Road Northeast,primary,0.061,dc-4635677-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,397300804,https://www.openstreetmap.org/way/397300804,Rhode Island Avenue Northwest,primary,0.061,dc-4636908-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,442466941,https://www.openstreetmap.org/way/442466941,Massachusetts Avenue Northwest,primary,0.061,dc-4630900-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,520532361,https://www.openstreetmap.org/way/520532361,K Street Northwest,tertiary,0.061,dc-4632818-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,520532361,https://www.openstreetmap.org/way/520532361,K Street Northwest,tertiary,0.061,dc-4632818-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,589539499,https://www.openstreetmap.org/way/589539499,Florida Avenue Northwest,secondary,0.061,dc-4631558-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,590598906,https://www.openstreetmap.org/way/590598906,Alabama Avenue Southeast,secondary,0.061,dc-4642536-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,695842774,https://www.openstreetmap.org/way/695842774,Nannie Helen Burroughs Avenue Northeast,secondary,0.061,dc-4639363-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -4248,7 +4248,7 @@ oneway,292475130,https://www.openstreetmap.org/way/292475130,L'Enfant Plaza Sout
 oneway,297273914,https://www.openstreetmap.org/way/297273914,Pennsylvania Avenue Northwest,primary,0.057,dc-4637545-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,397277578,https://www.openstreetmap.org/way/397277578,16th Street Northwest,primary,0.057,dc-4626080-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,397277962,https://www.openstreetmap.org/way/397277962,16th Street Northwest,primary,0.057,dc-4632745-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,397350555,https://www.openstreetmap.org/way/397350555,Canal Road Northwest,trunk,0.057,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,3
+oneway,397350555,https://www.openstreetmap.org/way/397350555,Canal Road Northwest,trunk,0.057,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,468448916,https://www.openstreetmap.org/way/468448916,M Street Southeast,primary,0.057,dc-4639671-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,554866351,https://www.openstreetmap.org/way/554866351,Hemlock Street Northwest,residential,0.057,dc-4633411-0,oneway=yes,two-way,1,,1,1
 oneway,628580113,https://www.openstreetmap.org/way/628580113,Perimeter East Road Southwest,service,0.057,dc-4642688-0,oneway=yes,two-way,0,carriageway pair,1,1
@@ -4282,7 +4282,7 @@ oneway,397273226,https://www.openstreetmap.org/way/397273226,Pennsylvania Avenue
 oneway,397277964,https://www.openstreetmap.org/way/397277964,16th Street Northwest,primary,0.055,dc-4632860-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,397337349,https://www.openstreetmap.org/way/397337349,16th Street Northwest,primary,0.055,dc-4631063-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,442466937,https://www.openstreetmap.org/way/442466937,Massachusetts Avenue Northwest,primary,0.055,dc-4630900-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,535546521,https://www.openstreetmap.org/way/535546521,K Street Northwest,tertiary,0.055,dc-4631968-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,535546521,https://www.openstreetmap.org/way/535546521,K Street Northwest,tertiary,0.055,dc-4631968-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,580463161,https://www.openstreetmap.org/way/580463161,North Capitol Street Northeast,primary,0.055,dc-4642090-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,835915278,https://www.openstreetmap.org/way/835915278,Benning Road Northeast,primary,0.055,dc-4636450-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,918453671,https://www.openstreetmap.org/way/918453671,North Capitol Street Northeast,primary,0.055,dc-4640862-0,oneway=yes,two-way,0,carriageway pair,3,3
@@ -4292,7 +4292,7 @@ oneway,1122669898,https://www.openstreetmap.org/way/1122669898,South Capitol Str
 oneway,50773208,https://www.openstreetmap.org/way/50773208,Foxhall Road Northwest,primary,0.055,dc-4630187-0,oneway=yes,two-way,0,divided carriageway,4,3
 oneway,130772956,https://www.openstreetmap.org/way/130772956,14th Street Northwest,primary,0.055,dc-4634282-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,360738878,https://www.openstreetmap.org/way/360738878,Sutton Place Northwest,service,0.055,dc-4639064-0,oneway=yes,two-way,0,carriageway pair,1,1
-oneway,969732759,https://www.openstreetmap.org/way/969732759,K Street Northwest,tertiary,0.055,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,969732759,https://www.openstreetmap.org/way/969732759,K Street Northwest,tertiary,0.055,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,1315750089,https://www.openstreetmap.org/way/1315750089,Half Street Southwest,unclassified,0.055,dc-4641937-0,not tagged (two-way),one-way,1,,1,1
 oneway,1425758436,https://www.openstreetmap.org/way/1425758436,1st Street Northeast,primary,0.055,dc-4637450-0,oneway=no,one-way,0,direction unknown,3,3
 oneway,6054575,https://www.openstreetmap.org/way/6054575,D Street Northwest,tertiary,0.054,dc-4633344-0,oneway=yes,two-way,0,carriageway pair,2,2
@@ -4328,13 +4328,13 @@ oneway,397356255,https://www.openstreetmap.org/way/397356255,Rhode Island Avenue
 oneway,468446552,https://www.openstreetmap.org/way/468446552,16th Street Northwest,primary,0.053,dc-4632120-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,918519838,https://www.openstreetmap.org/way/918519838,Nannie Helen Burroughs Avenue Northeast,secondary,0.053,dc-4637682-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,1047824624,https://www.openstreetmap.org/way/1047824624,Pennsylvania Avenue Southeast,trunk,0.053,dc-4640905-0,oneway=yes,two-way,0,divided carriageway,4,3
-oneway,1123283217,https://www.openstreetmap.org/way/1123283217,K Street Northwest,tertiary,0.053,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,1123283217,https://www.openstreetmap.org/way/1123283217,K Street Northwest,tertiary,0.053,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,6054254,https://www.openstreetmap.org/way/6054254,C Street Northwest,unclassified,0.052,dc-4630918-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,6055882,https://www.openstreetmap.org/way/6055882,C Street Southeast,residential,0.052,dc-4641708-0,oneway=yes,two-way,0,carriageway pair,1,1
 oneway,6061205,https://www.openstreetmap.org/way/6061205,1st Street Northwest,residential,0.052,dc-4631113-0,oneway=no,one-way,1,,1,1
 oneway,87471578,https://www.openstreetmap.org/way/87471578,8th Street Northwest,residential,0.052,dc-4633128-0,oneway=yes,two-way,1,,1,1
 oneway,397354917,https://www.openstreetmap.org/way/397354917,M Street Southwest,primary,0.052,dc-4640709-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,438964976,https://www.openstreetmap.org/way/438964976,K Street Northwest,tertiary,0.052,dc-4633939-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,438964976,https://www.openstreetmap.org/way/438964976,K Street Northwest,tertiary,0.052,dc-4633939-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,470185474,https://www.openstreetmap.org/way/470185474,M Street Southeast,primary,0.052,dc-4641765-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,505392222,https://www.openstreetmap.org/way/505392222,(unnamed),motorway_link,0.052,dc-4630317-0,oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,537909212,https://www.openstreetmap.org/way/537909212,(unnamed),motorway_link,0.052,"dc-4635298-0,dc-4635316-0",oneway=yes,two-way,0,slip road or freeway,4,4
@@ -4370,7 +4370,7 @@ oneway,409537528,https://www.openstreetmap.org/way/409537528,Pennsylvania Avenue
 oneway,442066186,https://www.openstreetmap.org/way/442066186,Connecticut Avenue Northwest,primary,0.051,dc-4630097-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,455031561,https://www.openstreetmap.org/way/455031561,Martin Luther King Junior Avenue Southeast,secondary,0.051,dc-4640587-0,oneway=yes,two-way,0,carriageway pair,3,4
 oneway,469169587,https://www.openstreetmap.org/way/469169587,16th Street Northwest,primary,0.051,dc-4630614-0,oneway=yes,two-way,0,divided carriageway,3,4
-oneway,583698431,https://www.openstreetmap.org/way/583698431,K Street Northwest,tertiary,0.051,dc-4631265-0,oneway=yes,two-way,0,divided carriageway,3,3
+oneway,583698431,https://www.openstreetmap.org/way/583698431,K Street Northwest,tertiary,0.051,dc-4631265-0,oneway=yes,two-way,0,divided carriageway,3,2
 oneway,589539497,https://www.openstreetmap.org/way/589539497,New Hampshire Avenue Northwest,secondary,0.051,dc-4630299-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,637537307,https://www.openstreetmap.org/way/637537307,Foxhall Road Northwest,primary,0.051,"dc-4630187-0,dc-4626155-0",oneway=yes,two-way,0,carriageway pair,4,3
 oneway,864962524,https://www.openstreetmap.org/way/864962524,North Capitol Street Northeast,primary,0.051,dc-4642744-0,oneway=yes,two-way,0,carriageway pair,3,3
@@ -4379,7 +4379,7 @@ oneway,918519837,https://www.openstreetmap.org/way/918519837,Nannie Helen Burrou
 oneway,1468455434,https://www.openstreetmap.org/way/1468455434,MacArthur Boulevard Northwest,secondary,0.051,dc-4631585-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,6053731,https://www.openstreetmap.org/way/6053731,1st Street Southwest,residential,0.050,dc-4642097-0,oneway=yes,two-way,1,,2,3
 oneway,38132834,https://www.openstreetmap.org/way/38132834,Porter Street Northwest,secondary,0.050,dc-4636769-0,oneway=yes,two-way,0,divided carriageway,2,3
-oneway,49999717,https://www.openstreetmap.org/way/49999717,K Street Northwest,tertiary,0.050,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,49999717,https://www.openstreetmap.org/way/49999717,K Street Northwest,tertiary,0.050,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,50511181,https://www.openstreetmap.org/way/50511181,H Street Northwest,secondary,0.050,dc-4632110-0,oneway=yes,two-way,1,,3,3
 oneway,50712478,https://www.openstreetmap.org/way/50712478,New York Avenue Northeast,motorway,0.050,dc-4635734-0,oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,130285118,https://www.openstreetmap.org/way/130285118,Constitution Avenue Northeast,primary,0.050,"dc-4636974-0,dc-4639087-0",oneway=yes,two-way,0,divided carriageway,3,3
@@ -4412,7 +4412,7 @@ oneway,554910730,https://www.openstreetmap.org/way/554910730,Kansas Avenue North
 oneway,580463170,https://www.openstreetmap.org/way/580463170,H Street Northeast,primary,0.050,dc-4636532-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,627158899,https://www.openstreetmap.org/way/627158899,West Primary Road Southwest,service,0.050,dc-4640338-0,oneway=yes,two-way,0,carriageway pair,1,1
 oneway,695842748,https://www.openstreetmap.org/way/695842748,1st Street Northwest,tertiary,0.050,dc-4632042-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,1216502213,https://www.openstreetmap.org/way/1216502213,K Street Northwest,tertiary,0.050,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,2,3
+oneway,1216502213,https://www.openstreetmap.org/way/1216502213,K Street Northwest,tertiary,0.050,dc-4634269-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,49085145,https://www.openstreetmap.org/way/49085145,12th Street Expressway,motorway,0.049,"dc-4641461-0,dc-4640797-0",oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,50519361,https://www.openstreetmap.org/way/50519361,Tennessee Avenue Northeast,residential,0.049,dc-4635240-0,oneway=yes,two-way,1,,2,1
 oneway,123824240,https://www.openstreetmap.org/way/123824240,Connecticut Avenue Northwest,primary,0.049,dc-4630617-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -4422,7 +4422,7 @@ oneway,354204990,https://www.openstreetmap.org/way/354204990,North Capitol Stree
 oneway,397337440,https://www.openstreetmap.org/way/397337440,16th Street Northwest,primary,0.049,dc-4630964-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,695997792,https://www.openstreetmap.org/way/695997792,New York Avenue Northeast,trunk,0.049,dc-4635574-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,814294822,https://www.openstreetmap.org/way/814294822,Beach Drive Northwest,primary,0.049,dc-4631515-0,oneway=yes,two-way,0,carriageway pair,3,3
-oneway,864614824,https://www.openstreetmap.org/way/864614824,K Street Northwest,tertiary,0.049,dc-4634167-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,864614824,https://www.openstreetmap.org/way/864614824,K Street Northwest,tertiary,0.049,dc-4634167-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,914673068,https://www.openstreetmap.org/way/914673068,Pennsylvania Avenue Southeast,trunk,0.049,dc-4642444-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,1370851132,https://www.openstreetmap.org/way/1370851132,North Capitol Street Northeast,primary,0.049,dc-4640170-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,1409720445,https://www.openstreetmap.org/way/1409720445,East Capitol Street Northeast,primary,0.049,dc-4642243-0,oneway=yes,two-way,0,carriageway pair,4,4
@@ -4436,7 +4436,7 @@ oneway,130772867,https://www.openstreetmap.org/way/130772867,MacDill Boulevard S
 oneway,257319363,https://www.openstreetmap.org/way/257319363,Indiana Avenue Northwest,tertiary,0.048,dc-4633656-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,296964470,https://www.openstreetmap.org/way/296964470,Fenwick Street Northeast,residential,0.048,dc-4636072-0,oneway=yes,two-way,0,carriageway pair,1,1
 oneway,296971737,https://www.openstreetmap.org/way/296971737,C Street Northwest,unclassified,0.048,dc-4630918-0,oneway=yes,two-way,0,divided carriageway,1,1
-oneway,421077028,https://www.openstreetmap.org/way/421077028,K Street Northwest,tertiary,0.048,dc-4633407-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,421077028,https://www.openstreetmap.org/way/421077028,K Street Northwest,tertiary,0.048,dc-4633407-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,871089761,https://www.openstreetmap.org/way/871089761,New York Avenue Northeast,motorway,0.048,dc-4635734-0,oneway=yes,two-way,0,slip road or freeway,4,4
 oneway,1081028871,https://www.openstreetmap.org/way/1081028871,Kentucky Avenue Southeast,tertiary,0.048,dc-4641069-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,6061874,https://www.openstreetmap.org/way/6061874,Potomac Street Northwest,residential,0.048,dc-4637339-0,not tagged (two-way),one-way,1,,1,1
@@ -4552,7 +4552,7 @@ oneway,435276401,https://www.openstreetmap.org/way/435276401,North Capitol Stree
 oneway,468480281,https://www.openstreetmap.org/way/468480281,Massachusetts Avenue Northeast,primary,0.043,dc-4638394-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,468488475,https://www.openstreetmap.org/way/468488475,M Street Southeast,primary,0.043,dc-4642083-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,478639677,https://www.openstreetmap.org/way/478639677,Rhode Island Avenue Northwest,trunk,0.043,"dc-4634724-0,dc-4637311-0",oneway=yes,two-way,0,divided carriageway,3,3
-oneway,520532355,https://www.openstreetmap.org/way/520532355,K Street Northwest,tertiary,0.043,dc-4632818-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,520532355,https://www.openstreetmap.org/way/520532355,K Street Northwest,tertiary,0.043,dc-4632818-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,581526882,https://www.openstreetmap.org/way/581526882,Bladensburg Road Northeast,primary,0.043,dc-4636664-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,914673071,https://www.openstreetmap.org/way/914673071,Pennsylvania Avenue Southeast,trunk,0.043,dc-4641450-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,918519845,https://www.openstreetmap.org/way/918519845,Nannie Helen Burroughs Avenue Northeast,secondary,0.043,dc-4637682-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -4656,7 +4656,7 @@ oneway,468479825,https://www.openstreetmap.org/way/468479825,Massachusetts Avenu
 oneway,546095970,https://www.openstreetmap.org/way/546095970,11th Street Southeast,secondary,0.040,dc-4640215-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,553322574,https://www.openstreetmap.org/way/553322574,36th Street Northwest,residential,0.040,dc-4632976-0,oneway=yes,two-way,1,,1,1
 oneway,637531079,https://www.openstreetmap.org/way/637531079,Q Street Northwest,residential,0.040,dc-4635628-0,oneway=yes,two-way,0,carriageway pair,1,1
-oneway,925030587,https://www.openstreetmap.org/way/925030587,K Street Northwest,tertiary,0.040,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,3,3
+oneway,925030587,https://www.openstreetmap.org/way/925030587,K Street Northwest,tertiary,0.040,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,3,2
 oneway,985356413,https://www.openstreetmap.org/way/985356413,Potomac Avenue Southeast,tertiary,0.040,dc-4640789-0,oneway=yes,two-way,0,divided carriageway,2,3
 oneway,1144538929,https://www.openstreetmap.org/way/1144538929,Military Road Northwest,primary,0.040,dc-4631804-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,1315233342,https://www.openstreetmap.org/way/1315233342,Half Street Southwest,unclassified,0.040,dc-4643079-0,lanes counted each way,one-way,0,direction unknown,3,3
@@ -4700,7 +4700,7 @@ oneway,131112685,https://www.openstreetmap.org/way/131112685,Mount Olivet Road N
 oneway,397274677,https://www.openstreetmap.org/way/397274677,Alabama Avenue Southeast,secondary,0.039,dc-4642536-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,440066136,https://www.openstreetmap.org/way/440066136,MacDill Boulevard Southwest,tertiary,0.039,dc-4641728-0,oneway=yes,two-way,0,divided carriageway,2,3
 oneway,440066178,https://www.openstreetmap.org/way/440066178,MacDill Boulevard Southwest,tertiary,0.039,dc-4641728-0,oneway=yes,two-way,0,divided carriageway,2,3
-oneway,520537743,https://www.openstreetmap.org/way/520537743,K Street Northwest,tertiary,0.039,dc-4631757-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,520537743,https://www.openstreetmap.org/way/520537743,K Street Northwest,tertiary,0.039,dc-4631757-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,520537744,https://www.openstreetmap.org/way/520537744,K Street Northwest,tertiary,0.039,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,590598874,https://www.openstreetmap.org/way/590598874,Bladensburg Road Northeast,primary,0.039,dc-4636065-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,935719732,https://www.openstreetmap.org/way/935719732,Nannie Helen Burroughs Avenue Northeast,secondary,0.039,dc-4637792-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -4796,7 +4796,7 @@ oneway,696198867,https://www.openstreetmap.org/way/696198867,Constitution Avenue
 oneway,917764881,https://www.openstreetmap.org/way/917764881,K Street Northeast,secondary,0.036,dc-4635322-0,oneway=yes,two-way,1,,3,3
 oneway,963998184,https://www.openstreetmap.org/way/963998184,Mount Olivet Road Northeast,secondary,0.036,dc-4636186-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,1036231939,https://www.openstreetmap.org/way/1036231939,1st Street Northwest,tertiary,0.036,dc-4632555-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,1103289386,https://www.openstreetmap.org/way/1103289386,Lincoln Memorial Circle Northwest,tertiary,0.036,"dc-4634553-0,dc-4630296-0",oneway=yes,two-way,0,divided carriageway,2,3
+oneway,1103289386,https://www.openstreetmap.org/way/1103289386,Lincoln Memorial Circle Northwest,tertiary,0.036,"dc-4634553-0,dc-4630296-0",oneway=yes,two-way,0,divided carriageway,2,2
 oneway,1216869926,https://www.openstreetmap.org/way/1216869926,Division Avenue Northeast,tertiary,0.036,"dc-4636946-0,dc-4636869-0",oneway=yes,two-way,0,carriageway pair,1,2
 oneway,1363575885,https://www.openstreetmap.org/way/1363575885,7th Street Southwest,primary,0.036,dc-4642821-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,1444735284,https://www.openstreetmap.org/way/1444735284,Arkansas Avenue Northwest,secondary,0.036,"dc-4630709-0,dc-4633723-0",oneway=yes,two-way,0,carriageway pair,3,3
@@ -4842,7 +4842,7 @@ oneway,422350335,https://www.openstreetmap.org/way/422350335,Rhode Island Avenue
 oneway,468446570,https://www.openstreetmap.org/way/468446570,16th Street Northwest,primary,0.034,dc-4634417-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,468495105,https://www.openstreetmap.org/way/468495105,M Street Southwest,primary,0.034,dc-4640056-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,481353584,https://www.openstreetmap.org/way/481353584,7th Street Southwest,primary,0.034,"dc-4642622-0,dc-4640944-0",oneway=yes,two-way,0,divided carriageway,3,3
-oneway,516085384,https://www.openstreetmap.org/way/516085384,K Street Northwest,tertiary,0.034,dc-4633407-0,oneway=yes,two-way,0,divided carriageway,2,3
+oneway,516085384,https://www.openstreetmap.org/way/516085384,K Street Northwest,tertiary,0.034,dc-4633407-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,627723196,https://www.openstreetmap.org/way/627723196,(unnamed),secondary_link,0.034,"dc-4641959-0,dc-4642726-0",oneway=yes,two-way,0,slip road or freeway,3,3
 oneway,699100467,https://www.openstreetmap.org/way/699100467,Riggs Road Northeast,primary,0.034,dc-4636264-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,837707414,https://www.openstreetmap.org/way/837707414,Tunlaw Road Northwest,tertiary,0.034,dc-4634743-0,oneway=yes,two-way,0,divided carriageway,2,2
@@ -5001,7 +5001,7 @@ oneway,298151782,https://www.openstreetmap.org/way/298151782,Defense Boulevard,t
 oneway,365932701,https://www.openstreetmap.org/way/365932701,Porter Street Northwest,secondary,0.030,dc-4636710-0,oneway=yes,two-way,0,divided carriageway,2,1
 oneway,397301350,https://www.openstreetmap.org/way/397301350,Maine Avenue Southwest,primary,0.030,dc-4640918-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,397348707,https://www.openstreetmap.org/way/397348707,Sherman Avenue Northwest,secondary,0.030,dc-4636263-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,397350554,https://www.openstreetmap.org/way/397350554,Canal Road Northwest,trunk,0.030,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,3
+oneway,397350554,https://www.openstreetmap.org/way/397350554,Canal Road Northwest,trunk,0.030,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,397472939,https://www.openstreetmap.org/way/397472939,Rock Creek and Potomac Parkway Northwest,primary,0.030,dc-4636825-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,425105216,https://www.openstreetmap.org/way/425105216,Massachusetts Avenue Northwest,primary,0.030,dc-4632408-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,469161082,https://www.openstreetmap.org/way/469161082,Beach Drive Northwest,secondary,0.030,dc-4633884-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -5032,7 +5032,7 @@ oneway,468835487,https://www.openstreetmap.org/way/468835487,Alabama Avenue Sout
 oneway,469219683,https://www.openstreetmap.org/way/469219683,Dalecarlia Parkway Northwest,secondary,0.030,dc-4630265-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,554910778,https://www.openstreetmap.org/way/554910778,Kansas Avenue Northwest,tertiary,0.030,dc-4634012-0,oneway=yes,two-way,0,divided carriageway,3,2
 oneway,581526874,https://www.openstreetmap.org/way/581526874,Bladensburg Road Northeast,primary,0.030,dc-4637898-0,oneway=yes,two-way,0,divided carriageway,3,4
-oneway,583698432,https://www.openstreetmap.org/way/583698432,K Street Northwest,tertiary,0.030,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,583698432,https://www.openstreetmap.org/way/583698432,K Street Northwest,tertiary,0.030,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,699100468,https://www.openstreetmap.org/way/699100468,3rd Street Northeast,tertiary,0.030,dc-4638633-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,920784193,https://www.openstreetmap.org/way/920784193,North Capitol Street Northwest,primary,0.030,dc-4640649-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,1028241802,https://www.openstreetmap.org/way/1028241802,(unnamed),secondary_link,0.030,dc-4642430-0,oneway=yes,two-way,0,slip road or freeway,3,3
@@ -5109,7 +5109,7 @@ oneway,468448919,https://www.openstreetmap.org/way/468448919,M Street Southeast,
 oneway,468449660,https://www.openstreetmap.org/way/468449660,South Capitol Street Southwest,primary_link,0.029,dc-4641820-0,oneway=yes,two-way,0,slip road or freeway,3,3
 oneway,468472349,https://www.openstreetmap.org/way/468472349,New York Avenue Northwest,trunk,0.029,dc-4631713-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,469161086,https://www.openstreetmap.org/way/469161086,Beach Drive Northwest,secondary,0.029,dc-4633884-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,520546834,https://www.openstreetmap.org/way/520546834,K Street Northwest,tertiary,0.029,dc-4631711-0,oneway=yes,two-way,0,divided carriageway,2,3
+oneway,520546834,https://www.openstreetmap.org/way/520546834,K Street Northwest,tertiary,0.029,dc-4631711-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,546095969,https://www.openstreetmap.org/way/546095969,11th Street Southeast,secondary,0.029,dc-4640215-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,683999400,https://www.openstreetmap.org/way/683999400,12th Street Northeast,residential,0.029,dc-4637713-0,oneway=yes,two-way,1,,1,1
 oneway,799528157,https://www.openstreetmap.org/way/799528157,Benning Road Northeast,primary,0.029,dc-4638986-0,oneway=yes,two-way,0,divided carriageway,4,4
@@ -5248,9 +5248,9 @@ oneway,397319279,https://www.openstreetmap.org/way/397319279,Pennsylvania Avenue
 oneway,468424419,https://www.openstreetmap.org/way/468424419,New York Avenue Northeast,trunk,0.026,dc-4635887-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,468479810,https://www.openstreetmap.org/way/468479810,Columbus Circle Northeast,primary,0.026,dc-4634749-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,507273043,https://www.openstreetmap.org/way/507273043,North Capitol Street Northwest,primary,0.026,dc-4642841-0,oneway=yes,two-way,0,carriageway pair,3,3
-oneway,520537746,https://www.openstreetmap.org/way/520537746,K Street Northwest,tertiary,0.026,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,520537746,https://www.openstreetmap.org/way/520537746,K Street Northwest,tertiary,0.026,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,584283817,https://www.openstreetmap.org/way/584283817,Massachusetts Avenue Southeast,tertiary,0.026,dc-4640604-0,oneway=yes,two-way,0,carriageway pair,2,2
-oneway,589905639,https://www.openstreetmap.org/way/589905639,K Street Northwest,tertiary,0.026,dc-4631757-0,oneway=yes,two-way,0,divided carriageway,3,3
+oneway,589905639,https://www.openstreetmap.org/way/589905639,K Street Northwest,tertiary,0.026,dc-4631757-0,oneway=yes,two-way,0,divided carriageway,3,2
 oneway,590581713,https://www.openstreetmap.org/way/590581713,14th Street Northwest,tertiary,0.026,dc-4626100-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,683218443,https://www.openstreetmap.org/way/683218443,Bunker Hill Road Northeast,residential,0.026,dc-4634685-0,oneway=yes,two-way,1,,2,2
 oneway,763121352,https://www.openstreetmap.org/way/763121352,13th Street Northwest,tertiary,0.026,dc-4633898-0,oneway=yes,two-way,1,,1,2
@@ -5295,7 +5295,7 @@ oneway,470170024,https://www.openstreetmap.org/way/470170024,Mount Olivet Road N
 oneway,480879722,https://www.openstreetmap.org/way/480879722,Rock Creek and Potomac Parkway Northwest,primary,0.025,dc-4636825-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,535644551,https://www.openstreetmap.org/way/535644551,North Capitol Street Northwest,primary,0.025,dc-4642841-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,583678856,https://www.openstreetmap.org/way/583678856,New Jersey Avenue Southeast,service,0.025,dc-4642640-0,oneway=yes,two-way,0,carriageway pair,1,1
-oneway,583698434,https://www.openstreetmap.org/way/583698434,K Street Northwest,tertiary,0.025,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,583698434,https://www.openstreetmap.org/way/583698434,K Street Northwest,tertiary,0.025,dc-4631637-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,590525569,https://www.openstreetmap.org/way/590525569,M Street Southeast,primary,0.025,dc-4642195-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,590598894,https://www.openstreetmap.org/way/590598894,Benning Road Southeast,secondary,0.025,dc-4643106-0,oneway=yes,two-way,0,carriageway pair,3,3
 oneway,590598922,https://www.openstreetmap.org/way/590598922,Martin Luther King Junior Avenue Southeast,secondary,0.025,dc-4643075-0,oneway=yes,two-way,0,carriageway pair,3,4
@@ -5338,7 +5338,7 @@ oneway,468428566,https://www.openstreetmap.org/way/468428566,New York Avenue Nor
 oneway,468434648,https://www.openstreetmap.org/way/468434648,Rhode Island Avenue Northeast,primary,0.025,dc-4637645-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,468437373,https://www.openstreetmap.org/way/468437373,9th Street Northeast,primary,0.025,dc-4636445-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,503077368,https://www.openstreetmap.org/way/503077368,N Street Northeast,residential,0.025,dc-4637640-0,oneway=yes,two-way,1,,1,1
-oneway,503185206,https://www.openstreetmap.org/way/503185206,K Street Northwest,tertiary,0.025,dc-4631265-0,oneway=yes,two-way,0,divided carriageway,3,3
+oneway,503185206,https://www.openstreetmap.org/way/503185206,K Street Northwest,tertiary,0.025,dc-4631265-0,oneway=yes,two-way,0,divided carriageway,3,2
 oneway,584283819,https://www.openstreetmap.org/way/584283819,Massachusetts Avenue Southeast,tertiary,0.025,dc-4640604-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,589905674,https://www.openstreetmap.org/way/589905674,Tunlaw Road Northwest,tertiary,0.025,dc-4634743-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,922411752,https://www.openstreetmap.org/way/922411752,Kansas Avenue Northwest,tertiary,0.025,dc-4631627-0,oneway=yes,two-way,1,,2,2
@@ -5438,7 +5438,7 @@ oneway,507273044,https://www.openstreetmap.org/way/507273044,North Capitol Stree
 oneway,553575444,https://www.openstreetmap.org/way/553575444,Bladensburg Road Northeast,primary,0.023,dc-4639116-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,580793706,https://www.openstreetmap.org/way/580793706,Rock Creek and Potomac Parkway Northwest,primary,0.023,dc-4636825-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,581574261,https://www.openstreetmap.org/way/581574261,Douglas Street Northeast,residential,0.023,dc-4638031-0,oneway=yes,two-way,1,,1,1
-oneway,583705854,https://www.openstreetmap.org/way/583705854,K Street Northwest,tertiary,0.023,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,1,3
+oneway,583705854,https://www.openstreetmap.org/way/583705854,K Street Northwest,tertiary,0.023,dc-4631225-0,oneway=yes,two-way,0,divided carriageway,1,1
 oneway,703842662,https://www.openstreetmap.org/way/703842662,9th Street Southwest,secondary,0.023,dc-4641209-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,778820586,https://www.openstreetmap.org/way/778820586,5th Street Northwest,tertiary,0.023,dc-4633016-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,953472716,https://www.openstreetmap.org/way/953472716,Kansas Avenue Northwest,tertiary,0.023,dc-4632077-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -5656,7 +5656,7 @@ oneway,1391799161,https://www.openstreetmap.org/way/1391799161,Sherman Avenue No
 oneway,1445836667,https://www.openstreetmap.org/way/1445836667,Maryland Avenue Northeast,primary,0.019,dc-4636432-0,oneway=yes,two-way,0,divided carriageway,2,2
 oneway,1489234372,https://www.openstreetmap.org/way/1489234372,Minnesota Avenue Southeast,secondary,0.019,dc-4642133-0,oneway=yes,two-way,0,carriageway pair,2,2
 oneway,1489234374,https://www.openstreetmap.org/way/1489234374,Minnesota Avenue Southeast,secondary,0.019,dc-4642133-0,oneway=yes,two-way,0,carriageway pair,2,2
-oneway,1508260473,https://www.openstreetmap.org/way/1508260473,New Jersey Avenue Northwest,tertiary,0.019,dc-4634241-0,oneway=no,one-way,1,,3,2
+oneway,1508260473,https://www.openstreetmap.org/way/1508260473,New Jersey Avenue Northwest,tertiary,0.019,dc-4634241-0,oneway=no,one-way,0,junction stub,3,3
 oneway,50192545,https://www.openstreetmap.org/way/50192545,Benning Road Northeast,primary,0.018,dc-4636450-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,50429586,https://www.openstreetmap.org/way/50429586,K Street Northwest,trunk,0.018,dc-4625870-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,50530173,https://www.openstreetmap.org/way/50530173,Military Road Northwest,primary,0.018,dc-4631804-0,oneway=yes,two-way,0,divided carriageway,4,4
@@ -5793,7 +5793,7 @@ oneway,397317304,https://www.openstreetmap.org/way/397317304,10th Street Northwe
 oneway,397348708,https://www.openstreetmap.org/way/397348708,Sherman Avenue Northwest,secondary,0.016,dc-4638922-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,468446573,https://www.openstreetmap.org/way/468446573,16th Street Northwest,primary,0.016,dc-4634450-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,469159260,https://www.openstreetmap.org/way/469159260,Pennsylvania Avenue Northwest,primary,0.016,dc-4635725-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,oneway=yes,two-way,0,junction stub,3,2
+oneway,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,oneway=yes,two-way,0,side lane beside a two-way carriageway,3,3
 oneway,581526858,https://www.openstreetmap.org/way/581526858,Bladensburg Road Northeast,primary,0.016,dc-4639116-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,590525641,https://www.openstreetmap.org/way/590525641,Washington Circle Northwest,primary,0.016,dc-4637217-0,not tagged (two-way),one-way,1,,3,3
 oneway,637456308,https://www.openstreetmap.org/way/637456308,7th Street Southwest,primary,0.016,dc-4642622-0,oneway=yes,two-way,0,divided carriageway,3,3
@@ -5832,7 +5832,7 @@ oneway,397282340,https://www.openstreetmap.org/way/397282340,Laboratory Road Sou
 oneway,397300327,https://www.openstreetmap.org/way/397300327,Ohio Drive Southwest,tertiary,0.016,dc-4639961-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,397335174,https://www.openstreetmap.org/way/397335174,16th Street Northwest,primary,0.016,dc-4633651-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,397343296,https://www.openstreetmap.org/way/397343296,MacArthur Boulevard Northwest,secondary,0.016,dc-4631475-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,397350549,https://www.openstreetmap.org/way/397350549,Canal Road Northwest,trunk,0.016,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,3
+oneway,397350549,https://www.openstreetmap.org/way/397350549,Canal Road Northwest,trunk,0.016,dc-4633425-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,397472935,https://www.openstreetmap.org/way/397472935,K Street Northwest,trunk,0.016,dc-4625870-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,468446516,https://www.openstreetmap.org/way/468446516,New Hampshire Avenue Northwest,secondary,0.016,dc-4633903-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,468446557,https://www.openstreetmap.org/way/468446557,16th Street Northwest,primary,0.016,dc-4632120-0,oneway=yes,two-way,0,divided carriageway,4,4
@@ -6414,7 +6414,7 @@ presence,397297316,https://www.openstreetmap.org/way/397297316,Irving Street Nor
 presence,1561466921,https://www.openstreetmap.org/way/1561466921,11th Street Northwest,secondary,0.098,dc-4631894-0,"cycleway:both:lane=pictogram, cycleway:left=lane, cycleway:right=lane",none recorded,1,,2,3
 presence,6059995,https://www.openstreetmap.org/way/6059995,Massachusetts Avenue Southeast,residential,0.098,"dc-4643100-0,dc-4640268-0",no cycleway tag,painted lane (OB),1,,1,1
 presence,830423225,https://www.openstreetmap.org/way/830423225,Irving Street Northeast,primary,0.097,dc-4635247-0,no cycleway tag,"protected lane (IB), protected lane (OB)",0,separate: OSM maps the facility as its own way beside the road or its other carriageway,4,3
-presence,1340682789,https://www.openstreetmap.org/way/1340682789,8th Street Northwest,residential,0.096,dc-4633771-0,cycleway=shared_lane,painted lane (IB),1,,1,2
+presence,1340682789,https://www.openstreetmap.org/way/1340682789,8th Street Northwest,residential,0.096,dc-4633771-0,cycleway=shared_lane,painted lane (IB),1,,1,1
 presence,1427945378,https://www.openstreetmap.org/way/1427945378,M Street Southeast,primary,0.092,dc-4641325-0,"cycleway:left=no, cycleway:right=separate",none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,3,3
 presence,296345143,https://www.openstreetmap.org/way/296345143,New Jersey Avenue Northwest,tertiary,0.091,dc-4630052-0,cycleway:right=lane,none recorded,1,,2,2
 presence,48018661,https://www.openstreetmap.org/way/48018661,(unnamed),primary,0.089,dc-4631606-0,cycleway=lane,none recorded,0,DC's blocks differ along the way (a lane on some),2,2
@@ -6435,7 +6435,7 @@ presence,48018646,https://www.openstreetmap.org/way/48018646,(unnamed),primary,0
 presence,598202141,https://www.openstreetmap.org/way/598202141,R Street Southwest,tertiary,0.081,dc-4641473-0,"cycleway:left=separate, cycleway:right=no",none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,1,1
 presence,1167550411,https://www.openstreetmap.org/way/1167550411,Suitland Parkway Southeast,trunk,0.081,dc-4640270-0,cycleway:right=separate,none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,4,4
 presence,6053997,https://www.openstreetmap.org/way/6053997,Kentucky Avenue Southeast,tertiary,0.080,dc-4641069-0,"cycleway:both=lane, cycleway:both:lane=advisory",none recorded,0,DC's blocks differ along the way (a lane on some),2,2
-presence,1223411289,https://www.openstreetmap.org/way/1223411289,8th Street Northwest,residential,0.080,dc-4630450-0,cycleway=shared_lane,painted lane (IB),1,,1,2
+presence,1223411289,https://www.openstreetmap.org/way/1223411289,8th Street Northwest,residential,0.080,dc-4630450-0,cycleway=shared_lane,painted lane (IB),1,,1,1
 presence,439365344,https://www.openstreetmap.org/way/439365344,E Street Southeast,tertiary,0.079,dc-4642321-0,"cycleway:left=shared_lane, cycleway:right=lane",none recorded,1,,1,1
 presence,130908288,https://www.openstreetmap.org/way/130908288,20th Street Northwest,tertiary,0.078,"dc-4633852-0,dc-4631078-0","cycleway:left=separate, cycleway:right=no",none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,3,3
 presence,297368625,https://www.openstreetmap.org/way/297368625,7th Street Northwest,secondary,0.078,dc-4634364-0,cycleway:right=lane,none recorded,1,,3,3
@@ -6748,7 +6748,7 @@ presence,987021394,https://www.openstreetmap.org/way/987021394,Virginia Avenue N
 presence,1050685710,https://www.openstreetmap.org/way/1050685710,11th Street Northwest,tertiary,0.019,dc-4633398-0,"cycleway:both=shared_lane, cycleway:both:lane=pictogram, cycleway:left=shared_lane, cycleway:right=lane",none recorded,1,,2,3
 presence,1119706106,https://www.openstreetmap.org/way/1119706106,Porter Street Northwest,secondary,0.019,dc-4636769-0,cycleway=shared_lane,painted lane (OB),1,,3,4
 presence,1208521868,https://www.openstreetmap.org/way/1208521868,East Capitol Street Northeast,secondary,0.019,dc-4641963-0,no cycleway tag,painted lane (IB),1,,3,2
-presence,1508260473,https://www.openstreetmap.org/way/1508260473,New Jersey Avenue Northwest,tertiary,0.019,dc-4634241-0,"cycleway:left=separate, cycleway:right=lane",none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,3,2
+presence,1508260473,https://www.openstreetmap.org/way/1508260473,New Jersey Avenue Northwest,tertiary,0.019,dc-4634241-0,"cycleway:left=separate, cycleway:right=lane",none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,3,3
 presence,1561245804,https://www.openstreetmap.org/way/1561245804,11th Street Northwest,secondary,0.019,dc-4631053-0,cycleway=separate,none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,2,3
 presence,1315238638,https://www.openstreetmap.org/way/1315238638,Tingey Square Southeast,residential,0.018,dc-4640025-0,cycleway:right=lane,none recorded,1,,2,1
 presence,346876729,https://www.openstreetmap.org/way/346876729,(unnamed),secondary,0.017,dc-4643265-0,cycleway:right=separate,none recorded,0,separate: OSM maps a facility as its own way beside the road; DC records none,2,2
@@ -6925,7 +6925,7 @@ speed,1116377394,https://www.openstreetmap.org/way/1116377394,Albemarle Street N
 speed,45532017,https://www.openstreetmap.org/way/45532017,29th Street Northwest,residential,0.586,"dc-4633708-0,dc-4634392-0,dc-4630116-0,dc-4634138-0,dc-4631141-0,dc-4633469-0",25 mph,20 mph,1,,2,1
 speed,6061868,https://www.openstreetmap.org/way/6061868,N Street Northwest,residential,0.579,"dc-4631965-0,dc-4632025-0,dc-4631542-0,dc-4634309-0,dc-4630512-0,dc-4632638-0",25 mph,20 mph,1,,2,1
 speed,6059017,https://www.openstreetmap.org/way/6059017,A Street Northeast,residential,0.564,"dc-4638428-0,dc-4636161-0,dc-4639488-0,dc-4635584-0,dc-4636399-0,dc-4636671-0",25 mph,20 mph,1,,2,1
-speed,24260117,https://www.openstreetmap.org/way/24260117,Whitehurst Freeway,motorway,0.529,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,24260117,https://www.openstreetmap.org/way/24260117,Whitehurst Freeway,motorway,0.529,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,130907973,https://www.openstreetmap.org/way/130907973,Broad Branch Road Northwest,residential,0.516,"dc-4631262-0,dc-4630641-0,dc-4631165-0,dc-4631545-0,dc-4631703-0,dc-4632422-0",20 mph,25 mph,1,,1,2
 speed,344674243,https://www.openstreetmap.org/way/344674243,Connecticut Avenue Northwest,primary,0.501,"dc-4630071-0,dc-4631198-0,dc-4630048-0,dc-4630988-0,dc-4633093-0,dc-4633596-0",25 mph,30 mph,1,,3,4
 speed,6063018,https://www.openstreetmap.org/way/6063018,O Street Northwest,residential,0.487,"dc-4633994-0,dc-4630977-0,dc-4632852-0,dc-4631086-0,dc-4626177-0,dc-4633255-0",25 mph,20 mph,1,,2,1
@@ -7038,7 +7038,7 @@ speed,6058115,https://www.openstreetmap.org/way/6058115,U Street Northwest,resid
 speed,421789044,https://www.openstreetmap.org/way/421789044,Jenifer Street Northwest,residential,0.231,"dc-4632588-0,dc-4631933-0",25 mph,20 mph,1,,2,1
 speed,6060856,https://www.openstreetmap.org/way/6060856,1st Street Northeast,residential,0.230,"dc-4638977-0,dc-4635485-0,dc-4634818-0",20 mph,25 mph,1,,1,2
 speed,1365428487,https://www.openstreetmap.org/way/1365428487,52nd Street Northwest,residential,0.230,"dc-4633587-0,dc-4631817-0,dc-4630408-0,dc-4632712-0,dc-4630092-0",15 mph,20 mph,1,,1,1
-speed,50430008,https://www.openstreetmap.org/way/50430008,Whitehurst Freeway,motorway,0.229,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,50430008,https://www.openstreetmap.org/way/50430008,Whitehurst Freeway,motorway,0.229,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,974647316,https://www.openstreetmap.org/way/974647316,19th Street Northwest,residential,0.227,"dc-4631670-0,dc-4631996-0,dc-4630319-0,dc-4632524-0,dc-4633489-0",15 mph,20 mph,1,,1,1
 speed,47244515,https://www.openstreetmap.org/way/47244515,Champlain Street Northwest,tertiary,0.226,"dc-4631012-0,dc-4634038-0",25 mph,20 mph,1,,2,1
 speed,6056538,https://www.openstreetmap.org/way/6056538,36th Street Northwest,residential,0.226,"dc-4631221-0,dc-4633263-0,dc-4631307-0,dc-4633880-0",25 mph,20 mph,1,,2,1
@@ -7089,7 +7089,7 @@ speed,382852845,https://www.openstreetmap.org/way/382852845,Connecticut Avenue N
 speed,50773215,https://www.openstreetmap.org/way/50773215,35th Street Northwest,residential,0.193,"dc-4631548-0,dc-4630447-0,dc-4632395-0",25 mph,20 mph,1,,3,2
 speed,132638130,https://www.openstreetmap.org/way/132638130,Fort Lincoln Drive Northeast,tertiary,0.193,"dc-4636016-0,dc-4638684-0,dc-4638661-0",20 mph,25 mph,1,,3,3
 speed,589905704,https://www.openstreetmap.org/way/589905704,37th Street Northwest,tertiary,0.193,"dc-4633793-0,dc-4631322-0,dc-4634186-0",25 mph,20 mph,1,,2,2
-speed,397354071,https://www.openstreetmap.org/way/397354071,Whitehurst Freeway,motorway,0.192,"dc-4636053-0,dc-4635183-0",35 mph,20 mph,1,,4,4
+speed,397354071,https://www.openstreetmap.org/way/397354071,Whitehurst Freeway,motorway,0.192,"dc-4636053-0,dc-4635183-0",35 mph,20 mph,0,owner override,4,4
 speed,928192120,https://www.openstreetmap.org/way/928192120,Rockwood Parkway Northwest,residential,0.192,dc-4637354-0,25 mph,20 mph,1,,2,2
 speed,422628723,https://www.openstreetmap.org/way/422628723,McKinley Street Northwest,residential,0.191,"dc-4632261-0,dc-4632549-0,dc-4630290-0",20 mph,25 mph,1,,1,2
 speed,457558491,https://www.openstreetmap.org/way/457558491,Scale Gate Road,service,0.191,dc-4637280-0,25 mph,20 mph,1,,2,1
@@ -7102,7 +7102,7 @@ speed,109672314,https://www.openstreetmap.org/way/109672314,Lanier Place Northwe
 speed,506705170,https://www.openstreetmap.org/way/506705170,Fulton Street Northwest,residential,0.186,"dc-4632181-0,dc-4630453-0,dc-4631191-0",25 mph,20 mph,1,,2,1
 speed,6057067,https://www.openstreetmap.org/way/6057067,T Street Northwest,residential,0.186,"dc-4639244-0,dc-4637586-0,dc-4637505-0",25 mph,20 mph,1,,2,1
 speed,660642709,https://www.openstreetmap.org/way/660642709,Martin Luther King Junior Avenue Southeast,secondary,0.186,dc-4641591-0,30 mph,25 mph,1,,4,3
-speed,397350557,https://www.openstreetmap.org/way/397350557,Canal Road Northwest,trunk,0.185,dc-4633425-0,35 mph,20 mph,1,,4,3
+speed,397350557,https://www.openstreetmap.org/way/397350557,Canal Road Northwest,trunk,0.185,dc-4633425-0,35 mph,20 mph,0,owner override,4,4
 speed,6054826,https://www.openstreetmap.org/way/6054826,Nebraska Avenue Northwest,primary,0.185,"dc-4634163-0,dc-4631948-0,dc-4632617-0",25 mph,30 mph,1,,3,4
 speed,130788180,https://www.openstreetmap.org/way/130788180,Sherman Avenue Northwest,secondary,0.185,dc-4634834-0,20 mph,25 mph,1,,3,3
 speed,450581690,https://www.openstreetmap.org/way/450581690,Tondorf Road,unclassified,0.184,dc-4634974-0,10 mph,20 mph,1,,1,1
@@ -7213,7 +7213,7 @@ speed,1364059338,https://www.openstreetmap.org/way/1364059338,Wheeler Road South
 speed,6060410,https://www.openstreetmap.org/way/6060410,40th Street Northwest,residential,0.129,dc-4625947-0,25 mph,20 mph,1,,2,1
 speed,397339879,https://www.openstreetmap.org/way/397339879,Georgia Avenue Northwest,trunk,0.129,"dc-4634382-0,dc-4633947-0,dc-4633908-0",25 mph,30 mph,1,,3,4
 speed,440167424,https://www.openstreetmap.org/way/440167424,Magazine Road Southeast,residential,0.129,"dc-4642245-0,dc-4640082-0,dc-4641100-0",15 mph,20 mph,1,,1,1
-speed,1093448958,https://www.openstreetmap.org/way/1093448958,Lincoln Memorial Circle Southwest,service,0.129,"dc-4639974-0,dc-4641921-0,dc-4630228-0",10 mph,20 mph,1,,1,3
+speed,1093448958,https://www.openstreetmap.org/way/1093448958,Lincoln Memorial Circle Southwest,service,0.129,"dc-4639974-0,dc-4641921-0,dc-4630228-0",10 mph,20 mph,1,,1,2
 speed,6060501,https://www.openstreetmap.org/way/6060501,California Street Northwest,residential,0.128,dc-4626045-0,25 mph,20 mph,1,,2,1
 speed,130285144,https://www.openstreetmap.org/way/130285144,Pennsylvania Avenue Southeast,primary,0.128,"dc-4642514-0,dc-4640224-0",30 mph,20 mph,1,,4,3
 speed,1409446061,https://www.openstreetmap.org/way/1409446061,Pennsylvania Avenue Southeast,primary,0.128,"dc-4640224-0,dc-4642514-0",30 mph,20 mph,1,,4,3
@@ -7227,7 +7227,7 @@ speed,97167266,https://www.openstreetmap.org/way/97167266,Blanchard Drive Southw
 speed,130908264,https://www.openstreetmap.org/way/130908264,West Virginia Avenue Northeast,tertiary,0.126,"dc-4640252-0,dc-4640398-0",25 mph,20 mph,1,,2,2
 speed,112433940,https://www.openstreetmap.org/way/112433940,Linnean Avenue Northwest,residential,0.125,"dc-4632414-0,dc-4634374-0,dc-4631876-0",25 mph,20 mph,1,,2,1
 speed,1342983395,https://www.openstreetmap.org/way/1342983395,Utah Avenue Northwest,tertiary,0.125,"dc-4639550-0,dc-4638298-0",25 mph,20 mph,1,,2,2
-speed,235079846,https://www.openstreetmap.org/way/235079846,Whitehurst Freeway,motorway,0.124,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,235079846,https://www.openstreetmap.org/way/235079846,Whitehurst Freeway,motorway,0.124,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,1414066114,https://www.openstreetmap.org/way/1414066114,Independence Avenue Southwest,primary,0.124,"dc-4640740-0,dc-4641732-0",30 mph,20 mph,1,,3,3
 speed,322578798,https://www.openstreetmap.org/way/322578798,New York Avenue Northeast,trunk,0.123,dc-4636082-0,25 mph,20 mph,1,,3,3
 speed,1106903926,https://www.openstreetmap.org/way/1106903926,19th Street Northwest,residential,0.122,"dc-4632358-0,dc-4633260-0",15 mph,20 mph,1,,1,1
@@ -7344,7 +7344,7 @@ speed,49809726,https://www.openstreetmap.org/way/49809726,K Street Northwest,res
 speed,130889747,https://www.openstreetmap.org/way/130889747,11th Street Northwest,secondary,0.095,dc-4626186-0,25 mph,30 mph,1,,3,3
 speed,346627386,https://www.openstreetmap.org/way/346627386,Swann Street Northwest,residential,0.095,dc-4636622-0,25 mph,20 mph,1,,2,1
 speed,440070187,https://www.openstreetmap.org/way/440070187,Chappie James Boulevard Southwest,tertiary,0.095,dc-4642612-0,30 mph,20 mph,1,,3,3
-speed,583705856,https://www.openstreetmap.org/way/583705856,K Street Northwest,tertiary,0.095,dc-4631637-0,25 mph,20 mph,1,,2,3
+speed,583705856,https://www.openstreetmap.org/way/583705856,K Street Northwest,tertiary,0.095,dc-4631637-0,25 mph,20 mph,1,,2,1
 speed,6053023,https://www.openstreetmap.org/way/6053023,Almy Street Southwest,service,0.094,"dc-4642808-0,dc-4640537-0",15 mph,20 mph,1,,1,1
 speed,6061969,https://www.openstreetmap.org/way/6061969,Langley Way Southwest,residential,0.094,"dc-4639835-0,dc-4640656-0,dc-4640472-0",10 mph,20 mph,1,,1,1
 speed,29961103,https://www.openstreetmap.org/way/29961103,T Street Northwest,tertiary,0.094,dc-4634669-0,25 mph,20 mph,1,,3,1
@@ -7356,7 +7356,7 @@ speed,49809725,https://www.openstreetmap.org/way/49809725,K Street Northwest,res
 speed,50427245,https://www.openstreetmap.org/way/50427245,Ohio Drive Northwest,primary,0.093,"dc-4632677-0,dc-4632204-0",25 mph,20 mph,1,,3,3
 speed,6054090,https://www.openstreetmap.org/way/6054090,34th Street Northwest,secondary,0.093,dc-4630495-0,25 mph,20 mph,1,,3,3
 speed,38132698,https://www.openstreetmap.org/way/38132698,Connecticut Avenue Northwest,primary,0.093,dc-4633062-0,25 mph,30 mph,1,,3,4
-speed,397350552,https://www.openstreetmap.org/way/397350552,Canal Road Northwest,trunk,0.093,dc-4633425-0,35 mph,20 mph,1,,4,3
+speed,397350552,https://www.openstreetmap.org/way/397350552,Canal Road Northwest,trunk,0.093,dc-4633425-0,35 mph,20 mph,0,owner override,4,4
 speed,1211712959,https://www.openstreetmap.org/way/1211712959,Rhode Island Avenue Northwest,primary,0.093,dc-4636312-0,30 mph,25 mph,1,,4,3
 speed,1500249877,https://www.openstreetmap.org/way/1500249877,Foxview Circle Northwest,residential,0.093,dc-4632603-0,25 mph,20 mph,1,,2,1
 speed,554928840,https://www.openstreetmap.org/way/554928840,Meadow Road Northwest,residential,0.091,"dc-4632811-0,dc-4631714-0",25 mph,20 mph,1,,2,1
@@ -7365,7 +7365,7 @@ speed,1019882424,https://www.openstreetmap.org/way/1019882424,New York Avenue No
 speed,696063548,https://www.openstreetmap.org/way/696063548,Wisconsin Avenue Northwest,primary,0.091,dc-4636437-0,30 mph,25 mph,1,,4,3
 speed,1331029594,https://www.openstreetmap.org/way/1331029594,17th Street Northwest,residential,0.090,dc-4631392-0,15 mph,20 mph,1,,1,1
 speed,6060937,https://www.openstreetmap.org/way/6060937,15th Street Northwest,secondary,0.089,dc-4634509-0,25 mph,20 mph,1,,3,3
-speed,50430007,https://www.openstreetmap.org/way/50430007,Whitehurst Freeway,motorway,0.089,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,50430007,https://www.openstreetmap.org/way/50430007,Whitehurst Freeway,motorway,0.089,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,49809724,https://www.openstreetmap.org/way/49809724,K Street Northwest,primary,0.089,dc-4632688-0,25 mph,20 mph,1,,3,3
 speed,6055066,https://www.openstreetmap.org/way/6055066,Allison Street Northeast,residential,0.088,dc-4635019-0,20 mph,25 mph,1,,2,2
 speed,6063405,https://www.openstreetmap.org/way/6063405,Dent Place Northwest,residential,0.088,dc-4634033-0,25 mph,20 mph,1,,2,1
@@ -7440,7 +7440,7 @@ speed,298815729,https://www.openstreetmap.org/way/298815729,K Street Northwest,t
 speed,1015990070,https://www.openstreetmap.org/way/1015990070,Southeast Boulevard,primary,0.077,dc-4642772-0,30 mph,20 mph,1,,4,3
 speed,50008439,https://www.openstreetmap.org/way/50008439,16th Street Northwest,primary,0.076,dc-4634454-0,25 mph,20 mph,1,,3,3
 speed,766574212,https://www.openstreetmap.org/way/766574212,Cortland Place Northwest,residential,0.076,dc-4632646-0,15 mph,20 mph,1,,1,1
-speed,1163633480,https://www.openstreetmap.org/way/1163633480,K Street Northwest,tertiary,0.076,dc-4631225-0,25 mph,20 mph,1,,2,3
+speed,1163633480,https://www.openstreetmap.org/way/1163633480,K Street Northwest,tertiary,0.076,dc-4631225-0,25 mph,20 mph,1,,2,1
 speed,1359543849,https://www.openstreetmap.org/way/1359543849,11th Street Northwest,trunk,0.076,dc-4633990-0,25 mph,30 mph,1,,2,3
 speed,1458747803,https://www.openstreetmap.org/way/1458747803,S Street Northwest,residential,0.076,dc-4638267-0,25 mph,20 mph,1,,2,1
 speed,1503484329,https://www.openstreetmap.org/way/1503484329,New York Avenue Northeast,motorway,0.076,dc-4635574-0,40 mph,45 mph,1,,4,4
@@ -7578,7 +7578,7 @@ speed,799540088,https://www.openstreetmap.org/way/799540088,Nebraska Avenue Nort
 speed,1308952632,https://www.openstreetmap.org/way/1308952632,Defense Boulevard,tertiary,0.057,dc-4643318-0,30 mph,20 mph,1,,3,1
 speed,50008440,https://www.openstreetmap.org/way/50008440,16th Street Northwest,primary,0.057,dc-4634454-0,25 mph,20 mph,1,,3,3
 speed,277955580,https://www.openstreetmap.org/way/277955580,S Street Northwest,residential,0.057,dc-4639182-0,25 mph,20 mph,1,,2,1
-speed,397350555,https://www.openstreetmap.org/way/397350555,Canal Road Northwest,trunk,0.057,dc-4633425-0,35 mph,20 mph,1,,4,3
+speed,397350555,https://www.openstreetmap.org/way/397350555,Canal Road Northwest,trunk,0.057,dc-4633425-0,35 mph,20 mph,0,owner override,4,4
 speed,1144050312,https://www.openstreetmap.org/way/1144050312,Willow Street Northwest,residential,0.057,dc-4635985-0,25 mph,20 mph,1,,2,1
 speed,1355492080,https://www.openstreetmap.org/way/1355492080,46th Street Northwest,tertiary,0.057,dc-4630222-0,25 mph,20 mph,1,,2,2
 speed,40338917,https://www.openstreetmap.org/way/40338917,12th Street Southwest,secondary,0.056,dc-4642722-0,25 mph,20 mph,1,,3,3
@@ -7629,7 +7629,7 @@ speed,397273223,https://www.openstreetmap.org/way/397273223,Pennsylvania Avenue 
 speed,397293026,https://www.openstreetmap.org/way/397293026,Benning Road Northeast,primary,0.051,dc-4635576-0,35 mph,30 mph,1,,4,4
 speed,455031561,https://www.openstreetmap.org/way/455031561,Martin Luther King Junior Avenue Southeast,secondary,0.051,dc-4640587-0,25 mph,30 mph,1,,3,4
 speed,507336298,https://www.openstreetmap.org/way/507336298,Albemarle Street Northwest,tertiary,0.051,dc-4630863-0,25 mph,20 mph,1,,2,2
-speed,583698431,https://www.openstreetmap.org/way/583698431,K Street Northwest,tertiary,0.051,dc-4631265-0,25 mph,20 mph,1,,3,3
+speed,583698431,https://www.openstreetmap.org/way/583698431,K Street Northwest,tertiary,0.051,dc-4631265-0,25 mph,20 mph,1,,3,2
 speed,637537307,https://www.openstreetmap.org/way/637537307,Foxhall Road Northwest,primary,0.051,"dc-4630187-0,dc-4626155-0",35 mph,20 mph,1,,4,3
 speed,1111094164,https://www.openstreetmap.org/way/1111094164,14th Street Northwest,tertiary,0.051,dc-4630756-0,20 mph,25 mph,1,,2,2
 speed,1232223628,https://www.openstreetmap.org/way/1232223628,Kalorama Road Northwest,tertiary,0.051,dc-4632543-0,25 mph,20 mph,1,,2,1
@@ -7710,7 +7710,7 @@ speed,837707416,https://www.openstreetmap.org/way/837707416,New Mexico Avenue No
 speed,1019949888,https://www.openstreetmap.org/way/1019949888,16th Street Northwest,primary,0.044,dc-4630120-0,25 mph,20 mph,1,,3,3
 speed,1503643225,https://www.openstreetmap.org/way/1503643225,(unnamed),motorway_link,0.044,dc-4635316-0,25 mph,20 mph,1,,4,4
 speed,6056970,https://www.openstreetmap.org/way/6056970,Upton Street Northwest,residential,0.043,dc-4636947-0,25 mph,20 mph,1,,2,1
-speed,235079848,https://www.openstreetmap.org/way/235079848,Whitehurst Freeway,motorway,0.043,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,235079848,https://www.openstreetmap.org/way/235079848,Whitehurst Freeway,motorway,0.043,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,543716108,https://www.openstreetmap.org/way/543716108,15th Street Northwest,secondary,0.043,dc-4631609-0,25 mph,20 mph,1,,3,3
 speed,1063458074,https://www.openstreetmap.org/way/1063458074,Maryland Avenue Northeast,primary,0.043,dc-4635894-0,25 mph,20 mph,1,,3,3
 speed,1425773787,https://www.openstreetmap.org/way/1425773787,Porter Street Northwest,secondary,0.043,dc-4636769-0,25 mph,30 mph,1,,2,3
@@ -7763,7 +7763,7 @@ speed,396700174,https://www.openstreetmap.org/way/396700174,15th Street Northwes
 speed,397354915,https://www.openstreetmap.org/way/397354915,M Street Southwest,primary,0.040,dc-4642794-0,25 mph,20 mph,1,,3,3
 speed,454629039,https://www.openstreetmap.org/way/454629039,M Street Northwest,primary,0.040,dc-4631480-0,25 mph,20 mph,1,,3,3
 speed,468479825,https://www.openstreetmap.org/way/468479825,Massachusetts Avenue Northwest,primary,0.040,dc-4632671-0,25 mph,20 mph,1,,3,3
-speed,925030587,https://www.openstreetmap.org/way/925030587,K Street Northwest,tertiary,0.040,dc-4631225-0,25 mph,20 mph,1,,3,3
+speed,925030587,https://www.openstreetmap.org/way/925030587,K Street Northwest,tertiary,0.040,dc-4631225-0,25 mph,20 mph,1,,3,2
 speed,992136002,https://www.openstreetmap.org/way/992136002,Massachusetts Avenue Northwest,primary,0.040,dc-4631167-0,25 mph,20 mph,1,,3,3
 speed,1208595680,https://www.openstreetmap.org/way/1208595680,M Street Southeast,primary,0.040,dc-4642859-0,25 mph,20 mph,1,,3,3
 speed,67762313,https://www.openstreetmap.org/way/67762313,Massachusetts Avenue Northwest,primary,0.040,dc-4631761-0,25 mph,20 mph,1,,3,3
@@ -7813,7 +7813,7 @@ speed,1248114773,https://www.openstreetmap.org/way/1248114773,Pennsylvania Avenu
 speed,50711288,https://www.openstreetmap.org/way/50711288,West Virginia Avenue Northeast,tertiary,0.036,dc-4640525-0,25 mph,20 mph,1,,3,2
 speed,696198867,https://www.openstreetmap.org/way/696198867,Constitution Avenue Northeast,primary,0.036,dc-4636974-0,25 mph,20 mph,1,,3,3
 speed,1093448965,https://www.openstreetmap.org/way/1093448965,Lincoln Memorial Circle Northwest,primary,0.036,"dc-4630296-0,dc-4630228-0",25 mph,20 mph,1,,3,3
-speed,1103289386,https://www.openstreetmap.org/way/1103289386,Lincoln Memorial Circle Northwest,tertiary,0.036,"dc-4634553-0,dc-4630296-0",25 mph,20 mph,1,,2,3
+speed,1103289386,https://www.openstreetmap.org/way/1103289386,Lincoln Memorial Circle Northwest,tertiary,0.036,"dc-4634553-0,dc-4630296-0",25 mph,20 mph,1,,2,2
 speed,6058063,https://www.openstreetmap.org/way/6058063,2nd Street Southwest,primary,0.035,dc-4639789-0,25 mph,20 mph,1,,3,3
 speed,50773201,https://www.openstreetmap.org/way/50773201,Canal Road Northwest,trunk,0.035,dc-4630766-0,40 mph,35 mph,1,,4,4
 speed,130676663,https://www.openstreetmap.org/way/130676663,Massachusetts Avenue Northwest,primary,0.035,dc-4631958-0,25 mph,20 mph,1,,3,3
@@ -7910,7 +7910,7 @@ speed,1468455432,https://www.openstreetmap.org/way/1468455432,Albemarle Street N
 speed,50875246,https://www.openstreetmap.org/way/50875246,South Dakota Avenue Northeast,primary,0.030,dc-4634678-0,25 mph,20 mph,1,,3,3
 speed,298151782,https://www.openstreetmap.org/way/298151782,Defense Boulevard,tertiary,0.030,dc-4642343-0,30 mph,20 mph,1,,3,1
 speed,365932701,https://www.openstreetmap.org/way/365932701,Porter Street Northwest,secondary,0.030,dc-4636710-0,25 mph,20 mph,1,,2,1
-speed,397350554,https://www.openstreetmap.org/way/397350554,Canal Road Northwest,trunk,0.030,dc-4633425-0,35 mph,20 mph,1,,4,3
+speed,397350554,https://www.openstreetmap.org/way/397350554,Canal Road Northwest,trunk,0.030,dc-4633425-0,35 mph,20 mph,0,owner override,4,4
 speed,425105216,https://www.openstreetmap.org/way/425105216,Massachusetts Avenue Northwest,primary,0.030,dc-4632408-0,25 mph,20 mph,1,,3,3
 speed,468462727,https://www.openstreetmap.org/way/468462727,South Dakota Avenue Northeast,primary,0.030,dc-4636575-0,25 mph,20 mph,1,,3,3
 speed,488459767,https://www.openstreetmap.org/way/488459767,Florida Avenue Northwest,primary,0.030,"dc-4629925-0,dc-4630527-0",25 mph,20 mph,1,,3,3
@@ -8017,7 +8017,7 @@ speed,397297432,https://www.openstreetmap.org/way/397297432,Arizona Avenue North
 speed,468480206,https://www.openstreetmap.org/way/468480206,Eastern Avenue Northeast,secondary,0.026,dc-4635622-0,25 mph,20 mph,1,,3,3
 speed,468498835,https://www.openstreetmap.org/way/468498835,Massachusetts Avenue Northwest,primary,0.026,dc-4632016-0,25 mph,20 mph,1,,3,3
 speed,469215021,https://www.openstreetmap.org/way/469215021,Georgia Avenue Northwest,trunk,0.026,dc-4632730-0,25 mph,30 mph,1,,3,4
-speed,589905639,https://www.openstreetmap.org/way/589905639,K Street Northwest,tertiary,0.026,dc-4631757-0,25 mph,20 mph,1,,3,3
+speed,589905639,https://www.openstreetmap.org/way/589905639,K Street Northwest,tertiary,0.026,dc-4631757-0,25 mph,20 mph,1,,3,2
 speed,1086079446,https://www.openstreetmap.org/way/1086079446,Cedar Street Northwest,secondary,0.026,dc-4631650-0,25 mph,20 mph,1,,3,3
 speed,1121174666,https://www.openstreetmap.org/way/1121174666,15th Street Southwest,secondary,0.026,dc-4640361-0,25 mph,20 mph,1,,3,3
 speed,1359543850,https://www.openstreetmap.org/way/1359543850,11th Street Northwest,trunk,0.026,dc-4633990-0,25 mph,30 mph,1,,2,3
@@ -8047,7 +8047,7 @@ speed,397319010,https://www.openstreetmap.org/way/397319010,Rhode Island Avenue 
 speed,409549290,https://www.openstreetmap.org/way/409549290,Rhode Island Avenue Northeast,primary,0.025,dc-4635442-0,30 mph,20 mph,1,,4,3
 speed,468390981,https://www.openstreetmap.org/way/468390981,Benning Road Northeast,primary,0.025,dc-4635248-0,35 mph,30 mph,1,,4,4
 speed,468421260,https://www.openstreetmap.org/way/468421260,M Street Northwest,primary,0.025,dc-4632315-0,25 mph,20 mph,1,,3,3
-speed,503185206,https://www.openstreetmap.org/way/503185206,K Street Northwest,tertiary,0.025,dc-4631265-0,25 mph,20 mph,1,,3,3
+speed,503185206,https://www.openstreetmap.org/way/503185206,K Street Northwest,tertiary,0.025,dc-4631265-0,25 mph,20 mph,1,,3,2
 speed,944288154,https://www.openstreetmap.org/way/944288154,River Road Northwest,secondary,0.025,dc-4638753-0,25 mph,20 mph,1,,3,3
 speed,1089491628,https://www.openstreetmap.org/way/1089491628,Cedar Street Northwest,secondary,0.025,dc-4631650-0,25 mph,20 mph,1,,3,3
 speed,1111103089,https://www.openstreetmap.org/way/1111103089,Park Place Northwest,tertiary,0.025,dc-4638928-0,25 mph,20 mph,1,,3,2
@@ -8105,7 +8105,7 @@ speed,26781616,https://www.openstreetmap.org/way/26781616,George Washington Memo
 speed,47920785,https://www.openstreetmap.org/way/47920785,K Street Northwest,trunk,0.022,dc-4633407-0,25 mph,20 mph,1,,3,3
 speed,48018651,https://www.openstreetmap.org/way/48018651,14th Street Northwest,primary,0.022,dc-4634484-0,25 mph,20 mph,1,,1,1
 speed,397339456,https://www.openstreetmap.org/way/397339456,Arizona Avenue Northwest,primary,0.022,dc-4632030-0,25 mph,20 mph,1,,3,1
-speed,469146408,https://www.openstreetmap.org/way/469146408,Whitehurst Freeway,motorway,0.022,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,469146408,https://www.openstreetmap.org/way/469146408,Whitehurst Freeway,motorway,0.022,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,470162781,https://www.openstreetmap.org/way/470162781,Firth Sterling Avenue Southeast,secondary,0.022,dc-4641120-0,25 mph,20 mph,1,,3,3
 speed,799538363,https://www.openstreetmap.org/way/799538363,Rhode Island Avenue Northwest,primary,0.022,dc-4638138-0,30 mph,25 mph,1,,4,3
 speed,912700634,https://www.openstreetmap.org/way/912700634,K Street Northwest,secondary,0.022,dc-4625870-0,25 mph,20 mph,1,,3,3
@@ -8147,7 +8147,7 @@ speed,354202762,https://www.openstreetmap.org/way/354202762,K Street Northwest,t
 speed,554928839,https://www.openstreetmap.org/way/554928839,Dunmore Lane Northwest,residential,0.021,dc-4630167-0,25 mph,20 mph,1,,2,1
 speed,581241240,https://www.openstreetmap.org/way/581241240,M Street Northwest,primary,0.021,dc-4632315-0,25 mph,20 mph,1,,3,3
 speed,1216811726,https://www.openstreetmap.org/way/1216811726,14th Street Northwest,primary,0.021,dc-4630713-0,25 mph,20 mph,1,,3,3
-speed,1488503509,https://www.openstreetmap.org/way/1488503509,Whitehurst Freeway,motorway,0.021,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,1488503509,https://www.openstreetmap.org/way/1488503509,Whitehurst Freeway,motorway,0.021,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,50773209,https://www.openstreetmap.org/way/50773209,Canal Road Northwest,trunk,0.020,"dc-4631069-0,dc-4634031-0",40 mph,35 mph,1,,4,4
 speed,203022904,https://www.openstreetmap.org/way/203022904,Pennsylvania Avenue Southeast,trunk,0.020,dc-4642013-0,30 mph,25 mph,1,,4,3
 speed,296324851,https://www.openstreetmap.org/way/296324851,Massachusetts Avenue Northwest,primary,0.020,dc-4630317-0,25 mph,20 mph,1,,3,3
@@ -8182,8 +8182,8 @@ speed,1457056981,https://www.openstreetmap.org/way/1457056981,George Washington 
 speed,1561245804,https://www.openstreetmap.org/way/1561245804,11th Street Northwest,secondary,0.019,dc-4631053-0,25 mph,30 mph,1,,2,3
 speed,50429586,https://www.openstreetmap.org/way/50429586,K Street Northwest,trunk,0.018,dc-4625870-0,25 mph,20 mph,1,,3,3
 speed,51449910,https://www.openstreetmap.org/way/51449910,Florida Avenue Northwest,secondary,0.018,dc-4625984-0,25 mph,20 mph,1,,3,3
-speed,235079847,https://www.openstreetmap.org/way/235079847,Whitehurst Freeway,motorway,0.018,dc-4636053-0,35 mph,20 mph,1,,4,4
-speed,235079849,https://www.openstreetmap.org/way/235079849,Whitehurst Freeway,motorway,0.018,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,235079847,https://www.openstreetmap.org/way/235079847,Whitehurst Freeway,motorway,0.018,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
+speed,235079849,https://www.openstreetmap.org/way/235079849,Whitehurst Freeway,motorway,0.018,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,345388377,https://www.openstreetmap.org/way/345388377,22nd Street Northwest,residential,0.018,dc-4632868-0,25 mph,20 mph,1,,2,1
 speed,397319997,https://www.openstreetmap.org/way/397319997,W Street Northwest,tertiary,0.018,dc-4637315-0,25 mph,20 mph,1,,2,2
 speed,397341210,https://www.openstreetmap.org/way/397341210,Warder Street Northwest,secondary,0.018,dc-4636922-0,25 mph,20 mph,1,,2,2
@@ -8245,7 +8245,7 @@ speed,50429574,https://www.openstreetmap.org/way/50429574,K Street Northwest,tru
 speed,50429585,https://www.openstreetmap.org/way/50429585,K Street Northwest,secondary,0.016,dc-4630853-0,25 mph,20 mph,1,,3,3
 speed,50429587,https://www.openstreetmap.org/way/50429587,K Street Northwest,trunk,0.016,dc-4625870-0,25 mph,20 mph,1,,3,3
 speed,50429591,https://www.openstreetmap.org/way/50429591,K Street Northwest,trunk,0.016,dc-4632688-0,25 mph,20 mph,1,,3,3
-speed,397350549,https://www.openstreetmap.org/way/397350549,Canal Road Northwest,trunk,0.016,dc-4633425-0,35 mph,20 mph,1,,4,3
+speed,397350549,https://www.openstreetmap.org/way/397350549,Canal Road Northwest,trunk,0.016,dc-4633425-0,35 mph,20 mph,0,owner override,4,4
 speed,397472935,https://www.openstreetmap.org/way/397472935,K Street Northwest,trunk,0.016,dc-4625870-0,25 mph,20 mph,1,,3,3
 speed,589229761,https://www.openstreetmap.org/way/589229761,Florida Avenue Northeast,primary,0.016,dc-4637940-0,25 mph,20 mph,1,,3,3
 speed,590581747,https://www.openstreetmap.org/way/590581747,South Dakota Avenue Northeast,primary,0.016,dc-4635404-0,25 mph,20 mph,1,,3,3
@@ -8320,7 +8320,7 @@ speed,1445231746,https://www.openstreetmap.org/way/1445231746,Adams Mill Road No
 speed,1503772012,https://www.openstreetmap.org/way/1503772012,South Dakota Avenue Northeast,primary,0.012,dc-4635404-0,25 mph,20 mph,1,,3,3
 speed,1526397534,https://www.openstreetmap.org/way/1526397534,Quarles Street Northeast,residential,0.012,dc-4639220-0,25 mph,20 mph,1,,2,1
 speed,50429575,https://www.openstreetmap.org/way/50429575,K Street Northwest,trunk,0.012,dc-4632688-0,25 mph,20 mph,1,,3,3
-speed,50430016,https://www.openstreetmap.org/way/50430016,Whitehurst Freeway,motorway,0.012,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,50430016,https://www.openstreetmap.org/way/50430016,Whitehurst Freeway,motorway,0.012,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,97167269,https://www.openstreetmap.org/way/97167269,Blanchard Drive Southwest,residential,0.012,dc-4642150-0,10 mph,20 mph,1,,1,1
 speed,352412083,https://www.openstreetmap.org/way/352412083,K Street Northwest,trunk,0.012,dc-4631711-0,25 mph,20 mph,1,,3,3
 speed,397321108,https://www.openstreetmap.org/way/397321108,Massachusetts Avenue Northwest,primary,0.012,dc-4632408-0,25 mph,20 mph,1,,3,3
@@ -8374,7 +8374,7 @@ speed,476103811,https://www.openstreetmap.org/way/476103811,K Street Northwest,t
 speed,521198981,https://www.openstreetmap.org/way/521198981,K Street Northwest,trunk,0.009,dc-4631265-0,25 mph,20 mph,1,,3,3
 speed,581526856,https://www.openstreetmap.org/way/581526856,Bladensburg Road Northeast,primary,0.009,dc-4639116-0,25 mph,30 mph,1,,3,4
 speed,980383232,https://www.openstreetmap.org/way/980383232,Missouri Avenue Northwest,primary,0.009,dc-4630970-0,25 mph,20 mph,1,,3,3
-speed,1176510909,https://www.openstreetmap.org/way/1176510909,Whitehurst Freeway,motorway,0.009,dc-4636053-0,35 mph,20 mph,1,,4,4
+speed,1176510909,https://www.openstreetmap.org/way/1176510909,Whitehurst Freeway,motorway,0.009,dc-4636053-0,35 mph,20 mph,0,owner override,4,4
 speed,131462989,https://www.openstreetmap.org/way/131462989,I Street Southeast,secondary,0.009,dc-4642894-0,25 mph,20 mph,1,,2,3
 speed,203119343,https://www.openstreetmap.org/way/203119343,K Street Northwest,trunk,0.009,dc-4631265-0,25 mph,20 mph,1,,3,3
 speed,296348849,https://www.openstreetmap.org/way/296348849,Massachusetts Avenue Northwest,primary,0.009,dc-4633590-0,25 mph,20 mph,1,,3,3

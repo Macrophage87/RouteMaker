@@ -265,3 +265,38 @@ re-derivation drops or changes is listed in the two reports for the owner: MoCo
 county record); Baltimore 256 of 264 (eight approved rows no longer qualify, N
 Charles Street 970453181 now LTS 2 with the facility where LTS 3 was approved,
 and five new ways held back).
+
+N Charles Street 970453181 stays at the derived LTS 2. Asked whether to keep
+the approved LTS 3 or the tier the classifier now derives with the city's
+facility tagged, the owner answered (OWNER-DECISIONS 198, 2026-10-02): "LTS 2
+as derived (Recommended)". Its row in the Baltimore file is tier 2 and is not
+changed back.
+
+## Block corrections, and the file of 2026-10-02
+
+A file may also correct an agency street block's record rather than a way: a
+top-level `agency_blocks` list, each entry `{"block": <block id>, "withhold":
+["speed"], "reason": ..., "evidence": ...}` (`street` and `ways` are for the
+reader). The rebuild reads it from its image (`routemaker.agency_roads.
+withheld_blocks`, through `pipeline.conflation.road_facts_by_way`, which the
+analysis scripts share): the withheld fact is not applied to any way matched to
+the block, so OSM's value stands and the tier follows from it by the same
+tables as every other road. Only the posted speed may be withheld; a malformed
+entry refuses the rebuild's matching rather than being skipped. A block id
+(`dc-<OBJECTID>-<part>`) is stable where OSM's way ids are not, which is why
+this is a block list and not stress rows: a stress row would have held the
+tier while the classifier still read the block's speed. A file with only
+`agency_blocks` has `"rows": []`, and the loader says it has nothing to load,
+so step 7 of "First rebuild on a fresh host" can still be given every file. It
+takes effect at the next rebuild after the image carrying it is deployed. The
+discrepancy report lists the ways as not applied, "owner override".
+
+- `2026-10-02-owner-canal-whitehurst.json` (OWNER-DECISIONS 197, verbatim: "DC
+  records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy
+  (dc-4636053-0), owner 2026-10-02: "Override: keep LTS 4 (Recommended)". A
+  stress override holds them at the OSM speeds and LTS 4, and they stay listed in
+  the discrepancy report."): DC's 20 mph is withheld on both blocks, so OSM's
+  posted 35 mph stands. Canal Road NW's five trunk ways (0.38 mi [612 m]) are LTS
+  4 again, not 3; the Whitehurst Freeway, a motorway, is LTS 4 either way and now
+  reads OSM's speed. 17 ways are listed in the discrepancy report as owner
+  overrides.

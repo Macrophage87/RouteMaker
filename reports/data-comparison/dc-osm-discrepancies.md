@@ -1,6 +1,6 @@
 # DC Roadway Block against OSM: where they disagree
 
-For the owner's review (OWNER-DECISIONS 191: "DC roads and especially bike infrastructure changes quite frequently, so it's likely OSM data is stale. However, report the discrepancies when you see them."). Every District road way a Roadway Block was matched to, where the block's record and the way's OSM tags say different things. The District's value is what the classifier reads (OWNER-DECISIONS 190) except where a block, which describes the whole road, cannot speak for one of its ways; those are listed as **not applied**, with the reason. Regenerated from `dcbal.tsv` (`scripts/analysis/data_before_after.py`) with the before-after report after each rebuild; every row is in `dc-osm-discrepancies.csv`.
+For the owner's review (OWNER-DECISIONS 191: "DC roads and especially bike infrastructure changes quite frequently, so it's likely OSM data is stale. However, report the discrepancies when you see them."). Every District road way a Roadway Block was matched to, where the block's record and the way's OSM tags say different things. The District's value is what the classifier reads (OWNER-DECISIONS 190) except where a block, which describes the whole road, cannot speak for one of its ways, or the owner has withheld it (an owner override, item 197); those are **not applied**, summarised below by reason. This copy is written from `dcbal.tsv` (`scripts/analysis/data_before_after.py`) with the before-after report; each rebuild writes its own to `<DATA_ROOT>/rebuild/reports/`. Every item, applied or not, is a row of `dc-osm-discrepancies.csv`.
 
 Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copying its values into OSM (ODbL) would need a licence waiver from the District.
 
@@ -8,39 +8,68 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 
 | type | ways | miles | applied: ways | applied: miles | not applied: ways | not applied: miles | applied, tier changed: ways |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Bike facility present or absent | 567 | 30.7 | 233 | 11.4 | 334 | 19.3 | 146 |
+| Bike facility present or absent | 567 | 30.7 | 233 | 11.4 | 334 | 19.3 | 144 |
 | Facility kind (painted, buffered, protected) | 135 | 5.8 | 98 | 4.3 | 37 | 1.5 | 43 |
-| Contraflow lane | 53 | 4.2 | 21 | 2.4 | 32 | 1.9 | 7 |
-| One-way | 3,125 | 183.1 | 358 | 25.1 | 2,767 | 158.0 | 43 |
-| Through lanes per direction | 3,033 | 180.5 | 2,667 | 155.0 | 366 | 25.5 | 573 |
-| Posted speed | 1,585 | 132.9 | 1,585 | 132.9 | 0 | 0.0 | 620 |
+| Contraflow lane | 53 | 4.2 | 25 | 2.6 | 28 | 1.6 | 7 |
+| One-way | 3,125 | 183.1 | 356 | 25.0 | 2,769 | 158.1 | 41 |
+| Through lanes per direction | 3,033 | 180.5 | 2,630 | 153.0 | 403 | 27.5 | 541 |
+| Posted speed | 1,585 | 132.9 | 1,568 | 131.2 | 17 | 1.7 | 618 |
 
-## Not applied (OWNER-DECISIONS 190 exceptions)
+## Not applied, by reason
 
-| type | reason | ways | miles |
-| --- | --- | --- | --- |
-| One-way | divided carriageway | 1,717 | 101.5 |
-| One-way | carriageway pair | 697 | 36.6 |
-| Through lanes per direction | slip road: its own lanes | 357 | 24.8 |
-| One-way | slip road or freeway | 250 | 15.6 |
-| Bike facility present or absent | separate: OSM maps a facility as its own way beside the road; DC records none | 193 | 12.1 |
-| Bike facility present or absent | separate: OSM maps the facility as its own way beside the road or its other carriageway | 69 | 2.7 |
-| One-way | junction stub | 64 | 0.7 |
-| Bike facility present or absent | DC's blocks differ along the way (a lane on some) | 37 | 1.7 |
-| Bike facility present or absent | carriageway: the other direction's lane, or no contraflow flag | 34 | 2.8 |
-| Contraflow lane | separate: OSM maps the facility as its own way beside the road or its other carriageway | 26 | 1.4 |
-| Facility kind (painted, buffered, protected) | separate: OSM maps the facility as its own way beside the road or its other carriageway | 25 | 0.7 |
-| One-way | direction unknown | 12 | 0.7 |
-| One-way | one-way blocks along it | 11 | 1.9 |
-| One-way | unnamed | 10 | 0.4 |
-| Through lanes per direction | DC records one direction of a two-way way | 9 | 0.7 |
-| Contraflow lane | carriageway: the other direction's lane, or no contraflow flag | 6 | 0.5 |
-| Facility kind (painted, buffered, protected) | carriageway: the other direction's lane, or no contraflow flag | 6 | 0.5 |
-| Facility kind (painted, buffered, protected) | DC's blocks differ along the way (a lane on some) | 5 | 0.3 |
-| One-way | roundabout | 4 | 0.1 |
-| One-way | reversible lanes | 2 | 0.5 |
-| Bike facility present or absent | OSM says bicycle=no, use_sidepath or cycleway=no | 1 | 0.0 |
-| Facility kind (painted, buffered, protected) | OSM says bicycle=no, use_sidepath or cycleway=no | 1 | 0.0 |
+Most are the exceptions OWNER-DECISIONS 190 keeps for modelling: a block describes the whole road, so its two-way record says nothing about one carriageway of a divided road or one of a pair of one-way ways, and so on. They are summarised here rather than listed; the examples are the longest ways of each, and `dc-osm-discrepancies.csv` has every one.
+
+| type | reason | ways | miles | longest |
+| --- | --- | --- | --- | --- |
+| One-way | divided carriageway | 1,717 | 101.5 | Suitland Parkway Southeast [252973249](https://www.openstreetmap.org/way/252973249), Bladensburg Road Northeast [964927478](https://www.openstreetmap.org/way/964927478), Suitland Parkway Southeast [379685261](https://www.openstreetmap.org/way/379685261) |
+| One-way | carriageway pair | 697 | 36.6 | North Capitol Street Northeast [50752704](https://www.openstreetmap.org/way/50752704), South Capitol Street Southeast [590525514](https://www.openstreetmap.org/way/590525514), South Capitol Street Southwest [50477492](https://www.openstreetmap.org/way/50477492) |
+| Through lanes per direction | slip road: its own lanes | 357 | 24.8 | (unnamed) [546095941](https://www.openstreetmap.org/way/546095941), (unnamed) [6051912](https://www.openstreetmap.org/way/6051912), 395 Express Lane [49077542](https://www.openstreetmap.org/way/49077542) |
+| One-way | slip road or freeway | 250 | 15.6 | Whitehurst Freeway [24260117](https://www.openstreetmap.org/way/24260117), New York Avenue Northeast [131446920](https://www.openstreetmap.org/way/131446920), New York Avenue Northeast [871089760](https://www.openstreetmap.org/way/871089760) |
+| Bike facility present or absent | separate: OSM maps a facility as its own way beside the road; DC records none | 193 | 12.1 | Ohio Drive Southwest [130908180](https://www.openstreetmap.org/way/130908180), John McCormack Road [132577607](https://www.openstreetmap.org/way/132577607), Rock Creek and Potomac Parkway Northwest [435101942](https://www.openstreetmap.org/way/435101942) |
+| Bike facility present or absent | separate: OSM maps the facility as its own way beside the road or its other carriageway | 69 | 2.7 | Virginia Avenue Northwest Service Road [50431280](https://www.openstreetmap.org/way/50431280), (unnamed) [397296948](https://www.openstreetmap.org/way/397296948), Irving Street Northeast [830423226](https://www.openstreetmap.org/way/830423226) |
+| One-way | junction stub | 64 | 0.7 | 47th Street Southeast [6056898](https://www.openstreetmap.org/way/6056898), New Jersey Avenue Northwest [1508260473](https://www.openstreetmap.org/way/1508260473), 28th Street Northeast [123534465](https://www.openstreetmap.org/way/123534465) |
+| Bike facility present or absent | DC's blocks differ along the way (a lane on some) | 37 | 1.7 | Kentucky Avenue Southeast [229700999](https://www.openstreetmap.org/way/229700999), Kentucky Avenue Southeast [229701007](https://www.openstreetmap.org/way/229701007), Water Street Northwest [137952735](https://www.openstreetmap.org/way/137952735) |
+| Through lanes per direction | side lane beside a two-way carriageway | 36 | 2.0 | K Street Northwest [321477125](https://www.openstreetmap.org/way/321477125), Lincoln Memorial Circle Southwest [1093448958](https://www.openstreetmap.org/way/1093448958), K Street Northwest [436136929](https://www.openstreetmap.org/way/436136929) |
+| Bike facility present or absent | carriageway: the other direction's lane, or no contraflow flag | 34 | 2.8 | 3rd Street Northeast [6062650](https://www.openstreetmap.org/way/6062650), Franklin Street Northeast [590581627](https://www.openstreetmap.org/way/590581627), (unnamed) [50429940](https://www.openstreetmap.org/way/50429940) |
+| Contraflow lane | separate: OSM maps the facility as its own way beside the road or its other carriageway | 26 | 1.4 | 17th Street Northwest [130444170](https://www.openstreetmap.org/way/130444170), 17th Street Northwest [1111546584](https://www.openstreetmap.org/way/1111546584), North Carolina Avenue Northeast [50515734](https://www.openstreetmap.org/way/50515734) |
+| Facility kind (painted, buffered, protected) | separate: OSM maps the facility as its own way beside the road or its other carriageway | 25 | 0.7 | Piney Branch Road Northwest [1061530069](https://www.openstreetmap.org/way/1061530069), Piney Branch Road Northwest [29234992](https://www.openstreetmap.org/way/29234992), Kentucky Avenue Southeast [130808359](https://www.openstreetmap.org/way/130808359) |
+| Posted speed | owner override | 17 | 1.7 | Whitehurst Freeway [24260117](https://www.openstreetmap.org/way/24260117), Whitehurst Freeway [50430008](https://www.openstreetmap.org/way/50430008), Whitehurst Freeway [397354071](https://www.openstreetmap.org/way/397354071) |
+| One-way | direction unknown | 12 | 0.7 | Pierce Street Northeast [6054329](https://www.openstreetmap.org/way/6054329), 4th Street Northeast [807669477](https://www.openstreetmap.org/way/807669477), 4th Street Northeast [29961230](https://www.openstreetmap.org/way/29961230) |
+| One-way | one-way blocks along it | 11 | 1.9 | G Street Northeast [708853143](https://www.openstreetmap.org/way/708853143), Dumbarton Street Northwest [131118545](https://www.openstreetmap.org/way/131118545), Madison Street Northwest [402266061](https://www.openstreetmap.org/way/402266061) |
+| Through lanes per direction | DC records one direction of a two-way way | 10 | 0.7 | Clara Barton Parkway Northwest [5976883](https://www.openstreetmap.org/way/5976883), Clara Barton Parkway Northwest [889043769](https://www.openstreetmap.org/way/889043769), 1st Street Northeast [1425758436](https://www.openstreetmap.org/way/1425758436) |
+| One-way | unnamed | 10 | 0.4 | (unnamed) [191382519](https://www.openstreetmap.org/way/191382519), (unnamed) [807980006](https://www.openstreetmap.org/way/807980006), (unnamed) [191382515](https://www.openstreetmap.org/way/191382515) |
+| Facility kind (painted, buffered, protected) | carriageway: the other direction's lane, or no contraflow flag | 6 | 0.5 | Fort Lincoln Drive Northeast [132639295](https://www.openstreetmap.org/way/132639295), Maryland Avenue Northeast [1208534009](https://www.openstreetmap.org/way/1208534009), North Carolina Avenue Southeast [6051497](https://www.openstreetmap.org/way/6051497) |
+| Facility kind (painted, buffered, protected) | DC's blocks differ along the way (a lane on some) | 5 | 0.3 | Van Ness Street Northwest [203172528](https://www.openstreetmap.org/way/203172528), Van Ness Street Northwest [681462620](https://www.openstreetmap.org/way/681462620), Van Ness Street Northwest [700136469](https://www.openstreetmap.org/way/700136469) |
+| One-way | roundabout | 4 | 0.1 | (unnamed) [156702699](https://www.openstreetmap.org/way/156702699), (unnamed) [296795220](https://www.openstreetmap.org/way/296795220), Chevy Chase Circle [695757047](https://www.openstreetmap.org/way/695757047) |
+| Contraflow lane | carriageway: the other direction's lane, or no contraflow flag | 2 | 0.2 | Pomeroy Road Southeast [6051305](https://www.openstreetmap.org/way/6051305), O Street Northwest [6063021](https://www.openstreetmap.org/way/6063021) |
+| One-way | reversible lanes | 2 | 0.5 | Clara Barton Parkway Northwest [5976883](https://www.openstreetmap.org/way/5976883), Clara Barton Parkway Northwest [889043769](https://www.openstreetmap.org/way/889043769) |
+| One-way | side lane beside a two-way carriageway | 2 | 0.1 | K Street Northwest [924793627](https://www.openstreetmap.org/way/924793627), Cedar Avenue [555136043](https://www.openstreetmap.org/way/555136043) |
+| Facility kind (painted, buffered, protected) | OSM says bicycle=no, use_sidepath or cycleway=no | 1 | 0.0 | New Jersey Avenue Northwest [1508314440](https://www.openstreetmap.org/way/1508314440) |
+| Bike facility present or absent | OSM says bicycle=no, use_sidepath or cycleway=no | 1 | 0.0 | Arizona Avenue Northwest [50773195](https://www.openstreetmap.org/way/50773195) |
+
+## Owner overrides: every one, 17
+
+The District's value withheld by the owner (OWNER-DECISIONS 197; `agency_blocks` in fixtures/overrides/), so OSM's stands. Listed in full, as the owner asked.
+
+| street | OSM way | DC block | length | OSM | DC | tier | applied |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Canal Road Northwest | [397350557](https://www.openstreetmap.org/way/397350557) | dc-4633425-0 | 978 ft [298 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Canal Road Northwest | [397350552](https://www.openstreetmap.org/way/397350552) | dc-4633425-0 | 489 ft [149 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Canal Road Northwest | [397350555](https://www.openstreetmap.org/way/397350555) | dc-4633425-0 | 299 ft [91 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Canal Road Northwest | [397350554](https://www.openstreetmap.org/way/397350554) | dc-4633425-0 | 161 ft [49 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Canal Road Northwest | [397350549](https://www.openstreetmap.org/way/397350549) | dc-4633425-0 | 82 ft [25 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [24260117](https://www.openstreetmap.org/way/24260117) | dc-4636053-0 | 0.53 mi [852 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [50430008](https://www.openstreetmap.org/way/50430008) | dc-4636053-0 | 0.23 mi [368 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [397354071](https://www.openstreetmap.org/way/397354071) | dc-4636053-0 (+1) | 0.19 mi [309 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [235079846](https://www.openstreetmap.org/way/235079846) | dc-4636053-0 | 656 ft [200 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [50430007](https://www.openstreetmap.org/way/50430007) | dc-4636053-0 | 472 ft [144 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [235079848](https://www.openstreetmap.org/way/235079848) | dc-4636053-0 | 230 ft [70 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [469146408](https://www.openstreetmap.org/way/469146408) | dc-4636053-0 | 118 ft [36 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [1488503509](https://www.openstreetmap.org/way/1488503509) | dc-4636053-0 | 108 ft [33 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [235079847](https://www.openstreetmap.org/way/235079847) | dc-4636053-0 | 95 ft [29 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [235079849](https://www.openstreetmap.org/way/235079849) | dc-4636053-0 | 95 ft [29 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [50430016](https://www.openstreetmap.org/way/50430016) | dc-4636053-0 | 62 ft [19 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
+| Whitehurst Freeway | [1176510909](https://www.openstreetmap.org/way/1176510909) | dc-4636053-0 | 49 ft [15 m] | 35 mph | 20 mph | LTS 4 (not applied) | no: owner override |
 
 ## Bike facility present or absent: applied, the 25 longest of 233
 
@@ -72,36 +101,6 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | Vermont Avenue Northwest | [1409177342](https://www.openstreetmap.org/way/1409177342) | dc-4637175-0 (+2) | 571 ft [174 m] | cycleway:right=lane | none recorded | LTS 2 to 3 | yes |
 | V Street Northwest | [6061988](https://www.openstreetmap.org/way/6061988) | dc-4634677-0 (+1) | 564 ft [172 m] | cycleway=lane | none recorded | LTS 2 to 1 | yes |
 
-## Bike facility present or absent: not applied, the 25 longest of 334
-
-| street | OSM way | DC block | length | OSM | DC | tier | applied |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Ohio Drive Southwest | [130908180](https://www.openstreetmap.org/way/130908180) | dc-4640995-0 (+1) | 2.52 mi [4,062 m] | cycleway:right=separate | none recorded | LTS 3 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| John McCormack Road | [132577607](https://www.openstreetmap.org/way/132577607) | dc-4638258-0 (+1) | 0.43 mi [698 m] | cycleway:right=separate | none recorded | LTS 2 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Rock Creek and Potomac Parkway Northwest | [435101942](https://www.openstreetmap.org/way/435101942) | dc-4636825-0 | 0.43 mi [693 m] | cycleway:left=separate, cycleway:right=no | none recorded | LTS 4 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Kentucky Avenue Southeast | [229700999](https://www.openstreetmap.org/way/229700999) | dc-4640326-0 (+4) | 0.41 mi [661 m] | cycleway:both=lane, cycleway:both:lane=advisory | none recorded | LTS 2 (not applied) | no: DC's blocks differ along the way (a lane on some) |
-| South Capitol Street Southwest | [50464870](https://www.openstreetmap.org/way/50464870) | dc-4640235-0 | 0.30 mi [490 m] | cycleway:right=separate | none recorded | LTS 4 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| South Capitol Street Southeast | [910656490](https://www.openstreetmap.org/way/910656490) | dc-4641219-0 | 0.28 mi [454 m] | cycleway=separate | none recorded | LTS 4 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| South Capitol Street Southwest | [910656491](https://www.openstreetmap.org/way/910656491) | dc-4642085-0 | 0.28 mi [454 m] | cycleway=separate | none recorded | LTS 4 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| 3rd Street Northeast | [6062650](https://www.openstreetmap.org/way/6062650) | dc-4636895-0 (+3) | 0.25 mi [408 m] | cycleway:right=shared_lane | a lane on some of the way's blocks only | LTS 1 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| Franklin Street Northeast | [590581627](https://www.openstreetmap.org/way/590581627) | dc-4637156-0 (+1) | 0.25 mi [402 m] | no cycleway tag | a lane on some of the way's blocks only | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| (unnamed) | [50429940](https://www.openstreetmap.org/way/50429940) | dc-4640637-0 (+1) | 0.24 mi [385 m] | no cycleway tag | a lane on some of the way's blocks only | LTS 4 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| W Street Northwest | [170157722](https://www.openstreetmap.org/way/170157722) | dc-4636405-0 (+3) | 0.22 mi [360 m] | no cycleway tag | a lane on some of the way's blocks only | LTS 1 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| 8th Street Northeast | [132577766](https://www.openstreetmap.org/way/132577766) | dc-4638077-0 (+2) | 0.21 mi [330 m] | cycleway:left=separate | none recorded | LTS 1 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Massachusetts Avenue Southeast | [130927038](https://www.openstreetmap.org/way/130927038) | dc-4640830-0 (+2) | 0.20 mi [316 m] | no cycleway tag | a lane on some of the way's blocks only | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| 8th Street Northeast | [1502134924](https://www.openstreetmap.org/way/1502134924) | dc-4635142-0 (+1) | 0.19 mi [305 m] | cycleway:left=separate | none recorded | LTS 1 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Pomeroy Road Southeast | [6051305](https://www.openstreetmap.org/way/6051305) | dc-4641158-0 (+3) | 919 ft [280 m] | no cycleway tag | a lane on some of the way's blocks only | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| Connecticut Avenue Northwest | [130908011](https://www.openstreetmap.org/way/130908011) | dc-4634209-0 (+2) | 896 ft [273 m] | cycleway:both=separate | none recorded | LTS 4 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Virginia Avenue Southeast | [367147288](https://www.openstreetmap.org/way/367147288) | dc-4641363-0 (+1) | 886 ft [270 m] | cycleway:right=separate | none recorded | LTS 1 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Bates Road Northeast | [6055618](https://www.openstreetmap.org/way/6055618) | dc-4637288-0 | 876 ft [267 m] | cycleway:right=separate | none recorded | LTS 2 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Virginia Avenue Northwest Service Road | [50431280](https://www.openstreetmap.org/way/50431280) | dc-4636685-0 | 850 ft [259 m] | no cycleway tag | protected lane (IB), protected lane (OB) | LTS 3 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| (unnamed) | [397296948](https://www.openstreetmap.org/way/397296948) | dc-4631768-0 | 781 ft [238 m] | no cycleway tag | protected lane (IB), protected lane (OB) | LTS 4 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Anacostia Drive Southeast | [902939868](https://www.openstreetmap.org/way/902939868) | dc-4641644-0 | 748 ft [228 m] | cycleway:right=separate | none recorded | LTS 1 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Virginia Avenue Southeast | [468488472](https://www.openstreetmap.org/way/468488472) | dc-4641285-0 | 725 ft [221 m] | cycleway:right=separate | none recorded | LTS 3 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| M Street Northeast | [294891243](https://www.openstreetmap.org/way/294891243) | dc-4639108-0 (+2) | 709 ft [216 m] | cycleway=separate | none recorded | LTS 2 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| Tunlaw Road Northwest | [589905667](https://www.openstreetmap.org/way/589905667) | dc-4637052-0 (+1) | 682 ft [208 m] | cycleway=separate | none recorded | LTS 2 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-| West Basin Drive Southwest | [130927048](https://www.openstreetmap.org/way/130927048) | dc-4642798-0 | 659 ft [201 m] | cycleway:right=separate | none recorded | LTS 1 (not applied) | no: separate: OSM maps a facility as its own way beside the road; DC records none |
-
 ## Facility kind (painted, buffered, protected): applied, the 25 longest of 98
 
 | street | OSM way | DC block | length | OSM | DC | tier | applied |
@@ -132,37 +131,7 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | Arizona Avenue Northwest | [1468055281](https://www.openstreetmap.org/way/1468055281) | dc-4625874-0 | 262 ft [80 m] | painted lane (cycleway:both=lane) | protected lane (IB), protected lane (OB) | LTS 2 to 1 | yes |
 | 4th Street Northwest | [1111103088](https://www.openstreetmap.org/way/1111103088) | dc-4632040-0 | 233 ft [71 m] | painted lane (cycleway:left=shared_lane, cycleway:right=lane) | buffered lane (OB) | LTS 2 to 3 | yes |
 
-## Facility kind (painted, buffered, protected): not applied, the 25 longest of 37
-
-| street | OSM way | DC block | length | OSM | DC | tier | applied |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Fort Lincoln Drive Northeast | [132639295](https://www.openstreetmap.org/way/132639295) | dc-4638296-0 (+3) | 0.36 mi [586 m] | painted lane (cycleway:right=lane) | buffered lane (IB), painted lane (OB) | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| Van Ness Street Northwest | [203172528](https://www.openstreetmap.org/way/203172528) | dc-4638091-0 | 476 ft [145 m] | painted lane (cycleway:right=lane) | buffered lane (IB) | LTS 2 (not applied) | no: DC's blocks differ along the way (a lane on some) |
-| Piney Branch Road Northwest | [1061530069](https://www.openstreetmap.org/way/1061530069) | dc-4639196-0 (+2) | 397 ft [121 m] | painted lane (cycleway:left=separate, cycleway:right=lane) | buffered lane (IB), painted lane (OB) | LTS 4 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Piney Branch Road Northwest | [29234992](https://www.openstreetmap.org/way/29234992) | dc-4637321-0 (+1) | 390 ft [119 m] | painted lane (cycleway:left=separate, cycleway:right=lane) | buffered lane (IB), painted lane (OB) | LTS 4 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Van Ness Street Northwest | [681462620](https://www.openstreetmap.org/way/681462620) | dc-4638091-0 | 325 ft [99 m] | painted lane (cycleway:right=lane) | buffered lane (IB) | LTS 2 (not applied) | no: DC's blocks differ along the way (a lane on some) |
-| Van Ness Street Northwest | [700136469](https://www.openstreetmap.org/way/700136469) | dc-4638187-0 | 285 ft [87 m] | painted lane (cycleway:right=lane) | protected lane (IB) | LTS 2 (not applied) | no: DC's blocks differ along the way (a lane on some) |
-| Nannie Helen Burroughs Avenue Northeast | [935719730](https://www.openstreetmap.org/way/935719730) | dc-4635146-0 | 272 ft [83 m] | painted lane (cycleway:right=lane) | buffered lane (IB) | LTS 3 (not applied) | no: DC's blocks differ along the way (a lane on some) |
-| Kentucky Avenue Southeast | [130808359](https://www.openstreetmap.org/way/130808359) | dc-4641983-0 | 253 ft [77 m] | painted lane (cycleway:left=separate, cycleway:right=lane) | painted lane (IB), buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Maryland Avenue Northeast | [1208534009](https://www.openstreetmap.org/way/1208534009) | dc-4638455-0 | 226 ft [69 m] | painted lane (cycleway:right=lane) | painted lane (IB), protected lane (OB) | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| West Virginia Avenue Northeast | [1208534029](https://www.openstreetmap.org/way/1208534029) | dc-4640475-0 | 226 ft [69 m] | protected lane (cycleway:right=track) | buffered lane (IB), buffered lane (OB) | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| West Virginia Avenue Northeast | [1208534030](https://www.openstreetmap.org/way/1208534030) | dc-4640475-0 | 226 ft [69 m] | protected lane (cycleway:right=track) | buffered lane (IB), buffered lane (OB) | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| North Carolina Avenue Southeast | [6051497](https://www.openstreetmap.org/way/6051497) | dc-4641184-0 | 220 ft [67 m] | painted lane (cycleway:left=no, cycleway:right=lane) | buffered lane (IB), painted lane (OB) | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| Illinois Avenue Northwest | [806297678](https://www.openstreetmap.org/way/806297678) | dc-4633270-0 | 203 ft [62 m] | painted lane (cycleway:left=separate, cycleway:right=lane) | buffered lane (IB), painted lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| L Street Northwest | [1232726756](https://www.openstreetmap.org/way/1232726756) | dc-4631259-0 | 177 ft [54 m] | painted lane (cycleway:left=no, cycleway:right=lane, cycleway:right:oneway=yes) | buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| (unnamed) | [1052908774](https://www.openstreetmap.org/way/1052908774) | dc-4634476-0 | 161 ft [49 m] | painted lane (cycleway:left=lane) | buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| L Street Northwest | [1234650776](https://www.openstreetmap.org/way/1234650776) | dc-4630146-0 | 161 ft [49 m] | painted lane (cycleway:left=no, cycleway:right=lane, cycleway:right:oneway=yes) | buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| (unnamed) | [1051205228](https://www.openstreetmap.org/way/1051205228) | dc-4631373-0 | 157 ft [48 m] | painted lane (cycleway:left=lane, cycleway:right=no) | buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Florida Avenue Northwest | [1097435632](https://www.openstreetmap.org/way/1097435632) | dc-4633242-0 | 157 ft [48 m] | protected lane (cycleway=separate, cycleway:both=track) | painted lane (IB), painted lane (OB) | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| L Street Northwest | [1215423873](https://www.openstreetmap.org/way/1215423873) | dc-4630533-0 | 144 ft [44 m] | painted lane (cycleway:left=no, cycleway:right=lane, cycleway:right:oneway=yes) | buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 14th Street Northwest | [590581588](https://www.openstreetmap.org/way/590581588) | dc-4632066-0 | 141 ft [43 m] | painted lane (cycleway:left=separate, cycleway:right=lane) | painted lane (IB), buffered lane (OB) | LTS 3 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| North Carolina Avenue Southeast | [50507956](https://www.openstreetmap.org/way/50507956) | dc-4641184-0 | 138 ft [42 m] | painted lane (cycleway:left=no, cycleway:left:lane=advisory, cycleway:left:oneway=-1, cycleway:right=lane) | buffered lane (IB), painted lane (OB) | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| New York Avenue Northwest | [354079209](https://www.openstreetmap.org/way/354079209) | dc-4634228-0 | 135 ft [41 m] | painted lane (cycleway:right=lane, cycleway:right:oneway=yes) | protected lane (IB), painted lane (OB) | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| Florida Avenue Northwest | [589539500](https://www.openstreetmap.org/way/589539500) | dc-4633242-0 | 135 ft [41 m] | protected lane (cycleway=separate, cycleway:both=track) | painted lane (IB), painted lane (OB) | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Sherman Avenue Northwest | [87484440](https://www.openstreetmap.org/way/87484440) | dc-4635728-0 | 128 ft [39 m] | protected lane (cycleway=separate, cycleway:both=track) | painted lane (IB), painted lane (OB) | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| M Street Northwest | [988487225](https://www.openstreetmap.org/way/988487225) | dc-4631373-0 | 108 ft [33 m] | painted lane (cycleway:right=lane) | buffered lane (OB) | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-
-## Contraflow lane: applied, the 21 longest of 21
+## Contraflow lane: applied, the 25 longest of 25
 
 | street | OSM way | DC block | length | OSM | DC | tier | applied |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -175,50 +144,24 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | G Street Northeast | [1205507344](https://www.openstreetmap.org/way/1205507344) | dc-4637702-0 (+2) | 604 ft [184 m] | cycleway:left=lane, cycleway:left:lane=exclusive, cycleway:left:oneway=-1, cycleway:right=shared_lane, cycleway:right:lane=pictogram | contraflow lane flagged | LTS 2 to 1 | yes |
 | Massachusetts Avenue Northeast | [422204107](https://www.openstreetmap.org/way/422204107) | dc-4638852-0 | 591 ft [180 m] | cycleway:both=lane | contraflow lane flagged | LTS 2 (no change) | yes |
 | 17th Street Northwest | [6055550](https://www.openstreetmap.org/way/6055550) | dc-4630610-0 (+2) | 554 ft [169 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (no change) | yes |
+| 8th Street Northwest | [1340682789](https://www.openstreetmap.org/way/1340682789) | dc-4633771-0 | 505 ft [154 m] | cycleway=shared_lane | contraflow lane flagged | LTS 1 (no change) | yes |
 | New Hampshire Avenue Northwest | [440942565](https://www.openstreetmap.org/way/440942565) | dc-4631266-0 | 449 ft [137 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 3 (no change) | yes |
+| 8th Street Northwest | [1223411289](https://www.openstreetmap.org/way/1223411289) | dc-4630450-0 | 420 ft [128 m] | cycleway=shared_lane | contraflow lane flagged | LTS 1 (no change) | yes |
 | Ontario Road Northwest | [109663677](https://www.openstreetmap.org/way/109663677) | dc-4634511-0 | 407 ft [124 m] | no cycleway tag | contraflow lane flagged | LTS 1 (no change) | yes |
 | Ontario Road Northwest | [1364378490](https://www.openstreetmap.org/way/1364378490) | dc-4631122-0 | 400 ft [122 m] | no cycleway tag | contraflow lane flagged | LTS 1 (no change) | yes |
 | E Street Southeast | [50473187](https://www.openstreetmap.org/way/50473187) | dc-4640031-0 | 384 ft [117 m] | cycleway:both=lane, cycleway:both:lane=exclusive | contraflow lane flagged | LTS 2 to 3 | yes |
+| Champlain Street Northwest | [6060358](https://www.openstreetmap.org/way/6060358) | dc-4630583-0 (+1) | 374 ft [114 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (no change) | yes |
 | M Street Northeast | [1257758384](https://www.openstreetmap.org/way/1257758384) | dc-4636275-0 | 302 ft [92 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 3 (no change) | yes |
 | Massachusetts Avenue Northeast | [229105895](https://www.openstreetmap.org/way/229105895) | dc-4638852-0 | 148 ft [45 m] | cycleway:right=lane | contraflow lane flagged | LTS 2 (no change) | yes |
 | (unnamed) | [331912753](https://www.openstreetmap.org/way/331912753) | dc-4636276-0 | 144 ft [44 m] | no cycleway tag | contraflow lane flagged | LTS 2 to 1 | yes |
+| Champlain Street Northwest | [49301283](https://www.openstreetmap.org/way/49301283) | dc-4633223-0 | 138 ft [42 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (no change) | yes |
 | 10th Street Northeast | [928153007](https://www.openstreetmap.org/way/928153007) | dc-4639225-0 | 135 ft [41 m] | cycleway:left=lane, cycleway:left:oneway=-1, cycleway:right=shared_lane, cycleway:right:lane=pictogram | contraflow lane flagged | LTS 2 to 1 | yes |
 | Massachusetts Avenue Northeast | [6057312](https://www.openstreetmap.org/way/6057312) | dc-4638852-0 | 131 ft [40 m] | cycleway:right=lane | contraflow lane flagged | LTS 2 (no change) | yes |
 | 17th Street Northwest | [1111546581](https://www.openstreetmap.org/way/1111546581) | dc-4630717-0 | 79 ft [24 m] | cycleway:right=lane | contraflow lane flagged | LTS 2 (no change) | yes |
 | New Hampshire Avenue Northwest | [1111550082](https://www.openstreetmap.org/way/1111550082) | dc-4634202-0 | 79 ft [24 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 3 (no change) | yes |
 | E Street Southeast | [50507958](https://www.openstreetmap.org/way/50507958) | dc-4640031-0 | 75 ft [23 m] | cycleway:right=lane, cycleway:right:lane=exclusive | contraflow lane flagged | LTS 2 to 3 | yes |
 
-## Contraflow lane: not applied, the 25 longest of 32
-
-| street | OSM way | DC block | length | OSM | DC | tier | applied |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 17th Street Northwest | [130444170](https://www.openstreetmap.org/way/130444170) | dc-4633881-0 (+3) | 0.19 mi [307 m] | cycleway:left=separate, cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Pomeroy Road Southeast | [6051305](https://www.openstreetmap.org/way/6051305) | dc-4641158-0 (+3) | 919 ft [280 m] | no cycleway tag | contraflow lane flagged | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| 17th Street Northwest | [1111546584](https://www.openstreetmap.org/way/1111546584) | dc-4626180-0 (+2) | 853 ft [260 m] | cycleway=separate | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| North Carolina Avenue Northeast | [50515734](https://www.openstreetmap.org/way/50515734) | dc-4637749-0 (+1) | 794 ft [242 m] | cycleway:left=no, cycleway:right=separate | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 6th Street Northeast | [807874680](https://www.openstreetmap.org/way/807874680) | dc-4635217-0 (+1) | 568 ft [173 m] | cycleway=separate | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 6th Street Northeast | [1024231035](https://www.openstreetmap.org/way/1024231035) | dc-4635708-0 (+2) | 548 ft [167 m] | cycleway=separate | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 8th Street Northwest | [1340682789](https://www.openstreetmap.org/way/1340682789) | dc-4633771-0 | 505 ft [154 m] | cycleway=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| I Street Southeast | [265733214](https://www.openstreetmap.org/way/265733214) | dc-4642636-0 | 459 ft [140 m] | cycleway=separate | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 8th Street Northwest | [1223411289](https://www.openstreetmap.org/way/1223411289) | dc-4630450-0 | 420 ft [128 m] | cycleway=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| 17th Street Northwest | [1111546582](https://www.openstreetmap.org/way/1111546582) | dc-4634088-0 (+1) | 404 ft [123 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| McDonald Place Northeast | [6061239](https://www.openstreetmap.org/way/6061239) | dc-4637108-0 | 397 ft [121 m] | cycleway:left=lane, cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Champlain Street Northwest | [6060358](https://www.openstreetmap.org/way/6060358) | dc-4630583-0 (+1) | 374 ft [114 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| 4th Street Northwest | [50842701](https://www.openstreetmap.org/way/50842701) | dc-4626142-0 | 354 ft [108 m] | cycleway:left=separate, cycleway:right=shared_lane | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Kentucky Avenue Southeast | [130808359](https://www.openstreetmap.org/way/130808359) | dc-4641983-0 | 253 ft [77 m] | cycleway:left=separate, cycleway:right=lane | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 17th Street Northwest | [1111546583](https://www.openstreetmap.org/way/1111546583) | dc-4633907-0 | 233 ft [71 m] | cycleway=separate | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Illinois Avenue Northwest | [806297678](https://www.openstreetmap.org/way/806297678) | dc-4633270-0 | 203 ft [62 m] | cycleway:left=separate, cycleway:right=lane | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| O Street Northwest | [6063021](https://www.openstreetmap.org/way/6063021) | dc-4631011-0 | 187 ft [57 m] | cycleway:right=lane | contraflow lane flagged | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| Woodley Place Northwest | [1042798288](https://www.openstreetmap.org/way/1042798288) | dc-4636165-0 | 177 ft [54 m] | cycleway:left=separate, cycleway:left:lane=exclusive, cycleway:left:oneway=-1, cycleway:right=shared_lane, cycleway:right:lane=pictogram | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 9th Street Northwest | [397321706](https://www.openstreetmap.org/way/397321706) | dc-4632294-0 | 154 ft [47 m] | cycleway:left=separate, cycleway:right=no | contraflow lane flagged | LTS 3 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 9th Street Northwest | [409551583](https://www.openstreetmap.org/way/409551583) | dc-4632294-0 | 148 ft [45 m] | cycleway:left=separate, cycleway:right=no | contraflow lane flagged | LTS 3 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| New Jersey Avenue Southeast | [1128059084](https://www.openstreetmap.org/way/1128059084) | dc-4641040-0 | 148 ft [45 m] | cycleway=separate | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| Champlain Street Northwest | [49301283](https://www.openstreetmap.org/way/49301283) | dc-4633223-0 | 138 ft [42 m] | cycleway:right=shared_lane | contraflow lane flagged | LTS 2 (not applied) | no: carriageway: the other direction's lane, or no contraflow flag |
-| McDonald Place Northeast | [1443801106](https://www.openstreetmap.org/way/1443801106) | dc-4637108-0 | 118 ft [36 m] | cycleway:left=separate, cycleway:right=shared_lane | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| North Carolina Avenue Northeast | [6056826](https://www.openstreetmap.org/way/6056826) | dc-4636222-0 | 105 ft [32 m] | cycleway:left=no, cycleway:right=separate | contraflow lane flagged | LTS 1 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-| 17th Street Northwest | [1204314682](https://www.openstreetmap.org/way/1204314682) | dc-4633734-0 | 72 ft [22 m] | cycleway=separate | contraflow lane flagged | LTS 2 (not applied) | no: separate: OSM maps the facility as its own way beside the road or its other carriageway |
-
-## One-way: applied, the 25 longest of 358
+## One-way: applied, the 25 longest of 356
 
 | street | OSM way | DC block | length | OSM | DC | tier | applied |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -248,37 +191,7 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | Channing Street Northwest | [6057631](https://www.openstreetmap.org/way/6057631) | dc-4631708-0 | 899 ft [274 m] | oneway=yes | two-way | LTS 1 (no change) | yes |
 | C Street Southeast | [581831508](https://www.openstreetmap.org/way/581831508) | dc-4642969-0 | 892 ft [272 m] | oneway=yes | two-way | LTS 1 (no change) | yes |
 
-## One-way: not applied, the 25 longest of 2,767
-
-| street | OSM way | DC block | length | OSM | DC | tier | applied |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Suitland Parkway Southeast | [252973249](https://www.openstreetmap.org/way/252973249) | dc-4640033-0 | 1.06 mi [1,705 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Bladensburg Road Northeast | [964927478](https://www.openstreetmap.org/way/964927478) | dc-4639116-0 (+4) | 0.72 mi [1,151 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| North Capitol Street Northeast | [50752704](https://www.openstreetmap.org/way/50752704) | dc-4640081-0 | 0.71 mi [1,144 m] | oneway=yes | two-way | LTS 4 (not applied) | no: carriageway pair |
-| Suitland Parkway Southeast | [379685261](https://www.openstreetmap.org/way/379685261) | dc-4640033-0 | 0.71 mi [1,140 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Dalecarlia Parkway Northwest | [124688166](https://www.openstreetmap.org/way/124688166) | dc-4630144-0 (+1) | 0.70 mi [1,121 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Dalecarlia Parkway Northwest | [130788122](https://www.openstreetmap.org/way/130788122) | dc-4630144-0 (+1) | 0.69 mi [1,113 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Suitland Parkway Southeast | [362668009](https://www.openstreetmap.org/way/362668009) | dc-4641412-0 (+2) | 0.69 mi [1,105 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| South Capitol Street Southeast | [590525514](https://www.openstreetmap.org/way/590525514) | dc-4640239-0 | 0.64 mi [1,035 m] | oneway=yes | two-way | LTS 4 (not applied) | no: carriageway pair |
-| South Capitol Street Southwest | [50477492](https://www.openstreetmap.org/way/50477492) | dc-4640239-0 | 0.59 mi [957 m] | oneway=yes | two-way | LTS 4 (not applied) | no: carriageway pair |
-| G Street Northeast | [708853143](https://www.openstreetmap.org/way/708853143) | dc-4636440-0 (+5) | 0.58 mi [939 m] | oneway=yes | two-way | LTS 2 (not applied) | no: one-way blocks along it |
-| MacArthur Boulevard Northwest | [6053797](https://www.openstreetmap.org/way/6053797) | dc-4631483-0 (+5) | 0.54 mi [876 m] | oneway=yes | two-way | LTS 3 (not applied) | no: divided carriageway |
-| MacArthur Boulevard Northwest | [285960691](https://www.openstreetmap.org/way/285960691) | dc-4631483-0 (+5) | 0.54 mi [874 m] | oneway=yes | two-way | LTS 3 (not applied) | no: divided carriageway |
-| North Capitol Street Northwest | [130772884](https://www.openstreetmap.org/way/130772884) | dc-4640081-0 | 0.54 mi [870 m] | oneway=yes | two-way | LTS 4 (not applied) | no: carriageway pair |
-| Whitehurst Freeway | [24260117](https://www.openstreetmap.org/way/24260117) | dc-4636053-0 | 0.53 mi [852 m] | oneway=yes | two-way | LTS 4 (not applied) | no: slip road or freeway |
-| Military Road Northwest | [355228838](https://www.openstreetmap.org/way/355228838) | dc-4631804-0 | 0.50 mi [804 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Military Road Northwest | [24976161](https://www.openstreetmap.org/way/24976161) | dc-4631804-0 | 0.47 mi [762 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Clara Barton Parkway Northwest | [5976883](https://www.openstreetmap.org/way/5976883) | dc-4632096-0 | 0.47 mi [753 m] | lanes counted each way | one-way | LTS 4 (not applied) | no: reversible lanes |
-| New York Avenue Northeast | [131446920](https://www.openstreetmap.org/way/131446920) | dc-4635574-0 | 0.45 mi [727 m] | oneway=yes | two-way | LTS 4 (not applied) | no: slip road or freeway |
-| Suitland Parkway Southeast | [362668008](https://www.openstreetmap.org/way/362668008) | dc-4640606-0 (+1) | 0.45 mi [724 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| New York Avenue Northeast | [871089760](https://www.openstreetmap.org/way/871089760) | dc-4635734-0 | 0.44 mi [712 m] | oneway=yes | two-way | LTS 4 (not applied) | no: slip road or freeway |
-| Cleveland Avenue Northwest | [203671710](https://www.openstreetmap.org/way/203671710) | dc-4632052-0 (+3) | 0.42 mi [676 m] | oneway=yes | two-way | LTS 3 (not applied) | no: divided carriageway |
-| Pennsylvania Avenue Southeast | [130285141](https://www.openstreetmap.org/way/130285141) | dc-4639908-0 (+4) | 0.40 mi [650 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Pennsylvania Avenue Southeast | [203022895](https://www.openstreetmap.org/way/203022895) | dc-4639908-0 (+4) | 0.40 mi [650 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| 16th Street Northwest | [105743118](https://www.openstreetmap.org/way/105743118) | dc-4632713-0 (+3) | 0.40 mi [643 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-| Bladensburg Road Northeast | [789803121](https://www.openstreetmap.org/way/789803121) | dc-4639116-0 | 0.40 mi [641 m] | oneway=yes | two-way | LTS 4 (not applied) | no: divided carriageway |
-
-## Through lanes per direction: applied, the 25 longest of 2,667
+## Through lanes per direction: applied, the 25 longest of 2,630
 
 | street | OSM way | DC block | length | OSM | DC | tier | applied |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -308,37 +221,7 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | Rhode Island Avenue Northeast | [125568095](https://www.openstreetmap.org/way/125568095) | dc-4636283-0 (+3) | 0.36 mi [580 m] | 3 a direction | 2 a direction | LTS 3 (no change) | yes |
 | 12th Street Northwest | [130788207](https://www.openstreetmap.org/way/130788207) | dc-4630911-0 (+4) | 0.36 mi [576 m] | 1 a direction | 2 a direction | LTS 2 (no change) | yes |
 
-## Through lanes per direction: not applied, the 25 longest of 366
-
-| street | OSM way | DC block | length | OSM | DC | tier | applied |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Clara Barton Parkway Northwest | [5976883](https://www.openstreetmap.org/way/5976883) | dc-4632096-0 | 0.47 mi [753 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: DC records one direction of a two-way way |
-| (unnamed) | [546095941](https://www.openstreetmap.org/way/546095941) | dc-4642178-0 | 0.33 mi [536 m] | 2 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [6051912](https://www.openstreetmap.org/way/6051912) | dc-4643038-0 (+2) | 0.32 mi [507 m] | 2 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| 395 Express Lane | [49077542](https://www.openstreetmap.org/way/49077542) | dc-4641301-0 (+1) | 0.28 mi [453 m] | 1 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [1181165211](https://www.openstreetmap.org/way/1181165211) | dc-4640519-0 | 0.27 mi [437 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [6052463](https://www.openstreetmap.org/way/6052463) | dc-4636810-0 (+1) | 0.27 mi [427 m] | 1 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [296788578](https://www.openstreetmap.org/way/296788578) | dc-4642838-0 | 0.25 mi [396 m] | 1 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [980693845](https://www.openstreetmap.org/way/980693845) | dc-4640519-0 | 0.24 mi [388 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50429940](https://www.openstreetmap.org/way/50429940) | dc-4640637-0 (+1) | 0.24 mi [385 m] | 1 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50427051](https://www.openstreetmap.org/way/50427051) | dc-4634271-0 (+1) | 0.22 mi [360 m] | 2 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [24223005](https://www.openstreetmap.org/way/24223005) | dc-4642727-0 (+1) | 0.22 mi [359 m] | 2 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [6053255](https://www.openstreetmap.org/way/6053255) | dc-4640135-0 | 0.21 mi [332 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50524895](https://www.openstreetmap.org/way/50524895) | dc-4639011-0 | 0.20 mi [327 m] | 1 a direction | 2 a direction | LTS 3 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [6053509](https://www.openstreetmap.org/way/6053509) | dc-4640390-0 (+1) | 0.20 mi [324 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [296127984](https://www.openstreetmap.org/way/296127984) | dc-4640519-0 | 0.20 mi [320 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [121980319](https://www.openstreetmap.org/way/121980319) | dc-4642972-0 (+1) | 0.20 mi [318 m] | 1 a direction | 3 a direction | LTS 3 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50427962](https://www.openstreetmap.org/way/50427962) | dc-4632142-0 (+1) | 0.19 mi [308 m] | 1 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [6051765](https://www.openstreetmap.org/way/6051765) | dc-4642727-0 | 0.19 mi [305 m] | 1 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| 395 Express Lane | [374376244](https://www.openstreetmap.org/way/374376244) | dc-4642265-0 (+1) | 0.19 mi [305 m] | 1 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50505139](https://www.openstreetmap.org/way/50505139) | dc-4642997-0 | 984 ft [300 m] | 2 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [1011922213](https://www.openstreetmap.org/way/1011922213) | dc-4640135-0 | 971 ft [296 m] | 1 a direction | 2 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50502442](https://www.openstreetmap.org/way/50502442) | dc-4642997-0 | 968 ft [295 m] | 1 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50503609](https://www.openstreetmap.org/way/50503609) | dc-4640700-0 (+1) | 935 ft [285 m] | 1 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [6051500](https://www.openstreetmap.org/way/6051500) | dc-4640700-0 | 896 ft [273 m] | 1 a direction | 3 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-| (unnamed) | [50477493](https://www.openstreetmap.org/way/50477493) | dc-4640239-0 | 889 ft [271 m] | 2 a direction | 4 a direction | LTS 4 (not applied) | no: slip road: its own lanes |
-
-## Posted speed: applied, the 25 longest of 1,585
+## Posted speed: applied, the 25 longest of 1,568
 
 | street | OSM way | DC block | length | OSM | DC | tier | applied |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -355,7 +238,6 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | 29th Street Northwest | [45532017](https://www.openstreetmap.org/way/45532017) | dc-4633708-0 (+5) | 0.59 mi [943 m] | 25 mph | 20 mph | LTS 2 to 1 | yes |
 | N Street Northwest | [6061868](https://www.openstreetmap.org/way/6061868) | dc-4631965-0 (+5) | 0.58 mi [932 m] | 25 mph | 20 mph | LTS 2 to 1 | yes |
 | A Street Northeast | [6059017](https://www.openstreetmap.org/way/6059017) | dc-4638428-0 (+5) | 0.56 mi [908 m] | 25 mph | 20 mph | LTS 2 to 1 | yes |
-| Whitehurst Freeway | [24260117](https://www.openstreetmap.org/way/24260117) | dc-4636053-0 | 0.53 mi [852 m] | 35 mph | 20 mph | LTS 4 (no change) | yes |
 | Broad Branch Road Northwest | [130907973](https://www.openstreetmap.org/way/130907973) | dc-4631262-0 (+5) | 0.52 mi [830 m] | 20 mph | 25 mph | LTS 1 to 2 | yes |
 | Connecticut Avenue Northwest | [344674243](https://www.openstreetmap.org/way/344674243) | dc-4630071-0 (+5) | 0.50 mi [807 m] | 25 mph | 30 mph | LTS 3 to 4 | yes |
 | O Street Northwest | [6063018](https://www.openstreetmap.org/way/6063018) | dc-4633994-0 (+5) | 0.49 mi [784 m] | 25 mph | 20 mph | LTS 2 to 1 | yes |
@@ -367,3 +249,4 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | Martin Luther King Junior Avenue Southeast | [1063372431](https://www.openstreetmap.org/way/1063372431) | dc-4642742-0 (+4) | 0.44 mi [704 m] | 25 mph | 30 mph | LTS 3 to 4 | yes |
 | Canal Road Northwest | [50773204](https://www.openstreetmap.org/way/50773204) | dc-4634031-0 | 0.44 mi [702 m] | 40 mph | 35 mph | LTS 4 (no change) | yes |
 | Northampton Street Northwest | [6056404](https://www.openstreetmap.org/way/6056404) | dc-4633414-0 (+3) | 0.43 mi [700 m] | 25 mph | 20 mph | LTS 2 to 1 | yes |
+| Ross Drive Northwest | [6062049](https://www.openstreetmap.org/way/6062049) | dc-4635643-0 | 0.43 mi [686 m] | 20 mph | 25 mph | LTS 1 to 2 | yes |

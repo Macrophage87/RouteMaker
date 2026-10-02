@@ -31,10 +31,10 @@ Blocks per matched way: 1 10,302, 2-3 2,463, 4-10 631, more than 10 13. A way al
 
 |  | ways | miles | share |
 | --- | --- | --- | --- |
-| agency posts it, OSM unposted | 7,026 | 672.0 | 52.4% |
+| agency posts it, OSM unposted | 7,022 | 671.8 | 52.4% |
 | same speed | 2,448 | 229.6 | 18.3% |
-| agency has no speed | 2,350 | 198.2 | 17.5% |
-| OSM differs | 1,585 | 132.9 | 11.8% |
+| agency has no speed | 2,371 | 200.1 | 17.7% |
+| OSM differs | 1,568 | 131.2 | 11.7% |
 
 Where OSM's posted speed and the agency's differ (the agency's is used, OWNER-DECISIONS 151), the most common pairs:
 
@@ -46,8 +46,8 @@ Where OSM's posted speed and the agency's differ (the agency's is used, OWNER-DE
 | 30 mph | 20 mph | 7.2 |
 | 15 mph | 20 mph | 5.8 |
 | 10 mph | 20 mph | 4.3 |
-| 35 mph | 20 mph | 3.8 |
 | 30 mph | 25 mph | 3.7 |
+| 40 mph | 45 mph | 3.1 |
 
 ### Lanes per direction: agency against OSM
 
@@ -88,11 +88,11 @@ Where OSM maps the way's bike facility as a way of its own (`cycleway*=separate`
 | agree | 987 | 92.7 | 7.4% |
 | disagree | 94 | 3.1 | 0.7% |
 
-Tier effect: 1,798 of the 13,409 matched ways (190.9 of 1,232.6 mi) change tier.
+Tier effect: 1,767 of the 13,409 matched ways (189.0 of 1,232.6 mi) change tier.
 
 ## Baltimore: street centerline (Open Baltimore)
 
-**Agency side.** 35,363 blocks, 1,712.7 mi. 33,356 lie along a matched OSM way (94.3% of blocks); **100.6 mi in 2,007 blocks are unmatched** (5.9% of the miles): STODDARD ALY (16), O'DONNELL ST CUT OFF (16), LELAND AVE (15), S CHAPELGATE LN (15), N BETHEL ST (14), W LEXINGTON ST (12), CAMDEN YARDS SPORTS COMPLEX 1 (12), S BOULDIN ST (12), ELLICOTT DWY (11), SMALL ST (11), LEMMON ST (11), E MCCOMAS ST (11).
+**Agency side.** 35,363 blocks, 1,712.7 mi. 33,355 lie along a matched OSM way (94.3% of blocks); **100.6 mi in 2,008 blocks are unmatched** (5.9% of the miles): STODDARD ALY (16), O'DONNELL ST CUT OFF (16), LELAND AVE (15), S CHAPELGATE LN (15), N BETHEL ST (14), W LEXINGTON ST (12), CAMDEN YARDS SPORTS COMPLEX 1 (12), S BOULDIN ST (12), ELLICOTT DWY (11), SMALL ST (11), LEMMON ST (11), E MCCOMAS ST (11).
 
 **OSM side.** 37,283 road ways (2,950 mi) in the area; 15,023 matched (1,597 mi, 54.1%). Public street classes only (residential through primary, trunk, links, motorway): 14,206 of 16,274 ways, 1,522 of 1,625 mi, **93.6%**. The rest is mostly `service` ways (parking aisles, driveways, alleys), which a street layer does not describe and which match only where a block's name agrees.
 
@@ -159,4 +159,4 @@ Tier effect: 491 of the 15,023 matched ways (40.6 of 1,596.5 mi) change tier.
 
 ## AADT
 
-Roadway Block AADT (2020) is on 4,879 blocks. A matched way takes the busiest of its blocks' counts where no count layer reached it, and never on a slip road: 1,187 ways do. DDOT's own 2024 counts (the volume layer) are the newer survey and are never replaced. `segment.attr_sources` names the count the classifier read.
+Roadway Block AADT (2020) is on 4,879 blocks. A matched way takes the busiest of its blocks' counts where no count layer reached it, and never on a slip road: 1,169 ways do. DDOT's own 2024 counts (the volume layer) are the newer survey and are never replaced. `segment.attr_sources` names the count the classifier read.
