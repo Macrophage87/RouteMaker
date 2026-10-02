@@ -2037,6 +2037,7 @@ To check the code against a source extract without a graph build, from the
 repository root (before a rebuild, or after a new clip):
 
 ```sh
+export DATA_ROOT=/srv/routemaker/data          # the deployment's, as in .env
 PYTHONPATH=src python scripts/contraflow_census.py "$DATA_ROOT/extracts/source.osm.pbf"
 ```
 
