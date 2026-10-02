@@ -544,6 +544,78 @@ class TestApproaches:
                 shaped(e, west(20), (LON, LAT))
         assert self.control(around) is Control.SIGNAL
 
+    def test_the_road_is_followed_by_its_name_across_a_way_split(self) -> None:
+        """OSM splits a way at a crosswalk node: the next edge out is another
+        way of the same name."""
+        around = approach_around(north_at=8.0, flag=None)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 20:
+                e["edge_info"]["way_id"] = 23
+                shaped(e, north(22.0), north(8.0))
+        line = edge(21, 23, 921, 1.0, 180.0, names=["Main St"], signal=True)
+        around["edges"].append(shaped(line, north(50.0), north(22.0)))
+        assert self.control(around) is Control.SIGNAL
+        # Another name there is another road, and the walk stops.
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (20, 21):
+                e["edge_info"]["names"] = ["Other St"]
+        assert self.control(around) is Control.NONE
+
+    def test_an_edge_stored_against_its_way_is_read_the_right_way_round(self) -> None:
+        """`edge.forward` false: the way's shape runs the other way."""
+        around = approach_around(north_at=10.0)
+        for e in around["edges"]:
+            ends = junctions._edge_ends(e)
+            shaped(e, *ends, forward=False)
+        assert self.control(around) is Control.SIGNAL
+
+    def test_an_arm_leaving_the_node_only_is_walked_from_its_far_end(self) -> None:
+        """A one-way carriageway leaving the node: no edge of it arrives, and
+        the cross street 10 m down it has a signal."""
+        around = approach_around(north_at=10.0, flag=None)
+        around["edges"] = [e for e in around["edges"] if e["edge_id"]["value"] != 8]
+        cross = edge(24, 77, 924, 1.0, 270.0, names=["K St"], signal=True)
+        south = (LON, LAT - 10 / 111_195.0)
+        around["edges"].append(shaped(cross, (LON + 0.0003, south[1]), south))
+        assert self.control(around) is Control.SIGNAL
+
+    def test_the_riders_own_path_is_walked_too(self) -> None:
+        """The rider arrives on a cycletrack (not a road arm) whose far end, 12 m
+        back, is a node a signalised road arrives at."""
+        around = approach_around(flag=None)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (1, 3):
+                e["edge"]["classification"]["use"] = "cycleway"
+                e["edge"]["access"]["car"] = False
+            if e["edge_id"]["value"] == 1:
+                shaped(e, west(12), (LON, LAT))
+        road = edge(25, 78, 925, 1.0, 0.0, names=["L St"], signal=True)
+        around["edges"].append(shaped(road, (west(12)[0], LAT - 0.0003), west(12)))
+        assert self.control(around) is Control.SIGNAL
+
+    def test_a_turn_channels_approach_is_not_walked(self) -> None:
+        """A signal up a channel is the channel's, not the junction's: a free
+        right turn bypasses the junction's signal."""
+        around = approach_around(north_at=10.0, flag=None)
+        channel = edge(26, 79, N, 1.0, 225.0, use="turn_channel", link=True)
+        around["edges"].append(shaped(channel, (LON - 0.0001, LAT - 0.0001), (LON, LAT)))
+        up = edge(27, 79, 927, 1.0, 225.0, use="turn_channel", link=True, signal=True)
+        around["edges"].append(
+            shaped(up, (LON - 0.0003, LAT - 0.0003), (LON - 0.0001, LAT - 0.0001))
+        )
+        assert self.control(around) is Control.NONE
+
+    def test_a_signal_on_the_riders_own_path_before_the_junction(self) -> None:
+        """The rider's edge before the in-edge, a cycletrack, with a signal: a
+        signal of the junction's, read from the route's own edge."""
+        around = approach_around(flag=None, back=True, back_flag="signal")
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 30:
+                e["edge"]["classification"]["use"] = "cycleway"
+                e["edge_info"]["way_id"] = 40
+        assert self.control(around, approach_raw(back_edge_ids=(30,))) is Control.SIGNAL
+        assert self.control(around, approach_raw()) is Control.NONE
+
     def test_a_signal_for_the_oncoming_traffic_on_the_way_out(self) -> None:
         found = junctions.node_from_locate(crossroads(east={"signal": True}), raw())
         assert junctions.control_of(found) is Control.SIGNAL
@@ -828,7 +900,14 @@ class TestBuild:
         )
 
     def along_pike(self):
-        return raw(in_way=11, out_way=11, in_heading=130.0, out_heading=130.0)
+        """The trace says a turn channel meets the node, as it does here."""
+        return raw(
+            in_way=11,
+            out_way=11,
+            in_heading=130.0,
+            out_heading=130.0,
+            others=(("turn_channel", True),),
+        )
 
     def test_in_a_bike_lane_a_channel_leaving_on_the_right_is_crossed(self) -> None:
         """The right hook: cars turning into the channel cross the rider's lane."""

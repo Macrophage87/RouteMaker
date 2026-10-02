@@ -113,16 +113,18 @@ class TestBackEdges:
         cross = ("road", "primary", "both")
         trace = {
             "edges": [
-                edge(1, 0, 1, 0.050, 90, 90),
+                edge(1, 0, 1, 0.010, 90, 90),
                 edge(2, 1, 2, 0.010, 90, 90),
-                with_others(edge(3, 2, 3, 0.012, 90, 90), cross),
-                edge(4, 3, 4, 0.1, 90, 90),
+                edge(3, 2, 3, 0.010, 90, 90),
+                with_others(edge(4, 3, 4, 0.012, 90, 90), cross),
+                edge(5, 4, 5, 0.1, 90, 90),
             ],
             "units": "kilometers",
         }
-        junction = at_edge(t.junctions_of_trace(trace, SHAPE), 1003)
-        # 12 m of in-edge, then 10 m: both within 30 m; then 50 m more is not.
-        assert junction.back_edge_ids == (1002, 1001)
+        junction = at_edge(t.junctions_of_trace(trace, SHAPE), 1004)
+        # 12 m of in-edge, then 10 m, then 10 m: the first two end within 30 m
+        # of the node (12 and 22 m back), the third at 32 m.
+        assert junction.back_edge_ids == (1003, 1002)
         assert t.APPROACH_M == 30.0
 
     def test_a_long_in_edge_has_none(self) -> None:

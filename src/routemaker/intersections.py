@@ -510,7 +510,6 @@ CONTROL_WORDS = {
     # not mapped" is the same fact, and review r2 asked for one phrase.
     Control.NONE: "no signal mapped",
 }
-MARKED_CROSSING_NONE_WORDS = CONTROL_WORDS[Control.NONE]
 
 KIND_WORDS = {
     "crossing": "Crossing",
@@ -525,13 +524,11 @@ KIND_WORDS = {
 }
 
 
-def reason_of(kind: str, road: Road | None, control: Control, marked: bool = False) -> str:
+def reason_of(kind: str, road: Road | None, control: Control) -> str:
     """The sentence a click on the marker shows, in US units first (the
     owner's example: "Left turn across 4-lane 35 mph road, no signal")."""
     noun = describe_road(road)
-    words = (
-        MARKED_CROSSING_NONE_WORDS if marked and control is Control.NONE else CONTROL_WORDS[control]
-    )
+    words = CONTROL_WORDS[control]
     return f"{KIND_WORDS.get(kind, 'Junction with')} {_article(noun)} {noun}, {words}"
 
 
@@ -546,7 +543,7 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
     if kind == "neighbourhood" or about is None:
         return None
     marked = kind == "crossing" and marked_unsignalised(junction)
-    reason = reason_of(kind, about, junction.control, marked)
+    reason = reason_of(kind, about, junction.control)
     if group:
         if kind in {"left_from", "left_across"} and about.oneway:
             return None
