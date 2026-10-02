@@ -79,10 +79,12 @@ import functools
 import json
 import re
 from collections import defaultdict
-from collections.abc import Collection, Iterator, Mapping
+from collections.abc import Collection, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import NamedTuple
+
+from .geo import Point, distance_to_line, haversine
 
 METRES_PER_FOOT = 0.3048
 
@@ -166,8 +168,12 @@ SPEED_FILLS_ONLY = frozenset({BALTIMORE_AGENCY})
 # The owner's corrections to a District block's record (OWNER-DECISIONS 197),
 # read by the matcher from the image's `fixtures/overrides/`, the directory the
 # owner's other decided corrections are checked in to: a file's `agency_blocks`
-# (fixtures/overrides/README.md). Each names a block and the facts of it that
-# are withheld, so OSM's value stands; only the posted speed may be withheld.
+# (fixtures/overrides/README.md). Each names a block by the layer's own key for
+# it (DC's `BLOCKKEY`, `RoadFacts.block_key`) and its street (`ROUTENAME`), and
+# the facts of it that are withheld, so OSM's value stands; only the posted
+# speed may be withheld. Not by the installed block id: that is
+# `dc-<OBJECTID>-<part>`, and OBJECTID is the ArcGIS row number, which DC's
+# republishing may reassign (gate review, should-fix 1).
 OVERRIDES_DIR = Path(__file__).resolve().parents[2] / "fixtures" / "overrides"
 WITHHOLDABLE = frozenset({"speed"})
 # How the report names a value the owner withheld (dc-osm-discrepancies).
@@ -178,10 +184,28 @@ class WithheldBlockRefused(ValueError):
     """An `agency_blocks` entry is malformed, or names a fact that cannot be withheld."""
 
 
-def withheld_blocks(directory: str | Path | None = None) -> dict[str, frozenset[str]]:
-    """{block id: the facts withheld} from every override file's `agency_blocks`
-    in `directory` (OVERRIDES_DIR). A file without the key has none."""
+class WithheldBlock(NamedTuple):
+    """One block the owner has corrected (`withheld_blocks`)."""
+
+    # The block's street as the layer names it (DC's ROUTENAME), checked
+    # against the installed block's: a key that came to name another street
+    # withholds nothing (`resolve_withheld`).
+    routename: str
+    facts: frozenset[str]
+
+
+def _street_key(name: str | None) -> str:
+    return " ".join((name or "").upper().split())
+
+
+def withheld_blocks(directory: str | Path | None = None) -> dict[str, WithheldBlock]:
+    """{block key: the block's street and the facts withheld} from every override
+    file's `agency_blocks` in `directory` (OVERRIDES_DIR). A file without the
+    key has none. Each entry is `{"blockkey": <the layer's key, DC's BLOCKKEY>,
+    "routename": <its ROUTENAME>, "withhold": [...], "reason": ..., "evidence":
+    ...}`."""
     held: dict[str, set[str]] = defaultdict(set)
+    names: dict[str, str] = {}
     for path in sorted(Path(directory or OVERRIDES_DIR).glob("*.json")):
         document = json.loads(path.read_text())
         entries = document.get("agency_blocks", []) if isinstance(document, dict) else None
@@ -189,9 +213,18 @@ def withheld_blocks(directory: str | Path | None = None) -> dict[str, frozenset[
             raise WithheldBlockRefused(f"{path.name}: agency_blocks must be a list")
         for index, entry in enumerate(entries):
             where = f"{path.name} agency_blocks[{index}]"
-            block = entry.get("block") if isinstance(entry, dict) else None
-            if not isinstance(block, str) or not block:
-                raise WithheldBlockRefused(f"{where}: block must be a block id")
+            key = entry.get("blockkey") if isinstance(entry, dict) else None
+            if not isinstance(key, str) or not key.strip():
+                raise WithheldBlockRefused(
+                    f"{where}: blockkey must be the layer's key for the block (DC's BLOCKKEY)"
+                )
+            routename = entry.get("routename")
+            if not isinstance(routename, str) or not routename.strip():
+                raise WithheldBlockRefused(f"{where}: routename is required")
+            if key in names and _street_key(names[key]) != _street_key(routename):
+                raise WithheldBlockRefused(
+                    f"{where}: block {key} is named {routename!r} here and {names[key]!r} before"
+                )
             facts = entry.get("withhold")
             if not isinstance(facts, list) or not facts or not set(facts) <= WITHHOLDABLE:
                 raise WithheldBlockRefused(
@@ -200,8 +233,53 @@ def withheld_blocks(directory: str | Path | None = None) -> dict[str, frozenset[
             for name in ("reason", "evidence"):
                 if not isinstance(entry.get(name), str) or not entry[name].strip():
                     raise WithheldBlockRefused(f"{where}: {name} is required")
-            held[block].update(facts)
-    return {block: frozenset(facts) for block, facts in held.items()}
+            names[key] = routename
+            held[key].update(facts)
+    return {key: WithheldBlock(names[key], frozenset(facts)) for key, facts in held.items()}
+
+
+class WithheldResolution(NamedTuple):
+    """The owner's withheld blocks against the installed ones (`resolve_withheld`)."""
+
+    # {installed block id: the facts withheld}, as `aggregate` takes them.
+    by_block: dict[str, frozenset[str]]
+    # The withheld blocks no installed block carries the key of, and those whose
+    # installed street is another: each a sentence for the rebuild's log.
+    unmatched: tuple[str, ...]
+
+
+def resolve_withheld(
+    withheld: Mapping[str, WithheldBlock], blocks: Iterable[tuple[str, RoadFacts]]
+) -> WithheldResolution:
+    """Which installed blocks (block id, facts) the owner's withheld blocks are.
+
+    A withheld block not among them - the layer reinstalled without the key, the
+    block gone from DC's layer, a key mistyped - and one whose installed street
+    is not the one the owner named withhold nothing, and are named in
+    `unmatched` for the rebuild to warn about: the agency's value is then what
+    the classifier reads, against the owner's decision."""
+    by_block: dict[str, frozenset[str]] = {}
+    found: dict[str, list[str]] = defaultdict(list)
+    for block_id, facts in blocks:
+        entry = withheld.get(facts.block_key) if facts.block_key else None
+        if entry is None:
+            continue
+        found[facts.block_key].append(facts.name or "")
+        if _street_key(facts.name) == _street_key(entry.routename):
+            by_block[block_id] = entry.facts
+    unmatched = []
+    for key, entry in sorted(withheld.items()):
+        streets = found.get(key)
+        if not streets:
+            unmatched.append(
+                f"block {key} ({entry.routename}) is not among the installed agency street blocks"
+            )
+        elif not any(_street_key(s) == _street_key(entry.routename) for s in streets):
+            unmatched.append(
+                f"block {key} is {', '.join(sorted(set(streets)))!s} in the installed blocks, "
+                f"not {entry.routename}"
+            )
+    return WithheldResolution(by_block, tuple(unmatched))
 
 
 # The directory the internal-comparison layers are kept in. Arlington's Bike
@@ -270,6 +348,10 @@ class RoadFacts:
     pci_score: int | None = None
     functional_class: str | None = None
     alley: bool = False
+    # The layer's own key for the block (DC's `BLOCKKEY`), which the owner's
+    # corrections name it by (`withheld_blocks`); the installed block id is
+    # built from the ArcGIS row number.
+    block_key: str | None = None
 
     def to_json(self) -> dict:
         """Only what is present, so a block with little to say costs little."""
@@ -429,6 +511,9 @@ def parse_dc_roadway_block(properties: Mapping) -> RoadFacts:
             if properties.get("FHWAFUNCTIONALCLASS") is not None
             else None
         ),
+        block_key=str(properties["BLOCKKEY"]).strip() or None
+        if properties.get("BLOCKKEY")
+        else None,
     )
 
 
@@ -964,6 +1049,21 @@ def _oneway_tag(tags: Mapping[str, str]) -> bool:
     return tags.get("oneway") in ("yes", "1", "-1", "true")
 
 
+# The junctions OSM's one-way is implied on: a roundabout is one-way without a
+# `oneway` tag, and mappers mostly leave it off.
+ROUNDABOUT_JUNCTIONS = frozenset({"roundabout", "circular"})
+
+
+def _osm_one_way(tags: Mapping[str, str]) -> bool:
+    """OSM's one-way, said or implied: a `oneway` tag, or a roundabout not tagged
+    `oneway=no` (gate review: primary roundabouts 589905413 and 695842750 were
+    read as two-way main carriageways, and the overlay wrote two lanes each way
+    onto 589905413)."""
+    if _oneway_tag(tags):
+        return True
+    return tags.get("junction") in ROUNDABOUT_JUNCTIONS and tags.get("oneway") != "no"
+
+
 def osm_forward(tags: Mapping[str, str]) -> bool | None:
     """On an OSM one-way, whether its traffic runs the way's digitising
     direction (`oneway=-1` runs against it); None on a way OSM has two-way."""
@@ -1167,7 +1267,7 @@ def _keep_osm_one_way(
         return "carriageway pair"
     if side_lane:
         return "side lane beside a two-way carriageway"
-    if tags.get("junction") in ("roundabout", "circular"):
+    if tags.get("junction") in ROUNDABOUT_JUNCTIONS:
         return "roundabout"
     if not facts.two_way_throughout:
         return "one-way blocks along it"
@@ -1247,8 +1347,13 @@ def overlay(
     # so many words, the District's record wins with the exceptions above, and
     # another agency's does not (a mapper looked; review r1: Key Highway, mapped
     # 3 and 2 lanes). What is left alone is counted.
-    osm_oneway = _oneway_tag(tags)
+    osm_oneway = _osm_one_way(tags)
     osm_two_way = _osm_two_way(tags)
+    if osm_oneway and not _oneway_tag(tags):
+        # A roundabout's one-way, implied by OSM, said for the classifier, which
+        # reads `oneway` (`routemaker.tags.is_oneway`): a block's lane count
+        # written as one direction's must not be halved as a two-way road's.
+        out["oneway"] = "yes"
     if facts.one_way is True and not osm_oneway:
         if not osm_two_way:
             keep = None
@@ -1291,7 +1396,10 @@ def overlay(
                 + ("" if keep == "agency" else f", kept ({keep})")
             )
     else:
-        sources["oneway"] = SOURCE_OSM if "oneway" in tags or osm_two_way else SOURCE_DEFAULT
+        sources["oneway"] = (
+            SOURCE_OSM if "oneway" in tags or osm_two_way or osm_oneway else SOURCE_DEFAULT
+        )
+    # A roundabout's implied one-way is said in `out` by now.
     one_way = _oneway_tag(out)
     # Which of the way's directions its traffic runs in, on a one-way.
     travel_forward = out.get("oneway") != "-1"
@@ -1454,18 +1562,60 @@ HIGHWAY_RANK = {
 
 def _main_rank(tags: Mapping[str, str]) -> int | None:
     """The class rank of a way OSM maps as a block's two-way main carriageway,
-    or None for a one-way or a class not ranked (a slip road). A service way
-    or a track ranks below every street, so a driveway or an aisle along the
-    block makes no street beside it a side lane."""
-    if _oneway_tag(tags):
+    or None for a one-way (a roundabout included, `_osm_one_way`) or a class not
+    ranked (a slip road). A service way or a track ranks below every street, so
+    a driveway or an aisle along the block makes no street beside it a side
+    lane."""
+    if _osm_one_way(tags):
         return None
     return HIGHWAY_RANK.get(tags.get("highway", ""))
+
+
+# How much of a one-way way that ends where a busier two-way way on its block
+# ends must run beside it for the way to be a side lane rather than the road
+# carrying on: about 66 ft [20 m] within MAX_SIDE_LANE_OFFSET_M of the main
+# road, short of its ends (`_beside_m`). Measured (gate review): Lincoln
+# Memorial Circle's two service ways run 27 m and 59 m beside the circle; the
+# end-on ways (Cedar Avenue, Water Street SW, Southern Avenue NE) run none.
+MIN_SIDE_LANE_BESIDE_M = 20.0
+# About 66 ft [20 m]: as far from the main road as a side lane is measured
+# beside it, the block matcher's own separation (`conflation.MAX_SEPARATION_M`).
+MAX_SIDE_LANE_OFFSET_M = 20.0
+# The spacing the side lane is sampled at, about 7 ft [2 m].
+_SIDE_LANE_STEP_M = 2.0
+
+
+def _beside_m(line: Sequence, main: Sequence) -> float:
+    """How much of `line` (lon, lat pairs) runs beside `main`: the length whose
+    nearest point on `main` lies within MAX_SIDE_LANE_OFFSET_M and short of its
+    two ends. A way carrying on from `main`'s end lies past it, all of it
+    nearest that end."""
+    points = [Point(c[0], c[1]) for c in line]
+    target = [Point(c[0], c[1]) for c in main]
+    if len(points) < 2 or len(target) < 2:
+        return 0.0
+    beside = 0.0
+    for a, b in zip(points, points[1:], strict=False):
+        length = haversine(a, b)
+        steps = max(1, int(length / _SIDE_LANE_STEP_M))
+        for step in range(steps):
+            t = (step + 0.5) / steps
+            probe = Point(a.lon + (b.lon - a.lon) * t, a.lat + (b.lat - a.lat) * t)
+            distance, fraction = distance_to_line(probe, target)
+            if distance <= MAX_SIDE_LANE_OFFSET_M and 0.0 < fraction < 1.0:
+                beside += length / steps
+    return beside
+
+
+def _ends(line: Sequence) -> set[tuple[float, float]]:
+    return {(line[0][0], line[0][1]), (line[-1][0], line[-1][1])} if line else set()
 
 
 def block_context(
     facts_by_way: Mapping[int, WayFacts],
     tags_by_way: Mapping[int, Mapping[str, str]],
     separate_roads: Collection[int] = (),
+    coordinates_by_way: Mapping[int, Sequence] | None = None,
 ) -> BlockContext:
     """(separate, paired, side_lane): what the ways sharing a block say about
     each other.
@@ -1489,13 +1639,21 @@ def block_context(
     opposite service lane on its block, so it is not `paired`). A one-way way
     of the main road's own class is not one: where a road divides partway
     along a block, its one-way carriageways and its two-way stretch share the
-    block (measured: 808 of the 855 ways a class-blind reading caught).
+    block (measured: 808 of the 855 ways a class-blind reading caught). Nor is
+    one that carries the main road on from its end (`coordinates_by_way`, the
+    ways' (lon, lat) lines): a way sharing an end node with a busier main road
+    of its block is a side lane only where at least MIN_SIDE_LANE_BESIDE_M of
+    it runs beside one (`_beside_m`; gate review: Cedar Avenue 555136043, a
+    26 m one-way from Cedar Street NW's end into Maryland, and Water Street
+    SW 533041031, the street changing class, were taken for side lanes, the
+    first LTS 2 to 3). Without the lines no way is taken for end-on.
 
     All three are read by `overlay` as the rebuild and the analysis scripts call it,
     so the two cannot drift apart.
     """
     separate_blocks: set[str] = set()
     main_rank: dict[str, int] = {}
+    mains: dict[str, list[tuple[int, int]]] = defaultdict(list)
     directions: dict[str, set[bool]] = defaultdict(set)
     for way_id, facts in facts_by_way.items():
         tags = tags_by_way[way_id]
@@ -1505,6 +1663,7 @@ def block_context(
         if rank is not None:
             for block in facts.blocks:
                 main_rank[block] = min(rank, main_rank.get(block, rank))
+                mains[block].append((rank, way_id))
         if _oneway_tag(tags):
             reverse = tags.get("oneway") == "-1"
             for block, along in zip(facts.blocks, facts.alongs, strict=False):
@@ -1528,8 +1687,24 @@ def block_context(
         rank = HIGHWAY_RANK.get(tags.get("highway", ""))
         if not _oneway_tag(tags) or rank is None:
             continue
-        if any(rank > main_rank.get(block, rank) for block in facts.blocks):
-            side_lane.add(way_id)
+        if not any(rank > main_rank.get(block, rank) for block in facts.blocks):
+            continue
+        if coordinates_by_way is not None and way_id in coordinates_by_way:
+            line = coordinates_by_way[way_id]
+            busier = {
+                main
+                for block in facts.blocks
+                for main_class, main in mains[block]
+                if main_class < rank and main in coordinates_by_way
+            }
+            ends = _ends(line)
+            end_on = any(ends & _ends(coordinates_by_way[main]) for main in busier)
+            if end_on and not any(
+                _beside_m(line, coordinates_by_way[main]) >= MIN_SIDE_LANE_BESIDE_M
+                for main in busier
+            ):
+                continue
+        side_lane.add(way_id)
     return BlockContext(separate, paired, frozenset(side_lane))
 
 

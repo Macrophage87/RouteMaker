@@ -852,11 +852,15 @@ def road_facts_by_way(
     takes no block (`agency_roads.UNBUILT_HIGHWAYS`) - shared by the rebuild
     and the analysis scripts so the two cannot drift apart.
 
-    `withheld` is the block facts the owner withholds (OWNER-DECISIONS 197);
-    by default the checked-in ones (`agency_roads.withheld_blocks`).
+    `withheld` is the block facts the owner withholds (OWNER-DECISIONS 197) by
+    installed block id (`agency_roads.resolve_withheld`); by default the
+    checked-in ones (`agency_roads.withheld_blocks`) found among `blocks`. The
+    rebuild resolves them itself, to warn of one that is not found.
     """
     if withheld is None:
-        withheld = agency_roads.withheld_blocks()
+        withheld = agency_roads.resolve_withheld(
+            agency_roads.withheld_blocks(), ((block.feature_id, block.facts) for block in blocks)
+        ).by_block
     unbuilt = {
         way.osm_id for way in ways if way.tags.get("highway") in agency_roads.UNBUILT_HIGHWAYS
     }
@@ -910,7 +914,8 @@ def overlay_road_facts(
     the OWNER-DECISIONS 190 rows applied (`agency_roads.overlay`).
     """
     tags_of = {way.osm_id: way.tags for way in ways if way.osm_id in facts_by_way}
-    context = agency_roads.block_context(facts_by_way, tags_of, separate_roads)
+    lines = {way.osm_id: way.coordinates for way in ways if way.osm_id in facts_by_way}
+    context = agency_roads.block_context(facts_by_way, tags_of, separate_roads, lines)
     overlays: dict[int, agency_roads.Overlay] = {}
     for way in ways:
         facts = facts_by_way.get(way.osm_id)

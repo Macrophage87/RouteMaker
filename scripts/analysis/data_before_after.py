@@ -111,6 +111,12 @@ def main() -> int:
     )
     block_by_id = {block.feature_id: block for block in blocks}
     print(f"{len(blocks)} blocks", flush=True)
+    # The owner's block corrections (OWNER-DECISIONS 197), as the rebuild finds them.
+    withheld = agency_roads.resolve_withheld(
+        agency_roads.withheld_blocks(), ((block.feature_id, block.facts) for block in blocks)
+    )
+    for unmatched in withheld.unmatched:
+        print(f"owner's block correction not applied: {unmatched}", flush=True)
 
     volume_rows = json.loads(args.volume.read_text())
     stats: dict[str, object] = {}
@@ -151,7 +157,9 @@ def main() -> int:
         before_match = conflation.conflate(entries, volume).matched
         after_match = dict(before_match)
         # The rebuild's own wiring (`pipeline.run`'s volume-conflation stage).
-        agg, result = conflation.road_facts_by_way(ways, entries, region_blocks)
+        agg, result = conflation.road_facts_by_way(
+            ways, entries, region_blocks, withheld=withheld.by_block
+        )
         print(
             region,
             "volume",

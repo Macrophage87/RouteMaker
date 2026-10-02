@@ -12,7 +12,7 @@ Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copy
 | Facility kind (painted, buffered, protected) | 135 | 5.8 | 98 | 4.3 | 37 | 1.5 | 43 |
 | Contraflow lane | 53 | 4.2 | 25 | 2.6 | 28 | 1.6 | 7 |
 | One-way | 3,125 | 183.1 | 356 | 25.0 | 2,769 | 158.1 | 41 |
-| Through lanes per direction | 3,033 | 180.5 | 2,630 | 153.0 | 403 | 27.5 | 541 |
+| Through lanes per direction | 3,033 | 180.5 | 2,631 | 153.0 | 402 | 27.5 | 542 |
 | Posted speed | 1,585 | 132.9 | 1,568 | 131.2 | 17 | 1.7 | 618 |
 
 ## Not applied, by reason
@@ -27,9 +27,9 @@ Most are the exceptions OWNER-DECISIONS 190 keeps for modelling: a block describ
 | One-way | slip road or freeway | 250 | 15.6 | Whitehurst Freeway [24260117](https://www.openstreetmap.org/way/24260117), New York Avenue Northeast [131446920](https://www.openstreetmap.org/way/131446920), New York Avenue Northeast [871089760](https://www.openstreetmap.org/way/871089760) |
 | Bike facility present or absent | separate: OSM maps a facility as its own way beside the road; DC records none | 193 | 12.1 | Ohio Drive Southwest [130908180](https://www.openstreetmap.org/way/130908180), John McCormack Road [132577607](https://www.openstreetmap.org/way/132577607), Rock Creek and Potomac Parkway Northwest [435101942](https://www.openstreetmap.org/way/435101942) |
 | Bike facility present or absent | separate: OSM maps the facility as its own way beside the road or its other carriageway | 69 | 2.7 | Virginia Avenue Northwest Service Road [50431280](https://www.openstreetmap.org/way/50431280), (unnamed) [397296948](https://www.openstreetmap.org/way/397296948), Irving Street Northeast [830423226](https://www.openstreetmap.org/way/830423226) |
-| One-way | junction stub | 64 | 0.7 | 47th Street Southeast [6056898](https://www.openstreetmap.org/way/6056898), New Jersey Avenue Northwest [1508260473](https://www.openstreetmap.org/way/1508260473), 28th Street Northeast [123534465](https://www.openstreetmap.org/way/123534465) |
+| One-way | junction stub | 65 | 0.7 | 47th Street Southeast [6056898](https://www.openstreetmap.org/way/6056898), New Jersey Avenue Northwest [1508260473](https://www.openstreetmap.org/way/1508260473), 28th Street Northeast [123534465](https://www.openstreetmap.org/way/123534465) |
 | Bike facility present or absent | DC's blocks differ along the way (a lane on some) | 37 | 1.7 | Kentucky Avenue Southeast [229700999](https://www.openstreetmap.org/way/229700999), Kentucky Avenue Southeast [229701007](https://www.openstreetmap.org/way/229701007), Water Street Northwest [137952735](https://www.openstreetmap.org/way/137952735) |
-| Through lanes per direction | side lane beside a two-way carriageway | 36 | 2.0 | K Street Northwest [321477125](https://www.openstreetmap.org/way/321477125), Lincoln Memorial Circle Southwest [1093448958](https://www.openstreetmap.org/way/1093448958), K Street Northwest [436136929](https://www.openstreetmap.org/way/436136929) |
+| Through lanes per direction | side lane beside a two-way carriageway | 35 | 2.0 | K Street Northwest [321477125](https://www.openstreetmap.org/way/321477125), Lincoln Memorial Circle Southwest [1093448958](https://www.openstreetmap.org/way/1093448958), K Street Northwest [436136929](https://www.openstreetmap.org/way/436136929) |
 | Bike facility present or absent | carriageway: the other direction's lane, or no contraflow flag | 34 | 2.8 | 3rd Street Northeast [6062650](https://www.openstreetmap.org/way/6062650), Franklin Street Northeast [590581627](https://www.openstreetmap.org/way/590581627), (unnamed) [50429940](https://www.openstreetmap.org/way/50429940) |
 | Contraflow lane | separate: OSM maps the facility as its own way beside the road or its other carriageway | 26 | 1.4 | 17th Street Northwest [130444170](https://www.openstreetmap.org/way/130444170), 17th Street Northwest [1111546584](https://www.openstreetmap.org/way/1111546584), North Carolina Avenue Northeast [50515734](https://www.openstreetmap.org/way/50515734) |
 | Facility kind (painted, buffered, protected) | separate: OSM maps the facility as its own way beside the road or its other carriageway | 25 | 0.7 | Piney Branch Road Northwest [1061530069](https://www.openstreetmap.org/way/1061530069), Piney Branch Road Northwest [29234992](https://www.openstreetmap.org/way/29234992), Kentucky Avenue Southeast [130808359](https://www.openstreetmap.org/way/130808359) |
@@ -43,8 +43,8 @@ Most are the exceptions OWNER-DECISIONS 190 keeps for modelling: a block describ
 | One-way | roundabout | 4 | 0.1 | (unnamed) [156702699](https://www.openstreetmap.org/way/156702699), (unnamed) [296795220](https://www.openstreetmap.org/way/296795220), Chevy Chase Circle [695757047](https://www.openstreetmap.org/way/695757047) |
 | Contraflow lane | carriageway: the other direction's lane, or no contraflow flag | 2 | 0.2 | Pomeroy Road Southeast [6051305](https://www.openstreetmap.org/way/6051305), O Street Northwest [6063021](https://www.openstreetmap.org/way/6063021) |
 | One-way | reversible lanes | 2 | 0.5 | Clara Barton Parkway Northwest [5976883](https://www.openstreetmap.org/way/5976883), Clara Barton Parkway Northwest [889043769](https://www.openstreetmap.org/way/889043769) |
-| One-way | side lane beside a two-way carriageway | 2 | 0.1 | K Street Northwest [924793627](https://www.openstreetmap.org/way/924793627), Cedar Avenue [555136043](https://www.openstreetmap.org/way/555136043) |
 | Facility kind (painted, buffered, protected) | OSM says bicycle=no, use_sidepath or cycleway=no | 1 | 0.0 | New Jersey Avenue Northwest [1508314440](https://www.openstreetmap.org/way/1508314440) |
+| One-way | side lane beside a two-way carriageway | 1 | 0.1 | K Street Northwest [924793627](https://www.openstreetmap.org/way/924793627) |
 | Bike facility present or absent | OSM says bicycle=no, use_sidepath or cycleway=no | 1 | 0.0 | Arizona Avenue Northwest [50773195](https://www.openstreetmap.org/way/50773195) |
 
 ## Owner overrides: every one, 17
@@ -191,7 +191,7 @@ The District's value withheld by the owner (OWNER-DECISIONS 197; `agency_blocks`
 | Channing Street Northwest | [6057631](https://www.openstreetmap.org/way/6057631) | dc-4631708-0 | 899 ft [274 m] | oneway=yes | two-way | LTS 1 (no change) | yes |
 | C Street Southeast | [581831508](https://www.openstreetmap.org/way/581831508) | dc-4642969-0 | 892 ft [272 m] | oneway=yes | two-way | LTS 1 (no change) | yes |
 
-## Through lanes per direction: applied, the 25 longest of 2,630
+## Through lanes per direction: applied, the 25 longest of 2,631
 
 | street | OSM way | DC block | length | OSM | DC | tier | applied |
 | --- | --- | --- | --- | --- | --- | --- | --- |

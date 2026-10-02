@@ -1126,10 +1126,19 @@ exception is counted as a disagreement with its reason:
   divided detector missed), a one-way side lane on a block whose two-way main
   carriageway OSM maps as a way of a busier class (`block_context`'s
   `side_lane`; review r3: K Street NW's tertiary service lanes beside its trunk
-  centre, 47 ways - such a lane also keeps OSM's lanes, the block's being the
-  main road's), a slip road, a motorway or a trunk road (C3), a roundabout, a
+  centre - such a lane also keeps OSM's lanes, the block's being the main
+  road's; 41 ways), a slip road, a motorway or a trunk road (C3), a roundabout, a
   way that runs on onto a one-way block, a junction stub, and an unnamed way (a
-  turn channel beside the named street).
+  turn channel beside the named street). A side lane runs beside its main road:
+  a roundabout is not a two-way main road (OSM implies its one-way, `junction=
+  roundabout` or `circular` without `oneway=no`), and a one-way that shares an
+  end node with the main road is one only where at least 66 ft [20 m] of it
+  runs beside it, short of its ends (`MIN_SIDE_LANE_BESIDE_M`; the gate review
+  found Cedar Avenue, a one-way carrying Cedar Street NW on from its end, and
+  Water Street SW, the street changing class, taken for side lanes). The
+  overlay also reads a roundabout as one-way, and says so for the classifier
+  (`oneway=yes`), so a block's lane count is written as one direction's and
+  not as two lanes each way.
 - **D.** A slip road (`*_link`) keeps its own lanes and is never given a block's
   count (review r1: a one-lane ramp took its parent's block and read as 2 to 4
   lanes); the block is the parent road, not the ramp.
@@ -1151,9 +1160,14 @@ exception is counted as a disagreement with its reason:
 - **Owner overrides of a block's record.** A block the owner has corrected is
   named, with the facts withheld, in an override file's `agency_blocks`
   (`agency_roads.withheld_blocks`, read by `road_facts_by_way` from the image's
-  `fixtures/overrides/`; fixtures/overrides/README.md). Only the posted speed may
-  be withheld: OSM's stands on every way matched to the block, and the
-  discrepancy report lists the way as not applied, "owner override".
+  `fixtures/overrides/`; fixtures/overrides/README.md), by the layer's own key
+  for it (DC's `BLOCKKEY`, kept by the installer as `RoadFacts.block_key`) with
+  its street (`ROUTENAME`) as a check, not by the installed block id, which is
+  built from OBJECTID, the ArcGIS row number (`agency_roads.resolve_withheld`).
+  One that names no installed block, or another street, withholds nothing and
+  the rebuild warns of it. Only the posted speed may be withheld: OSM's stands
+  on every way matched to the block, and the discrepancy report lists the way
+  as not applied, "owner override".
   OWNER-DECISIONS 197 withholds DC's 20 mph on Canal Road NW (dc-4633425-0) and
   the Whitehurst Freeway (dc-4636053-0), which stay LTS 4 on OSM's 35 mph.
 

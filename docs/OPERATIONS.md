@@ -1408,7 +1408,11 @@ the first host to run it is the first test of it.
    log carries `agency street blocks: N of M blocks matched ways`, and each
    matched segment's `attr_sources` says which inputs came from the agency.
    Install it before the next rebuild, never after: the tiers change only when a
-   rebuild runs. Reinstalling is idempotent.
+   rebuild runs. Reinstalling is idempotent. The owner's block corrections in
+   fixtures/overrides name DC's blocks by `BLOCKKEY`, which the installer keeps
+   with each block; a `roadway.json` installed by an earlier version lacks it,
+   and the rebuild then warns that the corrections are not applied ("Log lines
+   to read after a rebuild"), so reinstall it before the combined rebuild.
 
    `--extract` is the clipped `source.osm.pbf`, and the clipped one is right:
    the script reads ways out of it to decide which way ids fall inside a Census
@@ -1521,6 +1525,7 @@ posted `maxspeed` on the way always wins.
 | `way states: DC 33,xxx, MD ..., VA ...; N of M ways outside every state; N s` | the District around 34,000 road ways; the outside count is the WV/PA edges |
 | `divided roads: N carriageways in N s` | about 51,000 on the region |
 | `curated speed limits not applied (posted, or no such way): [...]` | should not appear; a way listed was posted since or left the extract, and its row can go |
+| `owner's block correction not applied (fixtures/overrides agency_blocks): block <BLOCKKEY> (...) is not among the installed agency street blocks; ...` | should not appear; the owner's correction (OWNER-DECISIONS 197) is not applied and DC's value is read. A `roadway.json` installed before the street blocks kept DC's BLOCKKEY says this for every block: reinstall them (`--roadway-block`, above) and rebuild. A block DC has dropped or rekeyed, or one on another street, wants its entry in fixtures/overrides corrected |
 | `facility classes: ...; N CBD sidewalks barred to bicycles, N singletrack ways avoided` | about 2,000 CBD sidewalks; singletrack in the hundreds |
 
 `manage.py check_weekday_trails` (acceptance A7) is **report-only**: it prints

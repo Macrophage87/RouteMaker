@@ -8,12 +8,12 @@ The two runs agree on the baseline tier of all but 7 of the 82,357 DC and Baltim
 
 | area | total mi | LTS 1 before -> after | LTS 2 before -> after | LTS 3 before -> after | LTS 4 before -> after | LTS 5 before -> after |
 | --- | --- | --- | --- | --- | --- | --- |
-| Region | 98,411 | 47,377.2 (48.1%) -> 47,297.4 (48.1%), -79.8 | 27,003.5 (27.4%) -> 27,063.8 (27.5%), +60.3 | 5,775.1 ( 5.9%) -> 5,772.5 ( 5.9%), -2.7 | 16,724.4 (17.0%) -> 16,746.5 (17.0%), +22.1 | 1,530.8 ( 1.6%) -> 1,530.8 ( 1.6%), +0.0 |
-| DC | 2,189 | 1,560.5 (71.3%) -> 1,511.3 (69.1%), -49.2 | 222.9 (10.2%) -> 246.9 (11.3%), +24.1 | 266.9 (12.2%) -> 267.9 (12.2%), +1.0 | 138.3 ( 6.3%) -> 162.4 ( 7.4%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
+| Region | 98,411 | 47,377.2 (48.1%) -> 47,297.4 (48.1%), -79.8 | 27,003.5 (27.4%) -> 27,063.8 (27.5%), +60.3 | 5,775.1 ( 5.9%) -> 5,772.4 ( 5.9%), -2.7 | 16,724.4 (17.0%) -> 16,746.5 (17.0%), +22.1 | 1,530.8 ( 1.6%) -> 1,530.8 ( 1.6%), +0.0 |
+| DC | 2,189 | 1,560.5 (71.3%) -> 1,511.3 (69.1%), -49.2 | 222.9 (10.2%) -> 246.9 (11.3%), +24.1 | 266.9 (12.2%) -> 267.8 (12.2%), +0.9 | 138.3 ( 6.3%) -> 162.4 ( 7.4%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
 | MD | 62,196 | 28,241.1 (45.4%) -> 28,210.5 (45.4%), -30.6 | 19,858.4 (31.9%) -> 19,894.6 (32.0%), +36.2 | 3,566.7 ( 5.7%) -> 3,563.1 ( 5.7%), -3.6 | 10,159.7 (16.3%) -> 10,157.7 (16.3%), -2.0 | 370.4 ( 0.6%) -> 370.4 ( 0.6%), +0.0 |
 | VA | 33,765 | 17,500.6 (51.8%) -> 17,500.6 (51.8%), +0.0 | 6,836.1 (20.2%) -> 6,836.1 (20.2%), +0.0 | 1,938.9 ( 5.7%) -> 1,938.9 ( 5.7%), +0.0 | 6,329.3 (18.7%) -> 6,329.3 (18.7%), +0.0 | 1,160.0 ( 3.4%) -> 1,160.0 ( 3.4%), +0.0 |
 | no state | 261 | 75.0 (28.7%) -> 75.0 (28.7%), +0.0 | 86.2 (33.0%) -> 86.2 (33.0%), +0.0 | 2.6 ( 1.0%) -> 2.6 ( 1.0%), +0.0 | 97.1 (37.2%) -> 97.1 (37.2%), +0.0 | 0.4 ( 0.1%) -> 0.4 ( 0.1%), +0.0 |
-| DC ways a Roadway Block was matched to | 1,233 | 651.9 (52.9%) -> 602.6 (48.9%), -49.2 | 206.6 (16.8%) -> 230.7 (18.7%), +24.1 | 249.3 (20.2%) -> 250.3 (20.3%), +1.0 | 124.8 (10.1%) -> 148.9 (12.1%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
+| DC ways a Roadway Block was matched to | 1,233 | 651.9 (52.9%) -> 602.6 (48.9%), -49.2 | 206.6 (16.8%) -> 230.8 (18.7%), +24.1 | 249.3 (20.2%) -> 250.3 (20.3%), +1.0 | 124.8 (10.1%) -> 148.9 (12.1%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
 | Baltimore City (within about 500 ft [150 m] of its centerline) | 2,950 | 1,342.3 (45.5%) -> 1,311.7 (44.5%), -30.6 | 1,029.4 (34.9%) -> 1,065.6 (36.1%), +36.2 | 357.6 (12.1%) -> 353.9 (12.0%), -3.6 | 220.3 ( 7.5%) -> 218.3 ( 7.4%), -2.0 | 0.1 ( 0.0%) -> 0.1 ( 0.0%), +0.0 |
 
 ## What moved, by what the layer changed
@@ -24,8 +24,8 @@ Ways whose tier changed, by the inputs the layer changed on them (from the tags 
 | --- | --- | --- | --- | --- | --- |
 | dc | speed + parking | 666 | 84.7 | 52.4 | 32.3 |
 | baltimore | speed | 449 | 37.0 | 28.8 | 8.2 |
-| dc | speed + parking + count | 122 | 24.9 | 24.4 | 0.4 |
-| dc | speed + lanes + parking | 341 | 21.4 | 14.4 | 7.0 |
+| dc | speed + parking + count | 121 | 24.8 | 24.4 | 0.4 |
+| dc | speed + lanes + parking | 342 | 21.5 | 14.4 | 7.1 |
 | dc | parking + count | 94 | 17.3 | 16.8 | 0.5 |
 | dc | speed + lanes + parking + count | 47 | 7.6 | 6.7 | 0.9 |
 | dc | lanes + parking | 81 | 7.3 | 4.9 | 2.4 |
@@ -65,17 +65,17 @@ Where OSM still stands in the District, and why (rows C1-C3, D and E of the revi
 | oneway: agency two-way, OSM one-way, kept (carriageway pair) | 697 | 36.6 |
 | oneway: agency two-way, OSM one-way, kept (slip road or freeway) | 250 | 15.6 |
 | bike facility: OSM has one, the agency records none | 67 | 4.1 |
-| oneway: agency two-way, OSM one-way, kept (junction stub) | 51 | 0.6 |
-| lanes: a side lane beside a two-way carriageway, OSM kept | 47 | 2.4 |
+| oneway: agency two-way, OSM one-way, kept (junction stub) | 52 | 0.6 |
+| lanes: a side lane beside a two-way carriageway, OSM kept | 41 | 2.2 |
 | lanes: agency records one direction of a two-way way, OSM kept | 29 | 1.9 |
 | oneway: agency one-way, OSM two-way, kept (junction stub) | 13 | 0.1 |
 | oneway: agency one-way, OSM two-way, kept (direction unknown) | 12 | 0.7 |
 | oneway: agency two-way, OSM one-way, kept (one-way blocks along it) | 11 | 1.9 |
 | oneway: agency two-way, OSM one-way, kept (unnamed) | 10 | 0.4 |
-| oneway: agency two-way, OSM one-way, kept (roundabout) | 4 | 0.1 |
+| oneway: agency two-way, OSM one-way, kept (roundabout) | 10 | 0.3 |
 | oneway: agency one-way, OSM two-way, kept (reversible lanes) | 2 | 0.5 |
 | bike facility: agency protected lane, OSM says none on the road (bicycle or cycleway no, or use_sidepath) | 2 | 0.0 |
-| oneway: agency two-way, OSM one-way, kept (side lane beside a two-way carriageway) | 2 | 0.1 |
+| oneway: agency two-way, OSM one-way, kept (side lane beside a two-way carriageway) | 1 | 0.1 |
 | E. bike facility OSM maps as its own way (on the way or on another way of its block), counted as agreement | 763 | 39.6 |
 | D. slip roads: their own lanes, no block count | 509 | 31.6 |
 

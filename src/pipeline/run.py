@@ -929,7 +929,23 @@ def build_handlers(
         reference = context.require_reference()
         if not reference.road_blocks:
             return
-        by_way, result = conflation.road_facts_by_way(context.ways, entries, reference.road_blocks)
+        # The owner's corrections to a block's record (OWNER-DECISIONS 197), by
+        # the layer's own key; one that names no installed block withholds
+        # nothing, and the agency's value is read against the owner's decision.
+        withheld = agency_roads.resolve_withheld(
+            agency_roads.withheld_blocks(),
+            ((block.feature_id, block.facts) for block in reference.road_blocks),
+        )
+        for unmatched in withheld.unmatched:
+            logger.warning(
+                "owner's block correction not applied (fixtures/overrides agency_blocks): %s; "
+                "reinstall the street blocks (scripts/install_reference_data.py "
+                "--roadway-block) or correct the override file",
+                unmatched,
+            )
+        by_way, result = conflation.road_facts_by_way(
+            context.ways, entries, reference.road_blocks, withheld=withheld.by_block
+        )
         tags_of = {way.osm_id: way.tags for way in context.ways if way.osm_id in by_way}
         counted = set(context.aadt_by_way)
         for way_id, facts in by_way.items():

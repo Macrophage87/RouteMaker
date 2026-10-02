@@ -3486,6 +3486,123 @@ def test_the_report_s_osm_only_tier_takes_no_block_count(states, monkeypatch) ->
     assert int(counted.tier) != int(bare.stress_by_way[100].tier)
 
 
+def _one_road(highway: str = "residential", name: str = "Test Road", **tags) -> Path:
+    return install_source_extract(
+        Path(tempfile.mkdtemp()),
+        build=build_one_road_extract,
+        highway=highway,
+        name=name,
+        extra=tags,
+    )
+
+
+def _report_rows(context) -> list[dict]:
+    with (context.work_dir / "reports" / "dc-osm-discrepancies.csv").open() as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_the_report_s_osm_only_tier_reads_the_divided_road_flag(states, monkeypatch) -> None:
+    """G9 of the gate review: the "tier with OSM's tags alone" is the rebuild's
+    tier with no block, and on a carriageway of a divided road that is read as
+    the two-way road it is, not a one-way street (item 109)."""
+    from routemaker import divided
+
+    _all_in_the_district(monkeypatch)
+    monkeypatch.setattr(divided, "carriageways", lambda ways: {100})
+    tags = {"oneway": "yes", "lanes": "2", "maxspeed": "25 mph"}
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    clipped = _one_road(**tags)
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    plain = _one_road(**tags)
+    bare, _ = run_pipeline(plain, plain.parent, skip=NOT_SWAPPED)
+    speed = next(r for r in _report_rows(context) if r["type"] == "speed")
+    assert speed["tier_osm_only"] == str(int(bare.stress_by_way[100].tier))
+    # The flag moves this street's tier, so the test can tell.
+    osm = {"highway": "residential", **tags}
+    assert int(classify(osm, jurisdiction="DC", urban=True).tier) != int(
+        bare.stress_by_way[100].tier
+    )
+
+
+def test_the_report_s_osm_only_tier_reads_the_curated_speed(tmp_path, states, monkeypatch) -> None:
+    """G10 of the gate review: an unposted way's curated speed limit (OWNER-
+    DECISIONS 131) is part of what the rebuild classifies it with before any
+    block, so the report's OSM-only tier reads it too."""
+    from routemaker import speed_corrections
+
+    _all_in_the_district(monkeypatch)
+    speeds = tmp_path / "speed"
+    speeds.mkdir()
+    row = {"osm_way_id": 100, "maxspeed": "35 mph", "reason": "test", "evidence": "test"}
+    (speeds / "test.json").write_text(json.dumps({"version": 1, "rows": [row]}))
+    monkeypatch.setattr(speed_corrections, "SPEED_DIR", speeds)
+    block = street_block("dc-1", {"lanes": {"ib": 2, "ob": 2}, "way": "both"})
+    clipped = _one_road(lanes="2")
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    plain = _one_road(lanes="2")
+    bare, _ = run_pipeline(plain, plain.parent, skip=NOT_SWAPPED)
+    assert bare.speed_corrected == {100}
+    lanes = next(r for r in _report_rows(context) if r["type"] == "lanes")
+    assert lanes["tier_osm_only"] == str(int(bare.stress_by_way[100].tier))
+    unposted = {"highway": "residential", "lanes": "2"}
+    assert int(classify(unposted, jurisdiction="DC", urban=True).tier) != int(
+        bare.stress_by_way[100].tier
+    )
+
+
+def test_the_report_makes_no_row_for_a_way_that_is_not_a_road(states, monkeypatch) -> None:
+    """G11 of the gate review: a way under construction takes its block (only a
+    proposed one does not), and the report, like `data_before_after.py`, makes
+    no row for it (`discrepancies.NOT_ROADS`)."""
+    _all_in_the_district(monkeypatch)
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    clipped = _one_road("construction", maxspeed="35 mph")
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 in context.road_facts_by_way
+    assert _report_rows(context) == []
+    road = _one_road("residential", maxspeed="35 mph")
+    context, _ = run_pipeline(road, road.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert [r["osm_way_id"] for r in _report_rows(context)] == ["100"]
+
+
+CANAL_KEY = "4f9821f03241db278696e8732dc5c2a7"
+
+
+def test_the_rebuild_warns_of_an_owner_s_block_correction_it_cannot_find(
+    states, caplog, monkeypatch
+) -> None:
+    """Gate review, should-fix 1: the owner's correction names DC's block by its
+    BLOCKKEY; a reinstalled layer without it, or without the block, would
+    silently give Canal Road back DC's 20 mph. The rebuild says so, like the
+    curated speed limits it could not apply; where the block is installed under
+    any id, its speed is withheld and nothing is said of it."""
+    _all_in_the_district(monkeypatch)
+    canal = {"speed_mph": {"ob": 20}, "way": "both", "name": "CANAL RD NW"}
+    keyless = street_block("dc-4633425-0", canal)
+    road = _one_road("trunk", name="Canal Road Northwest", maxspeed="35 mph")
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(road, road.parent, roadway=[keyless], skip=NOT_SWAPPED)
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "block correction not applied" in r.getMessage()
+    ]
+    assert any(
+        f"block {CANAL_KEY} (CANAL RD NW) is not among the installed agency street blocks" in m
+        for m in warned
+    )
+    assert dict(context.stress_by_way[100].attr_sources)["maxspeed"] == "dc-roadway-block"
+
+    caplog.clear()
+    renumbered = street_block("dc-7777777-0", {**canal, "block_key": CANAL_KEY})
+    road = _one_road("trunk", name="Canal Road Northwest", maxspeed="35 mph")
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(road, road.parent, roadway=[renumbered], skip=NOT_SWAPPED)
+    assert CANAL_KEY not in caplog.text
+    assert dict(context.stress_by_way[100].attr_sources)["maxspeed"] == "osm"
+    assert context.road_facts_by_way[100].speed_withheld_mph == 20
+
+
 def test_a_discrepancy_report_that_fails_never_fails_the_rebuild(
     workspace, states, caplog, monkeypatch
 ) -> None:

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 import random
+from dataclasses import replace
 
 import pytest
 
@@ -576,14 +577,25 @@ def test_the_owner_s_withheld_blocks_are_read_by_default() -> None:
     """OWNER-DECISIONS 197: the matcher reads the checked-in `agency_blocks`
     (fixtures/overrides/2026-10-02-owner-canal-whitehurst.json) unless told
     otherwise, so the rebuild and the reports withhold the same speeds."""
+    # By DC's BLOCKKEY, whatever row number the installed id was built from
+    # (gate review, should-fix 1).
     canal = RoadFeature(
-        "dc-4633425-0",
+        "dc-1234567-0",
         line((0, 0), (200, 0)),
-        RoadFacts(agency=DC_AGENCY, name="CANAL RD NW", speed_mph={"ob": 20}, way="both"),
+        RoadFacts(
+            agency=DC_AGENCY,
+            name="CANAL RD NW",
+            speed_mph={"ob": 20},
+            way="both",
+            block_key="4f9821f03241db278696e8732dc5c2a7",
+        ),
     )
     road = _Way(1, {"highway": "trunk", "name": "Canal Road Northwest"}, line((0, 3), (200, 3)))
     entries = [(1, road.coordinates, False)]
     held, _ = road_facts_by_way([road], entries, [canal])
     assert (held[1].speed_mph, held[1].speed_withheld_mph) == (None, 20)
     applied, _ = road_facts_by_way([road], entries, [canal], withheld={})
+    assert (applied[1].speed_mph, applied[1].speed_withheld_mph) == (20, None)
+    keyless = RoadFeature(canal.feature_id, canal.coordinates, replace(canal.facts, block_key=None))
+    applied, _ = road_facts_by_way([road], entries, [keyless])
     assert (applied[1].speed_mph, applied[1].speed_withheld_mph) == (20, None)

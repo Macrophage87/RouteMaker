@@ -88,7 +88,7 @@ Where OSM maps the way's bike facility as a way of its own (`cycleway*=separate`
 | agree | 987 | 92.7 | 7.4% |
 | disagree | 94 | 3.1 | 0.7% |
 
-Tier effect: 1,767 of the 13,409 matched ways (189.0 of 1,232.6 mi) change tier.
+Tier effect: 1,768 of the 13,409 matched ways (189.1 of 1,232.6 mi) change tier.
 
 ## Baltimore: street centerline (Open Baltimore)
 

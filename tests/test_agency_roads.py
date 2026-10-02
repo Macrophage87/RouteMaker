@@ -1532,6 +1532,166 @@ def test_only_a_busier_two_way_main_road_makes_a_one_way_a_side_lane(other) -> N
     assert A.block_context(three, {1: one_way, 2: street, 3: trunk}).side_lane == {1}
 
 
+def test_a_side_lane_on_one_of_its_blocks_is_a_side_lane() -> None:
+    """G1 of the gate review: Lincoln Memorial Circle 1093448958 and 1103289386
+    lie along several blocks, the busier two-way circle on some of them; a rule
+    asking for a main road on every block made them two-way, LTS 2 to 3."""
+    lane = {"highway": "service", "oneway": "yes"}
+    circle = {"highway": "primary"}
+    side = A.aggregate([("k", facts(way="both"), True), ("m", facts(way="both"), True)])
+    main = A.aggregate([("k", facts(way="both"), True)])
+    alone = A.aggregate([("m", facts(way="both"), True)])
+    context = A.block_context({1: side, 2: main, 3: alone}, {1: lane, 2: circle, 3: lane})
+    assert context.side_lane == {1}
+
+
+def _metres(*points: tuple[float, float]) -> list[tuple[float, float]]:
+    """A line from (east, north) offsets in metres from (-77.0, 38.9)."""
+    return [(-77.0 + x / (111_195.0 * 0.7782), 38.9 + y / 111_195.0) for x, y in points]
+
+
+def test_a_roundabout_is_not_a_two_way_main_road() -> None:
+    """Gate review, should-fix 2: a roundabout is one-way without a `oneway` tag;
+    the primary roundabouts 589905413 and 695842750 made Bryant Street NE and 13th
+    Street NE side lanes."""
+    along = A.aggregate([("k", facts(way="both"), True)])
+    street = {"highway": "residential", "oneway": "yes"}
+    for junction in ("roundabout", "circular"):
+        roundabout = {"highway": "primary", "junction": junction}
+        assert A._main_rank(roundabout) is None
+        context = A.block_context({1: along, 2: along}, {1: street, 2: roundabout})
+        assert context.side_lane == frozenset()
+    # One mapped two-way in so many words is a two-way road.
+    two_way = {"highway": "primary", "junction": "roundabout", "oneway": "no"}
+    assert A.block_context({1: along, 2: along}, {1: street, 2: two_way}).side_lane == {1}
+
+
+def test_a_one_way_carrying_the_main_road_on_from_its_end_is_not_a_side_lane() -> None:
+    """Gate review, should-fix 2: Cedar Avenue 555136043 is a 26 m one-way from
+    Cedar Street NW's end node into Maryland, not beside it; as a side lane it
+    kept OSM's four lanes, LTS 2 to 3. A side lane runs alongside its main road:
+    it shares no end node with it, or at least MIN_SIDE_LANE_BESIDE_M of it runs
+    beside it short of its ends (Lincoln Memorial Circle's service ways leave the
+    circle at its end node and run 27 m and 59 m beside it)."""
+    along = A.aggregate([("k", facts(way="both"), True)])
+    lane = {"highway": "residential", "oneway": "yes"}
+    main = {"highway": "tertiary"}
+    road = _metres((0, 0), (100, 0))
+    cases = {
+        "carries on from the end": (_metres((100, 0), (126, 0)), False),
+        "turns off at the end": (_metres((100, 0), (100, 30)), False),
+        "starts at the end and carries on": (_metres((126, 0), (100, 0)), False),
+        "beside, touching neither end": (_metres((10, 12), (90, 12)), True),
+        # Delaware Avenue NE's service ways: on the block, touching neither end.
+        "touching neither end, past it": (_metres((110, 12), (140, 12)), True),
+        "leaves the end and runs back beside it": (_metres((100, 0), (90, 10), (60, 10)), True),
+        "leaves the end, too little beside it": (_metres((100, 0), (95, 8), (85, 8)), False),
+        "beside it, but too far": (_metres((100, 0), (100, 30), (20, 30)), False),
+    }
+    for name, (line, side) in cases.items():
+        context = A.block_context(
+            {1: along, 2: along}, {1: lane, 2: main}, coordinates_by_way={1: line, 2: road}
+        )
+        assert (context.side_lane == {1}) is side, name
+    # Ending on one main road of the block, it must run beside one of them.
+    other = _metres((-50, 15), (200, 15))
+    three = {1: along, 2: along, 3: along}
+    three_tags = {1: lane, 2: main, 3: main}
+    context = A.block_context(
+        three, three_tags, coordinates_by_way={1: _metres((100, 0), (100, -30)), 2: road, 3: other}
+    )
+    assert context.side_lane == frozenset()
+    context = A.block_context(
+        three,
+        three_tags,
+        coordinates_by_way={1: _metres((100, 0), (100, 10), (40, 10)), 2: road, 3: other},
+    )
+    assert context.side_lane == {1}
+    # Ending on a two-way street of its own class is a street carrying on, not
+    # the busier main road's end.
+    street = _metres((140, 12), (200, 12))
+    context = A.block_context(
+        three,
+        {1: lane, 2: main, 3: {"highway": "residential"}},
+        coordinates_by_way={1: _metres((110, 12), (140, 12)), 2: road, 3: street},
+    )
+    assert context.side_lane == {1}
+    # Without the lines, the class alone decides, as before.
+    assert A.block_context({1: along, 2: along}, {1: lane, 2: main}).side_lane == {1}
+    assert A._beside_m(_metres((0, 5), (50, 5)), _metres((0, 0))) == 0.0
+
+
+def test_the_rebuild_s_wiring_passes_the_lines() -> None:
+    """`overlay_road_facts` hands `block_context` the ways' lines, so the end-on
+    continuation is told apart where the rebuild reads it: Cedar Avenue takes
+    the block's one lane each way, not OSM's four."""
+    from pipeline.conflation import overlay_road_facts
+
+    block = facts(way="both", lanes={"ib": 1, "ob": 1}, speed_mph={"ob": 25})
+    cedar = A.aggregate([("k", block, True)], names=True)
+    lane = {"highway": "residential", "name": "Cedar Avenue", "oneway": "yes", "lanes": "4"}
+    main = {"highway": "tertiary", "name": "Cedar Street Northwest", "lanes": "4"}
+    ways = [
+        SimpleWay(1, lane, _metres((100, 0), (126, 0))),
+        SimpleWay(2, main, _metres((0, 0), (100, 0))),
+    ]
+    overlays = overlay_road_facts(ways, {1: cedar, 2: cedar})
+    assert overlays[1].tags["lanes"] == "1"
+    beside = [SimpleWay(1, lane, _metres((10, 12), (90, 12))), ways[1]]
+    assert overlay_road_facts(beside, {1: cedar, 2: cedar})[1].tags["lanes"] == "4"
+
+
+def test_the_overlay_reads_a_roundabout_as_one_way() -> None:
+    """Gate review: the overlay wrote two lanes each way onto the primary
+    roundabout 589905413, which OSM maps without a `oneway` tag."""
+    roundabout = {"highway": "primary", "junction": "roundabout", "lanes": "2"}
+    two_way = way_facts(
+        one_way=False,
+        two_way_throughout=True,
+        names_agree=True,
+        lanes_per_direction=2,
+        lanes_forward=2,
+        lanes_backward=2,
+        direction_known=True,
+    )
+    result = A.overlay(roundabout, two_way, length_m=80.0)
+    assert result.tags["lanes"] == "2"
+    assert "lanes:forward" not in result.tags and "lanes:backward" not in result.tags
+    # OSM's implied one-way, said for the classifier, so the two lanes are read
+    # as one direction's and not halved.
+    assert result.tags["oneway"] == "yes"
+    assert (
+        classify(result.tags, jurisdiction="DC").tier
+        == classify({**roundabout, "oneway": "yes"}, jurisdiction="DC").tier
+    )
+    assert result.sources["oneway"] == A.SOURCE_OSM
+    assert result.disagreements[0] == "oneway: agency two-way, OSM one-way, kept (roundabout)"
+    # A one-way record against the way's digitising does not reverse it.
+    against = way_facts(one_way=True, oneway_forward=False)
+    assert A.overlay(roundabout, against, length_m=80.0).tags["oneway"] == "yes"
+    assert "oneway" not in roundabout
+    # A roundabout OSM maps two-way in so many words is read as two-way.
+    mapped = A.overlay({**roundabout, "oneway": "no"}, two_way, length_m=80.0)
+    assert (mapped.tags["lanes:forward"], mapped.tags["lanes:backward"]) == ("2", "2")
+
+
+def test_osm_forward_is_none_on_a_way_osm_has_two_way() -> None:
+    """G5 of the gate review: a flagged contraflow block with no recorded
+    direction on a way OSM has two-way keeps its lane's label (Pomeroy Road SE
+    6051305); only an OSM one-way places it against the traffic."""
+    for tags in ({"highway": "residential"}, {"oneway": "no"}, {"oneway": "reversible"}):
+        assert A.osm_forward(tags) is None
+    assert A.osm_forward({"oneway": "yes"}) is True
+    assert A.osm_forward({"oneway": "-1"}) is False
+    flagged = facts(way="one", contraflow=True, bike={"ob": A.BIKE_LANE})
+    placed = {True: (A.BIKE_LANE, A.BIKE_NONE), False: (A.BIKE_NONE, A.BIKE_LANE)}
+    for along, expected in placed.items():
+        two_way = A.aggregate(
+            [("p", flagged, along)], osm_forward=A.osm_forward({"highway": "residential"})
+        )
+        assert (two_way.bike_forward, two_way.bike_backward) == expected
+
+
 def test_a_withheld_block_s_speed_is_not_applied_and_osm_s_stands() -> None:
     """OWNER-DECISIONS 197: DC's 20 mph on Canal Road NW and the Whitehurst Freeway
     is withheld; OSM's posted 35 mph stands, and the report says owner override."""
@@ -1558,19 +1718,42 @@ def _override_file(tmp_path, entries, name="x.json"):
     (tmp_path / name).write_text(json.dumps({"version": 1, "rows": [], "agency_blocks": entries}))
 
 
+_ENTRY = {
+    "blockkey": "k1",
+    "routename": "CANAL RD NW",
+    "withhold": ["speed"],
+    "reason": "r",
+    "evidence": "e",
+}
+
+
 def test_the_withheld_blocks_are_read_from_the_override_files(tmp_path) -> None:
-    entry = {"block": "dc-1-0", "withhold": ["speed"], "reason": "r", "evidence": "e"}
-    _override_file(tmp_path, [entry])
+    _override_file(tmp_path, [_ENTRY])
     (tmp_path / "rows-only.json").write_text(json.dumps({"version": 1, "rows": []}))
-    assert A.withheld_blocks(tmp_path) == {"dc-1-0": frozenset({"speed"})}
+    assert A.withheld_blocks(tmp_path) == {
+        "k1": A.WithheldBlock("CANAL RD NW", frozenset({"speed"}))
+    }
     assert A.withheld_blocks(tmp_path / "nothing-here") == {}
+
+
+def test_one_block_named_two_ways_is_refused(tmp_path) -> None:
+    _override_file(tmp_path, [_ENTRY], name="a.json")
+    _override_file(tmp_path, [{**_ENTRY, "routename": " canal  rd nw"}], name="b.json")
+    assert A.withheld_blocks(tmp_path)["k1"].routename == " canal  rd nw"
+    _override_file(tmp_path, [{**_ENTRY, "routename": "M ST NW"}], name="b.json")
+    with pytest.raises(A.WithheldBlockRefused, match="named 'M ST NW' here"):
+        A.withheld_blocks(tmp_path)
 
 
 @pytest.mark.parametrize(
     ("change", "message"),
     [
-        ({"block": ""}, "block must be"),
-        ({"block": 4633425}, "block must be"),
+        ({"blockkey": ""}, "blockkey must be"),
+        ({"blockkey": " "}, "blockkey must be"),
+        ({"blockkey": 4633425}, "blockkey must be"),
+        ({"block": "dc-4633425-0", "blockkey": None}, "blockkey must be"),
+        ({"routename": ""}, "routename is required"),
+        ({"routename": None}, "routename is required"),
         ({"withhold": []}, "withhold must"),
         ({"withhold": ["lanes"]}, "withhold must"),
         ({"withhold": "speed"}, "withhold must"),
@@ -1579,8 +1762,7 @@ def test_the_withheld_blocks_are_read_from_the_override_files(tmp_path) -> None:
     ],
 )
 def test_a_malformed_withheld_block_is_refused(tmp_path, change, message) -> None:
-    entry = {"block": "dc-1-0", "withhold": ["speed"], "reason": "r", "evidence": "e"}
-    _override_file(tmp_path, [{**entry, **change}])
+    _override_file(tmp_path, [{**_ENTRY, **change}])
     with pytest.raises(A.WithheldBlockRefused, match=message):
         A.withheld_blocks(tmp_path)
     (tmp_path / "x.json").write_text(json.dumps({"version": 1, "agency_blocks": {}}))
@@ -1601,9 +1783,52 @@ def test_the_owner_s_canal_road_and_whitehurst_file() -> None:
         "discrepancy report."
     ) in document["annotations"]
     held = A.withheld_blocks()
+    # Gate review, should-fix 1: named by DC's BLOCKKEY, not the OBJECTID the
+    # installed ids are built from.
     assert held == {
-        "dc-4633425-0": frozenset({"speed"}),
-        "dc-4636053-0": frozenset({"speed"}),
+        "4f9821f03241db278696e8732dc5c2a7": A.WithheldBlock("CANAL RD NW", frozenset({"speed"})),
+        "c90df9cc9a2d75261e727d355a32dd3a": A.WithheldBlock(
+            "WHITEHURST FWY NW", frozenset({"speed"})
+        ),
     }
+    assert "block id is stable" not in document["annotations"]
+    assert "OBJECTID" in document["annotations"] and "BLOCKKEY" in document["annotations"]
     for entry in document["agency_blocks"]:
         assert '"Override: keep LTS 4 (Recommended)"' in entry["reason"]
+
+
+def test_the_withheld_blocks_are_found_by_the_layer_s_key() -> None:
+    """Gate review, should-fix 1: the installed id is built from DC's OBJECTID, the
+    ArcGIS row number; the owner's correction names the block by BLOCKKEY, so a
+    republished layer that renumbers its rows still finds it, and a block whose
+    street is another, or that is not installed, withholds nothing and is named
+    for the rebuild's warning."""
+    held = {
+        "k-canal": A.WithheldBlock("CANAL RD NW", frozenset({"speed"})),
+        "k-gone": A.WithheldBlock("WHITEHURST FWY NW", frozenset({"speed"})),
+        "k-moved": A.WithheldBlock("M ST NW", frozenset({"speed"})),
+    }
+    canal = A.RoadFacts(agency=A.DC_AGENCY, name="Canal Rd  NW", block_key="k-canal")
+    other = A.RoadFacts(agency=A.DC_AGENCY, name="K ST NW", block_key="k-moved")
+    keyless = A.RoadFacts(agency=A.DC_AGENCY, name="CANAL RD NW")
+    found = A.resolve_withheld(
+        held,
+        [("dc-9999999-0", canal), ("dc-9999999-1", canal), ("dc-2-0", other), ("dc-3-0", keyless)],
+    )
+    assert found.by_block == {
+        "dc-9999999-0": frozenset({"speed"}),
+        "dc-9999999-1": frozenset({"speed"}),
+    }
+    assert found.unmatched == (
+        "block k-gone (WHITEHURST FWY NW) is not among the installed agency street blocks",
+        "block k-moved is K ST NW in the installed blocks, not M ST NW",
+    )
+    assert A.resolve_withheld({}, [("dc-1-0", canal)]) == A.WithheldResolution({}, ())
+
+
+def test_the_dc_parser_keeps_the_block_s_key() -> None:
+    facts = A.parse_dc_roadway_block({"ROUTENAME": "CANAL RD NW", "BLOCKKEY": " 4f98 "})
+    assert facts.block_key == "4f98"
+    assert A.RoadFacts.from_json(facts.to_json()).block_key == "4f98"
+    assert A.parse_dc_roadway_block({"ROUTENAME": "CANAL RD NW"}).block_key is None
+    assert A.parse_dc_roadway_block({"BLOCKKEY": ""}).block_key is None

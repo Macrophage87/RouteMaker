@@ -3,23 +3,25 @@
   "decided": "2026-10-02",
   "decided_by": "the deployment owner",
   "status": "approved by the owner on 2026-10-02 (\"Override: keep LTS 4 (Recommended)\"); read by the rebuild from the image, nothing to load",
-  "annotations": "OWNER-DECISIONS 197, verbatim: 197. DC records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy (dc-4636053-0), owner 2026-10-02: \"Override: keep LTS 4 (Recommended)\". A stress override holds them at the OSM speeds and LTS 4, and they stay listed in the discrepancy report. Implemented as a block-level exclusion rather than stress rows: the two blocks' posted speed is withheld from the overlay (`routemaker.agency_roads.withheld_blocks`), so OSM's posted 35 mph stands on every way matched to them and the tier follows from it by the same tables as every other road (LTS 4). A stress row would have held the tier while the classifier still read DC's 20 mph, and would have been keyed to way ids that change when OSM splits a way; the block id is stable. Everything else the blocks record (lanes, one-way, count) still applies. The discrepancy report lists the ways under posted speed, not applied, reason \"owner override\". The ways named below are those matched to the blocks on the Geofabrik extract of 2026-09-24, for the reader; the rebuild matches afresh.",
+  "annotations": "OWNER-DECISIONS 197, verbatim: 197. DC records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy (dc-4636053-0), owner 2026-10-02: \"Override: keep LTS 4 (Recommended)\". A stress override holds them at the OSM speeds and LTS 4, and they stay listed in the discrepancy report. Implemented as a block-level exclusion rather than stress rows: the two blocks' posted speed is withheld from the overlay (`routemaker.agency_roads.withheld_blocks`), so OSM's posted 35 mph stands on every way matched to them and the tier follows from it by the same tables as every other road (LTS 4). A stress row would have held the tier while the classifier still read DC's 20 mph, and would have been keyed to way ids that change when OSM splits a way. Each block is named by DC's own key for it, BLOCKKEY, with its ROUTENAME as a check a reader can see; the block ids in the quote (dc-<OBJECTID>-<part>) are the installed ids of 2026-10-01, built from the ArcGIS row number, which DC's republishing may reassign, so they are not what the rebuild matches. A key that names no installed block, or another street, withholds nothing and the rebuild's log warns of it. Everything else the blocks record (lanes, one-way, count) still applies. The discrepancy report lists the ways under posted speed, not applied, reason \"owner override\". The ways named below are those matched to the blocks on the Geofabrik extract of 2026-09-24, for the reader; the rebuild matches afresh.",
   "agency_blocks": [
     {
-      "block": "dc-4633425-0",
+      "blockkey": "4f9821f03241db278696e8732dc5c2a7",
+      "routename": "CANAL RD NW",
       "withhold": ["speed"],
       "street": "Canal Road NW",
       "ways": [397350549, 397350552, 397350554, 397350555, 397350557, 1072033727],
       "reason": "The owner, 2026-10-02 (OWNER-DECISIONS 197), asked about DC's record of 20 mph on Canal Rd NW (block dc-4633425-0): \"Override: keep LTS 4 (Recommended)\". OSM's posted speed stands and the road stays LTS 4.",
-      "evidence": "District of Columbia Roadway Block, OBJECTID 4633425, CANAL RD NW: SPEEDLIMITS_OB 20 mph, FHWA functional class 3, 2 lanes each way, AADT 22,674 (2020). OSM, Geofabrik extract of 2026-09-24: Canal Road Northwest ways 397350549, 397350552, 397350554, 397350555 and 397350557, highway=trunk, maxspeed=35 mph (about 0.38 mi [612 m]); trunk_link 1072033727 has no maxspeed. With DC's 20 mph the five trunk ways went from LTS 4 to LTS 3 (review r3)."
+      "evidence": "District of Columbia Roadway Block, BLOCKKEY 4f9821f03241db278696e8732dc5c2a7 (OBJECTID 4633425 on 2026-10-01, installed as dc-4633425-0), CANAL RD NW: SPEEDLIMITS_OB 20 mph, FHWA functional class 3, 2 lanes each way, AADT 22,674 (2020). OSM, Geofabrik extract of 2026-09-24: Canal Road Northwest ways 397350549, 397350552, 397350554, 397350555 and 397350557, highway=trunk, maxspeed=35 mph (about 0.38 mi [612 m]); trunk_link 1072033727 has no maxspeed. With DC's 20 mph the five trunk ways went from LTS 4 to LTS 3 (review r3)."
     },
     {
-      "block": "dc-4636053-0",
+      "blockkey": "c90df9cc9a2d75261e727d355a32dd3a",
+      "routename": "WHITEHURST FWY NW",
       "withhold": ["speed"],
       "street": "Whitehurst Freeway NW",
       "ways": [24260117, 50430007, 50430008, 50430016, 235079846, 235079847, 235079848, 235079849, 397354071, 469146408, 1176510909, 1488503509, 6052574, 50430005, 50430009],
       "reason": "The owner, 2026-10-02 (OWNER-DECISIONS 197), asked about DC's record of 20 mph on the Whitehurst Fwy (block dc-4636053-0): \"Override: keep LTS 4 (Recommended)\". OSM's posted speed stands and the road stays LTS 4.",
-      "evidence": "District of Columbia Roadway Block, OBJECTID 4636053, WHITEHURST FWY NW: SPEEDLIMITS_OB 20 mph, FHWA functional class 2 (freeway or expressway), 2 lanes each way, AADT 32,218 (2020). OSM, Geofabrik extract of 2026-09-24: the Whitehurst Freeway's highway=motorway ways, maxspeed=35 mph; motorway_link ways 6052574, 50430005 and 50430009 have no maxspeed. LTS 4 either way, as a motorway; the record is withheld so the speed the classifier reads is OSM's."
+      "evidence": "District of Columbia Roadway Block, BLOCKKEY c90df9cc9a2d75261e727d355a32dd3a (OBJECTID 4636053 on 2026-10-01, installed as dc-4636053-0), WHITEHURST FWY NW: SPEEDLIMITS_OB 20 mph, FHWA functional class 2 (freeway or expressway), 2 lanes each way, AADT 32,218 (2020). OSM, Geofabrik extract of 2026-09-24: the Whitehurst Freeway's highway=motorway ways, maxspeed=35 mph; motorway_link ways 6052574, 50430005 and 50430009 have no maxspeed. LTS 4 either way, as a motorway; the record is withheld so the speed the classifier reads is OSM's."
     }
   ],
   "rows": []

@@ -2693,7 +2693,7 @@ lanes,468446573,https://www.openstreetmap.org/way/468446573,16th Street Northwes
 lanes,468835497,https://www.openstreetmap.org/way/468835497,Branch Avenue Southeast,trunk,0.016,dc-4642824-0,2 a direction,1 a direction,1,,3,3
 lanes,468835501,https://www.openstreetmap.org/way/468835501,Branch Avenue Southeast,trunk,0.016,dc-4643047-0,2 a direction,1 a direction,1,,3,3
 lanes,469159260,https://www.openstreetmap.org/way/469159260,Pennsylvania Avenue Northwest,primary,0.016,dc-4635725-0,3 a direction,2 a direction,1,,3,3
-lanes,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,4 a direction,1 a direction,0,side lane beside a two-way carriageway,3,3
+lanes,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,4 a direction,1 a direction,1,,3,2
 lanes,583988072,https://www.openstreetmap.org/way/583988072,22nd Street Southeast,primary,0.016,dc-4641216-0,2 a direction,1 a direction,1,,3,3
 lanes,589551003,https://www.openstreetmap.org/way/589551003,13th Street Southeast,primary,0.016,dc-4640864-0,1 a direction,4 a direction,1,,2,2
 lanes,590525641,https://www.openstreetmap.org/way/590525641,Washington Circle Northwest,primary,0.016,dc-4637217-0,2 a direction,4 a direction,1,,3,3
@@ -5793,7 +5793,7 @@ oneway,397317304,https://www.openstreetmap.org/way/397317304,10th Street Northwe
 oneway,397348708,https://www.openstreetmap.org/way/397348708,Sherman Avenue Northwest,secondary,0.016,dc-4638922-0,oneway=yes,two-way,0,divided carriageway,3,3
 oneway,468446573,https://www.openstreetmap.org/way/468446573,16th Street Northwest,primary,0.016,dc-4634450-0,oneway=yes,two-way,0,divided carriageway,4,4
 oneway,469159260,https://www.openstreetmap.org/way/469159260,Pennsylvania Avenue Northwest,primary,0.016,dc-4635725-0,oneway=yes,two-way,0,divided carriageway,3,3
-oneway,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,oneway=yes,two-way,0,side lane beside a two-way carriageway,3,3
+oneway,555136043,https://www.openstreetmap.org/way/555136043,Cedar Avenue,residential,0.016,dc-4631143-0,oneway=yes,two-way,0,junction stub,3,2
 oneway,581526858,https://www.openstreetmap.org/way/581526858,Bladensburg Road Northeast,primary,0.016,dc-4639116-0,oneway=yes,two-way,0,divided carriageway,3,4
 oneway,590525641,https://www.openstreetmap.org/way/590525641,Washington Circle Northwest,primary,0.016,dc-4637217-0,not tagged (two-way),one-way,1,,3,3
 oneway,637456308,https://www.openstreetmap.org/way/637456308,7th Street Southwest,primary,0.016,dc-4642622-0,oneway=yes,two-way,0,divided carriageway,3,3

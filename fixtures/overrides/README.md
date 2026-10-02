@@ -275,16 +275,27 @@ changed back.
 ## Block corrections, and the file of 2026-10-02
 
 A file may also correct an agency street block's record rather than a way: a
-top-level `agency_blocks` list, each entry `{"block": <block id>, "withhold":
-["speed"], "reason": ..., "evidence": ...}` (`street` and `ways` are for the
-reader). The rebuild reads it from its image (`routemaker.agency_roads.
-withheld_blocks`, through `pipeline.conflation.road_facts_by_way`, which the
-analysis scripts share): the withheld fact is not applied to any way matched to
-the block, so OSM's value stands and the tier follows from it by the same
-tables as every other road. Only the posted speed may be withheld; a malformed
-entry refuses the rebuild's matching rather than being skipped. A block id
-(`dc-<OBJECTID>-<part>`) is stable where OSM's way ids are not, which is why
-this is a block list and not stress rows: a stress row would have held the
+top-level `agency_blocks` list, each entry `{"blockkey": <the layer's key for
+the block, DC's BLOCKKEY>, "routename": <its ROUTENAME>, "withhold": ["speed"],
+"reason": ..., "evidence": ...}` (`street` and `ways` are for the reader). The
+rebuild reads it from its image (`routemaker.agency_roads.withheld_blocks`,
+found among the installed blocks by `resolve_withheld`, through
+`pipeline.conflation.road_facts_by_way`, which the analysis scripts share): the
+withheld fact is not applied to any way matched to the block, so OSM's value
+stands and the tier follows from it by the same tables as every other road.
+Only the posted speed may be withheld; a malformed entry refuses the rebuild's
+matching rather than being skipped. The block is named by BLOCKKEY, not by its
+installed id: that id (`dc-<OBJECTID>-<part>`) is built from OBJECTID, the
+ArcGIS row number, which DC's republishing may reassign (gate review,
+should-fix 1). The ROUTENAME is a check a reader can see: an entry whose key
+names no installed block, or a block on another street, withholds nothing, and
+the rebuild's log warns "owner's block correction not applied" with the key, so
+a reinstalled layer cannot quietly give the block's value back. The installer
+keeps the key (`RoadFacts.block_key`); a `roadway.json` installed by an earlier
+version has none, so the street blocks are reinstalled
+(`scripts/install_reference_data.py --roadway-block`) before the rebuild that
+should apply these files. This is a block list and not stress rows because
+OSM's way ids change when a way is split, and a stress row would have held the
 tier while the classifier still read the block's speed. A file with only
 `agency_blocks` has `"rows": []`, and the loader says it has nothing to load,
 so step 7 of "First rebuild on a fresh host" can still be given every file. It

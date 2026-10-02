@@ -77,7 +77,7 @@ def layers(tmp_path):
     dc.write_text(
         collection(
             [
-                dc_feature(1, line(K_STREET)),
+                dc_feature(1, line(K_STREET), BLOCKKEY="9182b2fe27e4fc6eb77a0fd342c58f75"),
                 # A block carrying nothing the classifier reads is not stored.
                 dc_feature(
                     2,
@@ -123,6 +123,8 @@ def test_the_installer_writes_the_blocks_the_loader_reads(tmp_path, layers) -> N
     by_id = {block.feature_id: block for block in blocks}
     assert by_id["dc-1-0"].facts == A.parse_dc_roadway_block(layers_properties(dc, 1))
     assert by_id["dc-1-0"].facts.parking_lanes == 0, "no parking is recorded, not omitted"
+    # The layer's own key, which the owner's block corrections name it by.
+    assert by_id["dc-1-0"].facts.block_key == "9182b2fe27e4fc6eb77a0fd342c58f75"
     assert by_id["baltimore-5-1"].facts.way == "one"
     assert by_id["baltimore-1-0"].facts.speed_mph == {"centerline": 25}
 
