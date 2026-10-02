@@ -520,7 +520,9 @@ KIND_WORDS = {
     "left_from": "Left turn across",
     "right_from": "Right turn off",
     "along": "Side streets along",
-    "slip_lane": "Slip lane beside",
+    # The route crosses the slip lane's path (item 195), so the words say so
+    # (review r3: "beside" read as riding past it).
+    "slip_lane": "Crossing a slip lane off",
 }
 
 
@@ -681,7 +683,11 @@ def merge_nearby(events: list[Event]) -> list[Event]:
 # Plyers Mill Rd across Connecticut Ave, Columbus Circle). So junctions within
 # MERGE_WITHIN_M of each other about a road with a name in common take the
 # strongest control of any of them: a signal, then an all-way stop. A stop
-# sign is not shared, being one approach's.
+# sign is not shared, being one approach's. Two junctions the rider rides the
+# shared road between are two (a jog: left onto Main St, then right off it at
+# a signal 35 m on; review r3, B2), and so are two the rider reaches by
+# different roads, and two that only turn onto and off the road
+# (`_one_junction`).
 _CONTROL_STRENGTH = {Control.SIGNAL: 2, Control.ALL_STOP: 1}
 
 
@@ -700,9 +706,26 @@ def _about(junction: Junction) -> frozenset[str]:
     return frozenset(names)
 
 
+def _one_junction(earlier: Junction, later: Junction, shared: frozenset[str]) -> bool:
+    """Whether two nearby junctions about the `shared` road names are nodes of
+    one junction. The rider stays on one road from the one to the other (the
+    earlier's road out is the later's road in), and a road they are both about
+    is one the rider does not ride along between them (review r3, B2: not the
+    earlier one's road out) and crosses at one of them: a divided road's two
+    carriageways, a turn off one and a crossing of the other, a crossing of one
+    and a turn onto the other. A road only turned onto at one and off at the
+    other (left off Main St, then left back onto it 30 m on) is two junctions."""
+    out, into = earlier.outgoing, later.incoming
+    if not (out == into or out.names & into.names):
+        return False
+    crossed = frozenset().union(*(road.names for road in (*earlier.crossed, *later.crossed)))
+    return bool((shared - out.names) & crossed)
+
+
 def share_controls(junctions: list[Junction]) -> list[Junction]:
     """Each junction with the strongest control among the junctions within
-    MERGE_WITHIN_M of it along the route about a road of the same name."""
+    MERGE_WITHIN_M of it along the route about a road of the same name, where
+    the two are one junction (`_one_junction`)."""
     order = sorted(range(len(junctions)), key=lambda i: junctions[i].m)
     abouts = {i: _about(junctions[i]) for i in order}
     shared = list(junctions)
@@ -712,9 +735,13 @@ def share_controls(junctions: list[Junction]) -> list[Junction]:
         near = [k for step in (-1, 1) for k in _within(order, place, step, junctions, junction.m)]
         for k in near:
             other = junctions[k]
-            if abouts[i] & abouts[k] and _CONTROL_STRENGTH.get(
-                other.control, 0
-            ) > _CONTROL_STRENGTH.get(best, 0):
+            shared_names = abouts[i] & abouts[k]
+            if not shared_names or _CONTROL_STRENGTH.get(other.control, 0) <= _CONTROL_STRENGTH.get(
+                best, 0
+            ):
+                continue
+            earlier, later = (other, junction) if other.m <= junction.m else (junction, other)
+            if _one_junction(earlier, later, shared_names):
                 best = other.control
         if best is not junction.control:
             shared[i] = replace(junction, control=best)

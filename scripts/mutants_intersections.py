@@ -29,6 +29,14 @@ lanes, and the review's M03; its M25 went with the lock files it mutated, and
 `trail words never` with the second wording ("signal not mapped") it mutated.
 `approach: limit exclusive` (`>` to `>=` at 30 m) was not added: the shapes are
 rounded to 1e-6 degrees, so no test can stand exactly on the line.
+
+Round 3 (review r3) adds the mutants of the walk's stop at another road's
+junction, the signal's direction, the back edges' cut at a junction passed, the
+first pass read without the approaches, the jog rule in the shared control, the
+reviewer's R16 (a turn between ways of one name "continues") and the slip-lane
+words, and retargets the round-2 mutants whose lines it rewrote. Round 2's
+`shared: any road` is dropped as equivalent now: with no name in common,
+`_one_junction` finds no crossed road among the shared ones and never shares.
 """
 
 # ruff: noqa: E501
@@ -993,22 +1001,22 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: no walk",
         J,
-        "        if not arm.signal and (arm.is_road or index == in_index) and walk.signal(arm, cluster):",
-        "        if False:",
+        "            and walk.signal(arm, cluster)\n        ):",
+        "            and False\n        ):",
         JUNCTIONS,
     ),
     (
         "approach: riders own arm not walked",
         J,
-        "        if not arm.signal and (arm.is_road or index == in_index) and walk.signal(arm, cluster):",
-        "        if not arm.signal and arm.is_road and walk.signal(arm, cluster):",
+        "            and (arm.is_road or index == in_index)\n",
+        "            and arm.is_road\n",
         JUNCTIONS,
     ),
     (
         "approach: links walked too",
         J,
-        "        if not arm.signal and (arm.is_road or index == in_index) and walk.signal(arm, cluster):",
-        "        if not arm.signal and walk.signal(arm, cluster):",
+        "            and (arm.is_road or index == in_index)\n",
+        "            and True\n",
         JUNCTIONS,
     ),
     (
@@ -1021,7 +1029,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: signal node not read",
         J,
-        "            if self.node_signal(at):\n                return True",
+        "            if self.node_signal(at) and not flagged:\n                return True",
         "            if False:\n                return True",
         JUNCTIONS,
     ),
@@ -1035,21 +1043,21 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach: flagged edge ignored",
         J,
-        '                if _flag(entry, "traffic_signal"):\n                    return True',
-        "                if False:\n                    return True",
+        "            if any(self._towards(ends) for ends in flagged):\n                return True",
+        "            if False:\n                return True",
         JUNCTIONS,
     ),
     (
         "approach: walks any road",
         J,
-        "                if _of_road(arm, entry) and self._metres(ends[0]) > self._metres(ends[1]):",
-        "                if self._metres(ends[0]) > self._metres(ends[1]):",
+        "                if _of_road(arm, entry) and self._towards(ends):",
+        "                if self._towards(ends):",
         JUNCTIONS,
     ),
     (
         "approach: stops at the first node",
         J,
-        "                if _of_road(arm, entry) and self._metres(ends[0]) > self._metres(ends[1]):",
+        "                if _of_road(arm, entry) and self._towards(ends):",
         "                if False:",
         JUNCTIONS,
     ),
@@ -1156,13 +1164,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         INTERSECTIONS,
         "_CONTROL_STRENGTH = {Control.SIGNAL: 2, Control.ALL_STOP: 1}",
         "_CONTROL_STRENGTH = {Control.SIGNAL: 1, Control.ALL_STOP: 2}",
-        PURE,
-    ),
-    (
-        "shared: any road",
-        INTERSECTIONS,
-        "            if abouts[i] & abouts[k] and _CONTROL_STRENGTH.get(",
-        "            if _CONTROL_STRENGTH.get(",
         PURE,
     ),
     (
@@ -1298,11 +1299,173 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "                slip_lane=raw.slip_lane or bool(links),",
         JUNCTIONS,
     ),
+    # --- review r3: another junction's signal, the jog, R16 ---------------------
+    (
+        "r3 walk: other roads' junctions walked",
+        J,
+        "            if self.foreign(at):\n                continue",
+        "            if False:\n                continue",
+        JUNCTIONS,
+    ),
+    (
+        "r3 walk: read in the first pass",
+        J,
+        "            approaches\n            and not arm.signal",
+        "            True\n            and not arm.signal",
+        JUNCTIONS,
+    ),
+    (
+        "r3 first pass reads the approaches",
+        J,
+        "        node = node_from_locate(answer, raws[position], approaches=False)",
+        "        node = node_from_locate(answer, raws[position])",
+        JUNCTIONS,
+    ),
+    (
+        "r3 back edges read in the first pass",
+        J,
+        "    back = walk.back(raw.back_edge_ids) if approaches else []",
+        "    back = walk.back(raw.back_edge_ids)",
+        JUNCTIONS,
+    ),
+    (
+        "r3 foreign: paths held too",
+        J,
+        "        strict=arms[in_index].is_road,",
+        "        strict=True,",
+        JUNCTIONS,
+    ),
+    (
+        "r3 foreign: never held",
+        J,
+        "        strict=arms[in_index].is_road,",
+        "        strict=False,",
+        JUNCTIONS,
+    ),
+    (
+        "r3 foreign: unnamed roads count",
+        J,
+        "            if names and not names & self.names:",
+        "            if not names & self.names:",
+        JUNCTIONS,
+    ),
+    (
+        "r3 foreign: any named road",
+        J,
+        "            if names and not names & self.names:",
+        "            if names:",
+        JUNCTIONS,
+    ),
+    (
+        "r3 foreign: paths count",
+        J,
+        "            if ends is None or not _is_road(entry):\n                continue\n            if not (_close",
+        "            if ends is None:\n                continue\n            if not (_close",
+        JUNCTIONS,
+    ),
+    (
+        "r3 foreign: arriving edges only",
+        J,
+        "            if not (_close(*ends[0], *at) or _close(*ends[1], *at)):",
+        "            if not _close(*ends[1], *at):",
+        JUNCTIONS,
+    ),
+    (
+        "r3 direction: a flag either way",
+        J,
+        "            if any(self._towards(ends) for ends in flagged):",
+        "            if flagged:",
+        JUNCTIONS,
+    ),
+    (
+        "r3 direction: node flag whatever the edges",
+        J,
+        "            if self.node_signal(at) and not flagged:",
+        "            if self.node_signal(at):",
+        JUNCTIONS,
+    ),
+    (
+        "r3 back: not cut at a passed junction",
+        J,
+        "            if ends is not None and self.foreign(ends[1]):\n                break",
+        "            if False:\n                break",
+        JUNCTIONS,
+    ),
+    (
+        "r3 back: only the passed edge skipped",
+        J,
+        "                break\n            found.append(entry)",
+        "                continue\n            found.append(entry)",
+        JUNCTIONS,
+    ),
+    (
+        "r3 shared: riding along the road shares",
+        INTERSECTIONS,
+        "    return bool((shared - out.names) & crossed)",
+        "    return bool(shared & crossed)",
+        PURE,
+    ),
+    (
+        "r3 shared: turned onto and off shares",
+        INTERSECTIONS,
+        "    return bool((shared - out.names) & crossed)",
+        "    return bool(shared - out.names)",
+        PURE,
+    ),
+    (
+        "r3 shared: any road between",
+        INTERSECTIONS,
+        "    if not (out == into or out.names & into.names):\n        return False",
+        "    if False:\n        return False",
+        PURE,
+    ),
+    (
+        "r3 shared: unnamed roads between differ",
+        INTERSECTIONS,
+        "    if not (out == into or out.names & into.names):",
+        "    if not (out.names & into.names):",
+        PURE,
+    ),
+    (
+        "r3 shared: only the later one's crossing",
+        INTERSECTIONS,
+        "(road.names for road in (*earlier.crossed, *later.crossed))",
+        "(road.names for road in later.crossed)",
+        PURE,
+    ),
+    (
+        "r3 shared: only the earlier one's crossing",
+        INTERSECTIONS,
+        "(road.names for road in (*earlier.crossed, *later.crossed))",
+        "(road.names for road in earlier.crossed)",
+        PURE,
+    ),
+    (
+        "r3 shared: earlier and later swapped",
+        INTERSECTIONS,
+        "            earlier, later = (other, junction) if other.m <= junction.m else (junction, other)",
+        "            earlier, later = (junction, other)",
+        PURE,
+    ),
+    (
+        "r3 continuing: turns continue too (R16)",
+        J,
+        "        continues = raw.movement is Movement.STRAIGHT and (",
+        "        continues = (",
+        JUNCTIONS,
+    ),
+    (
+        "r3 slip words",
+        INTERSECTIONS,
+        '    "slip_lane": "Crossing a slip lane off",',
+        '    "slip_lane": "Slip lane beside",',
+        PURE,
+    ),
     (
         "carriageway ways not kept",
         J,
-        "        ways=frozenset(a.way_id for a in arms),",
-        "        ways=frozenset(),",
+        "        ways=frozenset(a.way_id for a in arms),\n    )",
+        "        ways=frozenset(),\n    )",
         JUNCTIONS,
     ),
 ]

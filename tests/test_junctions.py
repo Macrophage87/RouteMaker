@@ -16,6 +16,9 @@ The segment table is real, because the road query is a PostGIS one.
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from django.db import connection
 
@@ -489,10 +492,72 @@ class TestApproaches:
         around = approach_around(north_at=12.0, flag=None, signal_node_at=12.0)
         assert self.control(around) is Control.SIGNAL
 
-    def test_a_signalised_junction_a_few_metres_up_the_arm(self) -> None:
-        """Another road's edge arriving flagged where the arm ends: the
-        junction there has a signal (a trail crossing beside a road junction)."""
+    def test_a_signalised_junction_of_another_road_up_the_arm_is_its_own(self) -> None:
+        """Review r3, B1: K St's edge arriving flagged 8 m up Main St is K St's
+        junction, not this one (a driveway beside a signalised junction)."""
         around = approach_around(north_at=8.0, names=("K St",), way=77)
+        assert self.control(around) is Control.NONE
+        # Nor the K St junction's own flag on its node.
+        node_flag = approach_around(north_at=8.0, flag=None, names=("K St",), way=77)
+        node_flag["nodes"].append(node(921, signal=True, at=north(8.0)))
+        assert self.control(node_flag) is Control.NONE
+
+    def test_a_path_crossing_beside_a_signalised_junction_takes_its_signal(self) -> None:
+        """A trail crossing a few metres from a road junction is crossed on its
+        signal: a rider arriving on a path walks past the other road's node."""
+        around = approach_around(north_at=8.0, names=("K St",), way=77)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (1, 3):
+                e["edge"]["classification"]["use"] = "cycleway"
+                e["edge"]["access"]["car"] = False
+        assert self.control(around) is Control.SIGNAL
+
+    def test_a_signal_node_where_another_named_road_joins_is_its_own(self) -> None:
+        """Review r3, B1: the signal on Colesville Rd's own node, 16 m from a
+        driveway onto East-West Hwy. An unnamed road joining there (a
+        driveway) does not make the node another junction."""
+        around = approach_around(north_at=16.0, flag=None, signal_node_at=16.0)
+        assert self.control(around) is Control.SIGNAL
+        joined = approach_around(north_at=16.0, flag=None, signal_node_at=16.0)
+        side = edge(28, 78, 928, 1.0, 270.0, names=["Colesville Rd"])
+        joined["edges"].append(shaped(side, (LON + 0.0004, north(16.0)[1]), north(16.0)))
+        assert self.control(joined) is Control.NONE
+        # A one-way road leaving the node only joins it too.
+        leaving = approach_around(north_at=16.0, flag=None, signal_node_at=16.0)
+        out = edge(28, 78, 928, 0.0, 90.0, names=["Colesville Rd"], at=north(16.0))
+        leaving["edges"].append(shaped(out, north(16.0), (LON + 0.0004, north(16.0)[1])))
+        assert self.control(leaving) is Control.NONE
+        unnamed = approach_around(north_at=16.0, flag=None, signal_node_at=16.0)
+        drive = edge(28, 78, 928, 1.0, 270.0, use="service_road")
+        unnamed["edges"].append(shaped(drive, (LON + 0.0004, north(16.0)[1]), north(16.0)))
+        assert self.control(unnamed) is Control.SIGNAL
+        # The same road under a route number it shares is not another road.
+        same = approach_around(north_at=16.0, flag=None, signal_node_at=16.0)
+        split = edge(28, 78, 928, 1.0, 270.0, names=["Main St", "MD 97"])
+        same["edges"].append(shaped(split, (LON + 0.0004, north(16.0)[1]), north(16.0)))
+        assert self.control(same) is Control.SIGNAL
+        # Nor does a named trail crossing there: a path is not a road.
+        trail = approach_around(north_at=16.0, flag=None, signal_node_at=16.0)
+        path = edge(28, 78, 928, 1.0, 270.0, names=["Green Trail"], use="cycleway", car=False)
+        trail["edges"].append(shaped(path, (LON + 0.0004, north(16.0)[1]), north(16.0)))
+        assert self.control(trail) is Control.SIGNAL
+
+    def test_a_signal_for_traffic_leaving_the_junction_is_the_next_ones(self) -> None:
+        """Review r3, B1 (a driveway onto Mass Ave NW 8 m from 20th St): the
+        edge from the node up the arm, flagged at its far end, carries the
+        next junction's signal for traffic going away from this one."""
+        around = approach_around(north_at=10.0, flag=None)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 5:
+                e["edge"]["traffic_signal"] = True
+        assert self.control(around) is Control.NONE
+        # With the node's own flag too: the direction says whose it is.
+        around["nodes"].append(node(921, signal=True, at=north(10.0)))
+        assert self.control(around) is Control.NONE
+        # Flagged for traffic towards the node as well, it is the junction's.
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 20:
+                e["edge"]["traffic_signal"] = True
         assert self.control(around) is Control.SIGNAL
 
     def test_a_footway_or_another_roads_edge_off_the_arm_is_not_walked(self) -> None:
@@ -507,6 +572,14 @@ class TestApproaches:
             if e["edge_id"]["value"] == 20:
                 shaped(e, north(25.0), north(8.0))
         assert self.control(onward) is Control.NONE
+        # Nor does an unnamed one (a driveway, not a junction of its own).
+        drive = approach_around(north_at=8.0, flag=None, names=(), way=77, use="service_road")
+        beyond = edge(22, 77, 922, 1.0, 180.0, use="service_road", signal=True)
+        drive["edges"].append(shaped(beyond, north(45.0), north(25.0)))
+        for e in drive["edges"]:
+            if e["edge_id"]["value"] == 20:
+                shaped(e, north(25.0), north(8.0))
+        assert self.control(drive) is Control.NONE
 
     def test_an_edge_without_a_shape_is_not_walked(self) -> None:
         around = approach_around(north_at=10.0)
@@ -574,10 +647,13 @@ class TestApproaches:
         the cross street 10 m down it has a signal."""
         around = approach_around(north_at=10.0, flag=None)
         around["edges"] = [e for e in around["edges"] if e["edge_id"]["value"] != 8]
-        cross = edge(24, 77, 924, 1.0, 270.0, names=["K St"], signal=True)
+        cross = edge(24, 77, 924, 1.0, 270.0, names=["Main St"], signal=True)
         south = (LON, LAT - 10 / 111_195.0)
         around["edges"].append(shaped(cross, (LON + 0.0003, south[1]), south))
         assert self.control(around) is Control.SIGNAL
+        # A cross street of another name there is a junction of its own.
+        cross["edge_info"]["names"] = ["K St"]
+        assert self.control(around) is Control.NONE
 
     def test_the_riders_own_path_is_walked_too(self) -> None:
         """The rider arrives on a cycletrack (not a road arm) whose far end, 12 m
@@ -604,6 +680,30 @@ class TestApproaches:
             shaped(up, (LON - 0.0003, LAT - 0.0003), (LON - 0.0001, LAT - 0.0001))
         )
         assert self.control(around) is Control.NONE
+
+    def test_the_riders_own_edges_stop_at_a_junction_already_passed(self) -> None:
+        """Review r3, B1: a left off 17th St SW 18 m past the Constitution Ave
+        signal. The rider's own edge arriving at a node another road joins is
+        that junction's, with its signal or its stop sign, and so is every
+        edge before it."""
+        junction = approach_raw(back_edge_ids=(30,))
+        for flag, alone in (("signal", Control.SIGNAL), ("stop", Control.STOP)):
+            around = approach_around(flag=None, back=True, back_flag=flag)
+            assert self.control(around, junction) is alone
+            cross = edge(32, 80, 932, 1.0, 0.0, names=["Constitution Ave"])
+            around["edges"].append(shaped(cross, (west(16)[0], LAT - 0.0003), west(16)))
+            assert self.control(around, junction) is Control.NONE
+        # Farther back than the junction passed: not read either.
+        around = approach_around(flag=None, back=True, back_flag="stop")
+        for e in around["edges"]:
+            if e["edge_id"]["value"] == 30:
+                e["edge"]["stop_sign"] = False
+        cross = edge(32, 80, 932, 1.0, 0.0, names=["Constitution Ave"])
+        around["edges"].append(shaped(cross, (west(16)[0], LAT - 0.0003), west(16)))
+        earlier = edge(33, 10, 933, 1.0, 90.0, stop=True)
+        around["edges"].append(shaped(earlier, west(80), west(60)))
+        assert self.control(around, approach_raw(back_edge_ids=(33,))) is Control.STOP
+        assert self.control(around, approach_raw(back_edge_ids=(30, 33))) is Control.NONE
 
     def test_a_signal_on_the_riders_own_path_before_the_junction(self) -> None:
         """The rider's edge before the in-edge, a cycletrack, with a signal: a
@@ -664,6 +764,28 @@ class TestNodesAt:
             [LON + 0.001],
         ]
 
+    def test_a_signal_up_an_arm_is_read_only_from_the_second_answer(self) -> None:
+        """Review r3, B1: a 1 m answer cannot show which roads join a node up
+        an arm, so a node with no signal of its own is asked again around it."""
+        asked = []
+        up_the_arm = approach_around(north_at=10.0)
+
+        def locate(payload: dict) -> list[dict]:
+            asked.append(payload["locations"][0]["radius"])
+            return [up_the_arm]
+
+        found = junctions.nodes_at([approach_raw()], locate)
+        assert asked == [junctions.LOCATE_RADIUS_M, junctions.APPROACH_RADIUS_M]
+        assert junctions.control_of(found[0]) is Control.SIGNAL
+        first = junctions.node_from_locate(up_the_arm, approach_raw(), approaches=False)
+        assert junctions.control_of(first) is Control.NONE
+        # Nor the route's own edges before the node, in that first reading.
+        back = approach_around(flag=None, back=True, back_flag="signal")
+        mine = approach_raw(back_edge_ids=(30,))
+        assert junctions.control_of(junctions.node_from_locate(back, mine)) is Control.SIGNAL
+        alone = junctions.node_from_locate(back, mine, approaches=False)
+        assert junctions.control_of(alone) is Control.NONE
+
     def test_the_approaches_are_read_from_the_second_answer(self) -> None:
         """The stop sign 16 m up the rider's own approach is in the answer
         around the node, not in the one at it."""
@@ -707,6 +829,43 @@ class TestNodesAt:
             raise AssertionError("asked")
 
         assert junctions.nodes_at([], locate) == {}
+
+
+LIVE = json.loads((Path(__file__).parent / "data" / "locate_r3_side_streets.json").read_text())
+
+
+def _live_raw(fields: dict) -> RawJunction:
+    fields = dict(fields)
+    fields["movement"] = Movement(fields["movement"])
+    for key in ("back_edge_ids", "other_classes"):
+        fields[key] = tuple(fields[key])
+    fields["others"] = tuple(tuple(o) for o in fields["others"])
+    if fields.get("approach") is not None:
+        fields["approach"] = tuple(fields["approach"])
+    return RawJunction(**fields)
+
+
+class TestLiveSideStreets:
+    """Review r3, B1, on the live router's answers (2026-10-02): a side street
+    or driveway within 30 m of another junction's signal does not take it."""
+
+    @pytest.mark.parametrize("case", LIVE["cases"], ids=[c["name"] for c in LIVE["cases"]])
+    def test_another_junctions_signal_is_not_this_ones(self, case) -> None:
+        junction = _live_raw(case["raw"])
+        # There is a signal within 30 m of the node: at a node, or on an edge.
+        walk = junctions._Approaches(case["around"], (junction.lon, junction.lat))
+        near = [
+            ends[1]
+            for e in case["around"]["edges"]
+            if junctions._flag(e, "traffic_signal") and (ends := walk.ends(e))
+        ] + walk.signal_nodes
+        assert any(walk._metres(at) <= junctions.APPROACH_M for at in near)
+        found = junctions.node_from_locate(case["at"], junction, case["around"])
+        assert found is not None
+        assert junctions.control_of(found) is not Control.SIGNAL
+        # And the node's own answer alone has none either.
+        alone = junctions.node_from_locate(case["at"], junction, approaches=False)
+        assert junctions.control_of(alone) is not Control.SIGNAL
 
 
 def line(*points) -> str:
@@ -988,6 +1147,20 @@ class TestBuild:
             junction=raw(movement=Movement.LEFT, out_edge_id=5, out_way=20, out_heading=0.0),
         )
         assert not turning.continues
+
+    def test_a_turn_between_ways_of_a_shared_route_number_does_not_continue(self) -> None:
+        """Review r3, mutant R16: a left from a way of MD 355 onto another way
+        of MD 355 is a turn onto it, and pays the onto cost."""
+        numbered = crossroads()
+        for e in numbered["edges"]:
+            way = e["edge_info"]["way_id"]
+            e["edge_info"]["names"] = ["MD 355"] + (["Main St"] if way == 20 else [])
+        left = raw(movement=Movement.LEFT, out_edge_id=5, out_way=20, out_heading=0.0)
+        made = self.built(numbered, junction=left)
+        assert made.incoming.names & made.outgoing.names
+        assert not made.continues
+        event = model.assess(made)
+        assert event.kind == "left_onto" and event.flagged
 
     def test_a_marked_crossing_carries_through(self) -> None:
         made = self.built(crossroads(), junction=raw(in_use="pedestrian_crossing"))

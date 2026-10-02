@@ -393,7 +393,10 @@ class TestSlipLanes:
         event = m.assess(along)
         assert event.kind == "slip_lane"
         assert event.crossed_tier == 4
-        assert event.reason == "Slip lane beside a heavy-traffic road (LTS 4), no signal mapped"
+        assert (
+            event.reason
+            == "Crossing a slip lane off a heavy-traffic road (LTS 4), no signal mapped"
+        )
 
     def test_a_crossed_turn_channel_is_a_slip_lane_not_a_road_crossing(self) -> None:
         """Review r1, B1: the road's own turn channel is not a road crossed;
@@ -492,7 +495,7 @@ class TestReasons:
             ("crossing", "Crossing a"),
             ("left_onto", "Left turn onto a"),
             ("left_from", "Left turn across a"),
-            ("slip_lane", "Slip lane beside a"),
+            ("slip_lane", "Crossing a slip lane off a"),
         ],
     )
     def test_each_kind_has_its_words(self, kind, start) -> None:
@@ -836,6 +839,128 @@ class TestSharedControl:
         )
         shared = m.share_controls([turn, cross])
         assert shared[0].control is Control.SIGNAL
+
+    def test_a_turn_onto_a_divided_road_shares_with_its_near_carriageway(self) -> None:
+        """Across the near carriageway, then left onto the far one: the rider
+        is on the side street between the two nodes."""
+        near = Road(4, oneway=True, names=self.name, ways=frozenset({1}))
+        far = Road(4, oneway=True, names=self.name, ways=frozenset({2}))
+        side = Road(2, names=frozenset({"a st"}))
+        cross = junction(
+            m=0.0,
+            crossed=(near,),
+            continues=True,
+            incoming=side,
+            outgoing=side,
+            control=Control.SIGNAL,
+        )
+        turn = junction(m=12.0, movement=Movement.LEFT, incoming=side, outgoing=far)
+        assert m.share_controls([cross, turn])[1].control is Control.SIGNAL
+
+    # Review r3, B2: two junctions along one named road, with the rider on that
+    # road between them (a jog, a staggered junction), are two junctions.
+    main = Road(4, names=frozenset({"main st"}), ways=frozenset({10}))
+    a_st = Road(1, names=frozenset({"a st"}))
+    b_st = Road(1, names=frozenset({"b st"}))
+
+    def test_a_jog_left_onto_the_road_then_right_off_it_at_a_signal(self) -> None:
+        onto = junction(m=0.0, movement=Movement.LEFT, incoming=self.a_st, outgoing=self.main)
+        off = junction(
+            m=35.0,
+            movement=Movement.RIGHT,
+            incoming=self.main,
+            outgoing=self.b_st,
+            control=Control.SIGNAL,
+        )
+        shared = m.share_controls([onto, off])
+        assert [j.control for j in shared] == [Control.NONE, Control.SIGNAL]
+        (event,) = [e for e in m.assess_route([onto, off]) if e.flagged]
+        assert event.kind == "left_onto" and event.severity == m.RED
+
+    def test_a_jog_right_onto_the_road_then_left_off_it_at_a_signal(self) -> None:
+        onto = junction(m=0.0, movement=Movement.RIGHT, incoming=self.a_st, outgoing=self.main)
+        off = junction(
+            m=40.0,
+            movement=Movement.LEFT,
+            incoming=self.main,
+            outgoing=self.b_st,
+            control=Control.SIGNAL,
+        )
+        shared = m.share_controls([onto, off])
+        assert [j.control for j in shared] == [Control.NONE, Control.SIGNAL]
+
+    def test_a_signalised_left_off_the_road_then_a_left_back_onto_it(self) -> None:
+        off = junction(
+            m=0.0,
+            movement=Movement.LEFT,
+            incoming=self.main,
+            outgoing=self.a_st,
+            control=Control.SIGNAL,
+        )
+        onto = junction(m=30.0, movement=Movement.LEFT, incoming=self.a_st, outgoing=self.main)
+        shared = m.share_controls([off, onto])
+        assert [j.control for j in shared] == [Control.SIGNAL, Control.NONE]
+        assert any(e.flagged and e.kind == "left_onto" for e in m.assess_route([off, onto]))
+
+    def test_two_crossings_of_one_road_from_different_streets(self) -> None:
+        """Across Main St from A St, then 40 m on across it again from B St at
+        a signal: the rider reached the second by another road."""
+        first = junction(
+            m=0.0, crossed=(self.main,), continues=True, incoming=self.a_st, outgoing=self.a_st
+        )
+        second = junction(
+            m=40.0,
+            crossed=(self.main,),
+            continues=True,
+            incoming=self.b_st,
+            outgoing=self.b_st,
+            control=Control.SIGNAL,
+        )
+        shared = m.share_controls([first, second])
+        assert [j.control for j in shared] == [Control.NONE, Control.SIGNAL]
+        assert any(e.flagged and e.severity == m.RED for e in m.assess_route([first, second]))
+
+    def test_a_turn_onto_a_road_then_a_left_off_it_across_it(self) -> None:
+        """17th St SW: right onto it from Constitution Ave at a signal, then
+        18 m on a left off it across it onto a crosswalk. The rider rode 17th
+        St between: the left is a junction of its own."""
+        seventeenth = Road(4, names=frozenset({"17th street southwest"}), ways=frozenset({6}))
+        constitution = Road(3, names=frozenset({"constitution avenue"}), ways=frozenset({7}))
+        walk = Road(1, names=frozenset({"way 274416516"}), ways=frozenset({8}))
+        onto = junction(
+            m=0.0,
+            movement=Movement.RIGHT,
+            incoming=constitution,
+            outgoing=seventeenth,
+            control=Control.SIGNAL,
+        )
+        off = junction(
+            m=18.0,
+            movement=Movement.LEFT,
+            incoming=seventeenth,
+            outgoing=walk,
+            crossed=(seventeenth,),
+        )
+        assert m.share_controls([onto, off])[1].control is Control.NONE
+
+    def test_a_crossing_then_a_turn_onto_the_same_road_from_a_link(self) -> None:
+        """Columbus Circle NE: a left across Massachusetts Ave at a signal onto
+        the circle's link, then 20 m on a left onto Massachusetts Ave. The
+        rider rides the link between, whose name both turns share, but the
+        road crossed at the one and turned onto at the other is one junction's."""
+        mass = Road(4, oneway=True, names=frozenset({"massachusetts avenue"}), ways=frozenset({3}))
+        circle = Road(4, names=frozenset({"columbus circle"}), ways=frozenset({4}))
+        link = Road(3, names=frozenset({"columbus circle"}), ways=frozenset({5}))
+        across = junction(
+            m=0.0,
+            movement=Movement.LEFT,
+            incoming=circle,
+            outgoing=link,
+            crossed=(mass,),
+            control=Control.SIGNAL,
+        )
+        onto = junction(m=20.0, movement=Movement.LEFT, incoming=link, outgoing=mass)
+        assert m.share_controls([across, onto])[1].control is Control.SIGNAL
 
     def test_route_order_does_not_matter(self) -> None:
         a, b = self.carriageways(Control.NONE, Control.SIGNAL)
