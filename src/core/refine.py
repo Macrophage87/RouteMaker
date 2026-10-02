@@ -534,8 +534,8 @@ def _search(trip, best, best_score, first_exposure, stop_at, ctx: Context, info:
     best_trip = trip
     rounds = REFINE_MAX_ROUNDS if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
     excluded: list[Target] = []
-    # Every exclusion list sent, so that none is sent twice.
-    sent: set[tuple] = set()
+    # Every exclusion set sent, so that none is sent twice (in any order).
+    sent: set[frozenset] = set()
     stale = 0
     for number in range(rounds):
         new = crossing_targets(current, ctx) if number < CROSSING_ONLY_ROUNDS else []
@@ -566,12 +566,12 @@ def _search(trip, best, best_score, first_exposure, stop_at, ctx: Context, info:
         worst = [t for t in new if t.tier >= 4]
         if worst and len(worst) < len(new):
             attempts.append(excluded + worst)
-        attempts = [a for a in attempts if tuple(t.point for t in a) not in sent]
+        attempts = [a for a in attempts if frozenset(t.point for t in a) not in sent]
         if not attempts:
             break
         try:
             for asked in attempts:
-                sent.add(tuple(t.point for t in asked))
+                sent.add(frozenset(t.point for t in asked))
                 request = {k: v for k, v in ctx.request.items() if k != "alternates"}
                 request["exclude_locations"] = [
                     {"lon": t.point[0], "lat": t.point[1]} for t in asked

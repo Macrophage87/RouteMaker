@@ -904,6 +904,22 @@ dialog.ride-types::backdrop {
   line-height: 0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
 }
+.junction-marker.junction-group {
+  position: relative;
+}
+.junction-count {
+  position: absolute;
+  right: -8px;
+  top: -6px;
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  font: 600 11px/14px system-ui, sans-serif;
+  text-align: center;
+}
 .junction-marker:focus-visible {
   outline: 3px solid var(--focus);
   outline-offset: 2px;

@@ -284,6 +284,10 @@ class TestMovementCosts:
     def test_the_onto_cost_is_capped(self) -> None:
         wild = Road(5, speed_mph=60, lanes=4, aadt=60_000)
         assert cost(movement=Movement.LEFT, outgoing=wild) <= m.MAX_CROSSING_FT
+        # And a left from a quiet street across it to a quiet one.
+        across = junction(movement=Movement.LEFT, crossed=(wild,))
+        assert m.cost_of(across)[1] == "left_across"
+        assert m.cost_of(across)[0] == m.MAX_CROSSING_FT
 
     def test_straight_along_a_busy_road_costs_nothing_by_itself(self) -> None:
         """Riding on along a busy road with nothing crossed: no turn off it."""
@@ -561,6 +565,20 @@ class TestRoute:
         )
         assert merged[0].cost_ft < m.RED_MIN_FT
         assert merged[0].severity == m.ORANGE and merged[0].flagged
+
+    def test_a_capped_crossing_stays_capped_through_any_refuge(self, monkeypatch) -> None:
+        """At 0.75 the credit takes every capped crossing under red anyway; the
+        cap holds whatever the owner sets the credit to."""
+        monkeypatch.setattr(m, "MEDIAN_REFUGE_FACTOR", 1.0)
+        rural = Road(4, speed_mph=55, lanes=3, names=frozenset({"route 28"}))
+        events = m.assess_route(
+            [
+                junction(m=0.0, crossed=(rural,), marked_crossing=True),
+                junction(m=15.0, crossed=(rural,), marked_crossing=True),
+            ]
+        )
+        assert events[0].cost_ft >= m.RED_MIN_FT
+        assert [e.severity for e in events] == [m.ORANGE]
 
     def test_a_capped_crossing_stays_capped_through_a_merge(self) -> None:
         rural = Road(4, speed_mph=55, lanes=3, names=frozenset({"route 28"}))

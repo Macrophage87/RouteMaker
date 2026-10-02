@@ -179,6 +179,7 @@ class TestTheNode:
                     edge(2, 10, 901, 0.0, 90.0),
                     edge(9, 30, 555, 1.0, 88.5, signal=True, at=near, distance=4.6),
                     edge(10, 31, 555, 1.0, 1.2, at=near, distance=4.6),
+                    edge(11, 32, 556, 0.0, 200.0, at=near, distance=4.6),
                 ],
                 [node(N), node(555, at=near)],
             ),
@@ -220,6 +221,20 @@ class TestTheNode:
         )
         path = next(a for a in found.arms if a.way_id == 40)
         assert not path.into and not path.out_of and not path.is_road
+        # A road closed to cars (its use still "road") is not a road crossed.
+        closed = junctions.node_from_locate(
+            answer(
+                [
+                    edge(1, 10, N, 1.0, 90.0),
+                    edge(2, 10, 901, 0.0, 90.0),
+                    edge(9, 41, 902, 0.0, 0.0, car=False),
+                    edge(8, 41, N, 1.0, 0.0, car=False),
+                ],
+                [node(N)],
+            ),
+            raw(),
+        )
+        assert not next(a for a in closed.arms if a.way_id == 41).is_road
 
     def test_the_way_out_by_its_way_and_heading_when_its_edge_is_missing(self) -> None:
         found = junctions.node_from_locate(
@@ -265,6 +280,13 @@ class TestSides:
     def test_a_right_turn_crosses_nothing(self) -> None:
         right = raw(movement=Movement.RIGHT, out_edge_id=7, out_way=20, out_heading=180.0)
         found = junctions.node_from_locate(crossroads(), right)
+        assert junctions.crossing_sides(found, right) is None
+        # Not even a road between the way out and the way in (south-west).
+        five = crossroads()
+        five["edges"] += [edge(12, 60, 905, 0.0, 225.0), edge(13, 60, N, 1.0, 45.0)]
+        found = junctions.node_from_locate(five, right)
+        left, beside = junctions.sides(found, right)
+        assert [a.way_id for a in beside] == [60]
         assert junctions.crossing_sides(found, right) is None
 
     def test_turn_channels_and_ramps_are_never_crossed_roads(self) -> None:
@@ -347,11 +369,10 @@ class TestNodesAt:
         found = junctions.nodes_at(raws, locate)
         assert [len(p["locations"]) for p in asked] == [50, 50, 20]
         assert all(p["verbose"] and p["costing"] == "bicycle" for p in asked)
-        assert asked[0]["locations"][1] == {
-            "lon": raws[1].lon,
-            "lat": raws[1].lat,
-            "radius": junctions.LOCATE_RADIUS_M,
-        }
+        assert asked[0]["locations"][1] == {"lon": raws[1].lon, "lat": raws[1].lat, "radius": 1}
+        # One metre: with none, /locate answers the single nearest edge pair,
+        # which at a node can be a service road a fraction of a metre nearer.
+        assert junctions.LOCATE_RADIUS_M == 1
         assert sorted(found) == list(range(120))
 
     def test_a_batch_the_router_will_not_answer_leaves_its_junctions_unknown(self) -> None:
@@ -559,7 +580,29 @@ class TestBuild:
 
     def test_a_marked_crossing_carries_through(self) -> None:
         made = self.built(crossroads(), junction=raw(in_use="pedestrian_crossing"))
-        assert made.marked_crossing
+        assert made.marked_crossing and not made.path_crossing
+
+    def test_a_cycletrack_crossing_carries_through(self) -> None:
+        made = self.built(crossroads(), junction=raw(in_use="cycleway", out_use="cycleway"))
+        assert made.path_crossing and not made.marked_crossing
+
+    def test_one_road_by_name_across_the_junction(self) -> None:
+        """Main St one-way on one side (way 21) and two-way on the other (way
+        20): one road, by its name, and not one-way where it is crossed."""
+        named = answer(
+            [
+                edge(1, 10, N, 1.0, 90.0),
+                edge(2, 10, 901, 0.0, 90.0),
+                edge(6, 21, N, 1.0, 180.0, names=["Main St"]),
+                edge(7, 20, 903, 0.0, 180.0, names=["Main St"]),
+                edge(8, 20, N, 1.0, 0.0, names=["Main St"]),
+            ],
+            [node(N)],
+        )
+        roads = {(0, 10): Road(2), (0, 20): Road(4), (0, 21): Road(4)}
+        made = self.built(named, roads=roads)
+        assert made.crossed[0].oneway is False
+        assert made.crossed[0].names == frozenset({"main st"})
 
 
 class TestWanted:

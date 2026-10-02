@@ -294,8 +294,9 @@ CREATE TABLE {schema}.segment (
                     CHECK (map_class IN ('road', 'barred', 'hidden', 'alley')),
     separate_bikeway boolean    NOT NULL DEFAULT false,
     -- What the classifier read the road at, for the intersection model
-    -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the posted or
-    -- assumed speed, the through lanes a direction, and whether it is one-way.
+    -- (`routemaker.intersections`; OWNER-DECISIONS 165-167, 172): the speed and
+    -- through lanes a direction as read (tags, an agency's record, a curated
+    -- speed; null where the classifier assumed them), and whether it is one-way.
     -- Null on a trail or a motor-only class, and on every row of a table built
     -- before this column existed (the route's intersection reasons then name
     -- the tier alone; `core.routing` checks for the columns).

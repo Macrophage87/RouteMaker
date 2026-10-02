@@ -590,8 +590,9 @@ def _one_road(events: list[Event]) -> Event:
     cost = worst.cost_ft * MEDIAN_REFUGE_FACTOR
     severity = worst.severity
     if not worst.group_severity:
-        severity = _at_most(severity_of(cost), _worst(e.severity for e in events))
-        severity = _at_most(severity, worst.max_severity)
+        # The credit only lowers the cost, so this never raises the colour; a
+        # trail crossing's cap holds through it.
+        severity = _at_most(severity_of(cost), worst.max_severity)
     return replace(worst, cost_ft=cost, severity=severity, flagged=severity is not None)
 
 

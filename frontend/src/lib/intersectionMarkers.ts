@@ -106,6 +106,55 @@ export function warningIconSvg(severity: Severity, size = ICON_PX): string {
   );
 }
 
+/**
+ * Below this zoom, markers closer than GROUP_RADIUS_PX on screen are drawn as
+ * one (review r1: three to five triangles overlapped at one interchange on a
+ * zoomed-out calm route). A group shows the worst severity's shape and how many
+ * junctions it holds, and a click on it zooms in until they come apart.
+ */
+export const GROUP_BELOW_ZOOM = 14;
+export const GROUP_RADIUS_PX = 28;
+
+export interface JunctionGroup {
+  /** In route order; the first is where the group is drawn. */
+  members: JunctionItem[];
+  severity: Severity;
+}
+
+/**
+ * The junctions as the map draws them at a zoom: one group each at or above
+ * GROUP_BELOW_ZOOM, else each joined to the first group in route order whose
+ * anchor is within `radiusPx` on screen (`project` gives a junction's screen
+ * position).
+ */
+export function groupJunctions(
+  items: readonly JunctionItem[],
+  zoom: number,
+  project: (item: JunctionItem) => { x: number; y: number },
+  radiusPx = GROUP_RADIUS_PX,
+): JunctionGroup[] {
+  const groups: { at: { x: number; y: number }; members: JunctionItem[] }[] = [];
+  for (const item of items) {
+    const at = project(item);
+    const near =
+      zoom < GROUP_BELOW_ZOOM ? groups.find((g) => Math.hypot(g.at.x - at.x, g.at.y - at.y) <= radiusPx) : undefined;
+    if (near) near.members.push(item);
+    else groups.push({ at, members: [item] });
+  }
+  return groups.map(({ members }) => ({
+    members,
+    severity: members.some((m) => m.severity === "red") ? "red" : "orange",
+  }));
+}
+
+/** What a screen reader hears for a group's marker. */
+export function groupLabel(group: JunctionGroup): string {
+  const red = group.members.filter((m) => m.severity === "red").length;
+  const parts = [`${group.members.length} stressful junctions here`];
+  if (red > 0) parts.push(`${red} very high stress`);
+  return `${parts.join(", ")}: zoom in to see them`;
+}
+
 /** The junctions to draw: all of them up to MAX_ON_MAP, the worst kept past it. */
 export function junctionsOnMap(items: readonly JunctionItem[]): JunctionItem[] {
   if (items.length <= MAX_ON_MAP) return [...items];

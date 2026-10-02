@@ -6,6 +6,10 @@ import {
   MAX_ON_MAP,
   SEVERITY_COLOURS,
   SEVERITY_SHAPES,
+  GROUP_BELOW_ZOOM,
+  GROUP_RADIUS_PX,
+  groupJunctions,
+  groupLabel,
   junctionCounts,
   junctionHeadline,
   junctionItems,
@@ -85,6 +89,33 @@ test("the two colours are an orange and a red, and stay apart", () => {
   assert.notEqual(a.replaceAll(orange.fill, "X").replaceAll(orange.stroke, "Y"), b.replaceAll(red.fill, "X").replaceAll(red.stroke, "Y"));
   // The octagon has eight corners.
   assert.equal((SEVERITY_SHAPES.red.match(/[hvlHVL]/g) ?? []).length + 1, 8);
+});
+
+test("close markers are one group when zoomed out, and come apart when zoomed in", () => {
+  const at = (m: number, severity: "orange" | "red") =>
+    junctionItems({
+      intersections: [{ m, lon: -77, lat: 38.9, severity, reason: "r", crossed_tier: 4, movement: "straight", control: "none", kind: "crossing", cost_ft: 1000 }],
+    }).map((item) => ({ ...item, index: m }))[0];
+  const items = [at(0, "orange"), at(10, "red"), at(100, "orange"), at(29, "orange")];
+  // Screen x is the m figure; all on one line.
+  const project = (item: { m: number }) => ({ x: item.m, y: 0 });
+  const out = groupJunctions(items, GROUP_BELOW_ZOOM - 1, project);
+  assert.deepEqual(
+    out.map((g) => g.members.map((m) => m.m)),
+    [[0, 10], [100], [29]],
+    "joined to the first group within the radius of its anchor",
+  );
+  assert.deepEqual(out.map((g) => g.severity), ["red", "orange", "orange"], "a group is as bad as its worst");
+  assert.equal(groupLabel(out[0]), "2 stressful junctions here, 1 very high stress: zoom in to see them");
+  const close = groupJunctions(items, GROUP_BELOW_ZOOM, project);
+  assert.equal(close.length, 4, "at and above the zoom every junction is its own marker");
+  assert.equal(groupJunctions(items, 10, project, 200).length, 1);
+  assert.equal(GROUP_RADIUS_PX, 28);
+  // Exactly the radius away is close enough.
+  assert.equal(groupJunctions([at(0, "orange"), at(28, "orange")], 10, project).length, 1);
+  // Within reach of two groups, a junction joins the first in route order.
+  const between = groupJunctions([at(0, "orange"), at(40, "red"), at(20, "orange")], 10, project);
+  assert.deepEqual(between.map((g) => g.members.map((m) => m.m)), [[0, 20], [40]]);
 });
 
 test("every list row says its severity in words", () => {

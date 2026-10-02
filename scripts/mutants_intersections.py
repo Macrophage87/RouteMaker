@@ -4,7 +4,8 @@
 FOLLOWUP-INTERSECTIONS (2026-10-01). A mutation pass over the expressions this
 work added, run against WHOLE test files (not the test that was written for the
 line): a mutant is killed when any test in the files named for it fails. It
-works on a copy of the repository so the tree being worked on is never edited:
+works on a copy of the repository so the tree being worked on is never edited,
+and runs each test file in a process of its own:
 
     scripts/mutants_intersections.py [--only NAME] [--list]
 
@@ -161,8 +162,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "marked crossing discounts a signal",
         INTERSECTIONS,
-        "if j.marked_crossing and j.control in {Control.NONE, Control.STOP}:",
-        "if j.marked_crossing:",
+        "    return trail and junction.control in {Control.NONE, Control.STOP}",
+        "    return trail",
         PURE,
     ),
     (
@@ -189,15 +190,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "merged share",
         INTERSECTIONS,
-        "extra = sum(e.cost_ft for e in group if e is not worst) * MERGED_SHARE",
-        "extra = sum(e.cost_ft for e in group if e is not worst)",
+        "extra = sum(e.cost_ft for e in ones if e is not worst) * MERGED_SHARE",
+        "extra = sum(e.cost_ft for e in ones if e is not worst)",
         PURE,
     ),
     (
         "merge keeps the colour",
         INTERSECTIONS,
-        "            severity = severity_of(cost) or worst.severity",
-        "            severity = worst.severity",
+        "        severity = _at_most(severity_of(cost), worst.max_severity)",
+        "        severity = severity_of(cost)",
         PURE,
     ),
     (
@@ -260,8 +261,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "approach is the start",
         T,
-        "approach = shape[(begin + end) // 2]",
-        "approach = shape[begin]",
+        '                approach=midpoint_along(shape, here.get("begin_shape_index"), end),',
+        '                approach=shape[here.get("begin_shape_index")],',
         TRACE,
     ),
     (
@@ -281,8 +282,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "units ignored",
         T,
-        'to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0',
-        "to_metres = 1000.0",
+        '    to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0\n    junctions: list',
+        "    to_metres = 1000.0\n    junctions: list",
         TRACE,
     ),
     (
@@ -399,15 +400,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "improvement margin",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S and not busier:",
-        "if score < best_score and not busier:",
+        "if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
+        "if score < best_score and not busier and not unread:",
         REFINE,
     ),
     (
         "any improvement wins nothing",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S and not busier:",
-        "if score <= best_score + IMPROVEMENT_EPS_S and not busier:",
+        "if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
+        "if score <= best_score + IMPROVEMENT_EPS_S and not busier and not unread:",
         REFINE,
     ),
     (
@@ -453,13 +454,6 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         REFINE,
     ),
     (
-        "exclusions not capped",
-        R,
-        '                    {"lon": t.point[0], "lat": t.point[1]} for t in asked[:MAX_EXCLUDES]',
-        '                    {"lon": t.point[0], "lat": t.point[1]} for t in asked',
-        REFINE,
-    ),
-    (
         "alternates kept",
         R,
         'request = {k: v for k, v in ctx.request.items() if k != "alternates"}',
@@ -469,8 +463,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "busier routes allowed",
         R,
-        "if score < best_score - IMPROVEMENT_EPS_S and not busier:",
-        "if score < best_score - IMPROVEMENT_EPS_S:",
+        "if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
+        "if score < best_score - IMPROVEMENT_EPS_S and not unread:",
         REFINE,
     ),
     (
@@ -483,65 +477,157 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "tolerance edge",
         R,
-        "first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M",
-        "first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M - 1",
+        "busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M\n",
+        "busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M - 1\n",
         REFINE,
     ),
-    # --- the roads and the controls (database) -----------------------------
+    # --- the node, from /locate (round 1: B1, B2) ----------------------------
     (
-        "a stop on the riders other edges",
+        "in-edge need not arrive",
         J,
-        'mine = [e for e in edges if (e.get("edge_id") or {}).get("value") == raw.in_edge_id]',
-        "mine = list(edges)",
+        '        and float(e.get("percent_along") or 0.0) >= AT_END\n',
+        "",
+        JUNCTIONS,
+    ),
+    (
+        "the in-edge's own node only",
+        J,
+        'node_ids = {_value((mine.get("edge") or {}).get("end_node"))} | {\n        _value(n.get("node_id")) for n in here\n    }',
+        'node_ids = {_value((mine.get("edge") or {}).get("end_node"))}',
+        JUNCTIONS,
+    ),
+    (
+        "nodes not placed",
+        J,
+        '    here = [n for n in answer.get("nodes") or [] if _close(n.get("lon"), n.get("lat"), lon, lat)]',
+        '    here = list(answer.get("nodes") or [])',
+        JUNCTIONS,
+    ),
+    (
+        "leaving edges not placed",
+        J,
+        "        outbound = along <= AT_START and _close(",
+        "        outbound = along <= AT_START or _close(",
+        JUNCTIONS,
+    ),
+    (
+        "arriving from any node",
+        J,
+        '        inbound = along >= AT_END and _value((e.get("edge") or {}).get("end_node")) in node_ids',
+        "        inbound = along >= AT_END",
+        JUNCTIONS,
+    ),
+    (
+        "links are roads",
+        J,
+        "        return (self.into or self.out_of) and not self.link and self.use",
+        "        return (self.into or self.out_of) and self.use",
+        JUNCTIONS,
+    ),
+    (
+        "car-free arms are roads",
+        J,
+        "        return (self.into or self.out_of) and not self.link and self.use",
+        "        return not self.link and self.use",
+        JUNCTIONS,
+    ),
+    (
+        "one side is a crossing",
+        J,
+        "        return (left, right) if left and right else None",
+        "        return (left, right) if left or right else None",
+        JUNCTIONS,
+    ),
+    (
+        "a left crosses its left",
+        J,
+        "        return (right, []) if right else None",
+        "        return (left, []) if left else None",
+        JUNCTIONS,
+    ),
+    (
+        "a right turn crosses",
+        J,
+        "    if raw.movement is Movement.LEFT:\n        return (right, []) if right else None",
+        "    if raw.movement is not Movement.STRAIGHT:\n        return (right, []) if right else None",
+        JUNCTIONS,
+    ),
+    (
+        "sides swapped",
+        J,
+        "        (right if 0.0 < angle < to_back else left).append(arm)",
+        "        (left if 0.0 < angle < to_back else right).append(arm)",
+        JUNCTIONS,
+    ),
+    (
+        "the busier side is crossed",
+        J,
+        "                    chosen = min(chosen, max(other, key=tier), key=tier)",
+        "                    chosen = max(chosen, max(other, key=tier), key=tier)",
+        JUNCTIONS,
+    ),
+    (
+        "cross-approach signal ignored",
+        J,
+        "    if node.signal or node.in_signal or any(a.signal for a in others):",
+        "    if node.signal or node.in_signal:",
+        JUNCTIONS,
+    ),
+    (
+        "node signal ignored",
+        J,
+        "    if node.signal or node.in_signal or any(a.signal for a in others):",
+        "    if node.in_signal or any(a.signal for a in others):",
+        JUNCTIONS,
+    ),
+    (
+        "riders signal ignored",
+        J,
+        "    if node.signal or node.in_signal or any(a.signal for a in others):",
+        "    if node.signal or any(a.signal for a in others):",
         JUNCTIONS,
     ),
     (
         "all-way is a stop",
         J,
-        "    if route_stops and cross_stops:\n        return Control.ALL_STOP",
-        "    if route_stops and cross_stops:\n        return Control.STOP",
+        "    if node.in_stop and cross_stops:\n        return Control.ALL_STOP",
+        "    if node.in_stop and cross_stops:\n        return Control.STOP",
         JUNCTIONS,
     ),
     (
-        "signal on the node ignored",
+        "oncoming is cross traffic",
         J,
-        'if (nodes and nodes[0].get("traffic_signal")) or any(_flag(e, "traffic_signal") for e in mine):',
-        'if any(_flag(e, "traffic_signal") for e in mine):',
+        "    others = [a for a in node.others if a.is_road or a.is_link]",
+        "    others = [a for a in node.arms if a is not node.in_arm and (a.is_road or a.is_link)]",
         JUNCTIONS,
     ),
     (
         "yield is not a stop",
         J,
-        'route_stops = any(_flag(e, "stop_sign") or _flag(e, "yield_sign") for e in mine)',
-        'route_stops = any(_flag(e, "stop_sign") for e in mine)',
+        '                i and (_flag(e, "stop_sign") or _flag(e, "yield_sign"))',
+        '                i and _flag(e, "stop_sign")',
         JUNCTIONS,
     ),
     (
-        "every nearby way is crossed",
+        "riders yield is not a stop",
         J,
-        "crossed = tuple(nearby[: raw.cross_road_count])",
-        "crossed = tuple(nearby)",
+        '        in_stop=_flag(mine, "stop_sign") or _flag(mine, "yield_sign"),',
+        '        in_stop=_flag(mine, "stop_sign"),',
         JUNCTIONS,
     ),
     (
-        "the quietest first",
+        "graph one-way ignored",
         J,
-        "            key=lambda road: -(road.tier or 0),",
-        "            key=lambda road: (road.tier or 0),",
+        "    oneway = not any(a.into and a.out_of for a in arms)",
+        "    oneway = False",
         JUNCTIONS,
     ),
+    ("no radius", J, "LOCATE_RADIUS_M = 1", "LOCATE_RADIUS_M = 0", JUNCTIONS),
     (
-        "a left off a busy road needs no control",
+        "a failed batch ends the asking",
         J,
-        "        or (j.incoming.busy and j.movement is Movement.LEFT)\n",
-        "",
-        JUNCTIONS,
-    ),
-    (
-        "junction radius",
-        J,
-        "JUNCTION_RADIUS_DEG = 0.00004",
-        "JUNCTION_RADIUS_DEG = 0.004",
+        '            logger.info("intersection nodes unavailable for a batch: %s", error)\n            continue',
+        '            logger.info("intersection nodes unavailable for a batch: %s", error)\n            break',
         JUNCTIONS,
     ),
     ("locate batch", J, "LOCATE_BATCH = 50", "LOCATE_BATCH = 500", JUNCTIONS),
@@ -551,6 +637,334 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "    return raw.possibly_busy and (",
         "    return (",
         JUNCTIONS,
+    ),
+    (
+        "path crossing dropped",
+        J,
+        "                path_crossing=raw.path_crossing,\n",
+        "",
+        JUNCTIONS,
+    ),
+    (
+        "links dropped",
+        J,
+        "                links=tuple(road(a, a.way_id, [a]) for a in links),\n",
+        "",
+        JUNCTIONS,
+    ),
+    (
+        "same road by way only",
+        J,
+        "    return a.way_id == b.way_id or bool(a.names & b.names)",
+        "    return a.way_id == b.way_id",
+        JUNCTIONS,
+    ),
+    # --- the trace (round 1: B2a, SHOULD_FIX 1) --------------------------------
+    (
+        "the route's shape indexed",
+        T,
+        "    shape = trace_shape(trace, shape)\n    edges = trace.get",
+        "    edges = trace.get",
+        TRACE,
+    ),
+    (
+        "approach on a vertex",
+        T,
+        '                approach=midpoint_along(shape, here.get("begin_shape_index"), end),',
+        '                approach=shape[(here.get("begin_shape_index") + end) // 2],',
+        TRACE,
+    ),
+    (
+        "middle not interpolated",
+        T,
+        "            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)",
+        "            return a",
+        TRACE,
+    ),
+    (
+        "no out edge",
+        T,
+        "                out_edge_id=edge_id_of(there),",
+        "                out_edge_id=None,",
+        TRACE,
+    ),
+    (
+        "a cycleway is not a path",
+        T,
+        '    {"cycleway", "footway", "path",',
+        '    {"footway", "path",',
+        TRACE,
+    ),
+    # --- the classifier's traits (SHOULD_FIX 7) ---------------------------------
+    (
+        "assumed speed kept",
+        "src/routemaker/stress.py",
+        '        speed_mph=None if "maxspeed" in assumed else speed_mph,',
+        "        speed_mph=speed_mph,",
+        ["tests/test_road_traits.py"],
+    ),
+    (
+        "assumed lanes kept",
+        "src/routemaker/stress.py",
+        '        lanes=None if "lanes" in assumed else lanes,',
+        "        lanes=lanes,",
+        ["tests/test_road_traits.py"],
+    ),
+    # --- round 1: the model (B3, items 185, 186, the review's survivors) -------
+    ("straight to 60", INTERSECTIONS, "STRAIGHT_MAX_DEG = 35.0", "STRAIGHT_MAX_DEG = 60.0", PURE),
+    (
+        "rural on a left off",
+        INTERSECTIONS,
+        "        oncoming *= scale(road, stopped_side=False)",
+        "        oncoming *= scale(road, stopped_side=True)",
+        PURE,
+    ),
+    (
+        "straight off a busy road priced",
+        INTERSECTIONS,
+        "    if j.incoming.busy and j.movement is not Movement.STRAIGHT:",
+        "    if j.incoming.busy:",
+        PURE,
+    ),
+    (
+        "trail at no signal only",
+        INTERSECTIONS,
+        "    return trail and junction.control in {Control.NONE, Control.STOP}",
+        "    return trail and junction.control in {Control.NONE}",
+        PURE,
+    ),
+    (
+        "a path is not a trail",
+        INTERSECTIONS,
+        "    trail = junction.marked_crossing or junction.path_crossing",
+        "    trail = junction.marked_crossing",
+        PURE,
+    ),
+    (
+        "along strict",
+        INTERSECTIONS,
+        '"along" if j.incoming.busy and value <= PRIORITY_SIDE_FT else "crossing"',
+        '"along" if j.incoming.busy and value < PRIORITY_SIDE_FT else "crossing"',
+        PURE,
+    ),
+    (
+        "left across onto a busy road",
+        INTERSECTIONS,
+        "        elif j.movement is Movement.LEFT and not j.incoming.busy and not j.outgoing.busy:",
+        "        elif j.movement is Movement.LEFT and not j.incoming.busy:",
+        PURE,
+    ),
+    (
+        "the quietest slip lane road",
+        INTERSECTIONS,
+        "        busiest = max(roads, key=lambda r: r.tier or 0) if roads else None",
+        "        busiest = min(roads, key=lambda r: r.tier or 0) if roads else None",
+        PURE,
+    ),
+    (
+        "slip lane links ignored",
+        INTERSECTIONS,
+        "        roads = [r for r in (j.incoming, j.outgoing, *j.crossed, *j.links) if r.busy]",
+        "        roads = [r for r in (j.incoming, j.outgoing, *j.crossed) if r.busy]",
+        PURE,
+    ),
+    (
+        "merge anchored on the first",
+        INTERSECTIONS,
+        "        if group and event.m - group[-1].m > MERGE_WITHIN_M:",
+        "        if group and event.m - group[0].m > MERGE_WITHIN_M:",
+        PURE,
+    ),
+    (
+        "onto from busy: busier only",
+        INTERSECTIONS,
+        "        and ((j.outgoing.tier or 0) > (j.incoming.tier or 0) or j.control is Control.STOP)",
+        "        and ((j.outgoing.tier or 0) > (j.incoming.tier or 0))",
+        PURE,
+    ),
+    (
+        "onto from busy: stop only",
+        INTERSECTIONS,
+        "        and ((j.outgoing.tier or 0) > (j.incoming.tier or 0) or j.control is Control.STOP)",
+        "        and (j.control is Control.STOP)",
+        PURE,
+    ),
+    (
+        "onto from busy: equal is busier",
+        INTERSECTIONS,
+        "        and ((j.outgoing.tier or 0) > (j.incoming.tier or 0) or j.control is Control.STOP)",
+        "        and ((j.outgoing.tier or 0) >= (j.incoming.tier or 0) or j.control is Control.STOP)",
+        PURE,
+    ),
+    (
+        "onto from busy straight on",
+        INTERSECTIONS,
+        "        and j.movement is not Movement.STRAIGHT\n        and ((j.outgoing",
+        "        and ((j.outgoing",
+        PURE,
+    ),
+    (
+        "onto uncapped",
+        INTERSECTIONS,
+        "        take(min(base * factor, MAX_CROSSING_FT),",
+        "        take(base * factor,",
+        PURE,
+    ),
+    (
+        "left across uncapped",
+        INTERSECTIONS,
+        '            take(min(value, MAX_CROSSING_FT), "left_across", road)',
+        '            take(value, "left_across", road)',
+        PURE,
+    ),
+    (
+        "no box cap at a signal",
+        INTERSECTIONS,
+        "    if control is Control.SIGNAL:\n        total = min(total, BOX_TURN_CAP_FT)\n",
+        "",
+        PURE,
+    ),
+    (
+        "box cap everywhere",
+        INTERSECTIONS,
+        "    if control is Control.SIGNAL:\n        total = min(total, BOX_TURN_CAP_FT)\n",
+        "    total = min(total, BOX_TURN_CAP_FT)\n",
+        PURE,
+    ),
+    (
+        "no trail cap",
+        INTERSECTIONS,
+        "    cap = MARKED_CROSSING_MAX_SEVERITY if marked else None",
+        "    cap = None",
+        PURE,
+    ),
+    (
+        "trail words never",
+        INTERSECTIONS,
+        "MARKED_CROSSING_NONE_WORDS if marked and control is Control.NONE else CONTROL_WORDS[control]",
+        "CONTROL_WORDS[control]",
+        PURE,
+    ),
+    (
+        "no refuge credit",
+        INTERSECTIONS,
+        "    cost = worst.cost_ft * MEDIAN_REFUGE_FACTOR",
+        "    cost = worst.cost_ft",
+        PURE,
+    ),
+    (
+        "never one road",
+        INTERSECTIONS,
+        "                if event.road_names & same[0].road_names:",
+        "                if False:",
+        PURE,
+    ),
+    (
+        "a merge raises the colour",
+        INTERSECTIONS,
+        "        severity = _worst(e.severity for e in ones)",
+        "        severity = severity_of(cost)",
+        PURE,
+    ),
+    (
+        "tier words unused",
+        INTERSECTIONS,
+        "    if not parts and road.tier in TIER_NOUNS:",
+        "    if False:",
+        PURE,
+    ),
+    (
+        "always a",
+        INTERSECTIONS,
+        '    return "an" if text[:1] in "aeiou8"',
+        '    return "a" if text[:1] in "aeiou8"',
+        PURE,
+    ),
+    # --- round 1: the search (SHOULD_FIX 2, 3, 4; item 187) -----------------
+    (
+        "unread junctions taken",
+        R,
+        "        if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:",
+        "        if score < best_score - IMPROVEMENT_EPS_S and not busier:",
+        REFINE,
+    ),
+    (
+        "no room kept",
+        R,
+        "        room = MAX_EXCLUDES - len(excluded)",
+        "        room = MAX_EXCLUDES",
+        REFINE,
+    ),
+    ("the list overflows", R, "        new = new[:room]\n", "", REFINE),
+    (
+        "sent twice",
+        R,
+        "        attempts = [a for a in attempts if frozenset(t.point for t in a) not in sent]\n",
+        "",
+        REFINE,
+    ),
+    (
+        "short edges sampled",
+        R,
+        "        if metres < CALM_MIN_EDGE_M:\n            continue\n",
+        "",
+        REFINE,
+    ),
+    (
+        "host slots ignored",
+        R,
+        "        if held is None:\n            yield False\n            return\n",
+        "",
+        REFINE,
+    ),
+    (
+        "busy not said",
+        R,
+        '            info["limited"] = "busy"',
+        '            info["limited"] = None',
+        REFINE,
+    ),
+    (
+        "wide busier taken",
+        R,
+        "        if score < best_score - IMPROVEMENT_EPS_S and not busier:\n            best, best_trip, best_score = read, candidate, score",
+        "        if score < best_score - IMPROVEMENT_EPS_S:\n            best, best_trip, best_score = read, candidate, score",
+        REFINE,
+    ),
+    (
+        "wide via breaks",
+        R,
+        '            {"lon": lon, "lat": lat, "type": "through"},',
+        '            {"lon": lon, "lat": lat, "type": "break"},',
+        REFINE,
+    ),
+    (
+        "wide sides flipped",
+        R,
+        "    left_east, left_north = -north / length, east / length",
+        "    left_east, left_north = north / length, -east / length",
+        REFINE,
+    ),
+    (
+        "wide on by default",
+        R,
+        "WIDE_SEARCH_FROM_RATE: float | None = None",
+        "WIDE_SEARCH_FROM_RATE: float | None = 0.0",
+        REFINE,
+    ),
+    (
+        "wide margin",
+        R,
+        "        if score < best_score - IMPROVEMENT_EPS_S and not busier:\n            best, best_trip, best_score = read, candidate, score",
+        "        if score < best_score and not busier:\n            best, best_trip, best_score = read, candidate, score",
+        REFINE,
+    ),
+    (
+        "wide unread taken",
+        R,
+        "        if read is None or read.events is None:",
+        "        if read is None:",
+        REFINE,
     ),
     # --- the answer --------------------------------------------------------
     (
@@ -585,6 +999,33 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
 ]
 
 
+def _passes(copy: Path, tests: list[str]) -> bool:
+    """Whether every test file passes, each in a process of its own (one test
+    file per process: the lane's rule), stopping at the first that fails."""
+    for test in tests:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", test],
+            cwd=copy,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            return False
+    return True
+
+
+def check() -> int:
+    """Every mutant's text occurs exactly once in its file."""
+    bad = 0
+    for name, rel, old, _new, _tests in MUTANTS:
+        count = (ROOT / rel).read_text().count(old)
+        if count != 1:
+            print(f"BAD   {name}: occurs {count} times in {rel}")
+            bad += 1
+    print(f"{len(MUTANTS) - bad} of {len(MUTANTS)} mutants apply")
+    return bad
+
+
 def run(names: list[str] | None) -> int:
     survivors: list[str] = []
     selected = [m for m in MUTANTS if not names or m[0] in names]
@@ -598,16 +1039,8 @@ def run(names: list[str] | None) -> int:
         # A control: the unmutated files must pass in the copy, or "killed" would
         # only mean the copy cannot run its tests.
         for tests in sorted({tuple(m[4]) for m in selected}):
-            control = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *tests],
-                cwd=copy,
-                capture_output=True,
-                text=True,
-            )
-            if control.returncode != 0:
+            if not _passes(copy, list(tests)):
                 print("CONTROL FAILED for", tests)
-                print(control.stdout[-1500:])
-                print(control.stderr[-500:])
                 return 1000
         for name, rel, old, new, tests in selected:
             target = copy / rel
@@ -617,18 +1050,13 @@ def run(names: list[str] | None) -> int:
                 survivors.append(name + " (bad mutant)")
                 continue
             target.write_text(original.replace(old, new))
-            result = subprocess.run(
-                [sys.executable, "-m", "pytest", "-q", "-x", "-p", "no:cacheprovider", *tests],
-                cwd=copy,
-                capture_output=True,
-                text=True,
-            )
+            killed = not _passes(copy, tests)
             target.write_text(original)
-            if result.returncode == 0:
-                print(f"SURVIVED {name}  ({rel})")
-                survivors.append(name)
+            if killed:
+                print(f"killed   {name}", flush=True)
             else:
-                print(f"killed   {name}")
+                print(f"SURVIVED {name}  ({rel})", flush=True)
+                survivors.append(name)
     print(
         f"\n{len(selected) - len(survivors)} killed, {len(survivors)} survived of {len(selected)}"
     )
@@ -641,7 +1069,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--only", action="append", help="run just this mutant (repeatable)")
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--check", action="store_true", help="only check that every mutant applies")
     args = parser.parse_args()
+    if args.check:
+        sys.exit(check())
     if args.list:
         for mutant in MUTANTS:
             print(mutant[0])

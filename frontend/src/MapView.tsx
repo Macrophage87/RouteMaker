@@ -44,7 +44,16 @@ import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import type { When } from "./lib/dials.ts";
-import { junctionItems, junctionsOnMap, warningIconSvg, ICON_PX, type JunctionItem } from "./lib/intersectionMarkers.ts";
+import {
+  groupJunctions,
+  groupLabel,
+  junctionItems,
+  junctionsOnMap,
+  warningIconSvg,
+  ICON_PX,
+  type JunctionGroup,
+  type JunctionItem,
+} from "./lib/intersectionMarkers.ts";
 
 export type StressAvailability = "checking" | "available" | "unavailable";
 
@@ -165,7 +174,9 @@ export function MapView(props: Props) {
   const markers = useRef<Marker[]>([]);
   const popup = useRef<Popup | null>(null);
   // The route's junction markers (OWNER-DECISIONS 172) and the card one of them has open.
-  const junctionMarkers = useRef<{ item: JunctionItem; marker: Marker }[]>([]);
+  const junctionMarkers = useRef<{ group: JunctionGroup; marker: Marker }[]>([]);
+  // The route's junctions, which the markers are drawn from at each zoom.
+  const junctionList = useRef<JunctionItem[]>([]);
   const junctionCard = useRef<Popup | null>(null);
   // The hover handle as last drawn (null: none), so an unchanged answer is
   // not drawn again; anything else that redraws the edit layer resets it.
@@ -648,23 +659,44 @@ export function MapView(props: Props) {
     junctionCard.current = null;
     junctionMarkers.current.forEach(({ marker }) => marker.remove());
     junctionMarkers.current = [];
+    junctionList.current = [];
     if (!props.route || props.stale) return;
-    junctionMarkers.current = junctionsOnMap(junctionItems(props.route)).map((item) => {
-      const element = document.createElement("button");
-      element.type = "button";
-      element.className = `junction-marker junction-${item.severity}`;
-      element.innerHTML = warningIconSvg(item.severity, ICON_PX);
-      element.setAttribute("aria-label", item.label);
-      element.title = item.reason;
-      const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([item.lon, item.lat]).addTo(map);
-      element.addEventListener("click", (event) => {
-        // A click on a marker is not a click on the map: it must not add a via point.
-        event.stopPropagation();
-        showJunctionCard(map, item, junctionCard);
+    junctionList.current = junctionsOnMap(junctionItems(props.route));
+    const draw = () => {
+      junctionMarkers.current.forEach(({ marker }) => marker.remove());
+      const groups = groupJunctions(junctionList.current, map.getZoom(), (item) => map.project([item.lon, item.lat]));
+      junctionMarkers.current = groups.map((group) => {
+        const [first] = group.members;
+        const single = group.members.length === 1;
+        const element = document.createElement("button");
+        element.type = "button";
+        element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
+        element.innerHTML =
+          warningIconSvg(group.severity, ICON_PX) +
+          (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
+        element.setAttribute("aria-label", single ? first.label : groupLabel(group));
+        element.title = single ? first.reason : groupLabel(group);
+        const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([first.lon, first.lat]).addTo(map);
+        element.addEventListener("click", (event) => {
+          // A click on a marker is not a click on the map: it must not add a via point.
+          event.stopPropagation();
+          if (single) {
+            showJunctionCard(map, first, junctionCard);
+            return;
+          }
+          const bounds = new maplibregl.LngLatBounds();
+          group.members.forEach((m) => bounds.extend([m.lon, m.lat]));
+          map.fitBounds(bounds, { padding: 120, maxZoom: 17, duration: 500 });
+        });
+        element.addEventListener("dblclick", (event) => event.stopPropagation());
+        return { group, marker };
       });
-      element.addEventListener("dblclick", (event) => event.stopPropagation());
-      return { item, marker };
-    });
+    };
+    draw();
+    map.on("zoomend", draw);
+    return () => {
+      map.off("zoomend", draw);
+    };
   }, [props.route, props.stale]);
 
   // A click on the summary's list: take the map there and say why.
@@ -672,10 +704,10 @@ export function MapView(props: Props) {
     const map = mapRef.current;
     const focus = props.junctionFocus;
     if (!map || !focus) return;
-    const found = junctionMarkers.current.find(({ item }) => item.index === focus.index);
+    const found = junctionList.current.find((item) => item.index === focus.index);
     if (!found) return;
-    map.easeTo({ center: [found.item.lon, found.item.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
-    showJunctionCard(map, found.item, junctionCard);
+    map.easeTo({ center: [found.lon, found.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
+    showJunctionCard(map, found, junctionCard);
   }, [props.junctionFocus]);
 
   // A route that can no longer be dragged (it is being planned again) takes

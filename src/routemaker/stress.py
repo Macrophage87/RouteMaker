@@ -405,9 +405,11 @@ class StressResult:
     # The curated adjustment that set this tier, if one did.
     adjustment: StressAdjustment | None = None
     # What the classifier read the road at, kept for the intersection model
-    # (`routemaker.intersections`; OWNER-DECISIONS 165-167): the posted or
-    # assumed speed, the through lanes a direction, and whether it is one-way.
-    # None where the way is a trail or a motor-only class, which have none.
+    # (`routemaker.intersections`; OWNER-DECISIONS 165-167): the speed and the
+    # through lanes a direction as read (the way's tags, an agency's record
+    # overlaid on them, a curated speed), and whether it is one-way. None where
+    # the classifier assumed them (a class default is not a fact the junction
+    # reasons may state), and where the way is a trail or a motor-only class.
     speed_mph: float | None = None
     lanes: int | None = None
     oneway: bool | None = None

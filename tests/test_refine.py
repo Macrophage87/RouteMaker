@@ -540,6 +540,27 @@ class TestStopping:
         sent = [tuple(world.excluded(n)) for n in range(len(world.requests))]
         assert len(set(sent)) == len(sent), "no exclusion list is sent twice"
 
+    def test_the_same_set_is_never_sent_twice_in_another_order(self, monkeypatch) -> None:
+        """Round 1's full ask is refused and its LTS 4 ask taken; round 2's ask,
+        the same points in another order, is not sent again."""
+        orig = analysis("o", "1" * 5 + "44" + "33" + "1" * 31, cost_s=9000.0)
+        c1 = analysis("c1", "1" * 7 + "33" + "44" + "1" * 29, cost_s=8000.0)
+        c2 = analysis("c2", "1" * 7 + "33" + "1" * 31, cost_s=7000.0)
+        world = World(
+            monkeypatch,
+            {"o": orig, "c1": c1, "c2": c2},
+            [
+                trip_of("c1", 4.0),
+                routing.RouterRefused(400, 442, "no path"),
+                trip_of("c2", 4.0),
+                routing.RouterRefused(400, 442, "no path"),
+            ],
+        )
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        sent = [frozenset(world.excluded(n)) for n in range(len(world.requests))]
+        assert len(sent) == 3
+        assert len(set(sent)) == 3
+
     def test_the_same_list_is_never_sent_twice(self, monkeypatch) -> None:
         """A reduced ask that equals one already sent is not asked again."""
         orig = analysis("o", "1" * 5 + "4" * 4 + "3" * 4 + "1" * 27)
@@ -747,6 +768,23 @@ class TestWideSearch:
         kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
         assert kept["legs"][0]["shape"] == "o"
         assert info["wide"] == {"asked": 4, "taken": False}
+
+    def wide_world(self, monkeypatch, wide_cost: float, events=NO_EVENTS):
+        orig = analysis("o", "1" * 40, cost_s=4000.0)
+        wide = analysis("w", "1" * 40, cost_s=wide_cost, shift=100, events=events)
+        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 4)
+        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
+        return kept["legs"][0]["shape"], info
+
+    def test_a_wide_route_must_beat_the_best_by_the_margin(self, monkeypatch) -> None:
+        shape, _info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S / 2)
+        assert shape == "o"
+        shape, info = self.wide_world(monkeypatch, 4000.0 - refine.IMPROVEMENT_EPS_S - 1)
+        assert shape == "w" and info["wide"]["taken"]
+
+    def test_a_wide_route_whose_junctions_were_not_read_is_not_taken(self, monkeypatch) -> None:
+        shape, info = self.wide_world(monkeypatch, 1000.0, events=None)
+        assert shape == "o" and not info["wide"]["taken"]
 
     def test_not_asked_without_the_time(self, monkeypatch) -> None:
         orig = analysis("o", "1" * 40)
