@@ -1,0 +1,196 @@
+{
+  "provenance": "Tags of nine real District of Columbia one-way streets that carry a contraflow provision, copied verbatim from the Geofabrik DC+MD+VA extract of 2026-09-25 clipped to the coverage region (OpenStreetMap, (c) OpenStreetMap contributors, ODbL). tests/test_contraflow_fixture.py reads them through the no-trail variant's tag injection and upstream's own transform; no graph is built.",
+  "ways": [
+    {
+      "osm_way_id": 112192545,
+      "name": "R Street Northeast",
+      "tags": {
+        "HFCS": "Collector",
+        "cycleway:left": "opposite_lane",
+        "cycleway:right": "shared_lane",
+        "highway": "tertiary",
+        "lanes": "2",
+        "lcn_ref": "U",
+        "lit": "yes",
+        "name": "R Street Northeast",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "parking:both": "yes",
+        "parking:both:orientation": "parallel",
+        "sidewalk:both": "separate",
+        "source:HFCS": "District of Columbia (DC GIS)",
+        "source:lcn": "District of Columbia (DC GIS)",
+        "surface": "asphalt"
+      }
+    },
+    {
+      "osm_way_id": 130927103,
+      "name": "8th Street Northwest",
+      "tags": {
+        "cycleway:left": "opposite_lane",
+        "cycleway:left:buffer": "no",
+        "cycleway:left:oneway": "-1",
+        "cycleway:right": "shared_lane",
+        "highway": "residential",
+        "lanes": "1",
+        "lcn": "yes",
+        "name": "8th Street Northwest",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "parking:both": "yes",
+        "parking:both:orientation": "parallel",
+        "sidewalk:both": "separate",
+        "source:lcn": "District of Columbia (DC GIS)"
+      }
+    },
+    {
+      "osm_way_id": 29235004,
+      "name": "11th Street Northwest",
+      "tags": {
+        "cycleway:left": "lane",
+        "cycleway:left:buffer": "no",
+        "cycleway:left:oneway": "-1",
+        "cycleway:right": "shared_lane",
+        "cycleway:right:lane": "pictogram",
+        "highway": "residential",
+        "lcn": "yes",
+        "name": "11th Street Northwest",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "parking:both": "yes",
+        "parking:both:orientation": "parallel",
+        "sidewalk:both": "separate",
+        "surface": "asphalt"
+      }
+    },
+    {
+      "osm_way_id": 6257737,
+      "name": "Kentucky Avenue Southeast",
+      "tags": {
+        "HFCS": "Collector",
+        "cycleway:left": "lane",
+        "cycleway:left:oneway": "-1",
+        "cycleway:right": "lane",
+        "cycleway:right:buffer": "no",
+        "highway": "residential",
+        "lanes": "1",
+        "name": "Kentucky Avenue Southeast",
+        "name:etymology:wikidata": "Q1603",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "parking:both": "yes",
+        "parking:both:orientation": "parallel",
+        "sidewalk:both": "separate",
+        "source:HFCS": "District of Columbia (DC GIS)",
+        "surface": "asphalt"
+      }
+    },
+    {
+      "osm_way_id": 6061168,
+      "name": "8th Street Northeast",
+      "tags": {
+        "bicycle": "designated",
+        "cycleway:both": "lane",
+        "cycleway:both:buffer": "no",
+        "highway": "residential",
+        "name": "8th Street Northeast",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "sidewalk:both": "separate",
+        "surface": "asphalt",
+        "tiger:cfcc": "A41",
+        "tiger:county": "District of Columbia, DC",
+        "tiger:name_base": "8th",
+        "tiger:name_direction_suffix": "NE",
+        "tiger:name_type": "St",
+        "tiger:reviewed": "no",
+        "tiger:zip_left": "20017",
+        "tiger:zip_right": "20017"
+      }
+    },
+    {
+      "osm_way_id": 6052569,
+      "name": "Woodley Road Northwest",
+      "tags": {
+        "cycleway:both": "no",
+        "highway": "residential",
+        "lane_markings": "no",
+        "name": "Woodley Road Northwest",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "sidewalk:both": "separate",
+        "surface": "asphalt"
+      }
+    },
+    {
+      "osm_way_id": 50511364,
+      "name": "M Street Northwest",
+      "tags": {
+        "HFCS": "Collector",
+        "cycleway:left": "opposite_lane",
+        "highway": "tertiary",
+        "lit": "yes",
+        "name": "M Street Northwest",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "sidewalk:both": "separate",
+        "surface": "asphalt"
+      }
+    },
+    {
+      "osm_way_id": 131463016,
+      "name": "F Street Northeast",
+      "tags": {
+        "HFCS": "Collector",
+        "cycleway:left": "opposite_lane",
+        "cycleway:left:buffer": "no",
+        "cycleway:left:lane": "exclusive",
+        "cycleway:left:oneway": "-1",
+        "cycleway:right": "lane",
+        "cycleway:right:buffer": "no",
+        "cycleway:right:lane": "exclusive",
+        "highway": "residential",
+        "lane_markings": "no",
+        "lanes": "1",
+        "lit": "yes",
+        "name": "F Street Northeast",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "parking:both": "yes",
+        "parking:both:orientation": "parallel",
+        "sidewalk": "separate",
+        "source:HFCS": "District of Columbia (DC GIS)",
+        "surface": "asphalt"
+      }
+    },
+    {
+      "osm_way_id": 50797092,
+      "name": "Virginia Avenue Northwest",
+      "tags": {
+        "HFCS": "Minor Arterial",
+        "cycleway:left": "no",
+        "cycleway:right": "separate",
+        "highway": "primary",
+        "lanes": "2",
+        "lit": "yes",
+        "maxspeed": "25 mph",
+        "name": "Virginia Avenue Northwest",
+        "name:etymology:wikidata": "Q1370",
+        "oneway": "yes",
+        "oneway:bicycle": "no",
+        "sidewalk:left": "no",
+        "sidewalk:right": "separate",
+        "source:HFCS": "District of Columbia (DC GIS)",
+        "surface": "asphalt",
+        "tiger:cfcc": "A41",
+        "tiger:county": "District of Columbia, DC",
+        "tiger:name_base": "Virginia",
+        "tiger:name_direction_suffix": "NW",
+        "tiger:name_type": "Ave",
+        "tiger:reviewed": "no",
+        "tiger:zip_left": "20037",
+        "tiger:zip_right": "20037"
+      }
+    }
+  ]
+}

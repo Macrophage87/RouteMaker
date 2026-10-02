@@ -25,7 +25,10 @@ they start, and the other dials stay the preset's own:
   zero, high maneuver_penalty"; Hybrid (PLAN, Presets). Its stress slider is
   locked at 0 (the owner's "Lock at 0 (Recommended)"). Its planning speed is 6 mph, the
   default of the mass ride speed band, so the duration it reports is moving
-  time at parade pace rather than at Hybrid's 18 km/h.
+  time at parade pace rather than at Hybrid's 18 km/h. The no-trail graph also
+  has no contraflow (the owner, 2026-10-02: "contraflow lanes are not for group
+  rides or mass rides"; `pipeline.variants.close_contraflow`), so a Mass Ride
+  never rides a one-way street against its traffic.
 
 The plan names no numbers for "high". The figures here are the first
 calibration, stated so that they can be argued with: Valhalla's own bicycle

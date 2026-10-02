@@ -12,8 +12,12 @@ from pipeline.variants import (
     Variant,
     bars_electric_bicycle,
     check_crossing_names_unique,
+    close_contraflow,
+    close_lanes_on_both_sides,
     crossing_names,
+    has_contraflow_tag,
     inject,
+    is_motor_oneway,
     is_roadway_mass_ride_only,
     is_sidepath_only,
     is_trail_class,
@@ -1749,3 +1753,182 @@ class TestTheRetiredOrdinaryRidePenalty:
         assert all("Steer to the path" in reason for reason in reasons)
         assert all("retired" in reason for reason in reasons)
         assert row["roadway_bicycle_legal"] is True
+
+
+class TestContraflowClosure:
+    """The no-trail variant makes a bicycle follow a one-way (owner, 2026-10-02,
+    items 192 and 193). The Lua-level tests read the result through upstream's
+    transform; these pin the tags."""
+
+    ONE_WAY = {"highway": "residential", "oneway": "yes"}
+
+    def closed(self, **extra: str) -> dict[str, str]:
+        out = inject(Variant.NO_TRAIL, {**self.ONE_WAY, **extra}, 7)
+        assert out is not None
+        return out
+
+    @pytest.mark.parametrize("value", ["yes", "true", "1", "-1"])
+    def test_every_one_way_spelling_counts(self, value) -> None:
+        assert is_motor_oneway({"oneway": value})
+
+    @pytest.mark.parametrize("value", ["no", "false", "0", "reversible", "alternating", ""])
+    def test_a_two_way_spelling_does_not(self, value) -> None:
+        assert not is_motor_oneway({"oneway": value})
+        assert not is_motor_oneway({})
+
+    @pytest.mark.parametrize("junction", ["roundabout", "circular"])
+    def test_a_roundabout_counts_without_a_oneway_tag(self, junction) -> None:
+        assert is_motor_oneway({"junction": junction})
+        assert not is_motor_oneway({"junction": "jughandle"})
+
+    def test_a_bicycle_follows_the_one_way(self) -> None:
+        assert self.closed()["oneway:bicycle"] == "yes"
+        for waived in ("no", "-1", "false"):
+            assert self.closed(**{"oneway:bicycle": waived})["oneway:bicycle"] == "yes"
+
+    @pytest.mark.parametrize(
+        "key", ["cycleway", "cycleway:left", "cycleway:right", "cycleway:both"]
+    )
+    @pytest.mark.parametrize("value", ["opposite", "opposite_lane", "opposite_track"])
+    def test_an_opposite_value_is_rewritten_to_grant_nothing(self, key, value) -> None:
+        out = self.closed(**{key: value})
+        assert out[key] == "no", "rewritten, not removed: the written extract re-applies the source"
+
+    def test_other_cycleway_values_are_left_alone(self) -> None:
+        extra = {"cycleway:right": "track", "cycleway:right:width": "1.5", "cycleway:left": "no"}
+        out = self.closed(**extra)
+        assert {k: out[k] for k in extra} == extra
+
+    def test_a_reverse_direction_key_is_rewritten_never_removed(self) -> None:
+        out = self.closed(**{"bicycle:backward": "yes", "vehicle:backward": "yes"})
+        assert out["vehicle:backward"] == "no"
+        # `none`, not `no`: upstream reads a bicycle:backward of yes or no as a
+        # second direction and, beside oneway:bicycle=yes, shuts the with-flow
+        # direction with it (tests/test_lua_remap.py).
+        assert out["bicycle:backward"] == "none"
+        assert self.closed(**{"bicycle:backward": "no"})["bicycle:backward"] == "none"
+
+    def test_a_reverse_direction_key_is_not_added_where_the_way_has_none(self) -> None:
+        """A blanket bicycle:backward on every one-way would make the remap read
+        the way as restricted and drop its stress penalty."""
+        out = self.closed()
+        assert set(out) == {*self.ONE_WAY, "oneway:bicycle"}
+
+    def test_the_conditionals_that_reach_the_reverse_direction_are_closed(self) -> None:
+        for key in ("bicycle:conditional", "bicycle:backward:conditional"):
+            out = self.closed(**{key: "yes @ (Sa,Su)"})
+            assert out["bicycle:backward:conditional"] == "no", key
+        out = self.closed(**{"bicycle:forward:conditional": "yes @ (Sa,Su)"})
+        assert "bicycle:backward:conditional" not in out
+        assert out["bicycle:forward:conditional"] == "yes @ (Sa,Su)"
+
+    def test_a_two_way_street_is_untouched_on_every_variant(self) -> None:
+        for tags in (
+            {"highway": "residential", "oneway:bicycle": "no", "cycleway:left": "opposite_lane"},
+            {"highway": "residential", "oneway": "no", "bicycle:backward": "yes"},
+            {"highway": "residential", "oneway": "reversible", "cycleway": "opposite"},
+        ):
+            for variant in Variant:
+                assert inject(variant, dict(tags), 7) == tags, (variant.value, tags)
+
+    def test_only_the_no_trail_variant_closes_it(self) -> None:
+        tags = {**self.ONE_WAY, "oneway:bicycle": "no", "cycleway:left": "opposite_lane"}
+        for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+            assert inject(variant, dict(tags), 7) == tags, variant.value
+        assert inject(Variant.NO_TRAIL, dict(tags), 7) != tags
+
+    def test_the_source_tags_are_not_modified(self) -> None:
+        tags = {**self.ONE_WAY, "cycleway:left": "opposite_lane", "bicycle:backward": "yes"}
+        before = dict(tags)
+        inject(Variant.NO_TRAIL, tags, 7)
+        assert tags == before
+
+    def test_a_dropped_way_is_still_dropped(self) -> None:
+        assert inject(Variant.NO_TRAIL, {"highway": "cycleway", "oneway": "yes"}, 7) is None
+        assert inject(Variant.NO_TRAIL, dict(self.ONE_WAY), 7, frozenset({7})) is None
+
+    def test_it_is_applied_to_a_mass_ride_only_roadway_too(self) -> None:
+        """A mass-ride-only roadway stays open on this variant with its contraflow
+        closed; the standard graph bars it outright."""
+        tags = {"highway": "trunk", "oneway": "yes", "cycleway:left": "opposite_lane"}
+        kept = inject(Variant.NO_TRAIL, dict(tags), 7, frozenset(), frozenset({7}))
+        assert kept.get("bicycle") != "no"
+        assert kept["cycleway:left"] == "no"
+        assert kept["oneway:bicycle"] == "yes"
+        barred = inject(Variant.STANDARD, dict(tags), 7, frozenset(), frozenset({7}))
+        assert barred["bicycle"] == "no"
+
+    def test_an_approved_access_override_does_not_reopen_it(self) -> None:
+        """An override that wrote bicycle:backward=yes onto a one-way reaches
+        inject in the way's tags; the closure is the last word on this graph."""
+        out = self.closed(**{"bicycle:backward": "yes"})
+        assert out["bicycle:backward"] != "yes"
+
+    def test_close_contraflow_is_idempotent(self) -> None:
+        tags = {**self.ONE_WAY, "cycleway:both": "lane", "oneway:bicycle": "no"}
+        once = dict(tags)
+        close_contraflow(once)
+        twice = dict(once)
+        close_contraflow(twice)
+        assert once == twice
+
+    # Lanes on both sides.
+
+    def test_a_lane_on_both_sides_loses_the_side_against_the_traffic(self) -> None:
+        tags = {"oneway": "yes", "cycleway:left": "lane", "cycleway:right": "shared_lane"}
+        close_lanes_on_both_sides(tags)
+        assert tags == {"oneway": "yes", "cycleway:left": "no", "cycleway:right": "shared_lane"}
+
+    def test_the_traffic_runs_down_the_left_of_a_minus_one_way(self) -> None:
+        tags = {"oneway": "-1", "cycleway:left": "lane", "cycleway:right": "track"}
+        close_lanes_on_both_sides(tags)
+        assert tags == {"oneway": "-1", "cycleway:left": "lane", "cycleway:right": "no"}
+
+    def test_a_both_is_spoken_for_on_the_traffics_side(self) -> None:
+        tags = {"oneway": "yes", "cycleway:both": "lane"}
+        close_lanes_on_both_sides(tags)
+        assert tags == {"oneway": "yes", "cycleway:both": "no", "cycleway:right": "lane"}
+        tags = {"oneway": "-1", "cycleway:both": "track"}
+        close_lanes_on_both_sides(tags)
+        assert tags == {"oneway": "-1", "cycleway:both": "no", "cycleway:left": "track"}
+
+    def test_a_side_key_outranks_both_and_is_kept(self) -> None:
+        tags = {"oneway": "yes", "cycleway:both": "lane", "cycleway:right": "no"}
+        close_lanes_on_both_sides(tags)
+        assert tags["cycleway:right"] == "no"
+        assert tags["cycleway:both"] == "no"
+
+    def test_one_lane_alone_is_not_touched(self) -> None:
+        for tags in (
+            {"oneway": "yes", "cycleway:left": "lane"},
+            {"oneway": "yes", "cycleway:right": "lane"},
+            {"oneway": "yes", "cycleway": "lane"},
+            {"oneway": "yes", "cycleway:left": "lane", "cycleway:right": "no"},
+            {"oneway": "yes", "cycleway:left": "separate", "cycleway:right": "lane"},
+        ):
+            before = dict(tags)
+            close_lanes_on_both_sides(tags)
+            assert tags == before
+
+    # What a tag names.
+
+    @pytest.mark.parametrize(
+        "extra",
+        [
+            {"oneway:bicycle": "no"},
+            {"oneway:bicycle": "-1"},
+            {"cycleway:left": "opposite_lane"},
+            {"cycleway": "opposite"},
+            {"cycleway:right": "opposite_track"},
+            {"bicycle:backward": "yes"},
+            {"vehicle:backward": "designated"},
+        ],
+    )
+    def test_the_counting_predicate_names_each_shape(self, extra) -> None:
+        assert has_contraflow_tag({**self.ONE_WAY, **extra})
+        assert not has_contraflow_tag({"highway": "residential", **extra})
+
+    def test_the_counting_predicate_ignores_a_plain_one_way(self) -> None:
+        assert not has_contraflow_tag(dict(self.ONE_WAY))
+        assert not has_contraflow_tag({**self.ONE_WAY, "cycleway:right": "lane"})
+        assert not has_contraflow_tag({**self.ONE_WAY, "oneway:bicycle": "yes"})
