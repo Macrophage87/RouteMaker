@@ -76,26 +76,32 @@ NEIGHBOURHOOD_STOP_FT = 10.0
 # or a path, trail, cycletrack or sidewalk meeting the road at a node of its own
 # - is a crosswalk, a beacon or a signal, and OSM's `crossing=traffic_signals`
 # and its kin do not reach the router's signal flag (`highway=traffic_signals`
-# alone does, on the road junction's own node a few metres away), so a
-# signalised trail crossing reads as having no signal. Counted at this fraction
+# alone does, on the road junction's own node or its stop lines a few metres
+# away, which `core.junctions` reads up to 30 m along the crossed road), so a
+# signalised trail crossing away from a signalised road junction reads as
+# having no signal. Counted at this fraction
 # of the stopped-side cost until the transform derives the signal
 # (docs/OPERATIONS.md, "Intersection costs"). A PROPOSAL; it never lowers a
 # junction the router says has a signal, which is already priced as one.
 MARKED_CROSSING_FACTOR = 0.5
 # And, whatever its cost, such a crossing is never drawn red: the owner,
 # 2026-10-01 (item 185), "Trail crossings whose signal is not mapped cap at
-# orange and are labelled 'signal not mapped'". The cost still counts in full
-# where a route is chosen.
+# orange and are labelled 'signal not mapped'" (worded "no signal mapped", as
+# every junction with nothing mapped is: one phrase, review r2). The cost still
+# counts in full where a route is chosen.
 MARKED_CROSSING_MAX_SEVERITY = "orange"
 
 # A divided road's two carriageways are one crossing with a median refuge in
 # the middle (item 185: "Divided-road crossings count once, with a median-refuge
 # credit"). The rider crosses one direction of traffic at a time and can wait
 # in the median, which the Mineta and Oregon crossing tables read as one level
-# lower. A PROPOSAL: the costlier carriageway's cost times this. One level lower
-# by the base costs would be about 0.4 (3,000 to 1,200 ft); 0.75 keeps an
-# unsignalised crossing of a divided LTS 4 road red, as the round-1 review read
-# Leland St across Connecticut Ave.
+# lower. The costlier carriageway's cost times this: the owner, 2026-10-02 (item
+# 196), "x0.75 (Recommended)", against about 0.4 for one level lower by the base
+# costs (3,000 to 1,200 ft); 0.75 keeps an unsignalised crossing of a divided
+# LTS 4 road red, as the round-1 review read Leland St across Connecticut Ave.
+# Only two or more crossings, each of a one-way carriageway of its own way, of
+# one road by name (`merge_nearby`): never a turn and a crossing, nor a slip
+# lane and a crossing (review r2, SHOULD_FIX 2).
 MEDIAN_REFUGE_FACTOR = 0.75
 
 # --- Scaling the base by the crossed road's speed, width and volume ----------
@@ -148,11 +154,15 @@ BOX_TURN_CAP_FT = 500.0
 # lanes a direction for the merge.
 ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
 
-# --- Slip lanes (item 169) ---------------------------------------------------
+# --- Slip lanes (items 169 and 195) ------------------------------------------
 #
 # "Sliplanes should get a penalty too": a free-flowing channelised right-turn
 # lane crossed as at least an unsignalised LTS 3 crossing, about 800 ft, unless
-# a raised crossing is tagged (not read). Halved at a signal.
+# a raised crossing is tagged (not read). Halved at a signal. Only where the
+# route crosses the channel's path (the owner, 2026-10-02, item 195: "Flag only
+# when you cross it (Recommended)"); riding straight past it along the road is
+# not. What "crosses" is, from the router's arms at the node, is
+# `core.junctions.crossed_links`.
 SLIP_LANE_FT = 800.0
 SIGNALISED_SLIP_FACTOR = 0.5
 
@@ -205,6 +215,8 @@ class Road:
     # The road's names as the router has them (lower case), or "way <id>"
     # where it has none: a divided road's two carriageways share them.
     names: frozenset[str] = frozenset()
+    # The OSM ways of it at the junction (a carriageway's, where it is one).
+    ways: frozenset[int] = frozenset()
 
     @property
     def busy(self) -> bool:
@@ -223,7 +235,8 @@ class Junction:
     outgoing: Road
     crossed: tuple[Road, ...] = ()
     control: Control = Control.NONE
-    # A slip lane (Valhalla's turn channel) joins here or is the route's own way.
+    # The route crosses a slip lane's path here (item 195; which movements do
+    # is `core.junctions.crossed_links`).
     slip_lane: bool = False
     # The route crosses by a mapped crossing way (a trail crossing a road).
     marked_crossing: bool = False
@@ -237,6 +250,10 @@ class Junction:
     # Whether the router's answer for the node was found (`core.junctions`);
     # where it was not, nothing crosses and the control is unknown.
     located: bool = True
+    # The rider goes straight on and stays on the same road: the same way, or
+    # a way with a name in common. Its tier changing here is not "joining" it
+    # (review r2, SHOULD_FIX 1).
+    continues: bool = False
 
 
 @dataclass(frozen=True)
@@ -264,6 +281,11 @@ class Event:
     # The most this event may be drawn as, whatever its cost (a marked
     # crossing with no signal mapped: orange, item 185).
     max_severity: str | None = None
+    # The road's ways at the junction and whether it is one-way there: a
+    # divided road's two carriageways are two one-way roads of different ways
+    # with a name in common (`merge_nearby`).
+    road_ways: frozenset[int] = frozenset()
+    road_oneway: bool | None = None
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -375,7 +397,7 @@ def cost_of(junction: Junction) -> tuple[float, str, Road | None]:
         and j.movement is not Movement.STRAIGHT
         and ((j.outgoing.tier or 0) > (j.incoming.tier or 0) or j.control is Control.STOP)
     )
-    if j.outgoing.busy and (not j.incoming.busy or turning_from_busy_onto):
+    if j.outgoing.busy and not j.continues and (not j.incoming.busy or turning_from_busy_onto):
         # Entering a busy road from a quieter one, or from the stopped side:
         # the stopped side's crossing cost, by the movement.
         factor = MOVEMENT_FACTOR_ONTO[j.movement.value]
@@ -483,11 +505,12 @@ CONTROL_WORDS = {
     Control.STOP: "stop sign on your side",
     Control.CROSS_STOP: "cross traffic stops",
     Control.ALL_STOP: "all-way stop",
-    # Nothing in the data: there may be a signal the map does not have.
+    # Nothing in the data: there may be a signal the map does not have. One
+    # wording for road junctions and trail crossings alike: item 185's "signal
+    # not mapped" is the same fact, and review r2 asked for one phrase.
     Control.NONE: "no signal mapped",
 }
-# A trail or crosswalk crossing with no signal flag (item 185, the owner's words).
-MARKED_CROSSING_NONE_WORDS = "signal not mapped"
+MARKED_CROSSING_NONE_WORDS = CONTROL_WORDS[Control.NONE]
 
 KIND_WORDS = {
     "crossing": "Crossing",
@@ -545,6 +568,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
             junction.approach,
             True,
             road_names=about.names,
+            road_ways=about.ways,
+            road_oneway=about.oneway,
         )
     cap = MARKED_CROSSING_MAX_SEVERITY if marked else None
     severity = _at_most(severity_of(cost), cap)
@@ -563,6 +588,8 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
         junction.approach,
         road_names=about.names,
         max_severity=cap,
+        road_ways=about.ways,
+        road_oneway=about.oneway,
     )
 
 
@@ -570,11 +597,14 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
 # divided road's two carriageways, a slip lane and its main road, a crossing
 # way and the roads at each end of it.
 #
-# - Events about the same road (a divided road's carriageways share its names)
-#   count once, the costlier, with the median refuge's credit (item 185:
-#   "Divided-road crossings count once, with a median-refuge credit").
-# - Different roads add: the costliest names the junction and each other adds
-#   half its cost (two busy roads in one place are worse than one).
+# - A divided road crossed carriageway by carriageway - two or more crossings
+#   of one-way roads of different ways with a name in common - counts once, the
+#   costlier, with the median refuge's credit (items 185 and 196). Crossings of
+#   one road that are not that (the same way at two nodes) count once with no
+#   credit.
+# - Everything else adds, a turn and a crossing of the same road included: the
+#   costliest names the junction and each other adds half its cost (two
+#   conflicts in one place are worse than one).
 # - The merged colour is never more than the worst single event's (item 185: "A
 #   merge must never raise the colour of one road's crossing"); the refuge can
 #   lower it. Only the cost, which a route is chosen by, adds up.
@@ -582,18 +612,37 @@ MERGE_WITHIN_M = 45.0
 MERGED_SHARE = 0.5
 
 
-def _one_road(events: list[Event]) -> Event:
-    """A road's events at one junction as one (a divided road crossed once)."""
-    worst = max(events, key=lambda e: e.cost_ft)
-    if len(events) == 1:
-        return worst
+def _divided(crossings: list[Event]) -> bool:
+    """Crossings of a divided road's carriageways: each of a one-way road,
+    each of ways of its own."""
+    if not all(e.road_oneway and e.road_ways for e in crossings):
+        return False
+    seen: set[int] = set()
+    for event in crossings:
+        if seen & event.road_ways:
+            return False
+        seen |= event.road_ways
+    return True
+
+
+def _one_road(events: list[Event]) -> list[Event]:
+    """A road's events at one junction: its crossings as one (a divided road
+    crossed once, with the refuge's credit), every other event as it is."""
+    crossings = [e for e in events if e.kind == "crossing"]
+    if len(crossings) < 2:
+        return events
+    rest = [e for e in events if e.kind != "crossing"]
+    worst = max(crossings, key=lambda e: e.cost_ft)
+    if not _divided(crossings):
+        return [worst, *rest]
     cost = worst.cost_ft * MEDIAN_REFUGE_FACTOR
     severity = worst.severity
     if not worst.group_severity:
         # The credit only lowers the cost, so this never raises the colour; a
         # trail crossing's cap holds through it.
         severity = _at_most(severity_of(cost), worst.max_severity)
-    return replace(worst, cost_ft=cost, severity=severity, flagged=severity is not None)
+    refuge = replace(worst, cost_ft=cost, severity=severity, flagged=severity is not None)
+    return [refuge, *rest]
 
 
 def merge_nearby(events: list[Event]) -> list[Event]:
@@ -611,7 +660,7 @@ def merge_nearby(events: list[Event]) -> list[Event]:
                     break
             else:
                 roads.append([event])
-        ones = [_one_road(same) for same in roads]
+        ones = [one for same in roads for one in _one_road(same)]
         worst = max(ones, key=lambda e: e.cost_ft)
         extra = sum(e.cost_ft for e in ones if e is not worst) * MERGED_SHARE
         cost = min(worst.cost_ft + extra, MAX_CROSSING_FT)
@@ -629,10 +678,66 @@ def merge_nearby(events: list[Event]) -> list[Event]:
     return merged
 
 
+# The nodes of one junction (a divided road's two carriageways, a cycletrack's
+# crossing node beside the road junction) often have its control read at one
+# of them only: OSM tags the signal on one approach's stop line (review r2:
+# Plyers Mill Rd across Connecticut Ave, Columbus Circle). So junctions within
+# MERGE_WITHIN_M of each other about a road with a name in common take the
+# strongest control of any of them: a signal, then an all-way stop. A stop
+# sign is not shared, being one approach's.
+_CONTROL_STRENGTH = {Control.SIGNAL: 2, Control.ALL_STOP: 1}
+
+
+def _about(junction: Junction) -> frozenset[str]:
+    """The names of the roads a junction's conflict is with: the roads it
+    crosses, the road it turns or goes onto, and the road it turns off. Not the
+    road it rides straight along, so two side streets along one road are not
+    one junction."""
+    names: set[str] = set()
+    for road in junction.crossed:
+        names |= road.names
+    if not junction.continues:
+        names |= junction.outgoing.names
+    if junction.movement is not Movement.STRAIGHT:
+        names |= junction.incoming.names
+    return frozenset(names)
+
+
+def share_controls(junctions: list[Junction]) -> list[Junction]:
+    """Each junction with the strongest control among the junctions within
+    MERGE_WITHIN_M of it along the route about a road of the same name."""
+    order = sorted(range(len(junctions)), key=lambda i: junctions[i].m)
+    abouts = {i: _about(junctions[i]) for i in order}
+    shared = list(junctions)
+    for place, i in enumerate(order):
+        junction = junctions[i]
+        best = junction.control
+        near = [k for step in (-1, 1) for k in _within(order, place, step, junctions, junction.m)]
+        for k in near:
+            other = junctions[k]
+            if abouts[i] & abouts[k] and _CONTROL_STRENGTH.get(
+                other.control, 0
+            ) > _CONTROL_STRENGTH.get(best, 0):
+                best = other.control
+        if best is not junction.control:
+            shared[i] = replace(junction, control=best)
+    return shared
+
+
+def _within(order: list[int], place: int, step: int, junctions: list[Junction], m: float):
+    """The junctions before (step -1) or after (step 1) `order[place]` within
+    MERGE_WITHIN_M of `m`, in route order."""
+    k = place + step
+    while 0 <= k < len(order) and abs(junctions[order[k]].m - m) <= MERGE_WITHIN_M:
+        yield order[k]
+        k += step
+
+
 def assess_route(junctions: list[Junction], group: bool = False) -> list[Event]:
     """Every junction's event, in route order (a cost the objective sums; the
-    flagged ones are what the planner draws)."""
-    events = (assess(junction, group) for junction in junctions)
+    flagged ones are what the planner draws). The nodes of one junction share
+    its strongest control first (`share_controls`)."""
+    events = (assess(junction, group) for junction in share_controls(junctions))
     return merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
 
 

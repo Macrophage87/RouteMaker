@@ -27,6 +27,20 @@ A node exists once per level of the router's hierarchy (a primary road's edges
 end at its level 0 node, a tertiary cross street's at its level 1 node, at one
 point), so the node is every node `/locate` lists at the in-edge's end point,
 not the in-edge's end node alone.
+
+Where the control is. OSM in the District and Maryland puts
+`highway=traffic_signals` (and often `highway=stop`) on the stop-line nodes
+7-30 m before the junction node, and the router flags the edge that ends there,
+not the junction (review r2: of 95 junctions priced as having no signal, 49 had
+a signal flag within 30 m). So `/locate` is asked again around the node with a
+radius of `APPROACH_M`, and each road arm is walked out from the node along
+edges of the same road for that far: a signal at a node it reaches (the node's
+own flag, or any road's edge arriving there flagged) is the junction's
+(`_Approaches`). The rider's own approach is read from the
+route's own edges before the junction (`RawJunction.back_edge_ids`): a stop or
+yield sign there is the rider's, a signal the junction's. A stop sign up a
+cross road is not read as the cross traffic's: it may be another junction's,
+and reading it would price the rider as having priority.
 """
 
 from __future__ import annotations
@@ -39,6 +53,7 @@ from django.conf import settings
 from django.db import connection
 
 from pipeline.schema import ROAD_TRAIT_COLUMNS, validate_schema_name
+from routemaker.geo import Point, haversine
 from routemaker.intersections import (
     Control,
     Event,
@@ -47,17 +62,27 @@ from routemaker.intersections import (
     Road,
     assess_route,
 )
-from routemaker.trace_junctions import NOT_A_ROAD_USES, RawJunction
+from routemaker.trace_junctions import (
+    APPROACH_M,
+    NOT_A_ROAD_USES,
+    RawJunction,
+    decode_polyline6,
+)
 
 logger = logging.getLogger(__name__)
 
 # Junctions asked of /locate at once (the service's `max_locations` is 50).
 LOCATE_BATCH = 50
-# /locate's search radius, metres. With none it answers the single closest
-# edge pair, which at a node can be a service road's edge passing a fraction of
-# a metre nearer than the node (measured: 1-4% of busy junctions); a metre
-# brings every edge at the node.
+# /locate's search radius for the node, metres. With none it answers the
+# single closest edge pair, which at a node can be a service road's edge
+# passing a fraction of a metre nearer than the node (measured: 1-4% of busy
+# junctions); a metre brings every edge at the node.
 LOCATE_RADIUS_M = 1
+# And for the approaches, asked again for a node whose control is not already
+# a signal: every edge with a point within APPROACH_M of it. Measured on the
+# live router (2026-10-02, 50 junctions a batch): 0.1-0.3 s and 2.6 MB a
+# batch, against 0.04-0.15 s and 0.5 MB at 1 m.
+APPROACH_RADIUS_M = int(APPROACH_M)
 # Two answers are the same point within this (degrees; /locate rounds to 1e-6).
 SAME_POINT_DEG = 2.5e-6
 # Edges of one way leaving the node within this many degrees of each other are
@@ -128,7 +153,9 @@ class Arm:
     link: bool
     names: frozenset[str]
     edge_ids: frozenset[int]
-    # A signal, or a stop or yield sign, where its traffic arrives at the node.
+    # A signal where its traffic arrives at the node, or up it within
+    # APPROACH_M (`_Approaches`); a stop or yield sign where its traffic
+    # arrives at the node.
     signal: bool = False
     stop: bool = False
 
@@ -151,9 +178,13 @@ class Node:
     in_arm: Arm
     out_arm: Arm | None
     signal: bool
-    # The rider's own approach faces a stop or yield sign, or a signal.
+    # The rider's own approach faces a stop or yield sign, or a signal, at the
+    # node or on the route's own edges within APPROACH_M before it.
     in_stop: bool
     in_signal: bool
+    # The bicycle lane on the rider's own edge, as the router has it ("none",
+    # "shared", "dedicated", "separated").
+    in_cycle_lane: str | None = None
 
     @property
     def others(self) -> tuple[Arm, ...]:
@@ -177,10 +208,18 @@ def _flag(entry: dict, key: str) -> bool:
     return bool((entry.get("edge") or {}).get(key))
 
 
-def node_from_locate(answer: dict, raw: RawJunction) -> Node | None:
+def node_from_locate(answer: dict, raw: RawJunction, around: dict | None = None) -> Node | None:
     """The node the route passes, from `/locate`'s answer at its point: None
     where the answer does not have the route's own arriving edge, which means
-    it found some other node (and nothing in it can be trusted for this one)."""
+    it found some other node (and nothing in it can be trusted for this one).
+
+    `around` is the answer at the same point with a radius of APPROACH_M,
+    which the approaches are walked in (`answer` itself where there is none).
+    The node's own arms come from `answer`, asked with a 1 m radius: with a
+    wider one the router may report an edge at the node by another point of it
+    (measured at Rockville Pike and Edmonston Dr: the rider's own edge into
+    the node, at 1.0 along it with a 1 m radius, came back at 0.0 along it,
+    4.7 m away, with 30 m)."""
     edges = answer.get("edges") or []
     arriving = [
         e
@@ -222,8 +261,8 @@ def node_from_locate(answer: dict, raw: RawJunction) -> Node | None:
         else:
             clusters.append([item])
     arms = []
-    in_arm = out_arm = None
-    for cluster in clusters:
+    in_index = out_index = None
+    for index, cluster in enumerate(clusters):
         first = cluster[0][3]
         classification = (first.get("edge") or {}).get("classification") or {}
         use = classification.get("use")
@@ -249,21 +288,127 @@ def node_from_locate(answer: dict, raw: RawJunction) -> Node | None:
         )
         arms.append(arm)
         if raw.in_edge_id in ids:
-            in_arm = arm
+            in_index = index
         if raw.out_edge_id is not None and raw.out_edge_id in ids:
-            out_arm = arm
-    if in_arm is None:
+            out_index = index
+    if in_index is None:
         return None
+    # Each road arm's approach, and the rider's own, walked out to APPROACH_M:
+    # a signal is the junction's whichever arm it is on.
+    wide = answer if around is None else around
+    walk = _Approaches(wide, (lon, lat))
+    for index, cluster in enumerate(clusters):
+        arm = arms[index]
+        if not arm.signal and (arm.is_road or index == in_index) and walk.signal(arm, cluster):
+            arms[index] = replace(arm, signal=True)
+    in_arm = arms[in_index]
+    out_arm = arms[out_index] if out_index is not None else None
     if out_arm is None:
         out_arm = _nearest_arm(arms, raw.out_way, raw.out_heading, exclude=in_arm)
+    # The route's own edges before the junction, within APPROACH_M of it.
+    back_ids = set(raw.back_edge_ids)
+    back = [e for e in wide.get("edges") or [] if _value(e.get("edge_id")) in back_ids]
     return Node(
         arms=tuple(arms),
         in_arm=in_arm,
         out_arm=out_arm,
         signal=any(n.get("traffic_signal") for n in here),
-        in_stop=_flag(mine, "stop_sign") or _flag(mine, "yield_sign"),
-        in_signal=_flag(mine, "traffic_signal"),
+        in_stop=any(_flag(e, "stop_sign") or _flag(e, "yield_sign") for e in (mine, *back)),
+        in_signal=in_arm.signal
+        or any(_flag(e, "traffic_signal") for e in (mine, *back))
+        or any(walk.node_signal(ends[1]) for ends in map(walk.ends, back) if ends),
+        in_cycle_lane=(mine.get("edge") or {}).get("cycle_lane"),
     )
+
+
+class _Approaches:
+    """The edges of a `/locate` answer around a node, for walking a road's
+    approach out from it: each edge's two ends (from its shape, the right way
+    round for its direction) and the nodes with a signal of their own."""
+
+    def __init__(self, answer: dict, point: tuple[float, float]) -> None:
+        self.point = point
+        self.edges = answer.get("edges") or []
+        self.signal_nodes = [
+            (n.get("lon"), n.get("lat"))
+            for n in answer.get("nodes") or []
+            if n.get("traffic_signal")
+        ]
+        self._ends: dict[int, tuple | None] = {}
+
+    def ends(self, entry: dict) -> tuple[tuple[float, float], tuple[float, float]] | None:
+        """(begin, end) of a directed edge, or None where its shape is missing."""
+        key = id(entry)
+        if key not in self._ends:
+            self._ends[key] = _edge_ends(entry)
+        return self._ends[key]
+
+    def node_signal(self, at: tuple[float, float]) -> bool:
+        return any(_close(lon, lat, *at) for lon, lat in self.signal_nodes)
+
+    def _metres(self, at: tuple[float, float]) -> float:
+        return haversine(Point(*self.point), Point(*at))
+
+    def signal(self, arm: Arm, cluster: list) -> bool:
+        """Whether a signal is on the arm within APPROACH_M of the node: at a
+        node the arm reaches, or on an edge of the same road arriving at one
+        (the router flags the edge that ends at the signal's node)."""
+        frontier = []
+        for _w, _h, inbound, entry in cluster:
+            ends = self.ends(entry)
+            if ends is not None:
+                frontier.append(ends[0] if inbound else ends[1])
+        seen: list[tuple[float, float]] = []
+        while frontier:
+            at = frontier.pop()
+            if self._metres(at) > APPROACH_M or any(_close(*at, *s) for s in seen):
+                continue
+            seen.append(at)
+            if self.node_signal(at):
+                return True
+            for entry in self.edges:
+                ends = self.ends(entry)
+                if ends is None or not _close(*ends[1], *at) or not _is_road(entry):
+                    continue
+                # A road arriving here with a signal: a signalised node, on
+                # this road's stop line or at a junction a few metres up it.
+                if _flag(entry, "traffic_signal"):
+                    return True
+                # Further out along the arm's own road: an edge of it arriving
+                # here from farther away.
+                if _of_road(arm, entry) and self._metres(ends[0]) > self._metres(ends[1]):
+                    frontier.append(ends[0])
+        return False
+
+
+def _edge_ends(entry: dict) -> tuple[tuple[float, float], tuple[float, float]] | None:
+    """A `/locate` edge's begin and end points: its way's shape, reversed for
+    an edge that runs against the way's direction (`edge.forward` false)."""
+    shape = (entry.get("edge_info") or {}).get("shape")
+    if not shape:
+        return None
+    try:
+        points = decode_polyline6(shape)
+    except (IndexError, TypeError):
+        return None
+    if len(points) < 2:
+        return None
+    if (entry.get("edge") or {}).get("forward", True):
+        return points[0], points[-1]
+    return points[-1], points[0]
+
+
+def _is_road(entry: dict) -> bool:
+    """A `/locate` edge of a road (not a footway, path or crossing way)."""
+    use = ((entry.get("edge") or {}).get("classification") or {}).get("use")
+    return use not in NOT_A_ROAD_USES
+
+
+def _of_road(arm: Arm, entry: dict) -> bool:
+    """An edge is of the arm's road: its way, or a name in common."""
+    info = entry.get("edge_info") or {}
+    names = {name.lower() for name in info.get("names") or []}
+    return info.get("way_id") == arm.way_id or bool(names & arm.names)
 
 
 def _car(edge: dict) -> bool:
@@ -329,6 +474,39 @@ def crossing_sides(node: Node, raw: RawJunction) -> tuple[list[Arm], list[Arm]] 
     return None
 
 
+# The router's bicycle lane values for a lane of the rider's own beside the
+# traffic: painted, or kept apart from it.
+BIKE_LANES = frozenset({"dedicated", "separated"})
+
+
+def crossed_links(node: Node, raw: RawJunction) -> list[Arm]:
+    """The slip lanes (turn channels and ramps) whose path the route crosses
+    at the node (item 195: "Flag only when you cross it").
+
+    A channel is crossed where the rider's movement crosses it as it would a
+    road (`crossing_sides`): straight across a node with channel arms on both
+    sides of the rider (a crosswalk or trail across the channel, or a road
+    through it), or a left turn with a channel on the right of its path. And
+    one case more: riding straight on in a bicycle lane of one's own (painted
+    or separated) where a channel leaves the road on the rider's right, since
+    the cars turning into it cross the lane - the right hook. Riding straight
+    past a channel along the road in its traffic lane, past one merging in, or
+    along the channel itself (the route's own way is the channel, priced as the
+    turn it is) crosses none."""
+    left, right = sides(node, raw)
+    left = [a for a in left if a.is_link]
+    right = [a for a in right if a.is_link]
+    if raw.movement is Movement.STRAIGHT:
+        if left and right:
+            return left + right
+        if node.in_cycle_lane in BIKE_LANES:
+            return [a for a in right if a.out_of]
+        return []
+    if raw.movement is Movement.LEFT:
+        return right
+    return []
+
+
 # --- Asking the router ----------------------------------------------------------
 
 
@@ -340,13 +518,43 @@ def nodes_at(
     in batches. A junction whose answer lacks the route's own edge, or whose
     batch the router will not answer, has no entry: its crossings and its
     right of way are then unknown, and only what the route's own roads say is
-    priced (a turn onto or off a busy road, as the stopped side)."""
+    priced (a turn onto or off a busy road, as the stopped side).
+
+    Asked twice: at the node (`LOCATE_RADIUS_M`), and, for each node found
+    whose control is not already a signal, around it (`APPROACH_RADIUS_M`) for
+    the signals and stop signs up its approaches. Where the second answer is
+    missing the node is read from the first alone."""
+    answers = _ask(raws, range(len(raws)), LOCATE_RADIUS_M, locate)
     found: dict[int, Node] = {}
-    for start in range(0, len(raws), LOCATE_BATCH):
-        chunk = list(range(start, min(start + LOCATE_BATCH, len(raws))))
+    for position, answer in answers.items():
+        node = node_from_locate(answer, raws[position])
+        if node is not None:
+            found[position] = node
+    unsure = [p for p in sorted(found) if control_of(found[p]) is not Control.SIGNAL]
+    for position, around in _ask(raws, unsure, APPROACH_RADIUS_M, locate).items():
+        node = node_from_locate(answers[position], raws[position], around)
+        if node is not None:
+            found[position] = node
+    if raws and len(found) < len(raws):
+        logger.info("intersection nodes: %d of %d matched", len(found), len(raws))
+    return found
+
+
+def _ask(
+    raws: Sequence[RawJunction],
+    positions: Sequence[int],
+    radius: int,
+    locate: Callable[[dict], list[dict]],
+) -> dict[int, dict]:
+    """`/locate`'s answer at each of `positions` in `raws`, in batches; a batch
+    the router will not answer has none."""
+    positions = list(positions)
+    found: dict[int, dict] = {}
+    for start in range(0, len(positions), LOCATE_BATCH):
+        chunk = positions[start : start + LOCATE_BATCH]
         payload = {
             "locations": [
-                {"lon": raws[p].lon, "lat": raws[p].lat, "radius": LOCATE_RADIUS_M} for p in chunk
+                {"lon": raws[p].lon, "lat": raws[p].lat, "radius": radius} for p in chunk
             ],
             "verbose": True,
             "costing": "bicycle",
@@ -357,25 +565,24 @@ def nodes_at(
             logger.info("intersection nodes unavailable for a batch: %s", error)
             continue
         for position, answer in zip(chunk, answers, strict=False):
-            node = node_from_locate(answer or {}, raws[position])
-            if node is not None:
-                found[position] = node
-    if raws and len(found) < len(raws):
-        logger.info("intersection nodes: %d of %d matched", len(found), len(raws))
+            found[position] = answer or {}
     return found
 
 
 def control_of(node: Node | None) -> Control:
     """Who has the right of way, from the node's arms: a signal at the node, on
-    the rider's approach or on any other road's approach (a signal for the
-    cross traffic is a signalised junction, review r1 B2c); else the stop and
-    yield signs on the rider's approach against those on the other roads'. Only
-    edges arriving at this node are read: an edge leaving it carries the flags
-    of its far end. Unknown where the node is."""
+    the rider's approach or on any other road's approach, at the node or up it
+    within APPROACH_M (a signal for the cross traffic is a signalised junction,
+    review r1 B2c; one on a stop line short of it is the junction's, review r2);
+    else the stop and yield signs on the rider's approach (up to APPROACH_M
+    before the node along the route) against those on the other roads' at the
+    node. At the node only edges arriving are read: an edge leaving it carries
+    the flags of its far end. Unknown where the node is."""
     if node is None:
         return Control.NONE
     others = [a for a in node.others if a.is_road or a.is_link]
-    if node.signal or node.in_signal or any(a.signal for a in others):
+    ahead = [node.out_arm] if node.out_arm is not None and node.out_arm.is_road else []
+    if node.signal or node.in_signal or any(a.signal for a in (*others, *ahead)):
         return Control.SIGNAL
     cross_stops = any(a.stop for a in others)
     if node.in_stop and cross_stops:
@@ -441,6 +648,7 @@ def _with_graph(road: Road, arms: Sequence[Arm]) -> Road:
         road,
         oneway=oneway if road.oneway is None else road.oneway,
         names=names or frozenset({f"way {arms[0].way_id}"}),
+        ways=frozenset(a.way_id for a in arms),
     )
 
 
@@ -480,9 +688,12 @@ def build_junctions(
                     chosen = min(chosen, max(other, key=tier), key=tier)
                 same = [a for a in (*one, *other) if _same_road(a, chosen)]
                 crossed = (road(chosen, chosen.way_id, same),)
-            links = [a for a in node.others if a.is_link]
+            links = crossed_links(node, raw)
         in_arms = [node.in_arm] if node is not None else []
         out_arms = [node.out_arm] if node is not None and node.out_arm is not None else []
+        continues = raw.movement is Movement.STRAIGHT and (
+            raw.in_way == raw.out_way or bool(out_arms and in_arms[0].names & out_arms[0].names)
+        )
         junctions.append(
             Junction(
                 m=raw.m,
@@ -493,12 +704,13 @@ def build_junctions(
                 outgoing=road(None, raw.out_way, out_arms),
                 crossed=crossed,
                 control=control_of(node),
-                slip_lane=raw.slip_lane or bool(links),
+                slip_lane=bool(links),
                 marked_crossing=raw.marked_crossing,
                 path_crossing=raw.path_crossing,
                 approach=raw.approach,
                 links=tuple(road(a, a.way_id, [a]) for a in links),
                 located=node is not None,
+                continues=continues,
             )
         )
     return junctions

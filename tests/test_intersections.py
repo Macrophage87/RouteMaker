@@ -11,6 +11,8 @@ with it.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from routemaker import intersections as m
@@ -196,13 +198,15 @@ class TestControl:
     @pytest.mark.parametrize("control", [Control.NONE, Control.STOP])
     def test_a_marked_crossing_with_no_signal_mapped_is_at_most_orange(self, control) -> None:
         """Item 185: "Trail crossings whose signal is not mapped cap at orange and
-        are labelled 'signal not mapped'". Its cost still counts in full."""
+        are labelled 'signal not mapped'". Its cost still counts in full. The
+        words are the road junctions' own, "no signal mapped" (review r2: one
+        phrase for one fact)."""
         rural = Road(4, speed_mph=55, lanes=3, aadt=40_000)
         event = m.assess(junction(crossed=(rural,), control=control, marked_crossing=True))
         assert event.cost_ft >= m.RED_MIN_FT
         assert event.severity == m.ORANGE and event.flagged
         if control is Control.NONE:
-            assert event.reason.endswith(", signal not mapped")
+            assert event.reason.endswith(", no signal mapped")
         else:
             assert event.reason.endswith(", stop sign on your side")
         # An unmarked crossing of the same road is red.
@@ -217,7 +221,7 @@ class TestControl:
         assert plain.severity == m.RED
         assert track.severity == m.ORANGE
         assert track.cost_ft == pytest.approx(plain.cost_ft * m.MARKED_CROSSING_FACTOR)
-        assert track.reason.endswith(", signal not mapped")
+        assert track.reason.endswith(", no signal mapped")
         # A signal the router has is priced as one either way.
         signalled = junction(crossed=(Road(4),), path_crossing=True, control=Control.SIGNAL)
         assert m.cost_of(signalled)[0] == m.SIGNALISED_CROSSING_FT[4]
@@ -391,8 +395,10 @@ class TestSlipLanes:
         assert event.crossed_tier == 4
         assert event.reason == "Slip lane beside a heavy-traffic road (LTS 4), no signal mapped"
 
-    def test_a_turn_channel_ridden_straight_past_is_a_slip_lane_not_a_crossing(self) -> None:
-        """Review r1, B1: the road's own turn channel is not a road crossed."""
+    def test_a_crossed_turn_channel_is_a_slip_lane_not_a_road_crossing(self) -> None:
+        """Review r1, B1: the road's own turn channel is not a road crossed;
+        where the route crosses its path (item 195; `core.junctions.crossed_links`
+        says where) it is the slip lane's cost."""
         along = junction(incoming=Road(4), outgoing=Road(4), slip_lane=True, links=(Road(4),))
         event = m.assess(along)
         assert event.kind == "slip_lane" and event.cost_ft == m.SLIP_LANE_FT
@@ -509,10 +515,11 @@ class TestRoute:
 
     def test_a_divided_roads_two_carriageways_count_once_with_a_refuge(self) -> None:
         """Item 185: "Divided-road crossings count once, with a median-refuge
-        credit." The carriageways share the road's names."""
+        credit", and 196: "x0.75". The carriageways share the road's names and
+        are one-way roads of ways of their own."""
         name = frozenset({"connecticut avenue northwest"})
-        north = Road(4, oneway=True, names=name)
-        south = Road(4, oneway=True, names=name)
+        north = Road(4, oneway=True, names=name, ways=frozenset({1}))
+        south = Road(4, oneway=True, names=name, ways=frozenset({2}))
         events = m.assess_route(
             [junction(m=100.0, crossed=(north,)), junction(m=111.0, crossed=(south,))]
         )
@@ -553,15 +560,22 @@ class TestRoute:
         assert two_roads.severity == m.ORANGE
 
     def test_the_refuge_can_lower_the_colour(self) -> None:
-        road = Road(4, names=frozenset({"rockville pike"}))
-        both = m.assess_route([junction(m=0.0, crossed=(road,)), junction(m=20.0, crossed=(road,))])
+        name = frozenset({"rockville pike"})
+        road = Road(4, oneway=True, names=name, ways=frozenset({1}))
+        other = Road(4, oneway=True, names=name, ways=frozenset({2}))
+        both = m.assess_route(
+            [junction(m=0.0, crossed=(road,)), junction(m=20.0, crossed=(other,))]
+        )
         assert both[0].cost_ft == pytest.approx(m.STOPPED_CROSSING_FT[4] * m.MEDIAN_REFUGE_FACTOR)
         assert both[0].severity == m.severity_of(both[0].cost_ft)
         # A red LTS 4 crossing at 25 mph whose credit takes it to orange.
-        slow = Road(4, speed_mph=25, names=frozenset({"slow road"}))
+        slow = Road(
+            4, speed_mph=25, oneway=True, names=frozenset({"slow road"}), ways=frozenset({3})
+        )
+        slow_back = replace(slow, ways=frozenset({4}))
         assert m.assess(junction(crossed=(slow,))).severity == m.RED
         merged = m.assess_route(
-            [junction(m=0.0, crossed=(slow,)), junction(m=9.0, crossed=(slow,))]
+            [junction(m=0.0, crossed=(slow,)), junction(m=9.0, crossed=(slow_back,))]
         )
         assert merged[0].cost_ft < m.RED_MIN_FT
         assert merged[0].severity == m.ORANGE and merged[0].flagged
@@ -570,11 +584,15 @@ class TestRoute:
         """At 0.75 the credit takes every capped crossing under red anyway; the
         cap holds whatever the owner sets the credit to."""
         monkeypatch.setattr(m, "MEDIAN_REFUGE_FACTOR", 1.0)
-        rural = Road(4, speed_mph=55, lanes=3, names=frozenset({"route 28"}))
+        rural = Road(4, speed_mph=55, lanes=3, oneway=True, names=frozenset({"route 28"}))
         events = m.assess_route(
             [
-                junction(m=0.0, crossed=(rural,), marked_crossing=True),
-                junction(m=15.0, crossed=(rural,), marked_crossing=True),
+                junction(
+                    m=0.0, crossed=(replace(rural, ways=frozenset({1})),), marked_crossing=True
+                ),
+                junction(
+                    m=15.0, crossed=(replace(rural, ways=frozenset({2})),), marked_crossing=True
+                ),
             ]
         )
         assert events[0].cost_ft >= m.RED_MIN_FT
@@ -614,9 +632,215 @@ class TestRoute:
         )
         assert len(events) == 1
 
+    def test_the_refuge_is_only_for_a_divided_roads_carriageways(self) -> None:
+        """Review r2, SHOULD_FIX 2, and item 196: two crossings of one-way roads
+        of different ways with a name in common. One way crossed at two nodes,
+        or a two-way road, counts once with no credit."""
+        name = frozenset({"georgia avenue"})
+        one_way = Road(4, oneway=True, names=name, ways=frozenset({7}))
+        alone = m.assess(junction(crossed=(one_way,))).cost_ft
+        same_way = m.assess_route(
+            [junction(m=0.0, crossed=(one_way,)), junction(m=20.0, crossed=(one_way,))]
+        )
+        assert [e.cost_ft for e in same_way] == [pytest.approx(alone)]
+        two_way = Road(4, oneway=False, names=name, ways=frozenset({8}))
+        both_ways = m.assess_route(
+            [
+                junction(m=0.0, crossed=(two_way,)),
+                junction(m=20.0, crossed=(replace(two_way, ways=frozenset({9})),)),
+            ]
+        )
+        assert [e.cost_ft for e in both_ways] == [pytest.approx(alone)]
+        # A carriageway whose ways are unknown is not taken for one either.
+        unknown = replace(one_way, ways=frozenset())
+        assert m.assess_route(
+            [junction(m=0.0, crossed=(unknown,)), junction(m=20.0, crossed=(one_way,))]
+        )[0].cost_ft == pytest.approx(alone)
+
+    def test_a_turn_onto_a_road_and_a_left_off_it_add(self) -> None:
+        """Review r2: a right onto an arterial and a left off it 30 m later was
+        1,312 ft, less than the left alone (1,750). They are two conflicts."""
+        name = frozenset({"rockville pike"})
+        pike = Road(4, speed_mph=40, lanes=2, names=name, ways=frozenset({1}))
+        on = junction(m=0.0, movement=Movement.RIGHT, outgoing=pike)
+        off = junction(m=30.0, movement=Movement.LEFT, incoming=pike)
+        (merged,) = m.assess_route([on, off])
+        right, left = m.assess(on).cost_ft, m.assess(off).cost_ft
+        assert merged.cost_ft == pytest.approx(left + right * m.MERGED_SHARE)
+        assert merged.cost_ft > left
+
+    def test_a_left_onto_a_road_from_a_stop_and_a_right_off_it_keep_the_left(self) -> None:
+        """Review r2: 3,375 ft (the refuge's) where the left alone is 4,500."""
+        name = frozenset({"veirs mill road"})
+        road = Road(4, speed_mph=40, lanes=3, names=name, ways=frozenset({1}))
+        on = junction(m=0.0, movement=Movement.LEFT, outgoing=road, control=Control.STOP)
+        off = junction(m=25.0, movement=Movement.RIGHT, incoming=road)
+        (merged,) = m.assess_route([on, off])
+        assert merged.cost_ft == m.MAX_CROSSING_FT
+        assert merged.kind == "left_onto" and merged.severity == m.RED
+
+    def test_a_slip_lane_and_a_crossing_of_its_road_add(self) -> None:
+        """Review r2: the Rockville Pike slip lanes 31 m apart were 600 ft, the
+        refuge's; a slip lane and a crossing are two conflicts, 800 + 400."""
+        name = frozenset({"rockville pike"})
+        pike = Road(4, oneway=True, names=name, ways=frozenset({1}))
+        slip = junction(m=0.0, slip_lane=True, links=(pike,))
+        cross = junction(
+            m=31.0, crossed=(replace(pike, ways=frozenset({2})),), control=Control.SIGNAL
+        )
+        (merged,) = m.assess_route([slip, cross])
+        a, b = m.assess(slip).cost_ft, m.assess(cross).cost_ft
+        assert merged.cost_ft == pytest.approx(max(a, b) + min(a, b) * m.MERGED_SHARE)
+
+    def test_the_merged_colour_is_the_worst_not_the_costliest(self) -> None:
+        """Mutant M03 (review r2): under Mass Ride the colour is the tier, so a
+        cheaper event can be the red one."""
+        costly = m.Event(
+            0.0,
+            0,
+            0,
+            "crossing",
+            Movement.STRAIGHT,
+            Control.NONE,
+            3000.0,
+            m.ORANGE,
+            "a",
+            3,
+            True,
+            group_severity=True,
+            road_names=frozenset({"a"}),
+        )
+        cheap = m.Event(
+            10.0,
+            0,
+            0,
+            "crossing",
+            Movement.STRAIGHT,
+            Control.SIGNAL,
+            300.0,
+            m.RED,
+            "b",
+            4,
+            True,
+            group_severity=True,
+            road_names=frozenset({"b"}),
+        )
+        (merged,) = m.merge_nearby([costly, cheap])
+        assert merged.severity == m.RED
+        assert merged.cost_ft == pytest.approx(3000.0 + 300.0 * m.MERGED_SHARE)
+
     def test_the_total_cost_is_in_metres_of_riding(self) -> None:
         events = m.assess_route([junction(crossed=(LTS3,))])
         assert m.penalty_m(events) == pytest.approx(events[0].cost_ft / m.FEET_PER_METRE)
+
+
+class TestContinuing:
+    """Review r2, SHOULD_FIX 1: going straight on along one road whose tier
+    rises at a node is not "joining" it."""
+
+    def test_straight_on_along_the_same_road_is_not_joining_it(self) -> None:
+        on = junction(incoming=Road(2), outgoing=Road(4), continues=True)
+        assert m.cost_of(on)[0] == 0
+        assert m.assess(on) is None
+        # A crossing there is still a crossing.
+        crossing = junction(incoming=Road(2), outgoing=Road(4), continues=True, crossed=(Road(4),))
+        assert m.assess(crossing).kind == "crossing"
+
+    def test_straight_onto_another_road_is_joining_it(self) -> None:
+        join = junction(incoming=Road(2), outgoing=Road(4))
+        event = m.assess(join)
+        assert event.kind == "straight_onto" and event.severity == m.RED
+        assert event.reason.startswith("Joining a heavy-traffic road")
+
+
+class TestSharedControl:
+    """Review r2, blocker: the nodes of one junction take its strongest control
+    (Plyers Mill Rd across Connecticut Ave: one carriageway's node reads the
+    signal, the other none)."""
+
+    name = frozenset({"connecticut avenue"})
+
+    def carriageways(self, first, second, gap=20.0, other_name=None):
+        a = Road(4, oneway=True, names=self.name, ways=frozenset({1}))
+        b = Road(4, oneway=True, names=other_name or self.name, ways=frozenset({2}))
+        return [
+            junction(m=0.0, crossed=(a,), control=first),
+            junction(m=gap, crossed=(b,), control=second),
+        ]
+
+    def test_a_signal_at_one_carriageway_is_the_other_ones(self) -> None:
+        shared = m.share_controls(self.carriageways(Control.SIGNAL, Control.NONE))
+        assert [j.control for j in shared] == [Control.SIGNAL, Control.SIGNAL]
+        (event,) = m.assess_route(self.carriageways(Control.NONE, Control.SIGNAL))
+        assert event.control is Control.SIGNAL and not event.flagged
+        assert event.cost_ft == pytest.approx(m.SIGNALISED_CROSSING_FT[4] * m.MEDIAN_REFUGE_FACTOR)
+
+    def test_an_all_way_stop_is_shared_but_a_stop_sign_is_not(self) -> None:
+        shared = m.share_controls(self.carriageways(Control.ALL_STOP, Control.NONE))
+        assert [j.control for j in shared] == [Control.ALL_STOP, Control.ALL_STOP]
+        kept = m.share_controls(self.carriageways(Control.STOP, Control.NONE))
+        assert [j.control for j in kept] == [Control.STOP, Control.NONE]
+        # And the signal beats the all-way stop.
+        both = m.share_controls(self.carriageways(Control.ALL_STOP, Control.SIGNAL))
+        assert [j.control for j in both] == [Control.SIGNAL, Control.SIGNAL]
+
+    def test_not_across_different_roads_or_beyond_the_merge_distance(self) -> None:
+        other = m.share_controls(
+            self.carriageways(Control.SIGNAL, Control.NONE, other_name=frozenset({"x st"}))
+        )
+        assert [j.control for j in other] == [Control.SIGNAL, Control.NONE]
+        far = m.share_controls(
+            self.carriageways(Control.SIGNAL, Control.NONE, gap=m.MERGE_WITHIN_M + 1)
+        )
+        assert [j.control for j in far] == [Control.SIGNAL, Control.NONE]
+        edge = m.share_controls(
+            self.carriageways(Control.SIGNAL, Control.NONE, gap=m.MERGE_WITHIN_M)
+        )
+        assert edge[1].control is Control.SIGNAL
+
+    def test_not_between_side_streets_along_the_road_ridden(self) -> None:
+        """Riding straight along a road, a signal at one side street is not the
+        next side street's: the road ridden along is not what they are about."""
+        along = Road(4, names=self.name)
+        first = junction(
+            m=0.0,
+            incoming=along,
+            outgoing=along,
+            continues=True,
+            crossed=(Road(3, names=frozenset({"a st"})),),
+            control=Control.SIGNAL,
+        )
+        turn = junction(
+            m=30.0,
+            movement=Movement.LEFT,
+            incoming=along,
+            outgoing=Road(2, names=frozenset({"b st"})),
+        )
+        shared = m.share_controls([first, turn])
+        assert shared[1].control is Control.NONE
+
+    def test_a_turn_off_a_divided_road_shares_with_its_far_carriageway(self) -> None:
+        """The left off one carriageway and the crossing of the other are one
+        junction: the road turned off is what the turn is about."""
+        near = Road(4, oneway=True, names=self.name, ways=frozenset({1}))
+        far = Road(4, oneway=True, names=self.name, ways=frozenset({2}))
+        side = Road(2, names=frozenset({"a st"}))
+        turn = junction(m=0.0, movement=Movement.LEFT, incoming=near, outgoing=side)
+        cross = junction(
+            m=12.0,
+            crossed=(far,),
+            continues=True,
+            control=Control.SIGNAL,
+            incoming=side,
+            outgoing=side,
+        )
+        shared = m.share_controls([turn, cross])
+        assert shared[0].control is Control.SIGNAL
+
+    def test_route_order_does_not_matter(self) -> None:
+        a, b = self.carriageways(Control.NONE, Control.SIGNAL)
+        shared = m.share_controls([b, a])
+        assert [j.control for j in shared] == [Control.SIGNAL, Control.SIGNAL]
 
 
 class TestMassRide:

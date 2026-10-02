@@ -101,6 +101,67 @@ def encode6(points) -> str:
     return "".join(out)
 
 
+def at_edge(found, edge_id):
+    return next(j for j in found if j.in_edge_id == edge_id)
+
+
+class TestBackEdges:
+    """Review r2: a stop or signal on the stop line short of the junction is
+    on the rider's own edge before the in-edge."""
+
+    def test_the_riders_edges_within_the_approach_nearest_first(self) -> None:
+        cross = ("road", "primary", "both")
+        trace = {
+            "edges": [
+                edge(1, 0, 1, 0.050, 90, 90),
+                edge(2, 1, 2, 0.010, 90, 90),
+                with_others(edge(3, 2, 3, 0.012, 90, 90), cross),
+                edge(4, 3, 4, 0.1, 90, 90),
+            ],
+            "units": "kilometers",
+        }
+        junction = at_edge(t.junctions_of_trace(trace, SHAPE), 1003)
+        # 12 m of in-edge, then 10 m: both within 30 m; then 50 m more is not.
+        assert junction.back_edge_ids == (1002, 1001)
+        assert t.APPROACH_M == 30.0
+
+    def test_a_long_in_edge_has_none(self) -> None:
+        cross = ("road", "primary", "both")
+        trace = {
+            "edges": [
+                edge(1, 0, 1, 0.010, 90, 90),
+                with_others(edge(2, 1, 2, 0.031, 90, 90), cross),
+                edge(3, 2, 3, 0.1, 90, 90),
+            ]
+        }
+        assert at_edge(t.junctions_of_trace(trace, SHAPE), 1002).back_edge_ids == ()
+
+    def test_exactly_the_approach_still_counts(self) -> None:
+        cross = ("road", "primary", "both")
+        trace = {
+            "edges": [
+                edge(1, 0, 1, 0.010, 90, 90),
+                with_others(edge(2, 1, 2, 0.030, 90, 90), cross),
+                edge(3, 2, 3, 0.1, 90, 90),
+            ]
+        }
+        assert at_edge(t.junctions_of_trace(trace, SHAPE), 1002).back_edge_ids == (1001,)
+
+    def test_an_edge_without_an_id_is_skipped_but_counted(self) -> None:
+        cross = ("road", "primary", "both")
+        first = edge(1, 0, 1, 0.005, 90, 90)
+        del first["id"]
+        trace = {
+            "edges": [
+                edge(5, 0, 1, 0.005, 90, 90),
+                first,
+                with_others(edge(2, 1, 2, 0.010, 90, 90), cross),
+                edge(3, 2, 3, 0.1, 90, 90),
+            ]
+        }
+        assert at_edge(t.junctions_of_trace(trace, SHAPE), 1002).back_edge_ids == (1005,)
+
+
 class TestTheTracesOwnShape:
     def test_indices_count_in_the_traces_shape_not_the_routes(self) -> None:
         """Measured on the live router: the trace drops repeated vertices of the

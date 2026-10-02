@@ -46,12 +46,15 @@ BUSY_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary
 SLIP_LANE_USE = "turn_channel"
 CROSSING_USE = "pedestrian_crossing"
 # The uses of a path, trail, cycletrack or sidewalk: a route arriving or leaving
-# on one crosses a road as a trail crossing does (item 185), and like a mapped
-# crossing way its signal seldom reaches the router's flag. Measured on the
-# live router (2026-10-02): the Pennsylvania Ave and Virginia Ave cycletracks
-# cross 13th, 15th and 21st St NW at nodes of their own, a few metres from the
-# signalised road junction, with no signal flag at the crossing node or on the
-# road's 5-8 m arms to the junction.
+# on one crosses a road as a trail crossing does (item 185). OSM's
+# `crossing=traffic_signals` on the crossing node does not reach the router's
+# signal flag; where the crossing is part of a signalised junction, the
+# junction's own `highway=traffic_signals` does, on the stop-line nodes a few
+# metres up the road's arms, and `core.junctions` reads it there
+# (`APPROACH_M`). The round-1 report said the Pennsylvania Ave and Virginia Ave
+# cycletracks' crossings of 13th, 15th and 21st St NW had no signal flag on the
+# road's arms; the round-2 review's 30 m search found flags within 30 m at 31 of
+# 48 such trail crossings, so that statement was wrong.
 PATH_USES = frozenset(
     {"cycleway", "footway", "path", "mountain_bike", "sidewalk", "pedestrian", "bridleway"}
 )
@@ -71,6 +74,15 @@ NOT_A_ROAD_USES = frozenset(
         "service_area",
     }
 )
+
+
+# How far up each road from a junction a signal, and up the rider's own
+# approach a stop or yield sign, still belongs to the junction: about 100 ft.
+# OSM in the District and Maryland puts `highway=traffic_signals` (and often
+# `highway=stop`) on the stop-line nodes 7-30 m before the junction node, and
+# the router flags the edge that ends there, not the junction (review r2: of 95
+# junctions priced as having no signal, 49 had a signal flag within 30 m).
+APPROACH_M = 30.0
 
 
 @dataclass(frozen=True)
@@ -103,6 +115,10 @@ class RawJunction:
     # The compass headings the route arrives and leaves on.
     in_heading: float | None = None
     out_heading: float | None = None
+    # The rider's own edges before the in-edge whose far end is within
+    # APPROACH_M of the node along the route (nearest first): a stop sign or a
+    # signal on one is the rider's own, a stop line short of the junction.
+    back_edge_ids: tuple[int, ...] = ()
 
     @property
     def slip_lane(self) -> bool:
@@ -225,7 +241,7 @@ def junctions_of_trace(
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     junctions: list[RawJunction] = []
     along = offset_m
-    for here, there in zip(edges, edges[1:], strict=False):
+    for index, (here, there) in enumerate(zip(edges, edges[1:], strict=False)):
         along += float(here.get("length") or 0.0) * to_metres
         end = here.get("end_shape_index")
         in_heading, out_heading = here.get("end_heading"), there.get("begin_heading")
@@ -262,9 +278,26 @@ def junctions_of_trace(
                 out_edge_id=edge_id_of(there),
                 in_heading=float(in_heading),
                 out_heading=float(out_heading),
+                back_edge_ids=_back_edge_ids(edges, index, to_metres),
             )
         )
     return junctions
+
+
+def _back_edge_ids(edges: list[dict], index: int, to_metres: float) -> tuple[int, ...]:
+    """The ids of the route's edges before `edges[index]` (the in-edge) whose
+    far end - the node they arrive at - is within APPROACH_M of the in-edge's
+    end along the route, nearest first."""
+    found: list[int] = []
+    gone = float(edges[index].get("length") or 0.0) * to_metres
+    for back in range(index - 1, -1, -1):
+        if gone > APPROACH_M:
+            break
+        edge_id = edge_id_of(edges[back])
+        if edge_id is not None:
+            found.append(edge_id)
+        gone += float(edges[back].get("length") or 0.0) * to_metres
+    return tuple(found)
 
 
 def edge_midpoints(
