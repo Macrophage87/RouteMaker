@@ -1340,6 +1340,24 @@ since the owner's amendment of 2026-09-27: `/api/geocode` and `/api/reverse`).
 A `reverse_proxy` to any of them would put an unlimited geocoder, router or
 renderer on the public internet, and the suite fails if one appears.
 
+### Changing the Caddyfile on a running stack
+
+The bind is a single file, and git replaces a file rather than editing it, so
+after a pull that changes it the running container still sees the old file.
+`caddy reload` reloads that stale copy. `docker compose restart caddy` fails to
+mount the source and leaves caddy exited. `up -d` alone does not recreate it.
+Validate the new file in a throwaway container, then recreate caddy alone:
+
+```sh
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker compose up -d --no-deps --no-build --force-recreate caddy
+```
+
+Never use `caddy reload` or `docker compose restart caddy` after a git update
+of the Caddyfile. It is the only single-file bind in `compose.yaml`. The others
+are directories, which do not have this problem. For the details, see
+docs/OPERATIONS.md, "Applying a Caddyfile change".
+
 ### `CADDY_SITE_ADDRESS`
 
 The site address is the one variable the caddy service takes, read by the
