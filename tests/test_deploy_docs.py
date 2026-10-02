@@ -1766,7 +1766,16 @@ def test_a_caddyfile_change_is_validated_then_applied_by_recreating_caddy(
     assert validate is not None, (
         f"{document} does not validate the new Caddyfile in a throwaway {image} container"
     )
-    recreate = ["docker", "compose", "up", "-d", "--no-deps", "--no-build", "--force-recreate", "caddy"]
+    recreate = [
+        "docker",
+        "compose",
+        "up",
+        "-d",
+        "--no-deps",
+        "--no-build",
+        "--force-recreate",
+        "caddy",
+    ]
     assert recreate in commands[validate + 1 :], (
         f"{document} does not apply the change with `{' '.join(recreate)}` after validating it"
     )
