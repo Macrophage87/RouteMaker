@@ -1371,6 +1371,8 @@ to prevent.
 
 ### What the edge enforces
 
+Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the nine ids in `frontend/src/lib/presets.ts`; adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
+
 `/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
 requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a
@@ -1386,6 +1388,47 @@ TLS-terminating proxy Caddy sees `http` and refuses every `https` page.
 Caddy with a third-party module. Until then nothing bounds how fast one address
 can read the archive, and that is a gate on opening the site to anything beyond
 this machine (docs/DEPLOYMENT.md, "Build").
+
+## Applying a Caddyfile change
+
+`compose.yaml` binds `./Caddyfile` into the caddy container as a single file,
+so the checkout's file is the live one. A `git pull`, `merge` or `checkout`
+that changes it does not edit it in place. Git writes a new file and renames it
+over the old one, which gives it a new inode, and a single-file bind follows
+the inode it was created with. Measured under Docker Desktop on WSL:
+
+- the running container goes on seeing the old content, so a `caddy reload`
+  inside it reloads the stale config and reports success;
+- `docker compose restart caddy` (a `docker restart`) then fails to mount the
+  source at all (`error mounting ... no such file or directory`) and leaves the
+  container exited. The `unless-stopped` restart after a crash is the same
+  restart, so it can fail the same way;
+- plain `docker compose up -d` does nothing, because the compose config has not
+  changed. The site goes on serving the old routes.
+
+Only a new container picks up the new file. After any git update that touches
+the Caddyfile, from the checkout compose runs from, validate the new file in a
+throwaway container of the same image (this is what `tests/test_preset_links.py`
+does), then recreate caddy alone:
+
+```sh
+docker run --rm -e CADDY_SITE_ADDRESS=:80 -v "$PWD/Caddyfile:/etc/caddy/Caddyfile:ro" caddy:2.8-alpine caddy validate --config /etc/caddy/Caddyfile
+docker compose up -d --no-deps --no-build --force-recreate caddy
+```
+
+Validation runs on the `:80` posture because the site address is the one value
+that differs between postures, and it only changes the address, not the routes.
+If `validate` fails, stop: the running container still has the old file
+and is still serving. Fix the file before recreating anything. Certificates
+survive the recreate, because they are in `${DATA_ROOT}/caddy`. Never use `caddy reload` or
+`docker compose restart caddy` after a git update of this file.
+
+The Caddyfile is the only single-file bind in `compose.yaml`. Every other bind
+is a directory (`./valhalla`, `./lua` and the `${DATA_ROOT}` paths). A
+directory bind keeps the directory's inode, so a file git replaces inside it is
+seen at once. The routers still read their config only at start; see "After a
+rebuild: restart the routers". `tests/test_deploy_docs.py` fails if a second
+single-file bind appears without this procedure covering it.
 
 ## Firing a rebuild by hand
 

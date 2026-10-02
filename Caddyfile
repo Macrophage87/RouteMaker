@@ -30,6 +30,45 @@
 	# is a decision this file can make for whoever runs it.
 	header Strict-Transport-Security "max-age=31536000"
 
+	# Preset links (owner item 204): routemaker.cieply.com/trailmaxxing opens the
+	# planner on that ride type. Exactly the ride-type ids frontend/src/lib/
+	# presets.ts lists - tests/test_preset_links.py holds this list equal to
+	# it and to core/presets.py, no extras - each sent to the app's own
+	# fragment link, which the planner already reads (planHash.ts), so nothing
+	# else is needed to make it work. A fragment never reaches a server.
+	#
+	# 302, not 308: the list of ride types is the owner's to change, and a
+	# browser keeps a permanent redirect with no way for us to take it back, so
+	# a renamed or retired id would stay a dead link in every browser that had
+	# followed it. The price is one extra round trip, once per visit. (The
+	# method is irrelevant: these are GETs.)
+	#
+	# Case and a trailing slash are accepted - Caddy's `path` matcher ignores
+	# case - and the target is always the lowercase id, which is the only
+	# spelling the app's parsePreset reads. None of these ids is a route
+	# elsewhere in this file or in config/urls.py (/static, /basemap, /assets,
+	# /api, /tiles, /auth, /healthz, the admin path), and the test checks that
+	# against the URLconf. `redir` is ordered before `handle`, so it needs no
+	# block of its own.
+	@preset-default path /default /default/
+	redir @preset-default /#preset=default 302
+	@preset-trailmaxxing path /trailmaxxing /trailmaxxing/
+	redir @preset-trailmaxxing /#preset=trailmaxxing 302
+	@preset-group-ride path /group-ride /group-ride/
+	redir @preset-group-ride /#preset=group-ride 302
+	@preset-mass-ride path /mass-ride /mass-ride/
+	redir @preset-mass-ride /#preset=mass-ride 302
+	@preset-mountain-goat path /mountain-goat /mountain-goat/
+	redir @preset-mountain-goat /#preset=mountain-goat 302
+	@preset-gravel path /gravel /gravel/
+	redir @preset-gravel /#preset=gravel 302
+	@preset-fast path /fast /fast/
+	redir @preset-fast /#preset=fast 302
+	@preset-cargo path /cargo /cargo/
+	redir @preset-cargo /#preset=cargo 302
+	@preset-ebike path /ebike /ebike/
+	redir @preset-ebike /#preset=ebike 302
+
 	# Django's collected assets, from the volume `collectstatic` writes and this
 	# service mounts read-only (${DATA_ROOT}/static -> /srv/static). STATIC_URL
 	# is "static/", so /static/admin/css/base.css has to resolve to

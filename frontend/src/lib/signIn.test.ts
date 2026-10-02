@@ -29,6 +29,22 @@ test("a link with its own plan wins over a remembered one", () => {
   assert.equal(storage.data.has(PLAN_KEY), false);
 });
 
+test("a preset link wins over a remembered plan", () => {
+  // /trailmaxxing redirects to /#preset=trailmaxxing: a plan of its own, with no points.
+  for (const link of ["#preset=trailmaxxing", "#v=1&preset=gravel"]) {
+    const storage = memory();
+    rememberPlan(storage, PLAN);
+    assert.equal(planToOpen(storage, link), link);
+    assert.equal(storage.data.has(PLAN_KEY), false, "the remembered plan is dropped, not kept for later");
+  }
+});
+
+test("a hash with neither points nor a ride type still gets the remembered plan", () => {
+  const storage = memory();
+  rememberPlan(storage, PLAN);
+  assert.equal(planToOpen(storage, "#v=1&xpreset=gravel"), PLAN);
+});
+
 test("nothing is remembered when there is no plan", () => {
   const storage = memory();
   rememberPlan(storage, "#preset=default");

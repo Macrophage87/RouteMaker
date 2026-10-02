@@ -1715,3 +1715,71 @@ def test_every_documented_run_of_the_reference_installer_parses() -> None:
         finally:
             argparse.ArgumentParser.parse_args = original
         raise AssertionError(f"the installer returned without parsing {argv}")
+
+
+# --- Applying a Caddyfile change ----------------------------------------------
+
+
+def single_file_binds() -> set[str]:
+    """The sources of every bind in compose.yaml that is one repository file
+    rather than a directory."""
+    return {
+        source
+        for service in SERVICES.values()
+        for volume in service.get("volumes") or []
+        for source in [volume.split(":", 1)[0]]
+        if source.startswith("./") and (REPO / source).is_file()
+    }
+
+
+@pytest.mark.parametrize(
+    "document, heading",
+    [
+        ("docs/OPERATIONS.md", "## Applying a Caddyfile change"),
+        ("docs/DEPLOYMENT.md", "### Changing the Caddyfile on a running stack"),
+    ],
+)
+def test_a_caddyfile_change_is_validated_then_applied_by_recreating_caddy(
+    document: str, heading: str
+) -> None:
+    """The Caddyfile is a single-file bind, and git replaces a file (a new
+    inode) rather than editing it, so after a pull the running container sees
+    the old file: `caddy reload` reloads it, `docker compose restart` fails to
+    mount the source and leaves caddy exited, and `up -d` with an unchanged
+    compose config recreates nothing (measured under Docker Desktop on WSL,
+    review PRESETLINKS r1). The procedure is: validate in a throwaway container
+    of the image compose runs, then force-recreate caddy alone. Read off the
+    commands, in order."""
+    commands = snippet_commands(section(DOCUMENTS[document], heading))
+    image = SERVICES["caddy"]["image"].removeprefix("docker.io/library/")
+    validate = next(
+        (
+            i
+            for i, tokens in enumerate(commands)
+            if tokens[:3] == ["docker", "run", "--rm"]
+            and image in tokens
+            and tokens[tokens.index(image) + 1 :][:2] == ["caddy", "validate"]
+            and any(t.strip("\"'").endswith("/Caddyfile:/etc/caddy/Caddyfile:ro") for t in tokens)
+        ),
+        None,
+    )
+    assert validate is not None, (
+        f"{document} does not validate the new Caddyfile in a throwaway {image} container"
+    )
+    recreate = ["docker", "compose", "up", "-d", "--no-deps", "--no-build", "--force-recreate", "caddy"]
+    assert recreate in commands[validate + 1 :], (
+        f"{document} does not apply the change with `{' '.join(recreate)}` after validating it"
+    )
+    for tokens in commands:
+        assert tokens[:3] != ["docker", "compose", "restart"] or "caddy" not in tokens, tokens
+        assert "reload" not in tokens, tokens
+
+
+def test_the_caddyfile_is_the_only_single_file_bind_the_procedure_covers() -> None:
+    """A directory bind keeps its inode across a git update, a single-file bind
+    does not. The Caddyfile procedure is written for the one single-file bind
+    compose has; a second one needs the same treatment documented."""
+    assert single_file_binds() == {"./Caddyfile"}, (
+        f"single-file binds in compose.yaml: {sorted(single_file_binds())}; each needs "
+        "docs/OPERATIONS.md, 'Applying a Caddyfile change', to cover it"
+    )

@@ -24,7 +24,14 @@ export function rememberPlan(storage: StorageLike | null, hash: string): void {
   }
 }
 
-/** The hash to open with: the page's own if it has a plan, else a remembered one (used once). */
+/**
+ * The hash to open with: the page's own if it has a plan, else a remembered one (used once).
+ *
+ * A hash with points (`p=`) or only a ride type (`preset=`, which is what a
+ * preset link such as /trailmaxxing redirects to) is the page's own plan: the
+ * person followed that link on purpose, so it beats a plan left behind by a
+ * sign-in that never came back. The callback itself lands on a bare "/".
+ */
 export function planToOpen(storage: StorageLike | null, hash: string): string {
   if (!storage) return hash;
   let saved: string | null = null;
@@ -34,6 +41,6 @@ export function planToOpen(storage: StorageLike | null, hash: string): string {
   } catch {
     return hash;
   }
-  if (/[#&]p=/.test(hash) || !saved) return hash;
+  if (/[#&](p|preset)=/.test(hash) || !saved) return hash;
   return saved;
 }
