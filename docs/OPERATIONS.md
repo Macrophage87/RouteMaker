@@ -387,6 +387,155 @@ The table arrives with migration `core.0008_rate_limit_window`, which the
 `migrate` one-shot applies before the api starts; nothing else is needed on
 deploy.
 
+## Intersection costs and the calm search: what to watch
+
+FOLLOWUP-INTERSECTIONS (2026-10-01, revised 2026-10-02; docs/DEVELOPMENT.md, "Intersection costs,
+the calm search and the detour warning" is the long form). What an operator
+needs:
+
+**Nothing new to deploy, one new column set to build.** The route's junctions
+are read from the live `segment` table and the existing routers (`/locate` and
+`/trace_attributes` are among the endpoints the config already serves), so the
+code works the day it is deployed. The segment table gains `road_speed_mph`,
+`road_lanes` and `road_oneway` (`pipeline.schema.SEGMENT_DDL`) with the next
+rebuild; until a rebuilt table is promoted the junction reasons name the road's
+LTS and not its lanes and speed ("Crossing a heavy-traffic road (LTS 4), no
+signal mapped"), and nothing else changes. `core.junctions.has_trait_columns` reads the live schema
+once and remembers the answer, as `core.routing` does for the facility columns,
+so no restart is needed after the swap beyond the one that restarts the routers
+anyway.
+
+**Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
+busy-class road meets the route, with a 1 m radius, and again, with a 30 m
+(100 ft) radius, for each 50 of those whose control is not already a signal, to
+read the signals and stop signs OSM puts on the stop lines up the approaches
+(review r2; `core.junctions.APPROACH_RADIUS_M`): about 2 to 12 calls a plan.
+Measured on the live router, a batch of 50 at 30 m took 0.1-0.3 s and 2.6 MB,
+against 0.04-0.15 s and 0.5 MB at 1 m. A plan with a red junction
+500 m or more from both ends asks the router for one more route (crossing
+avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
+route), one `/trace_attributes` for it and its `/locate`s, and one more route for
+the detour warning when the route is at least twice the straight line, or above
+Default when it is longer than the allowance. Above 80 on the stress slider a
+plan can make about 20 router calls (5 rounds of a route, a trace and `/locate`s,
+and the detour probe), and Trailmaxxing starts at 100 (OWNER-DECISIONS 194), so
+every Trailmaxxing plan is one of these unless the rider moves the slider down.
+Measured through the review harness (docs/DEVELOPMENT.md, "Round 1,
+re-measured" and "Round 2, re-measured"): Default plans 0.1 to 1.5 s (0.3 to
+2.9 s in round 2, with the second `/locate` pass) and plans at 100 up to the
+figures there. The budget is unchanged (40 s, 50 s for a long ride). If the api's
+workers are saturated, the search is the first thing to drop: it does not start
+with less than 11 s left (`REFINE_ROUND_MIN_S` plus `REFINE_TRACE_RESERVE_S`)
+and a round is not begun with less than 5 s, and the answer then says
+`calm_search.limited` is `time`. Where the rider asked for the calm detour, the
+planner says so under the route: "The calmer-route search ran out of time, so
+there may be a calmer route than this one."
+
+**Concurrency.** The search has no limit of its own. It runs only inside an
+api routing request, and each of those holds one of the deployment's routing
+slots, `ROUTING_CONCURRENCY` (3 on compose's 7 workers; the PostgreSQL
+advisory-lock pool in `core.ratelimit`, in "The public routing API: its
+limits, and clearing a client" above). A long ride, the one request with a
+pool of its own, never runs the search. So at most
+`ROUTING_CONCURRENCY` searches run at once across the whole deployment, however
+many api containers there are, and each makes its router calls one after
+another: three at once against each router's four threads (`concurrency` in
+`valhalla/*.json`). If `ROUTING_CONCURRENCY` is raised (more workers), keep it
+at or below the routers' `concurrency`, or calm plans at the top of the slider
+can queue inside the routers. Round 1's per-container lock files
+(`CALM_SEARCHES_PER_HOST`, `/tmp/routemaker-calm-search`) are gone, and so is
+`calm_search.limited` `busy`; a `routemaker-calm-search` directory left in a
+container's or host's temporary directory by round 1 may be deleted.
+
+**Reading the log.** `core.refine` logs at warning level, "the intersection
+events could not be read", when the segment query or `/locate` failed for a
+reason other than the budget; the route is answered without its junction list
+(`intersections` null or empty). A `/locate` batch that fails leaves its
+junctions unknown: nothing is counted as crossed there, and only a turn onto or
+off a busy road on the route itself is priced. `core.junctions` logs "intersection
+nodes: N of M matched" at info level when some junctions' answers did not have
+the route's own edge (measured 96 to 100 per cent matched). `core.routing` logs
+the same "took ... past its budget" line as before.
+
+**The routers.** The search sends `exclude_locations` (the config's
+`max_exclude_locations` is 200; `scripts/build_valhalla_configs.py` sets it) and
+`/locate` with `verbose`. Both are in the configs this repository builds, and
+`tests/test_valhalla_config.py` holds the limit above what the search sends; a
+hand-made config that lowers `max_exclude_locations` below 150 makes a calm
+round refuse (400, the search ends with `no_route`), which is safe but quiet.
+
+**Where the markers over-warn.** Not one place, several, each a known gap
+(docs/DEVELOPMENT.md, "Known gaps"):
+
+- A signal tagged on a stop line more than 30 m (100 ft) up an approach, or
+  only on an approach the junction's arms do not lead to (the far
+  carriageway's, where the route crosses one carriageway alone), is not read,
+  and the junction is priced as having none. Round 1 read signals only at the
+  junction node, and this was the commonest cause of a false red at a
+  signalised junction (review r2: 8 of 15 reds in its sample); from round 2 the
+  approaches are walked to 30 m and the nodes of one junction share its
+  strongest control. Of the 95 junctions the review found priced as having no
+  signal, 66 had a signal flag of some kind within 30 m and 59 of those now
+  read as signalised (re-measured at gate 1; 63 in round 2). The four fewer
+  are the two lefts off 17th St SW 60 ft (18 m) past the Constitution Ave
+  signal, which is not theirs (review r3), Plyers Mill Rd across Metropolitan
+  Ave (next bullet), and a straight-on along MD 450 that is no event either
+  way.
+- One junction mapped as two named ones a few metres apart can lose its
+  signal (review r3). Plyers Mill Rd (MD 192) straight across Metropolitan Ave
+  reads orange, 1,200 ft, where it was 150 ft: MD 192 is divided west of the
+  junction, Concord St crosses between its carriageways 50 ft (16 m) back,
+  and the signal is on the Concord St node, which the walk takes for Concord
+  St's own junction. It is the safe direction (a warning at a light). Telling
+  it from a driveway just past a signalised junction would need the rider's
+  riding straight through a minor road's T junction on the junction's own
+  road, which would bring that driveway's under-warning back.
+- Signalised trail crossings tagged `crossing=traffic_signals` away from any
+  signalised road junction read as unsignalised until the tag transform derives
+  the signal. They are orange at most and say "no signal mapped"
+  (OWNER-DECISIONS 185), so a rider may see an orange marker at a crossing that
+  has a light.
+- A stop sign on a cross road's stop line short of the junction is not read as
+  the cross traffic's (it may be another junction's), so a junction where only
+  the cross traffic stops can be priced as if nobody does: the rider's crossing
+  is then the stopped side's.
+- Any junction whose signal or signs OSM does not have reads "no signal mapped".
+- It under-warns near signals: a side street or driveway within 30 m (100 ft)
+  of a signalised junction can be priced as signalised, and its red or orange
+  not drawn, where the signal is on a stop line of the road it joins with no
+  other named road at that node, or where the other junction's road has no
+  name in OSM. For a rider arriving on a road, a driveway, a parking aisle or
+  a drive-through, a signal at a node up an arm that a road of another name
+  joins, or one facing away from the junction, is not taken (review r3; gate
+  1 for driveways and parking aisles, which took it until then); nor is a
+  signal or stop sign on the rider's own approach beyond a junction already
+  passed. A rider arriving on a path (a footway, path, cycleway, crossing way,
+  steps or track) does take such a signal: a trail crossing a few metres from
+  a road junction is crossed on that junction's signal (the Green Trail,
+  Virginia Ave cycletrack and Custis crossings).
+  Junctions within 45 m about one named road also share a signal where the
+  rider crosses that road at one of them and does not ride along it between
+  them, so a staggered junction whose two nodes the rider links by a short
+  side street can read as one. A turn's crossing of its own two-way road's
+  opposite lanes is not counted as crossing it (gate 1), so a signalised left
+  off a road and an unsignalised left back onto it 30 m on stay two junctions
+  and the second keeps its red; a one-way carriageway crossed still counts,
+  so a divided road's crossover shares its signal.
+- That path exception has a named residual risk. A cycleway's left onto
+  Georgia Ave 50 ft (15 m) from Wayne Ave, and onto Colesville Rd 25 ft (7 m)
+  from Second Ave and Wayne Ave, take the neighbouring junction's signal:
+  450 ft where without it they would be 4,500 ft, red. They are probably the
+  corner sidepaths at the signal, ridden onto the road on its crossing, so the
+  reading is defensible; but a trail that meets a busy road a few metres from
+  a signal it does not use would be under-warned the same way, and the markers
+  cannot tell the two apart.
+- A slip lane the route crosses is orange (items 169 and 195) whether or not
+  the channel has its own signal or a raised crossing, which are not read.
+  Riding straight past one along the road is not flagged, except in a painted
+  or separated bike lane past a channel leaving on the right (the right hook).
+- An unnamed divided road's two carriageways are counted as two roads (half the
+  second added), not once with the refuge credit.
+
 ## The stress tiles
 
 `GET /tiles/stress/{z}/{x}/{y}.pbf` (`core/stress_tiles.py`) draws the traffic

@@ -2,6 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PRESETS } from "./presets.ts";
 import {
+  CALM_FAR_FROM,
+  CALM_RATE_MAX,
+  STRESS_DEFAULT_AT,
+  STRESS_TODAYS_TOP,
+  calmRate,
   TRAFFIC_TOLERANT_MAX,
   warnsTrafficTolerant,
   offersAssist,
@@ -40,11 +45,11 @@ test("the starts say what the owner said", () => {
   assert.ok(STARTS.cargo.hills < STARTS.default.hills);
 });
 
-test("carrying cargo starts where Default does, carrying people at the top", () => {
+test("carrying cargo starts where Default does, carrying people at the old top", () => {
   const cargo = startDials("cargo", "cargo");
   const people = startDials("cargo", "people");
   assert.equal(cargo.stress, STARTS.default.stress);
-  assert.equal(people.stress, STRESS_MAX);
+  assert.equal(people.stress, STRESS_TODAYS_TOP);
   assert.equal(people.hills, cargo.hills);
   assert.equal(startDials("cargo").carrying, "cargo");
   assert.equal(startDials("default", "people").carrying, null);
@@ -108,8 +113,11 @@ test("Mass Ride's traffic slider is locked at the most direct roadway", () => {
   for (const preset of PRESETS) if (preset.id !== "mass-ride") assert.equal(stressMax(preset.id), STRESS_MAX, preset.id);
 });
 
-test("Default starts at the owner's 90", () => {
-  assert.equal(STARTS.default.stress, 90);
+test("Default starts at the owner's 90, which is 70 on the rescaled slider", () => {
+  // OWNER-DECISIONS 163: the slider has room above its old top; the old 90 is 70.
+  assert.equal(STARTS.default.stress, STRESS_DEFAULT_AT);
+  assert.equal(STRESS_DEFAULT_AT, 70);
+  assert.equal(STRESS_TODAYS_TOP, 80);
 });
 
 test("electric assist is Cargo Bike's alone, travels in the link and keeps the hills start", () => {
@@ -141,12 +149,18 @@ test("the bottom of the traffic slider is traffic tolerant and warns", () => {
 test("each word's range starts where the next one ends", () => {
   // Mutation review r1, FE13 and FE14: the boundaries, not only the ends.
   assert.equal(stressWords(TRAFFIC_TOLERANT_MAX + 1), "Direct, some busy streets");
-  assert.equal(stressWords(39), "Direct, some busy streets");
-  assert.equal(stressWords(40), "Balanced");
-  assert.equal(stressWords(60), "Balanced");
-  assert.equal(stressWords(61), "Prefers quiet streets and paths");
-  assert.equal(stressWords(94), "Prefers quiet streets and paths");
-  assert.equal(stressWords(95), "Low-stress, unless avoiding busy streets takes much longer");
+  assert.equal(stressWords(29), "Direct, some busy streets");
+  assert.equal(stressWords(30), "Balanced");
+  assert.equal(stressWords(50), "Balanced");
+  assert.equal(stressWords(51), "Prefers quiet streets and paths");
+  assert.equal(stressWords(74), "Prefers quiet streets and paths");
+  assert.equal(stressWords(75), "Low-stress, unless avoiding busy streets takes much longer");
+  assert.equal(stressWords(STRESS_TODAYS_TOP), "Low-stress, unless avoiding busy streets takes much longer");
+  // Past the old top the route goes out of its way (OWNER-DECISIONS 163, 164).
+  assert.equal(stressWords(STRESS_TODAYS_TOP + 1), "Calm: will go well out of the way to avoid busy roads");
+  assert.equal(stressWords(CALM_FAR_FROM - 1), "Calm: will go well out of the way to avoid busy roads");
+  assert.equal(stressWords(CALM_FAR_FROM), "Calmest: detours many times the straight line to avoid busy roads");
+  assert.equal(stressWords(STRESS_MAX), "Calmest: detours many times the straight line to avoid busy roads");
   assert.equal(hillsWords(-80), "Avoids hills");
   assert.equal(hillsWords(-79), "Gentler grades");
   assert.equal(hillsWords(-11), "Gentler grades");
@@ -196,4 +210,27 @@ test("avoid gravel is off by default, travels in the link and the request, and s
   assert.equal(decodePlan(encodePlan([], "default", startDials("default"))).dials.avoidGravel, undefined);
   assert.equal(decodePlan("#preset=cargo&avoidgravel=0").dials.avoidGravel, undefined);
   assert.equal(fitDials("gravel", { avoidGravel: true }).avoidGravel, true);
+});
+
+test("the calm rate is nothing up to the old top, then rises exponentially to its maximum", () => {
+  // OWNER-DECISIONS 163: "a steep (exponential) curve above Default"; tests/test_calm_slider.py
+  // holds these equal to the API's `calm_rate_for`.
+  for (let stress = 0; stress <= STRESS_TODAYS_TOP; stress += 5) assert.equal(calmRate(stress), 0, String(stress));
+  assert.equal(calmRate(STRESS_MAX), CALM_RATE_MAX);
+  assert.equal(calmRate(150), CALM_RATE_MAX);
+  const rates = [85, 90, 95, 100].map(calmRate);
+  assert.deepEqual([...rates].sort((a, b) => a - b), rates);
+  const steps = rates.slice(1).map((rate, i) => rate - rates[i]);
+  assert.deepEqual([...steps].sort((a, b) => a - b), steps, "each step is longer than the last");
+  assert.ok(calmRate(90) < CALM_RATE_MAX * 0.2, "not linear");
+  assert.deepEqual([85, 90, 95, 100].map(calmRate), [0.585, 1.824, 4.447, 10]);
+});
+
+test("every ride type starts where it planned before the rescale, Trailmaxxing at the new top", () => {
+  // OWNER-DECISIONS 194 (2026-10-02): "Trailmaxxing moves to 100 and
+  // Cargo-carrying-people stays at 80".
+  assert.deepEqual(
+    Object.fromEntries(PRESETS.map((p) => [p.id, STARTS[p.id].stress])),
+    { default: 70, trailmaxxing: 100, "group-ride": 40, "mass-ride": 0, "mountain-goat": 40, gravel: 40, fast: 10, cargo: 70, ebike: 70 },
+  );
 });

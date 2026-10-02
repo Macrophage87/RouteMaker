@@ -67,6 +67,9 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             list(row.get("car_free_when", ())),
             row.get("map_class", "road"),
             row.get("separate_bikeway", False),
+            row.get("road_speed_mph"),
+            row.get("road_lanes"),
+            row.get("road_oneway"),
             *_adjustment_columns(row["stress"]),
             _attr_sources_json(row["stress"]),
         )
@@ -79,7 +82,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
                     (
                         way_id,
                         ordinal,
@@ -99,7 +102,11 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         car_free,
                         map_class,
                         separate_bikeway,
+                        road_speed_mph,
+                        road_lanes,
+                        road_oneway,
                         *adjustment,
+                        attr_sources,
                     ),
                 )
                 for (
@@ -121,7 +128,11 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     car_free,
                     map_class,
                     separate_bikeway,
+                    road_speed_mph,
+                    road_lanes,
+                    road_oneway,
                     *adjustment,
+                    attr_sources,
                 ) in batch
             )
             cursor.execute(
@@ -130,6 +141,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_assumed, volume_source, volume_aadt, volume_year,
                      sinuosity, is_trail_class, is_unpaved, is_rough, lit, facility,
                      car_free_when, map_class, separate_bikeway,
+                     road_speed_mph, road_lanes, road_oneway,
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources)

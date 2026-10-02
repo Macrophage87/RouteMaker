@@ -426,6 +426,15 @@ class StressResult:
     # precedence, `osm` where the way's own tag stood, `default` where neither
     # said and the classifier assumed. Empty on a way no agency layer reached.
     attr_sources: tuple[tuple[str, str], ...] = ()
+    # What the classifier read the road at, kept for the intersection model
+    # (`routemaker.intersections`; OWNER-DECISIONS 165-167): the speed and the
+    # through lanes a direction as read (the way's tags, an agency's record
+    # overlaid on them, a curated speed), and whether it is one-way. None where
+    # the classifier assumed them (a class default is not a fact the junction
+    # reasons may state), and where the way is a trail or a motor-only class.
+    speed_mph: float | None = None
+    lanes: int | None = None
+    oneway: bool | None = None
 
     @property
     def is_top_tier(self) -> bool:
@@ -1077,7 +1086,22 @@ def _classify(
     if tier is Stress.LTS1 and is_rough(tags):
         tier, rule = Stress.LTS2, rule + ", rough surface"
 
-    return StressResult(tier, rule, tuple(assumed), volume_source, aadt, volume_year)
+    # The road's traits as the intersection model will state them: only what
+    # was read, never the class default the tables fell back on (review r1: an
+    # assumed speed or lane count would be told to a rider as fact, "2-lane 25
+    # mph road", and an assumed single lane would zero the merge cost the model
+    # otherwise assumes by tier).
+    return StressResult(
+        tier,
+        rule,
+        tuple(assumed),
+        volume_source,
+        aadt,
+        volume_year,
+        speed_mph=None if "maxspeed" in assumed else speed_mph,
+        lanes=None if "lanes" in assumed else lanes,
+        oneway=oneway,
+    )
 
 
 def is_rough(tags: dict[str, str]) -> bool:

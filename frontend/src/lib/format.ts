@@ -47,6 +47,26 @@ export function formatDistance(metres: number): string {
   return `${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
 }
 
+/** An extra distance inside a sentence, miles first, metric in brackets: "+1.2 mi (1.9 km)". */
+export function formatExtra(metres: number): string {
+  if (!usable(metres)) return DASH;
+  return `+${milesFigure(metres)} mi (${(metres / 1000).toFixed(1)} km)`;
+}
+
+/**
+ * A distance for every mile of something, from a ratio (metres per metre): to a
+ * tenth below ten miles, so the calm curve's 0.585 at position 85 is "0.6 mi
+ * (0.9 km)" and not a rounded-up "1 mi (1 km)"; whole units from ten up.
+ */
+export function formatPerMile(ratio: number): string {
+  if (!usable(ratio)) return DASH;
+  if (ratio < 10) {
+    const miles = Math.max(0.1, Math.round(ratio * 10) / 10);
+    return `${miles.toFixed(1)} mi (${((miles * METRES_PER_MILE) / 1000).toFixed(1)} km)`;
+  }
+  return formatRoughDistance(ratio * METRES_PER_MILE);
+}
+
 /** A round figure for a limit or a span, in whole units: "31 mi (50 km)". */
 export function formatRoughDistance(metres: number): string {
   if (!usable(metres)) return DASH;

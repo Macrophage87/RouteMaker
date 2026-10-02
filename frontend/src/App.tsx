@@ -12,11 +12,12 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
-import { announceRoute, detourNotice, paceText, pointName } from "./lib/summary.ts";
+import { announceRoute, calmSearchNote, detourView, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { CASING_EXTRA_PX, FACILITIES, STRESS_TIERS, facilityWidth } from "./stressStyle.js";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
+import { IntersectionList } from "./IntersectionList.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials } from "./lib/dials.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
@@ -106,6 +107,9 @@ export function App() {
   // The span, in km, the rider has said yes to planning (longRide.ts).
   const [confirmedKm, setConfirmedKm] = useState<number | null>(null);
   const [crosshair, setCrosshair] = useState({ button: false, canvas: false });
+  // The junction a click on the route summary's list names; `nonce` makes a second
+  // click on the same one open its card again.
+  const [junctionFocus, setJunctionFocus] = useState<{ index: number; nonce: number } | null>(null);
   // Bumped to put the markers back where the points are, without changing
   // the points (which would plan the same route again).
   const [markerReset, setMarkerReset] = useState(0);
@@ -632,7 +636,14 @@ export function App() {
           )}
         </div>
       )}
-      {shown && <RouteSummary route={shown} points={routedPoints} narrow={narrow} />}
+      {shown && (
+        <RouteSummary
+          route={shown}
+          points={routedPoints}
+          narrow={narrow}
+          onSelectJunction={(index) => setJunctionFocus((f) => ({ index, nonce: (f?.nonce ?? 0) + 1 }))}
+        />
+      )}
     </section>
   );
 
@@ -663,6 +674,7 @@ export function App() {
         onLineDrop={insertOnLine}
         onRemovePoint={removeFromMap}
         markerReset={markerReset}
+        junctionFocus={junctionFocus}
         onReady={(map) => {
           mapRef.current = map;
           void fetchCoverage(window.location.origin).then((coverage) => {
@@ -768,15 +780,31 @@ export function App() {
   );
 }
 
-function RouteSummary({ route, points, narrow }: { route: RouteResponse; points: LonLat[]; narrow: boolean }) {
+function RouteSummary({
+  route,
+  points,
+  narrow,
+  onSelectJunction,
+}: {
+  route: RouteResponse;
+  points: LonLat[];
+  narrow: boolean;
+  onSelectJunction: (index: number) => void;
+}) {
   const segments = stressSegments(route.stress_m);
-  const detourText = detourNotice(route, points);
+  const detour = detourView(route, points);
+  const calmNote = calmSearchNote(route);
   const pace = paceText(route);
   return (
     <div className="summary">
-      {detourText && (
-        <p className="notice detour" role="note">
-          {detourText}
+      {detour && (
+        <p className={`notice detour detour-${detour.level}`} role="note">
+          {detour.text}
+        </p>
+      )}
+      {calmNote && (
+        <p className="hint calm-search" role="note">
+          {calmNote}
         </p>
       )}
       <dl className="stats">
@@ -799,6 +827,7 @@ function RouteSummary({ route, points, narrow }: { route: RouteResponse; points:
       </dl>
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
       <FacilityBreakdown route={route} />
+      <IntersectionList route={route} onSelect={onSelectJunction} />
       {/* Riders often arrive by a shared link, straight into a route, and a
           phone has no hover to show the handle: say that the line moves. */}
       <p className="hint reshape">

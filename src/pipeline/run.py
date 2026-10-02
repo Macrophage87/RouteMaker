@@ -166,6 +166,11 @@ WEEKEND_SENTINEL_EXPECTED = "separated"
 MIN_JURISDICTION_FRACTION = 0.10
 
 
+def _smallint(value: float | None) -> int | None:
+    """A road trait as the segment table's smallint: rounded, or null."""
+    return None if value is None else round(value)
+
+
 def lit_value(tags: dict) -> bool | None:
     """Whether a way is lit, by upstream's own reading of its `lit` tag.
 
@@ -768,6 +773,9 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
         volume_aadt=current.volume_aadt,
         volume_year=current.volume_year,
         attr_sources=current.attr_sources,
+        speed_mph=current.speed_mph,
+        lanes=current.lanes,
+        oneway=current.oneway,
     )
     return True
 
@@ -1613,6 +1621,9 @@ def build_handlers(
                         car_free_when=sorted(context.car_free_by_way.get(way.osm_id, ())),
                         map_class=map_class_of(way.osm_id, way.tags).value,
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
+                        road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
+                        road_lanes=_smallint(getattr(stress, "lanes", None)),
+                        road_oneway=getattr(stress, "oneway", None),
                     )
                 )
         context.rows = rows

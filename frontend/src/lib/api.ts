@@ -24,6 +24,50 @@ export interface StressSpan {
   facility: "path" | "protected" | "lane" | "none" | null;
 }
 
+/**
+ * One stressful junction of the route (core.api.IntersectionOut; OWNER-DECISIONS
+ * item 172). Only flagged ones are listed: a neighbourhood stop sign never is.
+ */
+export interface JunctionWarning {
+  /** Metres along the route's traced length. */
+  m: number;
+  lon: number;
+  lat: number;
+  severity: "orange" | "red";
+  /** US units first: "Left turn across a 4-lane 35 mph (56 km/h) road, no signal". */
+  reason: string;
+  /** The busy road's LTS, 3-5; null if unknown. */
+  crossed_tier: number | null;
+  movement: "left" | "straight" | "right";
+  control: "signal" | "stop" | "cross_stop" | "all_stop" | "none";
+  kind: string;
+  cost_ft: number;
+}
+
+/** What the search over the router's routes did (core.api.CalmSearchOut). */
+export interface CalmSearch {
+  rate: number;
+  rounds: number;
+  excluded: number;
+  /** Why it stopped short or did not run; null when it ran to its end. */
+  limited: string | null;
+  original_m?: number | null;
+  extra_distance_m?: number | null;
+  exposure_before_m?: number | null;
+  exposure_after_m?: number | null;
+}
+
+/** How much longer the route is than the most direct legal one (core.api.DetourOut). */
+export interface Detour {
+  basis: "direct_route" | "straight_line";
+  reference_m: number;
+  ratio: number | null;
+  extra_m: number;
+  level: "note" | "warning" | "strong" | null;
+  /** Metres of LTS 3 and worse the detour avoids, where known. */
+  avoided_m?: number | null;
+}
+
 export interface RouteResponse {
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend";
@@ -95,6 +139,15 @@ export interface RouteResponse {
    * budget. Absent from an older API, when the route is drawn in one colour.
    */
   stress_spans?: StressSpan[];
+  /**
+   * The route's stressful junctions, in route order; null where they could not
+   * be read in time, absent from an older API.
+   */
+  intersections?: JunctionWarning[] | null;
+  /** The calm detour search (null on a ride type that has none). Absent from an older API. */
+  calm_search?: CalmSearch | null;
+  /** Null within the allowance of the direct route; absent from an older API, which has the straight-line notice. */
+  detour?: Detour | null;
 }
 
 export type ErrorKind =

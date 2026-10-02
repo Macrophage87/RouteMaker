@@ -415,6 +415,10 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             volume_aadt=getattr(current, "volume_aadt", None),
             volume_year=getattr(current, "volume_year", None),
             attr_sources=getattr(current, "attr_sources", ()),
+            # The road is the same road whatever tier the owner gave it.
+            speed_mph=getattr(current, "speed_mph", None),
+            lanes=getattr(current, "lanes", None),
+            oneway=getattr(current, "oneway", None),
         )
         applied += 1
 

@@ -10,7 +10,8 @@ The stress and hills sliders (PUBLIC-DIALS, owner requests of 2026-09-27)
 set `use_roads` and `use_hills` per request; each preset below states where
 they start, and the other dials stay the preset's own:
 
-- **Default**: stress 90 (`use_roads` 0.10), the owner's "90"; hills at the
+- **Default**: stress 70 (`use_roads` 0.10), the owner's "90" of 2026-09-27 on the
+  scale before the rescale of 2026-10-01 (below); hills at the
   middle of the slider. The owner, 2026-09-27: "For hilliness, we can go from
   a default which is basically fastest time for most people in the middle, to
   hill avoidant, and even hill seeking." Mapping that middle to `use_hills` 1.0
@@ -48,6 +49,7 @@ No preset arms the hard surface exclusion, which only engages when
 from __future__ import annotations
 
 import copy
+import math
 from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any
@@ -62,15 +64,17 @@ VALHALLA_GATE_PENALTY_S = 300
 
 MID = 0.5
 
-# Default's starting position on the stress slider. The owner, 2026-09-27:
+# Default's starting position on the stress slider, after the rescale of
+# 2026-10-01 (below): 70 is where the old 90 sits. The owner, 2026-09-27:
 # "It seems that the current default is probably a bit too traffic tolerant
 # for most people. For instance my route to work, would typically be about
 # 2 hrs on full trails. Instead it puts me on a set of roads where almost a
 # quarter are LTS4." and, of the faster road route, "It is faster, but not
 # worth it for most people." Chosen from the trip measurements in
 # docs/DEVELOPMENT.md, "The stress and hills sliders". The owner's answer of
-# 2026-09-27 to "Keep Default at 75, or 90?": "90".
-DEFAULT_STRESS = 90
+# 2026-09-27 to "Keep Default at 75, or 90?": "90" - on the scale of that day.
+# `use_roads_for` keeps that route: 70 now plans exactly what 90 did.
+DEFAULT_STRESS = 70
 
 # Cargo Bike. The owner, 2026-09-27: "Also another popular option in our city
 # would be cargo bikes. People use cargo bikes in our region quite often. They
@@ -94,9 +98,13 @@ DEFAULT_STRESS = 90
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
 # - Stress: carrying cargo starts where Default does (the owner, 2026-09-28:
-#   "Same as Default, 90 (Recommended)"); carrying people at the top of the
-#   slider, 100, where a tier 3 or 4 way costs several times its length and a
-#   path or protected lane wins unless avoiding it takes much longer.
+#   "Same as Default, 90 (Recommended)"); carrying people where the top of the
+#   slider was that day, where a tier 3 or 4 way costs several times its
+#   length and a path or protected lane wins unless avoiding it takes much
+#   longer. That is STRESS_TODAYS_TOP (80) after the rescale, so Cargo Bike
+#   plans what it did. It stays there below the new top (the owner,
+#   2026-10-02, item 194: Trailmaxxing moves to 100 and carrying people stays
+#   at 80); the new top can go many times the straight line.
 # - Electric assist (the owner, 2026-09-27: "Cargo bikes with E assist still
 #   have problems on hills. They tend to be very heavy. The assist doesn't
 #   cancel out the hill in many cases. People with more powerful motors can
@@ -105,8 +113,8 @@ DEFAULT_STRESS = 90
 #   hill-averse start; a rider with a strong motor moves the hills slider.
 CARRYING_CARGO = "cargo"
 CARRYING_PEOPLE = "people"
-# Carrying cargo tracks Default; carrying people is the top of the slider.
-CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 100}
+# Carrying cargo tracks Default; carrying people is the old top, 80 (item 194).
+CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 80}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0
 CARGO_GATE_COST_S = 300
@@ -180,9 +188,67 @@ _LIVING_STREETS = MID
 STRESS_MIN, STRESS_MAX = 0, 100
 HILLS_MIN, HILLS_MAX = -100, 100
 
+# The stress slider's rescale (the owner, 2026-10-01, item 163): "I'd actually
+# like to see the slider for traffic stress to have a lot more available
+# penalty for higher LTS roads. There are times that I want to go for a ride
+# and I'm willing to add 10 or 20 miles to my trip just so it's more relaxing.
+# Clearly there's times where you'd be willing to handle more stressful roads
+# for a shorter trip, but for a relaxing weekend ride where the point is in
+# many cases to do miles, a higher distance tradeoff could make sense." and
+# item 164: "The 10-20 miles is just an example, but the upper end could be much
+# greater than straight line distance, just warn people."
+#
+# Valhalla's `use_roads` runs 0 to 1 and no further, and at 0 the pinned
+# router's stress price on an LTS 3 way is already at its ceiling (about 5 to
+# 13 times the way's time, docs/DEVELOPMENT.md, "Graded stress"). So the old
+# 0-100 slider hit its top at 90 (`use_roads` 0.10) and the last ten points
+# changed almost nothing (measured on the live router, 2026-10-01: Bethesda to
+# the Capitol and Falls Church to Union Station plan the same route at 90 and
+# 100). The rescale keeps every position's old route and makes room above it:
+#
+# - 0 to STRESS_DEFAULT_AT (70) is the old 0 to 90, `use_roads` 1.0 to 0.10;
+# - 70 to STRESS_TODAYS_TOP (80) is the old 90 to 100, `use_roads` 0.10 to 0;
+# - 80 to 100 is new. `use_roads` stays 0 and the calm detour search
+#   (`core.routing.calm_search`) takes over, pricing a metre of LTS 3, twice
+#   that of LTS 4 and three times that of Avoid at `calm_rate_for` metres of
+#   detour, rising exponentially to CALM_RATE_MAX at 100. There is no cap on
+#   the detour: a warning (`routemaker.detour`) says how much longer it is.
+#
+# Turn costs and hill costs are not part of this: they are costing options sent
+# at every position, so a relaxed ride is not a zig-zag over a hill.
+STRESS_DEFAULT_AT = 70
+STRESS_TODAYS_TOP = 80
+# The old scale's positions at those two points, which `use_roads` is read at.
+_OLD_DEFAULT_POSITION = 90
+_OLD_TOP_POSITION = 100
+
+# A PROPOSAL for the owner: how many metres of detour a rider at the top of the
+# slider accepts to avoid one metre of LTS 3 (LTS 4 counts twice, Avoid three
+# times). 10 is "a mile of busy road is worth ten miles more riding"; at 100 a
+# 3 mi LTS 3 corridor is worth a 30 mi detour. And the steepness of the rise:
+# each step of 5 points multiplies the rate by about 1.4 near the bottom.
+CALM_RATE_MAX = 10.0
+CALM_CURVE = 3.0
+
 
 def use_roads_for(stress: int) -> float:
-    return round(1.0 - stress / 100, 3)
+    """Valhalla's `use_roads` for a slider position (see the rescale above)."""
+    if stress <= STRESS_DEFAULT_AT:
+        old = stress * _OLD_DEFAULT_POSITION / STRESS_DEFAULT_AT
+    elif stress <= STRESS_TODAYS_TOP:
+        old = _OLD_DEFAULT_POSITION + (stress - STRESS_DEFAULT_AT)
+    else:
+        old = _OLD_TOP_POSITION
+    return round(1.0 - old / 100, 3)
+
+
+def calm_rate_for(stress: int) -> float:
+    """Metres of detour accepted per metre of LTS 3 avoided at a slider
+    position: 0 up to STRESS_TODAYS_TOP, then exponential to CALM_RATE_MAX."""
+    if stress <= STRESS_TODAYS_TOP:
+        return 0.0
+    t = (min(stress, STRESS_MAX) - STRESS_TODAYS_TOP) / (STRESS_MAX - STRESS_TODAYS_TOP)
+    return round(CALM_RATE_MAX * math.expm1(CALM_CURVE * t) / math.expm1(CALM_CURVE), 3)
 
 
 def use_hills_for(hills: int) -> float:
@@ -305,7 +371,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # "Lowest stress ride, directness secondary": use_roads near
                 # zero, living streets on, low surface avoidance, Cross. The
                 # owner, 2026-09-27, dropping Beginner and Recovery: Trailmaxxing
-                # is the stress slider at its maximum; hills stay the rider's.
+                # is the stress slider at its maximum; and 2026-10-02 (item 194,
+                # after 187's "Trailmaxxing is about relaxation, not
+                # commuting"), the new maximum, STRESS_MAX, where the calm
+                # detour search runs at CALM_RATE_MAX. Hills stay the rider's.
                 stress=STRESS_MAX,
                 hills=0,
                 bicycle_type="Cross",
@@ -318,8 +387,9 @@ PRESETS: MappingProxyType = MappingProxyType(
             _preset(
                 "group-ride",
                 Variant.STANDARD,
-                # Where the table puts it: mid use_roads and mid use_hills.
-                stress=50,
+                # Where the table puts it: mid use_roads and mid use_hills
+                # (50 of the old scale; 40 is within two points of that).
+                stress=40,
                 hills=-50,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=_SURFACE_AVOIDANCE,
@@ -353,7 +423,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # the hills slider starts at its top, which is today's climb
                 # search among the router's alternatives (core.routing), not
                 # the via-point search the table's L4 describes.
-                stress=50,
+                stress=40,
                 hills=HILLS_MAX,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
@@ -367,7 +437,7 @@ PRESETS: MappingProxyType = MappingProxyType(
                 Variant.STANDARD,
                 # "L2: Cross or Mountain, avoid_bad_surfaces zero". Unpaved-share
                 # ranking is layer 4 and not built.
-                stress=50,
+                stress=40,
                 hills=0,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=0.0,
@@ -382,6 +452,10 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # "Few stops, few turns, smooth pavement | L2: high use_roads,
                 # high maneuver_penalty, high surface avoidance" - high, and
                 # still below the 1.0 at which the surface exclusion arms.
+                # The old 10 was `use_roads` 0.90. On the slider's steps of
+                # five, 10 gives 0.871 and 5 gives 0.936: 10 is the nearer
+                # (review r1; 8 would give 0.897 but is not a step), and plans
+                # a little less directly than before.
                 stress=10,
                 hills=0,
                 bicycle_type="Hybrid",

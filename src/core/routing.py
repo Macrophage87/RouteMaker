@@ -70,7 +70,8 @@ from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, ridetime
+from routemaker import climbs, ridetime, trace_junctions
+from routemaker import detour as detour_rules
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
 from routemaker.measure import elevation_gain
@@ -241,25 +242,7 @@ def default_when(now: datetime | None = None) -> str:
 
 def decode_polyline6(encoded: str) -> list[tuple[float, float]]:
     """Valhalla's encoded shape (precision 6) as [(lon, lat), ...]."""
-    coordinates: list[tuple[float, float]] = []
-    index = lat = lon = 0
-    while index < len(encoded):
-        for axis in (0, 1):
-            shift = result = 0
-            while True:
-                byte = ord(encoded[index]) - 63
-                index += 1
-                result |= (byte & 0x1F) << shift
-                shift += 5
-                if byte < 0x20:
-                    break
-            delta = ~(result >> 1) if result & 1 else result >> 1
-            if axis == 0:
-                lat += delta
-            else:
-                lon += delta
-        coordinates.append((lon / 1e6, lat / 1e6))
-    return coordinates
+    return trace_junctions.decode_polyline6(encoded)
 
 
 def climb_and_descent(elevations: list[float | None]) -> tuple[float, float]:
@@ -578,6 +561,8 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
                     "edge.begin_shape_index",
                     "edge.end_shape_index",
                     "shape",
+                    # What the intersection model reads (core.junctions).
+                    *trace_junctions.TRACE_ATTRIBUTES,
                 ],
                 "action": "include",
             },
@@ -881,6 +866,154 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
         return _call(variant, "route", plain, Deadline(deadline.at, limit)), True
 
 
+def _refine_limit(
+    preset_name: str, points: list, long_ride: bool, seeking: bool, deadline: Deadline
+) -> str | None:
+    """Why the search over the router's routes does not run on this plan, or
+    None where it does. A Mass Ride has its own rules (OWNER-DECISIONS 133 to
+    136, 171: its crossings are priced for the group, and its slider is locked),
+    and the search runs only for a start and an end, inside what is left of the
+    budget."""
+    from . import refine
+
+    if preset_name == "mass-ride":
+        return "mass_ride"
+    if len(points) < 2:
+        return "points"
+    if long_ride:
+        return "long_ride"
+    if seeking:
+        return "seeking"
+    straight = sum(
+        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+    )
+    if straight > refine.REFINE_MAX_SPAN_M:
+        return "span"
+    if deadline.at - clock() < refine.REFINE_ROUND_MIN_S + refine.REFINE_TRACE_RESERVE_S:
+        return "time"
+    return None
+
+
+def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list | None:
+    """The route's junction events: the search's, where it read this very
+    route, else read now. None where they could not be read in time."""
+    from . import refine
+
+    analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
+    if analysed is not None:
+        return analysed.events
+    try:
+        return refine.events_of_raws(raws, refine_context, deadline)
+    except (DeadlineExceeded, RouterUnavailable):
+        return None
+
+
+def _intersection_rows(events: list) -> list[dict]:
+    """The flagged junctions of a route, as the contract has them (OWNER-DECISIONS
+    172): where, orange or red, why, and the crossed road's tier. A
+    neighbourhood stop sign is never flagged."""
+    return [
+        {
+            "m": round(event.m),
+            "lon": round(event.lon, 6),
+            "lat": round(event.lat, 6),
+            "severity": event.severity,
+            "reason": event.reason,
+            "crossed_tier": event.crossed_tier,
+            "movement": event.movement.value,
+            "control": event.control.value,
+            "kind": event.kind,
+            "cost_ft": round(event.cost_ft),
+        }
+        for event in events
+        if event.flagged
+    ]
+
+
+# The least time the direct route's probe is started with; and the busy-road
+# comparison, which traces it as well, wants this much more.
+DETOUR_PROBE_MIN_S = 4
+DETOUR_AVOIDED_MIN_S = 7
+
+
+def _detour(
+    route_m: float,
+    straight_m: float,
+    request: dict,
+    variant: str,
+    preset_name: str,
+    dials: tuple,
+    busy_m: float,
+    when: str,
+    deadline: Deadline,
+    traces: dict,
+) -> dict | None:
+    """How much longer the route is than the most direct legal one, for the
+    answer's warning (OWNER-DECISIONS 164; `routemaker.detour`).
+
+    Nothing to say, and no second route asked for, while the route is within
+    the allowance of the straight line, which the direct route can only exceed.
+    Otherwise the router is asked for the most direct route (the traffic
+    tolerant end, the hills detent); where it cannot be had in time, or on a
+    Mass Ride, which is the direct route by design, the straight line is the
+    reference and only a route twice as long says so."""
+    if straight_m <= 0 or route_m <= max(
+        straight_m * detour_rules.SILENT_RATIO, straight_m + detour_rules.SILENT_EXTRA_M
+    ):
+        return None
+    stress_dial, assist, avoid_gravel = dials
+    # At or below Default the rider asked for no calm detour, and the route
+    # cannot be more than the straight line's ratio longer than the direct one
+    # (1.5 times at most, a note): the second route is asked for from just above
+    # Default, or where the route is twice the straight line at any position.
+    asked_for_calm = stress_dial > presets.STRESS_DEFAULT_AT or route_m >= (
+        detour_rules.STRONG_RATIO * straight_m
+    )
+    if (
+        preset_name != "mass-ride"
+        and asked_for_calm
+        and deadline.at - clock() >= DETOUR_PROBE_MIN_S
+    ):
+        direct_costing = presets.costing(
+            preset_name, 0, 0, assist=assist, avoid_gravel=avoid_gravel
+        )
+        direct_request = {
+            key: value
+            for key, value in request.items()
+            if key not in ("alternates", "exclude_locations")
+        } | {"costing_options": direct_costing}
+        try:
+            answer = _call(
+                variant,
+                "route",
+                direct_request,
+                Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+            )
+            direct = answer.get("trip") or {}
+            direct_m = float((direct.get("summary") or {}).get("length", 0.0)) * 1000.0
+        except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+            direct, direct_m = {}, 0.0
+        if direct_m > 0:
+            avoided = None
+            level = detour_rules.level(route_m, direct_m)
+            if level is not None and deadline.at - clock() >= DETOUR_AVOIDED_MIN_S:
+                try:
+                    pieces: list[Piece] = []
+                    for leg in direct.get("legs") or []:
+                        trace = _trace(
+                            variant, direct_costing, leg.get("shape", ""), deadline, traces
+                        )
+                        if trace is None:
+                            raise RouterUnavailable("no trace")
+                        pieces.extend(pieces_of_trace(trace))
+                    direct_stress, _facility = breakdown(pieces, when)
+                    avoided = direct_stress["3"] + direct_stress["4"] + direct_stress["5"] - busy_m
+                except (DeadlineExceeded, RouterUnavailable):
+                    avoided = None
+            return detour_rules.describe(route_m, direct_m, detour_rules.DIRECT_ROUTE, avoided)
+    return detour_rules.describe(route_m, straight_m, detour_rules.STRAIGHT_LINE)
+
+
 def plan(
     points: list[list[float]],
     preset_name: str,
@@ -1032,6 +1165,40 @@ def plan(
             # Traced with the costing it was routed with, which the check
             # already did: the trace is reused, not asked for again.
             trace_costing = middle_costing
+    # The calm detour and crossing avoidance (core.refine): the router's own
+    # routes, searched for a better score. Only where it can run inside the
+    # budget; `refined` says what it did, or why it did not.
+    from . import refine
+
+    refine_context = refine.Context(
+        variant=variant,
+        request=request,
+        costing=trace_costing,
+        when=when,
+        deadline=deadline,
+        traces=traces,
+        points=points,
+        roadway_only=variant == Variant.NO_TRAIL.value,
+        with_facility=_has_facility_columns(validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)),
+        group=preset_name == "mass-ride",
+        rate=presets.calm_rate_for(stress_dial),
+        weight=refine.intersection_weight(stress_dial),
+        climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
+        quiet_cost=refine.quiet_cost_per_m(trace_costing),
+        wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
+    )
+    refined = None
+    refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline)
+    if refine_limited is None:
+        trip, refined = refine.refine(trip, refine_context)
+    elif refine_context.rate > 0:
+        # A calm search was asked for and could not run: say so.
+        refined = {
+            "rate": refine_context.rate,
+            "rounds": 0,
+            "excluded": 0,
+            "limited": refine_limited,
+        }
     legs = trip.get("legs") or []
     if not legs:
         raise NoRoute("the router returned no legs")
@@ -1041,6 +1208,10 @@ def plan(
     stress = dict.fromkeys(STRESS_KEYS, 0.0)
     facility = dict.fromkeys(FACILITY_KEYS, 0.0)
     pieces: list[Piece] = []
+    # Where the route passes a node, for the intersection model, and how far
+    # along the traced length it has got.
+    raw_junctions: list = []
+    traced_m = 0.0
     # The route in the order ridden, for its coloured sections: each leg is
     # either a run of traced pieces (start, end) or an untraced length.
     leg_runs: list[tuple[int, int] | float] = []
@@ -1065,10 +1236,13 @@ def plan(
             stress["unknown"] += untraced
             facility["unknown"] += untraced
             leg_runs.append(untraced)
+            traced_m += untraced
         else:
             start = len(pieces)
             pieces.extend(pieces_of_trace(trace))
             leg_runs.append((start, len(pieces)))
+            raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
+            traced_m += sum(piece.metres for piece in pieces[start:])
     traced_at = clock()
     # The joins over the traced pieces are the work after the routers, and the
     # budget's reserve is for them. Once the budget itself is gone they are
@@ -1083,7 +1257,12 @@ def plan(
         # Unknown along its whole length, as its totals are.
         classes = [("unknown", "unknown")] * len(pieces)
     else:
-        classes = classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
+        analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
+        classes = (
+            analysed.classes
+            if analysed is not None and len(analysed.pieces) == len(pieces)
+            else classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
+        )
         traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
         for key, metres in traced_stress.items():
             stress[key] += metres
@@ -1097,6 +1276,9 @@ def plan(
         else:
             stretches.append((run, "unknown", "unknown"))
     spans = stress_spans(stretches)
+    events = None
+    if not over_budget:
+        events = _events(refine_context, legs, raw_junctions, deadline)
     joined_at = clock()
     if joined_at - started > budget_s:
         logger.warning(
@@ -1144,6 +1326,21 @@ def plan(
             "limited": seek_limited,
             "kept_middle": kept_middle,
         }
+    straight_m = sum(
+        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+    )
+    detour = _detour(
+        round(float(summary.get("length", 0.0)) * 1000.0, 1),
+        straight_m,
+        request,
+        variant,
+        preset_name,
+        dials=(stress_dial, assist, avoid_gravel),
+        busy_m=stress["3"] + stress["4"] + stress["5"],
+        when=when,
+        deadline=deadline,
+        traces=traces,
+    )
     return {
         "preset": preset.name,
         "variant": variant,
@@ -1171,6 +1368,9 @@ def plan(
         "hills_avoid": hills_avoid,
         "attribution": list(ATTRIBUTION),
         "leg_ends": leg_ends,
+        "intersections": None if events is None else _intersection_rows(events),
+        "calm_search": refined,
+        "detour": detour,
     }
 
 
