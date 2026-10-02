@@ -469,6 +469,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    # The internal-comparison layers (Arlington's Bike Comfort Index,
+    # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a rebuild
+    # input. Refused before anything is written (review r2: the crossings
+    # fixture was installed first, so a refused run still changed the data root).
+    from routemaker.agency_roads import InternalOnlySource, refuse_internal_only
+
+    inputs = (args.extract, args.urban_areas, args.roadway_block, args.baltimore_centerline)
+    for path in (*inputs, *args.volume):
+        if path is None:
+            continue
+        try:
+            refuse_internal_only(path)
+        except InternalOnlySource as refused:
+            parser.error(str(refused))
+
     reference = args.data_root / "reference"
     reference.mkdir(parents=True, exist_ok=True)
 
@@ -517,8 +532,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
 
     if args.roadway_block or args.baltimore_centerline:
-        from routemaker.agency_roads import InternalOnlySource
-
         try:
             blocks = roadway_rows(args.roadway_block, args.baltimore_centerline)
         except InternalOnlySource as refused:

@@ -3458,6 +3458,10 @@ def build_one_road_extract(
         ("service", False),
         ("motorway", True),
         ("trunk", True),
+        # Review r2: a freeway-class way takes a differently named block only where
+        # the block is itself a freeway (Canal Road NW took M Street NW's).
+        ("motorway-arterial", False),
+        ("trunk-arterial", False),
     ],
 )
 def test_a_frontage_road_does_not_take_the_arterial_beside_it_but_a_freeway_may(
@@ -3466,13 +3470,16 @@ def test_a_frontage_road_does_not_take_the_arterial_beside_it_but_a_freeway_may(
     """36th Place NE lies beside New York Avenue and took its 45 mph, three lanes
     and count (LTS 1 to LTS 4). A way whose name is a different street's is vetoed
     unless it is of a class agencies and OSM name differently - an interstate is
-    'Anacostia Freeway' to OSM and 'INTERSTATE 295' to DC."""
+    'Anacostia Freeway' to OSM and 'INTERSTATE 295' to DC - and the block is a
+    freeway by DC's functional class."""
     _source, root = workspace
+    highway, _, arterial = highway.partition("-")
     clipped = install_source_extract(
         Path(tempfile.mkdtemp()), build=build_one_road_extract, highway=highway
     )
     block = street_block("dc-1", {"speed_mph": {"ob": 45}, "lanes": {"ib": 3, "ob": 3}})
     block["facts"]["name"] = "NEW YORK AVE NE"
+    block["facts"]["functional_class"] = "3" if arterial else "1"
     context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
     assert (100 in context.road_facts_by_way) is reaches
 

@@ -259,7 +259,12 @@ RIDEABLE_SHOULDER_M = 1.2
 # stress methods"/core_methods.md). Review r1 found this at 13.5 ft, the top of
 # the narrow bin, which once an agency's parking width was added rated a 5 ft
 # lane beside a 9 ft parking lane LTS 1 where Furth gives it LTS 2. Below 15 ft
-# the table here is v2.2's two bins: LTS 2 up to 25 mph, LTS 3 at 30. A lane
+# the table here gives LTS 2 up to 25 mph and LTS 3 at 30, which is the
+# stricter of the published readings and is kept as such: it reads every reach
+# under 15 ft as MTI 11-19's "13.5 ft or less" bin (LTS 3 at 30 mph), where the
+# 14-14.5 ft bin there, v2.0's 12-14 ft row and v2.2's "< 15 ft" row all give
+# LTS 2 at 30 mph (v2.2 up to 33.5 mph; review r2 corrected an earlier comment
+# that credited this reading to v2.2). A lane
 # with nothing parked beside it is measured on its own, 5.5 ft. Named rather
 # than written inline at the comparison because a reviewer replaced them with
 # 2.1 and 0.7 - half and a third of the published figures - and the whole

@@ -1001,21 +1001,23 @@ def build_handlers(
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
         used: set[int] = set()
+        # The agency's street layer, over the way's own tags: a posted speed,
+        # lanes, one-way, bike lane and parking it records take precedence (in
+        # the District over OSM's own tagging too, OWNER-DECISIONS 190), and the
+        # curated speed below fills only what is still missing. A bike facility
+        # OSM maps as its own way - this way's, or another way's on one of its
+        # blocks - stays there, never written onto the road (reviews r1, r2).
+        overlays = conflation.overlay_road_facts(
+            context.ways, context.road_facts_by_way, divided_ways, separate_roads
+        )
+        precedence: Counter = Counter()
         for way in context.ways:
             match = context.aadt_by_way.get(way.osm_id)
             tags = way.tags
             facts = context.road_facts_by_way.get(way.osm_id)
-            overlaid = None
-            if facts is not None:
-                # The agency's street layer, over the way's own tags: a posted
-                # speed, lanes, one-way, bike lane and parking it records take
-                # precedence, and the curated speed below fills only what is
-                # still missing.
-                # A bike facility OSM maps as its own way beside the road
-                # stays there, never written onto the road (review r1).
-                overlaid = agency_roads.overlay(
-                    tags, facts, separate_road=way.osm_id in separate_roads
-                )
+            overlaid = overlays.get(way.osm_id)
+            if facts is not None and overlaid is not None:
+                precedence.update(overlaid.precedence)
                 tags = overlaid.tags
                 context.class_tags_by_way[way.osm_id] = tags
                 # The count's source is the count the classifier reads below:
@@ -1058,9 +1060,11 @@ def build_handlers(
             kinds = Counter(kind for found in context.road_disagreements.values() for kind in found)
             logger.info(
                 "agency street blocks classified %d ways; where they disagree with the way's "
-                "own tags and it was left alone: %s",
+                "own tags and it was left alone: %s; where the District's record overrode "
+                "OSM's tag (OWNER-DECISIONS 190 rows): %s",
                 len(context.road_facts_by_way),
                 dict(sorted(kinds.items())) or "none",
+                dict(sorted(precedence.items())) or "none",
             )
         context.speed_corrected = used
         unused = sorted(set(speeds) - used)

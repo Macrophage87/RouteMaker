@@ -53,6 +53,19 @@ SKIP = {"proposed", "construction", "platform", "corridor"}
 OVERRIDES = REPO / "fixtures" / "overrides"
 MOCO_FILE = "2026-10-01-owner-moco-lts5-avoid.json"
 BALTIMORE_FILE = "2026-10-01-owner-baltimore-facilities.json"
+# The ways and tiers the owner was shown and approved (OWNER-DECISIONS 181, 182).
+APPROVED = REPO / "reports" / "data-comparison" / "owner-approved-override-ways.json"
+
+
+def approved_ways(item: str, path: Path = APPROVED) -> dict:
+    """The rows the owner approved under `item` ("181", "182"): `stress` way id ->
+    tier, and `access` way ids. A re-derived override file keeps within them
+    (review r2: the Baltimore file had drifted to five ways the owner never saw)."""
+    record = json.loads(Path(path).read_text())[item]
+    return {
+        "stress": {int(way): tier for way, tier in record.get("stress", {}).items()},
+        "access": {int(way) for way in record.get("access", [])},
+    }
 
 
 class RefusedOutput(SystemExit):
@@ -160,6 +173,7 @@ class Context:
         )
         # The agency street layers, as the rebuild conflates them (`--roadway`).
         self.road_facts: dict[int, agency_roads.WayFacts] = {}
+        self.overlays: dict[int, agency_roads.Overlay] = {}
         self.block_match: dict[int, conflation.Match] = {}
         roadway = getattr(args, "roadway", None)
         if roadway:
@@ -182,6 +196,10 @@ class Context:
                     (w.osm_id, w.coordinates, variants.is_trail_class(w.tags)) for w in self.ways
                 ]
                 self.road_facts, result = conflation.road_facts_by_way(self.ways, entries, blocks)
+                # The rebuild's own overlay wiring (`pipeline.run`).
+                self.overlays = conflation.overlay_road_facts(
+                    self.ways, self.road_facts, self.divided, self.separate
+                )
                 counted = set(self.aadt)
                 for way_id, facts in self.road_facts.items():
                     filled = conflation.block_count(
@@ -205,12 +223,8 @@ class Context:
     def class_tags(self, way) -> dict[str, str]:
         """The tags the classifier reads: the way's own, with the agency street layer's
         facts overlaid where a block reached it."""
-        facts = self.road_facts.get(way.osm_id)
-        if facts is None:
-            return dict(way.tags)
-        return agency_roads.overlay(
-            dict(way.tags), facts, separate_road=way.osm_id in self.separate
-        ).tags
+        overlaid = self.overlays.get(way.osm_id)
+        return dict(way.tags) if overlaid is None else dict(overlaid.tags)
 
     def classify(self, way, tags=None):
         tags = self.class_tags(way) if tags is None else tags
@@ -548,6 +562,25 @@ def moco(args, ctx: Context) -> None:
                 ),
             }
         )
+    # Within the ways the owner approved (OWNER-DECISIONS 181): a way the re-derivation adds
+    # is held back for the owner, and an approved way it no longer finds is listed.
+    approved = approved_ways("181")["stress"]
+    held_back = [r for r in kept_records if r["way"] not in approved]
+    pairs = [(r, row) for r, row in zip(kept_records, rows, strict=True) if r["way"] in approved]
+    kept_records, rows = [r for r, _ in pairs], [row for _, row in pairs]
+    found = {r["way"] for r in kept_records}
+    by_way = {r["way"]: r for r in records}
+    dropped = []
+    for way_id in sorted(set(approved) - found):
+        r = by_way.get(way_id)
+        way = ctx.by_id.get(way_id)
+        why = (
+            "no longer matched to a county record"
+            if r is None
+            else f"MoCo LTS {r['theirs']} on the record it lies along most, ours {r['ours']}"
+            + (f", the record covers {r['share']:.0%} of it" if r["share"] < 0.5 else "")
+        )
+        dropped.append((way_id, way.name if way else None, why))
     file_miles = sum(r["miles"] for r in kept_records)
     groups = Counter(row["value"]["adjustment_id"] for row in rows)
     out += [
@@ -561,6 +594,18 @@ def moco(args, ctx: Context) -> None:
         + "; ".join(f"{why}, {m:.1f} mi" for why, m in left_out.most_common())
         + ". The share filter keeps a way only where the LTS 5 record is the one it lies along for at "
         "least half its length, so a way that merely ends on an LTS 5 road is not made Avoid.",
+        "",
+        f"The file keeps within the {len(approved)} ways the owner approved (OWNER-DECISIONS 181; "
+        "reports/data-comparison/owner-approved-override-ways.json). Approved ways the re-derivation "
+        f"no longer finds, left out for the owner: {len(dropped)}"
+        + ("." if not dropped else ":")
+        + "".join(f"\n- {way_id} ({name or 'unnamed'}): {why}" for way_id, name, why in dropped)
+        + f"\n\nWays the re-derivation finds that the owner was not shown, held back: {len(held_back)}"
+        + ("." if not held_back else ":")
+        + "".join(
+            f"\n- {r['way']} ({ctx.by_id[r['way']].name or 'unnamed'}), {r['miles']:.2f} mi"
+            for r in held_back
+        ),
         "",
         table(
             ["adjustment", "ways", "miles"],
@@ -1028,6 +1073,8 @@ def baltimore(args, ctx: Context) -> None:
                 and (
                     have & TRACK_VALUES
                     or any(v == "separate" for k, v in way.tags.items() if k.startswith("cycleway"))
+                    # A separately mapped facility beside the road, as the rebuild pairs them.
+                    or way_id in ctx.separate
                 )
             )
             or (
@@ -1174,6 +1221,45 @@ def baltimore(args, ctx: Context) -> None:
         if int(new.tier) < c["tier"] and c["way"] not in curated["stress"]:
             proposals.append(c)
 
+    # Within the rows the owner approved (OWNER-DECISIONS 182). A way the re-derivation adds is
+    # held back; an approved way that no longer qualifies is listed, and so is one whose tier with
+    # the facility moved (the row is kept at the re-derived tier, which is what the facility gives on
+    # this branch's classification).
+    approved = approved_ways("182")
+    held_back = [c for c in proposals if c["way"] not in approved["stress"]]
+    proposals = [c for c in proposals if c["way"] in approved["stress"]]
+    changed = [
+        (c, approved["stress"][c["way"]])
+        for c in proposals
+        if c["tier_with"] != approved["stress"][c["way"]]
+    ]
+    proposed = {c["way"] for c in proposals}
+    by_candidate = {c["way"]: c for c in candidates}
+    dropped = []
+    for way_id in sorted(set(approved["stress"]) - proposed):
+        c = by_candidate.get(way_id)
+        way = ctx.by_id.get(way_id)
+        if c is None and way_id in ctx.separate:
+            why = "OSM maps the facility as its own way beside it (the rebuild's separate pairing)"
+        elif c is None and way_id not in result.matched:
+            why = "no longer lies along the city's facility line"
+        elif c is None:
+            why = "OSM's tags carry the facility now"
+        elif c["expected"] not in ("lane", "track", "opposite_lane"):
+            why = f"the city's facility there reads as {c['expected']} now"
+        elif c.get("tier_with") is not None and c["tier_with"] >= c["tier"]:
+            why = f"the facility no longer lowers its tier (LTS {c['tier']} with or without it)"
+        else:
+            why = "an approved file already curates it"
+        dropped.append(
+            (
+                way_id,
+                (way.name if way else None) or (c["street"] if c else None),
+                why,
+                approved["stress"][way_id],
+            )
+        )
+
     out = [
         "# Baltimore: the city's bike facilities and trails against OSM",
         "",
@@ -1287,9 +1373,55 @@ def baltimore(args, ctx: Context) -> None:
         "marking or a shared bus-bike lane, which is neither a lane nor a track and which the classifier "
         "does not credit. "
         f"{len(proposals)} of the lane and track ways ({sum(c['miles'] for c in proposals):.1f} mi) would be "
-        f"rated lower with the facility tagged, and are the stress rows of `fixtures/overrides/{BALTIMORE_FILE}` "
-        "(OWNER-DECISIONS 182, loaded). The tiers are this branch's, with the city's centerline conflated "
+        f"rated lower with the facility tagged and are among the rows the owner approved; they are the stress rows of "
+        f"`fixtures/overrides/{BALTIMORE_FILE}` (OWNER-DECISIONS 182; the differences from the approved set are "
+        "listed below). The tiers are this branch's, with the city's centerline conflated "
         "(its speed only where OSM has none, OWNER-DECISIONS 184).",
+        "",
+        "### Against the rows the owner approved (OWNER-DECISIONS 182)",
+        "",
+        f"The file keeps within the {len(approved['stress'])} stress rows the owner approved "
+        "(reports/data-comparison/owner-approved-override-ways.json, as proposed at commit 318708b).",
+        "",
+        f"Approved rows no longer valid, left out for the owner: {len(dropped)}.",
+        "",
+        table(
+            ["way", "street", "approved tier", "why"],
+            [[w, name or "(unnamed)", f"LTS {tier}", why] for w, name, why, tier in dropped],
+        )
+        if dropped
+        else "",
+        "",
+        f"Approved rows whose tier with the facility moved, kept at the re-derived tier: {len(changed)}.",
+        "",
+        table(
+            ["way", "street", "approved tier", "tier now with the facility", "tier without"],
+            [
+                [c["way"], c["street"], f"LTS {tier}", f"LTS {c['tier_with']}", f"LTS {c['tier']}"]
+                for c, tier in changed
+            ],
+        )
+        if changed
+        else "",
+        "",
+        f"Ways the re-derivation finds that the owner was not shown, held back: {len(held_back)}.",
+        "",
+        table(
+            ["way", "street", "OSM class", "city facility", "tier", "tier with the facility"],
+            [
+                [
+                    c["way"],
+                    c["street"],
+                    c["highway"],
+                    c["kind"],
+                    f"LTS {c['tier']}",
+                    f"LTS {c['tier_with']}",
+                ]
+                for c in held_back
+            ],
+        )
+        if held_back
+        else "",
         "",
         "## Paths, sidepaths and multiuse trails",
         "",
@@ -1395,7 +1527,7 @@ def baltimore(args, ctx: Context) -> None:
         )
     access = []
     for a in sorted({a["way"]: a for a in access_rows}.values(), key=lambda a: a["way"]):
-        if a["way"] in curated["access"]:
+        if a["way"] in curated["access"] or a["way"] not in approved["access"]:
             continue
         access.append(
             {

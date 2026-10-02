@@ -247,7 +247,7 @@ files.
   credits every map must carry"); a deployment that drops the rows drops the
   line with them.
 - `2026-10-01-owner-baltimore-facilities.json` ("Load Baltimore facilities",
-  OWNER-DECISIONS 182): 261 stress rows, the tier the classifier gives with the
+  OWNER-DECISIONS 182): 256 stress rows, the tier the classifier gives with the
   City of Baltimore's recorded bike lane, buffered, separated or contraflow lane
   tagged, where OSM has none and the tier would fall (hidden, approved), and
   180 `bicycle=designated` access rows on the footways and paths the city
@@ -255,3 +255,13 @@ files.
   edits upstream are the durable fix; the candidate list is
   `reports/data-comparison/baltimore-facility-candidates.csv`. Credit "City of
   Baltimore, Open Baltimore".
+
+Both files keep within the rows the owner was shown and approved
+(`reports/data-comparison/owner-approved-override-ways.json`, the proposal at
+commit 318708b: 411 MoCo ways; 264 Baltimore stress and 180 access rows), so a
+re-derivation never adds a way the owner did not see (review r2). What the
+re-derivation drops or changes is listed in the two reports for the owner: MoCo
+409 of 411 (Clarksville Pike 5268038 and Ridge Road 50832512 no longer match a
+county record); Baltimore 256 of 264 (eight approved rows no longer qualify, N
+Charles Street 970453181 now LTS 2 with the facility where LTS 3 was approved,
+and five new ways held back).

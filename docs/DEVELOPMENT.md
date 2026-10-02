@@ -1048,7 +1048,12 @@ went from LTS 1 to LTS 4. Primary and secondary roads were free of the veto
 until review r1 found them taking a neighbour's or a cross street's block
 (North Capitol Street took Clermont Drive's; Ohio Drive SW East Basin Drive's
 33,679 vehicles). Where one of a way's blocks has a name that agrees, a block
-naming a different street is dropped from its shares. Names: "E Street" and "N
+naming a different street is dropped from its shares, and a freeway-class way
+takes a differently named block only where the agency classes the block as a
+freeway itself (`FREEWAY_CLASSES`: DC's FHWA class 1 or 2, Baltimore's `INT` or
+`FWY`; review r2: Canal Road NW, a trunk, took M Street NW's block and went from
+35 to 20 mph, and the Whitehurst Freeway and the 3rd Street Tunnel took M Street's
+and Washington Avenue's). "BRG" is "Bridge", so the Key Bridge's name agrees. Names: "E Street" and "N
 ST NW" are named by their letter (a compass word just before the street type is
 the street's name), and plurals are singular ("East Meadow Court" is "EAST
 MEADOWS CT"). A way left unmatched falls back to OSM's own tags, the safe
@@ -1062,10 +1067,16 @@ against it 888 to 33), and each share records whether its way runs with the
 block's line or against it (`BlockShare.along`). So a one-way carriageway of a
 divided road takes its own direction's lanes and bike lane, not the busier
 direction's (review r1: 384 ways overstated, 51 given the other direction's
-lane), an agency one-way is written in the direction its traffic runs, and a
-lane running against a one-way's traffic is a contraflow lane
-(`cycleway:left=opposite_lane` with `oneway:bicycle=no`), which the classifier
-does not credit to the rider going with the traffic.
+lane), and an agency one-way is written in the direction its traffic runs. A
+lane is a contraflow lane (`cycleway:left=opposite_lane` with
+`oneway:bicycle=no`, which the classifier does not credit to the rider going
+with the traffic) **only where DC sets `BIKELANE_CONTRAFLOW`**. On a one-way
+block without the flag the bike lane's direction label is not reliable - where
+OSM maps a with-flow lane, DC labels it against the traffic 200 times and with
+it 56, while all 43 OSM-mapped contraflow lanes carry the flag (review r2) - so
+a lone lane there is the with-flow lane, whichever label it has
+(`agency_roads._block_bike`). Round 1 read the label and turned 159 ways' with-flow
+lanes (13.5 mi; R Street NW, 4th Street SE, V Street NW) into contraflow lanes.
 
 **Precedence.** Where matched, the agency's posted speed, lanes per direction
 (the larger direction plus any reversible lanes: Connecticut Avenue's are
@@ -1074,28 +1085,63 @@ direction), one-way, bike-lane type and width, and parking replace the way's
 own tags in what the classifier reads, and so replace the DC default speed
 (20 mph), the Maryland and Virginia urban defaults and the arterial-floor's
 inputs; those remain the fallback where nothing matched or the block is silent.
-The rules for what is *not* overridden, each counted for the report rather than
-decided silently:
 
-- an agency two-way never undoes an OSM one-way (a divided road's carriageways
-  are one-way ways on a two-way block), and an agency one-way never undoes OSM
-  tagging that says two-way in so many words, `oneway=no` or lanes counted each
-  way (review r1: Key Highway, mapped 3 and 2 lanes);
-- an agency's *absence* of a bike facility never removes OSM's lane (a lane
-  painted since the layer was cut);
-- **a bike facility OSM maps as its own way is never written onto the road**:
-  where the way has `cycleway*=separate` or `facility.separate_pairs` found its
-  facility's own way beside it, the agency's track is that way, and writing it
-  onto the road rated the motor lanes LTS 1 (review r1, blocker 1: 15th Street
-  NW, about 314 ways); it is counted as agreement;
-- a slip road (`*_link`) keeps its own lanes and is never given a block's count
-  (review r1: a one-lane ramp took its parent's block and read as 2 to 4 lanes);
+In the District the record wins over OSM's own tagging too. OWNER-DECISIONS 190
+(2026-10-02): "DC data takes priority over OSM. It's updated regularly." -
+speed, lanes, one-way and bike facility, a record of *no* facility included,
+with one exception the owner kept: a facility OSM draws as its own way stays on
+that way. Review r2 measured where the round-1 rules had left OSM standing in
+the District and which of those places a block can and cannot speak for, since
+a block describes the whole road and not each of its ways. Each override is
+named in `Overlay.precedence` (`dcbal.tsv`'s `item190` column), and each
+exception is counted as a disagreement with its reason:
+
+- **A. No facility recorded**: OSM's painted lane (`lane`, `opposite_lane`,
+  `buffered_lane`, with its width and buffer) is removed - decided per block:
+  only where *no* block along the way records a facility in any direction (the
+  weakest-block reading would otherwise erase a lane the District itself
+  records on the next block), and where a direction has a lane on one block and
+  none on the next, OSM's lane on that side stays. A track OSM maps on the road
+  is kept and reported. Another agency's silence (Baltimore's centerline has no
+  bike field) never removes anything.
+- **B. One-way recorded, OSM explicitly two-way** (`oneway=no`, or lanes counted
+  each way): the way is one-way, in the direction the block's traffic runs,
+  except on a block with reversible lanes (Clara Barton Parkway: one-way at the
+  peak only), a junction stub under 30 m [100 ft] (`MIN_ONE_WAY_OVERRIDE_M`), or
+  where the direction is not known. Outside the District an explicit two-way
+  stands (review r1: Baltimore's Key Highway). A two-way way left on a one-way
+  block keeps OSM's lanes: the busier direction's count is not copied into the
+  other (review r2: New Jersey Avenue NW read four lanes each way).
+- **C. Two-way recorded, OSM one-way**: the way is two-way (C4) - except a
+  carriageway of a divided road (C1, `routemaker.divided`), one of two opposite
+  one-way ways sharing a block (C2, `agency_roads.block_context`: the pairs the
+  divided detector missed), a slip road, a motorway or a trunk road (C3), a
+  roundabout, a way that runs on onto a one-way block, a junction stub, and an
+  unnamed way (a turn channel beside the named street).
+- **D.** A slip road (`*_link`) keeps its own lanes and is never given a block's
+  count (review r1: a one-lane ramp took its parent's block and read as 2 to 4
+  lanes); the block is the parent road, not the ramp.
+- **E. A bike facility OSM maps as its own way is never written onto the road**
+  (item 190's own exception): where the way has `cycleway*=separate`,
+  `facility.separate_pairs` found its facility's own way beside it, or **any
+  other way matched to one of its blocks is so mapped**
+  (`agency_roads.block_context`), the agency's track is that way, and writing it
+  onto the road rated the motor lanes LTS 1 (review r1: 15th Street NW; review r2:
+  Irving Street's motor carriageway, which shares DC's protected-lane blocks
+  with the carriageway OSM marks separate); it is counted as agreement. Nor is
+  a protected lane written where OSM says the road has none for bicycles:
+  `bicycle=no`, `bicycle=use_sidepath` or any `cycleway*=no` (review r2: Arizona
+  Avenue NW, `cycleway:both=no`) - counted as a disagreement. A painted lane the
+  District records is still written there.
 - **Baltimore's speed fills only where OSM has no `maxspeed`** (OWNER-DECISIONS
   184, "Fill gaps only (Recommended)"); DC's posted speed takes precedence
-  (item 151). Where
-blocks along one way differ, the most stressful reading describes the way (the
-highest speed, the most lanes, the weakest facility): one tier is stored per
-way.
+  (item 151).
+
+The wiring - the block context, the divided-road flag and each way's length -
+is in one place, `pipeline.conflation.overlay_road_facts`, which the rebuild and
+the analysis scripts call. Where blocks along one way differ, the most
+stressful reading describes the way (the highest speed, the most lanes, the
+weakest facility): one tier is stored per way.
 
 **Parking width** is used, not only parking's presence: Furth measures a bike
 lane beside parking by its *reach*, the lane plus the parking lane, adequate at
@@ -1145,15 +1191,21 @@ everywhere and the outbound field holds the limit on 96% of two-way blocks and
 1,097 and falls back to OSM or the default). DC's lane totals include bus lanes
 (`BUSLANE_*`), counted as travel lanes, and reversible lanes are assumed to
 operate (both conservative; OWNER-DECISIONS 179 keeps 16th Street NW and
-Connecticut Avenue NW at LTS 4 on that reading). `functional_class` is parsed
-and never read: the Furth tables take no class, and the class the classifier
-does read is OSM's `highway`, present everywhere in the region; it is kept for
-the reports and the decimal stress model (FOLLOWUP-DECIMAL-STRESS).
+Connecticut Avenue NW at LTS 4 on that reading). `functional_class` never
+reaches the classifier: the Furth tables take no class, and the class the
+classifier does read is OSM's `highway`, present everywhere in the region. Its
+one reader is the matcher's freeway check above; it is also kept for the
+reports and the decimal stress model (FOLLOWUP-DECIMAL-STRESS).
 
 **The comparison and match reports** are scripts, not stages:
 `scripts/analysis/data_before_after.py` (DC and Baltimore, with and without the
 layers, over the source extract, the rebuild's own steps; its output feeds
-`before_after_tables.py` and `match_report.py`) and
+`before_after_tables.py`, `match_report.py` and `dc_osm_discrepancies.py`, the
+last of which lists every District way where the Roadway Block and OSM disagree,
+by type, with whether the District's value was applied and why not, for the
+owner to review: OWNER-DECISIONS 191, regenerated with the others after each
+rebuild, `reports/data-comparison/dc-osm-discrepancies.md` and `.csv`; nothing
+in it is for importing into OSM, CC BY 4.0 into ODbL needing a waiver) and
 `scripts/analysis/compare_agency_lts.py moco|alexandria-lanes|baltimore`
 (an agency's LTS against ours, Alexandria's CC0 lanes and Baltimore's facility
 records against OSM; with `--roadway`, classified as the rebuild does, the

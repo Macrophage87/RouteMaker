@@ -118,6 +118,12 @@ Grouped by street and the pair of levels, ranked by miles times the gap. `our ru
 
 `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json`: 409 ways, 44.6 mi, tier 5 (Avoid), hidden, no public note, in 44 adjustments (one per street; unnamed ways by the neighbourhood of about 0.6 mi [1 km] they lie in). Its miles are fewer than the confusion matrix's cell of MoCo LTS 5 with ours below 5 (93.8 mi), because of these filters: the LTS 5 record covers under half the way, 48.5 mi; motorway, 0.8 mi. The share filter keeps a way only where the LTS 5 record is the one it lies along for at least half its length, so a way that merely ends on an LTS 5 road is not made Avoid.
 
+The file keeps within the 411 ways the owner approved (OWNER-DECISIONS 181; reports/data-comparison/owner-approved-override-ways.json). Approved ways the re-derivation no longer finds, left out for the owner: 2:
+- 5268038 (Clarksville Pike): no longer matched to a county record
+- 50832512 (Ridge Road): no longer matched to a county record
+
+Ways the re-derivation finds that the owner was not shown, held back: 0.
+
 | adjustment | ways | miles |
 | --- | --- | --- |
 | moco-lts5-georgia-avenue | 45 | 4.82 |

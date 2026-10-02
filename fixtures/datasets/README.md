@@ -133,8 +133,16 @@ otherwise rediscover; each is pinned by a test.
 * DC's lane totals include bus lanes (`BUSLANE_INBOUND`, `BUSLANE_OUTBOUND`), and
   reversible lanes are counted as operating in the peak direction; both are the
   conservative reading (OWNER-DECISIONS 179).
-* DC's `FHWAFUNCTIONALCLASS` is parsed and not used: the Furth tables take no
-  class, and the classifier's class is OSM's `highway`.
+* DC's `FHWAFUNCTIONALCLASS` never reaches the classifier: the Furth tables
+  take no class, and the classifier's class is OSM's `highway`. The matcher reads
+  it once: a freeway-class OSM way takes a block naming a different street only
+  where the block is class 1 or 2 (Baltimore's `sha_class` INT or FWY; review
+  r2, Canal Road NW took M Street NW's block).
+* DC's `BIKELANE_CONTRAFLOW` is the only reliable sign of a contraflow lane: on
+  one-way blocks without it, the bike lane's `IB`/`OB` label points against the
+  traffic 200 times and with it 56 where OSM maps a with-flow lane, while all 43
+  OSM-mapped contraflow lanes carry the flag (review r2). A lone lane on an
+  unflagged one-way block is read as the with-flow lane.
 * **Baltimore's `fr_speed_limit` and `to_speed_limit` hold 19 values, all 0.**
   The layer's `speed` field carries 25 on 26,722 of its 48,522 lines and `1` on
   its alleys; it is read as the speed limit, with the source named in the

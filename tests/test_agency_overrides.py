@@ -118,3 +118,27 @@ def test_the_credits_ride_with_the_rows() -> None:
 
 def test_nothing_is_left_proposed() -> None:
     assert not list((OVERRIDES / "proposed").glob("*.json"))
+
+
+APPROVED = REPO / "reports" / "data-comparison" / "owner-approved-override-ways.json"
+
+
+@pytest.mark.parametrize(("path", "item"), [(MOCO, "181"), (BALTIMORE, "182")])
+def test_the_file_keeps_within_the_rows_the_owner_approved(path, item) -> None:
+    """Review r2: the re-derived Baltimore file had five stress ways the owner never
+    saw. A file keeps within the ways (and, for access rows, the ways) of the
+    proposal the owner approved; the report lists what it drops or changes."""
+    approved = json.loads(APPROVED.read_text())[item]
+    assert approved["file"] == path.name
+    rows = json.loads(path.read_text())["rows"]
+    stress = {int(row["osm_way_id"]) for row in rows if row["kind"] == "stress"}
+    access = {int(row["osm_way_id"]) for row in rows if row["kind"] == "access"}
+    assert stress <= {int(way) for way in approved["stress"]}
+    assert access <= set(approved.get("access", []))
+
+
+def test_the_approved_record_is_what_the_owner_was_shown() -> None:
+    approved = json.loads(APPROVED.read_text())
+    assert len(approved["181"]["stress"]) == 411
+    assert len(approved["182"]["stress"]) == 264
+    assert len(approved["182"]["access"]) == 180

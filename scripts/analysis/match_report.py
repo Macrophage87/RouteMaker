@@ -281,8 +281,12 @@ def region_section(
             ]
             if baltimore
             else [
-                "Where OSM tags a way two-way in so many words (`oneway=no`, or lanes counted each way) "
-                "the agency's one-way is not applied and is counted as a disagreement.",
+                "DC's record takes priority over OSM's (OWNER-DECISIONS 190): a DC one-way is applied "
+                "where OSM tags the way two-way in so many words, except on a reversible-lane block, a "
+                "junction stub under 30 m [100 ft] or where the direction is not known; a DC two-way is "
+                "applied over an OSM one-way except on a carriageway of a divided road or of a pair "
+                "sharing the block, a slip road, a freeway or trunk road, a roundabout, a stub or an "
+                "unnamed way. What is kept is counted as a disagreement (before-after.md has the table).",
                 "",
             ]
         )
@@ -299,8 +303,12 @@ def region_section(
             "### Bike lane or track: agency against OSM",
             "",
             f"Where OSM maps the way's bike facility as a way of its own (`cycleway*=separate`, or a "
-            f"separately mapped facility beside it), the agency's facility is that way and is never written "
-            f"onto the road: {len(separate):,} matched ways ({miles(separate):,.1f} mi), counted as agreement.",
+            f"separately mapped facility beside it), on the way itself or on another way matched to one of "
+            f"its blocks (review r2), the agency's facility is that way and is never written onto the road: "
+            f"{len(separate):,} matched ways ({miles(separate):,.1f} mi), counted as agreement. Nor is a "
+            f"protected lane written where OSM says `bicycle=no`, `use_sidepath` or `cycleway*=no`. A lane "
+            f"is a contraflow lane only where DC flags it (`BIKELANE_CONTRAFLOW`), and where DC records no "
+            f"facility on any block of a way, OSM's painted lane is removed (OWNER-DECISIONS 190).",
             "",
             table(["", "ways", "miles", "share"], rows(bike, bike_miles)),
             "",

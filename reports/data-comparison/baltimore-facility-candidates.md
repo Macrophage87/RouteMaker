@@ -118,7 +118,40 @@ A *candidate* is an OSM road way lying along a city facility whose own tags carr
 | GUILFORD AVE | Shared Lane Markings | secondary | none | 0.25 | LTS 3 | - | 11202273, 69546296, 98289441 |
 | MADISON AVE | Shared Lane Markings | residential | none | 0.23 | LTS 2 | - | 949167915 |
 
-765 OSM ways (40.9 mi) in all. Of them, **410 ways (17.4 mi) lack the bike lane or track** the city records (bike lane, buffered, separated or contraflow lane), and 355 ways (23.5 mi) lack only a shared-lane marking or a shared bus-bike lane, which is neither a lane nor a track and which the classifier does not credit. 261 of the lane and track ways (10.8 mi) would be rated lower with the facility tagged, and are the stress rows of `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` (OWNER-DECISIONS 182, loaded). The tiers are this branch's, with the city's centerline conflated (its speed only where OSM has none, OWNER-DECISIONS 184).
+765 OSM ways (40.9 mi) in all. Of them, **410 ways (17.4 mi) lack the bike lane or track** the city records (bike lane, buffered, separated or contraflow lane), and 355 ways (23.5 mi) lack only a shared-lane marking or a shared bus-bike lane, which is neither a lane nor a track and which the classifier does not credit. 256 of the lane and track ways (10.7 mi) would be rated lower with the facility tagged and are among the rows the owner approved; they are the stress rows of `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` (OWNER-DECISIONS 182; the differences from the approved set are listed below). The tiers are this branch's, with the city's centerline conflated (its speed only where OSM has none, OWNER-DECISIONS 184).
+
+### Against the rows the owner approved (OWNER-DECISIONS 182)
+
+The file keeps within the 264 stress rows the owner approved (reports/data-comparison/owner-approved-override-ways.json, as proposed at commit 318708b).
+
+Approved rows no longer valid, left out for the owner: 8.
+
+| way | street | approved tier | why |
+| --- | --- | --- | --- |
+| 5998782 | E 33RD ST | LTS 3 | the facility no longer lowers its tier (LTS 3 with or without it) |
+| 6021467 | Park Avenue | LTS 2 | no longer lies along the city's facility line |
+| 10870563 | West 29th Street | LTS 1 | no longer lies along the city's facility line |
+| 108842191 | O'Donnell Street Cutoff | LTS 3 | no longer lies along the city's facility line |
+| 312657346 | Boston Street | LTS 3 | no longer lies along the city's facility line |
+| 424993940 | Dolphin Street | LTS 2 | no longer lies along the city's facility line |
+| 606136777 | Baltimore National Pike | LTS 3 | no longer lies along the city's facility line |
+| 949168595 | West 29th Street | LTS 1 | no longer lies along the city's facility line |
+
+Approved rows whose tier with the facility moved, kept at the re-derived tier: 1.
+
+| way | street | approved tier | tier now with the facility | tier without |
+| --- | --- | --- | --- | --- |
+| 970453181 | N CHARLES ST | LTS 3 | LTS 2 | LTS 3 |
+
+Ways the re-derivation finds that the owner was not shown, held back: 5.
+
+| way | street | OSM class | city facility | tier | tier with the facility |
+| --- | --- | --- | --- | --- | --- |
+| 32829714 | W CHASE ST | tertiary | Separated Bike Lane | LTS 2 | LTS 1 |
+| 51731746 | DRUID PARK LAKE DR | service | Separated Bike Lane | LTS 3 | LTS 1 |
+| 178254360 | HARFORD RD | primary | Separated Bike Lane | LTS 3 | LTS 1 |
+| 189310755 | W CHASE ST | tertiary | Separated Bike Lane | LTS 2 | LTS 1 |
+| 1067446518 | HILLEN RD | primary | Separated Bike Lane | LTS 3 | LTS 1 |
 
 ## Paths, sidepaths and multiuse trails
 

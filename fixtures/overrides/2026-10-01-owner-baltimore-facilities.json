@@ -3,7 +3,7 @@
  "decided": "2026-10-01",
  "decided_by": "the deployment owner",
  "status": "approved for loading by the owner on 2026-10-01 (OWNER-DECISIONS 182: \"Load Baltimore facilities\"). OSM edits upstream are the durable fix.",
- "annotations": "261 stress rows (roads whose city bike lane or track OSM lacks, tier from the classifier with the facility tagged and the city's centerline conflated, hidden, no public note) and 180 access rows (bicycle=designated on footways and paths the city records as paths or trails). Source: Open Baltimore, DOT BMC Bike Facilities and Multiuse Trails, open-licensed by Baltimore City Code Art. 1 \u00a79-1(h) (OWNER-DECISIONS 159), credit City of Baltimore, Open Baltimore.",
+ "annotations": "256 stress rows (roads whose city bike lane or track OSM lacks, tier from the classifier with the facility tagged and the city's centerline conflated, hidden, no public note) and 180 access rows (bicycle=designated on footways and paths the city records as paths or trails). Source: Open Baltimore, DOT BMC Bike Facilities and Multiuse Trails, open-licensed by Baltimore City Code Art. 1 \u00a79-1(h) (OWNER-DECISIONS 159), credit City of Baltimore, Open Baltimore.",
  "rows": [
   {
    "kind": "stress",
@@ -189,20 +189,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 32829714,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "baltimore-track-w-chase-st-lts1",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on W CHASE ST (record 632); OSM way 32829714 (highway=tertiary, cycleway none), 0.04 mi; tier now 2."
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 47999125,
    "value": {
     "tier": 1,
@@ -256,20 +242,6 @@
    },
    "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
    "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on ARGONNE DR (record 12); OSM way 51535573 (highway=secondary, cycleway lane), 0.05 mi; tier now 3."
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 51731746,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "baltimore-track-druid-park-lake-dr-lts1",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on DRUID PARK LAKE DR (record 73); OSM way 51731746 (highway=service, cycleway none), 0.02 mi; tier now 3."
   },
   {
    "kind": "stress",
@@ -693,20 +665,6 @@
   },
   {
    "kind": "stress",
-   "osm_way_id": 178254360,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "baltimore-track-harford-rd-lts1",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634); OSM way 178254360 (highway=primary, cycleway none), 0.03 mi; tier now 3."
-  },
-  {
-   "kind": "stress",
    "osm_way_id": 178254364,
    "value": {
     "tier": 1,
@@ -844,20 +802,6 @@
    },
    "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
    "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Bike Lane on W 29TH ST (record 464); OSM way 187473031 (highway=primary, cycleway none), 0.04 mi; tier now 3."
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 189310755,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "baltimore-track-w-chase-st-lts1",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on W CHASE ST (record 632); OSM way 189310755 (highway=tertiary, cycleway none), 0.02 mi; tier now 2."
   },
   {
    "kind": "stress",
@@ -3084,20 +3028,6 @@
    },
    "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
    "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HARFORD RD (record 634); OSM way 1065748664 (highway=primary, cycleway none), 0.01 mi; tier now 3."
-  },
-  {
-   "kind": "stress",
-   "osm_way_id": 1067446518,
-   "value": {
-    "tier": 1,
-    "adjustment_id": "baltimore-track-hillen-rd-lts1",
-    "category": "other",
-    "visibility": "hidden",
-    "annotation_status": "approved",
-    "display": "route_only"
-   },
-   "reason": "The owner, 2026-10-01 (OWNER-DECISIONS 182): \"Load Baltimore facilities\". The City of Baltimore's DOT records a separated bike lane on this street that OSM does not carry; the tier is what the classifier gives with the facility tagged. The durable fix is the OSM edit.",
-   "evidence": "Open Baltimore, DOT BMC Bike Facilities (item dbef46a0caf948debba8516f0d95fe4c), retrieved 2026-10-01: Separated Bike Lane on HILLEN RD (record 239); OSM way 1067446518 (highway=primary, cycleway none), 0.01 mi; tier now 3."
   },
   {
    "kind": "stress",

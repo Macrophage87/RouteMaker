@@ -181,6 +181,16 @@ def main() -> int:
         )
 
         tags_of = {w.osm_id: w.tags for w in ways}
+        # The rebuild's own overlay wiring (`pipeline.run`'s classification stage).
+        overlays = conflation.overlay_road_facts(ways, agg, div, separate_roads)
+        # The same with one OWNER-DECISIONS 190 row left out at a time, so the report can say
+        # what each row does to the tiers on its own.
+        without = {
+            row: conflation.overlay_road_facts(
+                ways, agg, div, separate_roads, rows=agency_roads.ROWS_190 - {row}
+            )
+            for row in sorted(agency_roads.ROWS_190)
+        }
         counted = set(before_match)
         for way_id, facts in agg.items():
             # The block's count fills where no count layer reached the way, never on a ramp.
@@ -226,14 +236,12 @@ def main() -> int:
             )
             facts = agg.get(w.osm_id)
             a = after_match.get(w.osm_id)
-            sources, disagree, agree, tags1 = {}, (), (), dict(tags0)
+            sources, disagree, agree, rows190, tags1 = {}, (), (), (), dict(tags0)
             if facts is not None:
-                ov = agency_roads.overlay(
-                    dict(w.tags), facts, separate_road=w.osm_id in separate_roads
-                )
+                ov = overlays[w.osm_id]
                 tags1, _ = speed_corrections.corrected(ov.tags, speeds.get(w.osm_id))
                 sources = {**ov.sources, "aadt": agency_roads.aadt_source(a)}
-                disagree, agree = ov.disagreements, ov.agreements
+                disagree, agree, rows190 = ov.disagreements, ov.agreements, ov.precedence
             after_kw = dict(
                 aadt=a.aadt if a else None,
                 aadt_source=a.agency if a else None,
@@ -244,6 +252,14 @@ def main() -> int:
             after = classify(tags1, parking_width_m=reach, **after_kw)
             # The same, without the parking lane added to the lane's reach.
             noreach = after if reach is None else classify(tags1, **after_kw)
+            # Each item-190 row's own effect: the tier with that row left out, "row:tier".
+            effects = []
+            for row190 in rows190:
+                tags_without, _ = speed_corrections.corrected(
+                    without[row190][w.osm_id].tags, speeds.get(w.osm_id)
+                )
+                tier_without = classify(tags_without, parking_width_m=reach, **after_kw).tier
+                effects.append(f"{row190}:{int(tier_without)}")
             rows.append(
                 {
                     "way": w.osm_id,
@@ -277,6 +293,10 @@ def main() -> int:
                     else int(facts.names_agree),
                     "disagree": "; ".join(disagree),
                     "agree": "; ".join(agree),
+                    # The OWNER-DECISIONS 190 rows that overrode one of the way's tags.
+                    "item190": ",".join(rows190),
+                    "item190_without": ",".join(effects),
+                    "divided": int(w.osm_id in div),
                     "tags": json.dumps(
                         {
                             k: v
@@ -300,6 +320,11 @@ def main() -> int:
                             "lanes_fwd": facts.lanes_forward,
                             "lanes_back": facts.lanes_backward,
                             "one_way": facts.one_way,
+                            "oneway_fwd": facts.oneway_forward,
+                            "lanes_per_dir": facts.lanes_per_direction,
+                            "speed_mph": facts.speed_mph,
+                            "contraflow": facts.contraflow,
+                            "bike_recorded": facts.bike_recorded,
                             "bike": facts.bike,
                             "bike_fwd": facts.bike_forward,
                             "bike_back": facts.bike_backward,

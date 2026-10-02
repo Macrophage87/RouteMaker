@@ -719,7 +719,11 @@ def conflate_blocks(
 
     Where one of a way's blocks has a name that agrees, a block naming a
     different street is dropped from its shares even though it won probes
-    (review r1: a free way kept a cross street's block beside its own).
+    (review r1: a free way kept a cross street's block beside its own). And a
+    free way takes a block naming a different street only where the block is
+    itself a freeway by the agency's class (`agency_roads.FREEWAY_CLASSES`;
+    review r2: Canal Road NW, a trunk road, took the block of M Street NW, the
+    arterial it runs into, and went from 35 to 20 mph).
     """
     required = frozenset(name_required)
     veto = name_free is not None
@@ -766,7 +770,7 @@ def conflate_blocks(
             agrees = names_agree(way_name, feature.facts.name)
             if way_id in required and agrees is not True:
                 continue
-            if vetoed and agrees is False:
+            if veto and agrees is False and (vetoed or not _freeway_block(feature)):
                 continue
             agreement[feature.feature_id] = agrees
             rank = _NAME_UNKNOWN if agrees is None else _NAME_AGREES if agrees else _NAME_DISAGREES
@@ -824,6 +828,15 @@ def conflate_blocks(
     return BlockConflation(matched=matched, coverage=coverage, unmatched_features=unmatched)
 
 
+def _freeway_block(feature: RoadFeature) -> bool:
+    """Whether a differently named block may still be a free way's: always for a
+    layer that classes no road (Montgomery's stress records, a city's facility
+    lines), and for the street-block layers only where the block is a freeway."""
+    if feature.facts.agency not in agency_roads.CLASSED_AGENCIES:
+        return True
+    return feature.facts.functional_class in agency_roads.FREEWAY_CLASSES
+
+
 def road_facts_by_way(
     ways: Sequence, entries: Sequence[WayEntry], blocks: Sequence[RoadFeature]
 ) -> tuple[dict[int, WayFacts], BlockConflation]:
@@ -860,6 +873,42 @@ def road_facts_by_way(
             names,
         )
     return facts, result
+
+
+def overlay_road_facts(
+    ways: Sequence,
+    facts_by_way: Mapping[int, WayFacts],
+    divided_ways: Collection[int] = (),
+    separate_roads: Collection[int] = (),
+    rows: Collection[str] = agency_roads.ROWS_190,
+) -> dict[int, agency_roads.Overlay]:
+    """The overlay (`agency_roads.overlay`) for each way a block reached, with
+    what the ways sharing a block say about each other (`agency_roads.
+    block_context`), each way's divided-road flag and its length. The one place
+    the overlay is wired, shared by the rebuild and the analysis scripts.
+
+    `ways` are the extract's ways (`osm_id`, `tags`, `coordinates`);
+    `divided_ways` is `routemaker.divided.carriageways`' result and
+    `separate_roads` `routemaker.facility.separate_pairs`' second. `rows` is
+    the OWNER-DECISIONS 190 rows applied (`agency_roads.overlay`).
+    """
+    tags_of = {way.osm_id: way.tags for way in ways if way.osm_id in facts_by_way}
+    separate, paired = agency_roads.block_context(facts_by_way, tags_of, separate_roads)
+    overlays: dict[int, agency_roads.Overlay] = {}
+    for way in ways:
+        facts = facts_by_way.get(way.osm_id)
+        if facts is None:
+            continue
+        overlays[way.osm_id] = agency_roads.overlay(
+            dict(way.tags),
+            facts,
+            separate_road=way.osm_id in separate or way.osm_id in separate_roads,
+            divided=way.osm_id in divided_ways,
+            paired=way.osm_id in paired,
+            length_m=_length_m(way.coordinates),
+            rows=rows,
+        )
+    return overlays
 
 
 def block_count(

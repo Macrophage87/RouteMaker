@@ -41,8 +41,14 @@ def line(*points: tuple[float, float]) -> list[tuple[float, float]]:
     return [pt(*p) for p in points]
 
 
-def block(block_id: str, coords, name: str | None = None) -> RoadFeature:
-    return RoadFeature(block_id, coords, RoadFacts(agency=DC_AGENCY, name=name))
+def block(
+    block_id: str, coords, name: str | None = None, functional_class: str | None = None
+) -> RoadFeature:
+    return RoadFeature(
+        block_id,
+        coords,
+        RoadFacts(agency=DC_AGENCY, name=name, functional_class=functional_class),
+    )
 
 
 def way(way_id: int, coords, trail: bool = False):
@@ -339,7 +345,7 @@ def test_the_veto_does_not_reach_a_way_with_no_name_or_a_block_with_none() -> No
 
 def test_a_name_free_way_keeps_a_mismatched_name() -> None:
     """An interstate is OSM's 'Anacostia Freeway' and DC's 'INTERSTATE 295'."""
-    interstate = block("i295", line((0, 0), (200, 0)), "INTERSTATE 295 I BN")
+    interstate = block("i295", line((0, 0), (200, 0)), "INTERSTATE 295 I BN", "1")
     result = conflate_blocks(
         [way(1, line((0, 8), (200, 8)))], [interstate], {1: "Anacostia Freeway"}, name_free={1}
     )
@@ -434,7 +440,14 @@ def test_the_rebuild_s_matching_rules_are_wired_by_class() -> None:
     primary way is vetoed by a block naming another street, and a motorway is
     not (review r1: primary and secondary ways were free of the veto)."""
     avenue = RoadFeature(
-        "avenue", line((0, 0), (200, 0)), RoadFacts(agency=DC_AGENCY, name="NEW YORK AVE NE")
+        "avenue",
+        line((0, 0), (200, 0)),
+        RoadFacts(agency=DC_AGENCY, name="NEW YORK AVE NE", functional_class="3"),
+    )
+    interstate = RoadFeature(
+        "i295",
+        line((0, 0), (200, 0)),
+        RoadFacts(agency=DC_AGENCY, name="INTERSTATE 295", functional_class="1"),
     )
     beside = line((0, 8), (200, 8))
     assert _facts_for(_Way(1, {"highway": "service"}, beside), blocks=[avenue]) == {}
@@ -442,7 +455,10 @@ def test_the_rebuild_s_matching_rules_are_wired_by_class() -> None:
         named = _Way(2, {"highway": highway, "name": "36th Place Northeast"}, beside)
         assert _facts_for(named, blocks=[avenue]) == {}, highway
     freeway = _Way(3, {"highway": "motorway", "name": "Anacostia Freeway"}, beside)
-    assert 3 in _facts_for(freeway, blocks=[avenue])
+    assert 3 in _facts_for(freeway, blocks=[interstate])
+    # Review r2: a freeway-class way takes a differently named block only where
+    # the block is itself a freeway.
+    assert _facts_for(freeway, blocks=[avenue]) == {}
     # A named service way still takes its own street's block.
     own = _Way(4, {"highway": "service", "name": "New York Avenue Northeast"}, beside)
     assert 4 in _facts_for(own, blocks=[avenue])
@@ -482,3 +498,45 @@ def test_a_block_s_count_fills_only_where_no_count_reached_the_way_and_never_a_r
     assert block_count(1, {"highway": "primary_link"}, facts, result, counted=set()) is None
     no_count = aggregate([("a", RoadFacts(agency=DC_AGENCY))])
     assert block_count(1, {"highway": "primary"}, no_count, result, counted=set()) is None
+
+
+# -- review r2 ------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("functional_class", [None, "3", "4", "7", "MART", "PART", "LOC"])
+def test_a_trunk_road_does_not_take_the_arterial_it_runs_into(functional_class) -> None:
+    """Canal Road NW (a trunk) took M Street NW's block and went from 35 to 20 mph."""
+    m_street = block("m", line((0, 0), (200, 0)), "M ST NW", functional_class)
+    result = conflate_blocks(
+        [way(1, line((0, 4), (200, 4)))], [m_street], {1: "Canal Road Northwest"}, name_free={1}
+    )
+    assert result.matched == {}
+
+
+@pytest.mark.parametrize("functional_class", ["1", "2", "INT", "FWY"])
+def test_a_freeway_block_still_matches_a_differently_named_freeway(functional_class) -> None:
+    freeway = block("f", line((0, 0), (200, 0)), "INTERSTATE 395", functional_class)
+    result = conflate_blocks(
+        [way(1, line((0, 4), (200, 4)))], [freeway], {1: "3rd Street Tunnel"}, name_free={1}
+    )
+    assert result.matched[1][0].feature_id == "f"
+
+
+def test_a_name_that_agrees_needs_no_freeway_class() -> None:
+    bridge = block("key", line((0, 0), (200, 0)), "FRANCIS SCOTT KEY BRG NW", "3")
+    result = conflate_blocks(
+        [way(1, line((0, 4), (200, 4)))], [bridge], {1: "Francis Scott Key Bridge"}, name_free={1}
+    )
+    assert result.matched[1][0].names_agree is True
+
+
+def test_a_layer_that_classes_no_road_keeps_name_free_matching() -> None:
+    """Montgomery's stress records and a city's facility lines carry no road class:
+    a freeway still takes a differently named one, as before review r2."""
+    record = RoadFeature(
+        "moco", line((0, 0), (200, 0)), RoadFacts(agency="montgomery-lts", name="RT 29")
+    )
+    result = conflate_blocks(
+        [way(1, line((0, 4), (200, 4)))], [record], {1: "Columbia Pike"}, name_free={1}
+    )
+    assert result.matched[1][0].feature_id == "moco"

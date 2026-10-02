@@ -193,11 +193,14 @@ def main() -> int:
         "earlier calibration tables were made (classification only: the loaded stress and access rows, and "
         "the 2026-10-01 MoCo and Baltimore override files, are overrides applied at the rebuild and are in "
         "neither column). After: the same classifier with the agency layers conflated "
-        "(`pipeline.conflation.road_facts_by_way`, `agency_roads.overlay`) and the Roadway Block's AADT "
-        "filling where no count layer reached the way. Since review r1 the overlay never writes a bike "
-        "facility OSM maps as its own way onto the road, gives each carriageway its own direction's lanes "
-        "and bike lane, keeps a slip road's own lanes, does not make a way OSM tags two-way one-way, and "
-        "takes Baltimore's speed only where OSM has none (OWNER-DECISIONS 184); a painted lane's reach "
+        "(`pipeline.conflation.road_facts_by_way`, `overlay_road_facts`) and the Roadway Block's AADT "
+        "filling where no count layer reached the way. In the District the record takes priority over "
+        "OSM's own tags (OWNER-DECISIONS 190, below), except where a block cannot speak for one way: the "
+        "overlay never writes a bike facility OSM maps as its own way onto the road (nor onto another way "
+        "of the same block, review r2), nor a protected lane where OSM says `bicycle=no`, `use_sidepath` "
+        "or `cycleway*=no`; it gives each carriageway its own direction's lanes and bike lane, keeps a "
+        "slip road's own lanes, reads a lane as contraflow only where DC flags it, and takes Baltimore's "
+        "speed only where OSM has none (OWNER-DECISIONS 184); a painted lane's reach "
         "beside parking is the lane plus the parking lane only where DC records the lane beside parking, "
         "against Furth's 15 ft [4.6 m]. Only DC's and Baltimore's ways can change; every other way is the "
         "baseline's. Road ways only (proposed, construction, platform and corridor ways and trail-class "
@@ -236,6 +239,84 @@ def main() -> int:
         up, down = direction[(region, cause)]
         out.append(f"| {region} | {cause} | {ways:,} | {miles:,.1f} | {up:,.1f} | {down:,.1f} |")
     out.append("")
+
+    # -- OWNER-DECISIONS 190, row by row (review r2's table)
+    labels = {
+        "A": "A. DC records no facility on any block: OSM's painted lane removed",
+        "B": "B. DC one-way over OSM's explicit two-way",
+        "C4": "C4. DC two-way over OSM's one-way on a plain street",
+    }
+    applied = defaultdict(list)
+    for row in dcbal:
+        if row["region"] != "dc" or row["state"] != "DC":
+            continue
+        without = dict(
+            item.split(":") for item in row.get("item190_without", "").split(",") if item
+        )
+        for name in filter(None, row.get("item190", "").split(",")):
+            applied[name].append((row, int(without.get(name, row["tier1"]))))
+    out += [
+        "## OWNER-DECISIONS 190: DC data takes priority over OSM",
+        "",
+        'The owner, 2026-10-02: "DC data takes priority over OSM. It\'s updated regularly." Where the '
+        "round-1 rules left OSM standing in the District, the record now wins, except where a block, "
+        "which describes the whole road, cannot speak for one of its ways (review r2's scoping). The "
+        "tier effect of each row is measured on its own: the tier with the row against the same run "
+        "with only that row left out.",
+        "",
+        "| row | ways | miles | tier changes | with the row: lower stress | higher stress | by movement |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for name in ("A", "B", "C4"):
+        found = applied.get(name, [])
+        ways = len(found)
+        miles = sum(int(r["m"]) for r, _ in found) / MI
+        moves = Counter((t, int(r["tier1"])) for r, t in found if t != int(r["tier1"]))
+        down = sum(n for (a, b), n in moves.items() if b < a)
+        up = sum(n for (a, b), n in moves.items() if b > a)
+        detail = ", ".join(f"LTS {a} to {b}: {n}" for (a, b), n in sorted(moves.items())) or "none"
+        out.append(
+            f"| {labels[name]} | {ways:,} | {miles:,.1f} | {sum(moves.values()):,} ways "
+            f"({sum(int(r['m']) for r, t in found if t != int(r['tier1'])) / MI:,.1f} mi) | {down:,} | {up:,} | {detail} |"
+        )
+    kept = defaultdict(lambda: [0, 0.0])
+    for row in dcbal:
+        if row["region"] != "dc" or row["state"] != "DC":
+            continue
+        for found in filter(None, row["disagree"].split("; ")):
+            if found.startswith("oneway:") or found.startswith(("bike facility", "lanes:")):
+                kept[found][0] += 1
+                kept[found][1] += int(row["m"]) / MI
+    out += [
+        "",
+        "Where OSM still stands in the District, and why (rows C1-C3, D and E of the review, and the "
+        "exceptions to A and B):",
+        "",
+        "| what is kept | ways | miles |",
+        "| --- | --- | --- |",
+    ]
+    out += [
+        f"| {found} | {n:,} | {m:,.1f} |"
+        for found, (n, m) in sorted(kept.items(), key=lambda kv: -kv[1][0])
+    ]
+    agreed = [
+        r
+        for r in dcbal
+        if r["region"] == "dc" and r["state"] == "DC" and "separate way" in r["agree"]
+    ]
+    links = [
+        r
+        for r in dcbal
+        if r["region"] == "dc"
+        and r["state"] == "DC"
+        and r["matched"] == "1"
+        and r["highway"].endswith("_link")
+    ]
+    out += [
+        f"| E. bike facility OSM maps as its own way (on the way or on another way of its block), counted as agreement | {len(agreed):,} | {sum(int(r['m']) for r in agreed) / MI:,.1f} |",
+        f"| D. slip roads: their own lanes, no block count | {len(links):,} | {sum(int(r['m']) for r in links) / MI:,.1f} |",
+        "",
+    ]
 
     # -- The parking reach on its own (review r1: separate it from the rest)
     reach_moves = Counter()

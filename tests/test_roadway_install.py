@@ -185,3 +185,6 @@ def test_an_internal_only_layer_is_refused_and_nothing_is_written(tmp_path, laye
         assert done.returncode == 2, flag
         assert "internal comparison only" in done.stderr
         assert not (tmp_path / "data" / "reference" / "roadway.json").exists()
+        # Refused before anything is written (review r2: the crossings fixture
+        # was installed first).
+        assert not (tmp_path / "data" / "reference").exists(), flag
