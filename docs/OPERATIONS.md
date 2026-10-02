@@ -1186,6 +1186,8 @@ to prevent.
 
 ### What the edge enforces
 
+Preset links: `/<ride-type-id>` (for example `/trailmaxxing`, any case, with or without a trailing slash) is a 302 to `/#preset=<id>`, for exactly the nine ids in `frontend/src/lib/presets.ts`; adding or renaming a ride type means editing the Caddyfile's `@preset-*` list too, and `tests/test_preset_links.py` fails until it matches.
+
 `/basemap/*` answers only `region.pmtiles`, `fonts/*` and `sprites/*` (anything
 else under it is a 404, the stamps and the work directory included), and only to
 requests whose `Origin` is this site or, with no `Origin`, whose `Referer` is a

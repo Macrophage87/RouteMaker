@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { decodePlan, encodePlan, stressFromV1 } from "./planHash.ts";
-import { STRESS_DEFAULT_AT, STRESS_TODAYS_TOP } from "./dials.ts";
+import { STRESS_DEFAULT_AT, STRESS_TODAYS_TOP, fitDials, startDials } from "./dials.ts";
+import { PRESETS } from "./presets.ts";
 import type { LonLat } from "./geo.ts";
 
 test("a plan survives a round trip through the link", () => {
@@ -64,4 +65,28 @@ test("points outside the coverage box are dropped, and at most twenty-five kept"
   const many = Array.from({ length: 30 }, (_, i) => `${-77 + i / 100},38.9`).join(";");
   assert.equal(decodePlan(`#p=${many}`).points.length, 25);
   assert.deepEqual(decodePlan("#p=-77,38.9;-70,38.9").points, [[-77, 38.9]]);
+});
+
+// Owner item 204: routemaker.cieply.com/trailmaxxing is redirected by the edge to
+// "/#preset=trailmaxxing", a link with a ride type and nothing else.
+test("a link with only a ride type opens the planner on it, with that ride type's own dials", () => {
+  for (const id of PRESETS.map((p) => p.id)) {
+    const plan = decodePlan(`#preset=${id}`);
+    assert.equal(plan.preset, id, id);
+    assert.deepEqual(plan.points, [], id);
+    assert.deepEqual(plan.dials, fitDials(id, {}), id);
+    assert.deepEqual(plan.dials, startDials(id, null, null, false), id);
+  }
+  // What the redirect is for: Trailmaxxing's own start, not Default's.
+  const trailmaxxing = decodePlan("#preset=trailmaxxing");
+  assert.equal(trailmaxxing.dials.stress, startDials("trailmaxxing", null, null, false).stress);
+  assert.notEqual(trailmaxxing.dials.stress, decodePlan("#preset=default").dials.stress);
+});
+
+test("a ride-type link survives being re-encoded, and an unknown or wrongly cased id is Default", () => {
+  const plan = decodePlan("#preset=trailmaxxing");
+  assert.equal(decodePlan(encodePlan(plan.points, plan.preset, plan.dials)).preset, "trailmaxxing");
+  // The edge always sends the lowercase id; the app reads only that spelling.
+  assert.equal(decodePlan("#preset=Trailmaxxing").preset, "default");
+  assert.equal(decodePlan("#preset=nonsense").preset, "default");
 });
