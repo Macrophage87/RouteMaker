@@ -26,6 +26,16 @@ single-valued option could not express the input that makes the arbitration
 mean anything: installing DDOT after VDOT overwrote the file and left one
 agency, and the precedence rule had nothing to choose between.
 
+Two agency street layers go to `roadway.json`, optional, read by the rebuild's
+volume-conflation stage (OWNER-DECISIONS 151, 159):
+
+    --roadway-block dc-roadway-block.geojson          DDOT, CC BY 4.0
+    --baltimore-centerline baltimore-street-centerline.geojson   Open Baltimore
+
+Each is the layer exactly as `scripts/fetch_agency_layer.py` stored it; the
+posted speed, lanes by direction, one-way, bike facility, parking and count are
+parsed by `routemaker.agency_roads`.
+
 Run with only --data-root it installs the crossings and reports which of the
 other two are still missing, exiting non-zero while any is. See
 docs/DEVELOPMENT.md, "Reference data", for where each input comes from.
@@ -330,6 +340,62 @@ def volume_rows(volume: Path, source: str, year: int | None, aadt_property: str)
     return rows
 
 
+def roadway_rows(roadway_block: Path | None, baltimore: Path | None) -> list[dict]:
+    """Agency street blocks in the shape `ReferenceData.load_road_blocks` reads.
+
+    Streamed one feature at a time: the Baltimore centerline is 152 MB of
+    attribute columns that are mostly empty. A block carrying nothing the
+    classifier uses (a Baltimore line with no speed and no one-way) is left out
+    rather than stored to match nothing.
+    """
+    from routemaker import agency_roads
+
+    rows: list[dict] = []
+
+    def lines(geometry):
+        if not geometry:
+            return
+        if geometry["type"] == "LineString":
+            yield geometry["coordinates"]
+        elif geometry["type"] == "MultiLineString":
+            yield from geometry["coordinates"]
+
+    layers = (
+        (roadway_block, "dc", lambda props: agency_roads.parse_dc_roadway_block(props)),
+        (baltimore, "baltimore", agency_roads.parse_baltimore_centerline),
+    )
+    for path, prefix, parse in layers:
+        if path is None:
+            continue
+        # The internal-comparison layers (Arlington's Bike Comfort Index,
+        # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a
+        # rebuild input.
+        agency_roads.refuse_internal_only(path)
+        kept = 0
+        for number, feature in enumerate(agency_roads.iter_features(path)):
+            properties = feature.get("properties") or {}
+            facts = parse(properties)
+            if facts is None:
+                continue
+            useful = facts.speed_mph or facts.lanes or facts.way or facts.bike or facts.aadt
+            if not useful and facts.parking_lanes is None:
+                continue
+            object_id = properties.get("OBJECTID", feature.get("id", number))
+            for part, line in enumerate(lines(feature.get("geometry"))):
+                if len(line) < 2:
+                    continue
+                rows.append(
+                    {
+                        "id": f"{prefix}-{object_id}-{part}",
+                        "coordinates": [[round(x, 7), round(y, 7)] for x, y, *_ in line],
+                        "facts": facts.to_json(),
+                    }
+                )
+                kept += 1
+        print(f"  {path}: {kept} street blocks ({prefix})")
+    return rows
+
+
 def source_tier(source: str) -> str:
     """The precedence tier an agency's counts rank at.
 
@@ -395,7 +461,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--volume-year", type=int, action="append", default=[])
     parser.add_argument("--aadt-property", action="append", default=[])
+    parser.add_argument(
+        "--roadway-block", type=Path, help="DC DCGIS Roadway Block, GeoJSON as fetched"
+    )
+    parser.add_argument(
+        "--baltimore-centerline", type=Path, help="Baltimore street centerline, GeoJSON as fetched"
+    )
     args = parser.parse_args(argv)
+
+    # The internal-comparison layers (Arlington's Bike Comfort Index,
+    # Alexandria's Transport Streets; OWNER-DECISIONS 155) are never a rebuild
+    # input. Refused before anything is written (review r2: the crossings
+    # fixture was installed first, so a refused run still changed the data root).
+    from routemaker.agency_roads import InternalOnlySource, refuse_internal_only
+
+    inputs = (args.extract, args.urban_areas, args.roadway_block, args.baltimore_centerline)
+    for path in (*inputs, *args.volume):
+        if path is None:
+            continue
+        try:
+            refuse_internal_only(path)
+        except InternalOnlySource as refused:
+            parser.error(str(refused))
 
     reference = args.data_root / "reference"
     reference.mkdir(parents=True, exist_ok=True)
@@ -443,6 +530,16 @@ def main(argv: list[str] | None = None) -> int:
             )
         (reference / "volume.json").write_text(json.dumps(rows))
         print(f"wrote {reference / 'volume.json'}: {len(rows)} count lines")
+
+    if args.roadway_block or args.baltimore_centerline:
+        try:
+            blocks = roadway_rows(args.roadway_block, args.baltimore_centerline)
+        except InternalOnlySource as refused:
+            parser.error(str(refused))
+        if len({row["id"] for row in blocks}) != len(blocks):
+            parser.error("two street blocks share an id")
+        (reference / "roadway.json").write_text(json.dumps(blocks, separators=(",", ":")))
+        print(f"wrote {reference / 'roadway.json'}: {len(blocks)} street blocks")
 
     missing = [name for name in REQUIRED if not (reference / name).exists()]
     for name in missing:

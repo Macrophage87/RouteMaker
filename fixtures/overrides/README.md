@@ -222,3 +222,92 @@ way to riders takes `access=permissive` beside `bicycle=yes`, and
   tier, which the loader would refuse, and six of Pennsylvania Ave SE already
   at 5. Overpass bridges away from the river stay in. Load it after the
   2026-09-27 file.
+
+## The agency-data files of 2026-10-01
+
+Both written by `scripts/analysis/compare_agency_lts.py` (`moco`, `baltimore`,
+with `--roadway`, so the tiers are the rebuild's with the agency street layers
+conflated) from layers whose licence records are in `fixtures/datasets/README.md`.
+They were proposals under `proposed/` until the owner approved loading them;
+`tests/test_agency_overrides.py` holds them to the loader's validation and to
+what the owner approved. Load them in the order above, after the 2026-09-30
+files.
+
+- `2026-10-01-owner-moco-lts5-avoid.json`: the Montgomery Planning layer's
+  existing-condition LTS 5 as Avoid ("I think this version does not. They also
+  have an LTS5, which we can mark as avoid.", OWNER-DECISIONS 149; "Load it
+  (Recommended)", 181): 409 ways, 44.6 mi, tier 5, hidden, no public
+  note, category other, annotation approved, in 44 adjustments (one per street;
+  unnamed ways by the 0.01-degree cell, about 0.6 mi [1 km], their midpoint lies
+  in). A way is in it where the LTS 5 record it lies along most covers at least
+  half of it and our tier is below 5; motorways and ways another file curates
+  are left out. **It needs the Montgomery County Planning credit**, which went in
+  with it ("Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress,
+  Montgomery County Planning Department"; docs/OPERATIONS.md, "Licences, and the
+  credits every map must carry"); a deployment that drops the rows drops the
+  line with them.
+- `2026-10-01-owner-baltimore-facilities.json` ("Load Baltimore facilities",
+  OWNER-DECISIONS 182): 256 stress rows, the tier the classifier gives with the
+  City of Baltimore's recorded bike lane, buffered, separated or contraflow lane
+  tagged, where OSM has none and the tier would fall (hidden, approved), and
+  180 `bicycle=designated` access rows on the footways and paths the city
+  records as multiuse trails or paths (the Veirs Mill correction again). OSM
+  edits upstream are the durable fix; the candidate list is
+  `reports/data-comparison/baltimore-facility-candidates.csv`. Credit "City of
+  Baltimore, Open Baltimore".
+
+Both files keep within the rows the owner was shown and approved
+(`reports/data-comparison/owner-approved-override-ways.json`, the proposal at
+commit 318708b: 411 MoCo ways; 264 Baltimore stress and 180 access rows), so a
+re-derivation never adds a way the owner did not see (review r2). What the
+re-derivation drops or changes is listed in the two reports for the owner: MoCo
+409 of 411 (Clarksville Pike 5268038 and Ridge Road 50832512 no longer match a
+county record); Baltimore 256 of 264 (eight approved rows no longer qualify, N
+Charles Street 970453181 now LTS 2 with the facility where LTS 3 was approved,
+and five new ways held back).
+
+N Charles Street 970453181 stays at the derived LTS 2. Asked whether to keep
+the approved LTS 3 or the tier the classifier now derives with the city's
+facility tagged, the owner answered (OWNER-DECISIONS 198, 2026-10-02): "LTS 2
+as derived (Recommended)". Its row in the Baltimore file is tier 2 and is not
+changed back.
+
+## Block corrections, and the file of 2026-10-02
+
+A file may also correct an agency street block's record rather than a way: a
+top-level `agency_blocks` list, each entry `{"blockkey": <the layer's key for
+the block, DC's BLOCKKEY>, "routename": <its ROUTENAME>, "withhold": ["speed"],
+"reason": ..., "evidence": ...}` (`street` and `ways` are for the reader). The
+rebuild reads it from its image (`routemaker.agency_roads.withheld_blocks`,
+found among the installed blocks by `resolve_withheld`, through
+`pipeline.conflation.road_facts_by_way`, which the analysis scripts share): the
+withheld fact is not applied to any way matched to the block, so OSM's value
+stands and the tier follows from it by the same tables as every other road.
+Only the posted speed may be withheld; a malformed entry refuses the rebuild's
+matching rather than being skipped. The block is named by BLOCKKEY, not by its
+installed id: that id (`dc-<OBJECTID>-<part>`) is built from OBJECTID, the
+ArcGIS row number, which DC's republishing may reassign (gate review,
+should-fix 1). The ROUTENAME is a check a reader can see: an entry whose key
+names no installed block, or a block on another street, withholds nothing, and
+the rebuild's log warns "owner's block correction not applied" with the key, so
+a reinstalled layer cannot quietly give the block's value back. The installer
+keeps the key (`RoadFacts.block_key`); a `roadway.json` installed by an earlier
+version has none, so the street blocks are reinstalled
+(`scripts/install_reference_data.py --roadway-block`) before the rebuild that
+should apply these files. This is a block list and not stress rows because
+OSM's way ids change when a way is split, and a stress row would have held the
+tier while the classifier still read the block's speed. A file with only
+`agency_blocks` has `"rows": []`, and the loader says it has nothing to load,
+so step 7 of "First rebuild on a fresh host" can still be given every file. It
+takes effect at the next rebuild after the image carrying it is deployed. The
+discrepancy report lists the ways as not applied, "owner override".
+
+- `2026-10-02-owner-canal-whitehurst.json` (OWNER-DECISIONS 197, verbatim: "DC
+  records of 20 mph on Canal Rd NW (block dc-4633425-0) and the Whitehurst Fwy
+  (dc-4636053-0), owner 2026-10-02: "Override: keep LTS 4 (Recommended)". A
+  stress override holds them at the OSM speeds and LTS 4, and they stay listed in
+  the discrepancy report."): DC's 20 mph is withheld on both blocks, so OSM's
+  posted 35 mph stands. Canal Road NW's five trunk ways (0.38 mi [612 m]) are LTS
+  4 again, not 3; the Whitehurst Freeway, a motorway, is LTS 4 either way and now
+  reads OSM's speed. 17 ways are listed in the discrepancy report as owner
+  overrides.

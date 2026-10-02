@@ -1186,8 +1186,20 @@ def plan(
 # (routemaker.cbd), so it shares DDOT's line. The Architect of the Capitol's
 # jurisdiction polygon (fixtures/cbd, Open Data DC, DC GIS, CC BY 4.0) decides
 # which of those sidewalks are the Capitol grounds' and exempt, and has a line of
-# its own; it is used as published, so it is not marked adapted. Protomaps is
-# credited by the map,
+# its own; it is used as published, so it is not marked adapted. DC's Roadway
+# Block (fixtures/datasets, Open Data DC, DDOT / DC GIS, CC BY 4.0) sets the
+# posted speed, the lanes each way, one-way streets, bike lanes, parking and,
+# where no count layer reached a street, the traffic count the District's stress
+# tiers are scored on (routemaker.agency_roads), and is parsed and combined with
+# OSM, so it is credited as adapted. Baltimore's street centerline, bike
+# facilities and multiuse trails (Open Baltimore; open licence by Baltimore City
+# Code Art. 1 §9-1(h)) set Baltimore's speeds where OSM has none, its one-way
+# streets, and the bike lanes and trail access the 2026-10-01 override file
+# corrects; the credit line is the owner's (OWNER-DECISIONS 159), the items
+# themselves carry none. Montgomery County Planning's Bicycle Level of Traffic
+# Stress sets the Montgomery County roads loaded as Avoid (OWNER-DECISIONS 149,
+# 181); its licence asks for "attribution to the Montgomery County Planning
+# Department", in the same change as the rows. Protomaps is credited by the map,
 # which draws its basemap; nothing in a route response comes from it.
 ATTRIBUTION = (
     "© OpenStreetMap contributors, ODbL",
@@ -1197,5 +1209,12 @@ ATTRIBUTION = (
     "Traffic volume: Virginia Department of Transportation",
     "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia"
     " (Open Data DC), CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+    "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the"
+    " District: Roadway Block, District Department of Transportation (DDOT) / DC GIS"
+    " (Open Data DC), adapted, CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/)",
+    "Street speeds, one-way streets, bike facilities and trails in Baltimore: City of"
+    " Baltimore, Open Baltimore",
+    "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress, Montgomery County"
+    " Planning Department",
     "Elevation: USGS 3D Elevation Program",
 )

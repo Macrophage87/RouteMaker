@@ -1012,6 +1012,34 @@ licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
 the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
 none, are OpenStreetMap's and need nothing beyond the ODbL credit.
 
+Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
+"Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
+in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
+
+- "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts
+  in the District: Roadway Block, District Department of Transportation (DDOT) /
+  DC GIS (Open Data DC), adapted, CC BY 4.0". The layer is parsed and combined
+  with OSM, so it is "adapted", and the licence is linked; its AADT fills where
+  no count layer reached a street.
+- "Street speeds, one-way streets, bike facilities and trails in Baltimore: City
+  of Baltimore, Open Baltimore". Open licence by Baltimore City Code Art. 1
+  §9-1(h); the line is the owner's (OWNER-DECISIONS 159), since the items carry
+  no credit of their own. It covers the centerline's speeds (only where OSM has
+  none) and one-way streets, and the facility and trail rows of
+  `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json`.
+- "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress,
+  Montgomery County Planning Department". The layer's licence asks for
+  "attribution to the Montgomery County Planning Department"; the line went in
+  with the Avoid rows derived from it,
+  `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json` (OWNER-DECISIONS
+  181), and the three-question ODbL gate it passed is recorded in
+  `fixtures/datasets/README.md` and PLAN.md. **The credit and the rows travel
+  together**: deleting the rows does not make the credit wrong for the graph
+  until the next rebuild, but a rebuild without them should drop the line.
+
+Arlington's Bike Comfort Index and Alexandria's Transport Streets are internal
+comparison only and are never credited because nothing of them is published.
+
 DDOT's Central Business District boundary (Open Data DC, CC BY 4.0), which
 decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS
 104), shares DDOT's traffic-volume line in both credit lists: "Stress tiers use
@@ -1366,6 +1394,26 @@ the first host to run it is the first test of it.
    carries the row. docs/DEVELOPMENT.md, "Reference data", has what each one is
    and how the counts have to be normalised before they get here.
 
+   **Optional, the agency street layers.** Add `--roadway-block
+   /data/reference/inputs/dc-roadway-block/dc-roadway-block.geojson
+   --baltimore-centerline
+   /data/reference/inputs/baltimore-street-centerline/baltimore-street-centerline.geojson`
+   to the same command to write `reference/roadway.json`: DC's and Baltimore's
+   own posted speeds, lanes by direction, one-way streets, bike lanes and
+   parking, which then take precedence over OSM's tags at the rebuild's
+   classification (docs/DEVELOPMENT.md, "Agency street layers"). The files are
+   fetched once with `scripts/fetch_agency_layer.py`, which refuses to fetch a
+   layer twice, with the owner's go for each download. Without `roadway.json`
+   the rebuild runs as before and logs `roadway.json is absent`; with it the
+   log carries `agency street blocks: N of M blocks matched ways`, and each
+   matched segment's `attr_sources` says which inputs came from the agency.
+   Install it before the next rebuild, never after: the tiers change only when a
+   rebuild runs. Reinstalling is idempotent. The owner's block corrections in
+   fixtures/overrides name DC's blocks by `BLOCKKEY`, which the installer keeps
+   with each block; a `roadway.json` installed by an earlier version lacks it,
+   and the rebuild then warns that the corrections are not applied ("Log lines
+   to read after a rebuild"), so reinstall it before the combined rebuild.
+
    `--extract` is the clipped `source.osm.pbf`, and the clipped one is right:
    the script reads ways out of it to decide which way ids fall inside a Census
    urban area, and a way outside the coverage box is a way this deployment does
@@ -1382,7 +1430,9 @@ the first host to run it is the first test of it.
 7. **Load the access overrides**, now that the admin from step 4 has signed
    in (the loader names that account with `--actor`) and step 6 has installed
    the crossings the rows depend on. Every file in `fixtures/overrides/`, each
-   dry run first, then `--confirm`, from the checkout:
+   dry run first, then `--confirm`, from the checkout (a file of block
+   corrections only, `agency_blocks`, says it has no rows to load: the rebuild
+   reads it from its image):
 
    ```sh
    docker compose exec -T api python manage.py load_access_overrides - \
@@ -1476,6 +1526,7 @@ posted `maxspeed` on the way always wins.
 | `way states: DC 33,xxx, MD ..., VA ...; N of M ways outside every state; N s` | the District around 34,000 road ways; the outside count is the WV/PA edges |
 | `divided roads: N carriageways in N s` | about 46,000 on the region, under 30 s |
 | `curated speed limits not applied (posted, or no such way): [...]` | should not appear; a way listed was posted since or left the extract, and its row can go |
+| `owner's block correction not applied (fixtures/overrides agency_blocks): block <BLOCKKEY> (...) is not among the installed agency street blocks; ...` | should not appear; the owner's correction (OWNER-DECISIONS 197) is not applied and DC's value is read. A `roadway.json` installed before the street blocks kept DC's BLOCKKEY says this for every block: reinstall them (`--roadway-block`, above) and rebuild. A block DC has dropped or rekeyed, or one on another street, wants its entry in fixtures/overrides corrected |
 | `facility classes: ...; N CBD sidewalks barred to bicycles, N singletrack ways avoided` | about 2,000 CBD sidewalks; singletrack in the hundreds |
 
 `manage.py check_weekday_trails` (acceptance A7) is **report-only**: it prints
@@ -1676,6 +1727,20 @@ the new containers against the new build before stopping the old ones — the
 blue/green arrangement the plan describes, which would make the swap invisible
 to a request in flight — is phase 2; it is recorded in the handoff rather than
 built here.
+
+### The DC-against-OSM discrepancy report
+
+Each rebuild writes it for the owner (OWNER-DECISIONS 191: "report the
+discrepancies when you see them"), from the overlay it classified with, to
+`${DATA_ROOT}/rebuild/reports/dc-osm-discrepancies.md` and `.csv` on the host:
+every District way where DC's Roadway Block and OSM disagree, by type, whether
+the District's value was applied (item 190) and, where not, why - the
+not-applied items summarised by reason, the owner's overrides (item 197) listed
+in full, every item in the CSV. Nothing needs running; the rebuild log says
+"DC-against-OSM discrepancy report: N items on M ways, written to ...". It
+replaces last week's. A failure to write it is a warning in the log and never
+fails the rebuild. Nothing in it is for importing into OSM (CC BY 4.0 against
+ODbL). docs/DEVELOPMENT.md, "Agency street layers", has what it lists.
 
 ## Deployment actions
 

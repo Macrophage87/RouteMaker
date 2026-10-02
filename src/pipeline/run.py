@@ -28,12 +28,20 @@ import subprocess
 import time
 from collections import Counter
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TypeVar
 
-from routemaker import cbd, divided, facility, ridetime, singletrack, speed_corrections
+from routemaker import (
+    agency_roads,
+    cbd,
+    divided,
+    facility,
+    ridetime,
+    singletrack,
+    speed_corrections,
+)
 from routemaker.geo import Point
 from routemaker.shape import sinuosity
 from routemaker.stress import classify, is_rough, is_unpaved
@@ -41,6 +49,7 @@ from routemaker.stress import classify, is_rough, is_unpaved
 from . import (
     borders,
     conflation,
+    discrepancies,
     elevation,
     extract,
     overrides,
@@ -57,6 +66,12 @@ from . import (
 from .rebuild import RebuildTimedOut, Stage
 
 logger = logging.getLogger(__name__)
+
+# How many matched block ids are written to a segment's `attr_sources`.
+MAX_RECORDED_BLOCKS = 12
+# Where each rebuild writes the DC-against-OSM discrepancy report (OWNER-DECISIONS
+# 191), under its work directory: `<DATA_ROOT>/rebuild/reports/` on the host.
+DISCREPANCY_REPORT_DIR = "reports"
 
 # What one of the two validation reads answers with; see `_read_back`.
 _Read = TypeVar("_Read")
@@ -281,6 +296,16 @@ class ReferenceData:
     # left to OSM's own tagging rather than being asserted either way.
     bridge_bicycle_legal: dict[int, bool]
 
+    # Agency street blocks (DC's Roadway Block, Baltimore's street centerline),
+    # from `roadway.json`: the posted speed, lanes, one-way, bike facility,
+    # parking and count each agency records for a block, which take precedence
+    # over OSM's tags where a way lies along them. The one reference file that
+    # is optional: a rebuild without it classifies from OSM and the defaults,
+    # which is what every rebuild did before the layers were approved, and it
+    # logs a warning so the absence is seen. Only `install_reference_data.py
+    # --roadway-block/--baltimore-centerline` writes it.
+    road_blocks: tuple[conflation.RoadFeature, ...] = ()
+
     @classmethod
     def load(
         cls,
@@ -343,6 +368,7 @@ class ReferenceData:
             )
             for row in json.loads(volume.read_text())
         )
+        road_blocks = cls.load_road_blocks(directory / "roadway.json")
         bridge_ids, unmatched_sidepath = variants.resolve_sidepath_bridge_ids(crossing_rows, ways)
         legality, unmatched_legality = variants.resolve_bridge_bicycle_legality(crossing_rows, ways)
         mass_ride_ids, unmatched_mass_ride = variants.resolve_mass_ride_only_bridge_ids(
@@ -387,6 +413,28 @@ class ReferenceData:
             volume_features=features,
             unmatched_crossings=tuple(unmatched),
             bridge_bicycle_legal=legality,
+            road_blocks=road_blocks,
+        )
+
+    @staticmethod
+    def load_road_blocks(path: Path) -> tuple[conflation.RoadFeature, ...]:
+        """The agency street blocks, or none (with a warning) where not installed."""
+        if not path.exists():
+            logger.warning(
+                "%s is absent, so no agency street layer (DC Roadway Block, Baltimore street "
+                "centerline) is conflated: posted speeds, lanes, one-way, bike lanes and "
+                "parking come from OSM and the defaults. Install it with "
+                "scripts/install_reference_data.py --roadway-block / --baltimore-centerline",
+                path,
+            )
+            return ()
+        return tuple(
+            conflation.RoadFeature(
+                feature_id=row["id"],
+                coordinates=[tuple(c) for c in row["coordinates"]],
+                facts=agency_roads.RoadFacts.from_json(row["facts"]),
+            )
+            for row in json.loads(path.read_text())
         )
 
 
@@ -439,6 +487,14 @@ class RebuildContext:
     # last one that could record where a count came from, and the pair dropped
     # the agency and the year on the floor.
     aadt_by_way: dict[int, conflation.Match] = field(default_factory=dict)
+    # What the agency street blocks say about each way they were matched to
+    # (`conflate_volume`), and the way's tags as the classifier reads them once
+    # that is overlaid. The graph's own tags are not changed: this is a
+    # statement about the rider's stress. Only ways a block reached are here.
+    road_facts_by_way: dict[int, agency_roads.WayFacts] = field(default_factory=dict)
+    class_tags_by_way: dict[int, dict[str, str]] = field(default_factory=dict)
+    road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
+    road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
     # The owner's facility class per way (`routemaker.facility`), and the ride
     # times in which a timed closure makes a road car-free. Computed once, after
@@ -711,6 +767,7 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
         volume_source=current.volume_source,
         volume_aadt=current.volume_aadt,
         volume_year=current.volume_year,
+        attr_sources=current.attr_sources,
     )
     return True
 
@@ -867,6 +924,44 @@ def build_handlers(
             context.elevation_dir, context.coverage_bbox, fetch_elevation, run
         )
 
+    def conflate_road_blocks(entries: list) -> None:
+        """Match the agency street blocks to the ways that lie along them."""
+        reference = context.require_reference()
+        if not reference.road_blocks:
+            return
+        # The owner's corrections to a block's record (OWNER-DECISIONS 197), by
+        # the layer's own key; one that names no installed block withholds
+        # nothing, and the agency's value is read against the owner's decision.
+        withheld = agency_roads.resolve_withheld(
+            agency_roads.withheld_blocks(),
+            ((block.feature_id, block.facts) for block in reference.road_blocks),
+        )
+        for unmatched in withheld.unmatched:
+            logger.warning(
+                "owner's block correction not applied (fixtures/overrides agency_blocks): %s; "
+                "reinstall the street blocks (scripts/install_reference_data.py "
+                "--roadway-block) or correct the override file",
+                unmatched,
+            )
+        by_way, result = conflation.road_facts_by_way(
+            context.ways, entries, reference.road_blocks, withheld=withheld.by_block
+        )
+        tags_of = {way.osm_id: way.tags for way in context.ways if way.osm_id in by_way}
+        counted = set(context.aadt_by_way)
+        for way_id, facts in by_way.items():
+            match = conflation.block_count(way_id, tags_of[way_id], facts, result, counted)
+            if match is not None:
+                context.aadt_by_way[way_id] = match
+        context.road_facts_by_way = by_way
+        per_agency = Counter(facts.agency for facts in by_way.values())
+        logger.info(
+            "agency street blocks: %d of %d blocks matched ways (%s), %d ways matched",
+            len(reference.road_blocks) - len(result.unmatched_features),
+            len(reference.road_blocks),
+            ", ".join(f"{agency} {count}" for agency, count in sorted(per_agency.items())),
+            len(by_way),
+        )
+
     def conflate_volume() -> None:
         reference = context.require_reference()
         # The third element is the trail-class flag, and it is what keeps a
@@ -876,14 +971,15 @@ def build_handlers(
         # overlap and then deny the count to both real roadway blocks by
         # exclusivity. `conflate` defaults it to False for the two-element
         # form, so until this call passed it the exclusion did not apply.
-        result = conflation.conflate(
-            [
-                (way.osm_id, way.coordinates, variants.is_trail_class(way.tags))
-                for way in context.ways
-            ],
-            reference.volume_features,
-        )
+        entries = [
+            (way.osm_id, way.coordinates, variants.is_trail_class(way.tags)) for way in context.ways
+        ]
+        result = conflation.conflate(entries, reference.volume_features)
         context.aadt_by_way = dict(result.matched)
+        # The agency street blocks next: their count (DC's Roadway Block AADT,
+        # 2020) fills where no count layer reached the way and never replaces
+        # one - DDOT's own 2024 counts are the newer survey.
+        conflate_road_blocks(entries)
         # Recorded rather than discarded: two agencies disagreeing about one
         # road, and a count that matched nothing, are both things a reviewer
         # needs to see.
@@ -925,9 +1021,39 @@ def build_handlers(
         # read here because the tier is what they are for; a posted speed wins.
         speeds = speed_corrections.load()
         used: set[int] = set()
+        # The agency's street layer, over the way's own tags: a posted speed,
+        # lanes, one-way, bike lane and parking it records take precedence (in
+        # the District over OSM's own tagging too, OWNER-DECISIONS 190), and the
+        # curated speed below fills only what is still missing. A bike facility
+        # OSM maps as its own way - this way's, or another way's on one of its
+        # blocks - stays there, never written onto the road (reviews r1, r2).
+        overlays = conflation.overlay_road_facts(
+            context.ways, context.road_facts_by_way, divided_ways, separate_roads
+        )
+        precedence: Counter = Counter()
+        # The District's matched ways, for the discrepancy report: (way, the
+        # tags the classifier read, its count, its overlay).
+        reported: list[tuple] = []
         for way in context.ways:
             match = context.aadt_by_way.get(way.osm_id)
-            tags, applied = speed_corrections.corrected(way.tags, speeds.get(way.osm_id))
+            tags = way.tags
+            facts = context.road_facts_by_way.get(way.osm_id)
+            overlaid = overlays.get(way.osm_id)
+            if facts is not None and overlaid is not None:
+                precedence.update(overlaid.precedence)
+                tags = overlaid.tags
+                context.class_tags_by_way[way.osm_id] = tags
+                # The count's source is the count the classifier reads below:
+                # DDOT's or VDOT's where a count layer reached the way, the
+                # block's only where none did.
+                sources = {**overlaid.sources, "aadt": agency_roads.aadt_source(match)}
+                context.road_attr_sources[way.osm_id] = (
+                    *sorted(sources.items()),
+                    *(("blocks", block) for block in facts.blocks[:MAX_RECORDED_BLOCKS]),
+                )
+                if overlaid.disagreements:
+                    context.road_disagreements[way.osm_id] = overlaid.disagreements
+            tags, applied = speed_corrections.corrected(tags, speeds.get(way.osm_id))
             if applied:
                 used.add(way.osm_id)
             context.stress_by_way[way.osm_id] = classify(
@@ -942,13 +1068,91 @@ def build_handlers(
                 jurisdiction=state_of.get(way.osm_id),
                 divided=way.osm_id in divided_ways,
                 separate_facility=way.osm_id in separate_roads,
+                parking_width_m=facts.parking_reach_m if facts is not None else None,
             )
+            if overlaid is not None:
+                context.stress_by_way[way.osm_id] = replace(
+                    context.stress_by_way[way.osm_id],
+                    attr_sources=context.road_attr_sources[way.osm_id],
+                )
+                if facts.agency == agency_roads.DC_AGENCY and state_of.get(way.osm_id) == "DC":
+                    reported.append((way, tags, match, overlaid))
+        if context.road_facts_by_way:
+            # Where an agency's record and the way's own tags disagree and the way
+            # was left alone (an OSM lane the agency does not record; an OSM
+            # one-way on a block the agency calls two-way): counted, for the
+            # report, not decided here.
+            kinds = Counter(kind for found in context.road_disagreements.values() for kind in found)
+            logger.info(
+                "agency street blocks classified %d ways; where they disagree with the way's "
+                "own tags and it was left alone: %s; where the District's record overrode "
+                "OSM's tag (OWNER-DECISIONS 190 rows): %s",
+                len(context.road_facts_by_way),
+                dict(sorted(kinds.items())) or "none",
+                dict(sorted(precedence.items())) or "none",
+            )
+        if reported:
+            write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
         context.speed_corrected = used
         unused = sorted(set(speeds) - used)
         if unused:
             # Posted since, or gone from the extract: either way the row is no
             # longer what sets the way's speed, which a reviewer should know.
             logger.warning("curated speed limits not applied (posted, or no such way): %s", unused)
+
+    def write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of) -> None:
+        """The DC-against-OSM discrepancy report for the owner, each rebuild
+        (OWNER-DECISIONS 191), from the overlay this rebuild classified with:
+        `<DATA_ROOT>/rebuild/reports/dc-osm-discrepancies.md` and `.csv`. A
+        report, not a stage's output: it never fails the rebuild. The tier with
+        OSM's tags alone is the classifier's on the way's own tags with the count
+        a count layer gave it (not a block's), as `data_before_after.py` has it."""
+        reference = context.require_reference()
+        try:
+            rows = []
+            for way, tags, match, overlaid in reported:
+                counted = match if match is not None and match.source != "inventory" else None
+                osm_tags, _ = speed_corrections.corrected(way.tags, speeds.get(way.osm_id))
+                if way.tags.get("highway") in discrepancies.NOT_ROADS:
+                    continue
+                before = classify(
+                    osm_tags,
+                    aadt=counted.aadt if counted else None,
+                    aadt_source=counted.agency if counted else None,
+                    aadt_year=counted.year if counted else None,
+                    urban=way.osm_id in reference.urban_way_ids,
+                    jurisdiction=state_of.get(way.osm_id),
+                    divided=way.osm_id in divided_ways,
+                    separate_facility=way.osm_id in separate_roads,
+                )
+                facts = context.road_facts_by_way[way.osm_id]
+                rows.append(
+                    discrepancies.row(
+                        way=way.osm_id,
+                        name=way.tags.get("name"),
+                        highway=way.tags.get("highway", ""),
+                        length_m=conflation._length_m(way.coordinates),
+                        blocks=facts.blocks,
+                        tier0=int(before.tier),
+                        tier1=int(context.stress_by_way[way.osm_id].tier),
+                        disagreements=overlaid.disagreements,
+                        agreements=overlaid.agreements,
+                        osm=way.tags,
+                        after=tags,
+                        facts=discrepancies.facts_summary(facts),
+                        sources={**overlaid.sources, "aadt": agency_roads.aadt_source(match)},
+                    )
+                )
+            out_dir = context.work_dir / DISCREPANCY_REPORT_DIR
+            found = discrepancies.write_report(rows, out_dir, discrepancies.REBUILD_SOURCE)
+            logger.info(
+                "DC-against-OSM discrepancy report: %d items on %d ways, written to %s",
+                len(found),
+                len(rows),
+                out_dir,
+            )
+        except Exception:
+            logger.warning("DC-against-OSM discrepancy report not written", exc_info=True)
 
     def tag_jurisdictions() -> None:
         """Annotate each way with the authorities its geometry falls under.
@@ -1129,8 +1333,12 @@ def build_handlers(
         context.short_paths_hidden |= restricted_areas.parking_ways(placed, areas["parking"])
         car_free_for_good = 0
         for way in context.ways:
+            # The tags the classifier read where an agency's street layer
+            # corrected them, so the facility the map draws is the facility the
+            # tier was scored on.
             context.facility_by_way[way.osm_id] = facility.facility(
-                way.tags, beside_separate_road=way.osm_id in beside
+                context.class_tags_by_way.get(way.osm_id, way.tags),
+                beside_separate_road=way.osm_id in beside,
             ).value
             closed = facility.car_free_when(way.tags)
             if closed:

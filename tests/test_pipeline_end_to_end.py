@@ -15,6 +15,7 @@ as the weekly task runs them.
 
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import os
@@ -60,6 +61,7 @@ from pipeline.borders import SyntheticNodeIds
 from pipeline.rebuild import RebuildFailed, Stage, run_rebuild
 from pipeline.run import RebuildContext, build_handlers
 from pipeline.variants import Variant
+from routemaker.stress import classify
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -99,6 +101,7 @@ def run_pipeline(
     urban=(100, 200, 300, 400, 500),
     sidepath=(),
     volume=(),
+    roadway=(),
     legality=(),
     crossings=(),
     skip: frozenset[Stage] = frozenset(),
@@ -111,6 +114,7 @@ def run_pipeline(
         urban=urban,
         sidepath=sidepath,
         volume=volume,
+        roadway=roadway,
         legality=legality,
         crossings=crossings,
     )
@@ -3211,3 +3215,530 @@ def test_a_weekend_graph_derived_like_the_standard_one_is_refused(workspace, sta
     assert caught.value.stage is Stage.VALIDATE
     assert "weekend graph" in str(caught.value.cause)
     assert "Sligo Creek" in str(caught.value.cause)
+
+
+# --- Agency street blocks (DC Roadway Block, Baltimore centerline) ---------------
+
+
+def street_block(block_id: str, facts: dict, coordinates=None) -> dict:
+    """A row of `roadway.json`: the toy road's way 100 runs (-77.02, 38.90) to
+    (-76.98, 38.90), so a block along it by default."""
+    return {
+        "id": block_id,
+        "coordinates": coordinates or [[-77.02, 38.90], [-76.98, 38.90]],
+        "facts": {"agency": "dc-roadway-block", "name": "Test Road", **facts},
+    }
+
+
+def test_an_agency_street_block_overrides_the_ways_own_tags_at_classify(workspace, states) -> None:
+    """Way 100 is a 35 mph secondary with no lane. The block says 20 mph, one lane
+    each way and a protected track both ways, and the tier and rule follow the
+    block, and say where each input came from."""
+    source, root = workspace
+    bare, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+    block = street_block(
+        "dc-1",
+        {
+            "speed_mph": {"ob": 20},
+            "lanes": {"ib": 1, "ob": 1},
+            "bike": {"ib": 3, "ob": 3},
+            "parking_lanes": 0,
+        },
+    )
+    with tempfile.TemporaryDirectory() as other:
+        context, _ = run_pipeline(
+            install_source_extract(Path(other)), Path(other), roadway=[block], skip=NOT_SWAPPED
+        )
+    before, after = bare.stress_by_way[100], context.stress_by_way[100]
+    assert after.tier < before.tier
+    assert "20 mph" in after.rule or after.rule.startswith("separated track")
+    sources = dict(after.attr_sources)
+    assert sources["maxspeed"] == "dc-roadway-block"
+    assert sources["lanes"] == "dc-roadway-block"
+    assert sources["bike"] == "dc-roadway-block"
+    assert sources["parking"] == "dc-roadway-block"
+    assert ("blocks", "dc-1") in after.attr_sources
+    assert before.attr_sources == ()
+    # The graph's own tags are not what the block changed.
+    assert context.ways_by_id[100].tags["maxspeed"] == "35 mph"
+    assert "cycleway:both" not in context.ways_by_id[100].tags
+
+
+def test_the_facility_class_is_read_from_the_tags_the_tier_was_scored_on(workspace, states) -> None:
+    """A protected track the block records is a protected facility on the map as
+    well as LTS 1 in the tier; otherwise the two disagree."""
+    source, root = workspace
+    block = street_block("dc-1", {"bike": {"ib": 3, "ob": 3}})
+    context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    assert context.facility_by_way[100] == "protected"
+    unchanged, _ = run_pipeline(*_fresh_workspace(), skip=NOT_SWAPPED)
+    assert unchanged.facility_by_way[100] == "none"
+
+
+def _fresh_workspace():
+    directory = Path(tempfile.mkdtemp())
+    return install_source_extract(directory), directory
+
+
+def test_the_input_provenance_reaches_the_segment_table(workspace, states) -> None:
+    source, root = workspace
+    staging = settings.SEGMENT_SCHEMA_STAGING
+    block = street_block("dc-1", {"speed_mph": {"ob": 25}, "way": "both"})
+    run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT osm_way_id, attr_sources FROM {staging}.segment ORDER BY osm_way_id"
+        )
+        # A raw cursor hands jsonb back as text.
+        stored = {
+            way: (json.loads(sources) if sources else None) for way, sources in cursor.fetchall()
+        }
+    assert stored[100]["maxspeed"] == "dc-roadway-block"
+    assert stored[100]["lanes"] == "default"
+    assert stored[100]["blocks"] == ["dc-1"]
+    # A way no block reached carries no provenance rather than an empty object.
+    assert stored[200] is None
+
+
+def test_without_street_blocks_the_rebuild_warns_and_classifies_from_osm(
+    workspace, states, caplog
+) -> None:
+    source, root = workspace
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, skip=NOT_SWAPPED)
+    assert "roadway.json" in caplog.text
+    assert context.road_facts_by_way == {}
+    assert all(result.attr_sources == () for result in context.stress_by_way.values())
+
+
+def test_a_block_count_ranks_below_the_districts_own_count_layer(workspace, states) -> None:
+    """DDOT's 2024 counts are the newer survey; the inventory's 2020 AADT fills
+    where no count layer reached, and loses where one did."""
+    source, root = workspace
+    block = street_block("dc-1", {"aadt": 4000, "aadt_year": 2020})
+    context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    match = context.aadt_by_way[100]
+    assert (match.aadt, match.source, match.agency, match.year) == (
+        4000,
+        "inventory",
+        "dc-roadway-block",
+        2020,
+    )
+    assert context.stress_by_way[100].volume_source == "dc-roadway-block"
+
+    ddot = {
+        "id": "ddot-1",
+        "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+        "aadt": 9100,
+        "source": "locality",
+        "agency": "ddot",
+        "year": 2024,
+    }
+    with tempfile.TemporaryDirectory() as other:
+        both, _ = run_pipeline(
+            install_source_extract(Path(other)),
+            Path(other),
+            roadway=[block],
+            volume=[ddot],
+            skip=NOT_SWAPPED,
+        )
+    assert (both.aadt_by_way[100].aadt, both.aadt_by_way[100].agency) == (9100, "ddot")
+    # Review r1, blocker 2: the provenance names the count the classifier read, not
+    # the block that also had one.
+    assert dict(context.stress_by_way[100].attr_sources)["aadt"] == "dc-roadway-block"
+    assert dict(both.stress_by_way[100].attr_sources)["aadt"] == "ddot"
+
+
+def test_a_trail_does_not_take_a_streets_speed(workspace, states) -> None:
+    """Way 200 is the toy trail; a block drawn along it must not reach it."""
+    source, root = workspace
+    block = street_block(
+        "dc-trail", {"speed_mph": {"ob": 30}}, coordinates=[[-77.04, 38.91], [-77.03, 38.91]]
+    )
+    context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    assert 200 not in context.road_facts_by_way
+
+
+def test_the_parking_lane_width_reaches_the_bike_lane_criterion(workspace, states) -> None:
+    """Furth measures a lane beside parking by its reach, the lane plus the parking
+    lane (15 ft, MTI 11-19 Table 2): a 7.5 ft lane the block records beside eight
+    feet of parking passes, and the same block without the parking width is read
+    against the lane alone. M36 (review r1): the width reaches the classifier in
+    metres, not feet."""
+    source, root = workspace
+    lane = {
+        "speed_mph": {"ob": 25},
+        "lanes": {"ib": 1, "ob": 1},
+        "bike": {"ib": 1, "ob": 1},
+        "bike_width_ft": 7.5,
+        "bike_beside_parking": ["ib", "ob"],
+        "parking_lanes": 2,
+    }
+    with_width, _ = run_pipeline(
+        source,
+        root,
+        roadway=[street_block("dc-1", {**lane, "parking_width_ft": 8.0})],
+        skip=NOT_SWAPPED,
+    )
+    with tempfile.TemporaryDirectory() as other:
+        without, _ = run_pipeline(
+            install_source_extract(Path(other)),
+            Path(other),
+            roadway=[street_block("dc-1", lane)],
+            skip=NOT_SWAPPED,
+        )
+    assert int(with_width.stress_by_way[100].tier) < int(without.stress_by_way[100].tier)
+    assert "adequate width" in with_width.stress_by_way[100].rule
+    # A five-foot lane beside eight feet of parking is a 13 ft reach, a door zone.
+    # Eight feet read as eight metres would clear the 15 ft criterion twice over.
+    with tempfile.TemporaryDirectory() as other:
+        narrow, _ = run_pipeline(
+            install_source_extract(Path(other)),
+            Path(other),
+            roadway=[street_block("dc-1", {**lane, "bike_width_ft": 5.0, "parking_width_ft": 8.0})],
+            skip=NOT_SWAPPED,
+        )
+    assert "narrow" in narrow.stress_by_way[100].rule
+
+
+def test_the_rebuild_logs_what_the_street_blocks_reached(workspace, states, caplog) -> None:
+    source, root = workspace
+    with caplog.at_level(logging.INFO, logger="pipeline.run"):
+        run_pipeline(
+            source,
+            root,
+            roadway=[street_block("dc-1", {"speed_mph": {"ob": 25}, "way": "both"})],
+            skip=NOT_SWAPPED,
+        )
+    assert (
+        "agency street blocks: 1 of 1 blocks matched ways (dc-roadway-block 1), 1 ways matched"
+        in caplog.text
+    )
+    assert "agency street blocks classified 1 ways" in caplog.text
+
+
+def _all_in_the_district(monkeypatch) -> None:
+    """Way 100's middle vertex is in the toy Virginia; the report is the District's."""
+    from pipeline import states as states_module
+
+    monkeypatch.setattr(
+        states_module,
+        "way_states",
+        lambda ways, polygons, required=None: dict.fromkeys((way.osm_id for way in ways), "DC"),
+    )
+
+
+def test_each_rebuild_writes_the_dc_osm_discrepancy_report(
+    workspace, states, caplog, monkeypatch
+) -> None:
+    """OWNER-DECISIONS 191, "Each rebuild produces a DC-vs-OSM discrepancy report
+    for the owner" (review r3: it was regenerated by hand). Way 100 is posted 35
+    mph; the block says 20."""
+    _all_in_the_district(monkeypatch)
+    source, root = workspace
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    with caplog.at_level(logging.INFO, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    reports = context.work_dir / "reports"
+    text = (reports / "dc-osm-discrepancies.md").read_text()
+    assert "Written by the rebuild" in text
+    with (reports / "dc-osm-discrepancies.csv").open() as handle:
+        rows = list(csv.DictReader(handle))
+    assert [(r["type"], r["osm_way_id"], r["osm_value"], r["dc_value"]) for r in rows] == [
+        ("speed", "100", "35 mph", "20 mph")
+    ]
+    assert rows[0]["applied"] == "1"
+    assert "DC-against-OSM discrepancy report: 1 items on 1 ways" in caplog.text
+    assert rows[0]["tier_with_dc"] == str(int(context.stress_by_way[100].tier))
+
+
+def test_the_report_s_osm_only_tier_takes_no_block_count(states, monkeypatch) -> None:
+    """The report's "tier with OSM's tags alone" is the tier the rebuild gives the
+    way with no block: a block's count (the inventory's) is the District's
+    record, not OSM's, and at 30,000 a day it moves this street from LTS 2 to 3."""
+    _all_in_the_district(monkeypatch)
+    tags = {"maxspeed": "25 mph", "lanes": "2"}
+
+    def extract() -> Path:
+        return install_source_extract(
+            Path(tempfile.mkdtemp()),
+            build=build_one_road_extract,
+            highway="residential",
+            name="Test Road",
+            extra=tags,
+        )
+
+    block = street_block(
+        "dc-1", {"speed_mph": {"ob": 20}, "way": "both", "aadt": 30000, "aadt_year": 2020}
+    )
+    clipped = extract()
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert context.aadt_by_way[100].source == "inventory"
+    plain = extract()
+    bare, _ = run_pipeline(plain, plain.parent, skip=NOT_SWAPPED)
+    with (context.work_dir / "reports" / "dc-osm-discrepancies.csv").open() as handle:
+        speed = next(r for r in csv.DictReader(handle) if r["type"] == "speed")
+    assert speed["tier_osm_only"] == str(int(bare.stress_by_way[100].tier))
+    # The count would have moved it, so the test can tell.
+    counted = classify(
+        {"highway": "residential", **tags},
+        aadt=30000,
+        aadt_source="dc-roadway-block",
+        aadt_year=2020,
+        jurisdiction="DC",
+    )
+    assert int(counted.tier) != int(bare.stress_by_way[100].tier)
+
+
+def _one_road(highway: str = "residential", name: str = "Test Road", **tags) -> Path:
+    return install_source_extract(
+        Path(tempfile.mkdtemp()),
+        build=build_one_road_extract,
+        highway=highway,
+        name=name,
+        extra=tags,
+    )
+
+
+def _report_rows(context) -> list[dict]:
+    with (context.work_dir / "reports" / "dc-osm-discrepancies.csv").open() as handle:
+        return list(csv.DictReader(handle))
+
+
+def test_the_report_s_osm_only_tier_reads_the_divided_road_flag(states, monkeypatch) -> None:
+    """G9 of the gate review: the "tier with OSM's tags alone" is the rebuild's
+    tier with no block, and on a carriageway of a divided road that is read as
+    the two-way road it is, not a one-way street (item 109)."""
+    from routemaker import divided
+
+    _all_in_the_district(monkeypatch)
+    monkeypatch.setattr(divided, "carriageways", lambda ways: {100})
+    tags = {"oneway": "yes", "lanes": "2", "maxspeed": "25 mph"}
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    clipped = _one_road(**tags)
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    plain = _one_road(**tags)
+    bare, _ = run_pipeline(plain, plain.parent, skip=NOT_SWAPPED)
+    speed = next(r for r in _report_rows(context) if r["type"] == "speed")
+    assert speed["tier_osm_only"] == str(int(bare.stress_by_way[100].tier))
+    # The flag moves this street's tier, so the test can tell.
+    osm = {"highway": "residential", **tags}
+    assert int(classify(osm, jurisdiction="DC", urban=True).tier) != int(
+        bare.stress_by_way[100].tier
+    )
+
+
+def test_the_report_s_osm_only_tier_reads_the_curated_speed(tmp_path, states, monkeypatch) -> None:
+    """G10 of the gate review: an unposted way's curated speed limit (OWNER-
+    DECISIONS 131) is part of what the rebuild classifies it with before any
+    block, so the report's OSM-only tier reads it too."""
+    from routemaker import speed_corrections
+
+    _all_in_the_district(monkeypatch)
+    speeds = tmp_path / "speed"
+    speeds.mkdir()
+    row = {"osm_way_id": 100, "maxspeed": "35 mph", "reason": "test", "evidence": "test"}
+    (speeds / "test.json").write_text(json.dumps({"version": 1, "rows": [row]}))
+    monkeypatch.setattr(speed_corrections, "SPEED_DIR", speeds)
+    block = street_block("dc-1", {"lanes": {"ib": 2, "ob": 2}, "way": "both"})
+    clipped = _one_road(lanes="2")
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    plain = _one_road(lanes="2")
+    bare, _ = run_pipeline(plain, plain.parent, skip=NOT_SWAPPED)
+    assert bare.speed_corrected == {100}
+    lanes = next(r for r in _report_rows(context) if r["type"] == "lanes")
+    assert lanes["tier_osm_only"] == str(int(bare.stress_by_way[100].tier))
+    unposted = {"highway": "residential", "lanes": "2"}
+    assert int(classify(unposted, jurisdiction="DC", urban=True).tier) != int(
+        bare.stress_by_way[100].tier
+    )
+
+
+def test_the_report_makes_no_row_for_a_way_that_is_not_a_road(states, monkeypatch) -> None:
+    """G11 of the gate review: a way under construction takes its block (only a
+    proposed one does not), and the report, like `data_before_after.py`, makes
+    no row for it (`discrepancies.NOT_ROADS`)."""
+    _all_in_the_district(monkeypatch)
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    clipped = _one_road("construction", maxspeed="35 mph")
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 in context.road_facts_by_way
+    assert _report_rows(context) == []
+    road = _one_road("residential", maxspeed="35 mph")
+    context, _ = run_pipeline(road, road.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert [r["osm_way_id"] for r in _report_rows(context)] == ["100"]
+
+
+CANAL_KEY = "4f9821f03241db278696e8732dc5c2a7"
+
+
+def test_the_rebuild_warns_of_an_owner_s_block_correction_it_cannot_find(
+    states, caplog, monkeypatch
+) -> None:
+    """Gate review, should-fix 1: the owner's correction names DC's block by its
+    BLOCKKEY; a reinstalled layer without it, or without the block, would
+    silently give Canal Road back DC's 20 mph. The rebuild says so, like the
+    curated speed limits it could not apply; where the block is installed under
+    any id, its speed is withheld and nothing is said of it."""
+    _all_in_the_district(monkeypatch)
+    canal = {"speed_mph": {"ob": 20}, "way": "both", "name": "CANAL RD NW"}
+    keyless = street_block("dc-4633425-0", canal)
+    road = _one_road("trunk", name="Canal Road Northwest", maxspeed="35 mph")
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(road, road.parent, roadway=[keyless], skip=NOT_SWAPPED)
+    warned = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.WARNING and "block correction not applied" in r.getMessage()
+    ]
+    assert any(
+        f"block {CANAL_KEY} (CANAL RD NW) is not among the installed agency street blocks" in m
+        for m in warned
+    )
+    assert dict(context.stress_by_way[100].attr_sources)["maxspeed"] == "dc-roadway-block"
+
+    caplog.clear()
+    renumbered = street_block("dc-7777777-0", {**canal, "block_key": CANAL_KEY})
+    road = _one_road("trunk", name="Canal Road Northwest", maxspeed="35 mph")
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(road, road.parent, roadway=[renumbered], skip=NOT_SWAPPED)
+    assert CANAL_KEY not in caplog.text
+    assert dict(context.stress_by_way[100].attr_sources)["maxspeed"] == "osm"
+    assert context.road_facts_by_way[100].speed_withheld_mph == 20
+
+
+def test_a_discrepancy_report_that_fails_never_fails_the_rebuild(
+    workspace, states, caplog, monkeypatch
+) -> None:
+    from pipeline import discrepancies
+
+    def broken(*args, **kwargs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(discrepancies, "write_report", broken)
+    _all_in_the_district(monkeypatch)
+    source, root = workspace
+    block = street_block("dc-1", {"speed_mph": {"ob": 20}, "way": "both"})
+    with caplog.at_level(logging.WARNING, logger="pipeline.run"):
+        context, _ = run_pipeline(source, root, roadway=[block], skip=NOT_SWAPPED)
+    assert "discrepancy report not written" in caplog.text
+    assert context.stress_by_way[100].attr_sources
+
+
+def build_one_road_extract(
+    path: Path, *, highway: str, name: str = "Frontage Road", extra: dict | None = None
+) -> None:
+    """The toy extract with way 100 of the class and name given. Everything else
+    is the toy's, because the rebuild refuses a region with no way in a state."""
+    Path(path).unlink(missing_ok=True)
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            1: (-77.02, 38.90),
+            2: (-76.98, 38.90),
+            3: (-77.04, 38.91),
+            4: (-77.03, 38.91),
+            5: (-77.045, 38.92),
+            6: (-77.035, 38.92),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        tags = {"highway": highway, **({"name": name} if name else {}), **(extra or {})}
+        writer.add_way(osmium.osm.mutable.Way(id=100, nodes=[1, 2], version=1, tags=tags))
+        for way_id, way_nodes, way_tags in (
+            (200, [3, 4], {"highway": "cycleway", "name": "Test Trail"}),
+            (300, [5, 6], {"highway": "track", "surface": "gravel"}),
+            (400, [3, 4], {"highway": "path"}),
+            (500, [5, 6], {"highway": "trunk", "bridge": "yes", "name": "Sidepath Bridge"}),
+        ):
+            writer.add_way(
+                osmium.osm.mutable.Way(id=way_id, nodes=way_nodes, version=1, tags=way_tags)
+            )
+    finally:
+        writer.close()
+
+
+@pytest.mark.parametrize(
+    ("highway", "reaches"),
+    [
+        ("residential", False),
+        ("tertiary", False),
+        # Review r1: primary and secondary roads took a neighbour's block when they
+        # were free of the veto (North Capitol Street, Clermont Drive's).
+        ("primary", False),
+        ("secondary", False),
+        ("service", False),
+        ("motorway", True),
+        ("trunk", True),
+        # Review r2: a freeway-class way takes a differently named block only where
+        # the block is itself a freeway (Canal Road NW took M Street NW's).
+        ("motorway-arterial", False),
+        ("trunk-arterial", False),
+    ],
+)
+def test_a_frontage_road_does_not_take_the_arterial_beside_it_but_a_freeway_may(
+    highway, reaches, workspace, states
+) -> None:
+    """36th Place NE lies beside New York Avenue and took its 45 mph, three lanes
+    and count (LTS 1 to LTS 4). A way whose name is a different street's is vetoed
+    unless it is of a class agencies and OSM name differently - an interstate is
+    'Anacostia Freeway' to OSM and 'INTERSTATE 295' to DC - and the block is a
+    freeway by DC's functional class."""
+    _source, root = workspace
+    highway, _, arterial = highway.partition("-")
+    clipped = install_source_extract(
+        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway=highway
+    )
+    block = street_block("dc-1", {"speed_mph": {"ob": 45}, "lanes": {"ib": 3, "ob": 3}})
+    block["facts"]["name"] = "NEW YORK AVE NE"
+    block["facts"]["functional_class"] = "3" if arterial else "1"
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert (100 in context.road_facts_by_way) is reaches
+
+
+def test_a_way_with_no_name_is_not_vetoed(workspace, states) -> None:
+    """Nothing contradicts it: a block with a name and a way with none match on
+    geometry, as a way and a block with the same name do."""
+    clipped = install_source_extract(
+        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway="residential", name=""
+    )
+    block = street_block("dc-1", {"speed_mph": {"ob": 25}})
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 in context.road_facts_by_way
+
+
+def test_an_unnamed_service_way_does_not_take_the_street_beside_it(workspace, states) -> None:
+    """M38 (review r1): the rebuild requires a service way's name to agree, so a
+    parking aisle or alley beside a street keeps its own tags (Baltimore's unnamed
+    service ways took 118 mi of the street's 25 mph without it). An unnamed
+    residential way, which the requirement does not cover, still matches."""
+    block = street_block("dc-1", {"speed_mph": {"ob": 25}})
+    service = install_source_extract(
+        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway="service", name=""
+    )
+    context, _ = run_pipeline(service, service.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 not in context.road_facts_by_way
+
+
+def test_a_track_osm_maps_as_its_own_way_is_never_written_onto_the_road(workspace, states) -> None:
+    """Review r1, blocker 1: the block's protected lane is the separate way OSM maps
+    beside the road. Writing it onto the road rated the motor lanes LTS 1 (15th
+    Street NW) and drew the carriageway as a track."""
+    clipped = install_source_extract(
+        Path(tempfile.mkdtemp()),
+        build=build_one_road_extract,
+        highway="primary",
+        name="Test Road",
+        extra={"maxspeed": "30 mph", "lanes": "4", "cycleway:left": "separate"},
+    )
+    block = street_block("dc-1", {"bike": {"ib": 3, "ob": 3}, "lanes": {"ib": 2, "ob": 2}})
+    context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
+    assert 100 in context.road_facts_by_way
+    read = context.class_tags_by_way[100]
+    assert read["cycleway:left"] == "separate"
+    assert "track" not in {v for k, v in read.items() if k.startswith("cycleway")}
+    assert dict(context.stress_by_way[100].attr_sources)["bike"] == "osm"
+    assert int(context.stress_by_way[100].tier) > 1
+    assert context.facility_by_way[100] != "protected"

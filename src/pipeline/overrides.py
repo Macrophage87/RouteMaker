@@ -414,6 +414,7 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             volume_source=getattr(current, "volume_source", None),
             volume_aadt=getattr(current, "volume_aadt", None),
             volume_year=getattr(current, "volume_year", None),
+            attr_sources=getattr(current, "attr_sources", ()),
         )
         applied += 1
 
