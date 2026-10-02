@@ -43,7 +43,13 @@ looked for and not found.
 
 from __future__ import annotations
 
+import bisect
+import contextlib
 import logging
+import math
+import os
+import tempfile
+import threading
 from dataclasses import dataclass, field
 
 from routemaker import intersections as model
@@ -82,8 +88,13 @@ CALM_POINTS_PER_ROUND = 60
 CROSSING_POINTS_PER_ROUND = 3
 MAX_EXCLUDES = 150
 # Samples along a busy stretch this far apart (metres): every edge of a street is
-# longer than half of it, so each gets one.
+# longer than half of it, so each gets one. Each is the middle of a traced edge,
+# interpolated half way along it (`trace_junctions.edge_midpoints`), never a
+# vertex: an exclusion on a node takes out every edge there, the cross street's
+# too. An edge shorter than CALM_MIN_EDGE_M has its middle within a couple of
+# metres of a node and is not sampled.
 CALM_SAMPLE_M = 40.0
+CALM_MIN_EDGE_M = 6.0
 # Never exclude within this far along the route of its start or its end, nor of
 # a via point: the router must be able to leave and arrive, and the way out of a
 # trailhead or a cul-de-sac is often the one busy road. (Measured on the live
@@ -109,6 +120,89 @@ QUIET_COST_FACTOR = 2.2
 CLIMB_EQUIVALENT_M = 12.0
 INTERSECTION_WEIGHT_AT_ZERO = 0.25
 
+# How many searches may run at once. Each makes up to about 20 router calls
+# (review r1: 5 rounds of a route, its trace and a /locate, and the detour
+# probe), and the API's sync workers (`WEB_CONCURRENCY` 7 in compose.yaml)
+# outnumber each router's threads (`concurrency` 4 in valhalla/*.json): four
+# concurrent calm plans saturate the standard router. So one search at a time
+# in a process, and CALM_SEARCHES_PER_HOST across the API's processes on the
+# host, by a lock file each (`CALM_SLOT_DIR`). A plan that finds no slot free
+# is answered with the router's own route at once and says so
+# (`limited: "busy"`), rather than queueing behind the others.
+# The wider search (OWNER-DECISIONS 187, an exploration: "Make max calm even
+# higher. Let's see what 150 would do."). The exclusion rounds' candidates are
+# nested - each excludes what the last one rode - so above a rate of about 2 the
+# same calm candidate wins and 90 and 100 plan the same route. The wider search
+# adds candidates the nesting cannot reach: the router's route through a point
+# off the straight line, either side of its middle, at these fractions of the
+# straight-line span. Each is one route, its trace and its junctions (1 to 3 s
+# on the live router), scored and guarded as every other candidate. Off unless
+# the calm rate is at least WIDE_SEARCH_FROM_RATE (None: never), which is the
+# owner's choice (docs/DEVELOPMENT.md, "The top of the slider: what 150 would
+# do"); the measurements are there.
+WIDE_SEARCH_FROM_RATE: float | None = None
+WIDE_OFFSETS = (0.25, -0.25, 0.5, -0.5)
+# Spans shorter than this have no room to go wide in.
+WIDE_MIN_SPAN_M = 3000.0
+
+CALM_SEARCHES_PER_PROCESS = 1
+CALM_SEARCHES_PER_HOST = 3
+CALM_SLOT_DIR = os.path.join(tempfile.gettempdir(), "routemaker-calm-search")
+_process_slots = threading.BoundedSemaphore(CALM_SEARCHES_PER_PROCESS)
+
+
+class _Unlocked:
+    """The stand-in for a slot file where files cannot be locked."""
+
+    def close(self) -> None:
+        pass
+
+
+def _host_slot():
+    """An open, locked slot file, or None where every slot is taken. Where
+    locking files is not possible at all (no `fcntl`, an unwritable directory)
+    the per-process limit alone holds, and a stand-in is returned."""
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - not on the Linux hosts this runs on
+        return _Unlocked()
+    try:
+        os.makedirs(CALM_SLOT_DIR, exist_ok=True)
+    except OSError:
+        return _Unlocked()
+    for number in range(CALM_SEARCHES_PER_HOST):
+        try:
+            handle = open(os.path.join(CALM_SLOT_DIR, f"slot-{number}"), "a")  # noqa: SIM115
+        except OSError:
+            return _Unlocked()
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            handle.close()
+            continue
+        return handle
+    return None
+
+
+@contextlib.contextmanager
+def search_slot():
+    """True inside while this plan holds a search slot, False where none is
+    free (and then nothing is held)."""
+    if not _process_slots.acquire(blocking=False):
+        yield False
+        return
+    try:
+        held = _host_slot()
+        if held is None:
+            yield False
+            return
+        try:
+            yield True
+        finally:
+            held.close()
+    finally:
+        _process_slots.release()
+
 
 def quiet_cost_per_m(costing: dict) -> float:
     """The router's cost, in seconds, of a metre of quiet-street riding at this
@@ -118,6 +212,31 @@ def quiet_cost_per_m(costing: dict) -> float:
         options.get("bicycle_type", "Hybrid"), 18.0
     )
     return QUIET_COST_FACTOR * 3.6 / kmh
+
+
+def wide_search_for(rate: float) -> bool:
+    """Whether a plan at this calm rate also asks for the wider candidates."""
+    return WIDE_SEARCH_FROM_RATE is not None and rate >= WIDE_SEARCH_FROM_RATE
+
+
+def wide_points(points: list[list[float]]) -> list[tuple[float, float]]:
+    """The points off the straight line from the start to the end, either side
+    of its middle (WIDE_OFFSETS of the span); none for a short span."""
+    (lon_a, lat_a), (lon_b, lat_b) = points[0][:2], points[-1][:2]
+    span = haversine(Point(lon_a, lat_a), Point(lon_b, lat_b))
+    if span < WIDE_MIN_SPAN_M:
+        return []
+    mid_lon, mid_lat = (lon_a + lon_b) / 2, (lat_a + lat_b) / 2
+    kx = 111_320.0 * math.cos(math.radians(mid_lat))
+    ky = 110_540.0
+    east, north = (lon_b - lon_a) * kx, (lat_b - lat_a) * ky
+    length = math.hypot(east, north)
+    # Left of the direction of travel.
+    left_east, left_north = -north / length, east / length
+    return [
+        (mid_lon + left_east * span * f / kx, mid_lat + left_north * span * f / ky)
+        for f in WIDE_OFFSETS
+    ]
 
 
 def intersection_weight(stress: int) -> float:
@@ -147,6 +266,8 @@ class Context:
     climb_weight: float
     quiet_cost: float
     analyses: dict = field(default_factory=dict)
+    # Whether the wider search runs after the exclusion rounds (`wide_search_for`).
+    wide: bool = False
 
 
 @dataclass
@@ -162,6 +283,8 @@ class Analysis:
     events: list | None
     # Metres along the route at which each via point is reached.
     via_m: list = field(default_factory=list)
+    # The middle of each traced edge: (metres along, lon, lat, edge metres).
+    marks: list = field(default_factory=list)
 
     def score(self, ctx: Context) -> float:
         """The router's cost plus the extra price (see the module docstring)."""
@@ -202,6 +325,7 @@ def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | 
         return ctx.analyses[key]
     pieces: list = []
     raws: list = []
+    marks: list = []
     offset = 0.0
     via_m: list[float] = []
     for number, leg in enumerate(legs):
@@ -210,11 +334,9 @@ def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | 
             return None
         made = routing.pieces_of_trace(trace)
         pieces.extend(made)
-        raws.extend(
-            trace_junctions.junctions_of_trace(
-                trace, routing.decode_polyline6(leg.get("shape", "")), offset
-            )
-        )
+        shape = routing.decode_polyline6(leg.get("shape", ""))
+        raws.extend(trace_junctions.junctions_of_trace(trace, shape, offset))
+        marks.extend(trace_junctions.edge_midpoints(trace, shape, offset))
         offset += sum(piece.metres for piece in made)
         if number < len(legs) - 1:
             via_m.append(offset)
@@ -229,6 +351,7 @@ def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | 
         classes=classes,
         events=events_of_raws(raws, ctx, deadline),
         via_m=via_m,
+        marks=marks,
     )
     ctx.analyses[key] = result
     return result
@@ -251,20 +374,39 @@ class Target:
     tier: int
 
 
+def _marks(analysis: Analysis) -> list:
+    """The edges' middles; where a reading has none (a route read before they
+    were kept), each piece's own middle."""
+    if analysis.marks:
+        return analysis.marks
+    marks, along = [], 0.0
+    for piece in analysis.pieces:
+        marks.append((along + piece.metres / 2, piece.lon, piece.lat, piece.metres))
+        along += piece.metres
+    return marks
+
+
 def calm_targets(analysis: Analysis, ctx: Context, min_tier: int = 3) -> list[Target]:
     """Points along the route's stretches of LTS `min_tier` and worse, one to an
-    edge."""
+    edge: each the edge's interpolated middle, with the tier of the piece there."""
     kept: list[Target] = []
     total = analysis.length_m
-    along = 0.0
-    for piece, (tier, _kind) in zip(analysis.pieces, analysis.classes, strict=True):
+    ends, along = [], 0.0
+    for piece in analysis.pieces:
         along += piece.metres
+        ends.append(along)
+    if not ends:
+        return []
+    for at, lon, lat, metres in _marks(analysis):
+        if metres < CALM_MIN_EDGE_M:
+            continue
+        tier, _kind = analysis.classes[min(bisect.bisect_left(ends, at), len(ends) - 1)]
         if tier not in ("3", "4", "5") or int(tier) < min_tier:
             continue
-        point = (piece.lon, piece.lat)
+        point = (lon, lat)
         if kept and haversine(Point(*kept[-1].point), Point(*point)) < CALM_SAMPLE_M:
             continue
-        if _clear_of_ends(along, total, analysis.via_m):
+        if _clear_of_ends(at, total, analysis.via_m):
             kept.append(Target(point, int(tier)))
     if len(kept) > CALM_POINTS_PER_ROUND:
         step = len(kept) / CALM_POINTS_PER_ROUND
@@ -311,7 +453,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # a trace that fails here is not asked for again (`routing._trace`). Only the
     # candidates are held to the search's shorter one.
     try:
-        best = current = analyse(trip, ctx, ctx.deadline)
+        best = analyse(trip, ctx, ctx.deadline)
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
         info["limited"] = "time"
         return trip, info
@@ -321,13 +463,79 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     # The search's own time starts once the route is read: reading it is the
     # answer's work, done whether or not anything is searched.
     stop_at = min(routing.clock() + REFINE_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
-    best_trip = trip
     first_exposure = best.exposure_m
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
     best_score = best.score(ctx)
+    with search_slot() as free:
+        if not free:
+            info["limited"] = "busy"
+            return trip, info
+        best, best_trip = _search(trip, best, best_score, first_exposure, stop_at, ctx, info)
+        if ctx.wide:
+            best, best_trip = _wide(best, best_trip, first_exposure, stop_at, ctx, info)
+    info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
+    info["exposure_after_m"] = round(best.exposure_m, 1)
+    return best_trip, info
+
+
+def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
+    """The wider candidates (WIDE_OFFSETS): the router's route through each
+    point off the straight line, kept where it scores better and is not
+    busier. `info["wide"]` says how many were asked and whether one was kept."""
+    if len(ctx.points) != 2:
+        return best, best_trip
+    vias = wide_points(ctx.points)
+    asked = taken = 0
+    best_score = best.score(ctx)
+    locations = ctx.request.get("locations") or []
+    for lon, lat in vias:
+        if stop_at - routing.clock() < REFINE_ROUND_MIN_S or len(locations) < 2:
+            info["limited"] = info["limited"] or "time"
+            break
+        request = {
+            k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")
+        }
+        request["locations"] = [
+            locations[0],
+            {"lon": lon, "lat": lat, "type": "through"},
+            locations[-1],
+        ]
+        round_deadline = routing.Deadline(
+            stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+        )
+        asked += 1
+        try:
+            answer = routing._call(ctx.variant, "route", request, round_deadline)
+            candidate = answer.get("trip") or {}
+            if not candidate.get("legs"):
+                continue
+            read = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+        except routing.RouterRefused:
+            continue
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            info["limited"] = info["limited"] or "time"
+            break
+        if read is None or read.events is None:
+            continue
+        busier = read.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        score = read.score(ctx)
+        if score < best_score - IMPROVEMENT_EPS_S and not busier:
+            best, best_trip, best_score = read, candidate, score
+            taken += 1
+    info["wide"] = {"asked": asked, "taken": taken > 0}
+    return best, best_trip
+
+
+def _search(trip, best, best_score, first_exposure, stop_at, ctx: Context, info: dict):
+    """The rounds of exclusion and re-routing (see `refine`): the best reading
+    and its trip."""
+    current = best
+    best_trip = trip
     rounds = REFINE_MAX_ROUNDS if ctx.rate > 0 else CROSSING_ONLY_ROUNDS
     excluded: list[Target] = []
+    # Every exclusion list sent, so that none is sent twice.
+    sent: set[tuple] = set()
     stale = 0
     for number in range(rounds):
         new = crossing_targets(current, ctx) if number < CROSSING_ONLY_ROUNDS else []
@@ -339,6 +547,14 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         new = [t for t in dict.fromkeys(new) if t.point not in have]
         if not new:
             break
+        # The router takes MAX_EXCLUDES at most: what does not fit is not
+        # asked for (review r1: a list cut short at the limit could send the
+        # same request again a round later).
+        room = MAX_EXCLUDES - len(excluded)
+        if room <= 0:
+            info["limited"] = "excludes"
+            break
+        new = new[:room]
         if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
             info["limited"] = "time"
             break
@@ -350,11 +566,15 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         worst = [t for t in new if t.tier >= 4]
         if worst and len(worst) < len(new):
             attempts.append(excluded + worst)
+        attempts = [a for a in attempts if tuple(t.point for t in a) not in sent]
+        if not attempts:
+            break
         try:
             for asked in attempts:
+                sent.add(tuple(t.point for t in asked))
                 request = {k: v for k, v in ctx.request.items() if k != "alternates"}
                 request["exclude_locations"] = [
-                    {"lon": t.point[0], "lat": t.point[1]} for t in asked[:MAX_EXCLUDES]
+                    {"lon": t.point[0], "lat": t.point[1]} for t in asked
                 ]
                 try:
                     answer = routing._call(ctx.variant, "route", request, round_deadline)
@@ -372,20 +592,22 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         except (routing.DeadlineExceeded, routing.RouterUnavailable):
             info["limited"] = "time"
             break
-        excluded = asked[:MAX_EXCLUDES]
+        excluded = asked
+        info["excluded"] = len(excluded)
         if current is None:
             info["limited"] = "untraceable"
             break
         info["rounds"] += 1
         score = current.score(ctx)
         busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
-        if score < best_score - IMPROVEMENT_EPS_S and not busier:
+        # A candidate whose junctions could not be read (the database or the
+        # router failing) would score as if it had none: it is not taken
+        # (review r1), though the search may go on from it.
+        unread = current.events is None
+        if score < best_score - IMPROVEMENT_EPS_S and not busier and not unread:
             best, best_trip, best_score, stale = current, candidate, score, 0
         else:
             stale += 1
             if stale >= REFINE_PATIENCE:
                 break
-    info["excluded"] = len(excluded)
-    info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
-    info["exposure_after_m"] = round(best.exposure_m, 1)
-    return best_trip, info
+    return best, best_trip

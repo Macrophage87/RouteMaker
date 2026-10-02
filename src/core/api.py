@@ -157,9 +157,13 @@ class RouteIn(Schema):
         ge=presets.STRESS_MIN,
         le=presets.STRESS_MAX,
         description=(
-            "The traffic-stress slider: 0 is traffic tolerant (the planner warns at 10 or"
-            " below; it is not the fastest route), 100 keeps to low-stress ways unless avoiding"
-            " them takes much longer. Absent: the preset's own start."
+            "The traffic-stress slider, rescaled on 2026-10-01: 0 is traffic tolerant (the"
+            " planner warns at 10 or below; it is not the fastest route), 70 is Default, 80"
+            " keeps to low-stress ways unless avoiding them takes much longer (the old top),"
+            " and above 80 a calm detour search accepts longer routes to avoid LTS 3, 4 and"
+            " Avoid roads, rising to about 10 m of extra riding for every metre of LTS 3 at"
+            " 100, with no cap on the detour (`calm_search`, `detour` in the answer). Absent:"
+            " the preset's own start."
         ),
     )
     hills: StrictInt | None = Field(
@@ -412,8 +416,11 @@ class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
     crossings. `limited` says why it stopped short, or why it did not run:
-    `time`, `no_route` (every way out was excluded), `untraceable`, `span`,
-    `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to its end."""
+    `time`, `no_route` (every way out was excluded), `untraceable`,
+    `excludes` (the router's limit on exclusions was reached), `busy` (other
+    plans held every search slot, so the router's own route was kept at once),
+    `span`, `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to
+    its end."""
 
     rate: float = Field(description="Metres of detour accepted per metre of LTS 3 avoided.")
     rounds: int

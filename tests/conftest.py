@@ -83,6 +83,18 @@ _REAL_WEEKEND_CHECK: dict = {}
 
 
 @pytest.fixture(autouse=True)
+def _calm_search_slots(monkeypatch, tmp_path_factory):
+    """The calm search's host-wide slot files (`core.refine.search_slot`) go in
+    a directory of the test run's own, never the machine's temporary directory,
+    where a running API would share them."""
+    try:
+        from core import refine
+    except Exception:  # noqa: BLE001 - modules that never load Django
+        return
+    monkeypatch.setattr(refine, "CALM_SLOT_DIR", str(tmp_path_factory.mktemp("calm-slots")))
+
+
+@pytest.fixture(autouse=True)
 def _toy_required_states(monkeypatch):
     """The rebuild refuses a region missing a required state's boundary, or
     whose boundary holds no way (pipeline.states). The toy extracts carry DC,

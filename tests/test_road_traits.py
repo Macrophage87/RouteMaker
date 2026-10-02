@@ -33,10 +33,28 @@ class TestClassifierKeepsWhatItRead:
         )
         assert (result.speed_mph, result.lanes, result.oneway) == (30, 3, True)
 
-    def test_an_assumed_speed_is_kept_and_marked_assumed(self) -> None:
+    def test_an_assumed_speed_or_lane_count_is_not_kept(self) -> None:
+        """Review r1, SHOULD_FIX 7: the class default the tables fell back on is
+        not a fact about the road, and the junction reasons would state it as
+        one ("2-lane 25 mph road"); and an assumed single lane would zero the
+        merge cost the model assumes by tier where the count is unknown."""
         result = classify({"highway": "residential"}, urban=True)
-        assert result.speed_mph is not None
-        assert "maxspeed" in result.assumed
+        assert "maxspeed" in result.assumed and "lanes" in result.assumed
+        assert result.speed_mph is None and result.lanes is None
+        assert result.oneway is False
+
+    def test_a_posted_speed_without_lanes_keeps_the_speed_alone(self) -> None:
+        result = classify({"highway": "primary", "maxspeed": "40 mph"}, urban=True)
+        assert (result.speed_mph, result.lanes) == (40, None)
+
+    def test_lanes_without_a_posted_speed_keep_the_lanes_alone(self) -> None:
+        result = classify({"highway": "primary", "lanes": "6"}, urban=True)
+        assert (result.speed_mph, result.lanes) == (None, 3)
+
+    def test_a_unitless_posted_speed_is_kept(self) -> None:
+        """The number was surveyed; only its unit is assumed."""
+        result = classify({"highway": "secondary", "maxspeed": "30"}, urban=True)
+        assert "maxspeed unit" in result.assumed and result.speed_mph == 30
 
     def test_a_trail_has_no_road_traits(self) -> None:
         result = classify({"highway": "cycleway"})

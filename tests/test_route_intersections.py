@@ -5,7 +5,10 @@ The world: a quiet street (way 101, LTS 2) runs east along a parallel of
 latitude and crosses a four-lane arterial (way 202, LTS 4, 40 mph) at the third
 vertex. The router's answers carry what the live standard router's do:
 headings, `use`, road class and the other roads at each node on
-`/trace_attributes`, and the stop, yield and signal flags on `/locate`.
+`/trace_attributes`; and on `/locate` at the node, every directed edge there
+(arriving at the node, `percent_along` 1, or leaving it, 0) with its way, its
+heading, its car access and the stop, yield and signal flags of its end, and
+the node itself.
 """
 
 from __future__ import annotations
@@ -103,17 +106,53 @@ def trace_edges(vertices, junction_index: int, cross_class="primary", out_use="r
     return [first, second]
 
 
+NODE = 9_000_001
+
+
+def _edge(edge_id, way, end_node, along, heading, stop=False, names=()):
+    return {
+        "edge_id": {"value": edge_id},
+        "percent_along": along,
+        "heading": heading,
+        "correlated_lon": JUNCTION[0],
+        "correlated_lat": JUNCTION[1],
+        "edge": {
+            "end_node": {"value": end_node},
+            "classification": {"use": "road", "link": False},
+            "access": {"car": True},
+            "stop_sign": stop,
+            "yield_sign": False,
+            "traffic_signal": False,
+        },
+        "edge_info": {"way_id": way, "names": list(names)},
+    }
+
+
 def locate_answer(stop=False, signal=False):
+    """The crossroads at the junction: way 101 east-west through it (the route
+    arrives from the west by IN_EDGE and leaves east by IN_EDGE + 1), way 202
+    north-south through it."""
+
     def locate(payload):
         return [
             {
-                "nodes": [{"traffic_signal": signal}],
-                "edges": [
+                "nodes": [
                     {
-                        "edge_id": {"value": IN_EDGE},
-                        "edge": {"stop_sign": stop, "yield_sign": False, "traffic_signal": False},
-                        "edge_info": {"way_id": 101},
+                        "node_id": {"value": NODE},
+                        "traffic_signal": signal,
+                        "lon": JUNCTION[0],
+                        "lat": JUNCTION[1],
                     }
+                ],
+                "edges": [
+                    _edge(IN_EDGE, 101, NODE, 1.0, 90.0, stop=stop),
+                    _edge(IN_EDGE + 1, 101, 801, 0.0, 90.0),
+                    _edge(IN_EDGE + 2, 101, 802, 0.0, 270.0),
+                    _edge(IN_EDGE + 3, 101, NODE, 1.0, 270.0),
+                    _edge(IN_EDGE + 4, 202, 803, 0.0, 0.0, names=["Arterial"]),
+                    _edge(IN_EDGE + 5, 202, NODE, 1.0, 180.0, names=["Arterial"]),
+                    _edge(IN_EDGE + 6, 202, 804, 0.0, 180.0, names=["Arterial"]),
+                    _edge(IN_EDGE + 7, 202, NODE, 1.0, 0.0, names=["Arterial"]),
                 ],
             }
             for _ in payload["locations"]
@@ -163,7 +202,7 @@ class TestIntersectionsInTheAnswer:
         assert junction["crossed_tier"] == 4
         assert junction["movement"] == "straight" and junction["kind"] == "crossing"
         assert junction["control"] == "none"
-        assert junction["reason"] == "Crossing a 4-lane 40 mph (64 km/h) road, no signal"
+        assert junction["reason"] == "Crossing a 4-lane 40 mph (64 km/h) road, no signal mapped"
         assert (junction["lon"], junction["lat"]) == pytest.approx(JUNCTION)
         assert junction["m"] == 900  # the first edge's length
         assert junction["cost_ft"] >= 2000
@@ -190,7 +229,9 @@ class TestIntersectionsInTheAnswer:
         post(client, good_body())
         asked = [p for url, p in fake.calls if url.endswith("/locate")]
         assert asked and asked[0]["verbose"] is True and asked[0]["costing"] == "bicycle"
-        assert asked[0]["locations"][0] == pytest.approx({"lon": JUNCTION[0], "lat": JUNCTION[1]})
+        location = asked[0]["locations"][0]
+        assert (location["lon"], location["lat"]) == pytest.approx(JUNCTION)
+        assert location["radius"] == 1
         traced = [p for url, p in fake.calls if url.endswith("/trace_attributes")][0]
         wanted = traced["filters"]["attributes"]
         for attribute in (
@@ -286,7 +327,7 @@ class TestIntersectionsInTheAnswer:
         junctions._has_trait_columns_seen = False
         router(world())
         (junction,) = post(client, good_body()).json()["intersections"]
-        assert junction["reason"] == "Crossing a road (LTS 4), no signal"
+        assert junction["reason"] == "Crossing a heavy-traffic road (LTS 4), no signal mapped"
 
 
 @db

@@ -1020,6 +1020,11 @@ def _classify(
     if tier is Stress.LTS1 and is_rough(tags):
         tier, rule = Stress.LTS2, rule + ", rough surface"
 
+    # The road's traits as the intersection model will state them: only what
+    # was read, never the class default the tables fell back on (review r1: an
+    # assumed speed or lane count would be told to a rider as fact, "2-lane 25
+    # mph road", and an assumed single lane would zero the merge cost the model
+    # otherwise assumes by tier).
     return StressResult(
         tier,
         rule,
@@ -1027,8 +1032,8 @@ def _classify(
         volume_source,
         aadt,
         volume_year,
-        speed_mph=speed_mph,
-        lanes=lanes,
+        speed_mph=None if "maxspeed" in assumed else speed_mph,
+        lanes=None if "lanes" in assumed else lanes,
         oneway=oneway,
     )
 

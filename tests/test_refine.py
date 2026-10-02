@@ -24,11 +24,15 @@ def piece(along: float, tier: str) -> tuple:
     return routing.Piece(1, point[0], point[1], 100.0), (tier, "none")
 
 
+# A reading whose junctions were read and found to have nothing to say.
+NO_EVENTS = ()
+
+
 def analysis(
     name: str,
     tiers: str = "1" * 40,
     cost_s: float = 4000.0,
-    events: list | None = None,
+    events: list | tuple | None = NO_EVENTS,
     climb_m: float = 0.0,
     shift: int = 0,
 ) -> refine.Analysis:
@@ -45,7 +49,7 @@ def analysis(
         climb_m=climb_m,
         pieces=list(pieces),
         classes=list(classes),
-        events=events,
+        events=None if events is None else list(events),
         via_m=[],
     )
 
@@ -519,6 +523,110 @@ class TestStopping:
         assert refine.MAX_EXCLUDES <= 200
         assert refine.CALM_POINTS_PER_ROUND <= refine.MAX_EXCLUDES
 
+    def test_a_full_list_ends_the_search_rather_than_asking_again(self, monkeypatch) -> None:
+        """Review r1, SHOULD_FIX 3: once the list is at the router's limit, a
+        new round would only send it again."""
+        shapes = {
+            "o": analysis("o", "3" * 200, cost_s=4000.0),
+            "c1": analysis("c1", "3" * 200, cost_s=3900.0, shift=300),
+            "c2": analysis("c2", "3" * 200, cost_s=3800.0, shift=600),
+            "c3": analysis("c3", "3" * 200, cost_s=3700.0, shift=900),
+        }
+        routes = [trip_of(n, 4.0) for n in ("c1", "c2", "c3", "c3", "c3")]
+        world = World(monkeypatch, shapes, routes)
+        _kept, info = refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert len(world.requests) == 3
+        assert info["limited"] == "excludes"
+        sent = [tuple(world.excluded(n)) for n in range(len(world.requests))]
+        assert len(set(sent)) == len(sent), "no exclusion list is sent twice"
+
+    def test_the_same_list_is_never_sent_twice(self, monkeypatch) -> None:
+        """A reduced ask that equals one already sent is not asked again."""
+        orig = analysis("o", "1" * 5 + "4" * 4 + "3" * 4 + "1" * 27)
+        world = World(
+            monkeypatch,
+            {"o": orig},
+            [
+                routing.RouterRefused(400, 442, "no path"),
+                routing.RouterRefused(400, 442, "no path"),
+            ],
+        )
+        refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        sent = [tuple(world.excluded(n)) for n in range(len(world.requests))]
+        assert len(set(sent)) == len(sent)
+
+
+class TestUnreadJunctions:
+    def test_a_candidate_whose_junctions_could_not_be_read_is_not_taken(self, monkeypatch) -> None:
+        """Review r1, SHOULD_FIX 4: it would score as having no crossings at all."""
+        orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, events=[event(1500.0)])
+        unread = analysis("u", "1" * 40, cost_s=3000.0, events=None)
+        World(monkeypatch, {"o": orig, "u": unread}, [trip_of("u", 4.0)] * 3)
+        kept, info = refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert kept["legs"][0]["shape"] == "o"
+        assert info["rounds"] >= 1
+
+    def test_the_same_candidate_read_is_taken(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, events=[event(1500.0)])
+        read = analysis("r", "1" * 40, cost_s=3000.0, events=[])
+        World(monkeypatch, {"o": orig, "r": read}, [trip_of("r", 4.0)] * 3)
+        kept, _info = refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert kept["legs"][0]["shape"] == "r"
+
+
+class TestSearchSlots:
+    """Review r1, SHOULD_FIX 2: a limit on searches at once, in a process and
+    across the API's processes on the host."""
+
+    @pytest.fixture(autouse=True)
+    def slots(self, monkeypatch, tmp_path):
+        monkeypatch.setattr(refine, "CALM_SLOT_DIR", str(tmp_path / "slots"))
+        return tmp_path / "slots"
+
+    def test_a_free_slot_is_held_and_given_back(self) -> None:
+        with refine.search_slot() as free:
+            assert free
+        with refine.search_slot() as again:
+            assert again
+
+    def test_one_search_at_a_time_in_a_process(self) -> None:
+        with refine.search_slot() as first, refine.search_slot() as second:
+            assert first and not second
+
+    def test_every_host_slot_taken_is_busy(self, slots) -> None:
+        import fcntl
+
+        slots.mkdir()
+        held = []
+        for number in range(refine.CALM_SEARCHES_PER_HOST):
+            handle = open(slots / f"slot-{number}", "a")  # noqa: SIM115
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            held.append(handle)
+        try:
+            with refine.search_slot() as free:
+                assert not free
+        finally:
+            for handle in held:
+                handle.close()
+        with refine.search_slot() as free:
+            assert free
+
+    def test_a_busy_host_answers_with_the_routers_route_at_once(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 5 + "4" * 4 + "1" * 31, events=[event(1500.0)])
+        world = World(monkeypatch, {"o": orig}, [])
+        with refine.search_slot():
+            kept, info = refine.refine(trip_of("o", 4.0), context(rate=10.0))
+        assert kept["legs"][0]["shape"] == "o"
+        assert info["limited"] == "busy" and world.requests == []
+        assert info["exposure_before_m"] == orig.exposure_m
+
+    def test_an_unwritable_directory_leaves_the_process_limit(self, monkeypatch, tmp_path) -> None:
+        blocker = tmp_path / "file"
+        blocker.write_text("")
+        monkeypatch.setattr(refine, "CALM_SLOT_DIR", str(blocker / "under-a-file"))
+        with refine.search_slot() as free:
+            assert free
+
 
 class TestTargets:
     def test_one_point_per_edge_along_a_busy_stretch(self) -> None:
@@ -553,3 +661,97 @@ class TestTargets:
 
     def test_quiet_roads_are_never_targets(self) -> None:
         assert refine.calm_targets(analysis("a", "12" * 20), context(rate=10.0)) == []
+
+    def test_the_points_are_the_edges_interpolated_middles(self) -> None:
+        """Review r1, SHOULD_FIX 1: never a vertex at a node."""
+        a = analysis("a", "1" * 10 + "3" * 20 + "1" * 10)
+        middle = (BASE[0] + 0.0155, BASE[1] + 2e-6)
+        a.marks = [(1550.0, *middle, 300.0)]
+        assert refine.calm_targets(a, context(rate=10.0)) == [refine.Target(middle, 3)]
+
+    def test_a_short_edges_middle_is_too_near_its_nodes(self) -> None:
+        a = analysis("a", "1" * 10 + "3" * 20 + "1" * 10)
+        a.marks = [(1550.0, BASE[0] + 0.0155, BASE[1], refine.CALM_MIN_EDGE_M - 1)]
+        assert refine.calm_targets(a, context(rate=10.0)) == []
+
+    def test_the_tier_is_the_one_under_the_middle(self) -> None:
+        a = analysis("a", "1" * 10 + "3" * 10 + "4" * 10 + "1" * 10)
+        a.marks = [(1550.0, 0.1, 0.1, 100.0), (2550.0, 0.2, 0.2, 100.0), (3550.0, 0.3, 0.3, 100.0)]
+        assert [t.tier for t in refine.calm_targets(a, context(rate=10.0))] == [3, 4]
+
+    def test_no_pieces_no_targets(self) -> None:
+        a = analysis("a", "1")
+        a.pieces, a.classes = [], []
+        assert refine.calm_targets(a, context(rate=10.0)) == []
+
+
+class TestWideSearch:
+    """OWNER-DECISIONS 187, an exploration: candidates through points off the
+    straight line, which the nested exclusion rounds cannot reach."""
+
+    def wide_context(self, rate=10.0) -> refine.Context:
+        ctx = context(rate=rate)
+        ctx.request["locations"] = [
+            {"lon": BASE[0], "lat": BASE[1]},
+            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
+        ]
+        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
+        ctx.wide = True
+        return ctx
+
+    def test_off_unless_the_owner_turns_it_on(self, monkeypatch) -> None:
+        assert refine.WIDE_SEARCH_FROM_RATE is None
+        assert not refine.wide_search_for(1e9)
+        monkeypatch.setattr(refine, "WIDE_SEARCH_FROM_RATE", 10.0)
+        assert refine.wide_search_for(10.0) and not refine.wide_search_for(9.9)
+
+    def test_the_points_are_either_side_of_the_middle(self) -> None:
+        span_lon = 0.1
+        points = refine.wide_points([[BASE[0], BASE[1]], [BASE[0] + span_lon, BASE[1]]])
+        assert len(points) == len(refine.WIDE_OFFSETS)
+        for (lon, lat), offset in zip(points, refine.WIDE_OFFSETS, strict=True):
+            assert lon == pytest.approx(BASE[0] + span_lon / 2, abs=1e-9)
+            # Going east, left is north.
+            assert (lat > BASE[1]) == (offset > 0)
+        north = sorted(lat for _lon, lat in points)
+        assert north[0] < north[1] < BASE[1] < north[2] < north[3]
+
+    def test_a_short_span_has_no_room(self) -> None:
+        assert refine.wide_points([[BASE[0], BASE[1]], [BASE[0] + 0.01, BASE[1]]]) == []
+
+    def test_each_point_is_asked_as_a_through_location_and_the_best_kept(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0)
+        # The exclusion rounds find nothing better ...
+        worse = analysis("w", "1" * 10 + "3" * 10 + "1" * 20, cost_s=9000.0, shift=100)
+        # ... and the second wide point is calm.
+        wide_calm = analysis("c", "1" * 50, cost_s=4800.0, shift=300)
+        wide_busy = analysis("b", "1" * 10 + "4" * 10 + "1" * 30, cost_s=4100.0, shift=600)
+        routes = [trip_of("w", 4.0), trip_of("w", 4.0)] + [
+            trip_of(n, 5.0) for n in ("b", "c", "b", "b")
+        ]
+        world = World(monkeypatch, {"o": orig, "w": worse, "c": wide_calm, "b": wide_busy}, routes)
+        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context())
+        assert kept["legs"][0]["shape"] == "c"
+        assert info["wide"] == {"asked": 4, "taken": True}
+        wide_asks = [r for r in world.requests if len(r["locations"]) == 3]
+        assert len(wide_asks) == 4
+        assert all(r["locations"][1]["type"] == "through" for r in wide_asks)
+        assert all("exclude_locations" not in r and "alternates" not in r for r in wide_asks)
+
+    def test_a_busier_wide_route_is_never_taken(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0)
+        busy = analysis("b", "1" * 10 + "4" * 10 + "1" * 20, cost_s=100.0, shift=100)
+        routes = [refine_none for refine_none in [routing.RouterRefused(400, 442, "no path")] * 2]
+        routes += [trip_of("b", 4.0)] * 4
+        World(monkeypatch, {"o": orig, "b": busy}, routes)
+        kept, info = refine.refine(trip_of("o", 4.0), self.wide_context(rate=0.0))
+        assert kept["legs"][0]["shape"] == "o"
+        assert info["wide"] == {"asked": 4, "taken": False}
+
+    def test_not_asked_without_the_time(self, monkeypatch) -> None:
+        orig = analysis("o", "1" * 40)
+        world = World(monkeypatch, {"o": orig}, [])
+        ctx = self.wide_context(rate=0.0)
+        ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1, 35)
+        _kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert world.requests == [] and info["wide"] == {"asked": 0, "taken": False}

@@ -451,10 +451,11 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # "Few stops, few turns, smooth pavement | L2: high use_roads,
                 # high maneuver_penalty, high surface avoidance" - high, and
                 # still below the 1.0 at which the surface exclusion arms.
-                # Stress 5 plans a little more directly than the old 10 did
-                # (`use_roads` 0.94 against 0.90), the nearest step of the
-                # slider's five to the same route.
-                stress=5,
+                # The old 10 was `use_roads` 0.90. On the slider's steps of
+                # five, 10 gives 0.871 and 5 gives 0.936: 10 is the nearer
+                # (review r1; 8 would give 0.897 but is not a step), and plans
+                # a little less directly than before.
+                stress=10,
                 hills=0,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=HIGH_SURFACE_AVOIDANCE,

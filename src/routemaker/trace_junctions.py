@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from .geo import Point, haversine
 from .intersections import Movement, movement_of
 
 # What `core.routing.trace_leg` asks the router for besides the stress join's
@@ -44,6 +45,16 @@ BUSY_CLASSES = frozenset({"motorway", "trunk", "primary", "secondary", "tertiary
 # channelised turn; both are drawn from OSM `highway=*_link` at an intersection.
 SLIP_LANE_USE = "turn_channel"
 CROSSING_USE = "pedestrian_crossing"
+# The uses of a path, trail, cycletrack or sidewalk: a route arriving or leaving
+# on one crosses a road as a trail crossing does (item 185), and like a mapped
+# crossing way its signal seldom reaches the router's flag. Measured on the
+# live router (2026-10-02): the Pennsylvania Ave and Virginia Ave cycletracks
+# cross 13th, 15th and 21st St NW at nodes of their own, a few metres from the
+# signalised road junction, with no signal flag at the crossing node or on the
+# road's 5-8 m arms to the junction.
+PATH_USES = frozenset(
+    {"cycleway", "footway", "path", "mountain_bike", "sidewalk", "pedestrian", "bridleway"}
+)
 # Other roads at a node that are never a road a rider crosses.
 NOT_A_ROAD_USES = frozenset(
     {
@@ -83,8 +94,15 @@ class RawJunction:
     in_class: str | None = None
     out_class: str | None = None
     other_classes: tuple[str | None, ...] = field(default_factory=tuple)
-    # A point on the edge the route arrives by (its middle vertex).
+    # A point on the edge the route arrives by: half way along it, interpolated,
+    # never one of its vertices (a vertex at a node would exclude every edge
+    # there, the cross street's too, when a re-plan excludes it).
     approach: tuple[float, float] | None = None
+    # The directed edge the route leaves by, which ties it to `/locate`'s.
+    out_edge_id: int | None = None
+    # The compass headings the route arrives and leaves on.
+    in_heading: float | None = None
+    out_heading: float | None = None
 
     @property
     def slip_lane(self) -> bool:
@@ -116,6 +134,12 @@ class RawJunction:
         `pedestrian_crossing`: a trail crossing a road, a crosswalk)."""
         return CROSSING_USE in (self.in_use, self.out_use)
 
+    @property
+    def path_crossing(self) -> bool:
+        """The route arrives or leaves on a path, trail, cycletrack or
+        sidewalk: a road it crosses here is a trail crossing (item 185)."""
+        return self.in_use in PATH_USES or self.out_use in PATH_USES
+
 
 def edge_id_of(edge: dict) -> int | None:
     """The directed edge's GraphId value, however the router spells it."""
@@ -125,15 +149,78 @@ def edge_id_of(edge: dict) -> int | None:
     return int(raw) if isinstance(raw, int) else None
 
 
+def midpoint_along(
+    shape: list[tuple[float, float]], begin: int, end: int
+) -> tuple[float, float] | None:
+    """The point half way along `shape[begin..end]` by ground distance,
+    interpolated between the two vertices it falls between; None where the
+    stretch has no length."""
+    if begin is None or end is None or begin >= end or end >= len(shape):
+        return None
+    lengths = [
+        haversine(Point(*a), Point(*b))
+        for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True)
+    ]
+    total = sum(lengths)
+    if total <= 0:
+        return None
+    half = total / 2
+    for (a, b), length in zip(
+        zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True), lengths, strict=True
+    ):
+        if length > 0 and half <= length:
+            t = half / length
+            return (a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t)
+        half -= length
+    return shape[end]
+
+
+def trace_shape(trace: dict, fallback: list[tuple[float, float]]) -> list[tuple[float, float]]:
+    """The shape the trace's `begin_shape_index` and `end_shape_index` count
+    in: the trace's own, where it was asked for. The router drops repeated and
+    near-repeated vertices from the shape it was given, so the route's shape is
+    not the same list (measured on the live router, Falls Church to the Capitol:
+    927 vertices given, 922 traced, and the junctions read from the given shape
+    drifted onto the wrong nodes for 245 of 342 edges)."""
+    encoded = trace.get("shape")
+    return decode_polyline6(encoded) if encoded else fallback
+
+
+def decode_polyline6(encoded: str) -> list[tuple[float, float]]:
+    """Valhalla's encoded shape (precision 6) as [(lon, lat), ...] (as
+    `core.routing.decode_polyline6`, which this package may not import)."""
+    coordinates: list[tuple[float, float]] = []
+    index = lat = lon = 0
+    while index < len(encoded):
+        for axis in (0, 1):
+            shift = result = 0
+            while True:
+                byte = ord(encoded[index]) - 63
+                index += 1
+                result |= (byte & 0x1F) << shift
+                shift += 5
+                if byte < 0x20:
+                    break
+            delta = ~(result >> 1) if result & 1 else result >> 1
+            if axis == 0:
+                lat += delta
+            else:
+                lon += delta
+        coordinates.append((lon / 1e6, lat / 1e6))
+    return coordinates
+
+
 def junctions_of_trace(
     trace: dict, shape: list[tuple[float, float]], offset_m: float = 0.0
 ) -> list[RawJunction]:
     """Every node the traced leg passes through where something is decided.
 
-    `shape` is the leg's decoded shape (lon, lat), `offset_m` the metres the
-    route has already gone. A node between two edges of the same way with no
-    other road at it is a continuation and is left out, as is a node whose
-    headings the router did not give."""
+    `shape` is the leg's decoded shape (lon, lat), used only where the trace
+    has no shape of its own (`trace_shape`); `offset_m` the metres the route
+    has already gone. A node between two edges of the same way with no other
+    road at it is a continuation and is left out, as is a node whose headings
+    the router did not give."""
+    shape = trace_shape(trace, shape)
     edges = trace.get("edges") or []
     to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
     junctions: list[RawJunction] = []
@@ -156,8 +243,6 @@ def junctions_of_trace(
         if in_way == out_way and not others:
             continue
         lon, lat = shape[end]
-        begin = here.get("begin_shape_index")
-        approach = shape[(begin + end) // 2] if begin is not None and begin <= end else None
         junctions.append(
             RawJunction(
                 m=along,
@@ -173,7 +258,31 @@ def junctions_of_trace(
                 in_class=here.get("road_class"),
                 out_class=there.get("road_class"),
                 other_classes=other_classes,
-                approach=approach,
+                approach=midpoint_along(shape, here.get("begin_shape_index"), end),
+                out_edge_id=edge_id_of(there),
+                in_heading=float(in_heading),
+                out_heading=float(out_heading),
             )
         )
     return junctions
+
+
+def edge_midpoints(
+    trace: dict, shape: list[tuple[float, float]], offset_m: float = 0.0
+) -> list[tuple[float, float, float, float]]:
+    """Every traced edge's middle: (metres along the route at it, lon, lat,
+    the edge's length), the middle interpolated half way along the edge's
+    shape. The calm search excludes busy edges by these points: a piece's
+    middle can sit within a metre or two of a node on a short stretch, and an
+    exclusion there takes out the cross street as well."""
+    shape = trace_shape(trace, shape)
+    to_metres = 1609.344 if trace.get("units") == "miles" else 1000.0
+    marks = []
+    along = offset_m
+    for edge in trace.get("edges") or []:
+        length = float(edge.get("length") or 0.0) * to_metres
+        point = midpoint_along(shape, edge.get("begin_shape_index"), edge.get("end_shape_index"))
+        if point is not None and length > 0:
+            marks.append((along + length / 2, point[0], point[1], length))
+        along += length
+    return marks

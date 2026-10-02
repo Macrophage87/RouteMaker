@@ -3,9 +3,10 @@
 OWNER-DECISIONS item 164 (2026-10-01): "The 10-20 miles is just an example, but
 the upper end could be much greater than straight line distance, just warn
 people." The existing detour notice becomes this warning, in tiers taken from
-reports/LTS-literature-review-2.md, "The stress slider's top end: let it run
-long, warn at 1.5x and 2x": observed utility riders rarely exceed 1.5 times the
-shortest route, and the standard low-stress allowance is the larger of 1.25
+"Bicycle stress literature in depth" (reports/LTS-literature-review-2.md), "The
+stress slider's top end: let it run long, warn at 1.5x and 2x": observed utility
+riders rarely exceed 1.5 times the shortest route, and the standard low-stress
+allowance is the larger of 1.25
 times or 0.33 mi (Furth, now also the BNA). The tiers are judgement anchored on
 those distributions; there is no cap, only words.
 

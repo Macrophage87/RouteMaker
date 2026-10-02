@@ -84,6 +84,86 @@ class TestJunctions:
         assert t.junctions_of_trace(trace, SHAPE) == []
 
 
+def encode6(points) -> str:
+    """Valhalla's polyline, precision 6 (the inverse of `decode_polyline6`)."""
+    out = []
+    last = (0, 0)
+    for lon, lat in points:
+        here = (round(lat * 1e6), round(lon * 1e6))
+        for value, before in zip(here, last, strict=True):
+            delta = value - before
+            delta = ~(delta << 1) if delta < 0 else delta << 1
+            while delta >= 0x20:
+                out.append(chr((0x20 | (delta & 0x1F)) + 63))
+                delta >>= 5
+            out.append(chr(delta + 63))
+        last = here
+    return "".join(out)
+
+
+class TestTheTracesOwnShape:
+    def test_indices_count_in_the_traces_shape_not_the_routes(self) -> None:
+        """Measured on the live router: the trace drops repeated vertices of the
+        shape it is given (927 given, 922 traced on Falls Church to the
+        Capitol), so the route's shape indexed by the trace's indices drifts
+        onto the wrong nodes."""
+        given = [SHAPE[0], SHAPE[0], SHAPE[1], SHAPE[2], SHAPE[3], SHAPE[4]]
+        traced = SHAPE[:5]
+        first = with_others(edge(1, 0, 2, 0.1, 90, 90), ("road", "primary", "both"))
+        trace = {"edges": [first, edge(1, 2, 4, 0.1, 90, 90)], "shape": encode6(traced)}
+        (junction,) = t.junctions_of_trace(trace, given)
+        assert (junction.lon, junction.lat) == pytest.approx(SHAPE[2])
+
+    def test_without_a_shape_of_its_own_the_given_one(self) -> None:
+        first = with_others(edge(1, 0, 2, 0.1, 90, 90), ("road", "primary", "both"))
+        (junction,) = t.junctions_of_trace({"edges": [first, edge(1, 2, 4, 0.1, 90, 90)]}, SHAPE)
+        assert (junction.lon, junction.lat) == SHAPE[2]
+
+    def test_the_decoder_reads_the_encoder(self) -> None:
+        points = [(-77.123456, 38.987654), (-77.0, 39.1), (-76.5, 38.5)]
+        assert t.decode_polyline6(encode6(points)) == pytest.approx(points)
+
+
+class TestApproachAndMiddles:
+    def test_the_approach_is_half_way_along_the_edge_not_a_vertex(self) -> None:
+        """Review r1, SHOULD_FIX 1: on a two-vertex edge the middle vertex was the
+        upstream node, and an exclusion there took out every edge at it."""
+        first = with_others(edge(1, 0, 1, 0.1, 90, 90), ("road", "primary", "both"))
+        (junction,) = t.junctions_of_trace({"edges": [first, edge(1, 1, 2, 0.1, 90, 90)]}, SHAPE)
+        lon, lat = junction.approach
+        assert lon == pytest.approx((SHAPE[0][0] + SHAPE[1][0]) / 2)
+        assert lat == pytest.approx(SHAPE[0][1])
+        assert junction.approach not in SHAPE
+
+    def test_the_middle_by_ground_distance(self) -> None:
+        bent = [(0.0, 0.0), (0.003, 0.0), (0.004, 0.0)]
+        lon, _lat = t.midpoint_along(bent, 0, 2)
+        assert lon == pytest.approx(0.002, abs=1e-6)
+
+    def test_no_length_no_middle(self) -> None:
+        assert t.midpoint_along(SHAPE, 2, 2) is None
+        assert t.midpoint_along([(0.0, 0.0), (0.0, 0.0)], 0, 1) is None
+        assert t.midpoint_along(SHAPE, 3, 99) is None
+
+    def test_the_out_edge_and_the_headings_are_kept(self) -> None:
+        first = with_others(edge(1, 0, 2, 0.1, 80, 85), ("road", "primary", "both"))
+        (junction,) = t.junctions_of_trace({"edges": [first, edge(2, 2, 4, 0.1, 95, 90)]}, SHAPE)
+        assert junction.out_edge_id == 1002
+        assert (junction.in_heading, junction.out_heading) == (85.0, 95.0)
+
+    def test_every_edges_middle_with_how_far_along_it_is(self) -> None:
+        trace = {"edges": [edge(1, 0, 2, 0.2, 90, 90), edge(2, 2, 3, 0.1, 90, 90)]}
+        marks = t.edge_midpoints(trace, SHAPE, offset_m=1000.0)
+        assert [round(m[0]) for m in marks] == [1100, 1250]
+        assert marks[0][1:3] == pytest.approx(SHAPE[1])
+        assert marks[1][3] == pytest.approx(100.0)
+
+    def test_an_edge_with_no_shape_has_no_middle_but_keeps_its_length(self) -> None:
+        trace = {"edges": [edge(1, 2, 2, 0.2, 90, 90), edge(2, 2, 3, 0.1, 90, 90)]}
+        marks = t.edge_midpoints(trace, SHAPE)
+        assert [round(m[0]) for m in marks] == [250]
+
+
 class TestWhatIsAtTheNode:
     def test_a_slip_lane_is_valhallas_turn_channel(self) -> None:
         first = with_others(edge(1, 0, 2, 0.1, 90, 90), ("turn_channel", "primary", "forward"))
@@ -113,6 +193,24 @@ class TestWhatIsAtTheNode:
         )
         assert junction.marked_crossing
         assert junction.cross_road_count == 2
+
+    @pytest.mark.parametrize(
+        ("in_use", "out_use", "path"),
+        [
+            ("cycleway", "cycleway", True),
+            ("road", "footway", True),
+            ("sidewalk", "road", True),
+            ("path", "path", True),
+            ("road", "road", False),
+            ("pedestrian_crossing", "road", False),
+        ],
+    )
+    def test_a_route_on_a_path_crosses_as_a_trail(self, in_use, out_use, path) -> None:
+        crossing = with_others(edge(1, 0, 2, 0.1, 90, 90, use=in_use), ("road", "primary", "both"))
+        (junction,) = t.junctions_of_trace(
+            {"edges": [crossing, edge(2, 2, 4, 0.1, 90, 90, use=out_use)]}, SHAPE
+        )
+        assert junction.path_crossing is path
 
     def test_one_way_cross_roads_are_those_a_car_may_not_drive_both_ways(self) -> None:
         first = with_others(edge(1, 0, 2, 0.1, 90, 90), ("road", "secondary", "forward"))

@@ -242,25 +242,7 @@ def default_when(now: datetime | None = None) -> str:
 
 def decode_polyline6(encoded: str) -> list[tuple[float, float]]:
     """Valhalla's encoded shape (precision 6) as [(lon, lat), ...]."""
-    coordinates: list[tuple[float, float]] = []
-    index = lat = lon = 0
-    while index < len(encoded):
-        for axis in (0, 1):
-            shift = result = 0
-            while True:
-                byte = ord(encoded[index]) - 63
-                index += 1
-                result |= (byte & 0x1F) << shift
-                shift += 5
-                if byte < 0x20:
-                    break
-            delta = ~(result >> 1) if result & 1 else result >> 1
-            if axis == 0:
-                lat += delta
-            else:
-                lon += delta
-        coordinates.append((lon / 1e6, lat / 1e6))
-    return coordinates
+    return trace_junctions.decode_polyline6(encoded)
 
 
 def climb_and_descent(elevations: list[float | None]) -> tuple[float, float]:
@@ -1203,6 +1185,7 @@ def plan(
         weight=refine.intersection_weight(stress_dial),
         climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
+        wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
     )
     refined = None
     refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline)
