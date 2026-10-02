@@ -487,6 +487,17 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   the cross traffic stops can be priced as if nobody does: the rider's crossing
   is then the stopped side's.
 - Any junction whose signal or signs OSM does not have reads "no signal mapped".
+- It under-warns near signals: a side street or driveway within 30 m (100 ft)
+  of a signalised junction can be priced as signalised, and its red or orange
+  not drawn, where the signal is on a stop line of the road it joins with no
+  other named road at that node, or where the other junction's road has no
+  name in OSM. A signal at a node that a road of another name joins, or one
+  facing away from the junction, is not taken (review r3); nor is a signal or
+  stop sign on the rider's own approach beyond a junction already passed.
+  Junctions within 45 m about one named road also share a signal where the
+  rider crosses that road at one of them and does not ride along it between
+  them, so a staggered junction whose two nodes the rider links by a short
+  side street can read as one.
 - A slip lane the route crosses is orange (items 169 and 195) whether or not
   the channel has its own signal or a raised crossing, which are not read.
   Riding straight past one along the road is not flagged, except in a painted

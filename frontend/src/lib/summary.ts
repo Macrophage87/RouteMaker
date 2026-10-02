@@ -2,7 +2,14 @@
 import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
-import { formatClimb, formatDistance, formatDuration, formatExtra, formatSpeed } from "./format.ts";
+import {
+  formatClimb,
+  formatDistance,
+  formatDuration,
+  formatExtra,
+  formatRoughDistance,
+  formatSpeed,
+} from "./format.ts";
 
 /**
  * The pace the moving time assumes, derived from the answer itself (distance
@@ -86,10 +93,17 @@ export function calmSearchNote(route: Pick<RouteResponse, "calm_search" | "dials
   return why ?? null;
 }
 
+/**
+ * The straight-line span past which the calm search does not run: the API's
+ * `core.refine.REFINE_MAX_SPAN_M`, which tests/test_plan_constants.py holds
+ * this to. Said as a round figure, as PLAN.md has it: "19 mi (30 km)".
+ */
+export const CALM_SEARCH_MAX_SPAN_M = 30_000;
+
 const CALM_SEARCH_LIMITS: Record<string, string> = {
   time: "The calmer-route search ran out of time, so there may be a calmer route than this one.",
   untraceable: "The calmer-route search could not read this route, so it is the router's own.",
-  span: `The calmer-route search does not run on trips over ${formatDistance(30_000)} in a straight line, so this is the router's own route.`,
+  span: `The calmer-route search does not run on trips over ${formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)} in a straight line, so this is the router's own route.`,
   long_ride: "The calmer-route search does not run on long rides, so this is the router's own route.",
   seeking: "The calmer-route search does not run while the Hills slider looks for climbs.",
 };

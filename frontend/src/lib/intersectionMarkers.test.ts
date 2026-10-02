@@ -122,7 +122,7 @@ test("every list row says its severity in words", () => {
   const items = junctionItems({
     intersections: [
       { m: 100, lon: -77, lat: 38.9, severity: "red", reason: "Crossing a heavy-traffic road (LTS 4), no signal mapped", crossed_tier: 4, movement: "straight", control: "none", kind: "crossing", cost_ft: 3000 },
-      { m: 900, lon: -77, lat: 38.9, severity: "orange", reason: "Slip lane beside a busy road (LTS 3), traffic signal", crossed_tier: 3, movement: "straight", control: "signal", kind: "slip_lane", cost_ft: 800 },
+      { m: 900, lon: -77, lat: 38.9, severity: "orange", reason: "Crossing a slip lane off a busy road (LTS 3), traffic signal", crossed_tier: 3, movement: "straight", control: "signal", kind: "slip_lane", cost_ft: 800 },
     ],
   });
   assert.deepEqual(items.map((i) => i.severityText), ["Very high", "Higher"]);

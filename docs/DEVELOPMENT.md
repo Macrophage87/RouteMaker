@@ -982,11 +982,23 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    `/locate` is asked again around it with a radius of 30 m (100 ft,
    `trace_junctions.APPROACH_M`), and each road arm, the rider's own included,
    is walked out from the node along edges of the same road (its way or a name
-   in common) to 30 m: a signal at a node it reaches (the node's own flag, or
-   any road's edge arriving there flagged) makes the junction signalised
-   (`core.junctions._Approaches`). The rider's own edges before the junction
-   within 30 m along the route (`RawJunction.back_edge_ids`) are read too: a
-   stop or yield sign there is the rider's, a signal the junction's. A stop
+   in common) to 30 m: a signal at a node it reaches makes the junction
+   signalised (`core.junctions._Approaches`), on a road's edge arriving there
+   travelling towards the junction (the router sets the edge flag by
+   `traffic_signals:direction`; an edge flagged at its far end going away is
+   the next junction's), or the node's own flag where no edge there is
+   flagged. The walk stops at, and does not count, a node that a road of a
+   name none of the junction's arms has joins: that is another junction
+   (review r3, B1: of six driveways and side streets within 30 m of another
+   junction's signal, all six had taken it). A rider arriving on a path is let
+   past such a node, since a trail crossing beside a road junction is crossed
+   on that junction's signal. The rider's own edges before the junction
+   within 30 m along the route (`RawJunction.back_edge_ids`) are read too, up
+   to the first that arrives at another road's junction (the rider has passed
+   it: a left off 17th St SW 18 m past the Constitution Ave signal): a stop
+   or yield sign there is the rider's, a signal the junction's. The first,
+   1 m answer is read for what is at the node only; a node with no signal
+   there is asked again at 30 m, which shows the roads joining up the arms. A stop
    sign up a cross road is NOT read as the cross traffic's: it may be another
    junction's, and reading it would price the rider as having priority (25 ft);
 6. the nodes of one junction share its strongest control: junctions within
@@ -994,7 +1006,14 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    turned onto or turned off, not the road ridden straight along) take a
    signal, else an all-way stop, from any of them (`share_controls`; a stop
    sign is one approach's and is not shared). At Plyers Mill Rd and Columbus
-   Circle one carriageway's node read the signal and the other's did not;
+   Circle one carriageway's node read the signal and the other's did not. Two
+   such junctions are one only where the rider reaches the later by the
+   earlier one's road out, and a road both are about, other than that road
+   (riding along it between them is a jog: left onto Main St, then right off
+   it at a signal 35 m on, review r3 B2), is crossed at one of them: two
+   carriageways crossed, a turn off one and a crossing of the other, a
+   crossing of one and a turn onto the other (Columbus Circle NE). A road
+   only turned onto at one and off at the other is two junctions;
 7. the model's cost and severity.
 
 Grade-separated crossings need no case: a bridge or underpass shares no node
@@ -1054,7 +1073,9 @@ Not crossed: riding straight past a channel in the traffic lane or a shared
 lane (the owner's case), past a channel merging in from the right, a right
 turn, and riding along the channel itself (the route's own way is the channel:
 the turn is priced as the turn onto or off the road it is). The right-hook case
-is this implementation's reading of "cross", and an owner question.
+was this implementation's reading of "cross"; the owner kept it (item 199,
+2026-10-02: right hooks are flagged). The marker says "Crossing a slip lane
+off" the road.
 
 Severity, `ORANGE_MIN_FT` 600 and `RED_MIN_FT` 2,000: orange is "higher stress"
 and red "very high" (item 172). An unsignalised crossing of an LTS 3 road
@@ -1132,7 +1153,7 @@ out excluded: asked again once with only the LTS 4 stretches), when a round
 cannot be started with five seconds left, and never excludes within 500 m of the
 route's ends or of a via point (a trailhead's only way out is often the one busy
 road). `calm_search` in the answer says what it did; `limited` is `time`,
-`no_route`, `untraceable` or, where it did not run, `span` (past 18.6 mi
+`no_route`, `untraceable` or, where it did not run, `span` (past 19 mi
 [30 km] apart), `long_ride`, `points` (a start only), `seeking` (the hills
 slider's climb search uses the alternatives) or `mass_ride`.
 
@@ -1181,7 +1202,7 @@ The router's limits are not in the way: `max_exclude_locations` is 200,
 are near-optimal in its own cost, which is not where a calmer route is) and
 `max_distance` 500 km. Where long calm detours are NOT found:
 
-- starts and ends more than 18.6 mi (30 km) apart, on a long ride, and rides
+- starts and ends more than 19 mi (30 km) apart, on a long ride, and rides
   with more than a start and an end where the hills slider is seeking (the
   search says so, `limited`);
 - a start or end whose only way out is a busy road (the first 500 m are never
@@ -1382,6 +1403,28 @@ side"); the MD
 turns are what a slip lane is).
 
 Time at Default, the plan alone: 0.25 to 2.9 s (before: 0.3 to 2.4 s).
+
+**Round 3** (review r3, B1 and B2), the same eight trips at Default, the same
+day as a re-run of b7182b6 on the same harness (which gave round 2's numbers
+exactly): the same eight lines, and 5 red and 22 orange (were 5 and 20).
+Bethesda - Capitol and Falls Church - Union Station each gain one orange, the
+left off 17th St SW across it onto the Mall crosswalk 18 m past the
+Constitution Ave signal (1,765 ft; it took that signal from Constitution
+Ave's own node 18 m back along the rider's way, and by sharing with the right
+onto 17th St there).
+/locate calls a plan are unchanged (4 to 11); plan time 0.3 to 1.5 s on this
+harness. On the review's probes (its 64 side-street routes, its 17 trip runs
+and its 15 cases), five of the six driveways it named keep their colour
+(lefts onto East-West Hwy, Twinbrook Pkwy, E St NE and Mass Ave NW twice:
+1,800 to 4,500 ft), and so does a sixth, a driveway left onto Plyers Mill Rd
+(4,500 ft), and 25th St NW joining Juarez Circle at a stop sign 34 m short of
+the Virginia Ave signal (3,200 ft, red, B2). The sixth it named, the service
+road across Veirs Mill Rd from Gridley Rd, no longer takes the signal at its
+own node but shares it with the Gridley Rd node it leaves from, 21 m back
+(both crossings of one divided road), so its event stays 225 ft. Every one of round 2's eight signalised
+junctions and the review's signalised trail crossings reads as before. One
+signal is lost: Plyers Mill Rd straight across Metropolitan Ave, whose signal
+is on the Concord St node 16 m away (orange, 1,200 ft; was 150).
 `/locate` calls a plan: 4 to 11 (the second, 30 m pass for each node whose
 control is not already a signal), against 3 to 11.
 
@@ -1568,10 +1611,15 @@ does. The slider's words and its note at the top end are
   NW), is not read. A stop sign on a cross road's stop line short of the
   junction is not read as the cross traffic's (it may be another junction's),
   so where only the cross traffic stops the rider is priced as the stopped
-  side. The other way round, a junction within 30 m of a signalised one along
-  a road (a side street just past a signalised crossroads) is read as
-  signalised: a stop line cannot be told from the next junction's. This
-  under-warns, and only within 100 ft of a signal.
+  side. The other way round, a side street or driveway within 30 m of a
+  signalised junction does not take its signal where a road of another name
+  joins at the signal's node or the signal faces away from it (review r3, B1);
+  it still does where the signal is on a stop line of its own road with no
+  other road there and facing it, or where the other junction's road has no
+  name. That under-warns, only within 100 ft (30 m) of a signal. And the rule
+  costs a signal where one junction is mapped as two named ones a few metres
+  apart: Plyers Mill Rd across Metropolitan Ave reads the signal 16 m away at
+  Concord St as Concord St's (orange, 1,200 ft, where it was 150).
 - A median refuge is credited where both carriageways carry the road's name
   (`MEDIAN_REFUGE_FACTOR`); an unnamed divided road's carriageways are two
   roads. Raised crossings, bike signals and queue boxes are not read.

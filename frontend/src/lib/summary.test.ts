@@ -122,7 +122,7 @@ test("a calmer-route search that stopped short says so in plain words", () => {
   });
   assert.match(calmSearchNote(route("time")) ?? "", /^The calmer-route search ran out of time/);
   assert.match(calmSearchNote(route("untraceable")) ?? "", /could not read this route/);
-  assert.match(calmSearchNote(route("span")) ?? "", /over 18\.6 mi \(30\.0 km\) in a straight line/);
+  assert.match(calmSearchNote(route("span")) ?? "", /over 19 mi \(30 km\) in a straight line/);
   assert.match(calmSearchNote(route("long_ride")) ?? "", /long rides/);
   assert.match(calmSearchNote(route("seeking")) ?? "", /Hills slider/);
   // Nothing to say: it ran to its end, or ended where the router had no more.

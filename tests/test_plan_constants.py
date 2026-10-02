@@ -34,6 +34,26 @@ from django.utils import timezone
 REPO = Path(__file__).resolve().parents[1]
 
 
+# --- The calm search's span ---------------------------------------------------
+# PLAN.md: "The search runs for ordinary rides of a start and an end up to 19 mi
+# (30 km) apart inside the request's budget". The planner's note says the same
+# span (review r3: it hard-coded its own 30,000 and said "18.6 mi (30.0 km)").
+
+SUMMARY_TS = REPO / "frontend" / "src" / "lib" / "summary.ts"
+
+
+def test_calm_search_span_matches_plan_and_the_planners_note() -> None:
+    import re
+
+    from core.refine import REFINE_MAX_SPAN_M
+
+    assert REFINE_MAX_SPAN_M == 30_000
+    found = re.findall(r"export const CALM_SEARCH_MAX_SPAN_M = ([0-9_]+);", SUMMARY_TS.read_text())
+    assert [int(v.replace("_", "")) for v in found] == [30_000]
+    assert "formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)" in SUMMARY_TS.read_text()
+    assert "up to 19 mi (30 km) apart" in (REPO / "PLAN.md").read_text()
+
+
 # --- Sessions --------------------------------------------------------------
 # PLAN.md: "**Sessions.** Django's server-side sessions, rows in Postgres
 # referenced by an HttpOnly, Secure, SameSite=Lax cookie; 30 days idle, 90 days

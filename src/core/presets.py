@@ -98,12 +98,13 @@ DEFAULT_STRESS = 70
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
 # - Stress: carrying cargo starts where Default does (the owner, 2026-09-28:
-#   "Same as Default, 90 (Recommended)"); carrying people at the top of the
-#   slider as it was that day, where a tier 3 or 4 way costs several times its
+#   "Same as Default, 90 (Recommended)"); carrying people where the top of the
+#   slider was that day, where a tier 3 or 4 way costs several times its
 #   length and a path or protected lane wins unless avoiding it takes much
 #   longer. That is STRESS_TODAYS_TOP (80) after the rescale, so Cargo Bike
-#   plans what it did; whether it should start at the new top (100, which
-#   will go many times the straight line) is an owner question, in PLAN.
+#   plans what it did. It stays there below the new top (the owner,
+#   2026-10-02, item 194: Trailmaxxing moves to 100 and carrying people stays
+#   at 80); the new top can go many times the straight line.
 # - Electric assist (the owner, 2026-09-27: "Cargo bikes with E assist still
 #   have problems on hills. They tend to be very heavy. The assist doesn't
 #   cancel out the hill in many cases. People with more powerful motors can
@@ -112,7 +113,7 @@ DEFAULT_STRESS = 70
 #   hill-averse start; a rider with a strong motor moves the hills slider.
 CARRYING_CARGO = "cargo"
 CARRYING_PEOPLE = "people"
-# Carrying cargo tracks Default; carrying people is the top of the slider.
+# Carrying cargo tracks Default; carrying people is the old top, 80 (item 194).
 CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 80}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0
