@@ -700,12 +700,20 @@ ONEWAY_JUNCTIONS = frozenset({"roundabout", "circular"})
 #   undirected `bicycle:conditional`. A `bicycle:forward:conditional` decides
 #   the with-flow direction and is left alone.
 #
-# The closure writes none of the keys that decide a way is restricted. A blanket
+# `routemaker_remap.access_is_unrestricted` decides whether the remap treats a
+# way as restricted, and a way it calls restricted loses the stress penalty (and
+# the no-trail lane removal) on the graph every ride with trails off is routed
+# on (Mass Ride's slider is locked at 0; a Group Ride's is not). Of the keys the
+# closure writes it reads one, `bicycle:backward`, which the closure writes only
+# where the way already carries it. So the remap does not count
+# `bicycle:backward=none` on a one-way as a restriction
+# (`routemaker_remap.CLOSED_REVERSE_BICYCLE`): it closes a direction the road's
+# class never gave, and says nothing about riding with the traffic. Without that
+# exception a one-way tagged `bicycle:backward=yes`, `designated` or
+# `permissive` would turn restricted on this graph alone. A blanket
 # `bicycle:backward=no` on every one-way would have been the shorter rule and is
-# not one: `routemaker_remap.access_is_unrestricted` reads that key, and a way
-# it calls restricted loses the stress penalty on the no-trail graph, which
-# every ride with trails off is routed on (Mass Ride's slider is locked at 0; a
-# Group Ride's is not).
+# not one: `no` stays a restriction to the remap, and upstream mistakes it for a
+# direction (above).
 #
 # Nothing here is a stress or facility decision. `inject` is the routing tags of
 # one variant's extract; the stress tier and the facility class are computed
@@ -748,6 +756,13 @@ def has_contraflow_tag(tags: dict[str, str]) -> bool:
     `yes`, `designated` or `permissive`. A count of the tag shapes
     `close_contraflow` closes; the routing truth is upstream's own, read through
     the transform.
+
+    Not counted: a lane on both sides, which names no direction and which
+    upstream reads as two-way all the same, and a `bicycle:conditional` /
+    `bicycle:backward:conditional`, which names a direction only once
+    `routemaker_remap.remap_conditional_access` resolves it.
+    `scripts/contraflow_census.py` tells those two apart by asking the
+    transform again with the conditional keys taken off.
     """
     if not is_motor_oneway(tags):
         return False

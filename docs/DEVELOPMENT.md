@@ -1607,10 +1607,12 @@ of things that still stop a `docker compose up`.
 The owner, 2026-10-02 (OWNER-DECISIONS 192 and 193): "contraflow lanes are not
 for group rides or mass rides, many routing engines put people on this when it's
 not appropriate." and, for a Group Ride with trails on, "with trails on that's
-fine". So the closure is built into one graph. `core.presets` gives
-`Variant.NO_TRAIL` to Mass Ride and, in `pipeline.variants.variant_for`, to any
-ride with trails off (Group Ride's toggle is not offered yet); Group Ride with
-trails on is on the standard graph, which keeps contraflow.
+fine". So the closure is built into one graph. A ride chooses its graph through
+`core.presets.variant_for_ride`, which `routing.py` calls and which gives
+`Variant.NO_TRAIL` to Mass Ride (its preset's own variant). Any ride with trails
+off would take the same graph (`pipeline.variants.variant_for` maps the trails-off
+toggle to it; Group Ride's toggle is not offered yet). Group Ride with trails on
+is on the standard graph, which keeps contraflow.
 
 `pipeline.variants.inject` calls `close_contraflow` last on the no-trail
 variant, after the trail and sidepath drop. On a way that is one-way for motor
@@ -1641,9 +1643,17 @@ Three things are not obvious, and each is pinned by a test.
   value its bicycle table reads as false. A blanket `bicycle:backward=no` on
   every one-way, the shorter rule, was rejected for a second reason:
   `routemaker_remap.access_is_unrestricted` reads that key, and a way it calls
-  restricted loses the stress penalty (`bicycle=use_sidepath` on tier 3 and up).
-  The closure writes none of the keys that decide a way is restricted except on a
-  way that already carries `bicycle:backward` (one such way in the extract).
+  restricted loses the stress penalty (`bicycle=use_sidepath` on tier 3 and up)
+  and the no-trail lane removal. Of the keys the closure writes, that is the
+  only one the restriction test reads, and the closure writes it only on a way
+  that already carries `bicycle:backward` (one such way in the extract). So the
+  remap does not count `bicycle:backward=none` on a one-way as a restriction
+  (`CLOSED_REVERSE_BICYCLE`): it closes a direction the road's class never gave
+  and says nothing about riding with the traffic. Without that, a one-way tagged
+  `bicycle:backward=yes`, `designated` or `permissive` would turn restricted on
+  the no-trail graph alone. Nowhere else is `none` excused: on a two-way way, or
+  on another key, it is a restriction as before, and no way in the source
+  extract carries it.
 - A with-flow conditional (`bicycle:forward:conditional`) is left alone.
 
 **Stress and the map are not touched.** The stress tier and the facility class
@@ -1675,8 +1685,15 @@ closed.
 (`scripts/contraflow_census.py`, read-only; 137,518 non-trail one-way ways):
 194 ways and 18.91 miles (30.43 km) have contraflow on the standard reading
 (the router's answer for the way's own tags) and none on the closed one. 187 of
-them (15.86 miles) are named by a contraflow tag; the other 7 (3.04 miles) are
-lanes on both sides, which upstream reads as two-way. Zero ways are still open
+them (15.86 miles) are named by a contraflow tag; 5 (0.11 miles) are lanes on
+both sides, which upstream reads as two-way (Covington Street in Baltimore,
+Prince Frederick Boulevard, South Dakota Avenue NE and two more); and 2 (2.93
+miles) are Pulaski Highway, a one-way trunk tagged `bicycle=no` with
+`bicycle:conditional=yes @ (Sa-Su dawn-dusk; ...)`. Those two are not lanes:
+`remap_conditional_access` resolved the undirected conditional onto
+`bicycle:backward=yes`, which upstream reads as a reverse direction. The census
+tells them apart by asking the transform again with the bicycle conditionals
+taken off; `has_contraflow_tag` counts neither. Zero ways are still open
 after the closure, and zero lose the with-flow direction. The count is OSM's
 tags only; where the Roadway Block records a contraflow lane that OSM does not
 tag, the standard graph does not have it either.

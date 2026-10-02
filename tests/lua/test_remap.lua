@@ -866,5 +866,26 @@ check("without the mark a sidewalk keeps its bicycle tag",
   M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" },
     { is_trail_class = true }).bicycle == nil)
 
+-- The contraflow closure's `bicycle:backward=none` (pipeline.variants
+-- .close_contraflow) is not a restriction on a one-way, and is one anywhere else.
+for _, oneway in ipairs({ "yes", "true", "1", "-1" }) do
+  check("a closed reverse direction leaves a oneway=" .. oneway .. " unrestricted",
+    M.access_is_unrestricted({ oneway = oneway, ["bicycle:backward"] = "none" }))
+end
+check("and a roundabout",
+  M.access_is_unrestricted({ junction = "roundabout", ["bicycle:backward"] = "none" }))
+check("and a circular junction",
+  M.access_is_unrestricted({ junction = "circular", ["bicycle:backward"] = "none" }))
+check("not on a two-way way",
+  not M.access_is_unrestricted({ ["bicycle:backward"] = "none" }))
+check("nor on a reversible one",
+  not M.access_is_unrestricted({ oneway = "reversible", ["bicycle:backward"] = "none" }))
+check("a bicycle:backward=no is still a restriction on a one-way",
+  not M.access_is_unrestricted({ oneway = "yes", ["bicycle:backward"] = "no" }))
+check("and none on another key is still one",
+  not M.access_is_unrestricted({ oneway = "yes", ["bicycle:forward"] = "none" }))
+check("and the exception does not excuse another key's restriction",
+  not M.access_is_unrestricted({ oneway = "yes", ["bicycle:backward"] = "none", access = "private" }))
+
 io.write(string.format("%d checks, %d failures\n", checks, failures))
 os.exit(failures == 0 and 0 or 1)

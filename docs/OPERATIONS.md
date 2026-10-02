@@ -1745,23 +1745,29 @@ What an operator can see:
   extracts carry whatever OSM says. That is expected; the tiles are not
   noticeably larger.
 - On the District's contraflow streets (R Street NE, 8th Street NW, M Street NW,
-  11th Street NW and the like: 194 ways, 18.9 miles in the region extract) a
+  11th Street NW and the like: 192 ways, 16.0 miles in the region extract) a
   Mass Ride route runs with the traffic. The same trip on Default or Group Ride
   may run against it on the lane. A Mass Ride that detours around a one-way
   street where it used to ride the contraflow lane is this, not a fault.
 - The map and the stress tiles are unchanged: the lane still draws as a lane and
   keeps its tier, because both come from the way's own tags.
 
-To check a rebuilt extract without a graph build, from the repository root:
+To check the code against a source extract without a graph build, from the
+repository root (before a rebuild, or after a new clip):
 
 ```sh
 PYTHONPATH=src python scripts/contraflow_census.py "$DATA_ROOT/extracts/source.osm.pbf"
 ```
 
-It reads the clip, asks the transform for each non-trail one-way twice, and
-prints how many ways have contraflow on the standard reading and how many still
-do on the closed one. The second number must be 0, and so must "shut to the
-traffic direction as well". It takes about two minutes and writes nothing.
+It reads the source clip, not a built variant extract or a graph: it re-runs
+`variants.inject` and the transform on the source's tags, so it says what the
+next build will do with that source, not what the last build did. For each
+one-way it asks the transform for the standard reading, the same tags without
+their bicycle conditionals, and (non-trail ways) the no-trail reading. It prints
+how many ways have contraflow on the standard reading, by cause, and how many
+still do on the closed one. "Still open after the closure" must be 0, and so
+must "shut to the traffic direction as well". It takes about four minutes and
+writes nothing.
 
 ## After a rebuild: restart the routers
 

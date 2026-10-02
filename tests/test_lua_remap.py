@@ -334,6 +334,16 @@ CONTRAFLOW_FORMS = {
     "lane-each-side": {"cycleway:left": "lane", "cycleway:right": "lane"},
     "lane-both": {"cycleway:both": "lane"},
     "track-both": {"cycleway:both": "track"},
+    # The other two values of upstream's lane tables (`shared` and `dedicated`).
+    "share-busway-each-side": {"cycleway:left": "share_busway", "cycleway:right": "share_busway"},
+    # Destination-only access keeps the production remap's no-trail lane removal
+    # (`lanes_may_move`) off the way, so only the closure stands between it and
+    # a second direction.
+    "buffered-lane-destination": {
+        "access": "destination",
+        "cycleway:left": "buffered_lane",
+        "cycleway:right": "lane",
+    },
     "bicycle-backward-yes": {"bicycle:backward": "yes"},
     "vehicle-backward-yes": {"vehicle:backward": "yes"},
     "bicycle-backward-designated": {"bicycle:backward": "designated"},
@@ -344,7 +354,8 @@ CONTRAFLOW_FORMS = {
     },
     "undirected-conditional": {"bicycle": "no", "bicycle:conditional": "yes @ (Sa,Su)"},
     # How DC maps a contraflow lane, and the form the Roadway Block overlay
-    # writes (routemaker.agency_roads).
+    # writes (routemaker.agency_roads), though only into the tags classification
+    # reads (`class_tags_by_way`), never into a variant's routing tags.
     "dc-contraflow-lane": {
         "oneway:bicycle": "no",
         "cycleway:left": "opposite_lane",
@@ -485,20 +496,30 @@ def test_the_closure_keeps_the_ride_with_the_traffic(oneway) -> None:
         "lane-both",
         "vehicle-backward-yes",
         "undirected-conditional",
+        # The closure rewrites these to `bicycle:backward=none`, which the remap
+        # does not read as a restriction on a one-way (`access_is_unrestricted`).
+        "bicycle-backward-yes",
+        "bicycle-backward-designated",
+        "everything-at-once",
     ],
 )
-def test_the_closure_leaves_the_stress_penalty_on_a_one_way(form) -> None:
+@pytest.mark.parametrize("neutral", [False, True])
+@pytest.mark.parametrize("oneway", sorted(ONEWAYS))
+def test_the_closure_leaves_the_stress_penalty_on_a_one_way(form, oneway, neutral) -> None:
     """The closure must not make a one-way read as restricted to the remap
     (`access_is_unrestricted` reads `access`, `vehicle`, `bicycle` and its two
     directional keys): the stress penalty, `bicycle=use_sidepath` on a tier 3 or
     worse way, is what keeps a stressful one-way costly on the graph every ride
-    with trails off is routed on."""
+    with trails off is routed on. With the penalty written, the way still
+    reads with the traffic only, with and without the no-trail graph's own
+    `rm:facility_neutral`."""
     from pipeline.variants import Variant, inject
 
     tags = {
         "highway": "secondary",
-        "oneway": "yes",
+        "oneway": oneway,
         "rm:stress_tier": "4",
+        **({"rm:facility_neutral": "yes"} if neutral else {}),
         **{k: v for k, v in CONTRAFLOW_FORMS[form].items() if k != "bicycle"},
     }
     closed = inject(Variant.NO_TRAIL, dict(tags), 7)
@@ -506,10 +527,15 @@ def test_the_closure_leaves_the_stress_penalty_on_a_one_way(form) -> None:
     result = _lua_driver(
         'dofile("lua/graph.lua")\n'
         f"local _, out = ways_proc({{ {table} }}, 3)\n"
-        'io.stdout:write(tostring(out.bicycle), "\\n")\n'
+        'io.stdout:write(tostring(out.bicycle), " ", tostring(out.bike_forward), " ",\n'
+        '  tostring(out.bike_backward), "\\n")\n'
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout.split() == ["use_sidepath"], closed
+    bicycle, forward, backward = result.stdout.split()
+    assert bicycle == "use_sidepath", closed
+    by_name = {"bike_forward": forward, "bike_backward": backward}
+    with_flow, against = ONEWAYS[oneway]
+    assert (by_name[with_flow], by_name[against]) == ("true", "false"), closed
 
 
 def test_the_with_flow_conditional_is_not_closed() -> None:

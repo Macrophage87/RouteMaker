@@ -86,11 +86,43 @@ M.PERMISSIVE_ACCESS = {
 -- flips that way from unroutable to routable exactly as `access=no` does.
 M.ACCESS_KEYS = { "access", "vehicle", "bicycle", "bicycle:forward", "bicycle:backward" }
 
+-- The values of `oneway` upstream's `oneway` table reads as one-way for motor
+-- traffic, and the junctions it makes one-way whatever `oneway` says. The same
+-- two lists as Python's `pipeline.variants.ONEWAY_VALUES` and
+-- `ONEWAY_JUNCTIONS`; `reversible`, `alternating`, `no` and a way that says
+-- nothing are two-way for this purpose.
+M.MOTOR_ONEWAY = { yes = true, ["true"] = true, ["1"] = true, ["-1"] = true }
+M.ONEWAY_JUNCTION = { roundabout = true, circular = true }
+
+--- Whether a way is one-way for motor traffic, as upstream reads it.
+function M.is_motor_oneway(tags)
+  return M.MOTOR_ONEWAY[tags.oneway] or M.ONEWAY_JUNCTION[tags.junction] or false
+end
+
+-- What `pipeline.variants.close_contraflow` writes onto a one-way's
+-- `bicycle:backward` on the no-trail graph: `none`, the value upstream's bicycle
+-- table reads as false without mistaking it for a second direction. It closes
+-- the direction against the traffic, which no rider on a one-way had by the
+-- way's own class anyway, and says nothing about whether a bicycle may ride
+-- the way with the traffic. So on a one-way it is not a restriction here:
+-- read as one, a one-way tagged `bicycle:backward=yes` (a contraflow grant)
+-- would turn restricted on the no-trail graph alone, and lose the stress
+-- penalty and the lane removal that graph's rides are priced by.
+M.CLOSED_REVERSE_BICYCLE = "none"
+
 --- Whether a way's own tags leave bicycle access unrestricted.
 function M.access_is_unrestricted(tags)
   for _, key in ipairs(M.ACCESS_KEYS) do
     local value = tags[key]
-    if value ~= nil and not M.PERMISSIVE_ACCESS[value] then
+    if
+      value ~= nil
+      and not M.PERMISSIVE_ACCESS[value]
+      and not (
+        key == "bicycle:backward"
+        and value == M.CLOSED_REVERSE_BICYCLE
+        and M.is_motor_oneway(tags)
+      )
+    then
       return false
     end
   end
