@@ -31,6 +31,9 @@ from rebuild_fixtures import (
     BESIDE_TRAIL_ID,
     CBD_CYCLE_TRACK_ID,
     CBD_SIDEWALK_ID,
+    CONTRAFLOW_ONE_WAY_ID,
+    CONTRAFLOW_ROUNDABOUT_ID,
+    CONTRAFLOW_TWO_WAY_ID,
     DIVIDED_NORTH_ID,
     DIVIDED_SOUTH_ID,
     GIB,
@@ -45,6 +48,7 @@ from rebuild_fixtures import (
     WEEKEND_CLOSED_ID,
     FakeBinaries,
     box,
+    build_contraflow_extract,
     build_dials_extract,
     build_named_bridge_extract,
     build_parallel_extract,
@@ -3207,3 +3211,63 @@ def test_a_weekend_graph_derived_like_the_standard_one_is_refused(workspace, sta
     assert caught.value.stage is Stage.VALIDATE
     assert "weekend graph" in str(caught.value.cause)
     assert "Sligo Creek" in str(caught.value.cause)
+
+
+def test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves(workspace) -> None:
+    """Owner, 2026-10-02 (items 192, 193): the no-trail graph, which Mass Ride and
+    every ride with trails off use, has no contraflow; the standard, weekend and
+    e-bike graphs keep it, so a Group Ride with trails on may use it.
+
+    And the closure is only the routing tags: the stress tier and the facility
+    class every variant carries, and the segment table's rows (what the tiles and
+    the map layers read), are the same for the one-way whether its contraflow is
+    open or closed."""
+    from pipeline.extract import read_ways
+
+    root = Path(tempfile.mkdtemp())
+    try:
+        source = install_source_extract(root, build_contraflow_extract)
+        ids = (CONTRAFLOW_ONE_WAY_ID, CONTRAFLOW_TWO_WAY_ID, CONTRAFLOW_ROUNDABOUT_ID)
+        context, _ = run_pipeline(source, root, urban=ids, skip=NOT_SWAPPED)
+
+        tags = {
+            variant: {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+            for variant in Variant
+        }
+        one_way = CONTRAFLOW_ONE_WAY_ID
+        for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+            assert tags[variant][one_way]["oneway:bicycle"] == "no", variant.value
+            assert tags[variant][one_way]["cycleway:left"] == "lane", variant.value
+        closed = tags[Variant.NO_TRAIL][one_way]
+        assert closed["oneway:bicycle"] == "yes"
+        assert closed["cycleway:left"] == "no"
+        assert closed["cycleway:right"] == "shared_lane"
+
+        # A two-way street is the same on every variant, `opposite_lane` and all.
+        for variant in Variant:
+            assert tags[variant][CONTRAFLOW_TWO_WAY_ID]["cycleway:left"] == "opposite_lane"
+            assert tags[variant][CONTRAFLOW_TWO_WAY_ID]["oneway:bicycle"] == "no"
+        # A roundabout is one-way whatever it says.
+        assert tags[Variant.STANDARD][CONTRAFLOW_ROUNDABOUT_ID]["cycleway:left"] == "opposite_lane"
+        assert tags[Variant.NO_TRAIL][CONTRAFLOW_ROUNDABOUT_ID]["cycleway:left"] == "no"
+
+        # Stress and facility: one answer, from the way's own tags, on every variant.
+        tiers = {variant: way_tags[one_way]["rm:stress_tier"] for variant, way_tags in tags.items()}
+        assert len(set(tiers.values())) == 1, tiers
+        assert int(tiers[Variant.STANDARD]) == int(context.stress_by_way[one_way].tier)
+        assert context.facility_by_way[one_way] == "lane"
+        for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+            assert tags[variant][one_way]["rm:facility"] == "lane", variant.value
+        assert tags[Variant.NO_TRAIL][one_way]["rm:facility_neutral"] == "yes"
+
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT DISTINCT osm_way_id, facility, stress_tier "
+                f"FROM {context.staging_schema}.segment WHERE osm_way_id = %s",
+                [one_way],
+            )
+            assert cursor.fetchall() == [
+                (one_way, "lane", int(context.stress_by_way[one_way].tier))
+            ]
+    finally:
+        shutil.rmtree(root, ignore_errors=True)

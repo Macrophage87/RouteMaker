@@ -29,6 +29,11 @@ class Variant(Enum):
     whenever its trail toggle is off, and naming it after one preset invites the
     assumption that it encodes that preset's other opinions.
 
+    It does encode the owner's of 2026-10-02 (items 192, 193): no ride on it
+    goes against a one-way's traffic, whatever lane or tag says it may
+    (`close_contraflow`). The standard and weekend graphs keep contraflow, as a
+    Group Ride with trails on may use it.
+
     One such opinion it does encode: a crossing row's `roadway_mass_ride_only`
     keeps the roadway in this variant alone, so any ride with trails off is
     routed on the Key Bridge and Memorial Bridge roadways too. The owner
@@ -649,6 +654,164 @@ def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
             tags[key] = REOPENING_KEYS_CLOSED.get(key, "no")
 
 
+# The values of `oneway` that upstream's `oneway` table reads as a one-way for
+# motor traffic (lua/vendor/graph_upstream.lua: `yes`, `true`, `1` and `-1`),
+# and the junctions it forces to one-way whatever `oneway` says. `reversible`
+# and `alternating` are two-way streets for this purpose and are left alone, as
+# is any way that says nothing: the closure below is about a way that has a
+# direction, never about one that has none.
+ONEWAY_VALUES = frozenset({"yes", "true", "1", "-1"})
+ONEWAY_JUNCTIONS = frozenset({"roundabout", "circular"})
+
+# What the contraflow closure writes (owner, 2026-10-02, items 192 and 193:
+# "contraflow lanes are not for group rides or mass rides, many routing engines
+# put people on this when it's not appropriate."; and, for a Group Ride with
+# trails on, "with trails on that's fine"). The no-trail graph is the graph of
+# Mass Ride and of every ride with trails off, so the closure is built into
+# it: a bicycle on it follows a one-way street's direction.
+#
+# Upstream's `ways_proc` (lua/graph_upstream.lua, measured through lua/graph.lua
+# under LuaJIT in tests/test_lua_remap.py) grants the reverse direction on a
+# one-way from these tag shapes, and each is closed by a write that grants
+# nothing:
+#
+# * `oneway:bicycle=no` (or `-1`), set to `yes`: `-1` is not left alone because
+#   upstream flips the direction twice for it on a `oneway=-1` way, which would
+#   put the bicycle on the geometry's forward direction, against the traffic;
+# * `cycleway`, `cycleway:left`, `cycleway:right` and `:both` with an
+#   `opposite*` value, rewritten to `no`, which the written extract re-applies
+#   over the source's own tag (a removal could not, see
+#   `bar_mass_ride_only_roadway`);
+# * a facility on both sides of the one-way (or `cycleway:both`), which upstream
+#   reads as access both ways: the side against the traffic is rewritten to `no`
+#   (`close_lanes_on_both_sides`). This is how the District maps a contraflow
+#   lane (`cycleway:left=lane`, `cycleway:left:oneway=-1`, a sharrow on the
+#   right), with a lane on both sides of the way alone also read as two-way;
+# * `vehicle:backward`, rewritten to `no`;
+# * `bicycle:backward`, rewritten to `none` and not to `no`: upstream treats a
+#   `bicycle:backward` of `yes` or `no` alike as a second direction, and with
+#   `oneway:bicycle=yes` above it then closes the *with-flow* direction. `none`
+#   is the other value its bicycle table reads as false, and is not one of the
+#   two it mistakes for a direction;
+# * the conditional keys the remap opens a direction from: wherever a
+#   conditional that could reach the reverse direction is present,
+#   `bicycle:backward:conditional` is set to a bare `no`, which
+#   `remap_conditional_access` never reads as a widening and which outranks the
+#   undirected `bicycle:conditional`. A `bicycle:forward:conditional` decides
+#   the with-flow direction and is left alone.
+#
+# The closure writes none of the keys that decide a way is restricted. A blanket
+# `bicycle:backward=no` on every one-way would have been the shorter rule and is
+# not one: `routemaker_remap.access_is_unrestricted` reads that key, and a way
+# it calls restricted loses the stress penalty on the no-trail graph, which
+# every ride with trails off is routed on (Mass Ride's slider is locked at 0; a
+# Group Ride's is not).
+#
+# Nothing here is a stress or facility decision. `inject` is the routing tags of
+# one variant's extract; the stress tier and the facility class are computed
+# once, from the way's own tags, before any variant exists (`run.inject_tags`
+# reads `stress_by_way` and `facility_by_way`), so the tiles and the map layers
+# are the standard pipeline's, contraflow lane and all.
+CONTRAFLOW_CLOSED_VALUE = "no"
+# The values upstream's `shared`, `separated` and `dedicated` tables read: a
+# cycle facility of any class, which on both sides of a way (or on `:both`) it
+# reads as bicycle access in both directions.
+LANE_CLASS_VALUES = frozenset(
+    {
+        "shared_lane",
+        "share_busway",
+        "shared",
+        "track",
+        "opposite_track",
+        "lane",
+        "opposite_lane",
+        "buffered_lane",
+    }
+)
+BICYCLE_BACKWARD_CLOSED_VALUE = "none"
+BICYCLE_BACKWARD_CONDITIONAL_KEYS = ("bicycle:conditional", "bicycle:backward:conditional")
+
+
+def is_motor_oneway(tags: dict[str, str]) -> bool:
+    """Whether a way is one-way for motor traffic, as upstream reads it."""
+    return tags.get("oneway") in ONEWAY_VALUES or tags.get("junction") in ONEWAY_JUNCTIONS
+
+
+def is_cycleway_key(key: str) -> bool:
+    return key == "cycleway" or key.startswith("cycleway:")
+
+
+def has_contraflow_tag(tags: dict[str, str]) -> bool:
+    """Whether a one-way's tags, read by what is written on them, name a
+    reverse direction for bicycles: `oneway:bicycle=no` (or `-1`), an
+    `opposite*` cycleway value, or a `bicycle:backward` / `vehicle:backward` of
+    `yes`, `designated` or `permissive`. A count of the tag shapes
+    `close_contraflow` closes; the routing truth is upstream's own, read through
+    the transform.
+    """
+    if not is_motor_oneway(tags):
+        return False
+    if tags.get("oneway:bicycle") in ("no", "false", "0", "-1"):
+        return True
+    if tags.get("bicycle:backward") in ("yes", "designated", "permissive"):
+        return True
+    if tags.get("vehicle:backward") in ("yes", "designated", "permissive"):
+        return True
+    return any(is_cycleway_key(k) and v.startswith("opposite") for k, v in tags.items())
+
+
+def close_lanes_on_both_sides(tags: dict[str, str]) -> None:
+    """Keep a one-way's cycle facility on the side the traffic uses only.
+
+    Upstream opens both directions of any way, a one-way included, that has a
+    facility of its lane, track or shared classes on `cycleway:both` or on both
+    `cycleway:left` and `cycleway:right`, and does it whatever the way's own
+    `oneway` and `oneway:bicycle` say. It is how a contraflow lane is mapped in
+    the District's own style - `cycleway:left=lane` with `cycleway:left:oneway=-1`
+    beside a sharrow on the right - and how `cycleway:both=lane` reads on a
+    one-way too. The side against the traffic is rewritten to `no`; a `:both` is
+    rewritten to `no` and spoken for on the traffic's side, so what the facility
+    says about that side is kept. The traffic's side is the right of the way's
+    direction, and the left of it on a `oneway=-1` way, whose traffic runs
+    against the way's nodes.
+    """
+    flow, against = ("left", "right") if tags.get("oneway") == "-1" else ("right", "left")
+    both = tags.get("cycleway:both")
+    if both in LANE_CLASS_VALUES:
+        tags["cycleway:both"] = CONTRAFLOW_CLOSED_VALUE
+        # A side key already present speaks for its side over `:both`.
+        tags.setdefault(f"cycleway:{flow}", both)
+    if (
+        tags.get(f"cycleway:{against}") in LANE_CLASS_VALUES
+        and tags.get(f"cycleway:{flow}") in LANE_CLASS_VALUES
+    ):
+        tags[f"cycleway:{against}"] = CONTRAFLOW_CLOSED_VALUE
+
+
+def close_contraflow(tags: dict[str, str]) -> None:
+    """Make a bicycle follow a one-way's direction, in place; two-way ways are
+    left as they are.
+
+    Everything is rewritten, never removed, for the reason
+    `bar_mass_ride_only_roadway` gives: `inject_tags` diffs this against the
+    source and `extract.write_extract` lays the difference over the source's
+    own tags, so a deleted key comes back in the written extract.
+    """
+    if not is_motor_oneway(tags):
+        return
+    tags["oneway:bicycle"] = "yes"
+    for key, value in tags.items():
+        if is_cycleway_key(key) and value.startswith("opposite"):
+            tags[key] = CONTRAFLOW_CLOSED_VALUE
+    close_lanes_on_both_sides(tags)
+    if "vehicle:backward" in tags:
+        tags["vehicle:backward"] = CONTRAFLOW_CLOSED_VALUE
+    if "bicycle:backward" in tags:
+        tags["bicycle:backward"] = BICYCLE_BACKWARD_CLOSED_VALUE
+    if any(key in tags for key in BICYCLE_BACKWARD_CONDITIONAL_KEYS):
+        tags["bicycle:backward:conditional"] = CONTRAFLOW_CLOSED_VALUE
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],
@@ -666,6 +829,10 @@ def inject(
     round, and barred rather than dropped: it stays in the standard and e-bike
     graphs, as the road a trace can still land on, with `bicycle=no`, and the
     no-trail variant keeps it as it is.
+
+    The no-trail variant also closes contraflow on every one-way
+    (`close_contraflow`); no other variant does, so a Group Ride with trails on
+    keeps the contraflow lanes the standard graph has.
     """
     is_mass_ride_only = osm_id is not None and osm_id in mass_ride_only_ids
 
@@ -685,7 +852,14 @@ def inject(
         # so the no-trail variant's own drop decision folds the two together
         # rather than `is_trail_class` doing it for every caller.
         is_sidepath_bridge = osm_id is not None and osm_id in sidepath_bridge_ids
-        return None if (is_trail_class(tags) or is_sidepath_bridge) else dict(tags)
+        if is_trail_class(tags) or is_sidepath_bridge:
+            return None
+        # The last word on this graph's tags, after the sidepath drop and
+        # whatever an approved override or a fixture wrote onto the way: no ride
+        # on this graph goes against a one-way's traffic (items 192, 193).
+        out = dict(tags)
+        close_contraflow(out)
+        return out
 
     if variant is Variant.EBIKE:
         out = dict(tags)

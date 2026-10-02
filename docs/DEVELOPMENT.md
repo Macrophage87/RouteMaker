@@ -1602,6 +1602,92 @@ pipeline is run (`scripts/acceptance.py --only A1 A2` is the short gate).
 what each image installs and why, the `collectstatic` deploy step, and the list
 of things that still stop a `docker compose up`.
 
+## Contraflow on the no-trail graph
+
+The owner, 2026-10-02 (OWNER-DECISIONS 192 and 193): "contraflow lanes are not
+for group rides or mass rides, many routing engines put people on this when it's
+not appropriate." and, for a Group Ride with trails on, "with trails on that's
+fine". So the closure is built into one graph. `core.presets` gives
+`Variant.NO_TRAIL` to Mass Ride and, in `pipeline.variants.variant_for`, to any
+ride with trails off (Group Ride's toggle is not offered yet); Group Ride with
+trails on is on the standard graph, which keeps contraflow.
+
+`pipeline.variants.inject` calls `close_contraflow` last on the no-trail
+variant, after the trail and sidepath drop. On a way that is one-way for motor
+traffic (`is_motor_oneway`: `oneway` of `yes`, `true`, `1` or `-1`, or
+`junction=roundabout` or `circular`; not `reversible`, `alternating`, `no` or a
+way that says nothing) it rewrites the tags so that upstream's `ways_proc` gives
+a bicycle the way's own direction only. What upstream reads as a reverse
+direction on a one-way, measured through `lua/graph.lua` under LuaJIT
+(`tests/test_lua_remap.py`), and what closes each:
+
+| What opens the other direction | Closed by |
+|---|---|
+| `oneway:bicycle=no` (also `-1`, which double-flips on a `oneway=-1` way) | `oneway:bicycle=yes` |
+| `cycleway`, `:left`, `:right`, `:both` of `opposite`, `opposite_lane`, `opposite_track` | that value rewritten to `no` |
+| a lane, track or sharrow on both sides, or `cycleway:both` (the District's usual shape: `cycleway:left=lane`, `cycleway:left:oneway=-1`, a sharrow on the right) | the side against the traffic rewritten to `no`; a `:both` spoken for on the traffic's side (the right, or the left on `oneway=-1`) |
+| `vehicle:backward` | rewritten to `no` |
+| `bicycle:backward` (`yes`, `no` or any other value) | rewritten to `none` |
+| `bicycle:conditional` or `bicycle:backward:conditional`, which `remap_conditional_access` turns into a direction | `bicycle:backward:conditional=no` |
+
+Three things are not obvious, and each is pinned by a test.
+
+- Everything is rewritten, never removed, because `extract.write_extract` lays
+  `inject_tags`' diff over the source's own tags and a deleted key would come
+  back (`bar_mass_ride_only_roadway` says the same).
+- `bicycle:backward` is written `none`, not `no`. Upstream reads a
+  `bicycle:backward` of `yes` or `no` as a second direction and, beside
+  `oneway:bicycle=yes`, closes the *with-flow* direction. `none` is the other
+  value its bicycle table reads as false. A blanket `bicycle:backward=no` on
+  every one-way, the shorter rule, was rejected for a second reason:
+  `routemaker_remap.access_is_unrestricted` reads that key, and a way it calls
+  restricted loses the stress penalty (`bicycle=use_sidepath` on tier 3 and up).
+  The closure writes none of the keys that decide a way is restricted except on a
+  way that already carries `bicycle:backward` (one such way in the extract).
+- A with-flow conditional (`bicycle:forward:conditional`) is left alone.
+
+**Stress and the map are not touched.** The stress tier and the facility class
+are computed once, from the way's own tags (`classify_facilities`, `stress_by_way`),
+before any variant exists; `run.inject_tags` hands each variant those values as
+derived tags and only the routing tags differ. So the stress tiles, the map
+layers and the segment table read the contraflow lane as the facility it is
+(11th Street NW is a `lane` on the map and its no-trail routing tags no longer
+carry one). `tests/test_pipeline_end_to_end.py::test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves`
+runs a one-way through the rebuild and compares the tier, the facility and the
+segment row across the variants.
+
+**The Roadway Block overlay (wip/data).** Checked against that branch's
+`run.py`: the District overlay (`agency_roads.overlay`, which writes
+`cycleway:left=opposite_lane` and `oneway:bicycle=no` from `BIKELANE_CONTRAFLOW`)
+puts its tags in `context.class_tags_by_way`, which classification and the
+facility read, and `inject_tags` still hands `variants.inject` the way's own
+`way.tags`. The overlay therefore never reaches a variant's routing tags, so it
+cannot reopen the closure, and the closure never sees it. If a later change made
+the overlay's tags routing tags, they would arrive before `inject`, and
+`inject` is the last word. An approved access override that writes
+`bicycle:backward=yes` onto a one-way is likewise closed on this graph and only
+this graph, as the mass-ride bar is. One consequence of the two rules together:
+a District street the Roadway Block calls one-way but OSM tags two-way is
+one-way for classification (item 190) and two-way for routing, so it is not
+closed.
+
+**Measured** on the 2026-09-25 clipped region extract
+(`scripts/contraflow_census.py`, read-only; 137,518 non-trail one-way ways):
+194 ways and 18.91 miles (30.43 km) have contraflow on the standard reading
+(the router's answer for the way's own tags) and none on the closed one. 187 of
+them (15.86 miles) are named by a contraflow tag; the other 7 (3.04 miles) are
+lanes on both sides, which upstream reads as two-way. Zero ways are still open
+after the closure, and zero lose the with-flow direction. The count is OSM's
+tags only; where the Roadway Block records a contraflow lane that OSM does not
+tag, the standard graph does not have it either.
+
+`tests/test_contraflow_fixture.py` runs nine real District streets from that
+extract (`fixtures/contraflow/dc-contraflow-streets.json`: R Street NE, 8th
+Street NW and NE, 11th Street NW, M Street NW, Kentucky Avenue SE and others)
+through the injection and the real transform: contraflow on the standard graph,
+none on the no-trail graph, only the contraflow keys changed, the classifier's
+answer on the source tags pinned.
+
 ## Lua
 
 The tag transform runs under LuaJIT, because Valhalla 3.5.1's build requires it

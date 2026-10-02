@@ -1729,6 +1729,40 @@ about 15 GB, into swap - an open owner question (PLAN.md:293's 32 GB).
 On weekdays the weekend router is idle; restart it with the others after a
 promotion (below).
 
+## Contraflow on the no-trail graph: what to check after a rebuild
+
+From the rebuild that carries OWNER-DECISIONS 192 (2026-10-02), the no-trail
+graph - Mass Ride, and any ride with trails off - gives a one-way street to a
+bicycle with the traffic only. The standard, weekend and e-bike graphs keep
+contraflow, and Group Ride with trails on may use it (item 193). Nothing is
+configured: it is built into the no-trail extract by the `inject_tags` stage, so
+it needs no setting and no restart beyond the usual one after a rebuild.
+
+What an operator can see:
+
+- The no-trail extract carries `oneway:bicycle=yes` on every non-trail one-way
+  (about 137,500 ways in the 2026-09-25 region extract), where the other
+  extracts carry whatever OSM says. That is expected; the tiles are not
+  noticeably larger.
+- On the District's contraflow streets (R Street NE, 8th Street NW, M Street NW,
+  11th Street NW and the like: 194 ways, 18.9 miles in the region extract) a
+  Mass Ride route runs with the traffic. The same trip on Default or Group Ride
+  may run against it on the lane. A Mass Ride that detours around a one-way
+  street where it used to ride the contraflow lane is this, not a fault.
+- The map and the stress tiles are unchanged: the lane still draws as a lane and
+  keeps its tier, because both come from the way's own tags.
+
+To check a rebuilt extract without a graph build, from the repository root:
+
+```sh
+PYTHONPATH=src python scripts/contraflow_census.py "$DATA_ROOT/extracts/source.osm.pbf"
+```
+
+It reads the clip, asks the transform for each non-trail one-way twice, and
+prints how many ways have contraflow on the standard reading and how many still
+do on the closed one. The second number must be 0, and so must "shut to the
+traffic direction as well". It takes about two minutes and writes nothing.
+
 ## After a rebuild: restart the routers
 
 **`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`

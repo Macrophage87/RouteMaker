@@ -736,3 +736,73 @@ class FakeBinaries:
 
     def commands(self, name: str) -> list[list[str]]:
         return [c for c in self.calls if Path(c[0]).name == name]
+
+
+CONTRAFLOW_ONE_WAY_ID = 1200
+CONTRAFLOW_TWO_WAY_ID = 1201
+CONTRAFLOW_ROUNDABOUT_ID = 1202
+
+
+def build_contraflow_extract(path: Path) -> None:
+    """11th Street NW's real tags (a lane on the left against the traffic and a
+    sharrow on the right, with the one-way waived for bicycles), a two-way
+    street that carries an `opposite_lane` anyway, and a roundabout arc with one.
+    """
+    Path(path).unlink(missing_ok=True)  # osmium refuses to overwrite
+    writer = osmium.SimpleWriter(str(path))
+    try:
+        nodes = {
+            1: (-77.030, 38.930),
+            2: (-77.028, 38.930),
+            3: (-77.030, 38.925),
+            4: (-77.028, 38.925),
+            5: (-77.030, 38.920),
+            6: (-77.028, 38.920),
+        }
+        for node_id, (lon, lat) in nodes.items():
+            writer.add_node(
+                osmium.osm.mutable.Node(id=node_id, location=(lon, lat), tags={}, version=1)
+            )
+        ways = {
+            CONTRAFLOW_ONE_WAY_ID: (
+                [1, 2],
+                {
+                    "cycleway:left": "lane",
+                    "cycleway:left:buffer": "no",
+                    "cycleway:left:oneway": "-1",
+                    "cycleway:right": "shared_lane",
+                    "cycleway:right:lane": "pictogram",
+                    "highway": "residential",
+                    "lcn": "yes",
+                    "name": "Contraflow Street Northwest",
+                    "oneway": "yes",
+                    "oneway:bicycle": "no",
+                    "parking:both": "yes",
+                    "sidewalk:both": "separate",
+                    "surface": "asphalt",
+                },
+            ),
+            CONTRAFLOW_TWO_WAY_ID: (
+                [3, 4],
+                {
+                    "cycleway:left": "opposite_lane",
+                    "highway": "residential",
+                    "name": "Two Way Street Northwest",
+                    "oneway:bicycle": "no",
+                },
+            ),
+            CONTRAFLOW_ROUNDABOUT_ID: (
+                [5, 6],
+                {
+                    "cycleway:left": "opposite_lane",
+                    "highway": "residential",
+                    "junction": "roundabout",
+                    "name": "Circle Northwest",
+                },
+            ),
+        }
+        for way_id in sorted(ways):
+            node_ids, tags = ways[way_id]
+            writer.add_way(osmium.osm.mutable.Way(id=way_id, nodes=node_ids, version=1, tags=tags))
+    finally:
+        writer.close()

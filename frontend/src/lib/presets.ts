@@ -44,7 +44,7 @@ export const PRESETS: readonly PresetOption[] = [
     id: "mass-ride",
     label: "Mass Ride",
     description:
-      "A large group taking the roadway: roads only, no trails, no bike-lane preference, few turns, at parade pace.",
+      "A large group taking the roadway: roads only, no trails, no bike-lane preference, never against a one-way street's traffic, few turns, at parade pace.",
   },
   {
     id: "mountain-goat",
