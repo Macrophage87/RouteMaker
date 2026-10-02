@@ -714,12 +714,24 @@ def _one_junction(earlier: Junction, later: Junction, shared: frozenset[str]) ->
     earlier one's road out) and crosses at one of them: a divided road's two
     carriageways, a turn off one and a crossing of the other, a crossing of one
     and a turn onto the other. A road only turned onto at one and off at the
-    other (left off Main St, then left back onto it 30 m on) is two junctions."""
+    other (left off Main St, then left back onto it 30 m on) is two junctions.
+
+    A two-way road a junction crosses that is named like its own road in or
+    out is that turn's own opposite lanes (a left off or onto Main St crosses
+    Main St), not a road crossed: it does not count (gate 1, B2). A one-way
+    carriageway does, so a divided road's crossover still shares."""
     out, into = earlier.outgoing, later.incoming
     if not (out == into or out.names & into.names):
         return False
-    crossed = frozenset().union(*(road.names for road in (*earlier.crossed, *later.crossed)))
+    crossed = frozenset().union(*_crossings(earlier), *_crossings(later))
     return bool((shared - out.names) & crossed)
+
+
+def _crossings(junction: Junction) -> list[frozenset[str]]:
+    """The names of the roads a junction crosses, less a two-way road named
+    like its own road in or out (`_one_junction`)."""
+    own = junction.incoming.names | junction.outgoing.names
+    return [road.names for road in junction.crossed if road.oneway or not road.names & own]
 
 
 def share_controls(junctions: list[Junction]) -> list[Junction]:

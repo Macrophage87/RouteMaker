@@ -512,6 +512,29 @@ class TestApproaches:
                 e["edge"]["access"]["car"] = False
         assert self.control(around) is Control.SIGNAL
 
+    @pytest.mark.parametrize(
+        "use", ["footway", "path", "cycleway", "pedestrian_crossing", "steps", "track", "sidewalk"]
+    )
+    def test_each_path_use_walks_past_another_roads_junction(self, use) -> None:
+        around = approach_around(north_at=8.0, names=("K St",), way=77)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (1, 3):
+                e["edge"]["classification"]["use"] = use
+                e["edge"]["access"]["car"] = False
+        assert self.control(around) is Control.SIGNAL
+
+    @pytest.mark.parametrize("use", ["driveway", "parking_aisle", "drive_through"])
+    def test_a_driveway_or_parking_aisle_beside_a_signalised_junction_does_not(self, use) -> None:
+        """Gate 1, B1: a left out of a driveway or a parking aisle onto a road
+        14-27 m from a signalised junction (Connecticut Ave NW at Davenport St,
+        Randolph Rd at Parklawn Dr) is not crossed on that junction's signal.
+        Only a path is let past another road's junction."""
+        around = approach_around(north_at=8.0, names=("K St",), way=77)
+        for e in around["edges"]:
+            if e["edge_id"]["value"] in (1, 3):
+                e["edge"]["classification"]["use"] = use
+        assert self.control(around) is Control.NONE
+
     def test_a_signal_node_where_another_named_road_joins_is_its_own(self) -> None:
         """Review r3, B1: the signal on Colesville Rd's own node, 16 m from a
         driveway onto East-West Hwy. An unnamed road joining there (a
@@ -580,6 +603,28 @@ class TestApproaches:
             if e["edge_id"]["value"] == 20:
                 shaped(e, north(25.0), north(8.0))
         assert self.control(drive) is Control.NONE
+
+    def test_the_walk_does_not_follow_an_edge_travelling_away_from_the_node(self) -> None:
+        """Gate 1, mutant G14: the walk goes out along the arm's road only by
+        edges arriving from farther away. Main St's other carriageway leaves a
+        node 8 m off the junction and joins the arm 10 m up, travelling away
+        from it; the signal at that node, on the far side of the stop line, is
+        not the junction's."""
+        around = approach_around(north_at=10.0, flag=None)
+        side = (LON + 6 / (111_195.0 * 0.7782), LAT + 5 / 111_195.0)
+        farther = (LON + 25 / (111_195.0 * 0.7782), LAT + 5 / 111_195.0)
+        merge = edge(40, 41, 920, 1.0, 330.0, names=["Main St"])
+        around["edges"].append(shaped(merge, side, north(10.0)))
+        line = edge(41, 41, 941, 1.0, 270.0, names=["Main St"], signal=True)
+        around["edges"].append(shaped(line, farther, side))
+        assert self.control(around) is Control.NONE
+        # The same edges arriving from beyond the arm's end are walked.
+        towards = approach_around(north_at=10.0, flag=None)
+        merge = edge(40, 41, 920, 1.0, 180.0, names=["Main St"])
+        towards["edges"].append(shaped(merge, north(14.0), north(10.0)))
+        line = edge(41, 41, 941, 1.0, 180.0, names=["Main St"], signal=True)
+        towards["edges"].append(shaped(line, north(25.0), north(14.0)))
+        assert self.control(towards) is Control.SIGNAL
 
     def test_an_edge_without_a_shape_is_not_walked(self) -> None:
         around = approach_around(north_at=10.0)
@@ -864,6 +909,20 @@ class TestLiveSideStreets:
         assert found is not None
         assert junctions.control_of(found) is not Control.SIGNAL
         # And the node's own answer alone has none either.
+        alone = junctions.node_from_locate(case["at"], junction, approaches=False)
+        assert junctions.control_of(alone) is not Control.SIGNAL
+
+    @pytest.mark.parametrize(
+        "case", LIVE["path_cases"], ids=[c["name"] for c in LIVE["path_cases"]]
+    )
+    def test_a_trail_crossing_beside_a_signalised_junction_keeps_its_signal(self, case) -> None:
+        """Gate 1, B1: the path exception kept for real paths. The cycleway
+        crossings of US 1 at MD 212 and of MD 2 at West St are crossed on the
+        neighbouring junction's signal, 11-17 m away."""
+        junction = _live_raw(case["raw"])
+        assert junction.in_use == "cycleway"
+        found = junctions.node_from_locate(case["at"], junction, case["around"])
+        assert junctions.control_of(found) is Control.SIGNAL
         alone = junctions.node_from_locate(case["at"], junction, approaches=False)
         assert junctions.control_of(alone) is not Control.SIGNAL
 

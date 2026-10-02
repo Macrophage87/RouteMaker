@@ -40,8 +40,9 @@ junction, or the node's own flag where no edge there is flagged. The walk stops
 at a node a road of another name joins: that is another junction, and its
 signal is not this one's (review r3, B1: a driveway 16 m from Colesville Rd's
 signalised node, a left off 17th St SW 18 m past Constitution Ave). A rider
-arriving on a path is let past one, since a trail crossing beside a road
-junction is crossed on its signal. The rider's own approach is read from the
+arriving on a path (`TRAIL_USES`) is let past one, since a trail crossing
+beside a road junction is crossed on its signal; one leaving a driveway or a
+parking aisle is not (gate 1, B1). The rider's own approach is read from the
 route's own edges before the junction (`RawJunction.back_edge_ids`), up to the
 first that arrives at such a junction: a stop or yield sign there is the
 rider's, a signal the junction's. A stop sign up a cross road is not read as
@@ -71,6 +72,7 @@ from routemaker.intersections import (
 from routemaker.trace_junctions import (
     APPROACH_M,
     NOT_A_ROAD_USES,
+    PATH_USES,
     RawJunction,
     decode_polyline6,
 )
@@ -97,6 +99,14 @@ ARM_HEADING_TOLERANCE_DEG = 30.0
 # Valhalla's `use` for a slip lane and a ramp: the channel a car turns by,
 # never a road the rider crosses (item 169: "Sliplanes should get a penalty too").
 LINK_USES = frozenset({"turn_channel", "ramp"})
+# The uses of a path a rider arrives on that walk past another road's junction
+# up an arm (`_Approaches`): a trail crossing a few metres from a road junction
+# is crossed on that junction's signal. A driveway, parking aisle or
+# drive-through is not a path: a rider leaving one onto a road beside a
+# signalised junction does not have its signal (gate 1, B1).
+TRAIL_USES = (
+    frozenset({"footway", "path", "cycleway", "pedestrian_crossing", "steps", "track"}) | PATH_USES
+)
 # What `/locate` percent_along an edge reads at its two ends.
 AT_START, AT_END = 0.001, 0.999
 
@@ -308,15 +318,15 @@ def node_from_locate(
         return None
     # Each road arm's approach, and the rider's own, walked out to APPROACH_M:
     # a signal is the junction's whichever arm it is on, up to the next
-    # junction of another road (review r3, B1). A rider arriving on a path is
-    # let past one: a trail crossing a few metres from a road junction is
-    # crossed on that junction's signal.
+    # junction of another road (review r3, B1). A rider arriving on a path
+    # (TRAIL_USES) is let past one; one leaving a driveway or a parking aisle
+    # is not (gate 1, B1).
     wide = answer if around is None else around
     walk = _Approaches(
         wide,
         (lon, lat),
         names=frozenset().union(*(a.names for a in arms)),
-        strict=arms[in_index].is_road,
+        strict=arms[in_index].use not in TRAIL_USES,
     )
     for index, cluster in enumerate(clusters):
         arm = arms[index]
@@ -358,7 +368,7 @@ class _Approaches:
     those names joins is another junction (review r3, B1: a driveway 16 m from
     Colesville Rd, whose signal is on Colesville Rd's own node), and the walk
     stops there without counting it. With `strict` false (the rider arrives on
-    a path) the walk goes past one."""
+    a path, TRAIL_USES) the walk goes past one."""
 
     def __init__(
         self,

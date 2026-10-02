@@ -475,8 +475,21 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   signalised junction (review r2: 8 of 15 reds in its sample); from round 2 the
   approaches are walked to 30 m and the nodes of one junction share its
   strongest control. Of the 95 junctions the review found priced as having no
-  signal, 66 had a signal flag of some kind within 30 m and 63 of those now
-  read as signalised.
+  signal, 66 had a signal flag of some kind within 30 m and 59 of those now
+  read as signalised (re-measured at gate 1; 63 in round 2). The four fewer
+  are the two lefts off 17th St SW 60 ft (18 m) past the Constitution Ave
+  signal, which is not theirs (review r3), Plyers Mill Rd across Metropolitan
+  Ave (next bullet), and a straight-on along MD 450 that is no event either
+  way.
+- One junction mapped as two named ones a few metres apart can lose its
+  signal (review r3). Plyers Mill Rd (MD 192) straight across Metropolitan Ave
+  reads orange, 1,200 ft, where it was 150 ft: MD 192 is divided west of the
+  junction, Concord St crosses between its carriageways 50 ft (16 m) back,
+  and the signal is on the Concord St node, which the walk takes for Concord
+  St's own junction. It is the safe direction (a warning at a light). Telling
+  it from a driveway just past a signalised junction would need the rider's
+  riding straight through a minor road's T junction on the junction's own
+  road, which would bring that driveway's under-warning back.
 - Signalised trail crossings tagged `crossing=traffic_signals` away from any
   signalised road junction read as unsignalised until the tag transform derives
   the signal. They are orange at most and say "no signal mapped"
@@ -491,13 +504,31 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   of a signalised junction can be priced as signalised, and its red or orange
   not drawn, where the signal is on a stop line of the road it joins with no
   other named road at that node, or where the other junction's road has no
-  name in OSM. A signal at a node that a road of another name joins, or one
-  facing away from the junction, is not taken (review r3); nor is a signal or
-  stop sign on the rider's own approach beyond a junction already passed.
+  name in OSM. For a rider arriving on a road, a driveway, a parking aisle or
+  a drive-through, a signal at a node up an arm that a road of another name
+  joins, or one facing away from the junction, is not taken (review r3; gate
+  1 for driveways and parking aisles, which took it until then); nor is a
+  signal or stop sign on the rider's own approach beyond a junction already
+  passed. A rider arriving on a path (a footway, path, cycleway, crossing way,
+  steps or track) does take such a signal: a trail crossing a few metres from
+  a road junction is crossed on that junction's signal (the Green Trail,
+  Virginia Ave cycletrack and Custis crossings).
   Junctions within 45 m about one named road also share a signal where the
   rider crosses that road at one of them and does not ride along it between
   them, so a staggered junction whose two nodes the rider links by a short
-  side street can read as one.
+  side street can read as one. A turn's crossing of its own two-way road's
+  opposite lanes is not counted as crossing it (gate 1), so a signalised left
+  off a road and an unsignalised left back onto it 30 m on stay two junctions
+  and the second keeps its red; a one-way carriageway crossed still counts,
+  so a divided road's crossover shares its signal.
+- That path exception has a named residual risk. A cycleway's left onto
+  Georgia Ave 50 ft (15 m) from Wayne Ave, and onto Colesville Rd 25 ft (7 m)
+  from Second Ave and Wayne Ave, take the neighbouring junction's signal:
+  450 ft where without it they would be 4,500 ft, red. They are probably the
+  corner sidepaths at the signal, ridden onto the road on its crossing, so the
+  reading is defensible; but a trail that meets a busy road a few metres from
+  a signal it does not use would be under-warned the same way, and the markers
+  cannot tell the two apart.
 - A slip lane the route crosses is orange (items 169 and 195) whether or not
   the channel has its own signal or a raised crossing, which are not read.
   Riding straight past one along the road is not flagged, except in a painted

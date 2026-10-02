@@ -990,9 +990,13 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    flagged. The walk stops at, and does not count, a node that a road of a
    name none of the junction's arms has joins: that is another junction
    (review r3, B1: of six driveways and side streets within 30 m of another
-   junction's signal, all six had taken it). A rider arriving on a path is let
+   junction's signal, all six had taken it). A rider arriving on a path
+   (footway, path, cycleway, crossing way, steps, track: `TRAIL_USES`) is let
    past such a node, since a trail crossing beside a road junction is crossed
-   on that junction's signal. The rider's own edges before the junction
+   on that junction's signal. A rider leaving a driveway, a parking aisle or a
+   drive-through is not (gate 1, B1: five such lefts onto Randolph Rd, Powder
+   Mill Rd and Connecticut Ave NW, 35-90 ft (11-27 m) from a signal, had taken it; they
+   are 1,800 to 4,500 ft again). The rider's own edges before the junction
    within 30 m along the route (`RawJunction.back_edge_ids`) are read too, up
    to the first that arrives at another road's junction (the rider has passed
    it: a left off 17th St SW 18 m past the Constitution Ave signal): a stop

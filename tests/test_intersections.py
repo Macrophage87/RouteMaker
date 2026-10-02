@@ -902,6 +902,94 @@ class TestSharedControl:
         assert [j.control for j in shared] == [Control.SIGNAL, Control.NONE]
         assert any(e.flagged and e.kind == "left_onto" for e in m.assess_route([off, onto]))
 
+    def test_a_left_off_the_road_then_back_onto_it_crossing_its_own_lanes(self) -> None:
+        """Gate 1, B2: in a real trace a left turn crosses its own road's
+        opposite lanes (`crossed=(Main St,)`). That is not a road crossed: the
+        signalised left off Main St and the left back onto it 30 m on are
+        still two junctions, and the second keeps its warning."""
+        off = junction(
+            m=0.0,
+            movement=Movement.LEFT,
+            incoming=self.main,
+            outgoing=self.a_st,
+            crossed=(self.main,),
+            control=Control.SIGNAL,
+        )
+        onto = junction(
+            m=30.0,
+            movement=Movement.LEFT,
+            incoming=self.a_st,
+            outgoing=self.main,
+            crossed=(self.main,),
+        )
+        shared = m.share_controls([off, onto])
+        assert [j.control for j in shared] == [Control.SIGNAL, Control.NONE]
+        flagged = [e for e in m.assess_route([off, onto]) if e.flagged]
+        assert [(e.kind, e.severity) for e in flagged] == [("left_onto", m.RED)]
+        # With only the first turn's lanes crossed, or a right off at the
+        # signal and the left back onto it crossing them, the same.
+        bare = replace(onto, crossed=())
+        assert m.share_controls([off, bare])[1].control is Control.NONE
+        right_off = replace(off, movement=Movement.RIGHT, crossed=())
+        assert m.share_controls([right_off, onto])[1].control is Control.NONE
+        # A one-way road of the turn's name is a carriageway, and still counts.
+        far = Road(4, oneway=True, names=self.main.names, ways=frozenset({11}))
+        crossing = replace(onto, crossed=(far,))
+        assert m.share_controls([off, crossing])[1].control is Control.SIGNAL
+
+    def test_a_divided_roads_crossover_shares_with_its_left_turn(self) -> None:
+        """MD 355's U-turn crossover: a left off one carriageway into the
+        crossover, then 15 m on a left onto the other, each crossing a one-way
+        carriageway of MD 355. One junction: a signal at one is the other's."""
+        near = Road(4, oneway=True, names=frozenset({"md 355"}), ways=frozenset({1}))
+        far = Road(4, oneway=True, names=frozenset({"md 355"}), ways=frozenset({2}))
+        crossover = Road(1, names=frozenset({"way 577536224"}), ways=frozenset({3}))
+        off = junction(
+            m=0.0,
+            movement=Movement.LEFT,
+            incoming=near,
+            outgoing=crossover,
+            crossed=(far,),
+            control=Control.SIGNAL,
+        )
+        onto = junction(
+            m=15.0, movement=Movement.LEFT, incoming=crossover, outgoing=far, crossed=(far,)
+        )
+        assert m.share_controls([off, onto])[1].control is Control.SIGNAL
+        # Unsignalised, both stay as they are.
+        none = replace(off, control=Control.NONE)
+        assert [j.control for j in m.share_controls([none, onto])] == [Control.NONE] * 2
+
+    def test_a_jog_whose_turns_cross_their_own_road(self) -> None:
+        """The jogs with the turns' own lanes crossed, as a trace has them."""
+        onto = junction(
+            m=0.0,
+            movement=Movement.LEFT,
+            incoming=self.a_st,
+            outgoing=self.main,
+            crossed=(self.main,),
+        )
+        off = junction(
+            m=35.0,
+            movement=Movement.RIGHT,
+            incoming=self.main,
+            outgoing=self.b_st,
+            control=Control.SIGNAL,
+        )
+        assert m.share_controls([onto, off])[0].control is Control.NONE
+        right_onto = junction(
+            m=0.0, movement=Movement.RIGHT, incoming=self.a_st, outgoing=self.main
+        )
+        left_off = junction(
+            m=40.0,
+            movement=Movement.LEFT,
+            incoming=self.main,
+            outgoing=self.b_st,
+            crossed=(self.main,),
+            control=Control.SIGNAL,
+        )
+        assert m.share_controls([right_onto, left_off])[0].control is Control.NONE
+
     def test_two_crossings_of_one_road_from_different_streets(self) -> None:
         """Across Main St from A St, then 40 m on across it again from B St at
         a signal: the rider reached the second by another road."""

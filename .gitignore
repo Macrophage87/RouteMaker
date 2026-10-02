@@ -13,6 +13,8 @@ build/
 node_modules/
 frontend/dist/
 data/
+# Test fixtures are committed: `data/` above would catch tests/data/.
+!tests/data/
 tiles/
 /postgres-data/
 acceptance-reports/
