@@ -4,7 +4,7 @@
  * overlay's own, and every segment carries a label and a percentage so the bar
  * does not rely on colour alone.
  */
-import { STRESS_TIERS } from "../stressStyle.js";
+import { currentTiers } from "../stressStyle.js";
 
 export type StressKey = "1" | "2" | "3" | "4" | "5" | "unknown";
 export type StressMetres = Partial<Record<StressKey, number>>;
@@ -47,7 +47,7 @@ export function wholePercents(fractions: number[]): number[] {
 
 export function stressSegments(stress: StressMetres): StressSegment[] {
   const rows = [
-    ...STRESS_TIERS.map((t) => ({
+    ...currentTiers().map((t: { tier: number; short: string; label: string; color: string }) => ({
       key: String(t.tier) as StressKey,
       short: t.short,
       label: t.label,

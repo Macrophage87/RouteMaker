@@ -21,10 +21,9 @@ import {
   ROUTE_CASING_PLAIN,
   ROUTE_CASING_WIDTH,
   ROUTE_LINE_WIDTH,
-  routePaint,
-  routeSections,
   sectionFeatures,
 } from "./lib/routeColours.ts";
+import { subscribePalette } from "./stressStyle.js";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -32,7 +31,10 @@ import {
   popupsOpen,
   pressGrab,
   runClick,
+  ROUTE_STRESS_SOURCE_ID,
   runHover,
+  setRouteSections,
+  setStressPalette,
   setStressVisibility,
   setStressWhen,
 } from "./lib/mapGlue.ts";
@@ -117,7 +119,7 @@ function registerPmtiles(): void {
 const DC_CENTRE: LonLat = [-77.03, 38.9];
 const ROUTE_SOURCE = "route";
 /** The route's sections by traffic stress (lib/routeColours.ts). */
-const ROUTE_STRESS_SOURCE = "route-stress";
+const ROUTE_STRESS_SOURCE = ROUTE_STRESS_SOURCE_ID;
 /** The handle and the dashed preview of a drag of the line. */
 const EDIT_SOURCE = "route-edit";
 /** How far from the line's centre a mouse, or a finger, still grabs it. */
@@ -649,6 +651,20 @@ export function MapView(props: Props) {
     syncRoute(map, callbacks.current, fitted);
   }, [props.route, props.stale]);
 
+  // The accessibility switch (or the system's request for more contrast):
+  // the overlay's layers and the route's sections are painted again in place.
+  // The legend and the stress bar are React and follow by useStressStyle.
+  useEffect(
+    () =>
+      subscribePalette(() => {
+        const map = mapRef.current;
+        if (!map || !loaded.current) return;
+        setStressPalette(map, callbacks.current.when);
+        setRouteSections(map, callbacks.current.route, callbacks.current.stale);
+      }),
+    [],
+  );
+
   // The route's stressful junctions: orange and red warning markers on the line,
   // a click on one showing why (OWNER-DECISIONS 172). They go while the route
   // is being planned again, as the line's own colours dim.
@@ -779,12 +795,7 @@ function syncRoute(map: MapLibreMap, props: Props, fitted: { current: boolean })
       ? { type: "Feature", properties: {}, geometry: route.geometry }
       : { type: "FeatureCollection", features: [] },
   );
-  const sections = route ? routeSections(route.geometry.coordinates, route.stress_spans) : null;
-  (map.getSource(ROUTE_STRESS_SOURCE) as GeoJSONSource | undefined)?.setData(sectionFeatures(sections));
-  const paint = routePaint(sections !== null, stale);
-  map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
-  map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
-  map.setPaintProperty("route-casing", "line-color", paint.casingColor);
+  setRouteSections(map, route, stale);
   if (!route || stale || route.geometry.coordinates.length < 2) return;
   const padding = props.framePadding();
   if (fitted.current && routeInView(map, route.geometry.coordinates, padding)) return;

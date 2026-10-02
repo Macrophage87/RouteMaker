@@ -3,9 +3,12 @@ import { createRoot } from "react-dom/client";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./styles.css";
 import { App } from "./App.tsx";
+import { followAccessibility } from "./lib/accessibilitySwitch.ts";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root");
+// Before the first render, so the page never shows its plain borders and then the strong ones.
+followAccessibility(document.documentElement);
 createRoot(root).render(
   <StrictMode>
     <App />

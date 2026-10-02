@@ -7,9 +7,11 @@ import { SEEK_MAX_SPAN_M, formatClimb, formatDistance, formatRoughDistance } fro
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
+import { useStressStyle } from "./useStressStyle.ts";
 import { ROUTE_BLUE, ROUTE_CASING_WIDTH, ROUTE_LINE_WIDTH, routeLegend } from "./lib/routeColours.ts";
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
+  useStressStyle(); // the route colours below follow the accessibility switch
   const rows = facilityRows(route.facility_m);
   const seek = route.hills_seek;
   const avoid = avoidMetres(route.stress_m);

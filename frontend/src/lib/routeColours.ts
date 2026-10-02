@@ -10,7 +10,7 @@
  * stress map gives the same class, from the shared tokens (stressStyle.js), so
  * a change to the map's palette reaches the route too.
  */
-import { FACILITIES, STRESS_TIERS } from "../stressStyle.js";
+import { FACILITIES, currentTiers } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { UNRATED } from "./stressBar.ts";
@@ -29,31 +29,38 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
 /**
  * The classes a section is drawn in, in the legend's order: traffic-free
  * first (a path, or a road closed to cars at the ride's time, whatever its
- * tier), then the stress tiers, then what no segment rated.
+ * tier), then the stress tiers, then what no segment rated. Read from the
+ * palette in use each time: the rider can flip the accessibility switch while a route is up
+ * (stressStyle.js, setAccessibility), so a list built once at import would keep the
+ * old colours.
  */
-export const ROUTE_CLASSES: readonly RouteClass[] = [
-  {
-    key: "path",
-    short: "Traffic-free",
-    label: "Off-road path, or a road closed to cars",
-    color: PATH ? PATH.color : "#4c1d95",
-  },
-  ...STRESS_TIERS.map((tier) => ({
-    key: String(tier.tier) as RouteClassKey,
-    short: tier.short,
-    label: tier.label,
-    color: tier.color,
-  })),
-  { key: "unknown", short: UNRATED.short, label: UNRATED.label, color: UNRATED.color },
-];
+export function routeClasses(): readonly RouteClass[] {
+  return [
+    {
+      key: "path",
+      short: "Traffic-free",
+      label: "Off-road path, or a road closed to cars",
+      color: PATH ? PATH.color : "#4c1d95",
+    },
+    ...currentTiers().map((tier: { tier: number; short: string; label: string; color: string }) => ({
+      key: String(tier.tier) as RouteClassKey,
+      short: tier.short,
+      label: tier.label,
+      color: tier.color,
+    })),
+    { key: "unknown", short: UNRATED.short, label: UNRATED.label, color: UNRATED.color },
+  ];
+}
 
-const BY_KEY = new Map(ROUTE_CLASSES.map((c) => [c.key, c]));
+function classByKey(key: RouteClassKey): RouteClass | undefined {
+  return routeClasses().find((c) => c.key === key);
+}
 
 /** A section's class: traffic-free before its tier, and unknown without one. */
 export function spanClass(span: Pick<StressSpan, "tier" | "facility">): RouteClass {
-  if (span.facility === "path") return BY_KEY.get("path") as RouteClass;
-  const tier = BY_KEY.get(String(span.tier) as RouteClassKey);
-  return span.tier !== null && tier ? tier : (BY_KEY.get("unknown") as RouteClass);
+  if (span.facility === "path") return classByKey("path") as RouteClass;
+  const tier = classByKey(String(span.tier) as RouteClassKey);
+  return span.tier !== null && tier ? tier : (classByKey("unknown") as RouteClass);
 }
 
 export interface RouteSection {
@@ -154,7 +161,7 @@ export function routeLegend(spans: readonly StressSpan[] | undefined): RouteLege
     const key = spanClass(span).key;
     metres.set(key, (metres.get(key) ?? 0) + (span.to_m - span.from_m));
   }
-  return ROUTE_CLASSES.filter((c) => metres.has(c.key)).map((c) => ({ ...c, metres: metres.get(c.key) ?? 0 }));
+  return routeClasses().filter((c) => metres.has(c.key)).map((c) => ({ ...c, metres: metres.get(c.key) ?? 0 }));
 }
 
 /** The route's own blue: its line when it has no sections, and its casing when it has. */

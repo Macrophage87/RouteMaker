@@ -2,9 +2,21 @@
  * What MapView does to the map, as functions of a small map interface, so a
  * test can run them against a stand-in (MapView itself needs WebGL).
  */
-import { FACILITIES, STRESS_TILE_LAYER, facilityWidthAt, stressFilters, stressOverlayLayers } from "../stressStyle.js";
+import {
+  DEFAULT_WHEN,
+  FACILITIES,
+  STRESS_TILE_LAYER,
+  currentTiers,
+  facilityWidthAt,
+  stressCasingLayers,
+  stressFilters,
+  stressLayers,
+  stressOverlayLayers,
+} from "../stressStyle.js";
 import type { When } from "./dials.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
+import type { RouteResponse } from "./api.ts";
+import { routePaint, routeSections, sectionFeatures } from "./routeColours.ts";
 
 /** The parts of a MapLibre map these use. */
 export interface OverlayMap {
@@ -49,6 +61,59 @@ export function setStressWhen(map: OverlayMap, when: When): void {
     const id = `facility-${facility.facility}`;
     if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
   }
+}
+
+/**
+ * Paint the overlay in the palette and strength in use: each tier's line and
+ * casing, in colour and width, and the facility rails, which sit outside the
+ * casing. All in place, so a rider's flip of the accessibility switch shows at
+ * once, without a reload and without the tiles being fetched again. A layer
+ * the map does not have (the overlay unavailable) is skipped.
+ */
+export function setStressPalette(
+  map: OverlayMap,
+  when: When = DEFAULT_WHEN,
+  tiers: ReturnType<typeof currentTiers> = currentTiers(),
+): void {
+  const layers = [...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers)];
+  for (const layer of layers as Array<{ id: string; paint: Record<string, unknown> }>) {
+    if (!map.getLayer(layer.id)) continue;
+    map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);
+    map.setPaintProperty(layer.id, "line-width", layer.paint["line-width"]);
+  }
+  for (const facility of FACILITIES) {
+    const id = `facility-${facility.facility}`;
+    if (map.getLayer(id)) map.setPaintProperty(id, "line-width", facilityWidthAt(facility, when));
+  }
+}
+
+/** The parts of a MapLibre map the route's coloured sections use. */
+export interface RouteSectionsMap {
+  getSource(id: string): unknown;
+  setPaintProperty(id: string, name: string, value: unknown): void;
+}
+
+/** The map source the route's stress sections are drawn from (MapView adds it). */
+export const ROUTE_STRESS_SOURCE_ID = "route-stress";
+
+/**
+ * Draw the route's sections in the palette in use: cut the route at its
+ * stress spans, put them in the sections source, and set the route layers'
+ * opacities and casing. The colours travel in the features, so a change of
+ * palette has to put the sections in again, which is why this is not part of
+ * placing the route.
+ */
+export function setRouteSections(
+  map: RouteSectionsMap,
+  route: Pick<RouteResponse, "geometry" | "stress_spans"> | null,
+  stale: boolean,
+): void {
+  const sections = route ? routeSections(route.geometry.coordinates as [number, number][], route.stress_spans) : null;
+  (map.getSource(ROUTE_STRESS_SOURCE_ID) as { setData(data: object): void } | undefined)?.setData(sectionFeatures(sections));
+  const paint = routePaint(sections !== null, stale);
+  map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
+  map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
+  map.setPaintProperty("route-casing", "line-color", paint.casingColor);
 }
 
 /** Show or hide every overlay layer that is on the map. */

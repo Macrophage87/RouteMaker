@@ -2,8 +2,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  FURTH_TIERS,
-  STRESS_TIERS,
   BASEMAP,
   stressLayers,
   stressCasingLayers,
@@ -23,8 +21,16 @@ import {
   ALLEY_MIN_ZOOM,
   paletteFrom,
   tiersFor,
+  currentTiers,
+  furthTiers,
 } from "./stressStyle.js";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
+
+// These tests assert the default palette's tiers, which is what the module
+// starts with here (no address, no storage); the palette-switching tests are in
+// paletteChoice.test.mjs.
+const STRESS_TIERS = tiersFor(DEFAULT_PALETTE);
+const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
 
 /** Whether `layer` draws a feature with `properties`, as MapLibre decides it. */
 function draws(layer, properties) {
@@ -405,13 +411,18 @@ test("a busy road beside a separately mapped bike lane is hidden until z15 and t
   }
 });
 
-test("Avoid is told from LTS 4 at a glance, faint or solid, in both palettes", () => {
+test("Avoid is told from LTS 4 at a glance, faint or solid, in every palette", () => {
   for (const palette of Object.keys(PALETTES)) {
     const tiers = tiersFor(palette);
     const [lts4, avoid] = [tiers[3], tiers[4]];
     assert.notDeepEqual(avoid.dash, lts4.dash);
     assert.ok(avoid.width > lts4.width);
-    assert.ok(contrastRatio(avoid.color, lts4.color) >= 1.8, `${palette}: ${contrastRatio(avoid.color, lts4.color).toFixed(2)}:1`);
+    // The colour-blind-friendly palette's pair is held to a CIEDE2000 floor
+    // under every vision instead (stressContrast.test.ts): its LTS 4 is a dark
+    // red a protanope sees as near-black, which a luminance ratio of 1.8 would
+    // have meant a brighter red that crowds LTS 3.
+    const floor = palette === "cvd" ? 1.4 : 1.8;
+    assert.ok(contrastRatio(avoid.color, lts4.color) >= floor, `${palette}: ${contrastRatio(avoid.color, lts4.color).toFixed(2)}:1`);
   }
 });
 
@@ -433,7 +444,8 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   assert.equal(paletteFrom("?x=1&palette=blended"), "blended");
   assert.equal(paletteFrom("?palette=__proto__"), DEFAULT_PALETTE);
   assert.equal(paletteFrom(""), DEFAULT_PALETTE);
-  assert.deepEqual(STRESS_TIERS, tiersFor(DEFAULT_PALETTE));
+  assert.deepEqual(currentTiers(), STRESS_TIERS);
+  assert.deepEqual(furthTiers(), FURTH_TIERS);
 });
 
 // Machado, Oliveira and Fernandes (2009), deuteranopia at full severity, on

@@ -43,6 +43,33 @@
   }
 }
 
+/* The accessibility switch is on (OWNER-DECISIONS 211): stronger panel borders
+   and muted text, by a class on the root (lib/accessibilitySwitch.ts) so the
+   rider's own choice decides, not a media query. The stress colours and lines
+   change in stressStyle.js. */
+:root.a11y {
+  --text-muted: #2a2f3a; /* 13:1 on --bg */
+  --border: #5c6472; /* 6:1 on --bg */
+}
+
+@media (prefers-color-scheme: dark) {
+  :root.a11y {
+    --text-muted: #dfe3ea; /* 13.5:1 on --bg */
+    --border: #8d95a3; /* 5.4:1 on --bg */
+  }
+}
+
+.a11y .stress-label,
+.a11y .hint,
+.a11y .route-credit {
+  color: var(--text-muted);
+}
+
+.a11y .swatch,
+.a11y .stress-bar {
+  border-color: var(--text);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -460,6 +487,39 @@ a {
 
 .toggle input {
   accent-color: var(--accent);
+}
+
+/* The accessibility switch (OWNER-DECISIONS 208, 211): a switch button, its
+   state said in words as well as by its look. */
+.a11y-setting {
+  margin-bottom: 8px;
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-soft);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 6px 4px 12px;
+  font-weight: 600;
+}
+
+.switch-state {
+  min-width: 2.6em;
+  text-align: center;
+  border-radius: 999px;
+  padding: 1px 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.switch[aria-checked="true"] .switch-state {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
 }
 
 .panel-footer {
@@ -1000,4 +1060,72 @@ dialog.ride-types::backdrop {
   color: var(--error-text);
   border-left: 5px solid #dc2626;
   font-weight: 600;
+}
+
+/* Forced colours (Windows contrast themes and the like): automatic, not a
+   preference. The browser replaces the page's colours with the system's, which
+   would turn every legend swatch and stress-bar segment into the same
+   system colour while the WebGL map keeps its own; so the swatches keep their
+   colours (forced-color-adjust: none) and get a system-colour border to stand
+   against whatever the system background is. The junction markers keep their
+   shape and the count's words. The panels, buttons and focus rings are left to
+   the system's colours: their outlines and borders are real borders, which
+   forced colours keeps, and the colours of the rest come from the system. */
+@media (forced-colors: active) {
+  .legend svg,
+  .stress-list svg,
+  .swatch,
+  .stress-bar,
+  .stress-seg {
+    forced-color-adjust: none;
+  }
+
+  .legend svg,
+  .stress-list svg,
+  .swatch,
+  .stress-bar {
+    border: 1px solid CanvasText;
+  }
+
+  .stress-seg + .stress-seg {
+    border-left: 1px solid CanvasText;
+  }
+
+  .junction-marker,
+  .junction-icon {
+    forced-color-adjust: none;
+  }
+
+  .junction-marker {
+    outline: 1px solid CanvasText;
+    border-radius: 4px;
+  }
+
+  .junction-marker:focus-visible {
+    outline: 3px solid Highlight;
+  }
+
+  .junction-count {
+    forced-color-adjust: auto;
+    border-color: CanvasText;
+  }
+
+  button,
+  .switch,
+  .switch-state {
+    border-color: ButtonText;
+  }
+
+  :focus-visible {
+    outline: 3px solid Highlight;
+  }
+
+  /* On is told from off by its word and a heavier border, not by a colour the
+     system may replace (a Highlight background was drawn as the canvas, hiding
+     the word, in the first look at it). */
+  .switch[aria-checked="true"] .switch-state {
+    border-width: 3px;
+    padding: 0 6px;
+    font-weight: 700;
+  }
 }

@@ -1,12 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { FACILITIES, STRESS_TIERS } from "../stressStyle.js";
+import { FACILITIES, currentTiers } from "../stressStyle.js";
 import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import {
   ROUTE_BLUE,
   ROUTE_CASING_PLAIN,
-  ROUTE_CLASSES,
+  routeClasses,
   routeLegend,
   routePaint,
   routeSections,
@@ -25,7 +25,7 @@ function span(from_m: number, to_m: number, tier: number | null, facility: Stres
 
 test("each class is drawn in the stress map's own colour, from the shared tokens", () => {
   // OWNER-DECISIONS item 81; the tiles lane owns the palette (item 74).
-  for (const tier of STRESS_TIERS) {
+  for (const tier of currentTiers()) {
     assert.equal(spanClass({ tier: tier.tier, facility: "none" }).color, tier.color, `LTS ${tier.tier}`);
   }
   const path = FACILITIES.find((f) => f.facility === "path");
@@ -43,10 +43,10 @@ test("traffic-free comes before the tier, and a lane is its tier", () => {
 
 test("the legend's classes are traffic-free, the five tiers, then not rated", () => {
   assert.deepEqual(
-    ROUTE_CLASSES.map((c) => c.key),
+    routeClasses().map((c) => c.key),
     ["path", "1", "2", "3", "4", "5", "unknown"],
   );
-  for (const c of ROUTE_CLASSES) assert.ok(c.short && c.label && /^#[0-9a-f]{6}$/i.test(c.color), c.key);
+  for (const c of routeClasses()) assert.ok(c.short && c.label && /^#[0-9a-f]{6}$/i.test(c.color), c.key);
 });
 
 test("the line is cut where the sections meet, in route order, with no gap", () => {
@@ -105,7 +105,7 @@ test("one section covers the whole line", () => {
 test("the sections become one GeoJSON feature each, coloured", () => {
   const collection = sectionFeatures(routeSections(LINE, [span(0, 500, 1), span(500, 1000, 5)]));
   assert.equal(collection.features.length, 2);
-  assert.equal(collection.features[1].properties.color, STRESS_TIERS[4].color);
+  assert.equal(collection.features[1].properties.color, currentTiers()[4].color);
   assert.equal(collection.features[1].properties.key, "5");
   assert.deepEqual(sectionFeatures(null), { type: "FeatureCollection", features: [] });
 });

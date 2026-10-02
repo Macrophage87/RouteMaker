@@ -304,6 +304,120 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD/frontend:/app" -w /
   the build, as docs/DEPLOYMENT.md describes, because only that exercises the
   edge's headers.
 
+### The accessibility switch and the colour-blind-friendly palette
+
+The panel's Accessibility switch (OWNER-DECISIONS 208, 209, 211, 212; PLAN.md,
+Owner amendments) turns on the `cvd` palette in `frontend/src/stressStyle.js`
+and draws the overlay stronger. The state lives in that module and is read
+through `currentTiers()`, never kept from import time; `subscribePalette()`
+announces a change, and `useStressStyle()` (React) and `MapView`'s effect (the
+map) repaint on it. What is chosen is held in `localStorage` as
+`routemaker.accessibility`.
+
+Where it starts: the stored "on" or "off" first, then the browser's
+`prefers-contrast: more` (followed live while nothing is stored), then off. The
+palette: `?palette=` in the link, then the switch, then `blended`. The
+colours of the switch's state are one place, `tiersFor(palette, strong)`.
+
+The `cvd` palette, with casings (the casing is the dark or white line drawn
+under a tier so it holds against the base map; the switch makes each black or
+white):
+
+| Tier | Line | Casing |
+| --- | --- | --- |
+| LTS 1 | #d2eafc | #0a1a2f |
+| LTS 2 | #5d99d2 | #0a1a2f |
+| LTS 3 | #cd4b0a | #0a1a2f |
+| LTS 4 | #6a0a06 | #ffffff |
+| Avoid | #08081e | #ffffff |
+
+It was chosen by search, not by eye: random and grid search over sRGB with the
+hue of each tier held to a family (light and mid blue, orange, dark red,
+blue-black), scored by the smallest CIEDE2000 between neighbours under normal
+vision and each simulation, with the luminance falling by at least 1.5:1 a step
+and 3:1 against every base-map surface (with a casing) as constraints. Avoid is
+blue-black on purpose: a protanope sees LTS 4's dark red as near-black, and a
+neutral black Avoid beside it measured 18 apart (a figure under the floor).
+Blue against orange is the pair all three deficiencies keep.
+
+CIEDE2000 between neighbouring tiers, LTS 1-2, 2-3, 3-4, 4-Avoid, and the
+closest pair of any two tiers, for every palette and each vision (Machado,
+Oliveira and Fernandes 2009, severity 1.0, applied in linear RGB). Only `cvd`
+is held to the floor of 20 (and 35 for LTS 2-3); the others are reported by
+`node --test src/stressContrast.test.ts`, which prints this table as test
+diagnostics:
+
+| Palette | Vision | LTS 1-2 | LTS 2-3 | LTS 3-4 | LTS 4-Avoid | Closest pair |
+| --- | --- | --- | --- | --- | --- | --- |
+| blended | normal | 16.1 | 40.2 | 26.7 | 20.9 | LTS 1-2, 16.1 |
+| blended | protan | 15.4 | 14.9 | 21.0 | 19.3 | LTS 2-3, 14.9 |
+| blended | deutan | 16.2 | 15.5 | 18.0 | 21.8 | LTS 2-3, 15.5 |
+| blended | tritan | 16.0 | 51.7 | 18.1 | 19.3 | LTS 1-2, 16.0 |
+| twotone | normal | 16.1 | 35.4 | 21.0 | 29.4 | LTS 1-2, 16.1 |
+| twotone | protan | 15.4 | 20.5 | 12.4 | 28.3 | LTS 3-4, 12.4 |
+| twotone | deutan | 16.2 | 26.0 | 8.3 | 17.8 | LTS 3-4, 8.3 |
+| twotone | tritan | 16.0 | 46.9 | 13.4 | 18.3 | LTS 3-4, 13.4 |
+| cvd | normal | 24.0 | 48.3 | 25.8 | 31.1 | LTS 1-2, 24.0 |
+| cvd | protan | 23.0 | 51.4 | 23.2 | 27.2 | LTS 1-2, 23.0 |
+| cvd | deutan | 25.5 | 51.7 | 26.9 | 34.1 | LTS 1-2, 25.5 |
+| cvd | tritan | 24.0 | 59.8 | 23.1 | 32.3 | LTS 3-4, 23.1 |
+
+The default `blended` palette is unchanged and does not meet 20 for every pair
+under protanopia and deuteranopia (LTS 2 and 3 are 15 apart; the dashes tell
+them apart, as the comment in `stressStyle.js` says). That is the reason for the
+option, not something it changes.
+
+WCAG relative luminance between neighbours (greyscale order): `cvd` Y 0.796,
+0.298, 0.180, 0.033, 0.003, steps of 2.43, 1.51, 2.78 and 1.56 to 1; `blended`
+1.86, 1.17, 1.98, 2.15 to 1; `twotone` does not fall (LTS 3 is lighter than
+LTS 2).
+
+Contrast of a tier against the base map (every surface of `@protomaps/basemaps`'
+light flavour) and both panel themes, the worst case per tier, by the rule in
+`stressContrast.test.ts` (the line itself, or its casing against the surface
+and the line against its casing; 3:1 needed):
+
+| Palette | LTS 1 | LTS 2 | LTS 3 | LTS 4 | Avoid |
+| --- | --- | --- | --- | --- | --- |
+| blended | 8.31 | 4.50 | 4.51 | 4.28 | 9.22 |
+| blended, switch on | 9.83 | 5.29 | 4.51 | 4.28 | 9.22 |
+| cvd | 10.23 | 5.53 | 3.66 | 7.41 | 11.55 |
+| cvd, switch on | 12.29 | 5.53 | 3.66 | 7.41 | 11.55 |
+| twotone (reported only) | 8.31 | 4.50 | 1.44 | 2.13 | 3.20 |
+
+The tests: `src/lib/accessibilitySwitch.test.ts` (precedence with `location`,
+`localStorage` and `matchMedia` stubbed on a fresh copy of the module, storage
+and `matchMedia` failures, live changes, the repaint wiring against a recording
+map, the component), `src/stressContrast.test.ts` (3:1 and the delta floor, plain
+and with the switch on), `src/stylesAccessibility.test.ts` (the `.a11y` and
+forced-colors blocks of `styles.css`, and that the stylesheet does not read
+`prefers-contrast`) and `src/testSupport/colourVision.test.ts` (the simulation
+and CIEDE2000 helper, `src/testSupport/colourVision.ts`, against Sharma, Wu and
+Dalal's published pairs and the Python script the palette was chosen with).
+A mutation pass on the first version of this change ran each of eighteen
+mutants (the address losing to the switch, a contrast request beating a stored
+choice, storage failure reading as on, the live follow moving a chosen switch,
+the repaint skipping widths, MapView not repainting, strong lines no wider,
+a style key ignoring the switch, a brightened LTS 4, a light LTS 1 casing, the
+forced-colors block dropping the segments, a `prefers-contrast` rule in the
+stylesheet, tiers frozen after the first read, the stored choice not read or not
+written, the root class never following, the switch losing its role, casings not
+stronger) against the whole suite. Three survived at first (the strong widths
+and the style key, which the tests derived from the constants they mutated, and
+a stylesheet mutant whose pattern matched nothing); the tests were tightened
+(the literal widths, a flip under an address-chosen palette) and all eighteen
+are killed.
+
+Looking at it without WebGL or a network: the panel's pieces as the app renders
+them, with the real `styles.css`, in the Chromium of the Playwright image
+already on the machine (`mcr.microsoft.com/playwright/python:v1.58.0-noble`,
+its headless shell, driven over the DevTools Protocol by Node 22's own
+WebSocket from a second container sharing its network namespace, both with
+`--network none`; the Python `playwright` package is not in that image). The
+emulated media were `forced-colors: active`, `prefers-contrast: more` and both
+colour schemes, for the switch off and on. The map itself needs the stack and
+was not looked at.
+
 ## What migrations do and do not create
 
 `Segment` is `managed = False` on purpose, so `migrate` does not create it. The
