@@ -20,14 +20,18 @@ test("the agency street layers are credited as their licences ask", () => {
   const credits = MAP_CREDITS.join(" ");
   // DC's Roadway Block, CC BY 4.0: names DDOT and DC GIS, says it is adapted, links the licence.
   assert.match(credits, /Roadway Block, District Department of Transportation \(DDOT\) \/ DC GIS \(Open Data DC\), adapted, <a href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/">CC BY 4\.0<\/a>/);
-  // Baltimore's, open by city code: the credit the city asks for.
+  // The Roadway Block's AADT fills where no count layer reached a street.
+  assert.match(credits, /traffic counts in the District: Roadway Block/);
+  // Baltimore's, open by city code: the owner's credit line (OWNER-DECISIONS 159).
   assert.match(credits, /City of Baltimore, Open Baltimore/);
 });
 
-test("nothing is credited to Montgomery County Planning while nothing derived from it is published", () => {
-  // The line belongs in the lists the day the proposed LTS 5 Avoid file is loaded
-  // (docs/OPERATIONS.md); a credit for data not in use would be a false claim.
-  assert.doesNotMatch(MAP_CREDITS.join(" "), /Montgomery County Planning/);
+test("Montgomery County Planning is credited now its LTS 5 roads are loaded as Avoid", () => {
+  // OWNER-DECISIONS 181: the credit goes in the same change as the rows. The layer's
+  // licence asks for "attribution to the Montgomery County Planning Department".
+  const montgomery = MAP_CREDITS.filter((line) => /Montgomery County Planning/.test(line));
+  assert.equal(montgomery.length, 1);
+  assert.match(montgomery[0], /Bicycle Level of Traffic Stress, Montgomery County Planning Department/);
 });
 
 test("the base map source states its own credit, not the archive's half of it", () => {

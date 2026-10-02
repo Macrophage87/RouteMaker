@@ -21,10 +21,10 @@ to run again where its output exists.
 
 | Layer | Used for | May it reach published output? |
 | --- | --- | --- |
-| DC Roadway Block | posted speed, lanes by direction, one-way, bike-lane type and width, parking, AADT, conflated onto DC's OSM ways at classification (`pipeline.conflation.conflate_blocks`, `routemaker.agency_roads`) | yes: CC BY 4.0, credited |
-| Montgomery Planning Bicycle LTS | a comparison and calibration set; its LTS 5 is a **proposed**, unloaded Avoid file | yes with attribution (open licence); nothing of it is published today |
-| Baltimore street centerline | posted speed (the city's `speed` field) and one-way, conflated onto Baltimore's OSM ways | yes: open licence by city code, credited |
-| Baltimore bike facilities and multiuse trails | a candidate list of facilities OSM lacks, and a **proposed**, unloaded override file | yes (as above); nothing of it is published today |
+| DC Roadway Block | posted speed, lanes by direction, one-way, bike-lane type and width, parking, AADT, conflated onto DC's OSM ways at classification (`pipeline.conflation.road_facts_by_way`, `routemaker.agency_roads`) | yes: CC BY 4.0, credited |
+| Montgomery Planning Bicycle LTS | a comparison and calibration set; its LTS 5 roads are **loaded as Avoid** (OWNER-DECISIONS 181), `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json` | yes with attribution (open licence; the ODbL gate below), credited |
+| Baltimore street centerline | posted speed (the city's `speed` field, **only where OSM has no `maxspeed`**, OWNER-DECISIONS 184) and one-way, conflated onto Baltimore's OSM ways | yes: open licence by city code, credited |
+| Baltimore bike facilities and multiuse trails | a candidate list of facilities OSM lacks, and **loaded** override rows (OWNER-DECISIONS 182), `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json` | yes (as above), credited |
 | Alexandria Bike Lane Routes | a cross-check of OSM's bike lanes | yes: CC0 |
 | Arlington Bike Comfort Index | **internal comparison only** (OWNER-DECISIONS 152, 155) | **no**; never in tiles, routes, fixtures or this repository |
 | Alexandria Transport Streets | **internal comparison only** (OWNER-DECISIONS 153, 155) | **no**; as above |
@@ -67,7 +67,7 @@ Alignment'`): 162 of the layer's 163 features were downloaded.
 | Roadway Block | "This work is licensed under a Creative Commons Attribution 4.0 International License." (linking <https://creativecommons.org/licenses/by/4.0/>) | "District Department of Transportation" |
 | Montgomery Bicycle LTS | "You can copy, modify, distribute, and perform analysis on the data, even for commercial purposes, all without asking permission, but please provide attribution to the Montgomery County Planning Department. The Planning Department makes no warranties about the data, and disclaims liability for all uses of the data, to the fullest extent permitted by applicable law." | "Information Technology & Innovation (ITI), Montgomery County Planning Department, MNCPPC" |
 | Alexandria Bike Lane Routes | "cc0" | "Bike Lanes, Transit City of Alexandria, VA GIS" |
-| Baltimore DOT BMC Bike Facilities, Multiuse Trails, Street Centerline (Native) | the three items carry no licence text. The basis is Baltimore City Code Art. 1 s.9-1(h) (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>), as the owner quoted it (OWNER-DECISIONS 159): "Datasets published on the Open Data Portal shall be available to the public on an open license basis, with no restrictions on copying, publishing, further distributing, modifying, or using the data for any non-commercial or commercial purpose." | facilities: "City of Baltimore. Baltimore City Department of Transportation (DOT)"; trails: "City of Baltimore. Department of Recreation & Parks (BCRP). Department of Transportation (DOT)"; centerline: none |
+| Baltimore DOT BMC Bike Facilities, Multiuse Trails, Street Centerline (Native) | the three items carry no licence text. The basis is Baltimore City Code Art. 1 §9-1(h) (<https://codes.baltimorecity.gov/us/md/cities/baltimore/code/1/9-1#(h)>), as the owner quoted it (OWNER-DECISIONS 159): "Datasets published on the Open Data Portal shall be available to the public on an open license basis, with no restrictions on copying, publishing, further distributing, modifying, or using the data for any non-commercial or commercial purpose." | facilities: "City of Baltimore. Baltimore City Department of Transportation (DOT)"; trails: "City of Baltimore. Department of Recreation & Parks (BCRP). Department of Transportation (DOT)"; centerline: none |
 | Arlington Bike Comfort Index | "Please review the Arlington County data disclaimer." (a pointer, not a licence) | "Arlington County, Virginia; Department of Environmental Services" |
 | Alexandria Transport Streets | "City of Alexandria, VA GIS" (not a licence) | none |
 
@@ -75,9 +75,39 @@ Alignment'`): 162 of the layer's 163 features were downloaded.
 
 | Layer | Credit line | Where |
 | --- | --- | --- |
-| Roadway Block | "Street speeds, lanes, one-way streets, bike lanes and parking in the District: Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0" | `routing.ATTRIBUTION`, `VOLUME_CREDITS` in `frontend/src/lib/mapStyle.ts` |
-| Baltimore centerline | "Street speeds and one-way streets in Baltimore: City of Baltimore, Open Baltimore" | both lists |
-| Montgomery Planning | "Bicycle Level of Traffic Stress: Montgomery County Planning Department" | **not yet in either list**: add it the day any Montgomery-derived row is loaded (the proposed LTS 5 Avoid file); docs/OPERATIONS.md, "Licences, and the credits every map must carry" |
+| Roadway Block | "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the District: Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0" | `routing.ATTRIBUTION`, `VOLUME_CREDITS` in `frontend/src/lib/mapStyle.ts` |
+| Baltimore centerline, facilities and trails | "Street speeds, one-way streets, bike facilities and trails in Baltimore: City of Baltimore, Open Baltimore" (the owner's line, OWNER-DECISIONS 159; the items carry no credit field of their own for the centerline) | both lists |
+| Montgomery Planning | "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress, Montgomery County Planning Department" (the licence: "please provide attribution to the Montgomery County Planning Department") | both lists, added in the change that loads the Avoid rows (OWNER-DECISIONS 181) |
+
+### Montgomery Planning through PLAN's three questions (2026-10-01)
+
+PLAN.md's ingest procedure puts every source's terms to three questions before
+anything derived from it reaches the published derivative. Montgomery
+Planning's terms, quoted above, were put to them when the owner approved
+loading its LTS 5 as Avoid (OWNER-DECISIONS 181):
+
+1. **May it be redistributed at all?** Yes: "You can copy, modify, distribute,
+   and perform analysis on the data, even for commercial purposes, all without
+   asking permission".
+2. **May it be relicensed under ODbL without carrying its own conditions onto
+   downstream recipients?** Yes, on what is taken. The one condition is
+   attribution to the Planning Department; it binds this project as the user,
+   not the recipients of a derived database, and the terms carry no
+   share-alike, no non-commercial clause, no bar on derivatives and no
+   condition to preserve metadata, which is what the Maryland iMAP case turned
+   on. What reaches the derivative is a tier of 5 on 409 OSM ways, a fact about
+   each way derived by this project's own matching, not the county's geometry
+   or its LTS values. The disclaimer of warranty and liability is not a
+   condition on anyone.
+3. **Is its attribution satisfiable by the produced-work notice?** Yes: the
+   credit line above is on every map view and in every route response
+   (`routing.ATTRIBUTION`), and the data page carries the licence record.
+
+So the layer passes, credited, and the PLAN's older "check-only" note for it is
+superseded (PLAN.md, "Owner amendments", 2026-10-01). Arlington's Bike Comfort
+Index and Alexandria's Transport Streets did not reach the gate: their licence
+fields are a pointer and an agency name, and they stay internal comparison only
+(OWNER-DECISIONS 155).
 
 ## What was found in the data
 
@@ -93,14 +123,26 @@ otherwise rediscover; each is pinned by a test.
 * DC's **reversible lanes** (`TOTALTRAVELLANESREVERSIBLE`; Connecticut Avenue
   NW's) are in `TOTALTRAVELLANES` and in neither direction's count: a block of
   one lane each way and two reversible has `TOTALTRAVELLANES` 4.
-* DC's `IB` and `OB` are not compass or digitising directions, so a one-way
-  block says only that it is one-way.
+* DC's `OB` is the block's digitising direction and `IB` is against it: on the
+  one-way blocks `SUMMARYDIRECTION` `OB` runs with the line 1,023 times to 49,
+  and `IB` against it 888 to 33 (review r1). The matcher records which way each
+  OSM way runs along its block, so each carriageway takes its own direction.
+* DC's `BIKELANE_PARKINGLANE_ADJACENT` (`IB`, `OB` or `BD`, on 925 blocks) says
+  which direction's bike lane runs beside a parking lane; only there is the
+  parking lane's width added to the lane's for Furth's reach.
+* DC's lane totals include bus lanes (`BUSLANE_INBOUND`, `BUSLANE_OUTBOUND`), and
+  reversible lanes are counted as operating in the peak direction; both are the
+  conservative reading (OWNER-DECISIONS 179).
+* DC's `FHWAFUNCTIONALCLASS` is parsed and not used: the Furth tables take no
+  class, and the classifier's class is OSM's `highway`.
 * **Baltimore's `fr_speed_limit` and `to_speed_limit` hold 19 values, all 0.**
   The layer's `speed` field carries 25 on 26,722 of its 48,522 lines and `1` on
   its alleys; it is read as the speed limit, with the source named in the
-  segment's `attr_sources`. It is the city's own field, not a survey of signs;
-  the owner should treat the Baltimore speeds as "the city's street database".
-  Its `lane_count` is filled on 5 lines and `traffic_count_aadt` on none.
+  segment's `attr_sources`, and only where OSM has no `maxspeed` (OWNER-DECISIONS
+  184). It is the city's own field, not a survey of signs; the owner should
+  treat the Baltimore speeds as "the city's street database". Its `lane_count`
+  is filled on 5 lines and `traffic_count_aadt` on none. The layer marks only
+  one-way streets (`oneway` FT or TF), never a two-way one.
 * Montgomery's `LTS_EXIST` takes 0.5, 1, 2, 2.5, 3, 4 and 5: **3 and 4 are
   separate** (OWNER-DECISIONS 149, confirmed), and so are 2 and 2.5.
 * Alexandria's Transport Streets has `SPEED_LIMIT` and `ONEWAY`; `LANES` is

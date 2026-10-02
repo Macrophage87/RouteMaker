@@ -31,16 +31,23 @@ export const VOLUME_CREDITS: readonly string[] = [
   "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia " +
     '(Open Data DC), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
   // DC's Roadway Block sets the District's posted speeds, lanes each way, one-way
-  // streets, bike lanes and parking (fixtures/datasets); parsed and combined with
-  // OSM, so it is "adapted".
-  "Street speeds, lanes, one-way streets, bike lanes and parking in the District: Roadway Block, " +
-    "District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, " +
+  // streets, bike lanes, parking and, where no count layer reached a street, its
+  // traffic count (fixtures/datasets); parsed and combined with OSM, so it is
+  // "adapted".
+  "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the District: " +
+    "Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, " +
     '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
-  // Baltimore's street centerline sets its speeds and one-way streets. Open licence
-  // by Baltimore City Code Art. 1 s.9-1(h); the city asks for this credit. Montgomery
-  // County Planning's line is added the day a row derived from its Bicycle LTS is
-  // loaded (docs/OPERATIONS.md); nothing derived from it is published today.
-  "Street speeds and one-way streets in Baltimore: City of Baltimore, Open Baltimore",
+  // Baltimore's street centerline (speeds where OSM has none, one-way streets) and
+  // its bike facilities and trails (the 2026-10-01 override file). Open licence by
+  // Baltimore City Code Art. 1 §9-1(h); the items carry no credit field, and this
+  // line is the owner's (OWNER-DECISIONS 159).
+  "Street speeds, one-way streets, bike facilities and trails in Baltimore: City of Baltimore, " +
+    "Open Baltimore",
+  // Montgomery County Planning's Bicycle Level of Traffic Stress: its LTS 5 roads are
+  // loaded as Avoid (OWNER-DECISIONS 149, 181). Its licence asks for "attribution to
+  // the Montgomery County Planning Department".
+  "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress, Montgomery County " +
+    "Planning Department",
 ];
 
 /**

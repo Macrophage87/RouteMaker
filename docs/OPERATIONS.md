@@ -1012,23 +1012,33 @@ licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
 the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
 none, are OpenStreetMap's and need nothing beyond the ODbL credit.
 
-Two more credits ride with the agency street layers
-(`docs/DEVELOPMENT.md`, "Agency street layers"; sources and licences in
-`fixtures/datasets/README.md`), in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
-"Street speeds, lanes, one-way streets, bike lanes and parking in the District:
-Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data
-DC), adapted, CC BY 4.0" (the layer is parsed and combined with OSM, so it is
-"adapted", and the licence is linked), and "Street speeds and one-way streets in
-Baltimore: City of Baltimore, Open Baltimore" (open licence by Baltimore City
-Code Art. 1 s.9-1(h), OWNER-DECISIONS 159). **Montgomery County Planning is not
-credited, deliberately:** nothing derived from its Bicycle LTS layer is
-published (it is a comparison set, and the LTS 5 Avoid file is only proposed).
-The day any row derived from it is loaded, add "Bicycle Level of Traffic Stress:
-Montgomery County Planning Department" to both lists, in the same change; the
-layer's licence asks for attribution to the Montgomery County Planning
-Department. Arlington's Bike Comfort Index and Alexandria's Transport Streets are
-internal comparison only and are never credited because nothing of them is
-published.
+Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
+"Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
+in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:
+
+- "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts
+  in the District: Roadway Block, District Department of Transportation (DDOT) /
+  DC GIS (Open Data DC), adapted, CC BY 4.0". The layer is parsed and combined
+  with OSM, so it is "adapted", and the licence is linked; its AADT fills where
+  no count layer reached a street.
+- "Street speeds, one-way streets, bike facilities and trails in Baltimore: City
+  of Baltimore, Open Baltimore". Open licence by Baltimore City Code Art. 1
+  §9-1(h); the line is the owner's (OWNER-DECISIONS 159), since the items carry
+  no credit of their own. It covers the centerline's speeds (only where OSM has
+  none) and one-way streets, and the facility and trail rows of
+  `fixtures/overrides/2026-10-01-owner-baltimore-facilities.json`.
+- "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress,
+  Montgomery County Planning Department". The layer's licence asks for
+  "attribution to the Montgomery County Planning Department"; the line went in
+  with the Avoid rows derived from it,
+  `fixtures/overrides/2026-10-01-owner-moco-lts5-avoid.json` (OWNER-DECISIONS
+  181), and the three-question ODbL gate it passed is recorded in
+  `fixtures/datasets/README.md` and PLAN.md. **The credit and the rows travel
+  together**: deleting the rows does not make the credit wrong for the graph
+  until the next rebuild, but a rebuild without them should drop the line.
+
+Arlington's Bike Comfort Index and Alexandria's Transport Streets are internal
+comparison only and are never credited because nothing of them is published.
 
 DDOT's Central Business District boundary (Open Data DC, CC BY 4.0), which
 decides the sidewalks bicycles may not ride (`routemaker.cbd`, OWNER-DECISIONS

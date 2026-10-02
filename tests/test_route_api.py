@@ -2217,19 +2217,24 @@ def test_the_attribution_names_ddot_its_licence_and_the_change() -> None:
 
 def test_the_attribution_credits_the_agency_street_layers_as_their_licences_ask() -> None:
     """DC's Roadway Block is CC BY 4.0 (OWNER-DECISIONS 151): named, adapted, with the
-    licence linked. Baltimore's layers are open by city code (OWNER-DECISIONS 159) and
-    the city's own credit is used. Nothing is credited to Montgomery County Planning:
-    nothing derived from its layer is published, and a credit for data not in use is a
-    false claim (the line is added the day a derived row is loaded; docs/OPERATIONS.md)."""
+    licence linked, and it supplies traffic counts where no count layer reached a street.
+    Baltimore's layers are open by city code and carry the owner's credit line
+    (OWNER-DECISIONS 159). Montgomery County Planning is credited in the same change as
+    the Avoid rows derived from its layer (OWNER-DECISIONS 181), in the words its
+    licence asks for: "attribution to the Montgomery County Planning Department"."""
     block = [line for line in routing.ATTRIBUTION if "Roadway Block" in line]
     assert len(block) == 1
     assert "District Department of Transportation (DDOT) / DC GIS" in block[0]
     assert "adapted" in block[0] and "CC BY 4.0" in block[0]
     assert "creativecommons.org/licenses/by/4.0" in block[0]
+    assert "traffic counts" in block[0]
     baltimore = [line for line in routing.ATTRIBUTION if "Baltimore" in line]
     assert len(baltimore) == 1
     assert "City of Baltimore, Open Baltimore" in baltimore[0]
-    assert not any("Montgomery" in line for line in routing.ATTRIBUTION)
+    montgomery = [line for line in routing.ATTRIBUTION if "Montgomery" in line]
+    assert len(montgomery) == 1
+    assert "Montgomery County Planning Department" in montgomery[0]
+    assert "Bicycle Level of Traffic Stress" in montgomery[0]
 
 
 @db
