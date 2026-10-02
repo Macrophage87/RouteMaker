@@ -217,15 +217,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "table: lts 3 allowed",
         TS,
-        '"AND (s.stress_tier <= 2 OR %s = ANY(s.car_free_when))"',
-        '"AND (s.stress_tier <= 3 OR %s = ANY(s.car_free_when))"',
+        '"AND s.stress_tier <= 2) OR %s = ANY(s.car_free_when))"',
+        '"AND s.stress_tier <= 3) OR %s = ANY(s.car_free_when))"',
         SEEK,
     ),
     (
         "table: lanes are corridors",
         TS,
-        "(s.facility IN ('path', 'protected') OR",
-        "(s.facility IN ('path', 'protected', 'lane') OR",
+        "AND ((s.facility IN ('path', 'protected') \"",
+        "AND ((s.facility IN ('path', 'protected', 'lane') \"",
         SEEK,
     ),
     (
@@ -236,10 +236,10 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         SEEK,
     ),
     (
-        "table: query reaches too far",
+        "table: the strips reach too far",
         TS,
-        "degrees = width_m / 85_000.0",
-        "degrees = width_m / 8_500.0",
+        "reach = width_m + cell_m / 4",
+        "reach = 3 * width_m + cell_m / 4",
         SEEK,
     ),
     (
@@ -320,7 +320,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "step = max(1, len(shape) // 40000)",
         REFINE,
     ),
-    ("seek: exclusions dropped", RF, "excluded = list(ctx.kept_excludes)", "excluded = []", REFINE),
+    ("seek: exclusions dropped", RF, "excluded = list(nearby)", "excluded = []", REFINE),
     ("seek: no second ask without", RF, "if read is None and excluded:", "if False:", REFINE),
     (
         "seek: exclusions not remembered",
@@ -332,32 +332,24 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "seek: busier is fine",
         RF,
-        "        busier = read.exposure_m > reference * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M"
-        + NL
-        + "        score = read.score(ctx)"
-        + NL
-        + '        tried["score_gain_s"]',
-        "        busier = False"
-        + NL
-        + "        score = read.score(ctx)"
-        + NL
-        + '        tried["score_gain_s"]',
+        "            busier = read.exposure_m > _allowance(reference)",
+        "            busier = False",
         REFINE,
     ),
     (
         "seek: no margin",
         RF,
-        "        elif score < best_score - IMPROVEMENT_EPS_S:"
+        "            elif score < best_score - IMPROVEMENT_EPS_S:"
         + NL
-        + '            tried["outcome"] = "taken"',
-        "        elif score < best_score:" + NL + '            tried["outcome"] = "taken"',
+        + '                tried["outcome"] = "taken"',
+        "            elif score < best_score:" + NL + '                tried["outcome"] = "taken"',
         REFINE,
     ),
     (
         "seek: unread is taken",
         RF,
-        '            tried["outcome"] = "unread"' + NL + "            continue",
-        '            tried["outcome"] = "unread"',
+        '                tried["outcome"] = "unread"' + NL + "                continue",
+        '                tried["outcome"] = "unread"',
         REFINE,
     ),
     (
@@ -700,6 +692,202 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '        if seek["limited"] in ("time", "table"):',
         "        if False:",
         REFINE,
+    ),
+    # --- review r1: hard bounds, the table read, the whole trip, the exclusions ------
+    ("bounds: no step check", TS, "        _check_step(step_weight)" + NL, "", SEEK),
+    (
+        "bounds: a step of no cost passes",
+        TS,
+        "if not (math.isfinite(step_weight) and step_weight > 0):",
+        "if not (math.isfinite(step_weight) and step_weight >= 0):",
+        SEEK,
+    ),
+    (
+        "bounds: a step past the walk's bound is not refused",
+        TS,
+        '            raise SeekError("the walk back along the trail is longer than its network")',
+        "            pass",
+        SEEK,
+    ),
+    (
+        "bounds: no clock in the search",
+        TS,
+        "            if len(done) % CLOCK_EVERY == 0:"
+        + NL
+        + "                _check_time(stop_at, clock)",
+        "            pass",
+        SEEK,
+    ),
+    (
+        "bounds: no clock between networks",
+        TS,
+        "        _check_time(stop_at, clock)" + NL + "        best = network.best_in(",
+        "        best = network.best_in(",
+        SEEK,
+    ),
+    (
+        "bounds: the time is not up at the stop",
+        TS,
+        "if stop_at is not None and clock() >= stop_at:",
+        "if stop_at is not None and clock() >= stop_at + 1e9:",
+        SEEK,
+    ),
+    (
+        "strips: the line is not sampled between its vertices",
+        TS,
+        "for k in range(1, n + 1)",
+        "for k in range(n, n + 1)",
+        SEEK,
+    ),
+    (
+        "strips: a row's run is not split at a gap",
+        TS,
+        "if i is not None and i == previous + 1:",
+        "if i is not None:",
+        SEEK,
+    ),
+    (
+        "table: no statement timeout",
+        TS,
+        """            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [timeout_ms])""",
+        "            pass",
+        SEEK,
+    ),
+    (
+        "table: the caller's timeout is not put back",
+        TS,
+        """                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])""",
+        "                pass",
+        SEEK,
+    ),
+    (
+        "table: a cancelled read is not out of time",
+        TS,
+        '== "57014":',
+        '== "00000":',
+        SEEK,
+    ),
+    (
+        "table: the index's predicate not carried",
+        TS,
+        'f"({SEEK_INDEX_PREDICATE}) AND ((s.facility',
+        'f"((s.facility',
+        SEEK,
+    ),
+    (
+        "table: the rebuild has no seek index",
+        "src/pipeline/schema.py",
+        "CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)"
+        + NL
+        + "    WHERE {seek};",
+        "",
+        SEEK,
+    ),
+    (
+        "seek: the table read is given no timeout",
+        RF,
+        "            timeout_s=min(trailseek.TABLE_TIMEOUT_S, left),",
+        "",
+        REFINE,
+    ),
+    (
+        "seek: no deadline before the table",
+        RF,
+        "    left = stop_at - routing.clock()" + NL + "    if left < trailseek.SEEK_ROUND_MIN_S:",
+        "    left = stop_at - routing.clock()" + NL + "    if False:",
+        REFINE,
+    ),
+    (
+        "seek: no deadline before the corridors",
+        RF,
+        "    # there is no time to ask for."
+        + NL
+        + "    if stop_at - routing.clock() < trailseek.SEEK_ROUND_MIN_S:",
+        "    # there is no time to ask for." + NL + "    if False:",
+        REFINE,
+    ),
+    (
+        "seek: the corridor search has no stop",
+        RF,
+        "            stop_at=stop_at - trailseek.SEEK_ROUND_MIN_S,",
+        "            stop_at=None,",
+        REFINE,
+    ),
+    (
+        "seek: a failed corridor search is not reported",
+        RF,
+        '        seek["limited"] = "error"',
+        '        seek["limited"] = None',
+        REFINE,
+    ),
+    (
+        "seek: the roadway-only graph is seeked",
+        RF,
+        "    if ctx.roadway_only:" + NL + "        # A ride on the no-trail graph",
+        "    if False:" + NL + "        # A ride on the no-trail graph",
+        REFINE,
+    ),
+    (
+        "seek: the whole trip is not guarded",
+        RF,
+        "        if read.exposure_m > _allowance(first_exposure):",
+        "        if False:",
+        REFINE,
+    ),
+    (
+        "seek: every kept exclusion is sent",
+        RF,
+        "    nearby = trailseek.points_in_band(ctx.kept_excludes, start, end, route, band)",
+        "    nearby = list(ctx.kept_excludes)",
+        REFINE,
+    ),
+    (
+        "seek: never asked again when longer",
+        RF,
+        "            and read.length_m > _expected_m(incumbent, proposal)",
+        "            and False",
+        REFINE,
+    ),
+    (
+        "seek: always asked again",
+        RF,
+        "            and read.length_m > _expected_m(incumbent, proposal)",
+        "            and read.length_m > 0",
+        REFINE,
+    ),
+    (
+        "seek: asked again without the time",
+        RF,
+        "            and stop_at - routing.clock() >= trailseek.SEEK_ROUND_MIN_S"
+        + NL
+        + "        ):",
+        NL + "        ):",
+        REFINE,
+    ),
+    (
+        "seek: the guard's slack dropped",
+        RF,
+        "    return exposure_m * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M",
+        "    return exposure_m * (1 + EXPOSURE_TOLERANCE)",
+        REFINE,
+    ),
+    (
+        "points: the band is the line's only",
+        TS,
+        "    return [segment[0] for segment in in_band([[p] for p in points], start, end, route, width_m)]",
+        "    return [segment[0] for segment in in_band([[p] for p in points], start, end, [start], width_m)]",
+        SEEK,
+    ),
+    (
+        "bounds: no clamp and no step check (only the walk's bound is left)",
+        TS,
+        "credit = min(max(credit, 0.0), DETOUR_WEIGHT * 0.95)"
+        + NL
+        + "        step_weight = DETOUR_WEIGHT - credit"
+        + NL
+        + "        _check_step(step_weight)",
+        "credit = max(credit, 0.0)" + NL + "        step_weight = DETOUR_WEIGHT - credit",
+        SEEK,
     ),
 ]
 

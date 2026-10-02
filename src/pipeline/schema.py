@@ -203,6 +203,17 @@ def busy_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return f"({trails_predicate(has_facility, has_car_free)} OR stress_tier >= {BUSY_MIN_TIER})"
 
 
+# The trail seek's corridors (`core.trailseek.corridor_segments`, OWNER-DECISIONS
+# 194): the paths and protected ways at LTS 1 or 2, and the roads closed to cars
+# at some time. The seek index (`segment_seek_geom_idx`) is built on it and the
+# seek's query carries it word for word, so that the planner proves the one
+# implies the other (review r1: no other index's predicate covers an on-road
+# cycle track, and the scan fell back to the whole geometry index).
+SEEK_INDEX_PREDICATE = (
+    f"({FACILITY_COLUMN} IN ('{TRAIL_FACILITY}', '{ROADSIDE_TRAIL_FACILITY}') "
+    f"AND stress_tier <= 2) OR cardinality({CAR_FREE_COLUMN}) > 0"
+)
+
 # Two facts about a way the map draws from, written by the rebuild beside the
 # facility (routemaker.facility.map_class and has_separate_bikeway). The
 # owner, 2026-09-29: "there are several expressways shown as LTS4. just show
@@ -340,6 +351,10 @@ CREATE INDEX segment_stress_idx ON {schema}.segment (stress_tier);
 -- does not read the whole region's streets to find them.
 CREATE INDEX segment_overview_geom_idx ON {schema}.segment USING gist (geometry)
     WHERE {overview};
+-- The trail seek reads only its corridors (SEEK_INDEX_PREDICATE), a band at a
+-- time; this index holds just those rows (core.trailseek.corridor_segments).
+CREATE INDEX segment_seek_geom_idx ON {schema}.segment USING gist (geometry)
+    WHERE {seek};
 
 -- What each synthetic border-control node means. The node ids are reassigned
 -- every rebuild, so this table describes one particular graph and changes
@@ -365,7 +380,11 @@ def create_segment_schema(schema: str) -> None:
     """Build an empty segment schema. Idempotent only at the schema level."""
     validate_schema_name(schema)
     with connection.cursor() as cursor:
-        cursor.execute(SEGMENT_DDL.format(schema=schema, overview=OVERVIEW_INDEX_PREDICATE))
+        cursor.execute(
+            SEGMENT_DDL.format(
+                schema=schema, overview=OVERVIEW_INDEX_PREDICATE, seek=SEEK_INDEX_PREDICATE
+            )
+        )
 
 
 def drop_segment_schema(schema: str) -> None:

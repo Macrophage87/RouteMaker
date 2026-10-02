@@ -192,7 +192,7 @@ def test_the_front_ends_starts_are_the_apis() -> None:
         assert row["seek"] == preset.hills_seek, name
         assert row.get("stressMax", presets.STRESS_MAX) == preset.stress_max, name
         assert row["assist"] == (preset.assist_speed_kmh is not None), name
-        # The panel says a ride type favours trails where the API credits them.
+        # The panel says a ride type favors trails where the API credits them.
         assert row["trails"] == (preset.trail_credit > 0), name
         if preset.carrying is None:
             assert "carrying" not in row, name

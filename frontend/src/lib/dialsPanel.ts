@@ -14,7 +14,7 @@ import {
   STRESS_MIN,
   TRAFFIC_TOLERANT_WARNING,
   calmRate,
-  favoursTrails,
+  favorsTrails,
   hillsMax,
   hillsWords,
   offersAssist,
@@ -58,8 +58,8 @@ export function calmNote(stress: number, preset?: PresetId): string | undefined 
   const rate = calmRate(stress);
   if (rate <= 0) return undefined;
   const trails =
-    preset !== undefined && favoursTrails(preset)
-      ? " Trailmaxxing also favours trails, so it may add miles to ride one; that pull fades as the slider comes down."
+    preset !== undefined && favorsTrails(preset)
+      ? " Trailmaxxing also favors trails, so it may add miles to ride one; that pull fades as the slider comes down."
       : "";
   return (
     `Calm detour: up to about ${formatPerMile(rate)} of extra riding for every mile of busy road (LTS 3) ` +

@@ -47,7 +47,7 @@ interface Start {
   /** Cargo Bike offers electric assist. */
   assist?: boolean;
   /**
-   * Trailmaxxing alone favours trails (OWNER-DECISIONS 202): the API credits each
+   * Trailmaxxing alone favors trails (OWNER-DECISIONS 202): the API credits each
    * mile of trail (`Preset.trail_credit`), so the route may add miles to ride one.
    */
   trails?: boolean;
@@ -112,8 +112,8 @@ export function offersAssist(preset: PresetId): boolean {
   return STARTS[preset].assist === true;
 }
 
-/** Whether the ride type favours trails (Trailmaxxing's trail credit). */
-export function favoursTrails(preset: PresetId): boolean {
+/** Whether the ride type favors trails (Trailmaxxing's trail credit). */
+export function favorsTrails(preset: PresetId): boolean {
   return STARTS[preset].trails === true;
 }
 

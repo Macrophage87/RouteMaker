@@ -1553,7 +1553,9 @@ search's points at fixed offsets asked for places nobody rides.
    and its outcome.
 
 Its own budget is 6 s past the exclusion search's 14 s, and a candidate is not
-started with less than 2 s of it left. It runs for a start and an end only. The
+started with less than 2 s of it left. As first built it ran for a start and an end
+only (superseded by part 2, "The trail credit and the seek leg by leg": it now runs
+once per leg of a plan with stops). The
 measurement harness filled a scratch segment table from the live stress tiles
 (the paths and protected ways with LTS 1 or 2, about 2,500 segments over the twelve
 trips' bands); the live table has no facility column until the rebuild, so on-road
@@ -1686,7 +1688,8 @@ route / red and orange markers / plan time:
 - **Recommended: 0.5.** It takes every change 0.25 does and the one more that is
   clearly a trail route, and 0.75 adds nothing. Typical trips stay under 1.6 times
   the direct route (ten of twelve; Laurel - College Park was 1.65 before the credit).
-  The plan times are within the run-to-run noise (1 to 5 s, runs overlapped).
+  The plan times in this table come from runs that overlapped; credit 0 against 0.5
+  measured in one process is in "Round 1 revision" below.
 - **Plans with stops** (credit 0.5, seek on against off, one process): a plan with no
   stop, Bethesda to College Park, 10.9 s on against 9.2 s off (+1.7 s); one stop
   (Bethesda, Silver Spring, College Park) 13.1 s against 8.3 s (+4.8 s); three stops
@@ -1694,14 +1697,114 @@ route / red and orange markers / plan time:
   (+4.8 s). With one stop the seek read the table for both legs and asked once; with
   three the exclusion search used its time (`limited: time`), the seek read its
   corridors (3) and had under the least left to ask: it adds the table reads and the
-  legs' readings and asks nothing. The one candidate asked with a stop was the 150
-  kept exclusions' detour (24.9 km for a 14.5 mi trip): not better.
+  legs' readings and asks nothing. Corrected in round 1's review: the 24.9 km
+  (15.5 mi) candidate was the plan with no stop (Bethesda to College Park, one leg,
+  150 kept exclusions), against a best of 23.4 km (about 1.07 times); the one-stop
+  plan's candidate was leg 1 at 17.1 km with 145 exclusions. Neither was better.
 
 Tests: `TestSeekLegByLeg`, `TestRouteSpansAndLegs`, `TestTrailCredit*` in
 `tests/test_refine.py`, `TestTheTrailCredit` in `tests/test_trailseek.py`,
 `TestTrailCredit` in `tests/test_presets.py`, the link and the notes in the front
 end's `planHash`, `dialsPanel` and `presets` tests. `scripts/mutants_trailseek.py`
 now has 98 mutants, 42 of them on this code.
+
+### Round 1 revision (FOLLOWUP-TRAIL-SEEK review r1)
+
+**Hard bounds.** The corridor search no longer rests on one clamp for its
+termination. `trailseek._check_step` refuses a trail step that is not finite and
+positive (`SeekError`); the walk back from a corridor's exit is at most the
+network's node count and raises past it; the clock is read every 1,024 nodes
+settled, between networks and between components (`SeekOutOfTime`), against the
+leg's stop less a candidate's least. `refine._seek_leg` looks at the leg's
+deadline before the table and again before the corridor search, and the table
+read runs under `SET LOCAL statement_timeout` (`set_config(..., true)`, as
+`core.stress_tiles.render` does), at most 2.5 s and never past the leg's time; a
+cancelled read is `limited: "time"`, a `SeekError` is `limited: "error"` (logged),
+and the plan is answered without the seek. Proved on the mutant that froze the
+host (the clamp removed): `tests/test_trailseek.py` now fails in 20 s, under a
+300 s timeout, with `SeekError: a trail step must cost something, not -6.0`; with
+the clamp and the step check both removed, the walk's bound raises ("longer than
+its network") and the file fails in 19 s.
+
+**The table read after the rebuild.** The query is read a strip of the band at a
+time (`trailseek.band_cells`: 1 km cells within the band of either guide line,
+each row's run one index scan through a lateral join), not one `ST_DWithin` over
+the guide's bounding box. With the facility column it carries
+`pipeline.schema.SEEK_INDEX_PREDICATE` word for word, and the segment DDL builds a
+partial GiST index on it, `segment_seek_geom_idx` (paths and protected ways at LTS
+1-2, and any car-free road). Measured with `EXPLAIN (ANALYZE, BUFFERS)`, warm, three
+runs each, on a 20 mi (33 km) diagonal from (-77.20, 39.14) to (-76.93, 38.93),
+the straight line and a 400-point route wandering 0.9 mi (1.5 km) either side, a
+2.5 mi (4 km) band, 33 strips:
+
+| Table and predicate | One geometry (before) | Strips (now) |
+|---|---|---|
+| Live table, today's (trail rule, `segment_overview_geom_idx`) | 349-386 ms, 2,334 rows | 42-61 ms, 2,360 rows |
+| Live table, a proxy no partial index implies (`segment_geom_idx`) | 795-1,203 ms | 185-285 ms |
+| Copy with a facility column, post-rebuild predicate, no seek index | 740-812 ms | 227-329 ms |
+| The same copy with `segment_seek_geom_idx` | 756-1,442 ms (the old form cannot use it) | 15-42 ms |
+
+Planning took 10-42 ms in every case. The live table was read-only (SELECT and
+EXPLAIN). The copy is the live table's 1,357,800 rows in a scratch database with
+the facility derived from the recorded rule (15,207 paths; the live table records
+no sidepaths, so the on-road protected ways the rebuild adds are not in it).
+`CREATE INDEX CONCURRENTLY` of the seek index on the copy took 1.6 s and 648 kB.
+How it runs: at a rebuild the index is created in staging with the rest of the
+schema (on the empty table, before the load) and promoted by the swap, so nothing
+runs on the live table; the segment DDL is the pipeline's, not a Django migration's
+("What migrations do and do not create"). Today's live table has no facility
+column and needs no index (the overview index serves the trail rule); a table
+promoted with the column but without the index can have it added in place with the
+`CREATE INDEX CONCURRENTLY` in docs/OPERATIONS.md, "The seek index".
+
+**Traffic wins for the whole trip.** A plan with stops whose legs were taken is
+read once spliced and held to the whole trip's allowance (2% and 164 ft, 50 m, over
+the router's first exposure), as each leg is to its own: n legs can no longer add
+n x 50 m between them. A splice past it is not taken (`limited: "busier"`).
+
+**Kept exclusions.** A candidate is asked with only the search's kept exclusions
+within the leg's band (`trailseek.points_in_band`), and asked again without them
+when the route with them is more than 15% and 500 m longer than the leg and the
+corridor's detour (`refine.SEEK_RETRY_OVER`, `SEEK_RETRY_SLACK_M`), time allowing;
+both answers are scored and guarded, and the second's `tried` row says
+`retry: "longer"`. So a leg is up to six routes.
+
+**No trails, no seek.** A ride on the no-trail graph (`ctx.roadway_only`: Group Ride
+with trails off at 100) is not seeked (`limited: "roadway_only"`).
+
+**Credit 0 against 0.5, one process.** Trailmaxxing at 100, the twelve trips, the
+harness's plan time (the second of two plans, the harness's own work excluded), two
+runs each, the runs in the order 0, 0.5, 0, 0.5, nothing else running:
+
+| Trip | credit 0 | credit 0.5 | Difference (means) | Asks (0 / 0.5) |
+|---|---|---|---|---|
+| Rockville - Silver Spring | 9.8, 7.8 s | 7.5, 7.6 s | -1.3 s | 1 / 1 |
+| Bethesda - Capitol | 10.0, 5.6 s | 6.7, 11.3 s | +1.2 s | 1 / 2 |
+| Falls Church - Union Station | 9.9, 6.1 s | 6.7, 8.1 s | -0.6 s | 2 / 2 |
+| Silver Spring - College Park | 9.6, 8.6 s | 7.3, 9.6 s | -0.6 s | 2 / 2 |
+| Bethesda - Silver Spring | 2.9, 1.9 s | 2.3, 2.6 s | +0.1 s | 1 / 2 |
+| Laurel - College Park | 5.2, 4.8 s | 5.3, 5.1 s | +0.2 s | 2 / 2 |
+| Poolesville - Darnestown | 0.9, 0.9 s | 1.1, 0.9 s | +0.1 s | 0 / 0 |
+| Bowie - Annapolis | 1.7, 1.7 s | 3.4, 3.3 s | +1.7 s | 0 / 1 |
+| Tysons - Ballston (W&OD) | 3.6, 4.0 s | 4.0, 3.7 s | +0.0 s | 0 / 0 |
+| Eastern Market - PG Plaza (Anacostia) | 6.1, 5.8 s | 6.5, 5.6 s | +0.1 s | 1 / 1 |
+| Friendship Heights - Rosslyn (Capital Crescent) | 0.8, 0.8 s | 0.9, 0.8 s | +0.1 s | 0 / 0 |
+| Takoma - Hyattsville (Sligo) | 2.5, 2.8 s | 2.5, 2.3 s | -0.2 s | 0 / 0 |
+| Mean of all | 4.8 s | 4.8 s | +0.0 s | |
+
+The routes are the ones in the table above (three change). The credit's own cost
+shows where it adds an ask: Bowie - Annapolis +1.7 s in both runs (none to one ask)
+and Bethesda - Silver Spring and Bethesda - Capitol one more each; elsewhere the
+differences are within the same trip's run-to-run spread (up to 4.6 s, Bethesda -
+Capitol at 0.5). The earlier 9.9 to 18.0 s on Silver Spring - College Park came
+from overlapping runs: here it is 9.1 s at 0 and 8.5 s at 0.5.
+
+Tests: `TestHardBounds`, `TestTheStrips`, `TestTheIndexAndTheTimeout`,
+`TestTheDetourCapExactly` and `TestPointsInTheBand` in `tests/test_trailseek.py`;
+the `review r1` tests in `TestTrailSeek` and `TestSeekLegByLeg` in
+`tests/test_refine.py` (asymmetric legs, a late leg held to the stop, a table
+failure read once, the whole-trip guard, the deadlines, the exclusions and the
+retry, the roadway-only graph). `scripts/mutants_trailseek.py` has 125 mutants.
 
 
 ### The detour warning

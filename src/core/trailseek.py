@@ -47,13 +47,14 @@ from __future__ import annotations
 import bisect
 import heapq
 import math
+import time
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 
-from django.db import connection
+from django.db import OperationalError, connection, transaction
 
-from pipeline.schema import trails_predicate
+from pipeline.schema import SEEK_INDEX_PREDICATE, trails_predicate
 
 # The calm rate (metres of detour accepted per metre of LTS 3 avoided) from
 # which a plan also seeks trails: the rate at the slider's old top, 100.
@@ -116,9 +117,42 @@ SEEK_LEG_MIN_S = SEEK_ROUND_MIN_S + 0.5
 SNAP_DEG = 1e-5
 # The route is looked up every this many metres.
 ROUTE_STEP_M = 25.0
+# The table is read a strip at a time (review r1: one ST_DWithin on the whole
+# guide scans its bounding box, which on a diagonal 20 mi trip is four times the
+# band): the band is cut into cells this tall and wide (metres), and each row's
+# run of cells the band reaches is one index scan of its own.
+TABLE_CELL_M = 1_000.0
+# The longest the table read may take (seconds; a statement timeout): measured
+# 0.2 to 0.3 s warm and 1.5 s cold on the live table (docs/DEVELOPMENT.md).
+TABLE_TIMEOUT_S = 2.5
+# How often (in nodes settled) the corridor search looks at the clock.
+CLOCK_EVERY = 1024
 
 LonLat = tuple[float, float]
 Node = tuple[int, int]
+
+
+class SeekError(RuntimeError):
+    """The corridor search reached a state it cannot be in (a step that costs
+    nothing, a parent chain longer than the network): a bug, raised rather than
+    looped on (review r1: a regression of the credit's clamp looped for ever and
+    froze the host)."""
+
+
+class SeekOutOfTime(Exception):
+    """The leg's time ran out inside the table read or the corridor search."""
+
+
+def _check_step(step_weight: float) -> None:
+    """A step along a trail must cost something finite: with a step of no cost
+    or less the search's parent chain can close on itself."""
+    if not (math.isfinite(step_weight) and step_weight > 0):
+        raise SeekError(f"a trail step must cost something, not {step_weight!r}")
+
+
+def _check_time(stop_at: float | None, clock: Callable[[], float]) -> None:
+    if stop_at is not None and clock() >= stop_at:
+        raise SeekOutOfTime("the trail seek ran out of time")
 
 
 def seek_for(rate: float) -> bool:
@@ -329,11 +363,14 @@ class Network:
                 self.adj[a].append((b, length))
                 self.adj[b].append((a, length))
 
-    def components(self) -> list[list[Node]]:
+    def components(
+        self, stop_at: float | None = None, clock: Callable[[], float] = time.monotonic
+    ) -> list[list[Node]]:
         """The connected networks long enough to be corridors, the longest first
         (by metres of trail), at most MAX_NETWORKS."""
         seen: set[Node] = set()
         found: list[tuple[float, list[Node]]] = []
+        visited = 0
         for start in sorted(self.adj):
             if start in seen:
                 continue
@@ -342,6 +379,9 @@ class Network:
             while stack:
                 node = stack.pop()
                 nodes.append(node)
+                visited += 1
+                if visited % CLOCK_EVERY == 0:
+                    _check_time(stop_at, clock)
                 for other, length in self.adj[node]:
                     total += length / 2
                     if other not in seen:
@@ -358,6 +398,8 @@ class Network:
         rate: float,
         cap_m: float,
         credit: float = 0.0,
+        stop_at: float | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> Corridor | None:
         """The best corridor in one network, entry and exit both free.
 
@@ -373,9 +415,15 @@ class Network:
         the exit and (W - credit) x d, so the best is the node pair of greatest
         exit value less entry cost less (W - credit) x d: one Dijkstra from every
         node near the route at once, each starting at its entry cost. The credit
-        is held below W, so that no step costs less than nothing."""
+        is held below W, so that no step costs less than nothing.
+
+        Hard bounds, whatever the inputs (review r1): a step that does not cost
+        something finite and positive is refused (SeekError), the walk back
+        from the exit is at most the network's node count, and the clock is
+        read every CLOCK_EVERY nodes against `stop_at` (SeekOutOfTime)."""
         credit = min(max(credit, 0.0), DETOUR_WEIGHT * 0.95)
         step_weight = DETOUR_WEIGHT - credit
+        _check_step(step_weight)
         label: dict[Node, float] = {}
         origin: dict[Node, Node] = {}
         trail: dict[Node, float] = {}
@@ -401,6 +449,8 @@ class Network:
             if node in done:
                 continue
             done.add(node)
+            if len(done) % CLOCK_EVERY == 0:
+                _check_time(stop_at, clock)
             hit = joins.get(node) or line.nearest(*self.xy[node])
             if hit is not None:
                 s_out, c_out = hit
@@ -432,8 +482,14 @@ class Network:
         value, node = best
         entry = origin[node]
         path = [node]
-        while path[-1] != entry:
+        # A chain of parents is at most as long as the network: past that it is
+        # a cycle, which only a step of no cost could make.
+        for _ in range(len(nodes)):
+            if path[-1] == entry:
+                break
             path.append(parent[path[-1]])
+        if path[-1] != entry:
+            raise SeekError("the walk back along the trail is longer than its network")
         path.reverse()
         (s_in, c_in), (s_out, c_out) = joins[entry], line.nearest(*self.xy[node])  # type: ignore[misc]
         detour = c_in + trail[node] + c_out - (s_out - s_in)
@@ -461,12 +517,15 @@ def find_corridors(
     rate: float,
     credit: float = 0.0,
     trail_spans: Iterable[tuple[float, float, float]] = (),
+    stop_at: float | None = None,
+    clock: Callable[[], float] = time.monotonic,
 ) -> list[Corridor]:
     """The best corridor of each trail network within reach, best first. Only
     corridors that score MIN_SCORE_M and save MIN_EXPOSURE_M are kept - or, with
     a trail credit (OWNER-DECISIONS 202), put MIN_TRAIL_GAIN_M more trail on the
     route than the stretch they replace, which is how a route with nothing busy
-    on it still finds a trail."""
+    on it still finds a trail. Past `stop_at` (by `clock`) it raises
+    SeekOutOfTime."""
     plane = Plane(start, end)
     if plane.span < SEEK_MIN_SPAN_M or len(route) < 2:
         return []
@@ -478,8 +537,9 @@ def find_corridors(
     network = Network(segments, plane)
     cap = detour_cap_m(plane.span)
     found: list[Corridor] = []
-    for nodes in network.components():
-        best = network.best_in(nodes, line, rate, cap, credit)
+    for nodes in network.components(stop_at, clock):
+        _check_time(stop_at, clock)
+        best = network.best_in(nodes, line, rate, cap, credit, stop_at, clock)
         if best is None or best.score < MIN_SCORE_M:
             continue
         if best.gain_m >= MIN_EXPOSURE_M or (credit > 0 and best.trail_gain_m >= MIN_TRAIL_GAIN_M):
@@ -538,18 +598,71 @@ def _along(path: list[LonLat], metres: float) -> LonLat:
     return path[-1]
 
 
-def guide_wkt(lines: Sequence[Sequence[Sequence[float]]]) -> str:
-    """The guide lines (the straight line, the router's route) as one geometry."""
-    return (
-        "MULTILINESTRING("
-        + ", ".join("(" + ", ".join(f"{p[0]:.6f} {p[1]:.6f}" for p in line) + ")" for line in lines)
-        + ")"
-    )
-
-
 def _parse_line(text: str) -> list[LonLat]:
     inner = text[text.index("(") + 1 : text.rindex(")")]
     return [(float(a), float(b)) for a, b in (pair.split() for pair in inner.split(","))]
+
+
+def band_cells(
+    guide: Sequence[Sequence[Sequence[float]]], width_m: float, cell_m: float = TABLE_CELL_M
+) -> list[tuple[float, float, float, float]]:
+    """The boxes (west, south, east, north in degrees) the table is read by: a
+    grid of `cell_m` cells, each kept where it comes within `width_m` of a
+    guide line, and each row's run of kept cells joined into one strip. Every
+    point within `width_m` of a guide is inside a strip; the strips reach at
+    most about a cell further (`in_band` cuts the band to metres)."""
+    points = [tuple(p[:2]) for line in guide for p in line]
+    if not points:
+        return []
+    lon0, lat0 = float(points[0][0]), float(points[0][1])
+    ky = 110_540.0
+    kx = 111_320.0 * math.cos(math.radians(lat0))
+    # The guide sampled every half cell: a point within `width_m` of a line is
+    # within `width_m` and a quarter cell of a sample.
+    samples: list[tuple[float, float]] = []
+    for line in guide:
+        xy = [((p[0] - lon0) * kx, (p[1] - lat0) * ky) for p in line]
+        samples.extend(xy[:1])
+        for a, b in zip(xy, xy[1:], strict=False):
+            n = max(1, math.ceil(math.dist(a, b) / (cell_m / 2)))
+            samples.extend(
+                (a[0] + (b[0] - a[0]) * k / n, a[1] + (b[1] - a[1]) * k / n)
+                for k in range(1, n + 1)
+            )
+    reach = width_m + cell_m / 4
+    cells: set[tuple[int, int]] = set()
+    span = math.ceil(reach / cell_m)
+    for x, y in samples:
+        ci, cj = math.floor(x / cell_m), math.floor(y / cell_m)
+        for i in range(ci - span, ci + span + 1):
+            for j in range(cj - span, cj + span + 1):
+                # The cell's nearest point to the sample.
+                nx = min(max(x, i * cell_m), (i + 1) * cell_m)
+                ny = min(max(y, j * cell_m), (j + 1) * cell_m)
+                if math.hypot(nx - x, ny - y) <= reach:
+                    cells.add((i, j))
+    rows: dict[int, list[int]] = defaultdict(list)
+    for i, j in cells:
+        rows[j].append(i)
+    boxes = []
+    for j in sorted(rows):
+        run = sorted(rows[j])
+        first = previous = run[0]
+        for i in [*run[1:], None]:
+            if i is not None and i == previous + 1:
+                previous = i
+                continue
+            boxes.append(
+                (
+                    lon0 + first * cell_m / kx,
+                    lat0 + j * cell_m / ky,
+                    lon0 + (previous + 1) * cell_m / kx,
+                    lat0 + (j + 1) * cell_m / ky,
+                )
+            )
+            if i is not None:
+                first = previous = i
+    return boxes
 
 
 def corridor_segments(
@@ -559,6 +672,7 @@ def corridor_segments(
     has_facility: bool,
     when: str,
     avoid_unpaved: bool = False,
+    timeout_s: float = TABLE_TIMEOUT_S,
 ) -> list[list[LonLat]]:
     """The low-stress trail segments within `width_m` of the guide lines (the
     straight line and the router's route), as lists of (lon, lat).
@@ -566,32 +680,81 @@ def corridor_segments(
     The map's own trail rule (`pipeline.schema.trails_predicate`) says which ways
     are paths and trails. With the facility column the protected ways are in as
     well (a cycle track on the roadway is no trail but is as good a corridor),
-    and the roads closed to cars at this ride time. LTS 1 and 2 only."""
-    if not guide:
+    and the roads closed to cars at this ride time. LTS 1 and 2 only.
+
+    The band is read strip by strip (`band_cells`), each strip one scan of the
+    geometry index, so the scan reads the band and not the guide's bounding
+    box. With the facility column the query carries the seek index's own
+    predicate (`pipeline.schema.SEEK_INDEX_PREDICATE`, `segment_seek_geom_idx`),
+    which the planner can then prove; without it the trail rule is the
+    overview index's. It runs under a statement timeout of `timeout_s`; one that
+    runs past it raises SeekOutOfTime."""
+    query = corridor_query(schema, guide, width_m, has_facility, when, avoid_unpaved)
+    if query is None:
         return []
+    sql, params = query
+    timeout_ms = str(max(1, math.ceil(timeout_s * 1000)))
+    outer = connection.in_atomic_block
+    try:
+        with transaction.atomic(), connection.cursor() as cursor:
+            previous = None
+            if outer:
+                # Inside a caller's transaction the setting would outlive this read.
+                cursor.execute("SELECT current_setting('statement_timeout')")
+                previous = cursor.fetchone()[0]
+            # Local to this transaction, as the tiles' (`core.stress_tiles.render`).
+            cursor.execute("SELECT set_config('statement_timeout', %s, true)", [timeout_ms])
+            cursor.execute(sql, params)
+            rows = cursor.fetchall()
+            if previous is not None:
+                cursor.execute("SELECT set_config('statement_timeout', %s, true)", [previous])
+    except OperationalError as error:
+        if getattr(error.__cause__, "sqlstate", None) == "57014":  # query_canceled
+            raise SeekOutOfTime(f"the trail table read ran past {timeout_ms} ms") from error
+        raise
+    return [_parse_line(row[0]) for row in rows]
+
+
+def corridor_query(
+    schema: str,
+    guide: Sequence[Sequence[Sequence[float]]],
+    width_m: float,
+    has_facility: bool,
+    when: str,
+    avoid_unpaved: bool = False,
+) -> tuple[str, list] | None:
+    """`corridor_segments`' query and its parameters (None where there is no
+    guide to read around)."""
+    if not guide:
+        return None
+    boxes = band_cells(guide, width_m)
+    if not boxes:
+        return None
     params: list = []
     if has_facility:
         where = (
-            "(s.facility IN ('path', 'protected') OR %s = ANY(s.car_free_when)) "
-            "AND (s.stress_tier <= 2 OR %s = ANY(s.car_free_when))"
+            f"({SEEK_INDEX_PREDICATE}) AND ((s.facility IN ('path', 'protected') "
+            "AND s.stress_tier <= 2) OR %s = ANY(s.car_free_when))"
         )
-        params += [when, when]
+        params.append(when)
     else:
         rule = trails_predicate(False).replace("stress_rule", "s.stress_rule")
         where = f"{rule} AND s.stress_tier <= 2"
     if avoid_unpaved:
         where += " AND s.is_unpaved IS NOT TRUE"
-    # A degree of longitude is the shorter here, so the query reaches a little
-    # far and `in_band` cuts the band to metres.
-    degrees = width_m / 85_000.0
+    # One index scan a strip (the lateral join), each segment once.
     sql = (
-        f"SELECT ST_AsText(s.geometry) FROM {schema}.segment AS s "
-        f"WHERE {where} AND ST_DWithin(s.geometry, ST_GeomFromText(%s, 4326), %s) LIMIT %s"
+        "SELECT ST_AsText(seg.geometry) FROM ("
+        "SELECT DISTINCT ON (seg.id) seg.geometry "
+        "FROM unnest(%s::float8[], %s::float8[], %s::float8[], %s::float8[]) "
+        "AS box(west, south, east, north) "
+        f"CROSS JOIN LATERAL (SELECT s.id, s.geometry FROM {schema}.segment AS s "
+        "WHERE s.geometry && ST_MakeEnvelope(box.west, box.south, box.east, box.north, 4326) "
+        f"AND {where}) AS seg"
+        ") AS seg LIMIT %s"
     )
-    params += [guide_wkt(guide), degrees, MAX_SEGMENTS]
-    with connection.cursor() as cursor:
-        cursor.execute(sql, params)
-        return [_parse_line(row[0]) for row in cursor.fetchall()]
+    columns = [list(column) for column in zip(*boxes, strict=True)]
+    return sql, [*columns, *params, MAX_SEGMENTS]
 
 
 def in_band(
@@ -614,3 +777,15 @@ def in_band(
                 kept.append(segment)
                 break
     return kept
+
+
+def points_in_band(
+    points: Iterable[LonLat],
+    start: Sequence[float],
+    end: Sequence[float],
+    route: Sequence[LonLat],
+    width_m: float,
+) -> list[LonLat]:
+    """The points within `width_m` of the straight line or of the route (the
+    leg's band), in order."""
+    return [segment[0] for segment in in_band([[p] for p in points], start, end, route, width_m)]

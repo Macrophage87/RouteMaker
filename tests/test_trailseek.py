@@ -471,6 +471,12 @@ class TestTheQuery:
                 rule="gravel",
             )
             self.add(cursor, live, 8, self.wkt(4000), facility="path", trail=True)  # far away
+            # Closed to cars at weekends only: on a weekday a protected way at LTS 3
+            # and a painted lane are not corridors.
+            self.add(
+                cursor, live, 9, self.wkt(800), facility="protected", tier=3, car_free="{weekend}"
+            )
+            self.add(cursor, live, 10, self.wkt(900), facility="lane", tier=2, car_free="{weekend}")
         return live
 
     def guide(self):
@@ -485,7 +491,7 @@ class TestTheQuery:
 
     def test_a_road_closed_to_cars_at_this_ride_time_is_a_path(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekend")
-        assert self.north_of(got) == [100, 200, 600, 700]
+        assert self.north_of(got) == [100, 200, 600, 700, 800, 900]
 
     def test_avoiding_gravel_leaves_the_unpaved_out(self, table) -> None:
         got = ts.corridor_segments(table, self.guide(), 1500.0, True, "weekday_offpeak", True)
@@ -632,3 +638,262 @@ class TestTheTrailCredit:
         monkeypatch.setattr(ts, "DETOUR_CAP_MIN_M", 5.0)
         monkeypatch.setattr(ts, "DETOUR_CAP_SPAN", 0.0)
         assert credit_seek(trail) == []
+
+
+class TestTheDetourCapExactly:
+    """Review r1, mutant R21: the cap is the cap, not ten times it."""
+
+    def test_a_detour_just_over_the_cap_is_dropped_and_just_under_kept(self, monkeypatch) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        (c,) = seek(trail)
+        monkeypatch.setattr(ts, "DETOUR_CAP_SPAN", 0.0)
+        # Every way onto this trail and off it is 150 m each way: no corridor's
+        # detour is under about 300 m.
+        monkeypatch.setattr(ts, "DETOUR_CAP_MIN_M", 0.8 * c.detour_m)
+        assert seek(trail) == []
+        monkeypatch.setattr(ts, "DETOUR_CAP_MIN_M", c.detour_m + 1.0)
+        assert seek(trail) == [c]
+
+
+class TestHardBounds:
+    """Review r1, the BLOCKER: the corridor search is bounded in production code,
+    whatever its inputs, so that a regression fails at once instead of looping
+    (a mutant of the credit's clamp froze the host)."""
+
+    def test_a_step_that_costs_nothing_is_refused(self, monkeypatch) -> None:
+        monkeypatch.setattr(ts, "DETOUR_WEIGHT", 0.0)
+        with pytest.raises(ts.SeekError):
+            seek(line(0.01, 0.09, north_m=150.0))
+
+    def test_a_credit_that_is_not_a_number_is_refused(self) -> None:
+        with pytest.raises(ts.SeekError):
+            credit_seek(line(0.01, 0.09, north_m=150.0), credit=float("nan"))
+
+    @pytest.mark.parametrize("weight", [0.0, -0.5, float("nan"), float("inf"), -float("inf")])
+    def test_only_a_finite_positive_step_passes(self, weight) -> None:
+        with pytest.raises(ts.SeekError):
+            ts._check_step(weight)
+        ts._check_step(1e-9)
+
+    def test_a_parent_chain_that_closes_on_itself_is_refused_not_walked(self, monkeypatch) -> None:
+        # Past the step check (as if it regressed too), negative steps relabel
+        # settled nodes and the walk back would go round for ever.
+        monkeypatch.setattr(ts, "_check_step", lambda weight: None)
+        monkeypatch.setattr(ts, "DETOUR_WEIGHT", -0.5)
+        with pytest.raises(ts.SeekError, match="longer than its network"):
+            seek(line(0.01, 0.09, north_m=150.0))
+
+    def test_the_search_stops_when_the_time_is_up(self) -> None:
+        trail = line(0.01, 0.09, north_m=150.0)
+        with pytest.raises(ts.SeekOutOfTime):
+            ts.find_corridors(
+                trail,
+                START,
+                END,
+                route_xy(),
+                [(3000.0, 6000.0, 1.0)],
+                LENGTH,
+                10.0,
+                stop_at=5.0,
+                clock=lambda: 5.0,
+            )
+        assert ts.find_corridors(
+            trail,
+            START,
+            END,
+            route_xy(),
+            [(3000.0, 6000.0, 1.0)],
+            LENGTH,
+            10.0,
+            stop_at=5.0,
+            clock=lambda: 4.0,
+        )
+
+    def test_a_big_network_reads_the_clock_as_it_goes(self, monkeypatch) -> None:
+        # One network of many nodes: the clock is read inside each network's
+        # search, not only between networks.
+        monkeypatch.setattr(ts, "CLOCK_EVERY", 8)
+        plane = ts.Plane(START, END)
+        network = ts.Network(line(0.01, 0.09, north_m=150.0, step=0.0002), plane)
+        (nodes,) = network.components()
+        route = ts.RouteLine(
+            [plane.xy(lon, lat) for lon, lat in route_xy()], [(3000.0, 6000.0, 1.0)], LENGTH
+        )
+        reads = []
+
+        def clock() -> float:
+            reads.append(1)
+            return 0.0 if len(reads) < 3 else 10.0
+
+        with pytest.raises(ts.SeekOutOfTime):
+            network.best_in(nodes, route, 10.0, 6000.0, stop_at=5.0, clock=clock)
+        assert len(reads) == 3
+        assert network.best_in(nodes, route, 10.0, 6000.0, stop_at=5.0, clock=lambda: 0.0)
+
+
+class TestTheStrips:
+    """Review r1: the table is read a strip of the band at a time, not over the
+    guide's bounding box."""
+
+    def diagonal(self):
+        return [[(-77.20, 39.14), (-76.93, 38.93)]]
+
+    def test_every_point_within_the_band_is_in_a_strip(self) -> None:
+        guide = [[START, END], [(START[0] + 0.03, START[1] + 0.02), (START[0] + 0.06, START[1])]]
+        boxes = ts.band_cells(guide, 1500.0)
+        plane = ts.Plane(START, END)
+        for i in range(0, 101, 5):
+            for north in (-1490.0, -700.0, 0.0, 700.0, 1490.0):
+                lon, lat = plane.lonlat(plane.span * i / 100, north)
+                assert any(w <= lon <= e and s <= lat <= n for w, s, e, n in boxes), (i, north)
+
+    def test_the_strips_reach_little_past_the_band(self) -> None:
+        boxes = ts.band_cells([[START, END]], 1500.0)
+        north = max(n for _w, _s, _e, n in boxes)
+        south = min(s for _w, s, _e, _n in boxes)
+        assert (north - START[1]) * KY <= 1500.0 + ts.TABLE_CELL_M
+        assert (START[1] - south) * KY <= 1500.0 + ts.TABLE_CELL_M
+        # A row's cells are one strip.
+        assert len(boxes) == len({(s, n) for _w, s, _e, n in boxes})
+
+    def test_a_gap_in_a_row_is_two_strips_not_one(self) -> None:
+        # Two short guides 7 km apart on one line of latitude: the cells between
+        # them are not read.
+        west = [START, (START[0] + 0.01, START[1])]
+        east = [(END[0] - 0.01, END[1]), END]
+        boxes = ts.band_cells([west, east], 500.0)
+        middle = START[0] + 0.05
+        assert not any(w <= middle <= e for w, _s, e, _n in boxes)
+        assert len(boxes) == 2 * len({(s, n) for _w, s, _e, n in boxes})
+
+    def test_a_diagonal_guide_reads_far_less_than_its_bounding_box(self) -> None:
+        guide = self.diagonal()
+        boxes = ts.band_cells(guide, 4000.0)
+        kx = 111_320.0 * math.cos(math.radians(39.03))
+
+        def area(w, s, e, n):
+            return (e - w) * kx * (n - s) * KY
+
+        (a, b) = guide[0]
+        whole = area(
+            min(a[0], b[0]) - 4000 / kx,
+            min(a[1], b[1]) - 4000 / KY,
+            max(a[0], b[0]) + 4000 / kx,
+            max(a[1], b[1]) + 4000 / KY,
+        )
+        assert sum(area(*box) for box in boxes) < 0.5 * whole
+
+    def test_no_guide_no_strips(self) -> None:
+        assert ts.band_cells([], 1500.0) == []
+        assert ts.corridor_query("live", [], 1500.0, True, "weekend") is None
+
+
+@pytest.mark.django_db(transaction=True)
+class TestTheIndexAndTheTimeout:
+    """Review r1: the seek's query is one the seek index serves, and it runs under
+    a statement timeout."""
+
+    def plan(self, schema, has_facility) -> str:
+        from django.db import connection
+
+        sql, params = ts.corridor_query(schema, [[START, END]], 1500.0, has_facility, "weekend")
+        with connection.cursor() as cursor:
+            cursor.execute("SET enable_seqscan = off")
+            try:
+                cursor.execute("EXPLAIN " + sql, params)
+                return "\n".join(row[0] for row in cursor.fetchall())
+            finally:
+                cursor.execute("RESET enable_seqscan")
+
+    def test_the_rebuild_creates_the_seek_index_on_the_seeks_predicate(
+        self, segment_schemas
+    ) -> None:
+        from django.db import connection
+
+        from pipeline.schema import SEEK_INDEX_PREDICATE
+
+        live = segment_schemas[0]
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT indexdef FROM pg_indexes WHERE schemaname = %s "
+                "AND indexname = 'segment_seek_geom_idx'",
+                [live],
+            )
+            (definition,) = cursor.fetchone()
+        assert "USING gist (geometry)" in definition and "car_free_when" in definition
+        assert "stress_tier <= 2" in definition
+        assert (
+            SEEK_INDEX_PREDICATE
+            in ts.corridor_query(live, [[START, END]], 1500.0, True, "weekend")[0]
+        )
+
+    def test_the_seeks_query_uses_the_seek_index(self, segment_schemas) -> None:
+        assert "segment_seek_geom_idx" in self.plan(segment_schemas[0], True)
+
+    def test_without_the_facility_column_it_uses_the_overview_index(self, segment_schemas) -> None:
+        # A live table from before the column, with its own overview index (as
+        # tests/test_stress_tiles.py builds one).
+        from django.db import connection
+
+        from pipeline import schema
+
+        live = segment_schemas[0]
+        with connection.cursor() as cursor:
+            cursor.execute(f"ALTER TABLE {live}.segment DROP COLUMN {schema.FACILITY_COLUMN}")
+            cursor.execute(f"DROP INDEX IF EXISTS {live}.segment_overview_geom_idx")
+            cursor.execute(
+                f"CREATE INDEX segment_overview_geom_idx ON {live}.segment "
+                f"USING gist (geometry) WHERE {schema.overview_index_predicate(False)}"
+            )
+        assert "segment_overview_geom_idx" in self.plan(live, False)
+
+    def test_a_read_past_its_timeout_is_out_of_time(self, segment_schemas) -> None:
+        from django.db import connection
+
+        live = segment_schemas[0]
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE SCHEMA seek_slow")
+            cursor.execute(
+                f"CREATE VIEW seek_slow.segment AS SELECT s.* FROM {live}.segment AS s, "
+                "pg_sleep(0.5)"
+            )
+            cursor.execute(
+                f"INSERT INTO {live}.segment (osm_way_id, ordinal, geometry, stress_tier, "
+                "stress_rule, facility) VALUES (1, 0, ST_GeomFromText(%s, 4326), 1, 'x', 'path')",
+                [f"LINESTRING({START[0] + 0.02} {START[1]}, {START[0] + 0.03} {START[1]})"],
+            )
+        try:
+            with pytest.raises(ts.SeekOutOfTime):
+                ts.corridor_segments(
+                    "seek_slow", [[START, END]], 1500.0, True, "weekend", timeout_s=0.05
+                )
+            # The timeout was the read's own.
+            with connection.cursor() as cursor:
+                cursor.execute("SHOW statement_timeout")
+                assert cursor.fetchone()[0] == "0"
+            assert len(ts.corridor_segments(live, [[START, END]], 1500.0, True, "weekend")) == 1
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("DROP SCHEMA seek_slow CASCADE")
+
+    def test_inside_a_callers_transaction_the_timeout_is_put_back(self, segment_schemas) -> None:
+        from django.db import connection, transaction
+
+        live = segment_schemas[0]
+        with transaction.atomic(), connection.cursor() as cursor:
+            cursor.execute("SET LOCAL statement_timeout = '7s'")
+            ts.corridor_segments(live, [[START, END]], 1500.0, True, "weekend", timeout_s=1.0)
+            cursor.execute("SHOW statement_timeout")
+            assert cursor.fetchone()[0] == "7s"
+
+
+class TestPointsInTheBand:
+    def test_only_the_points_near_the_line_or_the_route(self) -> None:
+        near = (START[0] + 0.05, START[1] + 500 / KY)
+        far = (START[0] + 0.05, START[1] + 6000 / KY)
+        beyond = (END[0] + 0.05, END[1])
+        by_route = (START[0] + 0.05, START[1] + 3900 / KY)
+        route = [START, (START[0] + 0.05, START[1] + 3800 / KY), END]
+        got = ts.points_in_band([near, far, beyond, by_route], START, END, route, 1500.0)
+        assert got == [near, by_route]
+        assert ts.points_in_band([], START, END, route, 1500.0) == []

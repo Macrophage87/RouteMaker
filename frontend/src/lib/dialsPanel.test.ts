@@ -102,22 +102,22 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.note, MASS_RIDE_TRAFFIC_NOTE);
 });
 
-test("Trailmaxxing's note says in plain words that it favours trails and may add miles", () => {
+test("Trailmaxxing's note says in plain words that it favors trails and may add miles", () => {
   // OWNER-DECISIONS 202: only Trailmaxxing rewards each mile of trail.
   const dials = startDials("trailmaxxing");
   const note = panelView("trailmaxxing", dials).traffic.note ?? "";
   assert.match(note, /^Calm detour: up to about 10 mi \(16 km\)/);
-  assert.match(note, /Trailmaxxing also favours trails, so it may add miles to ride one/);
+  assert.match(note, /Trailmaxxing also favors trails, so it may add miles to ride one/);
   // It fades with the slider, and is gone where there is no calm detour.
-  assert.match(panelView("trailmaxxing", dials, { ...dials, stress: 90 }).traffic.note ?? "", /favours trails/);
+  assert.match(panelView("trailmaxxing", dials, { ...dials, stress: 90 }).traffic.note ?? "", /favors trails/);
   assert.equal(panelView("trailmaxxing", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   // No other ride type says it, even at the top of the slider.
   for (const preset of PRESETS) {
     if (preset.id === "trailmaxxing" || preset.id === "mass-ride") continue;
     const top = panelView(preset.id, startDials(preset.id), { ...startDials(preset.id), stress: 100 }).traffic.note ?? "";
-    assert.doesNotMatch(top, /favours trails/, preset.id);
+    assert.doesNotMatch(top, /favors trails/, preset.id);
   }
-  assert.doesNotMatch(calmNote(100) ?? "", /favours trails/);
+  assert.doesNotMatch(calmNote(100) ?? "", /favors trails/);
 });
 
 test("the slider's right-hand label is the calm end", () => {
