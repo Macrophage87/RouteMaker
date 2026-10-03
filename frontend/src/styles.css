@@ -1095,7 +1095,10 @@ dialog.ride-types::backdrop {
    integrate-2). */
 .junction-item {
   display: grid;
-  grid-template-columns: 18px auto 1fr;
+  /* minmax(0, ...): with wider text spacing at 320 px the severity and the
+     distance wrap inside the row rather than push it sideways (a11y re-check of
+     2b0cf00, 1.4.12). */
+  grid-template-columns: 18px minmax(0, auto) minmax(0, 1fr);
   gap: 2px 8px;
   align-items: center;
   width: 100%;
@@ -1116,7 +1119,7 @@ dialog.ride-types::backdrop {
 .junction-item.junction-red {
   border-left-color: #dc2626;
 }
-/* A group of signalised crossings (OWNER-DECISIONS 233, 234): its row is the same
+/* A group of signalized crossings (OWNER-DECISIONS 233, 234): its row is the same
    button, and its members are a list under it, set in from the left. [hidden]
    must win over the grid, or a closed group would show its crossings. */
 .junction-members {
@@ -1137,11 +1140,11 @@ dialog.ride-types::backdrop {
 }
 .junction-severity {
   font-weight: 600;
-  white-space: nowrap;
+  white-space: normal;
 }
 .junction-where {
   color: var(--text-muted);
-  white-space: nowrap;
+  white-space: normal;
 }
 .junction-reason {
   grid-column: 2 / -1;

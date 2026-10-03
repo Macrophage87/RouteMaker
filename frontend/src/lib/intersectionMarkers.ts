@@ -57,7 +57,7 @@ export function junctionItems(route: Pick<RouteResponse, "intersections"> | null
 }
 
 /**
- * A Mass Ride's group of signalised crossings as one row of the list
+ * A Mass Ride's group of signalized crossings as one row of the list
  * (OWNER-DECISIONS 233, 234): the API's own phrase for it, its worst severity in
  * words, and its members, each of which is still a junction of its own on the map.
  */
@@ -239,4 +239,14 @@ export function junctionsOnMap(items: readonly JunctionItem[]): JunctionItem[] {
   if (items.length <= MAX_ON_MAP) return [...items];
   const worst = [...items].sort((a, b) => b.cost_ft - a.cost_ft).slice(0, MAX_ON_MAP);
   return worst.sort((a, b) => a.index - b.index);
+}
+
+/**
+ * A row's name as one string: "Very high stress, At 1.2 mi (2.0 km): ...". Each
+ * span of a row is a grid item, so a name computed from the spans puts a space
+ * before every comma and colon ("Very high stress , At 1.2 mi (2.0 km) : ..."; a11y
+ * re-check of 2b0cf00). The visible words still begin the name (2.5.3).
+ */
+export function rowName(severity: string, where: string, reason: string): string {
+  return `${severity}, ${where}: ${reason}`;
 }

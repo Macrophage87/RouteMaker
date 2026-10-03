@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   ICON_PX,
   JUNCTION_HINT,
@@ -173,7 +174,7 @@ test("past the cap the worst junctions are drawn, in route order", () => {
   }
 });
 
-// OWNER-DECISIONS 233, 234: a Mass Ride's signalised crossings within a quarter mile
+// OWNER-DECISIONS 233, 234: a Mass Ride's signalized crossings within a quarter mile
 // of one another are one row of the list, which opens onto its members.
 
 function crossingAt(m: number, severity: "orange" | "red", group: number | null): JunctionWarning {
@@ -203,7 +204,7 @@ function summary(over: Partial<JunctionGroupSummary> = {}): JunctionGroupSummary
     more: 0,
     severity: "red",
     members: [1, 2, 3],
-    text: "1.0 to 1.6 mi (1.6 to 2.6 km): 3 signalised crossings (17th Street Northwest, 15th Street Northwest and 14th Street Northwest), 1 of them an LTS 4 road",
+    text: "1.0 to 1.6 mi (1.6 to 2.6 km): 3 crossings with traffic signals (17th Street Northwest, 15th Street Northwest and 14th Street Northwest), 1 of them a heavy-traffic road (LTS 4)",
     ...over,
   };
 }
@@ -288,9 +289,24 @@ test("two groups are two rows, in route order", () => {
     ],
     intersection_groups: [
       summary({ group: 1, members: [0, 1], count: 2 }),
-      summary({ group: 2, members: [3, 4], count: 2, text: "3.1 to 3.2 mi (5.0 to 5.2 km): 2 signalised crossings" }),
+      summary({ group: 2, members: [3, 4], count: 2, text: "3.1 to 3.2 mi (5.0 to 5.2 km): 2 crossings with traffic signals" }),
     ],
   };
   const rows = junctionRows(route);
   assert.deepEqual(rows.map((r) => (r.kind === "group" ? `g${r.group.number}` : "item")), ["g1", "item", "g2"]);
+});
+
+// --- The row names (a11y re-check of 2b0cf00, B2) ---
+
+test("a row's name is one string with no stray spaces, the visible words first", async () => {
+  const { rowName } = await import("./intersectionMarkers.ts");
+  assert.equal(rowName("Higher stress", "At 0.6 mi (1.0 km)", "Crossing a busy road (LTS 3), traffic signal"),
+    "Higher stress, At 0.6 mi (1.0 km): Crossing a busy road (LTS 3), traffic signal");
+  assert.equal(rowName("Very high stress", "Group", "1.1 to 1.8 mi (1.7 to 2.9 km): 4 crossings with traffic signals"),
+    "Very high stress, Group: 1.1 to 1.8 mi (1.7 to 2.9 km): 4 crossings with traffic signals");
+  const list = readFileSync(new URL("../IntersectionList.tsx", import.meta.url), "utf8");
+  // Every row, member and group is named by it; no hidden separators left to space.
+  assert.match(list, /aria-label=\{rowName\(item\.severityText, item\.where, item\.reason\)\}/);
+  assert.match(list, /aria-label=\{rowName\(group\.severityText, "Group", group\.text\)\}/);
+  assert.doesNotMatch(list, /visually-hidden/);
 });

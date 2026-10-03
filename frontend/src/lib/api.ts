@@ -44,14 +44,14 @@ export interface JunctionWarning {
   cost_ft: number;
   /**
    * Mass Ride only (OWNER-DECISIONS 233, 234): the number, from 1, of the group of
-   * signalised crossings this junction is one of (`RouteResponse.intersection_groups`);
+   * signalized crossings this junction is one of (`RouteResponse.intersection_groups`);
    * null or absent if it is in none. The junction stays in the list and on the map.
    */
   group?: number | null;
 }
 
 /**
- * A Mass Ride's run of signalised crossings, each within a quarter mile of the
+ * A Mass Ride's run of signalized crossings, each within a quarter mile of the
  * one before (core.api.IntersectionGroupOut; OWNER-DECISIONS 233, 234): one row in
  * the junction list that opens onto its members.
  */
@@ -70,7 +70,7 @@ export interface JunctionGroupSummary {
   severity: "orange" | "red";
   /** Positions in `intersections` of its crossings, in route order. */
   members: number[];
-  /** "1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised crossings (...), 2 of LTS 4 roads"; no severity. */
+  /** "1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings with traffic signals (...), 2 of them heavy-traffic roads (LTS 4)"; no severity. */
   text: string;
 }
 
@@ -97,8 +97,30 @@ export interface DescriptionEntry {
   } | null;
   severity?: "orange" | "red" | null;
   via?: number | null;
-  /** On a Mass Ride's entry for a group of signalised crossings (OWNER-DECISIONS 233, 234). */
-  group?: { number: number; count: number; lts4: number; streets: string[]; more: number } | null;
+  /**
+   * On a Mass Ride's entry for a group of signalized crossings (OWNER-DECISIONS 233, 234).
+   * `crossings` lists each crossing in the full description (OWNER-DECISIONS 248) and is
+   * null in the overview, which keeps one line per group.
+   */
+  group?: {
+    number: number;
+    count: number;
+    lts4: number;
+    streets: string[];
+    more: number;
+    crossings?: DescriptionCrossing[] | null;
+  } | null;
+  text: string;
+}
+
+/** One crossing of a group, as a sub-entry of the full description (core.api.DescriptionCrossingOut). */
+export interface DescriptionCrossing {
+  from_m: number;
+  from_mi: number;
+  street: string | null;
+  severity?: "orange" | "red" | null;
+  crossed_tier?: number | null;
+  /** "At 1.1 mi (1.8 km): Cross 17th Street Northwest (LTS 4) at a signal (Very high stress junction)." */
   text: string;
 }
 
@@ -206,7 +228,7 @@ export interface RouteResponse {
    * be read in time, absent from an older API.
    */
   intersections?: JunctionWarning[] | null;
-  /** A Mass Ride's groups of signalised crossings; empty or null elsewhere, absent from an older API. */
+  /** A Mass Ride's groups of signalized crossings; empty or null elsewhere, absent from an older API. */
   intersection_groups?: JunctionGroupSummary[] | null;
   /** The route in words, stretch by stretch; null where it could not be built, absent from an older API. */
   description?: DescriptionEntry[] | null;

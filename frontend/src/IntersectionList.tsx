@@ -4,7 +4,7 @@
  * its own so App.tsx only places it. A click on an item takes the map to the
  * junction and opens the same card the marker's click does.
  *
- * On a Mass Ride (OWNER-DECISIONS 233, 234) signalised crossings that run
+ * On a Mass Ride (OWNER-DECISIONS 233, 234) signalized crossings that run
  * within a quarter mile of one another are one row: a disclosure button
  * (aria-expanded, aria-controls) that opens onto its members, which are the
  * ordinary rows and open the ordinary card. Closed to begin with, nothing is
@@ -21,6 +21,7 @@ import {
   junctionHeadline,
   junctionItems,
   junctionRows,
+  rowName,
   warningIconSvg,
 } from "./lib/intersectionMarkers.ts";
 import { chevron } from "./lib/routeDescription.ts";
@@ -36,20 +37,18 @@ function JunctionButton({ item, onSelect }: { item: JunctionItem; onSelect: (ind
       type="button"
       className={`junction-item junction-${item.severity}`}
       data-junction-index={item.index}
+      aria-label={rowName(item.severityText, item.where, item.reason)}
       onClick={() => onSelect(item.index)}
     >
       <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(item.severity, 18) }} />
       <span className="junction-severity">{item.severityText}</span>
-      {/* Heard as "Higher stress, At (the distance): (the reason)". */}
-      <span className="visually-hidden">, </span>
       <span className="junction-where">{item.where}</span>
-      <span className="visually-hidden">: </span>
       <span className="junction-reason">{item.reason}</span>
     </button>
   );
 }
 
-/** A group of signalised crossings: one row that opens onto its crossings. */
+/** A group of signalized crossings: one row that opens onto its crossings. */
 function JunctionGroupRow({ group, onSelect }: { group: JunctionGroupItem; onSelect: (index: number) => void }) {
   const [open, setOpen] = useState(false);
   const listId = useId();
@@ -61,15 +60,14 @@ function JunctionGroupRow({ group, onSelect }: { group: JunctionGroupItem; onSel
         data-junction-group={group.number}
         aria-expanded={open}
         aria-controls={listId}
+        aria-label={rowName(group.severityText, "Group", group.text)}
         onClick={() => setOpen(!open)}
       >
         <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(group.severity, 18) }} />
         <span className="junction-severity">{group.severityText}</span>
-        <span className="visually-hidden">, </span>
         <span className="junction-where">
           <span aria-hidden="true">{chevron(open)} </span>Group
         </span>
-        <span className="visually-hidden">: </span>
         <span className="junction-reason">{group.text}</span>
       </button>
       <ul id={listId} className="junction-members" aria-label="Crossings in this group, in route order" hidden={!open}>

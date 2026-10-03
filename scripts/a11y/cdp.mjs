@@ -260,6 +260,20 @@ const BASE = {
 };
 const copy = () => JSON.parse(JSON.stringify(BASE));
 
+/** A description entry (frontend/src/lib/api.ts DescriptionEntry), worded as the API words them. */
+const entry = (kind, from_m, to_m, text, extra = {}) => ({
+  kind, from_m, to_m, from_mi: +(from_m / 1609.344).toFixed(2), to_mi: +(to_m / 1609.344).toFixed(2),
+  street: null, tier: null, facility: null, turn: null, severity: null, via: null, group: null, text, ...extra,
+});
+const STREETS = ["Old Georgetown Road", "Woodmont Avenue Cycletrack", "Capital Crescent Trail", "Leland Street", "Bethesda Avenue", "Custis Trail", "Water Street Northwest"];
+/** Fourteen entries in full, eleven in the overview: longer than the old 20rem scroll box. */
+const TRAIL_FULL = Array.from({ length: 14 }, (_, i) =>
+  entry("stretch", i * 800, (i + 1) * 800,
+    `${(i * 0.5).toFixed(1)} to ${(i * 0.5 + 0.5).toFixed(1)} mi (${(i * 0.8).toFixed(1)} to ${(i * 0.8 + 0.8).toFixed(1)} km): ` +
+      `${i % 2 ? "Right onto" : "Left onto"} ${STREETS[i % STREETS.length]}, then ${STREETS[(i + 3) % STREETS.length]}, ` +
+      `${i % 3 ? "traffic-free path" : "busy road (LTS 3)"}.`));
+const TRAIL_OVERVIEW = TRAIL_FULL.slice(0, 11);
+
 /** Trailmaxxing at the top: a strong detour, the calm search cut short by time. */
 export const S_TRAIL = (() => {
   const r = copy();
@@ -269,6 +283,8 @@ export const S_TRAIL = (() => {
   r.dials = { stress: 100, hills: 0, when: "weekday", carrying: null };
   r.calm_search = { rate: 10, rounds: 4, excluded: 7, limited: "time", trail_credit: 1.5 };
   r.detour = { basis: "direct_route", reference_m: 4660, ratio: 2.4, extra_m: 6540, level: "strong", avoided_m: 1800 };
+  r.description = TRAIL_FULL;
+  r.description_overview = TRAIL_OVERVIEW;
   return r;
 })();
 /** The default ride, no detour. */
@@ -279,9 +295,9 @@ export const S_DEFAULT = (() => {
   return r;
 })();
 /**
- * A Mass Ride with a group of signalised crossings (OWNER-DECISIONS 233, 234): a lone
- * unsignalised left, four signalised crossings within a quarter mile of one another (one red),
- * then a lone unsignalised red. The group's row opens onto its four crossings.
+ * A Mass Ride with a group of signalized crossings (OWNER-DECISIONS 233, 234): a lone
+ * unsignalized left, four signalized crossings within a quarter mile of one another (one red),
+ * then a lone unsignalized red. The group's row opens onto its four crossings.
  */
 export const S_MASS = (() => {
   const r = copy();
@@ -310,9 +326,28 @@ export const S_MASS = (() => {
       more: 1,
       severity: "red",
       members: [1, 2, 3, 4],
-      text: "1.1 to 1.8 mi (1.7 to 2.9 km): 4 signalised crossings (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 1 more), 1 of them an LTS 4 road",
+      text: "1.1 to 1.8 mi (1.7 to 2.9 km): 4 crossings with traffic signals (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 1 more), 1 of them a heavy-traffic road (LTS 4)",
     },
   ];
+  // The description (OWNER-DECISIONS 220, 248): the group is one entry; in full detail
+  // it lists its four crossings with their mile markers, in the overview it does not.
+  const streets = ["17th Street Northwest", "15th Street Northwest", "14th Street Northwest", "13th Street Northwest"];
+  const crossings = [1700, 2100, 2500, 2900].map((m, k) => ({
+    from_m: m, from_mi: +(m / 1609.344).toFixed(2), street: streets[k], severity: k === 1 ? "red" : "orange", crossed_tier: k === 1 ? 4 : 3,
+    text: `At ${(m / 1609.344).toFixed(1)} mi (${(m / 1000).toFixed(1)} km): Cross ${streets[k]} (LTS ${k === 1 ? 4 : 3}) at a signal (${k === 1 ? "Very high" : "Higher"} stress junction).`,
+  }));
+  const group = (withCrossings) => entry("junction", 1700, 2900, `${r.intersection_groups[0].text} (Very high stress junctions).`, {
+    severity: "red",
+    group: { number: 1, count: 4, lts4: 1, streets: streets.slice(0, 3), more: 1, crossings: withCrossings ? crossings : null },
+  });
+  const head = [
+    entry("stretch", 0, 600, "0.0 to 0.4 mi (0.0 to 0.6 km): Constitution Avenue Northwest, heavy traffic (LTS 4).", { tier: 4 }),
+    entry("stretch", 600, 900, "0.4 to 0.6 mi (0.6 to 0.9 km): Continue on Constitution Avenue Northwest, busy road (LTS 3).", { tier: 3 }),
+    entry("junction", 1000, 1000, "At 0.6 mi (1.0 km): Left turn across 18th Street Northwest (LTS 3), no signal mapped (Higher stress junction).", { severity: "orange" }),
+  ];
+  const tail = [entry("junction", 4000, 4000, "At 2.5 mi (4.0 km): Cross 9th Street Northwest (LTS 4), no signal mapped (Very high stress junction).", { severity: "red" })];
+  r.description = [...head, group(true), ...tail];
+  r.description_overview = [head[0], head[2], group(false), ...tail];
   return r;
 })();
 export const hashFor = (preset, stress, hills = 0) =>

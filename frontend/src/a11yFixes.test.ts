@@ -100,7 +100,11 @@ test("a focused or hovered junction marker is drawn over one it overlaps", () =>
 });
 
 test("a junction row puts its reason on a line of its own, so it wraps at 320 px", () => {
-  assert.match(declared(".junction-item"), /grid-template-columns:\s*18px auto 1fr/);
+  // minmax(0, ...) and no nowrap: with wider text spacing the severity and the
+  // distance wrap inside the row too (a11y re-check of 2b0cf00, 1.4.12).
+  assert.match(declared(".junction-item"), /grid-template-columns:\s*18px minmax\(0, auto\) minmax\(0, 1fr\)/);
+  assert.match(declared(".junction-severity"), /white-space:\s*normal/);
+  assert.match(declared(".junction-where"), /white-space:\s*normal/);
   assert.match(declared(".junction-reason"), /grid-column:\s*2 \/ -1/);
   assert.match(declared(".junction-reason"), /overflow-wrap:\s*anywhere/);
   assert.doesNotMatch(declared(".junction-reason"), /nowrap/);
@@ -188,7 +192,7 @@ test("DialsPanel: the slider is named by its label alone, described by its note,
   assert.match(dialsPanel, /if \(settle\) keys\.current\.later\(commitDraft\)/);
 });
 
-// OWNER-DECISIONS 233, 234: a Mass Ride's group of signalised crossings is a row that opens
+// OWNER-DECISIONS 233, 234: a Mass Ride's group of signalized crossings is a row that opens
 // onto its crossings. The choice is a disclosure, not a card: a button with aria-expanded and
 // aria-controls over a list, closed to begin with, the focus staying on it, nothing announced.
 test("a group row is a disclosure button over a list of its crossings", () => {

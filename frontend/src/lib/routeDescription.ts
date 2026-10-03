@@ -6,7 +6,7 @@
  * them, copies them and makes the text file. Nothing here words a stretch
  * itself, so there is one wording to keep right.
  */
-import type { DescriptionEntry, RouteResponse } from "./api.ts";
+import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatDistance, milesFigure } from "./format.ts";
 import { presetLabel } from "./presets.ts";
 
@@ -64,6 +64,38 @@ export function toggleLabel(entries: readonly DescriptionEntry[], view: Descript
   return `${stepCount(entries)}, ${view === "full" ? "full detail" : "overview"}`;
 }
 
+/**
+ * The toggle's accessible name: what it opens, then its visible words ("Route
+ * description: 11 steps, overview"), so a reader who Tabs to it hears what it is
+ * (a11y re-check of 2b0cf00). The visible words lead nothing but are all in it (2.5.3).
+ */
+export function toggleName(entries: readonly DescriptionEntry[], view: DescriptionView = "full", choice = false): string {
+  return `${DESCRIPTION_HEADING}: ${toggleLabel(entries, view, choice)}`;
+}
+
+/**
+ * A group entry's crossings, each with its mile marker (OWNER-DECISIONS 248): in the
+ * full description only; none on any other entry, or from an older API.
+ */
+export function crossingsOf(entry: DescriptionEntry): DescriptionCrossing[] {
+  const crossings = entry.group?.crossings;
+  if (!Array.isArray(crossings)) return [];
+  return crossings.filter((c) => c && typeof c.text === "string" && c.text.trim() !== "");
+}
+
+/**
+ * The entries as numbered text lines, one entry to a line, and a group's crossings
+ * under it, set in and numbered within it ("   3.1. At 1.0 mi ...").
+ */
+export function entryLines(entries: readonly DescriptionEntry[]): string[] {
+  const lines: string[] = [];
+  entries.forEach((entry, i) => {
+    lines.push(`${i + 1}. ${entry.text}`);
+    crossingsOf(entry).forEach((crossing, k) => lines.push(`   ${i + 1}.${k + 1}. ${crossing.text}`));
+  });
+  return lines;
+}
+
 /** The visible chevron beside the toggle: a shape, not a colour, for the state. */
 export function chevron(open: boolean): string {
   return open ? "▾" : "▸";
@@ -71,7 +103,8 @@ export function chevron(open: boolean): string {
 
 /**
  * The description as text for the clipboard or a file: a line saying what
- * route it is, then one numbered line for each entry.
+ * route it is, then one numbered line for each entry (and, in full detail, a
+ * group's crossings under it: `entryLines`).
  */
 export function descriptionText(
   route: Pick<RouteResponse, "preset" | "distance_m"> & Described,
@@ -82,7 +115,7 @@ export function descriptionText(
   // Which view it is, said only where there is a choice of two.
   const which = hasOverview(route) ? (shown === "full" ? " Full detail." : " Overview, short stretches merged.") : "";
   const head = `RouteMaker ${presetLabel(route.preset)} route, ${formatDistance(route.distance_m)}.${which}`;
-  return [head, ...entries.map((entry, i) => `${i + 1}. ${entry.text}`)].join("\n") + "\n";
+  return [head, ...entryLines(entries)].join("\n") + "\n";
 }
 
 /** The most of the description the GPX file carries in full; beyond it, the overview. */
@@ -97,7 +130,7 @@ export const GPX_FULL_MAX_CHARS = 4000;
 export function gpxDescriptionText(route: Described): string {
   const full = descriptionEntries(route, "full");
   if (full === null) return "";
-  const lines = (entries: readonly DescriptionEntry[]) => entries.map((entry, i) => `${i + 1}. ${entry.text}`);
+  const lines = entryLines;
   const fullText = lines(full).join("\n");
   const useFull = !hasOverview(route) || fullText.length <= GPX_FULL_MAX_CHARS;
   const entries = useFull ? full : (descriptionEntries(route, "overview") ?? full);

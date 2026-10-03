@@ -15,12 +15,13 @@
  * - "Copy description" and "Download as text" (a cue sheet, no network) take
  *   whichever view is shown.
  */
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
 import {
   DESCRIPTION_HEADING,
   chevron,
+  crossingsOf,
   cueSheetFileName,
   descriptionEntries,
   type DescriptionView,
@@ -29,10 +30,14 @@ import {
   readOpen,
   readView,
   toggleLabel,
+  toggleName,
   viewFor,
   writeOpen,
   writeView,
 } from "./lib/routeDescription.ts";
+
+/** How long the copy reply waits after clearing, so that it is a change a screen reader says. */
+export const COPY_REPLY_DELAY_MS = 150;
 
 async function copy(text: string): Promise<boolean> {
   try {
@@ -68,6 +73,8 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
   // Said only after the rider presses Copy: a reply to their action, not a
   // announcement about the route.
   const [copied, setCopied] = useState<"" | "done" | "failed">("");
+  // Which press the status line answers: a reply to an earlier one is dropped.
+  const presses = useRef(0);
   const listId = useId();
   // A confirmation of one press is not left standing over the next route.
   useEffect(() => setCopied(""), [route.description]);
@@ -83,7 +90,15 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
     writeView(next);
   };
   const onCopy = async () => {
-    setCopied((await copy(descriptionText(route, view))) ? "done" : "failed");
+    // Cleared first and set again a moment later, so a second press is said
+    // again: the same words written over themselves change nothing a screen
+    // reader hears (a11y re-check of 2b0cf00).
+    const press = ++presses.current;
+    setCopied("");
+    const done = await copy(descriptionText(route, view));
+    window.setTimeout(() => {
+      if (press === presses.current) setCopied(done ? "done" : "failed");
+    }, COPY_REPLY_DELAY_MS);
   };
   const onDownload = () => {
     const blob = new Blob([descriptionText(route, view)], { type: "text/plain;charset=utf-8" });
@@ -100,21 +115,43 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
   return (
     <section className="route-description" aria-labelledby="route-description-heading">
       <h3 id="route-description-heading">{DESCRIPTION_HEADING}</h3>
-      <button type="button" className="description-toggle" aria-expanded={open} aria-controls={listId} onClick={toggle}>
+      <button
+        type="button"
+        className="description-toggle"
+        aria-label={toggleName(entries, view, choice)}
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={toggle}
+      >
         <span aria-hidden="true">{chevron(open)} </span>
         {toggleLabel(entries, view, choice)}
       </button>
       {choice ? (
         <label className="description-view">
-          <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} /> Full detail
+          <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} />
+          Full detail
         </label>
       ) : null}
+      {/* No scroll box of its own: the panel scrolls, so the list is read and
+          scrolled like the rest of it by keyboard in every browser (a11y re-check
+          of 2b0cf00, 2.1.1), with no extra Tab stop. */}
       <ol id={listId} className="description-list" hidden={!open}>
-        {entries.map((entry, i) => (
-          <li key={i} className={`description-${entry.kind}`}>
-            {entry.text}
-          </li>
-        ))}
+        {entries.map((entry, i) => {
+          const crossings = crossingsOf(entry);
+          return (
+            <li key={i} className={`description-${entry.kind}`}>
+              {entry.text}
+              {crossings.length > 0 ? (
+                // A group's crossings, each with its mile marker (OWNER-DECISIONS 248).
+                <ol className="description-crossings" aria-label="Crossings in this group, in route order">
+                  {crossings.map((crossing, k) => (
+                    <li key={k}>{crossing.text}</li>
+                  ))}
+                </ol>
+              ) : null}
+            </li>
+          );
+        })}
       </ol>
       <div className="actions description-actions">
         <button type="button" onClick={onCopy}>

@@ -17,6 +17,9 @@ import {
   saysItsSeverity,
   stepCount,
   toggleLabel,
+  toggleName,
+  crossingsOf,
+  entryLines,
   writeOpen,
 } from "./routeDescription.ts";
 import type { DescriptionEntry, RouteResponse } from "./api.ts";
@@ -315,4 +318,91 @@ test("no description, none in the file: the route's desc is the ride type alone"
   const out = exportOf(lineOf({}), ENDS);
   assert.equal(out.routeText, undefined);
   assert.doesNotMatch(writeGpx(out), /Route description/);
+});
+
+// --- The final-fix round: the a11y and spec re-checks of 2b0cf00, OWNER-DECISIONS 248 ---
+
+const css = readFileSync(new URL("../routeDescription.css", import.meta.url), "utf8");
+const block = (selector: string) => {
+  const at = css.indexOf(`${selector} {`);
+  assert.ok(at >= 0, selector);
+  return css.slice(at, css.indexOf("}", at));
+};
+
+test("the toggle's name says what it opens, its visible words after", () => {
+  const entries = descriptionEntries(withOverview, "overview")!;
+  assert.equal(toggleName(entries, "overview", true), "Route description: 1 step, overview");
+  assert.equal(toggleName(descriptionEntries(route)!), "Route description: 2 steps");
+  assert.ok(toggleName(entries, "overview", true).endsWith(toggleLabel(entries, "overview", true)));
+  assert.match(component, /aria-label=\{toggleName\(entries, view, choice\)\}/);
+});
+
+test("the list has no scroll box of its own: the panel scrolls, by keyboard in every browser", () => {
+  assert.doesNotMatch(block(".description-list"), /max-height|overflow/);
+  assert.doesNotMatch(component, /tabIndex/);
+});
+
+test("Full detail: no leading space in its name, and a 24 px target", () => {
+  assert.doesNotMatch(component, /\/> Full detail/);
+  assert.match(component, /\/>\s*\n\s*Full detail/);
+  assert.match(block(".description-view"), /min-height:\s*24px/);
+});
+
+test("Copy's reply is cleared and set again, so a second press is said", () => {
+  assert.match(component, /setCopied\(""\);\s*\n\s*const done = await copy/);
+  assert.match(component, /window\.setTimeout\(\(\) => \{\s*\n\s*if \(press === presses\.current\)/);
+});
+
+const crossing = (m: number, street: string, text: string) => ({ from_m: m, from_mi: m / 1609.344, street, severity: "orange" as const, crossed_tier: 3, text });
+const grouped = (withCrossings: boolean): DescriptionEntry =>
+  entry("1.0 to 1.2 mi (1.6 to 1.9 km): 2 crossings with traffic signals (A Street and B Street) (Higher stress junctions).", {
+    kind: "junction",
+    severity: "orange",
+    group: {
+      number: 1,
+      count: 2,
+      lts4: 0,
+      streets: ["A Street", "B Street"],
+      more: 0,
+      crossings: withCrossings
+        ? [
+            crossing(1609, "A Street", "At 1.0 mi (1.6 km): Cross A Street (LTS 3) at a signal (Higher stress junction)."),
+            crossing(1931, "B Street", "At 1.2 mi (1.9 km): Cross B Street (LTS 3) at a signal (Higher stress junction)."),
+          ]
+        : null,
+    },
+  });
+const massRoute = {
+  preset: "mass-ride" as const,
+  distance_m: 3811,
+  description: [route.description![0], grouped(true), route.description![1]],
+  description_overview: [grouped(false), route.description![1]],
+};
+
+test("a group's crossings are its sub-entries in full detail, none in the overview (OWNER-DECISIONS 248)", () => {
+  assert.equal(crossingsOf(grouped(true)).length, 2);
+  assert.deepEqual(crossingsOf(grouped(false)), []);
+  assert.deepEqual(crossingsOf(route.description![0]), []);
+  // An older API's group has no crossings at all.
+  assert.deepEqual(crossingsOf({ ...grouped(true), group: { number: 1, count: 2, lts4: 0, streets: [], more: 0 } }), []);
+});
+
+test("the text and the GPX list a group's crossings under it, numbered within it", () => {
+  assert.deepEqual(entryLines(massRoute.description), [
+    `1. ${route.description![0].text}`,
+    `2. ${grouped(true).text}`,
+    "   2.1. At 1.0 mi (1.6 km): Cross A Street (LTS 3) at a signal (Higher stress junction).",
+    "   2.2. At 1.2 mi (1.9 km): Cross B Street (LTS 3) at a signal (Higher stress junction).",
+    `3. ${route.description![1].text}`,
+  ]);
+  const full = descriptionText(massRoute, "full");
+  assert.match(full, /\n2\. 1\.0 to 1\.2 mi .*\n   2\.1\. At 1\.0 mi .*A Street.*\n   2\.2\. At 1\.2 mi .*B Street/);
+  const overview = descriptionText(massRoute, "overview");
+  assert.doesNotMatch(overview, /Cross A Street/);
+  assert.match(gpxDescriptionText(massRoute), /^Route description, full detail:\n1\. [^\n]*\n2\. [^\n]*\n   2\.1\. At 1\.0 mi/);
+});
+
+test("in the page a group's crossings are a nested, named ordered list", () => {
+  assert.match(component, /<ol className="description-crossings" aria-label="Crossings in this group, in route order">/);
+  assert.match(component, /crossingsOf\(entry\)/);
 });

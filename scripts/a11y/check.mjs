@@ -131,13 +131,13 @@ const focused = (p) =>
   check("marker: Enter opens its card and the focus goes to its close button", await p.eval("document.activeElement?.classList.contains('maplibregl-popup-close-button') && !!document.activeElement.closest('.junction-popup')"), await focused(p));
   await p.enter();
   await sleep(300);
-  check("marker: closing the card gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}"`), await focused(p));
+  check("marker: closing the card gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}" && document.activeElement.classList.contains('junction-marker')`), await focused(p));
   await p.enter();
   await sleep(500);
   await p.escape();
   await sleep(300);
   check("marker: Escape closes the card", await p.eval("!document.querySelector('.junction-popup')"));
-  check("marker: and gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}"`), await focused(p));
+  check("marker: and gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}" && document.activeElement.classList.contains('junction-marker')`), await focused(p));
 
   // The group: its zoom hands the focus to the first member's new marker.
   const group = await p.eval("(() => { const g = document.querySelector('.junction-marker.junction-group'); if (!g) return null; g.focus(); return g.dataset.junctionIndex; })()");
@@ -243,7 +243,7 @@ for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["force
 }
 
 
-// ---- 6. A group of signalised crossings: a row that opens onto its crossings (items 233, 234) ----
+// ---- 6. A group of signalized crossings: a row that opens onto its crossings (items 233, 234) ----
 {
   const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
   const state = () =>
@@ -254,8 +254,12 @@ for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["force
   const first = await state();
   check("group: one row for the four crossings, closed to begin with", first.groups === 1 && first.expanded === "false" && first.hidden && !first.shown, JSON.stringify(first));
   const ax = await axNode(p, ".junction-group-toggle");
-  // (Each span of a row is a grid item, so the name has a space before a comma, as every row's does.)
-  check("group: a button whose name is the severity, then the phrase", ax?.role === "button" && /^Very high stress ?, Group ?: 1\.1 to 1\.8 mi .*: 4 signalised crossings \(17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 1 more\), 1 of them an LTS 4 road$/.test(ax?.name ?? ""), JSON.stringify(ax?.name));
+  // One aria-label, so no stray space before the comma or the colon (a11y re-check of 2b0cf00, B2).
+  check("group: a button whose name is the severity, then the phrase", ax?.role === "button" && /^Very high stress, Group: 1\.1 to 1\.8 mi \(1\.7 to 2\.9 km\): 4 crossings with traffic signals \(17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 1 more\), 1 of them a heavy-traffic road \(LTS 4\)$/.test(ax?.name ?? ""), JSON.stringify(ax?.name));
+  // The lone rows as the screen reader names them; the members (hidden while the group is closed) by their label.
+  const names = await p.eval(`[...document.querySelectorAll('.junction-list .junction-item:not(.junction-group-toggle)')].map((e) => e.getAttribute('aria-label') ?? '')`);
+  for (const index of ["0", "5"]) names.push((await axNode(p, `.junction-list > li > .junction-item[data-junction-index="${index}"]`))?.name ?? "");
+  check("rows: every row and member is named \"<severity>, At <distance>: <reason>\", with no stray spaces", names.length === 8 && names.every((n) => /^(Higher|Very high) stress, At \d+\.\d mi \(\d+\.\d km\): \S/.test(n) && !/ [,:]/.test(n)), JSON.stringify(names));
   check("group: the screen reader hears it collapsed", ax?.expanded === false, JSON.stringify(ax));
   // Tab order: closed, the crossings are not in it.
   await p.eval("document.querySelectorAll('.junction-list > li')[0].querySelector('.junction-item').focus(); true");
@@ -309,6 +313,72 @@ for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["force
     return { reason: Math.round(r.width), row: Math.round(row.width), member: Math.round(member.width), spill: l.scrollWidth > l.clientWidth, page: document.documentElement.scrollWidth > innerWidth }; })()`);
   check("group at 320 px: the phrase has the row's width, the crossings are set in, nothing spills", wrap.reason >= wrap.row - 60 && wrap.member < wrap.row && !wrap.spill && !wrap.page, JSON.stringify(wrap));
   await p.shot(`${SHOTS}/group_320_open.png`, await p.eval("(() => { const r = document.querySelector('figure.junctions').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: Math.min(r.height + 8, innerHeight - r.top) }; })()"));
+  await p.close();
+}
+
+// ---- 7. The rows at 320 px with WCAG text spacing (1.4.12; a11y re-check of 2b0cf00) ----
+const TEXT_SPACING = `* { line-height: 1.5 !important; letter-spacing: 0.12em !important; word-spacing: 0.16em !important; } p { margin-bottom: 2em !important; }`;
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
+  await p.eval(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(TEXT_SPACING)}; document.head.append(s);
+    document.querySelector('.junction-group-toggle').click(); document.querySelector('.junction-list').scrollIntoView({ block: 'start' }); return true; })()`);
+  await sleep(300);
+  const rows = await p.eval(`(() => { const l = document.querySelector('.junction-list');
+    const over = [...l.querySelectorAll('.junction-item')].filter((e) => e.scrollWidth > e.clientWidth + 1 || [...e.children].some((c) => c.getBoundingClientRect().right > e.getBoundingClientRect().right + 1)).map((e) => e.dataset.junctionIndex ?? 'group');
+    return { over, spill: l.scrollWidth > l.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check("rows at 320 px with text spacing: ordinary, group and member rows wrap inside the list", rows.over.length === 0 && !rows.spill && !rows.page, JSON.stringify(rows));
+  await p.shot(`${SHOTS}/rows_320_spacing.png`, await p.eval("(() => { const r = document.querySelector('figure.junctions').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: Math.min(r.height + 8, innerHeight - r.top) }; })()"));
+  await p.close();
+}
+
+// ---- 8. The route description: keyboard, names, the copy reply, a group's crossings ----
+/** Every scroll box in the panel can be reached by keyboard: focusable itself, or holding something focusable (2.1.1). */
+const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]), input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])';
+  return [...document.querySelectorAll('.panel-body, .panel-body *')].filter((e) => { const s = getComputedStyle(e);
+    return /(auto|scroll)/.test(s.overflowY) && e.scrollHeight > e.clientHeight + 1 && e.offsetParent !== null; })
+    .map((e) => ({ box: e.className.toString().slice(0, 40) || e.tagName, reachable: e.tabIndex >= 0 || !!e.querySelector(focusable) })); })()`;
+{
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  const toggle = await axNode(p, ".description-toggle");
+  check("description: the toggle's name says what it opens", toggle?.role === "button" && toggle?.name === "Route description: 11 steps, overview" && toggle?.expanded === false, JSON.stringify(toggle));
+  await p.eval("document.querySelector('.description-toggle').click(); true");
+  await sleep(200);
+  const list = await p.eval(`(() => { const l = document.querySelector('.description-list'); const s = getComputedStyle(l);
+    return { items: l.children.length, overflow: s.overflowY, maxHeight: s.maxHeight, box: l.scrollHeight > l.clientHeight + 1 }; })()`);
+  check("description: the list is no scroll box of its own (the panel scrolls)", list.items === 11 && list.overflow === "visible" && list.maxHeight === "none" && !list.box, JSON.stringify(list));
+  const boxes = await p.eval(SCROLL_BOXES);
+  check("description: every scroll box in the panel can be reached by keyboard", boxes.every((b) => b.reachable), JSON.stringify(boxes));
+  const view = await axNode(p, ".description-view input");
+  const label = await p.eval("(() => { const r = document.querySelector('.description-view').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()");
+  check("description: Full detail is named without a leading space and its target is 24 px tall", view?.name === "Full detail" && label.h >= 24, `${JSON.stringify(view?.name)} ${JSON.stringify(label)}`);
+  // A second press of Copy is said again.
+  await p.eval(`window.__copy = []; new MutationObserver(() => { const t = document.querySelector('.description-status').textContent.trim(); if (t) window.__copy.push(t); })
+    .observe(document.querySelector('.description-status'), { childList: true, subtree: true, characterData: true }); true`);
+  const copyButton = "[...document.querySelectorAll('.description-actions button')].find((b) => /Copy description/.test(b.textContent))";
+  await p.eval(`${copyButton}.click(); true`);
+  await sleep(700);
+  await p.eval(`${copyButton}.click(); true`);
+  await sleep(700);
+  const said = await p.eval("window.__copy");
+  check("description: Copy's reply is said again on a second press", said.length === 2 && said[0] === said[1], JSON.stringify(said));
+  await p.close();
+}
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  await p.eval("document.querySelector('.description-toggle').click(); true");
+  await sleep(200);
+  const overview = await p.eval("document.querySelectorAll('.description-list .description-crossings').length");
+  check("description: the overview keeps one line per group", overview === 0, String(overview));
+  await p.eval("document.querySelector('.description-view input').click(); true");
+  await sleep(200);
+  const nested = await p.eval(`(() => { const o = document.querySelector('.description-list > li > ol.description-crossings');
+    return o ? { parent: o.parentElement.tagName, items: [...o.children].map((li) => li.tagName + ' ' + li.textContent.slice(0, 22)) } : null; })()`);
+  const ax = await axNode(p, ".description-crossings");
+  check("description: in full detail a group lists its four crossings as a nested ordered list", nested?.parent === "LI" && nested.items.length === 4 && nested.items.every((i) => /^LI At \d+\.\d mi/.test(i)), JSON.stringify(nested));
+  check("description: and the nested list is named for what it is", ax?.role === "list" && ax?.name === "Crossings in this group, in route order", JSON.stringify(ax));
+  const all = await p.eval("document.querySelector('.description-list').textContent");
+  check("description: every street of the group is named in full detail", ["17th", "15th", "14th", "13th"].every((s) => all.includes(`${s} Street Northwest (LTS`)), "");
+  await p.shot(`${SHOTS}/description_mass_full.png`, await p.eval("(() => { const e = document.querySelector('.route-description'); e.scrollIntoView({ block: 'start' }); const r = e.getBoundingClientRect(); return { x: Math.max(0, r.left), y: Math.max(0, r.top), width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(Math.min(r.height, innerHeight - Math.max(0, r.top)))) }; })()"));
   await p.close();
 }
 
