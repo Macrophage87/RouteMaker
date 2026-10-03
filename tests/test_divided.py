@@ -3,6 +3,8 @@ relief is for one-way streets, not for one side of a road with a median."""
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -146,3 +148,68 @@ def test_a_long_pair_joined_at_both_ends_is_still_divided() -> None:
         (-77.03, 39.000),
     ]
     assert divided.carriageways([way(1, short_north), way(2, short_south)]) == set()
+
+
+# -- the wider reading that guards row C4 (`carriageway_pairs`) --------------------
+
+C4_FIXTURE = Path(__file__).parent / "data" / "c4_carriageways.json"
+
+
+def c4_ways():
+    data = json.loads(C4_FIXTURE.read_text())
+    ways = [
+        SimpleNamespace(
+            osm_id=w["id"], tags=w["tags"], coordinates=[tuple(c) for c in w["coordinates"]]
+        )
+        for w in data["ways"]
+    ]
+    return data, ways
+
+
+def test_the_review_s_c4_carriageways_are_pairs() -> None:
+    """The combined correctness review: South Capitol Street SW 910656491 (its
+    opposite carriageway is named Southeast), 910656606 and 1122669898, E Street
+    NW 6056366 (57 to 65 m from its partner) and H Street NW 50511181 (52 m) are
+    carriageways that row C4 made two-way. With OWNER-DECISIONS 216 that would
+    route against their traffic. The stress reading (item 109) is unchanged."""
+    data, ways = c4_ways()
+    pairs = divided.carriageway_pairs(ways)
+    assert set(data["review"]) <= pairs
+    assert not set(data["couplet"]) & pairs
+    assert not set(data["review"]) <= divided.carriageways(ways)
+    # The search limited to the streets asked about finds the same.
+    names = {w.tags["name"] for w in ways if w.osm_id in data["review"]}
+    assert set(data["review"]) <= divided.carriageway_pairs(ways, names)
+    assert divided.carriageway_pairs(ways, {"Nowhere Street"}) == set()
+
+
+def test_a_street_either_side_of_a_quadrant_line_is_one_street() -> None:
+    assert divided.street_name("South Capitol Street Southwest") == "South Capitol Street"
+    assert divided.street_name("South Capitol Street Southeast") == "South Capitol Street"
+    assert divided.street_name("H Street NW") == "H Street"
+    assert divided.street_name("Georgia Avenue") == "Georgia Avenue"
+    pair = [
+        way(1, NORTH, name="South Capitol Street Southwest"),
+        way(2, SOUTH, name="South Capitol Street Southeast"),
+    ]
+    assert divided.carriageway_pairs(pair) == {1, 2}
+    assert divided.carriageways(pair) == set()
+
+
+def test_the_c4_band_is_wider_and_has_its_limit() -> None:
+    """C4_PAIR_M, 100 m: a pair 90 m apart is one road for the guard (South
+    Capitol Street at the Suitland Parkway junction, 88 m); 110 m is not."""
+    ninety = [(x + LON_20M * 3.5, y) for x, y in SOUTH]  # 90 m apart
+    beyond = [(x + LON_20M * 4.5, y) for x, y in SOUTH]  # 110 m
+    assert divided.carriageway_pairs([way(1, NORTH), way(2, ninety)]) == {1, 2}
+    assert divided.carriageways([way(1, NORTH), way(2, ninety)]) == set()
+    assert divided.carriageway_pairs([way(1, NORTH), way(2, beyond)]) == set()
+
+
+def test_the_c4_guard_reads_residential_boulevards_but_not_other_names() -> None:
+    pair = [way(1, NORTH, highway="residential"), way(2, SOUTH, highway="residential")]
+    assert divided.carriageway_pairs(pair) == {1, 2}
+    other = [way(1, NORTH), way(2, SOUTH, name="Colesville Road")]
+    assert divided.carriageway_pairs(other) == set()
+    same_way = [way(1, NORTH), way(2, list(reversed(SOUTH)))]
+    assert divided.carriageway_pairs(same_way) == set()

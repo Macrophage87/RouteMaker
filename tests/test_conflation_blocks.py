@@ -599,3 +599,45 @@ def test_the_owner_s_withheld_blocks_are_read_by_default() -> None:
     keyless = RoadFeature(canal.feature_id, canal.coordinates, replace(canal.facts, block_key=None))
     applied, _ = road_facts_by_way([road], entries, [keyless])
     assert (applied[1].speed_mph, applied[1].speed_withheld_mph) == (20, None)
+
+
+def test_row_c4_never_makes_a_carriageway_of_the_review_two_way() -> None:
+    """The combined correctness review: a District two-way record made South
+    Capitol Street SW 910656491, 910656606 and 1122669898, E Street NW 6056366
+    and H Street NW 50511181 two-way, though each is one carriageway of a road
+    whose other carriageway lies 12 to 88 m away (past `routemaker.divided`'s
+    45 m, or under another quadrant's name). With OWNER-DECISIONS 216 that is the
+    routing graph's direction, so the overlay's wiring guards row C4 with the
+    wider pairing: OSM's one-way stays, for the classifier and the graph."""
+    import json
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from pipeline.conflation import overlay_road_facts
+    from routemaker.agency_roads import WayFacts
+
+    data = json.loads((Path(__file__).parent / "data" / "c4_carriageways.json").read_text())
+    ways = [
+        SimpleNamespace(
+            osm_id=w["id"], tags=w["tags"], coordinates=[tuple(c) for c in w["coordinates"]]
+        )
+        for w in data["ways"]
+    ]
+    two_way = WayFacts(
+        agency=DC_AGENCY, blocks=("b",), one_way=False, two_way_throughout=True, names_agree=True
+    )
+    facts = {way_id: replace(two_way, blocks=(f"b{way_id}",)) for way_id in data["review"]}
+    overlays = overlay_road_facts(ways, facts)
+    for way_id in data["review"]:
+        overlay = overlays[way_id]
+        assert overlay.tags["oneway"] == "yes", way_id
+        assert overlay.routing == {}, way_id
+        assert overlay.disagreements == (
+            "oneway: agency two-way, OSM one-way, kept (divided carriageway)",
+        ), way_id
+    # The control: a plain one-way street of the fixture that is no carriageway
+    # (20th Street NW) is made two-way by the same record.
+    (couplet,) = [w for w in data["couplet"] if w != 130889760]
+    plain = overlay_road_facts(ways, {couplet: two_way})[couplet]
+    assert plain.tags["oneway"] == "no"
+    assert plain.routing == {"oneway": "no"}

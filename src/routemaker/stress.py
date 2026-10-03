@@ -271,6 +271,13 @@ RIDEABLE_SHOULDER_M = 1.2
 # suite stayed green.
 FURTH_LANE_BESIDE_PARKING_M = 15 * 0.3048
 FURTH_LANE_ALONE_M = 1.7
+# How far under a width criterion a measured width may fall and still meet it:
+# half a centimetre. A width in feet converted to metres and a sum of two such
+# widths land a hair either side of a criterion that is itself a conversion
+# (review SF2: a 5 ft lane beside a 10 ft parking lane is exactly Furth's 15 ft
+# reach, and read at 1.52 m it fell 4 mm short and to the narrow row). OSM's
+# widths are tagged to the centimetre at best.
+WIDTH_TOLERANCE_M = 0.005
 
 # An unsurveyed unpaved rural lane. Deliberately below the 35 mph boundary at
 # which mixed traffic becomes LTS4, rather than exactly on it: Virginia's
@@ -564,7 +571,7 @@ def _bike_lane_tier(
     # higher-stress reading, and both are common in this region's tagging.
     beside_parking = parking is not False
     threshold = FURTH_LANE_BESIDE_PARKING_M if beside_parking else FURTH_LANE_ALONE_M
-    narrow = width_m is None or width_m < threshold
+    narrow = width_m is None or width_m < threshold - WIDTH_TOLERANCE_M
 
     if speed_mph >= 40:
         return Stress.LTS4, f"{facility}, 40 mph or above"

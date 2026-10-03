@@ -3806,3 +3806,231 @@ def test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves(workspace) 
             ]
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# --- The District's direction in the graph (OWNER-DECISIONS 216) -----------------
+
+
+def _segment_traits(schema: str) -> dict[int, tuple]:
+    """(road_speed_mph, road_lanes, road_oneway, attr_sources) per way, as staged."""
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT osm_way_id, road_speed_mph, road_lanes, road_oneway, "
+            f"attr_sources::text FROM {schema}.segment ORDER BY osm_way_id"
+        )
+        rows = cursor.fetchall()
+    traits: dict[int, tuple] = {}
+    for way, speed, lanes, oneway, sources in rows:
+        assert way not in traits, f"way {way} has segments that disagree"
+        traits[way] = (speed, lanes, oneway, json.loads(sources) if sources else None)
+    return traits
+
+
+def _graph_tags(context) -> dict:
+    from pipeline.extract import read_ways
+
+    return {
+        variant: {w.osm_id: w.tags for w in read_ways(context.variant_pbf(variant))}
+        for variant in Variant
+    }
+
+
+def _assert_graph_and_traits_agree(context, graph) -> None:
+    """By construction: on every way, the routing graph is one-way exactly where
+    the tags the classifier read are (the District's one-way decided for both at
+    once), `road_oneway` is never true on a way the graph has two-way, and
+    `road_lanes` is the lanes a direction of the graph's road (correctness
+    review, blocker 1)."""
+    from pipeline.variants import is_motor_oneway
+    from routemaker.tags import lanes_per_direction
+
+    traits = _segment_traits(context.staging_schema)
+    for way in context.ways:
+        read = context.class_tags_by_way.get(way.osm_id, way.tags)
+        for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+            routed = graph[variant][way.osm_id]
+            assert is_motor_oneway(routed) == is_motor_oneway(read), (way.osm_id, variant)
+            assert routed.get("oneway") == read.get("oneway") or (
+                "oneway" not in read and routed.get("junction") == read.get("junction")
+            ), (way.osm_id, variant)
+        speed, lanes, oneway, _sources = traits[way.osm_id]
+        stress = context.stress_by_way[way.osm_id]
+        assert (speed, lanes, oneway) == (
+            None if stress.speed_mph is None else round(stress.speed_mph),
+            stress.lanes,
+            stress.oneway,
+        ), way.osm_id
+        if oneway:
+            assert is_motor_oneway(graph[Variant.STANDARD][way.osm_id]), way.osm_id
+        if lanes is not None:
+            assert lanes == lanes_per_direction(read), way.osm_id
+
+
+def _district_road(states_patch, monkeypatch, block, **tags):
+    _all_in_the_district(monkeypatch)
+    road = _one_road("secondary", name="Test Road", **tags)
+    context, _ = run_pipeline(road, road.parent, roadway=[block], skip=NOT_SWAPPED)
+    return context, _graph_tags(context)
+
+
+def test_a_district_one_way_record_is_every_graph_s_direction(states, monkeypatch) -> None:
+    """Row B: OSM tags way 100 two-way with two lanes each way; the District
+    records it one-way, three lanes, with the line. Every variant's extract is
+    one-way that way, with no contraflow (OSM's lane each side would open the
+    reverse on a one-way); the classifier read the same; and the segment row
+    says so (correctness review, blocker 1: `road_oneway` True while both graphs
+    were two-way)."""
+    block = street_block(
+        "dc-1", {"way": "one", "oneway_with": True, "lanes": {"ob": 3}, "speed_mph": {"ob": 20}}
+    )
+    context, graph = _district_road(
+        states,
+        monkeypatch,
+        block,
+        oneway="no",
+        lanes="4",
+        maxspeed="35 mph",
+        **{"cycleway:both": "lane"},
+    )
+    assert context.routing_tags_by_way[100]["oneway"] == "yes"
+    for variant in Variant:
+        tags = graph[variant][100]
+        assert tags["oneway"] == "yes", variant.value
+        assert tags["oneway:bicycle"] == "yes", variant.value
+        assert tags["cycleway:both"] != "lane", variant.value
+    assert context.class_tags_by_way[100]["oneway"] == "yes"
+    assert context.stress_by_way[100].oneway is True
+    assert _segment_traits(context.staging_schema)[100][:3] == (20, 3, True)
+    _assert_graph_and_traits_agree(context, graph)
+
+
+def test_a_district_two_way_record_is_every_graph_s_direction(states, monkeypatch) -> None:
+    """Row C4: OSM's one-way, the District's two-way, and no carriageway beside
+    it. Every variant is two-way (`oneway=no`, rewritten, not removed: the
+    source's `oneway=yes` would come back), and the segment row two-way with
+    two lanes a direction (correctness review: the graphs kept `oneway=yes`)."""
+    block = street_block(
+        "dc-1", {"way": "both", "lanes": {"ib": 2, "ob": 2}, "speed_mph": {"ob": 25}}
+    )
+    context, graph = _district_road(
+        states, monkeypatch, block, oneway="yes", lanes="2", maxspeed="35 mph"
+    )
+    for variant in Variant:
+        assert graph[variant][100]["oneway"] == "no", variant.value
+    assert context.stress_by_way[100].oneway is False
+    assert _segment_traits(context.staging_schema)[100][:3] == (25, 2, False)
+    _assert_graph_and_traits_agree(context, graph)
+
+
+def test_a_district_one_way_osm_does_not_tag_is_every_graph_s_direction(states, monkeypatch):
+    """The overlay-filled one-way, against the line (`oneway=-1`)."""
+    block = street_block("dc-1", {"way": "one", "oneway_with": False, "speed_mph": {"ob": 25}})
+    context, graph = _district_road(states, monkeypatch, block, maxspeed="25 mph")
+    for variant in Variant:
+        assert graph[variant][100]["oneway"] == "-1", variant.value
+    assert context.class_tags_by_way[100]["oneway"] == "-1"
+    _assert_graph_and_traits_agree(context, graph)
+
+
+def test_a_district_contraflow_lane_rides_on_standard_and_closes_on_no_trail(states, monkeypatch):
+    """OWNER-DECISIONS 216 with 192 and 219: the District makes way 100 one-way
+    and flags a contraflow lane. The standard, weekend and e-bike graphs carry
+    it as OSM would (`oneway:bicycle=no`, an `opposite_lane`); the no-trail
+    graph closes it."""
+    block = street_block(
+        "dc-1",
+        {
+            "way": "one",
+            "oneway_with": True,
+            "bike": {"ib": 1},
+            "contraflow": True,
+            "speed_mph": {"ob": 20},
+        },
+    )
+    context, graph = _district_road(states, monkeypatch, block, oneway="no", maxspeed="25 mph")
+    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+        tags = graph[variant][100]
+        assert (tags["oneway"], tags["oneway:bicycle"]) == ("yes", "no"), variant.value
+        assert tags["cycleway:left"] == "opposite_lane", variant.value
+    closed = graph[Variant.NO_TRAIL][100]
+    assert (closed["oneway"], closed["oneway:bicycle"]) == ("yes", "yes")
+    assert closed["cycleway:left"] != "opposite_lane"
+    _assert_graph_and_traits_agree(context, graph)
+
+
+def test_baltimore_s_one_way_and_lanes_reach_neither_graph_nor_classifier(states) -> None:
+    """OWNER-DECISIONS 222 and 223: the centerline's one-way and lane count are
+    never used (correctness review, blocker 1: W Cold Spring Ln and Broening Hwy
+    were made one-way with 4 lanes a direction); its speed fills OSM's gap."""
+    road = _one_road("primary", name="Test Road", lanes="4")
+    block = street_block(
+        "bal-1",
+        {
+            "agency": "baltimore-centerline",
+            "way": "one",
+            "oneway_with": True,
+            "lanes": {"total": 4},
+            "speed_mph": {"centerline": 30},
+        },
+    )
+    context, _ = run_pipeline(road, road.parent, roadway=[block], skip=NOT_SWAPPED)
+    graph = _graph_tags(context)
+    assert 100 in context.road_facts_by_way
+    assert 100 not in context.routing_tags_by_way
+    for variant in Variant:
+        assert "oneway" not in graph[variant][100], variant.value
+    read = context.class_tags_by_way[100]
+    assert "oneway" not in read and read["lanes"] == "4"
+    assert read["maxspeed"] == "30 mph"
+    assert _segment_traits(context.staging_schema)[100][:3] == (30, 2, False)
+    assert any("not used (OWNER-DECISIONS 222)" in d for d in context.road_disagreements[100])
+    _assert_graph_and_traits_agree(context, graph)
+
+
+def test_a_posted_one_way_laned_road_stores_the_classifier_s_traits(workspace, states) -> None:
+    """Mutation review R6 and R7: the segment row's road_speed_mph, road_lanes and
+    road_oneway are the classifier's values for the way, in that order, and not
+    one another's or null. A posted, one-way, laned road with no block, and the
+    same road with a block's speed and lanes over it."""
+    road = _one_road("secondary", name="Test Road", oneway="yes", lanes="3", maxspeed="35 mph")
+    context, _ = run_pipeline(road, road.parent, skip=NOT_SWAPPED)
+    stress = context.stress_by_way[100]
+    assert (stress.speed_mph, stress.lanes, stress.oneway) == (35, 3, True)
+    assert _segment_traits(context.staging_schema)[100] == (35, 3, True, None)
+    block = street_block(
+        "dc-1", {"way": "one", "oneway_with": True, "lanes": {"ob": 2}, "speed_mph": {"ob": 25}}
+    )
+    road = _one_road("secondary", name="Test Road", oneway="yes", lanes="3", maxspeed="35 mph")
+    overlaid, _ = run_pipeline(road, road.parent, roadway=[block], skip=NOT_SWAPPED)
+    stress = overlaid.stress_by_way[100]
+    assert (stress.speed_mph, stress.lanes, stress.oneway) == (25, 2, True)
+    assert _segment_traits(overlaid.staging_schema)[100][:3] == (25, 2, True)
+
+
+def test_a_car_free_agency_way_keeps_its_provenance_and_every_block_to_the_cap(states) -> None:
+    """Mutation review R1, R12 and W5: a road closed to motor traffic for good is
+    tier 1 (`car_free_tier_1`) and keeps the attr_sources its blocks gave it
+    (Beach Drive NW); a way along more than MAX_RECORDED_BLOCKS blocks records the
+    first twelve, all of them, in order."""
+    from pipeline.run import MAX_RECORDED_BLOCKS
+
+    count = MAX_RECORDED_BLOCKS + 2
+    step = 0.04 / count
+    blocks = [
+        street_block(
+            f"dc-{i:02d}",
+            {"speed_mph": {"ob": 25}, "way": "both"},
+            coordinates=[[-77.02 + i * step, 38.90], [-77.02 + (i + 1) * step, 38.90]],
+        )
+        for i in range(count)
+    ]
+    road = _one_road("residential", name="Test Road", motor_vehicle="no", maxspeed="25 mph")
+    context, _ = run_pipeline(road, road.parent, roadway=blocks, skip=NOT_SWAPPED)
+    facts = context.road_facts_by_way[100]
+    assert len(facts.blocks) > MAX_RECORDED_BLOCKS
+    stress = context.stress_by_way[100]
+    assert int(stress.tier) == 1 and stress.rule.startswith("closed to motor traffic")
+    stored = _segment_traits(context.staging_schema)[100][3]
+    assert stored["maxspeed"] == "dc-roadway-block"
+    assert stored["blocks"] == list(facts.blocks[:MAX_RECORDED_BLOCKS])
+    assert len(stored["blocks"]) == MAX_RECORDED_BLOCKS

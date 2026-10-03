@@ -831,6 +831,34 @@ def close_contraflow(tags: dict[str, str]) -> None:
         tags["bicycle:backward:conditional"] = CONTRAFLOW_CLOSED_VALUE
 
 
+def agency_routing_tags(tags: dict[str, str], routing: dict[str, str]) -> dict[str, str]:
+    """The keys an agency's direction record changes in a way's routing tags
+    (OWNER-DECISIONS 216: "Enforce on all maps"), as a diff against `tags`, the
+    way's OSM tags; empty where it changes none.
+
+    `routing` is the overlay's decision (`routemaker.agency_roads.Overlay.
+    routing`), so the graph's direction is the one the classifier read. Laid
+    over the way's tags on every variant, before the variant's own rules: the
+    no-trail graph's contraflow closure then reads the District's one-way like
+    any OSM one-way (items 192, 219). Where the record makes a two-way way
+    one-way and gives no contraflow lane, OSM's two-way tagging that would open
+    the reverse direction on a one-way (a lane on each side, an `opposite*`
+    value, a reverse grant) is closed on every variant, as `close_contraflow`
+    closes it: the record says the street is one-way for bicycles too. Where it
+    gives one, the lane is the reverse direction (`oneway:bicycle=no` and the
+    `opposite*` lane), which the standard graph rides and only the no-trail
+    graph closes.
+
+    Rewritten, never removed (`close_contraflow`'s reason).
+    """
+    if not routing:
+        return {}
+    graph = {**tags, **routing}
+    if is_motor_oneway(graph) and not is_motor_oneway(tags) and "oneway:bicycle" not in routing:
+        close_contraflow(graph)
+    return {key: value for key, value in graph.items() if tags.get(key) != value}
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],

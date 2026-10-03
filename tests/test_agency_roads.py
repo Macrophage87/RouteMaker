@@ -502,10 +502,42 @@ def test_the_agency_s_lanes_reach_the_classifier_as_lanes_per_direction() -> Non
     assert lanes_per_direction(one_way.tags) == 3
 
 
-def test_an_agency_one_way_is_believed_where_osm_says_nothing() -> None:
-    result = A.overlay({"highway": "residential"}, way_facts(one_way=True))
-    assert result.tags["oneway"] == "yes"
+@pytest.mark.parametrize(("forward", "oneway"), [(True, "yes"), (False, "-1")])
+def test_an_agency_one_way_is_believed_where_osm_says_nothing(forward, oneway) -> None:
+    """And it is the routing graph's direction too (OWNER-DECISIONS 216)."""
+    result = A.overlay(
+        {"highway": "residential"}, way_facts(one_way=True, oneway_forward=forward), length_m=120.0
+    )
+    assert result.tags["oneway"] == oneway
     assert result.sources["oneway"] == A.DC_AGENCY
+    assert result.routing == {"oneway": oneway}
+    assert result.disagreements == ()
+
+
+@pytest.mark.parametrize(
+    ("facts_kwargs", "length_m", "reason"),
+    [
+        (
+            {"lanes_by_direction": {"ib": 1, "ob": 0, "reversible": 1}, "oneway_forward": True},
+            753.0,
+            "reversible lanes",
+        ),
+        ({"oneway_forward": True}, 17.0, "junction stub"),
+        ({}, 200.0, "direction unknown"),
+    ],
+)
+def test_a_one_way_osm_does_not_tag_takes_row_b_s_exceptions(facts_kwargs, length_m, reason):
+    """OWNER-DECISIONS 216: the record's one-way is the routing direction, so it
+    is never written where the direction is a guess (the record does not say
+    which way the traffic runs), on a junction stub, or on reversible lanes; the
+    way stays as OSM leaves it, for the classifier and the graph alike."""
+    result = A.overlay(
+        {"highway": "residential"}, way_facts(one_way=True, **facts_kwargs), length_m=length_m
+    )
+    assert "oneway" not in result.tags
+    assert result.sources["oneway"] == A.SOURCE_DEFAULT
+    assert result.routing == {}
+    assert result.disagreements == (f"oneway: agency one-way, OSM two-way, kept ({reason})",)
 
 
 @pytest.mark.parametrize(
@@ -529,6 +561,7 @@ def test_a_district_two_way_does_not_undo_a_carriageway_s_one_way(tags, context,
     assert result.sources["oneway"] == A.SOURCE_OSM
     assert result.disagreements == (f"oneway: agency two-way, OSM one-way, kept ({reason})",)
     assert result.precedence == ()
+    assert result.routing == {}
 
 
 def test_a_district_two_way_makes_a_plain_one_way_street_two_way() -> None:
@@ -539,6 +572,8 @@ def test_a_district_two_way_makes_a_plain_one_way_street_two_way() -> None:
     assert result.sources["oneway"] == A.DC_AGENCY
     assert result.precedence == (A.ROW_TWO_WAY,)
     assert result.disagreements == ()
+    # Rewritten, not removed: the graph's tags are laid over OSM's.
+    assert result.routing == {"oneway": "no"}
     # Not where one of its blocks is one-way: the way runs on past the two-way one.
     blocks = [("a", facts(way="both"), True), ("b", facts(way="one", oneway_with=True), True)]
     mixed = A.overlay(
@@ -564,9 +599,69 @@ def test_another_agency_s_two_way_never_undoes_osm_s_one_way() -> None:
     city = A.WayFacts(
         agency=A.BALTIMORE_AGENCY, blocks=("b",), one_way=False, two_way_throughout=True
     )
-    result = A.overlay({"highway": "residential", "oneway": "yes"}, city)
+    result = A.overlay({"highway": "residential", "oneway": "yes"}, city, length_m=120.0)
     assert result.tags["oneway"] == "yes"
-    assert result.disagreements == ("oneway: agency two-way, OSM one-way",)
+    assert result.sources["oneway"] == A.SOURCE_OSM
+    assert result.routing == {}
+    assert result.precedence == ()
+
+
+@pytest.mark.parametrize("forward", [True, False])
+def test_baltimore_s_one_way_is_never_used_and_is_reported(forward) -> None:
+    """OWNER-DECISIONS 222: "Ignore it; keep OSM (Recommended)". The Baltimore
+    one-way field is never used for stress or routing; the difference goes into
+    the report. (Correctness review, blocker 1: W Cold Spring Ln 66418027 and
+    Broening Hwy 54675215 were made one-way with 4 lanes a direction.)"""
+    city = A.WayFacts(
+        agency=A.BALTIMORE_AGENCY,
+        blocks=("b",),
+        one_way=True,
+        oneway_forward=forward,
+        lanes_per_direction=4,
+    )
+    tags = {"highway": "primary", "lanes": "4", "maxspeed": "30 mph"}
+    result = A.overlay(tags, city, length_m=300.0)
+    assert "oneway" not in result.tags
+    assert result.tags["lanes"] == "4"
+    assert "lanes:forward" not in result.tags
+    assert result.sources["oneway"] == A.SOURCE_DEFAULT
+    assert result.sources["lanes"] == A.SOURCE_OSM
+    assert result.routing == {}
+    assert result.disagreements == (
+        "oneway: agency one-way, OSM two-way; not used (OWNER-DECISIONS 222)",
+        "lanes: agency 4 a direction, OSM 2; not used (OWNER-DECISIONS 222)",
+    )
+    assert classify(result.tags, urban=True).oneway is False
+
+
+def test_baltimore_s_lanes_are_never_used_but_its_speed_fills_a_gap() -> None:
+    """OWNER-DECISIONS 223: "Baltimore is a gap-filler only: ... speed where OSM
+    has none (184); one-way and lanes are never used (222)." The spec review:
+    Baltimore's lane count overrode OSM's."""
+    city = A.WayFacts(agency=A.BALTIMORE_AGENCY, blocks=("b",), lanes_per_direction=3, speed_mph=25)
+    result = A.overlay({"highway": "secondary", "lanes": "2"}, city, length_m=300.0)
+    assert result.tags["lanes"] == "2"
+    assert result.tags["maxspeed"] == "25 mph"
+    assert result.sources["maxspeed"] == A.BALTIMORE_AGENCY
+    assert result.sources["lanes"] == A.SOURCE_OSM
+    assert result.disagreements == (
+        "lanes: agency 3 a direction, OSM 1; not used (OWNER-DECISIONS 222)",
+    )
+    agreeing = A.overlay({"highway": "secondary", "lanes": "6"}, city, length_m=300.0)
+    assert agreeing.disagreements == ()
+    unlaned = A.overlay({"highway": "secondary"}, city, length_m=300.0)
+    assert "lanes" not in unlaned.tags
+    assert unlaned.sources["lanes"] == A.SOURCE_DEFAULT
+    # A Baltimore one-way the other way from OSM's is reported, never applied.
+    against = A.WayFacts(
+        agency=A.BALTIMORE_AGENCY, blocks=("b",), one_way=True, oneway_forward=False
+    )
+    reversed_ = A.overlay({"highway": "residential", "oneway": "yes"}, against, length_m=300.0)
+    assert reversed_.tags["oneway"] == "yes"
+    assert reversed_.routing == {}
+    assert reversed_.disagreements == (
+        "oneway: agency one-way the other way from OSM's; not used (OWNER-DECISIONS 222)",
+    )
 
 
 def test_a_reversed_osm_one_way_is_still_one_way() -> None:
@@ -592,7 +687,9 @@ def test_a_buffered_lane_is_a_lane_with_a_buffer_and_the_agency_s_width() -> Non
     )
     assert result.tags["cycleway:both"] == "lane"
     assert result.tags["cycleway:both:buffer"] == "yes"
-    assert result.tags["cycleway:both:width"] == "1.52"
+    # To the millimetre (review SF2): 1.52 m fell short of Furth's 15 ft reach
+    # beside a 10 ft parking lane, where 5 ft meets it exactly.
+    assert result.tags["cycleway:both:width"] == "1.524"
 
 
 def test_a_conventional_lane_in_one_direction_is_a_lane_on_one_side() -> None:
@@ -615,6 +712,43 @@ def test_a_contraflow_lane_is_an_opposite_lane_on_the_other_side() -> None:
         way_facts(bike={"ib": A.BIKE_LANE}, contraflow=True),
     )
     assert result.tags["cycleway:left"] == "opposite_lane"
+    # OSM's own one-way: nothing for the graph to take.
+    assert result.routing == {}
+
+
+@pytest.mark.parametrize("forward", [True, False])
+def test_a_one_way_the_district_makes_keeps_its_contraflow_lane_for_routing(forward) -> None:
+    """OWNER-DECISIONS 216 with 192: where the record makes a way one-way and
+    flags a contraflow lane, the graph takes the lane as the reverse direction
+    (which the standard graph rides and the no-trail graph closes)."""
+    ahead, behind = ("ob", "ib") if forward else ("ib", "ob")
+    result = A.overlay(
+        {"highway": "residential", "oneway": "no"},
+        way_facts(
+            one_way=True,
+            oneway_forward=forward,
+            direction_known=True,
+            bike_forward=A.BIKE_LANE,
+            bike_backward=A.BIKE_LANE,
+            bike={ahead: A.BIKE_LANE, behind: A.BIKE_LANE},
+            contraflow=True,
+        ),
+        length_m=200.0,
+    )
+    oneway = "yes" if forward else "-1"
+    assert result.routing == {
+        "oneway": oneway,
+        "oneway:bicycle": "no",
+        "cycleway:left": "opposite_lane",
+    }
+    assert result.tags["oneway"] == oneway
+    # And without the flag, no contraflow is routed.
+    plain = A.overlay(
+        {"highway": "residential", "oneway": "no"},
+        way_facts(one_way=True, oneway_forward=forward),
+        length_m=200.0,
+    )
+    assert plain.routing == {"oneway": oneway}
 
 
 def test_a_district_record_of_no_facility_removes_osm_s_painted_lane() -> None:
@@ -969,12 +1103,16 @@ def test_an_agency_two_way_never_makes_an_untagged_way_one_way() -> None:
 )
 def test_baltimore_s_one_way_does_not_undo_explicit_osm_two_way_tagging(tags) -> None:
     """Review r1: Key Highway, mapped 3 and 2 lanes, was read as one-way. Outside
-    the District a mapper's explicit two-way stands; it is counted."""
+    the District a mapper's explicit two-way stands; it is counted (and since
+    OWNER-DECISIONS 222 Baltimore's one-way is never used at all)."""
     city = A.WayFacts(agency=A.BALTIMORE_AGENCY, blocks=("b",), one_way=True, oneway_forward=True)
     result = A.overlay(tags, city, length_m=200.0)
     assert result.tags.get("oneway") == tags.get("oneway")
     assert result.sources["oneway"] == A.SOURCE_OSM
-    assert result.disagreements == ("oneway: agency one-way, OSM two-way",)
+    assert result.routing == {}
+    assert result.disagreements == (
+        "oneway: agency one-way, OSM two-way; not used (OWNER-DECISIONS 222)",
+    )
 
 
 @pytest.mark.parametrize("forward", [True, False])
@@ -985,6 +1123,8 @@ def test_a_district_one_way_overrides_explicit_osm_two_way_tagging(forward) -> N
     assert result.tags["oneway"] == ("yes" if forward else "-1")
     assert result.sources["oneway"] == A.DC_AGENCY
     assert result.precedence == (A.ROW_ONE_WAY,)
+    # The routing graph's direction too (OWNER-DECISIONS 216).
+    assert result.routing == {"oneway": "yes" if forward else "-1"}
     # The block records no lanes: the count OSM gives the traffic's direction.
     assert result.tags["lanes"] == ("2" if forward else "1")
     assert "lanes:forward" not in result.tags
@@ -1011,6 +1151,7 @@ def test_the_district_s_one_way_exceptions(facts_kwargs, length_m, reason) -> No
     )
     assert result.tags["oneway"] == "no"
     assert result.precedence == ()
+    assert result.routing == {}
     assert result.disagreements == (f"oneway: agency one-way, OSM two-way, kept ({reason})",)
 
 

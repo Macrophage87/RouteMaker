@@ -360,8 +360,10 @@ CONTRAFLOW_FORMS = {
         "bicycle:conditional": "yes @ (Sa,Su)",
     },
     # How DC maps a contraflow lane, and the form the Roadway Block overlay
-    # writes (routemaker.agency_roads), though only into the tags classification
-    # reads (`class_tags_by_way`), never into a variant's routing tags.
+    # writes (routemaker.agency_roads): into the tags classification reads
+    # (`class_tags_by_way`), and into every variant's routing tags where the
+    # District's record made the way one-way (OWNER-DECISIONS 216,
+    # `variants.agency_routing_tags`).
     "dc-contraflow-lane": {
         "oneway:bicycle": "no",
         "cycleway:left": "opposite_lane",
@@ -847,3 +849,67 @@ def test_the_remap_derives_no_signal() -> None:
     source = (REPO / "lua" / "routemaker_remap.lua").read_text()
     assert "forward_signal" not in source and "backward_signal" not in source
     assert "traffic_signals" not in source
+
+
+# OWNER-DECISIONS 216 ("Enforce on all maps"): the District's one-way record is
+# every routing graph's direction. The overlay's routing decision
+# (`agency_roads.Overlay.routing`), laid over the way's OSM tags
+# (`variants.agency_routing_tags`) and handed to each variant, read back through
+# the shipped entry point.
+DISTRICT_DIRECTIONS = {
+    # Row B: OSM's explicit two-way, the record one-way; OSM's lane each side,
+    # which upstream would open both ways on a one-way, is not a contraflow lane.
+    "row-b": (
+        {"highway": "secondary", "oneway": "no", "cycleway:both": "lane"},
+        {"oneway": "yes"},
+        ("true", "false"),
+        ("true", "false"),
+    ),
+    "row-b-against-the-line": (
+        {"highway": "secondary", "oneway": "no"},
+        {"oneway": "-1"},
+        ("false", "true"),
+        ("false", "true"),
+    ),
+    # A one-way OSM does not tag, the record's.
+    "filled": ({"highway": "residential"}, {"oneway": "yes"}, ("true", "false"), ("true", "false")),
+    # Row C4: OSM's one-way, the record two-way.
+    "row-c4": (
+        {"highway": "residential", "oneway": "yes", "cycleway:right": "lane"},
+        {"oneway": "no"},
+        ("true", "true"),
+        ("true", "true"),
+    ),
+    # The record's one-way with its flagged contraflow lane: ridden against the
+    # traffic on the standard graph, closed on the no-trail graph (items 192, 219).
+    "contraflow": (
+        {"highway": "residential", "oneway": "no"},
+        {"oneway": "yes", "oneway:bicycle": "no", "cycleway:left": "opposite_lane"},
+        ("true", "true"),
+        ("true", "false"),
+    ),
+    "contraflow-against-the-line": (
+        {"highway": "residential", "oneway": "no"},
+        {"oneway": "-1", "oneway:bicycle": "no", "cycleway:left": "opposite_lane"},
+        ("true", "true"),
+        ("false", "true"),
+    ),
+}
+
+
+@pytest.mark.parametrize("case", sorted(DISTRICT_DIRECTIONS))
+def test_routing_direction_follows_the_district_s_record(case) -> None:
+    """(forward, backward) along the way's geometry on the standard, weekend and
+    e-bike graphs, and on the no-trail graph; and OSM's own reading differs, so
+    the test can tell."""
+    from pipeline.variants import Variant, agency_routing_tags, inject
+
+    osm, routing, others, no_trail = DISTRICT_DIRECTIONS[case]
+    changes = agency_routing_tags(dict(osm), routing)
+    graph = {**osm, **changes}
+    # Rewritten, never removed: every OSM key is still there.
+    assert set(osm) <= set(graph)
+    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+        assert _bike_access(inject(variant, dict(graph), 7)) == others, (case, variant.value)
+    assert _bike_access(inject(Variant.NO_TRAIL, dict(graph), 7)) == no_trail, case
+    assert _bike_access(osm) != others or _bike_access(osm) != no_trail, "the control"

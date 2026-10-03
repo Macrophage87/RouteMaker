@@ -21,6 +21,17 @@ end to end, not alongside. Same-named ways that close into a short ring are
 circles and loops, not divided roads (`small_loops`, review r1), and a partner
 must be alongside at MIN_ALONGSIDE points. Memory on the region: 133 MiB for
 56,352 candidates, 19 s.
+
+A second, wider reading guards the District's two-way record (OWNER-DECISIONS
+190 row C4, and 216, which makes it the routing direction): a block is the
+whole road, so a two-way record must never make one carriageway two-way.
+`carriageway_pairs` pairs a one-way with an opposite one-way of the same street
+alongside it within C4_PAIR_M, and reads the street's name without the
+District's quadrant (South Capitol Street is "Southwest" on one carriageway and
+"Southeast" on the other, 12 m apart; E Street NW's carriageways are 57 to 65 m
+apart and H Street NW's 52 m, past PAIR_M; combined correctness review). It is
+not the stress reading: item 109's divided-road flag keeps PAIR_M and the
+names as mapped.
 """
 
 from __future__ import annotations
@@ -47,8 +58,29 @@ LOOP_MAX_M = 1_000.0
 MIN_ALONGSIDE = 2
 
 
-def _candidate(tags: dict[str, str]) -> bool:
-    return tags.get("highway") in DIVIDED_HIGHWAY and is_oneway(tags) and bool(tags.get("name"))
+# The C4 guard's band: a carriageway pair further apart than PAIR_M, up to this
+# (E Street NW at 57 to 65 m, South Capitol Street SW 910656606 and its SE
+# carriageway 88 m apart at the Suitland Parkway junction). Wide on purpose: what
+# the guard can get wrong is to leave a one-way OSM street one-way that the
+# District records as two-way, which routes no one against traffic.
+C4_PAIR_M = 100.0
+# The C4 guard's road classes: the divided ones and residential boulevards.
+C4_HIGHWAY = DIVIDED_HIGHWAY | {"residential"}
+# The District's quadrants as OSM spells them at the end of a street's name.
+QUADRANTS = (" Northwest", " Northeast", " Southwest", " Southeast", " NW", " NE", " SW", " SE")
+
+
+def street_name(name: str) -> str:
+    """A street's name without the District's quadrant: the one street either
+    side of a quadrant line (South Capitol Street Southwest and Southeast)."""
+    for quadrant in QUADRANTS:
+        if name.endswith(quadrant):
+            return name[: -len(quadrant)]
+    return name
+
+
+def _candidate(tags: dict[str, str], highways=DIVIDED_HIGHWAY) -> bool:
+    return tags.get("highway") in highways and is_oneway(tags) and bool(tags.get("name"))
 
 
 def _steps(coordinates, reverse: bool):
@@ -82,12 +114,13 @@ def _end(point) -> tuple[float, float]:
     return round(point[0], 7), round(point[1], 7)
 
 
-def small_loops(ways) -> set[int]:
+def small_loops(ways, name_of=None) -> set[int]:
     """Same-named one-way ways that close on each other into a ring under
     LOOP_MAX_M round: a circle (Ward, Tenley, Blair Circles) or a one-way loop
     road (Americana Circle), whose two sides face each other across the ring
     without being a divided road (review r1). A short split round a traffic
     island closes the same way and is no divided arterial either."""
+    name_of = name_of or (lambda tags: tags["name"])
     parent: dict[int, int] = {}
 
     def find(i):
@@ -102,7 +135,7 @@ def small_loops(ways) -> set[int]:
         parent[way.osm_id] = way.osm_id
         length[way.osm_id] = _length_m(way.coordinates)
         for point in (way.coordinates[0], way.coordinates[-1]):
-            ends[(way.tags["name"], *_end(point))].append(way.osm_id)
+            ends[(name_of(way.tags), *_end(point))].append(way.osm_id)
     for ids in ends.values():
         for other in ids[1:]:
             parent[find(other)] = find(ids[0])
@@ -123,42 +156,65 @@ def small_loops(ways) -> set[int]:
 def carriageways(ways: Iterable) -> set[int]:
     """The ids of the ways (anything with osm_id, tags and coordinates) that
     are one carriageway of a divided road."""
-    candidates = [w for w in ways if len(w.coordinates) >= 2 and _candidate(w.tags)]
-    loops = small_loops(candidates)
+    return _paired(ways, DIVIDED_HIGHWAY, lambda tags: tags["name"], PAIR_M)
+
+
+def carriageway_pairs(ways: Iterable, names: Iterable[str] | None = None) -> set[int]:
+    """The ways that are one of a pair of opposite one-way carriageways of one
+    street, read widely for the C4 guard (the module docstring): C4_HIGHWAY,
+    the name without its quadrant (`street_name`), up to C4_PAIR_M apart.
+    `names`, where given, limits the search to those streets, which is what the
+    guard needs and a fraction of the region's one-ways."""
+    wanted = None if names is None else {street_name(name) for name in names}
+
+    def name_of(tags):
+        return street_name(tags["name"])
+
+    if wanted is not None:
+        ways = [w for w in ways if w.tags.get("name") and name_of(w.tags) in wanted]
+    return _paired(ways, C4_HIGHWAY, name_of, C4_PAIR_M)
+
+
+def _paired(ways: Iterable, highways, name_of, pair_m: float) -> set[int]:
+    candidates = [w for w in ways if len(w.coordinates) >= 2 and _candidate(w.tags, highways)]
+    loops = small_loops(candidates, name_of)
     candidates = [w for w in candidates if w.osm_id not in loops]
     cells: dict[tuple, list] = defaultdict(list)
     for way in candidates:
-        name = way.tags["name"]
+        name = name_of(way.tags)
         for lon, lat, ux, uy in _steps(way.coordinates, way.tags.get("oneway") == "-1"):
             key = (name, int(lon // CELL_DEG), int(lat // CELL_DEG))
             cells[key].append((way.osm_id, lon, lat, ux, uy))
     found: set[int] = set()
     for way in candidates:
         steps = _steps(way.coordinates, way.tags.get("oneway") == "-1")
-        if _has_partner(way.osm_id, way.tags["name"], steps, cells):
+        if _has_partner(way.osm_id, name_of(way.tags), steps, cells, pair_m):
             found.add(way.osm_id)
     return found
 
 
-def _has_partner(osm_id, name, steps, cells) -> bool:
+def _has_partner(osm_id, name, steps, cells, pair_m: float = PAIR_M) -> bool:
     """Alongside an opposite same-named way at MIN_ALONGSIDE sample points, or
     at every point of a way too short to have that many."""
     steps = list(steps)
     need = min(MIN_ALONGSIDE, len(steps))
     hits = 0
     for lon, lat, ux, uy in steps:
-        if _alongside(osm_id, name, lon, lat, ux, uy, cells):
+        if _alongside(osm_id, name, lon, lat, ux, uy, cells, pair_m):
             hits += 1
             if hits >= need:
                 return True
     return False
 
 
-def _alongside(osm_id, name, lon, lat, ux, uy, cells) -> bool:
+def _alongside(osm_id, name, lon, lat, ux, uy, cells, pair_m: float = PAIR_M) -> bool:
     k = math.cos(math.radians(lat))
     cx, cy = int(lon // CELL_DEG), int(lat // CELL_DEG)
-    for ix in (cx - 1, cx, cx + 1):
-        for iy in (cy - 1, cy, cy + 1):
+    # The cells within the band each way: one for PAIR_M, more for a wider band.
+    rx = max(1, math.ceil(pair_m / (CELL_DEG * M_PER_DEG_LAT * k)))
+    ry = max(1, math.ceil(pair_m / (CELL_DEG * M_PER_DEG_LAT)))
+    for ix in range(cx - rx, cx + rx + 1):
+        for iy in range(cy - ry, cy + ry + 1):
             for other, olon, olat, ox, oy in cells.get((name, ix, iy), ()):
                 if other == osm_id or ux * ox + uy * oy > OPPOSITE_COS:
                     continue
@@ -169,6 +225,6 @@ def _alongside(osm_id, name, lon, lat, ux, uy, cells) -> bool:
                 # head on at the junction, with no lateral offset.
                 lateral = abs(ex * uy - ey * ux)
                 along = abs(ex * ux + ey * uy)
-                if MIN_LATERAL_M <= lateral <= PAIR_M and along <= STEP_M:
+                if MIN_LATERAL_M <= lateral <= pair_m and along <= STEP_M:
                     return True
     return False

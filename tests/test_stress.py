@@ -22,6 +22,7 @@ from routemaker.stress import (
     UNPAVED_RURAL_DEFAULT_MPH,
     VOLUME_BUSY,
     VOLUME_QUIET,
+    WIDTH_TOLERANCE_M,
     Stress,
     classify,
     is_rough,
@@ -2532,6 +2533,18 @@ class TestParkingWidthBesideABikeLane:
     def test_a_five_foot_lane_beside_eight_feet_of_parking_is_still_a_door_zone(self) -> None:
         # 1.52 m + 2.44 m = 3.96 m (13 ft), under 15 ft.
         assert self.tier(1.52, 2.44) == 2
+
+    def test_a_reach_of_exactly_fifteen_feet_meets_furths_criterion(self) -> None:
+        """Combined correctness review, SF2: a 5 ft lane beside a 10 ft parking
+        lane is exactly 15 ft. Read at 1.52 m it came to 4.568 m, 4 mm under
+        4.572, and fell to the narrow row (LTS 2 for LTS 1 on 13 DC ways). The
+        overlay writes the width to the millimetre and the criterion is met
+        within WIDTH_TOLERANCE_M; a reach a centimetre short is not."""
+        ten_feet = 10 * 0.3048
+        assert self.tier(1.524, ten_feet) == 1
+        assert self.tier(1.52, ten_feet) == 1
+        assert self.tier(1.51, ten_feet) == 2
+        assert 0 < WIDTH_TOLERANCE_M < 0.01
 
     def test_a_lane_with_nothing_parked_beside_it_is_judged_on_its_own_width(self) -> None:
         # Parking tagged absent: the criterion is 1.7 m, and the parking width given
