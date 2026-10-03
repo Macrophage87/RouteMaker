@@ -1888,6 +1888,17 @@ into the trip. The 6 s is shared by the legs that can run, by straight-line span
 what is left, at least 2.5 s each; a leg's unused time goes to the next. A taken
 splice is read once as a whole for the answer to reuse.
 
+Each leg's own route is read first (its trace and junctions, what the leg is
+measured against), on an allowance of its own, `refine.SEEK_LEG_READ_S` (2 s),
+which the budget is extended by but never past `REFINE_TRACE_RESERVE_S`; the leg's
+share is worked out after it. And a leg that runs out of its share ("time") leaves
+the rest to the legs after it; only a table that cannot be read ends the seek for
+every leg. The combined correctness review found the seek never ran on Bethesda -
+Silver Spring - College Park at Trailmaxxing 100 (6 of 6 runs): leg 0's share was
+the 2.5 s floor, its reading took 0.45-0.6 s and its table 0.13 s, which left it
+under `SEEK_ROUND_MIN_S`, and the loop stopped there before the longer leg 1. On
+the live routers since, 3 of 3 runs sought both legs (leg 1 asked one corridor).
+
 **Measured**, Trailmaxxing at 100 (stress 100, Cross), the twelve trips, each cell
 miles / miles of LTS 3+ / trail miles (path and protected) / ratio to the direct
 route / red and orange markers / plan time:

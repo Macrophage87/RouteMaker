@@ -2035,9 +2035,10 @@ class TestSeekLegByLeg:
 
         def slow(trip, ctx, deadline):
             got = read(trip, ctx, deadline)
-            if len(trip["legs"]) == 1 and trip["legs"][0]["shape"].startswith("o"):
+            shape = trip["legs"][0]["shape"]
+            if len(trip["legs"]) == 1 and shape.startswith("o"):
                 allowances.append(deadline.at - now[0])
-                now[0] += read_s
+                now[0] += read_s.get(shape, 0.0) if isinstance(read_s, dict) else read_s
                 if now[0] > deadline.at:
                     raise routing.DeadlineExceeded("the leg's reading ran out")
             return got
@@ -2078,6 +2079,14 @@ class TestSeekLegByLeg:
     def test_a_reading_past_its_allowance_skips_that_leg_only(self, monkeypatch) -> None:
         world, _kept, info, _a = self.slow_legs(monkeypatch, read_s=refine.SEEK_LEG_READ_S + 0.1)
         assert self.tables == [] and world.asked() == [] and info["seek"]["limited"] == "time"
+        # Only the first leg's reading runs past its allowance: the second is sought.
+        self.tables.clear()
+        world, _kept, info, _a = self.slow_legs(
+            monkeypatch, read_s={"o1": refine.SEEK_LEG_READ_S + 0.1}
+        )
+        assert self.tables == [1] and len(world.asked()) == 1
+        assert [t["leg"] for t in info["seek"]["tried"]] == [1]
+        assert info["seek"]["limited"] == "time"
 
     def test_the_readings_never_run_into_the_time_kept_for_the_answer(self, monkeypatch) -> None:
         # 3 s left past the reserve: the first leg's reading may have them, not

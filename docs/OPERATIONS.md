@@ -520,8 +520,12 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   nothing before (above). A plan with stops runs the
   seek once per leg of at least 1.2 mi: one table read per leg (each up to 30,000
   rows) and, per candidate, one route for the leg alone with its trace and `/locate`s,
-  within the same 6 s as before, plus one reading of the whole trip when a leg is
-  taken; the spliced trip is then held to the whole trip's Traffic-wins allowance
+  within the same 6 s as before, plus each leg's reading of its own route (at most
+  2 s a leg, `refine.SEEK_LEG_READ_S`, added to the budget and never into the time
+  kept for the answer's traces; measured 0.45-0.6 s), plus one reading of the whole
+  trip when a leg is taken. A leg that runs out of its share leaves the rest to the
+  legs after it (until the combined correctness review it ended the seek, which on
+  Bethesda - Silver Spring - College Park meant the seek never asked anything); the spliced trip is then held to the whole trip's Traffic-wins allowance
   (2% and 164 ft, 50 m), as each leg is to its own. Measured one stop +4.8 s and three
   stops +4.8 s over a plan without the seek
   (three stops: the exclusion search had used the time, and the seek added only its
