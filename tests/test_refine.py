@@ -2302,3 +2302,249 @@ class TestSeekWiring:
         # And an unread candidate scores no better for having no junctions read.
         unread = analysis("u", "1" * 40, events=None)
         assert unread.events is None
+
+
+# --- OWNER-DECISIONS 250: LTS 4 on the stress-averse rides ---------------------------
+#
+# The owner, 2026-10-03: "For trail maxxing, weight LTS4 roads as a much higher
+# penalty. It's putting me on dangerous roads just for a little more trails."
+
+AVERSE = presets.EXPOSURE_STRESS_AVERSE
+
+
+def averse_context(**kw) -> refine.Context:
+    ctx = context(**kw)
+    ctx.exposure = AVERSE
+    return ctx
+
+
+def weighed(a: refine.Analysis, exposure: presets.Exposure = AVERSE) -> refine.Analysis:
+    """The reading's exposure at these weights, as `analyse` would have read it."""
+    w = exposure.weights
+    a.exposure_m = sum(
+        p.metres * w.get(tier, 0.0) for p, (tier, _k) in zip(a.pieces, a.classes, strict=True)
+    )
+    return a
+
+
+class TestStressAverseWeights:
+    def test_trailmaxxing_and_cargo_with_passengers_weigh_lts4_at_8_and_avoid_at_16(self) -> None:
+        for name, carrying in (("trailmaxxing", None), ("cargo", presets.CARRYING_PEOPLE)):
+            exposure = presets.exposure_for(name, carrying)
+            assert exposure.weights == {"3": 1.0, "4": 8.0, "5": 16.0}, name
+            assert exposure.hold_lts4, name
+
+    def test_every_other_ride_keeps_1_2_3_and_no_hold(self) -> None:
+        for name in presets.PRESETS:
+            if name == "trailmaxxing":
+                continue
+            exposure = presets.exposure_for(name, presets.CARRYING_CARGO)
+            assert exposure.weights == {"3": 1.0, "4": 2.0, "5": 3.0}, name
+            assert not exposure.hold_lts4, name
+        # Cargo Bike's default choice is carrying cargo.
+        assert presets.exposure_for("cargo") == presets.EXPOSURE_STANDARD
+        assert refine.EXPOSURE_WEIGHTS == {"3": 1.0, "4": 2.0, "5": 3.0}
+
+    def test_it_is_a_preset_field_not_a_global(self) -> None:
+        assert presets.PRESETS["trailmaxxing"].exposure is AVERSE
+        assert presets.PRESETS["cargo"].exposure is presets.EXPOSURE_STANDARD
+        assert presets.PRESETS["cargo"].carrying_exposure[presets.CARRYING_PEOPLE] is AVERSE
+        assert presets.PRESETS["default"].carrying_exposure is None
+
+    def test_the_reading_weighs_by_the_plans_exposure(self, monkeypatch) -> None:
+        classes = [("3", "none"), ("4", "none"), ("5", "none"), ("1", "none")]
+        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(4)]
+        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
+        monkeypatch.setattr(
+            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
+        )
+        monkeypatch.setattr(routing, "classify", lambda p, when, roadway_only=False: classes)
+        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
+        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
+        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
+        trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.4, "time": 100.0, "cost": 1.0}}
+        standard = context()
+        assert refine.analyse(trip, standard, standard.deadline).exposure_m == 600.0
+        averse = averse_context()
+        assert refine.analyse(trip, averse, averse.deadline).exposure_m == 2500.0
+
+    def test_the_seek_weighs_the_busy_road_it_replaces_by_them(self) -> None:
+        a = analysis("a", "1345")
+        busy, _trail, _traced = refine.route_spans(a, weights=AVERSE.weights)
+        assert [w for _a, _b, w in busy] == [1.0, 8.0, 16.0]
+        assert [w for _a, _b, w in refine.route_spans(a)[0]] == [1.0, 2.0, 3.0]
+
+
+class TestLts4Metres:
+    def test_each_legs_lts4_and_avoid_metres(self) -> None:
+        a = analysis("a", "1445" + "3333" + "5114")
+        a.via_m = [400.0, 800.0]
+        assert refine.lts4_by_leg(a) == [300.0, 0.0, 200.0]
+        a.via_m = [450.0]
+        assert refine.lts4_by_leg(a) == [300.0, 200.0]
+        a.via_m = []
+        assert refine.lts4_by_leg(a) == [500.0]
+
+    def test_a_piece_across_a_stop_counts_on_each_side(self) -> None:
+        a = analysis("a", "141")
+        a.via_m = [150.0]
+        assert refine.lts4_by_leg(a) == [50.0, 50.0]
+
+    def test_the_hold_is_the_stress_averse_rides_alone(self) -> None:
+        more = analysis("m", "1" * 9 + "4")
+        assert refine.more_lts4(more, [0.0], averse_context())
+        assert not refine.more_lts4(more, [0.0], context())
+
+    def test_as_much_lts4_is_fine_more_is_not(self) -> None:
+        ctx = averse_context()
+        same = analysis("s", "1" * 9 + "4")
+        assert not refine.more_lts4(same, [100.0], ctx)
+        assert not refine.more_lts4(same, [100.0 - refine.LTS4_SLACK_M], ctx)
+        assert refine.more_lts4(same, [100.0 - refine.LTS4_SLACK_M - 0.01], ctx)
+        assert not refine.more_lts4(analysis("q", "1" * 10), [0.0], ctx)
+
+    def test_each_leg_as_well_as_the_whole_trip(self) -> None:
+        """Moving LTS 4 from one leg into another is more on that leg, though the
+        trip's total is the same."""
+        ctx = averse_context()
+        moved = analysis("m", "1111" + "4441")
+        moved.via_m = [400.0]
+        assert refine.more_lts4(moved, [300.0, 0.0], ctx)
+        assert not refine.more_lts4(moved, [0.0, 300.0], ctx)
+        # Legs that do not match the reference's: the whole trip alone.
+        assert not refine.more_lts4(moved, [300.0], ctx)
+        assert refine.more_lts4(moved, [299.0 - refine.LTS4_SLACK_M], ctx)
+
+    def test_no_reference_holds_nothing(self) -> None:
+        assert not refine.more_lts4(analysis("m", "4444"), [], averse_context())
+
+
+# The router's own route: 1,000 m of LTS 3 and no LTS 4.
+ORIG = "1" * 10 + "3" * 10 + "1" * 20
+# A candidate with one stretch of LTS 4 for less LTS 3: inside the exposure
+# allowance even at 8 (800 + 200 against 1,000), and cheaper.
+TRADE = "1" * 10 + "4" + "3" * 2 + "1" * 27
+
+
+class TestTheHoldInTheSearch:
+    def run(self, monkeypatch, ctx, candidate_tiers=TRADE, cost_s=3000.0, **kw):
+        orig = weighed(analysis("o", ORIG, cost_s=4000.0), ctx.exposure)
+        cand = weighed(analysis("c", candidate_tiers, cost_s=cost_s, **kw), ctx.exposure)
+        World(monkeypatch, {"o": orig, "c": cand}, [trip_of("c", 4.0)] * 4)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        return kept["legs"][0]["shape"], info, cand
+
+    def test_a_route_with_more_lts4_is_never_taken_on_trailmaxxing(self, monkeypatch) -> None:
+        shape, info, cand = self.run(monkeypatch, averse_context(rate=10.0))
+        assert cand.exposure_m <= refine._allowance(1000.0), "inside the exposure guard"
+        assert shape == "o"
+        assert (info["lts4_before_m"], info["lts4_after_m"]) == (0.0, 0.0)
+
+    def test_the_same_route_is_taken_on_a_ride_that_does_not_hold_it(self, monkeypatch) -> None:
+        shape, info, _cand = self.run(monkeypatch, context(rate=10.0))
+        assert shape == "c"
+        assert "lts4_before_m" not in info and "lts4_after_m" not in info
+
+    def test_trail_cannot_buy_it(self, monkeypatch) -> None:
+        """A mile of trail for 100 m of LTS 4: the score is far better, the hold
+        refuses it all the same."""
+        ctx = averse_context(rate=10.0, trail_credit=0.95)
+        shape, _info, cand = self.run(monkeypatch, ctx, trails=" " * 14 + "t" * 26)
+        orig = weighed(analysis("o", ORIG, cost_s=4000.0))
+        assert cand.score(ctx) < orig.score(ctx) - refine.IMPROVEMENT_EPS_S
+        assert shape == "o"
+
+    def test_a_calmer_route_with_no_more_lts4_is_still_taken(self, monkeypatch) -> None:
+        shape, info, _cand = self.run(monkeypatch, averse_context(rate=10.0), "1" * 40)
+        assert shape == "c"
+
+    def test_less_lts4_is_taken_and_said(self, monkeypatch) -> None:
+        ctx = averse_context(rate=10.0)
+        orig = weighed(analysis("o", "1" * 10 + "4" * 3 + "1" * 27, cost_s=4000.0))
+        cand = weighed(analysis("c", "1" * 10 + "4" + "3" * 2 + "1" * 27, cost_s=4000.0))
+        World(monkeypatch, {"o": orig, "c": cand}, [trip_of("c", 4.0)] * 4)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "c"
+        assert (info["lts4_before_m"], info["lts4_after_m"]) == (300.0, 100.0)
+
+    def test_the_wide_search_holds_it_too(self, monkeypatch) -> None:
+        ctx = averse_context(rate=0.0)
+        ctx.request["locations"] = [
+            {"lon": BASE[0], "lat": BASE[1]},
+            {"lon": BASE[0] + 0.1, "lat": BASE[1]},
+        ]
+        ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.1, BASE[1]]]
+        ctx.wide = True
+        orig = weighed(analysis("o", ORIG, cost_s=4000.0))
+        wide = weighed(analysis("w", TRADE, cost_s=1000.0, shift=100))
+        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 5)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "o" and info["wide"]["taken"] is False
+        # And takes it where the ride does not hold LTS 4.
+        ctx.exposure = presets.EXPOSURE_STANDARD
+        ctx.analyses.clear()
+        World(monkeypatch, {"o": orig, "w": wide}, [trip_of("w", 4.0)] * 5)
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        assert kept["legs"][0]["shape"] == "w"
+
+
+class TestTheHoldInTheSeek(TestTrailSeek):
+    """The seek's candidates, one leg and whole trip (TestTrailSeek's world)."""
+
+    def run(self, monkeypatch, analyses, routes, ctx=None):
+        ctx = ctx or self.seek_context()
+        ctx.exposure = AVERSE
+        world = SeekWorld(monkeypatch, {"o": weighed(self.orig()), **analyses}, [NO_ROUTE, *routes])
+        kept, info = refine.refine(trip_of("o", 4.0), ctx)
+        world.requests = [r for r in world.requests if asks_through(r)]
+        return world, kept["legs"][0]["shape"], info
+
+    def test_a_trail_candidate_with_more_lts4_is_refused(self, monkeypatch) -> None:
+        cand = weighed(analysis("t", TRADE, cost_s=100.0, shift=100, trails=" " * 14 + "t" * 26))
+        _w, shape, info = self.run(monkeypatch, {"t": cand}, [trip_of("t", 4.0)])
+        assert shape == "o"
+        assert info["seek"]["tried"][0]["outcome"] == "more_lts4"
+        assert info["seek"]["taken"] is False
+
+    def test_one_with_none_is_taken(self, monkeypatch) -> None:
+        cand = weighed(analysis("t", "1" * 40, cost_s=3000.0, shift=100))
+        _w, shape, info = self.run(monkeypatch, {"t": cand}, [trip_of("t", 4.0)])
+        assert shape == "t" and info["seek"]["tried"][0]["outcome"] == "taken"
+
+
+class TestTheHoldLegByLeg(TestSeekLegByLeg):
+    def plan(self, monkeypatch, analyses, routes, legs=2, ctx=None):
+        ctx = ctx or self.leg_context(legs)
+        ctx.exposure = AVERSE
+        return super().plan(monkeypatch, analyses, routes, legs, ctx)
+
+    def test_a_leg_with_more_lts4_than_its_own_first_is_refused(self, monkeypatch) -> None:
+        t1 = analysis("t1", "1" * 39 + "4", cost_s=100.0)
+        analyses = {"t1": t1, "t2": self.calm(2), "o1+t2": whole_of(leg_orig(1), leg_orig(2))}
+        routes = [one_leg("t1", 9.0, 3000.0), one_leg("t2", 9.0, 3000.0)]
+        _w, kept, info = self.plan(monkeypatch, analyses, routes)
+        assert [t["outcome"] for t in info["seek"]["tried"]] == ["more_lts4", "taken"]
+        assert [leg["shape"] for leg in kept["legs"]] == ["o1", "t2"]
+
+    def test_the_whole_trip_with_more_lts4_is_refused(self, monkeypatch) -> None:
+        """Each leg within its own, the spliced trip read with more (a trace
+        reading the joins differently): not taken."""
+        whole = whole_of(leg_orig(1), leg_orig(2))
+        spliced = analysis("t1+t2", "1" * 79 + "4", cost_s=6000.0)
+        spliced.via_m = [4000.0]
+        spliced.exposure_m = whole.exposure_m
+        analyses = {"t1": self.calm(1), "t2": self.calm(2), "t1+t2": spliced}
+        analyses["t1+o2"] = whole
+        routes = [one_leg("t1", 9.0, 3000.0), one_leg("t2", 9.0, 3000.0)]
+        _w, kept, info = self.plan(monkeypatch, analyses, routes)
+        assert info["seek"]["whole_trip"] == "more_lts4"
+        assert info["seek"]["taken"] is False
+        assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
+
+
+# These two borrow the seek tests' worlds (their fixtures and helpers), not their tests.
+for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg):
+    for _name in dir(_cls):
+        if _name.startswith("test_") and _name not in vars(_cls):
+            setattr(_cls, _name, None)

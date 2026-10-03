@@ -1274,6 +1274,7 @@ def plan(
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
         trail_credit=presets.trail_credit_for(preset_name, stress_dial),
+        exposure=presets.exposure_for(preset_name, dials.carrying),
     )
     refined = None
     refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline)

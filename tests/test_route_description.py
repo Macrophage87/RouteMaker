@@ -423,3 +423,36 @@ class TestOverviewInTheAnswer:
         assert "description_overview" in schema["properties"]
         assert "description_overview" not in schema.get("required", [])
         assert api.RouteOut.model_fields["description_overview"].default is None
+
+
+@db
+@pytest.mark.usefixtures("arterial")
+class TestTheSearchIsHandedTheRidesExposure:
+    """OWNER-DECISIONS 250: the plan hands the calm search its ride's exposure
+    weights and LTS 4 hold (`presets.exposure_for`): Trailmaxxing's and Cargo
+    with passengers', 1, 8 and 16 with the hold; every other ride's 1, 2, 3."""
+
+    @pytest.mark.parametrize(
+        ("dials", "averse"),
+        [
+            ({"preset": "trailmaxxing"}, True),
+            ({"preset": "cargo", "carrying": "people"}, True),
+            ({"preset": "cargo", "carrying": "cargo"}, False),
+            ({"preset": "default"}, False),
+            ({"preset": "default", "stress": 100}, False),
+        ],
+    )
+    def test_the_plan_s_context(self, client, router, monkeypatch, dials, averse):
+        from core import refine
+
+        router(named_world())
+        seen = []
+
+        def spy(trip, ctx):
+            seen.append(ctx.exposure)
+            return trip, None
+
+        monkeypatch.setattr(refine, "refine", spy)
+        assert post(client, {**good_body(), **dials}).status_code == 200
+        expected = presets.EXPOSURE_STRESS_AVERSE if averse else presets.EXPOSURE_STANDARD
+        assert seen == [expected]

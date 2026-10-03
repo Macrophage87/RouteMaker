@@ -128,6 +128,10 @@ class TestADividedRoadsCarriagewayIsOneWayForTheJunctions:
             ({"highway": "primary", "oneway": "-1"}, True),
             ({"highway": "primary", "junction": "roundabout"}, True),
             ({"highway": "primary", "junction": "roundabout", "oneway": "no"}, False),
+            # Mutation re-check TG1: an odd `oneway` value on a roundabout is not
+            # the mapper saying two-way.
+            ({"highway": "primary", "junction": "roundabout", "oneway": "reversible"}, True),
+            ({"highway": "primary", "junction": "circular", "oneway": "alternating"}, True),
             ({"highway": "cycleway", "oneway": "yes"}, None),
             ({"highway": "motorway", "oneway": "yes"}, None),
         ],

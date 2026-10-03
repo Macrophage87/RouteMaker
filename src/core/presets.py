@@ -284,6 +284,46 @@ def trail_credit_for(preset_name: str, stress: int) -> float:
     return round(credit * min(1.0, calm_rate_for(stress) / CALM_RATE_MAX), 4)
 
 
+# What a metre of each busy tier counts in the calm search's exposure (`core.refine`:
+# its score and its Traffic-wins guard), as a preset field (`Preset.exposure`).
+#
+# OWNER-DECISIONS 250, 2026-10-03: "For trail maxxing, weight LTS4 roads as a much
+# higher penalty. It's putting me on dangerous roads just for a little more trails."
+# On the stress-averse rides - Trailmaxxing, and Cargo with passengers (item 241: a
+# rider who is not in control of the ride is stress-averse) - a metre of LTS 4 is
+# eight of LTS 3 and a metre of Avoid sixteen, and the search never takes a route
+# with more LTS 4 and Avoid metres than the router's own first route, leg by leg
+# and for the whole trip (`hold_lts4`), whatever trail it gains. Every other ride
+# keeps 1, 2 and 3 and no such hold.
+@dataclass(frozen=True)
+class Exposure:
+    lts3: float = 1.0
+    lts4: float = 2.0
+    avoid: float = 3.0
+    # Refuse a candidate with more LTS 4 and Avoid metres than the router's first
+    # route (each leg's, and the whole trip's).
+    hold_lts4: bool = False
+
+    @property
+    def weights(self) -> dict[str, float]:
+        """By tier, as the segment classes name them."""
+        return {"3": self.lts3, "4": self.lts4, "5": self.avoid}
+
+
+EXPOSURE_STANDARD = Exposure()
+EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)
+
+
+def exposure_for(preset_name: str, carrying: str | None = None) -> Exposure:
+    """The exposure weights a plan's search reads: the carrying choice's where
+    the preset gives one (`Preset.carrying_exposure`), else the preset's."""
+    preset = PRESETS[preset_name]
+    chosen = carrying_of(preset_name, carrying)
+    if preset.carrying_exposure and chosen in preset.carrying_exposure:
+        return preset.carrying_exposure[chosen]
+    return preset.exposure
+
+
 def use_hills_for(hills: int) -> float:
     return round(1.0 + min(hills, 0) / 100, 3)
 
@@ -319,6 +359,10 @@ class Preset:
     # Metres of quiet riding a metre of trail is worth in the search's score
     # (TRAIL_CREDIT): Trailmaxxing's alone (OWNER-DECISIONS 202).
     trail_credit: float = 0.0
+    # The calm search's exposure weights (`Exposure`, OWNER-DECISIONS 250), and,
+    # where a carrying choice has its own, that choice's.
+    exposure: Exposure = EXPOSURE_STANDARD
+    carrying_exposure: MappingProxyType | None = None
 
 
 # Where a sustained descent starts to cost, per ride type, on the avoid half
@@ -362,6 +406,8 @@ def _preset(
     stress_max: int = 100,
     assist_speed_kmh: float | None = None,
     trail_credit: float = 0.0,
+    exposure: Exposure = EXPOSURE_STANDARD,
+    carrying_exposure: dict[str, Exposure] | None = None,
     **options: Any,
 ) -> Preset:
     return Preset(
@@ -384,6 +430,8 @@ def _preset(
         assist_speed_kmh=assist_speed_kmh,
         brake_grade=BRAKE_GRADES[name],
         trail_credit=trail_credit,
+        exposure=exposure,
+        carrying_exposure=MappingProxyType(carrying_exposure) if carrying_exposure else None,
     )
 
 
@@ -419,6 +467,9 @@ PRESETS: MappingProxyType = MappingProxyType(
                 # mile of trail, so its routes go out of their way to ride
                 # trails."
                 trail_credit=TRAIL_CREDIT,
+                # Item 250: LTS 4 eight times LTS 3, Avoid sixteen, and never more
+                # LTS 4 than the router's own route for a little more trail.
+                exposure=EXPOSURE_STRESS_AVERSE,
                 bicycle_type="Cross",
                 avoid_bad_surfaces=LOW_SURFACE_AVOIDANCE,
                 use_living_streets=1.0,
@@ -513,6 +564,8 @@ PRESETS: MappingProxyType = MappingProxyType(
                 stress=CARGO_CARRYING_STRESS[CARRYING_CARGO],
                 hills=CARGO_HILLS,
                 carrying=CARGO_CARRYING_STRESS,
+                # Item 250 for Cargo with passengers; carrying cargo keeps 1, 2, 3.
+                carrying_exposure={CARRYING_PEOPLE: EXPOSURE_STRESS_AVERSE},
                 assist_speed_kmh=CARGO_ASSIST_PLANNING_SPEED_KMH,
                 bicycle_type="Hybrid",
                 avoid_bad_surfaces=CARGO_SURFACE_AVOIDANCE,

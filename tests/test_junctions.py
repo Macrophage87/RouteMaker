@@ -1351,3 +1351,34 @@ class TestEvents:
             [raw()], "weekend", False, self.locate_with(signalled), group=True
         )
         assert event.severity == model.RED and event.flagged
+
+
+class TestTheSegmentTablesDirectionWins:
+    """Mutation re-check TG2: `_with_graph` keeps the segment table's
+    `road_oneway` over what the router's car arms say, in both directions. The
+    table's is the graph's own direction (`StressResult.graph_oneway`,
+    correctness re-check B1); the arms are a car's, and differ on a car-barred
+    two-way road or a roundabout tagged `oneway=no`. Only where the table has
+    nothing (NULL, the live table before its rebuild) do the arms decide."""
+
+    @staticmethod
+    def arm(way: int, into: bool, out_of: bool) -> junctions.Arm:
+        return junctions.Arm(
+            way, 0.0, into, out_of, None, False, frozenset({"test street"}), frozenset({way})
+        )
+
+    def test_two_way_in_the_table_stays_two_way_over_one_way_arms(self) -> None:
+        arms = [self.arm(7, True, False), self.arm(7, False, True)]
+        road = junctions._with_graph(Road(3, oneway=False), arms)
+        assert road.oneway is False
+
+    def test_one_way_in_the_table_stays_one_way_over_two_way_arms(self) -> None:
+        arms = [self.arm(7, True, True), self.arm(7, True, True)]
+        road = junctions._with_graph(Road(3, oneway=True), arms)
+        assert road.oneway is True
+
+    def test_with_nothing_in_the_table_the_arms_decide(self) -> None:
+        one_way = [self.arm(7, True, False), self.arm(7, False, True)]
+        assert junctions._with_graph(Road(3), one_way).oneway is True
+        two_way = [self.arm(7, True, True)]
+        assert junctions._with_graph(Road(3), two_way).oneway is False

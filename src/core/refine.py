@@ -24,6 +24,11 @@ extra price, in the router's cost seconds, for what the router cannot see:
                                + INTERSECTION WEIGHT x (the junction events' cost in metres)
                                + CLIMB WEIGHT x climb )
 
+(The 1, 2 and 3 are the preset's `presets.Exposure`: Trailmaxxing and Cargo with
+passengers weigh LTS 4 at 8 and Avoid at 16, and never take a route with more
+LTS 4 and Avoid metres than the router's first, leg by leg or whole; OWNER-DECISIONS
+250, `more_lts4`.)
+
 QUIET COST is what a metre of quiet-street riding costs the router at the
 request's speed (`quiet_cost_per_m`: 2.2 times its time, measured on the live
 router). The calm rate is `presets.calm_rate_for(stress)` (0 up to the old top
@@ -229,6 +234,12 @@ class Context:
     # of quiet riding each metre of trail is worth in the score. 0 on every ride
     # type but Trailmaxxing.
     trail_credit: float = 0.0
+    # The preset's exposure weights and LTS 4 hold (`presets.exposure_for`,
+    # OWNER-DECISIONS 250).
+    exposure: presets.Exposure = presets.EXPOSURE_STANDARD
+    # Each leg's LTS 4 and Avoid metres on the router's first route (set by
+    # `refine`), which no candidate may exceed where the exposure holds them.
+    first_lts4: list = field(default_factory=list)
 
 
 @dataclass
@@ -341,10 +352,11 @@ def analyse(trip: dict, ctx: Context, deadline: routing.Deadline) -> Analysis | 
     classes = routing.classify(pieces, ctx.when, ctx.roadway_only)
     stress, _facility = routing.totals(zip(pieces, classes, strict=True))
     flags = trail_flags(pieces, classes, ctx) if ctx.trail_credit > 0 else []
+    weights = ctx.exposure.weights
     result = Analysis(
         length_m=float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
         cost_s=routing._router_cost(trip),
-        exposure_m=stress["3"] + 2 * stress["4"] + 3 * stress["5"],
+        exposure_m=sum(weights[tier] * stress[tier] for tier in weights),
         climb_m=routing._climb_of(trip),
         pieces=pieces,
         classes=classes,
@@ -468,6 +480,9 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
     original = best
     info["original_m"] = round(best.length_m, 1)
     info["exposure_before_m"] = round(best.exposure_m, 1)
+    ctx.first_lts4 = lts4_by_leg(best)
+    if ctx.exposure.hold_lts4:
+        info["lts4_before_m"] = round(sum(ctx.first_lts4), 1)
     if ctx.trail_credit > 0:
         info["trail_credit"] = ctx.trail_credit
         info["trail_before_m"] = round(best.trail_m, 1)
@@ -479,6 +494,8 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         best, best_trip = _seek(best, best_trip, first_exposure, ctx, info, original)
     info["extra_distance_m"] = round(best.length_m - (info["original_m"] or 0.0), 1)
     info["exposure_after_m"] = round(best.exposure_m, 1)
+    if ctx.exposure.hold_lts4:
+        info["lts4_after_m"] = round(sum(lts4_by_leg(best)), 1)
     if ctx.trail_credit > 0:
         info["trail_after_m"] = round(best.trail_m, 1)
     return best_trip, info
@@ -516,20 +533,60 @@ def _through(vias, stop_at, ctx: Context, excludes=(), leg: int = 0):
     return read, candidate
 
 
-# What a metre of each tier counts in the score (Analysis.exposure_m).
-EXPOSURE_WEIGHTS = {"3": 1.0, "4": 2.0, "5": 3.0}
+# What a metre of each tier counts in the score (Analysis.exposure_m) on every
+# ride but the stress-averse ones (`presets.Exposure`, OWNER-DECISIONS 250).
+EXPOSURE_WEIGHTS = presets.EXPOSURE_STANDARD.weights
+# The tiers the LTS 4 hold counts (OWNER-DECISIONS 250): LTS 4 and Avoid.
+LTS4_TIERS = frozenset({"4", "5"})
+# Metres of LTS 4 a candidate may have over the router's first route before the
+# hold refuses it: a trace's rounding, not a stretch of road.
+LTS4_SLACK_M = 1.0
 
 Spans = list[tuple[float, float, float]]
 
 
+def lts4_by_leg(analysis: Analysis) -> list[float]:
+    """Each leg's LTS 4 and Avoid metres, in traced metres (`leg_bounds`)."""
+    bounds = leg_bounds(analysis)
+    out = [0.0] * len(bounds)
+    along = 0.0
+    for piece, (tier, _kind) in zip(analysis.pieces, analysis.classes, strict=False):
+        a, b = along, along + piece.metres
+        along = b
+        if tier not in LTS4_TIERS:
+            continue
+        for k, (lo, hi) in enumerate(bounds):
+            out[k] += max(0.0, min(b, hi) - max(a, lo))
+    return out
+
+
+def more_lts4(read: Analysis, reference: list[float], ctx: Context) -> bool:
+    """Whether the LTS 4 hold refuses a candidate (OWNER-DECISIONS 250): on a
+    stress-averse ride, more LTS 4 and Avoid metres than `reference` (the
+    router's first route's, a leg's each) for the whole of it, or for any leg
+    where it has the reference's legs. Never on another ride."""
+    if not ctx.exposure.hold_lts4 or not reference:
+        return False
+    legs = lts4_by_leg(read)
+    if sum(legs) > sum(reference) + LTS4_SLACK_M:
+        return True
+    if len(legs) != len(reference):
+        return False
+    return any(got > first + LTS4_SLACK_M for got, first in zip(legs, reference, strict=True))
+
+
 def route_spans(
-    analysis: Analysis, lo: float = 0.0, hi: float | None = None
+    analysis: Analysis,
+    lo: float = 0.0,
+    hi: float | None = None,
+    weights: dict[str, float] | None = None,
 ) -> tuple[Spans, Spans, float | None]:
     """The route's busy stretches and its trail stretches, each (from, to,
-    weight) in traced metres from `lo` (the busy stretches weighted by
-    EXPOSURE_WEIGHTS, the trail's 1), between `lo` and `hi` (the whole route by
-    default), and the traced length between them (None for a route with no
-    pieces)."""
+    weight) in traced metres from `lo` (the busy stretches weighted by `weights`,
+    the plan's exposure weights, EXPOSURE_WEIGHTS by default; the trail's 1),
+    between `lo` and `hi` (the whole route by default), and the traced length
+    between them (None for a route with no pieces)."""
+    weights = EXPOSURE_WEIGHTS if weights is None else weights
     busy: Spans = []
     trail: Spans = []
     along = 0.0
@@ -541,7 +598,7 @@ def route_spans(
         if b <= lo or (hi is not None and a >= hi):
             continue
         a, b = max(a, lo), b if hi is None else min(b, hi)
-        weight = EXPOSURE_WEIGHTS.get(tier, 0.0)
+        weight = weights.get(tier, 0.0)
         if weight:
             busy.append((a - lo, b - lo, weight))
         if number < len(analysis.trail_pieces) and analysis.trail_pieces[number]:
@@ -646,7 +703,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
     first_legs = None
     if count > 1 and original is not None and len(original.via_m) == count - 1:
         first_legs = [
-            sum(w * (b - a) for a, b, w in route_spans(original, lo, hi)[0])
+            sum(w * (b - a) for a, b, w in route_spans(original, lo, hi, ctx.exposure.weights)[0])
             for lo, hi in leg_bounds(original)
         ]
     trip, taken = best_trip, False
@@ -659,6 +716,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             break
         if count == 1:
             leg_trip, incumbent, reference = trip, best, first_exposure
+            reference_lts4 = list(ctx.first_lts4)
         else:
             # The leg's own route, read with its junctions, on an allowance of
             # its own (combined correctness review, SF1): the reading is what
@@ -685,6 +743,11 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             if incumbent is None:
                 continue
             reference = first_legs[k] if first_legs else incumbent.exposure_m
+            reference_lts4 = (
+                [ctx.first_lts4[k]]
+                if len(ctx.first_lts4) == count
+                else [sum(lts4_by_leg(incumbent))]
+            )
         now = routing.clock()
         left = stop_at - now
         if left < trailseek.SEEK_ROUND_MIN_S:
@@ -692,7 +755,7 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             break
         share = left * spans[k] / sum(spans[j] for j in runnable[turn:])
         leg_stop = min(stop_at, now + max(share, trailseek.SEEK_LEG_MIN_S))
-        got = _seek_leg(k, leg_trip, incumbent, reference, leg_stop, ctx, seek)
+        got = _seek_leg(k, leg_trip, incumbent, reference, leg_stop, ctx, seek, reference_lts4)
         if got is not None:
             seek["taken"] = taken = True
             if count == 1:
@@ -727,15 +790,24 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             seek["whole_trip"] = "busier"
             seek["limited"] = seek["limited"] or "busier"
             return best, best_trip
+        # And never more LTS 4 than the router's first route (item 250).
+        if more_lts4(read, ctx.first_lts4, ctx):
+            seek["taken"] = False
+            seek["whole_trip"] = "more_lts4"
+            seek["limited"] = seek["limited"] or "more_lts4"
+            return best, best_trip
         seek["whole_trip"] = "taken"
         return read, trip
     return best, trip
 
 
-def _seek_leg(k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: dict):
+def _seek_leg(
+    k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: dict, reference_lts4=()
+):
     """The seek on one leg: (reading, trip) of the leg if a candidate was kept,
     else None. `reference` is the leg's exposure as the router first gave it
-    (the Traffic-wins guard's)."""
+    (the Traffic-wins guard's), and `reference_lts4` its LTS 4 and Avoid metres
+    then, as a one-item list (the LTS 4 hold's, OWNER-DECISIONS 250)."""
     start, end = ctx.points[k][:2], ctx.points[k + 1][:2]
     span = haversine(Point(*start), Point(*end))
     shape = [
@@ -777,7 +849,7 @@ def _seek_leg(k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: di
         return None
     route = shape or [tuple(start)]
     segments = trailseek.in_band(segments, start, end, route, band)
-    busy, trail, traced_m = route_spans(incumbent)
+    busy, trail, traced_m = route_spans(incumbent, weights=ctx.exposure.weights)
     try:
         corridors = trailseek.find_corridors(
             segments,
@@ -864,6 +936,8 @@ def _seek_leg(k, leg_trip, incumbent, reference, stop_at, ctx: Context, seek: di
             tried["score_gain_s"] = round(best_score - score, 1)
             if busier:
                 tried["outcome"] = "busier"
+            elif more_lts4(read, list(reference_lts4), ctx):
+                tried["outcome"] = "more_lts4"
             elif score < best_score - IMPROVEMENT_EPS_S:
                 tried["outcome"] = "taken"
                 kept, best_score = (read, candidate), score
@@ -934,6 +1008,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
         if read is None or read.events is None:
             continue
         busier = read.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        busier = busier or more_lts4(read, ctx.first_lts4, ctx)
         score = read.score(ctx)
         if score < best_score - IMPROVEMENT_EPS_S and not busier:
             best, best_trip, best_score = read, candidate, score
@@ -1015,6 +1090,9 @@ def _search(trip, best, best_score, first_exposure, stop_at, ctx: Context, info:
         info["rounds"] += 1
         score = current.score(ctx)
         busier = current.exposure_m > first_exposure * (1 + EXPOSURE_TOLERANCE) + EXPOSURE_SLACK_M
+        # Never more LTS 4 than the router's first route on a stress-averse ride
+        # (OWNER-DECISIONS 250), however much calmer the rest of it scores.
+        busier = busier or more_lts4(current, ctx.first_lts4, ctx)
         # A candidate whose junctions could not be read (the database or the
         # router failing) would score as if it had none: it is not taken
         # (review r1), though the search may go on from it.
