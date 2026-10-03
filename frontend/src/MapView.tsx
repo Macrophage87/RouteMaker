@@ -24,7 +24,7 @@ import {
   ROUTE_LINE_WIDTH,
   sectionFeatures,
 } from "./lib/routeColours.ts";
-import { subscribePalette } from "./stressStyle.js";
+import { subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
 import {
   addStressOverlay,
   focusBackTarget,
@@ -555,14 +555,14 @@ export function MapView(props: Props) {
         type: "line",
         source: ROUTE_STRESS_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": ["get", "halo"], "line-width": ROUTE_HALO_WIDTH, "line-opacity": 0 },
+        paint: { "line-color": ["get", "halo"], "line-width": ["coalesce", ["get", "haloWidth"], ROUTE_HALO_WIDTH], "line-opacity": 0 },
       });
       map.addLayer({
         id: "route-stress",
         type: "line",
         source: ROUTE_STRESS_SOURCE,
         layout: { "line-join": "round", "line-cap": "round" },
-        paint: { "line-color": ["get", "color"], "line-width": ROUTE_LINE_WIDTH },
+        paint: { "line-color": ["get", "color"], "line-width": ["coalesce", ["get", "width"], ROUTE_LINE_WIDTH] },
       });
       map.addLayer({
         id: "route-line",
@@ -735,6 +735,18 @@ export function MapView(props: Props) {
         if (!map || !loaded.current) return;
         setStressPalette(map, callbacks.current.when);
         setRouteSections(map, callbacks.current.route, callbacks.current.stale);
+      }),
+    [],
+  );
+
+  // The "Show bike lanes on high-stress roads" switch (OWNER-DECISIONS 275):
+  // the rails' filters are set again in place, from the same tiles.
+  useEffect(
+    () =>
+      subscribeHighStressLanes(() => {
+        const map = mapRef.current;
+        if (!map || !loaded.current) return;
+        setStressWhen(map, callbacks.current.when);
       }),
     [],
   );

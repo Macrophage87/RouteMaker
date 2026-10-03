@@ -14,6 +14,8 @@ export interface StressSegment {
   short: string;
   label: string;
   color: string;
+  /** The tier's casing colour, or the colour itself for a row with none: the accent of the segment's pattern (styles.css, .stress-seg-5). */
+  casing: string;
   metres: number;
   fraction: number;
   /** Whole percent; the segments' percents always add up to 100. */
@@ -60,13 +62,14 @@ export function wholePercents(fractions: number[]): number[] {
 
 export function stressSegments(stress: StressMetres): StressSegment[] {
   const rows = [
-    ...currentTiers().map((t: { tier: number; short: string; label: string; color: string }) => ({
+    ...currentTiers().map((t: { tier: number; short: string; label: string; color: string; casing: string }) => ({
       key: String(t.tier) as StressKey,
       short: t.short,
       label: t.label,
       color: t.color,
+      casing: t.casing,
     })),
-    { key: "unknown" as StressKey, ...unrated() },
+    { key: "unknown" as StressKey, ...unrated(), casing: unrated().color },
   ].map((row) => ({ ...row, metres: metresOf(stress, row.key) }));
   const total = rows.reduce((sum, row) => sum + row.metres, 0);
   if (!(total > 0)) return [];

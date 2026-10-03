@@ -164,7 +164,7 @@ export async function axNode(page, selector) {
   const { nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
   const n = nodes[0];
   const prop = (name) => n.properties?.find((q) => q.name === name)?.value?.value;
-  return { role: n.role?.value, name: n.name?.value, description: n.description?.value, expanded: prop("expanded") };
+  return { role: n.role?.value, name: n.name?.value, description: n.description?.value, expanded: prop("expanded"), checked: prop("checked") };
 }
 
 /** Decode an 8-bit RGB(A) PNG, as CDP's screenshots are: { width, height, pixel(x, y) -> [r, g, b] }. */

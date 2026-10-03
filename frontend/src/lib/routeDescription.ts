@@ -9,6 +9,7 @@
 import type { DescriptionCrossing, DescriptionEntry, RouteResponse } from "./api.ts";
 import { formatDistance, milesFigure } from "./format.ts";
 import { presetLabel } from "./presets.ts";
+import { HIGH_STRESS_LANE_MIN_TIER, highStressLanesOn } from "../stressStyle.js";
 
 export const DESCRIPTION_HEADING = "Route description";
 
@@ -32,10 +33,28 @@ function usableEntries(entries: unknown): DescriptionEntry[] | null {
  * one, or one that could not build it). An answer without an overview (an older
  * API) lists the full description in either view.
  */
-export function descriptionEntries(route: Described, view: DescriptionView = "overview"): DescriptionEntry[] | null {
+export function descriptionEntries(
+  route: Described,
+  view: DescriptionView = "overview",
+  showHighStressLanes: boolean = highStressLanesOn(),
+): DescriptionEntry[] | null {
   const full = usableEntries(route.description);
-  if (view === "full") return full;
-  return usableEntries(route.description_overview) ?? full;
+  const entries = view === "full" ? full : (usableEntries(route.description_overview) ?? full);
+  return entries && !showHighStressLanes ? entries.map(withoutHighStressLane) : entries;
+}
+
+/** The words the API adds after a stretch's tier for a painted lane (src/routemaker/describe.py, FACILITY_WORDS). */
+export const PAINTED_LANE_WORDS = ", painted bike lane";
+
+/**
+ * A stretch on LTS 4 or Avoid is not called a bike lane while the "Show bike
+ * lanes on high-stress roads" switch is off (OWNER-DECISIONS 275): the entry
+ * loses its painted-lane words and its facility. Any other entry is returned
+ * as it is.
+ */
+export function withoutHighStressLane(entry: DescriptionEntry): DescriptionEntry {
+  if (entry.facility !== "lane" || typeof entry.tier !== "number" || entry.tier < HIGH_STRESS_LANE_MIN_TIER) return entry;
+  return { ...entry, facility: null, text: entry.text.split(PAINTED_LANE_WORDS).join("") };
 }
 
 /** Whether the overview is shorter than the full list: only then is there a choice to offer. */

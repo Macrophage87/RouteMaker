@@ -6,6 +6,7 @@ import {
   stressLayers,
   stressCasingLayers,
   stressOverlayLayers,
+  unpavedLayers,
   legend,
   FACILITIES,
   facilityLayers,
@@ -166,7 +167,7 @@ test("attribution names OpenStreetMap and the basemap", () => {
 
 test("the legend carries what colour alone cannot", () => {
   for (const entry of legend()) {
-    assert.ok(entry.label && entry.dash);
+    assert.ok(entry.label && entry.dash !== undefined, "a solid line is dash: null, a dash is an array");
   }
 });
 
@@ -219,7 +220,9 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const tiers = stressLayers("s").map((l) => l.id);
   const casings = stressCasingLayers("s").map((l) => l.id);
   const rails = facilityLayers("s").map((l) => l.id);
-  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings].sort(), "each layer once");
+  const marks = unpavedLayers("s").map((l) => l.id);
+  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings, ...marks].sort(), "each layer once");
+  assert.ok(Math.min(...marks.map((m) => ids.indexOf(m))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the surface mark is drawn over every tier line");
   casings.forEach((casing, i) => assert.ok(ids.indexOf(casing) < ids.indexOf(tiers[i]), `${casing} is drawn over its tier`));
   const lastCasing = Math.max(...casings.map((c) => ids.indexOf(c)));
   const firstTier = Math.min(...tiers.map((t) => ids.indexOf(t)));
@@ -248,7 +251,8 @@ test("each facility is told apart from the others without colour, and the strong
 
 test("each facility layer reads the tile's facility property and shows beyond the casing", () => {
   const layers = facilityLayers("s");
-  layers.forEach((layer, i) => {
+  layers.forEach((layer) => {
+    const i = FACILITIES.findIndex((f) => `facility-${f.facility}` === layer.id);
     for (const f of FACILITIES) {
       assert.equal(draws(layer, { tier: 1, facility: f.facility }), f === FACILITIES[i], `${layer.id} and ${f.facility}`);
     }
@@ -286,8 +290,9 @@ test("the contrast maths is WCAG 2's, against its published anchors", () => {
 test("each facility layer draws its own dash, or none", () => {
   // The dash is the only thing that tells a path from a protected lane on the
   // map: both are bold violet (mutation review, round 1).
-  facilityLayers("s").forEach((layer, i) => {
-    assert.deepEqual(layer.paint["line-dasharray"], FACILITIES[i].dash ?? undefined);
+  facilityLayers("s").forEach((layer) => {
+    const facility = FACILITIES.find((f) => `facility-${f.facility}` === layer.id);
+    assert.deepEqual(layer.paint["line-dasharray"], facility.dash ?? undefined);
   });
 });
 

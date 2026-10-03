@@ -300,6 +300,8 @@ test("a halo is dark under the light classes and white under the dark ones (neve
   for (const { on } of REACHABLE) {
     withSwitch(on, () => {
       for (const c of routeClasses()) {
+        // Avoid's halo is its red casing, a colour of its own (OWNER-DECISIONS 274), still 3:1 from the near-black line.
+        if (c.key === "5") continue;
         assert.equal(relativeLuminance(c.halo) < 0.5, relativeLuminance(c.color) > 0.14, `${c.short}: ${c.color} on ${c.halo}`);
         assert.notEqual(c.halo, ROUTE_BLUE);
       }
@@ -425,7 +427,7 @@ test("the map adds the route's halo between its casing and its sections, coloure
   assert.ok(at("route-casing") >= 0 && at("route-casing") < at("route-halo") && at("route-halo") < at("route-stress"));
   const halo = mapView.slice(at("route-halo"), at("route-stress"));
   assert.match(halo, /"line-color": \["get", "halo"\]/);
-  assert.match(halo, /"line-width": ROUTE_HALO_WIDTH/);
+  assert.match(halo, /"line-width": \["coalesce", \["get", "haloWidth"\], ROUTE_HALO_WIDTH\]/);
   const legendSource = readFileSync(new URL("./FacilityBreakdown.tsx", import.meta.url), "utf8");
   const casingAt = legendSource.indexOf("stroke={casing}");
   const haloAt = legendSource.indexOf("stroke={row.halo}");

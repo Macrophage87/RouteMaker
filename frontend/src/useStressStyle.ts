@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from "react";
-import { styleKey, subscribePalette } from "./stressStyle.js";
+import { highStressLanesOn, styleKey, subscribeHighStressLanes, subscribePalette } from "./stressStyle.js";
 
 /**
  * Re-render the component when the stress colours or their strength change:
@@ -11,4 +11,14 @@ import { styleKey, subscribePalette } from "./stressStyle.js";
  */
 export function useStressStyle(): string {
   return useSyncExternalStore(subscribePalette, styleKey, styleKey);
+}
+
+/**
+ * Re-render the component when the "Show bike lanes on high-stress roads"
+ * switch changes (OWNER-DECISIONS 275); returns whether it is on. A component
+ * that draws the facility legend, the facility bar or the route description
+ * calls this.
+ */
+export function useHighStressLanes(): boolean {
+  return useSyncExternalStore(subscribeHighStressLanes, highStressLanesOn, highStressLanesOn);
 }

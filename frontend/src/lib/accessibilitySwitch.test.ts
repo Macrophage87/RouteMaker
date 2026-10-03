@@ -251,7 +251,7 @@ test("load: a device that asks for more contrast starts on, with nothing stored,
   assert.equal(m.accessibilityOn(), true);
   assert.equal(m.currentPalette(), "cvd");
   assert.equal(m.accessibilitySource(), "contrast");
-  assert.equal(m.currentTiers()[0].width, 3 + STRONG_WIDTH_EXTRA);
+  assert.equal(m.currentTiers()[0].width, 2.5 + STRONG_WIDTH_EXTRA);
 });
 
 test("load: a stored choice always wins over the request for contrast, both ways", async () => {
@@ -272,7 +272,7 @@ test("load: ?palette= decides the palette whatever the switch says, and the swit
   assert.equal(twotone.accessibilityOn(), true);
   assert.equal(twotone.paletteSetByAddress(), true);
   assert.equal(twotone.currentTiers()[2].color, PALETTES.twotone[3].color);
-  assert.equal(twotone.currentTiers()[2].width, 4, "LTS 3's 3.5 and the switch's half a pixel");
+  assert.equal(twotone.currentTiers()[2].width, 4.75, "LTS 3's 4.25 and the switch's half a pixel");
   const blended = await loadedWith({ search: "?x=1&palette=blended", storage: stored });
   assert.equal(blended.currentPalette(), "blended");
   // And a flip does not move a palette the address chose, but it does change what is drawn (and so what re-renders).
@@ -282,7 +282,7 @@ test("load: ?palette= decides the palette whatever the switch says, and the swit
   assert.equal(twotone.currentPalette(), "twotone");
   assert.notEqual(twotone.styleKey(), keyOn, "the style key moves though the palette does not");
   assert.notEqual(twotone.currentTiers(), tiersOn);
-  assert.equal(twotone.currentTiers()[2].width, 3.5);
+  assert.equal(twotone.currentTiers()[2].width, 4.25);
   const plain = await loadedWith({ search: "?palette=nonsense", storage: stored });
   assert.equal(plain.currentPalette(), "cvd", "an address name the page does not have is ignored");
   assert.equal(plain.paletteSetByAddress(), false);
@@ -372,8 +372,8 @@ test("the strong widths are the figures the owner's switch promises: half a pixe
   assert.equal(STRONG_WIDTH_EXTRA, 0.5);
   assert.equal(STRONG_CASING_EXTRA_PX, 3);
   assert.equal(CASING_EXTRA_PX, 2);
-  assert.deepEqual(tiersFor("cvd", true).map((t: { width: number }) => t.width), [3.5, 3.5, 4, 4.5, 5]);
-  assert.deepEqual(tiersFor("cvd").map((t: { width: number }) => t.width), [3, 3, 3.5, 4, 4.5]);
+  assert.deepEqual(tiersFor("cvd", true).map((t: { width: number }) => t.width), [3, 3.75, 4.75, 5.5, 7]);
+  assert.deepEqual(tiersFor("cvd").map((t: { width: number }) => t.width), [2.5, 3.25, 4.25, 5, 6.5]);
   // A casing is a halo, not a band: no wider on the two sides together than the line itself (stressStyle.test.mjs holds the plain ones to it).
   for (const tier of tiersFor("cvd", true)) assert.ok(tier.casingExtra <= tier.width, `LTS ${tier.tier}`);
 });
@@ -387,6 +387,11 @@ test("the tiers: strong draws lines half a pixel wider, casings black or white a
       assert.equal(tier.color, plain[i].color, "the colour is the palette's");
       assert.equal(tier.casingExtra, STRONG_CASING_EXTRA_PX);
       assert.equal(plain[i].casingExtra, CASING_EXTRA_PX);
+      if (name === "blended" && tier.tier === 5) {
+        // Avoid's red casing is a colour of its own (OWNER-DECISIONS 274): the switch leaves it.
+        assert.equal(tier.casing, plain[i].casing);
+        return;
+      }
       assert.match(tier.casing, /^#(000000|ffffff)$/, `${name} LTS ${tier.tier}`);
       assert.equal(tier.casing, plain[i].casing === "#ffffff" ? "#ffffff" : "#000000", "a light casing stays light and a dark one goes black");
       assert.deepEqual(tier.dash, plain[i].dash);
@@ -446,15 +451,15 @@ test("a flip widens the lines, the casings and the facility rails, and nothing e
 
 test("the legend's widths are the map's: each tier's line and casing, and the facility legend's casing and rails, plain and strong", () => {
   const plain = legendWidths(tiersFor("blended"));
-  assert.deepEqual(plain.tiers.map((t: { line: number }) => t.line), [3, 3, 3.5, 4, 4.5]);
-  assert.deepEqual(plain.tiers.map((t: { casing: number }) => t.casing), [5, 5, 5.5, 6, 6.5]);
-  assert.equal(plain.facilityCasing, 5);
-  assert.deepEqual(plain.rails, { path: 11, protected: 11, lane: 8 });
+  assert.deepEqual(plain.tiers.map((t: { line: number }) => t.line), [2.5, 3.25, 4.25, 5, 6.5]);
+  assert.deepEqual(plain.tiers.map((t: { casing: number }) => t.casing), [4.5, 5.25, 6.25, 7, 8.5]);
+  assert.equal(plain.facilityCasing, 4.5);
+  assert.deepEqual(plain.rails, { path: 12.5, protected: 12.5, lane: 6.5 });
   const strong = legendWidths(tiersFor("cvd", true));
-  assert.deepEqual(strong.tiers.map((t: { line: number }) => t.line), [3.5, 3.5, 4, 4.5, 5]);
-  assert.deepEqual(strong.tiers.map((t: { casing: number }) => t.casing), [6.5, 6.5, 7, 7.5, 8], "the switch's casing is 3 px wider than its line");
-  assert.equal(strong.facilityCasing, 6.5);
-  assert.deepEqual(strong.rails, { path: 12.5, protected: 12.5, lane: 9.5 }, "the rails sit outside the wider casing");
+  assert.deepEqual(strong.tiers.map((t: { line: number }) => t.line), [3, 3.75, 4.75, 5.5, 7]);
+  assert.deepEqual(strong.tiers.map((t: { casing: number }) => t.casing), [6, 6.75, 7.75, 8.5, 10], "the switch's casing is 3 px wider than its line");
+  assert.equal(strong.facilityCasing, 6);
+  assert.deepEqual(strong.rails, { path: 14, protected: 14, lane: 8 }, "the rails sit outside the wider casing");
   // Without an argument, the tiers in use.
   assert.deepEqual(legendWidths(), plain);
   withSwitch(true, () => assert.deepEqual(legendWidths(), strong));
@@ -462,9 +467,9 @@ test("the legend's widths are the map's: each tier's line and casing, and the fa
 
 test("a facility's rails for a tier the style has no entry for are LTS 1's, casing included, plain and strong", () => {
   const fallback = (tiers: ReturnType<typeof tiersFor>) => (facilityWidthAt(FACILITIES[0], undefined, tiers) as unknown[]).at(-1);
-  assert.equal(fallback(tiersFor("blended")), 11);
-  assert.equal(fallback(tiersFor("cvd", true)), 12.5);
-  withSwitch(true, () => assert.equal((facilityWidthAt(FACILITIES[0]) as unknown[]).at(-1), 12.5));
+  assert.equal(fallback(tiersFor("blended")), 12.5);
+  assert.equal(fallback(tiersFor("cvd", true)), 14);
+  withSwitch(true, () => assert.equal((facilityWidthAt(FACILITIES[0]) as unknown[]).at(-1), 14));
 });
 
 test("the panel legend draws its widths from legendWidths, not its own sums", () => {
@@ -537,8 +542,8 @@ test("the default palette is unchanged by the new one", () => {
     1: { color: "#9ed3ac", casing: "#17301f" },
     2: { color: "#57a06c", casing: "#17301f" },
     3: { color: "#bf730b", casing: "#2b1a05" },
-    4: { color: "#a32814", casing: "#ffffff" },
-    5: { color: "#4a0810", casing: "#ffffff" },
+    4: { color: "#c80018", casing: "#ffffff" },
+    5: { color: "#14040a", casing: "#ee3b2c" },
   });
   assert.deepEqual(
     currentTiers().map((t: { color: string; casing: string; casingExtra: number }) => [t.color, t.casing, t.casingExtra]),

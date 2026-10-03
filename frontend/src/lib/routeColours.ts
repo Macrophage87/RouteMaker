@@ -24,7 +24,32 @@ export interface RouteClass {
   color: string;
   /** The thin ring between the section and the route's casing: a colour 3:1 from `color` (see ROUTE_HALO_PATH). */
   halo: string;
+  /** The section's line width in pixels: wider as the stress rises (see ROUTE_SECTION_WIDTHS). */
+  width: number;
+  /** The halo's width: a pixel wider each side than `width`. */
+  haloWidth: number;
 }
+
+/**
+ * The route's section widths in pixels, by class: visual weight rises with
+ * stress here as it does on the overlay (OWNER-DECISIONS 274), so a stretch of
+ * LTS 4 or Avoid is the heavier mark on the route. The traffic-free path is the
+ * lightest, the unrated grey sits at the middle's width. The halo is a pixel
+ * wider each side (ROUTE_HALO_EXTRA) and the casing outside it stays wider than
+ * the widest halo (ROUTE_CASING_WIDTH).
+ */
+export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
+  path: 4,
+  "1": 4,
+  "2": 4.5,
+  "3": 5,
+  "4": 5.5,
+  "5": 6,
+  unknown: 5,
+};
+
+/** The halo's extra width over its section: a pixel on each side. */
+export const ROUTE_HALO_EXTRA = 2;
 
 /**
  * The halo under the traffic-free violet: white, 10.9:1 from it. The route's
@@ -61,6 +86,8 @@ export function routeClasses(): readonly RouteClass[] {
       label: "Off-road path, or a road closed to cars",
       color: PATH ? PATH.color : "#4c1d95",
       halo: ROUTE_HALO_PATH,
+      width: ROUTE_SECTION_WIDTHS.path,
+      haloWidth: ROUTE_SECTION_WIDTHS.path + ROUTE_HALO_EXTRA,
     },
     ...tiers.map((tier: { tier: number; short: string; label: string; color: string; casing: string }) => ({
       key: String(tier.tier) as RouteClassKey,
@@ -68,9 +95,19 @@ export function routeClasses(): readonly RouteClass[] {
       label: tier.label,
       color: tier.color,
       halo: tier.casing,
+      width: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey],
+      haloWidth: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey] + ROUTE_HALO_EXTRA,
     })),
     // The unrated grey is a mid colour: LTS 1's dark casing stands under it.
-    { key: "unknown", short: none.short, label: none.label, color: none.color, halo: tiers[0].casing },
+    {
+      key: "unknown",
+      short: none.short,
+      label: none.label,
+      color: none.color,
+      halo: tiers[0].casing,
+      width: ROUTE_SECTION_WIDTHS.unknown,
+      haloWidth: ROUTE_SECTION_WIDTHS.unknown + ROUTE_HALO_EXTRA,
+    },
   ];
 }
 
@@ -96,6 +133,8 @@ export interface RouteSection {
   key: RouteClassKey;
   color: string;
   halo: string;
+  width: number;
+  haloWidth: number;
   coordinates: LonLat[];
 }
 
@@ -161,7 +200,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, width: cls.width, haloWidth: cls.haloWidth, coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -173,7 +212,7 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
     type: "FeatureCollection" as const,
     features: (sections ?? []).map((section) => ({
       type: "Feature" as const,
-      properties: { key: section.key, color: section.color, halo: section.halo },
+      properties: { key: section.key, color: section.color, halo: section.halo, width: section.width, haloWidth: section.haloWidth },
       geometry: { type: "LineString" as const, coordinates: section.coordinates },
     })),
   };
@@ -218,8 +257,9 @@ export function routeCasing(palette: string = currentPalette()): string {
 /** The casing under a one-colour route, as it was before the sections. */
 export const ROUTE_CASING_PLAIN = "#ffffff";
 export const ROUTE_LINE_WIDTH = 5;
-export const ROUTE_CASING_WIDTH = 9;
-/** The halo's width: a pixel wider each side than the section's line, inside the casing's own pixel. */
+/** Wide enough that the widest halo (Avoid's, 8 px) leaves the casing's own pixel and more each side. */
+export const ROUTE_CASING_WIDTH = 11;
+/** The halo's width under a section of ROUTE_LINE_WIDTH: a pixel wider each side than the line, inside the casing's own pixel. Each section's own is `haloWidth`. */
 export const ROUTE_HALO_WIDTH = 7;
 
 /**
