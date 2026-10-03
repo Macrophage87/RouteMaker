@@ -211,9 +211,12 @@ class TestTheHillsLevel:
     def test_the_seek_half_has_a_hook_for_more_effort_being_better(self) -> None:
         ctx = top_context()
         ctx.hills_seek_weight = 0.5
-        hilly, flat = reading(**self.hilly), reading(**self.flat)
-        assert refine.level3(hilly, ctx) < refine.level3(flat, ctx)
-        assert refine.better(hilly, flat, ctx)
+        # The longer route with far more effort wins with the hook, and loses without it.
+        hard = reading(length=12_000.0, effort=30_000.0)
+        easy = reading(length=9_000.0, effort=9_000.0)
+        assert refine.level3(hard, ctx) < refine.level3(easy, ctx)
+        assert refine.better(hard, easy, ctx)
+        assert refine.better(easy, hard, top_context())
 
     def read_trip(self, monkeypatch, effort_fn, ctx):
         monkeypatch.setattr(refine.effort, "effort_equivalent_m", effort_fn)
@@ -803,6 +806,17 @@ class TestTheLongSearch:
         whole = whole_trip()
         trip, info = refine.refine_long(whole, long_context(max_m=45_000.0))
         assert trip is whole and info["long"]["answered"] == "router"
+
+    def test_legs_one_of_which_is_worse_than_the_whole_are_not_answered(self, monkeypatch) -> None:
+        """A leg's own first route with LTS 4 the whole route does not have: another leg's
+        better search must not carry it into the answer."""
+        world = legs_world(monkeypatch, {2: [("L2c", 13.5, None)]})
+        world.readings["L1"] = analysis("L1", "4" * 20 + "1" * 113)
+        world.readings["L2c"] = analysis("L2c", "1" * 133)
+        whole = whole_trip()
+        trip, info = refine.refine_long(whole, long_context(max_m=45_000.0))
+        assert trip is whole and info["long"]["answered"] == "router"
+        assert info["lts4_m_after"] == info["lts4_m_before"]
 
     def test_a_leg_the_router_cannot_route_gives_the_wholes(self, monkeypatch) -> None:
         def refuse(variant, endpoint, payload, deadline):

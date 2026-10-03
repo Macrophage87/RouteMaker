@@ -3231,9 +3231,9 @@ point-to-point ride on its start (`routing.loop_wanted`, `loop_points`); not on 
 is asked for through the start again; then the way back (the last leg) is asked for alone
 (`refine.make_loop`) with points along the way out excluded (every 120 m, none within 500 m of an end
 or a stop; up to 150), thinned to every second, fourth and eighth point if the router has no route or
-it is past the longest ride (the whole loop, not each half): the first way back that shares at most
-30% of its road with the way out (matched by way) ends the asking; if none does the one that shares
-least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
+it is past the longest ride (the whole loop, not each half): every one is asked (four routes at
+most), and the least stressful of the ways back that share at most 30% of their road with the way out
+(matched by way) is kept; if none does the one that shares least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
 the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
 `loop.fallback` says `out_and_back`. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
 excluded and the routes asked. The search that follows keeps the way back different: a candidate that
@@ -3293,11 +3293,11 @@ The owner's ride of 2026-10-03 itself, map-matched against today's graph: 46.7 m
 
 | Ride | Loop | Overlap | Way back shared | Asked / excluded | Plan |
 |---|---|---|---|---|---|
-| loop-takoma-hyattsville | 8.8 mi; 3.50 / 4.36 / 0.71 / 0.00 / 0.00; 0r 5o; 3.7 s | 17.4% | 1094.0 of 6296.0 m | 1 / 37 | fallback None; calls {'route': 7, 'trace_attributes': 11, 'locate': 21} |
-| loop-bethesda-silver-spring | 11.4 mi; 4.64 / 5.62 / 0.88 / 0.19 / 0.00; 0r 9o; 9.1 s | 21.6% | 2115.0 of 9771.0 m | 1 / 39 | fallback None; calls {'route': 11, 'trace_attributes': 23, 'locate': 49} |
-| round-trip-tysons-ballston | 21.5 mi; 13.46 / 5.04 / 2.20 / 0.05 / 0.00; 4r 14o; 8.3 s | 2.4% | 438.0 of 18365.0 m | 1 / 81 | fallback None; calls {'route': 7, 'trace_attributes': 10, 'locate': 47} |
-| loop-rockville-silver-spring-60mi-cap-12 | 21.1 mi; 1.81 / 4.59 / 12.19 / 2.26 / 0.00; 1r 10o; 6.5 s | 88.1% | 14887.0 of 16905.0 m | 4 / 0 | fallback out_and_back; calls {'route': 8, 'trace_attributes': 4, 'locate': 37} |
-| loop-default-preset-bethesda-capitol | 25.4 mi; 20.12 / 4.11 / 0.91 / 0.00 / 0.00; 1r 6o; 4.4 s | 0.8% | 174.0 of 20972.0 m | 1 / 88 | fallback None; calls {'route': 3, 'trace_attributes': 5, 'locate': 15} |
+| loop-takoma-hyattsville | 8.8 mi; 3.50 / 4.36 / 0.71 / 0.00 / 0.00; 0r 5o; 2.8 s | 17.4% | 1094.0 of 6296.0 m | 4 / 37 | fallback None; calls {'route': 10, 'trace_attributes': 11, 'locate': 21} |
+| loop-bethesda-silver-spring | 11.4 mi; 4.64 / 5.62 / 0.88 / 0.19 / 0.00; 0r 9o; 7.8 s | 21.6% | 2115.0 of 9771.0 m | 4 / 5 | fallback None; calls {'route': 14, 'trace_attributes': 28, 'locate': 67} |
+| round-trip-tysons-ballston | 21.3 mi; 14.85 / 4.03 / 2.03 / 0.06 / 0.00; 3r 13o; 8.9 s | 7.9% | 1429.0 of 18007.0 m | 4 / 41 | fallback None; calls {'route': 11, 'trace_attributes': 15, 'locate': 69} |
+| loop-rockville-silver-spring-60mi-cap-12 | 21.1 mi; 1.81 / 4.59 / 12.19 / 2.26 / 0.00; 1r 10o; 3.9 s | 88.1% | 14887.0 of 16905.0 m | 4 / 0 | fallback out_and_back; calls {'route': 8, 'trace_attributes': 4, 'locate': 37} |
+| loop-default-preset-bethesda-capitol | 25.4 mi; 20.21 / 4.11 / 0.82 / 0.00 / 0.00; 1r 6o; 4.7 s | 1.5% | 313.0 of 20948.0 m | 4 / 44 | fallback None; calls {'route': 6, 'trace_attributes': 7, 'locate': 25} |
 
 
 ### Tests and mutants

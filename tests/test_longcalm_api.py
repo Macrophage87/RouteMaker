@@ -230,6 +230,41 @@ class TestTheLongCalmPlan:
             else routing.ROUTER_TIMEOUT_S
         )
 
+    def test_a_loop_has_the_ordinary_budget_whatever_its_span(self, monkeypatch) -> None:
+        """A loop is searched in one piece or not at all, so it is not a long calm plan."""
+        seen = []
+
+        def first(variant, request, deadline):
+            seen.append(deadline)
+            raise routing.RouterUnavailable("stop")
+
+        monkeypatch.setattr(routing, "_route", first)
+        started = routing.clock()
+        with pytest.raises(routing.RouterUnavailable):
+            routing.plan(
+                [US, PENN],
+                "trailmaxxing",
+                started=started,
+                dials=routing.Dials(stress=100, when="weekday_offpeak", loop=True),
+            )
+        assert seen[0].at == pytest.approx(
+            started + routing.PLAN_BUDGET_S - routing.ANSWER_RESERVE_S, abs=0.5
+        )
+
+    def test_a_loop_does_not_take_the_long_slot(self, client, monkeypatch) -> None:
+        taken = []
+        real = ratelimit.acquire
+        monkeypatch.setattr(
+            ratelimit, "acquire", lambda r, limit: (taken.append(limit), real(r, limit))[1]
+        )
+        monkeypatch.setattr(
+            routing,
+            "plan",
+            lambda *a, **k: (_ for _ in ()).throw(routing.NoRoute("stop", no_path=True)),
+        )
+        post(client, {"points": [US, PENN], "preset": "trailmaxxing", "stress": 100, "loop": True})
+        assert ratelimit.LONG_ROUTING_IN_FLIGHT not in taken
+
     def test_the_budget_is_the_long_rides_and_under_gunicorns_timeout(self) -> None:
         assert routing.LONG_PLAN_BUDGET_S == 50 and routing.LONG_PLAN_BUDGET_S < 60
 

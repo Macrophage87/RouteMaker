@@ -440,6 +440,11 @@ class TestWhatIsSentToTheRouter:
             assert fake.endpoints()[:2] == ["route", "route"]
             assert set(fake.endpoints()[2:]) == {"trace_attributes"}
             assert fake.calls[1][1]["costing_options"] == middle
+        elif name == "trailmaxxing":
+            # The top of the slider offers other routes (OWNER-DECISIONS 265): once the route is
+            # traced the router is asked for one more that avoids its roads, and the fake gives
+            # the same route, which is no different, so the asking ends.
+            assert fake.endpoints() == ["route", "trace_attributes", "route"]
         else:
             assert fake.endpoints() == ["route", "trace_attributes"]
         assert all(url.startswith(base + "/") for url, _ in fake.calls)

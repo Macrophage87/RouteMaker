@@ -110,6 +110,8 @@ class LoopWorld:
     def call(self, variant, endpoint, payload, deadline):
         assert endpoint == "route"
         self.requests.append(payload)
+        if not self.backs:
+            raise routing.RouterRefused(400, 442, "no path")
         answer = self.backs.pop(0)
         if isinstance(answer, Exception):
             raise answer
@@ -168,7 +170,7 @@ class TestMakingALoop:
         )
         trip, info = refine.make_loop(two_leg_trip(), loop_context())
         assert [leg["shape"] for leg in trip["legs"]] == ["out", "R1"]
-        assert info["fallback"] is None and info["tried"] == 1
+        assert info["fallback"] is None and info["tried"] == len(refine.LOOP_THINNING)
         assert (
             info["overlap_pct"] == 5.0 and info["shared_m"] == 200.0 and info["return_m"] == 4000.0
         )
@@ -215,34 +217,50 @@ class TestMakingALoop:
         sizes = [len(world.excluded(i)) for i in range(4)]
         assert sizes == sorted(sizes, reverse=True) and len(set(sizes)) == 4
 
-    def test_the_first_way_back_within_the_ok_share_ends_the_asking(self, monkeypatch) -> None:
-        world = LoopWorld(
-            monkeypatch, readings(R1=[1] + list(range(101, 140))), [("R1", 4.0), ("R1", 4.0)]
-        )
+    def test_every_thinning_is_asked_even_when_the_first_is_within_the_ok_share(
+        self, monkeypatch
+    ) -> None:
+        world = LoopWorld(monkeypatch, readings(R1=[1] + list(range(101, 140))), [("R1", 4.0)])
         _trip, info = refine.make_loop(two_leg_trip(), loop_context())
-        assert info["tried"] == 1 and len(world.requests) == 1
+        assert info["tried"] == 4 and len(world.requests) == 4
 
     def test_among_those_within_the_ok_share_the_least_stressful_is_taken(
         self, monkeypatch
     ) -> None:
         ways = list(range(101, 141))
-        ok_but_busy = loop_read(OUT, [1] * 4 + ways[4:], "1" * 40 + "1" * 20 + "3" * 20)
-        ok_calm = loop_read(OUT, [1] * 4 + ways[4:])
-        world = LoopWorld(
+        busy = loop_read(OUT, [1] * 4 + ways[4:], "1" * 60 + "3" * 20)
+        calm = loop_read(OUT, [1] * 8 + ways[8:])
+        LoopWorld(
             monkeypatch,
             {
                 ("out", "same"): loop_read(OUT, list(reversed(OUT))),
                 ("out",): loop_read(OUT, []),
-                ("out", "A"): ok_but_busy,
-                ("out", "B"): ok_calm,
+                ("out", "A"): busy,
+                ("out", "B"): calm,
             },
             [("A", 4.0), ("B", 4.0)],
         )
-        # The first within the share ends the asking, so make the first one a share past it.
-        world.readings[("out", "A")] = loop_read(OUT, [1] * 20 + ways[20:])
+        # Both share under 30% (A 10%, B 20%); A has more LTS 3, so the more shared B is taken.
         trip, info = refine.make_loop(two_leg_trip(), loop_context())
         assert [leg["shape"] for leg in trip["legs"]] == ["out", "B"]
-        assert info["tried"] == 2
+        assert info["overlap_pct"] == 20.0
+
+    def test_the_order_the_ways_back_come_in_does_not_decide(self, monkeypatch) -> None:
+        ways = list(range(101, 141))
+        calm = loop_read(OUT, [1] * 8 + ways[8:])
+        busy = loop_read(OUT, [1] * 4 + ways[4:], "1" * 60 + "3" * 20)
+        LoopWorld(
+            monkeypatch,
+            {
+                ("out", "same"): loop_read(OUT, list(reversed(OUT))),
+                ("out",): loop_read(OUT, []),
+                ("out", "A"): calm,
+                ("out", "B"): busy,
+            },
+            [("A", 4.0), ("B", 4.0)],
+        )
+        trip, _info = refine.make_loop(two_leg_trip(), loop_context())
+        assert [leg["shape"] for leg in trip["legs"]] == ["out", "A"]
 
     def test_an_unavoidable_there_and_back_keeps_the_routers_route_and_says_so(
         self, monkeypatch
@@ -268,7 +286,7 @@ class TestMakingALoop:
         )
         trip, info = refine.make_loop(two_leg_trip(), loop_context(max_m=8_600.0))
         assert [leg["shape"] for leg in trip["legs"]] == ["out", "FITS"]
-        assert trip["summary"]["length"] * 1000.0 <= 8_600.0 and info["tried"] == 2
+        assert trip["summary"]["length"] * 1000.0 <= 8_600.0 and info["tried"] == 4
 
     def test_a_way_back_past_the_limit_every_time_is_the_out_and_back(self, monkeypatch) -> None:
         LoopWorld(monkeypatch, readings(LONG=list(range(101, 141))), [("LONG", 5.0)] * 4)

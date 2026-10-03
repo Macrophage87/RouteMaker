@@ -1428,9 +1428,9 @@ def loop_refused(read: Analysis, ctx: Context) -> bool:
 def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
     """The plan's way back by a different way (OWNER-DECISIONS 266): the last leg of
     `trip` asked for again with points along the way out excluded, from all of them
-    to fewer (LOOP_THINNING) to none; the whole within the longest ride; the least
-    stressful of those that share no more than LOOP_OVERLAP_OK of the way out, else
-    the one that shares the least. Where the way back is the way out whatever is
+    to fewer (LOOP_THINNING) to none, every one asked; the whole within the longest
+    ride; the least stressful of those that share no more than LOOP_OVERLAP_OK of the
+    way out, else the one that shares the least. Where the way back is the way out whatever is
     excluded (LOOP_OUT_AND_BACK) the router's own route stays, `fallback` says so.
 
     Returns (trip, info) with `info`: `overlap_pct` and `shared_m` of the trip
@@ -1509,8 +1509,6 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         ranked = (share > LOOP_OVERLAP_OK, whole.key(ctx) if share <= LOOP_OVERLAP_OK else share)
         if best is None or ranked < best[0]:
             best = (ranked, joined, whole, len(chosen), share)
-        if share <= LOOP_OVERLAP_OK:
-            break
     if best is None or best[4] >= LOOP_OUT_AND_BACK:
         info["fallback"] = "out_and_back"
         return trip, info

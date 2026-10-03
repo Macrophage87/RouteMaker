@@ -1337,6 +1337,36 @@ class TestTheHillsChoiceUsesThePlansExposure:
             == 0
         )
 
+    def test_the_own_routes_exposure_is_weighed_as_the_alternates_is(self, monkeypatch):
+        """Both routes are weighed by the plan's weights, not only the alternate: 100 m of
+        LTS 4 is 800 at 1/8/16 (and 200 at 1/2/3), against 700 m of LTS 3."""
+        self.stress(monkeypatch, {"4": 100.0}, {"3": 700.0})
+        assert (
+            routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, AVERSE)
+            == 1
+        )
+        self.stress(monkeypatch, {"4": 100.0}, {"3": 700.0})
+        assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}) == 0
+
+    def test_the_middle_routes_exposure_is_weighed_by_the_plans_weights(self, monkeypatch):
+        weighted = presets.Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=False)
+        middle = _trip(list(reversed(VERTICES)), 2.2, LONG_STEEP)
+        trip = _trip(VERTICES, 2.0, KICK_THEN_FLAT)
+        monkeypatch.setattr(routing, "_call", lambda *a: {"trip": middle})
+        deadline = routing.Deadline(routing.clock() + 37, routing.ROUTER_TIMEOUT_S)
+        # The hill-avoiding route has 300 m of LTS 3 (300); the middle's 60 m of LTS 4 is 480
+        # at 1/8/16 and 120 at 1/2/3: the plan's weights keep the hill-avoiding route.
+        self.stress(monkeypatch, {"3": 300.0}, {"4": 60.0})
+        kept = routing.no_busier_than_middle(
+            trip, {"alternates": 3}, "standard", {}, {}, "w", deadline, None, weighted
+        )
+        assert kept == (trip, False)
+        self.stress(monkeypatch, {"3": 300.0}, {"4": 60.0})
+        kept = routing.no_busier_than_middle(
+            trip, {"alternates": 3}, "standard", {}, {}, "w", deadline, None
+        )
+        assert kept == (middle, True), "at 1/2/3 the middle is calmer"
+
     def test_the_middle_route_with_more_lts4_is_not_swapped_in(self, monkeypatch):
         middle = _trip(list(reversed(VERTICES)), 2.2, LONG_STEEP)
         trip = _trip(VERTICES, 2.0, KICK_THEN_FLAT)
