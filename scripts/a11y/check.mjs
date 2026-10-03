@@ -1,0 +1,248 @@
+// The browser check for the combined a11y review's fixes (FIX-A11Y): focus
+// order, Escape, focus return, the credits at 375 px and the focus ring's
+// contrast, against the app under Vite with a mocked API. Run by
+// scripts/a11y/run.sh, which starts Vite and an offline Chromium; prints one
+// line per check and exits non-zero if any fails.
+//
+//   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
+import { mkdirSync } from "node:fs";
+import { S_DEFAULT, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+
+const arg = (name, fallback) => {
+  const i = process.argv.indexOf(name);
+  return i > 0 ? process.argv[i + 1] : fallback;
+};
+const PORT = Number(arg("--port", "5173"));
+const SHOTS = arg("--shots", "/tmp/a11y-shots");
+mkdirSync(SHOTS, { recursive: true });
+
+const results = [];
+function check(name, ok, detail = "") {
+  results.push({ name, ok: !!ok });
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` - ${detail}` : ""}`);
+}
+
+const b = await connect();
+
+async function open({ route = S_DEFAULT, hash = hashFor("default", 70), width = 1280, height = 900, scheme = "light", forced = false, mobile = false } = {}) {
+  const p = await newPage(b, { width, height, mobile });
+  if (mobile) await p.s("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+  await mock(p, route);
+  await media(p, { scheme, forced });
+  await p.s("Page.navigate", { url: `http://127.0.0.1:${PORT}/${hash}` });
+  const ready = await p.waitFor("!!document.querySelector('.summary') && document.querySelectorAll('.junction-marker').length > 0", 40000);
+  if (!ready) throw new Error("the app did not show a route");
+  await sleep(800);
+  return p;
+}
+
+/** What has the focus, in a few words. */
+const focused = (p) =>
+  p.eval(`(() => { const e = document.activeElement; if (!e || e === document.body) return "body";
+    return [e.tagName.toLowerCase(), e.id ? "#" + e.id : "", e.className && typeof e.className === "string" ? "." + e.className.split(" ").join(".") : "",
+      e.dataset?.junctionIndex !== undefined ? "[" + e.dataset.junctionIndex + "]" : "", " " + (e.getAttribute("aria-label") || e.textContent || "").trim().slice(0, 40)].join(""); })()`);
+
+// ---- 1. Focus order: the skip link first, and it skips the map ----
+{
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100) });
+  await p.eval("document.activeElement?.blur(); true");
+  await p.tab();
+  const first = await focused(p);
+  const skip = await p.eval("(() => { const e = document.querySelector('.skip-link'); const r = e.getBoundingClientRect(); return { focused: document.activeElement === e, visible: r.top >= 0 && r.bottom <= innerHeight && r.width > 40 }; })()");
+  check("focus order: the first Tab stop is the skip link, and it shows", skip.focused && skip.visible, first);
+  await p.shot(`${SHOTS}/skip-link_focused.png`, { x: 0, y: 0, width: 420, height: 90 });
+  const hash = await p.eval("location.hash");
+  await p.enter();
+  await sleep(150);
+  check("focus order: the skip link puts the focus on the planner", await p.eval("document.activeElement?.id === 'route-planner'"), await focused(p));
+  check("focus order: the skip link leaves the plan in the address", (await p.eval("location.hash")) === hash);
+  await p.tab();
+  check("focus order: the next stop is inside the planner, past every marker", await p.eval("!!document.activeElement.closest('#route-planner')"), await focused(p));
+  // Without the link: how many stops from it to the planner.
+  await p.eval("document.querySelector('.skip-link').focus(); true");
+  let stops = 0;
+  for (; stops < 80; stops++) {
+    await p.tab();
+    if (await p.eval("!!document.activeElement.closest('#route-planner')")) break;
+  }
+  console.log(`  (tabbing through the map instead: ${stops} stops before the planner)`);
+
+  // The announcement: the detour's tier and the very high stress junctions.
+  await p.waitFor("document.querySelector('.status-line')?.textContent.includes('Route planned')", 5000);
+  const said = await p.eval("document.querySelector('.status-line').textContent");
+  check("announcement: says the strong detour and the very high stress junctions", /Strong warning: 2\.4 times the direct distance/.test(said) && /2 very high stress junctions\./.test(said), said);
+
+  // The slider: named once, described by the calm note.
+  const slider = await axNode(p, ".dial input[type=range]");
+  check("slider: its name is its label alone", slider?.name === "Traffic", JSON.stringify(slider?.name));
+  check("slider: the calm note is its description", /^Calm detour: /.test(slider?.description ?? ""), (slider?.description ?? "").slice(0, 60));
+
+  // One plan and one announcement for a burst of keys.
+  await p.eval(`window.__said = []; new MutationObserver(() => { const t = document.querySelector('.status-line').textContent.trim(); if (t) window.__said.push(t); })
+    .observe(document.querySelector('.status-line'), { childList: true, subtree: true, characterData: true }); true`);
+  const before = p.routeRequests;
+  await p.eval("document.querySelector('.dial input[type=range]').focus(); true");
+  for (let i = 0; i < 4; i++) {
+    await p.key("ArrowLeft", "ArrowLeft", 37);
+    await sleep(120);
+  }
+  await sleep(3500);
+  const plans = p.routeRequests - before;
+  const announcements = await p.eval("window.__said");
+  check("slider: four key presses plan once", plans === 1, `${plans} plans`);
+  check("slider: and are announced once", announcements.length === 1, JSON.stringify(announcements));
+  await p.close();
+}
+
+// ---- 2. The card from the list: focus stays, Escape closes it ----
+{
+  const p = await open();
+  await p.eval("document.querySelectorAll('.junction-item')[1].focus(); true");
+  await p.enter();
+  await sleep(700);
+  check("list: Enter on a row opens the card", await p.eval("!!document.querySelector('.junction-popup')"));
+  check("list: the focus stays on the row", await p.eval("document.activeElement === document.querySelectorAll('.junction-item')[1]"), await focused(p));
+  const card = await axNode(p, ".junction-popup");
+  check("card: a dialog named for the junction", card?.role === "dialog" && /^Very high stress junction, at /.test(card?.name ?? ""), `${card?.role} "${card?.name}"`);
+  const close = await axNode(p, ".junction-popup .maplibregl-popup-close-button");
+  check("card: its close button says what it closes", close?.name === "Close junction card", close?.name);
+  await p.escape();
+  await sleep(200);
+  check("list: Escape closes the card", await p.eval("!document.querySelector('.junction-popup')"));
+  check("list: and the focus is still on the row", await p.eval("document.activeElement === document.querySelectorAll('.junction-item')[1]"), await focused(p));
+  // A mouse click on a row leaves the focus there too.
+  const at = await p.eval("(() => { const e = document.querySelectorAll('.junction-item')[0]; e.scrollIntoView({block:'center'}); const r = e.getBoundingClientRect(); return [r.left + 40, r.top + r.height / 2]; })()");
+  await p.s("Input.dispatchMouseEvent", { type: "mousePressed", x: at[0], y: at[1], button: "left", clickCount: 1 });
+  await p.s("Input.dispatchMouseEvent", { type: "mouseReleased", x: at[0], y: at[1], button: "left", clickCount: 1 });
+  await sleep(700);
+  check("list: a click on a row keeps the focus on it", await p.eval("document.activeElement === document.querySelectorAll('.junction-item')[0]"), await focused(p));
+  check("markers: no title read again as the description", await p.eval("[...document.querySelectorAll('.junction-marker')].every((m) => !m.hasAttribute('title'))"));
+  await p.close();
+}
+
+// ---- 3. The card from a marker: focus into it, back to the marker ----
+{
+  const p = await open();
+  // Zoomed in, so each junction has its own marker.
+  await p.eval("true");
+  const single = await p.eval("(() => { const m = [...document.querySelectorAll('.junction-marker:not(.junction-group)')][0]; m.focus(); return m.dataset.junctionIndex; })()");
+  await p.enter();
+  await sleep(500);
+  check("marker: Enter opens its card and the focus goes to its close button", await p.eval("document.activeElement?.classList.contains('maplibregl-popup-close-button') && !!document.activeElement.closest('.junction-popup')"), await focused(p));
+  await p.enter();
+  await sleep(300);
+  check("marker: closing the card gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}"`), await focused(p));
+  await p.enter();
+  await sleep(500);
+  await p.escape();
+  await sleep(300);
+  check("marker: Escape closes the card", await p.eval("!document.querySelector('.junction-popup')"));
+  check("marker: and gives the focus back to the marker", await p.eval(`document.activeElement?.dataset?.junctionIndex === "${single}"`), await focused(p));
+
+  // The group: its zoom hands the focus to the first member's new marker.
+  const group = await p.eval("(() => { const g = document.querySelector('.junction-marker.junction-group'); if (!g) return null; g.focus(); return g.dataset.junctionIndex; })()");
+  if (group === null) check("group: the two reds are a group at the opening zoom", false);
+  else {
+    await p.enter();
+    await sleep(1500);
+    const now = await p.eval("(() => { const e = document.activeElement; return { marker: e?.classList.contains('junction-marker'), index: e?.dataset?.junctionIndex, group: e?.classList.contains('junction-group'), zoom: 0 }; })()");
+    check("group: after its zoom the focus is on the first member's new marker", now.marker && now.index === group, `${JSON.stringify(now)} (first member ${group})`);
+  }
+  await p.close();
+}
+
+// ---- 4. The credits at 375 px ----
+for (const [width, height] of [[375, 812], [320, 800]]) {
+  const p = await open({ route: S_TRAIL, hash: hashFor("trailmaxxing", 100), width, height, mobile: true });
+  const credits = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib'); const r = a.getBoundingClientRect();
+    const nav = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect();
+    const scales = [...document.querySelectorAll('.maplibregl-ctrl-scale')].map((s) => s.getBoundingClientRect());
+    const credit = getComputedStyle(a, '::before').content;
+    return { collapsed: a.classList.contains('maplibregl-compact') && !a.classList.contains('maplibregl-compact-show'), height: Math.round(r.height), width: Math.round(r.width), credit,
+      overlap: scales.some((s) => s.top < nav.bottom && s.bottom > nav.top && s.left < nav.right && s.right > nav.left), button: !!a.querySelector('summary.maplibregl-ctrl-attrib-button') }; })()`);
+  check(`credits at ${width} px: start collapsed to the i button`, credits.collapsed && credits.button && credits.height <= 30, JSON.stringify(credits));
+  check(`credits at ${width} px: the OpenStreetMap credit still shows`, /OpenStreetMap/.test(credits.credit), credits.credit);
+  check(`credits at ${width} px: the scales clear the zoom buttons`, !credits.overlap);
+  const markers = await p.eval(`[...document.querySelectorAll('.junction-marker')].map((m) => { const r = m.getBoundingClientRect(); const h = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return h === m || m.contains(h) ? 'clear' : (h ? h.className.toString().slice(0, 40) : 'off-screen'); })`);
+  check(`credits at ${width} px: no junction marker is under the credits`, markers.every((m) => m === "clear" || m === "off-screen" || !/attrib/.test(m)), JSON.stringify(markers));
+  await p.eval("document.querySelectorAll('.junction-item')[0].click(); true");
+  await sleep(1200);
+  const close = await p.eval(`(() => { const c = document.querySelector('.junction-popup .maplibregl-popup-close-button'); if (!c) return 'no card'; const r = c.getBoundingClientRect();
+    return [[r.left + 2, r.top + 2], [r.right - 2, r.bottom - 2], [r.left + r.width / 2, r.top + r.height / 2]].map(([x, y]) => { const h = document.elementFromPoint(x, y); return h === c || c.contains(h) ? 'clear' : (h ? h.className.toString().slice(0, 30) : 'off'); }); })()`);
+  check(`credits at ${width} px: the card's close button is not covered`, Array.isArray(close) && close.every((h) => h === "clear"), JSON.stringify(close));
+  await p.shot(`${SHOTS}/credits_${width}_card-open.png`);
+  // Opening the credits still works, and scrolls rather than climbing into the zoom buttons.
+  await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').click(); true");
+  await sleep(200);
+  const opened = await p.eval(`(() => { const a = document.querySelector('.maplibregl-ctrl-attrib'); const nav = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect(); const r = a.getBoundingClientRect();
+    return { shown: a.classList.contains('maplibregl-compact-show'), clearOfNav: r.top > nav.bottom, links: [...a.querySelectorAll('a')].length }; })()`);
+  check(`credits at ${width} px: the i opens the full credits, clear of the zoom buttons`, opened.shown && opened.clearOfNav && opened.links >= 2, JSON.stringify(opened));
+  await p.shot(`${SHOTS}/credits_${width}_opened.png`);
+  if (width === 320) {
+    await p.eval("document.querySelector('.maplibregl-ctrl-attrib-button').click(); document.querySelector('.junction-list').scrollIntoView({ block: 'start' }); true");
+    await sleep(300);
+    const reason = await p.eval("(() => { const r = document.querySelector('.junction-reason').getBoundingClientRect(); const row = document.querySelector('.junction-item').getBoundingClientRect(); return { reason: Math.round(r.width), row: Math.round(row.width), spill: document.querySelector('.junction-list').scrollWidth > document.querySelector('.junction-list').clientWidth }; })()");
+    check("rows at 320 px: the reason has the row's width and nothing spills sideways", reason.reason >= reason.row - 60 && !reason.spill, JSON.stringify(reason));
+    const list = await p.eval("(() => { const r = document.querySelector('figure.junctions').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: Math.min(r.height + 8, innerHeight - r.top) }; })()");
+    await p.shot(`${SHOTS}/rows_320.png`, list);
+  }
+  await p.close();
+}
+{
+  const p = await open({ width: 1280, height: 900 });
+  check("credits at 1280 px: stay open", await p.eval("document.querySelector('.maplibregl-ctrl-attrib').classList.contains('maplibregl-compact-show')"));
+  await p.close();
+}
+
+// ---- 5. The focus ring's contrast on the map, in each theme ----
+for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["forced-dark", { scheme: "dark", forced: true }], ["forced-light", { forced: true }]]) {
+  const p = await open({ ...opts });
+  // A keyboard focus, so :focus-visible applies.
+  await p.eval("document.querySelector('.junction-marker:not(.junction-group)').scrollIntoView(); document.querySelector('.junction-marker:not(.junction-group)').focus(); true");
+  await p.eval("document.activeElement.blur(); true");
+  const index = await p.eval("document.querySelector('.junction-marker:not(.junction-group)').dataset.junctionIndex");
+  // Tab to it from the skip link's side, so the focus is a keyboard one.
+  await p.eval(`(() => { const all = [...document.querySelectorAll('.junction-marker')]; const m = all.find((e) => e.dataset.junctionIndex === "${index}"); const before = document.createElement('button'); before.id = '__before'; before.style.cssText = 'position:fixed;left:-99px;top:0'; m.parentElement.insertBefore(before, m); before.focus(); return true; })()`);
+  await p.tab();
+  const ring = await p.eval(`(() => { const e = document.activeElement; const s = getComputedStyle(e); const r = e.getBoundingClientRect(); document.getElementById('__before')?.remove();
+    return { marker: e.classList.contains('junction-marker'), fv: e.matches(':focus-visible'), outline: s.outlineColor + ' ' + s.outlineWidth + ' ' + s.outlineStyle, shadow: s.boxShadow, rect: [r.left, r.top, r.width, r.height] }; })()`);
+  const [x, y, w, h] = ring.rect;
+  const clip = { x: Math.round(x - 16), y: Math.round(y - 16), width: Math.round(w + 32), height: Math.round(h + 32) };
+  const png = decodePng(await p.png(clip));
+  // In the clip, the marker's left edge is at 16: the ring is 2-5 px out from it, the white ring 0-2 px, the map 9 px and more.
+  const cy = Math.round(16 + h / 2);
+  const ringPx = png.pixel(16 - 4, cy);
+  const innerPx = png.pixel(16 - 1, cy);
+  const mapPx = png.pixel(3, cy);
+  const ratio = contrast(ringPx, mapPx);
+  // A two-colour ring (WCAG technique C40): one of the pair stands out from
+  // the map, and the two from each other. Outside forced colours the dark ring
+  // itself does; in a forced dark theme the white ring is the system's, and
+  // the black one inside it is what shows on the light map.
+  const best = Math.max(ratio, contrast(innerPx, mapPx));
+  check(`ring (${mode}): a keyboard focus on a marker shows the ring`, ring.marker && ring.fv, ring.outline);
+  check(`ring (${mode}): 3:1 or more against the map beside it`, (opts.forced ? best : ratio) >= 3, `ring ${ringPx} inner ${innerPx} map ${mapPx}: ring ${ratio.toFixed(2)}:1, best of the pair ${best.toFixed(2)}:1`);
+  check(`ring (${mode}): the inner ring is the other of the pair`, contrast(innerPx, ringPx) >= 3, `${innerPx} vs ${ringPx}`);
+  if (!opts.forced) check(`ring (${mode}): the same dark ring in either theme`, /rgb\(17, 24, 39\) 3px solid/.test(ring.outline), ring.outline);
+  await p.shot(`${SHOTS}/ring_${mode}_marker.png`, clip);
+  // The map canvas and the credits links: dark on the light map, in the dark theme too.
+  if (mode === "dark") {
+    const canvas = await p.eval("(() => { const c = document.querySelector('.maplibregl-canvas'); return getComputedStyle(c).getPropertyValue('--map-focus').trim(); })()");
+    check("ring (dark): the canvas and the credits use the map's ring, not amber", canvas === "#111827", canvas);
+    const rings = await p.eval(`(() => { const out = {}; for (const sel of ['.maplibregl-canvas', '.maplibregl-ctrl-attrib a', '.maplibregl-ctrl-zoom-in']) {
+      const e = document.querySelector(sel); e.focus(); const st = getComputedStyle(e); out[sel] = { fv: e.matches(':focus-visible'), outline: st.outlineColor + ' ' + st.outlineWidth }; } return out; })()`);
+    check("ring (dark): the canvas, a credits link and Zoom in ring in the map's dark ring", Object.values(rings).every((r) => r.fv && /^rgb\(17, 24, 39\) 3px$/.test(r.outline)), JSON.stringify(rings));
+    await p.shot(`${SHOTS}/ring_dark_zoom-in.png`, await p.eval("(() => { const r = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect(); return { x: r.left - 12, y: r.top, width: r.width + 12, height: r.height + 12 }; })()"));
+  }
+  if (mode === "forced-dark") {
+    const zoom = await p.eval("(() => { const e = document.querySelector('.maplibregl-ctrl-zoom-in'); e.focus(); const st = getComputedStyle(e); return { fv: e.matches(':focus-visible'), outline: st.outlineStyle + ' ' + st.outlineWidth + ' ' + st.outlineOffset }; })()");
+    check("ring (forced-dark): MapLibre's Zoom in keeps a real outline", zoom.fv && /^solid 3px -3px$/.test(zoom.outline), JSON.stringify(zoom));
+    await p.shot(`${SHOTS}/ring_forced-dark_zoom-in.png`, await p.eval("(() => { const r = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect(); return { x: r.left - 12, y: r.top, width: r.width + 12, height: r.height + 12 }; })()"));
+  }
+  await p.close();
+}
+
+b.close();
+const failed = results.filter((r) => !r.ok);
+console.log(`\n${results.length - failed.length}/${results.length} passed`);
+process.exit(failed.length ? 1 : 0);
