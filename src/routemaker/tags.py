@@ -9,6 +9,7 @@ hide which values were measured and which were assumed.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .geo import METRES_PER_FOOT
@@ -134,10 +135,25 @@ def parse_width_m(value: str | None) -> float | None:
 # mapper stating the street is two-way, and `reversible` and `alternating` are
 # streets whose direction changes, where both sides are in use over a day.
 ONEWAY_VALUES = frozenset({"yes", "1", "-1", "true"})
+# The junctions that are one-way without a `oneway` tag: OSM implies it on a
+# roundabout and mappers mostly leave the tag off (1,089 of the region's 2,729
+# roundabout road ways, 2026-09-25 extract). Upstream's graph forces them
+# one-way (lua/vendor/graph_upstream.lua; `pipeline.variants.ONEWAY_JUNCTIONS`
+# is the same set), and OWNER-DECISIONS 228 has stress and junction pricing
+# read them so too, region-wide.
+ONEWAY_JUNCTIONS = frozenset({"roundabout", "circular"})
 
 
-def is_oneway(tags: dict[str, str]) -> bool:
-    return tags.get("oneway") in ONEWAY_VALUES
+def is_oneway(tags: Mapping[str, str]) -> bool:
+    """Whether traffic runs one way only: a `oneway` tag that says so, or a
+    roundabout or circular junction not tagged `oneway=no` (OWNER-DECISIONS
+    228). The one reading of one-way for the classifier, the segment table's
+    `road_oneway` and `road_lanes`, the divided-road pairing and the agency
+    overlay (`agency_roads`); the graph's own reading is
+    `pipeline.variants.is_motor_oneway`."""
+    if tags.get("oneway") in ONEWAY_VALUES:
+        return True
+    return tags.get("junction") in ONEWAY_JUNCTIONS and tags.get("oneway") != "no"
 
 
 DIRECTIONAL_LANE_KEYS = ("lanes:forward", "lanes:backward")

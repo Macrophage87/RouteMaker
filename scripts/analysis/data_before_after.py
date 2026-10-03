@@ -48,6 +48,13 @@ SKIP = discrepancies.NOT_ROADS
 CITY_NEAR_DEG = 0.0015
 
 
+def graph_direction(tags) -> str:
+    """The direction a routing graph lets motor traffic run on a way."""
+    if not variants.is_motor_oneway(tags):
+        return "two-way"
+    return "backward" if tags.get("oneway") == "-1" else "forward"
+
+
 def length_m(coords) -> float:
     return sum(haversine(Point(*a), Point(*b)) for a, b in zip(coords, coords[1:], strict=False))
 
@@ -179,7 +186,7 @@ def main() -> int:
                 cands.append(
                     SimpleNamespace(
                         osm_id=w.osm_id,
-                        tags={k: t[k] for k in ("highway", "name", "oneway") if k in t},
+                        tags={k: t[k] for k in ("highway", "name", "oneway", "junction") if k in t},
                         coordinates=w.coordinates,
                     )
                 )
@@ -245,8 +252,11 @@ def main() -> int:
             facts = agg.get(w.osm_id)
             a = after_match.get(w.osm_id)
             sources, disagree, agree, rows190, tags1 = {}, (), (), (), dict(tags0)
+            routed = {}
             if facts is not None:
                 ov = overlays[w.osm_id]
+                # What the graph takes of it: the record's direction (OWNER-DECISIONS 216).
+                routed = variants.agency_routing_tags(dict(w.tags), ov.routing)
                 tags1, _ = speed_corrections.corrected(ov.tags, speeds.get(w.osm_id))
                 sources = {**ov.sources, "aadt": agency_roads.aadt_source(a)}
                 disagree, agree, rows190 = ov.disagreements, ov.agreements, ov.precedence
@@ -305,6 +315,11 @@ def main() -> int:
                     "item190": ",".join(rows190),
                     "item190_without": ",".join(effects),
                     "divided": int(w.osm_id in div),
+                    # The routing graph's direction before and after (OWNER-DECISIONS 216):
+                    # "two-way", "forward" (the way's digitising direction) or "backward".
+                    "graph0": graph_direction(w.tags),
+                    "graph1": graph_direction({**w.tags, **routed}),
+                    "routing": json.dumps(routed, sort_keys=True) if routed else "",
                     "tags": json.dumps(discrepancies.reported_tags(w.tags), sort_keys=True),
                     "tags1": json.dumps(discrepancies.reported_tags(tags1), sort_keys=True),
                     "facts": json.dumps(discrepancies.facts_summary(facts), sort_keys=True)

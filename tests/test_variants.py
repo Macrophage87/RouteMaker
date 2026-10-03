@@ -1781,6 +1781,16 @@ class TestContraflowClosure:
         assert is_motor_oneway({"junction": junction})
         assert not is_motor_oneway({"junction": "jughandle"})
 
+    def test_the_graph_s_roundabouts_are_the_classifier_s(self) -> None:
+        """OWNER-DECISIONS 228: stress and junction pricing read the junctions
+        the graph makes one-way (`routemaker.tags.is_oneway`)."""
+        from pipeline import variants
+        from routemaker import tags
+
+        assert variants.ONEWAY_JUNCTIONS == tags.ONEWAY_JUNCTIONS
+        for junction in tags.ONEWAY_JUNCTIONS:
+            assert tags.is_oneway({"junction": junction}) == is_motor_oneway({"junction": junction})
+
     def test_a_bicycle_follows_the_one_way(self) -> None:
         assert self.closed()["oneway:bicycle"] == "yes"
         for waived in ("no", "-1", "false"):
@@ -1932,3 +1942,49 @@ class TestContraflowClosure:
         assert not has_contraflow_tag(dict(self.ONE_WAY))
         assert not has_contraflow_tag({**self.ONE_WAY, "cycleway:right": "lane"})
         assert not has_contraflow_tag({**self.ONE_WAY, "oneway:bicycle": "yes"})
+
+
+# -- the District's direction in the routing tags (OWNER-DECISIONS 216) ------------
+
+
+def test_no_routing_decision_changes_nothing() -> None:
+    from pipeline.variants import agency_routing_tags
+
+    assert agency_routing_tags({"highway": "residential", "oneway": "yes"}, {}) == {}
+
+
+def test_a_district_two_way_is_written_as_no_not_removed() -> None:
+    from pipeline.variants import agency_routing_tags
+
+    tags = {"highway": "residential", "oneway": "yes", "oneway:bicycle": "no"}
+    assert agency_routing_tags(tags, {"oneway": "no"}) == {"oneway": "no"}
+
+
+def test_a_district_one_way_closes_osm_s_two_way_lanes_against_it() -> None:
+    """No contraflow lane in the record: OSM's lane each side and its `opposite`
+    value would open the reverse of the new one-way on the standard graph."""
+    from pipeline.variants import CONTRAFLOW_CLOSED_VALUE, agency_routing_tags
+
+    tags = {"highway": "secondary", "cycleway:left": "lane", "cycleway:right": "lane"}
+    changes = agency_routing_tags(tags, {"oneway": "yes"})
+    assert changes["oneway"] == "yes"
+    assert changes["oneway:bicycle"] == "yes"
+    assert changes["cycleway:left"] == CONTRAFLOW_CLOSED_VALUE
+    assert "cycleway:right" not in changes
+    assert agency_routing_tags({"highway": "residential"}, {"oneway": "-1"}) == {
+        "oneway": "-1",
+        "oneway:bicycle": "yes",
+    }
+
+
+def test_a_district_contraflow_lane_is_kept_for_the_standard_graph() -> None:
+    from pipeline.variants import Variant, agency_routing_tags, inject
+
+    routing = {"oneway": "yes", "oneway:bicycle": "no", "cycleway:left": "opposite_lane"}
+    changes = agency_routing_tags({"highway": "residential", "oneway": "no"}, routing)
+    assert changes == routing
+    graph = {"highway": "residential", **changes}
+    assert inject(Variant.STANDARD, dict(graph), 1) == graph
+    closed = inject(Variant.NO_TRAIL, dict(graph), 1)
+    assert closed["oneway:bicycle"] == "yes"
+    assert closed["cycleway:left"] != "opposite_lane"

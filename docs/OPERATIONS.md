@@ -439,10 +439,20 @@ limits, and clearing a client" above). A long ride, the one request with a
 pool of its own, never runs the search. So at most
 `ROUTING_CONCURRENCY` searches run at once across the whole deployment, however
 many api containers there are, and each makes its router calls one after
-another: three at once against each router's four threads (`concurrency` in
-`valhalla/*.json`). If `ROUTING_CONCURRENCY` is raised (more workers), keep it
-at or below the routers' `concurrency`, or calm plans at the top of the slider
-can queue inside the routers. Round 1's per-container lock files
+another. Each router serves with two workers per stage: the second argument of
+its `command` in `compose.yaml` (`valhalla_service /conf/valhalla-<variant>.json
+2`). `mjolnir.concurrency` (4) in `valhalla/*.json` is the tile build's thread
+count and says nothing about serving. So three routing slots can have three
+plans asking one router at once against its two workers, and the third waits
+inside Valhalla. A calm plan at the top of the slider, with the trail seek's up
+to six asks a leg one after another, is the case where that shows: it costs
+latency inside the 40 s budget, not errors (a call that waits past its own
+deadline is a `time` limit like any other). After a deploy that turns the seek
+on, watch the route p95 in the api's request log for a few days; if it
+climbs, the remedies are a third router worker (`"3"`, within the router's CPU
+limit) or `ROUTING_CONCURRENCY` held at 2, not more api workers. If
+`ROUTING_CONCURRENCY` is raised (more workers), keep it at or below the routers'
+worker count, or calm plans can queue inside the routers. Round 1's per-container lock files
 (`CALM_SEARCHES_PER_HOST`, `/tmp/routemaker-calm-search`) are gone, and so is
 `calm_search.limited` `busy`; a `routemaker-calm-search` directory left in a
 container's or host's temporary directory by round 1 may be deleted.
@@ -510,8 +520,12 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   nothing before (above). A plan with stops runs the
   seek once per leg of at least 1.2 mi: one table read per leg (each up to 30,000
   rows) and, per candidate, one route for the leg alone with its trace and `/locate`s,
-  within the same 6 s as before, plus one reading of the whole trip when a leg is
-  taken; the spliced trip is then held to the whole trip's Traffic-wins allowance
+  within the same 6 s as before, plus each leg's reading of its own route (at most
+  2 s a leg, `refine.SEEK_LEG_READ_S`, added to the budget and never into the time
+  kept for the answer's traces; measured 0.45-0.6 s), plus one reading of the whole
+  trip when a leg is taken. A leg that runs out of its share leaves the rest to the
+  legs after it (until the combined correctness review it ended the seek, which on
+  Bethesda - Silver Spring - College Park meant the seek never asked anything); the spliced trip is then held to the whole trip's Traffic-wins allowance
   (2% and 164 ft, 50 m), as each leg is to its own. Measured one stop +4.8 s and three
   stops +4.8 s over a plan without the seek
   (three stops: the exclusion search had used the time, and the seek added only its
@@ -1874,7 +1888,9 @@ cannot cover the old one, which has no check. So:
 
 1. **Deploy both images from the merged branch**, api and rebuild together —
    merge first, so the deploy does not drop work that is live but not on the
-   branch. `docker compose up -d api worker rebuild` after the build.
+   branch. `docker compose up -d --no-deps --no-build api worker rebuild` after the build
+   (`--no-deps`, or compose also runs `migrate` and may touch the services
+   these depend on).
 2. **Reinstall the crossings** with the command above.
 3. **Load the override file**, dry run first, then `--confirm`:
 
@@ -2131,6 +2147,49 @@ A collision that gets past all that is still caught rather than silently
 merged: `tiles.write_build_config` refuses a build directory that already
 exists.
 
+## After a host restart: the postgis bind race
+
+A Windows reboot, a `wsl --shutdown` or a Docker Desktop restart can start the
+containers before the WSL bind mounts behind them are ready (hit on 2026-09-29,
+09-30 and 10-02). `postgis` then finds an empty directory where its data
+directory should be and initialises a **new, empty cluster**: the api answers,
+migrations and segments are gone, and nothing says why. The real data directory
+on the host is untouched. Other binds fail the same way (a router with no tiles,
+caddy with no Caddyfile). Check before anything else, with api and worker
+stopped so nothing writes into an empty cluster:
+
+```sh
+docker compose stop api worker
+docker compose exec -T postgis psql -U routemaker -d routemaker -At \
+    -c "select count(*) from django_migrations" </dev/null
+```
+
+The count is the number of applied migrations: **68** on 2026-10-02 (core at
+0009); anything else, an error included, is the race. Recover in this order,
+postgis first:
+
+```sh
+docker compose up -d --no-deps --no-build --force-recreate postgis
+# check again: django_migrations 68, and the live segment count as last seen
+docker compose exec -T postgis psql -U routemaker -d routemaker -At \
+    -c "select count(*) from django_migrations" </dev/null
+docker compose exec -T postgis psql -U routemaker -d routemaker -At \
+    -c "select count(*) from live.segment" </dev/null
+docker compose up -d --no-deps --no-build --force-recreate \
+    caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend \
+    photon api worker rebuild
+```
+
+**Never a plain `docker compose up -d` here.** Without `--no-deps` it starts
+`migrate` against whatever postgis has, which on the empty cluster creates a
+fresh schema there, and without `--force-recreate` a container whose bind came
+up empty keeps it. The same restart kills any running job: a rebuild or a backup
+interrupted by it sits as `doing` (Wedged jobs, below: `unwedge_job`), and one
+killed during its swap may need "A `SwapUndoIncomplete` alert" below. Never
+force-kill Docker Desktop and never use "Reset to factory defaults": the first
+leaves stale sockets that stop the next start, the second deletes the images
+and volumes.
+
 ## Wedged jobs
 
 A job stuck in `doing` with nothing running it. Procrastinate marks a job
@@ -2228,8 +2287,22 @@ changes nothing — and `--confirm` is what performs it.
 docker compose exec -T rebuild ./manage.py rollback_rebuild            # what would happen
 docker compose exec -T rebuild ./manage.py rollback_rebuild --confirm  # do it
 docker compose restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
+docker compose up -d --no-deps --no-build --force-recreate api worker
 docker compose exec -T api python manage.py predraw_stress_tiles
 ```
+
+**Recreate `api` and `worker` after a rollback** to a table with fewer columns.
+Each process remembers, for its life, that the live segment table has the
+facility, adjustment and road-trait columns (`routing._has_facility_columns`,
+`_has_adjustment_columns`, `junctions.has_trait_columns` cache a True). Rolled
+back to a build from before those columns (20260927 and earlier), every route
+query still names `seg.car_free_when` and `facility`, nothing catches the
+database error, and every route answers 500 until the processes start again.
+`--force-recreate` with `--no-deps --no-build` starts fresh processes on the
+same images and touches no other service; a `restart` would do too, but the
+recreate is the form the rest of this page uses. Rolling forward again (a
+rebuild that adds the columns back) needs no recreate: the cached False is
+re-checked.
 
 The last line draws the stress tiles of the table put back: the pre-draw after
 the rolled-away rebuild's swap cleared that table's tiles from the cache, and

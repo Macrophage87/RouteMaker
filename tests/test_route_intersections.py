@@ -423,6 +423,33 @@ class TestTheSearchInTheAnswer:
         below = post(client, {**good_body("trailmaxxing"), "stress": 70}).json()["calm_search"]
         assert below["trail_credit"] is None
 
+    def test_a_ride_on_the_no_trail_graph_is_searched_as_roadway_only(
+        self, client, arterial, router, monkeypatch
+    ) -> None:
+        """Mutation review F14: the plan's search context says a ride on the
+        no-trail graph is roadway-only, which its stress reading and the seek's
+        early exit read (a seek for trails on a graph that has none). Mass Ride
+        is the one preset on that graph today; its search has rules of its own,
+        so the context is caught where the plan builds it."""
+        from core import refine
+
+        built: list = []
+        real = refine.Context
+
+        def capture(*args, **kwargs):
+            context = real(*args, **kwargs)
+            built.append(context)
+            return context
+
+        monkeypatch.setattr(refine, "Context", capture)
+        router(world())
+        assert post(client, good_body("mass-ride")).status_code == 200
+        assert post(client, good_body("group-ride")).status_code == 200
+        assert [(c.variant, c.roadway_only) for c in built] == [
+            ("no-trail", True),
+            ("standard", False),
+        ]
+
     def test_a_long_ride_says_why_the_calm_search_did_not_run(
         self, client, arterial, router
     ) -> None:

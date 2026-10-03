@@ -359,22 +359,23 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "intersections not weighed",
         R,
-        "ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m",
-        "ctx.rate * self.exposure_m + ctx.climb_weight * self.climb_m",
+        # The score is one term a line since the trail credit (trail-seek merge).
+        "            + ctx.weight * penalty\n",
+        "",
         REFINE,
     ),
     (
         "climb not weighed",
         R,
-        "ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m",
-        "ctx.rate * self.exposure_m + ctx.weight * penalty",
+        "            + ctx.climb_weight * self.climb_m\n",
+        "",
         REFINE,
     ),
     (
         "rate not weighed",
         R,
-        "ctx.rate * self.exposure_m + ctx.weight * penalty + ctx.climb_weight * self.climb_m",
-        "ctx.weight * penalty + ctx.climb_weight * self.climb_m",
+        "            ctx.rate * self.exposure_m\n            + ctx.weight * penalty\n",
+        "            ctx.weight * penalty\n",
         REFINE,
     ),
     (
@@ -963,8 +964,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "wide unread taken",
         R,
-        "        if read is None or read.events is None:",
-        "        if read is None:",
+        # The wide search's own check; the seek's whole-trip check is the same line.
+        "        if read is None or read.events is None:\n            continue\n",
+        "        if read is None:\n            continue\n",
         REFINE,
     ),
     # --- the answer --------------------------------------------------------
@@ -1331,14 +1333,14 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r3 foreign: paths held too",
         J,
-        "        strict=arms[in_index].is_road,",
+        "        strict=arms[in_index].use not in TRAIL_USES,",
         "        strict=True,",
         JUNCTIONS,
     ),
     (
         "r3 foreign: never held",
         J,
-        "        strict=arms[in_index].is_road,",
+        "        strict=arms[in_index].use not in TRAIL_USES,",
         "        strict=False,",
         JUNCTIONS,
     ),
@@ -1429,15 +1431,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r3 shared: only the later one's crossing",
         INTERSECTIONS,
-        "(road.names for road in (*earlier.crossed, *later.crossed))",
-        "(road.names for road in later.crossed)",
+        "frozenset().union(*_crossings(earlier), *_crossings(later))",
+        "frozenset().union(*_crossings(later))",
         PURE,
     ),
     (
         "r3 shared: only the earlier one's crossing",
         INTERSECTIONS,
-        "(road.names for road in (*earlier.crossed, *later.crossed))",
-        "(road.names for road in earlier.crossed)",
+        "frozenset().union(*_crossings(earlier), *_crossings(later))",
+        "frozenset().union(*_crossings(earlier))",
         PURE,
     ),
     (

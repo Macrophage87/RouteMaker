@@ -1124,3 +1124,117 @@ class TestNamedConstants:
         for tier in (3, 4, 5):
             assert m.SIGNALISED_CROSSING_FT[tier] < m.STOPPED_CROSSING_FT[tier]
             assert m.ALL_WAY_STOP_FT < m.STOPPED_CROSSING_FT[tier]
+
+
+class TestRoundabouts:
+    """OWNER-DECISIONS 228: a roundabout is one-way for junction pricing as it is
+    for routing. Spot-checked on the 2026-09-25 extract's own tags, through the
+    classifier that writes `road_oneway` and `road_lanes`: four rings OSM leaves
+    without a `oneway` tag (Washington Circle NW 6059311, Dupont Circle NW
+    696063559, Westgate Circle MD 450 11508177, Prince Frederick Road MD 231
+    114637602), and three it tags (Westmoreland Circle 131463009, Ward Circle NW
+    130676670, Chevy Chase Circle NW 131448535), which read as they always did."""
+
+    UNTAGGED = {
+        "washington circle northwest": {
+            "highway": "primary", "junction": "roundabout", "lanes": "4",
+            "name": "Washington Circle Northwest",
+        },
+        "dupont circle northwest": {
+            "highway": "primary", "junction": "circular", "lanes": "2",
+            "name": "Dupont Circle Northwest",
+        },
+        "westgate circle": {
+            "highway": "primary", "junction": "roundabout", "lanes": "1",
+            "name": "Westgate Circle", "ref": "MD 450",
+        },
+        "prince frederick road": {
+            "highway": "primary", "junction": "roundabout", "lanes": "2",
+            "maxspeed": "15 mph", "name": "Prince Frederick Road",
+        },
+    }  # fmt: skip
+    TAGGED = {
+        "westmoreland circle": {
+            "highway": "primary", "junction": "roundabout", "lanes": "2",
+            "name": "Westmoreland Circle", "oneway": "yes",
+        },
+        "ward circle northwest": {
+            "highway": "primary", "junction": "roundabout", "lanes": "4",
+            "maxspeed": "25 mph", "name": "Ward Circle Northwest", "oneway": "yes",
+        },
+        "chevy chase circle northwest": {
+            "highway": "primary", "junction": "roundabout", "lanes": "3",
+            "name": "Chevy Chase Circle Northwest", "oneway": "yes",
+        },
+    }  # fmt: skip
+
+    @staticmethod
+    def ring(tags: dict, way: int = 1) -> Road:
+        """The ring as `core.junctions.roads_by_way` reads it from the segment
+        row the classifier wrote (busy, so the model prices it)."""
+        from routemaker.stress import classify
+
+        read = classify(tags, urban=True, jurisdiction="DC")
+        return Road(
+            max(int(read.tier), 3),
+            speed_mph=read.speed_mph,
+            lanes=read.lanes,
+            oneway=read.oneway,
+            names=frozenset({tags["name"].lower()}),
+            ways=frozenset({way}),
+        )
+
+    @pytest.mark.parametrize("name", [*UNTAGGED, *TAGGED])
+    def test_the_ring_is_one_way_with_its_lanes_a_direction(self, name) -> None:
+        tags = {**self.UNTAGGED, **self.TAGGED}[name]
+        ring = self.ring(tags)
+        assert ring.oneway is True
+        assert ring.lanes == int(tags["lanes"])
+        # Its lanes are counted once ("a 4-lane road", not 8).
+        assert f"{tags['lanes']}-lane" in m.describe_road(ring)
+
+    @pytest.mark.parametrize("name", [*UNTAGGED, *TAGGED])
+    def test_leaving_the_ring_crosses_no_oncoming_traffic(self, name) -> None:
+        ring = self.ring({**self.UNTAGGED, **self.TAGGED}[name])
+        assert m.left_from_ft(ring, Control.NONE) == m.merge_ft(ring)
+        two_way = replace(ring, oneway=False)
+        assert m.left_from_ft(two_way, Control.NONE) > m.left_from_ft(ring, Control.NONE)
+
+    @pytest.mark.parametrize("name", list(UNTAGGED))
+    def test_mass_ride_draws_no_left_across_traffic_off_the_ring(self, name) -> None:
+        """Items 133 and 138: a left off a one-way road meets no oncoming lanes,
+        so a Mass Ride draws none; read two-way, the untagged ring drew one."""
+        ring = self.ring(self.UNTAGGED[name])
+        off = junction(movement=Movement.LEFT, incoming=ring)
+        assert m.assess(off, group=True) is None
+        assert m.assess(replace(off, incoming=replace(ring, oneway=False)), group=True)
+
+    @pytest.mark.parametrize("name", list(UNTAGGED))
+    def test_two_arcs_of_one_ring_crossed_close_together_count_once(self, name) -> None:
+        """A path across a small ring's two arcs, through its island: the arcs are
+        one-way ways of their own with the ring's name, so they count once with
+        the refuge's credit (`_divided`), as a tagged ring's always did."""
+        tags = self.UNTAGGED[name]
+        near, far = self.ring(tags, way=1), self.ring(tags, way=2)
+        events = m.assess_route(
+            [junction(m=100.0, crossed=(near,)), junction(m=130.0, crossed=(far,))]
+        )
+        one = m.assess(junction(crossed=(near,)))
+        assert len(events) == 1
+        assert events[0].cost_ft == pytest.approx(one.cost_ft * m.MEDIAN_REFUGE_FACTOR)
+
+    def test_a_ring_tagged_two_way_is_priced_two_way(self) -> None:
+        """Kenton Court 1536402606, `junction=roundabout` with `oneway=no`: the
+        mapper's word stands for the classifier (the graph's upstream reading
+        makes it one-way regardless; the one such way in the region)."""
+        ring = self.ring(
+            {
+                "highway": "residential",
+                "junction": "roundabout",
+                "lanes": "2",
+                "maxspeed": "25 mph",
+                "name": "Kenton Court",
+                "oneway": "no",
+            }
+        )
+        assert ring.oneway is False and ring.lanes == 1

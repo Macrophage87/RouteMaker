@@ -494,10 +494,16 @@ class RebuildContext:
     aadt_by_way: dict[int, conflation.Match] = field(default_factory=dict)
     # What the agency street blocks say about each way they were matched to
     # (`conflate_volume`), and the way's tags as the classifier reads them once
-    # that is overlaid. The graph's own tags are not changed: this is a
-    # statement about the rider's stress. Only ways a block reached are here.
+    # that is overlaid: a statement about the rider's stress. Only ways a block
+    # reached are here.
     road_facts_by_way: dict[int, agency_roads.WayFacts] = field(default_factory=dict)
     class_tags_by_way: dict[int, dict[str, str]] = field(default_factory=dict)
+    # The one thing of the overlay the graph takes too: the direction of
+    # traffic the District's record decided (OWNER-DECISIONS 216, "Enforce on
+    # all maps"), as the keys it changes in the way's OSM tags
+    # (`variants.agency_routing_tags`), laid over them on every variant by
+    # `inject_tags`. Only ways whose direction the record changed are here.
+    routing_tags_by_way: dict[int, dict[str, str]] = field(default_factory=dict)
     road_attr_sources: dict[int, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     road_disagreements: dict[int, tuple[str, ...]] = field(default_factory=dict)
     stress_by_way: dict[int, object] = field(default_factory=dict)
@@ -1051,6 +1057,11 @@ def build_handlers(
                 precedence.update(overlaid.precedence)
                 tags = overlaid.tags
                 context.class_tags_by_way[way.osm_id] = tags
+                # The direction the classifier reads is the graph's as well
+                # (OWNER-DECISIONS 216), from the one decision.
+                routed = variants.agency_routing_tags(way.tags, overlaid.routing)
+                if routed:
+                    context.routing_tags_by_way[way.osm_id] = routed
                 # The count's source is the count the classifier reads below:
                 # DDOT's or VDOT's where a count layer reached the way, the
                 # block's only where none did.
@@ -1094,10 +1105,12 @@ def build_handlers(
             logger.info(
                 "agency street blocks classified %d ways; where they disagree with the way's "
                 "own tags and it was left alone: %s; where the District's record overrode "
-                "OSM's tag (OWNER-DECISIONS 190 rows): %s",
+                "OSM's tag (OWNER-DECISIONS 190 rows): %s; ways whose routing direction the "
+                "record set (OWNER-DECISIONS 216): %d",
                 len(context.road_facts_by_way),
                 dict(sorted(kinds.items())) or "none",
                 dict(sorted(precedence.items())) or "none",
+                len(context.routing_tags_by_way),
             )
         if reported:
             write_discrepancy_report(reported, speeds, divided_ways, separate_roads, state_of)
@@ -1369,6 +1382,33 @@ def build_handlers(
             len(context.singletracks),
         )
 
+    def routing_tags(way: extract.Way) -> dict[str, str]:
+        """The way's tags for the variants to build from: its working tags
+        (the source's, with the approved access overrides) and, where the
+        District's record set its direction, that direction (OWNER-DECISIONS
+        216, `routing_tags_by_way`). An approved override that wrote one of
+        the same keys is the reviewed value and stands; the no-trail graph's
+        closure still runs after this (`variants.inject`, item 219)."""
+        routed = context.routing_tags_by_way.get(way.osm_id)
+        if not routed:
+            return way.tags
+        overridden = sorted(key for key in routed if way.tags.get(key) != way.source_tags.get(key))
+        if overridden:
+            # The reviewed row speaks for the reverse direction, so only the
+            # direction itself is taken from the record: the closure's
+            # `oneway:bicycle=yes` beside an approved `bicycle:backward=yes`
+            # makes upstream close the with-flow direction instead.
+            logger.info(
+                "way %s: an approved override set %s, so the District's direction record "
+                "sets only the way's one-way",
+                way.osm_id,
+                ", ".join(overridden),
+            )
+            routed = {
+                key: routed[key] for key in ("oneway",) if key in routed and key not in overridden
+            }
+        return {**way.tags, **routed}
+
     def inject_tags() -> None:
         reference = context.require_reference()
         context.work_dir.mkdir(parents=True, exist_ok=True)
@@ -1382,7 +1422,7 @@ def build_handlers(
             for way in context.ways:
                 injected = variants.inject(
                     variant,
-                    way.tags,
+                    routing_tags(way),
                     way.osm_id,
                     reference.sidepath_bridge_ids,
                     reference.mass_ride_only_bridge_ids,

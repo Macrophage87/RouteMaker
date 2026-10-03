@@ -250,3 +250,53 @@ def test_the_info_line_names_the_direction_overruled(tmp_path, caplog) -> None:
     assert len(lines) == 1, lines
     assert str(BRIDGE) in lines[0]
     assert "backward" in lines[0] and "forward" not in lines[0].replace("backward", ""), lines[0]
+
+
+@pytest.mark.django_db
+def test_an_approved_row_stands_over_the_district_s_direction_on_all_but_no_trail(
+    tmp_path,
+) -> None:
+    """OWNER-DECISIONS 216 with 219: the District records way 300 one-way and no
+    contraflow lane, so its routing tags close OSM's reverse direction
+    (`variants.agency_routing_tags`); an approved row that grants the reverse
+    (`bicycle:backward=yes`) is the reviewed value and stands on the standard,
+    weekend and e-bike graphs. The no-trail graph closes it, as it closes every
+    approved contraflow row."""
+    from pipeline.extract import read_ways
+    from pipeline.rebuild import Stage
+    from pipeline.run import RebuildContext, ReferenceData, build_handlers
+    from pipeline.variants import Variant, agency_routing_tags
+
+    source_tags = {"bicycle:backward": "no"}
+    source_pbf = tmp_path / "source.osm.pbf"
+    _write_bridge_extract(source_pbf, **source_tags)
+    reference_dir = write_reference_data(tmp_path, legality={})
+    context = RebuildContext(
+        source_pbf=source_pbf,
+        work_dir=tmp_path / "work",
+        reference_dir=reference_dir,
+        tiles_dir=tmp_path / "tiles",
+    )
+    context.ways = read_ways(source_pbf)
+    context.ways_by_id = {way.osm_id: way for way in context.ways}
+    context.reference = ReferenceData.load(reference_dir, context.ways)
+    # What CLASSIFY_STRESS leaves for a District one-way record on the way.
+    routed = agency_routing_tags(dict(context.ways_by_id[BRIDGE].tags), {"oneway": "yes"})
+    assert routed["bicycle:backward"] != "no"
+    context.routing_tags_by_way[BRIDGE] = routed
+    rows = [Override("access", BRIDGE, {"bicycle:backward": "yes"})]
+    handlers = build_handlers(context, load_overrides=lambda: rows)
+    handlers[Stage.APPLY_OVERRIDES]()
+    handlers[Stage.INJECT_TAGS]()
+    by_variant = {
+        variant: {way.osm_id: dict(way.tags) for way in read_ways(context.variant_pbf(variant))}
+        for variant in Variant
+    }
+    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+        tags = by_variant[variant][BRIDGE]
+        assert tags["oneway"] == "yes", variant.value
+        assert tags["bicycle:backward"] == "yes", variant.value
+        assert _valhalla_access(tags) == (True, True), variant.value
+    closed = by_variant[Variant.NO_TRAIL][BRIDGE]
+    assert closed["oneway"] == "yes"
+    assert _valhalla_access(closed) == (True, False)

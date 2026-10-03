@@ -34,7 +34,7 @@ import math
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 
-from routemaker import agency_roads
+from routemaker import agency_roads, divided
 from routemaker.agency_roads import RoadFacts, WayFacts, names_agree
 from routemaker.geo import (
     EARTH_RADIUS_M,
@@ -912,10 +912,23 @@ def overlay_road_facts(
     `divided_ways` is `routemaker.divided.carriageways`' result and
     `separate_roads` `routemaker.facility.separate_pairs`' second. `rows` is
     the OWNER-DECISIONS 190 rows applied (`agency_roads.overlay`).
+
+    Row C4 is guarded with a wider carriageway pairing as well
+    (`routemaker.divided.carriageway_pairs`): with the District's direction now
+    the graph's (OWNER-DECISIONS 216), a carriageway made two-way would be
+    routed against its traffic. Only the streets of the matched one-ways are
+    searched.
     """
+    ways = list(ways)
     tags_of = {way.osm_id: way.tags for way in ways if way.osm_id in facts_by_way}
     lines = {way.osm_id: way.coordinates for way in ways if way.osm_id in facts_by_way}
     context = agency_roads.block_context(facts_by_way, tags_of, separate_roads, lines)
+    one_way_streets = {
+        tags["name"]
+        for tags in tags_of.values()
+        if tags.get("name") and agency_roads.osm_forward(tags) is not None
+    }
+    pairs = divided.carriageway_pairs(ways, one_way_streets) if one_way_streets else set()
     overlays: dict[int, agency_roads.Overlay] = {}
     for way in ways:
         facts = facts_by_way.get(way.osm_id)
@@ -925,7 +938,7 @@ def overlay_road_facts(
             dict(way.tags),
             facts,
             separate_road=way.osm_id in context.separate or way.osm_id in separate_roads,
-            divided=way.osm_id in divided_ways,
+            divided=way.osm_id in divided_ways or way.osm_id in pairs,
             paired=way.osm_id in context.paired,
             side_lane=way.osm_id in context.side_lane,
             length_m=_length_m(way.coordinates),

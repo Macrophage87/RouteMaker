@@ -117,6 +117,42 @@ def causes(row) -> list[str]:
     return out or ["none (tags the same)"]
 
 
+def baltimore_not_used(dcbal) -> list[str]:
+    """OWNER-DECISIONS 222 ("differences go into a report"): where Baltimore's
+    centerline records a one-way or a lane count that differs from OSM's and is
+    not used, by kind, with the longest ways."""
+    marker = "not used (OWNER-DECISIONS 222)"
+    kinds: dict[str, list[dict]] = defaultdict(list)
+    for r in dcbal:
+        if r["region"] != "baltimore":
+            continue
+        for part in r["disagree"].split("; "):
+            if part.startswith(("oneway:", "lanes:")) and f"{part}; {marker}" in r["disagree"]:
+                # The lane counts differ way by way; the one-way's kind is the text.
+                kinds[
+                    part if part.startswith("oneway:") else "lanes: agency and OSM differ"
+                ].append(r)
+    out = [
+        "## Baltimore's one-way and lanes, not used (OWNER-DECISIONS 222)",
+        "",
+        'The owner, 2026-10-02: "Ignore it; keep OSM (Recommended)", and "Baltimore\'s data doesn\'t '
+        "seem nearly as complete as DC\" (223). The centerline's one-way and lane count are never used, "
+        "for stress or routing; where they differ from OSM's the way keeps OSM's. Baltimore fills a "
+        "missing posted speed only (184).",
+        "",
+        "| the centerline records, differently from OSM | ways | miles | longest |",
+        "| --- | --- | --- | --- |",
+    ]
+    for kind, rows in sorted(kinds.items()):
+        rows.sort(key=lambda r: -int(r["m"]))
+        longest = ", ".join(f"{r['name'] or '(unnamed)'} {r['way']}" for r in rows[:4])
+        miles = sum(int(r["m"]) for r in rows) / 1609.344
+        out.append(f"| {kind} | {len(rows)} | {miles:,.1f} | {longest} |")
+    if not kinds:
+        out.append("| (none) | 0 | 0.0 | |")
+    return [*out, ""]
+
+
 def load_rows(path: Path):
     with path.open() as handle:
         return list(csv.DictReader(handle, delimiter="\t"))
@@ -439,6 +475,7 @@ def main() -> int:
     out += ["### The US National Arboretum's internal roads", ""]
     out += example("Arboretum (roads and service ways in the grounds)", arboretum)
 
+    out += baltimore_not_used(dcbal)
     out += ["## Baltimore examples", ""]
     in_city = [r for r in dcbal if r["region"] == "baltimore" and r["in_area"] == "1"]
     for label, pattern in BALTIMORE_EXAMPLES.items():

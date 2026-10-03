@@ -814,8 +814,21 @@ unless named; PLAN.md quotes the owner's words):
   alongside it - 13-150 ft (4-45 m) to one side, at two or more points 65 ft
   (20 m) apart - is scored as the two-way road it is. Same-named ways that close
   into a ring under 0.6 mi (1 km) round are circles or loops (Ward, Tenley,
-  Blair and Americana Circles) and are left out. 46,343 ways on the region; 133
-  MiB and 19 s on this host.
+  Blair and Americana Circles) and are left out, as is every roundabout (item
+  228, below). 46,206 ways on the region; 133 MiB and 19 s on this host.
+- *Roundabouts* (item 228). `junction=roundabout` or `circular` is one-way
+  whether or not a `oneway` tag says so, unless it is tagged `oneway=no`, as
+  routing has it (`tags.is_oneway`, the one reading of one-way for the
+  classifier, the segment table's `road_oneway` and `road_lanes`, the
+  divided-road pairing and the agency overlay; the junction model prices the
+  ring as one-way through `road_oneway`). On the 2026-09-25 extract's own tags
+  (no agency block) that reads
+  1,238 of the region's 2,729 roundabout ways (45.3 of 82.2 mi) one-way that
+  were read two-way: 1,089 with no `oneway` tag and 149 a divided-road flag
+  had made two-way. Two ways changed tier (Marcus-David Peters Circle, VA,
+  LTS 3 to 4: two lanes are now a direction's). Upstream makes a roundabout
+  tagged `oneway=no` one-way as well; the classifier reads the mapper's word
+  (one such way, Kenton Court 1536402606).
 - *A decent painted lane.* At 40 mph a decent lane is LTS 3, a tier below
   mixed traffic (item 84), and not from three through lanes a direction, where
   Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
@@ -1888,6 +1901,17 @@ into the trip. The 6 s is shared by the legs that can run, by straight-line span
 what is left, at least 2.5 s each; a leg's unused time goes to the next. A taken
 splice is read once as a whole for the answer to reuse.
 
+Each leg's own route is read first (its trace and junctions, what the leg is
+measured against), on an allowance of its own, `refine.SEEK_LEG_READ_S` (2 s),
+which the budget is extended by but never past `REFINE_TRACE_RESERVE_S`; the leg's
+share is worked out after it. And a leg that runs out of its share ("time") leaves
+the rest to the legs after it; only a table that cannot be read ends the seek for
+every leg. The combined correctness review found the seek never ran on Bethesda -
+Silver Spring - College Park at Trailmaxxing 100 (6 of 6 runs): leg 0's share was
+the 2.5 s floor, its reading took 0.45-0.6 s and its table 0.13 s, which left it
+under `SEEK_ROUND_MIN_S`, and the loop stopped there before the longer leg 1. On
+the live routers since, 3 of 3 runs sought both legs (leg 1 asked one corridor).
+
 **Measured**, Trailmaxxing at 100 (stress 100, Cross), the twelve trips, each cell
 miles / miles of LTS 3+ / trail miles (path and protected) / ratio to the direct
 route / red and orange markers / plan time:
@@ -2406,10 +2430,14 @@ exception is counted as a disagreement with its reason:
   peak only), a junction stub of 30 m [100 ft] or less, to the whole metre the
   reports print (`MIN_ONE_WAY_OVERRIDE_M`, `is_junction_stub`; review r3: New
   Jersey Avenue NW 1508260473, listed at 30 m, was 30.2 m and overridden), or
-  where the direction is not known. Outside the District an explicit two-way
-  stands (review r1: Baltimore's Key Highway). A two-way way left on a one-way
-  block keeps OSM's lanes: the busier direction's count is not copied into the
-  other (review r2: New Jersey Avenue NW read four lanes each way).
+  where the direction is not known. The same exceptions hold where OSM tags no
+  one-way at all and the record fills one in: since OWNER-DECISIONS 216 the
+  record's direction is the routing graph's (below), and a direction the record
+  does not give, or a reversible road, is not written. Outside the District an
+  explicit two-way stands (review r1: Baltimore's Key Highway). A two-way way
+  left on a one-way block keeps OSM's lanes: the busier direction's count is not
+  copied into the other (review r2: New Jersey Avenue NW read four lanes each
+  way).
 - **C. Two-way recorded, OSM one-way**: the way is two-way (C4) - except a
   carriageway of a divided road (C1, `routemaker.divided`), one of two opposite
   one-way ways sharing a block (C2, `agency_roads.block_context`: the pairs the
@@ -2426,9 +2454,19 @@ exception is counted as a disagreement with its reason:
   runs beside it, short of its ends (`MIN_SIDE_LANE_BESIDE_M`; the gate review
   found Cedar Avenue, a one-way carrying Cedar Street NW on from its end, and
   Water Street SW, the street changing class, taken for side lanes). The
-  overlay also reads a roundabout as one-way, and says so for the classifier
-  (`oneway=yes`), so a block's lane count is written as one direction's and
-  not as two lanes each way.
+  overlay also reads a roundabout as one-way (`tags.is_oneway`, item 228) and
+  writes `oneway=yes` on it, so a block's lane count is written as one
+  direction's and not as two lanes each way. C1 is read wider than the stress reading's divided
+  road (item 109 keeps `divided.PAIR_M`, 45 m, and the names as mapped):
+  `divided.carriageway_pairs` pairs a one-way with an opposite one-way of the
+  same street alongside it within `C4_PAIR_M`, 100 m [330 ft], the name read
+  without the District's quadrant, on the residential classes too. The combined
+  correctness review found row C4 making carriageways two-way: South Capitol
+  Street SW 910656491 (its other carriageway is named Southeast, 12 m away),
+  910656606 (88 m) and 1122669898, E Street NW 6056366 (57 to 65 m) and H Street
+  NW 50511181 (52 m). With item 216 that would route against their traffic;
+  what the wide band can get wrong is the safe way round (a one-way left
+  one-way). `tests/data/c4_carriageways.json` holds those ways.
 - **D.** A slip road (`*_link`) keeps its own lanes and is never given a block's
   count (review r1: a one-lane ramp took its parent's block and read as 2 to 4
   lanes); the block is the parent road, not the ramp.
@@ -2446,7 +2484,14 @@ exception is counted as a disagreement with its reason:
   District records is still written there.
 - **Baltimore's speed fills only where OSM has no `maxspeed`** (OWNER-DECISIONS
   184, "Fill gaps only (Recommended)"); DC's posted speed takes precedence
-  (item 151).
+  (item 151). **Baltimore's one-way and lanes are never used** (OWNER-DECISIONS
+  222, "Ignore it; keep OSM (Recommended)"; 223: a gap-filler only), for stress
+  or routing (`agency_roads.DIRECTION_AND_LANES_IGNORED`): where they differ
+  from OSM's the overlay records a disagreement ending "not used
+  (OWNER-DECISIONS 222)", which `dcbal.tsv` carries for the report. The
+  correctness review found 279 untagged ways (25.0 mi) made one-way by the
+  centerline, among them W Cold Spring Ln 66418027 and Broening Hwy 54675215,
+  4-lane two-way primaries read one-way with 4 lanes a direction.
 - **Owner overrides of a block's record.** A block the owner has corrected is
   named, with the facts withheld, in an override file's `agency_blocks`
   (`agency_roads.withheld_blocks`, read by `road_facts_by_way` from the image's
@@ -2479,7 +2524,11 @@ and only where DC records the lane beside a parking lane
 (`BIKELANE_PARKINGLANE_ADJACENT`, in every direction that has a painted lane;
 `WayFacts.parking_reach_m`). Elsewhere the lane is measured on its own, the
 narrower reading. Whether a lane is *decent* (the 40 mph credit) stays on the
-lane's own width. A seven-foot lane beside eight feet of parking passes (15 ft);
+lane's own width. The overlay writes the lane's width to the millimetre and the
+criterion is met within `stress.WIDTH_TOLERANCE_M` (half a centimetre): the
+combined correctness review found a 5 ft lane written as 1.52 m, which beside a
+10 ft parking lane came to 4.568 m, 4 mm under the 15 ft line, and 13 DC ways
+(0.41 mi) at LTS 2 that are LTS 1. A seven-foot lane beside eight feet of parking passes (15 ft);
 a six-foot one does not (14 ft, LTS 2 as Furth has it). The effect of the reach
 on its own is a section of `reports/data-comparison/before-after.md`.
 
@@ -2491,10 +2540,28 @@ source `inventory` and agency `dc-roadway-block`, so `volume_source` says where
 it came from. Both carriageways of a divided road take the block's count, which
 is the two-way road's count and is what the classifier treats each as.
 
-**Graph tags are unchanged.** The overlay is what the classifier reads, as
-`speed_corrections` is; `facility_by_way` is read from the same tags, so the
-facility the map draws is the facility the tier was scored on, and what
-Valhalla sees of a way's lane or speed is not touched.
+**Graph tags are unchanged but for the direction.** The overlay is what the
+classifier reads, as `speed_corrections` is; `facility_by_way` is read from the
+same tags, so the facility the map draws is the facility the tier was scored on,
+and what Valhalla sees of a way's lane or speed is not touched. The direction of
+traffic is the exception (OWNER-DECISIONS 216, "Enforce on all maps"): what the
+overlay decides about a way's one-way - rows B and C4 and the one-ways it fills,
+with item 190's exceptions, which item 217 approved - is `Overlay.routing`, and
+`variants.agency_routing_tags` turns it into the keys it changes in the way's OSM
+tags (`run.routing_tags_by_way`), which `inject_tags` lays over the way's tags on
+every variant before `variants.inject`. A C4 two-way is written `oneway=no`, not
+removed, since the extract writer lays the changes over the source's tags. Where
+the record makes a way one-way and flags a contraflow lane, the graph takes it as
+OSM would map it (`oneway:bicycle=no` and the `opposite*` lane), which the
+standard graph rides and the no-trail graph closes (items 192, 219); where it
+flags none, the OSM two-way tagging that upstream would read as a reverse
+direction on a one-way (a lane each side, an `opposite*` value) is closed on
+every graph, as `close_contraflow` closes it. An approved access override that
+set one of those keys stands. So the classifier's `oneway`, the segment row's
+`road_oneway` and `road_lanes`, and the graph come from one decision and agree by
+construction; `tests/test_pipeline_end_to_end.py` checks it way by way
+(`_assert_graph_and_traits_agree`), and `tests/test_lua_remap.py` reads each case
+back through `lua/graph.lua`.
 
 **Audit.** Each segment on a matched way carries `attr_sources` (jsonb):
 
@@ -2658,20 +2725,17 @@ carry one). `tests/test_pipeline_end_to_end.py::test_the_no_trail_graph_closes_c
 runs a one-way through the rebuild and compares the tier, the facility and the
 segment row across the variants.
 
-**The Roadway Block overlay (wip/data).** Checked against that branch's
-`run.py`: the District overlay (`agency_roads.overlay`, which writes
-`cycleway:left=opposite_lane` and `oneway:bicycle=no` from `BIKELANE_CONTRAFLOW`)
-puts its tags in `context.class_tags_by_way`, which classification and the
-facility read, and `inject_tags` still hands `variants.inject` the way's own
-`way.tags`. The overlay therefore never reaches a variant's routing tags, so it
-cannot reopen the closure, and the closure never sees it. If a later change made
-the overlay's tags routing tags, they would arrive before `inject`, and
-`inject` is the last word. An approved access override that writes
-`bicycle:backward=yes` onto a one-way is likewise closed on this graph and only
-this graph, as the mass-ride bar is. One consequence of the two rules together:
-a District street the Roadway Block calls one-way but OSM tags two-way is
-one-way for classification (item 190) and two-way for routing, so it is not
-closed.
+**The Roadway Block overlay.** The District overlay (`agency_roads.overlay`,
+which writes `cycleway:left=opposite_lane` and `oneway:bicycle=no` from
+`BIKELANE_CONTRAFLOW`) puts its tags in `context.class_tags_by_way`, which
+classification and the facility read. Since OWNER-DECISIONS 216 its direction
+reaches every variant's routing tags as well (`run.routing_tags`, above), laid
+over the way's tags before `variants.inject`, so `inject` is still the last word:
+a one-way the District records is closed on this graph like any OSM one-way,
+its flagged contraflow lane included, and a District two-way has nothing to
+close. An approved access override that writes `bicycle:backward=yes` onto a
+one-way is likewise closed on this graph and only this graph, as the mass-ride
+bar is (OWNER-DECISIONS 219: "No, Mass Ride never goes against traffic").
 
 **A conditional never opens a one-way against its traffic, on any graph.**
 `remap_conditional_access` resolves a bicycle conditional onto the directional

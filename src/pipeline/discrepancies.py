@@ -5,7 +5,9 @@ OWNER-DECISIONS 190 ("DC data takes priority over OSM. It's updated regularly.")
 and especially bike infrastructure changes quite frequently, so it's likely OSM data is stale.
 However, report the discrepancies when you see them."): the District's value is what the classifier
 reads, except where a block cannot speak for one of its ways (`routemaker.agency_roads.overlay`) or
-the owner has withheld it (item 197); those are "not applied", with the reason.
+the owner has withheld it (item 197); those are "not applied", with the reason. An applied one-way
+or two-way record is also every routing graph's direction (item 216, "Enforce on all maps"), so a
+DC error shows here as a direction to check on the ground.
 
 Each rebuild writes the report (`pipeline.run`'s classification stage, `write_report`) to
 `<DATA_ROOT>/rebuild/reports/`, from the overlay it classified with. The copy checked in under
@@ -344,7 +346,9 @@ def markdown(rows: list[Mapping], found: list[dict], source: str) -> str:
         "way's OSM tags say different things. The District's value is what the classifier reads "
         "(OWNER-DECISIONS 190) except where a block, which describes the whole road, cannot speak for one of "
         "its ways, or the owner has withheld it (an owner override, item 197); those are **not applied**, "
-        f"summarised below by reason. {source} Every item, applied or not, is a row of `{CSV_NAME}`.",
+        "summarised below by reason. An applied one-way record is also the direction every routing graph "
+        'lets traffic and riders use the way (OWNER-DECISIONS 216: "Enforce on all maps"), so a one-way '
+        f"row here is a direction to check. {source} Every item, applied or not, is a row of `{CSV_NAME}`.",
         "",
         "Nothing here is for importing into OSM: the Roadway Block is CC BY 4.0, and copying its values into "
         "OSM (ODbL) would need a licence waiver from the District.",

@@ -29,9 +29,18 @@ Three steps, kept apart so each can be tested alone:
 * **overlay** the result onto the way's tags as the classifier reads them
   (`overlay`), saying for each attribute where its value came from.
 
-The overlay changes what the classifier reads and not the tags written to the
-graph, the same arrangement as `speed_corrections`: it is a statement about the
-rider's stress, and what Valhalla does with a car's speed is a separate matter.
+The overlay changes what the classifier reads, the same arrangement as
+`speed_corrections`: it is a statement about the rider's stress, and what
+Valhalla does with a car's speed is a separate matter. One thing is different:
+the direction of traffic. Where the overlay decides a way's one-way (the
+District's record, rows B and C4 and the one-ways it fills, with item 190's
+exceptions, which item 217 approved), the routing graph takes the same decision
+(OWNER-DECISIONS 216, "Enforce on all maps"): `Overlay.routing` is what is laid
+over the way's OSM tags in every variant's extract (`pipeline.variants.
+agency_routing_tags`), so the classifier's `oneway` and the graph's are one
+decision and cannot disagree. Baltimore's centerline never sets a direction or
+a lane count (items 222, 223): it fills a missing posted speed only, and its
+one-way and lane records are reported where they differ from OSM's.
 
 Layer quirks found on the data (retrieved 2026-10-01), because a parser that
 trusts the field names reads them wrongly:
@@ -85,6 +94,8 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .geo import Point, distance_to_line, haversine
+from .tags import ONEWAY_JUNCTIONS, is_oneway
+from .tags import lanes_per_direction as osm_lanes_per_direction
 
 METRES_PER_FOOT = 0.3048
 
@@ -164,6 +175,13 @@ CARRIAGEWAY_HIGHWAYS = frozenset({"motorway", "trunk"})
 # "Fill gaps only (Recommended)" (OWNER-DECISIONS 184). DC's posted limits take
 # precedence over OSM's (item 151).
 SPEED_FILLS_ONLY = frozenset({BALTIMORE_AGENCY})
+
+# The agencies whose one-way and lane records are never used, for the classifier
+# or for routing: Baltimore's centerline (OWNER-DECISIONS 222, "Ignore it; keep
+# OSM (Recommended)"; 223, "Baltimore's data doesn't seem nearly as complete as
+# DC"). The overlay reports where they differ from OSM's (`overlay`), and the
+# way keeps OSM's own one-way and lanes.
+DIRECTION_AND_LANES_IGNORED = frozenset({BALTIMORE_AGENCY})
 
 # The owner's corrections to a District block's record (OWNER-DECISIONS 197),
 # read by the matcher from the image's `fixtures/overrides/`, the directory the
@@ -1043,25 +1061,26 @@ class Overlay:
     agreements: tuple[str, ...] = ()
     # The OWNER-DECISIONS 190 rows (ROW_*) that overrode one of the way's tags.
     precedence: tuple[str, ...] = ()
+    # The routing keys the overlay decided (OWNER-DECISIONS 216): `oneway` where
+    # the agency's record set the way's direction (row B, row C4, or a one-way
+    # OSM does not tag), and on a one-way with the agency's contraflow lane,
+    # `oneway:bicycle` and the lane. Empty where the overlay left OSM's direction
+    # alone. Only rewritten values, never a removal: the extract writer lays a
+    # way's changes over its source tags (`pipeline.extract.write_extract`).
+    routing: dict[str, str] = field(default_factory=dict)
 
 
 def _oneway_tag(tags: Mapping[str, str]) -> bool:
     return tags.get("oneway") in ("yes", "1", "-1", "true")
 
 
-# The junctions OSM's one-way is implied on: a roundabout is one-way without a
-# `oneway` tag, and mappers mostly leave it off.
-ROUNDABOUT_JUNCTIONS = frozenset({"roundabout", "circular"})
-
-
-def _osm_one_way(tags: Mapping[str, str]) -> bool:
-    """OSM's one-way, said or implied: a `oneway` tag, or a roundabout not tagged
-    `oneway=no` (gate review: primary roundabouts 589905413 and 695842750 were
-    read as two-way main carriageways, and the overlay wrote two lanes each way
-    onto 589905413)."""
-    if _oneway_tag(tags):
-        return True
-    return tags.get("junction") in ROUNDABOUT_JUNCTIONS and tags.get("oneway") != "no"
+# The junctions OSM's one-way is implied on (`routemaker.tags.ONEWAY_JUNCTIONS`).
+# OSM's one-way, said or implied, is `routemaker.tags.is_oneway`: a `oneway`
+# tag, or a roundabout not tagged `oneway=no` (gate review: primary roundabouts
+# 589905413 and 695842750 were read as two-way main carriageways, and the
+# overlay wrote two lanes each way onto 589905413). The classifier reads the
+# same helper (OWNER-DECISIONS 228); `_oneway_tag` is the tag alone.
+ROUNDABOUT_JUNCTIONS = ONEWAY_JUNCTIONS
 
 
 def osm_forward(tags: Mapping[str, str]) -> bool | None:
@@ -1199,7 +1218,11 @@ def _facility_tags(facts: WayFacts, one_way: bool, travel_forward: bool) -> dict
     one-way ways share one block), and this way takes nothing from it.
     """
     out: dict[str, str] = {}
-    width_m = round(facts.bike_width_ft * METRES_PER_FOOT, 2) if facts.bike_width_ft else None
+    # To the millimetre, not the centimetre (review SF2): a 5 ft lane is 1.524 m,
+    # and 1.52 put it beside a 10 ft parking lane at 4.568 m, under Furth's 15 ft
+    # [4.572 m] reach. The classifier compares with a tolerance as well
+    # (`stress.WIDTH_TOLERANCE_M`).
+    width_m = round(facts.bike_width_ft * METRES_PER_FOOT, 3) if facts.bike_width_ft else None
     if facts.direction_known:
         ahead, behind = facts.bike_forward, facts.bike_backward
         if one_way:
@@ -1326,6 +1349,12 @@ def overlay(
       road, a freeway or trunk road, a roundabout, a junction stub, and a way
       whose name does not agree with its blocks' (an unnamed turn channel).
 
+    A one-way the record gives where OSM tags none is applied with row B's
+    exceptions too. What the one-way rows and that fill decide is also the
+    routing direction (`Overlay.routing`, OWNER-DECISIONS 216). Baltimore's
+    one-way and lanes are never read (DIRECTION_AND_LANES_IGNORED, items 222
+    and 223), only reported where they differ.
+
     A posted speed the owner has withheld for a block (`withheld_blocks`,
     OWNER-DECISIONS 197) is not applied: OSM's stands, and the disagreement is
     reported as an owner override.
@@ -1340,29 +1369,50 @@ def overlay(
     disagreements: list[str] = []
     agreements: list[str] = []
     precedence: list[str] = []
+    routing: dict[str, str] = {}
     agency = facts.agency
+
+    osm_oneway = is_oneway(tags)
+    osm_two_way = _osm_two_way(tags)
+    if agency in DIRECTION_AND_LANES_IGNORED:
+        # Baltimore (OWNER-DECISIONS 222, 223): its one-way and lane records are
+        # reported where they differ from OSM's and never read.
+        disagreements.extend(_ignored_direction_and_lanes(tags, facts, osm_oneway))
+        facts = replace(
+            facts,
+            one_way=None,
+            two_way_throughout=False,
+            oneway_forward=None,
+            lanes_per_direction=None,
+            lanes_by_direction={},
+            lanes_forward=None,
+            lanes_backward=None,
+        )
 
     # -- one-way: an agency that says one-way where OSM says nothing is believed,
     # in the direction the agency's traffic runs. Where OSM says the opposite in
     # so many words, the District's record wins with the exceptions above, and
     # another agency's does not (a mapper looked; review r1: Key Highway, mapped
-    # 3 and 2 lanes). What is left alone is counted.
-    osm_oneway = _osm_one_way(tags)
-    osm_two_way = _osm_two_way(tags)
+    # 3 and 2 lanes). What is left alone is counted. Whatever is decided here is
+    # also the routing graph's direction (`routing`, OWNER-DECISIONS 216), so a
+    # one-way is never written in a direction the record does not give: row B's
+    # exceptions (reversible lanes, a junction stub, a direction not known) hold
+    # on a way OSM leaves untagged as well.
     if osm_oneway and not _oneway_tag(tags):
-        # A roundabout's one-way, implied by OSM, said for the classifier, which
-        # reads `oneway` (`routemaker.tags.is_oneway`): a block's lane count
-        # written as one direction's must not be halved as a two-way road's.
+        # A roundabout's one-way, implied by OSM, said in the tags as well: the
+        # lane rows below read `oneway` itself, and a block's lane count written
+        # as one direction's must not be halved as a two-way road's.
         out["oneway"] = "yes"
     if facts.one_way is True and not osm_oneway:
         if not osm_two_way:
-            keep = None
+            keep = _keep_osm_two_way(facts, length_m)
         elif not record_wins or ROW_ONE_WAY not in rows:
             keep = "explicit two-way"
         else:
             keep = _keep_osm_two_way(facts, length_m)
         if keep is None:
             out["oneway"] = "-1" if facts.oneway_forward is False else "yes"
+            routing["oneway"] = out["oneway"]
             sources["oneway"] = agency
             if osm_two_way:
                 precedence.append(ROW_ONE_WAY)
@@ -1374,7 +1424,7 @@ def overlay(
                     if own:
                         out["lanes"] = own
         else:
-            sources["oneway"] = SOURCE_OSM
+            sources["oneway"] = SOURCE_OSM if osm_two_way else SOURCE_DEFAULT
             disagreements.append(
                 "oneway: agency one-way, OSM two-way"
                 + ("" if keep == "explicit two-way" else f", kept ({keep})")
@@ -1387,6 +1437,9 @@ def overlay(
         )
         if keep is None:
             out["oneway"] = "no"
+            # `no`, not the key removed: the graph's tags are laid over the
+            # source's, where OSM's `oneway=yes` would come back.
+            routing["oneway"] = "no"
             sources["oneway"] = agency
             precedence.append(ROW_TWO_WAY)
         else:
@@ -1491,6 +1544,13 @@ def overlay(
             del out[key]
         out.update(written)
         sources["bike"] = agency
+        if routing.get("oneway") in ("yes", "-1") and written.get("oneway:bicycle") == "no":
+            # The agency's contraflow lane on a one-way it made one-way: the
+            # graph's reverse direction is the lane's (OSM's `oneway:bicycle=no`
+            # with an `opposite*` lane, which the standard graph rides and the
+            # no-trail graph closes, items 192 and 219).
+            routing["oneway:bicycle"] = "no"
+            routing["cycleway:left"] = written["cycleway:left"]
     elif allow_bike:
         has_osm = any(k.startswith(_CYCLEWAY_PREFIX) for k in tags)
         sources["bike"] = SOURCE_OSM if has_osm else SOURCE_DEFAULT
@@ -1528,7 +1588,36 @@ def overlay(
     # The count's source is not the overlay's to say: a block's count is used
     # only where no count layer reached the way, so the caller records the
     # count it actually used (`aadt_source`).
-    return Overlay(out, sources, tuple(disagreements), tuple(agreements), tuple(precedence))
+    return Overlay(
+        out, sources, tuple(disagreements), tuple(agreements), tuple(precedence), routing
+    )
+
+
+def _ignored_direction_and_lanes(
+    tags: Mapping[str, str], facts: WayFacts, osm_oneway: bool
+) -> list[str]:
+    """Where an agency whose one-way and lanes are never used
+    (DIRECTION_AND_LANES_IGNORED) records them differently from OSM, for the
+    report (OWNER-DECISIONS 222: "differences go into a report")."""
+    found = []
+    if facts.one_way is True and not osm_oneway:
+        found.append(f"oneway: agency one-way, OSM two-way; not used ({IGNORED})")
+    elif facts.one_way is True and facts.oneway_forward is not None:
+        if osm_forward(tags) is not None and osm_forward(tags) != facts.oneway_forward:
+            found.append(f"oneway: agency one-way the other way from OSM's; not used ({IGNORED})")
+    agency_lanes = facts.lanes_per_direction
+    if agency_lanes:
+        osm_lanes = osm_lanes_per_direction(dict(tags))
+        if osm_lanes != agency_lanes:
+            found.append(
+                f"lanes: agency {agency_lanes} a direction, OSM "
+                f"{osm_lanes if osm_lanes is not None else 'none'}; not used ({IGNORED})"
+            )
+    return found
+
+
+# The reason a report gives for a Baltimore record that is never read.
+IGNORED = "OWNER-DECISIONS 222"
 
 
 class BlockContext(NamedTuple):
@@ -1562,11 +1651,11 @@ HIGHWAY_RANK = {
 
 def _main_rank(tags: Mapping[str, str]) -> int | None:
     """The class rank of a way OSM maps as a block's two-way main carriageway,
-    or None for a one-way (a roundabout included, `_osm_one_way`) or a class not
+    or None for a one-way (a roundabout included, `is_oneway`) or a class not
     ranked (a slip road). A service way or a track ranks below every street, so
     a driveway or an aisle along the block makes no street beside it a side
     lane."""
-    if _osm_one_way(tags):
+    if is_oneway(tags):
         return None
     return HIGHWAY_RANK.get(tags.get("highway", ""))
 
