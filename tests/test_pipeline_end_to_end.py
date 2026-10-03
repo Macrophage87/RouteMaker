@@ -628,10 +628,16 @@ def test_the_district_default_and_a_divided_road_reach_the_classifier(
     the single-lane row, and a carriageway of a divided road as the two-way
     road it is."""
     context, _stored = run_dials_extract(tmp_path)
+    traits = _segment_traits(context.staging_schema)
     for way_id in (DIVIDED_NORTH_ID, DIVIDED_SOUTH_ID):
         stress = context.stress_by_way[way_id]
         assert stress.rule == "mixed traffic, 20 mph or below, urban multilane, two-way floor"
         assert int(stress.tier) == 3, way_id
+        # Two-way for the tier (item 109), one-way for the junction model: the
+        # segment row says the graph's direction (correctness re-check of
+        # 2b0cf00, blocker 1: the refuge credit was lost on every carriageway).
+        assert (stress.oneway, stress.graph_oneway) == (False, True), way_id
+        assert traits[way_id][2] is True, way_id
     one_way = context.stress_by_way[ONE_WAY_ID]
     assert one_way.rule == "mixed traffic, 20 mph or below, urban multilane"
     assert int(one_way.tier) == 1
@@ -3873,19 +3879,34 @@ def _assert_graph_and_traits_agree(context, graph) -> None:
             assert routed.get("oneway") == read.get("oneway") or (
                 "oneway" not in read and routed.get("junction") == read.get("junction")
             ), (way.osm_id, variant)
+        # The no-trail graph (OWNER-DECISIONS 246): one-way where either the
+        # District or OSM says so, two-way only where both do; what it drops (a
+        # trail) it has no direction for.
+        mass = graph[Variant.NO_TRAIL].get(way.osm_id)
+        if mass is not None:
+            assert is_motor_oneway(mass) == (
+                is_motor_oneway(read) or is_motor_oneway(way.source_tags)
+            ), (way.osm_id, "no-trail")
         speed, lanes, oneway, _sources = traits[way.osm_id]
         stress = context.stress_by_way[way.osm_id]
         assert (speed, lanes, oneway) == (
             None if stress.speed_mph is None else round(stress.speed_mph),
             stress.lanes,
-            stress.oneway,
+            stress.graph_oneway,
         ), way.osm_id
-        if oneway:
-            assert is_motor_oneway(graph[Variant.STANDARD][way.osm_id]), way.osm_id
-        # One reading of one-way (OWNER-DECISIONS 228): the row is one-way exactly
-        # where the tags read say so, a roundabout no block reached included, but
-        # for a divided road's carriageway (item 109). A trail has no road traits.
-        assert bool(oneway) == (is_oneway(read) and way.osm_id not in carriageways), way.osm_id
+        if oneway is not None:
+            # `road_oneway` is the solo graphs' direction, carriageways included
+            # (correctness re-check of 2b0cf00, blocker 1): the junction model
+            # reads a divided road's carriageway as the one-way road it is.
+            if oneway:
+                assert is_motor_oneway(graph[Variant.STANDARD][way.osm_id]), way.osm_id
+            # One reading of one-way (OWNER-DECISIONS 228): the row is one-way
+            # exactly where the tags read say so, a roundabout no block reached
+            # included. A trail has no road traits.
+            assert oneway == is_oneway(read), way.osm_id
+            # Item 109's relief reading is the classifier's alone: a carriageway
+            # is not a one-way street for the tier.
+            assert stress.oneway == (is_oneway(read) and way.osm_id not in carriageways), way.osm_id
         if lanes is not None:
             assert lanes == lanes_per_direction(read), way.osm_id
 
@@ -3930,17 +3951,21 @@ def test_a_district_one_way_record_is_every_graph_s_direction(states, monkeypatc
 
 def test_a_district_two_way_record_is_every_graph_s_direction(states, monkeypatch) -> None:
     """Row C4: OSM's one-way, the District's two-way, and no carriageway beside
-    it. Every variant is two-way (`oneway=no`, rewritten, not removed: the
-    source's `oneway=yes` would come back), and the segment row two-way with
-    two lanes a direction (correctness review: the graphs kept `oneway=yes`)."""
+    it. The standard, weekend and e-bike graphs are two-way (`oneway=no`,
+    rewritten, not removed: the source's `oneway=yes` would come back), and the
+    segment row two-way with two lanes a direction (correctness review: the
+    graphs kept `oneway=yes`). The no-trail graph keeps OSM's one-way, with its
+    contraflow closed (OWNER-DECISIONS 246: "Mass Ride keeps one-way")."""
     block = street_block(
         "dc-1", {"way": "both", "lanes": {"ib": 2, "ob": 2}, "speed_mph": {"ob": 25}}
     )
     context, graph = _district_road(
         states, monkeypatch, block, oneway="yes", lanes="2", maxspeed="35 mph"
     )
-    for variant in Variant:
+    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
         assert graph[variant][100]["oneway"] == "no", variant.value
+    mass = graph[Variant.NO_TRAIL][100]
+    assert (mass["oneway"], mass["oneway:bicycle"]) == ("yes", "yes")
     assert context.stress_by_way[100].oneway is False
     assert _segment_traits(context.staging_schema)[100][:3] == (25, 2, False)
     _assert_graph_and_traits_agree(context, graph)

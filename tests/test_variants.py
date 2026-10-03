@@ -1988,3 +1988,55 @@ def test_a_district_contraflow_lane_is_kept_for_the_standard_graph() -> None:
     closed = inject(Variant.NO_TRAIL, dict(graph), 1)
     assert closed["oneway:bicycle"] == "yes"
     assert closed["cycleway:left"] != "opposite_lane"
+
+
+# -- Mass Ride keeps one-way (OWNER-DECISIONS 246) -----------------------------------
+
+
+@pytest.mark.parametrize("oneway", ["yes", "-1", "1", "true"])
+def test_the_no_trail_graph_keeps_osm_s_one_way_over_a_district_two_way(oneway) -> None:
+    """Row C4 on the no-trail graph: "On the no-trail graph a street stays
+    one-way if either source says so." The record's `oneway=no` is not laid over
+    OSM's one-way there; the solo graphs take it (item 190, "DC data takes
+    priority")."""
+    from pipeline.variants import Variant, routing_for
+
+    tags = {"highway": "residential", "oneway": oneway}
+    routed = {"oneway": "no"}
+    assert routing_for(Variant.NO_TRAIL, tags, routed) == {}
+    for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
+        assert routing_for(variant, tags, routed) == routed, variant.value
+
+
+def test_a_roundabout_s_implied_one_way_is_osm_saying_so() -> None:
+    from pipeline.variants import Variant, routing_for
+
+    tags = {"highway": "primary", "junction": "roundabout"}
+    assert routing_for(Variant.NO_TRAIL, tags, {"oneway": "no"}) == {}
+
+
+def test_the_no_trail_graph_takes_every_other_district_direction() -> None:
+    """A one-way from either source is one-way: the record's one-way over OSM's
+    two-way (row B), a filled one-way, and its contraflow keys (which the
+    closure then closes) are laid over as on every graph; and a two-way record
+    on a way OSM has two-way changes nothing anyway."""
+    from pipeline.variants import Variant, routing_for
+
+    two_way = {"highway": "secondary", "oneway": "no"}
+    for routed in (
+        {"oneway": "yes"},
+        {"oneway": "-1", "oneway:bicycle": "yes"},
+        {"oneway": "yes", "oneway:bicycle": "no", "cycleway:left": "opposite_lane"},
+    ):
+        assert routing_for(Variant.NO_TRAIL, two_way, routed) == routed
+    assert routing_for(Variant.NO_TRAIL, {"highway": "residential"}, {"oneway": "no"}) == {
+        "oneway": "no"
+    }
+
+
+def test_only_the_direction_is_kept_back() -> None:
+    from pipeline.variants import Variant, routing_for
+
+    tags = {"highway": "residential", "oneway": "yes"}
+    routed = {"oneway": "no", "cycleway:left": "no"}
+    assert routing_for(Variant.NO_TRAIL, tags, routed) == {"cycleway:left": "no"}

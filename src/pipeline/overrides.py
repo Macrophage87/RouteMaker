@@ -419,6 +419,7 @@ def apply_stress(stress_by_way: dict, overrides: Iterable[Override]) -> tuple[in
             speed_mph=getattr(current, "speed_mph", None),
             lanes=getattr(current, "lanes", None),
             oneway=getattr(current, "oneway", None),
+            graph_oneway=getattr(current, "graph_oneway", None),
         )
         applied += 1
 

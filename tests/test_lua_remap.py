@@ -873,12 +873,19 @@ DISTRICT_DIRECTIONS = {
     ),
     # A one-way OSM does not tag, the record's.
     "filled": ({"highway": "residential"}, {"oneway": "yes"}, ("true", "false"), ("true", "false")),
-    # Row C4: OSM's one-way, the record two-way.
+    # Row C4: OSM's one-way, the record two-way. The solo graphs follow the
+    # record; the no-trail graph keeps OSM's one-way (OWNER-DECISIONS 246).
     "row-c4": (
         {"highway": "residential", "oneway": "yes", "cycleway:right": "lane"},
         {"oneway": "no"},
         ("true", "true"),
+        ("true", "false"),
+    ),
+    "row-c4-against-the-line": (
+        {"highway": "residential", "oneway": "-1"},
+        {"oneway": "no"},
         ("true", "true"),
+        ("false", "true"),
     ),
     # The record's one-way with its flagged contraflow lane: ridden against the
     # traffic on the standard graph, closed on the no-trail graph (items 192, 219).
@@ -902,14 +909,17 @@ def test_routing_direction_follows_the_district_s_record(case) -> None:
     """(forward, backward) along the way's geometry on the standard, weekend and
     e-bike graphs, and on the no-trail graph; and OSM's own reading differs, so
     the test can tell."""
-    from pipeline.variants import Variant, agency_routing_tags, inject
+    from pipeline.variants import Variant, agency_routing_tags, inject, routing_for
 
     osm, routing, others, no_trail = DISTRICT_DIRECTIONS[case]
     changes = agency_routing_tags(dict(osm), routing)
-    graph = {**osm, **changes}
+
+    def graph(variant: Variant) -> dict:
+        return {**osm, **routing_for(variant, osm, changes)}
+
     # Rewritten, never removed: every OSM key is still there.
-    assert set(osm) <= set(graph)
+    assert set(osm) <= set(graph(Variant.STANDARD))
     for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
-        assert _bike_access(inject(variant, dict(graph), 7)) == others, (case, variant.value)
-    assert _bike_access(inject(Variant.NO_TRAIL, dict(graph), 7)) == no_trail, case
+        assert _bike_access(inject(variant, graph(variant), 7)) == others, (case, variant.value)
+    assert _bike_access(inject(Variant.NO_TRAIL, graph(Variant.NO_TRAIL), 7)) == no_trail, case
     assert _bike_access(osm) != others or _bike_access(osm) != no_trail, "the control"

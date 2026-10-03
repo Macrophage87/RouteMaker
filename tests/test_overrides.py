@@ -900,11 +900,22 @@ class TestACarFreeRoadIsTier1:
         from pipeline.run import car_free_tier_1
 
         way = Way(1, highway="unclassified", bicycle="designated", motor_vehicle="yes")
-        stress = {1: StressResult(Stress.LTS3, "mixed traffic, 30 mph", ("maxspeed",), "ddot")}
+        stress = {
+            1: StressResult(
+                Stress.LTS3,
+                "mixed traffic, 30 mph",
+                ("maxspeed",),
+                "ddot",
+                oneway=False,
+                graph_oneway=True,
+            )
+        }
         assert car_free_tier_1(way, stress) is False, "open to cars: untouched"
         apply_access([way], [Override("access", 1, {"motor_vehicle": "no"})])
         assert car_free_tier_1(way, stress) is True
         assert stress[1].tier is Stress.LTS1
+        # The road is the same road: both readings of its direction travel.
+        assert (stress[1].oneway, stress[1].graph_oneway) == (False, True)
         assert stress[1].rule.startswith("closed to motor traffic")
         assert (stress[1].assumed, stress[1].volume_source) == (("maxspeed",), "ddot")
 

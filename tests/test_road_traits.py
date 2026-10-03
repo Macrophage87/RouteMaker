@@ -9,6 +9,8 @@ direction) and `road_oneway`, written from `StressResult`.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from django.db import connection
 
@@ -91,6 +93,103 @@ class TestClassifierKeepsWhatItRead:
         assert result.speed_mph == 55 and result.lanes == 2
 
 
+# Connecticut Ave NW 6051314's tags as the classifier reads them (the 2026-09-25
+# extract, with the District's parking record): a carriageway of a divided road,
+# three lanes one way at 25 mph (correctness re-check of 2b0cf00, blocker 1).
+CONNECTICUT = {
+    "highway": "primary",
+    "name": "Connecticut Avenue Northwest",
+    "lanes": "3",
+    "maxspeed": "25 mph",
+    "oneway": "yes",
+    "parking:both": "no",
+}
+
+
+class TestADividedRoadsCarriagewayIsOneWayForTheJunctions:
+    """`StressResult.oneway` is item 109's relief reading (a carriageway is not a
+    one-way street there); `graph_oneway` is the way's own direction, which the
+    segment table's `road_oneway` carries to the junction model."""
+
+    def test_the_classifier_keeps_both_readings(self) -> None:
+        result = classify(CONNECTICUT, aadt=30149, urban=True, jurisdiction="DC", divided=True)
+        assert (result.lanes, result.oneway, result.graph_oneway) == (3, False, True)
+        alone = classify(CONNECTICUT, aadt=30149, urban=True, jurisdiction="DC")
+        assert (alone.oneway, alone.graph_oneway) == (True, True)
+        # The relief reading still decides the tier (item 109): a carriageway
+        # is read as the two-way road it is half of.
+        assert "two-way floor" in result.rule
+
+    @pytest.mark.parametrize(
+        ("tags", "expected"),
+        [
+            ({"highway": "primary", "oneway": "no", "lanes": "4"}, False),
+            ({"highway": "primary", "lanes": "4"}, False),
+            ({"highway": "primary", "oneway": "-1"}, True),
+            ({"highway": "primary", "junction": "roundabout"}, True),
+            ({"highway": "primary", "junction": "roundabout", "oneway": "no"}, False),
+            ({"highway": "cycleway", "oneway": "yes"}, None),
+            ({"highway": "motorway", "oneway": "yes"}, None),
+        ],
+    )
+    def test_the_graph_direction_is_the_tags_own(self, tags, expected) -> None:
+        for divided in (False, True):
+            assert classify(tags, divided=divided).graph_oneway is expected, (tags, divided)
+
+    def test_the_junction_model_prices_the_carriageway_pair_as_divided(self) -> None:
+        """The reviewer's probe: the pair crossing has the median-refuge credit,
+        the marker says "3-lane", and a Mass Ride's left off it draws no
+        left-across marker (it was 1,200 ft with no credit, "6-lane", and an
+        orange marker with `oneway` written)."""
+        from routemaker import intersections as m
+        from routemaker.intersections import Control, Junction, Movement, Road
+
+        stress = classify(CONNECTICUT, aadt=30149, urban=True, jurisdiction="DC", divided=True)
+        name = frozenset({"connecticut avenue northwest"})
+
+        def road(way: int, oneway) -> Road:
+            return Road(
+                int(stress.tier),
+                speed_mph=stress.speed_mph,
+                lanes=stress.lanes,
+                oneway=oneway,
+                aadt=30149,
+                names=name,
+                display=("Connecticut Avenue Northwest",),
+                ways=frozenset({way}),
+            )
+
+        quiet = Road(1, names=frozenset({"quiet street"}))
+
+        def crossing(at: float, crossed: Road) -> Junction:
+            return Junction(at, -77.05, 38.93, Movement.STRAIGHT, quiet, quiet, (crossed,))
+
+        def pair(oneway):
+            return m.assess_route(
+                [crossing(100.0, road(1, oneway)), crossing(130.0, road(2, oneway))]
+            )
+
+        (written,) = pair(stress.graph_oneway)
+        one = m.assess(crossing(0.0, road(1, True)))
+        assert written.cost_ft == pytest.approx(one.cost_ft * m.MEDIAN_REFUGE_FACTOR)
+        assert "3-lane" in written.reason and "6-lane" not in written.reason
+        (relief,) = pair(stress.oneway)
+        assert relief.cost_ft == pytest.approx(one.cost_ft) and "6-lane" in relief.reason
+        # A Mass Ride's left off the carriageway: no oncoming traffic, no marker.
+        left = Junction(
+            0.0,
+            -77.05,
+            38.93,
+            Movement.LEFT,
+            road(1, stress.graph_oneway),
+            quiet,
+            control=Control.SIGNAL,
+        )
+        assert m.assess(left, group=True) is None
+        two_way = replace(left, incoming=road(1, stress.oneway))
+        assert m.assess(two_way, group=True) is not None
+
+
 class TestAnOwnerOverrideDoesNotChangeTheRoad:
     def test_the_curated_tier_keeps_the_roads_traits(self) -> None:
         classified = {
@@ -104,6 +203,7 @@ class TestAnOwnerOverrideDoesNotChangeTheRoad:
                 speed_mph=35.0,
                 lanes=2,
                 oneway=False,
+                graph_oneway=True,
             )
         }
         row = {
@@ -119,6 +219,7 @@ class TestAnOwnerOverrideDoesNotChangeTheRoad:
         after = classified[7]
         assert after.tier is Stress.LTS4
         assert (after.speed_mph, after.lanes, after.oneway) == (35.0, 2, False)
+        assert after.graph_oneway is True
 
 
 @pytest.mark.django_db(transaction=True)

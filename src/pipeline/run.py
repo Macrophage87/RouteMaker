@@ -782,6 +782,7 @@ def car_free_tier_1(way, stress_by_way: dict) -> bool:
         speed_mph=current.speed_mph,
         lanes=current.lanes,
         oneway=current.oneway,
+        graph_oneway=current.graph_oneway,
     )
     return True
 
@@ -1382,14 +1383,18 @@ def build_handlers(
             len(context.singletracks),
         )
 
-    def routing_tags(way: extract.Way) -> dict[str, str]:
-        """The way's tags for the variants to build from: its working tags
+    def routing_tags(way: extract.Way, variant: variants.Variant) -> dict[str, str]:
+        """The way's tags for a variant to build from: its working tags
         (the source's, with the approved access overrides) and, where the
         District's record set its direction, that direction (OWNER-DECISIONS
-        216, `routing_tags_by_way`). An approved override that wrote one of
+        216, `routing_tags_by_way`), but for a two-way record over an OSM
+        one-way on the no-trail graph, which stays one-way (item 246,
+        `variants.routing_for`). An approved override that wrote one of
         the same keys is the reviewed value and stands; the no-trail graph's
         closure still runs after this (`variants.inject`, item 219)."""
         routed = context.routing_tags_by_way.get(way.osm_id)
+        if routed:
+            routed = variants.routing_for(variant, way.tags, routed)
         if not routed:
             return way.tags
         overridden = sorted(key for key in routed if way.tags.get(key) != way.source_tags.get(key))
@@ -1422,7 +1427,7 @@ def build_handlers(
             for way in context.ways:
                 injected = variants.inject(
                     variant,
-                    routing_tags(way),
+                    routing_tags(way, variant),
                     way.osm_id,
                     reference.sidepath_bridge_ids,
                     reference.mass_ride_only_bridge_ids,
@@ -1663,7 +1668,9 @@ def build_handlers(
                         separate_bikeway=facility.has_separate_bikeway(way.tags),
                         road_speed_mph=_smallint(getattr(stress, "speed_mph", None)),
                         road_lanes=_smallint(getattr(stress, "lanes", None)),
-                        road_oneway=getattr(stress, "oneway", None),
+                        # The graph's direction, not item 109's relief reading: a
+                        # divided road's carriageway is one-way here.
+                        road_oneway=getattr(stress, "graph_oneway", None),
                     )
                 )
         context.rows = rows

@@ -863,6 +863,26 @@ def agency_routing_tags(tags: dict[str, str], routing: dict[str, str]) -> dict[s
     return {key: value for key, value in graph.items() if tags.get(key) != value}
 
 
+def routing_for(variant: Variant, tags: dict[str, str], routed: dict[str, str]) -> dict[str, str]:
+    """The District's routing keys (`agency_routing_tags`) one variant lays over
+    a way's tags (`tags`, its working OSM tags).
+
+    The solo graphs (standard, weekend, e-bike) take them all: DC's record wins
+    (OWNER-DECISIONS 190, 216). The no-trail graph keeps a way one-way where
+    either source says so (OWNER-DECISIONS 246: "Mass Ride keeps one-way"): a
+    two-way record (row C4) is not laid over an OSM one-way there, so a stale
+    record never sends a field against traffic (items 192, 219). The classifier
+    and the segment table's `road_*` columns are shared by every variant and
+    follow the solo graphs; on a Mass Ride the junction model so reads such a
+    street two-way, which only ever overstates a junction (more lanes, oncoming
+    traffic on a left), never understates it."""
+    if variant is not Variant.NO_TRAIL or routed.get("oneway") != "no":
+        return routed
+    if not is_motor_oneway(tags):
+        return routed
+    return {key: value for key, value in routed.items() if key != "oneway"}
+
+
 def inject(
     variant: Variant,
     tags: dict[str, str],

@@ -441,7 +441,17 @@ class StressResult:
     # reasons may state), and where the way is a trail or a motor-only class.
     speed_mph: float | None = None
     lanes: int | None = None
+    # `oneway` is the classifier's reading for item 109's one-way relief: a
+    # carriageway of a divided road is not a one-way street there, as the other
+    # direction's traffic is across the median. `graph_oneway` is the way's own
+    # direction, as the routing graph has it (`tags.is_oneway` of the tags read,
+    # a roundabout included), carriageway or not: what the segment table's
+    # `road_oneway` says to the junction model, which would otherwise price a
+    # divided road's carriageway as a two-way road (no median-refuge credit,
+    # its lanes doubled, oncoming traffic on a left off it; correctness re-check
+    # of 2b0cf00, blocker 1).
     oneway: bool | None = None
+    graph_oneway: bool | None = None
 
     @property
     def is_top_tier(self) -> bool:
@@ -1108,6 +1118,7 @@ def _classify(
         speed_mph=None if "maxspeed" in assumed else speed_mph,
         lanes=None if "lanes" in assumed else lanes,
         oneway=oneway,
+        graph_oneway=is_oneway(tags),
     )
 
 
