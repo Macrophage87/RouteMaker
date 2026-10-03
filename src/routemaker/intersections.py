@@ -33,6 +33,8 @@ the owner's account.
 
 from __future__ import annotations
 
+import bisect
+from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
@@ -78,7 +80,7 @@ NEIGHBOURHOOD_STOP_FT = 10.0
 # and its kin do not reach the router's signal flag (`highway=traffic_signals`
 # alone does, on the road junction's own node or its stop lines a few metres
 # away, which `core.junctions` reads up to 30 m along the crossed road), so a
-# signalised trail crossing away from a signalised road junction reads as
+# signalized trail crossing away from a signalized road junction reads as
 # having no signal. Counted at this fraction
 # of the stopped-side cost until the transform derives the signal
 # (docs/OPERATIONS.md, "Intersection costs"). A PROPOSAL; it never lowers a
@@ -97,7 +99,7 @@ MARKED_CROSSING_MAX_SEVERITY = "orange"
 # in the median, which the Mineta and Oregon crossing tables read as one level
 # lower. The costlier carriageway's cost times this: the owner, 2026-10-02 (item
 # 196), "x0.75 (Recommended)", against about 0.4 for one level lower by the base
-# costs (3,000 to 1,200 ft); 0.75 keeps an unsignalised crossing of a divided
+# costs (3,000 to 1,200 ft); 0.75 keeps an unsignalized crossing of a divided
 # LTS 4 road red, as the round-1 review read Leland St across Connecticut Ave.
 # Only two or more crossings, each of a one-way carriageway of its own way, of
 # one road by name (`merge_nearby`): never a turn and a crossing, nor a slip
@@ -144,7 +146,7 @@ RIGHT_FROM_BUSY_FT = 15.0
 # "having to cross several lanes to get into the left turn can add stress too,
 # though box turns are an option" (item 167): feet per lane merged across, per
 # direction, capped at about a two-stage box turn (two crossings and one extra
-# signal wait: 200-500 ft at a signalised junction). At a signal the whole left
+# signal wait: 200-500 ft at a signalized junction). At a signal the whole left
 # is capped there too, oncoming lanes and merge together (item 186, "Cap at box
 # turn": "At signals a left never costs more than the two-stage box-turn
 # alternative (about 500 ft equivalent)").
@@ -157,7 +159,7 @@ ASSUMED_LANES = {3: 1, 4: 2, 5: 2}
 # --- Slip lanes (items 169 and 195) ------------------------------------------
 #
 # "Sliplanes should get a penalty too": a free-flowing channelised right-turn
-# lane crossed as at least an unsignalised LTS 3 crossing, about 800 ft, unless
+# lane crossed as at least an unsignalized LTS 3 crossing, about 800 ft, unless
 # a raised crossing is tagged (not read). Halved at a signal. Only where the
 # route crosses the channel's path (the owner, 2026-10-02, item 195: "Flag only
 # when you cross it (Recommended)"); riding straight past it along the road is
@@ -170,7 +172,7 @@ SIGNALISED_SLIP_FACTOR = 0.5
 #
 # A stopped-side crossing of an LTS 3 road (800-1,600 ft) is orange; of an LTS 4
 # road (2,500-3,500 ft) red; a left onto or across an LTS 3 road is orange, red
-# when the road is fast. A signalised crossing (150-300 ft) is neither.
+# when the road is fast. A signalized crossing (150-300 ft) is neither.
 ORANGE_MIN_FT = 600.0
 RED_MIN_FT = 2000.0
 ORANGE = "orange"
@@ -291,7 +293,7 @@ class Event:
     # with a name in common (`merge_nearby`).
     road_ways: frozenset[int] = frozenset()
     road_oneway: bool | None = None
-    # A Mass Ride's signalised crossings that run within GROUP_WITHIN_M of one
+    # A Mass Ride's signalized crossings that run within GROUP_WITHIN_M of one
     # another are one group, numbered from 1 in route order (`number_groups`;
     # items 233 and 234). None: not in a group, and always None off a Mass Ride.
     group: int | None = None
@@ -780,20 +782,20 @@ def _within(order: list[int], place: int, step: int, junctions: list[Junction], 
         k += step
 
 
-# --- Mass Ride: signalised crossings read as groups (items 233 and 234) --------
+# --- Mass Ride: signalized crossings read as groups (items 233 and 234) --------
 #
 # The owner, 2026-10-03 (item 233, amending 231's "Leave as is."): "Actually, I
 # like merging the runs, that sounds good." And (item 234): "I'd say we'd want
 # some level of clumpings, especially in DC, given the diagional streets. I'd
 # say something like a quarter mile or so of clumping." Every LTS 3/4 crossing
 # is still flagged and still drawn (item 231); what changes is how the list and
-# the description say it: consecutive signalised crossings, each within a
+# the description say it: consecutive signalized crossings, each within a
 # quarter mile of the one before, are one entry, whatever street they are on.
 #
-# - Only a signalised crossing joins: a flagged event with a signal whose kind
+# - Only a signalized crossing joins: a flagged event with a signal whose kind
 #   is a crossing of a busy road (`GROUPED_KINDS`). A turn at a signal is a
 #   decision of its own and is said where it is.
-# - Any other flagged event - an unsignalised crossing, a very-high-stress one
+# - Any other flagged event - an unsignalized crossing, a very-high-stress one
 #   with no signal, a turn - stands alone and ends the run.
 # - A run of one is not a group.
 # - The group's colour is its worst member's (`CrossingGroup.severity`), the
@@ -806,7 +808,7 @@ GROUP_LTS4_TIER = 4
 
 
 def groupable(event: Event) -> bool:
-    """A flagged, signalised Mass Ride crossing of a busy road."""
+    """A flagged, signalized Mass Ride crossing of a busy road."""
     return (
         event.group_severity
         and event.flagged
@@ -815,14 +817,26 @@ def groupable(event: Event) -> bool:
     )
 
 
-def number_groups(events: list[Event]) -> list[Event]:
-    """The events, in route order, with each run of two or more signalised
+def number_groups(events: list[Event], stops: Sequence[float] = ()) -> list[Event]:
+    """The events, in route order, with each run of two or more signalized
     crossings (each within GROUP_WITHIN_M of the one before) numbered from 1 in
     `Event.group`. Only flagged events count: an event the planner never draws
-    neither joins a run nor ends one."""
-    numbered = list(events)
+    neither joins a run nor ends one.
+
+    `stops` are where each leg ends (metres along the route, in the events'
+    measure): a run never spans one (OWNER-DECISIONS 247: "Split at stops"), so
+    a crossing at or past a stop starts a new run. Any group an event had
+    before is replaced, so the groups can be numbered again once the stops are
+    known (`core.routing`)."""
+    numbered = [e if e.group is None else replace(e, group=None) for e in events]
+    stops = sorted(stops)
     run: list[int] = []
     number = 0
+
+    def across_a_stop(before: float, at: float) -> bool:
+        """Whether a stop lies after `before` and at or before `at`."""
+        i = bisect.bisect_right(stops, before)
+        return i < len(stops) and stops[i] <= at
 
     def close() -> None:
         nonlocal number
@@ -838,7 +852,10 @@ def number_groups(events: list[Event]) -> list[Event]:
         if not groupable(event):
             close()
             continue
-        if run and event.m - events[run[-1]].m > GROUP_WITHIN_M:
+        if run and (
+            event.m - events[run[-1]].m > GROUP_WITHIN_M
+            or across_a_stop(events[run[-1]].m, event.m)
+        ):
             close()
         run.append(i)
     close()
@@ -847,7 +864,7 @@ def number_groups(events: list[Event]) -> list[Event]:
 
 @dataclass(frozen=True)
 class CrossingGroup:
-    """A group of signalised crossings, as the list and the description say it."""
+    """A group of signalized crossings, as the list and the description say it."""
 
     number: int
     members: tuple[Event, ...]
@@ -884,14 +901,17 @@ def crossing_groups(events: list[Event]) -> list[CrossingGroup]:
     return [CrossingGroup(n, tuple(found[n])) for n in sorted(found)]
 
 
-def assess_route(junctions: list[Junction], group: bool = False) -> list[Event]:
+def assess_route(
+    junctions: list[Junction], group: bool = False, stops: Sequence[float] = ()
+) -> list[Event]:
     """Every junction's event, in route order (a cost the objective sums; the
     flagged ones are what the planner draws). The nodes of one junction share
     its strongest control first (`share_controls`). On a Mass Ride (`group`)
-    the signalised crossings that run together are numbered (`number_groups`)."""
+    the signalized crossings that run together are numbered (`number_groups`),
+    never across a stop (`stops`, where each leg ends)."""
     events = (assess(junction, group) for junction in share_controls(junctions))
     merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
-    return number_groups(merged) if group else merged
+    return number_groups(merged, stops) if group else merged
 
 
 def penalty_m(events: list[Event]) -> float:

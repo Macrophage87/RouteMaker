@@ -835,7 +835,7 @@ def test_upstream_reads_signals_from_traffic_signals_nodes_only() -> None:
     upstream = (REPO / "lua" / "vendor" / "graph_upstream.lua").read_text()
     reads = {m.group(0) for m in re.finditer(r"traffic_signals[:\w]*", upstream)}
     assert reads == {"traffic_signals", "traffic_signals:direction"}, (
-        "upstream now reads another signal tag: a signalised trail crossing may reach the "
+        "upstream now reads another signal tag: a signalized trail crossing may reach the "
         "router's signal flag, and routemaker.intersections.MARKED_CROSSING_FACTOR is stale"
     )
     assert not re.search(r"crossing\W+\]?\s*==\s*[\"']traffic_signals", upstream)

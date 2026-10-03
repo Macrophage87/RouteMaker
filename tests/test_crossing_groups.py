@@ -1,4 +1,4 @@
-"""A Mass Ride's signalised crossings, read as groups (OWNER-DECISIONS 233, 234, 235).
+"""A Mass Ride's signalized crossings, read as groups (OWNER-DECISIONS 233, 234, 235).
 
 The owner, 2026-10-03, item 233: "Actually, I like merging the runs, that sounds
 good." Item 234: "I'd say we'd want some level of clumpings, especially in DC,
@@ -302,15 +302,16 @@ class TestWording:
         (group,) = m.crossing_groups(events)
         text = d.group_words(group, MILE * 1.0, MILE * 1.6)
         assert text == (
-            "1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised crossings (17th Street Northwest, "
-            "15th Street Northwest, 14th Street Northwest and 3 more), 2 of LTS 4 roads"
+            "1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings with traffic signals (17th Street "
+            "Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of them "
+            "heavy-traffic roads (LTS 4)"
         )
 
     def test_the_sentence_adds_the_severity_in_words(self) -> None:
         events = named(STREETS, [3, 3, 4, 3, 4, 3])
         (group,) = m.crossing_groups(events)
         text = d.group_sentence(group, MILE, MILE * 1.6)
-        assert text.endswith("2 of LTS 4 roads (Very high stress junctions).")
+        assert text.endswith("2 of them heavy-traffic roads (LTS 4) (Very high stress junctions).")
         orange = named(STREETS[:3], [3, 3, 3])
         (low,) = m.crossing_groups(orange)
         assert d.group_sentence(low, 0, 600).endswith("(Higher stress junctions).")
@@ -342,11 +343,11 @@ class TestWording:
 
     def test_one_lts_4_road(self) -> None:
         (group,) = m.crossing_groups(named(STREETS[:3], [3, 4, 3]))
-        assert d.group_words(group, 0, 600).endswith(", 1 of them an LTS 4 road")
+        assert d.group_words(group, 0, 600).endswith(", 1 of them a heavy-traffic road (LTS 4)")
 
     def test_all_lts_4(self) -> None:
         (group,) = m.crossing_groups(named(STREETS[:3], [4, 4, 4]))
-        assert d.group_words(group, 0, 600).endswith(", all of LTS 4 roads")
+        assert d.group_words(group, 0, 600).endswith(", all of them heavy-traffic roads (LTS 4)")
 
     def test_unnamed_roads_are_left_out_of_the_street_list(self) -> None:
         unnamed = Road(3, speed_mph=30, lanes=2, names=frozenset({"way 5"}), display=("way 5",))
@@ -364,12 +365,12 @@ class TestWording:
             junction(m=300.0, crossed=(bare,), control=Control.SIGNAL),
         )
         (group,) = m.crossing_groups(events)
-        assert d.group_words(group, 0, 300).endswith(": 2 signalised crossings")
+        assert d.group_words(group, 0, 300).endswith(": 2 crossings with traffic signals")
 
     def test_a_short_span_says_its_length(self) -> None:
         (group,) = m.crossing_groups(named(STREETS[:2], [3, 3], gap_m=100.0))
         assert d.group_words(group, 1609.344, 1709.344).startswith(
-            "1.0 mi (1.6 km), for 330 ft (100 m): 2 signalised crossings"
+            "1.0 mi (1.6 km), for 330 ft (100 m): 2 crossings with traffic signals"
         )
 
 
@@ -393,8 +394,8 @@ class TestInTheDescription:
         full, short = both(self.events())
         for entries in (full, short):
             (entry,) = junction_entries(entries)
-            assert "6 signalised crossings" in entry["text"]
-            assert entry["group"] == {
+            assert "6 crossings with traffic signals" in entry["text"]
+            assert {k: v for k, v in entry["group"].items() if k != "crossings"} == {
                 "number": 1,
                 "count": 6,
                 "lts4": 2,
@@ -403,12 +404,16 @@ class TestInTheDescription:
             }
             assert entry["severity"] == "red"
             assert entry["text"].endswith("(Very high stress junctions).")
+        # The overview keeps one line per group (OWNER-DECISIONS 248).
+        assert junction_entries(short)[0]["group"]["crossings"] is None
 
     def test_the_entry_names_its_span(self) -> None:
         full, _short = both(self.events())
         (entry,) = junction_entries(full)
         assert (entry["from_m"], entry["to_m"]) == (0, 1250)
-        assert entry["text"].startswith("0.0 to 0.8 mi (0.0 to 1.2 km): 6 signalised crossings")
+        assert entry["text"].startswith(
+            "0.0 to 0.8 mi (0.0 to 1.2 km): 6 crossings with traffic signals"
+        )
 
     def test_without_grouping_each_crossing_is_its_own_entry(self) -> None:
         plain = [m.assess(j, True) for j in spaced(250.0, 3, 3, 4)]
@@ -485,7 +490,7 @@ class TestInTheApi:
             "members": [0, 1, 2, 3, 4, 5],
             "text": text,
         }
-        assert text.startswith("0.0 to 0.8 mi (0.0 to 1.2 km): 6 signalised crossings (")
+        assert text.startswith("0.0 to 0.8 mi (0.0 to 1.2 km): 6 crossings with traffic signals (")
         assert "Very high" not in text
 
     def test_members_index_the_flagged_list(self) -> None:
@@ -526,7 +531,7 @@ class TestInTheApi:
 class TestFlaggingOnAMassRide:
     """Item 235: only crossings of, or turns involving, an LTS 3+ road are flagged. Quiet
     side streets, alleys and riding along the busier road past side streets never are,
-    signalised or not."""
+    signalized or not."""
 
     ALL_CONTROLS = list(Control)
 
@@ -601,3 +606,146 @@ class TestFlaggingOnAMassRide:
             control=Control.SIGNAL,
         )
         assert m.assess(j, group=True).kind == "left_onto"
+
+
+# --- OWNER-DECISIONS 247: "Split at stops (Recommended)" ---------------------------
+
+
+def at(*metres: float, tier: int = 3) -> list[m.Event]:
+    """Signalised crossings at these metres, each of its own street."""
+    return [m.assess(crossing(x, f"{i + 1}th Street", tier), True) for i, x in enumerate(metres)]
+
+
+class TestSplitAtStops:
+    def test_the_reviewers_case_four_crossings_and_a_stop_between(self) -> None:
+        """The correctness re-check's pure case: four crossings at 500 to 1,100 m
+        and a stop at 800 m were one group "0.3 to 0.7 mi", then "Stop 1 at 0.5
+        mi". Now two groups, one each side of the stop."""
+        events = at(500.0, 700.0, 900.0, 1100.0)
+        assert groups_of(m.number_groups(events)) == [1, 1, 1, 1]
+        assert groups_of(m.number_groups(events, [800.0])) == [1, 1, 2, 2]
+
+    def test_and_in_the_description_each_group_is_on_its_own_side_of_the_stop(self) -> None:
+        events = m.number_groups(at(500.0, 700.0, 900.0, 1100.0), [800.0])
+        legs = [atoms(800.0), atoms(800.0)]
+        for entries in d.describe_both(legs, events, 1600.0):
+            kinds = [(e["kind"], e["from_m"], e["to_m"]) for e in entries if e["kind"] != "stretch"]
+            assert kinds == [("junction", 500, 700), ("via", 800, 800), ("junction", 900, 1100)]
+            stop = next(e["from_m"] for e in entries if e["kind"] == "via")
+            assert all(
+                not (e["from_m"] < stop < e["to_m"]) for e in entries if e["kind"] == "junction"
+            )
+
+    def test_through_assess_route(self) -> None:
+        junctions = [crossing(x, f"{i}th Street") for i, x in enumerate((500, 700, 900, 1100))]
+        assert groups_of(m.assess_route(junctions, True, [800.0])) == [1, 1, 2, 2]
+        assert groups_of(m.assess_route(junctions, True)) == [1, 1, 1, 1]
+
+    def test_a_crossing_at_the_stop_begins_the_next_leg(self) -> None:
+        """A run is closed at a stop that lies after its last crossing and at or
+        before the next one: the crossing at the stop is the next leg's."""
+        events = at(500.0, 700.0, 900.0, 1100.0)
+        assert groups_of(m.number_groups(events, [700.0])) == [None, 1, 1, 1]
+        assert groups_of(m.number_groups(events, [699.0])) == [None, 1, 1, 1]
+        assert groups_of(m.number_groups(events, [701.0])) == [1, 1, 2, 2]
+
+    def test_stops_before_or_after_every_crossing_change_nothing(self) -> None:
+        events = at(500.0, 700.0, 900.0, 1100.0)
+        assert groups_of(m.number_groups(events, [100.0, 2000.0])) == [1, 1, 1, 1]
+
+    def test_two_stops_three_groups(self) -> None:
+        events = at(100.0, 300.0, 500.0, 700.0, 900.0, 1100.0)
+        assert groups_of(m.number_groups(events, [600.0, 400.0])) == [1, 1, None, 2, 2, 2]
+
+    def test_numbering_again_replaces_the_groups_an_event_had(self) -> None:
+        """`core.routing` numbers the search's events again once the stops are
+        known: an old group number never survives."""
+        once = m.number_groups(at(500.0, 700.0, 900.0, 1100.0))
+        again = m.number_groups(once, [800.0])
+        assert groups_of(again) == [1, 1, 2, 2]
+        alone = m.number_groups(once[:1], [])
+        assert groups_of(alone) == [None]
+
+    def test_the_api_rows_split_too(self) -> None:
+        events = m.number_groups(at(500.0, 700.0, 900.0, 1100.0), [800.0])
+        rows = routing._intersection_groups(events)
+        assert [(r["from_m"], r["to_m"], r["members"]) for r in rows] == [
+            (500, 700, [0, 1]),
+            (900, 1100, [2, 3]),
+        ]
+
+
+# --- OWNER-DECISIONS 248: a group's crossings in full detail ------------------------
+
+
+class TestCrossingsInFullDetail:
+    def events(self) -> list[m.Event]:
+        return named(STREETS[:4], [3, 4, 3, 3], gap_m=MILE * 0.1)
+
+    def test_the_full_entry_lists_every_crossing_with_its_mile_marker(self) -> None:
+        full, _short = both(self.events())
+        (entry,) = junction_entries(full)
+        rows = entry["group"]["crossings"]
+        assert [r["street"] for r in rows] == STREETS[:4]
+        assert [r["from_mi"] for r in rows] == [0.0, 0.1, 0.2, 0.3]
+        assert [r["severity"] for r in rows] == ["orange", "red", "orange", "orange"]
+        assert [r["crossed_tier"] for r in rows] == [3, 4, 3, 3]
+        assert rows[1]["text"] == (
+            "At 0.1 mi (0.2 km): Cross 15th Street Northwest (LTS 4) at a signal "
+            "(Very high stress junction)."
+        )
+        # The street the group entry says only as "and 1 more" is named here.
+        assert "and 1 more" in entry["text"]
+        assert STREETS[3] in rows[3]["text"]
+
+    def test_the_overview_keeps_one_line(self) -> None:
+        _full, short = both(self.events())
+        (entry,) = junction_entries(short)
+        assert entry["group"]["crossings"] is None
+
+    def test_the_mile_markers_are_scaled_as_the_entries_are(self) -> None:
+        full, _ = d.describe_both([atoms(3200.0)], self.events(), 6400.0)
+        (entry,) = junction_entries(full)
+        rows = entry["group"]["crossings"]
+        assert rows[0]["from_m"] == entry["from_m"] and rows[-1]["from_m"] == entry["to_m"]
+        assert rows[1]["from_m"] == round(MILE * 0.1 * 2)
+
+    def test_the_text_cue_sheet_lists_them_under_the_group(self) -> None:
+        full, short = both(self.events())
+        lines = d.plain_text(full).splitlines()
+        i = next(n for n, line in enumerate(lines) if "crossings with traffic signals" in line)
+        assert [line.strip() for line in lines[i + 1 : i + 5]] == [
+            r["text"] for r in junction_entries(full)[0]["group"]["crossings"]
+        ]
+        assert all(line.startswith("    At ") for line in lines[i + 1 : i + 5])
+        assert len(d.plain_text(short).splitlines()) == len(short)
+
+    def test_every_entry_validates(self) -> None:
+        from core import api
+
+        for entries in both(self.events()):
+            for entry in entries:
+                api.DescriptionEntryOut.model_validate(entry)
+
+
+class TestLts4Wording:
+    """The a11y and spec re-checks: "2 of LTS 4 roads" and "all of LTS 4 roads"
+    read awkwardly and said LTS without words."""
+
+    @pytest.mark.parametrize(
+        ("tiers", "words"),
+        [
+            ([3, 4, 3], ", 1 of them a heavy-traffic road (LTS 4)"),
+            ([4, 3, 4], ", 2 of them heavy-traffic roads (LTS 4)"),
+            ([4, 4, 4], ", all of them heavy-traffic roads (LTS 4)"),
+            ([4, 5], ", all of them heavy-traffic roads (LTS 4)"),
+        ],
+    )
+    def test_the_count_in_words(self, tiers, words) -> None:
+        (group,) = m.crossing_groups(named(STREETS[: len(tiers)], tiers))
+        assert d.group_words(group, 0, 600).endswith(words)
+
+    def test_us_spelling(self) -> None:
+        (group,) = m.crossing_groups(named(STREETS[:3], [3, 3, 3]))
+        assert "signalised" not in d.group_sentence(group, 0, 600)
+        assert ": 3 crossings with traffic signals (" in d.group_words(group, 0, 600)

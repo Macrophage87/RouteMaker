@@ -418,7 +418,7 @@ class IntersectionOut(Schema):
     group: int | None = Field(
         default=None,
         description=(
-            "Mass Ride only: the number, from 1, of the group of signalised crossings this "
+            "Mass Ride only: the number, from 1, of the group of signalized crossings this "
             "junction is one of (`intersection_groups`); null if it is in none. Every "
             "junction stays in the list and on the map."
         ),
@@ -426,7 +426,7 @@ class IntersectionOut(Schema):
 
 
 class IntersectionGroupOut(Schema):
-    """A Mass Ride's run of signalised crossings, each within a quarter mile of the one
+    """A Mass Ride's run of signalized crossings, each within a quarter mile of the one
     before (OWNER-DECISIONS 233, 234), as the junction list shows it: one row that
     opens onto its members. Additive: absent from an older API, and null off a Mass
     Ride."""
@@ -441,9 +441,10 @@ class IntersectionGroupOut(Schema):
     severity: Literal["orange", "red"] = Field(description="Its worst member's.")
     members: list[int] = Field(description="Positions in `intersections` of its crossings.")
     text: str = Field(
-        description='One phrase, US units first: "1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised '
-        "crossings (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 3 "
-        'more), 2 of LTS 4 roads". No severity: the row shows that.'
+        description='One phrase, US units first: "1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings '
+        "with traffic signals (17th Street Northwest, 15th Street Northwest, 14th Street "
+        'Northwest and 3 more), 2 of them heavy-traffic roads (LTS 4)". No severity: the row '
+        "shows that. Never spans a stop (OWNER-DECISIONS 247)."
     )
 
 
@@ -555,12 +556,34 @@ class DescriptionTurnOut(Schema):
     )
 
 
+class DescriptionCrossingOut(Schema):
+    """One crossing of a group, as a sub-entry of the full description
+    (OWNER-DECISIONS 248: "a group lists its crossings with their mile markers")."""
+
+    from_m: int = Field(description="Metres along the route, scaled as the entries are.")
+    from_mi: float
+    street: str | None = Field(description="The crossed street, as mapped; null if unnamed.")
+    severity: Literal["orange", "red"] | None = None
+    crossed_tier: int | None = None
+    text: str = Field(
+        description='One sentence: "At 1.1 mi (1.8 km): Cross 17th Street Northwest (LTS 4) '
+        'at a signal (Very high stress junction)."'
+    )
+
+
 class DescriptionGroupOut(Schema):
     number: int = Field(description="As `intersections[].group`.")
     count: int
     lts4: int = Field(description="How many of the crossed roads are LTS 4 or Avoid.")
     streets: list[str] = Field(description="The first three streets crossed, as mapped.")
     more: int
+    crossings: list[DescriptionCrossingOut] | None = Field(
+        default=None,
+        description=(
+            "Every crossing of the group, in route order, in the full description "
+            "(OWNER-DECISIONS 248); null in the overview, which keeps one line per group."
+        ),
+    )
 
 
 class DescriptionEntryOut(Schema):
@@ -595,7 +618,7 @@ class DescriptionEntryOut(Schema):
     group: DescriptionGroupOut | None = Field(
         default=None,
         description=(
-            "On a Mass Ride's entry for a group of signalised crossings "
+            "On a Mass Ride's entry for a group of signalized crossings "
             "(OWNER-DECISIONS 233, 234): what it says, as fields."
         ),
     )
@@ -624,7 +647,7 @@ class RouteOut(Schema):
     # The route's stressful junctions, in route order; null where they could not
     # be read in time (the route is answered all the same).
     intersections: list[IntersectionOut] | None
-    # A Mass Ride's groups of signalised crossings (OWNER-DECISIONS 233, 234): additive,
+    # A Mass Ride's groups of signalized crossings (OWNER-DECISIONS 233, 234): additive,
     # empty or null elsewhere.
     intersection_groups: list[IntersectionGroupOut] | None = None
     calm_search: CalmSearchOut | None

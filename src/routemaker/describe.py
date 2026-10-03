@@ -25,10 +25,13 @@ The rules:
   severity ("Higher stress junction" / "Very high stress junction"). Where the
   model did not read a junction nothing is claimed about its control.
 - Flagged junctions that are not a change of street (crossing a busy road) are
-  entries of their own, except on a Mass Ride, where signalised crossings that run
+  entries of their own, except on a Mass Ride, where signalized crossings that run
   within a quarter mile of one another are one entry (OWNER-DECISIONS 233 and 234):
   its span, how many, the first three streets crossed and how many are LTS 4. It is
-  worded in both the full list and the overview (`group_sentence`).
+  worded in both the full list and the overview (`group_sentence`); the full list
+  also names each crossing of it, with its mile marker (`group_crossings`,
+  OWNER-DECISIONS 248). A group never spans a stop (item 247,
+  `intersections.number_groups`).
 - Distances are scaled so the last stretch ends at the route's length.
 - The overview (OWNER-DECISIONS 226) is the same route with stretches under
   OVERVIEW_M (0.25 mi) merged into a neighbour of their own leg, so it never
@@ -393,25 +396,62 @@ def _streets_words(streets: list[str]) -> str:
     return f" ({listed})"
 
 
+# The legend's words for LTS 4 (TIER_NOUNS in `routemaker.intersections`), with
+# the number after them, as the rest of the description says a tier.
+LTS4_ROAD = "heavy-traffic road (LTS 4)"
+LTS4_ROADS = "heavy-traffic roads (LTS 4)"
+
+
 def _lts4_words(lts4: int, count: int) -> str:
-    """How many of a group's crossed roads are LTS 4 (or Avoid): nothing where none."""
+    """How many of a group's crossed roads are LTS 4 (or Avoid), in words: ", 1 of
+    them a heavy-traffic road (LTS 4)", ", 2 of them heavy-traffic roads (LTS 4)",
+    ", all of them heavy-traffic roads (LTS 4)"; nothing where none."""
     if lts4 <= 0:
         return ""
     if lts4 == 1:
-        return ", 1 of them an LTS 4 road"
-    return ", all of LTS 4 roads" if lts4 == count else f", {lts4} of LTS 4 roads"
+        return f", 1 of them a {LTS4_ROAD}"
+    return f", all of them {LTS4_ROADS}" if lts4 == count else f", {lts4} of them {LTS4_ROADS}"
+
+
+# What a group is, in plain US English ("signalized" was UK spelling, and the
+# rest of the copy says "at a signal"; spec and a11y re-checks of 2b0cf00).
+GROUP_NOUN = "crossings with traffic signals"
 
 
 def group_words(group: CrossingGroup, start_m: float, end_m: float) -> str:
-    """A group of signalised crossings as one phrase, with no severity and no full
-    stop: "1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised crossings (17th Street
-    Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of LTS 4
-    roads". `start_m` and `end_m` are where the first and the last crossing are, in
-    whatever measure the caller shows."""
+    """A group of signalized crossings as one phrase, with no severity and no full
+    stop: "1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings with traffic signals (17th
+    Street Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of
+    them heavy-traffic roads (LTS 4)". `start_m` and `end_m` are where the first and
+    the last crossing are, in whatever measure the caller shows."""
     return (
-        f"{range_words(start_m, end_m)}: {group.count} signalised crossings"
+        f"{range_words(start_m, end_m)}: {group.count} {GROUP_NOUN}"
         f"{_streets_words(group_streets(group))}{_lts4_words(group.lts4, group.count)}"
     )
+
+
+def group_crossings(group: CrossingGroup, scale: float = 1.0) -> list[dict]:
+    """A group's crossings one by one, for the full description and the text and
+    GPX cue sheets (OWNER-DECISIONS 248: "a group lists its crossings with their
+    mile markers as sub-entries"): where each is, its street, its severity and the
+    crossed road's tier, and one sentence, worded as a junction entry is ("At 1.1 mi
+    (1.8 km): Cross 17th Street Northwest (LTS 4) at a signal (Very high stress
+    junction)."). Every street of the group is named here, so none is said only as
+    "and 3 more"."""
+    rows = []
+    for event in group.members:
+        at_m = event.m * scale
+        rows.append(
+            {
+                "from_m": round(at_m),
+                "from_mi": round(at_m / METRES_PER_MILE, 2),
+                "street": _event_name(event),
+                "severity": event.severity,
+                "crossed_tier": event.crossed_tier,
+                "text": _point_sentence(event, at_m),
+            }
+        )
+    return rows
 
 
 def group_sentence(group: CrossingGroup, start_m: float, end_m: float) -> str:
@@ -644,8 +684,10 @@ def describe_both(
     (whole metres), `from_mi` and `to_mi` (miles to a hundredth), `street`,
     `tier` (1-5 or None), `facility` or None, `turn` (None or a dict), `severity`
     ("orange", "red" or None), `via` (the point's number, for a "via"), `group` (a
-    dict - `number`, `count`, `lts4`, `streets`, `more` - on the entry for a Mass
-    Ride's group of signalised crossings, else None), `text`.
+    dict - `number`, `count`, `lts4`, `streets`, `more`, and `crossings`, each
+    crossing's `group_crossings` row in the full list and None in the overview -
+    on the entry for a Mass Ride's group of signalized crossings, else None),
+    `text`.
     The overview has the same entries with the short stretches merged (see the
     module's rules); its stops and junction entries are the full ones.
     """
@@ -751,11 +793,14 @@ def describe_both(
         )
     by_group = {g.number: g for g in crossing_groups(events)}
     said: set[int] = set()
+    # A group's entry in each list: the full one with its crossings (item 248).
+    full_only: list[tuple[tuple[float, int, int], dict]] = []
+    short_only: list[tuple[tuple[float, int, int], dict]] = []
     for index, event in enumerate(events):
         if index in used or not event.flagged:
             continue
         if event.group in by_group:
-            # A group of signalised crossings (items 233 and 234) is one entry, at
+            # A group of signalized crossings (items 233 and 234) is one entry, at
             # its first crossing, which counts every crossing of it, a crossing
             # that is also the turn into a stretch included.
             if event.group in said:
@@ -764,25 +809,32 @@ def describe_both(
             group = by_group[event.group]
             from_at, to_at = group.from_m * scale, group.to_m * scale
             streets = group_streets(group)
-            shared.append(
-                (
-                    (from_at, 2, index),
-                    _entry(
-                        "junction",
-                        from_at,
-                        to_at,
-                        group_sentence(group, from_at, to_at),
-                        severity=group.severity,
-                        group={
-                            "number": group.number,
-                            "count": group.count,
-                            "lts4": group.lts4,
-                            "streets": streets[:MAX_NAMED_STREETS],
-                            "more": max(len(streets) - MAX_NAMED_STREETS, 0),
-                        },
-                    ),
+            summary = {
+                "number": group.number,
+                "count": group.count,
+                "lts4": group.lts4,
+                "streets": streets[:MAX_NAMED_STREETS],
+                "more": max(len(streets) - MAX_NAMED_STREETS, 0),
+            }
+            # The full list names each crossing under the group (item 248); the
+            # overview keeps one line per group.
+            for target, crossings in (
+                (full_only, group_crossings(group, scale)),
+                (short_only, None),
+            ):
+                target.append(
+                    (
+                        (from_at, 2, index),
+                        _entry(
+                            "junction",
+                            from_at,
+                            to_at,
+                            group_sentence(group, from_at, to_at),
+                            severity=group.severity,
+                            group={**summary, "crossings": crossings},
+                        ),
+                    )
                 )
-            )
             continue
         at_m = event.m * scale
         shared.append(
@@ -837,8 +889,8 @@ def describe_both(
                 ),
             )
         )
-    full = sorted(entries + shared, key=lambda pair: pair[0])
-    short = sorted(overview + shared, key=lambda pair: pair[0])
+    full = sorted(entries + shared + full_only, key=lambda pair: pair[0])
+    short = sorted(overview + shared + short_only, key=lambda pair: pair[0])
     return [e for _k, e in full], [e for _k, e in short]
 
 
@@ -863,8 +915,14 @@ def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:
 
 
 def plain_text(entries: list[dict]) -> str:
-    """The description as a text cue sheet, one entry to a line."""
-    return "\n".join(entry["text"] for entry in entries)
+    """The description as a text cue sheet, one entry to a line, and a group's
+    crossings (full detail, item 248) each on a line of its own under it, set in."""
+    lines = []
+    for entry in entries:
+        lines.append(entry["text"])
+        for crossing in (entry.get("group") or {}).get("crossings") or ():
+            lines.append(f"    {crossing['text']}")
+    return "\n".join(lines)
 
 
 __all__ = [
@@ -874,6 +932,7 @@ __all__ = [
     "OVERVIEW_M",
     "describe",
     "describe_both",
+    "group_crossings",
     "group_sentence",
     "group_words",
     "plain_text",

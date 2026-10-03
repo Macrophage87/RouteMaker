@@ -48,7 +48,7 @@ CROSSING_USE = "pedestrian_crossing"
 # The uses of a path, trail, cycletrack or sidewalk: a route arriving or leaving
 # on one crosses a road as a trail crossing does (item 185). OSM's
 # `crossing=traffic_signals` on the crossing node does not reach the router's
-# signal flag; where the crossing is part of a signalised junction, the
+# signal flag; where the crossing is part of a signalized junction, the
 # junction's own `highway=traffic_signals` does, on the stop-line nodes a few
 # metres up the road's arms, and `core.junctions` reads it there
 # (`APPROACH_M`). The round-1 report said the Pennsylvania Ave and Virginia Ave

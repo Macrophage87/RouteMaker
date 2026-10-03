@@ -494,7 +494,7 @@ class TestApproaches:
 
     def test_a_signalised_junction_of_another_road_up_the_arm_is_its_own(self) -> None:
         """Review r3, B1: K St's edge arriving flagged 8 m up Main St is K St's
-        junction, not this one (a driveway beside a signalised junction)."""
+        junction, not this one (a driveway beside a signalized junction)."""
         around = approach_around(north_at=8.0, names=("K St",), way=77)
         assert self.control(around) is Control.NONE
         # Nor the K St junction's own flag on its node.
@@ -526,7 +526,7 @@ class TestApproaches:
     @pytest.mark.parametrize("use", ["driveway", "parking_aisle", "drive_through"])
     def test_a_driveway_or_parking_aisle_beside_a_signalised_junction_does_not(self, use) -> None:
         """Gate 1, B1: a left out of a driveway or a parking aisle onto a road
-        14-27 m from a signalised junction (Connecticut Ave NW at Davenport St,
+        14-27 m from a signalized junction (Connecticut Ave NW at Davenport St,
         Randolph Rd at Parklawn Dr) is not crossed on that junction's signal.
         Only a path is let past another road's junction."""
         around = approach_around(north_at=8.0, names=("K St",), way=77)
@@ -702,7 +702,7 @@ class TestApproaches:
 
     def test_the_riders_own_path_is_walked_too(self) -> None:
         """The rider arrives on a cycletrack (not a road arm) whose far end, 12 m
-        back, is a node a signalised road arrives at."""
+        back, is a node a signalized road arrives at."""
         around = approach_around(flag=None)
         for e in around["edges"]:
             if e["edge_id"]["value"] in (1, 3):

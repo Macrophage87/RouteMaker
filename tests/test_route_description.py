@@ -186,6 +186,80 @@ class TestVias:
         assert entries[1]["text"].startswith("Stop 1 at 0.6 mi")
         assert entries[0]["to_m"] == entries[1]["from_m"] == entries[2]["from_m"]
 
+    def test_a_mass_ride_group_is_split_at_the_stop(
+        self, client, segments_two, router, monkeypatch
+    ):
+        """OWNER-DECISIONS 247: the plan numbers a Mass Ride's crossing groups
+        again with the stops (where each leg ends along the traced length), so
+        a group the search's reading ran across the stop is two, one each side,
+        in the junction list and the description alike."""
+        from routemaker import intersections as m
+
+        first, second = VERTICES[:3], VERTICES[2:]
+        trace = {
+            "units": "kilometers",
+            "edges": [
+                {
+                    "way_id": 101,
+                    "begin_shape_index": 0,
+                    "end_shape_index": 2,
+                    "length": 1.0,
+                    "names": ["Quiet Street"],
+                },
+            ],
+        }
+        router(
+            FakeRouter(
+                {
+                    "route": route_answer([(first, 1.0, [1.0]), (second, 1.0, [1.0])]),
+                    "trace_attributes": [
+                        # Each leg traced for every costing the plan asks with.
+                        *[
+                            {**copy.deepcopy(trace), "shape": encode_polyline6(leg)}
+                            for _ in range(4)
+                            for leg in (first, second)
+                        ]
+                    ],
+                }
+            )
+        )
+
+        def signal(at_m: float, name: str) -> m.Event:
+            return m.Event(
+                at_m,
+                VERTICES[2][0],
+                VERTICES[2][1],
+                "crossing",
+                m.Movement.STRAIGHT,
+                m.Control.SIGNAL,
+                150.0,
+                m.ORANGE,
+                "Crossing a busy road (LTS 3), traffic signal",
+                3,
+                True,
+                group_severity=True,
+                road_names=frozenset({name.lower()}),
+                road_display=(name,),
+            )
+
+        # As the search would read the whole trip: one group, across the stop.
+        events = m.number_groups(
+            [signal(x, f"{n}th Street") for n, x in enumerate((600.0, 800.0, 1200.0, 1400.0))]
+        )
+        assert [e.group for e in events] == [1, 1, 1, 1]
+        monkeypatch.setattr(routing, "_events", lambda *args: list(events))
+        body = {
+            "points": [list(VERTICES[0]), list(VERTICES[2]), list(VERTICES[4])],
+            "preset": "mass-ride",
+        }
+        answer = post(client, body).json()
+        assert [r["group"] for r in answer["intersections"]] == [1, 1, 2, 2]
+        groups = answer["intersection_groups"]
+        assert [(g["from_m"], g["to_m"]) for g in groups] == [(600, 800), (1200, 1400)]
+        for view in ("description", "description_overview"):
+            kinds = [e["kind"] for e in answer[view] if e["kind"] != "stretch"]
+            assert kinds == ["junction", "via", "junction"], view
+
 
 class TestSchema:
     def schema(self):

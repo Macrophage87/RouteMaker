@@ -989,7 +989,7 @@ def _intersection_rows(events: list) -> list[dict]:
 
 
 def _intersection_groups(events: list) -> list[dict]:
-    """A Mass Ride's groups of signalised crossings (OWNER-DECISIONS 233 and 234),
+    """A Mass Ride's groups of signalized crossings (OWNER-DECISIONS 233 and 234),
     for the junction list: where each runs, how many, the first streets, how many
     are LTS 4, its worst severity, and its sentence. `members` are positions in
     the `intersections` list, which holds every crossing as before."""
@@ -1307,7 +1307,12 @@ def plan(
     # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
     # front end reads which leg a point on the line belongs to from these.
     leg_ends: list[int] = []
+    # Where each leg but the last ends along the traced length: the stops, which
+    # a Mass Ride's crossing group never spans (OWNER-DECISIONS 247).
+    stops_m: list[float] = []
     for leg in legs:
+        if leg_runs:
+            stops_m.append(traced_m)
         shape = decode_polyline6(leg.get("shape", ""))
         coordinates.extend(shape[1:] if coordinates else shape)
         leg_ends.append(len(coordinates) - 1)
@@ -1367,6 +1372,8 @@ def plan(
     events = None
     if not over_budget:
         events = _events(refine_context, legs, raw_junctions, deadline)
+    if events is not None and refine_context.group:
+        events = intersections.number_groups(events, stops_m)
     described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
     described_full, described_overview = described if described else (None, None)
     joined_at = clock()

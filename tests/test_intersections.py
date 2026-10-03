@@ -230,7 +230,7 @@ class TestControl:
     def test_a_cycletrack_crossing_is_a_trail_crossing_too(self) -> None:
         """Item 185, measured downtown: the Pennsylvania Ave cycle track crosses
         15th St NW at a node of its own, with no signal flag; it is a trail
-        crossing whose signal is not mapped, not a red unsignalised crossing."""
+        crossing whose signal is not mapped, not a red unsignalized crossing."""
         plain = m.assess(junction(crossed=(Road(4),)))
         track = m.assess(junction(crossed=(Road(4),), path_crossing=True))
         assert plain.severity == m.RED
@@ -346,7 +346,7 @@ class TestMovementCosts:
         assert one == 0 < two
         assert m.merge_ft(Road(3, lanes=3)) <= m.BOX_TURN_CAP_FT
         assert m.merge_ft(Road(3, lanes=8)) == m.BOX_TURN_CAP_FT
-        # The cap is a two-stage box turn: 200-500 ft at a signalised junction.
+        # The cap is a two-stage box turn: 200-500 ft at a signalized junction.
         assert 200 <= m.BOX_TURN_CAP_FT <= 500
 
     def test_the_merge_rises_with_lanes_until_the_cap(self) -> None:
@@ -374,7 +374,7 @@ class TestMovementCosts:
         assert not drawn(turn)
         # Without a signal the box turn is no cap.
         assert m.left_from_ft(wide, Control.NONE) > m.BOX_TURN_CAP_FT
-        # A narrow road's signalised left stays below the cap.
+        # A narrow road's signalized left stays below the cap.
         assert m.left_from_ft(Road(3, lanes=1), Control.SIGNAL) == pytest.approx(
             m.LEFT_ACROSS_ONCOMING_FT[3] * m.SIGNALISED_LEFT_FACTOR
         )
@@ -390,7 +390,7 @@ class TestMovementCosts:
 class TestSlipLanes:
     def test_a_slip_lane_adds_a_penalty(self) -> None:
         """ "Sliplanes should get a penalty too." (item 169): about an
-        unsignalised LTS 3 crossing, 800 ft."""
+        unsignalized LTS 3 crossing, 800 ft."""
         along = junction(incoming=LTS3, outgoing=LTS3, crossed=(QUIET,), slip_lane=True)
         assert (
             cost(incoming=LTS3, outgoing=LTS3, crossed=(QUIET,), slip_lane=True) == m.SLIP_LANE_FT
@@ -920,7 +920,7 @@ class TestSharedControl:
     def test_a_left_off_the_road_then_back_onto_it_crossing_its_own_lanes(self) -> None:
         """Gate 1, B2: in a real trace a left turn crosses its own road's
         opposite lanes (`crossed=(Main St,)`). That is not a road crossed: the
-        signalised left off Main St and the left back onto it 30 m on are
+        signalized left off Main St and the left back onto it 30 m on are
         still two junctions, and the second keeps its warning."""
         off = junction(
             m=0.0,
@@ -971,7 +971,7 @@ class TestSharedControl:
             m=15.0, movement=Movement.LEFT, incoming=crossover, outgoing=far, crossed=(far,)
         )
         assert m.share_controls([off, onto])[1].control is Control.SIGNAL
-        # Unsignalised, both stay as they are.
+        # Unsignalized, both stay as they are.
         none = replace(off, control=Control.NONE)
         assert [j.control for j in m.share_controls([none, onto])] == [Control.NONE] * 2
 

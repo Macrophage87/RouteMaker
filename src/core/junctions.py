@@ -39,7 +39,7 @@ junction's (`_Approaches`), on a road's edge arriving there towards the
 junction, or the node's own flag where no edge there is flagged. The walk stops
 at a node a road of another name joins: that is another junction, and its
 signal is not this one's (review r3, B1: a driveway 16 m from Colesville Rd's
-signalised node, a left off 17th St SW 18 m past Constitution Ave). A rider
+signalized node, a left off 17th St SW 18 m past Constitution Ave). A rider
 arriving on a path (`TRAIL_USES`) is let past one, since a trail crossing
 beside a road junction is crossed on its signal; one leaving a driveway or a
 parking aisle is not (gate 1, B1). The rider's own approach is read from the
@@ -103,7 +103,7 @@ LINK_USES = frozenset({"turn_channel", "ramp"})
 # up an arm (`_Approaches`): a trail crossing a few metres from a road junction
 # is crossed on that junction's signal. A driveway, parking aisle or
 # drive-through is not a path: a rider leaving one onto a road beside a
-# signalised junction does not have its signal (gate 1, B1).
+# signalized junction does not have its signal (gate 1, B1).
 TRAIL_USES = (
     frozenset({"footway", "path", "cycleway", "pedestrian_crossing", "steps", "track"}) | PATH_USES
 )
@@ -481,7 +481,7 @@ class _Approaches:
                     continue
                 arriving.append((entry, ends))
             flagged = [ends for entry, ends in arriving if _flag(entry, "traffic_signal")]
-            # A road arriving here towards N with a signal: a signalised node,
+            # A road arriving here towards N with a signal: a signalized node,
             # on this road's stop line or at a junction a few metres up it.
             if any(self._towards(ends) for ends in flagged):
                 return True
@@ -690,7 +690,7 @@ def _ask(
 def control_of(node: Node | None) -> Control:
     """Who has the right of way, from the node's arms: a signal at the node, on
     the rider's approach or on any other road's approach, at the node or up it
-    within APPROACH_M (a signal for the cross traffic is a signalised junction,
+    within APPROACH_M (a signal for the cross traffic is a signalized junction,
     review r1 B2c; one on a stop line short of it is the junction's, review r2);
     else the stop and yield signs on the rider's approach (up to APPROACH_M
     before the node along the route) against those on the other roads' at the
