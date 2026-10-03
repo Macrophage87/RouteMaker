@@ -77,6 +77,26 @@ def states():
     yield from state_polygons()
 
 
+# The scratch directories the tests below make for themselves (a second extract
+# beside the workspace's), removed after each test (combined correctness review,
+# SF3: eight `mkdtemp` calls were never cleaned up, 2.4 GB of one run's 3.7 GB
+# left under TMPDIR on a shared host).
+_SCRATCH_DIRS: list[Path] = []
+
+
+def _scratch_dir() -> Path:
+    directory = Path(tempfile.mkdtemp())
+    _SCRATCH_DIRS.append(directory)
+    return directory
+
+
+@pytest.fixture(autouse=True)
+def _remove_scratch_dirs():
+    yield
+    while _SCRATCH_DIRS:
+        shutil.rmtree(_SCRATCH_DIRS.pop(), ignore_errors=True)
+
+
 @pytest.fixture
 def workspace(segment_schemas):
     """A deployment that already has this week's extract on disk.
@@ -3280,7 +3300,7 @@ def test_the_facility_class_is_read_from_the_tags_the_tier_was_scored_on(workspa
 
 
 def _fresh_workspace():
-    directory = Path(tempfile.mkdtemp())
+    directory = _scratch_dir()
     return install_source_extract(directory), directory
 
 
@@ -3465,7 +3485,7 @@ def test_the_report_s_osm_only_tier_takes_no_block_count(states, monkeypatch) ->
 
     def extract() -> Path:
         return install_source_extract(
-            Path(tempfile.mkdtemp()),
+            _scratch_dir(),
             build=build_one_road_extract,
             highway="residential",
             name="Test Road",
@@ -3496,7 +3516,7 @@ def test_the_report_s_osm_only_tier_takes_no_block_count(states, monkeypatch) ->
 
 def _one_road(highway: str = "residential", name: str = "Test Road", **tags) -> Path:
     return install_source_extract(
-        Path(tempfile.mkdtemp()),
+        _scratch_dir(),
         build=build_one_road_extract,
         highway=highway,
         name=name,
@@ -3692,9 +3712,7 @@ def test_a_frontage_road_does_not_take_the_arterial_beside_it_but_a_freeway_may(
     freeway by DC's functional class."""
     _source, root = workspace
     highway, _, arterial = highway.partition("-")
-    clipped = install_source_extract(
-        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway=highway
-    )
+    clipped = install_source_extract(_scratch_dir(), build=build_one_road_extract, highway=highway)
     block = street_block("dc-1", {"speed_mph": {"ob": 45}, "lanes": {"ib": 3, "ob": 3}})
     block["facts"]["name"] = "NEW YORK AVE NE"
     block["facts"]["functional_class"] = "3" if arterial else "1"
@@ -3706,7 +3724,7 @@ def test_a_way_with_no_name_is_not_vetoed(workspace, states) -> None:
     """Nothing contradicts it: a block with a name and a way with none match on
     geometry, as a way and a block with the same name do."""
     clipped = install_source_extract(
-        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway="residential", name=""
+        _scratch_dir(), build=build_one_road_extract, highway="residential", name=""
     )
     block = street_block("dc-1", {"speed_mph": {"ob": 25}})
     context, _ = run_pipeline(clipped, clipped.parent, roadway=[block], skip=NOT_SWAPPED)
@@ -3720,7 +3738,7 @@ def test_an_unnamed_service_way_does_not_take_the_street_beside_it(workspace, st
     residential way, which the requirement does not cover, still matches."""
     block = street_block("dc-1", {"speed_mph": {"ob": 25}})
     service = install_source_extract(
-        Path(tempfile.mkdtemp()), build=build_one_road_extract, highway="service", name=""
+        _scratch_dir(), build=build_one_road_extract, highway="service", name=""
     )
     context, _ = run_pipeline(service, service.parent, roadway=[block], skip=NOT_SWAPPED)
     assert 100 not in context.road_facts_by_way
@@ -3731,7 +3749,7 @@ def test_a_track_osm_maps_as_its_own_way_is_never_written_onto_the_road(workspac
     beside the road. Writing it onto the road rated the motor lanes LTS 1 (15th
     Street NW) and drew the carriageway as a track."""
     clipped = install_source_extract(
-        Path(tempfile.mkdtemp()),
+        _scratch_dir(),
         build=build_one_road_extract,
         highway="primary",
         name="Test Road",
@@ -3759,7 +3777,7 @@ def test_the_no_trail_graph_closes_contraflow_and_nothing_else_moves(workspace) 
     open or closed."""
     from pipeline.extract import read_ways
 
-    root = Path(tempfile.mkdtemp())
+    root = _scratch_dir()
     try:
         source = install_source_extract(root, build_contraflow_extract)
         ids = (CONTRAFLOW_ONE_WAY_ID, CONTRAFLOW_TWO_WAY_ID, CONTRAFLOW_ROUNDABOUT_ID)
