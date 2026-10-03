@@ -1738,8 +1738,9 @@ fixed offsets, which is layer 4's candidate search proper.
 
 **The owner's answer** (2026-10-02, OWNER-DECISIONS 194: "Build trail-seeking
 search"): Trailmaxxing moves to 100 and Cargo-carrying-people stays at 80, and
-the generator is the backlog item FOLLOWUP-TRAIL-SEEK (PLAN, Owner amendments),
-which is what would make a calm setting above 100 mean something. So:
+the generator was the backlog item FOLLOWUP-TRAIL-SEEK (PLAN, Owner amendments),
+which is what would make a calm setting above 100 mean something. (Superseded:
+the generator is built, item 201; see "The trail seek", next.) So:
 
 - Trailmaxxing starts at 100 (`core.presets`, `frontend/src/lib/dials.ts`):
   every Trailmaxxing plan runs the calm search at its top rate, with
@@ -1749,7 +1750,9 @@ which is what would make a calm setting above 100 mean something. So:
   pays for every extra mile and every climb, and 80 already keeps to low-stress
   ways unless avoiding them takes much longer.
 - The rate stays at 10 at 100, and the wider search stays built and off, until
-  FOLLOWUP-TRAIL-SEEK gives the top end candidates worth a higher rate.
+  FOLLOWUP-TRAIL-SEEK gives the top end candidates worth a higher rate. (The seek
+  is now built and did not: positions above 100 plan what 100 does, "The trail
+  seek", next, so both stay as they are.)
 
 ### The trail seek (FOLLOWUP-TRAIL-SEEK, items 187, 194, 201)
 

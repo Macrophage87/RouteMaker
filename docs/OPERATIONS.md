@@ -237,7 +237,7 @@ the order a request meets it:
 | Routes in flight per client | 1; a second only while at least 2 of the api's slots would stay free after it (so never, on the default pool of 3) | 429, `Retry-After: 2` |
 | Routes in flight, whole api | `WEB_CONCURRENCY` less 2, less `GEOCODE_CONCURRENCY` (3 at compose's default of 7 workers) | 503, `Retry-After: 5` |
 | Points, coverage, preset | 2 to 25 points, each inside `COVERAGE_BBOX`; `default`, `group-ride`, `mass-ride` | 400 |
-| Long ride | Past 150 km of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
+| Long ride | Past 93 mi (150 km) of straight line between consecutive points, a signed-out request without `"confirm_long": true` | 409 `{"error", "code": "confirm_long", "span_km"}`, the router not called |
 | Long rides in flight | 1 per client and 1 for the whole api, signed in or not, on top of the slots above | 503 (the deployment's slot is taken first, so the per-client 429 does not arise on a long pool of 1), `Retry-After: 5` |
 | Length ceiling | 200 km of straight line, however asked | 400 "too long" |
 | Time | 40 s for the whole request from its arrival, a long ride 50 s; the router calls get all but the last 3 s, at most 35 s per call (45 s on a long ride) | 502 if the router does not answer, 503 with `Retry-After: 30` if the budget runs out before `/route` answers (on a long ride with `"code": "long_ride_timed_out"`, which the planner shows at once instead of resending); a trace cut short leaves its legs' stress `unknown` |
@@ -310,7 +310,7 @@ request, so a killed worker's slot is released with its connection, and a
 slot that cannot be unlocked closes the connection, which releases it too.
 
 **Long rides.** The owner's decisions of 2026-09-26 (PLAN.md, Moderation and
-abuse limits): a request longer than 150 km of straight line is planned, but a
+abuse limits): a request longer than 93 mi (150 km) of straight line is planned, but a
 signed-out visitor is first asked to confirm it - the 409 carries the span,
 and the front end resends with `confirm_long` - and a signed-in one is not;
 nothing past 200 km is planned, signed in or not; and a long ride may take up
@@ -406,13 +406,13 @@ so no restart is needed after the swap beyond the one that restarts the routers
 anyway.
 
 **Cost per plan.** Every plan asks `/locate` once for each 50 junctions where a
-busy-class road meets the route, with a 1 m radius, and again, with a 30 m
-(100 ft) radius, for each 50 of those whose control is not already a signal, to
+busy-class road meets the route, with a 3 ft (1 m) radius, and again, with a
+100 ft (30 m) radius, for each 50 of those whose control is not already a signal, to
 read the signals and stop signs OSM puts on the stop lines up the approaches
 (review r2; `core.junctions.APPROACH_RADIUS_M`): about 2 to 12 calls a plan.
-Measured on the live router, a batch of 50 at 30 m took 0.1-0.3 s and 2.6 MB,
-against 0.04-0.15 s and 0.5 MB at 1 m. A plan with a red junction
-500 m or more from both ends asks the router for one more route (crossing
+Measured on the live router, a batch of 50 at 100 ft (30 m) took 0.1-0.3 s and
+2.6 MB, against 0.04-0.15 s and 0.5 MB at 3 ft (1 m). A plan with a red junction
+1,640 ft (500 m) or more from both ends asks the router for one more route (crossing
 avoidance, `core.refine`: only red junctions, from 2,000 ft, are worth a second
 route), one `/trace_attributes` for it and its `/locate`s, and one more route for
 the detour warning when the route is at least twice the straight line, or above
@@ -465,7 +465,7 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
 - **One query a leg.** `SELECT ... FROM live.segment` for the paths, protected
   ways and car-free roads at LTS 1 or 2 within 0.9 to 2.5 mi (1.5 to 4 km) of the
   leg's straight line and its best route so far, at most 30,000 rows. The band is
-  read a strip at a time (`trailseek.band_cells`: 1 km cells, each row's run one
+  read a strip at a time (`trailseek.band_cells`: 0.6 mi (1 km) cells, each row's run one
   index scan), not over the guide's bounding box, under its own statement timeout
   (at most 2.5 s, and never past the leg's time); a read cancelled by the timeout
   ends the seek as `limited: "time"`. On today's live table (no facility column) it
@@ -477,7 +477,7 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   (docs/DEVELOPMENT.md, "Round 1 revision").
 - **Up to six router routes a leg**: up to three candidates, each of which may be
   asked a second time without the search's exclusions (when the router has no
-  route with them, or the route with them is more than 15% and 500 m longer than
+  route with them, or the route with them is more than 15% and 1,640 ft (500 m) longer than
   the leg and the corridor's detour), each with its `/trace_attributes` and its
   junctions' `/locate`s, about 1 to 2.5 s each on the live host. Only the kept
   exclusions within the leg's band are sent. The seek has
@@ -488,7 +488,7 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   1 s on most trips and up to 4.8 s on Rockville to Silver Spring at Trailmaxxing.
   Without the trail credit it asks nothing on a route with no busy road on it (6 of
   12 trips at Default's costing); with Trailmaxxing's credit it may also ask on a
-  quiet route, for a corridor that adds 400 m of trail. There is no
+  quiet route, for a corridor that adds 1,300 ft (400 m) of trail. There is no
   limit of its own: it runs inside the plan's `ROUTING_CONCURRENCY` slot, so
   at most that many seeks run at once, as for the search; the router calls are
   the same one-after-another calls, so the thread notes under "Concurrency"
@@ -564,15 +564,15 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
 **Where the markers over-warn.** Not one place, several, each a known gap
 (docs/DEVELOPMENT.md, "Known gaps"):
 
-- A signal tagged on a stop line more than 30 m (100 ft) up an approach, or
+- A signal tagged on a stop line more than 100 ft (30 m) up an approach, or
   only on an approach the junction's arms do not lead to (the far
   carriageway's, where the route crosses one carriageway alone), is not read,
   and the junction is priced as having none. Round 1 read signals only at the
   junction node, and this was the commonest cause of a false red at a
   signalised junction (review r2: 8 of 15 reds in its sample); from round 2 the
-  approaches are walked to 30 m and the nodes of one junction share its
+  approaches are walked to 100 ft (30 m) and the nodes of one junction share its
   strongest control. Of the 95 junctions the review found priced as having no
-  signal, 66 had a signal flag of some kind within 30 m and 59 of those now
+  signal, 66 had a signal flag of some kind within 100 ft (30 m) and 59 of those now
   read as signalised (re-measured at gate 1; 63 in round 2). The four fewer
   are the two lefts off 17th St SW 60 ft (18 m) past the Constitution Ave
   signal, which is not theirs (review r3), Plyers Mill Rd across Metropolitan
@@ -597,7 +597,7 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   the cross traffic stops can be priced as if nobody does: the rider's crossing
   is then the stopped side's.
 - Any junction whose signal or signs OSM does not have reads "no signal mapped".
-- It under-warns near signals: a side street or driveway within 30 m (100 ft)
+- It under-warns near signals: a side street or driveway within 100 ft (30 m)
   of a signalised junction can be priced as signalised, and its red or orange
   not drawn, where the signal is on a stop line of the road it joins with no
   other named road at that node, or where the other junction's road has no
@@ -610,12 +610,12 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   steps or track) does take such a signal: a trail crossing a few metres from
   a road junction is crossed on that junction's signal (the Green Trail,
   Virginia Ave cycletrack and Custis crossings).
-  Junctions within 45 m about one named road also share a signal where the
+  Junctions within 150 ft (45 m) about one named road also share a signal where the
   rider crosses that road at one of them and does not ride along it between
   them, so a staggered junction whose two nodes the rider links by a short
   side street can read as one. A turn's crossing of its own two-way road's
   opposite lanes is not counted as crossing it (gate 1), so a signalised left
-  off a road and an unsignalised left back onto it 30 m on stay two junctions
+  off a road and an unsignalised left back onto it 100 ft (30 m) on stay two junctions
   and the second keeps its red; a one-way carriageway crossed still counts,
   so a divided road's crossover shares its signal.
 - That path exception has a named residual risk. A cycleway's left onto
@@ -987,7 +987,7 @@ live table. **On today's live table** (no facility column) it is not needed and
 cannot be built (its predicate names the column); the seek reads that table by the
 trail rule through `segment_overview_geom_idx`. **A table promoted with the facility
 column but without this index** (a rebuild from code before it) still works, through
-the whole geometry index (about 0.2 to 0.3 s a leg read strip by strip: 200 to 329 ms
+the whole geometry index (about 0.2 to 0.3 s a leg read strip by strip: 227 to 329 ms
 measured on a 1.36M-row copy, inside the statement timeout); to add it in place
 without blocking reads or writes, measured at 1.6 s and 648 kB on a 1.36M-row copy:
 

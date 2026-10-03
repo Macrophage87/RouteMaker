@@ -150,7 +150,9 @@ class RouteIn(Schema):
     preset: PresetName
     confirm_long: StrictBool = Field(
         default=False,
-        description="Set true to plan a signed-out request longer than 150 km of straight line.",
+        description=(
+            "Set true to plan a signed-out request longer than 93 mi (150 km) of straight line."
+        ),
     )
     stress: StrictInt | None = Field(
         default=None,
@@ -161,7 +163,7 @@ class RouteIn(Schema):
             " planner warns at 10 or below; it is not the fastest route), 70 is Default, 80"
             " keeps to low-stress ways unless avoiding them takes much longer (the old top),"
             " and above 80 a calm detour search accepts longer routes to avoid LTS 3, 4 and"
-            " Avoid roads, rising to about 10 m of extra riding for every metre of LTS 3 at"
+            " Avoid roads, rising to about 10 mi of extra riding for every mile of LTS 3 at"
             " 100, with no cap on the detour (`calm_search`, `detour` in the answer). Absent:"
             " the preset's own start."
         ),
@@ -172,8 +174,8 @@ class RouteIn(Schema):
         le=presets.HILLS_MAX,
         description=(
             "The hills slider: -100 avoids climbing, 0 is the fastest time, above 0 looks for"
-            " climbs among the router's alternatives (two-point plans up to 50 km of straight"
-            " line). Absent: the"
+            " climbs among the router's alternatives (two-point plans up to 31 mi (50 km) of"
+            " straight line). Absent: the"
             " preset's own start. Mass Ride does not seek climbs."
         ),
     )
