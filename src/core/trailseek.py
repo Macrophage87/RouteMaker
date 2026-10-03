@@ -79,10 +79,6 @@ JOIN_M = 200.0
 MIN_REPLACED_M = 500.0
 MIN_EXPOSURE_M = 150.0
 MIN_SCORE_M = 300.0
-# With a trail credit (OWNER-DECISIONS 202) a corridor need not replace anything
-# busy: it must put this many more metres of trail on the route than the stretch
-# it replaces had.
-MIN_TRAIL_GAIN_M = 400.0
 # A metre of detour costs this many metres of the score; what a metre of busy
 # road is worth against it is the calm rate's.
 DETOUR_WEIGHT = 1.0
@@ -135,8 +131,8 @@ Node = tuple[int, int]
 class SeekError(RuntimeError):
     """The corridor search reached a state it cannot be in (a step that costs
     nothing, a parent chain longer than the network): a bug, raised rather than
-    looped on (review r1: a regression of the credit's clamp looped for ever and
-    froze the host)."""
+    looped on (review r1: a regression of a clamp on the step's weight looped for
+    ever and froze the host)."""
 
 
 class SeekOutOfTime(Exception):
@@ -177,8 +173,6 @@ class Corridor:
     t_out: float
     # The trail's vertices from the entry to the exit.
     path: tuple[LonLat, ...] = ()
-    # Trail metres more than the stretch of route it replaces has (with a credit).
-    trail_gain_m: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -233,8 +227,7 @@ class RouteLine:
     (weighted metres of busy road) up to each distance.
 
     `spans` are (from, to, weight) in metres along the traced route, whose total
-    length is `traced_m` (the line's own length is scaled to it). `trail_spans`
-    are the stretches of trail, the same way, which `trail_to` counts."""
+    length is `traced_m` (the line's own length is scaled to it)."""
 
     def __init__(
         self,
@@ -242,7 +235,6 @@ class RouteLine:
         spans: Iterable[tuple[float, float, float]] = (),
         traced_m: float | None = None,
         radius: float = JOIN_M,
-        trail_spans: Iterable[tuple[float, float, float]] = (),
     ) -> None:
         self.radius = radius
         self.cell = max(50.0, radius)
@@ -253,7 +245,6 @@ class RouteLine:
         scale = self.length / traced_m if traced_m else 1.0
         # Exposure up to the end of each span, and the spans, in the line's metres.
         self.starts, self.ends, self.weights, self.cum = self._cumulate(spans, scale)
-        self.t_starts, self.t_ends, self.t_weights, self.t_cum = self._cumulate(trail_spans, scale)
         self.cells: dict[tuple[int, int], list[tuple[float, float, float]]] = defaultdict(list)
         step = max(ROUTE_STEP_M, radius / 8)
         for i, point in enumerate(xy):
@@ -305,10 +296,6 @@ class RouteLine:
     def busy_to(self, s: float) -> float:
         """The exposure (weighted metres) from the start to `s` metres along."""
         return self._to(self.starts, self.ends, self.weights, self.cum, s)
-
-    def trail_to(self, s: float) -> float:
-        """The metres of trail from the start to `s` metres along."""
-        return self._to(self.t_starts, self.t_ends, self.t_weights, self.t_cum, s)
 
     def nearest(self, x: float, y: float) -> tuple[float, float] | None:
         """(metres along the route, metres away) of the route's nearest point
@@ -397,7 +384,6 @@ class Network:
         line: RouteLine,
         rate: float,
         cap_m: float,
-        credit: float = 0.0,
         stop_at: float | None = None,
         clock: Callable[[], float] = time.monotonic,
     ) -> Corridor | None:
@@ -407,22 +393,19 @@ class Network:
         exit at `s_out` and `c_out`, and `d` of trail between, the score is
 
             rate x (busy(s_out) - busy(s_in)) - W x (c_in + d + c_out - (s_out - s_in))
-            + credit x (d - (trail(s_out) - trail(s_in)))
 
-        (W is DETOUR_WEIGHT, `credit` the trail credit, OWNER-DECISIONS 202: a
-        metre of trail is worth that many metres of detour, and the route's own
-        trail the corridor replaces is lost), a part for the entry, a part for
-        the exit and (W - credit) x d, so the best is the node pair of greatest
-        exit value less entry cost less (W - credit) x d: one Dijkstra from every
-        node near the route at once, each starting at its entry cost. The credit
-        is held below W, so that no step costs less than nothing.
+        (W is DETOUR_WEIGHT; there is no credit for the trail itself, OWNER-DECISIONS
+        257: a corridor is worth what busy road it replaces and nothing for being a
+        trail), a part for the entry, a part for the exit and W x d, so the best
+        is the node pair of greatest exit value less entry cost less W x d: one
+        Dijkstra from every node near the route at once, each starting at its
+        entry cost.
 
         Hard bounds, whatever the inputs (review r1): a step that does not cost
         something finite and positive is refused (SeekError), the walk back
         from the exit is at most the network's node count, and the clock is
         read every CLOCK_EVERY nodes against `stop_at` (SeekOutOfTime)."""
-        credit = min(max(credit, 0.0), DETOUR_WEIGHT * 0.95)
-        step_weight = DETOUR_WEIGHT - credit
+        step_weight = DETOUR_WEIGHT
         _check_step(step_weight)
         label: dict[Node, float] = {}
         origin: dict[Node, Node] = {}
@@ -436,9 +419,7 @@ class Network:
                 continue
             s, c = hit
             joins[node] = hit
-            label[node] = (
-                rate * line.busy_to(s) + DETOUR_WEIGHT * (s + c) - credit * line.trail_to(s)
-            )
+            label[node] = rate * line.busy_to(s) + DETOUR_WEIGHT * (s + c)
             origin[node], trail[node] = node, 0.0
             heap.append((label[node], node))
         heapq.heapify(heap)
@@ -457,12 +438,7 @@ class Network:
                 s_in, c_in = joins[origin[node]]
                 replaced = s_out - s_in
                 detour = c_in + trail[node] + c_out - replaced
-                value = (
-                    rate * line.busy_to(s_out)
-                    + DETOUR_WEIGHT * (s_out - c_out)
-                    - credit * line.trail_to(s_out)
-                    - cost
-                )
+                value = rate * line.busy_to(s_out) + DETOUR_WEIGHT * (s_out - c_out) - cost
                 if (
                     replaced >= MIN_REPLACED_M
                     and detour <= cap_m
@@ -503,7 +479,6 @@ class Network:
             t_in=s_in,
             t_out=s_out,
             path=tuple(self.plane.lonlat(*self.xy[n]) for n in path),
-            trail_gain_m=trail[node] - (line.trail_to(s_out) - line.trail_to(s_in)),
         )
 
 
@@ -515,34 +490,29 @@ def find_corridors(
     spans: Iterable[tuple[float, float, float]],
     traced_m: float | None,
     rate: float,
-    credit: float = 0.0,
-    trail_spans: Iterable[tuple[float, float, float]] = (),
     stop_at: float | None = None,
     clock: Callable[[], float] = time.monotonic,
 ) -> list[Corridor]:
     """The best corridor of each trail network within reach, best first. Only
-    corridors that score MIN_SCORE_M and save MIN_EXPOSURE_M are kept - or, with
-    a trail credit (OWNER-DECISIONS 202), put MIN_TRAIL_GAIN_M more trail on the
-    route than the stretch they replace, which is how a route with nothing busy
-    on it still finds a trail. Past `stop_at` (by `clock`) it raises
-    SeekOutOfTime."""
+    corridors that score MIN_SCORE_M and save MIN_EXPOSURE_M are kept: a route
+    with nothing busy on it has nothing to replace and no corridor (a trail is
+    worth nothing for being a trail, OWNER-DECISIONS 257). Past `stop_at` (by
+    `clock`) it raises SeekOutOfTime."""
     plane = Plane(start, end)
     if plane.span < SEEK_MIN_SPAN_M or len(route) < 2:
         return []
-    line = RouteLine(
-        [plane.xy(lon, lat) for lon, lat in route], spans, traced_m, trail_spans=trail_spans
-    )
-    if not line.starts and credit <= 0:
+    line = RouteLine([plane.xy(lon, lat) for lon, lat in route], spans, traced_m)
+    if not line.starts:
         return []
     network = Network(segments, plane)
     cap = detour_cap_m(plane.span)
     found: list[Corridor] = []
     for nodes in network.components(stop_at, clock):
         _check_time(stop_at, clock)
-        best = network.best_in(nodes, line, rate, cap, credit, stop_at, clock)
+        best = network.best_in(nodes, line, rate, cap, stop_at, clock)
         if best is None or best.score < MIN_SCORE_M:
             continue
-        if best.gain_m >= MIN_EXPOSURE_M or (credit > 0 and best.trail_gain_m >= MIN_TRAIL_GAIN_M):
+        if best.gain_m >= MIN_EXPOSURE_M:
             found.append(best)
     found.sort(key=lambda c: (-c.score, c.entry))
     return found

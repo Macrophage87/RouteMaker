@@ -170,7 +170,6 @@ def _front_end_starts() -> dict[str, dict]:
                 row[key] = int(found.group(1))
         row["seek"] = "seek: true" in body
         row["assist"] = "assist: true" in body
-        row["trails"] = "trails: true" in body
         carrying = re.search(r"carrying: \{ cargo: (\d+), people: (\d+) \}", body)
         if carrying:
             row["carrying"] = {"cargo": int(carrying.group(1)), "people": int(carrying.group(2))}
@@ -192,8 +191,6 @@ def test_the_front_ends_starts_are_the_apis() -> None:
         assert row["seek"] == preset.hills_seek, name
         assert row.get("stressMax", presets.STRESS_MAX) == preset.stress_max, name
         assert row["assist"] == (preset.assist_speed_kmh is not None), name
-        # The panel says a ride type favors trails where the API credits them.
-        assert row["trails"] == (preset.trail_credit > 0), name
         if preset.carrying is None:
             assert "carrying" not in row, name
         else:
@@ -427,62 +424,40 @@ def test_avoid_gravel_rides_as_road_at_the_presets_own_speed() -> None:
     assert assistless["cycling_speed"] == presets.PRESETS["cargo"].assist_speed_kmh
 
 
-class TestTrailCredit:
-    """OWNER-DECISIONS 202, "Trail bonus for Trailmaxxing only": a preset dial,
-    not a slider value."""
+class TestLongestRide:
+    """OWNER-DECISIONS 256, 257 (FOLLOWUP-LONG-CALM): at the top of the slider the
+    search minimises stress within a longest ride; there is no trail credit."""
 
-    def test_only_trailmaxxing_has_one(self) -> None:
-        for name, preset in presets.PRESETS.items():
-            assert (preset.trail_credit > 0) == (name == "trailmaxxing"), name
-        assert presets.PRESETS["trailmaxxing"].trail_credit == presets.TRAIL_CREDIT
-
-    def test_it_is_below_what_would_make_a_trail_free(self) -> None:
-        # The seek's corridor search takes it as an edge weight under the detour's 1.
-        assert 0 < presets.TRAIL_CREDIT < 1
-        assert presets.TRAIL_CREDIT_MAX < 1
-
-    def test_it_is_the_value_put_to_the_owner(self) -> None:
-        """Mutation review P3: the proposal's 0.5 (a mile of trail priced at half
-        a mile) is pinned by value, not only by its relations; a change is a
-        change to what the owner was shown."""
-        assert presets.TRAIL_CREDIT == 0.5
-
-    def test_it_is_not_among_the_routers_costing_options(self) -> None:
-        # It is the search's dial; the router is not told.
+    def test_there_is_no_trail_credit(self) -> None:
+        """257 supersedes 202: a quiet street counts the same as a trail."""
+        assert not hasattr(presets, "TRAIL_CREDIT")
+        assert not hasattr(presets, "trail_credit_for")
         for preset in presets.PRESETS.values():
-            assert "trail_credit" not in preset.costing_options
+            assert not hasattr(preset, "trail_credit"), preset.name
 
-    def test_other_ride_types_have_none_at_any_position(self) -> None:
-        for name in presets.PRESETS:
-            if name == "trailmaxxing":
-                continue
-            for stress in range(presets.STRESS_MIN, presets.STRESS_MAX + 1, 5):
-                assert presets.trail_credit_for(name, stress) == 0.0, (name, stress)
+    def test_only_the_top_of_the_slider_is_maxcalm(self) -> None:
+        assert presets.maxcalm_for(presets.STRESS_MAX)
+        assert not presets.maxcalm_for(99)
+        assert not presets.maxcalm_for(presets.STRESS_TODAYS_TOP)
+        assert not presets.maxcalm_for(0)
 
-    def test_trailmaxxing_has_all_of_it_at_the_top_of_the_slider(self) -> None:
-        assert presets.trail_credit_for("trailmaxxing", 100) == presets.TRAIL_CREDIT
-        assert presets.trail_credit_for("trailmaxxing", presets.PRESETS["trailmaxxing"].stress) == (
-            presets.TRAIL_CREDIT
-        )
+    def test_the_top_is_where_the_calm_rate_stops_rising(self) -> None:
+        assert presets.calm_rate_for(presets.STRESS_MAX) == presets.CALM_RATE_MAX
 
-    def test_moving_the_slider_down_fades_it_in_step_with_the_calm_rate(self) -> None:
-        # Defined behaviour: credit x calm rate / the top's rate; none with no calm search.
-        for stress in (0, 50, 70, 80):
-            assert presets.trail_credit_for("trailmaxxing", stress) == 0.0, stress
-        previous = 0.0
-        for stress in range(81, 101):
-            now = presets.trail_credit_for("trailmaxxing", stress)
-            assert previous < now <= presets.TRAIL_CREDIT, stress
-            expected = presets.TRAIL_CREDIT * presets.calm_rate_for(stress) / presets.CALM_RATE_MAX
-            assert now == pytest.approx(expected, abs=1e-4), stress
-            previous = now
-        assert presets.trail_credit_for("trailmaxxing", 90) == pytest.approx(
-            presets.TRAIL_CREDIT * 0.183, abs=0.002
-        )
+    def test_only_trailmaxxing_plans_long_trips_leg_by_leg(self) -> None:
+        for name, preset in presets.PRESETS.items():
+            assert preset.long_calm == (name == "trailmaxxing"), name
 
-    def test_a_credit_past_the_cap_is_held_to_it(self, monkeypatch) -> None:
-        from dataclasses import replace
+    def test_the_default_longest_ride_is_1_6_times_the_routers_own_route(self) -> None:
+        assert presets.DEFAULT_MAX_RATIO == 1.6
+        assert presets.default_max_m(50_000.0) == pytest.approx(80_000.0)
+        assert presets.default_max_m(93_000.0) == pytest.approx(148_800.0)
 
-        big = replace(presets.PRESETS["trailmaxxing"], trail_credit=3.0)
-        monkeypatch.setattr(presets, "PRESETS", {**presets.PRESETS, "trailmaxxing": big})
-        assert presets.trail_credit_for("trailmaxxing", 100) == presets.TRAIL_CREDIT_MAX
+    def test_a_short_route_has_a_mile_to_spare_at_least(self) -> None:
+        # 1.6 x 1 mi is 0.6 mi more: under the floor of a mile more.
+        assert presets.default_max_m(1609.344) == pytest.approx(2 * 1609.344)
+        assert presets.default_max_m(0.0) == pytest.approx(presets.DEFAULT_MAX_EXTRA_M)
+
+    def test_the_dials_bounds_are_a_sensible_range(self) -> None:
+        assert presets.MAX_DISTANCE_MIN_M < 1609 < presets.MAX_DISTANCE_MAX_M
+        assert presets.MAX_DISTANCE_MAX_M >= 200_000  # the longest span a plan may have

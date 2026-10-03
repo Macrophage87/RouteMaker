@@ -29,6 +29,22 @@ export interface Dials {
    * the ride, not the bike, so it stays when the ride type changes.
    */
   avoidGravel?: boolean;
+  /**
+   * "Longest ride" (OWNER-DECISIONS 256), in metres: the planner finds the least
+   * stressful route no longer than this. Optional, and only at the top of the
+   * traffic slider (`offersLongestRide`); absent is the default, 1.6 times the
+   * router's own route (`core.presets.DEFAULT_MAX_RATIO`).
+   */
+  maxDistanceM?: number;
+  /**
+   * "System weight" (OWNER-DECISIONS 264), in kilograms: rider, bike and load, which
+   * the effort the Hills slider avoids is weighed by. Optional, and only at the top
+   * of the traffic slider; absent is the default (`SYSTEM_WEIGHT_KG`, or
+   * `PASSENGERS_WEIGHT_KG` for Cargo with passengers).
+   */
+  systemWeightKg?: number;
+  /** "Make it a loop" (OWNER-DECISIONS 266); a ride ending where it starts is one without it. */
+  loop?: boolean;
 }
 
 export const STRESS_MIN = 0;
@@ -46,11 +62,6 @@ interface Start {
   stressMax?: number;
   /** Cargo Bike offers electric assist. */
   assist?: boolean;
-  /**
-   * Trailmaxxing alone favors trails (OWNER-DECISIONS 202): the API credits each
-   * mile of trail (`Preset.trail_credit`), so the route may add miles to ride one.
-   */
-  trails?: boolean;
 }
 
 /**
@@ -75,7 +86,7 @@ export function calmRate(stress: number): number {
 
 export const STARTS: Record<PresetId, Start> = {
   default: { stress: 70, hills: 0, seek: true },
-  trailmaxxing: { stress: 100, hills: 0, seek: true, trails: true },
+  trailmaxxing: { stress: 100, hills: 0, seek: true },
   "group-ride": { stress: 40, hills: -50, seek: true },
   "mass-ride": { stress: 0, hills: -95, seek: false, stressMax: 0 },
   "mountain-goat": { stress: 40, hills: 100, seek: true },
@@ -119,9 +130,36 @@ export function offersAssist(preset: PresetId): boolean {
   return STARTS[preset].assist === true;
 }
 
-/** Whether the ride type favors trails (Trailmaxxing's trail credit). */
-export function favorsTrails(preset: PresetId): boolean {
-  return STARTS[preset].trails === true;
+/**
+ * What the API takes for a longest ride (metres): `core.presets.MAX_DISTANCE_MIN_M`
+ * and `MAX_DISTANCE_MAX_M`, which tests/test_presets.py holds this to.
+ */
+export const LONGEST_MIN_M = 1_000;
+export const LONGEST_MAX_M = 1_000_000;
+export const DEFAULT_MAX_RATIO = 1.6;
+/** The system weight's range and defaults (kg): `routemaker.effort`, which tests/test_presets.py holds this to. */
+export const SYSTEM_WEIGHT_MIN_KG = 68;
+export const SYSTEM_WEIGHT_MAX_KG = 140;
+export const SYSTEM_WEIGHT_KG = 90;
+export const PASSENGERS_WEIGHT_KG = 120;
+
+/** A system weight the API will take, or undefined. */
+export function fitWeight(kg: unknown): number | undefined {
+  if (typeof kg !== "number" || !Number.isFinite(kg)) return undefined;
+  const whole = Math.round(kg);
+  return whole >= SYSTEM_WEIGHT_MIN_KG && whole <= SYSTEM_WEIGHT_MAX_KG ? whole : undefined;
+}
+
+/** Whether the "Longest ride" dial applies: the top of the traffic slider, on a ride type whose slider moves. */
+export function offersLongestRide(preset: PresetId, stress: number): boolean {
+  return stressMax(preset) >= STRESS_MAX && stress >= STRESS_MAX;
+}
+
+/** A longest ride the API will take, or undefined (not a number, or out of range). */
+export function fitLongest(metres: unknown): number | undefined {
+  if (typeof metres !== "number" || !Number.isFinite(metres)) return undefined;
+  const whole = Math.round(metres);
+  return whole >= LONGEST_MIN_M && whole <= LONGEST_MAX_M ? whole : undefined;
 }
 
 export function carries(preset: PresetId): boolean {
@@ -164,6 +202,9 @@ export function fitDials(preset: PresetId, dials: Partial<Dials>): Dials {
     carrying: start.carrying,
     assist: start.assist,
     ...(dials.avoidGravel === true ? { avoidGravel: true } : {}),
+    ...(fitLongest(dials.maxDistanceM) !== undefined ? { maxDistanceM: fitLongest(dials.maxDistanceM) } : {}),
+    ...(fitWeight(dials.systemWeightKg) !== undefined ? { systemWeightKg: fitWeight(dials.systemWeightKg) } : {}),
+    ...(dials.loop === true ? { loop: true } : {}),
   };
 }
 
@@ -174,6 +215,11 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   if (dials.carrying) fields.carrying = dials.carrying;
   if (dials.assist) fields.assist = true;
   if (dials.avoidGravel) fields.avoid_gravel = true;
+  const longest = fitLongest(dials.maxDistanceM);
+  if (longest !== undefined) fields.max_distance_m = longest;
+  const weight = fitWeight(dials.systemWeightKg);
+  if (weight !== undefined) fields.system_weight_kg = weight;
+  if (dials.loop) fields.loop = true;
   return fields;
 }
 
@@ -203,7 +249,8 @@ export function stressWords(stress: number): string {
   if (stress < 75) return "Prefers quiet streets and paths";
   if (stress <= STRESS_TODAYS_TOP) return "Low-stress, unless avoiding busy streets takes much longer";
   if (stress < CALM_FAR_FROM) return "Calm: will go well out of the way to avoid busy roads";
-  return "Calmest: detours many times the straight line to avoid busy roads";
+  if (stress < STRESS_MAX) return "Calmest: detours many times the straight line to avoid busy roads";
+  return "Calmest: the least stressful route within your longest ride";
 }
 
 export function hillsWords(hills: number): string {

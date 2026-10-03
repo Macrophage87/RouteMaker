@@ -29,9 +29,10 @@ test("each preset explains itself in a sentence", () => {
   assert.equal(new Set(PRESETS.map((p) => p.label)).size, PRESETS.length);
 });
 
-test("only Trailmaxxing's card says it favors trails and may add miles (OWNER-DECISIONS 202)", () => {
+test("no card says it favors trails; Trailmaxxing's says it finds the least stressful route (OWNER-DECISIONS 256, 257)", () => {
   for (const preset of PRESETS) {
-    const says = /favors trails, so it may add miles/.test(preset.description);
+    assert.doesNotMatch(preset.description, /favou?rs? trails/, preset.id);
+    const says = /least stressful route/.test(preset.description);
     assert.equal(says, preset.id === "trailmaxxing", preset.id);
   }
 });

@@ -988,6 +988,18 @@ dialog.ride-types::backdrop {
   accent-color: var(--accent);
 }
 
+.dials input[type="text"] {
+  width: 100%;
+  min-height: 44px;
+  box-sizing: border-box;
+  font: inherit;
+  padding: 4px 8px;
+}
+
+.dials input[aria-invalid="true"] {
+  border-width: 3px;
+}
+
 .dial-ends {
   display: flex;
   justify-content: space-between;
@@ -1247,4 +1259,44 @@ dialog.ride-types::backdrop {
     padding: 0 6px;
     font-weight: 700;
   }
+}
+
+
+/* The routes to choose from (OWNER-DECISIONS 265): a radio group, one row each, the
+   figures in words (no colour carries the difference). */
+fieldset.candidates {
+  border: 1px solid var(--border, currentColor);
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin: 12px 0;
+}
+
+fieldset.candidates legend {
+  font-weight: 600;
+  padding: 0 4px;
+}
+
+.candidate {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 8px;
+  align-items: start;
+  min-height: 44px;
+  padding: 6px 0;
+}
+
+.candidate input {
+  grid-row: 1 / span 2;
+  width: 24px;
+  height: 24px;
+  margin: 2px 0 0;
+}
+
+.candidate-name {
+  font-weight: 600;
+}
+
+.candidate-line {
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
 }

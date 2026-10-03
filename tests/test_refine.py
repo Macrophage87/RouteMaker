@@ -38,22 +38,16 @@ def analysis(
     events: list | tuple | None = NO_EVENTS,
     climb_m: float = 0.0,
     shift: int = 0,
-    trails: str = "",
 ) -> refine.Analysis:
     """A candidate read: `tiers` is one letter a 100 m piece, and `shift` moves it
-    along (in pieces) so that two candidates can have busy stretches in different places.
-    `trails` is a letter a piece too: "t" is a piece of trail (a path)."""
+    along (in pieces) so that two candidates can have busy stretches in different places."""
     pieces, classes = zip(
         *[piece((i + shift) * 100.0, tier) for i, tier in enumerate(tiers)], strict=True
     )
-    flags = [letter == "t" for letter in trails.ljust(len(tiers))]
-    classes = [
-        (tier, "path" if on else kind) for (tier, kind), on in zip(classes, flags, strict=True)
-    ]
     stress = {"3": 1, "4": 2, "5": 3}
     return refine.Analysis(
-        trail_m=100.0 * sum(flags) if trails else 0.0,
-        trail_pieces=flags if trails else [],
+        lts4_m=100.0 * sum(tier in "45" for tier in tiers),
+        lts3_m=100.0 * tiers.count("3"),
         length_m=100.0 * len(tiers),
         cost_s=cost_s,
         exposure_m=sum(100.0 * stress.get(tier, 0) for tier in tiers),
@@ -87,7 +81,7 @@ def trip_of(name: str, km: float, cost: float = 0.0) -> dict:
 
 
 def context(
-    rate=0.0, weight=1.0, climb_weight=0.0, group=False, trail_credit=0.0
+    rate=0.0, weight=1.0, climb_weight=0.0, group=False, maxcalm=False, max_m=None
 ) -> refine.Context:
     return refine.Context(
         variant="standard",
@@ -109,7 +103,8 @@ def context(
         weight=weight,
         climb_weight=climb_weight,
         quiet_cost=QUIET_COST,
-        trail_credit=trail_credit,
+        maxcalm=maxcalm,
+        max_m=max_m,
     )
 
 
@@ -1339,256 +1334,6 @@ class TestSeekRuns:
         assert not trailseek.seek_for(presets.calm_rate_for(80))
 
 
-class TestTrailCreditScore:
-    """OWNER-DECISIONS 202, "Trail bonus for Trailmaxxing only": each metre of
-    trail takes the credit, in metres of quiet riding, off the route's score."""
-
-    def test_a_metre_of_trail_takes_the_credit_off_the_score(self) -> None:
-        a = analysis("a", "1" * 10, cost_s=1000.0, trails="t" * 4)
-        assert a.trail_m == 400.0
-        assert a.score(context(trail_credit=0.5)) == pytest.approx(
-            1000.0 - QUIET_COST * 0.5 * 400.0
-        )
-        assert a.score(context()) == 1000.0
-
-    def test_it_is_in_the_same_units_as_the_rest_of_the_extra_price(self) -> None:
-        a = analysis(
-            "a", "1133", cost_s=1000.0, events=[event(0, 1000.0)], climb_m=10.0, trails="tt"
-        )
-        ctx = context(rate=2.0, weight=0.5, climb_weight=3.0, trail_credit=0.75)
-        penalty_m = 1000.0 / model.FEET_PER_METRE
-        extra = 2.0 * a.exposure_m + 0.5 * penalty_m + 3.0 * 10.0 - 0.75 * 200.0
-        assert a.score(ctx) == pytest.approx(1000.0 + QUIET_COST * extra)
-
-    def test_a_route_with_no_trail_pays_no_credit(self) -> None:
-        a = analysis("a", "1" * 10, cost_s=1000.0)
-        assert a.trail_m == 0.0 and a.score(context(trail_credit=0.9)) == 1000.0
-
-    def test_trail_is_a_path_or_protected_way_at_lts_1_or_2(self) -> None:
-        pieces = [routing.Piece(1, 0.0, 0.0, 100.0)] * 8
-        classes = [
-            ("1", "path"),
-            ("2", "protected"),
-            ("1", "lane"),
-            ("3", "path"),
-            ("1", "none"),
-            ("unknown", "path"),
-            ("2", "path"),
-            ("1", "unknown"),
-        ]
-        ctx = context()
-        ctx.with_facility = True
-        flags = refine.trail_flags(pieces, classes, ctx)
-        assert flags == [True, True, False, False, False, False, True, False]
-        assert refine.TRAIL_KINDS == {"path", "protected"} and refine.TRAIL_TIERS == {"1", "2"}
-
-    def test_before_the_facility_column_the_recorded_rule_says_it(self, monkeypatch) -> None:
-        from pipeline.schema import PATH_RULES, SIDEPATH_RULES
-
-        path, sidepath = sorted(PATH_RULES)[0], sorted(SIDEPATH_RULES)[0]
-        rows = [(1, path), (2, "residential"), (3, path), (1, None), (2, sidepath)]
-        ran: list = []
-
-        class Cursor:
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *exc):
-                return False
-
-            def execute(self, sql, params):
-                ran.append((sql, params))
-
-            def fetchall(self):
-                return rows
-
-        class Connection:
-            def cursor(self):
-                return Cursor()
-
-        monkeypatch.setattr(refine, "connection", Connection())
-        ctx = context()
-        ctx.with_facility = False
-        ctx.schema = "live"
-        pieces = [routing.Piece(i + 1, float(i), 2.0, 10.0) for i in range(5)]
-        assert refine.trail_flags(pieces, [], ctx) == [True, False, False, False, True]
-        ((sql, params),) = ran
-        assert "live.segment" in sql and "stress_rule" in sql and "stress_tier" in sql
-        assert params == [[1, 2, 3, 4, 5], [0.0, 1.0, 2.0, 3.0, 4.0], [2.0] * 5]
-
-    def read(self, monkeypatch, classes, credit):
-        """The real `analyse`, with the router, the table and the junctions replaced."""
-        pieces = [routing.Piece(1, BASE[0] + i * 1e-4, BASE[1], 100.0) for i in range(len(classes))]
-        monkeypatch.setattr(routing, "_trace", lambda *a, **k: {"shape": "x"})
-        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: pieces)
-        monkeypatch.setattr(
-            routing, "decode_polyline6", lambda s: [BASE, (BASE[0] + 0.01, BASE[1])]
-        )
-        monkeypatch.setattr(routing, "classify", lambda p, when, roadway_only=False: classes)
-        monkeypatch.setattr(refine.trace_junctions, "junctions_of_trace", lambda *a: [])
-        monkeypatch.setattr(refine.trace_junctions, "edge_midpoints", lambda *a: [])
-        monkeypatch.setattr(refine, "events_of_raws", lambda raws, ctx, deadline: [])
-        ctx = context(trail_credit=credit)
-        ctx.with_facility = True
-        trip = {"legs": [{"shape": "x"}], "summary": {"length": 0.4, "time": 100.0, "cost": 100.0}}
-        return refine.analyse(trip, ctx, ctx.deadline)
-
-    def test_the_reading_counts_the_trail_when_there_is_a_credit(self, monkeypatch) -> None:
-        classes = [("1", "path"), ("1", "none"), ("2", "protected"), ("3", "none")]
-        read = self.read(monkeypatch, classes, 0.5)
-        assert read.trail_m == 200.0 and read.trail_pieces == [True, False, True, False]
-
-    def test_without_a_credit_the_trail_is_not_looked_for(self, monkeypatch) -> None:
-        def never(*args):
-            raise AssertionError("the trail was looked for with no credit")
-
-        monkeypatch.setattr(refine, "trail_flags", never)
-        classes = [("1", "path"), ("1", "none")]
-        read = self.read(monkeypatch, classes, 0.0)
-        assert read.trail_m == 0.0 and read.trail_pieces == []
-
-
-class TestTrailCreditSeek:
-    """The seek's corridors count the credit, so a route with nothing busy to
-    replace still finds a trail (the W&OD, Capital Crescent, Anacostia and Sligo
-    trips, where the seek asked nothing before), and the Traffic-wins guard still
-    holds: the credit never buys more LTS 3 or 4."""
-
-    @pytest.fixture(autouse=True)
-    def trails(self, monkeypatch):
-        self.segments = trail_segments()
-
-        def table(schema, guide, width_m, has_facility, when, avoid_unpaved=False, **kw):
-            return self.segments
-
-        monkeypatch.setattr(trailseek, "corridor_segments", table)
-        route = [(BASE[0] + i * 0.01, BASE[1]) for i in range(11)]
-        monkeypatch.setattr(routing, "decode_polyline6", lambda shape: route)
-
-    seek_context = TestTrailSeek.seek_context
-
-    def run(self, monkeypatch, analyses, routes, credit=0.5, orig=None):
-        quiet = orig or analysis("o", "1" * 40, cost_s=4000.0)
-        world = SeekWorld(monkeypatch, {"o": quiet, **analyses}, routes)
-        ctx = self.seek_context()
-        ctx.trail_credit = credit
-        kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        return world, kept["legs"][0]["shape"], info
-
-    def test_a_quiet_route_asks_for_a_trail_with_a_credit_and_not_without(
-        self, monkeypatch
-    ) -> None:
-        trail = analysis("t", "1" * 45, cost_s=4300.0, trails="t" * 30)
-        world, shape, info = self.run(monkeypatch, {"t": trail}, [trip_of("t", 4.5)], credit=0.0)
-        assert world.requests == [] and shape == "o" and info["seek"]["corridors"] == 0
-        world, shape, info = self.run(monkeypatch, {"t": trail}, [trip_of("t", 4.5)])
-        (request,) = world.requests
-        assert [p.get("type") for p in request["locations"]] == [None, "through", "through", None]
-        assert info["seek"]["corridors"] == 1 and info["seek"]["asked"] == 1
-
-    def test_the_trail_is_taken_where_the_credit_pays_for_the_extra_cost(self, monkeypatch) -> None:
-        # 3,000 m of trail at a credit of 0.5 and a quiet cost of 0.5 is 750 s.
-        for extra, outcome in ((500.0, "taken"), (800.0, "not_better")):
-            trail = analysis("t", "1" * 45, cost_s=4000.0 + extra, trails="t" * 30)
-            _w, shape, info = self.run(monkeypatch, {"t": trail}, [trip_of("t", 4.5)])
-            (tried,) = info["seek"]["tried"]
-            assert tried["outcome"] == outcome and shape == ("t" if outcome == "taken" else "o")
-            assert tried["score_gain_s"] == pytest.approx(750.0 - extra, abs=0.5)
-
-    def test_a_bigger_credit_takes_a_dearer_trail(self, monkeypatch) -> None:
-        trail = analysis("t", "1" * 45, cost_s=4000.0 + 500.0, trails="t" * 30)
-        for credit, outcome in ((0.25, "not_better"), (0.5, "taken")):
-            _w, _shape, info = self.run(
-                monkeypatch, {"t": trail}, [trip_of("t", 4.5)], credit=credit
-            )
-            assert info["seek"]["tried"][0]["outcome"] == outcome
-
-    def test_the_credit_never_buys_more_busy_road(self, monkeypatch) -> None:
-        # Far cheaper and mostly trail, but with 400 m of LTS 3 the route did not have.
-        busy = analysis("t", "1" * 36 + "3" * 4, cost_s=1000.0, trails="t" * 30)
-        _w, shape, info = self.run(monkeypatch, {"t": busy}, [trip_of("t", 4.0)], credit=0.9)
-        assert shape == "o"
-        assert info["seek"]["tried"][0]["outcome"] == "busier"
-        assert info["seek"]["tried"][0]["score_gain_s"] > 0
-
-    def test_a_trailier_route_with_no_more_busy_road_than_the_slack_allows_is_taken(
-        self, monkeypatch
-    ) -> None:
-        ok = analysis("t", "1" * 45, cost_s=3000.0, trails="t" * 30)
-        ok.exposure_m = refine.EXPOSURE_SLACK_M
-        _w, shape, _info = self.run(monkeypatch, {"t": ok}, [trip_of("t", 4.5)])
-        assert shape == "t"
-
-    def test_a_route_that_is_all_trail_has_nothing_to_gain(self, monkeypatch) -> None:
-        riding = analysis("o", "1" * 40, cost_s=4000.0, trails="t" * 40)
-        world, shape, info = self.run(monkeypatch, {}, [], orig=riding)
-        assert world.requests == [] and shape == "o" and info["seek"]["corridors"] == 0
-
-    def test_the_trail_is_reported_before_and_after(self, monkeypatch) -> None:
-        start = analysis("o", "1" * 40, cost_s=4000.0, trails="t" * 10)
-        trail = analysis("t", "1" * 45, cost_s=3000.0, trails="t" * 30)
-        _w, shape, info = self.run(monkeypatch, {"t": trail}, [trip_of("t", 4.5)], orig=start)
-        assert shape == "t"
-        assert info["trail_credit"] == 0.5
-        assert (info["trail_before_m"], info["trail_after_m"]) == (1000.0, 3000.0)
-
-    def test_a_plan_with_no_credit_reports_none(self, monkeypatch) -> None:
-        _w, _shape, info = self.run(monkeypatch, {}, [], credit=0.0)
-        assert not {"trail_credit", "trail_before_m", "trail_after_m"} & set(info)
-
-    def test_the_corridor_search_is_given_the_routes_trail_and_the_credit(
-        self, monkeypatch
-    ) -> None:
-        seen: list = []
-        real = trailseek.find_corridors
-
-        def spy(*args, **kw):
-            seen.append(args)
-            return real(*args, **kw)
-
-        monkeypatch.setattr(trailseek, "find_corridors", spy)
-        # The router has no route for the exclusion round; the seek's follows.
-        start = analysis("o", "1" * 10 + "3" * 10 + "1" * 20, cost_s=4000.0, trails="t" * 5)
-        world = SeekWorld(monkeypatch, {"o": start}, [NO_ROUTE, NO_ROUTE])
-        ctx = self.seek_context()
-        ctx.trail_credit = 0.5
-        refine.refine(trip_of("o", 4.0), ctx)
-        (args,) = seen
-        spans, traced, rate, credit, trail_spans = args[4], args[5], args[6], args[7], args[8]
-        assert (spans[0][0], spans[-1][1], len(spans)) == (1000.0, 2000.0, 10) and traced == 4000.0
-        assert (rate, credit) == (10.0, 0.5)
-        assert (trail_spans[0][0], trail_spans[-1][1], len(trail_spans)) == (0.0, 500.0, 5)
-        assert world.requests
-
-
-class TestTheSearchWithTheCredit:
-    def test_the_credit_does_not_buy_busy_road_in_the_exclusion_search_either(
-        self, monkeypatch
-    ) -> None:
-        orig = analysis("o", "1" * 30 + "3" * 10, cost_s=4000.0)
-        cheap = analysis("c", "1" * 20 + "4" * 10 + "1" * 10, cost_s=100.0, trails="t" * 20)
-        world = World(monkeypatch, {"o": orig, "c": cheap}, [trip_of("c", 4.0)] * 3)
-        ctx = context(rate=2.0, trail_credit=0.9)
-        kept, info = refine.refine(trip_of("o", 4.0), ctx)
-        assert kept["legs"][0]["shape"] == "o" and world.requests
-        assert info["trail_credit"] == 0.9
-
-    def test_the_credit_can_pick_the_trailier_of_two_candidates(self, monkeypatch) -> None:
-        # The first round's route has a little busy road; the second's is quiet,
-        # dearer and mostly trail. Only a credit makes the second better.
-        orig = analysis("o", "1" * 15 + "3" * 10 + "1" * 15, cost_s=4000.0)
-        first = analysis("a", "1" * 28 + "3" * 3 + "1" * 9, cost_s=3000.0)
-        second = analysis("b", "1" * 40, cost_s=3300.0, trails="t" * 30)
-        for credit, expected in ((0.0, "a"), (0.5, "b")):
-            World(
-                monkeypatch,
-                {"o": orig, "a": first, "b": second},
-                [trip_of("a", 4.0), trip_of("b", 4.0)],
-            )
-            kept, _info = refine.refine(trip_of("o", 4.0), context(rate=0.1, trail_credit=credit))
-            assert kept["legs"][0]["shape"] == expected, credit
-
-
 def leg_of(name: str, km: float = 8.7, cost: float = 4000.0) -> dict:
     return {"shape": name, "summary": {"length": km, "time": 100.0 * km, "cost": cost}}
 
@@ -2204,31 +1949,26 @@ class TestSeekLegByLeg:
 
 
 class TestRouteSpansAndLegs:
-    def test_busy_road_and_trail_are_spans_in_traced_metres(self) -> None:
-        a = analysis("a", "1331", trails="t  t")
-        busy, trail, traced = refine.route_spans(a)
+    def test_busy_road_is_spans_in_traced_metres(self) -> None:
+        a = analysis("a", "1331")
+        busy, traced = refine.route_spans(a)
         assert busy == [(100.0, 200.0, 1.0), (200.0, 300.0, 1.0)]
-        assert trail == [(0.0, 100.0, 1.0), (300.0, 400.0, 1.0)]
         assert traced == 400.0
 
     def test_a_stretch_of_the_route_is_cut_out_and_measured_from_its_start(self) -> None:
-        a = analysis("a", "1334155", trails="t     t")
-        busy, trail, traced = refine.route_spans(a, 200.0, 600.0)
+        a = analysis("a", "1334155")
+        busy, traced = refine.route_spans(a, 200.0, 600.0)
         assert busy == [(0.0, 100.0, 1.0), (100.0, 200.0, 2.0), (300.0, 400.0, 3.0)]
-        assert trail == [] and traced == 400.0
-        busy, trail, traced = refine.route_spans(a, 600.0, None)
-        assert busy == [(0.0, 100.0, 3.0)] and trail == [(0.0, 100.0, 1.0)] and traced == 100.0
+        assert traced == 400.0
+        busy, traced = refine.route_spans(a, 600.0, None)
+        assert busy == [(0.0, 100.0, 3.0)] and traced == 100.0
 
     def test_a_piece_across_the_cut_is_clipped(self) -> None:
         a = analysis("a", "333")
-        busy, _trail, traced = refine.route_spans(a, 50.0, 250.0)
+        busy, traced = refine.route_spans(a, 50.0, 250.0)
         assert busy == [(0.0, 50.0, 1.0), (50.0, 150.0, 1.0), (150.0, 200.0, 1.0)]
         assert traced == 200.0
-        assert refine.route_spans(a, 0.0, 1e9)[2] == 300.0
-
-    def test_pieces_without_a_trail_reading_have_no_trail(self) -> None:
-        a = analysis("a", "133")
-        assert refine.route_spans(a)[1] == []
+        assert refine.route_spans(a, 0.0, 1e9)[1] == 300.0
 
     def test_the_legs_run_between_the_via_points(self) -> None:
         a = analysis("a", "1" * 10)
@@ -2371,7 +2111,7 @@ class TestStressAverseWeights:
 
     def test_the_seek_weighs_the_busy_road_it_replaces_by_them(self) -> None:
         a = analysis("a", "1345")
-        busy, _trail, _traced = refine.route_spans(a, weights=AVERSE.weights)
+        busy, _traced = refine.route_spans(a, weights=AVERSE.weights)
         assert [w for _a, _b, w in busy] == [1.0, 8.0, 16.0]
         assert [w for _a, _b, w in refine.route_spans(a)[0]] == [1.0, 2.0, 3.0]
 
@@ -2446,11 +2186,11 @@ class TestTheHoldInTheSearch:
         assert shape == "c"
         assert "lts4_before_m" not in info and "lts4_after_m" not in info
 
-    def test_trail_cannot_buy_it(self, monkeypatch) -> None:
-        """A mile of trail for 100 m of LTS 4: the score is far better, the hold
+    def test_a_better_score_cannot_buy_it(self, monkeypatch) -> None:
+        """A cheaper route for 100 m of LTS 4: the score is far better, the hold
         refuses it all the same."""
-        ctx = averse_context(rate=10.0, trail_credit=0.95)
-        shape, _info, cand = self.run(monkeypatch, ctx, trails=" " * 14 + "t" * 26)
+        ctx = averse_context(rate=10.0)
+        shape, _info, cand = self.run(monkeypatch, ctx)
         orig = weighed(analysis("o", ORIG, cost_s=4000.0))
         assert cand.score(ctx) < orig.score(ctx) - refine.IMPROVEMENT_EPS_S
         assert shape == "o"
@@ -2500,8 +2240,8 @@ class TestTheHoldInTheSeek(TestTrailSeek):
         world.requests = [r for r in world.requests if asks_through(r)]
         return world, kept["legs"][0]["shape"], info
 
-    def test_a_trail_candidate_with_more_lts4_is_refused(self, monkeypatch) -> None:
-        cand = weighed(analysis("t", TRADE, cost_s=100.0, shift=100, trails=" " * 14 + "t" * 26))
+    def test_a_candidate_with_more_lts4_is_refused(self, monkeypatch) -> None:
+        cand = weighed(analysis("t", TRADE, cost_s=100.0, shift=100))
         _w, shape, info = self.run(monkeypatch, {"t": cand}, [trip_of("t", 4.0)])
         assert shape == "o"
         assert info["seek"]["tried"][0]["outcome"] == "more_lts4"

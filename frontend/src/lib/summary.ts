@@ -2,6 +2,7 @@
 import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
+import { loopNote } from "./loop.ts";
 import {
   formatClimb,
   formatDistance,
@@ -86,11 +87,37 @@ function ratioText(ratio: number, level: DetourView["level"]): string {
  * (the API's `calm_search.limited`, core.refine), or null where there is
  * nothing to say: it ran to its end, or was not asked for.
  */
-export function calmSearchNote(route: Pick<RouteResponse, "calm_search" | "dials" | "preset">): string | null {
+export function calmSearchNote(
+  route: Pick<RouteResponse, "calm_search" | "dials" | "preset"> & Partial<Pick<RouteResponse, "distance_m">>,
+): string | null {
   if (route.preset === "mass-ride" || (route.dials?.stress ?? 0) <= STRESS_TODAYS_TOP) return null;
-  const limited = route.calm_search?.limited;
-  const why = limited ? CALM_SEARCH_LIMITS[limited] : undefined;
-  return why ?? null;
+  const search = route.calm_search;
+  const longest = search?.max_distance_m;
+  const notes: string[] = [];
+  if (search?.limited === "max_distance" && search.fits === false && longest) {
+    // No route that short was found: the shortest found is answered (OWNER-DECISIONS 256).
+    const found = route.distance_m ? ` The shortest found is ${formatDistance(route.distance_m)}.` : "";
+    notes.push(`No route within ${search.max_distance_set ? "your longest ride" : "the longest ride"} (${formatDistance(longest)}) was found.${found}`);
+  } else {
+    const why = search?.limited ? CALM_SEARCH_LIMITS[search.limited] : undefined;
+    if (why) notes.push(why);
+  }
+  if (search?.fitted_at != null && search.fits !== false && longest) {
+    notes.push(
+      `Your longest ride (${formatDistance(longest)}) is shorter than the calmest route, so this one uses some busier roads to fit.`,
+    );
+  }
+  return notes.length ? notes.join(" ") : null;
+}
+
+/**
+ * What a screen reader hears when the route could not be kept within the longest
+ * ride, or null: a sentence of its own, not a colour (OWNER-DECISIONS 256).
+ */
+export function longestSaid(route: Pick<RouteResponse, "calm_search" | "distance_m">): string | null {
+  const search = route.calm_search;
+  if (!search || search.fits !== false || !search.max_distance_m) return null;
+  return `Longer than your longest ride of ${formatDistance(search.max_distance_m)}: the shortest found.`;
 }
 
 /**
@@ -99,6 +126,7 @@ export function calmSearchNote(route: Pick<RouteResponse, "calm_search" | "dials
  * this to. Said as a round figure, as PLAN.md has it: "19 mi (30 km)".
  */
 export const CALM_SEARCH_MAX_SPAN_M = 30_000;
+// (Trailmaxxing at the top of the slider is not held to it: it plans a longer trip leg by leg, OWNER-DECISIONS 256.)
 
 const CALM_SEARCH_LIMITS: Record<string, string> = {
   time: "The calmer-route search ran out of time, so there may be a calmer route than this one.",
@@ -106,6 +134,7 @@ const CALM_SEARCH_LIMITS: Record<string, string> = {
   span: `The calmer-route search does not run on trips over ${formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)} in a straight line, so this is the router's own route.`,
   long_ride: "The calmer-route search does not run on long rides, so this is the router's own route.",
   seeking: "The calmer-route search does not run while the Hills slider looks for climbs.",
+  split: "The calmer-route search could not cut this long trip into legs, so this is the router's own route.",
 };
 
 function straightLineNotice(route: Pick<RouteResponse, "distance_m" | "preset">, points: readonly LonLat[]): string | null {
@@ -168,7 +197,9 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
   const figures =
     `Route planned: ${formatDistance(route.distance_m)}, ` +
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
-  return [figures, detourSaid(route, points), redJunctionsSaid(route)].filter(Boolean).join(" ");
+  return [figures, detourSaid(route, points), redJunctionsSaid(route), longestSaid(route), loopNote(route)]
+    .filter(Boolean)
+    .join(" ");
 }
 
 /** A point's name in the list: Start, Stop 1, Stop 2, ..., End. */

@@ -54,6 +54,77 @@ def test_calm_search_span_matches_plan_and_the_planners_note() -> None:
     assert "up to 19 mi (30 km) apart" in (REPO / "PLAN.md").read_text()
 
 
+# --- The longest ride, the system weight, the loop, the routes to choose from ---------
+# OWNER-DECISIONS 256-266 (FOLLOWUP-LONG-CALM), typed by hand from PLAN.md's owner
+# amendments of 2026-10-03; the front end repeats the ones it needs (dials.ts, loop.ts).
+
+DIALS_TS = REPO / "frontend" / "src" / "lib" / "dials.ts"
+LOOP_TS = REPO / "frontend" / "src" / "lib" / "loop.ts"
+
+
+def _ts(path: Path, name: str) -> float:
+    import re
+
+    found = re.findall(rf"export const {name} = ([0-9_.]+);", path.read_text())
+    assert len(found) == 1, name
+    return float(found[0].replace("_", ""))
+
+
+def test_the_longest_ride_defaults_and_bounds() -> None:
+    from core import presets
+
+    # PLAN.md, item 256: "a sensible multiple of the direct route, e.g. 1.6x", at least a mile more.
+    assert presets.DEFAULT_MAX_RATIO == 1.6
+    assert presets.DEFAULT_MAX_EXTRA_M == 1609.344
+    assert (presets.MAX_DISTANCE_MIN_M, presets.MAX_DISTANCE_MAX_M) == (1_000, 1_000_000)
+    assert _ts(DIALS_TS, "LONGEST_MIN_M") == 1_000
+    assert _ts(DIALS_TS, "LONGEST_MAX_M") == 1_000_000
+    assert _ts(DIALS_TS, "DEFAULT_MAX_RATIO") == 1.6
+
+
+def test_the_system_weight_range_and_defaults() -> None:
+    from routemaker import effort
+
+    # PLAN.md, item 264: about 68 kg to about 140 kg; the default about 90 kg.
+    assert (effort.MASS_MIN_KG, effort.MASS_MAX_KG, effort.MASS_KG) == (68, 140, 90.0)
+    assert effort.PASSENGERS_MASS_KG == 120.0
+    assert _ts(DIALS_TS, "SYSTEM_WEIGHT_MIN_KG") == 68
+    assert _ts(DIALS_TS, "SYSTEM_WEIGHT_MAX_KG") == 140
+    assert _ts(DIALS_TS, "SYSTEM_WEIGHT_KG") == 90
+    assert _ts(DIALS_TS, "PASSENGERS_WEIGHT_KG") == 120
+
+
+def test_the_loop_thresholds() -> None:
+    from core import refine, routing
+
+    assert routing.LOOP_SAME_M == 50.0
+    assert _ts(LOOP_TS, "LOOP_SAME_M") == 50
+    assert refine.LOOP_OVERLAP_OK == 0.30 and refine.LOOP_OUT_AND_BACK == 0.90
+
+
+def test_the_comparison_tolerances() -> None:
+    from core import refine
+
+    # PLAN.md, items 258-263: ties within about 50 ft of LTS 4 (15 m), a block (50 m), 50 m.
+    assert refine.MAXCALM_STEPS == (15.0, 50.0, 50.0)
+
+
+def test_the_routes_to_choose_from() -> None:
+    from core import refine
+
+    # PLAN.md, item 265: up to 4 routes; under 60% overlap or 5 mi of different road.
+    assert refine.ALT_MAX == 4 and refine.ALT_OVERLAP == 0.60
+    assert refine.ALT_DIFFERENT_M == 8_000.0
+    assert (refine.ALT_TOP_BAND_M, refine.ALT_SECOND_BAND_M) == (45.0, 300.0)
+
+
+def test_a_long_calm_plan_has_the_long_rides_budget() -> None:
+    from core import routing
+
+    # PLAN.md: "50 s in all for a confirmed long ride", under gunicorn's 60 s timeout.
+    assert routing.LONG_PLAN_BUDGET_S == 50 and routing.PLAN_BUDGET_S == 40
+
+
 # --- Sessions --------------------------------------------------------------
 # PLAN.md: "**Sessions.** Django's server-side sessions, rows in Postgres
 # referenced by an HttpOnly, Secure, SameSite=Lax cookie; 30 days idle, 90 days

@@ -1187,7 +1187,8 @@ def test_a_hung_weekend_router_is_asked_once_on_a_ride_with_alternatives(
 
 
 def test_exposure_weights_lts_4_twice_and_tier_5_three_times(monkeypatch):
-    """R2, R3: the exposure the guards compare is LTS 3 + 2 x LTS 4 + 3 x tier 5."""
+    """R2, R3: the exposure the guards compare is LTS 3 + 2 x LTS 4 + 3 x tier 5
+    (and the LTS 4 and Avoid metres, for the hold)."""
     monkeypatch.setattr(routing, "trace_leg", lambda *args: {"edges": []})
     monkeypatch.setattr(
         routing,
@@ -1199,7 +1200,7 @@ def test_exposure_weights_lts_4_twice_and_tier_5_three_times(monkeypatch):
     )
     trip = _trip(VERTICES, 2.0, FLAT)
     deadline = routing.Deadline(routing.clock() + 30, 10)
-    assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) == 123.0
+    assert routing._exposure("standard", {}, trip, "weekday_rush", deadline) == (123.0, 11.0)
 
 
 def test_an_untraceable_leg_has_no_exposure_at_all(monkeypatch):
@@ -1230,12 +1231,12 @@ class TestTheCalmerOrOwnFallbacks:
     deadline = routing.Deadline(1e12, 10)
 
     def test_an_untraceable_own_route_keeps_it(self, monkeypatch):
-        exposures = iter([None, 5.0])
+        exposures = iter([None, (5.0, 0.0)])
         monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
         assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 0
 
     def test_an_untraceable_alternative_is_not_taken(self, monkeypatch):
-        exposures = iter([5.0, None])
+        exposures = iter([(5.0, 0.0), None])
         monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
         assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 0
 
@@ -1250,9 +1251,116 @@ class TestTheCalmerOrOwnFallbacks:
         assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 0
 
     def test_a_calmer_alternative_is_taken(self, monkeypatch):
-        exposures = iter([5.0, 4.0])
+        exposures = iter([(5.0, 0.0), (4.0, 0.0)])
         monkeypatch.setattr(routing, "_exposure", lambda *args: next(exposures))
         assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline) == 1
+
+
+AVERSE = presets.EXPOSURE_STRESS_AVERSE
+
+
+class TestTheHillsChoiceUsesThePlansExposure:
+    """GATE-corr SF1: the hills slider's choice of an alternate, and the middle
+    check, weigh the plan's own Exposure and never take more LTS 4 and Avoid than the
+    router's own route on a ride that holds it (OWNER-DECISIONS 250)."""
+
+    trips = [_trip(VERTICES, 2.0, LONG_STEEP), _trip(VERTICES, 2.4, KICK_THEN_FLAT)]
+    deadline = routing.Deadline(1e12, 10)
+
+    def stress(self, monkeypatch, own, alternative):
+        """Each trip's metres by tier: `own` for the first traced, then `alternative`."""
+        readings = iter([own, alternative])
+        monkeypatch.setattr(routing, "_trace", lambda *args: {"edges": []})
+        monkeypatch.setattr(routing, "pieces_of_trace", lambda trace: [])
+        monkeypatch.setattr(
+            routing,
+            "breakdown",
+            lambda pieces, when, roadway_only=False: (
+                {"1": 0.0, "2": 0.0, "3": 0.0, "4": 0.0, "5": 0.0, "unknown": 0.0} | next(readings),
+                {},
+            ),
+        )
+
+    def test_the_exposure_is_the_plans_weights_and_the_lts4_metres(self, monkeypatch):
+        self.stress(monkeypatch, {"3": 100.0, "4": 10.0, "5": 1.0}, {})
+        trip = _trip(VERTICES, 2.0, FLAT)
+        got = routing._exposure("standard", {}, trip, "w", self.deadline, None, AVERSE)
+        assert got == (100.0 + 80.0 + 16.0, 11.0)
+
+    def test_an_alternate_with_more_lts4_is_not_taken_though_its_standard_exposure_is_less(
+        self, monkeypatch
+    ):
+        # At 1/2/3 the alternate (300 m of LTS 3, 0 of LTS 4) is calmer than the
+        # own route (0 of LTS 3, 200 of LTS 4)? 300 < 400: yes. At 1/8/16 it is
+        # 300 against 1,600; calmer still. The hold is the point: give the alternate
+        # 150 m of LTS 4 against the own route's 100, with less LTS 3.
+        own = {"3": 900.0, "4": 100.0}
+        alternative = {"3": 0.0, "4": 150.0}
+        self.stress(monkeypatch, own, alternative)
+        standard = routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {})
+        assert standard == 1, "at 1/2/3: 1,100 against 300"
+        self.stress(monkeypatch, own, alternative)
+        held = routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, AVERSE)
+        assert held == 0, "150 m of LTS 4 against 100 m: the hold refuses, whatever the weights"
+
+    def test_without_the_hold_the_plans_weights_still_decide(self, monkeypatch):
+        weighted = presets.Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=False)
+        # LTS 3 900 against LTS 4 150 at 8: 900 against 1,200.
+        self.stress(monkeypatch, {"3": 900.0}, {"4": 150.0})
+        assert (
+            routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, weighted)
+            == 0
+        )
+        self.stress(monkeypatch, {"3": 900.0}, {"4": 150.0})
+        assert routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}) == 1, (
+            "at 1/2/3 it is 900 against 300"
+        )
+
+    def test_an_alternate_with_no_more_lts4_is_taken_on_a_ride_that_holds_it(self, monkeypatch):
+        self.stress(monkeypatch, {"3": 900.0, "4": 100.0}, {"3": 200.0, "4": 100.0})
+        assert (
+            routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, AVERSE)
+            == 1
+        )
+
+    def test_the_hold_has_a_metre_of_slack(self, monkeypatch):
+        # The own route's 900 m of LTS 3 keep it the busier by the weights either way.
+        own = {"3": 900.0, "4": 100.0}
+        self.stress(monkeypatch, own, {"4": 101.0})
+        assert (
+            routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, AVERSE)
+            == 1
+        )
+        self.stress(monkeypatch, own, {"4": 101.5})
+        assert (
+            routing.calmer_or_own(self.trips, 1, "standard", {}, "w", self.deadline, {}, AVERSE)
+            == 0
+        )
+
+    def test_the_middle_route_with_more_lts4_is_not_swapped_in(self, monkeypatch):
+        middle = _trip(list(reversed(VERTICES)), 2.2, LONG_STEEP)
+        trip = _trip(VERTICES, 2.0, KICK_THEN_FLAT)
+        monkeypatch.setattr(routing, "_call", lambda *a: {"trip": middle})
+        deadline = routing.Deadline(routing.clock() + 37, routing.ROUTER_TIMEOUT_S)
+        # The hill-avoiding route: 600 m of LTS 3 and 50 of LTS 4. The middle's: 0 of
+        # LTS 3 and 120 of LTS 4: calmer by 1/8/16, with more LTS 4.
+        self.stress(monkeypatch, {"3": 600.0, "4": 50.0}, {"4": 120.0})
+        kept = routing.no_busier_than_middle(
+            trip, {"alternates": 3}, "standard", {}, {}, "w", deadline, None, AVERSE
+        )
+        assert kept == (trip, False)
+        self.stress(monkeypatch, {"3": 600.0, "4": 50.0}, {"4": 40.0})
+        kept = routing.no_busier_than_middle(
+            trip, {"alternates": 3}, "standard", {}, {}, "w", deadline, None, AVERSE
+        )
+        assert kept == (middle, True)
+
+    def test_the_plan_passes_its_exposure_to_both(self, monkeypatch):
+        seen = []
+        monkeypatch.setattr(routing, "calmer_or_own", lambda *a, **k: seen.append(("own", a)) or 0)
+        assert presets.exposure_for("trailmaxxing") is AVERSE
+        assert presets.exposure_for("cargo", presets.CARRYING_PEOPLE) is AVERSE
+        assert presets.exposure_for("default") is presets.EXPOSURE_STANDARD
 
 
 class TestNoBusierThanMiddleFallbacks:
@@ -1286,7 +1394,9 @@ class TestNoBusierThanMiddleFallbacks:
         )
         return result, seen
 
-    @pytest.mark.parametrize("exposures", [[None, 5.0], [5.0, None]], ids=["own", "middle"])
+    @pytest.mark.parametrize(
+        "exposures", [[None, (5.0, 0.0)], [(5.0, 0.0), None]], ids=["own", "middle"]
+    )
     def test_an_untraceable_route_keeps_the_answer(self, monkeypatch, exposures):
         (trip, kept), _seen = self.check(monkeypatch, {"trip": self.middle}, exposures)
         assert (trip, kept) == (self.trip, False)
@@ -1303,22 +1413,26 @@ class TestNoBusierThanMiddleFallbacks:
         assert seen["exposures"] == 0, "a legless middle is not measured, so never taken"
 
     def test_a_busier_answer_gives_way(self, monkeypatch):
-        (trip, kept), _seen = self.check(monkeypatch, {"trip": self.middle}, [9.0, 5.0])
+        (trip, kept), _seen = self.check(
+            monkeypatch, {"trip": self.middle}, [(9.0, 0.0), (5.0, 0.0)]
+        )
         assert (trip, kept) == (self.middle, True)
 
     def test_the_middle_call_is_held_to_the_alternates_limit(self, monkeypatch):
-        _result, seen = self.check(monkeypatch, {"trip": self.middle}, [5.0, 5.0])
+        _result, seen = self.check(monkeypatch, {"trip": self.middle}, [(5.0, 0.0), (5.0, 0.0)])
         assert seen["limits"] == [routing.ALTERNATES_TIMEOUT_S]
 
     def test_on_the_weekend_graph_to_the_weekend_limit(self, monkeypatch):
-        _result, seen = self.check(monkeypatch, {"trip": self.middle}, [5.0, 5.0], "weekend")
+        _result, seen = self.check(
+            monkeypatch, {"trip": self.middle}, [(5.0, 0.0), (5.0, 0.0)], "weekend"
+        )
         assert seen["limits"] == [routing.WEEKEND_TIMEOUT_S]
 
     def test_it_leaves_the_traces_reserve(self, monkeypatch):
         left = routing.MIDDLE_TRACE_RESERVE_S + 6.0
         deadline = routing.Deadline(routing.clock() + left, routing.ROUTER_TIMEOUT_S)
         _result, seen = self.check(
-            monkeypatch, {"trip": self.middle}, [5.0, 5.0], deadline=deadline
+            monkeypatch, {"trip": self.middle}, [(5.0, 0.0), (5.0, 0.0)], deadline=deadline
         )
         assert seen["limits"] == [pytest.approx(6.0, abs=0.5)]
         # Both routes' traces are inside the same step, not the whole budget.

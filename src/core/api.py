@@ -46,7 +46,7 @@ from ninja.decorators import decorate_view
 from ninja.errors import HttpError, ValidationError
 from pydantic import ConfigDict, StrictBool, StrictInt, field_validator, model_validator
 
-from routemaker import ridetime
+from routemaker import effort, ridetime
 from routemaker.geo import Point, haversine
 
 from . import geocode, presets, ratelimit, routing
@@ -204,6 +204,40 @@ class RouteIn(Schema):
         default=False,
         description="Steer off unpaved surfaces where there is a paved way round. Any ride type.",
     )
+    system_weight_kg: StrictInt | None = Field(
+        default=None,
+        ge=effort.MASS_MIN_KG,
+        le=effort.MASS_MAX_KG,
+        description=(
+            "The rider's total system weight in kilograms, rider plus bike plus load"
+            " (OWNER-DECISIONS 264): 68 (a light rider on a 6.8 kg bike) to 140 (a heavy rider on"
+            " a loaded touring bike). Optional, and used only at the top of the stress slider,"
+            " where the Hills slider's avoid half weighs effort-equivalent distance by it: a"
+            " heavier system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
+        ),
+    )
+    loop: StrictBool = Field(
+        default=False,
+        description=(
+            "Make it a loop (OWNER-DECISIONS 266): plan start to destination, then back to the"
+            " start by a different way. A ride whose last point is its first is a loop whether"
+            " or not this is set. The way back prefers roads the way out did not use, and the"
+            " answer's `loop` says how much it shares. Not on Mass Ride."
+        ),
+    )
+    max_distance_m: StrictInt | None = Field(
+        default=None,
+        ge=presets.MAX_DISTANCE_MIN_M,
+        le=presets.MAX_DISTANCE_MAX_M,
+        description=(
+            "The rider's longest ride, in metres (OWNER-DECISIONS 256), for the top of the"
+            " stress slider (100) only, and ignored below it. The search then finds the least"
+            " stressful route no longer than this: LTS 4 and Avoid metres first, then LTS 3,"
+            " then the junctions, then distance. A route longer than this is never answered"
+            " unless none is that short, and `calm_search.fits` says so. Absent: 1.6 times the"
+            " router's own route, and at least a mile more."
+        ),
+    )
 
     @model_validator(mode="after")
     def dials_fit_the_preset(self):
@@ -328,6 +362,15 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
+    max_distance_m: int | None = Field(
+        default=None,
+        description="The rider's longest ride the route was planned within, where they set one.",
+    )
+    system_weight_kg: int | None = Field(
+        default=None,
+        description="The rider total system weight the effort was weighed with, if set.",
+    )
+    loop: bool = Field(default=False, description="Whether the route was planned as a loop.")
 
 
 class HillsSeekOut(Schema):
@@ -491,12 +534,35 @@ class SeekOut(Schema):
     )
 
 
+class LongSearchOut(Schema):
+    """A trip past the calm search's working span, planned leg by leg
+    (OWNER-DECISIONS 256): how many legs it was cut into, how many were searched
+    and how many the time did not reach, the legs in each of the plan's own legs,
+    and what was answered (`legs`, or the router's own `router` route where the
+    legs were no calmer)."""
+
+    legs: int
+    searched: int
+    skipped: int
+    stops: list[int]
+    answered: str | None = None
+    per_leg: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Each leg, in route order: its length, its LTS 4 and LTS 3 metres before and after,"
+            " whether it was searched, the longest it was allowed, and why its search stopped."
+        ),
+    )
+
+
 class CalmSearchOut(Schema):
     """What the search over the router's routes did (`core.refine`): the calm
     detour at the top of the stress slider and the avoidance of the worst
     crossings. `limited` says why it stopped short, or why it did not run:
     `time`, `no_route` (every way out was excluded), `untraceable`,
-    `excludes` (the router's limit on exclusions was reached), `span`,
+    `excludes` (the router's limit on exclusions was reached),
+    `max_distance` (the longest ride was reached, or no route that short was found),
+    `split` (a long trip could not be cut into legs), `span`,
     `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to its
     end. The planner says `time`, `untraceable`, `span`, `long_ride` and
     `seeking` to the rider in plain words where the rider asked for the calm
@@ -511,16 +577,35 @@ class CalmSearchOut(Schema):
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
     seek: SeekOut | None = None
-    trail_credit: float | None = Field(
+    max_distance_m: float | None = Field(
         default=None,
         description=(
-            "Trailmaxxing only (OWNER-DECISIONS 202): metres of quiet riding each metre of"
-            " trail was worth in the search, which tapers with the traffic slider below its"
-            " top. Absent on every other ride type."
+            "At the top of the stress slider (OWNER-DECISIONS 256): the longest ride, in metres,"
+            " the search kept to, the rider's own or the default."
         ),
     )
-    trail_before_m: float | None = None
-    trail_after_m: float | None = None
+    max_distance_set: bool | None = Field(
+        default=None, description="Whether the rider set `max_distance_m` (else the default)."
+    )
+    fits: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the route is within `max_distance_m`. False only where no route that"
+            " short was found: the shortest found is answered, and `limited` is `max_distance`."
+        ),
+    )
+    fitted_at: int | None = Field(
+        default=None,
+        description=(
+            "Where the router's own route was past the longest ride, the traffic position"
+            " (0-100) of the first route that fits it: a busier route than the ride type's own."
+        ),
+    )
+    long: LongSearchOut | None = None
+    lts4_m_before: float | None = None
+    lts4_m_after: float | None = None
+    lts3_m_before: float | None = None
+    lts3_m_after: float | None = None
     lts4_before_m: float | None = Field(
         default=None,
         description=(
@@ -638,7 +723,7 @@ class DescriptionEntryOut(Schema):
     text: str
 
 
-class RouteOut(Schema):
+class RouteBody(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend"]
     geometry: LineString
@@ -673,6 +758,64 @@ class RouteOut(Schema):
     # junctions, never across a stop. Both lists are sent so the client switches
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
+    loop: LoopOut | None = Field(
+        default=None, description="Present on a loop: how much of the way back is the way out."
+    )
+    effort_m: float | None = Field(
+        default=None,
+        description=(
+            "The route's effort-equivalent distance in metres (OWNER-DECISIONS 262-264): its"
+            " length weighted by the grade it rides, for the rider's system weight. Where the"
+            " route was read for it (the top of the stress slider)."
+        ),
+    )
+
+
+class LoopOut(Schema):
+    """What a loop's way back shares with its way out (OWNER-DECISIONS 266)."""
+
+    overlap_pct: float | None = Field(
+        default=None,
+        description="Percent of the way back, by length, on a way the way out also rides.",
+    )
+    shared_m: float | None = None
+    return_m: float | None = None
+    excluded: int = Field(default=0, description="Points along the way out the way back avoided.")
+    tried: int = Field(default=0, description="Routes asked for the way back.")
+    fallback: str | None = Field(
+        default=None,
+        description=(
+            "`out_and_back` where the way back is the way out whatever is avoided (one corridor:"
+            " the router's own route is kept); `time`, `untraceable` or `points` where it could"
+            " not be tried."
+        ),
+    )
+
+
+class CandidateOut(RouteBody):
+    """Another route to choose from (OWNER-DECISIONS 265): a whole route body of its own,
+    so the client draws and describes it as it does the answer."""
+
+    rank: int = Field(description="2 or more: its place in the order of the stress levels.")
+
+
+class RouteOut(RouteBody):
+    rank: int | None = Field(
+        default=None, description="1 where `candidates` has others: the answer's own place."
+    )
+    candidates: list[CandidateOut] | None = Field(
+        default=None,
+        description=(
+            "At the top of the stress slider (OWNER-DECISIONS 265), up to three other routes"
+            " to choose from, ranked after this one by the same order (LTS 4 and Avoid plus"
+            " very high stress junctions, then LTS 3 plus higher stress junctions, then the"
+            " distance the Hills slider weighs): each within the longest ride and no more than"
+            " a near-tie worse than this one, and meaningfully different from it and from each"
+            " other (less than 60% of the same road, or 5 mi of different road). Null where"
+            " there are none: a trip with one obvious corridor has one route. Nothing scores"
+            " scenery; the rider judges that from the map."
+        ),
+    )
 
 
 # What Pydantic puts before the text of a ValueError raised in a validator.
@@ -806,8 +949,30 @@ def json_body_only(view):
     errors_as_json,
 )
 def route(request, body: RouteIn, response: HttpResponse):
-    span = span_m(body.points)
+    # A loop is as long as its way back too.
+    loop = routing.loop_wanted(body.points, body.loop, body.preset)
+    span = span_m(routing.loop_points(body.points, loop))
+    if span > MAX_SPAN_M:
+        return Status(400, {"error": too_long()})
     if span <= CONFIRM_SPAN_M:
+        if not loop and routing.long_calm_for(
+            body.preset,
+            body.points,
+            _stress_of(body),
+            long_ride=False,
+            seeking=_seeking(body),
+        ):
+            # A long calm plan (OWNER-DECISIONS 256) has the long ride's time
+            # limit, so it takes the long ride's in-flight slot as well: one at a
+            # time in the deployment. It needs no confirmation: it is not a long
+            # ride in straight lines.
+            held, refusal = ratelimit.acquire(request, ratelimit.LONG_ROUTING_IN_FLIGHT)
+            if refusal is not None:
+                return refusal
+            try:
+                return _plan(request, body, response, long_ride=False, long_calm=True)
+            finally:
+                ratelimit.release(held)
         return _plan(request, body, response, long_ride=False)
     if not body.confirm_long and not signed_in(request):
         return Status(
@@ -832,7 +997,21 @@ def route(request, body: RouteIn, response: HttpResponse):
         ratelimit.release(held)
 
 
-def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
+def _stress_of(body: RouteIn) -> int:
+    """The traffic slider's position a request plans at."""
+    if body.stress is not None:
+        return body.stress
+    return presets.stress_start(body.preset, body.carrying)
+
+
+def _seeking(body: RouteIn) -> bool:
+    """Whether the hills slider is past its detent, on a ride type that seeks."""
+    preset = presets.PRESETS[body.preset]
+    hills = preset.hills if body.hills is None else body.hills
+    return hills > 0 and preset.hills_seek
+
+
+def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_calm: bool = False):
     started = getattr(request, "routing_started", None)
     try:
         dials = routing.Dials(
@@ -842,6 +1021,9 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
             carrying=body.carrying,
             assist=body.assist,
             avoid_gravel=body.avoid_gravel,
+            max_distance_m=body.max_distance_m,
+            system_weight_kg=body.system_weight_kg,
+            loop=body.loop,
         )
         return Status(
             200,
@@ -866,7 +1048,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool):
     except routing.DeadlineExceeded:
         # A JsonResponse rather than Status, so an ordinary 503 stays exactly
         # {"error"} instead of carrying "code": null.
-        if long_ride:
+        if long_ride or long_calm:
             refusal = JsonResponse(
                 {
                     "error": (

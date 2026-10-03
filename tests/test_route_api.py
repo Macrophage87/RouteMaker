@@ -65,6 +65,11 @@ CONTRACT_KEYS = {
     "description",
     # Additive, OWNER-DECISIONS item 226: the same with short stretches merged.
     "description_overview",
+    # Additive, FOLLOWUP-LONG-CALM (OWNER-DECISIONS 262-265): the route's effort-equivalent
+    # distance, and at the top of the stress slider the others to choose from.
+    "effort_m",
+    "rank",
+    "candidates",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

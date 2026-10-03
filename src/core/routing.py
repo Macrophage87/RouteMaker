@@ -56,6 +56,7 @@ to the profile turned upside down.
 
 from __future__ import annotations
 
+import itertools
 import json
 import logging
 import time
@@ -610,6 +611,57 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
+    # The rider's "Longest ride" (metres), for the top of the stress slider only
+    # (`presets.maxcalm_for`); None: `presets.default_max_m`.
+    max_distance_m: int | None = None
+    # The rider's total system weight in kilograms (OWNER-DECISIONS 264): rider, bike
+    # and load, for the effort the Hills slider's avoid half weighs at the top of the
+    # stress slider; None: `presets.system_weight_for`.
+    system_weight_kg: int | None = None
+    # "Make it a loop" (OWNER-DECISIONS 266): return to the start by a different way.
+    # A ride whose last point is its first is a loop whatever this says.
+    loop: bool = False
+
+
+# A ride ends where it starts if its last point is within this of its first (metres).
+LOOP_SAME_M = 50.0
+
+
+def is_round_trip(points: list) -> bool:
+    """Whether the points start and end in the same place, with a place between."""
+    return len(points) >= 3 and haversine(Point(*points[0]), Point(*points[-1])) <= LOOP_SAME_M
+
+
+def loop_wanted(points: list, flag: bool, preset_name: str) -> bool:
+    """Whether a plan is a loop (OWNER-DECISIONS 266): the rider asked for one, or the
+    ride ends where it starts. Not on a Mass Ride, which is one route by design."""
+    return preset_name != "mass-ride" and len(points) >= 2 and (flag or is_round_trip(points))
+
+
+def loop_points(points: list, loop: bool) -> list:
+    """The points a loop is planned through: the rider's, and the start again unless
+    the ride already ends there."""
+    if not loop or is_round_trip(points):
+        return points
+    return [*points, points[0]]
+
+
+def loop_stats(pieces: list, leg_runs: list) -> dict | None:
+    """What a loop's way back shares with its way out, from its traced pieces and the
+    run of pieces of each leg: `shared_m` of `return_m` metres, as `overlap_pct`; None
+    where the last leg was not traced."""
+    if len(leg_runs) < 2 or not isinstance(leg_runs[-1], tuple):
+        return None
+    start, end = leg_runs[-1]
+    out_ways = {piece.way_id for piece in pieces[:start] if piece.way_id}
+    back = pieces[start:end]
+    shared = sum(piece.metres for piece in back if piece.way_id in out_ways)
+    total = sum(piece.metres for piece in back)
+    return {
+        "shared_m": round(shared, 1),
+        "return_m": round(total, 1),
+        "overlap_pct": round(100.0 * shared / total, 1) if total > 0 else None,
+    }
 
 
 # How many alternatives a climb search asks the router for, besides its best
@@ -745,9 +797,12 @@ def _exposure(
     when: str,
     deadline: Deadline,
     traces: dict | None = None,
+    exposure: presets.Exposure = presets.EXPOSURE_STANDARD,
 ):
-    """A trip's traffic exposure: metres on LTS 3, twice LTS 4, three times
-    tier 5 (the graded stress). None when a leg cannot be traced."""
+    """A trip's traffic exposure by the plan's weights (`presets.Exposure`: LTS 3
+    once, LTS 4 twice and Avoid three times unless the ride type weighs them
+    otherwise) and its metres of LTS 4 and Avoid, as (exposure, metres); None
+    when a leg cannot be traced."""
     pieces: list[Piece] = []
     for leg in trip.get("legs") or []:
         trace = _trace(variant, costing, leg.get("shape", ""), deadline, traces)
@@ -755,7 +810,17 @@ def _exposure(
             return None
         pieces.extend(pieces_of_trace(trace))
     stress, _facility = breakdown(pieces, when)
-    return stress["3"] + 2 * stress["4"] + 3 * stress["5"]
+    weights = exposure.weights
+    return sum(weights[tier] * stress[tier] for tier in weights), stress["4"] + stress["5"]
+
+
+def _hold_refuses(held: tuple, reference: tuple, exposure: presets.Exposure) -> bool:
+    """Whether the LTS 4 hold (OWNER-DECISIONS 250) refuses a route: on a
+    stress-averse ride, more LTS 4 and Avoid metres than the reference's (an
+    exposure reading's second item), with `refine.LTS4_SLACK_M` of slack."""
+    from . import refine
+
+    return exposure.hold_lts4 and held[1] > reference[1] + refine.LTS4_SLACK_M
 
 
 def calmer_or_own(
@@ -766,8 +831,13 @@ def calmer_or_own(
     when: str,
     deadline: Deadline,
     traces: dict | None = None,
+    exposure: presets.Exposure = presets.EXPOSURE_STANDARD,
 ) -> int:
-    """`chosen`, if it is no busier than the router's own route, else 0.
+    """`chosen`, if it is no busier than the router's own route, else 0. Busier
+    is by the plan's exposure weights, and on a ride with the LTS 4 hold (Trailmaxxing,
+    Cargo with passengers) an alternative with more LTS 4 and Avoid metres is
+    never chosen, so that the search after it measures its hold against the
+    router's own route (GATE-corr SF1).
 
     The avoid half weighs sustained grades the router's cost cannot see, and
     on a few plans that bought a gentler profile with busier roads
@@ -780,11 +850,13 @@ def calmer_or_own(
     if chosen == 0:
         return 0
     try:
-        own = _exposure(variant, costing, trips[0], when, deadline, traces)
-        alternative = _exposure(variant, costing, trips[chosen], when, deadline, traces)
+        own = _exposure(variant, costing, trips[0], when, deadline, traces, exposure)
+        alternative = _exposure(variant, costing, trips[chosen], when, deadline, traces, exposure)
     except (DeadlineExceeded, RouterUnavailable):
         return 0
-    if own is None or alternative is None or alternative > own:
+    if own is None or alternative is None or alternative[0] > own[0]:
+        return 0
+    if _hold_refuses(alternative, own, exposure):
         return 0
     return chosen
 
@@ -798,6 +870,7 @@ def no_busier_than_middle(
     when: str,
     deadline: Deadline,
     traces: dict | None = None,
+    exposure: presets.Exposure = presets.EXPOSURE_STANDARD,
 ) -> tuple[dict, bool]:
     """The route to answer on the avoid half, and whether it is the middle's.
 
@@ -808,8 +881,10 @@ def no_busier_than_middle(
     same trip at the middle of the hills slider (89 plans of the correctness
     reviewer's grid). So the same trip is asked for again at the middle - one
     /route without alternatives, at most ALTERNATES_TIMEOUT_S - and both are
-    traced: if the hill-avoiding route's exposure (LTS 3 + 2 x LTS 4 + 3 x
-    tier 5 metres) is worse, the middle's route is the answer. A middle call
+    traced: if the hill-avoiding route's exposure (by the plan's weights, LTS 3 +
+    2 x LTS 4 + 3 x tier 5 metres unless the ride type weighs them otherwise) is
+    worse, the middle's route is the answer, unless it has more LTS 4 and Avoid
+    metres and the ride holds them (GATE-corr SF1). A middle call
     or a trace that fails, or no time left, keeps the hill-avoiding route.
 
     All of it runs inside the budget less MIDDLE_TRACE_RESERVE_S, which is the
@@ -831,11 +906,13 @@ def no_busier_than_middle(
         middle = answer.get("trip") or {}
         if not middle.get("legs"):
             return trip, False
-        own = _exposure(variant, costing, trip, when, step, traces)
-        calmer = _exposure(variant, middle_costing, middle, when, step, traces)
+        own = _exposure(variant, costing, trip, when, step, traces, exposure)
+        calmer = _exposure(variant, middle_costing, middle, when, step, traces, exposure)
     except (DeadlineExceeded, RouterUnavailable, RouterRefused):
         return trip, False
-    if own is None or calmer is None or own <= calmer:
+    if own is None or calmer is None or own[0] <= calmer[0]:
+        return trip, False
+    if _hold_refuses(calmer, own, exposure):
         return trip, False
     return middle, True
 
@@ -888,8 +965,38 @@ def _route(variant: str, request: dict, deadline: Deadline) -> tuple[dict, bool]
         return _call(variant, "route", plain, Deadline(deadline.at, limit)), True
 
 
+def straight_span_m(points: list) -> float:
+    """The sum of the straight-line distances between consecutive points."""
+    return sum(haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False))
+
+
+def long_calm_for(
+    preset_name: str, points: list, stress: int, long_ride: bool, seeking: bool
+) -> bool:
+    """Whether a plan is a long calm plan (OWNER-DECISIONS 256): the top of the
+    stress slider on a ride type that plans past the calm search's working span
+    leg by leg (`Preset.long_calm`, Trailmaxxing), for a start and an end and
+    stops that are past `refine.REFINE_MAX_SPAN_M` of straight line and not a long
+    ride (past the confirm span, which has its own rules)."""
+    from . import refine
+
+    return (
+        presets.PRESETS[preset_name].long_calm
+        and presets.maxcalm_for(stress)
+        and len(points) >= 2
+        and not long_ride
+        and not seeking
+        and straight_span_m(points) > refine.REFINE_MAX_SPAN_M
+    )
+
+
 def _refine_limit(
-    preset_name: str, points: list, long_ride: bool, seeking: bool, deadline: Deadline
+    preset_name: str,
+    points: list,
+    long_ride: bool,
+    seeking: bool,
+    deadline: Deadline,
+    long_calm: bool = False,
 ) -> str | None:
     """Why the search over the router's routes does not run on this plan, or
     None where it does. A Mass Ride has its own rules (OWNER-DECISIONS 133 to
@@ -906,10 +1013,7 @@ def _refine_limit(
         return "long_ride"
     if seeking:
         return "seeking"
-    straight = sum(
-        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
-    )
-    if straight > refine.REFINE_MAX_SPAN_M:
+    if straight_span_m(points) > refine.REFINE_MAX_SPAN_M and not long_calm:
         return "span"
     if deadline.at - clock() < refine.REFINE_ROUND_MIN_S + refine.REFINE_TRACE_RESERVE_S:
         return "time"
@@ -1066,17 +1170,23 @@ def _detour(
             for key, value in request.items()
             if key not in ("alternates", "exclude_locations")
         } | {"costing_options": direct_costing}
-        try:
-            answer = _call(
-                variant,
-                "route",
-                direct_request,
-                Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
-            )
-            direct = answer.get("trip") or {}
-            direct_m = float((direct.get("summary") or {}).get("length", 0.0)) * 1000.0
-        except (DeadlineExceeded, RouterUnavailable, RouterRefused):
-            direct, direct_m = {}, 0.0
+        # Asked once for a plan and its candidate routes (OWNER-DECISIONS 265).
+        direct_key = ("direct-route", json.dumps(direct_request, sort_keys=True))
+        if direct_key in traces:
+            direct, direct_m = traces[direct_key]
+        else:
+            try:
+                answer = _call(
+                    variant,
+                    "route",
+                    direct_request,
+                    Deadline(deadline.at, min(deadline.per_call_s, ALTERNATES_TIMEOUT_S)),
+                )
+                direct = answer.get("trip") or {}
+                direct_m = float((direct.get("summary") or {}).get("length", 0.0)) * 1000.0
+            except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+                direct, direct_m = {}, 0.0
+            traces[direct_key] = (direct, direct_m)
         if direct_m > 0:
             avoided = None
             level = detour_rules.level(route_m, direct_m)
@@ -1098,6 +1208,85 @@ def _detour(
     return detour_rules.describe(route_m, straight_m, detour_rules.STRAIGHT_LINE)
 
 
+def _joined_runs(runs: list, pieces: list) -> tuple[int, int] | float:
+    """The runs of the legs a plan's leg was searched in, as one: a run of traced
+    pieces where all of them are (their pieces are in order, end to start), else
+    the plan leg's length in metres, untraced."""
+    if all(isinstance(run, tuple) for run in runs):
+        return (runs[0][0], runs[-1][1])
+    return float(
+        sum(
+            sum(piece.metres for piece in pieces[run[0] : run[1]])
+            if isinstance(run, tuple)
+            else run
+            for run in runs
+        )
+    )
+
+
+# The least time left (seconds) for reading and describing one more candidate route
+# (OWNER-DECISIONS 265): its junctions, and its description built from them.
+ALTERNATE_MIN_S = 6
+
+
+# The traffic positions a longest ride that the router's own route is past is
+# asked at, calmest first, until a route fits (`_fit_longest`): Default's, a
+# balanced one, and the most direct.
+FIT_STRESS_LADDER = (presets.STRESS_DEFAULT_AT, 40, 0)
+# The least time left for another rung (a whole-trip /route and no more).
+FIT_MIN_S = 12
+
+
+def _fit_longest(
+    trip: dict,
+    request: dict,
+    costing: dict,
+    trace_costing: dict,
+    rider_max_m: float | None,
+    preset_name: str,
+    hills_dial: int,
+    assist: bool,
+    avoid_gravel: bool,
+    variant: str,
+    deadline: Deadline,
+) -> tuple[dict, dict, dict, dict, int | None]:
+    """The first route for a rider's longest ride (OWNER-DECISIONS 256): the
+    router's own route if it is within it, else the calmest route the router gives
+    that is, from its own costing at the traffic positions of FIT_STRESS_LADDER;
+    the most direct one if none is. Returns the trip, the request and costings to
+    search with, and the traffic position the route was found at (None: the ride's
+    own)."""
+    length = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
+    if rider_max_m is None or length <= rider_max_m:
+        return trip, request, costing, trace_costing, None
+    shortest = (trip, request, costing, trace_costing, None)
+    for rung in FIT_STRESS_LADDER:
+        if deadline.at - clock() < FIT_MIN_S:
+            break
+        options = presets.costing(
+            preset_name, rung, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+        )
+        asked = {k: v for k, v in request.items() if k != "alternates"} | {
+            "costing_options": options
+        }
+        try:
+            answer = _call(
+                variant, "route", asked, Deadline(deadline.at, min(deadline.per_call_s, 30))
+            )
+        except (DeadlineExceeded, RouterUnavailable, RouterRefused):
+            break
+        found = answer.get("trip") or {}
+        if not found.get("legs"):
+            continue
+        found_m = float((found.get("summary") or {}).get("length", 0.0)) * 1000.0
+        got = (found, asked, options, options, rung)
+        if found_m <= rider_max_m:
+            return got
+        if found_m < float((shortest[0].get("summary") or {}).get("length", 0.0)) * 1000.0:
+            shortest = got
+    return shortest
+
+
 def plan(
     points: list[list[float]],
     preset_name: str,
@@ -1116,16 +1305,31 @@ def plan(
     if started is None:
         started = clock()
     dials = dials or Dials()
-    if long_ride:
-        budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
-    else:
-        budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
-    deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     preset = presets.PRESETS[preset_name]
     stress_dial = (
         presets.stress_start(preset_name, dials.carrying) if dials.stress is None else dials.stress
     )
     hills_dial = preset.hills if dials.hills is None else dials.hills
+    seeking = hills_dial > 0 and preset.hills_seek
+    # A loop is planned through its start again (OWNER-DECISIONS 266).
+    loop = loop_wanted(points, dials.loop, preset_name)
+    points = loop_points(points, loop)
+    # A long calm plan (Trailmaxxing at the top of the slider past the calm
+    # search's working span, planned leg by leg) has the long ride's time
+    # limits: 50 s in all, under gunicorn's 60 s timeout, as the owner chose
+    # for a long ride (2026-09-26). It is the same plan the ordinary budget
+    # would cut short after its first legs, and no more than the router calls
+    # a long ride makes (docs/OPERATIONS.md, "Long calm plans").
+    long_calm = not loop and long_calm_for(preset_name, points, stress_dial, long_ride, seeking)
+    if long_ride or long_calm:
+        budget_s, per_call_s = LONG_PLAN_BUDGET_S, LONG_ROUTER_TIMEOUT_S
+    else:
+        budget_s, per_call_s = PLAN_BUDGET_S, ROUTER_TIMEOUT_S
+    deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
+    exposure = presets.exposure_for(preset_name, dials.carrying)
+    maxcalm = presets.maxcalm_for(stress_dial)
+    # The rider's longest ride counts at the top of the slider only.
+    rider_max_m = float(dials.max_distance_m) if dials.max_distance_m and maxcalm else None
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     variant = presets.variant_for_ride(preset_name, when, assist)
@@ -1146,7 +1350,6 @@ def plan(
     # alternatives. Valhalla computes alternatives only between two locations,
     # and not inside a long ride's budget, so anything else keeps the route
     # the detent gives and says so.
-    seeking = hills_dial > 0 and preset.hills_seek
     # Below it the slider also weighs sustained climbs and brake-riding
     # descents (routemaker.climbs; the owner, 2026-09-28) among the same
     # alternatives, by `-hills/100`.
@@ -1232,6 +1435,7 @@ def plan(
             when,
             deadline,
             traces,
+            exposure,
         )
     else:
         chosen = 0
@@ -1243,7 +1447,7 @@ def plan(
             preset_name, stress_dial, 0, assist=assist, avoid_gravel=avoid_gravel
         )
         trip, kept_middle = no_busier_than_middle(
-            trip, request, variant, costing, middle_costing, when, deadline, traces
+            trip, request, variant, costing, middle_costing, when, deadline, traces, exposure
         )
         if kept_middle:
             # Traced with the costing it was routed with, which the check
@@ -1254,6 +1458,16 @@ def plan(
     # budget; `refined` says what it did, or why it did not.
     from . import refine, trailseek
 
+    refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline, long_calm)
+    longest = None
+    fitted_at = None
+    if maxcalm and refine_limited is None:
+        trip, request, costing, trace_costing, fitted_at = _fit_longest(
+            trip, request, costing, trace_costing, rider_max_m, preset_name, hills_dial, assist,
+            avoid_gravel, variant, deadline,
+        )  # fmt: skip
+        first_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
+        longest = rider_max_m if rider_max_m else presets.default_max_m(first_m)
     refine_context = refine.Context(
         variant=variant,
         request=request,
@@ -1268,18 +1482,44 @@ def plan(
         rate=presets.calm_rate_for(stress_dial),
         weight=refine.intersection_weight(stress_dial),
         climb_weight=avoid_weight * refine.CLIMB_EQUIVALENT_M,
+        hills_weight=avoid_weight,
+        mass_kg=presets.system_weight_for(preset_name, dials.carrying, dials.system_weight_kg),
         quiet_cost=refine.quiet_cost_per_m(trace_costing),
         wide=refine.wide_search_for(presets.calm_rate_for(stress_dial)),
         seek=trailseek.seek_for(presets.calm_rate_for(stress_dial)),
         schema=validate_schema_name(settings.SEGMENT_SCHEMA_LIVE),
         avoid_gravel=avoid_gravel,
-        trail_credit=presets.trail_credit_for(preset_name, stress_dial),
-        exposure=presets.exposure_for(preset_name, dials.carrying),
+        exposure=exposure,
+        maxcalm=maxcalm,
+        max_m=longest,
+        # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
+        alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
+        options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
     )
+    loop_info = None
+    if loop:
+        # The way back by a different way, before the search, which then keeps it so.
+        trip, loop_info = refine.make_loop(trip, refine_context)
+        if loop_info["fallback"] is None and loop_info["overlap_pct"] is not None:
+            refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
     refined = None
-    refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline)
     if refine_limited is None:
-        trip, refined = refine.refine(trip, refine_context)
+        if (
+            longest is not None
+            and float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0 > longest
+        ):
+            # Not even the most direct route fits the longest ride: it is the
+            # answer, with a note, and nothing is searched.
+            refined = {
+                "rate": refine_context.rate,
+                "rounds": 0,
+                "excluded": 0,
+                "limited": "max_distance",
+            }
+        elif long_calm:
+            trip, refined = refine.refine_long(trip, refine_context)
+        else:
+            trip, refined = refine.refine(trip, refine_context)
     elif refine_context.rate > 0:
         # A calm search was asked for and could not run: say so.
         refined = {
@@ -1288,191 +1528,244 @@ def plan(
             "excluded": 0,
             "limited": refine_limited,
         }
-    legs = trip.get("legs") or []
-    if not legs:
-        raise NoRoute("the router returned no legs")
+    if refined is not None and maxcalm:
+        final_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
+        refined["max_distance_m"] = round(longest, 1) if longest is not None else None
+        refined["max_distance_set"] = rider_max_m is not None
+        refined["fits"] = None if longest is None else final_m <= longest
+        if fitted_at is not None:
+            refined["fitted_at"] = fitted_at
 
-    coordinates: list[tuple[float, float]] = []
-    elevations: list[float | None] = []
-    stress = dict.fromkeys(STRESS_KEYS, 0.0)
-    facility = dict.fromkeys(FACILITY_KEYS, 0.0)
-    pieces: list[Piece] = []
-    # Where the route passes a node, for the intersection model, and how far
-    # along the traced length it has got.
-    raw_junctions: list = []
-    traced_m = 0.0
-    # The route in the order ridden, for its coloured sections: each leg is
-    # either a run of traced pieces (start, end) or an untraced length.
-    leg_runs: list[tuple[int, int] | float] = []
-    # The index in `coordinates` of each leg's last vertex: the joints are
-    # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
-    # front end reads which leg a point on the line belongs to from these.
-    leg_ends: list[int] = []
-    # Where each leg begins along the traced length: the stops (and the start,
-    # which no crossing lies before), which a Mass Ride's crossing group never
-    # spans (OWNER-DECISIONS 247).
-    stops_m: list[float] = []
-    for leg in legs:
-        stops_m.append(traced_m)
-        shape = decode_polyline6(leg.get("shape", ""))
-        coordinates.extend(shape[1:] if coordinates else shape)
-        leg_ends.append(len(coordinates) - 1)
-        elevations.extend(leg.get("elevation") or [])
-        try:
-            trace = _trace(variant, trace_costing, leg.get("shape", ""), deadline, traces)
-        except DeadlineExceeded:
-            # The route is found, so it is answered; a leg left untraced is
-            # unknown, and once the budget is gone `_call` starts no more.
-            logger.info("the budget ran out tracing a leg on %s", variant)
-            trace = None
-        if trace is None:
-            untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
+    def _answer(trip: dict, refined: dict | None, alternate: bool = False) -> dict:
+        """The contract's body for one route (the plan's own, or one of its
+        candidates, OWNER-DECISIONS 265)."""
+        legs = trip.get("legs") or []
+        if not legs:
+            raise NoRoute("the router returned no legs")
+
+        coordinates: list[tuple[float, float]] = []
+        elevations: list[float | None] = []
+        stress = dict.fromkeys(STRESS_KEYS, 0.0)
+        facility = dict.fromkeys(FACILITY_KEYS, 0.0)
+        pieces: list[Piece] = []
+        # Where the route passes a node, for the intersection model, and how far
+        # along the traced length it has got.
+        raw_junctions: list = []
+        traced_m = 0.0
+        # The route in the order ridden, for its coloured sections: each leg is
+        # either a run of traced pieces (start, end) or an untraced length.
+        leg_runs: list[tuple[int, int] | float] = []
+        # The index in `coordinates` of each leg's last vertex: the joints are
+        # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
+        # front end reads which leg a point on the line belongs to from these.
+        leg_ends: list[int] = []
+        # Where each leg begins along the traced length: the stops (and the start,
+        # which no crossing lies before), which a Mass Ride's crossing group never
+        # spans (OWNER-DECISIONS 247).
+        stops_m: list[float] = []
+        for leg in legs:
+            stops_m.append(traced_m)
+            shape = decode_polyline6(leg.get("shape", ""))
+            coordinates.extend(shape[1:] if coordinates else shape)
+            leg_ends.append(len(coordinates) - 1)
+            elevations.extend(leg.get("elevation") or [])
+            try:
+                trace = _trace(variant, trace_costing, leg.get("shape", ""), deadline, traces)
+            except DeadlineExceeded:
+                # The route is found, so it is answered; a leg left untraced is
+                # unknown, and once the budget is gone `_call` starts no more.
+                logger.info("the budget ran out tracing a leg on %s", variant)
+                trace = None
+            if trace is None:
+                untraced = float(leg.get("summary", {}).get("length", 0.0)) * 1000.0
+                stress["unknown"] += untraced
+                facility["unknown"] += untraced
+                leg_runs.append(untraced)
+                traced_m += untraced
+            else:
+                start = len(pieces)
+                pieces.extend(pieces_of_trace(trace))
+                leg_runs.append((start, len(pieces)))
+                raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
+                traced_m += sum(piece.metres for piece in pieces[start:])
+        # A long calm plan was searched in legs of its own: the answer has the plan's
+        # legs, as the front end reads which leg a point on the line belongs to, and
+        # a Mass Ride's stops and the description's are the plan's stops.
+        groups = ((refined or {}).get("long") or {}).get("stops")
+        if (refined or {}).get("long", {}).get("answered") == "legs" and groups:
+            if sum(groups) == len(legs):
+                ends = list(itertools.accumulate(groups))
+                first = [e - g for e, g in zip(ends, groups, strict=True)]
+                leg_ends = [leg_ends[e - 1] for e in ends]
+                stops_m = [stops_m[f] for f in first]
+                leg_runs = [
+                    _joined_runs(leg_runs[f:e], pieces) for f, e in zip(first, ends, strict=True)
+                ]
+        traced_at = clock()
+        # The joins over the traced pieces are the work after the routers, and the
+        # budget's reserve is for them. Once the budget itself is gone they are
+        # skipped - the route is answered with its stress unknown - rather than run
+        # past it (correctness review, 2026-09-28: one request took 49 s).
+        over_budget = traced_at >= started + budget_s
+        effort_m = None
+        if over_budget:
+            untraced = sum(piece.metres for piece in pieces)
             stress["unknown"] += untraced
             facility["unknown"] += untraced
-            leg_runs.append(untraced)
-            traced_m += untraced
+            used_adjustments: list[dict] = []
+            # Unknown along its whole length, as its totals are.
+            classes = [("unknown", "unknown")] * len(pieces)
         else:
-            start = len(pieces)
-            pieces.extend(pieces_of_trace(trace))
-            leg_runs.append((start, len(pieces)))
-            raw_junctions.extend(trace_junctions.junctions_of_trace(trace, shape, traced_m))
-            traced_m += sum(piece.metres for piece in pieces[start:])
-    traced_at = clock()
-    # The joins over the traced pieces are the work after the routers, and the
-    # budget's reserve is for them. Once the budget itself is gone they are
-    # skipped - the route is answered with its stress unknown - rather than run
-    # past it (correctness review, 2026-09-28: one request took 49 s).
-    over_budget = traced_at >= started + budget_s
-    if over_budget:
-        untraced = sum(piece.metres for piece in pieces)
-        stress["unknown"] += untraced
-        facility["unknown"] += untraced
-        used_adjustments: list[dict] = []
-        # Unknown along its whole length, as its totals are.
-        classes = [("unknown", "unknown")] * len(pieces)
-    else:
-        analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
-        classes = (
-            analysed.classes
-            if analysed is not None and len(analysed.pieces) == len(pieces)
-            else classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
-        )
-        traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
-        for key, metres in traced_stress.items():
-            stress[key] += metres
-        for key, metres in traced_facility.items():
-            facility[key] += metres
-        used_adjustments = adjustments_used(pieces)
-    stretches: list[tuple[float, str, str]] = []
-    for run in leg_runs:
-        if isinstance(run, tuple):
-            stretches.extend((pieces[i].metres, *classes[i]) for i in range(run[0], run[1]))
-        else:
-            stretches.append((run, "unknown", "unknown"))
-    spans = stress_spans(stretches)
-    events = None
-    if not over_budget:
-        events = _events(refine_context, legs, raw_junctions, deadline)
-    if events is not None and refine_context.group:
-        events = intersections.number_groups(events, stops_m)
-    described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
-    described_full, described_overview = described if described else (None, None)
-    joined_at = clock()
-    if joined_at - started > budget_s:
-        logger.warning(
-            "a %s plan on %s took %.1f s, past its %s s budget: route %.1f s, trace %.1f s, "
-            "joins %.1f s%s",
-            preset_name,
-            variant,
-            joined_at - started,
-            budget_s,
-            routed_at - started,
-            traced_at - routed_at,
-            joined_at - traced_at,
-            " (skipped)" if over_budget else "",
-        )
+            analysed = refine_context.analyses.get(tuple(leg.get("shape", "") for leg in legs))
+            effort_m = round(analysed.effort_m, 1) if analysed is not None else None
+            classes = (
+                analysed.classes
+                if analysed is not None and len(analysed.pieces) == len(pieces)
+                else classify(pieces, when, roadway_only=variant == Variant.NO_TRAIL.value)
+            )
+            traced_stress, traced_facility = totals(zip(pieces, classes, strict=True))
+            for key, metres in traced_stress.items():
+                stress[key] += metres
+            for key, metres in traced_facility.items():
+                facility[key] += metres
+            used_adjustments = adjustments_used(pieces)
+        stretches: list[tuple[float, str, str]] = []
+        for run in leg_runs:
+            if isinstance(run, tuple):
+                stretches.extend((pieces[i].metres, *classes[i]) for i in range(run[0], run[1]))
+            else:
+                stretches.append((run, "unknown", "unknown"))
+        spans = stress_spans(stretches)
+        events = None
+        if not over_budget:
+            events = _events(refine_context, legs, raw_junctions, deadline)
+        if events is not None and refine_context.group:
+            events = intersections.number_groups(events, stops_m)
+        described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
+        described_full, described_overview = described if described else (None, None)
+        joined_at = clock()
+        if joined_at - started > budget_s:
+            logger.warning(
+                "a %s plan on %s took %.1f s, past its %s s budget: route %.1f s, trace %.1f s, "
+                "joins %.1f s%s",
+                preset_name,
+                variant,
+                joined_at - started,
+                budget_s,
+                routed_at - started,
+                traced_at - routed_at,
+                joined_at - traced_at,
+                " (skipped)" if over_budget else "",
+            )
 
-    summary = trip.get("summary") or {}
-    climb, descent = climb_and_descent(elevations)
-    hills_seek = None
-    if seeking:
-        direct = trips[0].get("summary") or {}
-        hills_seek = {
-            "candidates": len(trips),
-            "chosen": chosen,
-            "extra_climb_m": round(climb - _climb_of(trips[0]), 1),
-            "extra_distance_m": round(
-                (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0, 1
+        summary = trip.get("summary") or {}
+        climb, descent = climb_and_descent(elevations)
+        hills_seek = None
+        if seeking and not alternate:
+            direct = trips[0].get("summary") or {}
+            hills_seek = {
+                "candidates": len(trips),
+                "chosen": chosen,
+                "extra_climb_m": round(climb - _climb_of(trips[0]), 1),
+                "extra_distance_m": round(
+                    (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0,
+                    1,
+                ),
+                "limited": seek_limited,
+            }
+        hills_avoid = None
+        if avoiding and not alternate:
+            direct = trips[0].get("summary") or {}
+            hills_avoid = {
+                "candidates": len(trips),
+                "chosen": chosen,
+                "weight": round(avoid_weight, 2),
+                "brake_grade": preset.brake_grade,
+                "grade_cost_s": round(
+                    climbs.grade_cost_s(grade_profile(trip), preset.brake_grade), 1
+                ),
+                "direct_grade_cost_s": round(
+                    climbs.grade_cost_s(grade_profile(trips[0]), preset.brake_grade), 1
+                ),
+                "extra_distance_m": round(
+                    (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0,
+                    1,
+                ),
+                "limited": seek_limited,
+                "kept_middle": kept_middle,
+            }
+        straight_m = sum(
+            haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
+        )
+        detour = _detour(
+            round(float(summary.get("length", 0.0)) * 1000.0, 1),
+            straight_m,
+            request,
+            variant,
+            preset_name,
+            dials=(stress_dial, assist, avoid_gravel),
+            busy_m=stress["3"] + stress["4"] + stress["5"],
+            when=when,
+            deadline=deadline,
+            traces=traces,
+        )
+        return {
+            "preset": preset.name,
+            "variant": variant,
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
+            },
+            "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
+            "duration_s": round(float(summary.get("time", 0.0)), 1),
+            "climb_m": round(climb, 1),
+            "descent_m": round(descent, 1),
+            "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
+            "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
+            "stress_adjustments": used_adjustments,
+            "stress_spans": spans,
+            "dials": {
+                "stress": stress_dial,
+                "hills": hills_dial,
+                "when": when,
+                "carrying": presets.carrying_of(preset_name, dials.carrying),
+                "assist": assist,
+                "avoid_gravel": avoid_gravel,
+                "max_distance_m": int(rider_max_m) if rider_max_m else None,
+                "system_weight_kg": dials.system_weight_kg if maxcalm else None,
+                "loop": loop,
+            },
+            "hills_seek": hills_seek,
+            "hills_avoid": hills_avoid,
+            "attribution": list(ATTRIBUTION),
+            "leg_ends": leg_ends,
+            "intersections": None if events is None else _intersection_rows(events),
+            "intersection_groups": None if events is None else _intersection_groups(events),
+            "calm_search": refined,
+            "effort_m": effort_m,
+            "loop": (
+                {**(loop_info or {}), **(loop_stats(pieces, leg_runs) or {})} if loop else None
             ),
-            "limited": seek_limited,
+            "detour": detour,
+            "description": described_full,
+            "description_overview": described_overview,
         }
-    hills_avoid = None
-    if avoiding:
-        direct = trips[0].get("summary") or {}
-        hills_avoid = {
-            "candidates": len(trips),
-            "chosen": chosen,
-            "weight": round(avoid_weight, 2),
-            "brake_grade": preset.brake_grade,
-            "grade_cost_s": round(climbs.grade_cost_s(grade_profile(trip), preset.brake_grade), 1),
-            "direct_grade_cost_s": round(
-                climbs.grade_cost_s(grade_profile(trips[0]), preset.brake_grade), 1
-            ),
-            "extra_distance_m": round(
-                (float(summary.get("length", 0.0)) - float(direct.get("length", 0.0))) * 1000.0, 1
-            ),
-            "limited": seek_limited,
-            "kept_middle": kept_middle,
-        }
-    straight_m = sum(
-        haversine(Point(*a), Point(*b)) for a, b in zip(points, points[1:], strict=False)
-    )
-    detour = _detour(
-        round(float(summary.get("length", 0.0)) * 1000.0, 1),
-        straight_m,
-        request,
-        variant,
-        preset_name,
-        dials=(stress_dial, assist, avoid_gravel),
-        busy_m=stress["3"] + stress["4"] + stress["5"],
-        when=when,
-        deadline=deadline,
-        traces=traces,
-    )
-    return {
-        "preset": preset.name,
-        "variant": variant,
-        "geometry": {
-            "type": "LineString",
-            "coordinates": [[round(lon, 6), round(lat, 6)] for lon, lat in coordinates],
-        },
-        "distance_m": round(float(summary.get("length", 0.0)) * 1000.0, 1),
-        "duration_s": round(float(summary.get("time", 0.0)), 1),
-        "climb_m": round(climb, 1),
-        "descent_m": round(descent, 1),
-        "stress_m": {key: round(metres, 1) for key, metres in stress.items()},
-        "facility_m": {key: round(metres, 1) for key, metres in facility.items()},
-        "stress_adjustments": used_adjustments,
-        "stress_spans": spans,
-        "dials": {
-            "stress": stress_dial,
-            "hills": hills_dial,
-            "when": when,
-            "carrying": presets.carrying_of(preset_name, dials.carrying),
-            "assist": assist,
-            "avoid_gravel": avoid_gravel,
-        },
-        "hills_seek": hills_seek,
-        "hills_avoid": hills_avoid,
-        "attribution": list(ATTRIBUTION),
-        "leg_ends": leg_ends,
-        "intersections": None if events is None else _intersection_rows(events),
-        "intersection_groups": None if events is None else _intersection_groups(events),
-        "calm_search": refined,
-        "detour": detour,
-        "description": described_full,
-        "description_overview": described_overview,
-    }
+
+    body = _answer(trip, refined)
+    candidates = []
+    for found, _reading in refine_context.candidates[1:]:
+        # Each is read in full (its traces are remembered, its junctions read once
+        # across the joints of a long plan), inside what is left of the budget.
+        if deadline.at - clock() < ALTERNATE_MIN_S:
+            break
+        try:
+            refine.analyse(found, refine_context, deadline)
+            candidates.append({**_answer(found, None, True), "rank": len(candidates) + 2})
+        except (DeadlineExceeded, RouterUnavailable, NoRoute):
+            break
+    body["candidates"] = candidates or None
+    body["rank"] = 1 if candidates else None
+    return body
 
 
 # PLAN, Licensing, and the public-tier rules in force (owner decision of
