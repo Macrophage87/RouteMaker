@@ -294,6 +294,18 @@ local _, single_out = transform_way({
 check("singletrack reaches the graph closed to bicycles",
   single_out.bike_forward == "false" and single_out.bike_backward == "false",
   tostring(single_out.bike_forward))
+-- bike_forward=false is not enough on its own: Valhalla's C++ parser reads the
+-- mtb:* keys off the returned table after this and opens the way again. This
+-- check passed throughout the 2026-10-03 build while 753 singletrack ways were
+-- routable, so the rating keys must be gone too (tests/test_tile_build_access.py).
+check("and carries no mtb:* rating for the parser to reopen it from",
+  single_out["mtb:scale"] == nil, tostring(single_out["mtb:scale"]))
+local _, osm_no_out = transform_way({
+  highway = "path", bicycle = "no", foot = "yes", ["mtb:scale:imba"] = "1",
+})
+check("OSM's own bicycle=no reaches the parser without its rating",
+  osm_no_out.bike_forward == "false" and osm_no_out["mtb:scale:imba"] == nil,
+  tostring(osm_no_out["mtb:scale:imba"]))
 local _, towpath_out = transform_way({
   highway = "path", bicycle = "designated", surface = "dirt", ["mtb:scale:imba"] = "0",
   ["rm:trail_class"] = "yes",

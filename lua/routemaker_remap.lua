@@ -380,6 +380,10 @@ function M.remap_way(tags, derived)
   -- Only narrows. Singletrack is closed rather than charged: upstream sets a
   -- trail's use from its highway class and ignores `service` there, so the
   -- tier-5 entry charge cannot reach it, and `highway` may not be rewritten.
+  --
+  -- `bicycle=no` alone does not close a way that carries a mountain-bike
+  -- rating, and nearly every singletrack way does: see `M.strip_mtb_ratings`,
+  -- which runs last, below, once every bicycle key has been decided.
   if derived.no_bicycle then
     out.bicycle = "no"
   end
@@ -518,7 +522,92 @@ function M.remap_way(tags, derived)
     out.access = M.CEMETERY_ACCESS
   end
 
+  -- Last, so it sees every bicycle key the lines above settled.
+  M.strip_mtb_ratings(tags, out)
+
   return out
+end
+
+-- Mountain-bike ratings reopen a closed way, in Valhalla's C++ and not its Lua.
+--
+-- Valhalla 3.5.1's PBF parser reads `mtb:scale`, `mtb:scale:imba`,
+-- `mtb:scale:uphill` and `mtb:description` itself, after the Lua transform has
+-- run, and any of them, whatever its value, `0` included, sets bicycle access
+-- on the way. It overrides `bicycle=no`, `bicycle=none`, `access=no` and
+-- `vehicle=no`, on a path, footway, track or service road alike. Upstream's
+-- graph.lua never reads these keys (only bare `mtb`, which does not reopen
+-- anything), so neither this remap's suites nor `supported_keys.txt`, which is
+-- extracted from that file, could see it. Only a real tile build shows it
+-- (tests/test_tile_build_access.py).
+--
+-- That is why `rm:no_bicycle=singletrack` (OWNER-DECISIONS 90, 91, 111) never
+-- reached the live graphs. `routemaker.singletrack` picks a way *by* its
+-- `mtb:scale` rating, the remap writes `bicycle=no`, and the parser opens the
+-- way again from the same rating. 753 of the 920 singletrack ways (461 km) were
+-- routable in the 2026-10-03 build. The other 167 were closed only because
+-- they also carry `foot=no`, so upstream's transform drops them before the
+-- parser gets to them.
+--
+-- So wherever the remap's output leaves a way closed to bicycles both ways,
+-- every `mtb:*` key is removed. It is OSM's own closure as much as ours: 27
+-- OSM-tagged `bicycle=no` / `access=no` ways in the region had been reopened
+-- the same way. A way open to bicycles keeps its ratings untouched, so the C&O
+-- towpath keeps its `mtb:scale:imba=0`. The edge is closed to bicycles, so the
+-- rating had nothing left to price, and no other mode reads it.
+M.MTB_RATING_PREFIX = "mtb:"
+
+-- What upstream's `bicycle` table reads as false, and its `access` table.
+M.BICYCLE_CLOSED = { no = true, none = true }
+M.ACCESS_CLOSED = {
+  no = true,
+  agricultural = true,
+  discouraged = true,
+  forestry = true,
+  emergency = true,
+  psv = true,
+}
+
+local function merged(tags, out, key)
+  local value = out[key]
+  if value == M.REMOVE then return nil end
+  if value ~= nil then return value end
+  return tags[key]
+end
+
+--- Whether the way, with the remap's changes applied, is closed to bicycles
+-- in both directions under upstream's own reading.
+--
+-- In upstream's order of precedence: a directional bicycle key decides its own
+-- direction, then plain `bicycle`; with neither, a cycleway key grants access,
+-- and otherwise a way-level `vehicle=no` or a closing `access` value bars it.
+-- A way with no statement at all is *not* closed here, even where its class is
+-- closed by default (a footway): there a rating is the only evidence of riding,
+-- and upstream reads it as that on purpose.
+function M.bicycle_closed(tags, out)
+  out = out or {}
+  local function closed(side)
+    local value = merged(tags, out, "bicycle:" .. side)
+    if value ~= nil then return M.BICYCLE_CLOSED[value] == true end
+    value = merged(tags, out, "bicycle")
+    if value ~= nil then return M.BICYCLE_CLOSED[value] == true end
+    for _, key in ipairs(M.CYCLEWAY_KEYS) do
+      if merged(tags, out, key) ~= nil then return false end
+    end
+    if merged(tags, out, "vehicle") == "no" then return true end
+    local access = merged(tags, out, "access")
+    return access ~= nil and M.ACCESS_CLOSED[access] == true
+  end
+  return closed("forward") and closed("backward")
+end
+
+--- Remove every mountain-bike rating from a way the remap leaves closed.
+function M.strip_mtb_ratings(tags, out)
+  if not M.bicycle_closed(tags, out) then return end
+  for key in pairs(tags) do
+    if type(key) == "string" and key:sub(1, #M.MTB_RATING_PREFIX) == M.MTB_RATING_PREFIX then
+      out[key] = M.REMOVE
+    end
+  end
 end
 
 -- Directional conditional access, for the parkway reversal.

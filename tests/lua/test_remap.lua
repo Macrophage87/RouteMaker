@@ -919,6 +919,46 @@ check("singletrack is bicycle=no",
 check("an unmarked dirt path is not",
   M.remap_way({ highway = "path", surface = "dirt" }, { is_trail_class = true, stress_tier = 1 }).bicycle == nil)
 
+-- Valhalla's C++ parser reopens a way from any mtb:* rating, whatever bicycle
+-- says (M.strip_mtb_ratings; tests/test_tile_build_access.py builds the tiles).
+local cct = {
+  highway = "path", bicycle = "yes", foot = "yes", surface = "dirt", ["mtb:scale"] = "2",
+  ["mtb:scale:imba"] = "2", ["mtb:scale:uphill"] = "1", ["mtb:description"] = "rocky", mtb = "yes",
+}
+local closed_cct = M.remap_way(cct, { no_bicycle = "singletrack", is_trail_class = true, stress_tier = 1, facility = "path" })
+for _, key in ipairs({ "mtb:scale", "mtb:scale:imba", "mtb:scale:uphill", "mtb:description" }) do
+  check("closed singletrack loses " .. key, closed_cct[key] == M.REMOVE)
+end
+check("but keeps bare mtb, which reopens nothing", closed_cct.mtb == nil)
+check("an open rated trail keeps its rating",
+  M.remap_way(cct, { is_trail_class = true, stress_tier = 1, facility = "path" })["mtb:scale"] == nil)
+check("the towpath keeps mtb:scale:imba=0",
+  M.remap_way({ highway = "path", bicycle = "designated", surface = "dirt", ["mtb:scale:imba"] = "0" },
+    { is_trail_class = true, stress_tier = 1, facility = "path" })["mtb:scale:imba"] == nil)
+check("OSM's own bicycle=no is held closed too",
+  M.remap_way({ highway = "path", bicycle = "no", foot = "yes", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
+check("and bicycle=none",
+  M.remap_way({ highway = "path", bicycle = "none", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
+check("and access=no with no bicycle tag",
+  M.remap_way({ highway = "path", access = "no", foot = "yes", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
+check("and vehicle=no",
+  M.remap_way({ highway = "path", vehicle = "no", foot = "yes", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
+check("and both directions closed one key at a time",
+  M.remap_way({ highway = "path", ["bicycle:forward"] = "no", ["bicycle:backward"] = "no", ["mtb:scale"] = "1" },
+    {})["mtb:scale"] == M.REMOVE)
+check("but not one direction alone",
+  M.remap_way({ highway = "path", ["bicycle:forward"] = "no", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
+check("nor access=no with a bicycle grant",
+  M.remap_way({ highway = "path", access = "no", bicycle = "designated", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
+check("nor access=private, which upstream keeps open",
+  M.remap_way({ highway = "track", access = "private", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
+check("nor a footway that says nothing about bicycles",
+  M.remap_way({ highway = "footway", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
+check("nor dismount, which upstream opens",
+  M.remap_way({ highway = "path", bicycle = "dismount", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
+check("a closed way with no rating is left alone",
+  next(M.remap_way({ highway = "path", bicycle = "no", foot = "yes" }, {})) == nil)
+
 -- OWNER-DECISIONS 104: a CBD sidewalk is barred to bicycles, and nothing else is.
 check("a CBD sidewalk is bicycle=no",
   M.remap_way({ highway = "footway", footway = "sidewalk", bicycle = "yes" },
