@@ -31,7 +31,9 @@ BASH = shutil.which("bash")
 
 FAKE_DOCKER = r"""#!/usr/bin/env bash
 # Fake docker. State lives in $FAKE_DIR: ps.txt ("service state health" lines),
+# ps.fail_n (fail that many `compose ps` first), ps.fail_always,
 # psql.out, psql.rc, psql.fail_n (fail that many execs first), psql.hang,
+# up.hang_<svc>, up.sleep_<svc> (seconds), stop.hang,
 # docker_up (exists = answers), never_healthy (exists), phantom/ (a stale view:
 # every bind source S is read from phantom/S instead).
 echo "$*" >>"$FAKE_DIR/calls.log"
@@ -85,7 +87,20 @@ while [ $# -gt 0 ]; do
 done
 sub=$1; shift
 case "$sub" in
-  ps) cat "$FAKE_DIR/ps.txt" ;;
+  ps)
+    [ -e "$FAKE_DIR/ps.fail_always" ] && { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
+    if [ -s "$FAKE_DIR/ps.seq" ]; then
+      read -r first rest <"$FAKE_DIR/ps.seq"
+      printf '%s' "$rest" >"$FAKE_DIR/ps.seq"
+      [ "$first" = fail ] && { echo "Cannot connect to the Docker daemon" >&2; exit 1; }
+    fi
+    n=$(cat "$FAKE_DIR/ps.fail_n" 2>/dev/null || echo 0)
+    if [ "$n" -gt 0 ]; then
+      echo $((n - 1)) >"$FAKE_DIR/ps.fail_n"
+      echo "Cannot connect to the Docker daemon" >&2
+      exit 1
+    fi
+    cat "$FAKE_DIR/ps.txt" ;;
   config) echo "docker.io/library/caddy:2.8-alpine"; echo "docker.io/postgis/postgis:16-3.4" ;;
   exec)
     [ -e "$FAKE_DIR/psql.hang" ] && exec sleep 30
@@ -98,6 +113,8 @@ case "$sub" in
     cat "$FAKE_DIR/psql.out" 2>/dev/null; exit "$(cat "$FAKE_DIR/psql.rc" 2>/dev/null || echo 0)" ;;
   up)
     svc=${*: -1}
+    [ -e "$FAKE_DIR/up.hang_$svc" ] && exec sleep 30
+    [ -e "$FAKE_DIR/up.sleep_$svc" ] && sleep "$(cat "$FAKE_DIR/up.sleep_$svc")"
     sed -i "/^$svc /d" "$FAKE_DIR/ps.txt"
     if [ "$svc" = postgis ] && [ -e "$FAKE_DIR/never_healthy" ]; then
       echo "postgis running starting" >>"$FAKE_DIR/ps.txt"
@@ -106,7 +123,9 @@ case "$sub" in
     else
       echo "$svc running " >>"$FAKE_DIR/ps.txt"
     fi ;;
-  stop) for s in "$@"; do sed -i "/^$s /d" "$FAKE_DIR/ps.txt"; done ;;
+  stop)
+    [ -e "$FAKE_DIR/stop.hang" ] && exec sleep 30
+    for s in "$@"; do sed -i "/^$s /d" "$FAKE_DIR/ps.txt"; done ;;
 esac
 exit 0
 """
@@ -180,6 +199,7 @@ class FakeHost(unittest.TestCase):
             "BOOT_POSTGIS_HEALTHY_S": "1",
             "BOOT_SMOKE_S": "1",
             "BOOT_SANE_GAP_S": "0.1",
+            "BOOT_SNAP_GAP_S": "0.1",
             **overrides,
         }
 
@@ -264,6 +284,24 @@ class StartStackTests(FakeHost):
         self.addCleanup(late.wait)
         done = self.run_script(BOOT_WAIT_PREREQ_S="10", BOOT_SMOKE_S="2")
         self.assertEqual(done.returncode, 0, done.stdout)
+
+    def test_the_bind_check_gets_only_what_is_left_of_the_shared_budget(self) -> None:
+        # A path that appears 5 s into a 6 s budget, then a phantom that never
+        # clears: the bind check gets the ~1 s that is left, not a fresh 6 s.
+        shutil.rmtree(self.data / "tiles" / "weekend")
+        self.make_phantom()
+        late = subprocess.Popen(
+            [BASH, "-c", f"sleep 5; mkdir -p '{self.data}/tiles/weekend'"]
+        )
+        self.addCleanup(late.wait)
+        started = time.monotonic()
+        done = self.run_script(BOOT_WAIT_PREREQ_S="6")
+        elapsed = time.monotonic() - started
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("is not the real one after 6s", done.stdout)
+        self.assertIn("all 16 bind dirs exist", done.stdout)
+        self.assertLess(elapsed, 8.5, "the bind check was given a fresh budget")
+        self.assertEqual(self.mutating(), [])
 
     def test_refuses_without_an_env_file(self) -> None:
         self.env_file.unlink()
@@ -428,6 +466,65 @@ class StartStackTests(FakeHost):
         self.assertEqual(done.returncode, 1, done.stdout)
         self.assertIn("psql failed", done.stdout)
 
+    def execs(self) -> list[str]:
+        return [c for c in self.calls() if c.startswith("compose") and " exec " in c]
+
+    def test_a_slow_first_query_after_the_recreate_is_retried(self) -> None:
+        # Cold page cache right after a reboot: the first two queries fail.
+        (self.fake / "psql.fail_n").write_text("2")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertIn("try 2 of 3", done.stdout)
+        self.assertEqual(self.ups(), ALL_SERVICES)
+        self.assertEqual(len(self.execs()), 3)
+
+    def test_an_empty_cluster_after_the_recreate_fails_every_try(self) -> None:
+        (self.fake / "psql.out").write_text("0 0")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("EMPTY", done.stdout)
+        self.assertEqual(len(self.execs()), 3, "all three tries are spent before the abort")
+        self.assertEqual(self.ups(), ["postgis"])
+        self.assertNotIn("postgis running", (self.fake / "ps.txt").read_text())
+
+    def test_a_mutating_call_that_times_out_dies_clearly(self) -> None:
+        (self.fake / "up.hang_caddy").write_text("")
+        started = time.monotonic()
+        done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="1")
+        self.assertLess(time.monotonic() - started, 25)
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("did not finish within 1s", done.stdout)
+        self.assertIn("_routemaker-", done.stdout)
+        self.assertNotIn("unexpected error", done.stdout)
+        self.assertEqual(self.ups(), ["postgis", "caddy"], "nothing after the timed-out call is started")
+        self.assertTrue(self.status().startswith("FAILED"))
+        self.assertIn("did not finish", self.status())
+
+    def test_the_routers_and_photon_get_the_longer_limit(self) -> None:
+        for svc in ("valhalla-ebike", "photon"):
+            (self.fake / f"up.sleep_{svc}").write_text("2")
+        done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="1", BOOT_SLOW_COMPOSE_TIMEOUT_S="6")
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertEqual(self.ups(), ALL_SERVICES)
+
+    def test_the_other_services_keep_the_short_limit(self) -> None:
+        (self.fake / "up.sleep_api").write_text("3")
+        done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="1", BOOT_SLOW_COMPOSE_TIMEOUT_S="6")
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("up -d --no-deps --force-recreate api' did not finish within 1s", done.stdout)
+
+    def test_a_timed_out_stop_on_the_abort_path_keeps_the_abort_message(self) -> None:
+        (self.fake / "psql.out").write_text("0 0")
+        write_exec(
+            self.fake / "docker",
+            FAKE_DOCKER.replace('  up)\n', '  up)\n    touch "$FAKE_DIR/stop.hang"\n'),
+        )
+        done = self.run_script(BOOT_COMPOSE_TIMEOUT_S="1")
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("EMPTY", done.stdout)
+        self.assertIn("stopping postgis failed", done.stdout)
+        self.assertIn("EMPTY", self.status())
+
     # ---- warm path
 
     def test_warm_stack_is_left_alone(self) -> None:
@@ -473,6 +570,71 @@ class StartStackTests(FakeHost):
         done = self.run_script("--force-recreate-all")
         self.assertEqual(done.returncode, 0, done.stdout)
         self.assertIn("mode: COLD", done.stdout)
+        self.assertEqual(self.ups(), ALL_SERVICES)
+
+    # ---- a failed `compose ps` is never "nothing running"
+
+    def test_ps_failing_twice_while_rebuild_runs_mutates_nothing(self) -> None:
+        self.warm()
+        (self.fake / "ps.fail_n").write_text("2")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertIn("ps failed (try 2 of 3)", done.stdout)
+        self.assertIn("mode: WARM", done.stdout)
+        self.assertEqual(self.mutating(), [])
+        self.assertEqual([c for c in self.calls() if c.startswith("run ")], [])
+
+    def test_ps_failing_twice_still_lets_the_rebuild_guard_see_rebuild(self) -> None:
+        # Sanity fails too, so the mode is COLD: the guard must still fire.
+        self.warm()
+        (self.fake / "ps.fail_n").write_text("2")
+        (self.fake / "psql.fail_n").write_text("3")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("rebuild is running", done.stdout)
+        self.assertEqual(self.mutating(), [])
+
+    def test_the_mode_comes_from_the_ps_that_succeeded(self) -> None:
+        # One good ps, then failures: no second ps may decide the mode.
+        self.warm()
+        text = (self.fake / "ps.txt").read_text().replace("rebuild running \n", "rebuild exited \n")
+        (self.fake / "ps.txt").write_text(text)
+        (self.fake / "ps.seq").write_text("ok fail fail fail fail")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertIn("mode: WARM", done.stdout)
+        self.assertEqual(self.ups(), ["rebuild"])
+        self.assertNotIn("stop", " ".join(self.mutating()))
+
+    def test_persistent_ps_failure_on_a_warm_stack_mutates_nothing(self) -> None:
+        self.warm()
+        (self.fake / "ps.fail_always").write_text("")
+        done = self.run_script()
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("cannot read stack state", done.stdout)
+        self.assertNotIn("mode:", done.stdout)
+        self.assertEqual(self.mutating(), [])
+        self.assertEqual([c for c in self.calls() if c.startswith("run ")], [])
+        self.assertEqual(len([c for c in self.calls() if c.startswith("compose") and " ps " in c]), 3)
+        self.assertTrue(self.status().startswith("FAILED"))
+        self.assertIn("running", (self.fake / "ps.txt").read_text())
+
+    def test_persistent_ps_failure_with_warm_only_is_the_same(self) -> None:
+        self.warm()
+        (self.fake / "ps.fail_always").write_text("")
+        done = self.run_script("--warm-only")
+        self.assertEqual(done.returncode, 1, done.stdout)
+        self.assertIn("cannot read stack state", done.stdout)
+        self.assertEqual(self.mutating(), [])
+
+    def test_a_failed_ps_while_waiting_for_healthy_keeps_polling(self) -> None:
+        write_exec(
+            self.fake / "docker",
+            FAKE_DOCKER.replace('  up)\n', '  up)\n    [ "${*: -1}" = postgis ] && echo 2 >"$FAKE_DIR/ps.fail_n"\n'),
+        )
+        done = self.run_script(BOOT_POSTGIS_HEALTHY_S="10")
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertIn("postgis state unknown, still waiting", done.stdout)
         self.assertEqual(self.ups(), ALL_SERVICES)
 
     # ---- --warm-only (for a later watchdog)
@@ -706,15 +868,26 @@ class StaticChecks(unittest.TestCase):
             assert m is not None, name
             return int(m.group(1))
 
-        compose_calls = 2 + len(re.search(r"START_ORDER=\((.*?)\)", script, re.S).group(1).split()) + 1
+        def array(name: str) -> list[str]:
+            m = re.search(rf"{name}=\((.*?)\)", script, re.S)
+            assert m is not None, name
+            return m.group(1).split()
+
+        start = array("START_ORDER")
+        slow = [s for s in start if s in array("SLOW_SERVICES")]
+        self.assertTrue(slow)
+        sanity = (default("SANE_TRIES") * default("EXEC_TIMEOUT_S")
+                  + (default("SANE_TRIES") - 1) * default("SANE_GAP_S"))
         worst = (
-            default("WAIT_PREREQ_S") + 3 * 60 + default("POLL_S")      # shared budget + last probe
-            + 2 * 30                                                   # snapshots
-            + default("SANE_TRIES") * default("EXEC_TIMEOUT_S")
-            + (default("SANE_TRIES") - 1) * default("SANE_GAP_S")
-            + compose_calls * default("COMPOSE_TIMEOUT_S")
+            # shared budget, a 60 s `docker info` past its end, one full bind check
+            default("WAIT_PREREQ_S") + 60 + 3 * 60 + default("POLL_S")
+            + default("SNAP_TRIES") * 30 + (default("SNAP_TRIES") - 1) * default("SNAP_GAP_S")
+            + sanity                                                   # before the mode
+            + 2 * default("COMPOSE_TIMEOUT_S")                         # stop clients, postgis
+            + (len(start) - len(slow)) * default("COMPOSE_TIMEOUT_S")
+            + len(slow) * default("SLOW_COMPOSE_TIMEOUT_S")
             + default("POSTGIS_HEALTHY_S") + 30 + default("POLL_S")
-            + default("EXEC_TIMEOUT_S")
+            + sanity                                                   # after the recreate
             + default("SMOKE_S") + 3 * 90 + default("POLL_S")
         )
         unit = UNIT_IN.read_text()

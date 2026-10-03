@@ -1455,8 +1455,10 @@ empty cluster looks healthy.
       race. Nothing has been stopped yet if this fails.
    4. COLD only: stop api, worker and rebuild; force-recreate postgis alone
       (`up -d --no-deps --force-recreate`); wait for healthy; require migrations
-      >= 68 and `live.segment` >= 1,000,000 rows, and **abort without starting
-      anything else** if not (the bind-race signature).
+      >= 68 and `live.segment` >= 1,000,000 rows (asked up to 3 times, since the
+      first query after a reboot reads a cold cache; an empty cluster fails all
+      3), and **abort without starting anything else** if not (the bind-race
+      signature).
    5. Start caddy, the four routers, api, worker, rebuild, photon (recreated when
       COLD, only the stopped ones when WARM).
    6. Route, geocode and the stress tile must return 200, and the tile must not
@@ -1480,6 +1482,28 @@ it would do), and run it without the flag only if the dry run says WARM or you
 mean a full restart. A second run while one is in progress is refused and
 writes nothing.
 
+If `docker compose ps` fails (Docker slow to answer under the memory squeeze),
+the script never reads that as "nothing running": it tries 3 times, about 10 s
+apart, and then stops with "cannot read stack state" having changed nothing.
+While it waits for postgis to turn healthy, a failed `ps` just means "keep
+waiting".
+
+**A compose call that times out.** Each mutating compose call has a time limit
+(120 s; 300 s for the four routers and photon, whose recreate is slow). If one
+hits it, the script stops with a message naming the call, and starts nothing
+after it. Compose killed in the middle of a recreate can leave the old
+container behind under a renamed `<hash>_routemaker-<service>-1` name, which
+then blocks the next recreate. Before rerunning, look for one and remove it:
+
+```sh
+docker ps -a --format '{{.Names}}  {{.Status}}' | grep '_routemaker-'
+docker rm <hash>_routemaker-<service>-1      # the exact name printed above; it holds no data
+scripts/boot/start-stack.sh --dry-run        # then rerun for real
+```
+
+Use `docker rm -f` only if that leftover is still running and the service's
+proper `routemaker-<service>-1` container is not.
+
 `--warm-only` is for a later watchdog timer: it never takes the COLD path. If
 postgis is running, healthy and sane it starts the services that are stopped;
 otherwise it exits 3 and changes nothing.
@@ -1487,14 +1511,29 @@ otherwise it exits 3 and changes nothing.
 Tune the expectations with `BOOT_EXPECT_MIGRATIONS` (default 68; raise it when a
 migration lands) and `BOOT_MIN_SEGMENTS` (default 1000000).
 
+**Landing the change.** `main` is protected: it takes only fast-forwards to
+commits whose CI `test` check is green, and the owner pushes it. So the boot
+scripts reach the serving checkout through `main`, never by merging a work
+branch into it locally:
+
+1. Push the branch, open a PR to `main`, and wait for CI `test` to go green;
+   then the owner merges it.
+2. In the checkout that serves the stack:
+   `git fetch origin && git merge --ff-only origin/main`. This also brings in
+   whatever else has landed on `main` since that checkout was last updated.
+   Running containers are not affected until images are rebuilt; only the
+   Caddyfile, `valhalla/` and `lua/` are bind-mounted from the checkout.
+
 **Install** (as the user, from the checkout that serves the stack). Do the whole
 list in one sitting, before the next reboot: after `policy no`, nothing starts
-the stack at boot until the unit is installed and linger is on.
+the stack at boot until the unit is installed and linger is on. The dry run
+comes first because it is read-only: see WARM before changing anything.
 
 ```sh
+grep -q '^COMPOSE_PROJECT_NAME=' .env || echo 'COMPOSE_PROJECT_NAME is missing; add it first'
+scripts/boot/start-stack.sh --dry-run            # read-only: should say mode: WARM
 scripts/boot/install-boot-unit.sh policy no      # in place, no restart: stops the NEXT boot racing
 grep -q '^RESTART_POLICY=' .env || printf 'RESTART_POLICY=no\n' >> .env   # so later recreates keep it
-scripts/boot/start-stack.sh --dry-run            # read-only: should say mode: WARM
 scripts/boot/install-boot-unit.sh install        # renders, verifies, enables; does not start
 sudo loginctl enable-linger steph                # the one sudo step: run the unit with no login
 scripts/boot/install-boot-unit.sh status         # unit, linger, last result, log tail
@@ -1520,8 +1559,19 @@ That is a contingency, untested here, and a persistent Windows-side change for
 the owner to approve. Docker Desktop's WSL integration normally starts the
 distro already.
 
-Remove: `scripts/boot/install-boot-unit.sh uninstall`, delete `RESTART_POLICY=no`
-from `.env` and run `scripts/boot/install-boot-unit.sh policy unless-stopped`.
+**Remove**, from the checkout that serves the stack:
+
+```sh
+scripts/boot/install-boot-unit.sh uninstall
+sed -i '/^RESTART_POLICY=no$/d' .env
+scripts/boot/install-boot-unit.sh policy unless-stopped   # migrate stays no
+sudo loginctl disable-linger steph   # optional, sudo; only if nothing else needs linger
+```
+
+To take the code out as well, open a revert PR to `main`, let CI `test` go
+green and merge it, then `git fetch origin && git merge --ff-only origin/main`
+in the serving checkout. Leftovers, safe to delete: `${DATA_ROOT}/.boot-token`
+and `/home/steph/rmdata/boot/`.
 
 Tests: `python3 -m unittest tests.test_boot_scripts` (fake `docker` and `curl`,
 a temporary DATA_ROOT; nothing live is touched).

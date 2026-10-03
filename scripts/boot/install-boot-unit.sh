@@ -89,7 +89,7 @@ cmd_uninstall() {
   systemctl --user daemon-reload
   echo "removed $UNIT. Containers were not touched."
   echo "To return Docker to auto-starting the stack at boot (the racy default):"
-  echo "    remove RESTART_POLICY=no from .env, then: $0 policy unless-stopped"
+  echo "    sed -i '/^RESTART_POLICY=no\$/d' .env && $0 policy unless-stopped"
   echo "Lingering is separate: sudo loginctl disable-linger $USER_NAME (only if nothing else needs it)."
 }
 

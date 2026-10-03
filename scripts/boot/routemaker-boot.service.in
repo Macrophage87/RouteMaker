@@ -13,18 +13,22 @@ RemainAfterExit=yes
 WorkingDirectory=@REPO@
 ExecStart=@REPO@/scripts/boot/start-stack.sh
 # Worst case of the script's own bounds, in seconds (defaults):
-#   Docker + bind paths + bind check, one shared budget   900
-#     plus the last probe running over it (3 x 60) + poll  185
-#   two 30 s ps snapshots before the mode is decided        60
-#   postgis sanity, 3 tries of a 60 s exec + 2 x 15 s gaps 210
-#   up to 12 mutating compose calls of at most 120 each  1440
-#   postgis healthy 300 + one 30 s ps + poll               335
-#   final sanity exec                                       60
-#   smoke 300 + one round of 3 x 90 s requests + poll      575
-#   total                                                 3765
-# This backstop sits above that. If it fires, systemd sends SIGTERM and the
-# script records FAILED in last-status before it exits.
-TimeoutStartSec=4200
+#   Docker + bind paths + bind check, one shared budget        900
+#     plus a 60 s `docker info` running past its end, then
+#     one full bind-check attempt (3 x 60), plus one poll       245
+#   ps for the mode, 3 tries of 30 s + 2 x 10 s gaps           110
+#   postgis sanity, 3 tries of a 60 s exec + 2 x 15 s gaps     210
+#   the 11 mutating compose calls of the longest path:
+#     stop + postgis + caddy, api, worker, rebuild at 120,
+#     4 routers + photon at 300                               2220
+#   postgis healthy 300 + one 30 s ps + poll                   335
+#   sanity after the recreate, retried like the one above      210
+#   smoke 300 + one round of 3 x 90 s requests + poll          575
+#   total                                                     4805
+# (An abort path's best-effort `stop postgis` replaces the starts, so it is
+# covered.) This backstop sits above that. If it fires, systemd sends SIGTERM
+# and the script records FAILED in last-status before it exits.
+TimeoutStartSec=5400
 # A failure is deliberate (empty postgis, missing paths): do not retry in a loop.
 Restart=no
 

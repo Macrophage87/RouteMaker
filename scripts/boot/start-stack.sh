@@ -47,11 +47,18 @@
 #   BOOT_DOCKER, BOOT_CURL, BOOT_BASE_URL, BOOT_POLL_S, BOOT_WAIT_PREREQ_S (900,
 #   shared by the Docker, path and bind checks), BOOT_POSTGIS_HEALTHY_S (300),
 #   BOOT_SMOKE_S (300), BOOT_SANE_TRIES (3), BOOT_SANE_GAP_S (15),
-#   BOOT_COMPOSE_TIMEOUT_S (120, per mutating compose call), BOOT_EXEC_TIMEOUT_S (60),
+#   BOOT_COMPOSE_TIMEOUT_S (120, per mutating compose call),
+#   BOOT_SLOW_COMPOSE_TIMEOUT_S (300, per call for the routers and photon),
+#   BOOT_EXEC_TIMEOUT_S (60), BOOT_SNAP_TRIES (3), BOOT_SNAP_GAP_S (10),
 #   BOOT_EXPECT_MIGRATIONS (68), BOOT_MIN_SEGMENTS (1000000), BOOT_DATA_ROOT,
 #   COMPOSE_PROJECT (must equal COMPOSE_PROJECT_NAME in .env if set).
+# A `docker compose ps` that fails is never read as "nothing running": the
+# mode is decided only from a ps that succeeded (BOOT_SNAP_TRIES tries), else
+# the run dies "cannot read stack state" having changed nothing. A mutating
+# compose call that hits its time limit dies with a message naming it.
 # Exit: 0 ok; 1 aborted before the stack was started (or prereq timeout, or a
-#       concurrent run, or refused COLD); 2 started but a smoke check failed;
+#       concurrent run, or refused COLD, or the stack state could not be read,
+#       or a compose call timed out); 2 started but a smoke check failed;
 #       3 --warm-only and the stack is not warm; 64 bad arguments; 143 SIGTERM.
 
 set -Eeuo pipefail
@@ -74,7 +81,10 @@ SMOKE_S=${BOOT_SMOKE_S:-300}
 SANE_TRIES=${BOOT_SANE_TRIES:-3}
 SANE_GAP_S=${BOOT_SANE_GAP_S:-15}
 COMPOSE_TIMEOUT_S=${BOOT_COMPOSE_TIMEOUT_S:-120}
+SLOW_COMPOSE_TIMEOUT_S=${BOOT_SLOW_COMPOSE_TIMEOUT_S:-300}
 EXEC_TIMEOUT_S=${BOOT_EXEC_TIMEOUT_S:-60}
+SNAP_TRIES=${BOOT_SNAP_TRIES:-3}
+SNAP_GAP_S=${BOOT_SNAP_GAP_S:-10}
 EXPECT_MIGRATIONS=${BOOT_EXPECT_MIGRATIONS:-68}
 MIN_SEGMENTS=${BOOT_MIN_SEGMENTS:-1000000}
 
@@ -87,6 +97,9 @@ START_ORDER=(caddy valhalla-standard valhalla-no-trail valhalla-ebike valhalla-w
   api worker rebuild photon)
 # Services that hold database connections; stopped first on the COLD path.
 DB_CLIENTS=(api worker rebuild)
+# Services whose (re)create is slow (large tile sets, a big index): each of
+# their mutating compose calls gets SLOW_COMPOSE_TIMEOUT_S instead.
+SLOW_SERVICES=(valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend photon)
 
 DRY_RUN=0
 FORCE_ALL=0
@@ -176,14 +189,31 @@ dc() {
     --project-directory "$REPO_DIR" --env-file "$ENV_FILE" \
     -f "$REPO_DIR/compose.yaml" "$@" </dev/null
 }
-# Mutating compose call: skipped under --dry-run.
+# Mutating compose call: skipped under --dry-run. One that hits its time limit
+# (timeout's exit 124) dies with a clear message: compose was killed part-way,
+# and a recreate killed part-way can leave a renamed <hash>_<project>-... container
+# behind. MUTATE_NO_DIE=1 returns 124 instead (for the best-effort stop on an
+# abort path, whose own message matters more).
 mutate() {
   if [ "$DRY_RUN" = 1 ]; then
     log "DRYRUN: docker compose $*"
     return 0
   fi
   log "+ docker compose $*"
-  dc "$@"
+  local rc=0 limit=${DC_T:-$COMPOSE_TIMEOUT_S}
+  dc "$@" || rc=$?
+  if [ "$rc" = 124 ] && [ "${MUTATE_NO_DIE:-0}" != 1 ]; then
+    die "'docker compose $*' did not finish within ${limit}s and was killed; the stack may be part-started. Check 'docker compose ps -a'; a leftover container named <hash>_${PROJECT}-... may need 'docker rm' (see docs/DEPLOYMENT.md), then rerun."
+  fi
+  return "$rc"
+}
+# compose_limit SERVICE: the per-call time limit for a mutating call on SERVICE.
+compose_limit() {
+  local s
+  for s in "${SLOW_SERVICES[@]}"; do
+    [ "$s" = "$1" ] && { printf '%s' "$SLOW_COMPOSE_TIMEOUT_S"; return; }
+  done
+  printf '%s' "$COMPOSE_TIMEOUT_S"
 }
 
 # The shared prerequisite deadline (Docker, paths, bind checks).
@@ -239,14 +269,38 @@ bind_is_real() {
 }
 
 # "service state health" lines for every container of the project.
+# snapshot is non-zero when ps fails or times out, and then leaves SNAPSHOT as
+# it was: a failed ps is "state unknown", never "nothing is running".
 SNAPSHOT=""
-snapshot() { SNAPSHOT=$(DC_T=30 dc ps --all --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true); }
+snapshot() {
+  local out
+  out=$(DC_T=30 dc ps --all --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null) || return 1
+  SNAPSHOT=$out
+}
+# For the mode decision: up to SNAP_TRIES tries, SNAP_GAP_S apart.
+snapshot_retried() {
+  local i
+  for ((i = 1; i <= SNAP_TRIES; i++)); do
+    snapshot && return 0
+    if ((i < SNAP_TRIES)); then
+      log "docker compose ps failed (try $i of $SNAP_TRIES); retrying in ${SNAP_GAP_S}s"
+      sleep "$SNAP_GAP_S"
+    fi
+  done
+  return 1
+}
 svc_state() { awk -v s="$1" '$1 == s { print $2; exit }' <<<"$SNAPSHOT"; }
 svc_health() { awk -v s="$1" '$1 == s { print $3; exit }' <<<"$SNAPSHOT"; }
 is_running() { [ "$(svc_state "$1")" = running ]; }
+# From the snapshot already taken (no new ps).
+postgis_healthy_now() { is_running postgis && [ "$(svc_health postgis)" = healthy ]; }
+# For polling after the recreate: a failed ps is "unknown, keep polling".
 postgis_healthy() {
-  snapshot
-  is_running postgis && [ "$(svc_health postgis)" = healthy ]
+  if ! snapshot; then
+    log "docker compose ps failed; postgis state unknown, still waiting"
+    return 1
+  fi
+  postgis_healthy_now
 }
 
 # Prints "MIGRATIONS SEGMENTS" (diagnostics go to stderr, which is logged too). Non-zero if postgis cannot answer within the exec timeout
@@ -313,11 +367,14 @@ wait_until "$(prereq_left)" docker_answers || die "Docker did not answer within 
 wait_until "$(prereq_left)" paths_exist || die "bind paths still missing after ${WAIT_PREREQ_S}s: $(missing_dirs)"
 log "docker answers; all ${#REQUIRED_DIRS[@]} bind dirs exist"
 
-snapshot
+# The mode is decided from one ps that succeeded. Nothing has been changed yet,
+# so if ps cannot be read the run stops here.
+snapshot_retried ||
+  die "cannot read stack state: docker compose ps failed $SNAP_TRIES times. Nothing changed (a failed ps is not read as an empty stack). Check Docker, then rerun."
 log "current state: $(tr '\n' ';' <<<"$SNAPSHOT")"
 
 MODE=COLD
-if postgis_healthy && db_sane_retried; then MODE=WARM; fi
+if postgis_healthy_now && db_sane_retried; then MODE=WARM; fi
 log "mode: $MODE"
 
 if [ "$MODE" = COLD ] && [ "$WARM_ONLY" = 1 ]; then
@@ -349,11 +406,13 @@ if [ "$MODE" = COLD ]; then
   if [ "$DRY_RUN" = 0 ]; then
     log "waiting up to ${POSTGIS_HEALTHY_S}s for postgis healthy"
     if ! wait_until "$POSTGIS_HEALTHY_S" postgis_healthy; then
-      mutate stop postgis || true
+      MUTATE_NO_DIE=1 mutate stop postgis || log "WARN: stopping postgis failed; stop it by hand"
       die "postgis not healthy within ${POSTGIS_HEALTHY_S}s; NOT starting the rest"
     fi
-    if ! db_sane; then
-      mutate stop postgis || true
+    # Retried like the WARM check: the first query after a reboot reads a cold
+    # page cache. An empty or short cluster fails every try, so this stays closed.
+    if ! db_sane_retried; then
+      MUTATE_NO_DIE=1 mutate stop postgis || log "WARN: stopping postgis failed; stop it by hand"
       die "postgis is up but EMPTY or short (bind-race signature: migrations or segments below expectation). Rest of the stack NOT started; postgis stopped. Check ls $DATA_ROOT/postgres and the Docker Desktop WSL integration, then rerun."
     fi
     log "postgis verified"
@@ -364,11 +423,11 @@ fi
 
 for svc in "${START_ORDER[@]}"; do
   if [ "$MODE" = COLD ] || [ "$FORCE_ALL" = 1 ]; then
-    mutate up -d --no-deps --force-recreate "$svc"
+    DC_T=$(compose_limit "$svc") mutate up -d --no-deps --force-recreate "$svc"
   elif is_running "$svc"; then
     log "$svc already running; left alone"
   else
-    mutate up -d --no-deps "$svc"
+    DC_T=$(compose_limit "$svc") mutate up -d --no-deps "$svc"
   fi
 done
 
