@@ -81,7 +81,28 @@ def test_way_straddling_a_line_reports_both_with_shares(authorities) -> None:
     way = LineString((-77.02, 38.90), (-76.98, 38.90), srid=4326)
     police = {a.authority: a.fraction for a in assign_way(way) if a.layer == "police"}
     assert set(police) == {"MPD", "Arlington County Police"}
-    assert police["MPD"] == pytest.approx(0.5, abs=0.05)
+    # The way is split exactly at -77.00 along one latitude, so each half is
+    # 0.5 to well within 1e-6; a loose tolerance let a share inflated by 4%
+    # through, and no share of one way may exceed the whole of it.
+    assert police["MPD"] == pytest.approx(0.5, abs=1e-6)
+    assert police["Arlington County Police"] == pytest.approx(0.5, abs=1e-6)
+    assert all(0.0 <= share <= 1.0 for share in police.values()), police
+
+
+def test_way_lying_on_a_shared_boundary_is_wholly_inside_both(authorities) -> None:
+    """A way along the shared edge - Eastern Avenue, say - lies in both police
+    polygons, so each gets the whole of it. GEOS 3.9.0 intersects it to
+    LINESTRING EMPTY against both, which scored 0.0 for each and left the name
+    tiebreak to tag it with one authority. ST_CoveredBy is the predicate this
+    needs: ST_Within is false for a line lying in the polygon's boundary."""
+    from pipeline.jurisdiction import assign_way
+
+    way = LineString((-77.00, 38.89), (-77.00, 38.91), srid=4326)
+    police = {a.authority: a.fraction for a in assign_way(way) if a.layer == "police"}
+    assert police == {
+        "MPD": pytest.approx(1.0, abs=1e-9),
+        "Arlington County Police": pytest.approx(1.0, abs=1e-9),
+    }
 
 
 def test_all_three_layers_are_assigned(authorities) -> None:
