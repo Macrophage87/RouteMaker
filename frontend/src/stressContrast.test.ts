@@ -414,3 +414,21 @@ test("the legend swatch and the stress bar take their border from --swatch-borde
     assert.match(body, /border:\s*1px solid var\(--swatch-border\)/, selector);
   }
 });
+
+test("the faint edge is at least a pixel wide each side, not a hairline the antialiasing loses", () => {
+  assert.ok(FAINT.edgePx >= 1);
+});
+
+test("the map adds the route's halo between its casing and its sections, coloured by the feature, and the legend draws it too", () => {
+  const mapView = readFileSync(new URL("./MapView.tsx", import.meta.url), "utf8");
+  const at = (id: string) => mapView.indexOf(`id: "${id}"`);
+  assert.ok(at("route-casing") >= 0 && at("route-casing") < at("route-halo") && at("route-halo") < at("route-stress"));
+  const halo = mapView.slice(at("route-halo"), at("route-stress"));
+  assert.match(halo, /"line-color": \["get", "halo"\]/);
+  assert.match(halo, /"line-width": ROUTE_HALO_WIDTH/);
+  const legendSource = readFileSync(new URL("./FacilityBreakdown.tsx", import.meta.url), "utf8");
+  const casingAt = legendSource.indexOf("stroke={casing}");
+  const haloAt = legendSource.indexOf("stroke={row.halo}");
+  const colourAt = legendSource.indexOf("stroke={row.color}");
+  assert.ok(casingAt >= 0 && casingAt < haloAt && haloAt < colourAt, "casing, then halo, then the section's colour");
+});

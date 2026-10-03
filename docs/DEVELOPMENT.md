@@ -3112,3 +3112,9 @@ reads as a hairline outline rather than as a tint.
 `.stress-bar`: 3.97:1 and 5.4:1 on `--bg`, 3.60:1 and 4.65:1 on `--bg-soft`. `--border`
 (1.49:1 and 1.68:1) is unchanged, since it is also the panels' and inputs' border; the
 switch still sets the swatch borders to the text colour, and forced colours to CanvasText.
+
+Mutant pass on these changes (20 single-line mutants of the halo colours, the halo
+opacity and wiring, the faint edge's colour, opacity, width, gap and alley rule, the
+swatch tokens and the bar's border, the legend and the map layer): 17 killed at once;
+the 3 survivors (the edge's width, the legend's halo stroke, the map layer's halo
+colour) each got a test (`stressContrast.test.ts`) and are now killed.
