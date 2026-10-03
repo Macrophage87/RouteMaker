@@ -93,8 +93,8 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.equal(panelView("default", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   const top = panelView("default", dials, { ...dials, stress: 100 }).traffic.note ?? "";
   assert.match(top, /^Calm detour: up to about 10 mi \(16 km\) of extra riding for every mile of busy road \(LTS 3\)/);
-  assert.match(top, /twice that for a heavy-traffic road \(LTS 4\) and three times for a road best avoided/);
-  assert.match(top, /many times the straight line/);
+  assert.match(top, /Twice that for a heavy-traffic road \(LTS 4\)\. Three times that for a road best avoided\./);
+  assert.match(top, /many times the straight-line distance/);
   // Miles first, to a tenth below ten miles, and a rate that rises with the position.
   assert.match(calmNote(90) ?? "", /about 1\.8 mi \(2\.9 km\)/);
   assert.match(calmNote(85) ?? "", /about 0\.6 mi \(1\.0 km\)/);
@@ -122,4 +122,16 @@ test("Trailmaxxing's note says in plain words that it favors trails and may add 
 
 test("the slider's right-hand label is the calm end", () => {
   assert.deepEqual(panelView("default", startDials("default")).traffic.ends, ["Traffic tolerant", "Balanced", "Calm at any cost"]);
+});
+
+test("the calm note is short sentences, since a screen reader hears it as the slider's description at every step", () => {
+  for (const stress of [85, 90, 95, 100]) {
+    for (const preset of ["default", "trailmaxxing"] as const) {
+      const note = calmNote(stress, preset) ?? "";
+      assert.ok(note.length > 0, `${preset} ${stress}`);
+      for (const sentence of note.split(/(?<=\.)\s+/)) {
+        assert.ok(sentence.split(/\s+/).length <= 25, `${preset} ${stress}: "${sentence}"`);
+      }
+    }
+  }
 });

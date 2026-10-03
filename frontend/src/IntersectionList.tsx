@@ -32,10 +32,18 @@ export function IntersectionList({ route, onSelect }: Props) {
           <ul className="junction-list" aria-label="Stressful junctions, in route order">
             {items.map((item) => (
               <li key={item.index}>
-                <button type="button" className={`junction-item junction-${item.severity}`} onClick={() => onSelect(item.index)}>
+                <button
+                  type="button"
+                  className={`junction-item junction-${item.severity}`}
+                  data-junction-index={item.index}
+                  onClick={() => onSelect(item.index)}
+                >
                   <span className="junction-icon" aria-hidden="true" dangerouslySetInnerHTML={{ __html: warningIconSvg(item.severity, 18) }} />
                   <span className="junction-severity">{item.severityText}</span>
+                  {/* Heard as "Higher stress, At (the distance): (the reason)". */}
+                  <span className="visually-hidden">, </span>
                   <span className="junction-where">{item.where}</span>
+                  <span className="visually-hidden">: </span>
                   <span className="junction-reason">{item.reason}</span>
                 </button>
               </li>

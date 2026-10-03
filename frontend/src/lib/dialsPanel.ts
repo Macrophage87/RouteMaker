@@ -59,12 +59,14 @@ export function calmNote(stress: number, preset?: PresetId): string | undefined 
   if (rate <= 0) return undefined;
   const trails =
     preset !== undefined && favorsTrails(preset)
-      ? " Trailmaxxing also favors trails, so it may add miles to ride one; that pull fades as the slider comes down."
+      ? " Trailmaxxing also favors trails, so it may add miles to ride one. That pull fades as the slider comes down."
       : "";
+  // Short sentences (a11y review of integrate-2: one 49-word sentence, which
+  // changes at every step and is the slider's description).
   return (
-    `Calm detour: up to about ${formatPerMile(rate)} of extra riding for every mile of busy road (LTS 3) ` +
-    "avoided, twice that for a heavy-traffic road (LTS 4) and three times for a road best avoided. " +
-    "The route can be many times the straight line, and says how much longer it is." +
+    `Calm detour: up to about ${formatPerMile(rate)} of extra riding for every mile of busy road (LTS 3) avoided. ` +
+    "Twice that for a heavy-traffic road (LTS 4). Three times that for a road best avoided. " +
+    "The route can be many times the straight-line distance. The route summary says how much longer it is." +
     trails
   );
 }

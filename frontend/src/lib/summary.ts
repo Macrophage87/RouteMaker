@@ -129,12 +129,46 @@ export function detourNotice(
   return detourView(route, points)?.text ?? null;
 }
 
-/** What a screen reader hears when a route arrives. */
-export function announceRoute(route: RouteResponse): string {
-  return (
+/**
+ * The detour notice as a screen reader hears it with the route: its tier in a
+ * word and how much longer, in a sentence (a11y review of integrate-2, 4.1.3:
+ * a rider moving the slider to the top was not told the route is 2.4 times the
+ * direct distance). "times", not "×", which is read as "multiplication sign".
+ * The notice itself, with its advice, is in the summary.
+ */
+export function detourSaid(
+  route: Pick<RouteResponse, "distance_m" | "preset" | "detour" | "dials">,
+  points: readonly LonLat[],
+): string | null {
+  const view = detourView(route, points);
+  if (view === null) return null;
+  const found = route.detour;
+  if (found && found.basis === "direct_route" && route.preset !== "mass-ride" && found.level !== null) {
+    const ratio = found.ratio ?? route.distance_m / Math.max(found.reference_m, 1);
+    const tier = { note: "Note", warning: "Warning", strong: "Strong warning" }[found.level];
+    return `${tier}: ${ratioText(ratio, found.level)} times the direct distance, ${formatDistance(found.extra_m)} longer.`;
+  }
+  // The straight-line notice: its first sentence says it.
+  return `Warning: ${view.text.split(". ")[0].replace(/^This/, "this").replace(/\.$/, "")}.`;
+}
+
+/** "2 very high stress junctions", or null when there are none (or the API did not say). */
+export function redJunctionsSaid(route: Pick<RouteResponse, "intersections">): string | null {
+  const red = (route.intersections ?? []).filter((junction) => junction.severity === "red").length;
+  if (red === 0) return null;
+  return `${red} very high stress ${red === 1 ? "junction" : "junctions"}.`;
+}
+
+/**
+ * What a screen reader hears when a route arrives: the figures, then the
+ * detour's tier and the very high stress junctions when there are any, and
+ * nothing more (the summary has the rest).
+ */
+export function announceRoute(route: RouteResponse, points: readonly LonLat[] = []): string {
+  const figures =
     `Route planned: ${formatDistance(route.distance_m)}, ` +
-    `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`
-  );
+    `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
+  return [figures, detourSaid(route, points), redJunctionsSaid(route)].filter(Boolean).join(" ");
 }
 
 /** A point's name in the list: Start, Via 1, Via 2, ..., End. */

@@ -12,9 +12,9 @@ import { accessibilityOn, subscribePalette } from "../stressStyle.js";
 export const ACCESSIBILITY_LABEL = "Accessibility";
 
 export const ACCESSIBILITY_HINT =
-  "Colour-blind-friendly stress colours, bolder lines, and stronger borders and text. Kept in this browser.";
+  "Color-blind friendly stress colors, bolder lines, and stronger borders and text. Kept in this browser.";
 
-export const ACCESSIBILITY_ADDRESS_NOTE = "The address (palette= in the link) chooses the stress colours; the rest still applies.";
+export const ACCESSIBILITY_ADDRESS_NOTE = "The address (palette= in the link) chooses the stress colors; the rest still applies.";
 
 export const ACCESSIBILITY_CONTRAST_NOTE = "On because your device asks for more contrast; turn it off here if you prefer.";
 

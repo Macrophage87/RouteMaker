@@ -5,12 +5,20 @@
  * A slider moves freely while it is held and plans only when it is let go:
  * the pointer lifted, a key released, the focus gone. The scheduler folds
  * what arrives close together into one request (routeScheduler.ts), so a
- * rider pressing an arrow key ten times plans once, not ten times.
+ * rider pressing an arrow key ten times plans once, not ten times; the keys
+ * also wait for a short rest before they count as let go (lib/settle.ts), so
+ * a screen reader hears one route, not one for each step.
+ *
+ * A slider's name is its label alone, and its words are its value (its
+ * aria-valuetext): read once each, not "Traffic Calmest: ..." and then the
+ * same words again (a11y review of integrate-2). The note under it is its
+ * description.
  */
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { PresetId } from "./lib/presets.ts";
 import { WHENS, type Dials, type When } from "./lib/dials.ts";
 import { panelView, type SliderView } from "./lib/dialsPanel.ts";
+import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 
 interface Props {
   preset: PresetId;
@@ -25,16 +33,21 @@ function Slider(props: {
   view: SliderView;
   value: number;
   onDraft: (value: number) => void;
-  onRelease: () => void;
+  /** Let go: `settle` for a key, which waits for the keys to rest. */
+  onRelease: (settle: boolean) => void;
 }) {
   const id = useId();
+  const nameId = `${id}-name`;
+  const noteId = `${id}-note`;
   const { view } = props;
   const [low, middle, high] = view.ends;
   return (
     <div className="dial">
       <label htmlFor={id} className="dial-label">
-        {props.label}
-        <span className="dial-now">{view.words}</span>
+        <span id={nameId}>{props.label}</span>
+        <span className="dial-now" aria-hidden="true">
+          {view.words}
+        </span>
       </label>
       <input
         id={id}
@@ -43,19 +56,25 @@ function Slider(props: {
         max={view.max}
         step={5}
         value={props.value}
+        aria-labelledby={nameId}
         aria-valuetext={view.words}
+        aria-describedby={view.note ? noteId : undefined}
         disabled={view.disabled}
         onChange={(event) => props.onDraft(Number(event.target.value))}
-        onPointerUp={props.onRelease}
-        onKeyUp={props.onRelease}
-        onBlur={props.onRelease}
+        onPointerUp={() => props.onRelease(false)}
+        onKeyUp={() => props.onRelease(true)}
+        onBlur={() => props.onRelease(false)}
       />
       <div className="dial-ends" aria-hidden="true">
         <span>{low}</span>
         <span>{middle}</span>
         <span>{high}</span>
       </div>
-      {view.note && <p className="hint">{view.note}</p>}
+      {view.note && (
+        <p className="hint" id={noteId}>
+          {view.note}
+        </p>
+      )}
     </div>
   );
 }
@@ -67,8 +86,18 @@ function whenLabel(when: When): string {
 export function DialsPanel({ preset, dials, onCommit, resolvedWhen }: Props) {
   const [draft, setDraft] = useState(dials);
   useEffect(() => setDraft(dials), [dials]);
-  const release = () => {
-    if (draft.stress !== dials.stress || draft.hills !== dials.hills) onCommit(draft);
+  // The latest of each, for a release that runs after the keys rest.
+  const latest = useRef({ draft, dials, onCommit });
+  latest.current = { draft, dials, onCommit };
+  const keys = useRef(new Debounce(KEY_SETTLE_MS));
+  useEffect(() => () => keys.current.cancel(), []);
+  const commitDraft = () => {
+    const { draft: now, dials: was, onCommit: commit } = latest.current;
+    if (now.stress !== was.stress || now.hills !== was.hills) commit(now);
+  };
+  const release = (settle: boolean) => {
+    if (settle) keys.current.later(commitDraft);
+    else keys.current.now(commitDraft);
   };
   const view = panelView(preset, dials, draft);
   return (

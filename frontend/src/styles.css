@@ -19,6 +19,13 @@
   --focus: #b45309;
   --shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
   --rail-ring: #1f2937; /* the station icons' ring, in the legend */
+  /* The focus ring on the map (its markers, controls, credits and canvas): the
+     map is the light Protomaps flavour in both themes, so this ring is the same
+     in both, dark outside with a white ring inside, never --focus (amber in the
+     dark theme, about 1.3:1 on the map; a11y review of integrate-2, 1.4.11).
+     stylesAccessibility.test.ts measures it against the map's colours. */
+  --map-focus: #111827;
+  --map-focus-inner: #ffffff;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
   font-size: 15px;
   line-height: 1.4;
@@ -104,7 +111,51 @@ body {
 }
 
 .maplibregl-canvas:focus-visible {
+  outline: 3px solid var(--map-focus);
   outline-offset: -3px;
+}
+
+/* Everything else focusable on the map: the dark ring, and a white one inside
+   it (the box-shadow fills the outline's offset), so it shows on the light
+   map, on the blue route and on a red marker alike. */
+.junction-marker:focus-visible,
+.maplibregl-marker:focus-visible,
+.maplibregl-ctrl button:focus-visible,
+.maplibregl-ctrl-group button:focus:focus-visible,
+.maplibregl-ctrl-attrib a:focus-visible,
+.maplibregl-ctrl-attrib-button:focus-visible {
+  outline: 3px solid var(--map-focus);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px var(--map-focus-inner);
+}
+
+/* The skip link (lib/skipLink.ts): the page's first stop, shown while focused. */
+.skip-link {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  z-index: 10;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+  transform: translateY(-200%);
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  transform: none;
+}
+
+/* The planner takes the focus from the skip link; its ring is the panel's edge. */
+.panel:focus {
+  outline: none;
+}
+.panel:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
 }
 
 /* The panel: a card on the left on wide screens, a bottom sheet on phones. */
@@ -766,6 +817,19 @@ button.secondary {
   font-size: 11px;
 }
 
+/* Collapsed to the "i" button (lib/junctionCard.ts collapseCredits, on a narrow
+   map, or by the rider): the OpenStreetMap credit still shows beside it, as
+   text the "i" opens in full. Hidden from screen readers, which have the
+   button and, behind it, the credits themselves. */
+.maplibregl-ctrl-attrib.maplibregl-compact:not(.maplibregl-compact-show)::before {
+  content: "© OpenStreetMap" / "";
+  display: inline-block;
+  padding: 0 6px 0 8px;
+  line-height: 20px;
+  color: #000;
+  white-space: nowrap;
+}
+
 /* Beside the panel, not under it: a credit hidden behind the panel is not shown. */
 @media (min-width: 721px) {
   .maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib {
@@ -806,6 +870,13 @@ button.secondary {
 
   .app:has(.panel.closed) .maplibregl-ctrl-bottom-right {
     bottom: 56px;
+  }
+
+  /* Opened on a phone, the credits scroll rather than climb past the scales
+     into the zoom buttons (a11y review of integrate-2, 2.4.11). */
+  .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-inner {
+    max-height: 22vh;
+    overflow-y: auto;
   }
 }
 
@@ -967,6 +1038,13 @@ dialog.ride-types::backdrop {
 .junction-marker.junction-group {
   position: relative;
 }
+/* Markers that still overlap (at the map's last zoom, where grouping stops):
+   the focused or hovered one is drawn on top. MapLibre positions the marker's
+   own element, so z-index applies to it. */
+.junction-marker:focus,
+.junction-marker:hover {
+  z-index: 3;
+}
 .junction-count {
   position: absolute;
   right: -8px;
@@ -981,8 +1059,6 @@ dialog.ride-types::backdrop {
   text-align: center;
 }
 .junction-marker:focus-visible {
-  outline: 3px solid var(--focus);
-  outline-offset: 2px;
   border-radius: 4px;
 }
 .junction-popup .maplibregl-popup-content {
@@ -1014,9 +1090,12 @@ dialog.ride-types::backdrop {
   max-height: 14rem;
   overflow-y: auto;
 }
+/* The reason on a line of its own under the severity and the distance, so it
+   has the row's width at 320 px and with wider text spacing (a11y review of
+   integrate-2). */
 .junction-item {
   display: grid;
-  grid-template-columns: 18px auto auto 1fr;
+  grid-template-columns: 18px auto 1fr;
   gap: 2px 8px;
   align-items: center;
   width: 100%;
@@ -1049,7 +1128,9 @@ dialog.ride-types::backdrop {
   white-space: nowrap;
 }
 .junction-reason {
+  grid-column: 2 / -1;
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 .notice.detour-warning {
   background: var(--error-bg);
@@ -1105,8 +1186,23 @@ dialog.ride-types::backdrop {
     border-radius: 4px;
   }
 
+  /* A double ring in the system's own pair: Highlight alone was about 1.1:1
+     on the light map in a dark theme. The marker keeps its colours
+     (forced-color-adjust: none), so its box-shadow is kept too. */
   .junction-marker:focus-visible {
+    outline: 3px solid CanvasText;
+    outline-offset: 2px;
+    box-shadow: 0 0 0 2px Canvas;
+  }
+
+  /* MapLibre's zoom, compass and credits buttons ring with a box-shadow, which
+     forced colours drop: a real outline, inside the button, on its system
+     background. */
+  .maplibregl-ctrl button:focus-visible,
+  .maplibregl-ctrl-group button:focus:focus-visible,
+  .maplibregl-ctrl-attrib-button:focus-visible {
     outline: 3px solid Highlight;
+    outline-offset: -3px;
   }
 
   .junction-count {

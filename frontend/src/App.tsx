@@ -16,6 +16,8 @@ import { announceRoute, calmSearchNote, detourView, paceText, pointName } from "
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
 import { FACILITIES, accessibilityOn, accessibilitySource, currentTiers, legendWidths, paletteSetByAddress, setAccessibility } from "./stressStyle.js";
 import { useStressStyle } from "./useStressStyle.ts";
+import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
+import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
 import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
@@ -517,8 +519,12 @@ export function App() {
       : status.kind === "waiting"
         ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
         : status.kind === "ok" && route
-          ? announceRoute(route)
+          ? announceRoute(route, routedPoints)
           : "";
+  // The route's sentence once it has stood a moment (lib/settle.ts): routes
+  // that replace each other quickly are said once, the last. "Planning..." is
+  // shown but not said, so a release is one announcement, not two.
+  const routeSaid = useSettled(status.kind === "ok" ? announcement : "", ANNOUNCE_SETTLE_MS);
 
   const presetsSection = <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} />;
   const pointsSection = (
@@ -594,10 +600,10 @@ export function App() {
       <h2 id="route-heading" ref={routeHeadingRef} tabIndex={-1}>
         Route
       </h2>
+      {status.kind === "loading" && <p className="loading">{announcement}</p>}
       <div role="status" aria-live="polite" className="status-line">
-        {status.kind === "loading" && <p className="loading">{announcement}</p>}
         {status.kind === "waiting" && <p className="loading">{announcement}</p>}
-        {status.kind === "ok" && <p className="visually-hidden">{announcement}</p>}
+        {status.kind === "ok" && routeSaid && <p className="visually-hidden">{routeSaid}</p>}
         {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
       </div>
       {status.kind === "confirm" && (
@@ -663,6 +669,11 @@ export function App() {
 
   return (
     <div className="app">
+      {/* Past the map, its markers and its controls (up to 150 junction
+          markers come before the planner), to the planner (lib/skipLink.ts). */}
+      <a className="skip-link" href="#route-planner" onClick={(event) => skipToPlanner(event, panelRef.current)}>
+        {SKIP_LINK_TEXT}
+      </a>
       <MapView
         points={points}
         route={shown}
@@ -712,7 +723,13 @@ export function App() {
         {said.text}
         {said.count % 2 === 1 ? " " : ""}
       </p>
-      <aside ref={panelRef} className={`panel ${panelOpen ? "open" : "closed"}`} aria-label="Route planner">
+      <aside
+        ref={panelRef}
+        id="route-planner"
+        tabIndex={-1}
+        className={`panel ${panelOpen ? "open" : "closed"}`}
+        aria-label="Route planner"
+      >
         <header className="panel-header">
           <div>
             <h1>RouteMaker</h1>
@@ -787,6 +804,16 @@ export function App() {
       </aside>
     </div>
   );
+}
+
+/** `text` once it has stood for `waitMs`; "" at once (lib/settle.ts SettledText). */
+function useSettled(text: string, waitMs: number): string {
+  const [shown, setShown] = useState("");
+  const settled = useRef<SettledText | null>(null);
+  if (settled.current === null) settled.current = new SettledText(waitMs, setShown);
+  useEffect(() => settled.current?.offer(text), [text]);
+  useEffect(() => () => settled.current?.cancel(), []);
+  return shown;
 }
 
 function RouteSummary({

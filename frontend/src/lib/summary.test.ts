@@ -168,3 +168,50 @@ test("Mass Ride keeps its own words even if a direct-route block were sent", () 
   const text = detourNotice({ ...mass, distance_m: 141_100 }, [GEORGETOWN, ROSSLYN]) ?? "";
   assert.match(text, /roadways/);
 });
+
+// The announcement carries the detour's tier and the very high stress junctions
+// (a11y review of integrate-2, 4.1.3; OWNER-DECISIONS 220).
+const announced = (extra: Partial<RouteResponse>, points: LonLat[] = [GEORGETOWN, ROSSLYN]) =>
+  announceRoute({ distance_m: 5000, duration_s: 1200, climb_m: 31, preset: "default", ...extra } as RouteResponse, points);
+const junction = (severity: "orange" | "red") => ({
+  m: 100, lon: -77, lat: 38.9, severity, reason: "r", crossed_tier: 4, movement: "straight", control: "none", kind: "crossing", cost_ft: 100,
+}) as NonNullable<RouteResponse["intersections"]>[number];
+
+test("the announcement says the detour's tier and how much longer, in words a screen reader reads well", () => {
+  const strong = announced(direct(18, 11.25, "strong") as Partial<RouteResponse>);
+  assert.match(strong, /^Route planned: /);
+  assert.match(strong, / Strong warning: 2\.6 times the direct distance, 18\.0 mi \(29\.0 km\) longer\.$/);
+  assert.doesNotMatch(strong, /×/, "not 'multiplication sign'");
+  const warning = announced(direct(6, 10, "warning") as Partial<RouteResponse>);
+  assert.match(warning, / Warning: 1\.6 times the direct distance, 6\.0 mi \(9\.7 km\) longer\.$/);
+  const note = announced(direct(1.2, 4, "note", 0.8) as Partial<RouteResponse>);
+  assert.match(note, / Note: 1\.3 times the direct distance, 1\.2 mi \(1\.9 km\) longer\.$/);
+  // At the threshold the ratio keeps its second decimal, as the notice does.
+  assert.match(announced(direct(10, 10, "strong") as Partial<RouteResponse>), /Strong warning: 2\.00 times/);
+});
+
+test("the straight-line notice is announced too, by its first sentence", () => {
+  const said = announced({ distance_m: 141_100 });
+  assert.match(said, / Warning: this route is 87\.7 mi \(141\.1 km\) for points [\d.]+ mi \([\d.]+ km\) apart in straight lines\.$/);
+  const mass = announced({ distance_m: 141_100, preset: "mass-ride" });
+  assert.match(mass, /Warning: this route is /);
+  assert.doesNotMatch(mass, /Mass Ride keeps to roadways/, "the advice stays in the summary");
+});
+
+test("the announcement counts the very high stress junctions, and only those", () => {
+  assert.match(announced({ intersections: [junction("red"), junction("orange"), junction("red")] }), / 2 very high stress junctions\.$/);
+  assert.match(announced({ intersections: [junction("red")] }), / 1 very high stress junction\.$/);
+  assert.doesNotMatch(announced({ intersections: [junction("orange")] }), /junction/);
+  assert.doesNotMatch(announced({ intersections: null }), /junction/);
+  assert.doesNotMatch(announced({}), /junction/);
+});
+
+test("a plain route is still one sentence, and the warnings come in order: figures, detour, junctions", () => {
+  const plain = announced({ distance_m: 5000, detour: null });
+  assert.equal(plain.split(". ").length, 1, plain);
+  const both = announced({ ...(direct(6, 10, "warning") as Partial<RouteResponse>), intersections: [junction("red")] });
+  assert.ok(both.indexOf("Warning:") > both.indexOf("climb"));
+  assert.ok(both.indexOf("very high stress") > both.indexOf("Warning:"));
+  // Concise: nothing else of the notice (its advice) is said.
+  assert.doesNotMatch(both, /Move the Traffic slider/);
+});
