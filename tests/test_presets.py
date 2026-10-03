@@ -441,6 +441,12 @@ class TestTrailCredit:
         assert 0 < presets.TRAIL_CREDIT < 1
         assert presets.TRAIL_CREDIT_MAX < 1
 
+    def test_it_is_the_value_put_to_the_owner(self) -> None:
+        """Mutation review P3: the proposal's 0.5 (a mile of trail priced at half
+        a mile) is pinned by value, not only by its relations; a change is a
+        change to what the owner was shown."""
+        assert presets.TRAIL_CREDIT == 0.5
+
     def test_it_is_not_among_the_routers_costing_options(self) -> None:
         # It is the search's dial; the router is not told.
         for preset in presets.PRESETS.values():

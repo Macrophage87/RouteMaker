@@ -687,10 +687,46 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         REFINE,
     ),
     (
-        "legs: the time ends only the leg",
+        "legs: a table that cannot be read is read again for the next leg",
         RF,
-        '        if seek["limited"] in ("time", "table"):',
+        '        if seek["limited"] == "table":',
         "        if False:",
+        REFINE,
+    ),
+    # --- the combined correctness review, SF1: a leg's time is the leg's ------------
+    (
+        "legs: one leg's time ends the seek",
+        RF,
+        '        if seek["limited"] == "table":',
+        '        if seek["limited"] in ("time", "table"):',
+        REFINE,
+    ),
+    (
+        "legs: the leg's reading is taken out of its share",
+        RF,
+        "                stop_at = min(hard_stop, stop_at + (routing.clock() - started))",
+        "                pass",
+        REFINE,
+    ),
+    (
+        "legs: the leg's reading has no allowance of its own",
+        RF,
+        "                        min(hard_stop, started + SEEK_LEG_READ_S), ctx.deadline.per_call_s",
+        "                        min(hard_stop, stop_at), ctx.deadline.per_call_s",
+        REFINE,
+    ),
+    (
+        "legs: an unread leg ends the seek",
+        RF,
+        '                seek["limited"] = "time"' + NL + "                continue",
+        '                seek["limited"] = "time"' + NL + "                break",
+        REFINE,
+    ),
+    (
+        "legs: the readings may run into the answer's reserve",
+        RF,
+        "    hard_stop = ctx.deadline.at - REFINE_TRACE_RESERVE_S",
+        "    hard_stop = ctx.deadline.at",
         REFINE,
     ),
     # --- review r1: hard bounds, the table read, the whole trip, the exclusions ------

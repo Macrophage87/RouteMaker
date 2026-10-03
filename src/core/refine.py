@@ -70,6 +70,11 @@ CROSSING_ONLY_ROUNDS = 1
 REFINE_BUDGET_S = 14
 REFINE_ROUND_MIN_S = 5
 REFINE_TRACE_RESERVE_S = 6
+# The most a plan with stops gives the trail seek's reading of one leg's own
+# route (its trace and its junctions; measured 0.45 to 0.6 s warm), on top of
+# the seek's budget rather than out of the leg's share (`_seek`; combined
+# correctness review, SF1).
+SEEK_LEG_READ_S = 2.0
 # Rounds in a row that may not beat the best score before the search gives up.
 REFINE_PATIENCE = 2
 # The longest span (metres of straight line) the search runs on, as the avoid
@@ -594,6 +599,9 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
     The seek's whole budget is SEEK_BUDGET_S, past the search's; each leg that
     can run gets its share of what is left, by its straight-line span, and at
     least SEEK_LEG_MIN_S (a candidate's worth), what a leg leaves unused going to the next.
+    On a plan with stops each leg's own route is read first, on an allowance of
+    its own (SEEK_LEG_READ_S) that the budget is extended by, and a leg that runs
+    out of its share ("time") leaves the rest to the legs after it.
     `info["seek"]` says what was found and asked: `asked` counts the proposals
     asked for, `routes` the router's routes (a proposal asked again without the
     exclusions is two), and `whole_trip` what became of a plan with stops'
@@ -642,7 +650,41 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             for lo, hi in leg_bounds(original)
         ]
     trip, taken = best_trip, False
+    # The latest the seek may run to at all, whatever the legs' readings take.
+    hard_stop = ctx.deadline.at - REFINE_TRACE_RESERVE_S
     for turn, k in enumerate(runnable):
+        before = stop_at - routing.clock()
+        if before < trailseek.SEEK_ROUND_MIN_S:
+            seek["limited"] = "time"
+            break
+        if count == 1:
+            leg_trip, incumbent, reference = trip, best, first_exposure
+        else:
+            # The leg's own route, read with its junctions, on an allowance of
+            # its own (combined correctness review, SF1): the reading is what
+            # the leg is measured against, not one of its candidates, so it is
+            # not taken out of the leg's share. Measured 0.45 to 0.6 s, which
+            # left a leg given SEEK_LEG_MIN_S under SEEK_ROUND_MIN_S once it
+            # had read its table, every time.
+            leg_trip = _leg_trip(trip, k)
+            started = routing.clock()
+            try:
+                incumbent = analyse(
+                    leg_trip,
+                    ctx,
+                    routing.Deadline(
+                        min(hard_stop, started + SEEK_LEG_READ_S), ctx.deadline.per_call_s
+                    ),
+                )
+            except (routing.DeadlineExceeded, routing.RouterUnavailable):
+                # This leg could not be read in its allowance; a later one may.
+                seek["limited"] = "time"
+                continue
+            finally:
+                stop_at = min(hard_stop, stop_at + (routing.clock() - started))
+            if incumbent is None:
+                continue
+            reference = first_legs[k] if first_legs else incumbent.exposure_m
         now = routing.clock()
         left = stop_at - now
         if left < trailseek.SEEK_ROUND_MIN_S:
@@ -650,20 +692,6 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             break
         share = left * spans[k] / sum(spans[j] for j in runnable[turn:])
         leg_stop = min(stop_at, now + max(share, trailseek.SEEK_LEG_MIN_S))
-        if count == 1:
-            leg_trip, incumbent, reference = trip, best, first_exposure
-        else:
-            leg_trip = _leg_trip(trip, k)
-            try:
-                incumbent = analyse(
-                    leg_trip, ctx, routing.Deadline(leg_stop, ctx.deadline.per_call_s)
-                )
-            except (routing.DeadlineExceeded, routing.RouterUnavailable):
-                seek["limited"] = "time"
-                break
-            if incumbent is None:
-                continue
-            reference = first_legs[k] if first_legs else incumbent.exposure_m
         got = _seek_leg(k, leg_trip, incumbent, reference, leg_stop, ctx, seek)
         if got is not None:
             seek["taken"] = taken = True
@@ -671,7 +699,11 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
                 best, trip = got
             else:
                 trip = _splice(trip, k, got[1])
-        if seek["limited"] in ("time", "table"):
+        # A leg that ran out of its own share leaves the rest of the budget to
+        # the legs after it (SF1: leg 0's "time" ended the loop, so the longer
+        # leg 1 of Bethesda - Silver Spring - College Park was never tried); a
+        # table that cannot be read cannot be read for any leg.
+        if seek["limited"] == "table":
             break
     if count > 1 and taken:
         # One reading of the whole route, which the answer reuses: the legs'
