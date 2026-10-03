@@ -218,6 +218,20 @@ class TestTiny:
         assert entries[1]["text"].split(": ")[1].startswith("Right onto K St,")
         assert entries[1]["from_m"] == 600
 
+    def test_folding_back_into_another_street_does_not_take_its_names_either(self):
+        # X's short LTS 3 stretch may only go back into the LTS 4 street before it (the
+        # next X stretch is calmer); the X that follows is still a street to turn onto.
+        legs = [
+            flat(
+                road("A", 4, 800, 0, 0),
+                road("X", 3, 40, 90, 90),
+                road("X", 1, 500, 90, 90),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [(e["street"], e["tier"]) for e in entries] == [("A", 4), ("X", 1)]
+        assert entries[1]["turn"]["movement"] == "right"
+
     def test_a_tie_between_neighbours_goes_to_the_earlier(self):
         entries = d.describe([flat(road("A", 1, 500), road("Mid", 1, 40), road("B", 1, 500))])
         assert [e["street"] for e in entries] == ["A", "B"]

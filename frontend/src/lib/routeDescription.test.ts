@@ -128,7 +128,8 @@ test("the section is a labelled heading, a disclosure button and an ordered list
   assert.match(component, /aria-expanded=\{open\}/);
   assert.match(component, /aria-controls=\{listId\}/);
   assert.match(component, /<ol id=\{listId\}[^>]*hidden=\{!open\}/);
-  assert.match(component, /Copy description/);
+  assert.match(component, /onClick=\{onCopy\}>\s*Copy description/);
+  assert.match(component, /onClick=\{onDownload\}>\s*Download as text/);
 });
 
 test("nothing is announced on a route change: no live region but the copy reply", () => {
