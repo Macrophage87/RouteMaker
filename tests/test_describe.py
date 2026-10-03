@@ -4,6 +4,8 @@ via-point split, and the totals. Pure: no router, no database."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from routemaker import describe as d
@@ -425,6 +427,39 @@ class TestJunctions:
         assert d.readable("14th street nw") == "14th Street NW"
         assert d.readable("Capital Crescent Trail") == "Capital Crescent Trail"
 
+    @pytest.mark.parametrize(
+        "mapped",
+        [
+            "MacArthur Boulevard",
+            "I-395",
+            "US 29",
+            "MD 355;Rockville Pike",
+            "Rockville Pike;MD 355",
+            "O'Brien Way",
+        ],
+    )
+    def test_a_crossed_road_is_named_as_mapped(self, mapped):
+        """Item 230: the junction model's lower-case keys are for matching; the
+        words use the name as mapped."""
+        names = tuple(mapped.split(";"))
+        crossing = replace(
+            event(500, "straight", kind="crossing", names=tuple(n.lower() for n in names)),
+            road_display=names,
+        )
+        legs = [flat(road("A", 1, 1000), road("B", 1, 1000, 270, 270))]
+        entries = d.describe(legs, [crossing])
+        junction = next(e for e in entries if e["kind"] == "junction")
+        want = "Rockville Pike" if ";" in mapped else mapped
+        assert f"Cross {want} (LTS 3)" in junction["text"]
+        assert junction["street"] == want
+
+    def test_an_event_without_mapped_names_falls_back_to_readable_keys(self):
+        legs = [flat(road("A", 1, 1000), road("B", 1, 1000, 270, 270))]
+        entries = d.describe(legs, [event(500, "straight", kind="crossing")])
+        assert (
+            "Cross Wisconsin Avenue" in next(e for e in entries if e["kind"] == "junction")["text"]
+        )
+
 
 class TestVias:
     def test_the_leg_boundary_is_an_entry_and_nothing_spans_it(self):
@@ -595,7 +630,7 @@ class TestOverview:
         full, short = both(flat(a, b, c))
         assert len(full) == 3
         assert texts(short) == [
-            "0.0 to 0.8 mi (0.0 to 1.4 km): A St, then B St, low stress (LTS 1).",
+            "0.0 to 0.8 mi (0.0 to 1.4 km): A St, then right on B St, low stress (LTS 1).",
             "0.8 to 1.5 mi (1.4 to 2.4 km): Left onto C St, low stress (LTS 1).",
         ]
         assert short[0]["street"] == "A St" and short[0]["to_m"] == 1350
@@ -662,14 +697,17 @@ class TestOverview:
             road("B St", 1, 100, 90, 90),
             road("Z St", 1, 1000, 0, 0),
         ]
-        assert "Long St, then B St and C St," in both(flat(*pieces))[1][0]["text"]
+        assert "Long St, then right on B St and left on C St," in both(flat(*pieces))[1][0]["text"]
 
     def test_three_other_streets_are_all_listed(self):
         pieces = [road("Long St", 1, 1000, 0, 0)]
         for name, heading in (("B St", 90), ("C St", 180), ("D St", 270)):
             pieces.append(road(name, 1, 100, heading, heading))
         pieces.append(road("Z St", 1, 1000, 0, 0))
-        assert "Long St, then B St, C St and D St," in both(flat(*pieces))[1][0]["text"]
+        assert (
+            "Long St, then right on B St, right on C St and right on D St,"
+            in both(flat(*pieces))[1][0]["text"]
+        )
 
     def test_a_stretch_exactly_at_the_limit_is_kept(self):
         atoms = [
@@ -701,7 +739,7 @@ class TestOverview:
         c = road("C St", 1, 1000, 0, 0)
         short = both(flat(a, b, c))[1]
         assert [e["tier"] for e in short] == [tier, 1]
-        assert "then B St" in short[0]["text"]
+        assert "then right on B St" in short[0]["text"]
 
     def test_a_short_stretch_is_worded_at_the_worst_tier_it_covers(self):
         a, b, c = (
@@ -788,7 +826,8 @@ class TestOverview:
         pieces.append(road("Z St", 1, 1000, 0, 0))
         short = both(flat(*pieces))[1]
         assert short[0]["text"].startswith(
-            "0.0 to 0.9 mi (0.0 to 1.5 km): Long St, then B St, C St, D St and 2 more, low stress"
+            "0.0 to 0.9 mi (0.0 to 1.5 km): Long St, then right on B St, right on C St,"
+            " right on D St and 2 more turns, low stress"
         )
 
     def test_two_other_streets_are_joined_with_and(self):
@@ -798,7 +837,51 @@ class TestOverview:
             road("C St", 1, 100, 0, 0),
         ]
         pieces.append(road("Z St", 1, 1000, 90, 90))
-        assert "Long St, then B St and C St," in both(flat(*pieces))[1][0]["text"]
+        assert "Long St, then right on B St and left on C St," in both(flat(*pieces))[1][0]["text"]
+
+    def test_the_turns_in_a_merged_entry_are_named_briefly(self):
+        """Item 229: "Right onto Ramsey Avenue at a signal, then left on Ripley
+        Street and right on Colonial Lane"; a street straight on has no turn word."""
+        pieces = [
+            road("Start St", 2, 1000, 0, 0),
+            road("Ramsey Avenue", 2, 1000, 90, 90),
+            road("Ripley Street", 2, 100, 0, 0),
+            road("Colonial Lane", 2, 100, 90, 90),
+            road("Zed Road", 2, 1000, 90, 90),
+        ]
+        entries = both(flat(*pieces), events=[event(1000, "right", flagged=False)])[1]
+        text = next(e["text"] for e in entries if "Ramsey" in e["text"])
+        assert (
+            "Right onto Ramsey Avenue at a signal, then left on Ripley Street"
+            " and right on Colonial Lane, fairly low stress (LTS 2)." in text
+        )
+
+    def test_a_street_straight_on_is_named_without_a_turn_word(self):
+        pieces = [
+            road("A St", 2, 1000, 0, 0),
+            road("Ripley Street", 2, 100, 0, 0),
+            road("Z St", 2, 1000, 0, 0),
+        ]
+        text = both(flat(*pieces))[1][0]["text"]
+        assert ", then Ripley Street," in text
+        assert "on Ripley" not in text and "onto Ripley" not in text
+
+    @pytest.mark.parametrize(
+        ("others", "tail"), [(3, ""), (4, " and 1 more turn"), (6, " and 3 more turns")]
+    )
+    def test_at_most_three_turns_are_named_then_a_count(self, others, tail):
+        names = ["B St", "C St", "D St", "E St", "F St", "G St"][:others]
+        pieces = [road("Long St", 1, 1000, 0, 0)]
+        heading = 0
+        for name in names:
+            pieces.append(road(name, 1, 100, (heading + 90) % 360, (heading + 90) % 360))
+            heading = (heading + 90) % 360
+        pieces.append(road("Z St", 1, 1000, 0, 0))
+        text = both(flat(*pieces))[1][0]["text"]
+        named = [n for n in names if n in text]
+        assert len(named) == min(others, d.MAX_NAMED_TURNS)
+        assert (f"{tail.strip()}," in text) if tail else ("more turn" not in text)
+        assert ", then" in text
 
     def test_the_overview_covers_the_route_end_to_end(self):
         a, b, c = (

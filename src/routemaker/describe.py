@@ -305,7 +305,12 @@ def point_words(at_m: float) -> str:
 
 
 def _event_name(event) -> str | None:
-    """The road an event is about, in capitals; None where the router had no name."""
+    """The road an event is about, as it is mapped ("MacArthur Boulevard", "I-395");
+    None where the router had no name. An event made without the mapped names
+    (`road_display`) has the lower-case keys, made readable."""
+    shown = [n for n in event.road_display if not n.startswith("way ")]
+    if shown:
+        return street_label(shown)
     names = sorted(n for n in event.road_names if not n.startswith("way "))
     label = street_label(names)
     return readable(label) if label else None
@@ -411,16 +416,25 @@ def _stretch_sentence(
     return f"{where}: {lead}{then}, {words}."
 
 
-def _then_words(streets: list[str]) -> str:
-    """ ", then A, B and 2 more": the other streets a merged stretch runs along."""
+MAX_NAMED_TURNS = 3
+
+
+def _then_words(streets: list[tuple[str, str | None]]) -> str:
+    """ ", then left on A, B and right on C and 2 more turns": the other streets
+    a merged stretch runs along, each with its turn where it is a left or a right
+    (a street straight on is just named), at most MAX_NAMED_TURNS of them."""
     if not streets:
         return ""
-    if len(streets) == 1:
-        listed = streets[0]
-    elif len(streets) <= 3:
-        listed = ", ".join(streets[:-1]) + " and " + streets[-1]
+    pieces = []
+    for street, movement in streets[:MAX_NAMED_TURNS]:
+        pieces.append(f"{movement} on {street}" if movement in ("left", "right") else street)
+    more = len(streets) - MAX_NAMED_TURNS
+    if more > 0:
+        listed = ", ".join(pieces) + f" and {more} more turn{'s' if more > 1 else ''}"
+    elif len(pieces) == 1:
+        listed = pieces[0]
     else:
-        listed = ", ".join(streets[:3]) + f" and {len(streets) - 3} more"
+        listed = ", ".join(pieces[:-1]) + " and " + pieces[-1]
     return f", then {listed}"
 
 
@@ -502,10 +516,12 @@ def _overview_groups(runs: list[_Run], turns: dict[int, _Turn]) -> list[list[int
             return groups
 
 
-def _group_run(runs: list[_Run], group: list[int]) -> tuple[_Run, str]:
+def _group_run(
+    runs: list[_Run], group: list[int], turns: dict[int, _Turn] | None = None
+) -> tuple[_Run, str]:
     """A merged group as one run to word, and its ", then ..." clause: the most
     stressful tier of its members, a facility only if they share one, the street
-    it begins on and the other streets in order."""
+    it begins on and the other streets in order, each with the turn onto it."""
     members = runs[group[0] : group[1] + 1]
     first = members[0]
     if len(members) == 1:
@@ -524,10 +540,11 @@ def _group_run(runs: list[_Run], group: list[int]) -> tuple[_Run, str]:
         leg=first.leg,
     )
     own = _street_words(first)
-    streets: list[str] = []
-    for m in members[1:]:
-        if m.label and m.label != own and m.label not in streets:
-            streets.append(m.label)
+    streets: list[tuple[str, str | None]] = []
+    for k, m in zip(range(group[0] + 1, group[1] + 1), members[1:], strict=True):
+        if m.label and m.label != own and m.label not in (s for s, _m in streets):
+            turn = (turns or {}).get(k)
+            streets.append((m.label, turn.movement if turn else None))
     return merged, _then_words(streets)
 
 
@@ -695,7 +712,7 @@ def describe_both(
         )
     overview: list[tuple[tuple[float, int, int], dict]] = []
     for first, last in _overview_groups(runs, turns):
-        run, then = _group_run(runs, [first, last])
+        run, then = _group_run(runs, [first, last], turns)
         start = starts[first] * scale
         end = (starts[last] + runs[last].metres) * scale
         turn = turns.get(first)

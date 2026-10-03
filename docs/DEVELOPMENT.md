@@ -2096,9 +2096,12 @@ headings, none of them part of its identity).
   fairly low stress (LTS 2), busy road (LTS 3), heavy traffic (LTS 4), Avoid
   (legal, but best avoided), stress not rated; a protected or painted bike lane
   is added. A stretch with no name is "unnamed path" (a path facility or a
-  path `use`) or "unnamed road". Crossed roads' names come from the junction
-  model in lower case and are capitalised for saying; a road with none is "a
-  busy road".
+  path `use`) or "unnamed road". Crossed roads' names are as mapped
+  ("MacArthur Boulevard", "I-395", "US 29", item 230): `core.junctions` keeps the
+  lower-case key for matching (`Arm.names`, `Road.names`) and the name as mapped,
+  in the router's order, beside it (`display`, carried to `Event.road_display`);
+  neither is part of equality. An event built without them falls back to the
+  keys, capitalised by `readable()`. A road with no name is "a busy road".
 - **Distances** are measured along the traced pieces and scaled so the last
   stretch ends at the route's `distance_m`; the stretches' lengths add up to it
   to the metre. Junction events are placed in the same measure.
@@ -2130,8 +2133,10 @@ changes; the only live region is the reply to pressing Copy.
   away and nothing is folded in front of one; the stops and the separate
   flagged-junction entries are the full list's, unchanged; an untraced leg and a
   rated stretch against an unrated one are never merged. A merged entry says
-  the street it begins on and "then" up to three other streets, and a count of
-  the rest.
+  the street it begins on and "then" up to three other streets, each with its
+  turn (item 229: "Right onto Ramsey Avenue at a signal, then left on Ripley
+  Street and right on Colonial Lane"; a street straight on is just named), and
+  "and N more turns" for the rest.
 - The API sends both lists (`description` full, `description_overview`), not
   grouping indices: a merged sentence needs its own wording (a tier, a facility
   and a street list that no member has), which is wording kept in one place,

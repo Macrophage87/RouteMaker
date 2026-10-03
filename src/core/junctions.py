@@ -54,7 +54,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 from django.conf import settings
 from django.db import connection
@@ -174,6 +174,9 @@ class Arm:
     # arrives at the node.
     signal: bool = False
     stop: bool = False
+    # The names as mapped ("MacArthur Boulevard"), for saying; `names` are the
+    # lower-case keys for matching.
+    display: tuple[str, ...] = field(default=(), compare=False)
 
     @property
     def is_road(self) -> bool:
@@ -295,6 +298,14 @@ def node_from_locate(
             for name in (e.get("edge_info") or {}).get("names") or []
         )
         ids = frozenset(_value(e.get("edge_id")) for _w, _h, _i, e in cluster) - {None}
+        display = tuple(
+            dict.fromkeys(
+                name.strip()
+                for _w, _h, _i, e in cluster
+                for name in (e.get("edge_info") or {}).get("names") or []
+                if name and name.strip()
+            )
+        )
         arm = Arm(
             way_id=int(cluster[0][0] or 0),
             heading=cluster[0][1],
@@ -303,6 +314,7 @@ def node_from_locate(
             use=use,
             link=bool(classification.get("link")) or use in LINK_USES,
             names=names,
+            display=display,
             edge_ids=ids,
             signal=any(i and _flag(e, "traffic_signal") for _w, _h, i, e in cluster),
             stop=any(
@@ -754,6 +766,7 @@ def _with_graph(road: Road, arms: Sequence[Arm]) -> Road:
         road,
         oneway=oneway if road.oneway is None else road.oneway,
         names=names or frozenset({f"way {arms[0].way_id}"}),
+        display=tuple(dict.fromkeys(d for a in arms for d in a.display)),
         ways=frozenset(a.way_id for a in arms),
     )
 

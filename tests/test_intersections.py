@@ -86,6 +86,21 @@ class TestCrossing:
         assert 800 <= lts3 <= 1600
         assert 2500 <= lts4 <= 3500
 
+    @pytest.mark.parametrize("group", [False, True])
+    def test_an_event_carries_the_crossed_roads_mapped_names(self, group) -> None:
+        """Item 230: `road_names` are matching keys, `road_display` is for saying."""
+        road = Road(
+            4, 40, 3, names=frozenset({"macarthur boulevard"}), display=("MacArthur Boulevard",)
+        )
+        event = m.assess(junction(crossed=(road,)), group)
+        assert event is not None
+        assert event.road_names == frozenset({"macarthur boulevard"})
+        assert event.road_display == ("MacArthur Boulevard",)
+
+    def test_the_mapped_names_are_not_part_of_a_roads_identity(self) -> None:
+        keys = frozenset({"i-395"})
+        assert Road(4, names=keys, display=("I-395",)) == Road(4, names=keys, display=())
+
     def test_a_busier_road_costs_more(self) -> None:
         assert m.crossing_ft(Road(4), Control.NONE, 1) > m.crossing_ft(Road(3), Control.NONE, 1) > 0
 

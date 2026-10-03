@@ -27,6 +27,11 @@ from test_ratelimit import in_one_window
 
 from core import presets, routing
 
+# A route test plans a weekday ride unless it says otherwise: the weekend router
+# is chosen by the day the suite runs on (conftest `weekday_clock`).
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+
+
 db = pytest.mark.django_db(transaction=True)
 
 ROUTE_PATH = "/api/route"
