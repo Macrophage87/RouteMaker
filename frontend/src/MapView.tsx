@@ -47,6 +47,17 @@ import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import type { When } from "./lib/dials.ts";
 import {
+  CARD_CLOSE_LABEL,
+  cardName,
+  cardTakesFocus,
+  collapseCredits,
+  escapeClosesCard,
+  focusAfterClose,
+  groupHolding,
+  type CardOpener,
+} from "./lib/junctionCard.ts";
+import {
+  MAP_MAX_ZOOM,
   groupJunctions,
   groupLabel,
   junctionItems,
@@ -180,6 +191,8 @@ export function MapView(props: Props) {
   // The route's junctions, which the markers are drawn from at each zoom.
   const junctionList = useRef<JunctionItem[]>([]);
   const junctionCard = useRef<Popup | null>(null);
+  // After a group's zoom, the junction whose new marker takes the focus.
+  const focusAfterZoom = useRef<number | null>(null);
   // The hover handle as last drawn (null: none), so an unchanged answer is
   // not drawn again; anything else that redraws the edit layer resets it.
   const hoverShown = useRef<LonLat | null>(null);
@@ -201,6 +214,47 @@ export function MapView(props: Props) {
     }
     return true;
   };
+  /**
+   * Open a junction's card (lib/junctionCard.ts): from a marker it takes the
+   * focus and gives it back to the marker on close; from the list the focus
+   * stays on the row. Escape closes it (onKey).
+   */
+  const openCard = (item: JunctionItem, opener: CardOpener) => {
+    const map = mapRef.current;
+    if (!map) return;
+    const previous = junctionCard.current;
+    junctionCard.current = null;
+    previous?.remove();
+    const card = showJunctionCard(map, item, cardTakesFocus(opener));
+    junctionCard.current = card;
+    // Whether the focus was in the card as it went: MapLibre takes the card
+    // out of the page before it says "close".
+    const element = card.getElement();
+    let focusWasInCard = element.contains(document.activeElement);
+    element.addEventListener("focusin", () => {
+      focusWasInCard = true;
+    });
+    element.addEventListener("focusout", (event) => {
+      const next = (event as FocusEvent).relatedTarget;
+      focusWasInCard = next instanceof Node && element.contains(next);
+    });
+    card.on("close", () => {
+      if (junctionCard.current === card) junctionCard.current = null;
+      const active = document.activeElement;
+      const back = focusAfterClose(opener, focusWasInCard, active === null || active === document.body);
+      if (back === null) return;
+      (back === "marker" ? markerFor(item.index) : rowFor(item.index))?.focus();
+    });
+  };
+  /** The marker now drawn for the junction at `index` (its group's, if it is in one). */
+  const markerFor = (index: number): HTMLElement | null => {
+    const drawn = junctionMarkers.current;
+    const at = groupHolding(
+      drawn.map((m) => m.group),
+      index,
+    );
+    return at >= 0 ? drawn[at].marker.getElement() : null;
+  };
   const loaded = useRef(false);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
@@ -221,18 +275,24 @@ export function MapView(props: Props) {
       center: DC_CENTRE,
       zoom: OPENING_ZOOM,
       minZoom: 7,
-      maxZoom: 18,
+      maxZoom: MAP_MAX_ZOOM,
       maxBounds: [
         [west - MAX_BOUNDS_PAD, south - MAX_BOUNDS_PAD],
         [east + MAX_BOUNDS_PAD, north + MAX_BOUNDS_PAD],
       ],
-      // One entry, OpenStreetMap first (mapStyle.ts says why).
-      attributionControl: { compact: true, customAttribution: MAP_ATTRIBUTION },
+      // Added below, so it can start collapsed on a phone.
+      attributionControl: false,
       cooperativeGestures: false,
     });
     mapRef.current = map;
     let disposed = false;
     map.addControl(new maplibregl.NavigationControl({ visualizePitch: false }), "top-right");
+    // One entry, OpenStreetMap first (mapStyle.ts says why). Added before the
+    // scales, so it is the bottom of the corner's stack. On a narrow map it
+    // starts as the "i" button with the OpenStreetMap credit beside it, as
+    // MapLibre's own first drag leaves it (lib/junctionCard.ts collapseCredits).
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: MAP_ATTRIBUTION }), "bottom-right");
+    collapseCredits(container.current.querySelector(".maplibregl-ctrl-attrib"), map.getCanvasContainer().offsetWidth);
     // Both scales, miles and feet over kilometres and metres (OWNER-DECISIONS 85):
     // a bottom corner stacks its controls upwards, so the one added last is on top.
     map.addControl(new maplibregl.ScaleControl({ unit: "metric" }), "bottom-right");
@@ -413,9 +473,13 @@ export function MapView(props: Props) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // Escape calls off a drag; otherwise it closes a via's Remove, and the
-      // focus goes back where it was.
+      // focus goes back where it was; otherwise a junction's card, likewise.
       if (gesture.active) finish(null);
       else if (closePopup(true)) event.preventDefault();
+      else if (escapeClosesCard(junctionCard.current !== null, focusPlace(junctionCard.current, map))) {
+        event.preventDefault();
+        junctionCard.current?.remove();
+      }
     };
     // A long press on a phone also asks for the browser's context menu.
     const onContextMenu = (event: Event) => {
@@ -679,6 +743,10 @@ export function MapView(props: Props) {
     if (!props.route || props.stale) return;
     junctionList.current = junctionsOnMap(junctionItems(props.route));
     const draw = () => {
+      // A marker with the focus (a zoom by keyboard from it, or a group's
+      // zoom) hands it to its junction's new marker.
+      const focused = junctionMarkers.current.find(({ marker }) => marker.getElement() === document.activeElement);
+      if (focused && focusAfterZoom.current === null) focusAfterZoom.current = focused.group.members[0].index;
       junctionMarkers.current.forEach(({ marker }) => marker.remove());
       const groups = groupJunctions(junctionList.current, map.getZoom(), (item) => map.project([item.lon, item.lat]));
       junctionMarkers.current = groups.map((group) => {
@@ -687,26 +755,38 @@ export function MapView(props: Props) {
         const element = document.createElement("button");
         element.type = "button";
         element.className = `junction-marker junction-${group.severity}${single ? "" : " junction-group"}`;
+        element.dataset.junctionIndex = String(first.index);
         element.innerHTML =
           warningIconSvg(group.severity, ICON_PX) +
           (single ? "" : `<span class="junction-count" aria-hidden="true">${group.members.length}</span>`);
+        // The name alone: a title as well was read a second time, as the
+        // description (a11y review, int-2).
         element.setAttribute("aria-label", single ? first.label : groupLabel(group));
-        element.title = single ? first.reason : groupLabel(group);
         const marker = new maplibregl.Marker({ element, anchor: "center" }).setLngLat([first.lon, first.lat]).addTo(map);
         element.addEventListener("click", (event) => {
           // A click on a marker is not a click on the map: it must not add a via point.
           event.stopPropagation();
           if (single) {
-            showJunctionCard(map, first, junctionCard);
+            openCard(first, "marker");
             return;
           }
           const bounds = new maplibregl.LngLatBounds();
           group.members.forEach((m) => bounds.extend([m.lon, m.lat]));
-          map.fitBounds(bounds, { padding: 120, maxZoom: 17, duration: 500 });
+          // The redraw at the zoom's end takes this button away; the focus
+          // goes to the first member's new marker, not to the page's body.
+          focusAfterZoom.current = document.activeElement === element ? first.index : null;
+          // A fit that leaves the zoom as it was has no zoomend to redraw on.
+          map.once("moveend", () => {
+            if (focusAfterZoom.current !== null) draw();
+          });
+          map.fitBounds(bounds, { padding: 120, maxZoom: map.getMaxZoom(), duration: 500 });
         });
         element.addEventListener("dblclick", (event) => event.stopPropagation());
         return { group, marker };
       });
+      const wanted = focusAfterZoom.current;
+      focusAfterZoom.current = null;
+      if (wanted !== null) markerFor(wanted)?.focus();
     };
     draw();
     map.on("zoomend", draw);
@@ -722,8 +802,15 @@ export function MapView(props: Props) {
     if (!map || !focus) return;
     const found = junctionList.current.find((item) => item.index === focus.index);
     if (!found) return;
-    map.easeTo({ center: [found.lon, found.lat], zoom: Math.max(map.getZoom(), 15), duration: 500 });
-    showJunctionCard(map, found, junctionCard);
+    // Centred in the part of the map the panel does not cover, so on a phone
+    // the card is not under the sheet.
+    map.easeTo({
+      center: [found.lon, found.lat],
+      zoom: Math.max(map.getZoom(), 15),
+      duration: 500,
+      padding: callbacks.current.framePadding(),
+    });
+    openCard(found, "list");
   }, [props.junctionFocus]);
 
   // A route that can no longer be dragged (it is being planned again) takes
@@ -762,9 +849,27 @@ export function MapView(props: Props) {
   return <div ref={container} className="map" role="region" aria-label="Map" />;
 }
 
-/** The card a junction marker opens: its reason, and the way to avoid it. */
-function showJunctionCard(map: MapLibreMap, item: JunctionItem, card: { current: Popup | null }): void {
-  card.current?.remove();
+/** The summary list's row for the junction at `index`. */
+function rowFor(index: number): HTMLElement | null {
+  return document.querySelector<HTMLElement>(`.junction-item[data-junction-index="${index}"]`);
+}
+
+/** Where the focus is, for Escape and the junction card (lib/junctionCard.ts escapeClosesCard). */
+function focusPlace(card: Popup | null, map: MapLibreMap): "card" | "opener" | "map" | "body" | "other" {
+  const active = document.activeElement;
+  if (active === null || active === document.body) return "body";
+  if (card?.getElement().contains(active)) return "card";
+  if (active.matches(".junction-marker, .junction-item")) return "opener";
+  if (active === map.getCanvas()) return "map";
+  return "other";
+}
+
+/**
+ * The card a junction marker opens: its reason, and the way to avoid it. A
+ * dialog named for the junction, so a screen reader says what it is rather
+ * than "Close popup, button".
+ */
+function showJunctionCard(map: MapLibreMap, item: JunctionItem, takeFocus: boolean): Popup {
   const body = document.createElement("div");
   body.className = "junction-card";
   const title = document.createElement("strong");
@@ -775,10 +880,24 @@ function showJunctionCard(map: MapLibreMap, item: JunctionItem, card: { current:
   where.className = "hint";
   where.textContent = `${item.where}. Drag the route away to plan around it.`;
   body.append(title, reason, where);
-  card.current = new maplibregl.Popup({ closeButton: true, closeOnClick: true, offset: 16, className: `junction-popup junction-popup-${item.severity}` })
+  const card = new maplibregl.Popup({
+    closeButton: true,
+    closeOnClick: true,
+    // Taken below, if at all, once the card has its name.
+    focusAfterOpen: false,
+    offset: 16,
+    className: `junction-popup junction-popup-${item.severity}`,
+  })
     .setLngLat([item.lon, item.lat])
     .setDOMContent(body)
     .addTo(map);
+  const element = card.getElement();
+  element.setAttribute("role", "dialog");
+  element.setAttribute("aria-label", cardName(item));
+  const close = element.querySelector<HTMLButtonElement>(".maplibregl-popup-close-button");
+  close?.setAttribute("aria-label", CARD_CLOSE_LABEL);
+  if (takeFocus) close?.focus();
+  return card;
 }
 
 /** Station icons are drawn for the screen's pixel density, whole numbers only. */

@@ -23,7 +23,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
       {colours.length > 0 && (
         <figure className="stress route-colours">
           <figcaption>The route on the map, by traffic stress</figcaption>
-          <ul className="stress-list" aria-label="Route colour legend">
+          <ul className="stress-list" aria-label="Route color legend">
             {colours.map((row) => (
               <li key={row.key}>
                 <svg width="36" height="12" aria-hidden="true">

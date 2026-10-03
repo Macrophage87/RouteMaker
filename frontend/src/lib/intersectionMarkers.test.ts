@@ -9,6 +9,9 @@ import {
   GROUP_BELOW_ZOOM,
   GROUP_RADIUS_PX,
   groupJunctions,
+  groupRadius,
+  MAP_MAX_ZOOM,
+  OVERLAP_RADIUS_PX,
   groupLabel,
   junctionCounts,
   junctionHeadline,
@@ -108,7 +111,22 @@ test("close markers are one group when zoomed out, and come apart when zoomed in
   assert.deepEqual(out.map((g) => g.severity), ["red", "orange", "orange"], "a group is as bad as its worst");
   assert.equal(groupLabel(out[0]), "2 stressful junctions here, 1 very high stress: zoom in to see them");
   const close = groupJunctions(items, GROUP_BELOW_ZOOM, project);
-  assert.equal(close.length, 4, "at and above the zoom every junction is its own marker");
+  assert.deepEqual(
+    close.map((g) => g.members.map((m) => m.m)),
+    [[0, 10], [100], [29]],
+    "at and above the zoom only markers that would overlap (closer than an icon) are one",
+  );
+  assert.equal(groupJunctions(items, MAP_MAX_ZOOM, project).length, 4, "at the last zoom every junction is its own marker");
+  assert.equal(groupJunctions(items, MAP_MAX_ZOOM, project, 200).length, 4, "even with a radius given");
+  assert.equal(groupJunctions(items, 17.9, project).length, 3, "just below it, overlapping ones still group");
+  // Exactly an icon apart still overlaps at the edge; a pixel more does not.
+  assert.equal(groupJunctions([at(0, "orange"), at(24, "orange")], GROUP_BELOW_ZOOM, project).length, 1);
+  assert.equal(groupJunctions([at(0, "orange"), at(25, "orange")], GROUP_BELOW_ZOOM, project).length, 2);
+  assert.equal(groupRadius(GROUP_BELOW_ZOOM - 0.1), GROUP_RADIUS_PX);
+  assert.equal(groupRadius(GROUP_BELOW_ZOOM), OVERLAP_RADIUS_PX);
+  assert.equal(groupRadius(MAP_MAX_ZOOM), 0);
+  assert.equal(OVERLAP_RADIUS_PX, ICON_PX);
+  assert.equal(MAP_MAX_ZOOM, 18);
   assert.equal(groupJunctions(items, 10, project, 200).length, 1);
   assert.equal(GROUP_RADIUS_PX, 28);
   // Exactly the radius away is close enough.
@@ -125,9 +143,11 @@ test("every list row says its severity in words", () => {
       { m: 900, lon: -77, lat: 38.9, severity: "orange", reason: "Crossing a slip lane off a busy road (LTS 3), traffic signal", crossed_tier: 3, movement: "straight", control: "signal", kind: "slip_lane", cost_ft: 800 },
     ],
   });
-  assert.deepEqual(items.map((i) => i.severityText), ["Very high", "Higher"]);
-  assert.equal(SEVERITY_COLOURS.red.short, "Very high");
-  assert.equal(SEVERITY_COLOURS.orange.short, "Higher");
+  // "stress" every time: "Higher" alone was ambiguous (a11y review of integrate-2).
+  assert.deepEqual(items.map((i) => i.severityText), ["Very high stress", "Higher stress"]);
+  assert.equal(SEVERITY_COLOURS.red.short, "Very high stress");
+  assert.equal(SEVERITY_COLOURS.orange.short, "Higher stress");
+  for (const severity of ["red", "orange"] as const) assert.equal(SEVERITY_COLOURS[severity].short, SEVERITY_COLOURS[severity].label);
 });
 
 test("the icon is inline SVG with nothing to fetch, sized as asked, and hidden from screen readers", () => {

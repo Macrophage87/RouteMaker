@@ -99,7 +99,18 @@ test("the app's own panels, buttons and text follow the system's colours: nothin
 test("in forced colours buttons and the switch keep a visible border, and focus keeps a visible ring", () => {
   for (const selector of ["button", ".switch", ".switch-state"]) assert.match(forcedFor(selector), /border-color:\s*ButtonText/, selector);
   assert.match(forcedFor(":focus-visible"), /outline:\s*3px solid Highlight/);
-  assert.match(forcedFor(".junction-marker:focus-visible"), /outline:\s*3px solid Highlight/, "a marker that opts out of forced colours still has the system's ring");
+  // A double ring in the system's pair: Highlight alone was about 1.1:1 on the
+  // light map in a dark theme (a11y review of integrate-2).
+  const marker = forcedFor(".junction-marker:focus-visible");
+  assert.match(marker, /outline:\s*3px solid CanvasText/, "a marker that opts out of forced colours still has the system's ring");
+  assert.match(marker, /box-shadow:\s*0 0 0 2px Canvas;/, "with the system's background inside it");
+  assert.match(forcedFor(".junction-marker"), /forced-color-adjust:\s*none/, "which forced colours keep, as the marker opts out");
+  // MapLibre's own buttons ring with a box-shadow, which forced colours drop.
+  // The group's selector too: it is as specific as the rule outside forced colours that it overrides.
+  for (const selector of [".maplibregl-ctrl button:focus-visible", ".maplibregl-ctrl-group button:focus:focus-visible", ".maplibregl-ctrl-attrib-button:focus-visible"]) {
+    assert.match(forcedFor(selector), /outline:\s*3px solid Highlight/, selector);
+    assert.match(forcedFor(selector), /outline-offset:\s*-3px/, `${selector}: inside the button, on its system background`);
+  }
   assert.match(forcedFor(".switch[aria-checked=\"true\"] .switch-state"), /border-width:\s*3px/, "the switch's on state is told from off by its word and a heavier border, not a colour the system may replace");
   assert.doesNotMatch(forcedFor(".switch[aria-checked=\"true\"] .switch-state"), /background|(^|[;\s])color:/, "and sets no colour of its own that forced colours would override");
 });

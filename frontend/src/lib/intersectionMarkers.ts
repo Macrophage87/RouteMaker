@@ -20,8 +20,10 @@ export type Severity = JunctionWarning["severity"];
  * (`short`).
  */
 export const SEVERITY_COLOURS: Record<Severity, { fill: string; stroke: string; label: string; short: string }> = {
-  orange: { fill: "#f59e0b", stroke: "#7c4a03", label: "Higher stress", short: "Higher" },
-  red: { fill: "#dc2626", stroke: "#7f1d1d", label: "Very high stress", short: "Very high" },
+  // `short` is the list row's word, and says "stress" as the marker and the card
+  // do: "Higher" alone was ambiguous to a screen-reader user (a11y review, int-2).
+  orange: { fill: "#f59e0b", stroke: "#7c4a03", label: "Higher stress", short: "Higher stress" },
+  red: { fill: "#dc2626", stroke: "#7f1d1d", label: "Very high stress", short: "Very high stress" },
 };
 
 /** The icon is this many CSS pixels on a side. */
@@ -37,7 +39,7 @@ export interface JunctionItem extends JunctionWarning {
   where: string;
   /** What a screen reader hears for the marker. */
   label: string;
-  /** The severity in a word, shown at the start of the list row: "Very high". */
+  /** The severity in words, shown at the start of the list row: "Very high stress". */
   severityText: string;
 }
 
@@ -111,9 +113,18 @@ export function warningIconSvg(severity: Severity, size = ICON_PX): string {
  * one (review r1: three to five triangles overlapped at one interchange on a
  * zoomed-out calm route). A group shows the worst severity's shape and how many
  * junctions it holds, and a click on it zooms in until they come apart.
+ *
+ * At and above it, markers that would overlap (centres closer than an icon,
+ * OVERLAP_RADIUS_PX) are still one group (a11y review, int-2: two reds 10 m
+ * apart sat 2 px apart at zoom 14 and up), except at the map's last zoom, where
+ * zooming in cannot part them: there each is its own marker, and the focused
+ * one is drawn on top (styles.css).
  */
 export const GROUP_BELOW_ZOOM = 14;
 export const GROUP_RADIUS_PX = 28;
+export const OVERLAP_RADIUS_PX = ICON_PX;
+/** The map's last zoom (MapView.tsx maxZoom). */
+export const MAP_MAX_ZOOM = 18;
 
 export interface JunctionGroup {
   /** In route order; the first is where the group is drawn. */
@@ -121,23 +132,30 @@ export interface JunctionGroup {
   severity: Severity;
 }
 
+/** How near on screen two junctions are drawn as one at `zoom`; 0 at the map's last zoom. */
+export function groupRadius(zoom: number, maxZoom = MAP_MAX_ZOOM): number {
+  if (zoom >= maxZoom) return 0;
+  return zoom < GROUP_BELOW_ZOOM ? GROUP_RADIUS_PX : OVERLAP_RADIUS_PX;
+}
+
 /**
- * The junctions as the map draws them at a zoom: one group each at or above
- * GROUP_BELOW_ZOOM, else each joined to the first group in route order whose
- * anchor is within `radiusPx` on screen (`project` gives a junction's screen
- * position).
+ * The junctions as the map draws them at a zoom: each joined to the first
+ * group in route order whose anchor is within the radius on screen (`project`
+ * gives a junction's screen position; the radius is groupRadius's unless
+ * given), or a group of its own.
  */
 export function groupJunctions(
   items: readonly JunctionItem[],
   zoom: number,
   project: (item: JunctionItem) => { x: number; y: number },
-  radiusPx = GROUP_RADIUS_PX,
+  radiusPx?: number,
+  maxZoom = MAP_MAX_ZOOM,
 ): JunctionGroup[] {
+  const radius = zoom >= maxZoom ? 0 : (radiusPx ?? groupRadius(zoom, maxZoom));
   const groups: { at: { x: number; y: number }; members: JunctionItem[] }[] = [];
   for (const item of items) {
     const at = project(item);
-    const near =
-      zoom < GROUP_BELOW_ZOOM ? groups.find((g) => Math.hypot(g.at.x - at.x, g.at.y - at.y) <= radiusPx) : undefined;
+    const near = radius > 0 ? groups.find((g) => Math.hypot(g.at.x - at.x, g.at.y - at.y) <= radius) : undefined;
     if (near) near.members.push(item);
     else groups.push({ at, members: [item] });
   }
