@@ -20,9 +20,11 @@ export type FederalStatus = "loading" | "ready" | "unavailable";
 
 export const FEDERAL_HEADING = "Federal land";
 export const FEDERAL_HELP =
-  "Tap or click a shaded area on the map to see its name and who manages it. Shading is where land is owned or kept " +
-  "by the federal government, which is not the same as who polices a road: in most cases the roads are still " +
-  "city roads. It matters most for stopping, and for the parkways.";
+  "The shading on the map marks federal land by kind, as the legend above lists them. Callouts for federal land " +
+  "at each stop, and for parkways, are coming to the route description and the stop list. Pointer users can also " +
+  "tap or click a shaded area for its name and manager. Shading is where land is owned or kept by the federal " +
+  "government, which is not the same as who polices a road: ownership is not police jurisdiction, and in most " +
+  "cases the roads are still city roads. It matters most for stopping, and for the parkways.";
 export const FEDERAL_UNAVAILABLE = "Federal land shading is unavailable for now. The map and your route are not affected.";
 export const FEDERAL_LOADING = "Loading federal land…";
 

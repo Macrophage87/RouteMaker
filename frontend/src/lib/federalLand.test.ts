@@ -243,6 +243,9 @@ test("the section: a labelled switch, the legend, the note; the legend goes when
   assert.match(shown, /checked=""/);
   assert.match(shown, /Federal land - permit rules may differ \(information, not legal advice\)\./);
   assert.match(shown, /not the same as who polices a road/);
+  assert.match(shown, /marks federal land by kind/);
+  assert.match(shown, /route description and the stop list/);
+  assert.match(shown, /ownership is not police jurisdiction/);
   assert.match(shown, /federal-legend/);
   assert.doesNotMatch(render(false, "ready"), /federal-legend/);
   const unavailable = render(true, "unavailable");
