@@ -20,6 +20,7 @@ import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
+import { RouteDescription } from "./RouteDescription.tsx";
 import { RideTypePicker } from "./RideTypePicker.tsx";
 import type { Dials } from "./lib/dials.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
@@ -838,6 +839,7 @@ function RouteSummary({
       {pace && <p className="hint pace">Moving time at {pace}, without stops.</p>}
       <FacilityBreakdown route={route} />
       <IntersectionList route={route} onSelect={onSelectJunction} />
+      <RouteDescription route={route} />
       {/* Riders often arrive by a shared link, straight into a route, and a
           phone has no hover to show the handle: say that the line moves. */}
       <p className="hint reshape">

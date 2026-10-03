@@ -2061,6 +2061,68 @@ planner words it with miles first: "This calm route is 2.6x the direct distance
 (+18.0 mi, 29.0 km)", with what it buys at a note and "Move the Traffic slider
 down" at a warning.
 
+### The route description (item 220)
+
+Many blind cyclists in this area ride as tandem stokers (the owner, 2026-10-02),
+so what the map shows by colour and position is also written out.
+`POST /api/route` answers `description` (additive; `core.api.DescriptionEntryOut`):
+a list of entries in route order, built by `routemaker.describe` from what the
+plan already has, with no router call and no query. Its only new input is the
+street name, asked for as `edge.names` in the `trace_attributes` call the plan
+makes anyway (`Piece` now carries `names`, `use` and the edge's begin and end
+headings, none of them part of its identity).
+
+- **Stretches.** Consecutive pieces on one street (a name in common, or both
+  unnamed) with one tier and one facility are one stretch. A stretch under 300
+  ft is folded into the longer neighbour in its leg, but never an LTS 3, LTS 4
+  or Avoid stretch, and never an untraced one. A stretch never spans a via
+  point: each leg is described on its own and `Via 1`, `Via 2` (the points
+  list's own words) are entries between them.
+- **Turns.** Where the street changes, the entry says how the rider turns into
+  it (`left`, `right`, or `Continue onto`), from the previous stretch's last
+  heading and this one's first (`routemaker.intersections.movement_of`). If the
+  junction model read the junction within 30 m ("at a signal", "at a stop
+  sign", "at an all-way stop", "where cross traffic stops") that is said; where
+  it flagged it, the severity words follow ("Higher stress junction", "Very
+  high stress junction"; flagged with nothing mapped says "no signal mapped").
+  Where the model did not read a junction nothing is claimed about it.
+- **Junction entries.** A flagged junction that is not a change of street (a
+  crossing of a busy road) is an entry of its own, at a point.
+- **Words.** US units first, the metric once per entry, and "to" rather than a
+  dash so a screen reader does not say "dash": `0.0 to 1.2 mi (0.0 to 1.9 km):
+  Capital Crescent Trail, traffic-free path.` Tier words follow the legend:
+  traffic-free path (facility `path`, whatever the tier), low stress (LTS 1),
+  fairly low stress (LTS 2), busy road (LTS 3), heavy traffic (LTS 4), Avoid
+  (legal, but best avoided), stress not rated; a protected or painted bike lane
+  is added. A stretch with no name is "unnamed path" (a path facility or a
+  path `use`) or "unnamed road". Crossed roads' names come from the junction
+  model in lower case and are capitalised for saying; a road with none is "a
+  busy road".
+- **Distances** are measured along the traced pieces and scaled so the last
+  stretch ends at the route's `distance_m`; the stretches' lengths add up to it
+  to the metre. Junction events are placed in the same measure.
+- **Entry fields.** `kind` (`stretch`, `junction`, `via`), `from_m`, `to_m`,
+  `from_mi`, `to_mi`, `street`, `tier`, `facility`, `turn`
+  (`movement`, `onto`, `control`, `severity`), `severity`, `via`, and `text`,
+  one sentence. `description` is null where it could not be built (an error is
+  logged and the route is answered without it) and absent from an older API.
+
+The planner lists the sentences in `frontend/src/RouteDescription.tsx` (a
+component of its own: a heading, a disclosure button and an ordered list,
+closed unless the rider has opened it before, "Copy description" and "Download
+as text"). It words nothing itself, and announces nothing when the route
+changes; the only live region is the reply to pressing Copy.
+
+Cost, measured on the live router through the forwarder harness: see
+`/home/steph/rmdata/demo/reports/ROUTE-DESCRIPTION-plan-notes.md`; the building
+of the description is about a millisecond for a 10 mi route.
+
+Tests: `tests/test_describe.py` (merging, tiny stretches, wording, turns,
+junctions, vias, totals), `tests/test_route_description.py` (through the view:
+no extra router call, every preset, the schema), and
+`frontend/src/lib/routeDescription.test.ts`. The mutants are
+`scripts/mutants_describe.py` (each mutant against whole test files).
+
 ### The contract
 
 `POST /api/route` answers three more fields (all additive; `core.api.RouteOut`):

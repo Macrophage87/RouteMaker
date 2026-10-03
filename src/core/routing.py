@@ -61,7 +61,7 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 from django.conf import settings
@@ -70,7 +70,7 @@ from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, ridetime, trace_junctions
+from routemaker import climbs, describe, ridetime, trace_junctions
 from routemaker import detour as detour_rules
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
@@ -259,6 +259,18 @@ class Piece:
     lon: float
     lat: float
     metres: float
+    # What the route description reads (routemaker.describe): the edge's street
+    # names, Valhalla's `use`, and the compass headings it begins and ends on.
+    # Not part of a piece's identity, and all optional: a trace from a router
+    # that was not asked for them (an older one, a test double) has none.
+    names: tuple[str, ...] = field(default=(), compare=False)
+    use: str = field(default="", compare=False)
+    heading_in: float | None = field(default=None, compare=False)
+    heading_out: float | None = field(default=None, compare=False)
+
+
+def _heading(value) -> float | None:
+    return float(value) if isinstance(value, (int, float)) else None
 
 
 def pieces_of_trace(trace: dict) -> list[Piece]:
@@ -276,6 +288,14 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if length <= 0 or begin is None or end is None or end < begin or end >= len(shape):
             continue
         way_id = int(edge.get("way_id") or 0)
+        names = tuple(n for n in edge.get("names") or () if isinstance(n, str) and n.strip())
+        # Keyword arguments for every piece of this edge.
+        info = {
+            "names": names,
+            "use": str(edge.get("use") or ""),
+            "heading_in": _heading(edge.get("begin_heading")),
+            "heading_out": _heading(edge.get("end_heading")),
+        }
         stretches = []
         for a, b in zip(shape[begin:end], shape[begin + 1 : end + 1], strict=True):
             stretches.append((a, b, haversine(Point(*a), Point(*b))))
@@ -283,12 +303,12 @@ def pieces_of_trace(trace: dict) -> list[Piece]:
         if ground <= 0:
             # A degenerate edge: all its length on its first vertex.
             (lon, lat) = shape[begin]
-            pieces.append(Piece(way_id, lon, lat, length))
+            pieces.append(Piece(way_id, lon, lat, length, **info))
             continue
         for a, b, d in stretches:
             if d > 0:
                 pieces.append(
-                    Piece(way_id, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, length * d / ground)
+                    Piece(way_id, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, length * d / ground, **info)
                 )
     return pieces
 
@@ -560,6 +580,8 @@ def trace_leg(variant: str, costing: dict, shape: str, deadline: Deadline) -> di
                     "edge.length",
                     "edge.begin_shape_index",
                     "edge.end_shape_index",
+                    # The route description's street names (routemaker.describe).
+                    "edge.names",
                     "shape",
                     # What the intersection model reads (core.junctions).
                     *trace_junctions.TRACE_ATTRIBUTES,
@@ -905,6 +927,40 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
     try:
         return refine.events_of_raws(raws, refine_context, deadline)
     except (DeadlineExceeded, RouterUnavailable):
+        return None
+
+
+def describe_route(
+    leg_runs: list, pieces: list[Piece], classes: list, events: list | None, summary: dict
+) -> list[dict] | None:
+    """The route as words (`routemaker.describe`, OWNER-DECISIONS 220): built
+    from the pieces and junction events the plan already has, with no router
+    call and no query. None where it could not be built: the route is answered
+    all the same."""
+    try:
+        legs: list = []
+        for run in leg_runs:
+            if isinstance(run, tuple):
+                legs.append(
+                    [
+                        describe.Atom(
+                            pieces[i].metres,
+                            classes[i][0],
+                            classes[i][1],
+                            pieces[i].names,
+                            pieces[i].use,
+                            pieces[i].heading_in,
+                            pieces[i].heading_out,
+                        )
+                        for i in range(run[0], run[1])
+                    ]
+                )
+            else:
+                legs.append(run)
+        length = float(summary.get("length", 0.0)) * 1000.0
+        return describe.describe(legs, events, length or None)
+    except Exception:  # noqa: BLE001 - a route is answered without its description
+        logger.warning("the route description could not be built", exc_info=True)
         return None
 
 
@@ -1283,6 +1339,7 @@ def plan(
     events = None
     if not over_budget:
         events = _events(refine_context, legs, raw_junctions, deadline)
+    described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
     joined_at = clock()
     if joined_at - started > budget_s:
         logger.warning(
@@ -1375,6 +1432,7 @@ def plan(
         "intersections": None if events is None else _intersection_rows(events),
         "calm_search": refined,
         "detour": detour,
+        "description": described,
     }
 
 

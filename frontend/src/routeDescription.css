@@ -1,0 +1,37 @@
+/* The route description (OWNER-DECISIONS 220): a list of sentences, with the
+   tier and the severity in words, so nothing here depends on colour. */
+.route-description {
+  margin: 12px 0;
+}
+.route-description h3 {
+  font-size: 0.95rem;
+  margin: 10px 0 6px;
+}
+.description-toggle {
+  color: var(--text);
+  background: var(--bg-soft);
+  border: 1px solid var(--border);
+}
+.description-list {
+  margin: 8px 0;
+  padding-left: 1.6rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+.description-list[hidden] {
+  display: none;
+}
+.description-list li {
+  margin: 4px 0;
+}
+.description-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin-top: 6px;
+}
+.description-status {
+  margin: 0;
+}

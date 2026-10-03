@@ -44,6 +44,32 @@ export interface JunctionWarning {
   cost_ft: number;
 }
 
+/**
+ * One entry of the route's description (core.api.DescriptionEntryOut;
+ * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
+ * junction that is not a turn, or a via point. `text` is the one plain
+ * sentence to read aloud, US units first.
+ */
+export interface DescriptionEntry {
+  kind: "stretch" | "junction" | "via";
+  from_m: number;
+  to_m: number;
+  from_mi: number;
+  to_mi: number;
+  street: string | null;
+  tier: number | null;
+  facility: "path" | "protected" | "lane" | null;
+  turn: {
+    movement: "left" | "straight" | "right" | null;
+    onto: string | null;
+    control: "signal" | "stop" | "cross_stop" | "all_stop" | "none" | null;
+    severity: "orange" | "red" | null;
+  } | null;
+  severity?: "orange" | "red" | null;
+  via?: number | null;
+  text: string;
+}
+
 /** What the search over the router's routes did (core.api.CalmSearchOut). */
 export interface CalmSearch {
   rate: number;
@@ -148,6 +174,8 @@ export interface RouteResponse {
    * be read in time, absent from an older API.
    */
   intersections?: JunctionWarning[] | null;
+  /** The route in words, stretch by stretch; null where it could not be built, absent from an older API. */
+  description?: DescriptionEntry[] | null;
   /** The calm detour search (null on a ride type that has none). Absent from an older API. */
   calm_search?: CalmSearch | null;
   /** Null within the allowance of the direct route; absent from an older API, which has the straight-line notice. */

@@ -54,6 +54,8 @@ CONTRACT_KEYS = {
     "intersections",
     "calm_search",
     "detour",
+    # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
+    "description",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

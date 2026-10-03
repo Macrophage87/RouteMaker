@@ -503,6 +503,55 @@ class DetourOut(Schema):
     )
 
 
+class DescriptionTurnOut(Schema):
+    """How the rider comes into a described stretch, or what a junction entry
+    is: the movement, the street turned onto, who has the right of way where
+    the junction model read the junction, and its severity where it flagged it."""
+
+    movement: Literal["left", "straight", "right"] | None = Field(
+        description="Null where the router gave no headings and no junction event did."
+    )
+    onto: str | None = Field(description="The street turned onto; null on a junction entry.")
+    control: Literal["signal", "stop", "cross_stop", "all_stop", "none"] | None = Field(
+        description="Null where the junction model did not read the junction."
+    )
+    severity: Literal["orange", "red"] | None = Field(
+        description='"Higher stress" (orange) or "Very high stress" (red), where flagged.'
+    )
+
+
+class DescriptionEntryOut(Schema):
+    """One entry of the route's description (`routemaker.describe`; OWNER-DECISIONS
+    220: blind cyclists, many riding as tandem stokers, need the route in words).
+    Stretches, one street at one stress tier and facility, run end to end from 0;
+    a `junction` is a flagged junction that is not a turn, at a point, and a
+    `via` is where a via point is reached (`Via 1`, as the points list calls it).
+    Distances are along the route, scaled to `distance_m`. `text` is one plain
+    sentence, US units first with the metric once, for reading aloud; the other
+    fields are the same facts for a client that words them itself. Additive:
+    older clients ignore it, and it is null where it could not be built."""
+
+    kind: Literal["stretch", "junction", "via"]
+    from_m: int
+    to_m: int
+    from_mi: float
+    to_mi: float
+    street: str | None = Field(
+        description='The street, or "unnamed path" or "unnamed road"; null on a `via` and '
+        "where a junction's road has no name."
+    )
+    tier: int | None = Field(description="1-5 on a stretch; null: not rated, or not a stretch.")
+    facility: Literal["path", "protected", "lane"] | None = Field(
+        description='The bike facility, where there is one; "none" and unknown are null.'
+    )
+    turn: DescriptionTurnOut | None = Field(
+        description="How the stretch is entered, where it begins at a change of street."
+    )
+    severity: Literal["orange", "red"] | None = None
+    via: int | None = Field(default=None, description="On a `via`: its number, from 1.")
+    text: str
+
+
 class RouteOut(Schema):
     preset: PresetName
     variant: Literal["standard", "no-trail", "ebike", "weekend"]
@@ -527,6 +576,9 @@ class RouteOut(Schema):
     intersections: list[IntersectionOut] | None
     calm_search: CalmSearchOut | None
     detour: DetourOut | None
+    # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
+    # absent or null where it could not be built.
+    description: list[DescriptionEntryOut] | None = None
 
 
 # What Pydantic puts before the text of a ValueError raised in a validator.
