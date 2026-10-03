@@ -607,7 +607,9 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         info["lts4_after_m"] = round(best.lts4_m, 1)
     if ctx.options is not None and ctx.alternates:
         pool = [(best_trip, best)] + [o for o in ctx.options if o[0] is not best_trip]
-        ctx.candidates = pick_candidates(pool, ctx, ctx.first_lts4)
+        ctx.candidates = more_routes(
+            pick_candidates(pool, ctx, ctx.first_lts4), ctx, ctx.first_lts4
+        )
     return best_trip, info
 
 
@@ -1592,6 +1594,69 @@ def pick_candidates(pool: list, ctx: Context, reference: list[float]) -> list:
         ):
             continue
         chosen.append((trip, read))
+    return chosen
+
+
+# Where the search found no other route worth offering, the router is asked for one
+# that avoids the roads of those already chosen (the loop's way back uses the same
+# device): the points along the chosen routes are excluded, every ALT_SAMPLE_M, none
+# within the search's endpoint clearance of an end or a stop, at most ALT_ASKS times
+# and ALT_BUDGET_S seconds, and a route is kept only if `pick_candidates` would pick it
+# (a near-tie on stress, within the longest ride, the hold, meaningfully different). A
+# route that fails the near-tie ends the asking: avoiding more only makes it busier.
+ALT_ASKS = 3
+ALT_BUDGET_S = 9.0
+ALT_SAMPLE_M = 150.0
+
+
+def more_routes(chosen: list, ctx: Context, reference: list[float]) -> list:
+    """`chosen` (a list of (trip, reading), the answer first) with the routes the router
+    gives when the roads of those already chosen are excluded, as above."""
+    if len(chosen) >= ctx.alternates or ctx.alternates < 2:
+        return chosen
+    stop_at = min(routing.clock() + ALT_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
+    base = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}
+    asked = 0
+    while len(chosen) < ctx.alternates and asked < ALT_ASKS:
+        if stop_at - routing.clock() < REFINE_ROUND_MIN_S:
+            break
+        points: list[tuple[float, float]] = []
+        for _trip, read in chosen:
+            total = _road_m(read)
+            for at, lon, lat, metres in _marks(read):
+                if metres < CALM_MIN_EDGE_M or not _clear_of_ends(at, total, read.via_m):
+                    continue
+                if points and haversine(Point(*points[-1]), Point(lon, lat)) < ALT_SAMPLE_M:
+                    continue
+                points.append((lon, lat))
+        points = points[:: max(1, math.ceil(len(points) / MAX_EXCLUDES))]
+        if not points:
+            break
+        asked += 1
+        request = {**base, "exclude_locations": [{"lon": lon, "lat": lat} for lon, lat in points]}
+        try:
+            answer = routing._call(
+                ctx.variant,
+                "route",
+                request,
+                routing.Deadline(
+                    stop_at, min(ctx.deadline.per_call_s, routing.ALTERNATES_TIMEOUT_S)
+                ),
+            )
+            found = answer.get("trip") or {}
+            if not found.get("legs") or too_long(_trip_m(found), ctx):
+                break
+            read = analyse(found, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
+        except routing.RouterRefused:
+            break
+        except (routing.DeadlineExceeded, routing.RouterUnavailable):
+            break
+        if read is None or read.events is None:
+            break
+        picked = pick_candidates([*chosen, (found, read)], ctx, reference)
+        if len(picked) == len(chosen):
+            break
+        chosen = picked
     return chosen
 
 

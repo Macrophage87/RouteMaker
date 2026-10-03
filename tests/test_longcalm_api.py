@@ -158,17 +158,16 @@ class TestNoRouteWithinTheLongestRide:
     def test_a_calmer_rung_that_fits_is_the_first_route(self, client, segments, router) -> None:
         fake = FakeRouter(
             {
-                "route": [
-                    route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])]),
-                    route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])]),
-                ],
+                "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
+                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 5,
                 "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
             }
         )
         router(fake)
         body = post(client, top_body(max_distance_m=2_000)).json()
         search = body["calm_search"]
-        assert search["fits"] is True and search["fitted_at"] == routing.FIT_STRESS_LADDER[0]
+        # Every rung fits here, so the bisection runs to its end toward the calmest.
+        assert search["fits"] is True and search["fitted_at"] == 78
         assert body["distance_m"] == pytest.approx(1900.0)
 
     def test_a_route_within_the_limit_asks_no_second_route(self, client, segments, router) -> None:
@@ -417,3 +416,95 @@ class TestMakeItALoop:
             "by span alone it would be"
         )
         assert routing.loop_wanted([US, PENN], True, "trailmaxxing")
+
+
+class TestFittingALongestRide:
+    """`routing._fit_longest`: the calmest route within the limit, found by the ladder and
+    then by bisecting the last stretch of it."""
+
+    def run(self, monkeypatch, length_km, max_m, time_left=100.0):
+        calls = []
+
+        def call(variant, endpoint, payload, deadline):
+            use_roads = payload["costing_options"]["bicycle"]["use_roads"]
+            calls.append(use_roads)
+            km = length_km(use_roads)
+            return {
+                "trip": {
+                    "legs": [{"shape": "x", "summary": {"length": km}}],
+                    "summary": {"length": km},
+                }
+            }
+
+        monkeypatch.setattr(routing, "_call", call)
+        first = {"legs": [{"shape": "own"}], "summary": {"length": length_km(0.0)}}
+        deadline = routing.Deadline(routing.clock() + time_left, 35)
+        got = routing._fit_longest(
+            first,
+            {"locations": []},
+            {"bicycle": {}},
+            {"bicycle": {}},
+            max_m,
+            "trailmaxxing",
+            0,
+            False,
+            False,
+            "standard",
+            deadline,
+        )
+        return got, calls
+
+    def test_a_route_within_the_limit_is_kept_and_nothing_is_asked(self, monkeypatch) -> None:
+        got, calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 61_000.0)
+        assert got[4] is None and calls == [] and got[0]["legs"][0]["shape"] == "own"
+
+    def test_the_ladder_then_the_bisection_find_the_calmest_that_fits(self, monkeypatch) -> None:
+        # 60 km at use_roads 0, 40 km at 1: it fits 50 km from use_roads 0.5.
+        got, calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 50_000.0)
+        assert calls[:3] == [presets.use_roads_for(p) for p in routing.FIT_STRESS_LADDER]
+        assert len(calls) == 3 + routing.FIT_BISECT_STEPS
+        # Positions 70 and 40 are over, 0 fits; 20 fits, 30 fits, 35 fits (use_roads 0.55 -> 49 km).
+        assert got[4] == 35
+        assert got[0]["summary"]["length"] * 1000.0 <= 50_000.0
+        assert got[0]["summary"]["length"] * 1000.0 > 48_000.0, "the calmest of those that fit"
+
+    def test_a_bisection_probe_that_does_not_fit_narrows_it_the_other_way(
+        self, monkeypatch
+    ) -> None:
+        # Fits only from use_roads 0.62.
+        got, _calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 47_600.0)
+        # 20 fits, 30 does not (47.7 km), so 25 is tried and fits.
+        assert got[4] == 25
+        assert got[0]["summary"]["length"] * 1000.0 <= 47_600.0
+
+    def test_when_nothing_fits_the_shortest_is_answered(self, monkeypatch) -> None:
+        got, calls = self.run(monkeypatch, lambda u: 60 - 20 * u, 30_000.0)
+        assert got[4] == 0 and got[0]["summary"]["length"] == pytest.approx(40.0)
+        assert len(calls) == len(routing.FIT_STRESS_LADDER), "no bisection where nothing fits"
+
+    def test_with_no_time_it_stops_asking(self, monkeypatch) -> None:
+        got, calls = self.run(
+            monkeypatch, lambda u: 60 - 20 * u, 50_000.0, time_left=routing.FIT_MIN_S - 1
+        )
+        assert calls == [] and got[4] is None
+
+    def test_a_refusal_stops_it(self, monkeypatch) -> None:
+        def refuse(variant, endpoint, payload, deadline):
+            raise routing.RouterRefused(400, 442, "no path")
+
+        monkeypatch.setattr(routing, "_call", refuse)
+        first = {"legs": [{"shape": "own"}], "summary": {"length": 60.0}}
+        got = routing._fit_longest(
+            first,
+            {"locations": []},
+            {"bicycle": {}},
+            {"bicycle": {}},
+            50_000.0,
+            "trailmaxxing",
+            0,
+            False,
+            False,
+            "standard",
+            routing.Deadline(routing.clock() + 100, 35),
+        )
+        assert got[0] is first and got[4] is None

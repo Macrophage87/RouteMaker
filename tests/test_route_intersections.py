@@ -422,26 +422,16 @@ class TestTheSearchInTheAnswer:
         below = post(client, {**good_body(), "stress": 95}).json()["calm_search"]
         assert below["seek"] is None
 
-    def test_only_trailmaxxing_has_a_trail_credit_and_the_answer_says_so(
+    def test_no_ride_has_a_trail_credit_and_the_answer_says_none(
         self, client, arterial, router
     ) -> None:
-        """OWNER-DECISIONS 202: a preset dial, carried in by the ride type and
-        faded by the slider (`presets.trail_credit_for`)."""
+        """OWNER-DECISIONS 257 supersedes 202: a quiet street counts the same as a trail, so the
+        answer has no credit to report, on Trailmaxxing or any ride type, at any position."""
         router(world())
-        top = post(client, {**good_body("trailmaxxing"), "stress": 100}).json()["calm_search"]
-        assert top["trail_credit"] == presets.TRAIL_CREDIT
-        assert top["trail_before_m"] is not None and top["trail_after_m"] is not None
-        for name in sorted(presets.PRESETS):
-            if name in ("trailmaxxing", "mass-ride"):
-                continue
-            other = post(client, {**good_body(name), "stress": 100}).json()["calm_search"]
-            assert other["trail_credit"] is None, name
-            assert other["trail_before_m"] is None, name
-        moved = post(client, {**good_body("trailmaxxing"), "stress": 90}).json()["calm_search"]
-        assert moved["trail_credit"] == presets.trail_credit_for("trailmaxxing", 90)
-        assert 0 < moved["trail_credit"] < presets.TRAIL_CREDIT
-        below = post(client, {**good_body("trailmaxxing"), "stress": 70}).json()["calm_search"]
-        assert below["trail_credit"] is None
+        for name in ("trailmaxxing", "default", "group-ride"):
+            for stress in (100, 90):
+                found = post(client, {**good_body(name), "stress": stress}).json()["calm_search"]
+                assert not {"trail_credit", "trail_before_m", "trail_after_m"} & set(found), name
 
     def test_a_ride_on_the_no_trail_graph_is_searched_as_roadway_only(
         self, client, arterial, router, monkeypatch

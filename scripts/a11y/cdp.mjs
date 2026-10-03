@@ -88,6 +88,10 @@ export async function newPage(b, { width = 1280, height = 900, mobile = false } 
       await s("Input.dispatchKeyEvent", { type: "keyDown", key, code, windowsVirtualKeyCode: keyCode, text, modifiers });
       await s("Input.dispatchKeyEvent", { type: "keyUp", key, code, windowsVirtualKeyCode: keyCode, modifiers });
     },
+    /** Text typed into the focused field (no key events: the page sees input). */
+    type(text) {
+      return s("Input.insertText", { text });
+    },
     tab(shift = false) {
       return page.key("Tab", "Tab", 9, shift ? 8 : 0);
     },
@@ -164,7 +168,14 @@ export async function axNode(page, selector) {
   const { nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
   const n = nodes[0];
   const prop = (name) => n.properties?.find((q) => q.name === name)?.value?.value;
-  return { role: n.role?.value, name: n.name?.value, description: n.description?.value, expanded: prop("expanded") };
+  return {
+    role: n.role?.value,
+    name: n.name?.value,
+    description: n.description?.value,
+    expanded: prop("expanded"),
+    checked: prop("checked") === "true" ? true : prop("checked") === "false" ? false : prop("checked"),
+    disabled: prop("disabled"),
+  };
 }
 
 /** Decode an 8-bit RGB(A) PNG, as CDP's screenshots are: { width, height, pixel(x, y) -> [r, g, b] }. */
@@ -281,10 +292,30 @@ export const S_TRAIL = (() => {
   r.distance_m = 11200;
   r.duration_s = 2900;
   r.dials = { stress: 100, hills: 0, when: "weekday", carrying: null };
-  r.calm_search = { rate: 10, rounds: 4, excluded: 7, limited: "time", trail_credit: 1.5 };
+  r.calm_search = { rate: 10, rounds: 4, excluded: 7, limited: "time" };
   r.detour = { basis: "direct_route", reference_m: 4660, ratio: 2.4, extra_m: 6540, level: "strong", avoided_m: 1800 };
   r.description = TRAIL_FULL;
   r.description_overview = TRAIL_OVERVIEW;
+  return r;
+})();
+/**
+ * Trailmaxxing at the top with two more routes to choose from (OWNER-DECISIONS 265): each a
+ * whole route body with its rank, the answer's own marked 1.
+ */
+export const S_CHOICES = (() => {
+  const r = JSON.parse(JSON.stringify(S_TRAIL));
+  r.effort_m = 13000;
+  r.rank = 1;
+  const other = (rank, distance, lts3) => {
+    const c = JSON.parse(JSON.stringify(S_TRAIL));
+    c.rank = rank;
+    c.distance_m = distance;
+    c.effort_m = distance * 1.1;
+    c.stress_m = { ...c.stress_m, 3: lts3 };
+    delete c.candidates;
+    return c;
+  };
+  r.candidates = [other(2, 11600, 900), other(3, 12100, 1000)];
   return r;
 })();
 /** The default ride, no detour. */

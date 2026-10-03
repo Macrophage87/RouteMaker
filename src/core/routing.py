@@ -1237,6 +1237,13 @@ FIT_STRESS_LADDER = (presets.STRESS_DEFAULT_AT, 40, 0)
 FIT_MIN_S = 12
 
 
+# After the ladder finds the calmest rung that fits, the stretch between it and the
+# rung before (the one that did not) is bisected this many times for a calmer route
+# that still fits: a longest ride between two rungs' routes is common (Union Station to
+# Baltimore Penn at 50 mi: the calm route is 58 mi, the direct one 40).
+FIT_BISECT_STEPS = 3
+
+
 def _fit_longest(
     trip: dict,
     request: dict,
@@ -1252,19 +1259,20 @@ def _fit_longest(
 ) -> tuple[dict, dict, dict, dict, int | None]:
     """The first route for a rider's longest ride (OWNER-DECISIONS 256): the
     router's own route if it is within it, else the calmest route the router gives
-    that is, from its own costing at the traffic positions of FIT_STRESS_LADDER;
-    the most direct one if none is. Returns the trip, the request and costings to
-    search with, and the traffic position the route was found at (None: the ride's
-    own)."""
+    that is, from its own costing at the traffic positions of FIT_STRESS_LADDER and
+    then between the last two (FIT_BISECT_STEPS); the shortest one found if none
+    is. Returns the trip, the request and costings to search with, and the traffic
+    position the route was found at (None: the ride's own)."""
     length = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
     if rider_max_m is None or length <= rider_max_m:
         return trip, request, costing, trace_costing, None
     shortest = (trip, request, costing, trace_costing, None)
-    for rung in FIT_STRESS_LADDER:
-        if deadline.at - clock() < FIT_MIN_S:
-            break
+
+    def ask(position: int):
+        """The route at a traffic position: (trip, length m, the tuple to return), or
+        None where there is none (or no time) and None, False for a refusal."""
         options = presets.costing(
-            preset_name, rung, hills_dial, assist=assist, avoid_gravel=avoid_gravel
+            preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
         )
         asked = {k: v for k, v in request.items() if k != "alternates"} | {
             "costing_options": options
@@ -1274,16 +1282,45 @@ def _fit_longest(
                 variant, "route", asked, Deadline(deadline.at, min(deadline.per_call_s, 30))
             )
         except (DeadlineExceeded, RouterUnavailable, RouterRefused):
-            break
+            return False
         found = answer.get("trip") or {}
         if not found.get("legs"):
-            continue
+            return None
         found_m = float((found.get("summary") or {}).get("length", 0.0)) * 1000.0
-        got = (found, asked, options, options, rung)
-        if found_m <= rider_max_m:
-            return got
-        if found_m < float((shortest[0].get("summary") or {}).get("length", 0.0)) * 1000.0:
-            shortest = got
+        return found_m, (found, asked, options, options, position)
+
+    over = presets.STRESS_TODAYS_TOP  # the calmest position that is not the router's own
+    for rung in FIT_STRESS_LADDER:
+        if deadline.at - clock() < FIT_MIN_S:
+            return shortest
+        got = ask(rung)
+        if got is False:
+            return shortest
+        if got is None:
+            continue
+        found_m, answer = got
+        if found_m > rider_max_m:
+            over = rung
+            if found_m < float((shortest[0].get("summary") or {}).get("length", 0.0)) * 1000.0:
+                shortest = answer
+            continue
+        # This rung fits: look between it and the one before for a calmer one that does.
+        best, fits = answer, rung
+        for _step in range(FIT_BISECT_STEPS):
+            middle = (over + fits) // 2
+            if middle in (over, fits) or deadline.at - clock() < FIT_MIN_S:
+                break
+            probe = ask(middle)
+            if probe is False:
+                break
+            if probe is None:
+                continue
+            probe_m, probe_answer = probe
+            if probe_m <= rider_max_m:
+                best, fits = probe_answer, middle
+            else:
+                over = middle
+        return best
     return shortest
 
 
@@ -1744,7 +1781,9 @@ def plan(
             "calm_search": refined,
             "effort_m": effort_m,
             "loop": (
-                {**(loop_info or {}), **(loop_stats(pieces, leg_runs) or {})} if loop else None
+                {**({} if alternate else loop_info or {}), **(loop_stats(pieces, leg_runs) or {})}
+                if loop
+                else None
             ),
             "detour": detour,
             "description": described_full,

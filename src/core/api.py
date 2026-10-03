@@ -164,8 +164,9 @@ class RouteIn(Schema):
             " keeps to low-stress ways unless avoiding them takes much longer (the old top),"
             " and above 80 a calm detour search accepts longer routes to avoid LTS 3, 4 and"
             " Avoid roads, rising to about 10 mi of extra riding for every mile of LTS 3 at"
-            " 100, with no cap on the detour (`calm_search`, `detour` in the answer). Absent:"
-            " the preset's own start."
+            " 99. At 100 there is no rate: the search finds the least stressful route within"
+            " the longest ride (`max_distance_m`), planning a long trip leg by leg"
+            " (`calm_search`, `detour` in the answer). Absent: the preset's own start."
         ),
     )
     hills: StrictInt | None = Field(

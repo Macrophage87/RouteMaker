@@ -1868,6 +1868,8 @@ has 56 mutants run against whole test files.
 
 ### The trail credit and the seek leg by leg (FOLLOWUP-TRAIL-SEEK part 2, items 202, 203)
 
+*Superseded in part, 2026-10-03: the trail credit described here (item 202) was dropped by item 257 and removed from the code (FOLLOWUP-LONG-CALM, below). The seek leg by leg (203) stands.*
+
 The owner, 2026-10-02: 202, "Trail bonus for Trailmaxxing only (Recommended)" (only
 Trailmaxxing rewards each mile of trail), and 203, "Now, before rebuild" (the seek
 runs leg by leg on plans with stops).
@@ -3064,3 +3066,256 @@ Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 end
 0.09: its exclusion rounds stopped after three (two rounds in a row did not improve
 the score at the new weights), before the round 2b0cf00 found its route in; still a
 quarter of the router's 1.09 mi.
+
+## Long calm trips, the longest ride and the routes to choose from (FOLLOWUP-LONG-CALM, items 256 to 266)
+
+The owner's words are in PLAN.md, Owner amendments, "FOLLOWUP-LONG-CALM"; this is how it is built
+and what it measured. Planner-only: no rebuild, no new graph.
+
+### The motivating case
+
+Union Station to Baltimore Penn Station at Trailmaxxing 100. Before this round the calm search
+was skipped on it (`limited: "span"`, `REFINE_MAX_SPAN_M` 19 mi (30 km) of straight line), so the
+router alone answered: 57.7 mi, 0.3 mi of LTS 4 and 7.2 mi of LTS 3. Cut into four legs by hand
+it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with no search.
+
+### What changed, in the order the owner asked
+
+**1. No span cap for Trailmaxxing (`refine.refine_long`, `core.legsplit`).**
+- A Trailmaxxing plan at the top of the slider (`Preset.long_calm`, `routing.long_calm_for`) past
+  19 mi (30 km) of straight line, and under the confirm span (93 mi, 150 km), is a *long calm plan*.
+  The router's own route for the whole trip is asked for first, as before, and traced for its
+  stress alone (no junctions).
+- It is cut into legs of about 7.5 mi (12 km) of straight line (`legsplit.LEG_TARGET_SPAN_M`), at
+  points on that route: the middle of a traced edge, at least 400 yd (500 m) from any LTS 3, 4 or
+  Avoid stretch where there is such a place within a quarter leg of the even split, otherwise the
+  place with the most room (the search keeps its exclusions 500 m from a leg's ends, so a cut in the
+  middle of a busy stretch would put that stretch out of its reach). Each plan leg (the stretch
+  between the rider's own points) is cut on its own.
+- Each leg's own route is asked for (a short /route, 0.5 s warm) and traced. The legs with LTS 3, 4
+  or Avoid are searched one at a time, the worst first (LTS 4 and Avoid, then LTS 3), each with its
+  share of the time that is left by its weight (8 x LTS 4 and Avoid metres + LTS 3 metres), 70% of
+  it to the exclusion rounds and 30% to the trail seek. A leg whose share is under 6 s is not
+  searched and keeps the router's route. Legs with no busy road are not searched at all.
+- The legs go back together as one trip (`refine._joined`; the plan's own legs are put back in the
+  answer: `leg_ends`, `stops_m` and the description's runs are the plan's, not the internal legs').
+  The whole route's junctions are read once at the end. If what is put together is not as calm as
+  the router's own route (LTS 4 and Avoid, then LTS 3, by the tolerances below) or nothing
+  changed, the router's own route is answered (`calm_search.long.answered`: `legs` or `router`).
+- **Time.** The plan has the long ride's budget, 50 s in all (`LONG_PLAN_BUDGET_S`, 47 s for the
+  router and its traces once the 3 s answer reserve is taken), under gunicorn's 60 s timeout: the
+  owner's own figure for a long ride (2026-09-26), kept rather than a new one. An ordinary plan
+  keeps 40 s. Inside it, the legs' time is scaled to the trip: the legs are read first (about 1 to 2
+  s a leg), the last 6 s are kept for the answer's own traces and the whole route's junctions, and
+  the rest is shared by weight. A leg stops at its share; a trip with more legs gives each less.
+  Measured on an idle host, Union Station to Penn plans in 10.8 to 15.1 s at its default and 60 mi
+  and in 17.9 to 27.4 s when the longest ride is 50 and 47 mi, which asks for more routes. The
+  hard bounds and the `statement_timeout` patterns of the trail seek (TRAILSEEK r1) are unchanged:
+  every table read and corridor search is bounded by its leg's own stop time.
+- **A long calm plan takes the long ride's in-flight slot** as well as an ordinary one
+  (`ratelimit.LONG_ROUTING_IN_FLIGHT`: one per client, one in the deployment), and needs no
+  confirmation (it is under the confirm span). Its timed-out 503 carries `long_ride_timed_out`.
+- Other ride types keep today's limits: past 19 mi the calm search does not run (`limited: "span"`).
+  Cargo with passengers, the only other stress-averse ride, tops out at 80, where there is no calm
+  search at all.
+
+**2. A rider-set longest ride (`Dials.max_distance_m`, API `max_distance_m`).**
+- "Longest ride", optional, at the top of the slider (100) only: below it the field is ignored (and
+  `dials.max_distance_m` says null). In miles first, kilometres in brackets, in the UI and the link
+  (`maxmi`, miles to a tenth). The API takes whole metres from 1,000 (0.6 mi) to 1,000,000 (620 mi).
+- **Default when unset: 1.6 times the router's own route** (the use_roads 0 route Trailmaxxing plans
+  without a search), and at least a mile more (`presets.default_max_m`, `DEFAULT_MAX_RATIO`,
+  `DEFAULT_MAX_EXTRA_M`). The router's own route is the reference rather than the straight line
+  because that is what the rider sees as "the direct route". Union Station to Penn at the default is capped at 92.3 mi (1.6 times the router's 57.7 mi) and plans 73.2 mi.
+- The search minimises stress inside it (see "The order"). A candidate longer than the longest ride
+  is never taken: it is not even read (its router answer's length is checked first), a round whose
+  every exclusion set sends the route past it is asked again with each half of the targets, and a
+  long plan's legs share the detour (below).
+- **If the router's own route is past it**, the router is asked at lower traffic positions, calmest
+  first, until a route fits (`routing.FIT_STRESS_LADDER`: 70, 40, 0), and then the stretch between
+  the last two is bisected three times (`FIT_BISECT_STEPS`) for a calmer route that still fits;
+  that route is the search's first route, and its costing the search's costing
+  (`calm_search.fitted_at` says the position). Union Station to Penn at 50 mi: the calm route is
+  57.7 mi; routes of 54.5, 48.1 and 40.4 mi exist at use_roads 0.5, 0.7 and 1.0. If even the most
+  direct route is past it, the shortest found is answered with `calm_search.fits: false` and
+  `limited: "max_distance"` ("No route within your longest ride ... The shortest found is ...").
+  **Choice for the owner:** the brief said "return the least-stress route found plus a note"; when
+  nothing fits that is a route longer than the limit whichever is returned, and the shortest is
+  the closest to what was asked. See the owner questions.
+- The plan hash carries it (`maxmi`, and `sysweight`, `loop`); all three are additive and the link
+  version stays 2, because no field a link already carried changes its meaning, and a bump to 3
+  would make an older page's `stressFromV1` remap a v3 link's stress.
+
+**3. No trail credit (257 supersedes 202).** `Preset.trail_credit`, `presets.trail_credit_for`,
+`refine.trail_flags`, `Analysis.trail_m` and the corridor search's trail term (`RouteLine.trail_to`,
+`MIN_TRAIL_GAIN_M`, `best_in`'s credit) are gone. The corridor search stays: a corridor is worth
+the busy road it replaces (rate x exposure) less its detour, and it finds routes the exclusion
+rounds cannot reach (it was taken on the long trips below), so it is kept as the second candidate
+generator; with no credit a route with nothing busy on it has no corridor. A quiet street counts the
+same as a trail. The card and the calm note no longer say "favors trails".
+
+**4. The hills choice and the patience (GATE-corr SF1, SF2).**
+- `routing.calmer_or_own` and `no_busier_than_middle` weigh the plan's own `presets.Exposure`
+  (Trailmaxxing 1/8/16, not the fixed 1/2/3) and, on a ride with the LTS 4 hold, never choose an
+  alternate or the middle route with more LTS 4 and Avoid metres than the router's own route (1 m of
+  slack), so `refine`'s hold measures against the router's own route.
+- A round the LTS 4 hold refuses no longer counts as a non-improving round (`REFINE_PATIENCE` is
+  about rounds that did not improve, not rounds that were refused). Silver Spring to College Park
+  is re-measured in the table.
+
+### The order (items 258 to 263)
+
+At the top of the slider (`presets.maxcalm_for`: calm rate at its maximum, position 100, on any ride
+type) a candidate is ranked by `refine.better`, not by the score, in strict order with a tolerance at
+each level (`MAXCALM_STEPS`: 15 m, 50 m, 50 m):
+
+1. **LTS 4 and Avoid metres plus the cost of each very high stress (red) junction**, in the junction
+   model's own unit (feet-equivalent, 2,000 to 4,500 ft each, converted to metres): the owner's "weight
+   Very Stressful and LTS4 equally" (259). Tolerance 15 m, about 50 ft: ties within it go to level 2.
+2. **LTS 3 metres plus the cost of each higher stress (orange) junction** (260), tolerance 50 m.
+3. **Effort-equivalent distance blended with the actual distance by the Hills slider**
+   (`(1 - w) x actual + w x effort`, w = 0 at the detent and 1 at full avoid) (262), tolerance 50 m. At
+   the detent it is the actual distance. The seek half has a hook (`Context.hills_seek_weight`, 0)
+   for FOLLOWUP-HILLS-TOLERATE (242); the search does not run while the slider seeks.
+
+The router's own price for a route is not in it, nor is any credit for trail. The longest ride is in
+*actual* metres. The 250 hold now compares the same top figure (LTS 4 and Avoid plus red junction
+cost): a candidate is refused only if it is more than the router's own route's by 1 m, so LTS 4 may
+be traded for a red junction's worth, never for nothing (`refine.top_by_leg`, `more_lts4`).
+
+**Effort (`routemaker.effort`).** The standard cycling-power model (Martin et al. 1998): force per
+metre F = Crr m g cos t + 1/2 rho CdA v^2 + m g sin t at a steady 12.4 mph (20 km/h); a stretch's
+effort is its length times F / F0, F0 the force on the flat; floored at 1, so a descent costs the flat
+and never offsets a climb (263). The grade is read over 300 m windows of the 30 m elevation samples
+(a 2 m error between neighbours is 7%). Constants: Crr 0.006, CdA 0.40 m^2, air 1.225 kg/m^3,
+mass 90 kg by default; 8% costs 6.5 times the flat. The system weight is optional (item 264): 68 kg
+(150 lb) to 140 kg (309 lb), default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers; only
+the climbing and rolling terms scale with it, so a flat route's effort-distance is its length at any
+weight. Elevation is the router's own profile (the data `climb_m` uses). Sensitivity: every percent of
+grade adds about 9 N to a 12.7 N flat force, so noise of 2 m over 300 m inflates a flat stretch by
+half; both candidates carry the same noise, but the effort level should be read as a tiebreaker.
+
+### Sharing the longest ride among the legs (`choose_options`)
+
+A first version gave each leg a share of the detour by its weight. Measured, it wasted the detour:
+Union Station to Penn at 60 mi had 2.3 mi to spare, and the leg searched first took a corridor 1 mi
+longer that cleared 0.3 mi of LTS 3 while a later leg had no use for its share. Now every leg's
+search may use all of the detour the longest ride leaves the whole and keeps every candidate it reads
+(`Context.options`); each leg's candidates are reduced to a chain, each calmer and longer than the one
+before (`frontier`), and the detour is then spent where it buys the most, by the benefit of each
+upgrade per metre it adds, weighted 1000 : 1 : 0.01 down the order (`choose_options`, greedy). The legs
+that were not searched count against the limit. The whole is never past it (tested).
+
+### Routes to choose from (item 265)
+
+At the top of the slider the answer carries up to three more routes (`candidates`, each a whole route
+body with its `rank`; the answer is rank 1 and unchanged). Nothing scores scenery. A candidate is picked
+(`refine.pick_candidates`) if it: is within the longest ride; passes the hold; is a near-tie with the
+answer on stress (top figure no more than 45 m, level 2 no more than 300 m worse); and is meaningfully
+different from every route already chosen, which is **under 60% shared road by matched way length, or
+at least 5 mi (8 km) of different road** (the second test is the "different corridor" the owner asked
+for, since 60% of a 58 mi route is never different). For a plan searched in one piece the pool is the
+candidates the search read, and where that gives nothing different enough the router is asked for a
+route that avoids the roads of those already chosen (`refine.more_routes`: points every 500 ft (150 m)
+along them, none within 500 m of an end or a stop; at most 3 asks and 9 s; a route that is not a near-tie
+ends the asking, since avoiding more only makes it busier). For a long plan it is the answer with one
+leg's route swapped for another the search read. They are read in full (junctions across the joints)
+inside the budget, with at least 6 s left for each (`ALTERNATE_MIN_S`); fewer are returned if time is
+short. On the measured trips almost every plan has one obvious corridor and returns one route (see the
+tables): the route that avoids the first is usually far busier, as it should be for a trail corridor.
+
+### Make it a loop (item 266)
+
+A ride whose last point is its first (50 m) is a loop, and the request's `loop: true` closes a
+point-to-point ride on its start (`routing.loop_wanted`, `loop_points`); not on a Mass Ride. The plan
+is asked for through the start again; then the way back (the last leg) is asked for alone
+(`refine.make_loop`) with points along the way out excluded (every 120 m, none within 500 m of an end
+or a stop; up to 150), thinned to every second, fourth and eighth point if the router has no route or
+it is past the longest ride (the whole loop, not each half): the first way back that shares at most
+30% of its road with the way out (matched by way) ends the asking; if none does the one that shares
+least is kept, so the overlap is preferred away, not forced, and a loop may still use one bridge. If
+the way back is the way out whatever is excluded (90% or more), the router's own route is kept and
+`loop.fallback` says `out_and_back`. `loop` reports `overlap_pct`, `shared_m`, `return_m`, the points
+excluded and the routes asked. The search that follows keeps the way back different: a candidate that
+shares more than the loop does (or 30%, if the loop shares less) is refused. A loop past 19 mi in all is
+not searched (`limited: "span"`; `refine_long` would ask each leg of the way back without its
+exclusions); the way back is still made different.
+
+### The tables
+
+**The motivating trips and the longest ride** (Trailmaxxing 100; LTS 1 / 2 / 3 / 4 / Avoid miles; red and orange junctions; plan time; router calls). The new code through the harness; "live" is the deployed API (47c2f52), which skips the calm search past 19 mi.
+
+| Trip | Longest ride | Miles | LTS 1 / 2 / 3 / 4 / Avoid | Red, orange | Plan time | Router calls | Live, before |
+|---|---|---|---|---|---|---|---|
+| Union Station to Baltimore Penn | default (1.6x) | 73.2 | 35.39 / 28.69 / 6.01 / 0.33 / 0.00 | 0, 37 | 16.8 s | 184 | 57.7 mi; 28.92 / 21.23 / 7.24 / 0.26 / 0.00; 1r 23o; 4.8 s |
+| Union Station to Baltimore Penn | 60 mi | 58.6 | 26.51 / 21.67 / 6.94 / 0.26 / 0.00 | 1, 30 | 11.8 s | 138 | 57.7 mi; 28.92 / 21.23 / 7.24 / 0.26 / 0.00; 1r 23o; 4.8 s |
+| Union Station to Baltimore Penn | 50 mi | 47.7 | 24.04 / 8.39 / 12.19 / 2.94 / 0.00 | 3, 16 | 19.3 s | 186 | - |
+| Union Station to Baltimore Penn | 47 mi | 46.9 | 9.01 / 8.01 / 24.47 / 4.70 / 0.00 | 1, 14 | 29.2 s | 343 | - |
+| The owner's ride, its own start and end | 60 mi | 59.0 | 27.37 / 20.44 / 7.14 / 0.26 / 0.00 | 2, 27 | 13.9 s | 152 | - |
+| The owner's ride, its own start and end | 47 mi | 46.4 | 23.85 / 8.77 / 10.74 / 2.87 / 0.00 | 4, 19 | 13.8 s | 111 | - |
+| Bethesda to Frederick | default (1.6x) | 53.7 | 28.14 / 15.21 / 5.31 / 1.81 / 0.00 | 4, 27 | 9.7 s | 97 | 53.7 mi; 31.33 / 15.26 / 5.31 / 1.81 / 0.00; 4r 25o; 4.8 s |
+| Alexandria to Annapolis | default (1.6x) | 72.0 | 51.36 / 9.58 / 8.48 / 1.49 / 0.00 | 2, 33 | 20.3 s | 187 | 65.1 mi; 47.13 / 8.20 / 8.15 / 1.64 / 0.00; 2r 30o; 6.5 s |
+
+The owner's ride of 2026-10-03 itself, map-matched against today's graph: 46.7 mi; 25.2 / 5.1 / 11.3 / 5.2 / 0.06 mi.
+
+**The twelve trail-seek trips** at Trailmaxxing 100 with the default longest ride. Miles; LTS 1 / 2 / 3 / 4 / Avoid miles; red (r) and orange (o) junctions; plan time. Live is the deployed API, "old code" is 47c2f52 in the same harness as the new code.
+
+| Trip | Live (47c2f52) | Old code, harness | New code, harness |
+|---|---|---|---|
+| rockville-silver-spring | 14.0 mi; 7.78 / 5.89 / 0.26 / 0.11 / 0.00; 1r 9o; 3.6 s | 14.7 mi; 8.45 / 5.75 / 0.26 / 0.11 / 0.00; 1r 10o; 2.0 s | 13.8 mi; 7.34 / 5.75 / 0.32 / 0.11 / 0.00; 1r 10o; 5.1 s |
+| bethesda-capitol | 14.0 mi; 12.36 / 1.38 / 0.29 / 0.00 / 0.00; 0r 1o; 2.7 s | 14.4 mi; 13.03 / 0.58 / 0.30 / 0.00 / 0.00; 0r 3o; 1.4 s | 14.0 mi; 11.76 / 1.38 / 0.29 / 0.00 / 0.00; 0r 3o; 3.6 s |
+| falls-church-union-station | 11.7 mi; 10.46 / 1.24 / 0.00 / 0.00 / 0.00; 0r 1o; 2.4 s | 11.7 mi; 10.24 / 1.24 / 0.00 / 0.00 / 0.00; 0r 1o; 0.7 s | 11.7 mi; 10.24 / 1.24 / 0.00 / 0.00 / 0.00; 0r 1o; 2.6 s |
+| silver-spring-college-park | 9.9 mi; 7.18 / 2.36 / 0.25 / 0.07 / 0.00; 0r 3o; 1.0 s | 9.9 mi; 7.33 / 2.19 / 0.20 / 0.07 / 0.00; 0r 5o; 0.7 s | 9.9 mi; 7.33 / 2.19 / 0.20 / 0.07 / 0.00; 0r 5o; 1.1 s |
+| bethesda-silver-spring | 5.3 mi; 2.40 / 2.23 / 0.56 / 0.11 / 0.00; 0r 5o; 0.9 s | 5.3 mi; 2.40 / 2.23 / 0.56 / 0.11 / 0.00; 0r 5o; 0.5 s | 5.3 mi; 2.40 / 2.23 / 0.56 / 0.11 / 0.00; 0r 5o; 1.1 s |
+| laurel-college-park | 15.0 mi; 8.98 / 3.11 / 2.78 / 0.16 / 0.00; 1r 9o; 1.4 s | 15.1 mi; 8.24 / 3.11 / 2.78 / 0.16 / 0.00; 0r 10o; 1.2 s | 15.1 mi; 8.24 / 3.11 / 2.78 / 0.16 / 0.00; 0r 10o; 4.1 s |
+| poolesville-darnestown | 21.0 mi; 12.06 / 5.21 / 2.10 / 1.65 / 0.02; 5r 3o; 1.4 s | 21.0 mi; 4.81 / 5.21 / 2.10 / 1.65 / 0.02; 5r 3o; 0.9 s | 21.0 mi; 4.81 / 5.21 / 2.10 / 1.65 / 0.02; 5r 3o; 3.2 s |
+| bowie-annapolis | 43.7 mi; 25.43 / 7.17 / 9.00 / 2.09 / 0.00; 3r 17o; 4.2 s | 43.7 mi; 25.28 / 5.77 / 9.00 / 2.09 / 0.00; 3r 20o; 2.0 s | 43.7 mi; 25.28 / 5.77 / 9.00 / 2.09 / 0.00; 3r 20o; 11.8 s |
+| tysons-ballston-wod | 10.9 mi; 9.48 / 1.05 / 0.35 / 0.00 / 0.00; 1r 5o; 2.4 s | 10.9 mi; 9.14 / 1.05 / 0.36 / 0.00 / 0.00; 1r 7o; 2.4 s | 10.9 mi; 9.14 / 1.05 / 0.36 / 0.00 / 0.00; 1r 7o; 4.1 s |
+| eastern-market-pg-plaza-anacostia | 9.7 mi; 7.85 / 1.74 / 0.13 / 0.00 / 0.00; 0r 5o; 0.7 s | 9.7 mi; 7.79 / 1.74 / 0.13 / 0.00 / 0.00; 0r 5o; 0.7 s | 9.7 mi; 7.79 / 1.74 / 0.13 / 0.00 / 0.00; 0r 5o; 1.4 s |
+| friendship-heights-rosslyn-cct | 7.7 mi; 7.13 / 0.15 / 0.42 / 0.00 / 0.00; 1r 1o; 0.7 s | 7.7 mi; 7.04 / 0.15 / 0.42 / 0.00 / 0.00; 1r 1o; 0.7 s | 7.7 mi; 7.04 / 0.15 / 0.42 / 0.00 / 0.00; 1r 1o; 1.1 s |
+| takoma-hyattsville-sligo | 4.9 mi; 3.00 / 1.86 / 0.04 / 0.00 / 0.00; 0r 2o; 0.4 s | 4.9 mi; 2.88 / 1.86 / 0.04 / 0.00 / 0.00; 0r 3o; 0.5 s | 4.9 mi; 2.88 / 1.86 / 0.04 / 0.00 / 0.00; 0r 3o; 0.7 s |
+| Total | 167.9 mi; LTS 4+ 4.21; LTS 3 16.19; 12r 61o | 169.0 mi; LTS 4+ 4.21; LTS 3 16.15; 11r 73o | 167.7 mi; LTS 4+ 4.21; LTS 3 16.20; 11r 73o |
+
+- rockville-silver-spring calm: {'limited': None, 'rounds': 3, 'max_distance_m': 35451.2, 'fits': True, 'fitted_at': None} calls {'route': 6, 'trace_attributes': 6, 'locate': 19} candidates 0
+- bethesda-capitol calm: {'limited': None, 'rounds': 1, 'max_distance_m': 31793.6, 'fits': True, 'fitted_at': None} calls {'route': 6, 'trace_attributes': 6, 'locate': 16} candidates 1
+- falls-church-union-station calm: {'limited': None, 'rounds': 0, 'max_distance_m': 30156.8, 'fits': True, 'fitted_at': None} calls {'route': 3, 'trace_attributes': 2, 'locate': 10} candidates 0
+- silver-spring-college-park calm: {'limited': None, 'rounds': 0, 'max_distance_m': 25411.2, 'fits': True, 'fitted_at': None} calls {'route': 3, 'trace_attributes': 3, 'locate': 4} candidates 0
+- bethesda-silver-spring calm: {'limited': None, 'rounds': 0, 'max_distance_m': 13632.0, 'fits': True, 'fitted_at': None} calls {'route': 4, 'trace_attributes': 3, 'locate': 9} candidates 0
+- laurel-college-park calm: {'limited': None, 'rounds': 5, 'max_distance_m': 38742.4, 'fits': True, 'fitted_at': None} calls {'route': 8, 'trace_attributes': 8, 'locate': 33} candidates 0
+- poolesville-darnestown calm: {'limited': None, 'rounds': 2, 'max_distance_m': 54180.8, 'fits': True, 'fitted_at': None} calls {'route': 7, 'trace_attributes': 4, 'locate': 6} candidates 0
+- bowie-annapolis calm: {'limited': None, 'rounds': 5, 'max_distance_m': 112529.6, 'fits': True, 'fitted_at': None} calls {'route': 23, 'trace_attributes': 8, 'locate': 59} candidates 0
+- tysons-ballston-wod calm: {'limited': None, 'rounds': 5, 'max_distance_m': 26022.4, 'fits': True, 'fitted_at': None} calls {'route': 8, 'trace_attributes': 7, 'locate': 21} candidates 0
+- eastern-market-pg-plaza-anacostia calm: {'limited': None, 'rounds': 0, 'max_distance_m': 25019.2, 'fits': True, 'fitted_at': None} calls {'route': 3, 'trace_attributes': 4, 'locate': 4} candidates 0
+- friendship-heights-rosslyn-cct calm: {'limited': None, 'rounds': 1, 'max_distance_m': 19832.0, 'fits': True, 'fitted_at': None} calls {'route': 5, 'trace_attributes': 5, 'locate': 8} candidates 0
+- takoma-hyattsville-sligo calm: {'limited': None, 'rounds': 2, 'max_distance_m': 12622.4, 'fits': True, 'fitted_at': None} calls {'route': 5, 'trace_attributes': 5, 'locate': 8} candidates 0
+
+**Loops** (item 266), Trailmaxxing 100 unless named:
+
+| Ride | Loop | Overlap | Way back shared | Asked / excluded | Plan |
+|---|---|---|---|---|---|
+| loop-takoma-hyattsville | 8.8 mi; 3.50 / 4.36 / 0.71 / 0.00 / 0.00; 0r 5o; 3.7 s | 17.4% | 1094.0 of 6296.0 m | 1 / 37 | fallback None; calls {'route': 7, 'trace_attributes': 11, 'locate': 21} |
+| loop-bethesda-silver-spring | 11.4 mi; 4.64 / 5.62 / 0.88 / 0.19 / 0.00; 0r 9o; 9.1 s | 21.6% | 2115.0 of 9771.0 m | 1 / 39 | fallback None; calls {'route': 11, 'trace_attributes': 23, 'locate': 49} |
+| round-trip-tysons-ballston | 21.5 mi; 13.46 / 5.04 / 2.20 / 0.05 / 0.00; 4r 14o; 8.3 s | 2.4% | 438.0 of 18365.0 m | 1 / 81 | fallback None; calls {'route': 7, 'trace_attributes': 10, 'locate': 47} |
+| loop-rockville-silver-spring-60mi-cap-12 | 21.1 mi; 1.81 / 4.59 / 12.19 / 2.26 / 0.00; 1r 10o; 6.5 s | 88.1% | 14887.0 of 16905.0 m | 4 / 0 | fallback out_and_back; calls {'route': 8, 'trace_attributes': 4, 'locate': 37} |
+| loop-default-preset-bethesda-capitol | 25.4 mi; 20.12 / 4.11 / 0.91 / 0.00 / 0.00; 1r 6o; 4.4 s | 0.8% | 174.0 of 20972.0 m | 1 / 88 | fallback None; calls {'route': 3, 'trace_attributes': 5, 'locate': 15} |
+
+
+### Tests and mutants
+
+- `tests/test_longcalm.py` (order and tolerances, effort blending, the hold on the top figure, the longest
+  ride in the search, leg cuts, the long search, sharing the detour, candidates), `tests/test_effort.py`,
+  `tests/test_loop.py`, `tests/test_longcalm_api.py` (the request, the fit, the budget and slot, the
+  candidates, the loop), `tests/test_route_dials.py` (the hills choice's exposure and hold),
+  `tests/test_plan_constants.py`, and the front end's `longestRide.test.ts`, `candidates.test.ts`,
+  `loop.test.ts`.
+- `scripts/mutants_longcalm.py` (new, 52 mutants) and `scripts/mutants_trailseek.py` (updated: the 27
+  mutants of the trail credit are removed, 16 rewritten against the new code).
+
+### Harness
+
+The runs through the read-only forwarder (`docker exec routemaker-api-1 python -c <forwarder>`: only
+POSTs to the routers' `route`, `trace_attributes` and `locate`), with the stress of every edge from the
+live stress tiles into a scratch segment table, as in the final-fix round; the plan's own clock does not
+count the harness's tile matching. Rides are weekday off-peak (the standard graph) for both the live
+and the harness runs. "Live" is the deployed API (47c2f52, graph 20261003T142804Z); "old code" is
+47c2f52 in the same harness.

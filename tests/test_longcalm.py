@@ -1283,3 +1283,109 @@ class TestALongPlanOffersCandidates:
         ctx = long_context(max_m=45_000.0)
         refine.refine_long(whole_trip(), ctx)
         assert ctx.candidates == []
+
+
+class TestAskingForAnotherWay:
+    """Where the search read nothing different enough, the router is asked for a route that
+    avoids the roads of those chosen (`refine.more_routes`)."""
+
+    def main(self):
+        return road("main", [1, 2, 3, 4, 5, 6, 7, 8])
+
+    def world(self, monkeypatch, replies, **readings):
+        analyses = {"main": self.main()[1], **{k: v[1] for k, v in readings.items()}}
+        return World(monkeypatch, analyses, replies)
+
+    def test_the_roads_chosen_are_excluded_and_a_different_near_tie_is_added(
+        self, monkeypatch
+    ) -> None:
+        world = self.world(
+            monkeypatch,
+            [trip_of("alt", 8.0), routing.RouterRefused(400, 442, "no path")],
+            alt=road("alt", list(range(11, 19))),
+        )
+        ctx = alt_context(max_m=20_000.0)
+        got = refine.more_routes([self.main()], ctx, [0.0])
+        assert names(got) == ["main", "alt"]
+        first = world.requests[0]
+        assert "alternates" not in first
+        main_lons = {p.lon for p in self.main()[1].pieces}
+        asked = [p["lon"] for p in first["exclude_locations"]]
+        assert asked and all(lon in main_lons for lon in asked), "points on the route chosen"
+        assert len(world.requests) == 2
+
+    def test_each_ask_excludes_the_roads_of_every_route_chosen_so_far(self, monkeypatch) -> None:
+        world = self.world(
+            monkeypatch,
+            [trip_of("b", 8.0), trip_of("c", 8.0), trip_of("d", 8.0)],
+            b=road("b", list(range(11, 19))),
+            c=road("c", list(range(21, 29))),
+            d=road("d", list(range(31, 39))),
+        )
+        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        assert names(got) == ["main", "b", "c", "d"], "at most the four of ALT_MAX"
+        sizes = [len(r["exclude_locations"]) for r in world.requests]
+        assert sizes[0] < sizes[1] < sizes[2] and len(world.requests) == refine.ALT_ASKS == 3
+        assert sizes[1] == pytest.approx(2 * sizes[0], abs=1) and sizes[2] == pytest.approx(
+            3 * sizes[0], abs=1
+        )
+
+    def test_a_route_that_is_not_a_near_tie_ends_the_asking(self, monkeypatch) -> None:
+        busy = road("busy", list(range(11, 19)), "1" * 5 + "444")
+        world = self.world(monkeypatch, [trip_of("busy", 8.0), trip_of("busy", 8.0)], busy=busy)
+        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        assert names(got) == ["main"] and len(world.requests) == 1
+
+    def test_a_route_that_is_the_same_road_ends_it(self, monkeypatch) -> None:
+        world = self.world(
+            monkeypatch, [trip_of("same", 8.0)] * 3, same=road("same", [1, 2, 3, 4, 5, 6, 7, 9])
+        )
+        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        assert names(got) == ["main"] and len(world.requests) == 1
+
+    def test_a_route_past_the_longest_ride_ends_it(self, monkeypatch) -> None:
+        world = self.world(monkeypatch, [trip_of("far", 9.0)], far=road("far", list(range(11, 19))))
+        got = refine.more_routes([self.main()], alt_context(max_m=8_500.0), [0.0])
+        assert names(got) == ["main"] and len(world.requests) == 1
+
+    def test_a_refusal_or_an_unreachable_router_ends_it(self, monkeypatch) -> None:
+        world = self.world(monkeypatch, [routing.RouterRefused(400, 442, "no path")])
+        assert names(refine.more_routes([self.main()], alt_context(), [0.0])) == ["main"]
+        assert len(world.requests) == 1
+        self.world(monkeypatch, [routing.RouterUnavailable("down")])
+        assert names(refine.more_routes([self.main()], alt_context(), [0.0])) == ["main"]
+
+    def test_with_no_time_it_asks_nothing(self, monkeypatch) -> None:
+        world = self.world(monkeypatch, [trip_of("alt", 8.0)], alt=road("alt", list(range(11, 19))))
+        ctx = alt_context(max_m=20_000.0)
+        ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1.0, 35)
+        assert names(refine.more_routes([self.main()], ctx, [0.0])) == ["main"]
+        assert world.requests == []
+
+    def test_it_is_only_for_a_plan_that_offers_more_than_one(self, monkeypatch) -> None:
+        world = self.world(monkeypatch, [trip_of("alt", 8.0)], alt=road("alt", list(range(11, 19))))
+        assert names(refine.more_routes([self.main()], top_context(max_m=20_000.0), [0.0])) == [
+            "main"
+        ]
+        assert world.requests == []
+
+    def test_a_route_with_no_junction_reading_is_not_offered(self, monkeypatch) -> None:
+        unread = road("unread", list(range(11, 19)))
+        unread[1].events = None
+        world = self.world(monkeypatch, [trip_of("unread", 8.0)], unread=unread)
+        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        assert names(got) == ["main"] and len(world.requests) == 1
+
+    def test_the_search_asks_after_it_when_it_found_nothing_different(self, monkeypatch) -> None:
+        ctx = alt_context(max_m=9_000.0)
+        ctx.options = []
+        world = World(
+            monkeypatch,
+            {"o": analysis("o", ORIG), "x": road("x", list(range(101, 141)))[1]},
+            [trip_of("o", 4.0)] * 3 + [trip_of("x", 4.2)],
+        )
+        refine.refine(trip_of("o", 4.0), ctx)
+        assert any(r.get("exclude_locations") for r in world.requests), (
+            "the last ask is `more_routes`"
+        )
+        assert refine.ALT_BUDGET_S > 0 and refine.ALT_SAMPLE_M == 150.0

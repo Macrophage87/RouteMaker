@@ -70,6 +70,8 @@ CONTRACT_KEYS = {
     "effort_m",
     "rank",
     "candidates",
+    # Additive, OWNER-DECISIONS 266: a loop's way back against its way out.
+    "loop",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 
