@@ -204,7 +204,9 @@ def test_the_rebuild_queue_is_consumed_only_by_the_container_with_the_binaries()
     assert "rebuild" not in queues("worker")
     assert "maintenance" in queues("worker")
     assert SERVICES["rebuild"]["image"] != SERVICES["worker"]["image"]
-    assert SERVICES["rebuild"]["restart"] == "unless-stopped", "a resident worker, not a one-shot"
+    assert SERVICES["rebuild"]["restart"] == "${RESTART_POLICY:-unless-stopped}", (
+        "a resident worker, not a one-shot: unless-stopped unless the host opts out"
+    )
 
 
 def test_the_maintenance_worker_has_more_than_one_slot() -> None:

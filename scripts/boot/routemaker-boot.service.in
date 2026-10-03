@@ -1,0 +1,22 @@
+# systemd USER unit: start the RouteMaker stack once the WSL binds exist.
+# Template: @REPO@ is replaced by scripts/boot/install-boot-unit.sh with the
+# absolute path of this checkout. Runs as the user, no sudo. For it to run at
+# boot without anyone logging in, user lingering must be on once:
+#   sudo loginctl enable-linger steph
+[Unit]
+Description=RouteMaker stack start (waits for Docker and the WSL bind paths, checks postgis)
+Documentation=file://@REPO@/docs/DEPLOYMENT.md
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=@REPO@
+ExecStart=@REPO@/scripts/boot/start-stack.sh
+# The script bounds its own waits (Docker/paths 600 s, postgis 300 s, smoke
+# 300 s); this is the backstop above their sum.
+TimeoutStartSec=1800
+# A failure is deliberate (empty postgis, missing paths): do not retry in a loop.
+Restart=no
+
+[Install]
+WantedBy=default.target

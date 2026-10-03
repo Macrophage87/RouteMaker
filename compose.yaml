@@ -29,8 +29,19 @@
 # shared env_file, which would put the key-encryption key in Photon and Valhalla
 # and contradict the claim that one component alone holds the bot token.
 
+# The restart policy is a variable so a host can opt out of Docker's own start
+# at daemon boot. The default stays `unless-stopped`, which is right for a Linux
+# server where the data disk is mounted before dockerd starts. On Docker Desktop
+# for Windows it is wrong: the daemon restarts these containers before the WSL
+# distro that owns ${DATA_ROOT} is up, postgis initialises an empty cluster on a
+# phantom bind path, and caddy, the routers, rebuild and photon fail their
+# binds. That host sets RESTART_POLICY=no in `.env`; scripts/boot/start-stack.sh
+# (run by the routemaker-boot user unit) starts the stack in order once the
+# paths exist, and exports RESTART_POLICY=no itself so a missing `.env` line
+# cannot recreate a container with the old policy. See docs/DEPLOYMENT.md,
+# "Starting the stack after a reboot (Docker Desktop on WSL)".
 x-restart: &restart
-  restart: unless-stopped
+  restart: ${RESTART_POLICY:-unless-stopped}
 
 # Log rotation, on every service, because Docker's default has none.
 #

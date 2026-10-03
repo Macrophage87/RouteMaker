@@ -1418,6 +1418,73 @@ where there is no Docker daemon or the image is not already present - which
 includes CI as it stands - so there the Caddyfile is still checked only as text
 (`tests/test_deploy_surface.py`, `tests/test_basemap.py`).
 
+## Starting the stack after a reboot (Docker Desktop on WSL)
+
+Applies only to a host where `${DATA_ROOT}` lives inside a WSL distro and the
+daemon is Docker Desktop for Windows. On a Linux server, leave all of this out.
+
+**The failure.** On every Windows reboot Docker Desktop restarts the containers
+(`restart: unless-stopped`) before the WSL distro that owns `${DATA_ROOT}` is up.
+postgis comes up on an empty cluster on a phantom path; caddy, the four routers,
+rebuild and photon fail their binds. The data is fine, but nothing works and the
+empty cluster looks healthy.
+
+**The fix, in two halves.**
+
+1. `restart` is `${RESTART_POLICY:-unless-stopped}` in `compose.yaml`. Set
+   `RESTART_POLICY=no` in `.env` on this host, so Docker no longer starts the
+   stack at boot. Other hosts keep `unless-stopped` (crash recovery) by default.
+   A variable rather than a hard `no` keeps the shipped default right for Linux
+   servers, and one line in `.env` covers every compose command. A host-only
+   override file was rejected: any compose command run without `-f` would
+   silently drop it and recreate containers with the old policy.
+   The cost on this host: a container that crashes stays down until someone
+   starts it (`scripts/boot/start-stack.sh` is safe to rerun, see below).
+2. `scripts/boot/start-stack.sh`, run at boot by the systemd user unit
+   `routemaker-boot.service`, starts the stack in order:
+   waits (bounded) for Docker and every bind directory; checks that Docker sees
+   `postgres/PG_VERSION`; stops api/worker/rebuild and force-recreates postgis
+   alone (`up -d --no-deps --force-recreate`); waits for healthy; requires
+   migrations >= 68 and `live.segment` >= 1,000,000 rows, and **aborts without
+   starting anything else** if not (the bind-race signature); then caddy, the
+   four routers, api, worker, rebuild, photon; then route, geocode and tile must
+   return 200. Logs: `/home/steph/rmdata/boot/` (`latest.log`, `last-status`).
+   It never runs a plain `docker compose up`, never touches Docker Desktop or
+   WSL, and never uses sudo.
+
+If postgis is already running, healthy and sane (a warm stack), the script only
+starts services that are not running and recreates nothing, so it is safe to
+run by hand: `scripts/boot/start-stack.sh --dry-run` first to see what it would
+do (read-only), then without the flag. `--force-recreate-all` is the one option
+that restarts a running rebuild.
+
+Tune the expectations with `BOOT_EXPECT_MIGRATIONS` (default 68; raise it when a
+migration lands) and `BOOT_MIN_SEGMENTS` (default 1000000).
+
+**Install** (as the user, from the checkout that serves the stack):
+
+```sh
+scripts/boot/install-boot-unit.sh policy no      # in place, no restart: stops the NEXT boot racing
+echo 'RESTART_POLICY=no' >> .env                 # so later recreates keep it
+scripts/boot/install-boot-unit.sh install        # renders, verifies, enables; does not start
+sudo loginctl enable-linger steph                # the one sudo step: run the unit with no login
+scripts/boot/install-boot-unit.sh status         # unit, linger, last result, log tail
+```
+
+Remove: `scripts/boot/install-boot-unit.sh uninstall`, delete `RESTART_POLICY=no`
+from `.env` and run `scripts/boot/install-boot-unit.sh policy unless-stopped`.
+
+**Does WSL itself start at login?** The unit runs when the distro boots, and
+nothing in this repository starts the distro. If Docker Desktop's WSL
+integration for Ubuntu does not start it at logon, add a Windows logon task that
+starts it, for example
+`schtasks /Create /TN RouteMakerWSL /SC ONLOGON /TR "wsl.exe -d Ubuntu-26.04 --exec /bin/true"`
+(untested here; the distro must also stay up, which a running systemd user
+manager with linger normally ensures).
+
+Tests: `python3 -m unittest tests.test_boot_scripts` (fake `docker` and `curl`,
+a temporary DATA_ROOT; nothing live is touched).
+
 ## Known blockers on `docker compose up`
 
 Building the images is necessary and not sufficient. Three things in the
