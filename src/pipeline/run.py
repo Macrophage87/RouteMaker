@@ -1392,18 +1392,22 @@ def build_handlers(
         routed = context.routing_tags_by_way.get(way.osm_id)
         if not routed:
             return way.tags
-        tags = dict(way.tags)
-        for key, value in routed.items():
-            if way.tags.get(key) != way.source_tags.get(key):
-                logger.info(
-                    "way %s: an approved override set %s, so the District's direction record "
-                    "does not rewrite it",
-                    way.osm_id,
-                    key,
-                )
-                continue
-            tags[key] = value
-        return tags
+        overridden = sorted(key for key in routed if way.tags.get(key) != way.source_tags.get(key))
+        if overridden:
+            # The reviewed row speaks for the reverse direction, so only the
+            # direction itself is taken from the record: the closure's
+            # `oneway:bicycle=yes` beside an approved `bicycle:backward=yes`
+            # makes upstream close the with-flow direction instead.
+            logger.info(
+                "way %s: an approved override set %s, so the District's direction record "
+                "sets only the way's one-way",
+                way.osm_id,
+                ", ".join(overridden),
+            )
+            routed = {
+                key: routed[key] for key in ("oneway",) if key in routed and key not in overridden
+            }
+        return {**way.tags, **routed}
 
     def inject_tags() -> None:
         reference = context.require_reference()
