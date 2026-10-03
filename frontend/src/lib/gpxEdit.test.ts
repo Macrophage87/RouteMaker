@@ -28,15 +28,15 @@ test("the file's own sliders are taken, fitted to the ride type as a link's are"
   assert.equal(rideAfterImport({ preset: "fast", dials: { stress: 10, hills: 0, when: "weekday_rush" } }, NOW).dials.when, "weekday_rush");
 });
 
-test("place names in a file are kept; RouteMaker's own Start, Via and End are not names", () => {
+test("place names in a file are kept; RouteMaker's own Start, Stop (and the earlier Via) and End are not names", () => {
   const points: LonLat[] = [
     [-77, 38.9],
     [-77.01, 38.91],
     [-77.02, 38.92],
     [-77.03, 38.93],
   ];
-  assert.deepEqual(namesToKeep({ points, pointNames: ["Start", "Via 1", "Union Station", " "] }), [
-    [points[2], "Union Station"],
+  assert.deepEqual(namesToKeep({ points, pointNames: ["Start", "Via 1", "Stop 2", "Union Station", " "] }), [
+    [points[3], "Union Station"],
   ]);
   assert.deepEqual(namesToKeep({ points }), []);
 });

@@ -1855,6 +1855,18 @@ the weekday trips along the weekend-car-free parkways in feet, metres in
 brackets, and lists findings; it does not fail, because the owner has not
 approved it as a gate.
 
+## The route description needs the street names in the trace
+
+`POST /api/route`'s `description` (item 220) is built from the plan's own trace.
+It reads one attribute, `edge.names`, which `trace_attributes` returns on any
+router version, so a deploy needs nothing: no rebuild, no migration, no
+configuration. If the router answers a trace without names the description is
+still built, with every street "unnamed road" or "unnamed path"; it is null only
+if building it raised, which is logged as "the route description could not be
+built" (look for it after a deploy that changes `core.routing.Piece` or
+`routemaker.describe`). It makes no router call and no query; a plan that is
+slow is not slow because of it.
+
 ## A deploy that changes the crossings fixture or loads access overrides
 
 **The rebuild reads the installed crossings, not the image's.**

@@ -27,6 +27,11 @@ from test_ratelimit import in_one_window
 
 from core import presets, routing
 
+# A route test plans a weekday ride unless it says otherwise: the weekend router
+# is chosen by the day the suite runs on (conftest `weekday_clock`).
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+
+
 db = pytest.mark.django_db(transaction=True)
 
 ROUTE_PATH = "/api/route"
@@ -54,6 +59,10 @@ CONTRACT_KEYS = {
     "intersections",
     "calm_search",
     "detour",
+    # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
+    "description",
+    # Additive, OWNER-DECISIONS item 226: the same with short stretches merged.
+    "description_overview",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

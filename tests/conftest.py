@@ -82,6 +82,25 @@ def _weekend_router_state(monkeypatch):
 _REAL_WEEKEND_CHECK: dict = {}
 
 
+@pytest.fixture
+def weekday_clock(monkeypatch):
+    """The ride time `core.routing` reads (`timezone.now`, behind `default_when`
+    and `planning_time`) pinned to a Wednesday midday, so a route test plans a
+    weekday ride on the standard graph whichever day the suite runs: the weekend
+    router is chosen by the day, and on a Saturday or Sunday a test that counts
+    the standard router's calls sees another's. Tests that mean a weekend say
+    `when` in the request or pin their own clock."""
+    from datetime import datetime
+
+    from core import routing
+    from routemaker import ridetime
+
+    pinned = datetime(2026, 9, 30, 12, 0, tzinfo=ridetime.ZONE)
+    assert ridetime.when_at(pinned) == ridetime.WEEKDAY_OFFPEAK
+    monkeypatch.setattr(routing.timezone, "now", lambda: pinned)
+    return pinned
+
+
 # The production list, read before any test patches it (pinned in test_states).
 try:
     from pipeline import states as _states

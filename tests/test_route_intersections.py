@@ -26,6 +26,11 @@ from test_route_api import (
 
 from core import junctions, presets, routing
 
+# A route test plans a weekday ride unless it says otherwise: the weekend router
+# is chosen by the day the suite runs on (conftest `weekday_clock`).
+pytestmark = pytest.mark.usefixtures("weekday_clock")
+
+
 db = pytest.mark.django_db(transaction=True)
 
 JUNCTION = VERTICES[2]  # (-77.035, 38.9)

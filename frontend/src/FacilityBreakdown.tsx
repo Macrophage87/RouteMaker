@@ -79,7 +79,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
       {seek && (
         <p className="hint seek" role="note">
           {seek.limited === "two_points"
-            ? "Looking for climbs works on routes with just a start and an end; this one has via points, so it is the fastest route."
+            ? "Looking for climbs works on routes with just a start and an end; this one has stops, so it is the fastest route."
             : seek.limited === "long_ride"
               ? `Looking for climbs is done only when the start and end are within ${formatRoughDistance(SEEK_MAX_SPAN_M)} of each other; this is the fastest route.`
               : seek.limited === "timed_out"

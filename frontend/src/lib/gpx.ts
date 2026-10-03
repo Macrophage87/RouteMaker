@@ -396,6 +396,8 @@ export interface GpxExport {
   dials?: ExportDials;
   /** The ride type and sliders in words, written into rte/desc. */
   rideText?: string;
+  /** The route description (plain text, a line to an entry), written into rte/desc after rideText. */
+  routeText?: string;
   /** The plan's own points: start, vias, end. */
   planPoints: readonly LonLat[];
   /** The route line. */
@@ -419,7 +421,7 @@ function position([lon, lat]: LonLat): string {
 export function planPointName(index: number, count: number): string {
   if (index === 0) return "Start";
   if (index === count - 1) return "End";
-  return `Via ${index}`;
+  return `Stop ${index}`;
 }
 
 /**
@@ -450,7 +452,8 @@ export function writeGpx(input: GpxExport): string {
     lines.push("  <rte>");
     lines.push(`    <name>${escapeXml(input.name)}</name>`);
     if (input.dials) lines.push(`    <cmt>${escapeXml(dialsComment(input.dials))}</cmt>`);
-    if (input.rideText) lines.push(`    <desc>${escapeXml(input.rideText)}</desc>`);
+    const routeDesc = [input.rideText, input.routeText].filter((part) => part).join("\n\n");
+    if (routeDesc) lines.push(`    <desc>${escapeXml(routeDesc)}</desc>`);
     lines.push(`    <type>${escapeXml(PLAN_TYPE_PREFIX + input.preset)}</type>`);
     input.planPoints.forEach((p, index) => {
       lines.push(`    <rtept ${position(p)}>`);

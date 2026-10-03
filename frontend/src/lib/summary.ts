@@ -171,9 +171,9 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
   return [figures, detourSaid(route, points), redJunctionsSaid(route)].filter(Boolean).join(" ");
 }
 
-/** A point's name in the list: Start, Via 1, Via 2, ..., End. */
+/** A point's name in the list: Start, Stop 1, Stop 2, ..., End. */
 export function pointName(index: number, count: number): string {
   if (index === 0) return "Start";
   if (index === count - 1 && count > 1) return "End";
-  return `Via ${index}`;
+  return `Stop ${index}`;
 }

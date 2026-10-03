@@ -33,7 +33,7 @@ the owner's account.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 
 FEET_PER_METRE = 3.28084
@@ -215,6 +215,8 @@ class Road:
     # The road's names as the router has them (lower case), or "way <id>"
     # where it has none: a divided road's two carriageways share them.
     names: frozenset[str] = frozenset()
+    # The names as mapped ("MacArthur Boulevard"), for saying; `names` are keys.
+    display: tuple[str, ...] = field(default=(), compare=False)
     # The OSM ways of it at the junction (a carriageway's, where it is one).
     ways: frozenset[int] = frozenset()
 
@@ -278,6 +280,9 @@ class Event:
     # The road the event is about (its names), for counting a divided road's
     # two carriageways once (`merge_nearby`).
     road_names: frozenset[str] = frozenset()
+    # The same names as mapped ("MacArthur Boulevard"), in the router's order:
+    # for saying, where `road_names` are lower-case keys for matching.
+    road_display: tuple[str, ...] = field(default=(), compare=False)
     # The most this event may be drawn as, whatever its cost (a marked
     # crossing with no signal mapped: orange, item 185).
     max_severity: str | None = None
@@ -567,6 +572,7 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
             junction.approach,
             True,
             road_names=about.names,
+            road_display=about.display,
             road_ways=about.ways,
             road_oneway=about.oneway,
         )
@@ -586,6 +592,7 @@ def assess(junction: Junction, group: bool = False) -> Event | None:
         severity is not None,
         junction.approach,
         road_names=about.names,
+        road_display=about.display,
         max_severity=cap,
         road_ways=about.ways,
         road_oneway=about.oneway,

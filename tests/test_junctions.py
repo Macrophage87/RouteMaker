@@ -1058,6 +1058,27 @@ class TestBuild:
         assert crossed.oneway is False
         assert made.control is Control.STOP and made.located
 
+    @pytest.mark.parametrize("mapped", ["MacArthur Boulevard", "I-395", "US 29"])
+    def test_names_are_kept_as_mapped_beside_their_matching_keys(self, mapped) -> None:
+        """Item 230: `names` are lower-case keys for matching; `display` is for saying."""
+        renamed = crossroads()
+        for e in renamed["edges"]:
+            if e["edge_info"]["way_id"] == 20:
+                e["edge_info"]["names"] = [mapped]
+        made = self.built(renamed)
+        crossed = made.crossed[0]
+        assert crossed.names == frozenset({mapped.lower()})
+        assert crossed.display == (mapped,)
+
+    def test_a_road_with_two_names_keeps_both_in_the_routers_order(self) -> None:
+        renamed = crossroads()
+        for e in renamed["edges"]:
+            if e["edge_info"]["way_id"] == 20:
+                e["edge_info"]["names"] = ["MD 355", "Rockville Pike"]
+        crossed = self.built(renamed).crossed[0]
+        assert crossed.display == ("MD 355", "Rockville Pike")
+        assert crossed.names == frozenset({"md 355", "rockville pike"})
+
     def test_a_one_way_pair_crossed_is_one_way(self) -> None:
         pair = answer(
             [
@@ -1275,6 +1296,16 @@ class TestEvents:
         assert event.severity == model.RED
         assert event.crossed_tier == 4
         assert event.reason == "Crossing a 4-lane 40 mph (64 km/h) road, stop sign on your side"
+
+    @db
+    def test_the_event_carries_the_crossed_roads_mapped_name(self, grid) -> None:
+        renamed = crossroads(**{"in": {"stop": True}})
+        for e in renamed["edges"]:
+            if e["edge_info"]["way_id"] == 20:
+                e["edge_info"]["names"] = ["MacArthur Boulevard"]
+        (event,) = junctions.events_of([raw()], "weekend", False, self.locate_with(renamed))
+        assert event.road_names == frozenset({"macarthur boulevard"})
+        assert event.road_display == ("MacArthur Boulevard",)
 
     @db
     def test_the_road_under_a_bridge_deck_is_not_crossed(self, grid) -> None:

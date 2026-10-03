@@ -2085,6 +2085,113 @@ planner words it with miles first: "This calm route is 2.6x the direct distance
 (+18.0 mi, 29.0 km)", with what it buys at a note and "Move the Traffic slider
 down" at a warning.
 
+### The route description (item 220)
+
+Many blind cyclists in this area ride as tandem stokers (the owner, 2026-10-02),
+so what the map shows by colour and position is also written out.
+`POST /api/route` answers `description` (additive; `core.api.DescriptionEntryOut`):
+a list of entries in route order, built by `routemaker.describe` from what the
+plan already has, with no router call and no query. Its only new input is the
+street name, asked for as `edge.names` in the `trace_attributes` call the plan
+makes anyway (`Piece` now carries `names`, `use` and the edge's begin and end
+headings, none of them part of its identity).
+
+- **Stretches.** Consecutive pieces on one street (a name in common, or both
+  unnamed) with one tier and one facility are one stretch. A stretch under 300
+  ft is folded into the longer neighbour in its leg, but never an LTS 3, LTS 4
+  or Avoid stretch, and never an untraced one. A stretch never spans a via
+  point: each leg is described on its own and `Stop 1`, `Stop 2` (the points
+  list's own words, item 224) are entries between them ("Stop 1 at 4.7 mi
+  (7.6 km).").
+- **Turns.** Where the street changes, the entry says how the rider turns into
+  it (`left`, `right`, or `Continue onto`), from the previous stretch's last
+  heading and this one's first (`routemaker.intersections.movement_of`). If the
+  junction model read the junction within 30 m ("at a signal", "at a stop
+  sign", "at an all-way stop", "where cross traffic stops") that is said; where
+  it flagged it, the severity words follow ("Higher stress junction", "Very
+  high stress junction"; flagged with nothing mapped says "no signal mapped").
+  Where the model did not read a junction nothing is claimed about it.
+- **Junction entries.** A flagged junction that is not a change of street (a
+  crossing of a busy road) is an entry of its own, at a point.
+- **Words.** US units first, the metric once per entry, and "to" rather than a
+  dash so a screen reader does not say "dash": `0.0 to 1.2 mi (0.0 to 1.9 km):
+  Capital Crescent Trail, traffic-free path.` Tier words follow the legend:
+  traffic-free path (facility `path`, whatever the tier), low stress (LTS 1),
+  fairly low stress (LTS 2), busy road (LTS 3), heavy traffic (LTS 4), Avoid
+  (legal, but best avoided), stress not rated; a protected or painted bike lane
+  is added. A stretch with no name is "unnamed path" (a path facility or a
+  path `use`) or "unnamed road". Crossed roads' names are as mapped
+  ("MacArthur Boulevard", "I-395", "US 29", item 230): `core.junctions` keeps the
+  lower-case key for matching (`Arm.names`, `Road.names`) and the name as mapped,
+  in the router's order, beside it (`display`, carried to `Event.road_display`);
+  neither is part of equality. An event built without them falls back to the
+  keys, capitalised by `readable()`. A road with no name is "a busy road".
+- **Distances** are measured along the traced pieces and scaled so the last
+  stretch ends at the route's `distance_m`; the stretches' lengths add up to it
+  to the metre. Junction events are placed in the same measure.
+- **Entry fields.** `kind` (`stretch`, `junction`, `via`), `from_m`, `to_m`,
+  `from_mi`, `to_mi`, `street`, `tier`, `facility`, `turn`
+  (`movement`, `onto`, `control`, `severity`), `severity`, `via`, and `text`,
+  one sentence. `description` is null where it could not be built (an error is
+  logged and the route is answered without it) and absent from an older API.
+
+The planner lists the sentences in `frontend/src/RouteDescription.tsx` (a
+component of its own: a heading, a disclosure button and an ordered list,
+closed unless the rider has opened it before, "Copy description" and "Download
+as text"). It words nothing itself, and announces nothing when the route
+changes; the only live region is the reply to pressing Copy.
+
+**Stops, the overview and the GPX (items 224 to 226).**
+
+- Stops are "Stop N" in the description, the points list, the map markers and
+  their announcements, "Add as stop" and the GPX route points (`planPointName`).
+  The GPX import still treats `Via N` as RouteMaker's own name, not a place
+  name, so older exports re-open the same way.
+- `describe_both` answers the full list and an overview. The overview merges a
+  stretch under `OVERVIEW_M` (0.25 mi) into a neighbour of its own leg, so it
+  never spans a stop. It never hides or understates: a stretch of LTS 3 or
+  worse folds only into one at least as stressful, and a calm stretch (LTS 1 or
+  2) is never merged with a busy one; a merged stretch is worded at its most
+  stressful tier, with a facility ("traffic-free path") only where all
+  of it has one; a stretch that begins at a flagged junction is never folded
+  away and nothing is folded in front of one; the stops and the separate
+  flagged-junction entries are the full list's, unchanged; an untraced leg and a
+  rated stretch against an unrated one are never merged. A merged entry says
+  the street it begins on and "then" up to three other streets, each with its
+  turn (item 229: "Right onto Ramsey Avenue at a signal, then left on Ripley
+  Street and right on Colonial Lane"; a street straight on is just named), and
+  "and N more turns" for the rest.
+- The API sends both lists (`description` full, `description_overview`), not
+  grouping indices: a merged sentence needs its own wording (a tier, a facility
+  and a street list that no member has), which is wording kept in one place,
+  and a client that switches views needs no second request or wording of its
+  own. The cost is a second list; the overview is the shorter one, so the
+  answer grows by less than the full list did.
+- The planner shows the overview by default; a "Full detail" checkbox (only
+  where the overview is shorter) shows every entry and is remembered in
+  localStorage (inside try/catch). Copy and Download use the view shown.
+- The GPX route's `<desc>` carries the ride type and then the description as
+  plain text, a numbered line to an entry, escaped like all the file's text. It
+  is the full text where that is at most `GPX_FULL_MAX_CHARS` (4,000), else the
+  overview, labelled which it is: a file is read on a device, not on the
+  rider's screen, so it does not follow the screen's view.
+
+Cost (2026-10-02, five plans on the live router through the forwarder
+harness, read-only): the same router calls as the code before it (route,
+`trace_attributes` and `/locate` counts are equal plan for plan) and the same
+routes. Building the description took 1 to 14 ms in a plan (0.8 ms for a 2.5 mi
+Mass Ride, 4 to 14 ms for 10 to 13 mi), about 0.2% of a plan's 1.5 to 7 s; a
+benchmark of 1,200 pieces is 0.3 ms with a few long stretches and 3.7 ms in a
+worst case that changes tier every 7 pieces. The answer grows by about 370
+bytes an entry (9 to 20 kB for 10 to 13 mi, 17 to 50 entries), which gzip takes
+to a tenth. `/home/steph/rmdata/demo/reports/ROUTE-DESCRIPTION-plan-notes.md` has the plans.
+
+Tests: `tests/test_describe.py` (merging, tiny stretches, wording, turns,
+junctions, vias, totals), `tests/test_route_description.py` (through the view:
+no extra router call, every preset, the schema), and
+`frontend/src/lib/routeDescription.test.ts`. The mutants are
+`scripts/mutants_describe.py` (each mutant against whole test files).
+
 ### The contract
 
 `POST /api/route` answers three more fields (all additive; `core.api.RouteOut`):
