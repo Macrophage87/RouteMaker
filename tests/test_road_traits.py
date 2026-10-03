@@ -33,6 +33,24 @@ class TestClassifierKeepsWhatItRead:
         )
         assert (result.speed_mph, result.lanes, result.oneway) == (30, 3, True)
 
+    @pytest.mark.parametrize("junction", ["roundabout", "circular"])
+    def test_a_roundabout_is_one_way_without_saying_so(self, junction) -> None:
+        """OWNER-DECISIONS 228: Washington Circle NW 6059311's tags, which no
+        `oneway` tag says: the classifier and `road_oneway` read the ring one-way
+        as routing does, and its four lanes are a direction's (it read them as
+        two each way, and the ring as a two-way road)."""
+        tags = {"highway": "primary", "junction": junction, "lanes": "4", "name": "Circle"}
+        result = classify(tags, urban=True, jurisdiction="DC")
+        assert (result.lanes, result.oneway) == (4, True)
+        assert (
+            result.tier == classify({**tags, "oneway": "yes"}, urban=True, jurisdiction="DC").tier
+        )
+        # A mapper's `oneway=no` stands, and the ring is read two-way.
+        two_way = classify({**tags, "oneway": "no"}, urban=True, jurisdiction="DC")
+        assert (two_way.lanes, two_way.oneway) == (2, False)
+        # Another junction is no roundabout.
+        assert classify({**tags, "junction": "jughandle"}, urban=True).oneway is False
+
     def test_an_assumed_speed_or_lane_count_is_not_kept(self) -> None:
         """Review r1, SHOULD_FIX 7: the class default the tables fell back on is
         not a fact about the road, and the junction reasons would state it as

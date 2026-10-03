@@ -186,6 +186,12 @@ class TestLanesPerDirection:
     def test_oneway_lanes_are_not_halved(self) -> None:
         assert lanes_per_direction({"lanes": "2", "oneway": "yes"}) == 2
 
+    @pytest.mark.parametrize("junction", ["roundabout", "circular"])
+    def test_a_roundabout_s_lanes_are_not_halved(self, junction) -> None:
+        """OWNER-DECISIONS 228: a roundabout is one-way unless tagged `oneway=no`."""
+        assert lanes_per_direction({"lanes": "2", "junction": junction}) == 2
+        assert lanes_per_direction({"lanes": "2", "junction": junction, "oneway": "no"}) == 1
+
     def test_explicit_directional_tag_wins(self) -> None:
         assert lanes_per_direction({"lanes": "5", "lanes:forward": "3"}) == 3
 

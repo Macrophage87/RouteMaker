@@ -94,6 +94,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from .geo import Point, distance_to_line, haversine
+from .tags import ONEWAY_JUNCTIONS, is_oneway
 from .tags import lanes_per_direction as osm_lanes_per_direction
 
 METRES_PER_FOOT = 0.3048
@@ -1073,19 +1074,13 @@ def _oneway_tag(tags: Mapping[str, str]) -> bool:
     return tags.get("oneway") in ("yes", "1", "-1", "true")
 
 
-# The junctions OSM's one-way is implied on: a roundabout is one-way without a
-# `oneway` tag, and mappers mostly leave it off.
-ROUNDABOUT_JUNCTIONS = frozenset({"roundabout", "circular"})
-
-
-def _osm_one_way(tags: Mapping[str, str]) -> bool:
-    """OSM's one-way, said or implied: a `oneway` tag, or a roundabout not tagged
-    `oneway=no` (gate review: primary roundabouts 589905413 and 695842750 were
-    read as two-way main carriageways, and the overlay wrote two lanes each way
-    onto 589905413)."""
-    if _oneway_tag(tags):
-        return True
-    return tags.get("junction") in ROUNDABOUT_JUNCTIONS and tags.get("oneway") != "no"
+# The junctions OSM's one-way is implied on (`routemaker.tags.ONEWAY_JUNCTIONS`).
+# OSM's one-way, said or implied, is `routemaker.tags.is_oneway`: a `oneway`
+# tag, or a roundabout not tagged `oneway=no` (gate review: primary roundabouts
+# 589905413 and 695842750 were read as two-way main carriageways, and the
+# overlay wrote two lanes each way onto 589905413). The classifier reads the
+# same helper (OWNER-DECISIONS 228); `_oneway_tag` is the tag alone.
+ROUNDABOUT_JUNCTIONS = ONEWAY_JUNCTIONS
 
 
 def osm_forward(tags: Mapping[str, str]) -> bool | None:
@@ -1377,7 +1372,7 @@ def overlay(
     routing: dict[str, str] = {}
     agency = facts.agency
 
-    osm_oneway = _osm_one_way(tags)
+    osm_oneway = is_oneway(tags)
     osm_two_way = _osm_two_way(tags)
     if agency in DIRECTION_AND_LANES_IGNORED:
         # Baltimore (OWNER-DECISIONS 222, 223): its one-way and lane records are
@@ -1404,9 +1399,9 @@ def overlay(
     # exceptions (reversible lanes, a junction stub, a direction not known) hold
     # on a way OSM leaves untagged as well.
     if osm_oneway and not _oneway_tag(tags):
-        # A roundabout's one-way, implied by OSM, said for the classifier, which
-        # reads `oneway` (`routemaker.tags.is_oneway`): a block's lane count
-        # written as one direction's must not be halved as a two-way road's.
+        # A roundabout's one-way, implied by OSM, said in the tags as well: the
+        # lane rows below read `oneway` itself, and a block's lane count written
+        # as one direction's must not be halved as a two-way road's.
         out["oneway"] = "yes"
     if facts.one_way is True and not osm_oneway:
         if not osm_two_way:
@@ -1656,11 +1651,11 @@ HIGHWAY_RANK = {
 
 def _main_rank(tags: Mapping[str, str]) -> int | None:
     """The class rank of a way OSM maps as a block's two-way main carriageway,
-    or None for a one-way (a roundabout included, `_osm_one_way`) or a class not
+    or None for a one-way (a roundabout included, `is_oneway`) or a class not
     ranked (a slip road). A service way or a track ranks below every street, so
     a driveway or an aisle along the block makes no street beside it a side
     lane."""
-    if _osm_one_way(tags):
+    if is_oneway(tags):
         return None
     return HIGHWAY_RANK.get(tags.get("highway", ""))
 

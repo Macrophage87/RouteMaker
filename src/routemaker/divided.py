@@ -40,7 +40,7 @@ import math
 from collections import defaultdict
 from collections.abc import Iterable
 
-from .tags import is_oneway
+from .tags import ONEWAY_JUNCTIONS, is_oneway
 
 DIVIDED_HIGHWAY = frozenset({"trunk", "primary", "secondary", "tertiary", "unclassified"})
 # Median plus both carriageways' half widths: a wide median on a suburban
@@ -80,7 +80,19 @@ def street_name(name: str) -> str:
 
 
 def _candidate(tags: dict[str, str], highways=DIVIDED_HIGHWAY) -> bool:
-    return tags.get("highway") in highways and is_oneway(tags) and bool(tags.get("name"))
+    """A one-way, named way of a divided class. Not a roundabout: it is one-way
+    (OWNER-DECISIONS 228), and the far side of its ring, running the other way,
+    is not a carriageway's other half, nor is a road's carriageway the ring's.
+    Same-named rings were already left out (`small_loops`); 149 roundabout
+    ways (2.6 mi [4.2 km]) of rings named for the road through them (Charles
+    Town Pike, Dundalk Avenue) were flagged in the 2026-09-25 extract, so read
+    two-way."""
+    return (
+        tags.get("highway") in highways
+        and tags.get("junction") not in ONEWAY_JUNCTIONS
+        and is_oneway(tags)
+        and bool(tags.get("name"))
+    )
 
 
 def _steps(coordinates, reverse: bool):

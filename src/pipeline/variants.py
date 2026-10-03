@@ -660,6 +660,10 @@ def bar_mass_ride_only_roadway(tags: dict[str, str]) -> None:
 # and `alternating` are two-way streets for this purpose and are left alone, as
 # is any way that says nothing: the closure below is about a way that has a
 # direction, never about one that has none.
+# The junctions are the classifier's `routemaker.tags.ONEWAY_JUNCTIONS`
+# (OWNER-DECISIONS 228). Upstream makes one one-way even where it is tagged
+# `oneway=no`, which the classifier reads as the mapper says (one way in the
+# 2026-09-25 extract: Kenton Court 1536402606, residential, MD).
 ONEWAY_VALUES = frozenset({"yes", "true", "1", "-1"})
 ONEWAY_JUNCTIONS = frozenset({"roundabout", "circular"})
 

@@ -1781,6 +1781,16 @@ class TestContraflowClosure:
         assert is_motor_oneway({"junction": junction})
         assert not is_motor_oneway({"junction": "jughandle"})
 
+    def test_the_graph_s_roundabouts_are_the_classifier_s(self) -> None:
+        """OWNER-DECISIONS 228: stress and junction pricing read the junctions
+        the graph makes one-way (`routemaker.tags.is_oneway`)."""
+        from pipeline import variants
+        from routemaker import tags
+
+        assert variants.ONEWAY_JUNCTIONS == tags.ONEWAY_JUNCTIONS
+        for junction in tags.ONEWAY_JUNCTIONS:
+            assert tags.is_oneway({"junction": junction}) == is_motor_oneway({"junction": junction})
+
     def test_a_bicycle_follows_the_one_way(self) -> None:
         assert self.closed()["oneway:bicycle"] == "yes"
         for waived in ("no", "-1", "false"):

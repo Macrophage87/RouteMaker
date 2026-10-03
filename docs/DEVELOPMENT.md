@@ -814,8 +814,21 @@ unless named; PLAN.md quotes the owner's words):
   alongside it - 13-150 ft (4-45 m) to one side, at two or more points 65 ft
   (20 m) apart - is scored as the two-way road it is. Same-named ways that close
   into a ring under 0.6 mi (1 km) round are circles or loops (Ward, Tenley,
-  Blair and Americana Circles) and are left out. 46,343 ways on the region; 133
-  MiB and 19 s on this host.
+  Blair and Americana Circles) and are left out, as is every roundabout (item
+  228, below). 46,206 ways on the region; 133 MiB and 19 s on this host.
+- *Roundabouts* (item 228). `junction=roundabout` or `circular` is one-way
+  whether or not a `oneway` tag says so, unless it is tagged `oneway=no`, as
+  routing has it (`tags.is_oneway`, the one reading of one-way for the
+  classifier, the segment table's `road_oneway` and `road_lanes`, the
+  divided-road pairing and the agency overlay; the junction model prices the
+  ring as one-way through `road_oneway`). On the 2026-09-25 extract's own tags
+  (no agency block) that reads
+  1,238 of the region's 2,729 roundabout ways (45.3 of 82.2 mi) one-way that
+  were read two-way: 1,089 with no `oneway` tag and 149 a divided-road flag
+  had made two-way. Two ways changed tier (Marcus-David Peters Circle, VA,
+  LTS 3 to 4: two lanes are now a direction's). Upstream makes a roundabout
+  tagged `oneway=no` one-way as well; the classifier reads the mapper's word
+  (one such way, Kenton Court 1536402606).
 - *A decent painted lane.* At 40 mph a decent lane is LTS 3, a tier below
   mixed traffic (item 84), and not from three through lanes a direction, where
   Montgomery's Appendix D keeps LTS 4. Decent: buffered, or not tagged narrower
@@ -2441,9 +2454,9 @@ exception is counted as a disagreement with its reason:
   runs beside it, short of its ends (`MIN_SIDE_LANE_BESIDE_M`; the gate review
   found Cedar Avenue, a one-way carrying Cedar Street NW on from its end, and
   Water Street SW, the street changing class, taken for side lanes). The
-  overlay also reads a roundabout as one-way, and says so for the classifier
-  (`oneway=yes`), so a block's lane count is written as one direction's and
-  not as two lanes each way. C1 is read wider than the stress reading's divided
+  overlay also reads a roundabout as one-way (`tags.is_oneway`, item 228) and
+  writes `oneway=yes` on it, so a block's lane count is written as one
+  direction's and not as two lanes each way. C1 is read wider than the stress reading's divided
   road (item 109 keeps `divided.PAIR_M`, 45 m, and the names as mapped):
   `divided.carriageway_pairs` pairs a one-way with an opposite one-way of the
   same street alongside it within `C4_PAIR_M`, 100 m [330 ft], the name read

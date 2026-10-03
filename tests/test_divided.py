@@ -35,6 +35,24 @@ def test_a_minus_one_way_is_read_in_its_direction() -> None:
     assert divided.carriageways([way(1, NORTH), way(2, reversed_south)]) == set()
 
 
+@pytest.mark.parametrize("oneway", [None, "yes"])
+def test_a_roundabout_is_never_a_carriageway_nor_one_s_partner(oneway) -> None:
+    """OWNER-DECISIONS 228: a roundabout is read one-way for stress; the far arc
+    of its ring, running the other way, is not a divided road's other half, nor
+    is a ring named for the road through it a carriageway's partner (149 such
+    ways in the 2026-09-25 extract were flagged divided, so read two-way)."""
+    tags = {"highway": "primary", "name": "Georgia Avenue", "junction": "roundabout"}
+    if oneway is not None:
+        tags["oneway"] = oneway
+    assert not divided._candidate(tags)
+    arc = SimpleNamespace(osm_id=2, tags=tags, coordinates=SOUTH)
+    assert divided.carriageways([way(1, NORTH), arc]) == set()
+    two_arcs = [SimpleNamespace(osm_id=1, tags=tags, coordinates=NORTH), arc]
+    assert divided.carriageways(two_arcs) == set()
+    # The real carriageways still pair.
+    assert divided.carriageways([way(1, NORTH), way(2, SOUTH)]) == {1, 2}
+
+
 def test_same_direction_or_other_name_or_two_way_is_not() -> None:
     assert divided.carriageways([way(1, NORTH), way(2, list(reversed(SOUTH)))]) == set()
     assert divided.carriageways([way(1, NORTH), way(2, SOUTH, name="Colesville Road")]) == set()

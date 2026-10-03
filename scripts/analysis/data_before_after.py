@@ -186,7 +186,7 @@ def main() -> int:
                 cands.append(
                     SimpleNamespace(
                         osm_id=w.osm_id,
-                        tags={k: t[k] for k in ("highway", "name", "oneway") if k in t},
+                        tags={k: t[k] for k in ("highway", "name", "oneway", "junction") if k in t},
                         coordinates=w.coordinates,
                     )
                 )

@@ -3860,9 +3860,11 @@ def _assert_graph_and_traits_agree(context, graph) -> None:
     `road_lanes` is the lanes a direction of the graph's road (correctness
     review, blocker 1)."""
     from pipeline.variants import is_motor_oneway
-    from routemaker.tags import lanes_per_direction
+    from routemaker import divided
+    from routemaker.tags import is_oneway, lanes_per_direction
 
     traits = _segment_traits(context.staging_schema)
+    carriageways = divided.carriageways(context.ways)
     for way in context.ways:
         read = context.class_tags_by_way.get(way.osm_id, way.tags)
         for variant in (Variant.STANDARD, Variant.WEEKEND, Variant.EBIKE):
@@ -3880,6 +3882,10 @@ def _assert_graph_and_traits_agree(context, graph) -> None:
         ), way.osm_id
         if oneway:
             assert is_motor_oneway(graph[Variant.STANDARD][way.osm_id]), way.osm_id
+        # One reading of one-way (OWNER-DECISIONS 228): the row is one-way exactly
+        # where the tags read say so, a roundabout no block reached included, but
+        # for a divided road's carriageway (item 109). A trail has no road traits.
+        assert bool(oneway) == (is_oneway(read) and way.osm_id not in carriageways), way.osm_id
         if lanes is not None:
             assert lanes == lanes_per_direction(read), way.osm_id
 
@@ -4003,6 +4009,87 @@ def test_baltimore_s_one_way_and_lanes_reach_neither_graph_nor_classifier(states
     assert _segment_traits(context.staging_schema)[100][:3] == (30, 2, False)
     assert any("not used (OWNER-DECISIONS 222)" in d for d in context.road_disagreements[100])
     _assert_graph_and_traits_agree(context, graph)
+
+
+@pytest.mark.parametrize(
+    ("junction", "oneway", "traits"),
+    [
+        ("roundabout", None, (25, 2, True)),
+        ("circular", None, (25, 2, True)),
+        ("roundabout", "no", (25, 1, False)),
+    ],
+)
+def test_a_roundabout_no_block_reached_is_one_way_for_stress_and_the_segment_row(
+    states, junction, oneway, traits
+) -> None:
+    """OWNER-DECISIONS 228: a roundabout OSM leaves untagged, with no agency block
+    over it (FIX-BACKEND r0 left 21 DC and 18 Baltimore such ways two-way in the
+    classifier), is one-way for the classifier and the segment row's
+    `road_oneway`, and its lanes are a direction's, as the graph routes it. One
+    tagged `oneway=no` is read as the mapper says."""
+    extra = {"junction": junction, "lanes": "2", "maxspeed": "25 mph"}
+    if oneway is not None:
+        extra["oneway"] = oneway
+    road = _one_road("secondary", name="Test Circle", **extra)
+    context, _ = run_pipeline(road, road.parent, skip=NOT_SWAPPED)
+    graph = _graph_tags(context)
+    assert 100 not in context.road_facts_by_way
+    stress = context.stress_by_way[100]
+    assert (round(stress.speed_mph), stress.lanes, stress.oneway) == traits
+    assert _segment_traits(context.staging_schema)[100][:3] == traits
+    for variant in Variant:
+        assert graph[variant][100]["junction"] == junction, variant.value
+    _assert_graph_and_traits_agree(context, graph)
+
+
+def _baltimore_count_block() -> dict:
+    return street_block(
+        "bal-1",
+        {"agency": "baltimore-centerline", "aadt": 4000, "aadt_year": 2019, "way": "both"},
+    )
+
+
+def test_baltimore_s_count_fills_where_no_count_layer_reached(states) -> None:
+    """OWNER-DECISIONS 227 ("Keep filling gaps"): the centerline's AADT is the
+    way's count where no DDOT, MDOT or VDOT count reached it."""
+    road = _one_road("primary", name="Test Road")
+    context, _ = run_pipeline(
+        road, road.parent, roadway=[_baltimore_count_block()], skip=NOT_SWAPPED
+    )
+    match = context.aadt_by_way[100]
+    assert (match.aadt, match.source, match.agency, match.year) == (
+        4000,
+        "inventory",
+        "baltimore-centerline",
+        2019,
+    )
+    assert context.stress_by_way[100].volume_source == "baltimore-centerline"
+    assert dict(context.stress_by_way[100].attr_sources)["aadt"] == "baltimore-centerline"
+
+
+@pytest.mark.parametrize(
+    ("agency", "source"), [("mdot-sha", "state"), ("vdot", "state"), ("ddot", "locality")]
+)
+def test_baltimore_s_count_never_replaces_a_count_layer_s(states, agency, source) -> None:
+    """OWNER-DECISIONS 227: where a count layer reached the way, its count stands
+    and the centerline's is not read, whichever agency published it."""
+    road = _one_road("primary", name="Test Road")
+    count = {
+        "id": f"{agency}-1",
+        "coordinates": [[-77.02, 38.90], [-76.98, 38.90]],
+        "aadt": 9100,
+        "source": source,
+        "agency": agency,
+        "year": 2023,
+    }
+    context, _ = run_pipeline(
+        road, road.parent, roadway=[_baltimore_count_block()], volume=[count], skip=NOT_SWAPPED
+    )
+    assert 100 in context.road_facts_by_way
+    match = context.aadt_by_way[100]
+    assert (match.aadt, match.agency, match.year) == (9100, agency, 2023)
+    assert context.stress_by_way[100].volume_source == agency
+    assert dict(context.stress_by_way[100].attr_sources)["aadt"] == agency
 
 
 def test_a_posted_one_way_laned_road_stores_the_classifier_s_traits(workspace, states) -> None:
