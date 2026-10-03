@@ -62,12 +62,14 @@
 :root.a11y {
   --text-muted: #2a2f3a; /* 13:1 on --bg */
   --border: #5c6472; /* 6:1 on --bg */
+  --swatch-border: #5c6472; /* the strengthened --border: 6:1 on --bg */
 }
 
 @media (prefers-color-scheme: dark) {
   :root.a11y {
     --text-muted: #dfe3ea; /* 13.5:1 on --bg */
     --border: #8d95a3; /* 5.4:1 on --bg */
+    --swatch-border: #8d95a3; /* the strengthened --border: 5.4:1 on --bg */
   }
 }
 

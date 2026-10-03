@@ -26,7 +26,7 @@ import {
 } from "./stressStyle.js";
 import { paintAt } from "./testSupport/paintAt.ts";
 import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
-import { ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing, routeClasses } from "./lib/routeColours.ts";
+import { ROUTE_BLUE, ROUTE_CASING_CVD, ROUTE_CASING_WIDTH, ROUTE_HALO_WIDTH, ROUTE_LINE_WIDTH, routeCasing, routeClasses } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
@@ -431,4 +431,21 @@ test("the map adds the route's halo between its casing and its sections, coloure
   const haloAt = legendSource.indexOf("stroke={row.halo}");
   const colourAt = legendSource.indexOf("stroke={row.color}");
   assert.ok(casingAt >= 0 && casingAt < haloAt && haloAt < colourAt, "casing, then halo, then the section's colour");
+});
+
+test("the route's widths nest: line < halo < casing, so the halo shows and the casing is outside it", () => {
+  assert.ok(ROUTE_LINE_WIDTH < ROUTE_HALO_WIDTH && ROUTE_HALO_WIDTH < ROUTE_CASING_WIDTH, `${ROUTE_LINE_WIDTH} ${ROUTE_HALO_WIDTH} ${ROUTE_CASING_WIDTH}`);
+});
+
+test("with the switch on, the swatch border is the strengthened border, at least as strong as the plain swatch border, in both themes", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const blocks = [...css.matchAll(/:root\.a11y \{([^}]*)\}/g)].map((m) => m[1]);
+  assert.equal(blocks.length, 2, "one :root.a11y block per theme");
+  const plain = themeColours();
+  blocks.forEach((block, i) => {
+    const pick = (name: string) => block.match(new RegExp(`${name}:\s*(#[0-9a-fA-F]{6})`))?.[1].toLowerCase() ?? "";
+    assert.match(pick("--swatch-border"), /^#[0-9a-f]{6}$/, `block ${i}`);
+    assert.equal(pick("--swatch-border"), pick("--border"), `block ${i}`);
+    assert.ok(contrastRatio(pick("--swatch-border"), plain[i].bg) >= contrastRatio(plain[i].swatch, plain[i].bg), `block ${i}`);
+  });
 });
