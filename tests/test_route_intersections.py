@@ -355,6 +355,21 @@ class TestEveryRideType:
             "a busy crossing with a light is still marked for a group"
         )
 
+    def test_every_junction_row_says_which_group_it_is_in_none_on_a_lone_crossing(
+        self, client, arterial, router
+    ) -> None:
+        """Items 233, 234: additive. A Mass Ride's lone signalised crossing is no group; the
+        list of groups is there and empty, and every other ride type has the same."""
+        fake = world()
+        fake.locate = locate_answer(signal=True)
+        router(fake)
+        for name in ("mass-ride", "default"):
+            body = post(client, good_body(name)).json()
+            assert all(row["group"] is None for row in body["intersections"])
+            assert body["intersection_groups"] == []
+            if name == "mass-ride":
+                assert len(body["intersections"]) == 1
+
     def test_a_mass_ride_does_not_search(self, client, arterial, router) -> None:
         fake = router(world())
         body = post(client, good_body("mass-ride")).json()

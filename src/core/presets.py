@@ -84,8 +84,10 @@ DEFAULT_STRESS = 70
 # tend not to be great on hills. Also have a button to differentiate carrying
 # cargo vs carrying children, which have different levels of traffic stress
 # tolerance." And later the same day, to be more inclusive: the choice is
-# carrying cargo or carrying people. PLAN's Cargo row: "No narrow gaps, gentle
-# grades | L2: high gate_cost, low use_hills". Hybrid, as PLAN's Presets list it.
+# carrying cargo or carrying passengers (OWNER-DECISIONS 241: "Let's also call it
+# passengers, as people bring dogs too"; the id stays "people").
+# PLAN's Cargo row: "No narrow gaps, gentle grades | L2: high gate_cost, low
+# use_hills". Hybrid, as PLAN's Presets list it.
 #
 # - Hills: well toward avoid (`use_hills` 0.4).
 # - Speed: 14 km/h (8.7 mph), a loaded cargo bike's cruising pace unassisted,
@@ -101,12 +103,12 @@ DEFAULT_STRESS = 70
 # - Surface: rough and unpaved weigh more (0.6, still below the 1.0 at which the
 #   hard exclusion arms, so a gravel link is dear rather than impossible).
 # - Stress: carrying cargo starts where Default does (the owner, 2026-09-28:
-#   "Same as Default, 90 (Recommended)"); carrying people where the top of the
+#   "Same as Default, 90 (Recommended)"); cargo with passengers where the top of the
 #   slider was that day, where a tier 3 or 4 way costs several times its
 #   length and a path or protected lane wins unless avoiding it takes much
 #   longer. That is STRESS_TODAYS_TOP (80) after the rescale, so Cargo Bike
 #   plans what it did. It stays there below the new top (the owner,
-#   2026-10-02, item 194: Trailmaxxing moves to 100 and carrying people stays
+#   2026-10-02, item 194: Trailmaxxing moves to 100 and cargo with passengers stays
 #   at 80); the new top can go many times the straight line.
 # - Electric assist (the owner, 2026-09-27: "Cargo bikes with E assist still
 #   have problems on hills. They tend to be very heavy. The assist doesn't
@@ -116,7 +118,9 @@ DEFAULT_STRESS = 70
 #   hill-averse start; a rider with a strong motor moves the hills slider.
 CARRYING_CARGO = "cargo"
 CARRYING_PEOPLE = "people"
-# Carrying cargo tracks Default; carrying people is the old top, 80 (item 194).
+# Carrying cargo tracks Default; cargo with passengers is the old top, 80 (item 194).
+# The rider-visible name is "Cargo with passengers" (item 241); the id, "people", is the
+# one links, saved plans and the API use, so it does not change.
 CARGO_CARRYING_STRESS = {CARRYING_CARGO: DEFAULT_STRESS, CARRYING_PEOPLE: 80}
 CARGO_HILLS = -60
 CARGO_PLANNING_SPEED_KMH = 14.0

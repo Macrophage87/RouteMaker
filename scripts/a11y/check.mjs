@@ -6,7 +6,7 @@
 //
 //   node scripts/a11y/check.mjs [--port 5173] [--shots DIR]
 import { mkdirSync } from "node:fs";
-import { S_DEFAULT, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
+import { S_DEFAULT, S_MASS, S_TRAIL, axNode, connect, contrast, decodePng, hashFor, media, mock, newPage, sleep } from "./cdp.mjs";
 
 const arg = (name, fallback) => {
   const i = process.argv.indexOf(name);
@@ -239,6 +239,76 @@ for (const [mode, opts] of [["light", {}], ["dark", { scheme: "dark" }], ["force
     check("ring (forced-dark): MapLibre's Zoom in keeps a real outline", zoom.fv && /^solid 3px -3px$/.test(zoom.outline), JSON.stringify(zoom));
     await p.shot(`${SHOTS}/ring_forced-dark_zoom-in.png`, await p.eval("(() => { const r = document.querySelector('.maplibregl-ctrl-top-right').getBoundingClientRect(); return { x: r.left - 12, y: r.top, width: r.width + 12, height: r.height + 12 }; })()"));
   }
+  await p.close();
+}
+
+
+// ---- 6. A group of signalised crossings: a row that opens onto its crossings (items 233, 234) ----
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  const state = () =>
+    p.eval(`(() => { const t = document.querySelector('.junction-group-toggle'); const l = document.getElementById(t.getAttribute('aria-controls'));
+      return { expanded: t.getAttribute('aria-expanded'), hidden: l.hidden, shown: l.querySelectorAll('.junction-item').length > 0 && l.offsetParent !== null,
+        rows: document.querySelectorAll('.junction-list .junction-item').length, groups: document.querySelectorAll('.junction-group-toggle').length,
+        focus: document.activeElement === t }; })()`);
+  const first = await state();
+  check("group: one row for the four crossings, closed to begin with", first.groups === 1 && first.expanded === "false" && first.hidden && !first.shown, JSON.stringify(first));
+  const ax = await axNode(p, ".junction-group-toggle");
+  // (Each span of a row is a grid item, so the name has a space before a comma, as every row's does.)
+  check("group: a button whose name is the severity, then the phrase", ax?.role === "button" && /^Very high stress ?, Group ?: 1\.1 to 1\.8 mi .*: 4 signalised crossings \(17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 1 more\), 1 of them an LTS 4 road$/.test(ax?.name ?? ""), JSON.stringify(ax?.name));
+  check("group: the screen reader hears it collapsed", ax?.expanded === false, JSON.stringify(ax));
+  // Tab order: closed, the crossings are not in it.
+  await p.eval("document.querySelectorAll('.junction-list > li')[0].querySelector('.junction-item').focus(); true");
+  await p.tab();
+  check("group: Tab from the row before it lands on the group's button", await p.eval("document.activeElement?.classList.contains('junction-group-toggle')"), await focused(p));
+  await p.tab();
+  check("group: closed, the next Tab skips its crossings to the row after", await p.eval("(() => { const e = document.activeElement; return e.classList.contains('junction-item') && !e.closest('.junction-members'); })()"), await focused(p));
+  await p.tab(true);
+  // Enter opens it, and the focus stays on the button.
+  await p.enter();
+  await sleep(200);
+  const opened = await state();
+  check("group: Enter opens it onto its four crossings and the focus stays on the button", opened.expanded === "true" && !opened.hidden && opened.shown && opened.focus && opened.rows === 1 + 1 + 4 + 1, JSON.stringify(opened));
+  const axOpen = await axNode(p, ".junction-group-toggle");
+  check("group: the screen reader hears it expanded", axOpen?.expanded === true, JSON.stringify(axOpen));
+  const members = await p.eval("[...document.querySelectorAll('.junction-members .junction-item')].map((e) => e.dataset.junctionIndex + ' ' + e.textContent.trim().slice(0, 60))");
+  check("group: its crossings are the ordinary rows, in route order", members.length === 4 && members.map((m) => m.split(' ')[0]).join() === "1,2,3,4", JSON.stringify(members));
+  await p.tab();
+  check("group: open, the next Tab is its first crossing", await p.eval("document.activeElement?.dataset?.junctionIndex === '1' && !!document.activeElement.closest('.junction-members')"), await focused(p));
+  // A crossing opens the ordinary card, and the focus stays on its row.
+  await p.enter();
+  await sleep(700);
+  check("group: Enter on a crossing opens the junction card, the focus stays on its row", await p.eval("!!document.querySelector('.junction-popup') && document.activeElement?.dataset?.junctionIndex === '1'"), await focused(p));
+  const card = await axNode(p, ".junction-popup");
+  check("group: the card is the ordinary dialog for that crossing", card?.role === "dialog" && /^Higher stress junction, at /.test(card?.name ?? ""), `${card?.role} "${card?.name}"`);
+  await p.escape();
+  await sleep(200);
+  check("group: Escape closes the card and the focus is still on the crossing's row", await p.eval("!document.querySelector('.junction-popup') && document.activeElement?.dataset?.junctionIndex === '1'"), await focused(p));
+  // Space closes it again.
+  await p.eval("document.querySelector('.junction-group-toggle').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(200);
+  const closed = await state();
+  check("group: Space closes it again, the focus on the button", closed.expanded === "false" && closed.hidden && !closed.shown && closed.focus, JSON.stringify(closed));
+  // Opening or closing says nothing.
+  const live = await p.eval("(() => { const t = document.querySelector('.junction-group-toggle'); return !t.closest('[aria-live], [role=status], [role=alert]'); })()");
+  check("group: it sits in no live region, so opening it announces nothing", live);
+  // The markers are unchanged: every crossing keeps its own, grouped on the map as before.
+  const markers = await p.eval("document.querySelectorAll('.junction-marker').length");
+  check("markers: still drawn for the route's junctions", markers >= 1, String(markers));
+  await p.close();
+}
+{
+  // 320 px: the group's phrase wraps and nothing spills sideways, open or closed.
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
+  await p.eval("document.querySelector('.junction-group-toggle').click(); document.querySelector('.junction-list').scrollIntoView({ block: 'start' }); true");
+  await sleep(300);
+  const wrap = await p.eval(`(() => { const l = document.querySelector('.junction-list'); const t = document.querySelector('.junction-group-toggle');
+    const r = t.querySelector('.junction-reason').getBoundingClientRect(); const row = t.getBoundingClientRect();
+    const member = document.querySelector('.junction-members .junction-item').getBoundingClientRect();
+    return { reason: Math.round(r.width), row: Math.round(row.width), member: Math.round(member.width), spill: l.scrollWidth > l.clientWidth, page: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check("group at 320 px: the phrase has the row's width, the crossings are set in, nothing spills", wrap.reason >= wrap.row - 60 && wrap.member < wrap.row && !wrap.spill && !wrap.page, JSON.stringify(wrap));
+  await p.shot(`${SHOTS}/group_320_open.png`, await p.eval("(() => { const r = document.querySelector('figure.junctions').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: Math.min(r.height + 8, innerHeight - r.top) }; })()"));
   await p.close();
 }
 

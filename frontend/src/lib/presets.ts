@@ -66,7 +66,7 @@ export const PRESETS: readonly PresetOption[] = [
     id: "cargo",
     label: "Cargo Bike",
     description:
-      "A long, heavy bike: gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.",
+      "A long, heavy bike, carrying cargo or with passengers (people or pets): gentle grades, no narrow barriers, times at a cargo bike's pace. With electric assist, e-bike rules and a little more speed, but hills still count.",
   },
   {
     id: "ebike",

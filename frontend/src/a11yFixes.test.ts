@@ -187,3 +187,38 @@ test("DialsPanel: the slider is named by its label alone, described by its note,
   assert.match(dialsPanel, /onBlur=\{\(\) => props\.onRelease\(false\)\}/);
   assert.match(dialsPanel, /if \(settle\) keys\.current\.later\(commitDraft\)/);
 });
+
+// OWNER-DECISIONS 233, 234: a Mass Ride's group of signalised crossings is a row that opens
+// onto its crossings. The choice is a disclosure, not a card: a button with aria-expanded and
+// aria-controls over a list, closed to begin with, the focus staying on it, nothing announced.
+test("a group row is a disclosure button over a list of its crossings", () => {
+  const group = list.slice(list.indexOf("function JunctionGroupRow"), list.indexOf("export function IntersectionList"));
+  assert.match(group, /<button\s+type="button"/);
+  assert.match(group, /aria-expanded=\{open\}/);
+  assert.match(group, /aria-controls=\{listId\}/);
+  assert.match(group, /id=\{listId\}/);
+  assert.match(group, /useState\(false\)/, "closed to begin with");
+  assert.match(group, /hidden=\{!open\}/);
+  assert.doesNotMatch(group, /aria-live|role="status"|role="alert"/, "opening it announces nothing");
+  assert.doesNotMatch(group, /\.focus\(\)/, "the focus stays on the button");
+  assert.match(group, /aria-label="Crossings in this group, in route order"/);
+});
+
+test("a group's chevron is a shape the screen reader does not say, and its row names its severity in words", () => {
+  const group = list.slice(list.indexOf("function JunctionGroupRow"), list.indexOf("export function IntersectionList"));
+  assert.match(group, /<span aria-hidden="true">\{chevron\(open\)\} <\/span>/);
+  assert.match(group, /group\.severityText/);
+  assert.match(group, /group\.text/);
+});
+
+test("a group's members are the ordinary junction rows: they carry their index and open the ordinary card", () => {
+  assert.match(list, /function JunctionButton/);
+  assert.match(list, /data-junction-index=\{item\.index\}/);
+  const group = list.slice(list.indexOf("function JunctionGroupRow"), list.indexOf("export function IntersectionList"));
+  assert.match(group, /<JunctionButton item=\{item\} onSelect=\{onSelect\} \/>/);
+});
+
+test("a closed group's list is really hidden: [hidden] wins over the grid", () => {
+  assert.match(declared(".junction-members[hidden]"), /display:\s*none/);
+  assert.match(declared(".junction-members"), /display:\s*grid/);
+});

@@ -70,7 +70,7 @@ from django.utils import timezone
 
 from pipeline.schema import validate_schema_name
 from pipeline.variants import Variant
-from routemaker import climbs, describe, ridetime, trace_junctions
+from routemaker import climbs, describe, intersections, ridetime, trace_junctions
 from routemaker import detour as detour_rules
 from routemaker.facility import FACILITIES
 from routemaker.geo import Point, haversine
@@ -981,10 +981,37 @@ def _intersection_rows(events: list) -> list[dict]:
             "control": event.control.value,
             "kind": event.kind,
             "cost_ft": round(event.cost_ft),
+            "group": event.group,
         }
         for event in events
         if event.flagged
     ]
+
+
+def _intersection_groups(events: list) -> list[dict]:
+    """A Mass Ride's groups of signalised crossings (OWNER-DECISIONS 233 and 234),
+    for the junction list: where each runs, how many, the first streets, how many
+    are LTS 4, its worst severity, and its sentence. `members` are positions in
+    the `intersections` list, which holds every crossing as before."""
+    flagged = [event for event in events if event.flagged]
+    rows = []
+    for group in intersections.crossing_groups(flagged):
+        streets = describe.group_streets(group)
+        rows.append(
+            {
+                "group": group.number,
+                "from_m": round(group.from_m),
+                "to_m": round(group.to_m),
+                "count": group.count,
+                "lts4": group.lts4,
+                "streets": streets[: describe.MAX_NAMED_STREETS],
+                "more": max(len(streets) - describe.MAX_NAMED_STREETS, 0),
+                "severity": group.severity,
+                "members": [i for i, event in enumerate(flagged) if event.group == group.number],
+                "text": describe.group_words(group, group.from_m, group.to_m),
+            }
+        )
+    return rows
 
 
 # The least time the direct route's probe is started with; and the busy-road
@@ -1432,6 +1459,7 @@ def plan(
         "attribution": list(ATTRIBUTION),
         "leg_ends": leg_ends,
         "intersections": None if events is None else _intersection_rows(events),
+        "intersection_groups": None if events is None else _intersection_groups(events),
         "calm_search": refined,
         "detour": detour,
         "description": described_full,

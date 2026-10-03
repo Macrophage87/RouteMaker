@@ -8,7 +8,7 @@
  * and why (src/routemaker/intersections.py); this is how they are listed,
  * worded and drawn, kept out of the components so it is tested without a DOM.
  */
-import type { JunctionWarning, RouteResponse } from "./api.ts";
+import type { JunctionGroupSummary, JunctionWarning, RouteResponse } from "./api.ts";
 import { formatDistance } from "./format.ts";
 
 export type Severity = JunctionWarning["severity"];
@@ -54,6 +54,67 @@ export function junctionItems(route: Pick<RouteResponse, "intersections"> | null
     label: `${SEVERITY_COLOURS[junction.severity].label}: ${junction.reason}`,
     severityText: SEVERITY_COLOURS[junction.severity].short,
   }));
+}
+
+/**
+ * A Mass Ride's group of signalised crossings as one row of the list
+ * (OWNER-DECISIONS 233, 234): the API's own phrase for it, its worst severity in
+ * words, and its members, each of which is still a junction of its own on the map.
+ */
+export interface JunctionGroupItem {
+  number: number;
+  severity: Severity;
+  severityText: string;
+  /** The API's phrase: span, how many, the first streets, how many are LTS 4. */
+  text: string;
+  count: number;
+  members: JunctionItem[];
+}
+
+/** A row of the junction list: one junction, or a group that opens onto its junctions. */
+export type JunctionRow = { kind: "item"; item: JunctionItem } | { kind: "group"; group: JunctionGroupItem };
+
+function groupItem(summary: JunctionGroupSummary, items: readonly JunctionItem[]): JunctionGroupItem | null {
+  if (typeof summary.text !== "string" || summary.text.trim() === "" || !Array.isArray(summary.members)) return null;
+  const members = summary.members.map((i) => items[i]);
+  // Only a group the list can show whole: every member found, in order, and its own.
+  if (members.length < 2 || members.some((m) => m === undefined || m.group !== summary.group)) return null;
+  const severity: Severity = members.some((m) => m.severity === "red") ? "red" : "orange";
+  return {
+    number: summary.group,
+    severity,
+    severityText: SEVERITY_COLOURS[severity].short,
+    text: summary.text.trim(),
+    count: members.length,
+    members,
+  };
+}
+
+/**
+ * The junction list's rows, in route order: each junction, except that the
+ * junctions of one of the API's groups are one row at the first of them (the
+ * group opens onto its members). Where the API has no groups, or one that does
+ * not hold together, every junction is a row of its own, as before.
+ */
+export function junctionRows(route: Pick<RouteResponse, "intersections" | "intersection_groups"> | null): JunctionRow[] {
+  const items = junctionItems(route);
+  const groups = new Map<number, JunctionGroupItem>();
+  for (const summary of route?.intersection_groups ?? []) {
+    const group = groupItem(summary, items);
+    if (group) groups.set(group.number, group);
+  }
+  const rows: JunctionRow[] = [];
+  const said = new Set<number>();
+  for (const item of items) {
+    const group = item.group == null ? undefined : groups.get(item.group);
+    if (!group) {
+      rows.push({ kind: "item", item });
+    } else if (!said.has(group.number)) {
+      said.add(group.number);
+      rows.push({ kind: "group", group });
+    }
+  }
+  return rows;
 }
 
 export interface JunctionCounts {

@@ -588,8 +588,8 @@ curl -s -X POST http://localhost:8000/api/route -H 'Content-Type: application/js
   no days, which name every day (Clark Place NW's `no @ (06:00-10:15,14:45-19:15)`
   is car-free at weekday rush; supported since the round-1 mutation review).
   A condition it cannot read - a month range, `sunset` - closes nothing.
-- `carrying`: `cargo` or `people`, Cargo Bike only (400 elsewhere); it sets the
-  stress slider's start (90, Default's, or 100).
+- `carrying`: `cargo` or `people` ("Cargo with passengers", item 241), Cargo Bike only
+  (400 elsewhere); it sets the stress slider's start (90, Default's, or 100).
 - `assist`: boolean, Cargo Bike only (400 elsewhere): electric assist. The ride
   routes on the e-bike graph (e-bike legality) at 18 km/h rather than 14; the
   hills slider keeps Cargo Bike's start, since a heavy bike's motor rarely
@@ -2207,6 +2207,7 @@ no extra router call, every preset, the schema), and
   km/h) road, no signal mapped"; where only the tier is known, the stress map
   legend's words, "Crossing a heavy-traffic road (LTS 4), no signal mapped".
   `control: "none"` means no signal or sign is MAPPED, not that there is none.
+- `intersection_groups` and `intersections[].group` (Mass Ride, additive): see the next section.
 - `calm_search`: null where no search was asked for, else the object above.
 - `detour`: null within the allowance, else the block above.
 
@@ -2215,6 +2216,17 @@ The planner draws the markers (`frontend/src/lib/intersectionMarkers.ts`, the
 summary shows the reason, and dragging the route away re-plans it as any drag
 does. The slider's words and its note at the top end are
 `frontend/src/lib/dials.ts` and `dialsPanel.ts`.
+
+### Mass Ride: groups of signalised crossings (items 233, 234, 235)
+
+The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (233) and "I'd say we'd want some level of clumpings, especially in DC, given the diagional streets. I'd say something like a quarter mile or so of clumping." (234). On a Mass Ride (`assess_route(..., group=True)`) `intersections.number_groups` numbers each run of two or more signalised crossings in `Event.group`: flagged, `Control.SIGNAL`, kind `crossing` or `left_across` (`GROUPED_KINDS`), each within `GROUP_WITHIN_M` (402 m) of the one before. Any other flagged event, including a turn at a signal, stands alone and ends the run. Every crossing stays an event and a marker and the cost is unchanged; only the list and the description say the group once.
+
+- `intersections[].group`: the group's number or null. `intersection_groups` (null where `intersections` is): `{group, from_m, to_m, count, lts4, streets, more, severity, members, text}`, `members` being positions in `intersections`, `text` the phrase without the severity ("1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised crossings (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of LTS 4 roads").
+- `description` and `description_overview`: one `junction` entry for the group, text ending "(Very high stress junctions).", with `group: {number, count, lts4, streets, more}`; null on every other entry.
+- The list (`IntersectionList`, `junctionRows`): a group is a disclosure button over its crossings, the ordinary rows. Closed first; nothing announced; the focus stays on the button.
+- A group is not split at a stop. A crossing that is also the turn into a stretch is counted in the group and said in the turn.
+- Density on live DC (Mass Ride, weekend, read-only): Lincoln Memorial to the Capitol along Constitution Ave, 9 flags in 2.52 mi (3.6 a mile), list entries 9 to 3; with vias on Constitution Ave, 13 flags in 3.20 mi (4.1), 13 to 7; Pennsylvania Ave NW from Washington Circle with vias, 23 flags in 3.52 mi (6.5), 23 to 5; direct, 23 in 2.78 mi (8.3), 23 to 3.
+- Tests: `tests/test_crossing_groups.py` (joining, the window and its edge, breaks, wording, description, API rows, and item 235's flagging rules), `frontend/src/lib/intersectionMarkers.test.ts`, `frontend/src/a11yFixes.test.ts`, and the browser check (`scripts/a11y/check.mjs`, section 6). Mutants: `scripts/mutants_groups.py`.
 
 ### Known gaps, and what would close them
 

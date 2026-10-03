@@ -95,10 +95,17 @@ export const CARRYINGS: readonly { id: Carrying; label: string; hint: string }[]
   { id: "cargo", label: "Carrying cargo", hint: "Quiet roads and bike lanes, gentle grades." },
   {
     id: "people",
-    label: "Carrying people",
-    hint: "Paths and protected lanes; busy streets only where avoiding them takes much longer.",
+    // OWNER-DECISIONS 241: "Let's also call it passengers, as people bring dogs too."
+    // The id stays "people", which links, saved plans and the API carry.
+    label: "Cargo with passengers",
+    hint: "People or pets aboard: paths and protected lanes; busy streets only where avoiding them takes much longer.",
   },
 ];
+
+/** What the load is called in a sentence: "carrying cargo", "cargo with passengers" (the label, lower case). */
+export function carryingWords(id: string): string {
+  return CARRYINGS.find((c) => c.id === id)?.label.toLowerCase() ?? id;
+}
 
 export function hillsMax(preset: PresetId): number {
   return STARTS[preset].seek ? HILLS_MAX : 0;

@@ -163,7 +163,8 @@ export async function axNode(page, selector) {
   if (!nodeId) return null;
   const { nodes } = await page.s("Accessibility.getPartialAXTree", { nodeId, fetchRelatives: false });
   const n = nodes[0];
-  return { role: n.role?.value, name: n.name?.value, description: n.description?.value };
+  const prop = (name) => n.properties?.find((q) => q.name === name)?.value?.value;
+  return { role: n.role?.value, name: n.name?.value, description: n.description?.value, expanded: prop("expanded") };
 }
 
 /** Decode an 8-bit RGB(A) PNG, as CDP's screenshots are: { width, height, pixel(x, y) -> [r, g, b] }. */
@@ -275,6 +276,43 @@ export const S_DEFAULT = (() => {
   const r = copy();
   r.dials = { stress: 70, hills: 0, when: "weekday", carrying: null };
   r.calm_search = { rate: 0, rounds: 0, excluded: 0, limited: null };
+  return r;
+})();
+/**
+ * A Mass Ride with a group of signalised crossings (OWNER-DECISIONS 233, 234): a lone
+ * unsignalised left, four signalised crossings within a quarter mile of one another (one red),
+ * then a lone unsignalised red. The group's row opens onto its four crossings.
+ */
+export const S_MASS = (() => {
+  const r = copy();
+  r.preset = "mass-ride";
+  r.dials = { stress: 0, hills: 0, when: "weekday", carrying: null };
+  r.calm_search = null;
+  const at = (i, m, severity, tier, control, kind, reason, group) => ({
+    m, lon: coords[i][0], lat: coords[i][1], severity, reason, crossed_tier: tier, movement: "straight", control, kind, cost_ft: 300, group,
+  });
+  r.intersections = [
+    at(8, 1000, "orange", 3, "none", "left_across", "Left turn across a 2-lane 30 mph (48 km/h) road, no signal mapped", null),
+    at(14, 1700, "orange", 3, "signal", "crossing", "Crossing a 2-lane 30 mph (48 km/h) road, traffic signal", 1),
+    at(17, 2100, "red", 4, "signal", "crossing", "Crossing a 4-lane 35 mph (56 km/h) road, traffic signal", 1),
+    at(20, 2500, "orange", 3, "signal", "crossing", "Crossing a 2-lane 30 mph (48 km/h) road, traffic signal", 1),
+    at(23, 2900, "orange", 3, "signal", "crossing", "Crossing a 2-lane 25 mph (40 km/h) road, traffic signal", 1),
+    at(34, 4000, "red", 4, "none", "crossing", "Crossing a 4-lane 40 mph (64 km/h) road, no signal mapped", null),
+  ];
+  r.intersection_groups = [
+    {
+      group: 1,
+      from_m: 1700,
+      to_m: 2900,
+      count: 4,
+      lts4: 1,
+      streets: ["17th Street Northwest", "15th Street Northwest", "14th Street Northwest"],
+      more: 1,
+      severity: "red",
+      members: [1, 2, 3, 4],
+      text: "1.1 to 1.8 mi (1.7 to 2.9 km): 4 signalised crossings (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 1 more), 1 of them an LTS 4 road",
+    },
+  ];
   return r;
 })();
 export const hashFor = (preset, stress, hills = 0) =>

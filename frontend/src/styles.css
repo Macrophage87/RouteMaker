@@ -1116,6 +1116,22 @@ dialog.ride-types::backdrop {
 .junction-item.junction-red {
   border-left-color: #dc2626;
 }
+/* A group of signalised crossings (OWNER-DECISIONS 233, 234): its row is the same
+   button, and its members are a list under it, set in from the left. [hidden]
+   must win over the grid, or a closed group would show its crossings. */
+.junction-members {
+  list-style: none;
+  margin: 4px 0 2px 14px;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.junction-members[hidden] {
+  display: none;
+}
+.junction-group-toggle {
+  font-weight: 500;
+}
 .junction-icon {
   line-height: 0;
 }

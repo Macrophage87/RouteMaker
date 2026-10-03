@@ -25,7 +25,10 @@ The rules:
   severity ("Higher stress junction" / "Very high stress junction"). Where the
   model did not read a junction nothing is claimed about its control.
 - Flagged junctions that are not a change of street (crossing a busy road) are
-  entries of their own.
+  entries of their own, except on a Mass Ride, where signalised crossings that run
+  within a quarter mile of one another are one entry (OWNER-DECISIONS 233 and 234):
+  its span, how many, the first three streets crossed and how many are LTS 4. It is
+  worded in both the full list and the overview (`group_sentence`).
 - Distances are scaled so the last stretch ends at the route's length.
 - The overview (OWNER-DECISIONS 226) is the same route with stretches under
   OVERVIEW_M (0.25 mi) merged into a neighbour of their own leg, so it never
@@ -42,7 +45,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from .intersections import Control, Movement, movement_of
+from .intersections import Control, CrossingGroup, Movement, crossing_groups, movement_of
 
 METRES_PER_MILE = 1609.344
 FEET_PER_METRE = 3.28084
@@ -360,6 +363,63 @@ def _point_sentence(event, at_m: float) -> str:
     )
 
 
+MAX_NAMED_STREETS = 3
+
+
+def group_streets(group: CrossingGroup) -> list[str]:
+    """The streets a group crosses, as mapped, in route order and each once."""
+    seen: set[str] = set()
+    streets: list[str] = []
+    for event in group.members:
+        name = _event_name(event)
+        if name and name.lower() not in seen:
+            seen.add(name.lower())
+            streets.append(name)
+    return streets
+
+
+def _streets_words(streets: list[str]) -> str:
+    """ " (A, B, C and 3 more)": the first MAX_NAMED_STREETS, then how many are left."""
+    if not streets:
+        return ""
+    shown = streets[:MAX_NAMED_STREETS]
+    more = len(streets) - len(shown)
+    if more > 0:
+        listed = ", ".join(shown) + f" and {more} more"
+    elif len(shown) > 1:
+        listed = ", ".join(shown[:-1]) + " and " + shown[-1]
+    else:
+        listed = shown[0]
+    return f" ({listed})"
+
+
+def _lts4_words(lts4: int, count: int) -> str:
+    """How many of a group's crossed roads are LTS 4 (or Avoid): nothing where none."""
+    if lts4 <= 0:
+        return ""
+    if lts4 == 1:
+        return ", 1 of them an LTS 4 road"
+    return ", all of LTS 4 roads" if lts4 == count else f", {lts4} of LTS 4 roads"
+
+
+def group_words(group: CrossingGroup, start_m: float, end_m: float) -> str:
+    """A group of signalised crossings as one phrase, with no severity and no full
+    stop: "1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised crossings (17th Street
+    Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of LTS 4
+    roads". `start_m` and `end_m` are where the first and the last crossing are, in
+    whatever measure the caller shows."""
+    return (
+        f"{range_words(start_m, end_m)}: {group.count} signalised crossings"
+        f"{_streets_words(group_streets(group))}{_lts4_words(group.lts4, group.count)}"
+    )
+
+
+def group_sentence(group: CrossingGroup, start_m: float, end_m: float) -> str:
+    """The group as a description entry: its phrase, then its severity in words, so
+    a colour is never the only way to hear it ("Very high stress junctions")."""
+    return f"{group_words(group, start_m, end_m)} ({SEVERITY_WORDS[group.severity]} junctions)."
+
+
 @dataclass
 class _Turn:
     movement: str | None
@@ -583,7 +643,9 @@ def describe_both(
     is a dict: `kind` ("stretch", "junction" or "via"), `from_m` and `to_m`
     (whole metres), `from_mi` and `to_mi` (miles to a hundredth), `street`,
     `tier` (1-5 or None), `facility` or None, `turn` (None or a dict), `severity`
-    ("orange", "red" or None), `via` (the point's number, for a "via"), `text`.
+    ("orange", "red" or None), `via` (the point's number, for a "via"), `group` (a
+    dict - `number`, `count`, `lts4`, `streets`, `more` - on the entry for a Mass
+    Ride's group of signalised crossings, else None), `text`.
     The overview has the same entries with the short stretches merged (see the
     module's rules); its stops and junction entries are the full ones.
     """
@@ -687,8 +749,40 @@ def describe_both(
                 ),
             )
         )
+    by_group = {g.number: g for g in crossing_groups(events)}
+    said: set[int] = set()
     for index, event in enumerate(events):
         if index in used or not event.flagged:
+            continue
+        if event.group in by_group:
+            # A group of signalised crossings (items 233 and 234) is one entry, at
+            # its first crossing, which counts every crossing of it, a crossing
+            # that is also the turn into a stretch included.
+            if event.group in said:
+                continue
+            said.add(event.group)
+            group = by_group[event.group]
+            from_at, to_at = group.from_m * scale, group.to_m * scale
+            streets = group_streets(group)
+            shared.append(
+                (
+                    (from_at, 2, index),
+                    _entry(
+                        "junction",
+                        from_at,
+                        to_at,
+                        group_sentence(group, from_at, to_at),
+                        severity=group.severity,
+                        group={
+                            "number": group.number,
+                            "count": group.count,
+                            "lts4": group.lts4,
+                            "streets": streets[:MAX_NAMED_STREETS],
+                            "more": max(len(streets) - MAX_NAMED_STREETS, 0),
+                        },
+                    ),
+                )
+            )
             continue
         at_m = event.m * scale
         shared.append(
@@ -761,6 +855,7 @@ def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:
         "turn": None,
         "severity": None,
         "via": None,
+        "group": None,
         "text": text,
     }
     entry.update(fields)
@@ -779,6 +874,8 @@ __all__ = [
     "OVERVIEW_M",
     "describe",
     "describe_both",
+    "group_sentence",
+    "group_words",
     "plain_text",
     "range_words",
     "readable",

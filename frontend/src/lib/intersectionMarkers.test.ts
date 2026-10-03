@@ -16,10 +16,11 @@ import {
   junctionCounts,
   junctionHeadline,
   junctionItems,
+  junctionRows,
   junctionsOnMap,
   warningIconSvg,
 } from "./intersectionMarkers.ts";
-import type { JunctionWarning } from "./api.ts";
+import type { JunctionGroupSummary, JunctionWarning } from "./api.ts";
 
 // OWNER-DECISIONS 172: orange for higher stress, red for very high, listed in the
 // route summary, a click explaining why, a neighbourhood stop sign never flagged.
@@ -170,4 +171,126 @@ test("past the cap the worst junctions are drawn, in route order", () => {
   for (const item of items) {
     if (item.index % 7 === 0) assert.ok(kept.has(item.index), `the costly junction ${item.index} is drawn`);
   }
+});
+
+// OWNER-DECISIONS 233, 234: a Mass Ride's signalised crossings within a quarter mile
+// of one another are one row of the list, which opens onto its members.
+
+function crossingAt(m: number, severity: "orange" | "red", group: number | null): JunctionWarning {
+  return {
+    m,
+    lon: -77.03 + m / 100000,
+    lat: 38.9,
+    severity,
+    reason: `Crossing a 4-lane road at ${m} m, traffic signal`,
+    crossed_tier: severity === "red" ? 4 : 3,
+    movement: "straight",
+    control: "signal",
+    kind: "crossing",
+    cost_ft: 300,
+    group,
+  };
+}
+
+function summary(over: Partial<JunctionGroupSummary> = {}): JunctionGroupSummary {
+  return {
+    group: 1,
+    from_m: 1600,
+    to_m: 2600,
+    count: 3,
+    lts4: 1,
+    streets: ["17th Street Northwest", "15th Street Northwest", "14th Street Northwest"],
+    more: 0,
+    severity: "red",
+    members: [1, 2, 3],
+    text: "1.0 to 1.6 mi (1.6 to 2.6 km): 3 signalised crossings (17th Street Northwest, 15th Street Northwest and 14th Street Northwest), 1 of them an LTS 4 road",
+    ...over,
+  };
+}
+
+const massRide = {
+  intersections: [
+    { ...crossing, group: null },
+    crossingAt(1600, "orange", 1),
+    crossingAt(2100, "red", 1),
+    crossingAt(2600, "orange", 1),
+    { ...left, group: null },
+  ],
+  intersection_groups: [summary()],
+};
+
+test("a group is one row at its first crossing, between the junctions before and after it", () => {
+  const rows = junctionRows(massRide);
+  assert.deepEqual(rows.map((r) => r.kind), ["item", "group", "item"]);
+  const group = rows[1];
+  assert.equal(group.kind, "group");
+  if (group.kind !== "group") return;
+  assert.deepEqual(group.group.members.map((m) => m.index), [1, 2, 3]);
+  assert.equal(group.group.count, 3);
+  assert.equal(group.group.text, massRide.intersection_groups[0].text);
+});
+
+test("a group's severity is its worst member's, in words", () => {
+  const group = junctionRows(massRide)[1];
+  assert.equal(group.kind, "group");
+  if (group.kind !== "group") return;
+  assert.equal(group.group.severity, "red");
+  assert.equal(group.group.severityText, "Very high stress");
+  const calm = junctionRows({
+    intersections: massRide.intersections.map((j) => ({ ...j, severity: "orange" as const })),
+    intersection_groups: [summary({ severity: "orange" })],
+  })[1];
+  assert.equal(calm.kind === "group" && calm.group.severityText, "Higher stress");
+});
+
+test("every junction is still in the junction items, so the map and the headline count them all", () => {
+  assert.equal(junctionItems(massRide).length, 5);
+  assert.equal(junctionHeadline(junctionCounts(junctionItems(massRide))), "Watch for 2 very high stress (red) and 3 higher stress (orange) junctions");
+});
+
+test("without groups, or from an older API, every junction is a row of its own", () => {
+  for (const route of [
+    { intersections: massRide.intersections },
+    { intersections: massRide.intersections, intersection_groups: [] },
+    { intersections: massRide.intersections, intersection_groups: null },
+    { intersections: [] },
+    null,
+  ]) {
+    const rows = junctionRows(route);
+    assert.ok(rows.every((r) => r.kind === "item"));
+    assert.equal(rows.length, route?.intersections?.length ?? 0);
+  }
+});
+
+test("a group that does not hold together is not shown as one: nothing is hidden", () => {
+  const broken: Partial<JunctionGroupSummary>[] = [
+    { members: [1, 2, 9] },
+    { members: [1] },
+    { members: [0, 1, 2] },
+    { text: "  " },
+    { members: undefined as unknown as number[] },
+  ];
+  for (const over of broken) {
+    const rows = junctionRows({ ...massRide, intersection_groups: [summary(over)] });
+    assert.equal(rows.length, 5, JSON.stringify(over));
+    assert.ok(rows.every((r) => r.kind === "item"));
+  }
+});
+
+test("two groups are two rows, in route order", () => {
+  const route = {
+    intersections: [
+      crossingAt(100, "orange", 1),
+      crossingAt(300, "orange", 1),
+      { ...crossing, group: null },
+      crossingAt(5000, "red", 2),
+      crossingAt(5200, "orange", 2),
+    ],
+    intersection_groups: [
+      summary({ group: 1, members: [0, 1], count: 2 }),
+      summary({ group: 2, members: [3, 4], count: 2, text: "3.1 to 3.2 mi (5.0 to 5.2 km): 2 signalised crossings" }),
+    ],
+  };
+  const rows = junctionRows(route);
+  assert.deepEqual(rows.map((r) => (r.kind === "group" ? `g${r.group.number}` : "item")), ["g1", "item", "g2"]);
 });

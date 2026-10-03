@@ -188,7 +188,10 @@ class RouteIn(Schema):
     )
     carrying: CarryingName | None = Field(
         default=None,
-        description="Cargo Bike only: what the bike carries, which sets the stress slider's start.",
+        description=(
+            "Cargo Bike only: what the bike carries - `cargo`, or `people` for Cargo with "
+            "passengers (people or pets) - which sets the stress slider's start."
+        ),
     )
     assist: StrictBool = Field(
         default=False,
@@ -412,6 +415,36 @@ class IntersectionOut(Schema):
     control: Literal["signal", "stop", "cross_stop", "all_stop", "none"]
     kind: str
     cost_ft: int = Field(description="The model's cost, in feet of equivalent quiet riding.")
+    group: int | None = Field(
+        default=None,
+        description=(
+            "Mass Ride only: the number, from 1, of the group of signalised crossings this "
+            "junction is one of (`intersection_groups`); null if it is in none. Every "
+            "junction stays in the list and on the map."
+        ),
+    )
+
+
+class IntersectionGroupOut(Schema):
+    """A Mass Ride's run of signalised crossings, each within a quarter mile of the one
+    before (OWNER-DECISIONS 233, 234), as the junction list shows it: one row that
+    opens onto its members. Additive: absent from an older API, and null off a Mass
+    Ride."""
+
+    group: int = Field(description="Its number, from 1, as `intersections[].group`.")
+    from_m: int = Field(description="Metres along the route to its first crossing.")
+    to_m: int = Field(description="... to its last.")
+    count: int = Field(description="How many crossings, at least 2.")
+    lts4: int = Field(description="How many of the crossed roads are LTS 4 or Avoid.")
+    streets: list[str] = Field(description="The first three streets crossed, as mapped.")
+    more: int = Field(description="How many more streets than `streets` has.")
+    severity: Literal["orange", "red"] = Field(description="Its worst member's.")
+    members: list[int] = Field(description="Positions in `intersections` of its crossings.")
+    text: str = Field(
+        description='One phrase, US units first: "1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised '
+        "crossings (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 3 "
+        'more), 2 of LTS 4 roads". No severity: the row shows that.'
+    )
 
 
 class SeekOut(Schema):
@@ -522,6 +555,14 @@ class DescriptionTurnOut(Schema):
     )
 
 
+class DescriptionGroupOut(Schema):
+    number: int = Field(description="As `intersections[].group`.")
+    count: int
+    lts4: int = Field(description="How many of the crossed roads are LTS 4 or Avoid.")
+    streets: list[str] = Field(description="The first three streets crossed, as mapped.")
+    more: int
+
+
 class DescriptionEntryOut(Schema):
     """One entry of the route's description (`routemaker.describe`; OWNER-DECISIONS
     220: blind cyclists, many riding as tandem stokers, need the route in words).
@@ -551,6 +592,13 @@ class DescriptionEntryOut(Schema):
     )
     severity: Literal["orange", "red"] | None = None
     via: int | None = Field(default=None, description="On a `via`: its number, from 1.")
+    group: DescriptionGroupOut | None = Field(
+        default=None,
+        description=(
+            "On a Mass Ride's entry for a group of signalised crossings "
+            "(OWNER-DECISIONS 233, 234): what it says, as fields."
+        ),
+    )
     text: str
 
 
@@ -576,6 +624,9 @@ class RouteOut(Schema):
     # The route's stressful junctions, in route order; null where they could not
     # be read in time (the route is answered all the same).
     intersections: list[IntersectionOut] | None
+    # A Mass Ride's groups of signalised crossings (OWNER-DECISIONS 233, 234): additive,
+    # empty or null elsewhere.
+    intersection_groups: list[IntersectionGroupOut] | None = None
     calm_search: CalmSearchOut | None
     detour: DetourOut | None
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:

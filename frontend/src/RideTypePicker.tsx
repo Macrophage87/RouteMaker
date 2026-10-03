@@ -117,7 +117,7 @@ export function RideTypePicker({ preset, dials, onChoose }: Props) {
                   <span className="hint">{option.description}</span>
                 </button>
                 {carries(option.id) && (
-                  <div className="ride-type-loads" role="group" aria-label={`${option.label}: what it carries`}>
+                  <div className="ride-type-loads" role="group" aria-label={`${option.label}: cargo or passengers`}>
                     {CARRYINGS.map((load) => (
                       <button
                         key={load.id}

@@ -57,6 +57,8 @@ CONTRACT_KEYS = {
     # Additive, FOLLOWUP-INTERSECTIONS (OWNER-DECISIONS items 163-172):
     # the stressful junctions, the calm search and the detour.
     "intersections",
+    # Additive, OWNER-DECISIONS items 233 and 234: a Mass Ride's groups of signalised crossings.
+    "intersection_groups",
     "calm_search",
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.

@@ -65,7 +65,7 @@ test("the export carries the sliders the route was planned with, and says them",
   );
   assert.match(
     rideText({ preset: "cargo", dials: { stress: 100, hills: -60, when: "weekday_rush", carrying: "people", assist: true } }),
-    /carrying people; electric assist\.$/,
+    /; cargo with passengers; electric assist\.$/,
   );
 });
 

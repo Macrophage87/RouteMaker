@@ -291,6 +291,10 @@ class Event:
     # with a name in common (`merge_nearby`).
     road_ways: frozenset[int] = frozenset()
     road_oneway: bool | None = None
+    # A Mass Ride's signalised crossings that run within GROUP_WITHIN_M of one
+    # another are one group, numbered from 1 in route order (`number_groups`;
+    # items 233 and 234). None: not in a group, and always None off a Mass Ride.
+    group: int | None = None
 
 
 def movement_of(heading_in: float, heading_out: float) -> Movement:
@@ -776,12 +780,118 @@ def _within(order: list[int], place: int, step: int, junctions: list[Junction], 
         k += step
 
 
+# --- Mass Ride: signalised crossings read as groups (items 233 and 234) --------
+#
+# The owner, 2026-10-03 (item 233, amending 231's "Leave as is."): "Actually, I
+# like merging the runs, that sounds good." And (item 234): "I'd say we'd want
+# some level of clumpings, especially in DC, given the diagional streets. I'd
+# say something like a quarter mile or so of clumping." Every LTS 3/4 crossing
+# is still flagged and still drawn (item 231); what changes is how the list and
+# the description say it: consecutive signalised crossings, each within a
+# quarter mile of the one before, are one entry, whatever street they are on.
+#
+# - Only a signalised crossing joins: a flagged event with a signal whose kind
+#   is a crossing of a busy road (`GROUPED_KINDS`). A turn at a signal is a
+#   decision of its own and is said where it is.
+# - Any other flagged event - an unsignalised crossing, a very-high-stress one
+#   with no signal, a turn - stands alone and ends the run.
+# - A run of one is not a group.
+# - The group's colour is its worst member's (`CrossingGroup.severity`), the
+#   words and shapes the markers already use.
+GROUP_WITHIN_M = 402.0  # a quarter mile (0.25 mi = 402.3 m), "or so"
+GROUPED_KINDS = frozenset({"crossing", "left_across"})
+# At or above this tier a crossed road counts as "LTS 4" in a group's wording
+# (an Avoid road is worse still).
+GROUP_LTS4_TIER = 4
+
+
+def groupable(event: Event) -> bool:
+    """A flagged, signalised Mass Ride crossing of a busy road."""
+    return (
+        event.group_severity
+        and event.flagged
+        and event.control is Control.SIGNAL
+        and event.kind in GROUPED_KINDS
+    )
+
+
+def number_groups(events: list[Event]) -> list[Event]:
+    """The events, in route order, with each run of two or more signalised
+    crossings (each within GROUP_WITHIN_M of the one before) numbered from 1 in
+    `Event.group`. Only flagged events count: an event the planner never draws
+    neither joins a run nor ends one."""
+    numbered = list(events)
+    run: list[int] = []
+    number = 0
+
+    def close() -> None:
+        nonlocal number
+        if len(run) >= 2:
+            number += 1
+            for i in run:
+                numbered[i] = replace(numbered[i], group=number)
+        run.clear()
+
+    for i, event in enumerate(events):
+        if not event.flagged:
+            continue
+        if not groupable(event):
+            close()
+            continue
+        if run and event.m - events[run[-1]].m > GROUP_WITHIN_M:
+            close()
+        run.append(i)
+    close()
+    return numbered
+
+
+@dataclass(frozen=True)
+class CrossingGroup:
+    """A group of signalised crossings, as the list and the description say it."""
+
+    number: int
+    members: tuple[Event, ...]
+
+    @property
+    def from_m(self) -> float:
+        return self.members[0].m
+
+    @property
+    def to_m(self) -> float:
+        return self.members[-1].m
+
+    @property
+    def count(self) -> int:
+        return len(self.members)
+
+    @property
+    def lts4(self) -> int:
+        """How many of the crossed roads are LTS 4 or worse."""
+        return sum(1 for e in self.members if (e.crossed_tier or 0) >= GROUP_LTS4_TIER)
+
+    @property
+    def severity(self) -> str:
+        """The worst member's: never milder than any crossing in it."""
+        return _worst(e.severity for e in self.members) or ORANGE
+
+
+def crossing_groups(events: list[Event]) -> list[CrossingGroup]:
+    """The groups `number_groups` made, in route order."""
+    found: dict[int, list[Event]] = {}
+    for event in sorted(events, key=lambda e: e.m):
+        if event.group is not None:
+            found.setdefault(event.group, []).append(event)
+    return [CrossingGroup(n, tuple(found[n])) for n in sorted(found)]
+
+
 def assess_route(junctions: list[Junction], group: bool = False) -> list[Event]:
     """Every junction's event, in route order (a cost the objective sums; the
     flagged ones are what the planner draws). The nodes of one junction share
-    its strongest control first (`share_controls`)."""
+    its strongest control first (`share_controls`). On a Mass Ride (`group`)
+    the signalised crossings that run together are numbered (`number_groups`)."""
     events = (assess(junction, group) for junction in share_controls(junctions))
-    return merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
+    merged = merge_nearby(sorted((e for e in events if e is not None), key=lambda e: e.m))
+    return number_groups(merged) if group else merged
 
 
 def penalty_m(events: list[Event]) -> float:

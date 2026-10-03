@@ -211,6 +211,7 @@ class TestSchema:
             "turn",
             "severity",
             "via",
+            "group",
             "text",
         }
         assert entry["properties"]["kind"]["enum"] == ["stretch", "junction", "via"]

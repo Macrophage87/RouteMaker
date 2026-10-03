@@ -45,7 +45,7 @@ test("the starts say what the owner said", () => {
   assert.ok(STARTS.cargo.hills < STARTS.default.hills);
 });
 
-test("carrying cargo starts where Default does, carrying people at the old top", () => {
+test("carrying cargo starts where Default does, cargo with passengers at the old top", () => {
   const cargo = startDials("cargo", "cargo");
   const people = startDials("cargo", "people");
   assert.equal(cargo.stress, STARTS.default.stress);
