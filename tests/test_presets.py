@@ -424,9 +424,10 @@ def test_avoid_gravel_rides_as_road_at_the_presets_own_speed() -> None:
     assert assistless["cycling_speed"] == presets.PRESETS["cargo"].assist_speed_kmh
 
 
-class TestLongestRide:
-    """OWNER-DECISIONS 256, 257 (FOLLOWUP-LONG-CALM): at the top of the slider the
-    search minimises stress within a longest ride; there is no trail credit."""
+class TestTargetDistance:
+    """OWNER-DECISIONS 256, 257, 268, 271 (FOLLOWUP-LONG-CALM): at the top of the slider
+    the search minimises stress towards a target distance, within a ceiling; there is no
+    trail credit."""
 
     def test_there_is_no_trail_credit(self) -> None:
         """257 supersedes 202: a quiet street counts the same as a trail."""
@@ -448,16 +449,20 @@ class TestLongestRide:
         for name, preset in presets.PRESETS.items():
             assert preset.long_calm == (name == "trailmaxxing"), name
 
-    def test_the_default_longest_ride_is_1_6_times_the_routers_own_route(self) -> None:
-        assert presets.DEFAULT_MAX_RATIO == 1.6
-        assert presets.default_max_m(50_000.0) == pytest.approx(80_000.0)
-        assert presets.default_max_m(93_000.0) == pytest.approx(148_800.0)
+    def test_the_default_ceiling_is_1_6_times_the_routers_own_route(self) -> None:
+        assert presets.DEFAULT_CEILING_RATIO == 1.6
+        assert presets.default_ceiling_m(50_000.0) == pytest.approx(80_000.0)
+        assert presets.default_ceiling_m(93_000.0) == pytest.approx(148_800.0)
 
     def test_a_short_route_has_a_mile_to_spare_at_least(self) -> None:
         # 1.6 x 1 mi is 0.6 mi more: under the floor of a mile more.
-        assert presets.default_max_m(1609.344) == pytest.approx(2 * 1609.344)
-        assert presets.default_max_m(0.0) == pytest.approx(presets.DEFAULT_MAX_EXTRA_M)
+        assert presets.default_ceiling_m(1609.344) == pytest.approx(2 * 1609.344)
+        assert presets.default_ceiling_m(0.0) == pytest.approx(presets.DEFAULT_CEILING_EXTRA_M)
+
+    def test_the_ceiling_past_a_target_is_1_25_times_it(self) -> None:
+        assert presets.TARGET_CEILING_RATIO == 1.25
+        assert presets.target_ceiling_m(96_560.0) == pytest.approx(120_700.0)
 
     def test_the_dials_bounds_are_a_sensible_range(self) -> None:
-        assert presets.MAX_DISTANCE_MIN_M < 1609 < presets.MAX_DISTANCE_MAX_M
-        assert presets.MAX_DISTANCE_MAX_M >= 200_000  # the longest span a plan may have
+        assert presets.TARGET_DISTANCE_MIN_M < 1609 < presets.TARGET_DISTANCE_MAX_M
+        assert presets.TARGET_DISTANCE_MAX_M >= 200_000  # the longest span a plan may have

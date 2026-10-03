@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Mutants on FOLLOWUP-LONG-CALM: the order the top of the slider ranks by, the longest
-ride, the effort model, the legs a long plan is cut into and how it shares the longest
-ride among them, the routes to choose from, the loop, and the hills choice's hold.
+"""Mutants on FOLLOWUP-LONG-CALM: the order the top of the slider ranks by, the target
+distance and its ceiling, the diminishing returns on extra distance, the choice where no
+route fits, the effort model, the legs a long plan is cut into and how it shares the
+detour among them, the routes to choose from, the loop, and the hills choice's hold.
 
-OWNER-DECISIONS 256-266. A mutation pass run against WHOLE test files, as
+OWNER-DECISIONS 256-271. A mutation pass run against WHOLE test files, as
 `scripts/mutants_trailseek.py` does: a mutant is killed when any test in the files named
 for it fails. It works on a copy of the repository and runs each test file in a process of
 its own, under a timeout:
@@ -34,6 +35,7 @@ LP = ["tests/test_loop.py"]
 AP = ["tests/test_longcalm_api.py"]
 PS = ["tests/test_presets.py"]
 HD = ["tests/test_route_dials.py"]
+RFT = ["tests/test_refine.py"]
 
 RF = "src/core/refine.py"
 RT = "src/core/routing.py"
@@ -105,62 +107,288 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         LC,
     ),
     ("order: the seek half's hook does nothing", RF, "- ctx.hills_seek_weight * effort", "", LC),
-    # --- the longest ride (256) --------------------------------------------------
+    # --- the ceiling (256, 268, 271) ---------------------------------------------
     (
-        "longest: a route exactly the limit is too long",
+        "ceiling: a route exactly at it is too long",
         RF,
-        "    return ctx.max_m is not None and length_m > ctx.max_m",
-        "    return ctx.max_m is not None and length_m >= ctx.max_m",
+        "    return ctx.ceiling_m is not None and length_m > ctx.ceiling_m",
+        "    return ctx.ceiling_m is not None and length_m >= ctx.ceiling_m",
         LC,
     ),
     (
-        "longest: the halves of a round are not tried",
+        "ceiling: the halves of a round are not tried",
         RF,
         "            attempts.extend(excluded + half for half in _halves(new))",
         "            pass",
         LC,
     ),
     (
-        "longest: a round past it is called no route",
+        "ceiling: a round past it is called no route",
         RF,
-        '                info["limited"] = "max_distance" if over else "no_route"',
+        '                info["limited"] = "target_distance" if over else "no_route"',
         '                info["limited"] = "no_route"',
         LC,
     ),
     (
-        "longest: a hold refusal uses up the patience",
+        "ceiling: a hold refusal uses up the patience",
         RF,
         "        elif not held:",
         "        else:",
         LC,
     ),
     (
-        "longest: the default is the smaller",
+        "ceiling: the default is the smaller",
         PR,
-        "    return max(first_m * DEFAULT_MAX_RATIO, first_m + DEFAULT_MAX_EXTRA_M)",
-        "    return min(first_m * DEFAULT_MAX_RATIO, first_m + DEFAULT_MAX_EXTRA_M)",
+        "    return max(first_m * DEFAULT_CEILING_RATIO, first_m + DEFAULT_CEILING_EXTRA_M)",
+        "    return min(first_m * DEFAULT_CEILING_RATIO, first_m + DEFAULT_CEILING_EXTRA_M)",
         PS,
     ),
     (
-        "longest: the top is any position past the old top",
+        "ceiling: past a target it is the target itself",
+        PR,
+        "    return target_m * TARGET_CEILING_RATIO",
+        "    return target_m",
+        PS + LC,
+    ),
+    (
+        "ceiling: past a target it is 1.5 times it",
+        PR,
+        "TARGET_CEILING_RATIO = 1.25",
+        "TARGET_CEILING_RATIO = 1.5",
+        PS,
+    ),
+    (
+        "ceiling: the plan's is ten times the target",
+        RT,
+        "            presets.target_ceiling_m(target_m)\n            if target_m",
+        "            target_m * 10\n            if target_m",
+        AP,
+    ),
+    (
+        "ceiling: a route past it is weighed against the one that fits",
+        RT,
+        "        (o for o in past if _trip_length_m(o[0]) <= ceiling_m), key=lambda o: _trip_length_m(o[0])",
+        "        (o for o in past if _trip_length_m(o[0]) <= ceiling_m * 2), key=lambda o: _trip_length_m(o[0])",
+        AP,
+    ),
+    (
+        "ceiling: a candidate may go further past the target than the answer",
+        RF,
+        "    return read.length_m > max(ctx.target_m, answer.length_m) + 0.5",
+        "    return False",
+        LC,
+    ),
+    (
+        "ceiling: the top is any position past the old top",
         PR,
         "    return calm_rate_for(stress) >= CALM_RATE_MAX",
         "    return calm_rate_for(stress) > 0",
         PS,
     ),
     (
-        "longest: a longer route than the limit is let through in the fit",
+        "target: a longer route than the target is let through in the fit",
         RT,
-        "            if probe_m <= rider_max_m:",
-        "            if probe_m <= rider_max_m * 2:",
+        "            if probe_m <= target_m:",
+        "            if probe_m <= target_m * 2:",
         AP,
     ),
     (
-        "longest: the bisection stays at the rung",
+        "target: the bisection stays at the rung",
         RT,
         "            middle = (over + fits) // 2",
         "            middle = fits",
         AP,
+    ),
+    # --- where no route fits the target (267) --------------------------------------
+    (
+        "no fit: the shortest within the ceiling is answered, not the least stressful",
+        RT,
+        "        if current is None or refine.calmer(got, current, ctx):",
+        "        if current is None:",
+        AP,
+    ),
+    (
+        "no fit: none within the ceiling, the longest is answered",
+        RT,
+        "        return min(past, key=lambda o: _trip_length_m(o[0]))",
+        "        return max(past, key=lambda o: _trip_length_m(o[0]))",
+        AP,
+    ),
+    (
+        "no fit: the router's own route is kept",
+        RT,
+        "    if past:\n        # The router's own route is past the target",
+        "    if False:\n        # The router's own route is past the target",
+        AP,
+    ),
+    (
+        "no fit: not flagged",
+        RT,
+        '                "limited": "target_distance",',
+        '                "limited": None,',
+        AP,
+    ),
+    (
+        "no fit: an over-target route is taken when calmer, worth it or not",
+        RT,
+        "            if got is not None and refine.better(got, current, ctx):",
+        "            if got is not None and refine.calmer(got, current, ctx):",
+        AP,
+    ),
+    (
+        "target: the overage is negative within the target",
+        RT,
+        "    over = None if target_m is None else round(max(final_m - target_m, 0.0), 1)",
+        "    over = None if target_m is None else round(final_m - target_m, 1)",
+        AP,
+    ),
+    (
+        "target: always said to fit",
+        RT,
+        '        "fits": None if target_m is None else final_m <= target_m,',
+        '        "fits": None if target_m is None else True,',
+        AP,
+    ),
+    (
+        "target: a candidate's overage is not said",
+        RT,
+        '            if maxcalm and target_m:\n                candidate["over_target_m"]',
+        '            if False:\n                candidate["over_target_m"]',
+        AP,
+    ),
+    # --- diminishing returns on extra distance (268, 271) ---------------------------
+    (
+        "worth: a mile of LTS 3 buys ten miles",
+        RF,
+        "WORTH_DEFAULT = 5.0",
+        "WORTH_DEFAULT = 10.0",
+        LC,
+    ),
+    (
+        "worth: past the target the bar is no stricter",
+        RF,
+        "    return max(over, 0.0) / WORTH_OVER_TARGET",
+        "    return max(over, 0.0) / WORTH_DEFAULT",
+        LC,
+    ),
+    (
+        "worth: with no target the stricter bar",
+        RF,
+        "        return max(added, 0.0) / WORTH_DEFAULT",
+        "        return max(added, 0.0) / WORTH_OVER_TARGET",
+        LC,
+    ),
+    (
+        "worth: up to the target distance is charged",
+        RF,
+        "    over = to_m - max(from_m, ctx.target_m)",
+        "    over = to_m - from_m",
+        LC,
+    ),
+    (
+        "worth: saving exactly the charge is not enough",
+        RF,
+        "    return stress_weight_m(shorter, ctx) - stress_weight_m(longer, ctx) >= charge",
+        "    return stress_weight_m(shorter, ctx) - stress_weight_m(longer, ctx) > charge",
+        LC,
+    ),
+    (
+        "worth: a red junction counts at the LTS 3 weight",
+        RF,
+        "        + w.lts4 * read.red_m",
+        "        + w.lts3 * read.red_m",
+        LC,
+    ),
+    (
+        "worth: an orange junction saves nothing",
+        RF,
+        "        + w.lts3 * read.orange_m",
+        "",
+        LC,
+    ),
+    (
+        "worth: Avoid counts as LTS 4",
+        RF,
+        "        + w.avoid * read.avoid_m",
+        "        + w.lts4 * read.avoid_m",
+        LC,
+    ),
+    (
+        "worth: the stress-averse rides' 1, 8, 16",
+        RF,
+        "WORTH_WEIGHTS = presets.EXPOSURE_STANDARD",
+        "WORTH_WEIGHTS = presets.EXPOSURE_STRESS_AVERSE",
+        LC,
+    ),
+    (
+        "worth: the charge is on the actual miles whatever the Hills slider says",
+        RF,
+        "        level3(longer, ctx) - level3(shorter, ctx),\n    )",
+        "        None,\n    )",
+        LC,
+    ),
+    (
+        "worth: a longer route need only be calmer",
+        RF,
+        "        return calmer(read, best, ctx) and worth_it(best, read, ctx, rest_m)",
+        "        return calmer(read, best, ctx)",
+        LC,
+    ),
+    (
+        "worth: a shorter route never replaces a calmer longer one",
+        RF,
+        "    return calmer(best, read, ctx) and not worth_it(read, best, ctx, rest_m)",
+        "    return False",
+        LC,
+    ),
+    (
+        "worth: the rule cannot be off",
+        RF,
+        "    if not ctx.worth_rule:\n        return True\n    charge",
+        "    charge",
+        LC,
+    ),
+    (
+        "worth: a leg of a plan with stops is charged as if it were the trip",
+        RF,
+        "        rest_m = 0.0 if count == 1 else _trip_m(trip) - _trip_m(leg_trip)",
+        "        rest_m = 0.0",
+        RFT,
+    ),
+    (
+        "worth: a spliced trip need not be worth its miles",
+        RF,
+        "        if ctx.maxcalm and read.length_m > best.length_m and not worth_it(best, read, ctx):",
+        "        if False:",
+        RFT,
+    ),
+    (
+        "worth: a long plan's upgrades need not be worth their miles",
+        RF,
+        "                if charge > 0.0 and saved < charge:",
+        "                if False:",
+        LC,
+    ),
+    (
+        "worth: a long plan's upgrade is charged at the leg's length",
+        RF,
+        "                charge = distance_charge_m(total, total + added, ctx, blended)",
+        "                charge = distance_charge_m(now.length_m, now.length_m + added, ctx, blended)",
+        LC,
+    ),
+    (
+        "worth: a long plan's legs price distance on their own",
+        RF,
+        "            worth_rule=False,",
+        "            worth_rule=True,",
+        LC,
+    ),
+    (
+        "worth: a loop's way back need not be worth its miles",
+        RF,
+        "        return better(whole, best[2], ctx)",
+        "        return ranked < best[0]",
+        LP,
     ),
     # --- the hold on the top figure (250, 259) -----------------------------------
     (
@@ -251,7 +479,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         LC,
     ),
     (
-        "legs: a leg may use only a share of the longest ride",
+        "legs: a leg may use only a share of the detour",
         RF,
         "            cap = _trip_m(firsts[j]) + slack",
         "            cap = _trip_m(firsts[j]) + slack / len(legs)",
@@ -274,14 +502,14 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "legs: the limit is not kept when sharing",
         RF,
-        "                if max_m is not None and total + added > max_m:\n                    continue\n",
+        "                if ceiling_m is not None and total + added > ceiling_m:\n                    continue\n",
         "",
         LC,
     ),
     (
         "legs: the chain keeps options no calmer than the one before",
         RF,
-        "        if better(option[1], chain[-1][1], ctx):",
+        "        if calmer(option[1], chain[-1][1], ctx):",
         "        if True:",
         LC,
     ),
@@ -341,6 +569,27 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         RF,
         "        if shared / min(mine, theirs) >= ALT_OVERLAP and mine - shared < ALT_DIFFERENT_M:",
         "        if shared / min(mine, theirs) >= ALT_OVERLAP or mine - shared < ALT_DIFFERENT_M:",
+        LC,
+    ),
+    (
+        "overlap: back to 60%",
+        RF,
+        "ALT_OVERLAP = 0.70",
+        "ALT_OVERLAP = 0.60",
+        LC,
+    ),
+    (
+        "overlap: loosened to 80%",
+        RF,
+        "ALT_OVERLAP = 0.70",
+        "ALT_OVERLAP = 0.80",
+        LC,
+    ),
+    (
+        "overlap: exactly the threshold is different",
+        RF,
+        "        if shared / min(mine, theirs) >= ALT_OVERLAP and mine - shared < ALT_DIFFERENT_M:",
+        "        if shared / min(mine, theirs) > ALT_OVERLAP and mine - shared < ALT_DIFFERENT_M:",
         LC,
     ),
     (

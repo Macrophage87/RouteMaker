@@ -133,8 +133,8 @@ def two_leg_trip(back: str = "same", km: float = 8.0) -> dict:
     }
 
 
-def loop_context(max_m=None, preset="trailmaxxing") -> refine.Context:
-    ctx = context(rate=10.0, maxcalm=True, max_m=max_m)
+def loop_context(ceiling_m=None, preset="trailmaxxing") -> refine.Context:
+    ctx = context(rate=10.0, maxcalm=True, ceiling_m=ceiling_m)
     ctx.points = [[BASE[0], BASE[1]], [BASE[0] + 0.04, BASE[1]], [BASE[0], BASE[1]]]
     ctx.request = {
         "locations": [
@@ -277,21 +277,69 @@ class TestMakingALoop:
         trip, info = refine.make_loop(trip0, loop_context())
         assert trip is trip0 and info["fallback"] == "out_and_back"
 
-    def test_the_whole_loop_is_within_the_longest_ride_not_each_half(self, monkeypatch) -> None:
+    def ways_back(self, monkeypatch, calm_pieces: int, maxcalm: bool = True):
+        """A busier way back (200 m of LTS 3, 8 km loop) and a calm longer one."""
+        ways = list(range(101, 141))
+        busy = loop_read(OUT, [1] * 4 + ways[4:], "1" * 60 + "3" * 2 + "1" * 18)
+        busy.exposure_m = 200.0
+        calm = loop_read(OUT, [1] * 4 + list(range(201, 201 + calm_pieces - 4)))
+        LoopWorld(
+            monkeypatch,
+            {
+                ("out", "same"): loop_read(OUT, list(reversed(OUT))),
+                ("out",): loop_read(OUT, []),
+                ("out", "A"): busy,
+                ("out", "B"): calm,
+            },
+            [("A", 4.0), ("B", 4.0)],
+        )
+        ctx = loop_context()
+        ctx.maxcalm = maxcalm
+        trip, _info = refine.make_loop(two_leg_trip(), ctx)
+        return [leg["shape"] for leg in trip["legs"]][1]
+
+    def test_a_calmer_way_back_must_be_worth_its_miles(self, monkeypatch) -> None:
+        """OWNER-DECISIONS 268, 271: the whole loop's extra distance has diminishing
+        returns: 200 m of LTS 3 buys 1 km more, not 2."""
+        assert self.ways_back(monkeypatch, 50) == "B"
+        assert self.ways_back(monkeypatch, 60) == "A"
+
+    def test_below_the_top_the_least_stress_decides(self, monkeypatch) -> None:
+        assert self.ways_back(monkeypatch, 60, maxcalm=False) == "B"
+
+    def test_below_the_top_the_least_stress_beats_the_least_shared(self, monkeypatch) -> None:
+        """Both under 30%: the busier one shares less (10%), the calmer more (20%)."""
+        ways = list(range(101, 141))
+        LoopWorld(
+            monkeypatch,
+            {
+                ("out", "same"): loop_read(OUT, list(reversed(OUT))),
+                ("out",): loop_read(OUT, []),
+                ("out", "A"): loop_read(OUT, [1] * 4 + ways[4:], "1" * 60 + "3" * 20),
+                ("out", "B"): loop_read(OUT, [1] * 8 + ways[8:]),
+            },
+            [("A", 4.0), ("B", 4.0)],
+        )
+        ctx = loop_context()
+        ctx.maxcalm = False
+        trip, _info = refine.make_loop(two_leg_trip(), ctx)
+        assert [leg["shape"] for leg in trip["legs"]] == ["out", "B"]
+
+    def test_the_whole_loop_is_within_the_ceiling_not_each_half(self, monkeypatch) -> None:
         # 4 km out and 4 km first back: the whole is 8 km. A way back of 5 km makes 9.
         LoopWorld(
             monkeypatch,
             readings(LONG=list(range(101, 141)), FITS=list(range(201, 241))),
             [("LONG", 5.0), ("FITS", 4.4)],
         )
-        trip, info = refine.make_loop(two_leg_trip(), loop_context(max_m=8_600.0))
+        trip, info = refine.make_loop(two_leg_trip(), loop_context(ceiling_m=8_600.0))
         assert [leg["shape"] for leg in trip["legs"]] == ["out", "FITS"]
         assert trip["summary"]["length"] * 1000.0 <= 8_600.0 and info["tried"] == 4
 
     def test_a_way_back_past_the_limit_every_time_is_the_out_and_back(self, monkeypatch) -> None:
         LoopWorld(monkeypatch, readings(LONG=list(range(101, 141))), [("LONG", 5.0)] * 4)
         trip0 = two_leg_trip()
-        trip, info = refine.make_loop(trip0, loop_context(max_m=8_200.0))
+        trip, info = refine.make_loop(trip0, loop_context(ceiling_m=8_200.0))
         assert trip is trip0 and info["fallback"] == "out_and_back"
 
     def test_a_route_with_one_leg_is_not_a_loop(self, monkeypatch) -> None:

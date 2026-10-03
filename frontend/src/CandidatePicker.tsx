@@ -23,8 +23,8 @@ export function CandidatePicker({ answer, choice, onChoose }: Props) {
     <fieldset className="candidates">
       <legend>Routes to choose from</legend>
       <p className="hint" id={`${id}-hint`}>
-        Each is within your longest ride and about as calm as the first. The map shows the one chosen: pick by the
-        scenery you see there.
+        Each is about as calm as the first, and no further over your target distance. The map shows the one chosen:
+        pick by the scenery you see there.
       </p>
       {rows.map((row, index) => (
         <label key={row.name} className="candidate">

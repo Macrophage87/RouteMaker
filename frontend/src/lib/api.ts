@@ -135,12 +135,16 @@ export interface CalmSearch {
   extra_distance_m?: number | null;
   exposure_before_m?: number | null;
   exposure_after_m?: number | null;
-  /** The top of the traffic slider (OWNER-DECISIONS 256): the longest ride the search kept to, and whether the rider set it. */
-  max_distance_m?: number | null;
-  max_distance_set?: boolean | null;
-  /** False only where no route within it was found: the shortest found is answered. */
+  /** The top of the traffic slider (OWNER-DECISIONS 271): the rider's target distance (null: none), and whether they set it. */
+  target_distance_m?: number | null;
+  target_distance_set?: boolean | null;
+  /** The longest the search would go: 1.25 times the target, or 1.6 times the router's own route with none. */
+  ceiling_m?: number | null;
+  /** Whether the route is within the target (null with none). */
   fits?: boolean | null;
-  /** Where the router's own route was past the longest ride: the traffic position the first route that fits was found at. */
+  /** How far past the target the route is, metres (0 within it, null with none): always said. */
+  over_target_m?: number | null;
+  /** Where the router's own route was past the target: the traffic position the first route that fits was found at. */
   fitted_at?: number | null;
   /** A trip past the working span, planned leg by leg. */
   long?: { legs: number; searched: number; skipped: number; stops: number[]; answered?: string | null } | null;
@@ -180,6 +184,8 @@ export interface RouteResponse {
    * body with its `rank`; null or absent where there is one route.
    */
   candidates?: RouteResponse[] | null;
+  /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
+  over_target_m?: number | null;
   preset: PresetId;
   variant: "standard" | "no-trail" | "ebike" | "weekend";
   geometry: { type: "LineString"; coordinates: LonLat[] };
@@ -214,7 +220,7 @@ export interface RouteResponse {
     carrying: Carrying | null;
     assist?: boolean;
     avoid_gravel?: boolean;
-    max_distance_m?: number | null;
+    target_distance_m?: number | null;
     system_weight_kg?: number | null;
     loop?: boolean;
   };

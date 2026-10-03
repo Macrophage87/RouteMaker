@@ -92,32 +92,47 @@ export function calmSearchNote(
 ): string | null {
   if (route.preset === "mass-ride" || (route.dials?.stress ?? 0) <= STRESS_TODAYS_TOP) return null;
   const search = route.calm_search;
-  const longest = search?.max_distance_m;
+  const target = search?.target_distance_m;
+  const over = overTarget(route);
   const notes: string[] = [];
-  if (search?.limited === "max_distance" && search.fits === false && longest) {
-    // No route that short was found: the shortest found is answered (OWNER-DECISIONS 256).
-    const found = route.distance_m ? ` The shortest found is ${formatDistance(route.distance_m)}.` : "";
-    notes.push(`No route within ${search.max_distance_set ? "your longest ride" : "the longest ride"} (${formatDistance(longest)}) was found.${found}`);
+  if (search?.limited === "target_distance" && search.fits === false && target) {
+    // No route within the target was found: the least stressful one found is
+    // answered, flagged (OWNER-DECISIONS 267).
+    notes.push(`No route within your target distance (${formatDistance(target)}) was found. This is the least stressful one found.`);
+    if (over !== null) notes.push(`It is ${formatDistance(over)} over your target.`);
   } else {
     const why = search?.limited ? CALM_SEARCH_LIMITS[search.limited] : undefined;
     if (why) notes.push(why);
+    // Past the target where the extra miles avoid enough busy road (OWNER-DECISIONS 271).
+    if (over !== null) notes.push(`It is ${formatDistance(over)} over your target, to avoid busier roads.`);
   }
-  if (search?.fitted_at != null && search.fits !== false && longest) {
+  if (search?.fitted_at != null && search.fits !== false && target) {
     notes.push(
-      `Your longest ride (${formatDistance(longest)}) is shorter than the calmest route, so this one uses some busier roads to fit.`,
+      `Your target distance (${formatDistance(target)}) is shorter than the calmest route, so this one uses some busier roads to fit.`,
     );
   }
   return notes.length ? notes.join(" ") : null;
 }
 
 /**
- * What a screen reader hears when the route could not be kept within the longest
- * ride, or null: a sentence of its own, not a colour (OWNER-DECISIONS 256).
+ * How far past the rider's target distance a route is (metres), or null where it is
+ * within it or there is none (OWNER-DECISIONS 271): the answer's in `calm_search`, a
+ * candidate's on the route itself.
  */
-export function longestSaid(route: Pick<RouteResponse, "calm_search" | "distance_m">): string | null {
-  const search = route.calm_search;
-  if (!search || search.fits !== false || !search.max_distance_m) return null;
-  return `Longer than your longest ride of ${formatDistance(search.max_distance_m)}: the shortest found.`;
+export function overTarget(route: Pick<RouteResponse, "calm_search" | "over_target_m">): number | null {
+  const over = route.calm_search?.over_target_m ?? route.over_target_m ?? null;
+  return over !== null && over > 0 ? over : null;
+}
+
+/**
+ * What a screen reader hears when the route is past the rider's target distance, or
+ * null: a sentence of its own, not a colour (OWNER-DECISIONS 271: always flagged).
+ */
+export function targetSaid(route: Pick<RouteResponse, "calm_search" | "distance_m">): string | null {
+  const target = route.calm_search?.target_distance_m;
+  const over = overTarget(route);
+  if (!target || over === null) return null;
+  return `${formatDistance(over)} over your target of ${formatDistance(target)}.`;
 }
 
 /**
@@ -197,7 +212,7 @@ export function announceRoute(route: RouteResponse, points: readonly LonLat[] = 
   const figures =
     `Route planned: ${formatDistance(route.distance_m)}, ` +
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
-  return [figures, detourSaid(route, points), redJunctionsSaid(route), longestSaid(route), loopNote(route)]
+  return [figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route)]
     .filter(Boolean)
     .join(" ");
 }

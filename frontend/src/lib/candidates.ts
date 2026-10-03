@@ -6,6 +6,7 @@
  */
 import type { RouteResponse } from "./api.ts";
 import { formatClimb, formatDistance } from "./format.ts";
+import { overTarget } from "./summary.ts";
 
 /** The answer and its candidates, in rank order (the answer first). */
 export function routesOf(answer: RouteResponse | null): RouteResponse[] {
@@ -31,6 +32,8 @@ export interface CandidateStats {
   orange: number;
   climbM: number;
   effortM: number | null;
+  /** How far past the rider's target distance it is, or null (within it, or none set). */
+  overTargetM: number | null;
 }
 
 export function statsOf(route: RouteResponse, rank: number): CandidateStats {
@@ -47,6 +50,7 @@ export function statsOf(route: RouteResponse, rank: number): CandidateStats {
     orange: junctions.filter((j) => j.severity === "orange").length,
     climbM: route.climb_m,
     effortM: route.effort_m ?? null,
+    overTargetM: overTarget(route),
   };
 }
 
@@ -58,6 +62,7 @@ function count(n: number, one: string, many: string): string {
 export function statsLine(stats: CandidateStats): string {
   const parts = [
     formatDistance(stats.distanceM),
+    ...(stats.overTargetM !== null ? [`${formatDistance(stats.overTargetM)} over your target`] : []),
     `${formatDistance(stats.lts4M)} of heavy-traffic roads (LTS 4)`,
     `${formatDistance(stats.lts3M)} of busy roads (LTS 3)`,
     count(stats.red, "very high stress junction", "very high stress junctions"),

@@ -161,8 +161,8 @@ test("each word's range starts where the next one ends", () => {
   assert.equal(stressWords(CALM_FAR_FROM - 1), "Calm: will go well out of the way to avoid busy roads");
   assert.equal(stressWords(CALM_FAR_FROM), "Calmest: detours many times the straight line to avoid busy roads");
   assert.equal(stressWords(STRESS_MAX - 1), "Calmest: detours many times the straight line to avoid busy roads");
-  // The top is the least stressful route within the longest ride (OWNER-DECISIONS 256).
-  assert.equal(stressWords(STRESS_MAX), "Calmest: the least stressful route within your longest ride");
+  // The top is the least stressful route, aiming at the target distance (OWNER-DECISIONS 256, 271).
+  assert.equal(stressWords(STRESS_MAX), "Calmest: the least stressful route, aiming at your target distance");
   assert.equal(hillsWords(-80), "Avoids hills");
   assert.equal(hillsWords(-79), "Gentler grades");
   assert.equal(hillsWords(-11), "Gentler grades");

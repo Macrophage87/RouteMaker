@@ -1,8 +1,9 @@
-"""FOLLOWUP-LONG-CALM (OWNER-DECISIONS 256-261): the top of the traffic slider
-minimises stress within the rider's longest ride, and plans a long trip leg by leg.
+"""FOLLOWUP-LONG-CALM (OWNER-DECISIONS 256-271): the top of the traffic slider
+minimises stress towards the rider's target distance, and plans a long trip leg by leg.
 
-The ordering (`refine.better`), the longest ride (`refine.too_long`, the search's
-handling of a route past it), the hold on the top figure, the leg splitting
+The ordering (`refine.better`), the diminishing returns on extra distance (268,
+`refine.worth_it`), the ceiling (`refine.too_long`, the search's handling of a route
+past it), the target distance (271), the hold on the top figure, the leg splitting
 (`core.legsplit`) and the long search (`refine.refine_long`), with the router and
 the readings of its routes replaced as in test_refine.
 """
@@ -80,7 +81,7 @@ class TestTheFigures:
 
 
 class TestTheOrder:
-    """OWNER-DECISIONS 256, 258, 259, 260, 261: within the longest ride, LTS 4 and
+    """OWNER-DECISIONS 256, 258, 259, 260, 261: within the ceiling, LTS 4 and
     Avoid plus red junctions first, then LTS 3 plus orange junctions, then the
     hills preference, then distance."""
 
@@ -165,6 +166,146 @@ class TestTheOrder:
         assert not refine.better(dear, cheap, ctx)
 
 
+class TestDiminishingReturns:
+    """OWNER-DECISIONS 268: "Diminishing returns (Recommended)". Extra distance is
+    taken only where it buys a meaningful stress cut: about 1 mi of LTS 3 saved per
+    5 mi added, LTS 4 and Avoid at the level weights 2 and 3 (`WORTH_WEIGHTS`), a red
+    junction's cost at the LTS 4 weight and an orange one's at the LTS 3 weight."""
+
+    def test_the_constants(self) -> None:
+        assert refine.WORTH_DEFAULT == 5.0
+        assert refine.WORTH_OVER_TARGET == 2.5
+        assert refine.WORTH_OVER_TARGET < refine.WORTH_DEFAULT, "stricter past the target"
+
+    def test_the_stress_figure_uses_the_level_weights(self) -> None:
+        assert refine.WORTH_WEIGHTS == presets.EXPOSURE_STANDARD
+        assert (refine.WORTH_WEIGHTS.lts3, refine.WORTH_WEIGHTS.lts4) == (1.0, 2.0)
+        assert refine.WORTH_WEIGHTS.avoid == 3.0
+        read = with_(reading(lts3=500.0, lts4=300.0, red=[3000.0], orange=[1000.0]), avoid_m=100.0)
+        want = 500.0 + 2.0 * 200.0 + 3.0 * 100.0 + 2.0 * 3000.0 / FT + 1000.0 / FT
+        for exposure in (AVERSE, presets.EXPOSURE_STANDARD):
+            ctx = top_context()
+            ctx.exposure = exposure
+            assert refine.stress_weight_m(read, ctx) == pytest.approx(want), exposure
+
+    def test_a_mile_of_lts3_buys_five_miles_and_no_more(self) -> None:
+        ctx = top_context()
+        base = with_(reading(lts3=1609.0, length=10_000.0), exposure_m=1609.0)
+        five = with_(reading(lts3=0.0, length=10_000.0 + 5 * 1609.0), exposure_m=0.0)
+        six = with_(reading(lts3=0.0, length=10_000.0 + 6 * 1609.0), exposure_m=0.0)
+        assert refine.worth_it(base, five, ctx) and refine.better(five, base, ctx)
+        assert not refine.worth_it(base, six, ctx) and not refine.better(six, base, ctx)
+        # And the shorter one replaces a calmer longer one whose miles were not worth it.
+        assert refine.better(base, six, ctx)
+        assert not refine.better(base, five, ctx)
+
+    def test_lts4_counts_at_its_weight(self) -> None:
+        """LTS 4 is two of LTS 3, Avoid three: 1 mi of LTS 4 buys up to 10 mi, on a
+        stress-averse ride too."""
+        ctx = top_context()
+        ctx.exposure = AVERSE
+        base = reading(lts4=1609.0, length=10_000.0)
+        far = reading(length=10_000.0 + 9.9 * 1609.0)
+        too_far = reading(length=10_000.0 + 10.1 * 1609.0)
+        assert refine.better(far, base, ctx) and not refine.better(too_far, base, ctx)
+        avoid = with_(base, avoid_m=1609.0)
+        assert refine.better(reading(length=10_000.0 + 14.9 * 1609.0), avoid, ctx)
+        assert not refine.better(reading(length=10_000.0 + 15.1 * 1609.0), avoid, ctx)
+
+    def test_a_red_junction_counts_at_the_lts4_weight(self) -> None:
+        ctx = top_context()
+        ctx.exposure = AVERSE
+        red = reading(red=[3000.0], length=10_000.0)
+        # 2 x 3,000 ft is about 1,829 m of LTS 3: 9.1 km of extra riding.
+        ok = reading(length=10_000.0 + 9_000.0)
+        no = reading(length=10_000.0 + 9_200.0)
+        assert refine.better(ok, red, ctx) and not refine.better(no, red, ctx)
+
+    def test_an_orange_junction_counts_at_the_lts3_weight(self) -> None:
+        ctx = top_context()
+        orange = reading(orange=[1000.0], length=10_000.0)  # 304.8 m of LTS 3
+        assert refine.better(reading(length=10_000.0 + 1500.0), orange, ctx)
+        assert not refine.better(reading(length=10_000.0 + 1600.0), orange, ctx)
+
+    def test_the_charge_is_on_the_distance_the_hills_slider_weighs(self) -> None:
+        """A longer route that is less effort (Hills set to avoid) is not charged."""
+        ctx = top_context()
+        ctx.hills_weight = 1.0
+        hilly = with_(reading(lts3=100.0, length=9_000.0, effort=30_000.0), exposure_m=100.0)
+        flat = with_(reading(length=20_000.0, effort=20_000.0), exposure_m=0.0)
+        assert refine.better(flat, hilly, ctx)
+        ctx.hills_weight = 0.0
+        assert not refine.better(flat, hilly, ctx)
+
+    def test_the_rule_can_be_off(self) -> None:
+        ctx = dataclasses.replace(top_context(), worth_rule=False)
+        base = with_(reading(lts3=1609.0), exposure_m=1609.0)
+        far = with_(reading(length=10_000.0 + 50 * 1609.0), exposure_m=0.0)
+        assert refine.better(far, base, ctx)
+
+    def test_below_the_top_the_rule_does_not_apply(self) -> None:
+        ctx = context(rate=2.0)
+        cheap = with_(analysis("c", "1" * 40, cost_s=3000.0), length_m=1e6)
+        dear = analysis("d", "1" * 40, cost_s=4000.0)
+        assert refine.better(cheap, dear, ctx)
+
+
+class TestTheTargetDistance:
+    """OWNER-DECISIONS 271: a target, not a maximum. Up to it, distance is free; past
+    it, the extra must buy stress at the stricter WORTH_OVER_TARGET; never past the
+    ceiling (1.25 times it)."""
+
+    def ctx(self, target=20_000.0) -> refine.Context:
+        return top_context(target_m=target, ceiling_m=presets.target_ceiling_m(target))
+
+    def test_the_ceiling_is_1_25_times_the_target(self) -> None:
+        assert presets.TARGET_CEILING_RATIO == 1.25
+        assert presets.target_ceiling_m(80_000.0) == pytest.approx(100_000.0)
+        assert refine.too_long(25_001.0, self.ctx()) and not refine.too_long(25_000.0, self.ctx())
+
+    def test_below_the_target_distance_is_free(self) -> None:
+        ctx = self.ctx()
+        base = with_(reading(lts3=60.0, length=5_000.0), exposure_m=60.0)
+        far = with_(reading(lts3=0.0, length=19_900.0), exposure_m=0.0)
+        assert refine.distance_charge_m(5_000.0, 19_900.0, ctx) == 0.0
+        assert refine.better(far, base, ctx)
+
+    def test_past_the_target_the_bar_is_stricter(self) -> None:
+        ctx = self.ctx()
+        assert refine.distance_charge_m(19_000.0, 22_000.0, ctx) == pytest.approx(2000.0 / 2.5)
+        assert refine.distance_charge_m(21_000.0, 22_000.0, ctx) == pytest.approx(1000.0 / 2.5)
+        base = with_(reading(lts3=900.0, length=19_000.0), exposure_m=900.0)
+        ok = with_(reading(length=22_000.0), exposure_m=0.0)  # 900 saved, 800 needed
+        assert refine.better(ok, base, ctx)
+        thin = reading(lts3=200.0, length=22_000.0)  # 700 saved
+        assert not refine.better(thin, base, ctx)
+        # The same miles with no target cost more (all 3 km at 1 in 5: 600) but no
+        # more than 1 in 2.5 past it.
+        assert refine.distance_charge_m(19_000.0, 22_000.0, top_context()) == pytest.approx(600.0)
+
+    def test_past_the_ceiling_never(self) -> None:
+        ctx = self.ctx()
+        assert refine.too_long(26_000.0, ctx)
+
+    def test_a_leg_is_charged_at_the_whole_trips_length(self) -> None:
+        ctx = self.ctx()
+        base = with_(reading(lts3=100.0, length=5_000.0), exposure_m=100.0)
+        longer = with_(reading(length=8_000.0), exposure_m=0.0)
+        assert refine.better(longer, base, ctx)  # 8 km, under the target
+        assert not refine.better(longer, base, ctx, rest_m=15_000.0)  # 23 km: 3 km over
+
+    def test_a_candidate_goes_no_further_past_the_target_than_the_answer(self) -> None:
+        ctx = self.ctx()
+        answer = reading(length=21_000.0)
+        assert not refine.over_answer(reading(length=21_000.0), answer, ctx)
+        assert not refine.over_answer(reading(length=20_000.0), answer, ctx)
+        assert refine.over_answer(reading(length=21_600.0), answer, ctx)
+        assert not refine.over_answer(reading(length=24_000.0), answer, top_context())
+        under = reading(length=15_000.0)
+        assert not refine.over_answer(reading(length=19_999.0), under, ctx)
+        assert refine.over_answer(reading(length=20_600.0), under, ctx)
+
+
 class TestTheHillsLevel:
     """OWNER-DECISIONS 262, 263: the third level is the effort-equivalent distance,
     blended with the actual distance by the Hills slider (261's lexicographic hills
@@ -203,8 +344,8 @@ class TestTheHillsLevel:
         flat = reading(lts3=500.0, effort=10_000.0)
         assert refine.better(calm, flat, self.avoid())
 
-    def test_the_longest_ride_is_in_actual_metres_not_effort_miles(self) -> None:
-        ctx = top_context(max_m=10_000.0)
+    def test_the_ceiling_is_in_actual_metres_not_effort_miles(self) -> None:
+        ctx = top_context(ceiling_m=10_000.0)
         assert not refine.too_long(reading(**self.hilly).length_m, ctx)
         assert refine.too_long(reading(**self.flat).length_m, ctx)
 
@@ -337,15 +478,15 @@ class TestTheHoldOnTheTopFigure:
         assert refine.top_by_leg(a) == [pytest.approx(3000.0 / FT)]
 
 
-# --- The longest ride in the search ------------------------------------------------
+# --- The ceiling in the search ------------------------------------------------------
 
 ORIG = "1" * 10 + "3" * 20 + "1" * 10
 
 
-class TestTheLongestRideInTheSearch:
+class TestTheCeilingInTheSearch:
     def test_too_long_is_past_the_limit_and_only_where_there_is_one(self) -> None:
-        assert refine.too_long(5001.0, top_context(max_m=5000.0))
-        assert not refine.too_long(5000.0, top_context(max_m=5000.0))
+        assert refine.too_long(5001.0, top_context(ceiling_m=5000.0))
+        assert not refine.too_long(5000.0, top_context(ceiling_m=5000.0))
         assert not refine.too_long(1e9, top_context())
 
     def test_a_route_past_it_is_not_read_or_taken_and_halves_are_tried(self, monkeypatch) -> None:
@@ -354,9 +495,9 @@ class TestTheLongestRideInTheSearch:
             {"o": analysis("o", ORIG)},
             [trip_of("long", 6.0), trip_of("long", 6.0), trip_of("long", 6.0)],
         )
-        kept, info = refine.refine(trip_of("o", 4.0), top_context(max_m=4500.0))
+        kept, info = refine.refine(trip_of("o", 4.0), top_context(ceiling_m=4500.0))
         assert kept["legs"][0]["shape"] == "o"
-        assert info["limited"] == "max_distance" and info["rounds"] == 0
+        assert info["limited"] == "target_distance" and info["rounds"] == 0
         # Every target, then each half of it: three different sets.
         sets = [frozenset(world.excluded(i)) for i in range(3)]
         assert len(world.requests) == 3 and len(set(sets)) == 3
@@ -369,7 +510,7 @@ class TestTheLongestRideInTheSearch:
             {"o": analysis("o", ORIG), "h": calmer},
             [trip_of("long", 6.0), trip_of("h", 4.2)] + [trip_of("h", 4.2)] * 6,
         )
-        kept, info = refine.refine(trip_of("o", 4.0), top_context(max_m=4500.0))
+        kept, info = refine.refine(trip_of("o", 4.0), top_context(ceiling_m=4500.0))
         assert kept["legs"][0]["shape"] == "h"
         assert info["lts3_m_before"] == 2000.0 and info["lts3_m_after"] == 500.0
 
@@ -378,11 +519,11 @@ class TestTheLongestRideInTheSearch:
     ) -> None:
         calm = analysis("c", "1" * 40)
         World(monkeypatch, {"o": analysis("o", ORIG), "c": calm}, [trip_of("c", 4.4)] * 3)
-        kept, _info = refine.refine(trip_of("o", 4.0), top_context(max_m=4500.0))
+        kept, _info = refine.refine(trip_of("o", 4.0), top_context(ceiling_m=4500.0))
         assert kept["legs"][0]["shape"] == "c"
         World(monkeypatch, {"o": analysis("o", ORIG), "c": calm}, [trip_of("c", 4.6)] * 5)
-        kept, info = refine.refine(trip_of("o", 4.0), top_context(max_m=4500.0))
-        assert kept["legs"][0]["shape"] == "o" and info["limited"] == "max_distance"
+        kept, info = refine.refine(trip_of("o", 4.0), top_context(ceiling_m=4500.0))
+        assert kept["legs"][0]["shape"] == "o" and info["limited"] == "target_distance"
 
     def test_no_cap_below_the_top(self, monkeypatch) -> None:
         calm = analysis("c", "1" * 40, cost_s=3000.0)
@@ -678,7 +819,7 @@ def whole_trip() -> dict:
 class TestTheLongSearch:
     def test_the_trip_is_cut_into_legs_at_points_on_its_route(self, monkeypatch) -> None:
         world = legs_world(monkeypatch)
-        trip, info = refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         asked = [r["locations"] for r in world.requests if "exclude_locations" not in r]
         assert len(asked) == 3
         assert asked[0][0]["lon"] == BASE[0] and asked[2][1]["lon"] == pytest.approx(BASE[0] + EAST)
@@ -691,7 +832,7 @@ class TestTheLongSearch:
 
     def test_each_legs_route_is_read_for_its_stress_alone_first(self, monkeypatch) -> None:
         world = legs_world(monkeypatch)
-        refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         firsts = [a for a in world.analysed if a[0] in ("L0", "L1", "L2")][:3]
         assert firsts == [("L0", False), ("L1", False), ("L2", False)]
         assert world.analysed[0] == ("whole", False)
@@ -704,11 +845,11 @@ class TestTheLongSearch:
         real = refine.refine
 
         def spy(trip, ctx):
-            order.append((trip["legs"][0]["shape"], ctx.max_m))
+            order.append((trip["legs"][0]["shape"], ctx.ceiling_m))
             return real(trip, ctx)
 
         monkeypatch.setattr(refine, "refine", spy)
-        trip, info = refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         assert [name for name, _ in order] == ["L1", "L2"]
         assert info["long"]["searched"] == 2 and "L0" not in [n for n, _ in order]
 
@@ -718,20 +859,37 @@ class TestTheLongSearch:
         real = refine.refine
 
         def spy(trip, ctx):
-            caps.append((round(ctx.max_m), ctx.options is not None))
+            caps.append((round(ctx.ceiling_m), ctx.options is not None))
             return real(trip, ctx)
 
         monkeypatch.setattr(refine, "refine", spy)
-        refine.refine_long(whole_trip(), long_context(max_m=41_000.0))
+        refine.refine_long(whole_trip(), long_context(ceiling_m=41_000.0))
         # Leg lengths 13.3 km each (39.9), 1.1 km to spare: any one leg may use it all,
         # and it is shared out afterwards (`choose_options`).
         assert caps == [(14_400, True), (14_400, True)]
+
+    def test_a_legs_search_has_no_price_on_distance_of_its_own(self, monkeypatch) -> None:
+        """OWNER-DECISIONS 268, 271: the target is the whole trip's, so the legs keep
+        every option and the whole trip prices them (`choose_options`)."""
+        legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
+        seen = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            seen.append((ctx.worth_rule, ctx.target_m))
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        ctx = long_context(ceiling_m=50_000.0, target_m=40_000.0)
+        refine.refine_long(whole_trip(), ctx)
+        assert seen and all(got == (False, None) for got in seen)
+        assert ctx.worth_rule is True and ctx.target_m == 40_000.0
 
     def test_the_detour_goes_where_it_buys_the_most(self, monkeypatch) -> None:
         # L1's search finds a route 0.6 km longer that clears its LTS 4 and LTS 3; L2's
         # finds one 0.6 km longer that clears 2,000 m of LTS 3. With 0.7 km to spare only
         # one can be taken: L1's buys the LTS 4, which counts first.
-        def world(max_m):
+        def world(ceiling_m):
             w = legs_world(
                 monkeypatch,
                 {
@@ -741,7 +899,7 @@ class TestTheLongSearch:
             )
             w.readings["L1c"] = with_(analysis("L1c", "1" * 133), length_m=13_900.0)
             w.readings["L2c"] = with_(analysis("L2c", "1" * 133), length_m=13_900.0)
-            return refine.refine_long(whole_trip(), long_context(max_m=max_m))
+            return refine.refine_long(whole_trip(), long_context(ceiling_m=ceiling_m))
 
         trip, _info = world(40_600.0)
         assert [leg["shape"] for leg in trip["legs"]] == ["L0", "L1c", "L2"]
@@ -755,7 +913,7 @@ class TestTheLongSearch:
             monkeypatch,
             {1: [("L1c", 13.5, None)], 2: [("L2c", 14.0, analysis("L2c", "1" * 133))]},
         )
-        trip, info = refine.refine_long(whole_trip(), long_context(max_m=41_000.0))
+        trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=41_000.0))
         length = sum(float(t) for t in [trip["summary"]["length"]]) * 1000.0
         assert length <= 41_000.0 and info["long"]["answered"] == "legs"
         assert length == pytest.approx(13_300 + 13_500 + 14_000)
@@ -768,7 +926,7 @@ class TestTheLongSearch:
                 2: [("L2c", 14.6, analysis("L2c", "1" * 133))] * 5,
             },
         )
-        trip, info = refine.refine_long(whole_trip(), long_context(max_m=41_000.0))
+        trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=41_000.0))
         shapes = [leg["shape"] for leg in trip["legs"]]
         assert shapes == ["L0", "L1c", "L2"]
         assert trip["summary"]["length"] * 1000.0 <= 41_000.0
@@ -776,7 +934,7 @@ class TestTheLongSearch:
 
     def test_the_legs_are_put_back_as_one_trip(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
-        trip, info = refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         assert [leg["shape"] for leg in trip["legs"]] == ["L0", "L1c", "L2"]
         assert trip["summary"]["length"] == pytest.approx(13.3 + 13.5 + 13.3)
         assert trip["summary"]["time"] > 0 and trip["summary"]["min_lat"] == 1.0
@@ -786,7 +944,7 @@ class TestTheLongSearch:
 
     def test_the_figures_are_the_wholes_before_and_the_legs_after(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
-        _trip, info = refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        _trip, info = refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         assert info["lts3_m_before"] == 2500.0
         assert (
             info["lts3_m_after"] == 2000.0 + 0.0
@@ -796,7 +954,7 @@ class TestTheLongSearch:
     def test_nothing_changed_answers_the_routers_own_route(self, monkeypatch) -> None:
         legs_world(monkeypatch, {})
         whole = whole_trip()
-        trip, info = refine.refine_long(whole, long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
         assert trip is whole and info["long"]["answered"] == "router"
         assert info["extra_distance_m"] == 0.0
 
@@ -804,7 +962,7 @@ class TestTheLongSearch:
         world = legs_world(monkeypatch, {})
         world.readings["L1"] = analysis("L1", "4" * 20 + "1" * 113)
         whole = whole_trip()
-        trip, info = refine.refine_long(whole, long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
         assert trip is whole and info["long"]["answered"] == "router"
 
     def test_legs_one_of_which_is_worse_than_the_whole_are_not_answered(self, monkeypatch) -> None:
@@ -814,7 +972,7 @@ class TestTheLongSearch:
         world.readings["L1"] = analysis("L1", "4" * 20 + "1" * 113)
         world.readings["L2c"] = analysis("L2c", "1" * 133)
         whole = whole_trip()
-        trip, info = refine.refine_long(whole, long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
         assert trip is whole and info["long"]["answered"] == "router"
         assert info["lts4_m_after"] == info["lts4_m_before"]
 
@@ -825,12 +983,12 @@ class TestTheLongSearch:
         legs_world(monkeypatch)
         monkeypatch.setattr(routing, "_call", refuse)
         whole = whole_trip()
-        trip, info = refine.refine_long(whole, long_context(max_m=45_000.0))
+        trip, info = refine.refine_long(whole, long_context(ceiling_m=45_000.0))
         assert trip is whole and info["limited"] == "split"
 
     def test_too_little_time_to_start_leaves_the_route(self, monkeypatch) -> None:
         legs_world(monkeypatch)
-        ctx = long_context(max_m=45_000.0)
+        ctx = long_context(ceiling_m=45_000.0)
         ctx.deadline = routing.Deadline(routing.clock() + refine.LONG_MIN_START_S - 1, 45)
         whole = whole_trip()
         trip, info = refine.refine_long(whole, ctx)
@@ -838,7 +996,7 @@ class TestTheLongSearch:
 
     def test_a_leg_the_time_does_not_reach_keeps_the_routers_route(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
-        ctx = long_context(max_m=45_000.0)
+        ctx = long_context(ceiling_m=45_000.0)
         # 13 s from the start, less the 6 s kept for the whole's junctions: 7 s.
         ctx.deadline = routing.Deadline(routing.clock() + 13.0, 45)
         trip, info = refine.refine_long(whole_trip(), ctx)
@@ -856,13 +1014,13 @@ class TestTheLongSearch:
             return real(trip, ctx)
 
         monkeypatch.setattr(refine, "refine", spy)
-        refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         # About 41 s to share (47 less 6), L1's 1,800 of 3,800: 19.4 s.
         assert shares[0] == pytest.approx(41 * 1800 / 3800, abs=1.0)
 
     def test_two_stops_are_cut_separately(self, monkeypatch) -> None:
         world = legs_world(monkeypatch)
-        ctx = long_context(max_m=45_000.0)
+        ctx = long_context(ceiling_m=45_000.0)
         mid = BASE[0] + EAST / 2
         ctx.points = [ctx.points[0], [mid, BASE[1]], ctx.points[1]]
         ctx.request["locations"] = [
@@ -889,7 +1047,7 @@ class TestTheLongSearch:
             return out
 
         monkeypatch.setattr(refine, "refine", spy)
-        refine.refine_long(whole_trip(), long_context(max_m=45_000.0))
+        refine.refine_long(whole_trip(), long_context(ceiling_m=45_000.0))
         assert seen[0] == [100.0]
 
 
@@ -940,7 +1098,7 @@ class TestTheLegsOfTheAnswer:
         assert routing._joined_runs([1000.0, 2000.0], pieces) == 3000.0
 
 
-# --- Sharing the longest ride among the legs --------------------------------------------
+# --- Sharing the detour among the legs ------------------------------------------------
 
 
 def option(name: str, tiers: str, km: float) -> tuple:
@@ -972,6 +1130,13 @@ class TestTheFrontier:
         shorter = option("s", "1" * 10 + "3" * 10 + "1" * 20, 4.0)
         chain = refine.frontier([first, shorter], self.ctx)
         assert [o[0]["legs"][0]["shape"] for o in chain] == ["s"]
+
+    def test_an_upgrade_not_worth_its_miles_stays_on_it(self) -> None:
+        """Whether it is worth them is the whole trip's to say (`choose_options`)."""
+        first = option("f", "1" * 10 + "3" * 2 + "1" * 28, 4.0)
+        dear = option("d", "1" * 40, 9.0)  # 5 km for 200 m of LTS 3
+        chain = refine.frontier([first, dear], self.ctx)
+        assert [o[0]["legs"][0]["shape"] for o in chain] == ["f", "d"]
 
 
 class TestChoosingOptions:
@@ -1046,6 +1211,45 @@ class TestChoosingOptions:
         assert refine.choose_options([chain], [10_000.0], 10_000.0, self.ctx) == [0]
         assert chain[0][1].length_m == 9500.0
 
+    def dear(self):
+        """A leg whose upgrade adds 2 km for 300 m of LTS 3: under 1 in 5 (400 m
+        needed), over 1 in 2.5 only where none of it is past a target."""
+        return refine.frontier(
+            [
+                option("d0", "1" * 10 + "3" * 3 + "1" * 27, 10.0),
+                option("d1", "1" * 40, 12.0),
+            ],
+            self.ctx,
+        )
+
+    def test_an_upgrade_not_worth_its_miles_is_not_taken(self) -> None:
+        """OWNER-DECISIONS 268: about 1 mi of LTS 3 saved per 5 mi added."""
+        assert refine.choose_options([self.dear()], [10_000.0], 16_000.0, self.ctx) == [0]
+        # The same upgrade at 1 in 5 or better is taken.
+        worth = refine.frontier(
+            [option("w0", "1" * 10 + "3" * 4 + "1" * 26, 10.0), option("w1", "1" * 40, 12.0)],
+            self.ctx,
+        )
+        assert refine.choose_options([worth], [10_000.0], 16_000.0, self.ctx) == [1]
+
+    def test_under_the_target_the_miles_are_free(self) -> None:
+        ctx = top_context(target_m=12_000.0, ceiling_m=15_000.0)
+        assert refine.choose_options([self.dear()], [10_000.0], 15_000.0, ctx) == [1]
+
+    def test_past_the_target_the_bar_is_stricter(self) -> None:
+        # 1 km past an 11 km target needs 400 m: 300 m is not enough.
+        ctx = top_context(target_m=11_000.0, ceiling_m=13_750.0)
+        assert refine.choose_options([self.dear()], [10_000.0], 13_750.0, ctx) == [0]
+        # Half a kilometre past it needs 200 m: 300 m is.
+        ctx = top_context(target_m=11_500.0, ceiling_m=14_375.0)
+        assert refine.choose_options([self.dear()], [10_000.0], 14_375.0, ctx) == [1]
+
+    def test_the_charge_is_at_the_whole_trips_length(self) -> None:
+        # With a 10 km fixed leg the same upgrade is 2 km past a 20 km target.
+        ctx = top_context(target_m=20_000.0, ceiling_m=25_000.0)
+        assert refine.choose_options([self.dear()], [10_000.0], 25_000.0, ctx, 10_000.0) == [0]
+        assert refine.choose_options([self.dear()], [10_000.0], 25_000.0, ctx, 8_000.0) == [1]
+
     def test_the_legs_with_no_choice_count_against_the_limit(self) -> None:
         # 10 km of fixed leg: 21,000 less 10,000 leaves 11,000 for two 10 km legs: no room.
         chains = self.chains()
@@ -1092,8 +1296,9 @@ def alt_context(**kw) -> refine.Context:
 class TestDifferentRoutes:
     """A route is only added if it is meaningfully different from every one chosen."""
 
-    def test_the_threshold_is_60_percent_of_the_road_or_5_miles_different(self) -> None:
-        assert refine.ALT_OVERLAP == 0.60
+    def test_the_threshold_is_70_percent_of_the_road_or_5_miles_different(self) -> None:
+        """OWNER-DECISIONS 269, "Loosen a little (Recommended)": 70%, from 60%."""
+        assert refine.ALT_OVERLAP == 0.70
         assert refine.ALT_DIFFERENT_M == pytest.approx(5 * 1609.344, rel=0.01)
         assert refine.ALT_MAX == 4
 
@@ -1108,15 +1313,17 @@ class TestDifferentRoutes:
         near = road("n", [1, 2, 3, 4, 5, 6, 7, 8, 11, 12])[1]  # 80% shared, 2 km different
         assert not refine.distinct_from(near, [a])
 
-    def test_a_route_over_less_than_60_percent_of_it_is_different(self) -> None:
+    def test_a_route_over_less_than_70_percent_of_it_is_different(self) -> None:
         a = road("a", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10])[1]
         far = road("f", [1, 2, 3, 4, 5, 11, 12, 13, 14, 15])[1]  # 50% shared
         assert refine.distinct_from(far, [a])
-        edge = road("e", [1, 2, 3, 4, 5, 6, 11, 12, 13, 14])[1]  # exactly 60% shared
+        sixty = road("s", [1, 2, 3, 4, 5, 6, 11, 12, 13, 14])[1]  # 60% shared: now different
+        assert refine.distinct_from(sixty, [a])
+        edge = road("e", [1, 2, 3, 4, 5, 6, 7, 11, 12, 13])[1]  # exactly 70% shared
         assert not refine.distinct_from(edge, [a])
 
     def test_a_different_corridor_over_a_stretch_counts_on_a_long_route(self) -> None:
-        """60% of a 58 mi route is never different: 5 mi of different road is."""
+        """70% of a 58 mi route is never different: 5 mi of different road is."""
         ways = list(range(1, 61))
         a = road("a", ways)[1]
         swap = road("s", ways[:20] + list(range(100, 109)) + ways[29:])[1]  # 9 km different
@@ -1137,7 +1344,7 @@ class TestDifferentRoutes:
 
 
 class TestPickingCandidates:
-    ctx = alt_context(max_m=20_000.0)
+    ctx = alt_context(ceiling_m=20_000.0)
 
     def pool(self, *extra):
         return [road("main", [1, 2, 3, 4, 5, 6, 7, 8]), *extra]
@@ -1174,7 +1381,7 @@ class TestPickingCandidates:
         assert names(refine.pick_candidates(ok, self.ctx, [0.0])) == ["main", "fits"]
 
     def test_each_passes_the_hold_on_the_top_figure(self) -> None:
-        ctx = alt_context(max_m=20_000.0)
+        ctx = alt_context(ceiling_m=20_000.0)
         ctx.exposure = AVERSE
         main = road("main", [1, 2, 3, 4, 5, 6, 7, 8], "1" * 6 + "44")
         more = road("more", [11, 12, 13, 14, 15, 16, 17, 18], "1" * 5 + "444")
@@ -1205,7 +1412,7 @@ class TestPickingCandidates:
         assert len(got) == refine.ALT_MAX == 4 and got[0][0]["legs"][0]["shape"] == "main"
 
     def test_without_a_request_for_more_it_is_the_answer_alone(self) -> None:
-        ctx = top_context(max_m=20_000.0)
+        ctx = top_context(ceiling_m=20_000.0)
         pool = self.pool(road("b", [11, 12, 13, 14, 15, 16, 17, 18]))
         assert names(refine.pick_candidates(pool, ctx, [0.0])) == ["main"]
 
@@ -1234,7 +1441,7 @@ class TestCombiningLegs:
 
 class TestTheSearchOffersCandidates:
     def test_a_search_with_options_picks_candidates_from_what_it_read(self, monkeypatch) -> None:
-        ctx = alt_context(max_m=9_000.0)
+        ctx = alt_context(ceiling_m=9_000.0)
         ctx.options = []
         orig = analysis("o", ORIG)
         calm = analysis("c", "1" * 40)
@@ -1253,7 +1460,7 @@ class TestTheSearchOffersCandidates:
         assert ctx.candidates == []
 
     def test_the_first_route_is_an_option(self, monkeypatch) -> None:
-        ctx = alt_context(max_m=9_000.0)
+        ctx = alt_context(ceiling_m=9_000.0)
         ctx.options = []
         World(monkeypatch, {"o": analysis("o", ORIG)}, [trip_of("o", 4.0)] * 2)
         refine.refine(trip_of("o", 4.0), ctx)
@@ -1282,7 +1489,7 @@ class TestALongPlanOffersCandidates:
 
         world.readings["L1c"] = over("L1c", 1000)
         world.readings["L1d"] = over("L1d", 5000)
-        ctx = long_context(max_m=45_000.0)
+        ctx = long_context(ceiling_m=45_000.0)
         ctx.alternates = refine.ALT_MAX
         trip, _info = refine.refine_long(whole_trip(), ctx)
         shapes = [[leg["shape"] for leg in t["legs"]] for t, _r in ctx.candidates]
@@ -1294,7 +1501,7 @@ class TestALongPlanOffersCandidates:
 
     def test_a_plan_with_no_alternates_asked_has_none(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})
-        ctx = long_context(max_m=45_000.0)
+        ctx = long_context(ceiling_m=45_000.0)
         refine.refine_long(whole_trip(), ctx)
         assert ctx.candidates == []
 
@@ -1318,7 +1525,7 @@ class TestAskingForAnotherWay:
             [trip_of("alt", 8.0), routing.RouterRefused(400, 442, "no path")],
             alt=road("alt", list(range(11, 19))),
         )
-        ctx = alt_context(max_m=20_000.0)
+        ctx = alt_context(ceiling_m=20_000.0)
         got = refine.more_routes([self.main()], ctx, [0.0])
         assert names(got) == ["main", "alt"]
         first = world.requests[0]
@@ -1336,7 +1543,7 @@ class TestAskingForAnotherWay:
             c=road("c", list(range(21, 29))),
             d=road("d", list(range(31, 39))),
         )
-        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        got = refine.more_routes([self.main()], alt_context(ceiling_m=20_000.0), [0.0])
         assert names(got) == ["main", "b", "c", "d"], "at most the four of ALT_MAX"
         sizes = [len(r["exclude_locations"]) for r in world.requests]
         assert sizes[0] < sizes[1] < sizes[2] and len(world.requests) == refine.ALT_ASKS == 3
@@ -1356,7 +1563,7 @@ class TestAskingForAnotherWay:
                 for i, name in enumerate("bcdefg", start=1)
             },
         )
-        ctx = alt_context(max_m=20_000.0)
+        ctx = alt_context(ceiling_m=20_000.0)
         ctx.alternates = 8
         got = refine.more_routes([self.main()], ctx, [0.0])
         assert len(world.requests) == refine.ALT_ASKS == 3 and len(got) == 4
@@ -1364,19 +1571,19 @@ class TestAskingForAnotherWay:
     def test_a_route_that_is_not_a_near_tie_ends_the_asking(self, monkeypatch) -> None:
         busy = road("busy", list(range(11, 19)), "1" * 5 + "444")
         world = self.world(monkeypatch, [trip_of("busy", 8.0), trip_of("busy", 8.0)], busy=busy)
-        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        got = refine.more_routes([self.main()], alt_context(ceiling_m=20_000.0), [0.0])
         assert names(got) == ["main"] and len(world.requests) == 1
 
     def test_a_route_that_is_the_same_road_ends_it(self, monkeypatch) -> None:
         world = self.world(
             monkeypatch, [trip_of("same", 8.0)] * 3, same=road("same", [1, 2, 3, 4, 5, 6, 7, 9])
         )
-        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        got = refine.more_routes([self.main()], alt_context(ceiling_m=20_000.0), [0.0])
         assert names(got) == ["main"] and len(world.requests) == 1
 
     def test_a_route_past_the_longest_ride_ends_it(self, monkeypatch) -> None:
         world = self.world(monkeypatch, [trip_of("far", 9.0)], far=road("far", list(range(11, 19))))
-        got = refine.more_routes([self.main()], alt_context(max_m=8_500.0), [0.0])
+        got = refine.more_routes([self.main()], alt_context(ceiling_m=8_500.0), [0.0])
         assert names(got) == ["main"] and len(world.requests) == 1
 
     def test_a_refusal_or_an_unreachable_router_ends_it(self, monkeypatch) -> None:
@@ -1388,14 +1595,14 @@ class TestAskingForAnotherWay:
 
     def test_with_no_time_it_asks_nothing(self, monkeypatch) -> None:
         world = self.world(monkeypatch, [trip_of("alt", 8.0)], alt=road("alt", list(range(11, 19))))
-        ctx = alt_context(max_m=20_000.0)
+        ctx = alt_context(ceiling_m=20_000.0)
         ctx.deadline = routing.Deadline(routing.clock() + refine.REFINE_TRACE_RESERVE_S + 1.0, 35)
         assert names(refine.more_routes([self.main()], ctx, [0.0])) == ["main"]
         assert world.requests == []
 
     def test_it_is_only_for_a_plan_that_offers_more_than_one(self, monkeypatch) -> None:
         world = self.world(monkeypatch, [trip_of("alt", 8.0)], alt=road("alt", list(range(11, 19))))
-        assert names(refine.more_routes([self.main()], top_context(max_m=20_000.0), [0.0])) == [
+        assert names(refine.more_routes([self.main()], top_context(ceiling_m=20_000.0), [0.0])) == [
             "main"
         ]
         assert world.requests == []
@@ -1404,11 +1611,11 @@ class TestAskingForAnotherWay:
         unread = road("unread", list(range(11, 19)))
         unread[1].events = None
         world = self.world(monkeypatch, [trip_of("unread", 8.0)], unread=unread)
-        got = refine.more_routes([self.main()], alt_context(max_m=20_000.0), [0.0])
+        got = refine.more_routes([self.main()], alt_context(ceiling_m=20_000.0), [0.0])
         assert names(got) == ["main"] and len(world.requests) == 1
 
     def test_the_search_asks_after_it_when_it_found_nothing_different(self, monkeypatch) -> None:
-        ctx = alt_context(max_m=9_000.0)
+        ctx = alt_context(ceiling_m=9_000.0)
         ctx.options = []
         world = World(
             monkeypatch,

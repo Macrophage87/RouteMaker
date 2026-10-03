@@ -81,7 +81,13 @@ def trip_of(name: str, km: float, cost: float = 0.0) -> dict:
 
 
 def context(
-    rate=0.0, weight=1.0, climb_weight=0.0, group=False, maxcalm=False, max_m=None
+    rate=0.0,
+    weight=1.0,
+    climb_weight=0.0,
+    group=False,
+    maxcalm=False,
+    ceiling_m=None,
+    target_m=None,
 ) -> refine.Context:
     return refine.Context(
         variant="standard",
@@ -104,7 +110,8 @@ def context(
         climb_weight=climb_weight,
         quiet_cost=QUIET_COST,
         maxcalm=maxcalm,
-        max_m=max_m,
+        ceiling_m=ceiling_m,
+        target_m=target_m,
     )
 
 
@@ -2319,8 +2326,61 @@ class TestTheHoldLegByLeg(TestSeekLegByLeg):
         assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
 
 
-# These two borrow the seek tests' worlds (their fixtures and helpers), not their tests.
-for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg):
+class TestTheWorthLegByLeg(TestSeekLegByLeg):
+    """OWNER-DECISIONS 268, 271: at the top of the slider a plan with stops' spliced
+    trip must be worth its extra miles for the whole trip, as each leg was."""
+
+    def plan(self, monkeypatch, analyses, routes, legs=2, ctx=None):
+        ctx = ctx or self.leg_context(legs)
+        ctx.maxcalm = True
+        return super().plan(monkeypatch, analyses, routes, legs, ctx)
+
+    def spliced(self, length_m: float) -> refine.Analysis:
+        spliced = analysis("t1+t2", "1" * 80, cost_s=6000.0)
+        spliced.via_m = [4000.0]
+        spliced.length_m = length_m
+        return spliced
+
+    def run(self, monkeypatch, length_m: float, ctx=None):
+        analyses = {"t1": self.calm(1), "t2": self.calm(2), "t1+t2": self.spliced(length_m)}
+        analyses["t1+o2"] = whole_of(leg_orig(1), leg_orig(2))
+        routes = [one_leg("t1", 9.0, 3000.0), one_leg("t2", 9.0, 3000.0)]
+        return self.plan(monkeypatch, analyses, routes, ctx=ctx)
+
+    def test_a_spliced_trip_not_worth_its_miles_is_refused(self, monkeypatch) -> None:
+        # 2,000 m of LTS 3 saved buys up to 10 km more: 8 km plus 11 km is too far.
+        _w, kept, info = self.run(monkeypatch, 19_000.0)
+        assert info["seek"]["whole_trip"] == "not_worth" and info["seek"]["taken"] is False
+        assert info["seek"]["limited"] == "not_worth"
+        assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
+
+    def test_one_that_is_worth_them_is_taken(self, monkeypatch) -> None:
+        _w, kept, info = self.run(monkeypatch, 18_000.0)
+        assert info["seek"]["whole_trip"] == "taken"
+        assert [leg["shape"] for leg in kept["legs"]] == ["t1", "t2"]
+
+    def test_under_the_target_the_miles_are_free(self, monkeypatch) -> None:
+        ctx = self.leg_context()
+        ctx.target_m = 30_000.0
+        _w, kept, info = self.run(monkeypatch, 25_000.0, ctx)
+        assert info["seek"]["whole_trip"] == "taken"
+
+    def test_a_leg_is_priced_at_the_whole_trips_length(self, monkeypatch) -> None:
+        """Each leg's candidate is charged with the rest of the trip added: under a
+        target the whole of which it would pass, it is not taken."""
+        ctx = self.leg_context()
+        ctx.target_m = 8_100.0
+        far = analysis("t1", "1" * 40, cost_s=3000.0)
+        far.length_m = 9_000.0  # with the other leg 5 km over: 2,000 m needed, 1,000 saved
+        analyses = {"t1": far, "t2": self.calm(2), "t1+t2": self.spliced(8_000.0)}
+        analyses["o1+t2"] = whole_of(leg_orig(1), leg_orig(2))
+        routes = [one_leg("t1", 9.0, 3000.0), one_leg("t2", 9.0, 3000.0)]
+        _w, _kept, info = self.plan(monkeypatch, analyses, routes, ctx=ctx)
+        assert [t["outcome"] for t in info["seek"]["tried"]][0] == "not_better"
+
+
+# These borrow the seek tests' worlds (their fixtures and helpers), not their tests.
+for _cls in (TestTheHoldInTheSeek, TestTheHoldLegByLeg, TestTheWorthLegByLeg):
     for _name in dir(_cls):
         if _name.startswith("test_") and _name not in vars(_cls):
             setattr(_cls, _name, None)

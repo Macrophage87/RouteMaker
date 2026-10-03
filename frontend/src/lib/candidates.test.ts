@@ -83,3 +83,17 @@ test("choosing one is said with its place, once, and the route's own figures fol
   assert.equal(choiceSaid(answer, 9), "Route 2 of 2.");
   assert.match(announceRoute(candidateRoute(answer, 1)!), /^Route planned: 59\.0 mi/);
 });
+
+test("each says how far over the rider's target it is, and only when it is (OWNER-DECISIONS 271)", () => {
+  const answer = body({
+    rank: 1,
+    calm_search: { rate: 10, rounds: 1, excluded: 1, limited: null, target_distance_m: 92_000, over_target_m: 1_000 },
+    candidates: [{ ...ALT, over_target_m: 3_000 }, body({ rank: 3, over_target_m: 0 })],
+  });
+  const rows = candidateRows(answer)!;
+  assert.match(rows[0].line, /^57\.8 mi \(93\.0 km\), 0\.6 mi \(1\.0 km\) over your target, 0\.3 mi/);
+  assert.match(rows[1].line, /^59\.0 mi \(95\.0 km\), 1\.9 mi \(3\.0 km\) over your target, /);
+  assert.doesNotMatch(rows[2].line, /over your target/);
+  assert.equal(statsOf(body(), 1).overTargetM, null);
+  assert.doesNotMatch(statsLine(statsOf(body(), 1)), /target/);
+});

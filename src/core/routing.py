@@ -56,6 +56,7 @@ to the profile turned upside down.
 
 from __future__ import annotations
 
+import dataclasses
 import itertools
 import json
 import logging
@@ -611,9 +612,10 @@ class Dials:
     carrying: str | None = None
     assist: bool = False
     avoid_gravel: bool = False
-    # The rider's "Longest ride" (metres), for the top of the stress slider only
-    # (`presets.maxcalm_for`); None: `presets.default_max_m`.
-    max_distance_m: int | None = None
+    # The rider's "Target distance" (metres, OWNER-DECISIONS 271), for the top of the
+    # stress slider only (`presets.maxcalm_for`): a soft goal with a hard ceiling
+    # (`presets.target_ceiling_m`); None: no target, `presets.default_ceiling_m`.
+    target_distance_m: int | None = None
     # The rider's total system weight in kilograms (OWNER-DECISIONS 264): rider, bike
     # and load, for the effort the Hills slider's avoid half weighs at the top of the
     # stress slider; None: `presets.system_weight_for`.
@@ -1229,9 +1231,9 @@ def _joined_runs(runs: list, pieces: list) -> tuple[int, int] | float:
 ALTERNATE_MIN_S = 6
 
 
-# The traffic positions a longest ride that the router's own route is past is
-# asked at, calmest first, until a route fits (`_fit_longest`): Default's, a
-# balanced one, and the most direct.
+# The traffic positions a target distance that the router's own route is past is
+# asked at, calmest first, until a route fits (`_fit_target`): Default's, a balanced
+# one, and the most direct.
 FIT_STRESS_LADDER = (presets.STRESS_DEFAULT_AT, 40, 0)
 # The least time left for another rung (a whole-trip /route and no more).
 FIT_MIN_S = 12
@@ -1239,38 +1241,45 @@ FIT_MIN_S = 12
 
 # After the ladder finds the calmest rung that fits, the stretch between it and the
 # rung before (the one that did not) is bisected this many times for a calmer route
-# that still fits: a longest ride between two rungs' routes is common (Union Station to
+# that still fits: a target between two rungs' routes is common (Union Station to
 # Baltimore Penn at 50 mi: the calm route is 58 mi, the direct one 40).
 FIT_BISECT_STEPS = 3
 
 
-def _fit_longest(
+def _trip_length_m(trip: dict) -> float:
+    return float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
+
+
+def _fit_target(
     trip: dict,
     request: dict,
     costing: dict,
     trace_costing: dict,
-    rider_max_m: float | None,
+    target_m: float | None,
     preset_name: str,
     hills_dial: int,
     assist: bool,
     avoid_gravel: bool,
     variant: str,
     deadline: Deadline,
-) -> tuple[dict, dict, dict, dict, int | None]:
-    """The first route for a rider's longest ride (OWNER-DECISIONS 256): the
+) -> tuple[tuple | None, list[tuple]]:
+    """The first route for a rider's target distance (OWNER-DECISIONS 256, 271): the
     router's own route if it is within it, else the calmest route the router gives
     that is, from its own costing at the traffic positions of FIT_STRESS_LADDER and
-    then between the last two (FIT_BISECT_STEPS); the shortest one found if none
-    is. Returns the trip, the request and costings to search with, and the traffic
-    position the route was found at (None: the ride's own)."""
-    length = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
-    if rider_max_m is None or length <= rider_max_m:
-        return trip, request, costing, trace_costing, None
-    shortest = (trip, request, costing, trace_costing, None)
+    then between the last two (FIT_BISECT_STEPS). Each route is a tuple of the trip,
+    the request and costings to search with, and the traffic position it was found at
+    (None: the ride's own). Returns the route that fits (None where none does) and
+    every route found past the target, the router's own first (`_past_target`
+    chooses among them: the target is soft)."""
+    length = _trip_length_m(trip)
+    own = (trip, request, costing, trace_costing, None)
+    if target_m is None or length <= target_m:
+        return own, []
+    past = [own]
 
     def ask(position: int):
-        """The route at a traffic position: (trip, length m, the tuple to return), or
-        None where there is none (or no time) and None, False for a refusal."""
+        """The route at a traffic position: (length m, the tuple), or None where there
+        is none, and False where there is no time or the router refused."""
         options = presets.costing(
             preset_name, position, hills_dial, assist=assist, avoid_gravel=avoid_gravel
         )
@@ -1286,23 +1295,21 @@ def _fit_longest(
         found = answer.get("trip") or {}
         if not found.get("legs"):
             return None
-        found_m = float((found.get("summary") or {}).get("length", 0.0)) * 1000.0
-        return found_m, (found, asked, options, options, position)
+        return _trip_length_m(found), (found, asked, options, options, position)
 
     over = presets.STRESS_TODAYS_TOP  # the calmest position that is not the router's own
     for rung in FIT_STRESS_LADDER:
         if deadline.at - clock() < FIT_MIN_S:
-            return shortest
+            return None, past
         got = ask(rung)
         if got is False:
-            return shortest
+            return None, past
         if got is None:
             continue
         found_m, answer = got
-        if found_m > rider_max_m:
+        if found_m > target_m:
             over = rung
-            if found_m < float((shortest[0].get("summary") or {}).get("length", 0.0)) * 1000.0:
-                shortest = answer
+            past.append(answer)
             continue
         # This rung fits: look between it and the one before for a calmer one that does.
         best, fits = answer, rung
@@ -1316,12 +1323,74 @@ def _fit_longest(
             if probe is None:
                 continue
             probe_m, probe_answer = probe
-            if probe_m <= rider_max_m:
+            if probe_m <= target_m:
                 best, fits = probe_answer, middle
             else:
                 over = middle
+                past.append(probe_answer)
+        return best, past
+    return None, past
+
+
+def _past_target(fit: tuple | None, past: list[tuple], ceiling_m: float, ctx) -> tuple:
+    """Which first route a plan keeps where the router's own route is past the rider's
+    target distance (OWNER-DECISIONS 267, 268, 271), from `_fit_target`'s:
+    - where one fits, the route past the target (within the ceiling) that is calmer
+      and worth its miles over it (`refine.better`, whose diminishing-returns bar is
+      the stricter one past the target), else the one that fits;
+    - where none fits (267, "Least-stress route, flagged"), the least stressful within
+      the ceiling, in the order of 258-262 (`refine.calmer`, then the shorter), else,
+      none being within the ceiling, the shortest found.
+    A route that cannot be read in time is not chosen."""
+    from . import refine
+
+    within = sorted(
+        (o for o in past if _trip_length_m(o[0]) <= ceiling_m), key=lambda o: _trip_length_m(o[0])
+    )
+
+    def read(option: tuple):
+        try:
+            got = refine.analyse(
+                option[0], dataclasses.replace(ctx, costing=option[3]), ctx.deadline
+            )
+        except (DeadlineExceeded, RouterUnavailable):
+            return None
+        return got if got is not None and got.events is not None else None
+
+    if fit is not None:
+        current = read(fit) if within else None
+        if current is None:
+            return fit
+        best = fit
+        for option in within:
+            got = read(option)
+            if got is not None and refine.better(got, current, ctx):
+                best, current = option, got
         return best
-    return shortest
+    if not within:
+        return min(past, key=lambda o: _trip_length_m(o[0]))
+    best, current = within[0], None
+    for option in within:
+        got = read(option)
+        if got is None:
+            continue
+        if current is None or refine.calmer(got, current, ctx):
+            best, current = option, got
+    return best
+
+
+def target_fields(final_m: float, target_m: float | None, ceiling_m: float | None) -> dict:
+    """What the answer says of the distance at the top of the slider (OWNER-DECISIONS
+    271): the rider's target and whether they set one, the ceiling, whether the route
+    is within the target, and how far over it it is (0 within it; None without one)."""
+    over = None if target_m is None else round(max(final_m - target_m, 0.0), 1)
+    return {
+        "target_distance_m": round(target_m, 1) if target_m is not None else None,
+        "target_distance_set": target_m is not None,
+        "ceiling_m": round(ceiling_m, 1) if ceiling_m is not None else None,
+        "fits": None if target_m is None else final_m <= target_m,
+        "over_target_m": over,
+    }
 
 
 def plan(
@@ -1365,8 +1434,8 @@ def plan(
     deadline = Deadline(started + budget_s - ANSWER_RESERVE_S, per_call_s)
     exposure = presets.exposure_for(preset_name, dials.carrying)
     maxcalm = presets.maxcalm_for(stress_dial)
-    # The rider's longest ride counts at the top of the slider only.
-    rider_max_m = float(dials.max_distance_m) if dials.max_distance_m and maxcalm else None
+    # The rider's target distance counts at the top of the slider only.
+    target_m = float(dials.target_distance_m) if dials.target_distance_m and maxcalm else None
     when = dials.when or default_when()
     assist = bool(dials.assist) and preset.assist_speed_kmh is not None
     variant = presets.variant_for_ride(preset_name, when, assist)
@@ -1496,15 +1565,21 @@ def plan(
     from . import refine, trailseek
 
     refine_limited = _refine_limit(preset_name, points, long_ride, seeking, deadline, long_calm)
-    longest = None
+    ceiling = None
     fitted_at = None
+    fit, past = None, []
     if maxcalm and refine_limited is None:
-        trip, request, costing, trace_costing, fitted_at = _fit_longest(
-            trip, request, costing, trace_costing, rider_max_m, preset_name, hills_dial, assist,
+        fit, past = _fit_target(
+            trip, request, costing, trace_costing, target_m, preset_name, hills_dial, assist,
             avoid_gravel, variant, deadline,
         )  # fmt: skip
-        first_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
-        longest = rider_max_m if rider_max_m else presets.default_max_m(first_m)
+        if fit is not None:
+            trip, request, costing, trace_costing, fitted_at = fit
+        ceiling = (
+            presets.target_ceiling_m(target_m)
+            if target_m
+            else presets.default_ceiling_m(_trip_length_m(trip))
+        )
     refine_context = refine.Context(
         variant=variant,
         request=request,
@@ -1528,11 +1603,21 @@ def plan(
         avoid_gravel=avoid_gravel,
         exposure=exposure,
         maxcalm=maxcalm,
-        max_m=longest,
+        ceiling_m=ceiling,
+        target_m=target_m,
         # Up to ALT_MAX routes to choose from at the top of the slider (OWNER-DECISIONS 265).
         alternates=refine.ALT_MAX if maxcalm and preset_name != "mass-ride" else 0,
         options=[] if maxcalm and preset_name != "mass-ride" and not long_calm else None,
     )
+    if past:
+        # The router's own route is past the target: the calmer route past it where
+        # that is worth its miles, or the least stressful where none fits (267).
+        trip, request, costing, trace_costing, fitted_at = _past_target(
+            fit, past, ceiling, refine_context
+        )
+        refine_context.request = request
+        refine_context.costing = trace_costing
+        refine_context.quiet_cost = refine.quiet_cost_per_m(trace_costing)
     loop_info = None
     if loop:
         # The way back by a different way, before the search, which then keeps it so.
@@ -1541,17 +1626,15 @@ def plan(
             refine_context.loop_overlap = loop_info["overlap_pct"] / 100.0
     refined = None
     if refine_limited is None:
-        if (
-            longest is not None
-            and float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0 > longest
-        ):
-            # Not even the most direct route fits the longest ride: it is the
-            # answer, with a note, and nothing is searched.
+        if past and fit is None:
+            # No route fits the target (OWNER-DECISIONS 267): the least stressful one
+            # found is the answer, flagged with how far over it is, and nothing is
+            # searched.
             refined = {
                 "rate": refine_context.rate,
                 "rounds": 0,
                 "excluded": 0,
-                "limited": "max_distance",
+                "limited": "target_distance",
             }
         elif long_calm:
             trip, refined = refine.refine_long(trip, refine_context)
@@ -1566,10 +1649,7 @@ def plan(
             "limited": refine_limited,
         }
     if refined is not None and maxcalm:
-        final_m = float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0
-        refined["max_distance_m"] = round(longest, 1) if longest is not None else None
-        refined["max_distance_set"] = rider_max_m is not None
-        refined["fits"] = None if longest is None else final_m <= longest
+        refined.update(target_fields(_trip_length_m(trip), target_m, ceiling))
         if fitted_at is not None:
             refined["fitted_at"] = fitted_at
 
@@ -1768,7 +1848,7 @@ def plan(
                 "carrying": presets.carrying_of(preset_name, dials.carrying),
                 "assist": assist,
                 "avoid_gravel": avoid_gravel,
-                "max_distance_m": int(rider_max_m) if rider_max_m else None,
+                "target_distance_m": int(target_m) if target_m else None,
                 "system_weight_kg": dials.system_weight_kg if maxcalm else None,
                 "loop": loop,
             },
@@ -1799,7 +1879,12 @@ def plan(
             break
         try:
             refine.analyse(found, refine_context, deadline)
-            candidates.append({**_answer(found, None, True), "rank": len(candidates) + 2})
+            candidate = _answer(found, None, True)
+            if maxcalm and target_m:
+                candidate["over_target_m"] = target_fields(
+                    _trip_length_m(found), target_m, ceiling
+                )["over_target_m"]
+            candidates.append({**candidate, "rank": len(candidates) + 2})
         except (DeadlineExceeded, RouterUnavailable, NoRoute):
             break
     body["candidates"] = candidates or None

@@ -54,8 +54,8 @@ def test_calm_search_span_matches_plan_and_the_planners_note() -> None:
     assert "up to 19 mi (30 km) apart" in (REPO / "PLAN.md").read_text()
 
 
-# --- The longest ride, the system weight, the loop, the routes to choose from ---------
-# OWNER-DECISIONS 256-266 (FOLLOWUP-LONG-CALM), typed by hand from PLAN.md's owner
+# --- The target distance, the system weight, the loop, the routes to choose from -----
+# OWNER-DECISIONS 256-271 (FOLLOWUP-LONG-CALM), typed by hand from PLAN.md's owner
 # amendments of 2026-10-03; the front end repeats the ones it needs (dials.ts, loop.ts).
 
 DIALS_TS = REPO / "frontend" / "src" / "lib" / "dials.ts"
@@ -70,16 +70,29 @@ def _ts(path: Path, name: str) -> float:
     return float(found[0].replace("_", ""))
 
 
-def test_the_longest_ride_defaults_and_bounds() -> None:
+def test_the_target_distance_defaults_and_bounds() -> None:
     from core import presets
 
-    # PLAN.md, item 256: "a sensible multiple of the direct route, e.g. 1.6x", at least a mile more.
-    assert presets.DEFAULT_MAX_RATIO == 1.6
-    assert presets.DEFAULT_MAX_EXTRA_M == 1609.344
-    assert (presets.MAX_DISTANCE_MIN_M, presets.MAX_DISTANCE_MAX_M) == (1_000, 1_000_000)
-    assert _ts(DIALS_TS, "LONGEST_MIN_M") == 1_000
-    assert _ts(DIALS_TS, "LONGEST_MAX_M") == 1_000_000
-    assert _ts(DIALS_TS, "DEFAULT_MAX_RATIO") == 1.6
+    # PLAN.md, item 256: "a sensible multiple of the direct route, e.g. 1.6x", at least a
+    # mile more; item 268: "1.6x the baseline stays the ceiling".
+    assert presets.DEFAULT_CEILING_RATIO == 1.6
+    assert presets.DEFAULT_CEILING_EXTRA_M == 1609.344
+    # Item 271 (the owner's brief for it): a hard ceiling of 1.25 times the target.
+    assert presets.TARGET_CEILING_RATIO == 1.25
+    assert (presets.TARGET_DISTANCE_MIN_M, presets.TARGET_DISTANCE_MAX_M) == (1_000, 1_000_000)
+    assert _ts(DIALS_TS, "TARGET_MIN_M") == 1_000
+    assert _ts(DIALS_TS, "TARGET_MAX_M") == 1_000_000
+    assert _ts(DIALS_TS, "DEFAULT_CEILING_RATIO") == 1.6
+    assert _ts(DIALS_TS, "TARGET_CEILING_RATIO") == 1.25
+
+
+def test_the_diminishing_returns() -> None:
+    from core import refine
+
+    # PLAN.md, item 268: "at least 1 mi of LTS 3 saved per 5 mi added"; item 271, a
+    # stricter bar past the target.
+    assert refine.WORTH_DEFAULT == 5.0
+    assert refine.WORTH_OVER_TARGET == 2.5
 
 
 def test_the_system_weight_range_and_defaults() -> None:
@@ -112,8 +125,8 @@ def test_the_comparison_tolerances() -> None:
 def test_the_routes_to_choose_from() -> None:
     from core import refine
 
-    # PLAN.md, item 265: up to 4 routes; under 60% overlap or 5 mi of different road.
-    assert refine.ALT_MAX == 4 and refine.ALT_OVERLAP == 0.60
+    # PLAN.md, item 265: up to 4 routes; under 70% overlap (item 269) or 5 mi of different road.
+    assert refine.ALT_MAX == 4 and refine.ALT_OVERLAP == 0.70
     assert refine.ALT_DIFFERENT_M == 8_000.0
     assert (refine.ALT_TOP_BAND_M, refine.ALT_SECOND_BAND_M) == (45.0, 300.0)
 

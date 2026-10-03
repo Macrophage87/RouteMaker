@@ -12,8 +12,8 @@ import { STRESS_DEFAULT_AT, fitDials, isCarrying, isWhen, type Dials } from "./d
 import { METRES_PER_MILE } from "./format.ts";
 
 /**
- * The link's version. It stays 2 for the longest ride (OWNER-DECISIONS 256): `maxmi`
- * is a new field that an older link does not have and means the default, and no
+ * The link's version. It stays 2 for the target distance (OWNER-DECISIONS 256, 271):
+ * `targetmi` is a new field that an older link does not have and means none, and no
  * field a link already carried changes what it names. 2 is the traffic slider after its rescale of 2026-10-01
  * (OWNER-DECISIONS 163): the old 0-100 now sits at 0-80, the old 90 (Default)
  * at 70, and above 80 is the calm detour search. A link with no `v` is from
@@ -49,8 +49,8 @@ export function encodePlan(points: readonly LonLat[], preset: PresetId, dials?: 
     if (dials.carrying) params.set("carrying", dials.carrying);
     if (dials.assist) params.set("assist", "1");
     if (dials.avoidGravel) params.set("avoidgravel", "1");
-    // The longest ride in miles, to a tenth. Absent is the default; an older link has none.
-    if (dials.maxDistanceM) params.set("maxmi", (dials.maxDistanceM / METRES_PER_MILE).toFixed(1));
+    // The target distance in miles, to a tenth. Absent is none; an older link has none.
+    if (dials.targetDistanceM) params.set("targetmi", (dials.targetDistanceM / METRES_PER_MILE).toFixed(1));
     // The system weight in kilograms (OWNER-DECISIONS 264); absent is the default.
     if (dials.systemWeightKg) params.set("sysweight", String(dials.systemWeightKg));
     // "Make it a loop" (OWNER-DECISIONS 266); absent is off.
@@ -81,10 +81,10 @@ export function decodePlan(hash: string): Plan {
   const carrying = params.get("carrying");
   const linked = numberOrUndefined(params.get("stress"));
   const stress = linked === undefined || params.get("v") === PLAN_VERSION ? linked : stressFromV1(linked);
-  const maxMiles = numberOrUndefined(params.get("maxmi"));
+  const targetMiles = numberOrUndefined(params.get("targetmi"));
   const dials = fitDials(preset, {
     stress,
-    maxDistanceM: maxMiles === undefined ? undefined : Math.round(maxMiles * METRES_PER_MILE),
+    targetDistanceM: targetMiles === undefined ? undefined : Math.round(targetMiles * METRES_PER_MILE),
     systemWeightKg: numberOrUndefined(params.get("sysweight")),
     loop: params.get("loop") === "1",
     hills: numberOrUndefined(params.get("hills")),

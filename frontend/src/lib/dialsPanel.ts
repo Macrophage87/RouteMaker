@@ -19,9 +19,10 @@ import {
 import type { PresetId } from "./presets.ts";
 import {
   HILLS_MIN,
-  DEFAULT_MAX_RATIO,
-  LONGEST_MAX_M,
-  LONGEST_MIN_M,
+  DEFAULT_CEILING_RATIO,
+  TARGET_CEILING_RATIO,
+  TARGET_MAX_M,
+  TARGET_MIN_M,
   PASSENGERS_WEIGHT_KG,
   SYSTEM_WEIGHT_KG,
   SYSTEM_WEIGHT_MAX_KG,
@@ -33,7 +34,7 @@ import {
   hillsMax,
   hillsWords,
   offersAssist,
-  offersLongestRide,
+  offersTargetDistance,
   startDials,
   stressMax,
   stressWords,
@@ -59,16 +60,16 @@ export interface PanelView {
   /** The traffic-tolerant warning under the traffic slider, or null. */
   warning: string | null;
   hills: SliderView;
-  /** The "Longest ride" number input, or null where the traffic slider is not at the top. */
-  longest: LongestView | null;
+  /** The "Target distance" number input, or null where the traffic slider is not at the top. */
+  target: TargetView | null;
   /** The "System weight" number input, with it. */
   weight: WeightView | null;
   /** Where "Back to this ride type's settings" goes, or null when already there. */
   reset: Dials | null;
 }
 
-/** The "Longest ride" dial (OWNER-DECISIONS 256), in miles first, kilometres in brackets. */
-export interface LongestView {
+/** The "Target distance" dial (OWNER-DECISIONS 256, 271), in miles first, kilometres in brackets. */
+export interface TargetView {
   label: string;
   /** What the input holds, in miles to a tenth; empty is the default. */
   value: string;
@@ -80,42 +81,44 @@ export interface LongestView {
   hint: string;
 }
 
-export const LONGEST_LABEL = "Longest ride (miles)";
+export const TARGET_LABEL = "Target distance (miles)";
 
 /** The input's text for a length in metres: miles to a tenth, no trailing ".0"; empty for none. */
-export function longestText(metres: number | undefined): string {
+export function targetText(metres: number | undefined): string {
   if (metres === undefined) return "";
   const miles = Math.round((metres / METRES_PER_MILE) * 10) / 10;
   return String(miles);
 }
 
 /** Metres for what was typed in miles, or undefined for empty (the default); null where it is not a usable entry. */
-export function parseLongest(text: string): number | undefined | null {
+export function parseTarget(text: string): number | undefined | null {
   const trimmed = text.trim().replace(/\s*(mi|miles)$/i, "");
   if (trimmed === "") return undefined;
   if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
   const metres = Math.round(Number(trimmed) * METRES_PER_MILE);
-  return metres >= LONGEST_MIN_M && metres <= LONGEST_MAX_M ? metres : null;
+  return metres >= TARGET_MIN_M && metres <= TARGET_MAX_M ? metres : null;
 }
 
-const LONGEST_MIN_MILES = Math.ceil((LONGEST_MIN_M / METRES_PER_MILE) * 10) / 10;
-const LONGEST_MAX_MILES = Math.floor(LONGEST_MAX_M / METRES_PER_MILE);
+const TARGET_MIN_MILES = Math.ceil((TARGET_MIN_M / METRES_PER_MILE) * 10) / 10;
+const TARGET_MAX_MILES = Math.floor(TARGET_MAX_M / METRES_PER_MILE);
 
-export function longestView(dials: Dials): LongestView {
-  const set = dials.maxDistanceM;
+export function targetView(dials: Dials): TargetView {
+  const set = dials.targetDistanceM;
   const base =
-    "Optional. The route is no longer than this, and as calm as it can be within it: " +
+    "Optional. The route aims at or under this, as calm as it can be: " +
     "the fewest heavy-traffic roads and very high stress junctions first, then busy roads and higher stress junctions, then distance.";
   const hint =
     set === undefined
-      ? `${base} Left empty, it may be up to ${DEFAULT_MAX_RATIO} times the router's own route.`
-      : `${base} Set to ${formatDistance(set)}. A limit shorter than the calmest route makes it use busier roads to fit.`;
+      ? `${base} Left empty, it may be up to ${DEFAULT_CEILING_RATIO} times the router's own route, where the extra miles avoid enough busy road.`
+      : `${base} Set to ${formatDistance(set)}. It goes past it only where the extra miles avoid enough busy road, ` +
+        `never past ${formatDistance(set * TARGET_CEILING_RATIO)}, and says how far over it is. ` +
+        "A target shorter than the calmest route makes it use busier roads.";
   return {
-    label: LONGEST_LABEL,
-    value: longestText(set),
-    min: LONGEST_MIN_MILES,
-    max: LONGEST_MAX_MILES,
-    rule: `Enter ${LONGEST_MIN_MILES} to ${LONGEST_MAX_MILES} ${MILES_WORD}, or leave it empty.`,
+    label: TARGET_LABEL,
+    value: targetText(set),
+    min: TARGET_MIN_MILES,
+    max: TARGET_MAX_MILES,
+    rule: `Enter ${TARGET_MIN_MILES} to ${TARGET_MAX_MILES} ${MILES_WORD}, or leave it empty.`,
     hint,
   };
 }
@@ -186,10 +189,10 @@ export const MASS_RIDE_TRAFFIC_NOTE =
 export function calmNote(stress: number, _preset?: PresetId): string | undefined {
   const rate = calmRate(stress);
   if (rate <= 0) return undefined;
-  // The top (OWNER-DECISIONS 256, 257): no rate; the least stressful route within the longest ride.
+  // The top (OWNER-DECISIONS 256, 257, 271): no rate; the least stressful route towards the target distance.
   if (stress >= STRESS_MAX) {
     return (
-      "Calmest: finds the least stressful route within your longest ride, however far round it goes. " +
+      "Calmest: finds the least stressful route towards your target distance, however far round it goes. " +
       "First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. " +
       "Then it avoids busy roads (LTS 3) and higher stress junctions. " +
       "Then it follows the Hills slider. Then it takes the shorter way. " +
@@ -227,7 +230,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
   const moved =
     dials.stress !== start.stress ||
     dials.hills !== start.hills ||
-    dials.maxDistanceM !== undefined ||
+    dials.targetDistanceM !== undefined ||
     dials.systemWeightKg !== undefined ||
     dials.loop === true;
   let hillsNote: string | undefined;
@@ -256,8 +259,8 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       disabled: false,
       note: hillsNote,
     },
-    longest: offersLongestRide(preset, dials.stress) ? longestView(dials) : null,
-    weight: offersLongestRide(preset, dials.stress) ? weightView(dials) : null,
+    target: offersTargetDistance(preset, dials.stress) ? targetView(dials) : null,
+    weight: offersTargetDistance(preset, dials.stress) ? weightView(dials) : null,
     reset: moved ? start : null,
   };
 }

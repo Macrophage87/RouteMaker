@@ -19,7 +19,7 @@ import type { PresetId } from "./lib/presets.ts";
 import { WHENS, type Dials, type When } from "./lib/dials.ts";
 import { loopView } from "./lib/loop.ts";
 import type { LonLat } from "./lib/geo.ts";
-import { panelView, parseLongest, parseWeight, type SliderView } from "./lib/dialsPanel.ts";
+import { panelView, parseTarget, parseWeight, type SliderView } from "./lib/dialsPanel.ts";
 import { Debounce, KEY_SETTLE_MS } from "./lib/settle.ts";
 
 interface Props {
@@ -154,7 +154,7 @@ function whenLabel(when: When): string {
 }
 
 /** The dials with one optional number set, or taken off the object where it is empty. */
-function withField(dials: Dials, key: "maxDistanceM" | "systemWeightKg", value: number | undefined): Dials {
+function withField(dials: Dials, key: "targetDistanceM" | "systemWeightKg", value: number | undefined): Dials {
   const next: Dials = { ...dials };
   if (value === undefined) delete next[key];
   else next[key] = value;
@@ -244,14 +244,14 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [] 
           {view.warning}
         </p>
       )}
-      {view.longest && (
+      {view.target && (
         <NumberDial
-          label={view.longest.label}
-          value={view.longest.value}
-          rule={view.longest.rule}
-          hint={view.longest.hint}
-          parse={parseLongest}
-          onCommit={(maxDistanceM) => onCommit(withField(dials, "maxDistanceM", maxDistanceM))}
+          label={view.target.label}
+          value={view.target.value}
+          rule={view.target.rule}
+          hint={view.target.hint}
+          parse={parseTarget}
+          onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />
       )}
       <Slider

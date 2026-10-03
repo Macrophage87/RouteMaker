@@ -318,6 +318,26 @@ export const S_CHOICES = (() => {
   r.candidates = [other(2, 11600, 900), other(3, 12100, 1000)];
   return r;
 })();
+/**
+ * Trailmaxxing past the rider's target distance (OWNER-DECISIONS 271): the extra miles
+ * avoided enough busy road, so the route is 0.7 mi over a 6.2 mi target, and it says so.
+ */
+export const S_OVER = (() => {
+  const r = JSON.parse(JSON.stringify(S_TRAIL));
+  r.dials = { ...r.dials, target_distance_m: 10_000 };
+  r.calm_search = {
+    rate: 10,
+    rounds: 4,
+    excluded: 7,
+    limited: null,
+    target_distance_m: 10_000,
+    target_distance_set: true,
+    ceiling_m: 12_500,
+    fits: false,
+    over_target_m: 1_200,
+  };
+  return r;
+})();
 /** The default ride, no detour. */
 export const S_DEFAULT = (() => {
   const r = copy();

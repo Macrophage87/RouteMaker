@@ -164,8 +164,8 @@ class RouteIn(Schema):
             " keeps to low-stress ways unless avoiding them takes much longer (the old top),"
             " and above 80 a calm detour search accepts longer routes to avoid LTS 3, 4 and"
             " Avoid roads, rising to about 10 mi of extra riding for every mile of LTS 3 at"
-            " 99. At 100 there is no rate: the search finds the least stressful route within"
-            " the longest ride (`max_distance_m`), planning a long trip leg by leg"
+            " 99. At 100 there is no rate: the search finds the least stressful route towards"
+            " the target distance (`target_distance_m`), planning a long trip leg by leg"
             " (`calm_search`, `detour` in the answer). Absent: the preset's own start."
         ),
     )
@@ -226,17 +226,21 @@ class RouteIn(Schema):
             " answer's `loop` says how much it shares. Not on Mass Ride."
         ),
     )
-    max_distance_m: StrictInt | None = Field(
+    target_distance_m: StrictInt | None = Field(
         default=None,
-        ge=presets.MAX_DISTANCE_MIN_M,
-        le=presets.MAX_DISTANCE_MAX_M,
+        ge=presets.TARGET_DISTANCE_MIN_M,
+        le=presets.TARGET_DISTANCE_MAX_M,
         description=(
-            "The rider's longest ride, in metres (OWNER-DECISIONS 256), for the top of the"
-            " stress slider (100) only, and ignored below it. The search then finds the least"
-            " stressful route no longer than this: LTS 4 and Avoid metres first, then LTS 3,"
-            " then the junctions, then distance. A route longer than this is never answered"
-            " unless none is that short, and `calm_search.fits` says so. Absent: 1.6 times the"
-            " router's own route, and at least a mile more."
+            "The rider's target distance, in metres (OWNER-DECISIONS 256, 271), for the top"
+            " of the stress slider (100) only, and ignored below it. A soft goal: the search"
+            " finds the least stressful route (LTS 4 and Avoid metres plus very high stress"
+            " junctions first, then LTS 3 plus higher stress junctions, then distance) at or"
+            " under it, and goes past it only where the extra miles buy enough stress (a"
+            " stricter bar than below it, OWNER-DECISIONS 268), never past 1.25 times it."
+            " `calm_search.over_target_m` says how far over it the route is. Where no route"
+            " is that short, the least stressful one found is answered, flagged. Absent: no"
+            " target; the ceiling is 1.6 times the router's own route (at least a mile more),"
+            " and each extra mile must buy enough stress."
         ),
     )
 
@@ -363,9 +367,9 @@ class DialsOut(Schema):
     carrying: CarryingName | None
     assist: bool
     avoid_gravel: bool = False
-    max_distance_m: int | None = Field(
+    target_distance_m: int | None = Field(
         default=None,
-        description="The rider's longest ride the route was planned within, where they set one.",
+        description="The rider's target distance the route was planned towards, if set.",
     )
     system_weight_kg: int | None = Field(
         default=None,
@@ -562,7 +566,9 @@ class CalmSearchOut(Schema):
     crossings. `limited` says why it stopped short, or why it did not run:
     `time`, `no_route` (every way out was excluded), `untraceable`,
     `excludes` (the router's limit on exclusions was reached),
-    `max_distance` (the longest ride was reached, or no route that short was found),
+    `target_distance` (the ceiling was reached, or no route within the target distance
+    was found: the least stressful one found is answered, `fits` false),
+    `not_worth` (a spliced route's extra miles did not buy enough stress),
     `split` (a long trip could not be cut into legs), `span`,
     `long_ride`, `points`, `seeking`, `mass_ride`; null when it ran to its
     end. The planner says `time`, `untraceable`, `span`, `long_ride` and
@@ -578,27 +584,42 @@ class CalmSearchOut(Schema):
     exposure_before_m: float | None = None
     exposure_after_m: float | None = None
     seek: SeekOut | None = None
-    max_distance_m: float | None = Field(
+    target_distance_m: float | None = Field(
         default=None,
         description=(
-            "At the top of the stress slider (OWNER-DECISIONS 256): the longest ride, in metres,"
-            " the search kept to, the rider's own or the default."
+            "At the top of the stress slider (OWNER-DECISIONS 271): the rider's target distance,"
+            " in metres; null where they set none."
         ),
     )
-    max_distance_set: bool | None = Field(
-        default=None, description="Whether the rider set `max_distance_m` (else the default)."
+    target_distance_set: bool | None = Field(
+        default=None, description="Whether the rider set `target_distance_m`."
+    )
+    ceiling_m: float | None = Field(
+        default=None,
+        description=(
+            "The longest the search would go, in metres: 1.25 times the target distance, or"
+            " with no target 1.6 times the router's own route (OWNER-DECISIONS 268, 271)."
+        ),
     )
     fits: bool | None = Field(
         default=None,
         description=(
-            "Whether the route is within `max_distance_m`. False only where no route that"
-            " short was found: the shortest found is answered, and `limited` is `max_distance`."
+            "Whether the route is within `target_distance_m` (null with no target). False"
+            " where the extra miles bought enough stress, or where no route that short was"
+            " found (`limited` is then `target_distance`: the least stressful found)."
+        ),
+    )
+    over_target_m: float | None = Field(
+        default=None,
+        description=(
+            "How far past the target distance the route is, in metres (0 within it; null"
+            " with no target). The planner always says it, miles first (OWNER-DECISIONS 271)."
         ),
     )
     fitted_at: int | None = Field(
         default=None,
         description=(
-            "Where the router's own route was past the longest ride, the traffic position"
+            "Where the router's own route was past the target distance, the traffic position"
             " (0-100) of the first route that fits it: a busier route than the ride type's own."
         ),
     )
@@ -798,6 +819,13 @@ class CandidateOut(RouteBody):
     so the client draws and describes it as it does the answer."""
 
     rank: int = Field(description="2 or more: its place in the order of the stress levels.")
+    over_target_m: float | None = Field(
+        default=None,
+        description=(
+            "How far past the rider's target distance this route is, in metres (0 within it;"
+            " null with no target), OWNER-DECISIONS 271."
+        ),
+    )
 
 
 class RouteOut(RouteBody):
@@ -810,9 +838,10 @@ class RouteOut(RouteBody):
             "At the top of the stress slider (OWNER-DECISIONS 265), up to three other routes"
             " to choose from, ranked after this one by the same order (LTS 4 and Avoid plus"
             " very high stress junctions, then LTS 3 plus higher stress junctions, then the"
-            " distance the Hills slider weighs): each within the longest ride and no more than"
-            " a near-tie worse than this one, and meaningfully different from it and from each"
-            " other (less than 60% of the same road, or 5 mi of different road). Null where"
+            " distance the Hills slider weighs): each within the ceiling, no further past the"
+            " target distance than this one, no more than a near-tie worse than it, and"
+            " meaningfully different from it and from each other (less than 70% of the same"
+            " road, or 5 mi of different road). Null where"
             " there are none: a trip with one obvious corridor has one route. Nothing scores"
             " scenery; the rider judges that from the map."
         ),
@@ -1022,7 +1051,7 @@ def _plan(request, body: RouteIn, response: HttpResponse, long_ride: bool, long_
             carrying=body.carrying,
             assist=body.assist,
             avoid_gravel=body.avoid_gravel,
-            max_distance_m=body.max_distance_m,
+            target_distance_m=body.target_distance_m,
             system_weight_kg=body.system_weight_kg,
             loop=body.loop,
         )

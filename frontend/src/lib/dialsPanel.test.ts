@@ -95,9 +95,9 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.match(near, /^Calm detour: up to about 8\.5 mi \(13\.7 km\) of extra riding for every mile of busy road \(LTS 3\)/);
   assert.match(near, /Twice that for a heavy-traffic road \(LTS 4\)\. Three times that for a road best avoided\./);
   assert.match(near, /many times the straight-line distance/);
-  // The very top has no rate (OWNER-DECISIONS 256, 257): the least stressful route within the longest ride.
+  // The very top has no rate (OWNER-DECISIONS 256, 257, 271): the least stressful route towards the target distance.
   const top = panelView("default", dials, { ...dials, stress: 100 }).traffic.note ?? "";
-  assert.match(top, /^Calmest: finds the least stressful route within your longest ride/);
+  assert.match(top, /^Calmest: finds the least stressful route towards your target distance/);
   assert.match(top, /heavy-traffic roads \(LTS 4\) and very high stress junctions/);
   assert.match(top, /busy roads \(LTS 3\) and higher stress junctions/);
   assert.match(top, /Hills slider\. Then it takes the shorter way\./);
@@ -113,7 +113,7 @@ test("no note says the planner favors trails (OWNER-DECISIONS 257 supersedes 202
   // A quiet street counts the same as a trail: Trailmaxxing's note is the top's, as every ride type's.
   const dials = startDials("trailmaxxing");
   const note = panelView("trailmaxxing", dials).traffic.note ?? "";
-  assert.match(note, /^Calmest: finds the least stressful route within your longest ride/);
+  assert.match(note, /^Calmest: finds the least stressful route towards your target distance/);
   assert.match(note, /A quiet street counts the same as a trail\./);
   assert.equal(panelView("trailmaxxing", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   for (const preset of PRESETS) {

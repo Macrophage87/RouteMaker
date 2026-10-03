@@ -47,15 +47,18 @@ answer can say a calm route was looked for and not found.
 
 At the top of the slider (`presets.maxcalm_for`, OWNER-DECISIONS 256 and 257,
 FOLLOWUP-LONG-CALM) the rate is gone. The search keeps every candidate within the
-rider's longest ride (`Context.max_m`; the default is `presets.default_max_m` of
-the router's own route) and prefers the one with the least stress, in this order:
-the "top" figure (metres of LTS 4 and Avoid plus the cost of each very high stress
-junction, OWNER-DECISIONS 258 and 259), then the "second" (metres of LTS 3 plus the
-cost of each higher stress junction, 260), then the hills preference (261), then
-distance (`MAXCALM_STEPS`, `better`); a candidate longer than the longest ride is
-never taken, and the router's own price for the route, and any credit for trail,
-do not come into it. A trip past the working span (`REFINE_MAX_SPAN_M`) is planned leg by
-leg (`refine_long`).
+ceiling (`Context.ceiling_m`: 1.25 times the rider's target distance, OWNER-DECISIONS
+271, or 1.6 times the router's own route where they set none, 268) and prefers the
+one with the least stress, in this order: the "top" figure (metres of LTS 4 and Avoid
+plus the cost of each very high stress junction, OWNER-DECISIONS 258 and 259), then
+the "second" (metres of LTS 3 plus the cost of each higher stress junction, 260), then
+the hills preference (262), then distance (`MAXCALM_STEPS`, `better`). Extra distance
+has diminishing returns (268, `worth_it`): a longer candidate is taken only where the
+stress it saves pays for the miles it adds (`WORTH_DEFAULT`; past the rider's target
+the stricter `WORTH_OVER_TARGET`, and up to the target nothing). A candidate past the
+ceiling is never taken, and the router's own price for the route, and any credit for
+trail, do not come into it. A trip past the working span (`REFINE_MAX_SPAN_M`) is
+planned leg by leg (`refine_long`).
 """
 
 from __future__ import annotations
@@ -250,10 +253,16 @@ class Context:
     # seek keeps excluding (set by the search).
     kept_excludes: list = field(default_factory=list)
     # The top of the slider (`presets.maxcalm_for`): candidates are ranked by
-    # `better`, not by the score, and none longer than `max_m` metres is taken
-    # (None: no limit, as below the top).
+    # `better`, not by the score, and none longer than `ceiling_m` metres is taken
+    # (None: no limit, as below the top). `target_m` is the rider's target distance
+    # (OWNER-DECISIONS 271; None: none set), up to which distance costs nothing and
+    # past which it must buy stress at WORTH_OVER_TARGET; with none, every extra metre
+    # must buy it at WORTH_DEFAULT (268). `worth_rule` off: no such price (a long
+    # plan's legs, whose options are priced for the whole trip, `choose_options`).
     maxcalm: bool = False
-    max_m: float | None = None
+    ceiling_m: float | None = None
+    target_m: float | None = None
+    worth_rule: bool = True
     # Where this search must end, whatever its budgets say (set for a leg of a
     # long plan: its share of the time), and how long the exclusion rounds and
     # the seek may take after the route is read.
@@ -300,6 +309,8 @@ class Analysis:
     # Metres of LTS 4 and Avoid, and of LTS 3, as the classes say them.
     lts4_m: float = 0.0
     lts3_m: float = 0.0
+    # Of `lts4_m`, the metres of Avoid (the diminishing-returns weights tell them apart).
+    avoid_m: float = 0.0
     # The route's effort-equivalent distance, metres (`routemaker.effort`,
     # OWNER-DECISIONS 262, 263): its length weighted by the grade it rides, which
     # the Hills slider blends with the actual distance.
@@ -351,7 +362,7 @@ def level3(read: Analysis, ctx: Context) -> float:
     detent, where it is the actual distance, and 1 at full avoid. Right of the
     detent more effort is better, which the search does not run for
     (`routing._refine_limit`, "seeking"); `Context.hills_seek_weight` is the hook
-    FOLLOWUP-HILLS-TOLERATE (242) will use. The longest ride is in actual metres,
+    FOLLOWUP-HILLS-TOLERATE (242) will use. The target distance is in actual metres,
     not these."""
     w = ctx.hills_weight
     effort = read.effort_m or read.length_m
@@ -374,13 +385,82 @@ def junction_cost_m(events: list | None, severity: str) -> float:
 MAXCALM_STEPS = (15.0, 50.0, 50.0)
 
 
-def better(read: Analysis, best: Analysis, ctx: Context) -> bool:
-    """Whether `read` is to replace `best`: below the top of the slider, by the
-    score (IMPROVEMENT_EPS_S); at the top, by `MAXCALM_STEPS` down `Analysis.key`
-    (OWNER-DECISIONS 256: LTS 4 and Avoid first, then LTS 3, then the junctions,
-    then distance)."""
-    if not ctx.maxcalm:
-        return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S
+# Diminishing returns on extra distance (OWNER-DECISIONS 268, "Diminishing returns
+# (Recommended)": "extra distance is taken only when it buys a meaningful stress cut.
+# Roughly: at least 1 mi of LTS 3 saved per 5 mi added, LTS 4/Avoid and red junctions
+# weighted higher"). A longer candidate replaces a shorter one only where the stress
+# it saves (`stress_weight_m`: LTS 3-equivalent metres, LTS 4 and Avoid at the level
+# weights of WORTH_WEIGHTS, a red junction's cost at the LTS 4 weight and an orange one's
+# at the LTS 3 weight, 259 and 260) is at least the metres it adds divided by this:
+# - WORTH_DEFAULT where the rider set no target: 5 metres added per metre saved;
+# - WORTH_OVER_TARGET for the metres past the rider's target distance (271: "may
+#   exceed it when that buys a meaningful stress cut"), a stricter bar: 2.5;
+# - up to the rider's target, distance costs nothing (they asked for it).
+# Tunable; docs/DEVELOPMENT.md, "Long calm trips", has the measurements.
+WORTH_DEFAULT = 5.0
+WORTH_OVER_TARGET = 2.5
+# The level weights the stress saved is counted at: the standard 1, 2 and 3 for LTS 3,
+# LTS 4 and Avoid (`presets.EXPOSURE_STANDARD`), on every ride. Not the stress-averse
+# rides' 1, 8 and 16 (item 250), which the ranking does not need (it puts LTS 4 first
+# whatever the weight) and which here would let one red junction (8 x 3,000 ft, about
+# 4.5 mi of LTS 3) buy 23 mi of extra riding: measured, Union Station to Penn kept its
+# 73 mi default and went 12 mi past a 60 mi target with them (docs/DEVELOPMENT.md).
+WORTH_WEIGHTS = presets.EXPOSURE_STANDARD
+
+
+def stress_weight_m(read: Analysis, ctx: Context) -> float:
+    """A route's stress as one figure for the diminishing-returns rule (268), in
+    metres of LTS 3: its LTS 3, LTS 4 and Avoid metres at WORTH_WEIGHTS, plus its red
+    junctions' cost at the LTS 4 weight and its orange junctions' cost at the LTS 3
+    weight."""
+    w = WORTH_WEIGHTS
+    lts4_only = read.lts4_m - read.avoid_m
+    return (
+        w.lts3 * read.lts3_m
+        + w.lts4 * lts4_only
+        + w.avoid * read.avoid_m
+        + w.lts4 * read.red_m
+        + w.lts3 * read.orange_m
+    )
+
+
+def distance_charge_m(
+    from_m: float, to_m: float, ctx: Context, blended_m: float | None = None
+) -> float:
+    """The stress (metres of LTS 3, `stress_weight_m`) a route must save to be
+    `to_m` long rather than `from_m` (actual metres of the whole trip; 268, 271):
+    - with a target, nothing up to it and the actual metres past it over
+      WORTH_OVER_TARGET (the target is in actual miles, 262);
+    - with none, the metres added over WORTH_DEFAULT, as the Hills slider weighs
+      them (`blended_m`, the difference in `level3`; `to_m - from_m` where it is
+      not given), so a longer route that is less effort is not charged for it."""
+    if ctx.target_m is None:
+        added = to_m - from_m if blended_m is None else blended_m
+        return max(added, 0.0) / WORTH_DEFAULT
+    over = to_m - max(from_m, ctx.target_m)
+    return max(over, 0.0) / WORTH_OVER_TARGET
+
+
+def worth_it(shorter: Analysis, longer: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
+    """Whether `longer` saves enough stress over `shorter` for the distance it adds
+    (`distance_charge_m`). `rest_m` is the rest of the trip where the two are one leg
+    of it (the target is the whole trip's). Always, where the rule is off."""
+    if not ctx.worth_rule:
+        return True
+    charge = distance_charge_m(
+        shorter.length_m + rest_m,
+        longer.length_m + rest_m,
+        ctx,
+        level3(longer, ctx) - level3(shorter, ctx),
+    )
+    if charge <= 0.0:
+        return True
+    return stress_weight_m(shorter, ctx) - stress_weight_m(longer, ctx) >= charge
+
+
+def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
+    """Whether `read` ranks before `best` by `MAXCALM_STEPS` down `Analysis.key`
+    (OWNER-DECISIONS 258-262)."""
     for step, got, have in zip(MAXCALM_STEPS, read.key(ctx), best.key(ctx), strict=True):
         if have - got > step:
             return True
@@ -389,9 +469,24 @@ def better(read: Analysis, best: Analysis, ctx: Context) -> bool:
     return False
 
 
+def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) -> bool:
+    """Whether `read` is to replace `best`: below the top of the slider, by the
+    score (IMPROVEMENT_EPS_S); at the top, by `MAXCALM_STEPS` down `Analysis.key`
+    (`calmer`), with diminishing returns on the distance (`worth_it`): a longer
+    route must be calmer and worth its extra miles, and a shorter one replaces a
+    calmer longer one whose extra miles were not worth it. `rest_m`: see `worth_it`."""
+    if not ctx.maxcalm:
+        return read.score(ctx) < best.score(ctx) - IMPROVEMENT_EPS_S
+    if read.length_m > best.length_m:
+        return calmer(read, best, ctx) and worth_it(best, read, ctx, rest_m)
+    if calmer(read, best, ctx):
+        return True
+    return calmer(best, read, ctx) and not worth_it(read, best, ctx, rest_m)
+
+
 def too_long(length_m: float, ctx: Context) -> bool:
-    """Whether a route of `length_m` is past the longest ride."""
-    return ctx.max_m is not None and length_m > ctx.max_m
+    """Whether a route of `length_m` is past the ceiling (`Context.ceiling_m`)."""
+    return ctx.ceiling_m is not None and length_m > ctx.ceiling_m
 
 
 def locator(variant: str, deadline: routing.Deadline):
@@ -460,6 +555,7 @@ def analyse(
         marks=marks,
         lts4_m=stress["4"] + stress["5"],
         lts3_m=stress["3"],
+        avoid_m=stress["5"],
         effort_m=effort.effort_equivalent_m(
             routing.grade_profile(trip),
             float((trip.get("summary") or {}).get("length", 0.0)) * 1000.0,
@@ -878,9 +974,10 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             break
         share = left * spans[k] / sum(spans[j] for j in runnable[turn:])
         leg_stop = min(stop_at, now + max(share, trailseek.SEEK_LEG_MIN_S))
-        room = None if ctx.max_m is None else ctx.max_m - _trip_m(trip)
+        room = None if ctx.ceiling_m is None else ctx.ceiling_m - _trip_m(trip)
+        rest_m = 0.0 if count == 1 else _trip_m(trip) - _trip_m(leg_trip)
         got = _seek_leg(
-            k, leg_trip, incumbent, reference, leg_stop, ctx, seek, reference_lts4, room
+            k, leg_trip, incumbent, reference, leg_stop, ctx, seek, reference_lts4, room, rest_m
         )
         if got is not None:
             seek["taken"] = taken = True
@@ -922,11 +1019,17 @@ def _seek(best, best_trip, first_exposure, ctx: Context, info: dict, original=No
             seek["whole_trip"] = "overlap"
             seek["limited"] = seek["limited"] or "overlap"
             return best, best_trip
-        # And never past the longest ride.
+        # And never past the ceiling.
         if too_long(read.length_m, ctx):
             seek["taken"] = False
             seek["whole_trip"] = "too_long"
             seek["limited"] = seek["limited"] or "too_long"
+            return best, best_trip
+        # And the extra miles worth the stress they save (OWNER-DECISIONS 268, 271).
+        if ctx.maxcalm and read.length_m > best.length_m and not worth_it(best, read, ctx):
+            seek["taken"] = False
+            seek["whole_trip"] = "not_worth"
+            seek["limited"] = seek["limited"] or "not_worth"
             return best, best_trip
         # And never more LTS 4 than the router's first route (item 250).
         if more_lts4(read, ctx.first_lts4, ctx):
@@ -954,13 +1057,15 @@ def _seek_leg(
     seek: dict,
     reference_lts4=(),
     room_m: float | None = None,
+    rest_m: float = 0.0,
 ):
     """The seek on one leg: (reading, trip) of the leg if a candidate was kept,
     else None. `reference` is the leg's exposure as the router first gave it
     (the Traffic-wins guard's), and `reference_lts4` its LTS 4 and Avoid metres
     then, as a one-item list (the LTS 4 hold's, OWNER-DECISIONS 250). `room_m` is
     how many metres longer than the incumbent a candidate may be before the trip
-    is past the longest ride (None: no limit)."""
+    is past the ceiling (None: no limit), and `rest_m` the length of the rest of the
+    trip (the diminishing-returns rule is the whole trip's, `worth_it`)."""
     start, end = ctx.points[k][:2], ctx.points[k + 1][:2]
     span = haversine(Point(*start), Point(*end))
     shape = [
@@ -1093,7 +1198,7 @@ def _seek_leg(
                 tried["outcome"] = "more_lts4"
             elif room_m is not None and read.length_m - incumbent.length_m > room_m:
                 tried["outcome"] = "too_long"
-            elif better(read, current, ctx):
+            elif better(read, current, ctx, rest_m):
                 tried["outcome"] = "taken"
                 kept, current = (read, candidate), read
                 if ctx.options is not None:
@@ -1176,7 +1281,7 @@ def _wide(best, best_trip, first_exposure, stop_at, ctx: Context, info: dict):
 
 def _halves(targets: list[Target]) -> list[list[Target]]:
     """The first and the second half of a list of targets, for a round whose
-    whole set sent the route past the longest ride."""
+    whole set sent the route past the ceiling."""
     if len(targets) < 4:
         return []
     middle = len(targets) // 2
@@ -1222,9 +1327,9 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
         worst = [t for t in new if t.tier >= 4]
         if worst and len(worst) < len(new):
             attempts.append(excluded + worst)
-        if ctx.max_m is not None:
-            # A set that sends the route past the longest ride is tried again
-            # with less (each half of it).
+        if ctx.ceiling_m is not None:
+            # A set that sends the route past the ceiling is tried again with
+            # less (each half of it).
             attempts.extend(excluded + half for half in _halves(new))
         attempts = [a for a in attempts if frozenset(t.point for t in a) not in sent]
         if not attempts:
@@ -1245,14 +1350,14 @@ def _search(trip, best, first_exposure, stop_at, ctx: Context, info: dict):
                 candidate = answer.get("trip") or {}
                 if candidate.get("legs"):
                     if too_long(_trip_m(candidate), ctx):
-                        # Not read: it is past the longest ride, however calm.
+                        # Not read: it is past the ceiling, however calm.
                         over = True
                         candidate = None
                         continue
                     break
                 candidate = None
             if candidate is None:
-                info["limited"] = "max_distance" if over else "no_route"
+                info["limited"] = "target_distance" if over else "no_route"
                 break
             current = analyse(candidate, ctx, routing.Deadline(stop_at, ctx.deadline.per_call_s))
         except (routing.DeadlineExceeded, routing.RouterUnavailable):
@@ -1428,8 +1533,8 @@ def loop_refused(read: Analysis, ctx: Context) -> bool:
 def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
     """The plan's way back by a different way (OWNER-DECISIONS 266): the last leg of
     `trip` asked for again with points along the way out excluded, from all of them
-    to fewer (LOOP_THINNING) to none, every one asked; the whole within the longest
-    ride; the least stressful of those that share no more than LOOP_OVERLAP_OK of the
+    to fewer (LOOP_THINNING) to none, every one asked; the whole loop within the
+    ceiling; the least stressful of those that share no more than LOOP_OVERLAP_OK of the
     way out, else the one that shares the least. Where the way back is the way out whatever is
     excluded (LOOP_OUT_AND_BACK) the router's own route stays, `fallback` says so.
 
@@ -1507,7 +1612,7 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
         shared, back = return_overlap(whole)
         share = shared / back if back > 0 else 1.0
         ranked = (share > LOOP_OVERLAP_OK, whole.key(ctx) if share <= LOOP_OVERLAP_OK else share)
-        if best is None or ranked < best[0]:
+        if best is None or _loop_before(ranked, whole, best, ctx):
             best = (ranked, joined, whole, len(chosen), share)
     if best is None or best[4] >= LOOP_OUT_AND_BACK:
         info["fallback"] = "out_and_back"
@@ -1526,21 +1631,36 @@ def make_loop(trip: dict, ctx: Context) -> tuple[dict, dict]:
     return joined, info
 
 
+def _loop_before(ranked: tuple, whole: Analysis, best: tuple, ctx: Context) -> bool:
+    """Whether a way back (`ranked`, `whole`) is to be kept over `best`'s: one that
+    shares no more than LOOP_OVERLAP_OK before one that shares more; among those, at
+    the top of the slider, `better` (the stress order with diminishing returns on the
+    whole loop's distance, OWNER-DECISIONS 268 and 271), else the least stress by
+    `Analysis.key`; among the others, the least shared."""
+    if ranked[0] != best[0][0]:
+        return ranked[0] < best[0][0]
+    if not ranked[0] and ctx.maxcalm:
+        return better(whole, best[2], ctx)
+    return ranked < best[0]
+
+
 def _pct(shared: float, back: float) -> float | None:
     return round(100.0 * shared / back, 1) if back > 0 else None
 
 
 # The routes offered (OWNER-DECISIONS 265: "return up to 3-4 candidate routes, not one,
 # so the rider can pick the one they like"). There is no score for scenery: the rider
-# judges that from the map. A candidate must be within the longest ride, pass the hold,
+# judges that from the map. A candidate must be within the ceiling (and, where the rider
+# set a target, no further past it than the answer, OWNER-DECISIONS 271), pass the hold,
 # and be no worse than the answer by more than these bands (a near-tie on stress, where
 # the variety matters): the top figure by ALT_TOP_BAND_M (about 150 ft) and the second
 # by ALT_SECOND_BAND_M (about 1,000 ft). It must also be meaningfully different from
 # every candidate already chosen: it shares less than ALT_OVERLAP of the shorter one's
-# road by matched way length, or differs from it by at least ALT_DIFFERENT_M of road
-# (a different corridor over a stretch: 60% of a 58 mi route is never different).
+# road by matched way length (OWNER-DECISIONS 269, "Loosen a little (Recommended)": 70%,
+# from 60%), or differs from it by at least ALT_DIFFERENT_M of road (a different
+# corridor over a stretch: 70% of a 58 mi route is never different).
 ALT_MAX = 4
-ALT_OVERLAP = 0.60
+ALT_OVERLAP = 0.70
 ALT_DIFFERENT_M = 8_000.0
 ALT_TOP_BAND_M = 45.0
 ALT_SECOND_BAND_M = 300.0
@@ -1568,12 +1688,22 @@ def distinct_from(read: Analysis, chosen: list[Analysis]) -> bool:
     return True
 
 
+def over_answer(read: Analysis, answer: Analysis, ctx: Context) -> bool:
+    """Whether a candidate goes further past the rider's target distance than the
+    answer does (OWNER-DECISIONS 271: past the target only where it buys stress,
+    which a near-tie with the answer does not)."""
+    if ctx.target_m is None:
+        return False
+    return read.length_m > max(ctx.target_m, answer.length_m) + 0.5
+
+
 def pick_candidates(pool: list, ctx: Context, reference: list[float]) -> list:
     """The answer and up to `ctx.alternates` - 1 others from `pool`, a list of
-    (trip, reading) whose first is the answer: each within the longest ride and the
-    hold (against `reference`, the first route's top figure by leg), a near-tie with
-    the answer on stress, and meaningfully different from those already chosen, in the
-    order of `Analysis.key`."""
+    (trip, reading) whose first is the answer: each within the ceiling (and no further
+    past the rider's target than the answer, `over_answer`), the hold (against
+    `reference`, the first route's top figure by leg), a near-tie with the answer on
+    stress, and meaningfully different from those already chosen, in the order of
+    `Analysis.key`."""
     if not pool:
         return []
     answer = pool[0]
@@ -1585,6 +1715,7 @@ def pick_candidates(pool: list, ctx: Context, reference: list[float]) -> list:
         if (
             read.events is None
             or too_long(read.length_m, ctx)
+            or over_answer(read, answer[1], ctx)
             or more_lts4(read, reference, ctx)
             or read.top_m > answer[1].top_m + ALT_TOP_BAND_M
             or read.second_m > answer[1].second_m + ALT_SECOND_BAND_M
@@ -1600,7 +1731,7 @@ def pick_candidates(pool: list, ctx: Context, reference: list[float]) -> list:
 # device): the points along the chosen routes are excluded, every ALT_SAMPLE_M, none
 # within the search's endpoint clearance of an end or a stop, at most ALT_ASKS times
 # and ALT_BUDGET_S seconds, and a route is kept only if `pick_candidates` would pick it
-# (a near-tie on stress, within the longest ride, the hold, meaningfully different). A
+# (a near-tie on stress, within the ceiling, the hold, meaningfully different). A
 # route that fails the near-tie ends the asking: avoiding more only makes it busier.
 ALT_ASKS = 3
 ALT_BUDGET_S = 9.0
@@ -1676,26 +1807,30 @@ def combine(reads: list[Analysis]) -> Analysis:
         via_m=via,
         lts4_m=sum(r.lts4_m for r in reads),
         lts3_m=sum(r.lts3_m for r in reads),
+        avoid_m=sum(r.avoid_m for r in reads),
         effort_m=sum(r.effort_m for r in reads),
     )
 
 
 # What a metre of each level of `Analysis.key` is worth when a long plan shares the
-# longest ride out among its legs (`choose_options`): the levels in order of
-# magnitude, so a metre of the top figure is worth a thousand of the second.
+# detour out among its legs (`choose_options`): the levels in order of magnitude, so a
+# metre of the top figure is worth a thousand of the second. This orders the upgrades;
+# whether one is worth its miles at all is the diminishing-returns rule
+# (`stress_weight_m`, `distance_charge_m`).
 CHOICE_WEIGHTS = (1000.0, 1.0, 0.01)
 
 
 def frontier(options: list, ctx: Context) -> list:
     """The options a leg offers, as a chain from the shortest to the longest in which
-    each is `better` than the one before: the first route and every candidate better
-    than it, with those no calmer than a shorter one left out. Each is (trip, reading)."""
+    each is `calmer` than the one before: the first route and every candidate calmer
+    than it, with those no calmer than a shorter one left out. Each is (trip, reading).
+    Whether an upgrade is worth its miles is the whole trip's to say (`choose_options`)."""
     first = options[0]
-    valid = [first] + [o for o in options[1:] if better(o[1], first[1], ctx)]
+    valid = [first] + [o for o in options[1:] if calmer(o[1], first[1], ctx)]
     valid.sort(key=lambda o: o[1].length_m)
     chain = [valid[0]]
     for option in valid[1:]:
-        if better(option[1], chain[-1][1], ctx):
+        if calmer(option[1], chain[-1][1], ctx):
             chain.append(option)
     return chain
 
@@ -1706,14 +1841,16 @@ def _benefit(a: Analysis, b: Analysis, ctx: Context) -> float:
 
 
 def choose_options(
-    chains: list, firsts_m: list[float], max_m: float | None, ctx: Context, fixed_m: float = 0.0
+    chains: list, firsts_m: list[float], ceiling_m: float | None, ctx: Context, fixed_m: float = 0.0
 ) -> list:
     """The index in each leg's chain to answer, so that the legs together are within
-    `max_m` (None: no limit) and as calm as the longest ride allows. Each leg starts at
-    its first route (or the shortest option that beats it, which costs nothing), and the
-    metres of detour then go where they buy the most, by the benefit of each upgrade
+    `ceiling_m` (None: no limit) and as calm as the extra miles are worth. Each leg starts
+    at its first route (or the shortest option that beats it, which costs nothing), and
+    the metres of detour then go where they buy the most, by the benefit of each upgrade
     per metre it adds: the best leg's, then the next, until what is left buys nothing.
-    `fixed_m` is the length of the legs that offer no choice, which count against the limit."""
+    An upgrade is taken only where the stress it saves pays for its miles at the whole
+    trip's length (`distance_charge_m`, OWNER-DECISIONS 268 and 271). `fixed_m` is the
+    length of the legs that offer no choice, which count against the limit."""
     pos = []
     for chain, first_m in zip(chains, firsts_m, strict=True):
         shorter = [i for i, o in enumerate(chain) if o[1].length_m <= first_m + 0.5]
@@ -1725,10 +1862,15 @@ def choose_options(
             now = chain[pos[j]][1]
             for k in range(pos[j] + 1, len(chain)):
                 added = chain[k][1].length_m - now.length_m
-                if max_m is not None and total + added > max_m:
+                if ceiling_m is not None and total + added > ceiling_m:
                     continue
                 gain = _benefit(now, chain[k][1], ctx)
                 if gain <= 0:
+                    continue
+                saved = stress_weight_m(now, ctx) - stress_weight_m(chain[k][1], ctx)
+                blended = level3(chain[k][1], ctx) - level3(now, ctx)
+                charge = distance_charge_m(total, total + added, ctx, blended)
+                if charge > 0.0 and saved < charge:
                     continue
                 ratio = gain / max(added, 1.0)
                 if best is None or ratio > best[0]:
@@ -1775,10 +1917,11 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     busy road to avoid are searched one at a time, the worst first (LTS 4 and
     Avoid, then LTS 3), each with its share of the time left, by its weight, and
     the legs the time does not reach keep the router's route. Each leg's search may
-    use all the detour the longest ride leaves the whole (it keeps every
-    candidate it reads), and the detour is then shared out where it buys the
-    most (`choose_options`), so that the whole is never past the longest ride and
-    no leg spends metres another could use better. The legs are put back
+    use all the detour the ceiling leaves the whole (it keeps every candidate it
+    reads, with no price on distance of its own), and the detour is then shared out
+    where it buys the most and is worth its miles for the whole trip
+    (`choose_options`), so that the whole is never past the ceiling and no leg
+    spends metres another could use better. The legs are put back
     together as one trip. If the whole is not as calm as the router's own route
     (LTS 4 and Avoid first, then LTS 3), or nothing changed, the router's own
     route is answered. `info["long"]` says what each leg did."""
@@ -1858,10 +2001,10 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     caps: list[float | None] = [None] * len(legs)
     offered: list[list | None] = [None] * len(legs)
     first_tops: list[float | None] = [None] * len(legs)
-    # The detour the longest ride leaves the whole, which each leg may use on its own.
+    # The detour the ceiling leaves the whole, which each leg may use on its own.
     slack = 0.0
-    if ctx.max_m is not None:
-        slack = max(ctx.max_m - sum(_trip_m(t) for t in firsts), 0.0)
+    if ctx.ceiling_m is not None:
+        slack = max(ctx.ceiling_m - sum(_trip_m(t) for t in firsts), 0.0)
     weights = [LONG_LTS4_PRIORITY * r.lts4_m + r.lts3_m for r in reads]
     order = sorted(
         (j for j in range(len(legs)) if weights[j] > 0),
@@ -1877,7 +2020,7 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             limited = "time"
             continue
         cap = None
-        if ctx.max_m is not None:
+        if ctx.ceiling_m is not None:
             cap = _trip_m(firsts[j]) + slack
         sub = dataclasses.replace(
             ctx,
@@ -1885,7 +2028,9 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
             points=[_point_of(legs[j]["a"]), _point_of(legs[j]["b"])],
             first_lts4=[],
             kept_excludes=[],
-            max_m=cap,
+            ceiling_m=cap,
+            target_m=None,
+            worth_rule=False,
             options=[],
             alternates=0,
             stop_at=now + share,
@@ -1898,12 +2043,12 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
         offered[j] = sub.options
         first_tops[j] = sum(sub.first_lts4) if sub.first_lts4 else None
         long["searched"] += 1
-    # The longest ride shared out among the legs that were searched.
+    # The detour shared out among the legs that were searched.
     searched = [j for j in range(len(legs)) if offered[j]]
     chains = [frontier(offered[j], ctx) for j in searched]
     fixed_m = sum(_trip_m(firsts[j]) for j in range(len(legs)) if j not in searched)
     chosen = (
-        choose_options(chains, [_trip_m(firsts[j]) for j in searched], ctx.max_m, ctx, fixed_m)
+        choose_options(chains, [_trip_m(firsts[j]) for j in searched], ctx.ceiling_m, ctx, fixed_m)
         if searched
         else []
     )
@@ -1939,7 +2084,7 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     lts3 = sum(a.lts3_m for a in finals)
     length = sum(_trip_m(t) for t in results)
     # The router's own route is answered if nothing changed, or if what is put
-    # together is not as calm as it (or is past the longest ride).
+    # together is not as calm as it (or is past the ceiling).
     # LTS 4 a leg took on to avoid a red junction (the hold allows it,
     # OWNER-DECISIONS 259) is not counted against the whole.
     traded = sum(max(0.0, f.lts4_m - r.lts4_m) for f, r in zip(finals, reads, strict=True))
