@@ -9,8 +9,11 @@
 #   install-boot-unit.sh uninstall         disable and remove the unit
 #   install-boot-unit.sh policy no|unless-stopped
 #                                          `docker update --restart=...` on the
-#                                          running project containers: changes the
-#                                          policy in place, no restart. Do this
+#                                          project's containers (the project is
+#                                          COMPOSE_PROJECT_NAME from .env): changes
+#                                          the policy in place, no restart. The
+#                                          one-shot migrate container is skipped:
+#                                          compose gives it `no` either way. Do this
 #                                          once so the NEXT reboot does not race.
 #   install-boot-unit.sh --help
 #
@@ -25,6 +28,7 @@ UNIT_DIR=${BOOT_UNIT_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user}
 LOG_DIR=${BOOT_LOG_DIR:-/home/steph/rmdata/boot}
 USER_NAME=${USER:-$(id -un)}
 DOCKER=${BOOT_DOCKER:-docker}
+ENV_FILE=${BOOT_ENV_FILE:-$REPO_DIR/.env}
 
 usage() { sed -n '2,/^set -E/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; }
 
@@ -92,12 +96,38 @@ cmd_uninstall() {
 cmd_policy() {
   local p=${1:-}
   case "$p" in no | unless-stopped) ;; *) echo "usage: $0 policy no|unless-stopped" >&2; exit 64 ;; esac
-  local ids
-  ids=$("$DOCKER" ps -aq --filter label=com.docker.compose.project=routemaker </dev/null)
-  [ -n "$ids" ] || { echo "no routemaker containers found"; return 0; }
+  local project lines ids
+  project=$(project_name) || exit 1
+  # Only this project's containers (never e.g. crrev-pg34), and not migrate.
+  lines=$("$DOCKER" ps -a --filter "label=com.docker.compose.project=$project" \
+    --format '{{.ID}} {{.Label "com.docker.compose.service"}}' </dev/null)
+  ids=$(awk '$1 != "" && $2 != "migrate" { print $1 }' <<<"$lines")
+  [ -n "$ids" ] || { echo "no $project containers found"; return 0; }
   # shellcheck disable=SC2086
   "$DOCKER" update --restart="$p" $ids </dev/null
-  echo "restart policy set to '$p' on: $(echo $ids | wc -w) containers (no restart needed)"
+  echo "restart policy set to '$p' on $(echo $ids | wc -w) $project containers, migrate left at 'no' (no restart needed)"
+}
+
+# env_get NAME: one value from .env without sourcing it (same rules as start-stack.sh).
+env_get() {
+  local v
+  v=$(grep -E "^[[:space:]]*$1=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)
+  v=${v%%[[:space:]]#*}
+  v=${v#\"}
+  v=${v%\"}
+  v=${v#\'}
+  v=${v%\'}
+  printf '%s' "$v"
+}
+project_name() {
+  local p
+  p=$(env_get COMPOSE_PROJECT_NAME)
+  [ -n "$p" ] || { echo "COMPOSE_PROJECT_NAME is not set in $ENV_FILE; refusing to guess the project" >&2; return 1; }
+  if [ -n "${COMPOSE_PROJECT:-}" ] && [ "$COMPOSE_PROJECT" != "$p" ]; then
+    echo "COMPOSE_PROJECT=$COMPOSE_PROJECT but $ENV_FILE says COMPOSE_PROJECT_NAME=$p; refusing" >&2
+    return 1
+  fi
+  printf '%s' "$p"
 }
 
 case "${1:-}" in

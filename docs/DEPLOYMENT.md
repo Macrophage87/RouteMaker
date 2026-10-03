@@ -1439,48 +1439,89 @@ empty cluster looks healthy.
    override file was rejected: any compose command run without `-f` would
    silently drop it and recreate containers with the old policy.
    The cost on this host: a container that crashes stays down until someone
-   starts it (`scripts/boot/start-stack.sh` is safe to rerun, see below).
+   starts it again (see `--warm-only` below).
 2. `scripts/boot/start-stack.sh`, run at boot by the systemd user unit
-   `routemaker-boot.service`, starts the stack in order:
-   waits (bounded) for Docker and every bind directory; checks that Docker sees
-   `postgres/PG_VERSION`; stops api/worker/rebuild and force-recreates postgis
-   alone (`up -d --no-deps --force-recreate`); waits for healthy; requires
-   migrations >= 68 and `live.segment` >= 1,000,000 rows, and **aborts without
-   starting anything else** if not (the bind-race signature); then caddy, the
-   four routers, api, worker, rebuild, photon; then route, geocode and tile must
-   return 200. Logs: `/home/steph/rmdata/boot/` (`latest.log`, `last-status`).
-   It never runs a plain `docker compose up`, never touches Docker Desktop or
-   WSL, and never uses sudo.
+   `routemaker-boot.service`, starts the stack in this order:
+   1. Wait, within one shared budget (900 s), for Docker to answer and for every
+      bind directory to exist.
+   2. Decide WARM or COLD. WARM means postgis is running, healthy and sane; the
+      sanity query is tried 3 times about 15 s apart, each bounded by a timeout,
+      before it counts as failed. Anything else is COLD.
+   3. COLD only: write a fresh random token to `${DATA_ROOT}/.boot-token` and
+      have a throwaway read-only container (the local postgis image, no pull,
+      no network) read it back through a bind, then check that it sees
+      `postgres/PG_VERSION`. A phantom view of the path cannot hold a token
+      written seconds earlier, even if it holds an old cluster from an earlier
+      race. Nothing has been stopped yet if this fails.
+   4. COLD only: stop api, worker and rebuild; force-recreate postgis alone
+      (`up -d --no-deps --force-recreate`); wait for healthy; require migrations
+      >= 68 and `live.segment` >= 1,000,000 rows, and **abort without starting
+      anything else** if not (the bind-race signature).
+   5. Start caddy, the four routers, api, worker, rebuild, photon (recreated when
+      COLD, only the stopped ones when WARM).
+   6. Route, geocode and the stress tile must return 200, and the tile must not
+      be empty.
 
-If postgis is already running, healthy and sane (a warm stack), the script only
-starts services that are not running and recreates nothing, so it is safe to
-run by hand: `scripts/boot/start-stack.sh --dry-run` first to see what it would
-do (read-only), then without the flag. `--force-recreate-all` is the one option
-that restarts a running rebuild.
+   Logs: `/home/steph/rmdata/boot/` (`latest.log`, `last-status`, which reads
+   `RUNNING` while a run is in progress and `OK` or `FAILED` after it). It never
+   runs a plain `docker compose up`, never touches Docker Desktop or WSL, and
+   never uses sudo. It reads `COMPOSE_PROJECT_NAME` from `.env` and refuses to
+   run if that is missing or disagrees with `COMPOSE_PROJECT` in the
+   environment, so it cannot start a second stack on the same `DATA_ROOT`.
+
+**Running it by hand.** On a warm stack it only starts services that are not
+running and recreates nothing. It is not risk-free on a live stack, though: if
+postgis fails its sanity query three times (for example under the memory
+squeeze), the script takes the COLD path, which stops api, worker and rebuild
+and recreates everything. It refuses COLD while rebuild is running unless
+`--force-recreate-all` is given. So look first with
+`scripts/boot/start-stack.sh --dry-run` (read-only; it prints the mode and what
+it would do), and run it without the flag only if the dry run says WARM or you
+mean a full restart. A second run while one is in progress is refused and
+writes nothing.
+
+`--warm-only` is for a later watchdog timer: it never takes the COLD path. If
+postgis is running, healthy and sane it starts the services that are stopped;
+otherwise it exits 3 and changes nothing.
 
 Tune the expectations with `BOOT_EXPECT_MIGRATIONS` (default 68; raise it when a
 migration lands) and `BOOT_MIN_SEGMENTS` (default 1000000).
 
-**Install** (as the user, from the checkout that serves the stack):
+**Install** (as the user, from the checkout that serves the stack). Do the whole
+list in one sitting, before the next reboot: after `policy no`, nothing starts
+the stack at boot until the unit is installed and linger is on.
 
 ```sh
 scripts/boot/install-boot-unit.sh policy no      # in place, no restart: stops the NEXT boot racing
-echo 'RESTART_POLICY=no' >> .env                 # so later recreates keep it
+grep -q '^RESTART_POLICY=' .env || printf 'RESTART_POLICY=no\n' >> .env   # so later recreates keep it
+scripts/boot/start-stack.sh --dry-run            # read-only: should say mode: WARM
 scripts/boot/install-boot-unit.sh install        # renders, verifies, enables; does not start
 sudo loginctl enable-linger steph                # the one sudo step: run the unit with no login
 scripts/boot/install-boot-unit.sh status         # unit, linger, last result, log tail
 ```
 
+`policy` changes only containers labelled with this project, and leaves the
+one-shot `migrate` container at `no`.
+
+**On the first reboot after installing**, check that the unit really ran:
+
+```sh
+uptime -s                                        # when the distro booted
+cat /home/steph/rmdata/boot/last-status          # OK or FAILED, with a time after the boot
+journalctl --user -u routemaker-boot.service -b --no-pager | tail -n 20
+```
+
+`last-status` should carry a time after the boot, and the journal should show
+the run for this boot. If neither does, the distro or its user manager did not
+start the unit. Only then consider a Windows logon task that starts the distro,
+for example
+`schtasks /Create /TN RouteMakerWSL /SC ONLOGON /TR "wsl.exe -d Ubuntu-26.04 --exec /bin/true"`.
+That is a contingency, untested here, and a persistent Windows-side change for
+the owner to approve. Docker Desktop's WSL integration normally starts the
+distro already.
+
 Remove: `scripts/boot/install-boot-unit.sh uninstall`, delete `RESTART_POLICY=no`
 from `.env` and run `scripts/boot/install-boot-unit.sh policy unless-stopped`.
-
-**Does WSL itself start at login?** The unit runs when the distro boots, and
-nothing in this repository starts the distro. If Docker Desktop's WSL
-integration for Ubuntu does not start it at logon, add a Windows logon task that
-starts it, for example
-`schtasks /Create /TN RouteMakerWSL /SC ONLOGON /TR "wsl.exe -d Ubuntu-26.04 --exec /bin/true"`
-(untested here; the distro must also stay up, which a running systemd user
-manager with linger normally ensures).
 
 Tests: `python3 -m unittest tests.test_boot_scripts` (fake `docker` and `curl`,
 a temporary DATA_ROOT; nothing live is touched).

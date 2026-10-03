@@ -12,9 +12,19 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=@REPO@
 ExecStart=@REPO@/scripts/boot/start-stack.sh
-# The script bounds its own waits (Docker/paths 600 s, postgis 300 s, smoke
-# 300 s); this is the backstop above their sum.
-TimeoutStartSec=1800
+# Worst case of the script's own bounds, in seconds (defaults):
+#   Docker + bind paths + bind check, one shared budget   900
+#     plus the last probe running over it (3 x 60) + poll  185
+#   two 30 s ps snapshots before the mode is decided        60
+#   postgis sanity, 3 tries of a 60 s exec + 2 x 15 s gaps 210
+#   up to 12 mutating compose calls of at most 120 each  1440
+#   postgis healthy 300 + one 30 s ps + poll               335
+#   final sanity exec                                       60
+#   smoke 300 + one round of 3 x 90 s requests + poll      575
+#   total                                                 3765
+# This backstop sits above that. If it fires, systemd sends SIGTERM and the
+# script records FAILED in last-status before it exits.
+TimeoutStartSec=4200
 # A failure is deliberate (empty postgis, missing paths): do not retry in a loop.
 Restart=no
 
