@@ -45,6 +45,10 @@ import { addRailStations, setRailVisibility } from "./lib/railLayer.ts";
 import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
+import federalLandUrl from "./federal-data/federal-land.json?url";
+import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalMap } from "./lib/federalLand.ts";
+import type { FederalStatus } from "./lib/federalLegend.ts";
+import { attachFederalInteraction } from "./federalInteraction.ts";
 import type { When } from "./lib/dials.ts";
 import {
   CARD_CLOSE_LABEL,
@@ -111,6 +115,9 @@ interface Props {
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
   rail: RailVisibility;
+  /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
+  federalVisible: boolean;
+  onFederalStatus: (status: FederalStatus) => void;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat) => void;
 }
@@ -256,6 +263,8 @@ export function MapView(props: Props) {
     return at >= 0 ? drawn[at].marker.getElement() : null;
   };
   const loaded = useRef(false);
+  /** Set once the map has loaded: puts the federal-land layers in line with the prop. */
+  const federalSync = useRef<(() => void) | null>(null);
   // The first route shown (a shared link, usually) is framed; after that the
   // map moves only when a route leaves the visible part of the map.
   const fitted = useRef(false);
@@ -319,7 +328,31 @@ export function MapView(props: Props) {
     // The rail stations' hover card and tap card (railInteraction.ts), once
     // their layers are on the map.
     let rail: ReturnType<typeof attachRailInteraction> | null = null;
+    let federal: ReturnType<typeof attachFederalInteraction> | null = null;
+    let federalLoading = false;
     const anyPopupOpen = () => popupsOpen(popup.current, rail);
+    /** Bring the federal-land layers in line with props.federalVisible, loading the data the first time. */
+    const syncFederal = () => {
+      const visible = callbacks.current.federalVisible;
+      if (map.getSource("federal-land")) {
+        setFederalVisibility(map, visible);
+        if (!visible) federal?.close();
+        return;
+      }
+      if (!visible || federalLoading) return;
+      federalLoading = true;
+      callbacks.current.onFederalStatus("loading");
+      void loadFederalLand(federalLandUrl).then((data) => {
+        federalLoading = false;
+        if (disposed) return;
+        if (!data) {
+          callbacks.current.onFederalStatus("unavailable");
+          return;
+        }
+        addFederalLand(map as unknown as FederalMap, data, callbacks.current.federalVisible, STRESS_SOURCE_ID);
+        callbacks.current.onFederalStatus("ready");
+      });
+    };
     /** The station under a pointer at `point` on the canvas, if any. */
     const stationAt = (point: { x: number; y: number }): StationFound | null => rail?.stationAt(point) ?? null;
     /** The leg and the spot on the line under a pointer at `point`, if it is on the line. */
@@ -594,6 +627,14 @@ export function MapView(props: Props) {
         pointCount: () => callbacks.current.points.length,
         onStationPoint: (role, point) => callbacks.current.onStationPoint(role, point),
       });
+      // The federal-land shading, for a Mass Ride (lib/federalLand.ts): fetched
+      // the first time it is shown, under the stress overlay and the route.
+      federal = attachFederalInteraction(map, {
+        visible: () => callbacks.current.federalVisible,
+        otherPopupOpen: () => anyPopupOpen(),
+      });
+      federalSync.current = () => syncFederal();
+      syncFederal();
       syncRoute(map, callbacks.current, fitted);
       callbacks.current.onReady(map);
       callbacks.current.onStressAvailability("checking");
@@ -610,6 +651,8 @@ export function MapView(props: Props) {
     return () => {
       disposed = true;
       rail?.close();
+      federal?.detach();
+      federalSync.current = null;
       stressCheck.cancel();
       if (hoverFrame) cancelAnimationFrame(hoverFrame);
       gesture.cancel();
@@ -845,6 +888,11 @@ export function MapView(props: Props) {
     if (!map || !loaded.current) return;
     setRailVisibility(map, RAIL_STATIONS, props.rail);
   }, [props.rail.metro, props.rail.marc]);
+
+  // The federal-land shading: on for a Mass Ride, off for any other ride type.
+  useEffect(() => {
+    federalSync.current?.();
+  }, [props.federalVisible]);
 
   return <div ref={container} className="map" role="region" aria-label="Map" />;
 }

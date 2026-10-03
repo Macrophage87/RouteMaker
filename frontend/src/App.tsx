@@ -28,6 +28,8 @@ import type { Dials } from "./lib/dials.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
+import { federalShown } from "./lib/federalLand.ts";
+import { FederalLandSection, type FederalStatus } from "./lib/federalLegend.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
 import { ROADWAY_LANES, StressZoomNotes } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
@@ -103,6 +105,10 @@ export function App() {
   const [stressVisible, setStressVisible] = useState(true);
   useStressStyle();
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
+  // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
+  // own switch, on by default, and whether its data has arrived.
+  const [federalOn, setFederalOn] = useState(true);
+  const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -699,6 +705,8 @@ export function App() {
         }}
         onCanvasFocus={(focused) => setCrosshair((c) => ({ ...c, canvas: focused }))}
         rail={rail}
+        federalVisible={federalShown(preset, federalOn)}
+        onFederalStatus={setFederalStatus}
         onStationPoint={placeStation}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
@@ -789,6 +797,10 @@ export function App() {
           </section>
 
           {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
+
+          {preset === "mass-ride" && (
+            <FederalLandSection on={federalOn} onChange={setFederalOn} status={federalStatus} />
+          )}
 
           <footer className="panel-footer">
             <p>
