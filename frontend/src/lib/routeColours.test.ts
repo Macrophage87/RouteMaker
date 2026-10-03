@@ -123,8 +123,8 @@ test("the legend lists this route's classes with their length, miles first", () 
 });
 
 test("with sections the casing is the route's blue and the one-colour line is hidden", () => {
-  assert.deepEqual(routePaint(true, false), { lineOpacity: 0, sectionOpacity: 1, casingColor: ROUTE_BLUE });
-  assert.deepEqual(routePaint(false, false), { lineOpacity: 1, sectionOpacity: 0, casingColor: ROUTE_CASING_PLAIN });
-  assert.deepEqual(routePaint(true, true), { lineOpacity: 0, sectionOpacity: 0.45, casingColor: ROUTE_BLUE });
+  assert.deepEqual(routePaint(true, false), { lineOpacity: 0, sectionOpacity: 1, haloOpacity: 1, casingColor: ROUTE_BLUE });
+  assert.deepEqual(routePaint(false, false), { lineOpacity: 1, sectionOpacity: 0, haloOpacity: 0, casingColor: ROUTE_CASING_PLAIN });
+  assert.deepEqual(routePaint(true, true), { lineOpacity: 0, sectionOpacity: 0.45, haloOpacity: 0.45, casingColor: ROUTE_BLUE });
   assert.equal(routePaint(false, true).lineOpacity, 0.45);
 });

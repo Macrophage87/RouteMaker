@@ -10,6 +10,10 @@
   --text: #16181d;
   --text-muted: #4b5260; /* 7.4:1 on --bg */
   --border: #cfd4dc;
+  /* The outline of a legend swatch and of the stress bar: a graphic the panel's
+     --border (1.49:1 on --bg) does not set apart. 3.97:1 on --bg, 3.60:1 on
+     --bg-soft (WCAG 1.4.11; stressContrast.test.ts). */
+  --swatch-border: #7a808c;
   --accent: #1d4ed8; /* 6.7:1 on --bg */
   --accent-text: #ffffff;
   --error-bg: #fdecec;
@@ -38,6 +42,7 @@
     --text: #eef0f3;
     --text-muted: #b9bfca; /* 9.2:1 on --bg */
     --border: #3d434e;
+    --swatch-border: #8b93a1; /* 5.4:1 on --bg, 4.65:1 on --bg-soft */
     --accent: #8ab4ff; /* 8.3:1 on --bg */
     --accent-text: #0b1733;
     --error-bg: #3a1717;
@@ -379,7 +384,7 @@ a {
   height: 16px;
   border-radius: 4px;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid var(--swatch-border);
 }
 
 .stress-seg {
@@ -508,7 +513,7 @@ a {
   width: 14px;
   height: 14px;
   border-radius: 3px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--swatch-border);
 }
 
 .stress-name {

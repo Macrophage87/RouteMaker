@@ -7,9 +7,26 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { LIGHT } from "@protomaps/basemaps";
-import { DEFAULT_PALETTE, FACILITIES, PALETTES, contrastRatio, relativeLuminance, tiersFor } from "./stressStyle.js";
+import {
+  ALLEY_MIN_ZOOM,
+  BESIDE_ROAD_MIN_ZOOM,
+  BUSY_MIN_TIER,
+  DEFAULT_PALETTE,
+  FACILITIES,
+  FAINT,
+  PALETTES,
+  SOLID_MIN_ZOOM,
+  contrastRatio,
+  faintEdgeColour,
+  relativeLuminance,
+  setAccessibility,
+  stressCasingLayers,
+  stressLayers,
+  tiersFor,
+} from "./stressStyle.js";
+import { paintAt } from "./testSupport/paintAt.ts";
 import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
-import { ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing } from "./lib/routeColours.ts";
+import { ROUTE_BLUE, ROUTE_CASING_CVD, routeCasing, routeClasses } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
@@ -215,4 +232,185 @@ test("cvd: the unrated colour is at least 20 CIEDE2000 from every tier and the t
   assert.ok(Math.abs(relativeLuminance(UNRATED_CVD_COLOUR) - relativeLuminance(UNRATED.color)) < 0.02);
   // Inside the route's casing it is 3:1.
   assert.ok(contrastRatio(UNRATED_CVD_COLOUR, ROUTE_CASING_CVD) >= 3);
+});
+
+// ---------------------------------------------------------------------------
+// Item 215 (WCAG 1.4.11, non-text contrast): the route line, the faint busy
+// roads and the swatch borders.
+// ---------------------------------------------------------------------------
+
+/** Run `body` with the accessibility switch on or off (a trial that leaves what is stored alone), then off again. */
+function withSwitch<T>(on: boolean, body: () => T): T {
+  setAccessibility(on, { remember: false });
+  try {
+    return body();
+  } finally {
+    setAccessibility(false, { remember: false });
+  }
+}
+
+/** The palette and strength a rider can reach: the default, plain; and the colour-blind-friendly one, which the switch draws stronger. */
+const REACHABLE = [
+  { name: DEFAULT_PALETTE, on: false },
+  { name: "cvd", on: true },
+];
+
+for (const { name, on } of REACHABLE) {
+  test(`${name}${on ? " (accessibility on)" : ""}: every route class is at least 3:1 from the halo under it`, () => {
+    withSwitch(on, () => {
+      const classes = routeClasses();
+      assert.equal(classes.length, 7, "the traffic-free path, five tiers and the unrated");
+      const failures: string[] = [];
+      for (const c of classes) {
+        const ratio = contrastRatio(c.color, c.halo);
+        if (ratio < FLOOR) failures.push(`${c.short} ${c.color} on ${c.halo}: ${ratio.toFixed(2)}:1`);
+      }
+      assert.deepEqual(failures, []);
+    });
+  });
+}
+
+test("the premise: the casing alone fails several classes, in both palettes", () => {
+  for (const { name, on } of REACHABLE) {
+    withSwitch(on, () => {
+      const casing = routeCasing();
+      const under = routeClasses().filter((c) => contrastRatio(c.color, casing) < FLOOR).map((c) => c.short);
+      assert.ok(under.length >= 2, `${name}: only ${under.join(", ")} fail the casing alone`);
+    });
+  }
+});
+
+test("no single casing colour can be 3:1 from every route class, so each class has its own halo", () => {
+  for (const { name, on } of REACHABLE) {
+    withSwitch(on, () => {
+      const lum = routeClasses().map((c) => relativeLuminance(c.color));
+      let best = 0;
+      // Contrast depends only on luminance, so scanning every luminance covers every colour.
+      for (let i = 0; i <= 1000; i += 1) {
+        const l = i / 1000;
+        const worst = Math.min(...lum.map((k) => (Math.max(l, k) + 0.05) / (Math.min(l, k) + 0.05)));
+        best = Math.max(best, worst);
+      }
+      assert.ok(best < FLOOR, `${name}: a casing could reach ${best.toFixed(2)}:1 from every class`);
+    });
+  }
+});
+
+test("a halo is dark under the light classes and white under the dark ones (never the blue)", () => {
+  for (const { on } of REACHABLE) {
+    withSwitch(on, () => {
+      for (const c of routeClasses()) {
+        assert.equal(relativeLuminance(c.halo) < 0.5, relativeLuminance(c.color) > 0.14, `${c.short}: ${c.color} on ${c.halo}`);
+        assert.notEqual(c.halo, ROUTE_BLUE);
+      }
+    });
+  }
+});
+
+test("the route's outer ring in the default palette (the blue) is 3:1 from every base-map surface", () => {
+  const failures: string[] = [];
+  for (const [name, colour] of Object.entries(baseMapSurfaces())) {
+    const ratio = contrastRatio(ROUTE_BLUE, colour);
+    if (ratio < FLOOR) failures.push(`${name} ${colour}: ${ratio.toFixed(2)}:1`);
+  }
+  assert.deepEqual(failures, []);
+});
+
+/** sRGB-space source-over compositing, as the map draws a translucent line. */
+function over(foreground: string, alpha: number, background: string): string {
+  const channel = (hex: string, i: number) => parseInt(hex.slice(1 + 2 * i, 3 + 2 * i), 16);
+  return `#${[0, 1, 2].map((i) => Math.round(channel(foreground, i) * alpha + channel(background, i) * (1 - alpha)).toString(16).padStart(2, "0")).join("")}`;
+}
+
+for (const { name, on } of REACHABLE) {
+  test(`${name}${on ? " (accessibility on)" : ""}: a faint line's dark edge is at least 3:1 from every surface of the base map`, () => {
+    withSwitch(on, () => {
+      const failures: string[] = [];
+      for (const tier of tiersFor(name, on)) {
+        const edge = faintEdgeColour(tier);
+        assert.ok(relativeLuminance(edge) < 0.05, `${tier.short}'s edge ${edge} is not dark`);
+        for (const [surface, colour] of Object.entries(baseMapSurfaces())) {
+          const ratio = contrastRatio(over(edge, FAINT.edgeOpacity, colour), colour);
+          if (ratio < FLOOR) failures.push(`${tier.short} edge on ${surface} ${colour}: ${ratio.toFixed(2)}:1`);
+        }
+      }
+      assert.deepEqual(failures, []);
+    });
+  });
+}
+
+test("the premise: a faint line alone, at the owner's 40%, is under 3:1 on the earth for the busy tiers, and it stays faint", () => {
+  const earth = baseMapSurfaces().earth;
+  const under = tiersFor(DEFAULT_PALETTE).filter((t: Tier) => contrastRatio(over(t.color, FAINT.opacity, earth), earth) < FLOOR);
+  assert.ok(under.length >= 2, under.map((t: Tier) => t.short).join(", "));
+  assert.equal(FAINT.opacity, 0.4);
+  assert.equal(FAINT.widthScale, 0.6);
+});
+
+test("the casing layers carry the edge exactly where the line is faint: z12-13 busy roads, a road beside a bikeway, an alley", () => {
+  const tiers = tiersFor(DEFAULT_PALETTE);
+  const casings = stressCasingLayers("s", undefined, tiers) as Array<{ id: string; paint: Record<string, unknown> }>;
+  const lines = stressLayers("s", undefined, tiers) as Array<{ id: string; paint: Record<string, unknown> }>;
+  tiers.forEach((tier: Tier, i: number) => {
+    const busy = tier.tier >= BUSY_MIN_TIER;
+    const states: Array<[string, Record<string, unknown>, number, boolean]> = [
+      ["plain road at z12", {}, SOLID_MIN_ZOOM - 2, busy],
+      ["plain road at z13", {}, SOLID_MIN_ZOOM - 1, busy],
+      ["plain road at z14", {}, SOLID_MIN_ZOOM, false],
+      ["beside a bikeway at z15", { separate_bikeway: true }, BESIDE_ROAD_MIN_ZOOM, busy],
+      ["alley at z16", { alley: true }, ALLEY_MIN_ZOOM, true],
+    ];
+    for (const [label, props, zoom, faint] of states) {
+      const where = `${tier.short} ${label}`;
+      const opacity = paintAt(casings[i], "line-opacity", props, zoom);
+      const gap = paintAt(casings[i], "line-gap-width", props, zoom);
+      const width = paintAt(casings[i], "line-width", props, zoom);
+      const colour = paintAt(casings[i], "line-color", props, zoom);
+      const lineWidth = paintAt(lines[i], "line-width", props, zoom) as number;
+      if (faint) {
+        assert.equal(paintAt(lines[i], "line-opacity", props, zoom), FAINT.opacity, where);
+        assert.equal(opacity, FAINT.edgeOpacity, where);
+        assert.equal(width, FAINT.edgePx, where);
+        assert.ok(Math.abs((gap as number) - lineWidth) < 1e-9, `${where}: the ring sits against the line (gap ${gap}, line ${lineWidth})`);
+        assert.equal(colour, faintEdgeColour(tier), where);
+      } else {
+        assert.equal(opacity, 1, where);
+        assert.equal(gap, 0, where);
+        assert.equal(width, tier.width + 2, where);
+        assert.equal(colour, tier.casing, where);
+      }
+    }
+    // An alley is not drawn below z16: nothing of its casing either.
+    assert.equal(paintAt(casings[i], "line-opacity", { alley: true }, ALLEY_MIN_ZOOM - 1), 0, `${tier.short} alley at z15`);
+  });
+});
+
+/** The panel and swatch colours of each theme, from styles.css. */
+function themeColours(): Array<{ theme: string; bg: string; soft: string; swatch: string; border: string }> {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  const pick = (block: string, name: string) => block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`))?.[1].toLowerCase() ?? "";
+  const light = css.slice(css.indexOf(":root {"), css.indexOf("@media (prefers-color-scheme: dark)"));
+  const darkStart = css.indexOf("@media (prefers-color-scheme: dark)");
+  const dark = css.slice(darkStart, css.indexOf("}", css.indexOf(":root {", darkStart)));
+  return [
+    { theme: "light", bg: pick(light, "--bg"), soft: pick(light, "--bg-soft"), swatch: pick(light, "--swatch-border"), border: pick(light, "--border") },
+    { theme: "dark", bg: pick(dark, "--bg"), soft: pick(dark, "--bg-soft"), swatch: pick(dark, "--swatch-border"), border: pick(dark, "--border") },
+  ];
+}
+
+test("swatch borders (switch off) are at least 3:1 from the panel in both themes, where --border was about 1.5:1", () => {
+  for (const t of themeColours()) {
+    for (const c of [t.bg, t.soft, t.swatch, t.border]) assert.match(c, /^#[0-9a-f]{6}$/, `${t.theme}: a colour was not read`);
+    assert.ok(contrastRatio(t.swatch, t.bg) >= FLOOR, `${t.theme} on --bg: ${contrastRatio(t.swatch, t.bg).toFixed(2)}:1`);
+    assert.ok(contrastRatio(t.swatch, t.soft) >= FLOOR, `${t.theme} on --bg-soft: ${contrastRatio(t.swatch, t.soft).toFixed(2)}:1`);
+    assert.ok(contrastRatio(t.border, t.bg) < 1.8, `the premise: ${t.theme}'s --border is ${contrastRatio(t.border, t.bg).toFixed(2)}:1`);
+  }
+});
+
+test("the legend swatch and the stress bar take their border from --swatch-border, not --border", () => {
+  const css = readFileSync(new URL("./styles.css", import.meta.url), "utf8");
+  for (const selector of [".swatch", ".stress-bar"]) {
+    const body = css.match(new RegExp(`\\n\\${selector} \\{([^}]*)\\}`))?.[1] ?? "";
+    assert.match(body, /border:\s*1px solid var\(--swatch-border\)/, selector);
+  }
 });

@@ -22,7 +22,24 @@ export interface RouteClass {
   short: string;
   label: string;
   color: string;
+  /** The thin ring between the section and the route's casing: a colour 3:1 from `color` (see ROUTE_HALO_PATH). */
+  halo: string;
 }
+
+/**
+ * The halo under the traffic-free violet: white, 10.9:1 from it. The route's
+ * casing is one colour for the whole route, and no one colour is 3:1 from
+ * every class (the calm tiers, the unrated grey and the amber are mid to
+ * light, the violet, LTS 4 and Avoid dark, so a casing that suits one half
+ * fails the other: the luminance a casing would need is at most 0.045 for the
+ * amber and at least 0.5 for the violet). So each section also carries a
+ * one-pixel halo of its own, dark under the light classes and white under the
+ * dark ones (the stress map's own casings, stressStyle.js), and the casing
+ * outside it is the route's identity, not the thing the section is read
+ * against (WCAG 1.4.11; stressContrast.test.ts holds every class to 3:1 from
+ * its halo in both palettes, plain and strengthened).
+ */
+export const ROUTE_HALO_PATH = "#ffffff";
 
 const PATH = FACILITIES.find((facility) => facility.facility === "path");
 
@@ -36,20 +53,24 @@ const PATH = FACILITIES.find((facility) => facility.facility === "path");
  */
 export function routeClasses(): readonly RouteClass[] {
   const none = unrated();
+  const tiers = currentTiers();
   return [
     {
       key: "path",
       short: "Traffic-free",
       label: "Off-road path, or a road closed to cars",
       color: PATH ? PATH.color : "#4c1d95",
+      halo: ROUTE_HALO_PATH,
     },
-    ...currentTiers().map((tier: { tier: number; short: string; label: string; color: string }) => ({
+    ...tiers.map((tier: { tier: number; short: string; label: string; color: string; casing: string }) => ({
       key: String(tier.tier) as RouteClassKey,
       short: tier.short,
       label: tier.label,
       color: tier.color,
+      halo: tier.casing,
     })),
-    { key: "unknown", short: none.short, label: none.label, color: none.color },
+    // The unrated grey is a mid colour: LTS 1's dark casing stands under it.
+    { key: "unknown", short: none.short, label: none.label, color: none.color, halo: tiers[0].casing },
   ];
 }
 
@@ -74,6 +95,7 @@ export function spanClass(span: Pick<StressSpan, "tier" | "facility">): RouteCla
 export interface RouteSection {
   key: RouteClassKey;
   color: string;
+  halo: string;
   coordinates: LonLat[];
 }
 
@@ -139,7 +161,7 @@ export function routeSections(
     if (previous && previous.key === cls.key) {
       previous.coordinates.push(...points.slice(1));
     } else if (points.length >= 2) {
-      sections.push({ key: cls.key, color: cls.color, coordinates: points });
+      sections.push({ key: cls.key, color: cls.color, halo: cls.halo, coordinates: points });
     }
   });
   return sections.length > 0 ? sections : null;
@@ -151,7 +173,7 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
     type: "FeatureCollection" as const,
     features: (sections ?? []).map((section) => ({
       type: "Feature" as const,
-      properties: { key: section.key, color: section.color },
+      properties: { key: section.key, color: section.color, halo: section.halo },
       geometry: { type: "LineString" as const, coordinates: section.coordinates },
     })),
   };
@@ -197,6 +219,8 @@ export function routeCasing(palette: string = currentPalette()): string {
 export const ROUTE_CASING_PLAIN = "#ffffff";
 export const ROUTE_LINE_WIDTH = 5;
 export const ROUTE_CASING_WIDTH = 9;
+/** The halo's width: a pixel wider each side than the section's line, inside the casing's own pixel. */
+export const ROUTE_HALO_WIDTH = 7;
 
 /**
  * How the three route layers are painted. With sections, the casing is the
@@ -210,11 +234,12 @@ export function routePaint(
   hasSections: boolean,
   stale: boolean,
   sectionCasing: string = routeCasing(),
-): { lineOpacity: number; sectionOpacity: number; casingColor: string } {
+): { lineOpacity: number; sectionOpacity: number; haloOpacity: number; casingColor: string } {
   const shown = stale ? 0.45 : 1;
   return {
     lineOpacity: hasSections ? 0 : shown,
     sectionOpacity: hasSections ? shown : 0,
+    haloOpacity: hasSections ? shown : 0,
     casingColor: hasSections ? sectionCasing : ROUTE_CASING_PLAIN,
   };
 }

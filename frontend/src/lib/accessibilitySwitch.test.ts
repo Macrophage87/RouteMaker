@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { parseSync } from "vite";
+import { paintAt } from "../testSupport/paintAt.ts";
 import {
   ACCESSIBILITY_PALETTE,
   ACCESSIBILITY_STORAGE_KEY,
@@ -402,7 +403,7 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
     // The overlay's layers, built after the flip.
     assert.deepEqual(stressLayers().map((l: { paint: Record<string, unknown> }) => l.paint["line-color"]), colours("cvd"));
     assert.deepEqual(
-      stressCasingLayers().map((l: { paint: Record<string, unknown> }) => l.paint["line-color"]),
+      stressCasingLayers().map((l) => paintAt(l, "line-color")),
       tiersFor("cvd", true).map((t: { casing: string }) => t.casing),
     );
     // The route's classes and spans.
@@ -417,7 +418,7 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
   });
   // And back, with nothing left over.
   assert.deepEqual(stressLayers().map((l: { paint: Record<string, unknown> }) => l.paint["line-color"]), colours("blended"));
-  assert.deepEqual(stressCasingLayers().map((l: { paint: Record<string, unknown> }) => l.paint["line-color"]), casings("blended"));
+  assert.deepEqual(stressCasingLayers().map((l) => paintAt(l, "line-color")), casings("blended"));
   assert.equal(spanClass({ tier: 3, facility: "none" }).color, PALETTES.blended[3].color);
   assert.equal(stressSegments({ "5": 1 }).find((s) => s.key === "5")?.color, PALETTES.blended[5].color);
 });
@@ -574,6 +575,7 @@ test("repaint wiring: the overlay's lines and casings, in colour and width, and 
       [
         ["line-color", JSON.stringify(layer.paint["line-color"])],
         ["line-width", JSON.stringify(layer.paint["line-width"])],
+        ...("line-gap-width" in layer.paint ? [["line-gap-width", JSON.stringify(layer.paint["line-gap-width"])]] : []),
       ],
       layer.id,
     );
@@ -581,9 +583,9 @@ test("repaint wiring: the overlay's lines and casings, in colour and width, and 
   for (const facility of FACILITIES) {
     assert.equal(paint.filter(([id]) => id === `facility-${facility.facility}`).length, 1, "each rail's width is set once");
   }
-  assert.equal(paint.length, TIERS.length * 4 + FACILITIES.length);
-  // Every call set a colour or a width and nothing else.
-  assert.ok(paint.every(([, name]) => name === "line-color" || name === "line-width"));
+  assert.equal(paint.length, TIERS.length * 5 + FACILITIES.length);
+  // Every call set a colour or a width (a casing's gap included) and nothing else.
+  assert.ok(paint.every(([, name]) => name === "line-color" || name === "line-width" || name === "line-gap-width"));
 });
 
 test("repaint wiring: a layer the map does not have (the overlay unavailable) is skipped, not an error", () => {
@@ -611,27 +613,29 @@ const ROUTE = {
 } as unknown as Parameters<typeof setRouteSections>[1];
 
 test("repaint wiring: the route's sections are cut again in the palette in use, with the casing and opacities set", () => {
-  let data: { features: Array<{ properties: { key: string; color: string } }> } | undefined;
+  let data: { features: Array<{ properties: { key: string; color: string; halo: string } }> } | undefined;
   const source = { setData: (d: object) => void (data = d as typeof data) };
   const { map, paint } = recordingMap([], source);
   withSwitch(true, () => setRouteSections(map as never, ROUTE, false));
   assert.deepEqual(
-    data?.features.map((f) => [f.properties.key, f.properties.color]),
+    data?.features.map((f) => [f.properties.key, f.properties.color, f.properties.halo]),
     [
-      ["2", PALETTES.cvd[2].color],
-      ["3", PALETTES.cvd[3].color],
+      ["2", PALETTES.cvd[2].color, "#000000"],
+      ["3", PALETTES.cvd[3].color, "#000000"],
     ],
   );
   assert.deepEqual(
     paint.map(([id, name]) => `${id} ${name}`),
-    ["route-line line-opacity", "route-stress line-opacity", "route-casing line-color"],
+    ["route-line line-opacity", "route-stress line-opacity", "route-halo line-opacity", "route-casing line-color"],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");
-  assert.equal(paint[2][2], ROUTE_CASING_CVD, "under the colour-blind-friendly palette's own casing, not the blue its LTS 2 matches");
+  assert.equal(paint[2][2], 1, "and so are their halos");
+  assert.equal(paint[3][2], ROUTE_CASING_CVD, "under the colour-blind-friendly palette's own casing, not the blue its LTS 2 matches");
   assert.equal(paint[0][2], 0, "and the one-colour line is hidden");
   setRouteSections(map as never, ROUTE, true);
-  assert.equal(paint[4][2], 0.45, "a stale route is still dimmed after a flip");
-  assert.equal(paint[5][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
+  assert.equal(paint[5][2], 0.45, "a stale route is still dimmed after a flip");
+  assert.equal(paint[6][2], 0.45, "its halos too");
+  assert.equal(paint[7][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
 });
 
 test("repaint wiring: no route puts no sections in, and does not throw", () => {
