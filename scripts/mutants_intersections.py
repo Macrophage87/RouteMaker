@@ -1470,6 +1470,20 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "        ways=frozenset(),\n    )",
         JUNCTIONS,
     ),
+    # --- FINAL-FIX: the graph's direction for the junction model (correctness
+    # re-check B1), Mass Ride keeps one-way (OWNER-DECISIONS 246), and the
+    # mutation re-check's TG1 and TG2. The rebuild's writer and `routing_tags`
+    # are covered by the end-to-end helper, run by hand (FINALFIX-dev-r0).
+    ("B1: road_oneway is the relief reading again", "src/routemaker/stress.py", "        graph_oneway=is_oneway(tags),\n", "        graph_oneway=oneway,\n", ["tests/test_road_traits.py"]),
+    ("B1: an override loses the graph's direction", "src/pipeline/overrides.py", '            graph_oneway=getattr(current, "graph_oneway", None),\n', "", ["tests/test_road_traits.py"]),
+    ("B1: a car-free road loses the graph's direction", "src/pipeline/run.py", "        graph_oneway=current.graph_oneway,\n", "", ["tests/test_overrides.py"]),
+    ("246: every graph keeps OSM's one-way", "src/pipeline/variants.py", "    if variant is not Variant.NO_TRAIL or routed.get(\"oneway\") != \"no\":", "    if routed.get(\"oneway\") != \"no\":", ["tests/test_variants.py", "tests/test_lua_remap.py"]),
+    ("246: the no-trail graph takes DC's two-way", "src/pipeline/variants.py", "    if variant is not Variant.NO_TRAIL or routed.get(\"oneway\") != \"no\":\n        return routed\n    if not is_motor_oneway(tags):\n        return routed\n    return", "    return routed\n    return", ["tests/test_variants.py", "tests/test_lua_remap.py"]),
+    ("246: OSM's two-way is kept one-way too", "src/pipeline/variants.py", "    if not is_motor_oneway(tags):\n        return routed\n", "", ["tests/test_variants.py"]),
+    ("246: the whole record is dropped, not its direction", "src/pipeline/variants.py", '    return {key: value for key, value in routed.items() if key != "oneway"}', "    return {}", ["tests/test_variants.py"]),
+    ("TG1: an odd oneway value on a roundabout reads two-way", "src/routemaker/tags.py", '    return tags.get("junction") in ONEWAY_JUNCTIONS and tags.get("oneway") != "no"', '    return tags.get("junction") in ONEWAY_JUNCTIONS and tags.get("oneway") is None', ["tests/test_road_traits.py"]),
+    ("TG2: the router's arms win over the segment table", "src/core/junctions.py", "        oneway=oneway if road.oneway is None else road.oneway,", "        oneway=oneway,", JUNCTIONS),
+    ("TG2: the table wins even where it has nothing", "src/core/junctions.py", "        oneway=oneway if road.oneway is None else road.oneway,", "        oneway=road.oneway,", JUNCTIONS),
 ]
 
 

@@ -1308,12 +1308,12 @@ def plan(
     # shared, so leg k runs from leg_ends[k - 1] (or 0) to leg_ends[k]. The
     # front end reads which leg a point on the line belongs to from these.
     leg_ends: list[int] = []
-    # Where each leg but the last ends along the traced length: the stops, which
-    # a Mass Ride's crossing group never spans (OWNER-DECISIONS 247).
+    # Where each leg begins along the traced length: the stops (and the start,
+    # which no crossing lies before), which a Mass Ride's crossing group never
+    # spans (OWNER-DECISIONS 247).
     stops_m: list[float] = []
     for leg in legs:
-        if leg_runs:
-            stops_m.append(traced_m)
+        stops_m.append(traced_m)
         shape = decode_polyline6(leg.get("shape", ""))
         coordinates.extend(shape[1:] if coordinates else shape)
         leg_ends.append(len(coordinates) - 1)

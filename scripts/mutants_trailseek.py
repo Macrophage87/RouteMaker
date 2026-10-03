@@ -266,9 +266,9 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # --- in the search ---------------------------------------------------------------
     (
         "spans: tier 4 counts once",
-        RF,
-        'EXPOSURE_WEIGHTS = {"3": 1.0, "4": 2.0, "5": 3.0}',
-        'EXPOSURE_WEIGHTS = {"3": 1.0, "4": 1.0, "5": 3.0}',
+        PR,
+        "    lts4: float = 2.0\n",
+        "    lts4: float = 1.0\n",
         REFINE,
     ),
     (
@@ -1000,6 +1000,33 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "            answers.append((read, candidate, excluded, None))",
         REFINE,
     ),
+    # --- FINAL-FIX: OWNER-DECISIONS 250, LTS 4 on the stress-averse rides ---
+    ("250: the stress-averse LTS 4 weight is the standard's", PR, "EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)", "EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=2.0, avoid=16.0, hold_lts4=True)", REFINE),
+    ("250: the stress-averse Avoid weight is 8", PR, "EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)", "EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=8.0, hold_lts4=True)", REFINE),
+    ("250: no hold", PR, "EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=True)", "EXPOSURE_STRESS_AVERSE = Exposure(lts3=1.0, lts4=8.0, avoid=16.0, hold_lts4=False)", REFINE),
+    ("250: Trailmaxxing keeps the standard weights", PR, "                exposure=EXPOSURE_STRESS_AVERSE,\n", "", REFINE),
+    ("250: Cargo with passengers keeps the standard weights", PR, "                carrying_exposure={CARRYING_PEOPLE: EXPOSURE_STRESS_AVERSE},\n", "", REFINE),
+    ("250: the carrying choice is ignored", PR, "    if preset.carrying_exposure and chosen in preset.carrying_exposure:", "    if False:", REFINE),
+    ("250: the plan hands the search the standard weights", RT, "        exposure=presets.exposure_for(preset_name, dials.carrying),\n", "", ["tests/test_route_description.py"]),
+    ("250: the plan ignores the carrying choice", RT, "        exposure=presets.exposure_for(preset_name, dials.carrying),", "        exposure=presets.exposure_for(preset_name),", ["tests/test_route_description.py"]),
+    ("250: the reading weighs at 1, 2, 3 whatever the ride", RF, "    weights = ctx.exposure.weights\n", "    weights = EXPOSURE_WEIGHTS\n", REFINE),
+    ("250: the seek's corridors weigh at 1, 2, 3", RF, "    busy, trail, traced_m = route_spans(incumbent, weights=ctx.exposure.weights)", "    busy, trail, traced_m = route_spans(incumbent)", REFINE),
+    ("250: route_spans ignores the weights it is given", RF, "    weights = EXPOSURE_WEIGHTS if weights is None else weights\n", "    weights = EXPOSURE_WEIGHTS\n", REFINE),
+    ("250: Avoid is not held", RF, 'LTS4_TIERS = frozenset({"4", "5"})', 'LTS4_TIERS = frozenset({"4"})', REFINE),
+    ("250: the slack is 100 m", RF, "LTS4_SLACK_M = 1.0", "LTS4_SLACK_M = 100.0", REFINE),
+    ("250: as much LTS 4 is refused", RF, "    if sum(legs) > sum(reference) + LTS4_SLACK_M:", "    if sum(legs) >= sum(reference):", REFINE),
+    ("250: the whole trip is not held", RF, "    if sum(legs) > sum(reference) + LTS4_SLACK_M:\n        return True\n", "", REFINE),
+    ("250: legs are not held", RF, "    return any(got > first + LTS4_SLACK_M for got, first in zip(legs, reference, strict=True))", "    return False", REFINE),
+    ("250: mismatched legs hold each leg anyway", RF, "    if len(legs) != len(reference):\n        return False\n", "", REFINE),
+    ("250: the hold on every ride", RF, "    if not ctx.exposure.hold_lts4 or not reference:", "    if not reference:", REFINE),
+    ("250: a piece is counted on one leg only", RF, "            out[k] += max(0.0, min(b, hi) - max(a, lo))", "            out[k] += b - a if lo <= a < hi else 0.0", REFINE),
+    ("250: the exclusion rounds do not hold", RF, "        busier = busier or more_lts4(current, ctx.first_lts4, ctx)\n", "", REFINE),
+    ("250: the wide search does not hold", RF, "        busier = busier or more_lts4(read, ctx.first_lts4, ctx)\n", "", REFINE),
+    ("250: the seek's legs do not hold", RF, '            elif more_lts4(read, list(reference_lts4), ctx):\n                tried["outcome"] = "more_lts4"\n', "", REFINE),
+    ("250: the spliced trip is not held", RF, "        if more_lts4(read, ctx.first_lts4, ctx):", "        if False:", REFINE),
+    ("250: a leg is held to the whole trip's", RF, "                [ctx.first_lts4[k]]\n", "                [sum(ctx.first_lts4)]\n", REFINE),
+    ("250: the first route's LTS 4 is not read", RF, "    ctx.first_lts4 = lts4_by_leg(best)\n", "", REFINE),
+    ("250: lts4 after says before", RF, '        info["lts4_after_m"] = round(sum(lts4_by_leg(best)), 1)', '        info["lts4_after_m"] = round(sum(ctx.first_lts4), 1)', REFINE),
 ]
 
 

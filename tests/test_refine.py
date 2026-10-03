@@ -2507,6 +2507,27 @@ class TestTheHoldInTheSeek(TestTrailSeek):
         assert info["seek"]["tried"][0]["outcome"] == "more_lts4"
         assert info["seek"]["taken"] is False
 
+    def test_the_corridor_search_weighs_the_busy_road_by_the_rides_weights(
+        self, monkeypatch
+    ) -> None:
+        """The seek's corridors are scored against the route's busy road at the
+        ride's weights: on Trailmaxxing a metre of LTS 4 is 8 (mutation pass)."""
+        seen = []
+
+        def corridors(segments, start, end, shape, busy, *args, **kwargs):
+            seen.append(busy)
+            return []
+
+        monkeypatch.setattr(trailseek, "find_corridors", corridors)
+        orig = weighed(analysis("o", "1" * 10 + "4" * 2 + "3" * 2 + "1" * 26, cost_s=4000.0))
+        world = SeekWorld(monkeypatch, {"o": orig}, [NO_ROUTE])
+        ctx = self.seek_context()
+        ctx.exposure = AVERSE
+        refine.refine(trip_of("o", 4.0), ctx)
+        assert world is not None
+        (busy,) = seen
+        assert sorted({w for _a, _b, w in busy}) == [1.0, 8.0]
+
     def test_one_with_none_is_taken(self, monkeypatch) -> None:
         cand = weighed(analysis("t", "1" * 40, cost_s=3000.0, shift=100))
         _w, shape, info = self.run(monkeypatch, {"t": cand}, [trip_of("t", 4.0)])
@@ -2526,6 +2547,21 @@ class TestTheHoldLegByLeg(TestSeekLegByLeg):
         _w, kept, info = self.plan(monkeypatch, analyses, routes)
         assert [t["outcome"] for t in info["seek"]["tried"]] == ["more_lts4", "taken"]
         assert [leg["shape"] for leg in kept["legs"]] == ["o1", "t2"]
+
+    def test_each_leg_is_held_to_its_own_first_lts4(self, monkeypatch) -> None:
+        """The router first gave leg 1 300 m of LTS 4 and leg 2 none: 100 m of LTS 4
+        on leg 2 is more than its own, though less than the trip's (mutation pass)."""
+        first = analysis("o1+o2", "1" * 10 + "4" * 3 + "1" * 27 + "1" * 40, cost_s=8000.0)
+        first.via_m = [4000.0]
+        first.exposure_m = 2000.0
+        t2 = analysis("t2", "1" * 39 + "4", cost_s=100.0)
+        # Inside the exposure allowance, so that the hold is what decides.
+        t2.exposure_m = 40.0
+        self.none_for = {0}
+        analyses = {"o1+o2": first, "t2": t2, "o1+t2": whole_of(leg_orig(1), leg_orig(2))}
+        _w, kept, info = self.plan(monkeypatch, analyses, [one_leg("t2", 9.0, 3000.0)])
+        assert [t["outcome"] for t in info["seek"]["tried"]] == ["more_lts4"]
+        assert [leg["shape"] for leg in kept["legs"]] == ["o1", "o2"]
 
     def test_the_whole_trip_with_more_lts4_is_refused(self, monkeypatch) -> None:
         """Each leg within its own, the spliced trip read with more (a trace

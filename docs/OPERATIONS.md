@@ -569,11 +569,11 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   carriageway's, where the route crosses one carriageway alone), is not read,
   and the junction is priced as having none. Round 1 read signals only at the
   junction node, and this was the commonest cause of a false red at a
-  signalised junction (review r2: 8 of 15 reds in its sample); from round 2 the
+  signalized junction (review r2: 8 of 15 reds in its sample); from round 2 the
   approaches are walked to 100 ft (30 m) and the nodes of one junction share its
   strongest control. Of the 95 junctions the review found priced as having no
   signal, 66 had a signal flag of some kind within 100 ft (30 m) and 59 of those now
-  read as signalised (re-measured at gate 1; 63 in round 2). The four fewer
+  read as signalized (re-measured at gate 1; 63 in round 2). The four fewer
   are the two lefts off 17th St SW 60 ft (18 m) past the Constitution Ave
   signal, which is not theirs (review r3), Plyers Mill Rd across Metropolitan
   Ave (next bullet), and a straight-on along MD 450 that is no event either
@@ -584,11 +584,11 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   junction, Concord St crosses between its carriageways 50 ft (16 m) back,
   and the signal is on the Concord St node, which the walk takes for Concord
   St's own junction. It is the safe direction (a warning at a light). Telling
-  it from a driveway just past a signalised junction would need the rider's
+  it from a driveway just past a signalized junction would need the rider's
   riding straight through a minor road's T junction on the junction's own
   road, which would bring that driveway's under-warning back.
-- Signalised trail crossings tagged `crossing=traffic_signals` away from any
-  signalised road junction read as unsignalised until the tag transform derives
+- Signalized trail crossings tagged `crossing=traffic_signals` away from any
+  signalized road junction read as unsignalized until the tag transform derives
   the signal. They are orange at most and say "no signal mapped"
   (OWNER-DECISIONS 185), so a rider may see an orange marker at a crossing that
   has a light.
@@ -598,7 +598,7 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   is then the stopped side's.
 - Any junction whose signal or signs OSM does not have reads "no signal mapped".
 - It under-warns near signals: a side street or driveway within 100 ft (30 m)
-  of a signalised junction can be priced as signalised, and its red or orange
+  of a signalized junction can be priced as signalized, and its red or orange
   not drawn, where the signal is on a stop line of the road it joins with no
   other named road at that node, or where the other junction's road has no
   name in OSM. For a rider arriving on a road, a driveway, a parking aisle or
@@ -614,8 +614,8 @@ round refuse (400, the search ends with `no_route`), which is safe but quiet.
   rider crosses that road at one of them and does not ride along it between
   them, so a staggered junction whose two nodes the rider links by a short
   side street can read as one. A turn's crossing of its own two-way road's
-  opposite lanes is not counted as crossing it (gate 1), so a signalised left
-  off a road and an unsignalised left back onto it 100 ft (30 m) on stay two junctions
+  opposite lanes is not counted as crossing it (gate 1), so a signalized left
+  off a road and an unsignalized left back onto it 100 ft (30 m) on stay two junctions
   and the second keeps its red; a one-way carriageway crossed still counts,
   so a divided road's crossover shares its signal.
 - That path exception has a named residual risk. A cycleway's left onto
@@ -1560,7 +1560,7 @@ the first host to run it is the first test of it.
    The id goes in **before** the first `up` because compose reads `.env` when
    it creates a container and not afterwards: a value added later reaches the
    running `api` only when that container is recreated, which is
-   `docker compose up -d api` and specifically not `docker compose restart api`
+   `docker compose up -d --no-deps --no-build api` and not `docker compose restart api`
    — a restart restarts the process with the environment it was created with,
    and the sign-in that follows it gets a 404 from the admin with nothing in
    any log to explain it. Step 4 is the rest of that bootstrap; what it needs
@@ -1636,7 +1636,7 @@ the first host to run it is the first test of it.
    afterwards, at your leisure — it is inert once claimed.
 
    If you skipped step 2 and are editing `.env` now, the container has to be
-   recreated for the new value to reach it: `docker compose up -d api`.
+   recreated for the new value to reach it: `docker compose up -d --no-deps --no-build api`.
    `docker compose restart api` does not re-read `.env` and leaves you signing
    in against the environment the container was created with.
    docs/DEVELOPMENT.md has the whole mechanism.
@@ -1948,7 +1948,7 @@ directories and start it once the rebuild has promoted a build:
 
 ```sh
 sudo sh scripts/prepare_data_root.sh --env-file ./.env   # creates tiles/weekend and tiles/weekend/current
-docker compose up -d valhalla-weekend    # after the rebuild has promoted a build
+docker compose up -d --no-deps --no-build valhalla-weekend    # after the rebuild has promoted a build
 ```
 
 The planner's front end changes too (the sliders, the ride-type dialog, the
@@ -2162,8 +2162,8 @@ exists.
 ## After a host restart: the postgis bind race
 
 A Windows reboot, a `wsl --shutdown` or a Docker Desktop restart can start the
-containers before the WSL bind mounts behind them are ready (hit on 2026-09-29,
-09-30 and 10-02). `postgis` then finds an empty directory where its data
+containers before the WSL bind mounts behind them are ready (four races so far:
+2026-09-29 twice, 2026-10-02 and 2026-10-03). `postgis` then finds an empty directory where its data
 directory should be and initialises a **new, empty cluster**: the api answers,
 migrations and segments are gone, and nothing says why. The real data directory
 on the host is untouched. Other binds fail the same way (a router with no tiles,

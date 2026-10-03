@@ -365,7 +365,7 @@ JOIN = (
 CAND = "if metres(g) < OVERVIEW_M and not _flagged_turn(turns, g[0])"
 AFTER = "if after is not None and joinable(group, after) and not _flagged_turn(turns, after[0]):"
 PREF = "return (not same_kind, not same_street, -metres(o), o is after)"
-THEN = '        listed = ", ".join(streets[:-1]) + " and " + streets[-1]'
+THEN = '        listed = ", ".join(pieces[:-1]) + " and " + pieces[-1]'
 
 MUTANTS += [
     (
@@ -460,30 +460,30 @@ MUTANTS += [
     (
         "overview: the street it begins on is listed again",
         D,
-        "        if m.label and m.label != own and m.label not in streets:",
-        "        if m.label and m.label not in streets:",
+        "        if m.label and m.label != own and m.label not in (s for s, _m in streets):",
+        "        if m.label and m.label not in (s for s, _m in streets):",
         PURE,
     ),
     (
         "overview: other streets listed twice",
         D,
-        "        if m.label and m.label != own and m.label not in streets:",
+        "        if m.label and m.label != own and m.label not in (s for s, _m in streets):",
         "        if m.label and m.label != own:",
         PURE,
     ),
     (
         "overview: three streets are not listed in full",
         D,
-        "    elif len(streets) <= 3:",
-        "    elif len(streets) <= 2:",
+        "    for street, movement in streets[:MAX_NAMED_TURNS]:",
+        "    for street, movement in streets[: MAX_NAMED_TURNS - 1]:",
         PURE,
     ),
     ("overview: two streets joined without and", D, THEN, THEN.replace('" and "', '", "'), PURE),
     (
         "overview: the count of more streets is off",
         D,
-        'f" and {len(streets) - 3} more"',
-        'f" and {len(streets) - 2} more"',
+        "    more = len(streets) - MAX_NAMED_TURNS\n",
+        "    more = len(streets) - MAX_NAMED_TURNS + 1\n",
         PURE,
     ),
     (
@@ -503,8 +503,8 @@ MUTANTS += [
     (
         "overview: stops left out",
         D,
-        "    short = sorted(overview + shared, key=lambda pair: pair[0])",
-        "    short = sorted(overview, key=lambda pair: pair[0])",
+        "    short = sorted(overview + shared + short_only, key=lambda pair: pair[0])",
+        "    short = sorted(overview + short_only, key=lambda pair: pair[0])",
         PURE,
     ),
     (

@@ -1083,9 +1083,9 @@ transition time per node:
 | Movement and place | Nodes | Median | p10 - p90 | Max |
 |---|---|---|---|---|
 | Straight on, residential cross streets, no signal | 760 | 0.5 | 0.0 - 2.3 | 5.3 |
-| Straight on, signalised | 67 | 0.8 | 0.0 - 3.0 | 4.5 |
+| Straight on, signalized | 67 | 0.8 | 0.0 - 3.0 | 4.5 |
 | Straight across a primary, secondary or tertiary road, from a minor street, no signal | 28 | 3.7 | 3.0 - 4.5 | 5.3 |
-| The same, signalised | 15 | 3.7 | 3.0 - 4.5 | 4.5 |
+| The same, signalized | 15 | 3.7 | 3.0 - 4.5 | 4.5 |
 | Right turn, no signal | 33 | 3.0 | 1.2 - 4.1 | 6.0 |
 | Left turn, no signal | 33 | 0.9 | 0.6 - 2.3 | 3.8 |
 
@@ -1168,7 +1168,7 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    `road_oneway`; an assumed speed or lane count is not stored, so a reason never
    states one as fact), and its count where there is one;
 5. who has the right of way: a signal at the node, on the rider's approach or on
-   any other road's approach (a signal for the cross traffic is a signalised
+   any other road's approach (a signal for the cross traffic is a signalized
    junction); else a stop or yield on the rider's approach, on another road's,
    on both (all-way), or none. OSM in the District and Maryland puts the
    signal (and often the stop sign) on the stop-line node 7-30 m before the
@@ -1180,7 +1180,7 @@ passes (`routemaker.trace_junctions`, from `/trace_attributes` with
    `trace_junctions.APPROACH_M`), and each road arm, the rider's own included,
    is walked out from the node along edges of the same road (its way or a name
    in common) to 30 m: a signal at a node it reaches makes the junction
-   signalised (`core.junctions._Approaches`), on a road's edge arriving there
+   signalized (`core.junctions._Approaches`), on a road's edge arriving there
    travelling towards the junction (the router sets the edge flag by
    `traffic_signals:direction`; an edge flagged at its far end going away is
    the next junction's), or the node's own flag where no edge there is
@@ -1238,8 +1238,8 @@ table, within its ranges, for the owner to move:
 | At a traffic signal | `SIGNALISED_CROSSING_FT` | 150 ft (LTS 3), 300 ft (LTS 4, 5) | 100-200 ft, mostly delay (Broach signal 2.1-3.6% a mile) |
 | All-way stop | `ALL_WAY_STOP_FT` | 75 ft | 50-100 ft (Broach stop 0.5-0.9%; Arlington -1) |
 | On the free-flowing side, cross traffic controlled (item 169) | `PRIORITY_SIDE_FT` | 25 ft | 0-50 ft |
-| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; `crossing=traffic_signals` does not reach the router's flag. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalised |
-| A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75; only two or more crossings, each of a one-way road of its own ways, with a name in common, never a turn or a slip lane with a crossing | items 185 and 196 ("x0.75 (Recommended)"); Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalised divided LTS 4 crossing red |
+| A trail crossing with no signal flag at it or within 30 m up the roads it crosses: a mapped crossing way, or a path, trail, cycletrack or sidewalk meeting the road at a node of its own | `MARKED_CROSSING_FACTOR`, `MARKED_CROSSING_MAX_SEVERITY` | x0.5, and never drawn red, worded "no signal mapped" as at any junction | item 185; `crossing=traffic_signals` does not reach the router's flag. Round 1 said the Pennsylvania Ave and Virginia Ave cycletracks had no flag on the road's arms; that was wrong: the round-2 review found one within 30 m at 31 of 48 trail crossings, and those now read as signalized |
+| A divided road's two carriageways, crossed at one junction | `MEDIAN_REFUGE_FACTOR` | counted once, the costlier, x0.75; only two or more crossings, each of a one-way road of its own ways, with a name in common, never a turn or a slip lane with a crossing | items 185 and 196 ("x0.75 (Recommended)"); Mineta and Oregon read a refuge as a level lower (about x0.4 by the base costs), 0.75 keeps an unsignalized divided LTS 4 crossing red |
 | Straight on along the same road (its way, or a name in common) where its tier rises | `Junction.continues` | no "Joining" cost | review r2: S Stonestreet Ave and Nebel St (1,200 ft), West St in Annapolis (3,000 ft) were "Joining" the road the rider was already on |
 | Left onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["left"]` | x1.5 of the crossing | Copenhagen 154 ft left against 62 ft right; the review: lefts 2-3 times rights |
 | Right onto a busy road (item 166) | `MOVEMENT_FACTOR_ONTO["right"]` | x0.1 | "close to 0" |
@@ -1250,7 +1250,7 @@ table, within its ranges, for the owner to move:
 | Merging across lanes to reach a left (item 167) | `MERGE_FT_PER_LANE`, `BOX_TURN_CAP_FT` | 250 ft a lane, capped at 500 ft | the review's two-stage box turn, 200-500 ft |
 | At a signal, the whole left off a busy road (item 186) | `BOX_TURN_CAP_FT` | at most 500 ft, oncoming lanes and merge together | "Cap at box turn": a left never costs more than the two-stage box turn (round 1: 910 ft for two lanes a direction on LTS 4) |
 | A right turn off a busy road | `RIGHT_FROM_BUSY_FT` | 15 ft | |
-| A slip lane the route crosses (items 169, 195) | `SLIP_LANE_FT`, `SIGNALISED_SLIP_FACTOR`, `core.junctions.crossed_links` | 800 ft, x0.5 at a signal; none riding straight past it along the road | "at least an LTS 3 unsignalised crossing, about 800 ft"; 195: "Flag only when you cross it (Recommended)" |
+| A slip lane the route crosses (items 169, 195) | `SLIP_LANE_FT`, `SIGNALISED_SLIP_FACTOR`, `core.junctions.crossed_links` | 800 ft, x0.5 at a signal; none riding straight past it along the road | "at least an LTS 3 unsignalized crossing, about 800 ft"; 195: "Flag only when you cross it (Recommended)" |
 | LTS 1-2 meeting LTS 1-2, with a stop sign (item 171) | `NEIGHBOURHOOD_STOP_FT` | 10 ft, never flagged | the owner's account that DC lets bikes roll through when safe; not legal advice |
 | Cap | `MAX_CROSSING_FT` | 4,500 ft | |
 | Junctions within 45 m along the route | `MERGE_WITHIN_M`, `MERGED_SHARE` | one junction: a divided road's carriageway crossings counted once with the refuge credit (one way crossed twice: once, no credit), then the costliest event and half of each other's cost, a turn and a crossing of the same road included; the colour never above the worst single event's | item 185: "A merge must never raise the colour of one road's crossing"; review r2: a right onto an arterial and a left off it 30 m later had cost less than the left alone |
@@ -1279,9 +1279,9 @@ was this implementation's reading of "cross"; the owner kept it (item 199,
 off" the road.
 
 Severity, `ORANGE_MIN_FT` 600 and `RED_MIN_FT` 2,000: orange is "higher stress"
-and red "very high" (item 172). An unsignalised crossing of an LTS 3 road
+and red "very high" (item 172). An unsignalized crossing of an LTS 3 road
 (about 1,200 ft) is orange; of an LTS 4 road (3,000 ft) red; a left onto or
-across an LTS 3 road orange, red when the road is fast; any signalised
+across an LTS 3 road orange, red when the road is fast; any signalized
 crossing, the priority side and a neighbourhood stop sign are neither; a trail
 crossing with no signal mapped is orange at most, whatever its cost (item 185),
 and a merge never raises a colour. The thresholds are unchanged (item 185: "keep
@@ -1524,7 +1524,7 @@ The same harness as round 1 (above), the same day, a fresh scratch database;
 branch, on the same data. "Before" reproduces round 1's own "after" exactly (10
 red, 79 orange).
 
-**The review's eight signalised reds** (review r2, blocker), through the
+**The review's eight signalized reds** (review r2, blocker), through the
 review's own probe (`junctions_of_trace`, `events_of`, the live router):
 
 | Junction | Before | After |
@@ -1551,7 +1551,7 @@ the rider's own approach is read as the rider's (`tests/test_junctions.py`,
 
 **The review's 95 junctions priced as having no signal** (`nonectl.json`): 66
 had a signal flag of some kind within 30 m in the review's search (an edge or a
-node), and 63 of those now read as signalised: 13 of 13 road crossings, 47 of
+node), and 63 of those now read as signalized: 13 of 13 road crossings, 47 of
 49 trail crossings, 3 of 4 turns. The three that do not: the Virginia Ave
 cycletrack's crossing of Virginia Ave NW at G St (on two trips), whose only
 flag is on the far carriageway's approach, which the crossed carriageway's
@@ -1578,8 +1578,8 @@ then red and orange markers:
 What moved them:
 
 - Signals on the approaches and shared across a junction's nodes (the
-  blocker): every "no signal mapped" red at a signalised junction in the sample
-  is gone, and so are the trail crossings that sit in a signalised junction's
+  blocker): every "no signal mapped" red at a signalized junction in the sample
+  is gone, and so are the trail crossings that sit in a signalized junction's
   crosswalks (31 of round 1's 79 oranges were crossings, 10 are left).
 - Slip lanes only where the route crosses them (item 195): 28 slip-lane oranges
   before (15 along US 1 on Laurel - College Park), 2 after: the Millennium
@@ -1622,8 +1622,8 @@ and its 15 cases), five of the six driveways it named keep their colour
 the Virginia Ave signal (3,200 ft, red, B2). The sixth it named, the service
 road across Veirs Mill Rd from Gridley Rd, no longer takes the signal at its
 own node but shares it with the Gridley Rd node it leaves from, 21 m back
-(both crossings of one divided road), so its event stays 225 ft. Every one of round 2's eight signalised
-junctions and the review's signalised trail crossings reads as before. One
+(both crossings of one divided road), so its event stays 225 ft. Every one of round 2's eight signalized
+junctions and the review's signalized trail crossings reads as before. One
 signal is lost: Plyers Mill Rd straight across Metropolitan Ave, whose signal
 is on the Concord St node 16 m away (orange, 1,200 ft; was 150).
 `/locate` calls a plan: 4 to 11 (the second, 30 m pass for each node whose
@@ -1657,7 +1657,7 @@ to 1.0 for 2.9 mi more, with the detour warning; Laurel - College Park 0.2 mi
 less for 3.1 mi more, mostly less LTS 4), and every plan runs the search: 1.5 to
 5.8 s against 0.5 to 5.9 s. The longer routes cross more busy roads, so they
 carry more markers (Rockville - Silver Spring's 14.3 mi route crosses 13 busy
-roads, two of them unsignalised LTS 4). Cargo with passengers stays at 80, and
+roads, two of them unsignalized LTS 4). Cargo with passengers stays at 80, and
 its routes are unchanged.
 
 ### The top of the slider: what 150 would do (item 187, an exploration)
@@ -2217,25 +2217,25 @@ summary shows the reason, and dragging the route away re-plans it as any drag
 does. The slider's words and its note at the top end are
 `frontend/src/lib/dials.ts` and `dialsPanel.ts`.
 
-### Mass Ride: groups of signalised crossings (items 233, 234, 235)
+### Mass Ride: groups of signalized crossings (items 233, 234, 235)
 
-The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (233) and "I'd say we'd want some level of clumpings, especially in DC, given the diagional streets. I'd say something like a quarter mile or so of clumping." (234). On a Mass Ride (`assess_route(..., group=True)`) `intersections.number_groups` numbers each run of two or more signalised crossings in `Event.group`: flagged, `Control.SIGNAL`, kind `crossing` or `left_across` (`GROUPED_KINDS`), each within `GROUP_WITHIN_M` (402 m) of the one before. Any other flagged event, including a turn at a signal, stands alone and ends the run. Every crossing stays an event and a marker and the cost is unchanged; only the list and the description say the group once.
+The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (233) and "I'd say we'd want some level of clumpings, especially in DC, given the diagional streets. I'd say something like a quarter mile or so of clumping." (234). On a Mass Ride (`assess_route(..., group=True)`) `intersections.number_groups` numbers each run of two or more signalized crossings in `Event.group`: flagged, `Control.SIGNAL`, kind `crossing` or `left_across` (`GROUPED_KINDS`), each within `GROUP_WITHIN_M` (402 m) of the one before. Any other flagged event, including a turn at a signal, stands alone and ends the run. Every crossing stays an event and a marker and the cost is unchanged; only the list and the description say the group once.
 
-- `intersections[].group`: the group's number or null. `intersection_groups` (null where `intersections` is): `{group, from_m, to_m, count, lts4, streets, more, severity, members, text}`, `members` being positions in `intersections`, `text` the phrase without the severity ("1.0 to 1.6 mi (1.6 to 2.6 km): 6 signalised crossings (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of LTS 4 roads").
-- `description` and `description_overview`: one `junction` entry for the group, text ending "(Very high stress junctions).", with `group: {number, count, lts4, streets, more}`; null on every other entry.
+- `intersections[].group`: the group's number or null. `intersection_groups` (null where `intersections` is): `{group, from_m, to_m, count, lts4, streets, more, severity, members, text}`, `members` being positions in `intersections`, `text` the phrase without the severity ("1.0 to 1.6 mi (1.6 to 2.6 km): 6 crossings with traffic signals (17th Street Northwest, 15th Street Northwest, 14th Street Northwest and 3 more), 2 of them heavy-traffic roads (LTS 4)").
+- `description` and `description_overview`: one `junction` entry for the group, text ending "(Very high stress junctions).", with `group: {number, count, lts4, streets, more, crossings}`; null on every other entry. `crossings` (OWNER-DECISIONS 248) lists each crossing in the full description, `{from_m, from_mi, street, severity, crossed_tier, text}` with `text` worded as a junction entry ("At 1.1 mi (1.8 km): Cross 17th Street Northwest (LTS 4) at a signal (Very high stress junction)."), and is null in the overview. The page shows them as a nested, named `<ol>`; Copy, Download and the GPX `<desc>` set them in under the group ("   3.1. At ...").
 - The list (`IntersectionList`, `junctionRows`): a group is a disclosure button over its crossings, the ordinary rows. Closed first; nothing announced; the focus stays on the button.
-- A group is not split at a stop. A crossing that is also the turn into a stretch is counted in the group and said in the turn.
+- A group never spans a stop (OWNER-DECISIONS 247): `number_groups(events, stops)` closes the run at each leg end, and `core.routing.plan` numbers the events again with the plan's `stops_m` (each leg's end along the traced length, the events' own measure), since the search's readings were numbered without them. A crossing at the stop begins the next leg's run. A crossing that is also the turn into a stretch is counted in the group and said in the turn.
 - Density on live DC (Mass Ride, weekend, read-only): Lincoln Memorial to the Capitol along Constitution Ave, 9 flags in 2.52 mi (3.6 a mile), list entries 9 to 3; with vias on Constitution Ave, 13 flags in 3.20 mi (4.1), 13 to 7; Pennsylvania Ave NW from Washington Circle with vias, 23 flags in 3.52 mi (6.5), 23 to 5; direct, 23 in 2.78 mi (8.3), 23 to 3.
 - Tests: `tests/test_crossing_groups.py` (joining, the window and its edge, breaks, wording, description, API rows, and item 235's flagging rules), `frontend/src/lib/intersectionMarkers.test.ts`, `frontend/src/a11yFixes.test.ts`, and the browser check (`scripts/a11y/check.mjs`, section 6). Mutants: `scripts/mutants_groups.py`.
 
 ### Known gaps, and what would close them
 
 - A trail crossing a road at a mapped crossing with `crossing=traffic_signals`
-  (a signal or a HAWK) away from any signalised road junction does not reach
+  (a signal or a HAWK) away from any signalized road junction does not reach
   the router's signal flag: Valhalla's transform reads `highway=traffic_signals`
   alone. Such a crossing reads "no signal mapped", is counted at
   `MARKED_CROSSING_FACTOR` and is never red (item 185). A cycletrack crossing
-  at a node of its own beside a signalised road junction is read as signalised
+  at a node of its own beside a signalized road junction is read as signalized
   from round 2 (the approach walk reaches the junction's stop lines). Deriving
   the crossing's own signal in `lua/routemaker_remap.lua` (`forward_signal`
   and `backward_signal` on the node) is the fix for the rest and needs a
@@ -2247,7 +2247,7 @@ The owner, 2026-10-03: "Actually, I like merging the runs, that sounds good." (2
   junction is not read as the cross traffic's (it may be another junction's),
   so where only the cross traffic stops the rider is priced as the stopped
   side. The other way round, a side street or driveway within 30 m of a
-  signalised junction does not take its signal where a road of another name
+  signalized junction does not take its signal where a road of another name
   joins at the signal's node or the signal faces away from it (review r3, B1);
   it still does where the signal is on a stop line of its own road with no
   other road there and facing it, or where the other junction's road has no
@@ -2962,3 +2962,105 @@ The production side has no such literals either: the rebuild's staging schema, t
 writers' live guard and the swap all read the settings, and
 `tests/test_pipeline_end_to_end.py` runs a whole rebuild under renamed schemas to hold
 them to it.
+
+## The final-fix round (2026-10-03)
+
+The fixes after the six-reviewer re-check of 2b0cf00, and OWNER-DECISIONS 246 to 250.
+
+### `road_oneway` is the graph's direction
+
+`StressResult` has two readings of a way's direction. `oneway` is item 109's: the
+classifier's one-way relief, False on a carriageway of a divided road (the other
+direction is across the median, so for the tier it is half of a two-way road).
+`graph_oneway` is `tags.is_oneway` of the tags the classifier read (a roundabout
+included, item 228), carriageway or not: the routing graph's own direction. The
+segment table's `road_oneway` is written from `graph_oneway`
+(`pipeline.run.write_segments`); the override and car-free copies carry both. The
+junction model (`core.junctions._with_graph`) keeps the table's value over the car
+arms, both ways, and lets the arms decide only where the table has nothing (the live
+table before its rebuild); tests/test_junctions.py `TestTheSegmentTablesDirectionWins`.
+Written from `oneway`, every carriageway would have been read two-way after the
+rebuild: no median-refuge credit, its lanes doubled ("6-lane" for Connecticut Ave
+NW's three), and a Mass Ride left-across marker off it.
+
+### Mass Ride keeps one-way (item 246)
+
+`pipeline.variants.routing_for(variant, tags, routed)`: the no-trail graph does not
+take a District two-way record (`oneway=no`, row C4) over a way OSM has one-way. The
+classifier and `road_*` follow the solo graphs (they are one per way), so on a Mass
+Ride the junction model reads those streets two-way: it can only overstate a
+junction there. 181 ways (13.8 mi) on the 09-25 extract, 21 of them (0.9 mi) LTS 3
+or worse.
+
+### The junction list and the description, for a screen reader
+
+- Every junction row, group and member is named by one `aria-label`
+  (`intersectionMarkers.rowName`: "Very high stress, Group: ...", "Higher stress, At
+  0.6 mi (1.0 km): ..."). The spans are grid items, and a name computed from them put
+  a space before each comma and colon.
+- The description list has no scroll box of its own (its `max-height` is gone): the
+  panel (`.panel-body`) is the one scroll container, and it holds the toggle, the
+  checkbox and the buttons, so it is scrolled by keyboard in every browser. A
+  focusable `tabIndex={0}` box would have added a Tab stop with nothing to do and,
+  with a group's crossings nested in it, a box inside a box on a phone. The browser
+  check asserts that every visible scroll box in the panel is focusable or holds
+  something focusable.
+- The toggle is named "Route description: 11 steps, overview"; "Full detail" has no
+  leading space and a 24 px target; Copy clears its reply and sets it again 150 ms
+  later, so a second press is said again.
+- At 320 px with WCAG text spacing a row's severity and distance wrap inside it
+  (`grid-template-columns: 18px minmax(0, auto) minmax(0, 1fr)`, `white-space:
+  normal`).
+- The browser check (scripts/a11y/check.mjs, 80 checks) adds sections 7 and 8: the
+  rows at 320 px with text spacing, and the description (the toggle's name, the scroll
+  boxes, Full detail, the copy reply, a group's nested crossings).
+
+### Groups at stops and in full detail (items 247, 248)
+
+See "Mass Ride: groups of signalized crossings" above. The copy: "6 crossings with
+traffic signals", "1 of them a heavy-traffic road (LTS 4)", "2 of them heavy-traffic
+roads (LTS 4)", "all of them heavy-traffic roads (LTS 4)".
+
+An LTS 3 stretch merged into an LTS 4 overview entry is worded at LTS 4 (item 249,
+the spec re-check's note): the overview words a merged entry at its most stressful
+tier, which overstates and never understates.
+
+### LTS 4 on the stress-averse rides (item 250)
+
+`presets.Exposure` (a preset field): Trailmaxxing and Cargo with passengers weigh LTS
+3, LTS 4 and Avoid at 1, 8 and 16 in the search's exposure and hold LTS 4
+(`refine.more_lts4`: never more LTS 4 and Avoid metres than the router's first route,
+whole trip and each leg, 1 m of slack); every other ride keeps 1, 2, 3 and no hold.
+
+Measured on the twelve trail-seek trips (scratchpad configs ts/ and ts2/), Trailmaxxing
+at 100, weekend, through the read-only forwarder on the live routers (graph
+20260927). "Router's own" is the plan with the search skipped, which is what live
+(0ec8fdc, no calm search) answers. Miles of LTS 4 (and Avoid) / LTS 3, miles of
+trail (path and protected), total miles and minutes:
+
+| Trip | Router's own (live behaviour) | 2b0cf00 | FINAL-FIX |
+|---|---|---|---|
+| rockville-silver-spring | 0.76 LTS 4 / 1.22 LTS 3, 3.8 trail, 10.9 mi, 65 min | 0.21 LTS 4 / 0.01 LTS 3, 4.8 trail, 14.3 mi, 78 min | 0.21 LTS 4 / 1.06 LTS 3, 5.0 trail, 13.5 mi, 73 min |
+| bethesda-capitol | 0.74 LTS 4 / 0.12 LTS 3, 9.9 trail, 12.2 mi, 69 min | 0.69 LTS 4 / 0.12 LTS 3, 9.9 trail, 12.4 mi, 70 min | 0.69 LTS 4 / 0.12 LTS 3, 9.9 trail, 12.4 mi, 70 min |
+| falls-church-union-station | 0.19 LTS 4 / 1.17 LTS 3, 8.5 trail, 10.5 mi, 56 min | 0.19 LTS 4 / 1.17 LTS 3, 8.5 trail, 10.5 mi, 56 min | 0.19 LTS 4 / 1.17 LTS 3, 8.5 trail, 10.5 mi, 56 min |
+| silver-spring-college-park | 1.09 LTS 4 / 1.37 LTS 3, 1.1 trail, 7.0 mi, 37 min | 0.09 LTS 4 / 0.70 LTS 3, 8.0 trail, 11.1 mi, 60 min | 0.26 LTS 4 / 0.48 LTS 3, 3.7 trail, 8.7 mi, 46 min |
+| bethesda-silver-spring | 0.74 LTS 4 / 0.08 LTS 3, 0.3 trail, 4.7 mi, 26 min | 0.74 LTS 4 / 0.08 LTS 3, 0.3 trail, 4.7 mi, 26 min | 0.74 LTS 4 / 0.08 LTS 3, 0.3 trail, 4.7 mi, 26 min |
+| laurel-college-park | 3.07 LTS 4 / 1.81 LTS 3, 7.0 trail, 13.8 mi, 71 min | 1.26 LTS 4 / 3.38 LTS 3, 9.8 trail, 16.9 mi, 87 min | 1.26 LTS 4 / 3.38 LTS 3, 9.8 trail, 16.9 mi, 87 min |
+| poolesville-darnestown | 4.87 LTS 4 / 1.43 LTS 3, 0.0 trail, 9.7 mi, 51 min | 4.87 LTS 4 / 1.43 LTS 3, 0.0 trail, 9.7 mi, 51 min | 4.87 LTS 4 / 1.43 LTS 3, 0.0 trail, 9.7 mi, 51 min |
+| bowie-annapolis | 11.93 LTS 4 / 1.48 LTS 3, 1.8 trail, 21.2 mi, 105 min | 11.93 LTS 4 / 1.40 LTS 3, 2.6 trail, 21.9 mi, 108 min | 11.93 LTS 4 / 1.40 LTS 3, 2.6 trail, 21.9 mi, 108 min |
+| tysons-ballston-wod | 0.44 LTS 4 / 0.97 LTS 3, 7.3 trail, 9.2 mi, 47 min | 0.40 LTS 4 / 0.58 LTS 3, 7.8 trail, 10.0 mi, 52 min | 0.40 LTS 4 / 0.58 LTS 3, 7.8 trail, 10.0 mi, 52 min |
+| eastern-market-pg-plaza-anacostia | 1.33 LTS 4 / 3.33 LTS 3, 2.6 trail, 7.9 mi, 43 min | 0.25 LTS 4 / 0.20 LTS 3, 4.1 trail, 8.8 mi, 51 min | 0.25 LTS 4 / 0.20 LTS 3, 4.1 trail, 8.8 mi, 51 min |
+| friendship-heights-rosslyn-cct | 0.01 LTS 4 / 1.78 LTS 3, 1.3 trail, 5.3 mi, 31 min | 0.01 LTS 4 / 1.78 LTS 3, 1.3 trail, 5.3 mi, 31 min | 0.01 LTS 4 / 1.78 LTS 3, 1.3 trail, 5.3 mi, 31 min |
+| takoma-hyattsville-sligo | 1.49 LTS 4 / 1.11 LTS 3, 0.6 trail, 3.5 mi, 18 min | 0.00 LTS 4 / 0.63 LTS 3, 3.4 trail, 4.8 mi, 25 min | 0.00 LTS 4 / 0.63 LTS 3, 3.4 trail, 4.8 mi, 25 min |
+| Total | 26.68 LTS 4, 44.0 trail, 116.0 mi, 618 min | 20.63 LTS 4, 60.5 trail, 130.4 mi, 694 min | 20.80 LTS 4, 56.4 trail, 127.2 mi, 675 min |
+
+The router's own Trailmaxxing route uses LTS 4 where a calmer route of modest extra
+length exists (Takoma to Hyattsville, Eastern Market to Anacostia, Silver Spring to
+College Park, Rockville to Silver Spring, Laurel to College Park), so the live
+behaviour the owner saw is the router's route alone; both searches find those. On no
+trip did either search end with more LTS 4 than the router's route. With the new
+weights the hold refused both seek candidates on Bethesda to Silver Spring. On Silver
+Spring to College Park the new search ends at 0.26 mi of LTS 4 where 2b0cf00 ended at
+0.09: its exclusion rounds stopped after three (two rounds in a row did not improve
+the score at the new weights), before the round 2b0cf00 found its route in; still a
+quarter of the router's 1.09 mi.
