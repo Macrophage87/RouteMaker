@@ -3309,7 +3309,7 @@ The owner's ride of 2026-10-03 itself, map-matched against today's graph: 46.7 m
   candidates, the loop), `tests/test_route_dials.py` (the hills choice's exposure and hold),
   `tests/test_plan_constants.py`, and the front end's `longestRide.test.ts`, `candidates.test.ts`,
   `loop.test.ts`.
-- `scripts/mutants_longcalm.py` (new, 52 mutants) and `scripts/mutants_trailseek.py` (updated: the 27
+- `scripts/mutants_longcalm.py` (new, 55 mutants, all killed; the trail-seek script's 138 all killed too) and `scripts/mutants_trailseek.py` (updated: the 27
   mutants of the trail credit are removed, 16 rewritten against the new code).
 
 ### Harness
