@@ -202,16 +202,44 @@ class TestTiny:
         )
         assert len(entries) == 1 and entries[0]["to_m"] == 840
 
+    def test_folding_another_street_in_does_not_make_the_neighbours_one_street(self):
+        # A 190 ft stretch of Water St folds into K St (the only neighbour as
+        # stressful); K St is still a street to turn onto, from the earlier Water St.
+        legs = [
+            flat(
+                road("Water St", 2, 600, 0, 0),
+                road("Water St", 3, 50, 0, 0),
+                road("K St", 4, 500, 90, 90),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [e["street"] for e in entries] == ["Water St", "K St"]
+        assert entries[1]["turn"]["onto"] == "K St"
+        assert entries[1]["text"].split(": ")[1].startswith("Right onto K St,")
+        assert entries[1]["from_m"] == 600
+
     def test_a_tie_between_neighbours_goes_to_the_earlier(self):
         entries = d.describe([flat(road("A", 1, 500), road("Mid", 1, 40), road("B", 1, 500))])
         assert [e["street"] for e in entries] == ["A", "B"]
         assert entries[0]["to_m"] == 540
 
-    def test_a_folded_stretchs_heading_is_where_the_next_is_entered(self):
-        # Tiny (heading 90) folds into the longer B; A -> B is entered on Tiny's heading
-        # (a right turn), not B's own 180 (which would read as a left).
+    def test_a_folded_stretch_of_the_same_street_carries_the_heading_it_was_entered_on(self):
+        # B's short LTS 1 start (heading 90) folds into B's longer LTS 2 stretch (heading
+        # 180): A -> B is entered on 90, a right turn, not on 180 (which would read as a left).
         legs = [
-            flat(road("A", 1, 800, 0, 0), road("Tiny", 1, 40, 90, 90), road("B", 1, 900, 180, 180))
+            flat(
+                road("A", 1, 800, 0, 0),
+                road("B", 1, 40, 90, 90),
+                road("B", 2, 900, 180, 180),
+            )
+        ]
+        entries = d.describe(legs)
+        assert [e["street"] for e in entries] == ["A", "B"]
+        assert entries[1]["turn"]["movement"] == "right"
+
+    def test_a_third_street_folded_in_leaves_the_turn_to_be_read_across_it(self):
+        legs = [
+            flat(road("A", 1, 800, 0, 0), road("Tiny", 1, 40, 90, 90), road("B", 1, 900, 90, 90))
         ]
         entries = d.describe(legs)
         assert [e["street"] for e in entries] == ["A", "B"]
@@ -422,6 +450,11 @@ class TestVias:
 
 
 class TestNamesAndKinds:
+    def test_unnamed_pieces_longer_than_a_tiny_stretch_are_still_one_stretch(self):
+        atoms = [d.Atom(300.0, "1", "path", (), "cycleway", 90.0, 90.0) for _ in range(4)]
+        entries = d.describe([atoms])
+        assert len(entries) == 1 and entries[0]["to_m"] == 1200
+
     def test_an_unnamed_trail_is_an_unnamed_path(self):
         entries = d.describe([road(None, 1, 700, facility="path", use="cycleway")])
         assert len(entries) == 1  # its unnamed pieces are one stretch

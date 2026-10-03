@@ -158,12 +158,16 @@ def _same(a: _Run, b: _Run) -> bool:
 
 
 def _join(a: _Run, b: _Run) -> None:
-    """Fold `b`, which follows `a`, into `a`."""
+    """Fold `b`, which follows `a`, into `a`. `b`'s names, and the heading `a` is
+    left on, are `a`'s only where `b` is `a`'s street: a short stretch of another
+    street folded in must not make the two one street, and the turn onto the next
+    stretch is still read from the street `a` is."""
+    if _same_street(a, b):
+        a.names |= b.names
+        a.label = a.label or b.label
+        a.path = a.path or b.path
+        a.last = b.last
     a.metres += b.metres
-    a.names |= b.names
-    a.label = a.label or b.label
-    a.last = b.last
-    a.path = a.path or b.path
 
 
 def _coalesce(runs: list[_Run]) -> list[_Run]:
@@ -212,11 +216,13 @@ def _absorb_tiny(runs: list[_Run]) -> list[_Run]:
                 _join(before, run)
             else:
                 # The tiny one's start becomes the neighbour's: its heading in.
+                if _same_street(run, target):
+                    target.names |= run.names
+                    target.label = target.label or run.label
+                    target.path = target.path or run.path
+                    # The turn into the stretch is where its own street begins.
+                    target.first = run.first
                 target.metres += run.metres
-                target.names |= run.names
-                target.label = target.label or run.label
-                target.first = run.first
-                target.path = target.path or run.path
             del runs[i]
             changed = True
         coalesced = _coalesce(runs)

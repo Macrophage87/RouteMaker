@@ -313,6 +313,14 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '    Control.STOP: " at a signal",',
         PURE,
     ),
+    (
+        "fold: another street's names taken",
+        D,
+        "                if _same_street(run, target):",
+        "                if True:",
+        PURE,
+    ),
+    ("join: another street's names taken", D, "    if _same_street(a, b):", "    if True:", PURE),
 ]
 
 
