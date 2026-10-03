@@ -100,7 +100,7 @@ interface Props {
   onCanvasFocus: (focused: boolean) => void;
   /** Which rail stations show (the panel's toggles). */
   rail: RailVisibility;
-  /** A station's Start here / End here / Add as via, with its bike entrance. */
+  /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat) => void;
 }
 
@@ -138,7 +138,7 @@ const STRESS_RECHECK_MS = 60_000;
 function pointLabel(index: number, count: number): { text: string; name: string; kind: string } {
   if (index === 0) return { text: "A", name: "Start", kind: "start" };
   if (index === count - 1 && count > 1) return { text: "B", name: "End", kind: "end" };
-  return { text: String(index), name: `Via point ${index}`, kind: "via" };
+  return { text: String(index), name: `Stop ${index}`, kind: "via" };
 }
 
 type EditFeature =

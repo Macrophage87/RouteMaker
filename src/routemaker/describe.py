@@ -18,7 +18,8 @@ The rules:
   if there is one, else the longer). One of LTS 3 or worse goes only into a
   neighbour at least as stressful, so it is never hidden or understated; an
   untraced one is never folded.
-- A leg boundary (a via point) is its own entry, and a stretch never spans it.
+- A leg boundary (a via point, named "Stop N") is its own entry, and a stretch
+  never spans it.
 - A turn names the street it turns onto and, where the junction model has read
   the junction, its control ("at a signal") and, where it flagged it, its
   severity ("Higher stress junction" / "Very high stress junction"). Where the
@@ -26,6 +27,14 @@ The rules:
 - Flagged junctions that are not a change of street (crossing a busy road) are
   entries of their own.
 - Distances are scaled so the last stretch ends at the route's length.
+- The overview (OWNER-DECISIONS 226) is the same route with stretches under
+  OVERVIEW_M (0.25 mi) merged into a neighbour of their own leg, so it never
+  spans a stop. It never hides or understates: a stretch of LTS 3 or worse merges
+  only into a neighbour at least as stressful, a calm stretch (LTS 1-2) is never
+  merged with a busy one, a merged stretch is worded at its most stressful tier,
+  a stretch that begins at a flagged junction is never merged away, and the stops
+  and the separate flagged-junction entries are the full description's, unchanged.
+  `describe_both` answers both lists.
 """
 
 from __future__ import annotations
@@ -42,6 +51,8 @@ FEET_PER_METRE = 3.28084
 TINY_M = 300.0 / FEET_PER_METRE
 # Below a tenth of a mile the range would read "0.3 to 0.3 mi": say the length.
 SHORT_M = METRES_PER_MILE / 10
+# The overview merges stretches under a quarter of a mile (OWNER-DECISIONS 226).
+OVERVIEW_M = METRES_PER_MILE / 4
 # How far from a change of street an event still is that junction.
 MATCH_M = 30.0
 # Tiers that are never folded into a neighbour.
@@ -367,7 +378,12 @@ def _street_words(run: _Run) -> str:
 
 
 def _stretch_sentence(
-    run: _Run, start_m: float, end_m: float, turn: _Turn | None, same_street_continues: bool
+    run: _Run,
+    start_m: float,
+    end_m: float,
+    turn: _Turn | None,
+    same_street_continues: bool,
+    then: str = "",
 ) -> str:
     street = _street_words(run)
     where = range_words(start_m, end_m)
@@ -392,7 +408,127 @@ def _stretch_sentence(
     words = tier_words(run.tier, run.facility)
     if words == PATH_WORDS and street == UNNAMED_PATH:
         words = "traffic-free"
-    return f"{where}: {lead}, {words}."
+    return f"{where}: {lead}{then}, {words}."
+
+
+def _then_words(streets: list[str]) -> str:
+    """ ", then A, B and 2 more": the other streets a merged stretch runs along."""
+    if not streets:
+        return ""
+    if len(streets) == 1:
+        listed = streets[0]
+    elif len(streets) <= 3:
+        listed = ", ".join(streets[:-1]) + " and " + streets[-1]
+    else:
+        listed = ", ".join(streets[:3]) + f" and {len(streets) - 3} more"
+    return f", then {listed}"
+
+
+def _flagged_turn(turns: dict[int, _Turn], i: int) -> bool:
+    turn = turns.get(i)
+    return turn is not None and turn.event is not None and bool(turn.event.flagged)
+
+
+def _overview_groups(runs: list[_Run], turns: dict[int, _Turn]) -> list[list[int]]:
+    """Which runs the overview makes one entry: contiguous index ranges [first,
+    last]. A group under OVERVIEW_M folds into the neighbour of its own leg (never
+    across a stop) that keeps the wording true: a stretch of LTS 3 or worse only
+    into one at least as stressful; never an untraced one (a leg of its own), nor
+    one rated against one not rated; nor a calm stretch (LTS 1-2) with a busy one; nothing that
+    begins at a flagged junction is folded away, and nothing is folded in front
+    of one (its turn would no longer begin the entry)."""
+    groups: list[list[int]] = [[i, i] for i in range(len(runs))]
+
+    def metres(group: list[int]) -> float:
+        return sum(runs[k].metres for k in range(group[0], group[1] + 1))
+
+    def rank(group: list[int]) -> int:
+        return max(_rank(runs[k]) for k in range(group[0], group[1] + 1))
+
+    def facilities(group: list[int]) -> set[str]:
+        return {runs[k].facility for k in range(group[0], group[1] + 1)}
+
+    def tiers(group: list[int]) -> set[str]:
+        return {runs[k].tier for k in range(group[0], group[1] + 1)}
+
+    def joinable(a: list[int], b: list[int]) -> bool:
+        ra, rb = runs[a[0]], runs[b[0]]
+        return (
+            # An untraced leg is one run of a leg of its own: the leg rule keeps it
+            # out of every merge.
+            ra.leg == rb.leg
+            and (ra.tier == "unknown") == (rb.tier == "unknown")
+            # A calm stretch is never worded as busy, nor a busy one as calm.
+            and (rank(a) >= 3) == (rank(b) >= 3)
+        )
+
+    while True:
+        candidates = [
+            (metres(g), n)
+            for n, g in enumerate(groups)
+            if metres(g) < OVERVIEW_M and not _flagged_turn(turns, g[0])
+        ]
+        folded = False
+        for _size, n in sorted(candidates):
+            group = groups[n]
+            before = groups[n - 1] if n > 0 else None
+            after = groups[n + 1] if n + 1 < len(groups) else None
+            options = []
+            if before is not None and joinable(before, group):
+                options.append(before)
+            if after is not None and joinable(group, after) and not _flagged_turn(turns, after[0]):
+                options.append(after)
+            # LTS 3 has no calmer busy neighbour: only LTS 4 and Avoid need this.
+            if rank(group) > 3:
+                options = [o for o in options if rank(o) >= rank(group)]
+            if not options:
+                continue
+
+            def preference(o: list[int], group=group, after=after) -> tuple:
+                same_kind = tiers(o) == tiers(group) and facilities(o) == facilities(group)
+                same_street = _same_street(runs[o[0]], runs[group[0]])
+                return (not same_kind, not same_street, -metres(o), o is after)
+
+            options.sort(key=preference)
+            target = options[0]
+            if target is before:
+                before[1] = group[1]
+            else:
+                after[0] = group[0]
+            del groups[n]
+            folded = True
+            break
+        if not folded:
+            return groups
+
+
+def _group_run(runs: list[_Run], group: list[int]) -> tuple[_Run, str]:
+    """A merged group as one run to word, and its ", then ..." clause: the most
+    stressful tier of its members, a facility only if they share one, the street
+    it begins on and the other streets in order."""
+    members = runs[group[0] : group[1] + 1]
+    first = members[0]
+    if len(members) == 1:
+        return first, ""
+    worst = max(members, key=_rank)
+    facilities = {m.facility for m in members}
+    merged = _Run(
+        metres=sum(m.metres for m in members),
+        tier=worst.tier,
+        facility=first.facility if len(facilities) == 1 else "none",
+        names=first.names,
+        label=first.label,
+        first=first.first,
+        last=members[-1].last,
+        path=first.path,
+        leg=first.leg,
+    )
+    own = _street_words(first)
+    streets: list[str] = []
+    for m in members[1:]:
+        if m.label and m.label != own and m.label not in streets:
+            streets.append(m.label)
+    return merged, _then_words(streets)
 
 
 def _nearest_event(events: list, at_m: float, used: set[int]):
@@ -411,7 +547,16 @@ def describe(
     events: list | None = None,
     total_m: float | None = None,
 ) -> list[dict]:
-    """The route's description, in route order.
+    """The route's full description (see `describe_both`)."""
+    return describe_both(legs, events, total_m)[0]
+
+
+def describe_both(
+    legs: list[list[Atom] | float],
+    events: list | None = None,
+    total_m: float | None = None,
+) -> tuple[list[dict], list[dict]]:
+    """The route's full description and its overview, each in route order.
 
     `legs` has one item per leg, in order: the leg's atoms, or the length in
     metres of a leg that could not be traced. `events` are the junction events
@@ -422,6 +567,8 @@ def describe(
     (whole metres), `from_mi` and `to_mi` (miles to a hundredth), `street`,
     `tier` (1-5 or None), `facility` or None, `turn` (None or a dict), `severity`
     ("orange", "red" or None), `via` (the point's number, for a "via"), `text`.
+    The overview has the same entries with the short stretches merged (see the
+    module's rules); its stops and junction entries are the full ones.
     """
     runs: list[_Run] = []
     for leg, content in enumerate(legs):
@@ -474,19 +621,20 @@ def describe(
         turns[i] = _Turn(movement, event)
 
     entries: list[tuple[tuple[float, int, int], dict]] = []
+    shared: list[tuple[tuple[float, int, int], dict]] = []
     for i, run in enumerate(runs):
         start, end = starts[i] * scale, (starts[i] + run.metres) * scale
         if i == 0 or runs[i - 1].leg != run.leg:
             if i > 0:
                 number = run.leg
-                entries.append(
+                shared.append(
                     (
                         (start, 0, i),
                         _entry(
                             "via",
                             start,
                             start,
-                            f"Via {number}: stop at {point_words(start)}.",
+                            f"Stop {number} at {point_words(start)}.",
                             via=number,
                         ),
                     )
@@ -526,7 +674,7 @@ def describe(
         if index in used or not event.flagged:
             continue
         at_m = event.m * scale
-        entries.append(
+        shared.append(
             (
                 (at_m, 2, index),
                 _entry(
@@ -545,8 +693,42 @@ def describe(
                 ),
             )
         )
-    entries.sort(key=lambda pair: pair[0])
-    return [entry for _key, entry in entries]
+    overview: list[tuple[tuple[float, int, int], dict]] = []
+    for first, last in _overview_groups(runs, turns):
+        run, then = _group_run(runs, [first, last])
+        start = starts[first] * scale
+        end = (starts[last] + runs[last].metres) * scale
+        turn = turns.get(first)
+        continues = first > 0 and runs[first - 1].leg == runs[first].leg
+        severity = None
+        if turn is not None and turn.event is not None and turn.event.flagged:
+            severity = turn.event.severity
+        overview.append(
+            (
+                (start, 1, first),
+                _entry(
+                    "stretch",
+                    start,
+                    end,
+                    _stretch_sentence(run, start, end, turn, continues, then),
+                    street=_street_words(runs[first]),
+                    tier=int(run.tier) if run.tier.isdigit() else None,
+                    facility=None if run.facility in ("unknown", "none") else run.facility,
+                    turn=None
+                    if turn is None
+                    else {
+                        "movement": turn.movement,
+                        "onto": _street_words(runs[first]),
+                        "control": turn.event.control.value if turn.event is not None else None,
+                        "severity": severity,
+                    },
+                    severity=severity,
+                ),
+            )
+        )
+    full = sorted(entries + shared, key=lambda pair: pair[0])
+    short = sorted(overview + shared, key=lambda pair: pair[0])
+    return [e for _k, e in full], [e for _k, e in short]
 
 
 def _entry(kind: str, start: float, end: float, text: str, **fields) -> dict:
@@ -577,7 +759,9 @@ __all__ = [
     "Atom",
     "Control",
     "Movement",
+    "OVERVIEW_M",
     "describe",
+    "describe_both",
     "plain_text",
     "range_words",
     "readable",

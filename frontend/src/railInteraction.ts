@@ -1,7 +1,7 @@
 /**
  * Hovering and tapping the rail stations: a hover shows the station's name
  * and lines; a tap (or click) opens the same with "Start here", "End here"
- * and "Add as via", which put the point on the station's elevator - the bike
+ * and "Add as stop", which put the point on the station's elevator - the bike
  * entrance - or on the tapped elevator itself (owner, 2026-09-27).
  */
 import * as maplibregl from "maplibre-gl";
@@ -35,7 +35,7 @@ export interface RailInteractionOptions {
 const ROLE_TEXT: Record<StationRole, string> = {
   start: "Start here",
   end: "End here",
-  via: "Add as via",
+  via: "Add as stop",
 };
 /** Pixels around a tap that still count as on the station. */
 const TAP_SLOP = 6;

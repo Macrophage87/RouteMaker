@@ -10,7 +10,10 @@
  *   the list just updates.
  * - One sentence to an item, with the severity and the tier in words, never in
  *   colour alone.
- * - "Copy description" and "Download as text" (a cue sheet, no network).
+ * - A "Full detail" checkbox (only where the overview is shorter): the overview
+ *   merges short stretches, the full list shows every entry; remembered.
+ * - "Copy description" and "Download as text" (a cue sheet, no network) take
+ *   whichever view is shown.
  */
 import { useEffect, useId, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
@@ -20,10 +23,15 @@ import {
   chevron,
   cueSheetFileName,
   descriptionEntries,
+  type DescriptionView,
   descriptionText,
+  hasOverview,
   readOpen,
+  readView,
   toggleLabel,
+  viewFor,
   writeOpen,
+  writeView,
 } from "./lib/routeDescription.ts";
 
 async function copy(text: string): Promise<boolean> {
@@ -52,8 +60,11 @@ async function copy(text: string): Promise<boolean> {
 }
 
 export function RouteDescription({ route }: { route: RouteResponse }) {
-  const entries = descriptionEntries(route);
   const [open, setOpen] = useState<boolean>(() => readOpen());
+  const [chosen, setChosen] = useState<DescriptionView>(() => readView());
+  const choice = hasOverview(route);
+  const view = viewFor(route, chosen);
+  const entries = descriptionEntries(route, view);
   // Said only after the rider presses Copy: a reply to their action, not a
   // announcement about the route.
   const [copied, setCopied] = useState<"" | "done" | "failed">("");
@@ -66,11 +77,16 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
     setOpen(!open);
     writeOpen(!open);
   };
+  const onView = (full: boolean) => {
+    const next: DescriptionView = full ? "full" : "overview";
+    setChosen(next);
+    writeView(next);
+  };
   const onCopy = async () => {
-    setCopied((await copy(descriptionText(route))) ? "done" : "failed");
+    setCopied((await copy(descriptionText(route, view))) ? "done" : "failed");
   };
   const onDownload = () => {
-    const blob = new Blob([descriptionText(route)], { type: "text/plain;charset=utf-8" });
+    const blob = new Blob([descriptionText(route, view)], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -86,8 +102,13 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
       <h3 id="route-description-heading">{DESCRIPTION_HEADING}</h3>
       <button type="button" className="description-toggle" aria-expanded={open} aria-controls={listId} onClick={toggle}>
         <span aria-hidden="true">{chevron(open)} </span>
-        {toggleLabel(entries)}
+        {toggleLabel(entries, view, choice)}
       </button>
+      {choice ? (
+        <label className="description-view">
+          <input type="checkbox" checked={view === "full"} onChange={(e) => onView(e.target.checked)} /> Full detail
+        </label>
+      ) : null}
       <ol id={listId} className="description-list" hidden={!open}>
         {entries.map((entry, i) => (
           <li key={i} className={`description-${entry.kind}`}>

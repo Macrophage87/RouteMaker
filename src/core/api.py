@@ -525,7 +525,7 @@ class DescriptionEntryOut(Schema):
     220: blind cyclists, many riding as tandem stokers, need the route in words).
     Stretches, one street at one stress tier and facility, run end to end from 0;
     a `junction` is a flagged junction that is not a turn, at a point, and a
-    `via` is where a via point is reached (`Via 1`, as the points list calls it).
+    `via` is where a via point is reached (`Stop 1`, as the points list calls it).
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
@@ -579,6 +579,11 @@ class RouteOut(Schema):
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
     # absent or null where it could not be built.
     description: list[DescriptionEntryOut] | None = None
+    # The same route with stretches under a quarter of a mile merged into their
+    # neighbours (OWNER-DECISIONS 226): never fewer busy stretches or flagged
+    # junctions, never across a stop. Both lists are sent so the client switches
+    # without a second request and the merged sentences are worded in one place.
+    description_overview: list[DescriptionEntryOut] | None = None
 
 
 # What Pydantic puts before the text of a ValueError raised in a validator.

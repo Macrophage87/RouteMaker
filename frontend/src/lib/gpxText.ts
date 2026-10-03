@@ -5,6 +5,7 @@ import { WHENS, hillsWords, stressWords } from "./dials.ts";
 import type { ExportDials, GpxExport } from "./gpx.ts";
 import type { ImportNote, ImportedPlan } from "./gpxPlan.ts";
 import { presetLabel } from "./presets.ts";
+import { gpxDescriptionText } from "./routeDescription.ts";
 import { FIDELITY_WITHIN_M, type Fidelity } from "./trackMatch.ts";
 import { formatClimb, formatDistance, milesFigure } from "./format.ts";
 
@@ -12,7 +13,7 @@ type ExportedRoute = Pick<
   RouteResponse,
   "preset" | "distance_m" | "climb_m" | "descent_m" | "geometry" | "attribution"
 > &
-  Partial<Pick<RouteResponse, "dials">>;
+  Partial<Pick<RouteResponse, "dials" | "description" | "description_overview">>;
 
 // US units first, metric in brackets (owner decision), in everything the
 // file and this section say: the app's one formatter (format.ts).
@@ -73,6 +74,7 @@ export function exportOf(route: ExportedRoute, points: readonly LonLat[]): GpxEx
     preset: route.preset,
     ...(dials ? { dials } : {}),
     rideText: rideText(route),
+    ...(gpxDescriptionText(route) ? { routeText: gpxDescriptionText(route) } : {}),
     planPoints: points,
     geometry: route.geometry.coordinates,
   };

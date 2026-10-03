@@ -1,4 +1,4 @@
-// A station's Start here / End here / Add as via as an edit of the plan.
+// A station's Start here / End here / Add as stop as an edit of the plan.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { MAX_POINTS, type LonLat } from "./geo.ts";
@@ -82,7 +82,7 @@ test("a station's edit, recorded as App's commit does, is undone and redone exac
   assert.deepEqual(step(history, "redo", undone!), edit.next);
 });
 
-test("Add as via at the station that is already the End is a via, and is announced as one", () => {
+test("Add as via at the station that is already the End is a stop, and is announced as one", () => {
   // The same array as the End, as the fixtures hand it out.
   const points: LonLat[] = [[-77.05, 38.9], [-77.04, 38.91], STATION];
   const edit = stationEdit(points, STATION, "via");
@@ -91,5 +91,5 @@ test("Add as via at the station that is already the End is a via, and is announc
   assert.ok(edit.index > 0 && edit.index < edit.next.length - 1, `index ${edit.index}`);
   assert.equal(edit.next[edit.index], STATION);
   assert.equal(edit.next[edit.next.length - 1], STATION, "the End is still the station");
-  assert.match(pointName(edit.index, edit.next.length), /^Via /);
+  assert.match(pointName(edit.index, edit.next.length), /^Stop [0-9]/);
 });

@@ -47,7 +47,7 @@ export interface JunctionWarning {
 /**
  * One entry of the route's description (core.api.DescriptionEntryOut;
  * OWNER-DECISIONS 220): a stretch of one street at one stress tier, a
- * junction that is not a turn, or a via point. `text` is the one plain
+ * junction that is not a turn, or a stop (a via point, "Stop 1"). `text` is the one plain
  * sentence to read aloud, US units first.
  */
 export interface DescriptionEntry {
@@ -176,6 +176,8 @@ export interface RouteResponse {
   intersections?: JunctionWarning[] | null;
   /** The route in words, stretch by stretch; null where it could not be built, absent from an older API. */
   description?: DescriptionEntry[] | null;
+  /** The same route with stretches under a quarter of a mile merged (OWNER-DECISIONS 226); null where unbuilt. */
+  description_overview?: DescriptionEntry[] | null;
   /** The calm detour search (null on a ride type that has none). Absent from an older API. */
   calm_search?: CalmSearch | null;
   /** Null within the allowance of the direct route; absent from an older API, which has the straight-line notice. */

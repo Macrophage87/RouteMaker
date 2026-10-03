@@ -932,8 +932,9 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
 
 def describe_route(
     leg_runs: list, pieces: list[Piece], classes: list, events: list | None, summary: dict
-) -> list[dict] | None:
-    """The route as words (`routemaker.describe`, OWNER-DECISIONS 220): built
+) -> tuple[list[dict], list[dict]] | None:
+    """The route as words, in full and as an overview (`routemaker.describe`,
+    OWNER-DECISIONS 220 and 226): built
     from the pieces and junction events the plan already has, with no router
     call and no query. None where it could not be built: the route is answered
     all the same."""
@@ -958,7 +959,7 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe(legs, events, length or None)
+        return describe.describe_both(legs, events, length or None)
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -1340,6 +1341,7 @@ def plan(
     if not over_budget:
         events = _events(refine_context, legs, raw_junctions, deadline)
     described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
+    described_full, described_overview = described if described else (None, None)
     joined_at = clock()
     if joined_at - started > budget_s:
         logger.warning(
@@ -1432,7 +1434,8 @@ def plan(
         "intersections": None if events is None else _intersection_rows(events),
         "calm_search": refined,
         "detour": detour,
-        "description": described,
+        "description": described_full,
+        "description_overview": described_overview,
     }
 
 

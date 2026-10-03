@@ -12,6 +12,11 @@
   background: var(--bg-soft);
   border: 1px solid var(--border);
 }
+.description-view {
+  display: inline-block;
+  margin-left: 12px;
+  font-size: 0.9rem;
+}
 .description-list {
   margin: 8px 0;
   padding-left: 1.6rem;

@@ -75,7 +75,6 @@ function session(): Storage | null {
 
 const initialPlan = decodePlan(planToOpen(session(), window.location.hash));
 
-/** A point's name in the list: Start, Via 1, Via 2, ..., End. */
 const NARROW = "(max-width: 720px)";
 
 /** Whether the phone layout (the bottom sheet) is showing, kept up to date. */
@@ -344,12 +343,12 @@ export function App() {
       }
       setNotice(null);
       commit(next);
-      announce(`Via point ${leg + 1} added, between ${pointName(leg, next.length)} and ${pointName(leg + 2, next.length)}.`);
+      announce(`Stop ${leg + 1} added, between ${pointName(leg, next.length)} and ${pointName(leg + 2, next.length)}.`);
     },
     [commit, announce],
   );
 
-  // A station's Start here / End here / Add as via (railStations.ts): an
+  // A station's Start here / End here / Add as stop (railStations.ts): an
   // edit of the points like any other, so it can be undone and redone.
   const placeStation = useCallback((role: StationRole, point: LonLat) => {
     if (!insideCoverage(point)) {
@@ -537,9 +536,9 @@ export function App() {
       {points.length === 0 ? (
         <p className="hint">
           Search for a place, or click the map to set a start, then an end. Later clicks add a
-          via point on the nearest leg. Drag any marker to move it, or drag the route line to
+          stop on the nearest leg. Drag any marker to move it, or drag the route line to
           pull it through somewhere else (on a phone, press and hold the line first). Click a
-          via point for Remove. From the keyboard, move the map with the arrow keys and use
+          stop for Remove. From the keyboard, move the map with the arrow keys and use
           "Add point at map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
         </p>
       ) : (

@@ -125,11 +125,12 @@ class TestInTheAnswer:
         def broken(*args, **kwargs):
             raise RuntimeError("no")
 
-        monkeypatch.setattr(describe, "describe", broken)
+        monkeypatch.setattr(describe, "describe_both", broken)
         router(named_world())
         response = post(client, good_body())
         assert response.status_code == 200
         assert response.json()["description"] is None
+        assert response.json()["description_overview"] is None
 
 
 @pytest.fixture
@@ -182,7 +183,7 @@ class TestVias:
         }
         entries = post(client, body).json()["description"]
         assert [e["kind"] for e in entries] == ["stretch", "via", "stretch"]
-        assert entries[1]["text"].startswith("Via 1: stop at 0.6 mi")
+        assert entries[1]["text"].startswith("Stop 1 at 0.6 mi")
         assert entries[0]["to_m"] == entries[1]["from_m"] == entries[2]["from_m"]
 
 
@@ -293,7 +294,10 @@ class TestDescribeRoute:
 
     def test_the_pieces_and_their_classes_are_the_routes_words(self):
         classes = [("3", "none"), ("1", "path")]
-        entries = routing.describe_route([(0, 2)], self.pieces(), classes, None, {"length": 1.0})
+        entries, overview = routing.describe_route(
+            [(0, 2)], self.pieces(), classes, None, {"length": 1.0}
+        )
+        assert [e["tier"] for e in overview] == [3, 1]
         assert [e["street"] for e in entries] == ["A St", "B St"]
         assert [e["tier"] for e in entries] == [3, 1]
         assert [e["facility"] for e in entries] == [None, "path"]
@@ -301,17 +305,46 @@ class TestDescribeRoute:
         assert entries[-1]["to_m"] == 1000
 
     def test_an_untraced_leg_is_carried(self):
-        entries = routing.describe_route(
+        entries, _overview = routing.describe_route(
             [(0, 1), 500.0], self.pieces()[:1], [("1", "none")], None, {"length": 0.9}
         )
         assert [e["kind"] for e in entries] == ["stretch", "via", "stretch"]
         assert entries[-1]["to_m"] == 900
 
     def test_no_length_leaves_the_distances_as_traced(self):
-        entries = routing.describe_route([(0, 2)], self.pieces(), [("1", "none")] * 2, None, {})
+        entries, _overview = routing.describe_route(
+            [(0, 2)], self.pieces(), [("1", "none")] * 2, None, {}
+        )
         assert entries[-1]["to_m"] == 1000
 
     def test_a_failure_is_none_and_logged(self, caplog):
         entries = routing.describe_route([(0, 5)], self.pieces(), [], None, {})
         assert entries is None
         assert "could not be built" in caplog.text
+
+
+@db
+@pytest.mark.usefixtures("arterial")
+class TestOverviewInTheAnswer:
+    def test_both_lists_are_answered_and_agree_on_a_short_route(self, client, router):
+        router(named_world())
+        body = post(client, good_body()).json()
+        assert body["description_overview"] == body["description"]
+
+    def test_a_short_stretch_is_merged_in_the_overview_only(self, client, router):
+        fake = named_world(length_km=2.65)
+        edges = fake.answers["trace_attributes"]["edges"]
+        # A 350 m side street on the way: more than 300 ft, less than 0.25 mi.
+        edges.insert(1, dict(edges[0], names=["Side Street"], length=0.35))
+        router(fake)
+        body = post(client, good_body()).json()
+        streets = [e["street"] for e in body["description"] if e["kind"] == "stretch"]
+        short = [e["street"] for e in body["description_overview"] if e["kind"] == "stretch"]
+        assert "Side Street" in streets
+        assert len(short) < len(streets)
+
+    def test_the_schema_has_the_overview_as_an_optional_list(self):
+        schema = api.RouteOut.model_json_schema()
+        assert "description_overview" in schema["properties"]
+        assert "description_overview" not in schema.get("required", [])
+        assert api.RouteOut.model_fields["description_overview"].default is None

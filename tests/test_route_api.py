@@ -56,6 +56,8 @@ CONTRACT_KEYS = {
     "detour",
     # Additive, ROUTE-DESCRIPTION (OWNER-DECISIONS item 220): the route in words.
     "description",
+    # Additive, OWNER-DECISIONS item 226: the same with short stretches merged.
+    "description_overview",
 }
 STRESS_KEYS = {"1", "2", "3", "4", "5", "unknown"}
 

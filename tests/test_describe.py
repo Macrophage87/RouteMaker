@@ -433,7 +433,7 @@ class TestVias:
         entries = d.describe([first, second])
         assert texts(entries) == [
             "0.0 to 0.9 mi (0.0 to 1.5 km): Capital Crescent Trail, traffic-free path.",
-            "Via 1: stop at 0.9 mi (1.5 km).",
+            "Stop 1 at 0.9 mi (1.5 km).",
             "0.9 to 1.9 mi (1.5 to 3.0 km): Capital Crescent Trail, traffic-free path.",
         ]
         assert entries[1]["via"] == 1 and entries[1]["kind"] == "via"
@@ -566,3 +566,309 @@ class TestTotals:
     def test_the_plain_text_is_one_line_per_entry(self):
         entries = d.describe([bethesda()])
         assert d.plain_text(entries).count("\n") == len(entries) - 1
+
+
+def both(*legs, events=None, total=None):
+    return d.describe_both(list(legs), events, total)
+
+
+class TestOverview:
+    """OWNER-DECISIONS 226: the overview merges stretches under 0.25 mi and never
+    hides a busy stretch or a flagged junction, nor spans a stop."""
+
+    def test_the_limit_is_a_quarter_of_a_mile(self):
+        assert d.OVERVIEW_M == pytest.approx(402.336)
+
+    def test_long_stretches_are_the_same_in_both(self):
+        full, short = both(bethesda())
+        assert texts(short) == texts(full)
+
+    def test_describe_is_the_full_list(self):
+        assert d.describe([bethesda()]) == both(bethesda())[0]
+
+    def test_a_short_quiet_stretch_is_merged_into_its_neighbour(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        full, short = both(flat(a, b, c))
+        assert len(full) == 3
+        assert texts(short) == [
+            "0.0 to 0.8 mi (0.0 to 1.4 km): A St, then B St, low stress (LTS 1).",
+            "0.8 to 1.5 mi (1.4 to 2.4 km): Left onto C St, low stress (LTS 1).",
+        ]
+        assert short[0]["street"] == "A St" and short[0]["to_m"] == 1350
+
+    def test_a_calm_stretch_is_not_worded_as_busy_nor_a_busy_one_as_calm(self):
+        a, b, c = (
+            road("A St", 4, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 4, 1000, 0, 0),
+        )
+        short = both(flat(a, b, c))[1]
+        assert [e["tier"] for e in short] == [4, 1, 4]
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 4, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        assert [e["tier"] for e in both(flat(a, b, c))[1]] == [1, 4, 1]
+
+    def test_a_short_lts4_stretch_is_not_worded_as_lts3(self):
+        a, b, c = (
+            road("A St", 3, 1000, 0, 0),
+            road("B St", 4, 350, 90, 90),
+            road("C St", 3, 1000, 0, 0),
+        )
+        assert [e["tier"] for e in both(flat(a, b, c))[1]] == [3, 4, 3]
+        a, b, c = (
+            road("A St", 4, 1000, 0, 0),
+            road("B St", 5, 350, 90, 90),
+            road("C St", 4, 1000, 0, 0),
+        )
+        assert [e["tier"] for e in both(flat(a, b, c))[1]] == [4, 5, 4]
+
+    def test_the_neighbour_of_the_same_tier_is_preferred(self):
+        a, b, c = (
+            road("A St", 2, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        short = both(flat(a, b, c))[1]
+        assert [e["tier"] for e in short] == [2, 1]
+        assert short[0]["to_m"] == 1000 and short[1]["from_m"] == 1000
+
+    def test_the_neighbour_on_its_own_street_is_preferred(self):
+        a, b, c = (
+            road("A St", 2, 1000, 0, 0),
+            road("C St", 1, 350, 90, 90),
+            road("C St", 2, 1000, 90, 90),
+        )
+        short = both(flat(a, b, c))[1]
+        assert len(short) == 2
+        assert short[0]["to_m"] == 1000 and short[1]["street"] == "C St"
+
+    def test_the_street_it_begins_on_is_not_listed_as_another(self):
+        a, b = road("A St", 1, 1000, 0, 0), road("A St", 2, 350, 0, 0)
+        short = both(flat(a, b))[1]
+        assert len(short) == 1
+        assert short[0]["text"] == "0.0 to 0.8 mi (0.0 to 1.4 km): A St, fairly low stress (LTS 2)."
+
+    def test_a_street_run_along_twice_is_listed_once(self):
+        pieces = [road("Long St", 1, 1000, 0, 0), road("B St", 1, 100, 90, 90)]
+        pieces += [
+            road("C St", 1, 100, 0, 0),
+            road("B St", 1, 100, 90, 90),
+            road("Z St", 1, 1000, 0, 0),
+        ]
+        assert "Long St, then B St and C St," in both(flat(*pieces))[1][0]["text"]
+
+    def test_three_other_streets_are_all_listed(self):
+        pieces = [road("Long St", 1, 1000, 0, 0)]
+        for name, heading in (("B St", 90), ("C St", 180), ("D St", 270)):
+            pieces.append(road(name, 1, 100, heading, heading))
+        pieces.append(road("Z St", 1, 1000, 0, 0))
+        assert "Long St, then B St, C St and D St," in both(flat(*pieces))[1][0]["text"]
+
+    def test_a_stretch_exactly_at_the_limit_is_kept(self):
+        atoms = [
+            d.Atom(1000.0, "1", "none", ("A St",), "road", 0.0, 0.0),
+            d.Atom(d.OVERVIEW_M, "1", "none", ("B St",), "road", 90.0, 90.0),
+            d.Atom(1000.0, "1", "none", ("C St",), "road", 0.0, 0.0),
+        ]
+        assert len(both(atoms)[1]) == 3
+        atoms[1] = d.Atom(d.OVERVIEW_M - 1, "1", "none", ("B St",), "road", 90.0, 90.0)
+        assert len(both(atoms)[1]) == 2
+
+    def test_a_stretch_at_a_quarter_mile_or_more_is_kept(self):
+        a, b, c = road("A St", 1, 1000), road("B St", 1, 410, 90, 90), road("C St", 1, 1000, 0, 0)
+        assert len(both(flat(a, b, c))[1]) == 3
+
+    def test_a_short_lts3_stretch_between_quiet_ones_is_never_hidden(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 3, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        short = both(flat(a, b, c))[1]
+        assert [e["tier"] for e in short] == [1, 3, 1]
+
+    @pytest.mark.parametrize("tier", [3, 4, 5])
+    def test_a_short_busy_stretch_merges_only_into_one_at_least_as_stressful(self, tier):
+        a = road("A St", tier, 1000, 0, 0)
+        b = road("B St", tier, 350, 90, 90)
+        c = road("C St", 1, 1000, 0, 0)
+        short = both(flat(a, b, c))[1]
+        assert [e["tier"] for e in short] == [tier, 1]
+        assert "then B St" in short[0]["text"]
+
+    def test_a_short_stretch_is_worded_at_the_worst_tier_it_covers(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 2, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        short = both(flat(a, b, c))[1]
+        assert short[0]["tier"] == 2
+        assert "fairly low stress (LTS 2)" in short[0]["text"]
+
+    def test_a_trail_with_a_short_road_bit_is_not_called_a_path(self):
+        a = road("Trail", 1, 1000, 0, 0, facility="path", use="cycleway")
+        b = road("Side St", 1, 350, 90, 90)
+        short = both(flat(a, b))[1]
+        assert len(short) == 1
+        assert "traffic-free" not in short[0]["text"] and short[0]["facility"] is None
+
+    def test_a_stretch_that_begins_at_a_flagged_junction_is_never_merged_away(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        events = [event(1000, "right", Control.NONE, "red", flagged=True)]
+        short = both(flat(a, b, c), events=events)[1]
+        assert len(short) == 3
+        assert "Very high stress junction" in short[1]["text"] and short[1]["severity"] == "red"
+
+    def test_nothing_is_merged_in_front_of_a_flagged_turn(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        events = [event(1350, "left", Control.SIGNAL, "orange")]
+        short = both(flat(a, b, c), events=events)[1]
+        assert "Higher stress junction" in short[-1]["text"]
+        assert short[-1]["text"].split(": ")[1].startswith("Left onto C St")
+
+    def test_a_flagged_junction_inside_a_merged_stretch_stays_an_entry(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        events = [
+            event(1100, "left", Control.NONE, "red", kind="crossing", names=("mass ave",), tier=4)
+        ]
+        full, short = both(flat(a, b, c), events=events)
+        assert [e["kind"] for e in short] == ["stretch", "junction", "stretch"]
+        assert [e["text"] for e in full if e["kind"] == "junction"] == [
+            e["text"] for e in short if e["kind"] == "junction"
+        ]
+
+    def test_nothing_spans_a_stop(self):
+        first = flat(road("A St", 1, 1000, 0, 0), road("B St", 1, 350, 90, 90))
+        second = flat(road("B St", 1, 350, 90, 90), road("C St", 1, 1000, 0, 0))
+        full, short = both(first, second)
+        assert [e["kind"] for e in short] == ["stretch", "via", "stretch"]
+        via = short[1]
+        assert short[0]["to_m"] <= via["from_m"] <= short[2]["from_m"]
+        assert [e["text"] for e in full if e["kind"] == "via"] == [via["text"]]
+
+    def test_a_short_leg_of_its_own_is_kept_as_it_cannot_merge_across_a_stop(self):
+        short = both(road("A St", 1, 1000), road("B St", 1, 300), road("C St", 1, 1000))[1]
+        assert [e["kind"] for e in short] == ["stretch", "via", "stretch", "via", "stretch"]
+
+    def test_an_untraced_leg_is_never_merged(self):
+        short = both(road("A", 1, 500), 200.0, road("C", 1, 500))[1]
+        assert any("no street details" in e["text"] for e in short)
+
+    def test_rated_and_unrated_stretches_are_not_merged(self):
+        rated = road("A St", 1, 1000, 0, 0)
+        unrated = road("B St", "unknown", 350, 90, 90)
+        short = both(flat(rated, unrated))[1]
+        assert len(short) == 2 and short[1]["tier"] is None
+
+    def test_many_streets_are_listed_three_and_a_count(self):
+        pieces = [road("Long St", 1, 1000, 0, 0)]
+        for i, name in enumerate(["B St", "C St", "D St", "E St", "F St"]):
+            heading = 90 * (i + 1) % 360
+            pieces.append(road(name, 1, 100, heading, heading))
+        pieces.append(road("Z St", 1, 1000, 0, 0))
+        short = both(flat(*pieces))[1]
+        assert short[0]["text"].startswith(
+            "0.0 to 0.9 mi (0.0 to 1.5 km): Long St, then B St, C St, D St and 2 more, low stress"
+        )
+
+    def test_two_other_streets_are_joined_with_and(self):
+        pieces = [
+            road("Long St", 1, 1000, 0, 0),
+            road("B St", 1, 100, 90, 90),
+            road("C St", 1, 100, 0, 0),
+        ]
+        pieces.append(road("Z St", 1, 1000, 90, 90))
+        assert "Long St, then B St and C St," in both(flat(*pieces))[1][0]["text"]
+
+    def test_the_overview_covers_the_route_end_to_end(self):
+        a, b, c = (
+            road("A St", 1, 1000, 0, 0),
+            road("B St", 1, 350, 90, 90),
+            road("C St", 1, 1000, 0, 0),
+        )
+        short = both(flat(a, b, c), total=2500.0)[1]
+        stretches = [e for e in short if e["kind"] == "stretch"]
+        assert stretches[0]["from_m"] == 0 and stretches[-1]["to_m"] == 2500
+        assert all(x["to_m"] == y["from_m"] for x, y in zip(stretches, stretches[1:], strict=False))
+
+    def test_random_routes_keep_the_promises(self):
+        import random
+
+        rng = random.Random(226)
+        for _ in range(300):
+            legs = []
+            for _leg in range(rng.randint(1, 3)):
+                parts = []
+                for _k in range(rng.randint(1, 12)):
+                    heading = rng.choice([0, 90, 180, 270])
+                    parts.append(
+                        road(
+                            f"S{rng.randint(1, 5)}",
+                            rng.choice([1, 1, 2, 3, 4, 5]),
+                            rng.choice([40, 150, 250, 380, 500, 900, 1600]),
+                            heading,
+                            heading,
+                            facility=rng.choice(["none", "none", "path", "lane"]),
+                        )
+                    )
+                legs.append(flat(*parts))
+            events = [
+                event(
+                    rng.uniform(0, 5000),
+                    rng.choice(["left", "right", "straight"]),
+                    rng.choice(list(Control)),
+                    rng.choice(["orange", "red"]),
+                    kind=rng.choice(["left_onto", "crossing"]),
+                    flagged=rng.random() < 0.7,
+                )
+                for _ in range(rng.randint(0, 6))
+            ]
+            full, short = both(*legs, events=events)
+            assert len(short) <= len(full)
+            # Stops and separate junction entries are the full list's, unchanged.
+            assert [e for e in short if e["kind"] != "stretch"] == [
+                e for e in full if e["kind"] != "stretch"
+            ]
+            stretches = [e for e in short if e["kind"] == "stretch"]
+            assert all(
+                x["to_m"] == y["from_m"] for x, y in zip(stretches, stretches[1:], strict=False)
+            )
+            # Nothing spans a stop.
+            vias = [e["from_m"] for e in short if e["kind"] == "via"]
+            for e in stretches:
+                assert not any(e["from_m"] < v < e["to_m"] for v in vias)
+            # No busy metre is understated.
+            for e in full:
+                if e["kind"] == "stretch" and (e["tier"] or 0) >= 3:
+                    holder = next(
+                        s
+                        for s in stretches
+                        if s["from_m"] <= e["from_m"] < max(s["to_m"], s["from_m"] + 1)
+                    )
+                    assert (holder["tier"] or 0) >= e["tier"]
+
+            # Every flagged junction's words survive.
+            def flagged_words(entries):
+                return sum(e["text"].count("stress junction") for e in entries)
+
+            assert flagged_words(short) == flagged_words(full)

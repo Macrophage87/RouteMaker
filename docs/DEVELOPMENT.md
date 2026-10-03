@@ -2076,8 +2076,9 @@ headings, none of them part of its identity).
   unnamed) with one tier and one facility are one stretch. A stretch under 300
   ft is folded into the longer neighbour in its leg, but never an LTS 3, LTS 4
   or Avoid stretch, and never an untraced one. A stretch never spans a via
-  point: each leg is described on its own and `Via 1`, `Via 2` (the points
-  list's own words) are entries between them.
+  point: each leg is described on its own and `Stop 1`, `Stop 2` (the points
+  list's own words, item 224) are entries between them ("Stop 1 at 4.7 mi
+  (7.6 km).").
 - **Turns.** Where the street changes, the entry says how the rider turns into
   it (`left`, `right`, or `Continue onto`), from the previous stretch's last
   heading and this one's first (`routemaker.intersections.movement_of`). If the
@@ -2112,6 +2113,39 @@ component of its own: a heading, a disclosure button and an ordered list,
 closed unless the rider has opened it before, "Copy description" and "Download
 as text"). It words nothing itself, and announces nothing when the route
 changes; the only live region is the reply to pressing Copy.
+
+**Stops, the overview and the GPX (items 224 to 226).**
+
+- Stops are "Stop N" in the description, the points list, the map markers and
+  their announcements, "Add as stop" and the GPX route points (`planPointName`).
+  The GPX import still treats `Via N` as RouteMaker's own name, not a place
+  name, so older exports re-open the same way.
+- `describe_both` answers the full list and an overview. The overview merges a
+  stretch under `OVERVIEW_M` (0.25 mi) into a neighbour of its own leg, so it
+  never spans a stop. It never hides or understates: a stretch of LTS 3 or
+  worse folds only into one at least as stressful, and a calm stretch (LTS 1 or
+  2) is never merged with a busy one; a merged stretch is worded at its most
+  stressful tier, with a facility ("traffic-free path") only where all
+  of it has one; a stretch that begins at a flagged junction is never folded
+  away and nothing is folded in front of one; the stops and the separate
+  flagged-junction entries are the full list's, unchanged; an untraced leg and a
+  rated stretch against an unrated one are never merged. A merged entry says
+  the street it begins on and "then" up to three other streets, and a count of
+  the rest.
+- The API sends both lists (`description` full, `description_overview`), not
+  grouping indices: a merged sentence needs its own wording (a tier, a facility
+  and a street list that no member has), which is wording kept in one place,
+  and a client that switches views needs no second request or wording of its
+  own. The cost is a second list; the overview is the shorter one, so the
+  answer grows by less than the full list did.
+- The planner shows the overview by default; a "Full detail" checkbox (only
+  where the overview is shorter) shows every entry and is remembered in
+  localStorage (inside try/catch). Copy and Download use the view shown.
+- The GPX route's `<desc>` carries the ride type and then the description as
+  plain text, a numbered line to an entry, escaped like all the file's text. It
+  is the full text where that is at most `GPX_FULL_MAX_CHARS` (4,000), else the
+  overview, labelled which it is: a file is read on a device, not on the
+  rider's screen, so it does not follow the screen's view.
 
 Cost (2026-10-02, five plans on the live router through the forwarder
 harness, read-only): the same router calls as the code before it (route,

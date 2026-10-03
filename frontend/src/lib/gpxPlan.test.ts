@@ -81,7 +81,7 @@ test("an export's sliders and its points' names come back with its ride type", (
   const plan = planFromGpx(parseGpx(text));
   assert.equal(plan.preset, "cargo");
   assert.deepEqual(plan.dials, { stress: 95, hills: -40, when: "weekday_rush", carrying: "people", assist: true });
-  assert.deepEqual(plan.pointNames, ["Start", "Via 1", "End"]);
+  assert.deepEqual(plan.pointNames, ["Start", "Stop 1", "End"]);
   // Nonsense in the comment is left out, not guessed.
   const odd = planFromGpx(
     file({

@@ -1,5 +1,5 @@
 /**
- * The panel's list of the plan's points: each one's role (Start, Via 1, ...,
+ * The panel's list of the plan's points: each one's role (Start, Stop 1, ...,
  * End), its place name when it has one, its coordinates, and a Remove button.
  * Written with createElement rather than JSX so that a test can render it with
  * react-dom/server under `node --test`, which reads TypeScript but not JSX

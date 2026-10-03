@@ -88,7 +88,7 @@ test("the points list: each point's role, its name when it has one, its coordina
   const points: LonLat[] = [at(LINCOLN), [-77.02, 38.9], at(UNION)];
   const names = { name: (pt: LonLat) => (pt[0] === LINCOLN.lon ? { name: LINCOLN.name, label: LINCOLN.label } : undefined) };
   const rows = pointRows(points, names);
-  assert.deepEqual(rows.map((r) => r.role), ["Start", "Via 1", "End"]);
+  assert.deepEqual(rows.map((r) => r.role), ["Start", "Stop 1", "End"]);
   assert.deepEqual(rows[0].place, { name: LINCOLN.name, label: LINCOLN.label });
   assert.equal(rows[1].place, undefined, "a point with no name yet shows its coordinates");
   assert.match(rows[2].coords, /38\.8978.*-77\.0074/);
