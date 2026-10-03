@@ -1305,7 +1305,7 @@ Church to Union Station plan the same route at 90 and at 100). The rescale
 | 35 | 0.550 | 45 | 0 |
 | 50 | 0.357 | 64 | 0 |
 | 70 (Default) | 0.100 | 90 | 0 |
-| 80 (the old top; Cargo carrying people) | 0.000 | 100 | 0 |
+| 80 (the old top; Cargo with passengers) | 0.000 | 100 | 0 |
 | 85 | 0.000 | | 0.585 |
 | 90 | 0.000 | | 1.824 |
 | 95 | 0.000 | | 4.447 |
@@ -1657,7 +1657,7 @@ to 1.0 for 2.9 mi more, with the detour warning; Laurel - College Park 0.2 mi
 less for 3.1 mi more, mostly less LTS 4), and every plan runs the search: 1.5 to
 5.8 s against 0.5 to 5.9 s. The longer routes cross more busy roads, so they
 carry more markers (Rockville - Silver Spring's 14.3 mi route crosses 13 busy
-roads, two of them unsignalised LTS 4). Cargo carrying people stays at 80, and
+roads, two of them unsignalised LTS 4). Cargo with passengers stays at 80, and
 its routes are unchanged.
 
 ### The top of the slider: what 150 would do (item 187, an exploration)
@@ -1737,7 +1737,7 @@ protected lanes near the line, from the segment table) rather than points at
 fixed offsets, which is layer 4's candidate search proper.
 
 **The owner's answer** (2026-10-02, OWNER-DECISIONS 194: "Build trail-seeking
-search"): Trailmaxxing moves to 100 and Cargo-carrying-people stays at 80, and
+search"): Trailmaxxing moves to 100 and Cargo with passengers stays at 80, and
 the generator was the backlog item FOLLOWUP-TRAIL-SEEK (PLAN, Owner amendments),
 which is what would make a calm setting above 100 mean something. (Superseded:
 the generator is built, item 201; see "The trail seek", next.) So:
@@ -1746,9 +1746,9 @@ the generator is built, item 201; see "The trail seek", next.) So:
   every Trailmaxxing plan runs the calm search at its top rate, with
   Trailmaxxing's own costing (Cross, low surface avoidance). Its routes and
   times are in "Round 2, re-measured" above.
-- Carrying people on a Cargo Bike stays at 80: a heavy bike with a child on it
-  pays for every extra mile and every climb, and 80 already keeps to low-stress
-  ways unless avoiding them takes much longer.
+- Cargo with passengers (item 241; it was "carrying people") stays at 80: a
+  heavy bike with a child on it pays for every extra mile and every climb, and
+  80 already keeps to low-stress ways unless avoiding them takes much longer.
 - The rate stays at 10 at 100, and the wider search stays built and off, until
   FOLLOWUP-TRAIL-SEEK gives the top end candidates worth a higher rate. (The seek
   is now built and did not: positions above 100 plan what 100 does, "The trail
