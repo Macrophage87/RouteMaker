@@ -2113,9 +2113,15 @@ closed unless the rider has opened it before, "Copy description" and "Download
 as text"). It words nothing itself, and announces nothing when the route
 changes; the only live region is the reply to pressing Copy.
 
-Cost, measured on the live router through the forwarder harness: see
-`/home/steph/rmdata/demo/reports/ROUTE-DESCRIPTION-plan-notes.md`; the building
-of the description is about a millisecond for a 10 mi route.
+Cost (2026-10-02, five plans on the live router through the forwarder
+harness, read-only): the same router calls as the code before it (route,
+`trace_attributes` and `/locate` counts are equal plan for plan) and the same
+routes. Building the description took 1 to 14 ms in a plan (0.8 ms for a 2.5 mi
+Mass Ride, 4 to 14 ms for 10 to 13 mi), about 0.2% of a plan's 1.5 to 7 s; a
+benchmark of 1,200 pieces is 0.3 ms with a few long stretches and 3.7 ms in a
+worst case that changes tier every 7 pieces. The answer grows by about 370
+bytes an entry (9 to 20 kB for 10 to 13 mi, 17 to 50 entries), which gzip takes
+to a tenth. `/home/steph/rmdata/demo/reports/ROUTE-DESCRIPTION-plan-notes.md` has the plans.
 
 Tests: `tests/test_describe.py` (merging, tiny stretches, wording, turns,
 junctions, vias, totals), `tests/test_route_description.py` (through the view:

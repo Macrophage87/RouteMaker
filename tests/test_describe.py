@@ -469,6 +469,13 @@ class TestNamesAndKinds:
         entries = d.describe([atoms])
         assert len(entries) == 1 and entries[0]["to_m"] == 1200
 
+    def test_unnamed_stretches_around_a_folded_one_rejoin(self):
+        def unnamed(metres, tier):
+            return [d.Atom(metres, tier, "none", (), "road", 90.0, 90.0)]
+
+        entries = d.describe([unnamed(300.0, "1") + unnamed(40.0, "2") + unnamed(300.0, "1")])
+        assert len(entries) == 1 and entries[0]["to_m"] == 640
+
     def test_an_unnamed_trail_is_an_unnamed_path(self):
         entries = d.describe([road(None, 1, 700, facility="path", use="cycleway")])
         assert len(entries) == 1  # its unnamed pieces are one stretch
