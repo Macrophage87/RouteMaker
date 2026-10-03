@@ -95,19 +95,38 @@ def assign_way(geometry: LineString) -> list[LayerAssignment]:
     The same extract clipped twice could then tag the same way with different
     agencies. The name is an arbitrary tiebreak, but it is the same arbitrary
     answer on every rebuild.
+
+    A way the polygon covers is answered 1 without an overlay, and that is a
+    correctness fix rather than a shortcut. GEOS 3.9.0 - the one inside the
+    pinned `postgis/postgis:16-3.4` image that both CI and the compose stack
+    run - returns `LINESTRING EMPTY` from `ST_Intersection` for a line lying
+    wholly inside a polygon whenever the line's bounding box is degenerate: a
+    two-node way running due east-west or due north-south, or any way whose
+    nodes share one latitude or one longitude. The way then came back at 0.0
+    of the polygon it lies entirely inside. The native loop's PostGIS 3.6 with
+    a newer GEOS does not do it, which is why only CI failed. A covered way's
+    intersection *is* the way, so this branch is exact on every GEOS; a way
+    that is not covered crosses the boundary, its intersection is not the
+    whole line, and that case was measured correct on 3.9.0 too.
     """
     with connection.cursor() as cursor:
         cursor.execute(
             """
+            WITH way AS (
+                SELECT g, ST_Length(g::geography) AS length_m
+                FROM (SELECT %s::geometry AS g) AS input
+            )
             SELECT j.layer,
                    j.name,
-                   ST_Length(ST_Intersection(%s::geometry, j.geometry)::geography)
-                     / NULLIF(ST_Length(%s::geometry::geography), 0) AS fraction
-            FROM jurisdiction j
-            WHERE ST_Intersects(%s::geometry, j.geometry)
+                   CASE
+                     WHEN ST_CoveredBy(way.g, j.geometry) THEN way.length_m
+                     ELSE ST_Length(ST_Intersection(way.g, j.geometry)::geography)
+                   END / NULLIF(way.length_m, 0) AS fraction
+            FROM jurisdiction j, way
+            WHERE ST_Intersects(way.g, j.geometry)
             ORDER BY j.layer, fraction DESC, j.name
             """,
-            [geometry.ewkb, geometry.ewkb, geometry.ewkb],
+            [geometry.ewkb],
         )
         return [
             LayerAssignment(layer=row[0], authority=row[1], fraction=row[2] or 0.0)

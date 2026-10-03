@@ -51,6 +51,28 @@ def test_way_wholly_inside_one_authority(authorities) -> None:
     assert police[0].fraction == pytest.approx(1.0, abs=0.01)
 
 
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        ((-77.03, 38.89), (-77.03, 38.91)),  # due north-south
+        ((-77.04, 38.90), (-77.03, 38.90), (-77.02, 38.90)),  # three nodes on one latitude
+        ((-77.04, 38.89), (-77.02, 38.91)),  # diagonal, the case that always worked
+    ],
+)
+def test_way_covered_by_its_polygon_is_wholly_inside_it(coordinates, authorities) -> None:
+    """GEOS 3.9.0, inside the pinned postgis/postgis:16-3.4 image, intersects a
+    line lying wholly inside a polygon to LINESTRING EMPTY when the line's
+    bounding box is degenerate, so a due east-west or north-south way came back
+    at 0.0 of the polygon it lies entirely inside. Only CI and the stack run that
+    GEOS; the native loop's newer one never showed it."""
+    from pipeline.jurisdiction import assign_way
+
+    way = LineString(coordinates, srid=4326)
+    police = [a for a in assign_way(way) if a.layer == "police"]
+    assert [a.authority for a in police] == ["MPD"]
+    assert police[0].fraction == pytest.approx(1.0, abs=1e-9)
+
+
 def test_way_straddling_a_line_reports_both_with_shares(authorities) -> None:
     """A way can straddle a boundary, so the tagger reports every authority with
     the share inside each rather than silently picking a winner."""
