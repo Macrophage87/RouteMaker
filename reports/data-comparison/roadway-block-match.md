@@ -88,7 +88,7 @@ Where OSM maps the way's bike facility as a way of its own (`cycleway*=separate`
 | agree | 987 | 92.7 | 7.4% |
 | disagree | 94 | 3.1 | 0.7% |
 
-Tier effect: 1,768 of the 13,409 matched ways (189.1 of 1,232.6 mi) change tier.
+Tier effect: 1,663 of the 13,409 matched ways (170.9 of 1,232.6 mi) change tier.
 
 ## Baltimore: street centerline (Open Baltimore)
 
@@ -155,7 +155,7 @@ The centerline marks one-way streets only (`oneway` FT or TF) and says nothing o
 | agree one-way | 6,884 | 673.8 | 94.8% |
 | agency one-way, OSM not | 378 | 31.9 | 5.2% |
 
-Tier effect: 491 of the 15,023 matched ways (40.6 of 1,596.5 mi) change tier.
+Tier effect: 490 of the 15,023 matched ways (40.6 of 1,596.5 mi) change tier.
 
 ## AADT
 

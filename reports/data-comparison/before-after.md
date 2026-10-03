@@ -2,19 +2,19 @@
 
 Before: this branch's classifier on the 2026-09-25 extract without the agency layers, as the earlier calibration tables were made (classification only: the loaded stress and access rows, and the 2026-10-01 MoCo and Baltimore override files, are overrides applied at the rebuild and are in neither column). After: the same classifier with the agency layers conflated (`pipeline.conflation.road_facts_by_way`, `overlay_road_facts`) and the Roadway Block's AADT filling where no count layer reached the way. In the District the record takes priority over OSM's own tags (OWNER-DECISIONS 190, below), except where a block cannot speak for one way: the overlay never writes a bike facility OSM maps as its own way onto the road (nor onto another way of the same block, review r2), nor a protected lane where OSM says `bicycle=no`, `use_sidepath` or `cycleway*=no`; it gives each carriageway its own direction's lanes and bike lane, keeps a slip road's own lanes, reads a lane as contraflow only where DC flags it, and takes Baltimore's speed only where OSM has none (OWNER-DECISIONS 184); a painted lane's reach beside parking is the lane plus the parking lane only where DC records the lane beside parking, against Furth's 15 ft [4.6 m]. Only DC's and Baltimore's ways can change; every other way is the baseline's. Road ways only (proposed, construction, platform and corridor ways and trail-class ways are not classified here). Miles.
 
-The two runs agree on the baseline tier of all but 7 of the 82,357 DC and Baltimore ways (the baseline did not know a separately mapped bike facility the way the rebuild's own pairing does).
+The two runs agree on the baseline tier of all but 496 of the 82,357 DC and Baltimore ways (the baseline did not know a separately mapped bike facility the way the rebuild's own pairing does).
 
 ## Region-wide
 
 | area | total mi | LTS 1 before -> after | LTS 2 before -> after | LTS 3 before -> after | LTS 4 before -> after | LTS 5 before -> after |
 | --- | --- | --- | --- | --- | --- | --- |
-| Region | 98,411 | 47,377.2 (48.1%) -> 47,297.4 (48.1%), -79.8 | 27,003.5 (27.4%) -> 27,063.8 (27.5%), +60.3 | 5,775.1 ( 5.9%) -> 5,772.4 ( 5.9%), -2.7 | 16,724.4 (17.0%) -> 16,746.5 (17.0%), +22.1 | 1,530.8 ( 1.6%) -> 1,530.8 ( 1.6%), +0.0 |
-| DC | 2,189 | 1,560.5 (71.3%) -> 1,511.3 (69.1%), -49.2 | 222.9 (10.2%) -> 246.9 (11.3%), +24.1 | 266.9 (12.2%) -> 267.8 (12.2%), +0.9 | 138.3 ( 6.3%) -> 162.4 ( 7.4%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
-| MD | 62,196 | 28,241.1 (45.4%) -> 28,210.5 (45.4%), -30.6 | 19,858.4 (31.9%) -> 19,894.6 (32.0%), +36.2 | 3,566.7 ( 5.7%) -> 3,563.1 ( 5.7%), -3.6 | 10,159.7 (16.3%) -> 10,157.7 (16.3%), -2.0 | 370.4 ( 0.6%) -> 370.4 ( 0.6%), +0.0 |
+| Region | 98,411 | 47,326.1 (48.1%) -> 47,261.0 (48.0%), -65.1 | 27,054.6 (27.5%) -> 27,100.3 (27.5%), +45.7 | 5,775.1 ( 5.9%) -> 5,772.3 ( 5.9%), -2.8 | 16,724.4 (17.0%) -> 16,746.5 (17.0%), +22.1 | 1,530.8 ( 1.6%) -> 1,530.8 ( 1.6%), +0.0 |
+| DC | 2,189 | 1,514.3 (69.2%) -> 1,479.8 (67.6%), -34.5 | 269.1 (12.3%) -> 278.6 (12.7%), +9.5 | 266.9 (12.2%) -> 267.7 (12.2%), +0.8 | 138.3 ( 6.3%) -> 162.4 ( 7.4%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
+| MD | 62,196 | 28,236.2 (45.4%) -> 28,205.6 (45.3%), -30.6 | 19,863.3 (31.9%) -> 19,899.5 (32.0%), +36.2 | 3,566.7 ( 5.7%) -> 3,563.1 ( 5.7%), -3.6 | 10,159.7 (16.3%) -> 10,157.7 (16.3%), -2.0 | 370.4 ( 0.6%) -> 370.4 ( 0.6%), +0.0 |
 | VA | 33,765 | 17,500.6 (51.8%) -> 17,500.6 (51.8%), +0.0 | 6,836.1 (20.2%) -> 6,836.1 (20.2%), +0.0 | 1,938.9 ( 5.7%) -> 1,938.9 ( 5.7%), +0.0 | 6,329.3 (18.7%) -> 6,329.3 (18.7%), +0.0 | 1,160.0 ( 3.4%) -> 1,160.0 ( 3.4%), +0.0 |
 | no state | 261 | 75.0 (28.7%) -> 75.0 (28.7%), +0.0 | 86.2 (33.0%) -> 86.2 (33.0%), +0.0 | 2.6 ( 1.0%) -> 2.6 ( 1.0%), +0.0 | 97.1 (37.2%) -> 97.1 (37.2%), +0.0 | 0.4 ( 0.1%) -> 0.4 ( 0.1%), +0.0 |
-| DC ways a Roadway Block was matched to | 1,233 | 651.9 (52.9%) -> 602.6 (48.9%), -49.2 | 206.6 (16.8%) -> 230.8 (18.7%), +24.1 | 249.3 (20.2%) -> 250.3 (20.3%), +1.0 | 124.8 (10.1%) -> 148.9 (12.1%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
-| Baltimore City (within about 500 ft [150 m] of its centerline) | 2,950 | 1,342.3 (45.5%) -> 1,311.7 (44.5%), -30.6 | 1,029.4 (34.9%) -> 1,065.6 (36.1%), +36.2 | 357.6 (12.1%) -> 353.9 (12.0%), -3.6 | 220.3 ( 7.5%) -> 218.3 ( 7.4%), -2.0 | 0.1 ( 0.0%) -> 0.1 ( 0.0%), +0.0 |
+| DC ways a Roadway Block was matched to | 1,233 | 607.8 (49.3%) -> 573.3 (46.5%), -34.5 | 250.7 (20.3%) -> 260.2 (21.1%), +9.5 | 249.3 (20.2%) -> 250.2 (20.3%), +0.8 | 124.8 (10.1%) -> 148.9 (12.1%), +24.2 | 0.0 ( 0.0%) -> 0.0 ( 0.0%), +0.0 |
+| Baltimore City (within about 500 ft [150 m] of its centerline) | 2,950 | 1,340.9 (45.5%) -> 1,310.3 (44.4%), -30.6 | 1,030.8 (34.9%) -> 1,067.0 (36.2%), +36.2 | 357.6 (12.1%) -> 354.0 (12.0%), -3.6 | 220.3 ( 7.5%) -> 218.3 ( 7.4%), -2.0 | 0.1 ( 0.0%) -> 0.1 ( 0.0%), +0.0 |
 
 ## What moved, by what the layer changed
 
@@ -22,30 +22,30 @@ Ways whose tier changed, by the inputs the layer changed on them (from the tags 
 
 | area | the layer changed | ways | miles | higher stress | lower stress |
 | --- | --- | --- | --- | --- | --- |
-| dc | speed + parking | 666 | 84.7 | 52.4 | 32.3 |
-| baltimore | speed | 449 | 37.0 | 28.8 | 8.2 |
-| dc | speed + parking + count | 121 | 24.8 | 24.4 | 0.4 |
+| dc | speed + parking | 632 | 80.1 | 50.0 | 30.1 |
+| baltimore | speed | 490 | 40.6 | 31.6 | 9.0 |
 | dc | speed + lanes + parking | 342 | 21.5 | 14.4 | 7.1 |
-| dc | parking + count | 94 | 17.3 | 16.8 | 0.5 |
-| dc | speed + lanes + parking + count | 47 | 7.6 | 6.7 | 0.9 |
+| dc | parking + count | 79 | 14.8 | 14.3 | 0.5 |
+| dc | speed + parking + count | 70 | 14.5 | 14.1 | 0.4 |
+| dc | speed + lanes + parking + count | 44 | 7.4 | 6.4 | 0.9 |
 | dc | lanes + parking | 81 | 7.3 | 4.9 | 2.4 |
-| dc | lanes + parking + count | 43 | 5.9 | 5.9 | 0.0 |
-| dc | speed + bike facility + parking | 82 | 3.6 | 0.9 | 2.7 |
-| baltimore | speed + one-way | 39 | 3.3 | 2.6 | 0.8 |
+| dc | lanes + parking + count | 42 | 5.9 | 5.8 | 0.0 |
+| dc | speed + bike facility + parking | 83 | 3.6 | 0.9 | 2.8 |
 | dc | speed + bike facility | 25 | 1.7 | 0.9 | 0.8 |
+| dc | speed + bike-lane width | 19 | 1.2 | 0.8 | 0.4 |
 | dc | speed + lanes | 21 | 1.1 | 0.7 | 0.4 |
-| dc | speed + bike-lane width | 17 | 1.1 | 0.8 | 0.3 |
-| dc | speed + one-way + parking | 15 | 1.0 | 0.6 | 0.5 |
-| dc | speed + lanes + bike facility + parking | 29 | 1.0 | 0.3 | 0.7 |
 | dc | speed + lanes + bike-lane width | 15 | 0.9 | 0.8 | 0.1 |
 | dc | bike facility | 10 | 0.9 | 0.0 | 0.9 |
+| dc | speed + one-way + parking | 13 | 0.9 | 0.5 | 0.4 |
+| dc | speed + lanes + bike facility + parking | 28 | 0.8 | 0.3 | 0.5 |
+| dc | bike facility + parking | 27 | 0.8 | 0.1 | 0.6 |
 | dc | speed + bike-lane width + count | 3 | 0.7 | 0.4 | 0.3 |
-| dc | bike facility + parking | 27 | 0.7 | 0.1 | 0.6 |
 | dc | speed | 21 | 0.6 | 0.6 | 0.0 |
 | dc | speed + bike facility + count | 2 | 0.6 | 0.6 | 0.0 |
+| dc | lanes + bike facility + parking | 23 | 0.6 | 0.1 | 0.5 |
 | dc | speed + count | 4 | 0.5 | 0.5 | 0.0 |
-| dc | lanes + bike facility + parking | 22 | 0.5 | 0.1 | 0.4 |
 | dc | speed + bike facility + parking + count | 6 | 0.5 | 0.2 | 0.4 |
+| dc | bike facility + parking + count | 2 | 0.5 | 0.0 | 0.5 |
 
 ## OWNER-DECISIONS 190: DC data takes priority over OSM
 
@@ -53,26 +53,26 @@ The owner, 2026-10-02: "DC data takes priority over OSM. It's updated regularly.
 
 | row | ways | miles | tier changes | with the row: lower stress | higher stress | by movement |
 | --- | --- | --- | --- | --- | --- | --- |
-| A. DC records no facility on any block: OSM's painted lane removed | 87 | 4.8 | 45 ways (2.5 mi) | 21 | 24 | LTS 2 to 1: 21, LTS 2 to 3: 23, LTS 3 to 4: 1 |
+| A. DC records no facility on any block: OSM's painted lane removed | 87 | 4.8 | 45 ways (2.6 mi) | 21 | 24 | LTS 2 to 1: 21, LTS 2 to 3: 23, LTS 3 to 4: 1 |
 | B. DC one-way over OSM's explicit two-way | 17 | 1.1 | 2 ways (0.1 mi) | 1 | 1 | LTS 1 to 2: 1, LTS 3 to 1: 1 |
-| C4. DC two-way over OSM's one-way on a plain street | 207 | 15.4 | 9 ways (0.5 mi) | 0 | 9 | LTS 1 to 3: 2, LTS 2 to 3: 7 |
+| C4. DC two-way over OSM's one-way on a plain street | 181 | 13.8 | 7 ways (0.4 mi) | 0 | 7 | LTS 1 to 3: 1, LTS 2 to 3: 6 |
 
 Where OSM still stands in the District, and why (rows C1-C3, D and E of the review, and the exceptions to A and B):
 
 | what is kept | ways | miles |
 | --- | --- | --- |
-| oneway: agency two-way, OSM one-way, kept (divided carriageway) | 1,717 | 101.5 |
-| oneway: agency two-way, OSM one-way, kept (carriageway pair) | 697 | 36.6 |
+| oneway: agency two-way, OSM one-way, kept (divided carriageway) | 2,084 | 126.6 |
+| oneway: agency two-way, OSM one-way, kept (carriageway pair) | 363 | 13.2 |
 | oneway: agency two-way, OSM one-way, kept (slip road or freeway) | 250 | 15.6 |
+| lanes: agency records one direction of a two-way way, OSM kept | 95 | 4.9 |
 | bike facility: OSM has one, the agency records none | 67 | 4.1 |
-| oneway: agency two-way, OSM one-way, kept (junction stub) | 52 | 0.6 |
+| oneway: agency one-way, OSM two-way, kept (direction unknown) | 56 | 3.5 |
+| oneway: agency two-way, OSM one-way, kept (junction stub) | 47 | 0.5 |
 | lanes: a side lane beside a two-way carriageway, OSM kept | 41 | 2.2 |
-| lanes: agency records one direction of a two-way way, OSM kept | 29 | 1.9 |
-| oneway: agency one-way, OSM two-way, kept (junction stub) | 13 | 0.1 |
-| oneway: agency one-way, OSM two-way, kept (direction unknown) | 12 | 0.7 |
-| oneway: agency two-way, OSM one-way, kept (one-way blocks along it) | 11 | 1.9 |
+| oneway: agency one-way, OSM two-way, kept (junction stub) | 36 | 0.4 |
 | oneway: agency two-way, OSM one-way, kept (unnamed) | 10 | 0.4 |
-| oneway: agency two-way, OSM one-way, kept (roundabout) | 10 | 0.3 |
+| oneway: agency two-way, OSM one-way, kept (one-way blocks along it) | 10 | 1.8 |
+| oneway: agency two-way, OSM one-way, kept (roundabout) | 9 | 0.3 |
 | oneway: agency one-way, OSM two-way, kept (reversible lanes) | 2 | 0.5 |
 | bike facility: agency protected lane, OSM says none on the road (bicycle or cycleway no, or use_sidepath) | 2 | 0.0 |
 | oneway: agency two-way, OSM one-way, kept (side lane beside a two-way carriageway) | 1 | 0.1 |
@@ -81,24 +81,24 @@ Where OSM still stands in the District, and why (rows C1-C3, D and E of the revi
 
 ## The parking reach on its own (`classify(parking_width_m=)`)
 
-The one change outside the data plumbing: where DC records a painted lane beside a parking lane (`BIKELANE_PARKINGLANE_ADJACENT`), the parking lane's width is added to the lane's for Furth's reach, adequate at 15 ft [4.6 m] (MTI 11-19, Table 2). It applies on 794 ways and changes the tier of 21 of them (0.9 mi), against the same "after" with the lane measured on its own. Every other change in this report is the layer's data. The criterion itself moved from 13.5 ft to Furth's 15 ft in the same change; no way in the extract carries a lane or shoulder width between the two [4.1 to 4.57 m], so no OSM-only way outside DC and Baltimore moves and the region baseline stands.
+The one change outside the data plumbing: where DC records a painted lane beside a parking lane (`BIKELANE_PARKINGLANE_ADJACENT`), the parking lane's width is added to the lane's for Furth's reach, adequate at 15 ft [4.6 m] (MTI 11-19, Table 2). It applies on 794 ways and changes the tier of 33 of them (1.3 mi), against the same "after" with the lane measured on its own. Every other change in this report is the layer's data. The criterion itself moved from 13.5 ft to Furth's 15 ft in the same change; no way in the extract carries a lane or shoulder width between the two [4.1 to 4.57 m], so no OSM-only way outside DC and Baltimore moves and the region baseline stands.
 
 | without the reach | with it | miles |
 | --- | --- | --- |
-| LTS 2 | LTS 1 | 0.9 |
+| LTS 2 | LTS 1 | 1.3 |
 
 ### DC: miles by tier movement
 
 | from | to | miles |
 | --- | --- | --- |
-| LTS 1 | LTS 2 | 67.7 |
-| LTS 2 | LTS 1 | 34.4 |
+| LTS 1 | LTS 2 | 51.9 |
+| LTS 2 | LTS 1 | 32.1 |
 | LTS 3 | LTS 4 | 29.6 |
-| LTS 1 | LTS 3 | 19.9 |
-| LTS 2 | LTS 3 | 17.2 |
-| LTS 3 | LTS 2 | 8.7 |
+| LTS 2 | LTS 3 | 20.1 |
+| LTS 1 | LTS 3 | 16.9 |
+| LTS 3 | LTS 2 | 10.4 |
 | LTS 4 | LTS 3 | 6.2 |
-| LTS 3 | LTS 1 | 4.1 |
+| LTS 3 | LTS 1 | 2.3 |
 | LTS 2 | LTS 4 | 1.0 |
 | LTS 4 | LTS 2 | 0.2 |
 | LTS 1 | LTS 4 | 0.1 |
@@ -113,7 +113,7 @@ The one change outside the data plumbing: where DC records a painted lane beside
 | LTS 2 | LTS 1 | 0.7 |
 | LTS 1 | LTS 3 | 0.4 |
 | LTS 3 | LTS 4 | 0.2 |
-| LTS 3 | LTS 1 | 0.2 |
+| LTS 3 | LTS 1 | 0.1 |
 
 ## The owner's example roads (DC)
 
@@ -121,11 +121,11 @@ The one change outside the data plumbing: where DC records a painted lane beside
 
 ### 4th Street Northeast: 2.90 mi, 37 ways
 
-before LTS 1 0.33, LTS 2 2.25, LTS 3 0.33 | after LTS 1 0.57, LTS 2 2.16, LTS 3 0.17
+before LTS 1 0.29, LTS 2 2.28, LTS 3 0.33 | after LTS 1 0.57, LTS 2 2.16, LTS 3 0.17
 
 | miles | ways | tier | rule before | rule after | tags before | tags after | agency facts |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1.77 | 16 | LTS 2 (same) | bike lane, narrow at 25 mph or below | bike lane, narrow at 25 mph or below | `{"cycleway:left": "no", "cycleway:right": "lane", "cycleway:right:buffer": "no", "cycleway:right:oneway": "yes", "lanes": "1", "oneway": "yes", "parking:both": "lane", "parking:both:orientation": "parallel"}` | `{"cycleway:right": "lane", "cycleway:right:width": "1.52", "lanes": "1", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 4054, "bike": {"ib": 1}, "bike_back": 0, "bike_ft": 5.0, "bike_fwd": 1, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 1, "ob": 0}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": null, "parking": 2, "speed": {}, "speed_mph": null, "speed_withheld": null}` |
+| 1.77 | 16 | LTS 2 (same) | bike lane, narrow at 25 mph or below | bike lane, narrow at 25 mph or below | `{"cycleway:left": "no", "cycleway:right": "lane", "cycleway:right:buffer": "no", "cycleway:right:oneway": "yes", "lanes": "1", "oneway": "yes", "parking:both": "lane", "parking:both:orientation": "parallel"}` | `{"cycleway:right": "lane", "cycleway:right:width": "1.524", "lanes": "1", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 4054, "bike": {"ib": 1}, "bike_back": 0, "bike_ft": 5.0, "bike_fwd": 1, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 1, "ob": 0}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": null, "parking": 2, "speed": {}, "speed_mph": null, "speed_withheld": null}` |
 | 0.30 | 3 | LTS 2 (same) | mixed traffic, 25 mph, single lane | mixed traffic, 25 mph, single lane | `{"maxspeed": "25 mph"}` | `{"lanes:backward": "1", "lanes:forward": "1", "maxspeed": "25 mph", "parking:both": "parallel"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 1, "ob": 1}, "lanes_back": 1, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": false, "oneway_fwd": null, "parking": 2, "speed": {"ob": 25}, "speed_mph": 25, "speed_withheld": null}` |
 | 0.29 | 4 | LTS 1 (same) | mixed traffic, 20 mph or below, single lane | mixed traffic, 20 mph or below, single lane | `{}` | `{"lanes:backward": "1", "lanes:forward": "1", "maxspeed": "20 mph", "parking:both": "parallel"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 1, "ob": 1}, "lanes_back": 1, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": false, "oneway_fwd": null, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.28 | 4 | LTS 3 -> 1 | mixed traffic, 20 mph or below, urban multilane, two-way floor | separated track alongside | `{"cycleway:left": "track", "cycleway:left:oneway": "no", "lanes": "3", "lanes:backward": "2", "oneway:bicycle": "no"}` | `{"cycleway:both": "track", "lanes:backward": "2", "lanes:forward": "2", "maxspeed": "25 mph", "oneway:bicycle": "no", "parking:left": "no", "parking:right": "parallel"}` | `{"aadt": 10730, "bike": {"ib": 3, "ob": 3}, "bike_back": 3, "bike_ft": 4.5, "bike_fwd": 3, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 2, "ob": 2}, "lanes_back": 2, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 1, "speed": {"ob": 25}, "speed_mph": 25, "speed_withheld": null}` |
@@ -138,7 +138,7 @@ before LTS 1 0.65, LTS 2 1.38, LTS 3 0.03 | after LTS 1 0.53, LTS 2 1.26, LTS 4 
 
 | miles | ways | tier | rule before | rule after | tags before | tags after | agency facts |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 0.86 | 10 | LTS 2 (same) | bike lane, narrow at 25 mph or below | bike lane, narrow at 25 mph or below | `{"cycleway:right": "lane", "cycleway:right:buffer": "no", "cycleway:right:oneway": "yes", "lanes": "1", "oneway": "yes", "parking:both": "lane", "parking:both:orientation": "parallel"}` | `{"cycleway:right": "lane", "cycleway:right:width": "1.52", "lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 3014, "bike": {"ib": 1}, "bike_back": 0, "bike_ft": 5.0, "bike_fwd": 1, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
+| 0.86 | 10 | LTS 2 (same) | bike lane, narrow at 25 mph or below | bike lane, narrow at 25 mph or below | `{"cycleway:right": "lane", "cycleway:right:buffer": "no", "cycleway:right:oneway": "yes", "lanes": "1", "oneway": "yes", "parking:both": "lane", "parking:both:orientation": "parallel"}` | `{"cycleway:right": "lane", "cycleway:right:width": "1.524", "lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 3014, "bike": {"ib": 1}, "bike_back": 0, "bike_ft": 5.0, "bike_fwd": 1, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.53 | 8 | LTS 1 (same) | mixed traffic, 20 mph or below, single lane | mixed traffic, 20 mph or below, single lane | `{}` | `{"lanes:backward": "1", "lanes:forward": "1", "maxspeed": "20 mph", "parking:both": "parallel"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 1, "ob": 1}, "lanes_back": 1, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": false, "oneway_fwd": null, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.25 | 3 | LTS 2 (same) | mixed traffic, 20 mph or below, urban multilane, mid volume | mixed traffic, 25 mph, single lane | `{"cycleway": "separate", "lanes": "2", "oneway": "yes"}` | `{"cycleway": "separate", "lanes": "1", "maxspeed": "25 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 6523, "bike": {"ib": 2, "ob": 2}, "bike_back": 0, "bike_ft": 4.0, "bike_fwd": 2, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 2, "speed": {"ob": 25}, "speed_mph": 25, "speed_withheld": null}` |
 | 0.24 | 1 | LTS 2 -> 4 | mixed traffic, 20 mph or below, single lane, high volume | mixed traffic, 30 mph, urban multilane, two-way busy | `{"cycleway": "separate", "lanes": "2"}` | `{"cycleway": "separate", "lanes:backward": "3", "lanes:forward": "1", "maxspeed": "30 mph", "parking:both": "parallel"}` | `{"aadt": 9867, "bike": {"ib": 2, "ob": 2}, "bike_back": 2, "bike_ft": 4.0, "bike_fwd": 2, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 3, "ob": 1}, "lanes_back": 3, "lanes_fwd": 1, "lanes_per_dir": 3, "one_way": false, "oneway_fwd": null, "parking": 3, "speed": {"ob": 30}, "speed_mph": 30, "speed_withheld": null}` |
@@ -147,12 +147,12 @@ before LTS 1 0.65, LTS 2 1.38, LTS 3 0.03 | after LTS 1 0.53, LTS 2 1.26, LTS 4 
 
 ### 22nd Street Northwest: 1.43 mi, 26 ways
 
-before LTS 1 0.25, LTS 2 0.28, LTS 3 0.89 | after LTS 1 0.13, LTS 2 0.41, LTS 3 0.89
+before LTS 1 0.01, LTS 2 0.53, LTS 3 0.89 | after LTS 1 0.13, LTS 2 0.41, LTS 3 0.89
 
 | miles | ways | tier | rule before | rule after | tags before | tags after | agency facts |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 0.46 | 5 | LTS 3 (same) | mixed traffic, 20 mph or below, urban multilane, wide one-way floor | mixed traffic, 20 mph or below, single lane, mid volume, arterial floor | `{"lanes": "3", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 5630, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 3, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
-| 0.25 | 1 | LTS 1 -> 2 | mixed traffic, 20 mph or below, urban multilane | mixed traffic, 20 mph or below, single lane, mid volume | `{"lanes": "2", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 2742, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
+| 0.25 | 1 | LTS 2 (same) | mixed traffic, 20 mph or below, urban multilane, collector floor | mixed traffic, 20 mph or below, single lane, mid volume | `{"lanes": "2", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 2742, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.14 | 4 | LTS 3 (same) | mixed traffic, 20 mph or below, urban multilane, two-way floor | mixed traffic, 20 mph or below, single lane, mid volume, arterial floor | `{"lanes": "3", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 6764, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 3, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.12 | 2 | LTS 2 (same) | mixed traffic, 20 mph or below, single lane, mid volume | mixed traffic, 20 mph or below, single lane, mid volume | `{"lanes": "1", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "parallel"}` | `{"aadt": 2742, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 0, "ob": 1}, "lanes_back": null, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": true, "oneway_fwd": true, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.11 | 1 | LTS 2 -> 3 | mixed traffic, 25 mph, single lane | mixed traffic, 20 mph or below, urban multilane, two-way floor | `{"maxspeed": "25 mph"}` | `{"lanes:backward": "1", "lanes:forward": "2", "maxspeed": "20 mph", "parking:both": "parallel"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 1, "ob": 2}, "lanes_back": 1, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 2, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
@@ -173,7 +173,7 @@ before LTS 2 0.04, LTS 3 6.14 | after LTS 2 0.12, LTS 3 2.82, LTS 4 3.24
 
 ### 16th Street Northwest: 10.53 mi, 230 ways
 
-before LTS 1 0.21, LTS 2 0.18, LTS 3 6.30, LTS 4 3.84 | after LTS 1 0.07, LTS 2 0.32, LTS 3 2.96, LTS 4 7.18
+before LTS 1 0.07, LTS 2 0.32, LTS 3 6.30, LTS 4 3.84 | after LTS 1 0.07, LTS 2 0.32, LTS 3 2.96, LTS 4 7.18
 
 | miles | ways | tier | rule before | rule after | tags before | tags after | agency facts |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -186,12 +186,12 @@ before LTS 1 0.21, LTS 2 0.18, LTS 3 6.30, LTS 4 3.84 | after LTS 1 0.07, LTS 2 
 
 ### K Street Northwest: 6.02 mi, 162 ways
 
-before LTS 1 1.18, LTS 2 0.68, LTS 3 4.16 | after LTS 1 1.65, LTS 2 0.56, LTS 3 3.82
+before LTS 2 1.86, LTS 3 4.16 | after LTS 1 0.29, LTS 2 1.91, LTS 3 3.82
 
 | miles | ways | tier | rule before | rule after | tags before | tags after | agency facts |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2.24 | 68 | LTS 3 (same) | mixed traffic, 25 mph, urban multilane, two-way floor | mixed traffic, 20 mph or below, urban multilane, two-way floor | `{"lanes": "2", "maxspeed": "25 mph", "oneway": "yes"}` | `{"lanes": "2", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 2, "ob": 2}, "lanes_back": 2, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
-| 1.17 | 21 | LTS 1 (same) | mixed traffic, 20 mph or below, single lane | mixed traffic, 20 mph or below, single lane | `{"lanes": "1", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 2, "ob": 2}, "lanes_back": 2, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
+| 1.17 | 21 | LTS 2 (same) | mixed traffic, 20 mph or below, single lane, collector floor | mixed traffic, 20 mph or below, single lane, collector floor | `{"lanes": "1", "oneway": "yes"}` | `{"lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 2, "ob": 2}, "lanes_back": 2, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.72 | 26 | LTS 3 (same) | mixed traffic, 20 mph or below, urban multilane, two-way floor | mixed traffic, 20 mph or below, urban multilane, two-way floor | `{"cycleway:right": "no", "lanes": "2", "oneway": "yes"}` | `{"cycleway:right": "no", "lanes": "2", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 2, "ob": 2}, "lanes_back": 2, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.23 | 5 | LTS 2 (same) | mixed traffic, 20 mph or below, single lane, high volume | mixed traffic, 20 mph or below, single lane, high volume | `{"cycleway": "separate", "lanes": "2"}` | `{"cycleway": "separate", "lanes:backward": "1", "lanes:forward": "1", "maxspeed": "20 mph", "parking:both": "no"}` | `{"aadt": 13188, "bike": {"ib": 3, "ob": 3}, "bike_back": 3, "bike_ft": 6.0, "bike_fwd": 3, "bike_recorded": true, "contraflow": false, "lanes": {"ib": 1, "ob": 1}, "lanes_back": 1, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.20 | 1 | LTS 3 (same) | mixed traffic, 20 mph or below, single lane, arterial floor | mixed traffic, 20 mph or below, single lane, arterial floor | `{"cycleway:right": "no", "lanes": "1", "oneway": "yes"}` | `{"cycleway:right": "no", "lanes": "1", "maxspeed": "20 mph", "oneway": "yes", "parking:both": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 2, "ob": 2}, "lanes_back": 2, "lanes_fwd": 2, "lanes_per_dir": 2, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
@@ -248,6 +248,16 @@ before LTS 1 41.07, LTS 2 0.23 | after LTS 1 41.07, LTS 2 0.23
 | 1.13 | 8 | LTS 1 (same) | mixed traffic, 20 mph or below, single lane | mixed traffic, 20 mph or below, single lane | `{"parking:both": "no"}` | `{"lanes:backward": "1", "lanes:forward": "1", "maxspeed": "20 mph", "parking:both": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {"ib": 1, "ob": 1}, "lanes_back": 1, "lanes_fwd": 1, "lanes_per_dir": 1, "one_way": false, "oneway_fwd": null, "parking": 0, "speed": {"ob": 20}, "speed_mph": 20, "speed_withheld": null}` |
 | 0.22 | 10 | LTS 2 (same) | mixed traffic, 20 mph or below, single lane, high volume | mixed traffic, 20 mph or below, single lane, high volume | `{}` | `{}` | `not matched` |
 | 0.01 | 1 | LTS 2 (same) | mixed traffic, 20 mph or below, single lane, mid volume | mixed traffic, 20 mph or below, single lane, mid volume | `{}` | `{}` | `not matched` |
+
+## Baltimore's one-way and lanes, not used (OWNER-DECISIONS 222)
+
+The owner, 2026-10-02: "Ignore it; keep OSM (Recommended)", and "Baltimore's data doesn't seem nearly as complete as DC" (223). The centerline's one-way and lane count are never used, for stress or routing; where they differ from OSM's the way keeps OSM's. Baltimore fills a missing posted speed only (184).
+
+| the centerline records, differently from OSM | ways | miles | longest |
+| --- | --- | --- | --- |
+| lanes: agency and OSM differ | 1 | 0.0 | Fleet Street 69489851 |
+| oneway: agency one-way the other way from OSM's | 78 | 9.8 | Fort McHenry Tunnel (Bore 2) 23014446, Fort McHenry Tunnel (Bore 1) 49776148, Harbor Tunnel Thruway 32504908, Spaulding Avenue 6017441 |
+| oneway: agency one-way, OSM two-way | 371 | 31.8 | Frankford Avenue 164024528, Hamilton Avenue 1024461450, Tunbridge Road 6011724, North Service Road 791933743 |
 
 ## Baltimore examples
 
@@ -344,7 +354,7 @@ before LTS 1 0.20, LTS 2 0.18, LTS 3 3.19, LTS 4 2.58 | after LTS 1 0.20, LTS 2 
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | 2.28 | 60 | LTS 4 (same) | mixed traffic, 35 mph or above | mixed traffic, 35 mph or above | `{"lanes": "3", "maxspeed": "35 mph", "oneway": "yes"}` | `{"lanes": "3", "maxspeed": "35 mph", "oneway": "yes"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {}, "lanes_back": null, "lanes_fwd": null, "lanes_per_dir": null, "one_way": true, "oneway_fwd": null, "parking": null, "speed": {"centerline": 35}, "speed_mph": 35, "speed_withheld": null}` |
 | 1.67 | 21 | LTS 3 (same) | mixed traffic, 25 mph, single lane, arterial floor | mixed traffic, 25 mph, single lane, arterial floor | `{"lanes": "2", "maxspeed": "25 mph", "oneway": "no"}` | `{"lanes": "2", "maxspeed": "25 mph", "oneway": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {}, "lanes_back": null, "lanes_fwd": null, "lanes_per_dir": null, "one_way": null, "oneway_fwd": null, "parking": null, "speed": {"centerline": 25}, "speed_mph": 25, "speed_withheld": null}` |
-| 0.86 | 14 | LTS 3 (same) | mixed traffic, 25 mph, urban multilane, two-way floor | mixed traffic, 25 mph, urban multilane, two-way floor | `{"lanes": "4", "maxspeed": "25 mph", "oneway": "no"}` | `{"lanes": "4", "maxspeed": "25 mph", "oneway": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {}, "lanes_back": null, "lanes_fwd": null, "lanes_per_dir": null, "one_way": null, "oneway_fwd": null, "parking": null, "speed": {"centerline": 25}, "speed_mph": 25, "speed_withheld": null}` |
+| 0.91 | 15 | LTS 3 (same) | mixed traffic, 25 mph, urban multilane, two-way floor | mixed traffic, 25 mph, urban multilane, two-way floor | `{"lanes": "4", "maxspeed": "25 mph", "oneway": "no"}` | `{"lanes": "4", "maxspeed": "25 mph", "oneway": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {}, "lanes_back": null, "lanes_fwd": null, "lanes_per_dir": null, "one_way": null, "oneway_fwd": null, "parking": null, "speed": {"centerline": 25}, "speed_mph": 25, "speed_withheld": null}` |
 | 0.45 | 3 | LTS 3 (same) | mixed traffic, 20 mph or below, single lane, arterial floor | mixed traffic, 20 mph or below, single lane, arterial floor | `{"cycleway": "no", "lanes": "2", "maxspeed": "20 mph", "oneway": "no", "parking:both": "lane", "parking:both:orientation": "parallel", "parking:condition:both": "free"}` | `{"cycleway": "no", "lanes": "2", "maxspeed": "20 mph", "oneway": "no", "parking:both": "lane", "parking:both:orientation": "parallel", "parking:condition:both": "free"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {}, "lanes_back": null, "lanes_fwd": null, "lanes_per_dir": null, "one_way": null, "oneway_fwd": null, "parking": null, "speed": {"centerline": 25}, "speed_mph": 25, "speed_withheld": null}` |
 | 0.30 | 11 | LTS 4 (same) | mixed traffic, 35 mph or above | mixed traffic, 35 mph or above | `{"lanes": "3", "maxspeed": "35 mph", "oneway": "yes"}` | `{"lanes": "3", "maxspeed": "35 mph", "oneway": "yes"}` | `not matched` |
 | 0.20 | 4 | LTS 1 (same) | mixed traffic, 20 mph or below, single lane | mixed traffic, 20 mph or below, single lane | `{"maxspeed": "20 mph", "oneway": "no"}` | `{"maxspeed": "20 mph", "oneway": "no"}` | `{"aadt": null, "bike": {}, "bike_back": 0, "bike_ft": null, "bike_fwd": 0, "bike_recorded": false, "contraflow": false, "lanes": {}, "lanes_back": null, "lanes_fwd": null, "lanes_per_dir": null, "one_way": null, "oneway_fwd": null, "parking": null, "speed": {"centerline": 25}, "speed_mph": 25, "speed_withheld": null}` |
