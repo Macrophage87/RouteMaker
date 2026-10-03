@@ -204,6 +204,12 @@ def test_the_c4_band_is_wider_and_has_its_limit() -> None:
     assert divided.carriageway_pairs([way(1, NORTH), way(2, ninety)]) == {1, 2}
     assert divided.carriageways([way(1, NORTH), way(2, ninety)]) == set()
     assert divided.carriageway_pairs([way(1, NORTH), way(2, beyond)]) == set()
+    # A band wider than a cell is searched across two cells: here the pair sits
+    # two cells apart (a 0.001 degree cell is about 86 m east-west).
+    west = [(-77.03001, 39.00), (-77.03001, 39.01)]
+    east = [(-77.03001 + LON_20M * 4.75, 39.01), (-77.03001 + LON_20M * 4.75, 39.00)]
+    assert int(east[0][0] // divided.CELL_DEG) - int(west[0][0] // divided.CELL_DEG) == 2
+    assert divided.carriageway_pairs([way(1, west), way(2, east)]) == {1, 2}
 
 
 def test_the_c4_guard_reads_residential_boulevards_but_not_other_names() -> None:
