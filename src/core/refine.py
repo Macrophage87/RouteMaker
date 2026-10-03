@@ -1610,7 +1610,7 @@ ALT_SAMPLE_M = 150.0
 def more_routes(chosen: list, ctx: Context, reference: list[float]) -> list:
     """`chosen` (a list of (trip, reading), the answer first) with the routes the router
     gives when the roads of those already chosen are excluded, as above."""
-    if len(chosen) >= ctx.alternates or ctx.alternates < 2:
+    if len(chosen) >= ctx.alternates:
         return chosen
     stop_at = min(routing.clock() + ALT_BUDGET_S, ctx.deadline.at - REFINE_TRACE_RESERVE_S)
     base = {k: v for k, v in ctx.request.items() if k not in ("alternates", "exclude_locations")}

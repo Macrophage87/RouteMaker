@@ -584,7 +584,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         RF,
         "    left = stop_at - routing.clock()" + NL + "    if left < trailseek.SEEK_ROUND_MIN_S:",
         "    left = stop_at - routing.clock()" + NL + "    if False:",
-        REFINE,
+        REFINE + ["tests/test_longcalm.py"],
     ),
     (
         "seek: no deadline before the corridors",

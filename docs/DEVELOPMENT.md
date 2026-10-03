@@ -3108,8 +3108,9 @@ it gave 58.0 mi, 0.24 mi and 7.2 mi, which is the router again, leg by leg, with
   keeps 40 s. Inside it, the legs' time is scaled to the trip: the legs are read first (about 1 to 2
   s a leg), the last 6 s are kept for the answer's own traces and the whole route's junctions, and
   the rest is shared by weight. A leg stops at its share; a trip with more legs gives each less.
-  Measured on an idle host, Union Station to Penn plans in 10.8 to 15.1 s at its default and 60 mi
-  and in 17.9 to 27.4 s when the longest ride is 50 and 47 mi, which asks for more routes. The
+  Measured on an idle host, Union Station to Penn plans in 16.8 s at its default (1.6 times) and
+  11.8 s at 60 mi, and in 19.3 and 29.2 s when the longest ride is 50 and 47 mi, which asks for more
+  routes (186 and 343 router calls); the twelve trail-seek trips take 0.7 to 11.8 s. The
   hard bounds and the `statement_timeout` patterns of the trail seek (TRAILSEEK r1) are unchanged:
   every table read and corridor search is bounded by its leg's own stop time.
 - **A long calm plan takes the long ride's in-flight slot** as well as an ordinary one

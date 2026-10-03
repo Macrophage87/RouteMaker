@@ -21,7 +21,7 @@ from test_refine import (
     trip_of,
 )
 
-from core import legsplit, presets, refine, routing
+from core import legsplit, presets, refine, routing, trailseek
 from routemaker import intersections as model
 
 FT = model.FEET_PER_METRE
@@ -1344,6 +1344,23 @@ class TestAskingForAnotherWay:
             3 * sizes[0], abs=1
         )
 
+    def test_it_asks_no_more_than_ALT_ASKS_times_however_many_routes_are_wanted(
+        self, monkeypatch
+    ) -> None:
+        replies = [trip_of(name, 8.0) for name in "bcdefg"]
+        world = self.world(
+            monkeypatch,
+            replies,
+            **{
+                name: road(name, list(range(10 * i + 10, 10 * i + 18)))
+                for i, name in enumerate("bcdefg", start=1)
+            },
+        )
+        ctx = alt_context(max_m=20_000.0)
+        ctx.alternates = 8
+        got = refine.more_routes([self.main()], ctx, [0.0])
+        assert len(world.requests) == refine.ALT_ASKS == 3 and len(got) == 4
+
     def test_a_route_that_is_not_a_near_tie_ends_the_asking(self, monkeypatch) -> None:
         busy = road("busy", list(range(11, 19)), "1" * 5 + "444")
         world = self.world(monkeypatch, [trip_of("busy", 8.0), trip_of("busy", 8.0)], busy=busy)
@@ -1403,3 +1420,28 @@ class TestAskingForAnotherWay:
             "the last ask is `more_routes`"
         )
         assert refine.ALT_BUDGET_S > 0 and refine.ALT_SAMPLE_M == 150.0
+
+
+class TestTheSeekLegsOwnDeadline:
+    """A leg with less than a candidate's worth of time left reads no table and asks nothing
+    (the check `_seek` makes before it does not cover a leg given a share of its own)."""
+
+    def test_a_leg_with_under_a_round_left_does_not_read_its_table(self, monkeypatch) -> None:
+        def table(*args, **kwargs):
+            raise AssertionError("the table was read")
+
+        monkeypatch.setattr(trailseek, "corridor_segments", table)
+        ctx = context(rate=10.0)
+        seek = {"limited": None, "corridors": 0, "asked": 0, "routes": 0, "tried": []}
+        stop_at = routing.clock() + trailseek.SEEK_ROUND_MIN_S - 0.5
+        got = refine._seek_leg(0, {"legs": []}, analysis("o"), 0.0, stop_at, ctx, seek)
+        assert got is None and seek["limited"] == "time"
+
+    def test_a_leg_with_a_round_left_reads_it(self, monkeypatch) -> None:
+        read = []
+        monkeypatch.setattr(trailseek, "corridor_segments", lambda *a, **k: read.append(1) or [])
+        ctx = context(rate=10.0)
+        seek = {"limited": None, "corridors": 0, "asked": 0, "routes": 0, "tried": []}
+        stop_at = routing.clock() + trailseek.SEEK_ROUND_MIN_S + 5.0
+        refine._seek_leg(0, {"legs": []}, analysis("o"), 0.0, stop_at, ctx, seek)
+        assert read == [1]

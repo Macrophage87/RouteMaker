@@ -44,6 +44,7 @@ API = "src/core/api.py"
 
 # The longest a test file may take against a mutant (test_route_dials takes about 150 s).
 TEST_TIMEOUT_S = 300
+NL = "\n"
 
 MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # --- the order (258-261) ----------------------------------------------------
@@ -347,6 +348,27 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         RF,
         "    ways = {piece.way_id for piece in b.pieces if piece.way_id}",
         "    ways = set()",
+        LC,
+    ),
+    (
+        "routes: the asking goes on past a route that adds nothing",
+        RF,
+        "        if len(picked) == len(chosen):" + NL + "            break",
+        "        if len(picked) == len(chosen):" + NL + "            continue",
+        LC,
+    ),
+    (
+        "routes: only the answer's roads are avoided",
+        RF,
+        "        for _trip, read in chosen:" + NL + "            total = _road_m(read)",
+        "        for _trip, read in chosen[:1]:" + NL + "            total = _road_m(read)",
+        LC,
+    ),
+    (
+        "routes: there is no limit on the asks",
+        RF,
+        "    while len(chosen) < ctx.alternates and asked < ALT_ASKS:",
+        "    while len(chosen) < ctx.alternates and asked < 99:",
         LC,
     ),
     # --- the loop (266) ---------------------------------------------------------------
