@@ -321,6 +321,34 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         PURE,
     ),
     ("join: another street's names taken", D, "    if _same_street(a, b):", "    if True:", PURE),
+    (
+        "atoms: tier ignored when joining pieces",
+        D,
+        "            and atom.tier == previous.tier",
+        "            and True",
+        PURE,
+    ),
+    (
+        "atoms: facility ignored when joining pieces",
+        D,
+        "            and atom.facility == previous.facility",
+        "            and True",
+        PURE,
+    ),
+    (
+        "atoms: names ignored when joining pieces",
+        D,
+        "            and atom.names == previous.names",
+        "            and True",
+        PURE,
+    ),
+    (
+        "atoms: a path use of a later piece lost",
+        D,
+        "            run.path = run.path or atom.use in PATH_USES",
+        "            pass",
+        PURE,
+    ),
 ]
 
 

@@ -147,6 +147,30 @@ def _run_of(atom: Atom, leg: int) -> _Run:
     )
 
 
+def _runs_of(atoms: list[Atom], leg: int) -> list[_Run]:
+    """A leg's runs: atoms that are the same edge (the trace cuts one edge at
+    every shape vertex) are one run without being made into a run each."""
+    runs: list[_Run] = []
+    previous: Atom | None = None
+    for atom in atoms:
+        if atom.metres <= 0:
+            continue
+        if (
+            previous is not None
+            and atom.names == previous.names
+            and atom.tier == previous.tier
+            and atom.facility == previous.facility
+        ):
+            run = runs[-1]
+            run.metres += atom.metres
+            run.last = atom
+            run.path = run.path or atom.use in PATH_USES
+        else:
+            runs.append(_run_of(atom, leg))
+        previous = atom
+    return runs
+
+
 def _same_street(a: _Run, b: _Run) -> bool:
     if not a.names and not b.names:
         return True
@@ -418,7 +442,7 @@ def describe(
                     )
                 )
             continue
-        leg_runs = _coalesce([_run_of(atom, leg) for atom in content if atom.metres > 0])
+        leg_runs = _coalesce(_runs_of(content, leg))
         runs.extend(_absorb_tiny(leg_runs))
     traced = sum(run.metres for run in runs)
     scale = total_m / traced if total_m and total_m > 0 and traced > 0 else 1.0

@@ -483,6 +483,13 @@ class TestNamesAndKinds:
         text = d.describe([road(None, 1, 700, facility="path", use="cycleway")])[0]["text"]
         assert text.endswith("unnamed path, traffic-free.")
 
+    def test_an_unnamed_stretch_that_is_a_path_for_part_of_it_is_a_path(self):
+        atoms = [
+            d.Atom(300.0, "2", "none", (), "road", 90.0, 90.0),
+            d.Atom(300.0, "2", "none", (), "footway", 90.0, 90.0),
+        ]
+        assert d.describe([atoms])[0]["street"] == "unnamed path"
+
     def test_an_unnamed_road_is_an_unnamed_road(self):
         entries = d.describe([road(None, 2, 700)])
         assert entries[0]["street"] == "unnamed road"
