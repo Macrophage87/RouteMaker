@@ -1516,9 +1516,14 @@ commits whose CI `test` check is green, and the owner pushes it. So the boot
 scripts reach the serving checkout through `main`, never by merging a work
 branch into it locally:
 
-1. Push the branch, open a PR to `main`, and wait for CI `test` to go green;
-   then the owner merges it.
-2. In the checkout that serves the stack:
+1. Rebase the branch onto `origin/main`
+   (`git fetch origin && git rebase origin/main`), so `main` can fast-forward
+   to it.
+2. Push the branch and open a PR to `main`.
+3. Wait for CI `test` to go green on the PR head.
+4. The owner fast-forwards `main` to that exact sha, from WSL:
+   `git push origin <sha>:refs/heads/main`.
+5. In the checkout that serves the stack:
    `git fetch origin && git merge --ff-only origin/main`. This also brings in
    whatever else has landed on `main` since that checkout was last updated.
    Running containers are not affected until images are rebuilt; only the
@@ -1568,10 +1573,13 @@ scripts/boot/install-boot-unit.sh policy unless-stopped   # migrate stays no
 sudo loginctl disable-linger steph   # optional, sudo; only if nothing else needs linger
 ```
 
-To take the code out as well, open a revert PR to `main`, let CI `test` go
-green and merge it, then `git fetch origin && git merge --ff-only origin/main`
-in the serving checkout. Leftovers, safe to delete: `${DATA_ROOT}/.boot-token`
-and `/home/steph/rmdata/boot/`.
+To take the code out as well, land a revert the same way: rebase the revert
+branch onto `origin/main`, push it and open a PR, wait for CI `test` to go green
+on the PR head, and have the owner fast-forward `main` to that exact sha with
+`git push origin <sha>:refs/heads/main` from WSL; then
+`git fetch origin && git merge --ff-only origin/main` in the serving checkout.
+Leftovers, safe to delete: `${DATA_ROOT}/.boot-token` and
+`/home/steph/rmdata/boot/`.
 
 Tests: `python3 -m unittest tests.test_boot_scripts` (fake `docker` and `curl`,
 a temporary DATA_ROOT; nothing live is touched).
