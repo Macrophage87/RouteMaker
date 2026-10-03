@@ -443,7 +443,7 @@ test("with the switch on, the swatch border is the strengthened border, at least
   assert.equal(blocks.length, 2, "one :root.a11y block per theme");
   const plain = themeColours();
   blocks.forEach((block, i) => {
-    const pick = (name: string) => block.match(new RegExp(`${name}:\s*(#[0-9a-fA-F]{6})`))?.[1].toLowerCase() ?? "";
+    const pick = (name: string) => block.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})`))?.[1].toLowerCase() ?? "";
     assert.match(pick("--swatch-border"), /^#[0-9a-f]{6}$/, `block ${i}`);
     assert.equal(pick("--swatch-border"), pick("--border"), `block ${i}`);
     assert.ok(contrastRatio(pick("--swatch-border"), plain[i].bg) >= contrastRatio(plain[i].swatch, plain[i].bg), `block ${i}`);
