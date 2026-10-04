@@ -1,8 +1,9 @@
 """The rider's weight goes nowhere but the effort model (OWNER-DECISIONS 313: "Not
 everyone wants to share their weight"): not into a log line, not into what the
 routers are asked, and not into the access logs, which record neither request bodies
-nor query strings. The front end keeps it out of links and GPX files
-(frontend/src/lib/planHash.test.ts, gpx.test.ts)."""
+nor query strings. The front end keeps it out of links and GPX files, both tested in
+frontend/src/lib/weight.test.ts ("the weight is never in a shared link", "the weight
+is never in a downloaded GPX file")."""
 
 from __future__ import annotations
 

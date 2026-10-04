@@ -40,8 +40,12 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   (`@protomaps/basemaps`, light flavour), served from `/basemap/region.pmtiles`.
 - Publisher: Protomaps (<https://protomaps.com/>); the data in the archive is
   OpenStreetMap's (above).
+- Version: the daily build `20260926` (`PROTOMAPS_BUILD` in `scripts/fetch_basemap.sh`,
+  <https://build.protomaps.com/20260926.pmtiles>), cut to the region; retrieved 2026-09-26.
+  The style package is `@protomaps/basemaps` 5.7.2 (`frontend/package.json`).
 - Licence: `@protomaps/basemaps` is BSD-3-Clause (in the shipped `licenses.txt`).
-- Records: docs/DEPLOYMENT.md (`scripts/fetch_basemap.sh`).
+- Records: docs/DEPLOYMENT.md (`scripts/fetch_basemap.sh`); docs/OPERATIONS.md, "The
+  base map".
 
 ## DC Open Data (District of Columbia)
 
@@ -53,10 +57,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
   verbatim in the READMEs below. "Adapted": the counts are normalised, the street
   attributes conflated onto OSM ways, the polygons merged and simplified.
 - The layers, each with its own reference:
-  - **2024 Traffic Volume** (District Department of Transportation): annual average
-    daily traffic, the stress tiers' District counts (`ddot-aadt-2024.geojson`,
+  - **2024 Traffic Volume** (District Department of Transportation; the layer's own
+    name is `Traffic_Volume_-_2024`): annual average daily traffic, the stress tiers'
+    District counts. Retrieved 2026-09-25; the file installed is
+    `ddot-aadt-2024.geojson`, 19,021,354 bytes, sha256
+    `e85b6024a1eeb6864f235f1cd12bad8f190d9ef332584a7cd74ca522225f0d0b`. The item id and
+    the query URL were not recorded at ingest; the next refresh records them here.
     docs/PLAYBOOK.md, "The three reference inputs"; docs/DEVELOPMENT.md, "Reference
-    data").
+    data".
   - **DDOT Central Business District** (District Department of Transportation), item
     `32143ca8983d4476b64f4202162bf61e`, retrieved 2026-09-30; decides which sidewalks
     bicycles may not ride. Record and sha256: `fixtures/cbd/README.md`.
@@ -70,9 +78,14 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
     `45066cff69065adeb0fb3ba3376abaaf58862bd37e3baba63d92062e68bb8108`; posted speed,
     lanes, one-way streets, bike lanes, parking and fallback counts in the District.
     `fixtures/datasets/README.md`.
-  - **Metro Stations Regional** and **Metro Station Entrances (Regional)**
-    (<https://opendata.dc.gov/datasets/metro-stations-regional>); the station and
-    entrance markers. `frontend/src/rail-data/README.md`.
+  - **Metro Stations Regional** (<https://opendata.dc.gov/datasets/metro-stations-regional>;
+    ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51`) and
+    **Metro Station Entrances (Regional)** (the same service, layer 111), retrieved
+    2026-09-27, 13:39 UTC, sha256
+    `b18dbfe0b4e2aadf9892a690d06099fdbce53f5a93279c5b7389bfa684265991` and
+    `332ef7bb9b1d62b27e980304636bfa13683a2699a5037e2f2433bab42341bd34`; the station and
+    entrance markers. The ArcGIS item ids were not recorded; the layer paths above are
+    what was queried. `frontend/src/rail-data/README.md`.
   - **National Parks** (NPS Map A: Park Service and other government-owned land; DC
     GIS), item `14eb1c6b576940c7b876ebafb227febe`, retrieved 2026-10-03, sha256
     `d2038ab8bb43ab947c8b377e01f47fb58e4b2cd16acd6d6dfe992a66b9184310`;
@@ -91,7 +104,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Credit: `VDOT`
 - Dataset: VDOT's annual traffic volume (AADT) export, Virginia Roads open data
   portal (<https://www.virginiaroads.org/>), `vdot-aadt-2024.geojson`; the stress
-  tiers' Virginia counts.
+  tiers' Virginia counts. Retrieved 2026-09-25; the file installed is 100,789,629 bytes,
+  sha256 `aa298951bb3707c2c2dd4e640679fd1c348eb9935d1ffa2ef4b89a567bac5204`. The
+  dataset's own URL on the portal was not recorded at ingest; the next refresh records
+  it here.
 - Publisher: Virginia Department of Transportation.
 - Licence: open data, no restrictions stated (PLAN.md, "Licensing").
 - Records: docs/PLAYBOOK.md, "The three reference inputs"; docs/DEVELOPMENT.md,
@@ -131,7 +147,9 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Credit: `USGS 3DEP`
 - Dataset: 3DEP one-arcsecond elevation tiles (<https://www.usgs.gov/3d-elevation-program>,
   fetched from `prd-tnm.s3.amazonaws.com` by the rebuild's ELEVATION stage); the
-  climb, the effort model and the Hills slider.
+  climb, the effort model and the Hills slider. Retrieved by each rebuild's ELEVATION
+  stage, which records the tiles and their dates in its run's log; never fetched on the
+  development host (docs/OPERATIONS.md says why).
 - Publisher: U.S. Geological Survey.
 - Licence: U.S. public domain.
 - Records: docs/OPERATIONS.md (the ELEVATION stage).
@@ -142,7 +160,10 @@ item metadata, the licence texts verbatim) are in the fixture READMEs named belo
 - Dataset: **TIGER/Line 2024 Urban Areas** (`tl_2024_us_uac20`, converted with
   `ogr2ogr -f GeoJSON -t_srs EPSG:4326`, installed as
   `<DATA_ROOT>/reference/urban-areas.json`); the stress tiers' urban and rural
-  defaults (`routemaker.stress`).
+  defaults (`routemaker.stress`). Retrieved 2026-09-25: `tl_2024_us_uac20.zip`,
+  73,763,076 bytes, sha256 `efa943399ad65d81421167502732a0ee3774be663da499681b25e0b412cd81f9`;
+  the GeoJSON made from it, 9,086,929 bytes, sha256
+  `ee1aceeaa74792b95561276aff977deda81d75220b547a57cb2bf9c85a6b63c0`.
 - Publisher: U.S. Census Bureau (<https://www.census.gov/geographies/mapping-files/time-series/geo/tiger-line-file.html>).
 - Licence: U.S. public domain.
 - Records: docs/PLAYBOOK.md, "The three reference inputs".
@@ -168,3 +189,12 @@ them (OWNER-DECISIONS 152, 153, 155, 162).
   lanes.
 - MDOT's Road Separated Bike Routes web map: check-only (its terms bar trip-planning
   use).
+
+## WMATA service announcements (facts, no credit)
+
+- Credit: none. Two service changes the Open Data DC Metro layers predate are added
+  to a station's lines by hand (`frontend/src/rail-data/metro-line-corrections.json`),
+  each with the WMATA announcement it rests on cited in that file and in
+  `frontend/src/rail-data/README.md`. What is taken is the fact (which lines stop
+  where), not WMATA's text or data, so there is no licence to follow and no credit on
+  the map; it is listed here so every source is cited (301).

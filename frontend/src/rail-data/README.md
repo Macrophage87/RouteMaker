@@ -12,9 +12,9 @@ ignores every directory of that name.
 PLAN.md "Licensing" asks that every external source is documented with its
 licence, URL and refresh procedure; these are those records.
 
-| File | What | Source | Licence | Credit on the map |
+| File | What | Source | Licence | Credit on the map (since OWNER-DECISIONS 306, the brief form; docs/SOURCES.md has the full reference) |
 | --- | --- | --- | --- | --- |
-| `metro-stations.geojson` | 98 Metrorail stations, `NAME`, `LINE`, `ADDRESS`, `GIS_ID` | Open Data DC, "Metro Stations Regional", <https://opendata.dc.gov/datasets/metro-stations-regional>; ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51` | **CC BY 4.0** | "Metro stations and entrances: District of Columbia (Open Data DC), CC BY 4.0" |
+| `metro-stations.geojson` | 98 Metrorail stations, `NAME`, `LINE`, `ADDRESS`, `GIS_ID` | Open Data DC, "Metro Stations Regional", <https://opendata.dc.gov/datasets/metro-stations-regional>; ArcGIS layer `DCGIS_DATA/Transportation_Rail_Bus_WebMercator/MapServer/51` | **CC BY 4.0** | "DC Open Data (CC BY 4.0, adapted)", the map's one credit for the District's layers |
 | `metro-entrances.geojson` | 260 station entrances, 86 of them elevators (`DESCRIPTION` "Metro Station Elevator" / "Metro Station Entrance"), `NAME`, `EXIT_TO_ST`, `LINE`, `CAPTUREYEAR`, `GIS_ID` | Open Data DC, "Metro Station Entrances (Regional)"; layer `.../MapServer/111` | **CC BY 4.0** | the same line |
 | `metro-line-corrections.json` | lines added to `LINE` for two service changes the layer predates (below) | WMATA's own announcements, cited per change | this project's (facts, with sources) | - |
 | `marc-penn-stations.geojson` | the MARC Penn Line's 9 stations from Washington Union Station to Baltimore Penn Station inclusive, and the elevators OSM maps at them | OpenStreetMap, via the project's own extract, by `scripts/build_marc_penn_stations.py` | **ODbL 1.0** (a produced work of the extract) | the map's existing "© OpenStreetMap contributors (ODbL)" |

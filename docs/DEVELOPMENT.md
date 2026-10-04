@@ -317,9 +317,11 @@ map) repaint on it. What is chosen is held in `localStorage` as
 
 Where it starts: the stored "on" or "off" first, then the browser's
 `prefers-contrast: more` (followed live while nothing is stored), then off. The
-palette: `?palette=` in the link, then the switch, then `blended`. A link names
+palette: `?palette=` in the link, then the switch, then the default, `twotone` (since
+OWNER-DECISIONS 351; `blended` before, "The default palette", below). A link names
 the palettes neutrally (OWNER-DECISIONS 321): `warm` (blended), `twotone` and
-`cool` (cvd), and still reads the older `blended` and `cvd` silently;
+`cool` (cvd), and still reads the older `blended` and `cvd` silently, and on load
+renames them in the address bar (`neutralPaletteSearch`, the release re-check's S4);
 `frontend/src/lib/linkPrivacy.test.ts` scans every link the page writes, over every
 ride type and option, for words that reveal a disability or assistive need. The
 colours of the switch's state are one place, `tiersFor(palette, strong)`.
@@ -331,7 +333,7 @@ black or white and leaves the busy tiers' as they are):
 | Tier | Line | Casing |
 | --- | --- | --- |
 | LTS 1 | #d2eafc | #0a1a2f |
-| LTS 2 | #5d99d2 | #0a1a2f |
+| LTS 2 | #5d99d2 | #0a1a2f (gaps #a7b4c1, 356) |
 | LTS 3 | #cd4b0a | #0a1a2f |
 | LTS 4 | #6a0a06 | #ffffff |
 | Avoid | #08081e | #f0e442 |
@@ -387,8 +389,9 @@ not something it changes.
 
 WCAG relative luminance between neighbours (greyscale order): `cvd` Y 0.796,
 0.298, 0.180, 0.033, 0.003, steps of 2.43, 1.51, 2.78 and 1.56 to 1; `blended`
-Y 0.568, 0.283, 0.234, 0.123, 0.003, steps of 1.86, 1.17, 1.64 and 3.30 to 1; `twotone` does not fall (LTS 3 is lighter than
-LTS 2).
+Y 0.568, 0.283, 0.234, 0.123, 0.003, steps of 1.86, 1.17, 1.64 and 3.30 to 1; `twotone`, the
+default since 351, does not fall: Y 0.568, 0.283, 0.575, 0.378, 0.151 (LTS 3 is the lightest
+tier and LTS 4 is lighter than LTS 2), reported in `defaultPalette.test.ts`.
 
 Contrast of a tier against the base map (every surface of `@protomaps/basemaps`'
 light flavour) and both panel themes, the worst case per tier, by the rule in
@@ -397,11 +400,15 @@ and the line against its casing; 3:1 needed):
 
 | Palette | LTS 1 | LTS 2 | LTS 3 | LTS 4 | Avoid |
 | --- | --- | --- | --- | --- | --- |
-| blended | 8.31 | 4.50 | 3.60 | 3.54 | 4.21 |
-| blended, switch on | 9.83 | 5.29 | 3.60 | 3.54 | 4.21 |
+| twotone (the default since 351; LTS 3 and 4 reported) | 4.42 | 4.82 | 1.44 | 2.34 | 3.20 |
+| twotone, switch on | 9.83 | 4.82 | 1.44 | 2.34 | 3.20 |
+| blended | 4.42 | 4.82 | 3.60 | 3.54 | 4.21 |
+| blended, switch on | 9.83 | 4.82 | 3.60 | 3.54 | 4.21 |
 | cvd | 10.23 | 5.53 | 3.66 | 7.41 | 11.55 |
 | cvd, switch on | 12.29 | 5.53 | 3.66 | 7.41 | 11.55 |
-| twotone (reported only) | 8.31 | 4.50 | 1.44 | 2.34 | 3.20 |
+
+LTS 1 and 2 changed with 357 (LTS 1's softer edge, #2f5d47; LTS 2's slate blue,
+#1a2638, which the switch keeps).
 
 The route line in the `cvd` palette. The route's sections were drawn in a 5 px
 line on a 9 px casing (4 to 6 px on 11 px since item 274). The casing was the route's blue (#1d4ed8), which the
@@ -504,7 +511,7 @@ was not looked at.
   with or without the stress map, in its own words.
 - The plan's points on federal land are listed in words ("Your points on federal
   land"), so a rider who cannot point at the map gets the names.
-- The a11y harness counts every check: `EXPECTED = 129` in `scripts/a11y/check.mjs`.
+- The a11y harness counts every check: `EXPECTED = 142` in `scripts/a11y/check.mjs`.
 
 ### Stress salience: the tiers' shapes and the facility rails (items 274 to 283, 290, 292, 302)
 
@@ -515,13 +522,14 @@ what tells two classes apart never rests on colour alone. Everything is in
 the owner approved it on the r1 preview (297). Display only: no rating and no
 data changed.
 
-**The tiers** (default `blended` palette; widths with the Accessibility switch
+**The tiers** (the warm `blended` palette, the default until 351; the two-tone
+default is in "The default palette", below; widths with the Accessibility switch
 off):
 
 | Tier | Line | Casing | Dash | Width | Ink | Gap harshness |
 | --- | --- | --- | --- | --- | --- | --- |
-| LTS 1 | #9ed3ac | #17301f | solid (`null`) | 2.5 px | 2.50 | 0 |
-| LTS 2 | #57a06c | #17301f | [4, 1] | 3.25 px | 2.60 | 0.90 |
+| LTS 1 | #9ed3ac | #2f5d47 | solid (`null`) | 2.5 px | 2.50 | 0 |
+| LTS 2 | #57a06c | #1a2638, gaps #7a8fa3 | [4, 1] | 3.25 px | 2.60 | 0.21 |
 | LTS 3 | #bf730b | #45290a | [2, 0.4] | 4.25 px | 3.54 | 0.60 |
 | LTS 4 | #c80018 | #ffffff | [8, 1] | 5 px | 4.44 | 0.67 |
 | Avoid | #14040a | #ee3b2c | [5, 1, 0.5, 1] | 6.5 px | 4.77 | 1.34 |
@@ -607,17 +615,21 @@ alone. Shape comes first and colour second:
 
   | Palette | LTS 1 | LTS 2 | LTS 3 | LTS 4 | Avoid | Casings |
   | --- | --- | --- | --- | --- | --- | --- |
-  | blended | #d9b98c | #b58a55 | #8c5e2e | #5e3a17 | #33200d | LTS 1-2 #3b2410, LTS 3 up #f6ead2 |
-  | twotone | #d4bba6 | #ac8b73 | #7d604b | #53392a | #2b1c14 | LTS 1-2 #33231a, LTS 3 up #f6ead2 |
-  | cvd | #e0c68a | #bc9a52 | #7e6028 | #544018 | #2a200c | LTS 1-2 #2a200c, LTS 3 up #f6ead2 |
+  | twotone (default) | #e8dad0 | #ac8b73 | #7d604b | #53392a | #2b1c14 | LTS 1 #33231a, LTS 2 #1a2638 (gaps #7a8fa3), LTS 3 up #f6ead2 |
+  | blended | #ebddd1 | #ac9888 | #7b6250 | #543e2c | #2e2118 | LTS 1 #3b2410, LTS 2 #1a2638 (gaps #7a8fa3), LTS 3 up #f6ead2 |
+  | cvd | #e0c68a | #bc9a52 | #7a6046 | #544018 | #2a200c | LTS 1 #2a200c, LTS 2 #2a200c (gaps #7a8fa3), LTS 3 up #f6ead2 |
 
-  The blended ramp's L* is 76.9, 60.5, 43.9, 28.0 and 14.2. Every step is
-  1.5:1 or more in lightness and 10 or more CIEDE2000 from the last under
-  every vision, and every tier is 3:1 or more on every base-map surface (the
-  worst is LTS 3, about 3.3:1). Gap harshness is 0, 0.93, 0.78, 0.94 and 3.47,
-  so 292's rule from LTS 3 up still holds. Unpaved LTS 1 is 19.2, 22.9 and
-  20.3 CIEDE2000 from the paved LTS 3 amber (#bf730b) and 55 to 61 from its
-  casing (#45290a). Two-tone uses a greyer taupe, because its paved LTS 3 is a
+  Since 350 the warm ramp is a sepia (L* 88.9, 64.2, 43.5, 28.1, 14.0), two-tone's
+  LTS 1 a paler taupe and `cvd`'s LTS 3 a duller brown, so that paved LTS 3 is 20
+  CIEDE2000 or more from every unpaved step under normal vision, and 10 or more
+  under every vision, in every palette, plain and strong (the closest: warm's
+  amber against its LTS 2, 20.8; two-tone's yellow against its LTS 1, 25.7, and
+  15.2 under tritanopia; `cvd`'s orange against its LTS 3, 21.3, and 12.5 under
+  protanopia, where the ochre #7e6028 was 4.5). Every step is 1.5:1 or more in
+  lightness and 10 or more CIEDE2000 from the last under every vision, and every
+  tier is 3:1 or more on every base-map surface (the worst is the unpaved LTS 3,
+  3.32 to 3.42:1). Gap harshness rises from LTS 1 (0, 0.21 to 0.25, 0.79 to 0.82,
+  0.92 to 0.99, 3.49 to 3.67), 292's rule from LTS 1 up since 356. Two-tone uses a greyer taupe, because its paved LTS 3 is a
   yellow a warm tan would sit on; `cvd` uses an ochre-olive on the yellow side
   of the blue-yellow axis. **Weak spot:** under deuteranopia unpaved LTS 1 and
   2 are only about 5 to 6 CIEDE2000 from the paved green LTS 1 and 2; the
@@ -625,6 +637,79 @@ alone. Shape comes first and colour second:
   says `unpaved` (true, false or null), and a section ends where the surface
   changes. The preview is /home/steph/rmdata/demo/stress-salience-preview.html
   (r1's is kept as stress-salience-preview-r1.html).
+
+### The default palette (351), LTS 2's blue edge (356, 357) and the unpaved ramps (350)
+
+The owner, on the warm palette's LTS 3 beside the brown unpaved ramp: "LTS3 looks
+unpaved" (350), then "2 tone is better", "Make two-tone the default" (351). The
+default is `twotone` in the owner's colours; `blended` stays as `?palette=warm`,
+and the switch's palette is still `cvd`. The rules still apply on top, and where
+the owner's colours break one the break is reported, not fixed (351: "If two-tone's
+colours break any of them, report it rather than silently changing the owner's
+choice"). `frontend/src/testSupport/defaultConflicts.ts` lists them, and
+`frontend/src/defaultPalette.test.ts` holds the default to every other rule and to
+exactly these breaks (one more fails, and so does one fewer):
+
+| Tier | Line | Edge (casing) | Gaps | Harshness | Worst on the base map |
+| --- | --- | --- | --- | --- | --- |
+| LTS 1 | #9ed3ac | #2f5d47 | (solid) | 0 | 4.42:1 |
+| LTS 2 | #57a06c | #1a2638 | #7a8fa3 | 0.21 | 4.82:1 |
+| LTS 3 | #f2c21b | #f28c28 | the edge | 0.24 | 1.44:1 |
+| LTS 4 | #f28c28 | #c81e1e | the edge | 0.26 | 2.34:1 |
+| Avoid | #d42020 | #111111 | the edge | 0.97 | 3.20:1 |
+
+What two-tone breaks, with the smallest tweak that would mend each (none applied):
+
+- **3:1 (WCAG 1.4.11), LTS 3 and LTS 4.** The yellow on its orange edge is 1.46:1
+  and the orange on its red edge 2.34:1, and neither the line nor the edge is 3:1
+  on the light base map, the light panel or the route halo. Smallest tweak: a 1 px
+  near-black ring outside the edge (as the faint roads have), which keeps both of
+  the owner's colours; or darken LTS 3's edge to an orange-brown, which brings the
+  350 look back.
+- **Greyscale order.** LTS 3 (Y 0.575) is the lightest tier and LTS 4 (0.378) is
+  lighter than LTS 2 (0.283); every neighbour is still 1.4:1 or more apart, so a
+  print tells them apart but does not order them. No small tweak: it is the
+  yellow-and-orange reading itself.
+- **LTS 3 against LTS 4 for a deuteranope**, 1.38:1 in luminance, under 1.4:1.
+  Smallest tweak: a slightly lighter yellow, #f3c81a (1.44:1, 3.6 CIEDE2000 from
+  #f2c21b).
+- **274's salience.** LTS 4's orange (CIELAB chroma 72.5) is less saturated than
+  LTS 3's yellow (78.7); LTS 4 is still more contrasting on the base map, and its
+  dash and width are heavier. Tweak: a more saturated orange-red for LTS 4, which
+  changes the owner's colour, so not proposed as small.
+- **Avoid against LTS 4**, 17.8 CIEDE2000 under deuteranopia (the warm palette is
+  held to 20); the dash-dot, the width and the near-black edge still differ.
+- **Avoid on the dark theme's soft panel** (#262a32), 2.76:1, in the legend only.
+  Tweak: a light outline on the dark theme's legend swatch.
+- **LTS 4's edge** is #c81e1e, which 292 chose, not the #d42020 351's text lists:
+  with #d42020 LTS 3's gaps (0.24) would be harsher than LTS 4's (0.24 against
+  0.237).
+- **The Mass Ride orange** (#f28e2b, 327) is 0.5 CIEDE2000 from LTS 3's edge and
+  LTS 4's line (#f28c28): the same colour. Where Mass Ride's capacity map (325-334)
+  is built it replaces the stress colours in that mode, so the two do not meet on
+  one map; until then it is a note for that work. The junction marker's orange
+  (#f59e0b) is 13.4 from LTS 3's yellow under normal vision, 5.1 under
+  deuteranopia; the marker's triangle and dark outline carry it there.
+
+**LTS 2's edge and gaps (356, 357).** "For Lts 2 maybe use a blue instead of black.
+Especially unpaved, LTS2 can almost be harsher than LTS3." and, on the sketch,
+"Good!". LTS 2's edge is a dark slate blue, #1a2638, paved and unpaved, which the
+switch keeps (the cool palette's paved LTS 2 keeps its navy and its unpaved one its
+brown), and its gaps a steel blue, #7a8fa3, drawn as a line of their own between the
+casing and the dashes (`gapLayers`, layer `stress-gap-2`, and the legend's swatch;
+the cool palette's paved one is a pale grey-blue, #a7b4c1). Paved LTS 1's edge is a
+softer green, #2f5d47. The sketch's #5f7d99 could not be used as it was: as the edge
+it leaves LTS 2 2.4:1 on the base map (3:1 needs a dark ring), and as the gap it is
+15.4 CIEDE2000 from the route blue and would make LTS 2's gaps (0.27) harsher than
+two-tone LTS 3's (0.24); the gap chosen is 7.6 from it, 22.6 from the route blue and
+19 L* lighter, and the edge 23.8 from it and 24 L* darker. The 292 rule now runs
+from LTS 1 up: gap harshness never falls as stress rises, paved and unpaved, in every
+palette, plain and strong (`stressSalience.test.ts`, `unpavedBrown.test.ts`). The
+trade: LTS 2's green and its steel-blue gaps are 1.06:1 apart in lightness, so in
+greyscale its dashes are faint, and LTS 2 is told from LTS 1 by its width and edge
+more than its dash. The unrated route class has a halo of its own, #202326
+(`UNRATED_HALO` in `lib/routeColours.ts`): LTS 1's softer edge
+left the grey at 2.86:1.
 - The facility bar takes its colours and patterns from the rails
   (`.facility-seg-*`). Its old green, blue and amber collided with the stress
   colours.
@@ -3472,7 +3557,10 @@ each level (`MAXCALM_STEPS`: 15 m, 50 m, 50 m):
    to the same target, and a long calm plan runs too (`long_calm_for` no longer takes a `seeking`
    argument). Only the effort term inverts: `Context.hills_seek_weight` (the Hills position / 100)
    subtracts that share of the effort in `refine.level3`, so of two equally calm routes the one with
-   more climbing is preferred. On Trailmaxxing and Cargo with passengers at the top of the stress
+   more climbing is preferred. The 268 distance charge does not see that credit: its `blended_m` is
+   `refine.charged_m`, the avoid-side blend alone, so seeking climbs never buys miles (the release
+   re-check's S1: a 40 km hilly route against a 20 km flat one was charged nothing at full seek, and
+   any stress saving was worth it). On Trailmaxxing and Cargo with passengers at the top of the stress
    slider no climb search among the router's alternatives is asked, and the answer's
    `hills_seek.limited` is `"calm_first"`; below the top the climb search is as before. Before 298(3) the stress-order search and the target fit were
    skipped while the slider sought, though the target dial was still offered. What seeking should
@@ -3489,8 +3577,9 @@ effort is its length times F / F0, F0 the force on the flat; floored at 1, so a 
 and never offsets a climb (263). The grade is read over 300 m windows of the 30 m elevation samples
 (a 2 m error between neighbours is 7%). Constants: Crr 0.006, CdA 0.40 m^2, air 1.225 kg/m^3,
 mass 90 kg by default; 8% costs 6.5 times the flat. The system weight is optional (item 264, and
-private since 313-318: see "The rider and bike weight" below): 68 kg
-(150 lb) to 140 kg (309 lb), default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers; only
+private since 313-318: see "The rider and bike weight" below): 25 kg
+(55 lb) to 700 kg (1,543 lb), clamped silently outside (337, 338, 352; 68 to 140 kg when first
+built), default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers; only
 the climbing and rolling terms scale with it, so a flat route's effort-distance is its length at any
 weight. Elevation is the router's own profile (the data `climb_m` uses). Sensitivity: every percent of
 grade adds about 9 N to a 12.7 N flat force, so noise of 2 m over 300 m inflates a flat stretch by
@@ -3953,7 +4042,8 @@ in `cvd`; with the switch on, black or white under the calm tiers, and a busy ti
 own casing, which the switch leaves: OWNER-DECISIONS 292), the unpaved casing under
 an unpaved section (item 302: the route has twelve classes, the five unpaved ones
 drawn in the brown ramp with the dotted mark over them, layer `route-unpaved`), the
-first tier's dark casing under the unrated grey, and white under the violet. The
+a dark neutral of its own under the unrated grey (#202326, since 357 softened LTS 1's
+casing, which it was before), and white under the violet. The
 figures below were computed from the colours by the test's rule. The blue stays outside as
 the route's identity and is itself 3:1 from every base-map surface. The panel's route
 legend draws the same halo.
@@ -3961,17 +4051,20 @@ legend draws the same halo.
 | Class | default palette (halo, ratio) | colour-blind-friendly, switch on (halo, ratio) |
 |---|---|---|
 | Traffic-free #4c1d95 | #ffffff, 10.95 | #ffffff, 10.95 |
-| LTS 1 | #17301f, 8.36 | #000000, 16.92 |
-| LTS 2 | #17301f, 4.50 | #000000, 6.95 |
-| LTS 3 | #45290a, 3.60 | #0a1a2f, 3.83 |
-| LTS 4 | #ffffff, 6.05 | #ffffff, 12.66 |
-| Avoid | #ee3b2c, 5.04 | #f0e442, 14.93 |
-| Not rated | #17301f, 5.38 | #000000, 7.65 |
-| Unpaved LTS 1 | #3b2410, 7.79 | #000000, 12.61 |
-| Unpaved LTS 2 | #3b2410, 4.66 | #000000, 7.88 |
-| Unpaved LTS 3 | #f6ead2, 4.69 | #f6ead2, 4.91 |
-| Unpaved LTS 4 | #f6ead2, 8.42 | #f6ead2, 8.30 |
-| Unpaved Avoid | #f6ead2, 13.02 | #f6ead2, 13.45 |
+| LTS 1 | #2f5d47, 4.45 | #000000, 16.92 |
+| LTS 2 | #1a2638, 4.82 | #0a1a2f, 5.79 |
+| LTS 3 | #f28c28, 1.46 (reported, 351) | #0a1a2f, 3.83 |
+| LTS 4 | #c81e1e, 2.34 (reported, 351) | #ffffff, 12.66 |
+| Avoid | #111111, 3.62 | #f0e442, 14.93 |
+| Not rated | #202326, 5.98 | #202326, 5.75 |
+| Unpaved LTS 1 | #33231a, 11.01 | #000000, 12.61 |
+| Unpaved LTS 2 | #1a2638, 4.86 | #2a200c, 6.02 |
+| Unpaved LTS 3 | #f6ead2, 4.83 | #f6ead2, 4.91 |
+| Unpaved LTS 4 | #f6ead2, 8.87 | #f6ead2, 8.30 |
+| Unpaved Avoid | #f6ead2, 13.78 | #f6ead2, 13.45 |
+
+The default palette's column is two-tone's since 351 (the warm palette's halos
+are its casings, as in "Stress salience").
 
 Against the blue alone the default palette was 1.09:1 (LTS 4) to 3.95:1 (LTS 1).
 
@@ -3997,7 +4090,7 @@ swatch tokens and the bar's border, the legend and the map layer): 17 killed at 
 the 3 survivors (the edge's width, the legend's halo stroke, the map layer's halo
 colour) each got a test (`stressContrast.test.ts`) and are now killed.
 
-## The rider and bike weight (OWNER-DECISIONS 313-318)
+## The rider and bike weight (OWNER-DECISIONS 313-318, 337-340, 352)
 
 The weight is private. It is kept apart from the plan's dials, so it is in no link (an
 older link's `sysweight` is ignored), no GPX download, and nothing the panel, the route
@@ -4009,12 +4102,25 @@ kilograms (`system_weight_kg`, `lib/weight.ts` `withWeight` and `dials.ts` `dial
   ago", "set N days ago" (`weightLine`, by calendar day), and a Change button described by it.
 - **The dialog**: a native `<dialog>` opened modal, named by its heading and described by its
   two lines (318); Escape closes it and the focus goes back to Change. Rider, Bike and Cargo
-  (pounds) and an editable Total, said politely as it changes. A Total typed replaces the
+  and an editable Total, labelled pounds first and kilograms in brackets ("Rider, lb (kg)",
+  316), with the kilograms a typed figure comes to in each field's description, said politely as it changes. A Total typed replaces the
   parts; a part typed recomputes the Total. Blank parts are the ride type's defaults
   (`defaultSplit`): rider 75 kg, bike 15 kg, no cargo (90 kg); Cargo with passengers rider
   75 kg, bike 30 kg and passengers 15 kg (120 kg). Every open starts blank (`openedState`);
   a saved weight is said to exist, with its date, never its numbers. Save replaces, Clear
-  uses the defaults, Cancel keeps it.
+  uses the defaults, Cancel keeps it. Save, Cancel, Clear and Escape all leave the dialog
+  blank as it closes (the release re-check's S2: a closed `<dialog>` is still in the DOM,
+  and an in-range Save used to leave the figures in it).
+- **Range and clamp (337-340, 352).** Every total is taken. One outside 25 to 700 kg (55 to
+  1,543 lb; 450 kg until 352 raised the top for "people who ride pedicabs with 2
+  passengers") is planned at the nearer limit, silently: no note anywhere (352 removed 338's).
+  The parts have no limits of their own, only that each is a non-negative number (339, 340),
+  and the total alone is clamped, in the page (`dials.ts` `SYSTEM_WEIGHT_MIN_KG`,
+  `SYSTEM_WEIGHT_MAX_KG`, `fitWeight`; `weight.ts` `toStored`) and in the API
+  (`routemaker.effort.clamp_mass_kg`, the `RouteIn.system_weight_kg` validator, no `ge`/`le`).
+  The effort model stays well-behaved to the top: an 8% climb's factor is 6.5 at 90 kg, 11.3
+  at 450 and 12.2 at 700, flattening towards 1 + grade / CRR (14.3), so above about 450 kg
+  routes barely change (337's "any end where routes stop changing"; tests/test_effort.py).
 - **Where it is kept** (`WeightStore`): signed out, in this browser (localStorage,
   `routemaker.weight`) only when "Remember on this device" is ticked, else for the visit.
   The shape is `{name, totalKg, parts?, setAt}`, ready for named loadouts (315); `migrate`

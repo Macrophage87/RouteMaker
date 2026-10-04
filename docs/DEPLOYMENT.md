@@ -1142,20 +1142,27 @@ What the edge does with it (Caddyfile, `@frontend`):
 What the map shows and credits:
 
 - The base map is the light flavour of `@protomaps/basemaps` over
-  `/basemap/region.pmtiles`, with glyphs and sprites from `/basemap/`. Its
-  credit - "© OpenStreetMap contributors (ODbL)" and "© Protomaps" - is stated
-  by the app, because the archive's own attribution names OpenStreetMap only.
-  DDOT's traffic volume (CC BY 4.0, adapted) and VDOT's (credited as a
-  courtesy) are credited on every view, and each route's own attribution
-  strings from the API are printed under its breakdown.
+  `/basemap/region.pmtiles`, with glyphs and sprites from `/basemap/`. The map
+  carries the brief credits of OWNER-DECISIONS 306 ("keep it brief and put the
+  full information in documentation"), from `frontend/src/lib/credits.json`:
+  "© OpenStreetMap contributors (ODbL)", "Protomaps", "DC Open Data (CC BY 4.0,
+  adapted)", "VDOT", "Open Baltimore", "Montgomery County Planning Department",
+  "USGS 3DEP", "U.S. Census Bureau" and "Photon", then "Software licences".
+  The full reference for each source (dataset, publisher, licence, URL, date
+  retrieved) is in docs/SOURCES.md. Each route's own attribution strings from
+  the API are printed under its breakdown.
 - The stress overlay is drawn from `/tiles/stress/{z}/{x}/{y}.pbf` (layer
   `stress`, properties `tier`, `trail`, `unpaved` and `facility`) from zoom 10
   to 16; zoomed out to 10-11 only LTS 3-4 roads and the trails, from 12 every
   street, from 14 footways too, and below 10 nothing, where the legend says
-  "Zoom in to see traffic stress". Bike facilities are violet rails either
-  side of the stress line - off-road paths bold and solid, protected lanes
-  bold and broken, painted lanes thin - listed in the legend once the map has
-  drawn one; until the segment table carries a facility class, the trails a
+  "Zoom in to see traffic stress". Bike facilities are rails either side of
+  the stress line, told apart by shape first (OWNER-DECISIONS 276, 277): an
+  off-road path a solid 2.5 px violet rail (left off an unpaved trail, 290), a
+  protected lane a bold magenta rail in post-like blocks, and a painted lane
+  the thinnest, a 1 px dotted pale-violet rail drawn under the others and hidden
+  on LTS 4 and Avoid roads unless "Show bike lanes on high-stress roads" is on
+  (275); docs/DEVELOPMENT.md, "Stress salience", has the figures. They are
+  listed in the legend once the map has drawn one; until the segment table carries a facility class, the trails a
   bicycle may ride are the paths and the sidepaths the protected lanes, and a
   trail barred to bicycles is neither. Nothing is drawn in the grey area. The
   tiles are fetched through the app's own protocol, which waits out a 429 or

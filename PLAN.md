@@ -429,11 +429,17 @@ Deferred work the owner has named, each with the OWNER-DECISIONS items that deci
   - Sources, read from service metadata only and not downloaded; each download needs the owner's approval at build time: Open Data DC "National Parks" (item 14eb1c6b576940c7b876ebafb227febe, DCGIS_DATA/Recreation_WebMercator/MapServer/10, NPS Map A, 456 records, last updated 2025-02-07, CC BY 4.0), the primary source; DCGIS_DATA/Property_and_Land_WebMercator/MapServer/50 "Federal Land (RPTA Ownership)" and /37 "Reservations", and /11 "Military Bases", for the federal land that is not NPS.
   - Scope: National Parks, the numbered Reservations, Military Bases, and the Capitol complex (the Architect of the Capitol polygon already used for the CBD sidewalk rule, `fixtures/cbd`, or an AOC source). GSA office buildings are left out. Where a source is ambiguous, it flags.
   - What it says: the overlay shades federal areas on the Mass Ride map. The warnings that matter are about stopping: the start, the end, each stop (Stop N) and any regroup or staging point inside a flagged area get "federal land: check permit requirements for gathering here" in the map, the stop list and the description. Riding through on ordinary city streets inside a federal area is not warned per stretch. Stretches on NPS parkways (Rock Creek and Potomac Pkwy, George Washington Memorial Pkwy, Clara Barton Pkwy, Suitland Pkwy, Baltimore-Washington Pkwy) are named in the description and warned as federal roads, identified from the NPS layer and OSM names or operator tags. The map and the description say federal land may have different permit requirements, as information and not legal advice, since ownership is not police jurisdiction (the Capitol grounds and the Capitol Police, NPS and the Park Police).
-  - Implemented as, the map part (2026-10-03, items 236-238 and the map and popup half of 239; the owner approved the downloads for this item; docs/DEVELOPMENT.md "The federal-land overlay", fixtures/datasets/README.md "Federal land" for the records): the Mass Ride map shades the National Parks layer (item 237, the primary source), the numbered Reservations, the Military Bases (item 238) and the Architect of the Capitol polygon already used for the CBD sidewalk rule (the Capitol complex, item 238), merged by `scripts/build_federal_land.py` into one simplified file (1,002 areas, about 490 KB) with a `kind` (nps, reservation, military, capitol) and an agency where the source names one. GSA office buildings are left out (item 238). Each kind is told apart by more than colour: a fill pattern, an outline dash, and its name in the legend, which names the pattern in words. A tap or click on a shaded area opens a small card with the area's name, its managing agency where known, and "Federal land - permit rules may differ (information, not legal advice)" (items 238, 239); the legend section, with a switch (on by default), is in the panel for a Mass Ride only and the shading is off for every other ride type. Credited: "Federal land on the Mass Ride map: National Parks, Reservations and Military Bases, District of Columbia (Open Data DC), adapted, CC BY 4.0". Federal Land (RPTA Ownership), `MapServer/50`, was not downloaded: it has no item of its own and so no licence text to record, which is an unclear licence and was stopped and reported; the overlay does without it.
+  - Implemented as, the map part (2026-10-03, items 236-238 and the map and popup half of 239; the owner approved the downloads for this item, recorded retroactively as OWNER-DECISIONS 354, 2026-10-04: "Yes, approved"; docs/DEVELOPMENT.md "The federal-land overlay", fixtures/datasets/README.md "Federal land" for the records): the Mass Ride map shades the National Parks layer (item 237, the primary source), the numbered Reservations, the Military Bases (item 238) and the Architect of the Capitol polygon already used for the CBD sidewalk rule (the Capitol complex, item 238), merged by `scripts/build_federal_land.py` into one simplified file (1,002 areas, about 490 KB) with a `kind` (nps, reservation, military, capitol) and an agency where the source names one. GSA office buildings are left out (item 238). Each kind is told apart by more than colour: a fill pattern, an outline dash, and its name in the legend, which names the pattern in words. A tap or click on a shaded area opens a small card with the area's name, its managing agency where known, and "Federal land - permit rules may differ (information, not legal advice)" (items 238, 239); the legend section, with a switch (on by default), is in the panel for a Mass Ride only and the shading is off for every other ride type. Credited: "Federal land on the Mass Ride map: National Parks, Reservations and Military Bases, District of Columbia (Open Data DC), adapted, CC BY 4.0". Federal Land (RPTA Ownership), `MapServer/50`, was not downloaded: it has no item of its own and so no licence text to record, which is an unclear licence and was stopped and reported; the overlay does without it.
   - Still to do, the routing part of item 239, a separate step that touches routing and the description: the warnings about stopping (start, end, each Stop N and any regroup or staging point inside a flagged area, in the map, the stop list and the description), and the named, warned parkway stretches. Nor is there yet a keyboard or screen-reader way to ask what a shaded area is: the popup answers a tap or click, so until the description names the federal stops and parkways a rider who cannot point at the map gets the legend and the panel's explanation but not the per-area names.
 - **FOLLOWUP-STRESS-SALIENCE** (274, 275, 276, 277, 279, 280 (display), 283, 290 (a), 292, 297, 302). The map's stress and facility cues, display only: LTS 4 more eye-catching than LTS 3 and Avoid clearly apart from LTS 4 (274), ink rising with stress (283), the three facility rails told apart by shape with painted lanes the weakest (276, 277), painted lanes hidden on LTS 4 and Avoid behind a switch (275), no tier line changing a rail's pattern (279), unpaved trails marked unpaved and without a path's rails (280, 290 (a)), no calmer tier with harsher dash gaps (292), and unpaved roads in one brown ramp, darker for busier (302). Built on wip/stress-salience and approved by the owner on the r1 preview (297; 302's brown is shown in a later preview); the owner's words and what was built are in Owner amendments, 2026-10-03, "FOLLOWUP-STRESS-SALIENCE", and docs/DEVELOPMENT.md, "Stress salience: the tiers' shapes and the facility rails".
 - **FOLLOWUP-NO-BIKE-PATHS and FOLLOWUP-OVERRIDE-REMATCH** (278, 280 (routing), 281, 282, 290 (b), 291), for the next graph rebuild (293 (3)), not this release: paths where cycling is not allowed neither routed nor drawn as bike facilities, mountain-bike sections of trails such as the Cross County Trail left out of the standard presets section by section, the Lake Accotink singletrack barred, and the override loader's re-match by geometry and name with the Harford Rd override re-pointed. The owner's words are in Owner amendments, 2026-10-03.
 - **FOLLOWUP-KIDS-PRESET** (240 (B)). A "Riding with kids" preset for children on their own bikes: LTS 1 strongly preferred, LTS 2 allowed but costly, LTS 3 and worse avoided hard, slower planning speeds and gentler hills. It builds on FOLLOWUP-LTS2-WEIGHT. Item 240's (C), graded LTS 2 in the routing graph, stays with FOLLOWUP-DECIMAL-STRESS (backlog, below).
+
+- **FOLLOWUP-SIDEBAR-REDESIGN** (312, and 313 and 324 defer to it). Approved as the target layout ("That works."); front end only, after the release.
+- **FOLLOWUP-ELEVATION-CHART** (322, 323). "A route view in most cases should have the option to show a chart of elevation, with steep slopes highlighted and stress on a rolling basis." Approved as drawn ("looks good."), to build with the sidebar redesign.
+- **FOLLOWUP-MASSRIDE-MAP** (325-334). "This needs a redesign. The focus is on carrying capacity, not LTS here." Approved as drawn ("Looks good"), after the release, with the sidebar redesign and the elevation chart.
+- **FOLLOWUP-ISECT-AVOID** (307-310, 335). "we should also have an avoid rating for intersections. There's some that are just way too problematic. Would only be added through community (or my) input." Queued after the release, alongside STRESS-SUGGEST.
+- **FOLLOWUP-WORKZONES** (341-349). "We should separate construction into 2 parts: where the road is rideable but would have rough surfaces or hazards, it should get some penalty, and where the road is closed, route around." Sources approved per 342, 346-349; not built.
 
 **Future release** (named by the owner, after the next one):
 
@@ -844,7 +850,7 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
   - default ~90 kg (263) when unset; Cargo with passengers defaults heavier.
   Weight genuinely changes the result: climbing power scales with mass but aero (CdA) does not, so a heavier/loaded rider's hills cost relatively more effort-distance. Input is in lb first (kg in brackets); it is a candidate for a saved rider profile later.
 
-  Implemented as (FOLLOWUP-LONG-CALM): an optional input, `system_weight_kg` in the API (68 to 140), in the link until 313 took it out, "System weight (pounds)" in the Adjust panel at the top of the slider (150 to 309 lb, kilograms in brackets), now the private rider and bike weight of 313-318; default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers. Only the climbing and rolling terms scale with it, so a flat route's effort is its length at any weight and the same hilly-against-flat tie resolves more strongly toward flat at 140 kg than at 68 kg (tests/test_effort.py).
+  Implemented as (FOLLOWUP-LONG-CALM): an optional input, `system_weight_kg` in the API (68 to 140 as first built; 25 to 450 since 337, and 25 to 700, clamped silently, since 352), in the link until 313 took it out, "System weight (pounds)" in the Adjust panel at the top of the slider (150 to 309 lb as first built, kilograms in brackets), now the private rider and bike weight of 313-318; default 90 kg (198 lb), 120 kg (265 lb) for Cargo with passengers. Only the climbing and rolling terms scale with it, so a flat route's effort is its length at any weight and the same hilly-against-flat tie resolves more strongly toward flat at 140 kg than at 68 kg (tests/test_effort.py).
 
 - 265, Owner 2026-10-03: "Also maybe allow several routes to be shown in this case. The rider would probably pick the most scenic." For FOLLOWUP-LONG-CALM, at the calm top end, return up to 3-4 candidate routes instead of one.
   - Each is within the stress order (258-262) and the rider's maximum distance.
@@ -962,15 +968,15 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 
 - 298(1), Owner 2026-10-04, release review questions, the Default dodge rule: "Same as Trailmaxxing (Recommended)". Every preset, Default included, removes only dodges that avoid within the 50 m second-level tie step (as the top of the slider did). This amends 272's 0.25 mi rule; Konterra-type dodges, which avoid nothing, are still removed everywhere.
 
-  Implemented as (FOLLOWUP-DEDODGE; item 272, above): one rule on every ride type (`dedodge.TIE_RULE_ALL_PRESETS`). A dodge is taken out where it avoids no more than `dedodge.TIE_STEP_M`, 50 m [160 ft] (the second level's tie step, `refine.MAXCALM_STEPS[1]`), of the top and second figures together, with no turn charge. `dedodge.tie_rule()` reads the switch; set to False it restores 272's quarter mile (`MIN_AVOIDED_M`) and turn charge (`TURN_CHARGE_M`), which are kept as the documented fallback and still tested with the switch off, but decide no plan as shipped. The guards are unchanged: no removal adds LTS 4, Avoid or red-junction cost, makes the route longer, or makes it worse on the Hills slider's blended distance.
+  Implemented as (FOLLOWUP-DEDODGE; item 272, above): one rule on every ride type (`dedodge.TIE_RULE_ALL_PRESETS`). A dodge is taken out where it avoids no more than `dedodge.TIE_STEP_M`, 50 m [160 ft] (the second level's tie step, `refine.MAXCALM_STEPS[1]`), of the top and second figures together, with no turn charge. `dedodge.tie_rule()` reads the switch; set to False it restores 272's quarter mile (`MIN_AVOIDED_M`) and turn charge (`TURN_CHARGE_M`), which are kept as the documented fallback and still tested with the switch off, but decide no plan as shipped. The guards are unchanged: no removal adds LTS 4, Avoid or red-junction cost, makes the route longer, or makes it worse on the Hills slider's blended distance. Gap: a loop's dodges are not checked at all (`routing.py`, `if not loop`), so "every preset" holds for every ride type's point-to-point plans and not yet for loops.
 
 - 298(2), Owner 2026-10-04, release review questions, no route within the 1.25x ceiling: "Calmest found, flagged (Recommended)". Return the calmest route found, flagged with how far over target it is; this amends the as-built "shortest".
 
-  Implemented as (FOLLOWUP-LONG-CALM; items 267 and 271, above): where no route the router gives is within the ceiling, `routing._past_target` answers the least stressful of all the routes found (the 258 to 262 order, then the shorter), where it answered the shortest; the shortest only where none can be read. Its readings stop at `refine.late_deadline` (the deadline less the trace reserve). The answer is flagged with `calm_search.over_target_m` and `calm_search.no_fit: true`, and the page's sentence that it is the least stressful found is then true. `no_fit` is true only where no route within the target was found, false where one was, null with no target, and is cleared after the dodge pass only where the route now fits. `calm_search.limited: "target_distance"` is the no-fit answer's alone; the new `"ceiling"` means the exclusion search's next round found only routes past `ceiling_m`, so it stopped there (a calmer, longer route may exist, and the answer may well fit).
+  Implemented as (FOLLOWUP-LONG-CALM; items 267 and 271, above): where no route the router gives is within the ceiling, `routing._past_target` answers the least stressful of all the routes found (the 258 to 262 order, then the shorter), where it answered the shortest; the shortest only where none can be read. Its readings stop at `refine.late_deadline` (the deadline less the trace reserve). The answer is flagged with `calm_search.over_target_m` and `calm_search.no_fit: true`, and the page's sentence that it is the least stressful found is then true. Gap: where none of the routes past the ceiling can be read, the shortest is answered, and the page still says "This is the least stressful one found" (`summary.ts`), which is then not shown to be so. `no_fit` is true only where no route within the target was found, false where one was, null with no target, and is cleared after the dodge pass only where the route now fits. `calm_search.limited: "target_distance"` is the no-fit answer's alone; the new `"ceiling"` means the exclusion search's next round found only routes past `ceiling_m`, so it stopped there (a calmer, longer route may exist, and the answer may well fit).
 
 - 298(3), Owner 2026-10-04, release review questions, Hills set to seek hills: "Keep stress order + target (Recommended)". Seeking hills changes only the effort tiebreak (prefer climbing); the stress order (258-262) and the target (267-271) still apply.
 
-  Implemented as (FOLLOWUP-LONG-CALM; item 262, above): with the Hills slider seeking at the top of the stress slider, the stress-order search, the long calm plan and the target all run as at the detent (`long_calm_for` no longer takes a `seeking` argument). Only the third level's effort term inverts: `Context.hills_seek_weight`, the Hills position over 100, subtracts that share of the effort in `refine.level3`, so of two equally calm routes the one with more climbing is preferred. No climb search among the router's alternatives is asked there, and the answer's `hills_seek.limited` is `"calm_first"`; below the top of the stress slider the climb search is as before. FOLLOWUP-HILLS-TOLERATE (242) is still the later answer to what seeking should mean.
+  Implemented as (FOLLOWUP-LONG-CALM; item 262, above): with the Hills slider seeking at the top of the stress slider, the stress-order search, the long calm plan and the target all run as at the detent (`long_calm_for` no longer takes a `seeking` argument). Only the third level's effort term inverts: `Context.hills_seek_weight`, the Hills position over 100, subtracts that share of the effort in `refine.level3`, so of two equally calm routes the one with more climbing is preferred. The 268 distance charge does not see that credit (`refine.charged_m`, the release re-check's S1): seeking climbs never buys miles, so without a target a longer, hillier route pays for its extra distance as at the detent, and under a target the miles are free as before. No climb search among the router's alternatives is asked there, and the answer's `hills_seek.limited` is `"calm_first"`; below the top of the stress slider the climb search is as before. FOLLOWUP-HILLS-TOLERATE (242) is still the later answer to what seeking should mean.
 
 - 298(4), Owner 2026-10-04, release review questions, Mass Ride loops: "Keep excluded". Mass Ride stays point-to-point, with no loop control.
 
@@ -978,19 +984,82 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 
 - 301, Owner 2026-10-04, on 300 (the Capital Bikeshare licence, which asks for no attribution): "Even if the license doesn't require crediting them, sources need citing." Standing rule: every data source is cited in the attribution and credits, whether or not its licence requires it. For bikeshare the map and route credits will carry a plain factual source citation, text only, with no logos, brand styling or implied affiliation, and the generic "Bikeshare" label stays in the controls. Audit the other sources to confirm each user-facing dataset is credited.
 
-  Implemented as (the audit, whose credit wording 306 then shortened, below; the bikeshare citation waits for FOLLOWUP-BIKESHARE, 243 to 245 and 299, and is future work): `tests/test_credits.py` lists every source the route and place-search answers are made from (OSM, DDOT traffic volume and the CBD, VDOT, the Architect of the Capitol boundary, DC's Roadway Block, Open Baltimore, Montgomery Planning's LTS, USGS 3DEP; OSM and Photon for places) and holds `routing.ATTRIBUTION` and `geocode.ATTRIBUTION` to it both ways; the audit found nothing missing on the API side. On the map, `frontend/src/lib/credits.test.ts` holds the 11 map credits, which gained "Elevation and climb: U.S. Geological Survey 3D Elevation Program (3DEP)" and "Place search: Photon (komoot), Apache 2.0". The Arlington and Alexandria layers are internal comparisons only (items 152 to 155) and are tested to be cited nowhere.
+  Implemented as (the audit, whose credit wording 306 then shortened, below; the bikeshare citation waits for FOLLOWUP-BIKESHARE, 243 to 245 and 299, and is future work): `tests/test_credits.py` lists every source the route and place-search answers are made from (OSM, DDOT traffic volume and the CBD, VDOT, the Architect of the Capitol boundary, DC's Roadway Block, Open Baltimore, Montgomery Planning's LTS, USGS 3DEP; OSM and Photon for places) and holds `routing.ATTRIBUTION` and `geocode.ATTRIBUTION` to it both ways; the audit found nothing missing on the API side (it missed the U.S. Census Bureau's TIGER urban areas, which 306 then credited). On the map, `frontend/src/lib/credits.test.ts` holds the 11 map credits, which gained "Elevation and climb: U.S. Geological Survey 3D Elevation Program (3DEP)" and "Place search: Photon (komoot), Apache 2.0". The Arlington and Alexandria layers are internal comparisons only (items 152 to 155) and are tested to be cited nowhere.
 
 - 302, Owner 2026-10-04: "For unpaved, instead of the stress colors we have earlier, just go with brown for everything, with darker shades for more traffic stress and the same dashes. I really doubt there are many gravel LTS4 roads." Recorded with it: unpaved roads and trails are drawn in one brown ramp, light to dark from LTS 1 to Avoid, with each tier's dash and width kept (283), on the map overlay and the route line's sections; a non-colour unpaved cue stays; 3:1 on the base map, each step distinguishable in greyscale and under colour-vision deficiency, unpaved LTS 1 distinct from the paved LTS 3 amber, the 292 harshness rule, and a CVD-safe version in the accessibility palettes; a preview for the owner before the deploy.
 
   Implemented as (FOLLOWUP-STRESS-SALIENCE; `UNPAVED_PALETTES` in `frontend/src/stressStyle.js`; docs/DEVELOPMENT.md, "Stress salience"): the default ramp is #d9b98c, #b58a55, #8c5e2e, #5e3a17, #33200d (L* 76.9 to 14.2), the light two on a dark brown casing (#3b2410) and the dark three on cream (#f6ead2); two-tone has a greyer taupe ramp (its paved LTS 3 is a yellow a warm tan would sit on) and `cvd` an ochre-olive ramp on the yellow side of the blue-yellow axis. The dotted unpaved mark stays as the cue that is not colour, drawn in the unpaved casing on the map and on the route (a new `route-unpaved` layer); the route line has twelve classes (five unpaved), each at least 3:1 on its halo. Every step is at least 1.5:1 in lightness and 10 CIEDE2000 from the last under every vision, every tier is at least 3:1 on every base-map surface (the worst, LTS 3, about 3.3:1), harshness rises from LTS 3 to Avoid (0.78, 0.94, 3.47), and unpaved LTS 1 is 19 or more CIEDE2000 from the paved amber under every vision. The weak spot: under deuteranopia unpaved LTS 1 and 2 are only about 5 to 6 CIEDE2000 from the paved green LTS 1 and 2, and the dotted mark tells them apart. The legend row reads "Brown, darker = busier". In the API each `stress_spans` entry says `unpaved` (true, false or null), and a section ends where the surface changes (additive). The preview is /home/steph/rmdata/demo/stress-salience-preview.html; the owner's look at it is still to come before the deploy.
 
+- 303, Owner 2026-10-04, ARTERIAL dev questions: "Keep it LTS 4, and only lower ratings. In most cases, the smoothing is probably bunching by the intersection. Given that our routing is a sum of intersection stress and route stress, we don't want to double count."
+  (1) Way 930215092 (N Capitol first-underpass east outer side lane) stays LTS 4, like the other side lanes.
+  (2) AADT smoothing is lower-only. A smoothed count may replace a raw count only when it is lower, so a road's tier can fall but never rise because of smoothing. Rationale: high one-off counts usually bunch at intersections, and intersection stress is already charged separately (junction severity), so a high count on the link double-counts it.
+
+  Status: FOLLOWUP-ARTERIAL-CALIBRATION's work, on its own branch; not in this release.
+
+- 304, Owner 2026-10-04, BIKESHARE dev questions:
+  (1) Citation: "Just name it as Capital Bikeshare. We can put more description in the documentation, but don't clog up the map with extra words. People want to know where the data comes from, but few would even know what a GBS feed is." The map/route credit is just "Capital Bikeshare". The fuller description (GBFS feed, operated by Lyft, licence) goes in the docs.
+  (2) Out-of-dock: "Look into their zone map". Investigate Capital Bikeshare's published e-bike parking/no-parking zone map and its licence, then report before using it.
+  (3) Ride defaults: "Yes (Recommended)". Stress 80 stress-averse; Classic hills -60 at 8 mph; E-bike hills -20 at 12 mph; walking 3 mph.
+  (4) v1 limits: "Yes for v1 (Recommended)". Two points only, GPX gives the ride leg only, and Baltimore says "no dock in reach".
+
+  Status: FOLLOWUP-BIKESHARE (243-245, 299-301), on its own branch; not in this release.
+
+- 305, Zone-map investigation for 304(2), 2026-10-04 (web search plus capitalbikeshare.com/how-it-works/ebike and its blog):
+  - No-parking zones are shown only as shaded areas in the operator's app. No published map, open dataset or GBFS geofencing feed was found.
+  - Using the app's data would be extraction outside "the interface Bikeshare provides", which the data licence forbids (300). So zones are unavailable, and per 244 the plan offers dock endings only.
+  - The out-of-dock fees are published only on web pages, not in GBFS: members $2, non-members $3, waived for members parking within 40 m of a station with 3 or fewer free docks; $25 if the bike is left without being locked.
+  - Per 244 ("never hard-coded") these are not built in. The plan's note may link to the operator's e-bike page for current parking rules.
+  - Revisit if GBFS adds geofencing_zones or pricing for out-of-dock parking.
+
+  Status: a finding for FOLLOWUP-BIKESHARE; not in this release.
+
 - 306, Owner 2026-10-04, a standing rule amending 301: "In general, when using citations on mapping, keep it brief and put the full information in documentation. Sort of like how you'd cite in a paragraph." On the map and in the app the credits are short source names only, like an in-text citation; the full reference goes on the documentation's sources page, which the credits may link to. Every data source, existing and new.
 
   Implemented as: docs/SOURCES.md is the reference list, one section a source with its dataset titles, publisher, licence, URL, retrieval date and sha256 where the project records one, and a `Credit:` line giving the short credit. The credits shown are those short names, nine in all: "© OpenStreetMap contributors (ODbL)" (ODbL's own form, kept), "Protomaps", "DC Open Data (CC BY 4.0, adapted)" (one credit for the District's layers: DDOT's 2024 Traffic Volume and Central Business District, the Architect of the Capitol boundary, the Roadway Block, the Metro stations and entrances and the federal-land layers; CC BY 4.0 asks a credit to name the licence and say the data was changed, so the brief form keeps both, the licence linked), "VDOT", "Open Baltimore" (it was the owner's longer line of 159), "Montgomery County Planning Department" (the name its licence asks for), "USGS 3DEP", "U.S. Census Bureau" (the TIGER urban areas behind the stress tiers' urban and rural defaults, which the 301 audit had missed) and "Photon". `routing.ATTRIBUTION` (the route answer) and `geocode.ATTRIBUTION` (place search) carry the brief forms; the front end's are one file, `frontend/src/lib/credits.json`, which the map's attribution builds from; a GPX export carries the route answer's. `tests/test_credits.py` holds every credit the API and the front end show to a `Credit:` line on the sources page, each credited source to a credit shown, each credit to a short name, and the Arlington and Alexandria layers to nowhere a rider sees; `frontend/src/lib/credits.test.ts` holds the map to `credits.json`. Capital Bikeshare's credit (304(1): "Capital Bikeshare") joins the list with FOLLOWUP-BIKESHARE.
 
+- 307, Owner 2026-10-04: "while I don't know any yet, we should also have an avoid rating for intersections. There's some that are just way too problematic. Would only be added through community (or my) input." FOLLOWUP-ISECT-AVOID:
+  - Add an "Avoid" junction severity above red (very stressful). It is never assigned automatically, only through approved input: the owner/admin, or community suggestions through the intersection suggestion mechanism (STRESS-SUGGEST, plus PEER-REVIEW).
+  - Each entry is stored as a junction override with its reason and source.
+  - Routing cost is far above red: the junction equivalent of an Avoid road, kept in the stress order's top level (258-262) above red.
+  - It is shown with its own marker shape (not colour only) and announced in the description, e.g. "Avoid-rated junction ahead".
+  - Mass Ride and Group Ride exclude Avoid junctions where an alternative exists.
+  - Ships with an empty list. Planner-side where possible (junction severity is read at request time), so no rebuild if feasible.
+  - Queue it after the release, alongside STRESS-SUGGEST.
+
+  Status: queued, FOLLOWUP-ISECT-AVOID (307-310, 335), after the release; not built.
+
+- 308, Owner 2026-10-04, on 307: "Probably a 30 minute penalty like Avoid." An Avoid-rated junction costs a flat 30-minute penalty in routing, matching the Avoid road treatment, rather than a separate scale. The implementer should check the existing Avoid road penalty and make the junction one consistent with it (one named constant, documented).
+
+  Status: queued with FOLLOWUP-ISECT-AVOID; not built.
+
+- 309, Owner 2026-10-04, on 307: "Avoid junctions get a skull and crossbones marker." The Avoid-junction map marker is a skull and crossbones, a distinct shape from the red/orange markers.
+  - Accessibility: its accessible name is "Avoid-rated junction" plus the reason, not "skull and crossbones".
+  - It has >=3:1 contrast against the map with a halo, and is legible at the junction marker size.
+  - It gets a legend entry.
+  - It uses an original or permissively licensed glyph (e.g. drawn as SVG in the repo); check the licence of any icon set used.
+
+  Status: queued with FOLLOWUP-ISECT-AVOID; not built.
+
+- 310, Owner 2026-10-04, on 309: "yes". The Avoid-junction map marker uses the Google Noto Emoji skull and crossbones (U+2620, Apache 2.0) as a sprite image, with a halo for contrast. Text surfaces (legend, panel, description) use the Unicode character itself.
+  - When FOLLOWUP-ISECT-AVOID is built, download that single SVG from the official googlefonts/noto-emoji repository. The owner has approved it in principle, but confirm the exact file and URL first.
+  - Record the sha and licence in fixtures, and cite it on the sources page (306).
+  - The accessible name stays "Avoid-rated junction" (309).
+
+  Status: queued with FOLLOWUP-ISECT-AVOID; nothing downloaded yet.
+
 - 311, Owner 2026-10-04, on the junction markers: "Maybe a red triangle, for the very high stress. It looks too much like an ordinary stop sign" then "Or something else, a diamond perhaps?" The very-high-stress (red) junction marker changes from an octagon to a red diamond (road-warning shape), keeping the white exclamation mark and dark outline. The orange triangle (higher stress) is unchanged, and the planned Avoid marker is the skull (309-310). Shapes stay distinct (triangle / diamond / skull), so colour is never the only cue.
 
   Implemented as: `frontend/src/lib/intersectionMarkers.ts` `SEVERITY_SHAPES.red` is the diamond `M12 1.5 22.5 12 12 22.5 1.5 12Z` (corners at the middle of each side of the 24 px icon), still `#dc2626` with a `#7f1d1d` 1.6 px outline, and the white exclamation mark is re-centred in it (bar y 7 to 14, dot at y 16.6). The one icon builder (`warningIconSvg`) draws the map's markers, their groups and the route list's row icons, so all of them change together; `intersectionMarkers.test.ts` holds the four-cornered shape and the mark.
+
+- 312, Owner 2026-10-04, on the sidebar mockup (https://claude.ai/artifact/W3DcvNdyEch6AL6kBazUm6, version 3): "That works." FOLLOWUP-SIDEBAR-REDESIGN is approved as the target layout. It is a front-end-only change, after the release. The layout:
+  - Points first, with the help text collapsed into "More tips".
+  - Ride settings as a one-line summary with Edit: ride type, traffic and hills, when, target distance, weight, loop, avoid gravel.
+  - With a route shown: totals, the stress bar and four quick figures; Directions, Junctions and "Routes to choose from" as collapsible sections; GPX and Copy link pinned at the bottom.
+  - A bottom bar (Map layers, Legend, GPX, Settings). The Map layers sheet holds the switches (traffic stress, high-stress lanes, accessibility colours, federal land, rail stations) and the full legend; the zoom explanations go behind a link.
+  - Font: Atkinson Hyperlegible, with the dark panel colours. The a11y rules apply: 44 px targets, real controls, no colour-only cues.
+  - Goal: the main screen fits without scrolling.
+
+  Status: queued, FOLLOWUP-SIDEBAR-REDESIGN, after the release; not built.
 
 - 313, Owner 2026-10-04: "Have the rider and bike weight hidden behind a popup. Not everyone wants to share their weight. But if you're signed in, it will save it."
   - Weight is private. The ride panel shows only "Effort: typical rider" (or "your weight") with a Change button, which opens a dialog holding the lb (kg) input. The number itself never shows in the panel summary.
@@ -1034,13 +1103,123 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 
   Implemented as: the dialog's first two lines are those, word for word, and its `aria-describedby`; its name is its heading, "Rider and bike weight". The tolerance was checked against routemaker.effort before release (the lead): plus or minus 10 kg around 90 kg moves the effort-distance about 2.5 to 4.3% on 4 to 8% grades, so "Within 20 lb (10 kg) or so makes no real difference" stands.
 
+- 319, Owner 2026-10-04: "on the tandem setting, make it so when sharing a link, you provide the option to optimize the route for the receiver for a visually impaired person." With the Tandem ride type, the share / Copy link control offers a checkbox, "Set up for a blind or low-vision stoker". If ticked, the link carries a view flag (e.g. `view=stoker`). When the link opens, it:
+  - puts the text route description first, with the map secondary, and moves focus to the route summary heading;
+  - turns on the accessibility display (bolder lines and colours) for that visit;
+  - reads the tandem heads-up notices (barriers, narrow gates, steep descents, sharp turns) in riding order, with distances, in plain words, US units first;
+  - offers a plain-text "Copy directions" export.
+  The flag changes presentation only: the route and planning are identical. It carries no personal data, and no weight (313).
+  It is part of FOLLOWUP-TANDEM; it's also worth offering on other ride types later.
+
+  Status: FOLLOWUP-TANDEM's work, on its own branch; the link flag's name is 321's `view=read`. Not in this release.
+
+- 320, Owner 2026-10-04, on 319: "I'd imagine a high contrast map too and larger font. Not all blind people are totally blind." The stoker view also serves low-vision riders:
+  (a) A high-contrast base map: a recoloured variant of the base-map style with a quiet, near-flat ground, strong dark road casings and labels at >=7:1, and muted parks and water, so the route and the stress lines dominate. The route line, markers and junction icons are larger.
+  (b) Larger text: the panel scales to about 125-150% with a control to adjust, reflows without horizontal scroll, keeps 44 px or larger targets, and respects the browser's own zoom and font size.
+  - It is offered as a general "Low vision" display option in Settings too, not only through the stoker link.
+  - Like the rest of 319, it is presentation only.
+
+  Status: with 319, FOLLOWUP-TANDEM; not in this release.
+
 - 321, Owner 2026-10-04: "Make sure that the link text doesn't scream 'disability' in the parameters." Shared links must never reveal disability or assistive needs. No link parameter name or value may contain or hint at blind, low vision, visually impaired, disability, accessibility/a11y, stoker or screen reader. The stoker/low-vision view (319-320) uses a neutral presentation flag, `view=read` ("reading layout"), and any existing link flags of this kind are renamed the same way. A test scans every generated link for a denylist of such words. The checkbox label the sender sees can stay descriptive, because it is never part of the link.
 
   Implemented as (front end): the audit found one such value. The plan's link (`frontend/src/lib/planHash.ts`: `p`, `preset`, `v`, `stress`, `hills`, `when`, `carrying`, `assist` (the electric assist), `avoidgravel`, `targetmi`, `loop`) has none; the accessibility switch, the lane switch, federal land and the weight are kept in the browser and never in a link. The address's `?palette=` took the colour-blind-friendly palette's code name, `cvd`: its link names are now `warm` (the default, `blended`), `twotone` and `cool` (`cvd`), in `stressStyle.js` `PALETTE_LINK_NAMES`, and the older `blended` and `cvd` are still read, silently, so links already shared work; nothing writes them. `frontend/src/lib/linkPrivacy.test.ts` writes about 9,600 links across every ride type, load, ride time, Traffic position, stop count, loop, target and option, with the switches on and off, and holds every parameter name and value, case-insensitively, clear of blind, low vision, visual, impair, disab, accessib, a11y, stoker, screen reader, cvd, colour-blind, strong, assistive and deficien (and the whole tokens sr, vi, lv), and the palette's link values too. `view=read` is left for the reading layout (319-320). The server writes no such link: no redirect or preset link in `src/core` or the Caddyfile carries a parameter.
 
+- 322, Owner 2026-10-04: "A route view in most cases should have the option to show a chart of elevation, with steep slopes highlighted and stress on a rolling basis." FOLLOWUP-ELEVATION-CHART:
+  - An optional, collapsible "Elevation and stress" chart in the route view. Distance is the x axis (mi, km in brackets) and elevation the y axis (ft, m in brackets).
+  - Steep sections are highlighted by grade band (e.g. 5-8% and 8% or more), each with a pattern as well as a colour.
+  - Under it, a rolling stress strip along the same distance axis, coloured and dashed per the tier styles.
+  - Scrubbing or hovering moves a marker on the map. It is keyboard operable (arrow keys step through the route) and announces "Mile 4.2: elevation 310 ft, grade 6%, LTS 2".
+  - It has a text alternative: a climbs table (start mile, length, gain, average and maximum grade, stress) and a summary. The Mountain Goat climb list (from the earlier climbs item) can reuse it.
+  - It is shown for most ride types, and offered collapsed by default on small screens. It fits the sidebar redesign (312).
+  - The data uses the route's existing elevation and stress spans (the API already returns elevation per leg); confirm the sampling.
+  - Front end, after the release.
+
+  Status: queued, FOLLOWUP-ELEVATION-CHART, after the release; not built.
+
+- 323, Owner 2026-10-04, on the elevation-and-stress chart mockup (sidebar canvas version 9): "looks good." FOLLOWUP-ELEVATION-CHART is approved as drawn, to build with the sidebar redesign after the release.
+
+  Status: queued, FOLLOWUP-ELEVATION-CHART, approved as drawn; not built.
+
 - 324, Owner 2026-10-04: "Federal land is probably only relevant in mass ride mode, which would have different map icons anyway." The federal-land overlay and its switch appear only in Mass Ride mode, with Mass Ride's own map layers and icons (stops, groups, federal land). They are absent from the general Map layers sheet. The release already limits the overlay to Mass Ride; confirm the switch and legend follow it. The sidebar redesign (312) gets a separate Mass Ride layers variant.
 
   Implemented as (confirmed, and made a single gate): the federal-land section (its switch, status line, legend, help and the "Your points on federal land" list) is drawn only through `FederalLandFor` (`frontend/src/lib/federalLegend.ts`), which returns nothing unless the ride type is Mass Ride; the map's layers follow `federalShown(preset, on)` (`federalLand.ts`), so a change of ride type while they are shown hides them, and the data is loaded only once Mass Ride shows them. The switch's state is kept while another ride type is chosen and applies again on Mass Ride; it is never shown elsewhere. No leak was found. `federalLand.test.ts` cycles every ride type, switch on and off, for the section and the layers; the a11y harness (section 11) moves a Mass Ride page to Default and back. The Mass Ride layers variant of the redesigned sidebar is 312's.
+
+- 325, Owner 2026-10-04, on the Mass Ride map: "This needs a redesign. The focus is on carrying capacity, not LTS here. It doesn't matter as much for huge rides. The headline color should be riders per minute. Trails and protected bike lanes aren't relevant here. Some stretches can be marked as a caution or warning where we've had problems. They go along side like a trail or pbl. If we've marked it avoid, It should be just marked avoid with no carrying capacity. These hazards will be marked by riders and will be for this mode only." FOLLOWUP-MASSRIDE-MAP, which builds on 116-147 (the flow model, and 125's "make the traffic flow what's shown on the map"):
+  - In Mass Ride mode, the map overlay and the route line are coloured by carrying capacity, in riders per minute at 6-8 mph (the existing flow model), with dashes/width as the non-colour cue. LTS colours are not shown in this mode.
+  - The path, protected-lane and painted-lane facility rails are not drawn in this mode.
+  - Rider-marked hazards are drawn as side rails beside the road, as facilities are elsewhere: two levels, "Caution" and "Warning", each with its own pattern, colour and a reason. They are Mass Ride only and come only from rider input (the same suggestion/approval mechanism as 307), and the list starts empty.
+  - A stretch marked Avoid shows only "Avoid" (its own style, no capacity colour), and the routing treats it as Avoid.
+  - Legend, panel and description follow suit: riders per minute in place of the LTS breakdown; hazards listed in riding order and announced.
+  - Federal land (324), stops and groups stay as Mass Ride layers.
+
+  Status: queued, FOLLOWUP-MASSRIDE-MAP (325-334), after the release; not built.
+
+- 326, Owner 2026-10-04, on 325:
+  - Flow bands: "4 bands (Recommended)". Under 60 riders/min is a bottleneck, 60-120 tight, 120-200 good, 200+ wide open. More capacity is drawn darker and heavier, with dashes as the non-colour cue.
+  - Hazards: "Severity only". Caution and Warning are the same kind of rider report at two severity levels, chosen by the reporter (with a reason); both stay routable, and Avoid removes the stretch.
+  - Mock-up: "Yes, add to the canvas". Add a Mass Ride artboard to the sidebar canvas before building.
+
+  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+
+- 327, Owner 2026-10-04, amending 326: "Do a spectral color. Red for bottleneck purple for wide open. Line thickness too." The Mass Ride capacity bands use a spectral ramp, and line width rises with capacity:
+  - under 60 riders/min: red #d7191c, 4 px, short dash;
+  - 60-120: orange #f28e2b, 5.5 px, long dash;
+  - 120-200: green #1a9850, 7 px, solid;
+  - 200+: purple #6a3d9a, 8.5 px, solid.
+  The red/green pair is separated for colour-blind riders by width and dash, and the implementation must verify it under CVD simulation. To avoid a clash with red bottlenecks, the hazard side rails are near-black (Caution dotted, Warning dash-dot). Avoid keeps its near-black on coral with the AVOID label.
+
+  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+
+- 328, Owner 2026-10-04: "On the route visualizer also show estimated riders per minute. Where that slope is steep, we need to adjust." This builds on 147 (the Mass Ride profile with flow, elevation and corker tracks) and 322 (the elevation chart).
+  (a) The Mass Ride route chart has elevation with steep sections highlighted, plus a riders-per-minute track along the same distance axis in the 327 spectral bands, in place of the stress strip.
+  (b) The flow model is grade-adjusted: on climbs the group slows below 6-8 mph, which lowers the riders-per-minute capacity of a stretch (capacity = usable width x safe density x speed). Steep descents need wider spacing, which also lowers it. The adjustment uses the route's grade per sample, with documented constants. The narrowest-point figure and the map colours use the adjusted value.
+  (c) The keyboard scrub and its announcement include it, e.g. "Mile 1.1: grade 6%, about 90 riders per minute (tight)". The climbs table lists the capacity drop for each climb.
+
+  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+
+- 329, Owner 2026-10-04, on 328: "It should be a graph, not bands." The riders-per-minute track on the Mass Ride route chart is a continuous line graph of the grade-adjusted estimate along the distance axis, with its own y axis in riders/min. Dotted guide lines at 60, 120 and 200 are labelled in the 327 band colours, so the bands read as thresholds, not fills. The scrub marker shows the value at the cursor. The map line colours stay banded (327).
+
+  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+
+- 330, Owner 2026-10-04, on the NOBIKE park_path scope: "close them in all. We will add them back manually. It's better to add it back when we're clear that bikes are allowed than to route someone where bikes aren't permitted." Untagged highway=path is closed inside every park kind: leisure=park, nature_reserve and protected_area (about 345 mi), as built. Standing principle: when it is unclear whether bikes are allowed, err closed. Reopening is a manual access override (bicycle=yes/designated, with its evidence) once permission is confirmed; the override re-match work (282) keeps such reopenings durable.
+
+  Status: FOLLOWUP-NO-BIKE-PATHS' work, on its own branch, for the next graph rebuild; not in this release.
+
+- 331, Owner 2026-10-04, on the NOBIKE stranding check (87 paved pieces, 40 km, losing road contact): "Stranded paved pieces look to be in areas not open to the public." The stranded paved pieces stay closed, with no reopening. The post-rebuild reachability pass still runs, but only to report. Any piece the owner later confirms as public is reopened by a manual access override (330).
+
+  Status: with 330, FOLLOWUP-NO-BIKE-PATHS; not in this release.
+
+- 332, Owner 2026-10-04, on 329: "Do a fillable color area instead of a line. Same info, easier to read." The riders-per-minute track is a filled area chart. The area under the estimate is filled, at each point along the route, in its band colour (327: red under 60, orange 60-120, green 120-200, purple 200+), with a thin outline and the 60/120/200 guide lines kept. Each band's fill also gets a subtle pattern, so colour isn't the only cue.
+
+  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+
+- 333, Owner 2026-10-04: "Put the major intersections on it as well." The Mass Ride route chart marks the major intersections at their distance along the route, with a tick and the cross-street name.
+  - Each gets its junction marker: an orange triangle, a red diamond, or the skull once 307 exists.
+  - The keyboard scrub and its announcement name the next major intersection and whether corkers are needed there (147), e.g. "Next: 14th St at mile 1.3, corkers needed".
+  - "Major" means a signalised or stop-controlled crossing of a street with 2 or more lanes, or any junction with a stress rating. Thin out the labels when they would collide.
+
+  Status: queued with FOLLOWUP-MASSRIDE-MAP; not built.
+
+- 334, Owner 2026-10-04, on the Mass Ride board (sidebar canvas version 16): "Looks good". FOLLOWUP-MASSRIDE-MAP is approved as drawn (325-333), including the 333 definition of "major" intersection. It is queued after the release, alongside the sidebar redesign (312) and the elevation chart (322).
+
+  Status: queued, FOLLOWUP-MASSRIDE-MAP approved as drawn; not built.
+
+- 335, Owner 2026-10-04, on 307-310: "Avoid junctions should be pretty rare and routes with them rarer still." Avoid ratings stay exceptional, added only through approved input. The 30-minute penalty (308) means a route uses one only when there is no reasonable alternative. When it does:
+  - the route panel shows a prominent notice at the top ("This route goes through an Avoid-rated junction: <name>, <reason>");
+  - it offers the best route that avoids it, even if much longer, as an alternate;
+  - the screen reader announces it first.
+  Admin view: a count of Avoid junctions and how often plans pass through them, to keep both rare.
+
+  Status: queued with FOLLOWUP-ISECT-AVOID; not built.
+
+- 336, Owner 2026-10-04, TANDEM dev questions:
+  (1) Thresholds: "Yes (Recommended)". Block under 3 ft 3 in (1.0 m), squeeze under 4 ft 11 in (1.5 m), narrow path under 3 ft 11 in (1.2 m); detour cap is twice the length plus 1 mi, after which the plan says "dismount here".
+  (2) Gates: "Flag them and maybe 30 seconds. 10 minutes would keep people off traffic free roads." Plain gates cost about 30 s, not 600 s, and the planner must not use a large gate penalty that keeps riders off traffic-free paths. Every gate is flagged in the heads-ups and description ("Gate ahead"). Hard barriers (cycle barriers, kissing gates, stiles, turnstiles, blocks) keep the exclusion behaviour.
+  (3) Reading layout: "Every ride type (Recommended)". The share option and view=read are offered on every ride type, not only Tandem.
+  (4) Weight range: "Expand the range even more if it makes a difference." Widen it where the effort model is sensitive. Proposed: 66-770 lb (30-350 kg), which covers children and heavy loaded tandems or cargo bikes. The developer checks that the model behaves at both ends and reports whether the extra range changes routes.
+
+  Status: FOLLOWUP-TANDEM's work, on its own branch, apart from (4), the weight range, which 337 and 352 settled for every ride type in this release.
 
 - 337, Owner 2026-10-04, on 336(4): "A 90 pound woman on a 16 lb bike wouldn't be accommodated here. Nor would the extremely heavy people with specialized bikes to accommodate them." The weight range must include everyone. The current release range of 150-309 lb (68-140 kg) excludes a 106 lb (48 kg) rider-plus-bike, and the 250 kg tandem cap excludes very heavy riders on specialised bikes. The new range for every ride type is about 55-990 lb (25-450 kg), and the rider total, bike and cargo fields of the worksheet (316-317) are each validated sensibly. The effort model must stay well-behaved across the whole range (no clamping that silently changes the rider's number), and the developer reports any end where routes stop changing. The validation wording stays neutral and non-judgemental (e.g. "Enter a total between 55 and 990 lb (25 and 450 kg)").
 
@@ -1060,3 +1239,142 @@ The amendments are in date order, then by OWNER-DECISIONS item number (the recor
 - 340, Owner 2026-10-04: "Don't bother with 'sensible limits' for that. [personal example removed at the owner's request, 353] Sensible limits are one thing but we need to be inclusive. The total weight matters." No per-field limits on Rider, Bike or Cargo, beyond being a non-negative number. Only the total matters, and it is clamped for planning at 55-990 lb (25-450 kg) with the neutral 338 note. There is no wording anywhere that judges a weight as unusual. Supersedes the "part fields need sensible bounds" line in 337.
 
   Implemented as: the worksheet's Rider, Bike and Cargo fields have no bounds (no min or max, no per-field check): each need only be a non-negative number, and a negative or non-numeric entry is not saved, with the same neutral words as any entry that is not a number ("Enter numbers only, in pounds, or Cancel."). Only the total is clamped for planning (338). weight.test.ts holds this, and that no wording judges a weight.
+
+- 341, Owner 2026-10-04: "There was construction that was implemented in the plan. Not sure if it's enabled. We should separate construction into 2 parts: where the road is rideable but would have rough surfaces or hazards, it should get some penalty, and where the road is closed, route around. If possible add closures for special events, which are common in DC."
+  Finding: the code has no construction feature. The only handling is Valhalla's default treatment of OSM highway=construction, plus the one-off owner override for the footbridge stairs (36).
+  FOLLOWUP-WORKZONES:
+  (a) Rideable work zones (lane closures, rough surface, plates, debris) get a time/cost penalty and a heads-up in the description. The map shows a work-zone rail.
+  (b) Closed roads and paths are excluded; routing goes around them.
+  (c) Special-event closures (common in DC: parades, races, marathons, protests and state events) are excluded for their date and time window when a plan's ride time falls inside it, and shown on the map with the event name and times.
+  - Sources to research and licence-check before any fetch beyond reading pages: DDOT's WZDx work-zone feed; MDOT SHA and VDOT WZDx feeds; Baltimore DOT; DC special-event road closure notices (MPD/DDOT/HSEMA); OSM construction tags.
+  - All feeds are read live with short caching, cited per 301/306, and stale or unknown data is labelled as such.
+  - Time-aware: this ties into the ride time ("when") dial.
+
+  Status: queued, FOLLOWUP-WORKZONES (341-349); not built.
+
+- 342, Owner 2026-10-04, FOLLOWUP-WORKZONES research questions (reports/WORKZONES-research-r0.md):
+  (1) Sources: all four.
+    - Maryland MDOT SHA WZDx live (CC0, 60 s refresh), approved to fetch.
+    - DC DDOT TOPS permit points (nightly; for display and soft penalties only, never for exclusion, since its closure flag is unreliable), approved to query. Confirm the live-service licence on the DC portal.
+    - Virginia VDOT WZDx: the owner must read the SmarterRoads terms and register for the API key themselves. The key goes in .env and is never printed.
+    - OSM construction tags: also honour bike-allowed construction ways.
+  (2) Special events: "Admin tool, manual entry (Recommended)". The owner or approved riders enter the event name, streets/geometry, time window, bike access and source note, and entries expire automatically. MPD/NPS pages are read by people for reference; nothing scrapes them.
+  (3) Unknown bike access (all lanes closed, bikes unspecified; events with unknown access): "Penalize only". Route through with a heavy penalty and a red warning, not a hard exclusion. Exclude only when bikes are known to be barred. This is a deliberate exception to 330's err-closed rule: those were permanent access questions, these are temporary closures with likely bike passage.
+  (4) Penalties: "Yes (Recommended)". +60 s for shoulder-only, +120 s for a lane closed, +180 s for a flagger or alternating one-way, each with a heads-up.
+
+  Status: queued with FOLLOWUP-WORKZONES; nothing fetched yet.
+
+- 343, 2026-10-04, VDOT SmarterRoads terms (pasted by the owner; reading only, not legal advice):
+  - Permitted use is "operations and/or research related to ... transportation, public safety ... within the purview of User's official functions". Whether a public community planner qualifies is unclear.
+  - The User bears liability for display/dissemination and gets no warranties.
+  - The key must not be shared.
+  - No name, logo or trademark rights; no implied relationship; keep attribution notices.
+  - VDOT may review public announcements.
+  - The terms are modifiable at any time; access can be suspended without notice; Virginia law governs.
+  Recommendation, pending the owner: register, but keep Virginia work zones off the public site until the SmarterRoads Manager confirms the use in writing. Add a site-wide work-zone disclaimer (agency data, may be stale or wrong, not a guarantee). Maryland (CC0) can go first.
+
+  Status: a reading for FOLLOWUP-WORKZONES, superseded by the owner's 346.
+
+- 344, 2026-10-04, TANDEM r1 note for the owner: the developer raised the obstacle detour cap from 336's approved "twice the length plus 1 mi" to "twice plus 3 mi". Under the old cap, the Bethesda cycle-barrier trip went through the barrier because the 2.7 mi way round was refused. Pending the owner's OK. Also, 450 kg is 992 lb, so the limit text says 55-992 lb, not 990.
+
+  Status: the detour cap is FOLLOWUP-TANDEM's, answered by 345. The 992-against-990 wording is moot since 352 removed the limit note.
+
+- 345, Owner 2026-10-04, on 344/336: "I think that's way too strict. Most cycle barriers are easily navigable on tandems, even bollards. You have to slow down a little." Tandem obstacle handling is relaxed:
+  - Cycle barriers, bollards, and gaps of 1.0 m (3 ft 3 in) or more are passable. Each costs a small slow-down (about 15-30 s, like gates), with a "Slow: cycle barrier / bollards ahead" heads-up. They are no longer excluded.
+  - Exclusion applies only where a tandem physically cannot pass ridden or walked through: stiles, turnstiles, kissing gates, and gaps tagged under 1.0 m / 3 ft 3 in.
+  - Steps get a penalty plus a "Steps: carry or walk" heads-up rather than exclusion, where no reasonable alternative exists.
+  - With far fewer exclusions, return the detour cap to the approved twice the length plus 1 mi (336). Re-run the Bethesda trip and the Pimmit samples and report the routes.
+
+  Status: FOLLOWUP-TANDEM's work, on its own branch; not in this release.
+
+- 346, Owner 2026-10-04, on 343 (pasting the VDOT Data Sharing Use Agreement): "The data sharing agreement is fine here too. It refers to any User, not just a company." This is the owner's judgement and is accepted. Virginia WZDx is included in FOLLOWUP-WORKZONES, with no wait for written confirmation from SmarterRoads.
+  Still applied from the terms:
+  - the key stays server-side only;
+  - polling is about 5 min, without overburdening the feed;
+  - attribution notices are kept, with a plain text source citation only (no logo) and no implied relationship;
+  - a site-wide work-zone disclaimer: agency data that may be stale or wrong, not a guarantee;
+  - if the feed is suspended, the planner labels it unavailable;
+  - any public announcement about using VDOT data allows for VDOT review.
+  The owner registers and puts the key in .env.
+
+  Status: queued with FOLLOWUP-WORKZONES; not built.
+
+- 347, Owner 2026-10-04: "There's also a road closures stream too, which is helpful for events." SmarterRoads also offers a road-closures data stream. FOLLOWUP-WORKZONES adds it as a source for Virginia closures, event closures included, under the same VDOT terms (343/346), the same key and the same handling:
+  - closed to bikes means excluded;
+  - unknown bike access means a penalty plus a warning (342);
+  - closures are time-windowed by the ride time;
+  - short cache, labelled when stale;
+  - plain-text source citation.
+  At build time, confirm the feed's name, format and fields from the SmarterRoads catalogue (the owner's account can see it). Feed records feed the same event layer as the manual admin entries, tagged by source.
+
+  Status: queued with FOLLOWUP-WORKZONES; not built.
+
+- 348, Owner 2026-10-04: "Subscribed to those". The owner's SmarterRoads account subscribes to the recommended feeds.
+  - Live, for FOLLOWUP-WORKZONES: WZDx, VDOT Road Closures, VATraffic Planned Events/Travel Advisories & Lane Closures, VDOT Incidents (short-lived "Incident ahead" warning or penalty).
+  - Yearly, for the stress pipeline (FOLLOWUP-VDOT-STRESS-DATA, next rebuild or later): Speed Limits, Average Daily Traffic, Traffic Signals, plus optionally Paving Schedules and Road Construction. Each file download still needs per-download owner approval with the size stated, a sha recorded, and a plain-text citation (301/306).
+  - Crashes and Weather Events are not assumed; ask before use.
+  - All use the same token in .env.
+
+  Status: queued with FOLLOWUP-WORKZONES and, for the yearly files, FOLLOWUP-VDOT-STRESS-DATA; nothing downloaded.
+
+- 349, Owner 2026-10-04, on 348: "I did to both. Weather could actually be useful. The main street of Alexandria tends to flood in high water."
+  - Weather Events / Road Condition (live, 1 min) is added to FOLLOWUP-WORKZONES as a flooding source. A flooded or closed-by-weather road or path is treated as a live closure for its event window. Other weather road conditions (ice, snow) get a penalty plus a heads-up.
+  - Old Town Alexandria's waterfront streets (King St and Union St near the river) and riverside trails like the Mount Vernon Trail flood at high water. Consider a "known to flood" note on those stretches, shown when a flood event is active.
+  - Crashes (yearly) is now subscribed but stays unused until the owner approves a specific use, e.g. junction-stress validation. Junction ratings are sensitive.
+
+  Status: queued with FOLLOWUP-WORKZONES; not built.
+
+- 350, Owner 2026-10-04, on the brown-unpaved preview (302): "LTS3 looks unpaved". The paved LTS 3 style (amber line on the #45290a brown casing) is confused with the brown unpaved ramp. Separate them:
+  - The unpaved ramp keeps brown, shifted to a clearly earthy/sepia brown, and keeps its non-colour dotted cue.
+  - Paved LTS 3 loses its brown look: a non-brown casing (e.g. a dark neutral or slate), with the amber hue pushed toward orange-yellow if needed.
+  - Keep the 292 harshness rule, the 283 ink ladder, >=3:1 contrast, and CVD separation from LTS 2/4 and from every unpaved step.
+  - Add a test that paved LTS 3 differs from every unpaved step by CIEDE2000 >= 20 (normal vision), plus the casing difference.
+  - Show a new preview before deploy.
+  Owner follow-up on 350: "Maybe a yellow/orange?" Paved LTS 3 becomes a clear yellow-orange on a dark neutral/slate casing (not brown), checked against the junction-marker orange and the Mass Ride orange.
+
+  Implemented as: overtaken by 351 the same day, which made the two-tone palette (LTS 3 yellow on an orange edge) the default, and which this item's test and ramp work were folded into: the unpaved ramps are a sepia (warm, the option), a taupe (two-tone, the default) and an ochre (cool), and paved LTS 3 is 20 CIEDE2000 or more from every unpaved step under normal vision, and 10 or more under every vision, in every palette, plain and strong (`frontend/src/unpavedBrown.test.ts`; docs/DEVELOPMENT.md, "Stress salience"). The bespoke yellow-orange on slate was not shipped.
+
+- 351, Owner 2026-10-04, on 350: "2 tone is better", clarified as "Make two-tone the default". The two-tone palette becomes the default map palette, replacing the warm (blended) set:
+  - LTS 1 #9ed3ac
+  - LTS 2 #57a06c
+  - LTS 3 yellow #f2c21b with an orange #f28c28 edge
+  - LTS 4 orange with a red #d42020 edge
+  - Avoid red with a near-black #111 edge
+  The 350 problem (LTS 3 reading as unpaved) is solved by it: LTS 3 is yellow, not brown.
+  - The brown unpaved ramp (302) and the dash/width/ink ladder (283), harshness (292), contrast and CVD rules all still apply on top. If two-tone's colours break any of them, report it rather than silently changing the owner's choice.
+  - Warm stays available as an option, and the accessibility switch stays on cool.
+  - The links' palette names stay neutral (321).
+  - Show a new preview before the deploy.
+
+  Implemented as: `DEFAULT_PALETTE` is `"twotone"` (`frontend/src/stressStyle.js`); warm stays as `?palette=warm` and the switch's palette is still cool. The owner's colours are kept as they are, and the rules they break are reported, not fixed (`frontend/src/testSupport/defaultConflicts.ts`, held exactly by `frontend/src/defaultPalette.test.ts`; docs/DEVELOPMENT.md, "The default palette (351)", has the figures and the smallest tweak proposed for each): LTS 3 and LTS 4 are not 3:1 on the base map or on their edges (1.46:1 and 2.34:1), the greyscale order is lost, LTS 3 and LTS 4 are 1.38:1 apart for a deuteranope, LTS 4 is less saturated than LTS 3, Avoid and LTS 4 are 17.8 apart under deuteranopia, and Avoid is 2.76:1 on the dark soft panel. LTS 4's edge is #c81e1e, which 292 chose, not the #d42020 the item lists: with #d42020 LTS 3's gaps would be harsher than LTS 4's.
+
+- 352, Owner 2026-10-04, on the 992/990 limit wording: "Not a material difference. Just have a very heavy setting and include silently. I know people who ride pedicabs with 2 passengers that get heavier." Remove the visible upper-limit note. Very heavy totals are accepted silently; the planner treats anything above the top of the effort model as its heaviest setting, with no message. Raise the top to cover pedicabs with two passengers: about 700 kg / 1,540 lb, the developer confirms the model stays sane. The low end also clamps silently at 25 kg. No weight note is shown anywhere.
+
+  Implemented as: the limit note is gone everywhere (`frontend/src/lib/weight.ts`, the dialog, the saved notice), and a total outside 25 to 700 kg (55 to 1,543 lb) is planned at the nearer limit with no message, in the page (`dials.ts` `SYSTEM_WEIGHT_MAX_KG`) and the API (`routemaker.effort.MASS_MAX_KG`, `clamp_mass_kg`). The effort model stays sane to 700 kg: a climb's factor rises with the mass and flattens towards 1 + grade / CRR (14.3 at 8%): 6.5 at 90 kg, 11.3 at 450 and 12.2 at 700, so from 450 to 700 kg an 8% climb costs about 8% more (tests/test_effort.py). That is the end where routes stop changing much (337's ask).
+
+- 353, Owner 2026-10-04: "Don't include at all. That was an example for you." Remove the owner's personal weight example from PLAN.md, from every repo file and from the memory notes. It is also redacted in OWNER-DECISIONS 340. Personal details the owner gives as examples are context for me only, never quoted in project records.
+
+  Implemented as: the example is out of 340's quote (above) and out of every file in the repository.
+
+- 354, Owner 2026-10-04: the federal land downloads (National Parks, Reservations, Military Bases; Capitol reused from fixtures/cbd) are retroactively approved: "Yes, approved". This closes the release spec nit.
+
+  Implemented as: the record. FOLLOWUP-FEDERAL-LAYER (Backlog and next release) cites it.
+
+- 355, Owner 2026-10-04: pause the weekly automatic rebuild (Tuesday 08:00 UTC) until the planned rebuild: "Pause until our rebuild (Recommended)". Mechanism: add a WEEKLY_REBUILD_PAUSED env switch in the release, under which weekly_rebuild logs and exits, and set it in t9 .env at the release deploy. If the release isn't deployed before Tue 2026-10-06 08:00 UTC, fall back to stopping the worker container before then, with owner OK.
+
+  Implemented as: `WEEKLY_REBUILD_PAUSED` (1 or true) in `config.settings`, delivered to the rebuild service only (compose.yaml); `config.procrastinate.weekly_rebuild` logs "weekly rebuild paused (WEEKLY_REBUILD_PAUSED)" and returns before it reads or writes anything, unless the job is hand-fired (`run_rebuild_now` defers with `manual=True`). The cron is unchanged. .env.example and docs/OPERATIONS.md, "Pausing the weekly rebuild", say how; tests/test_rebuild_pause.py. Setting it in t9's `.env` is the deploy's step.
+
+- 356, Owner 2026-10-04: "For Lts 2 maybe use a blue instead of black. Especially unpaved, LTS2 can almost be harsher than LTS3." The LTS 2 edge/gap colour, paved and unpaved, changes from near-black (#17301f) to a blue.
+  - Use a muted slate/steel blue, kept clearly distinct from the route line blue #1d4ed8 and from the CVD palette's blues, so the overlay never reads as a route.
+  - The 292 harshness rule now applies from LTS 1 upward: no calmer tier may look harsher than a busier one, paved and unpaved, in every palette.
+  - Keep >=3:1 contrast and CVD separation, and show it in the next preview.
+
+  Implemented as: with 357, below.
+
+- 357, Owner 2026-10-04, on the LTS 2 slate-blue edge sketch (RouteMaker/lts2-blue-edge-sketch.html): "Good!" The direction is approved: LTS 2 gets a muted slate-blue edge (paved and unpaved), paved LTS 1 a softer green edge, and LTS 3 the two-tone yellow/orange. Final hexes are subject to the checks, then a final preview before deploy.
+
+  Implemented as (`frontend/src/stressStyle.js`): LTS 2's edge is a dark slate blue, #1a2638, paved and unpaved (the cool palette's paved LTS 2 keeps its own navy, and its unpaved one its brown), and its gaps a steel blue, #7a8fa3, drawn as a line of their own under the dashes (`gapLayers`, `stress-gap-2`, and in the legend swatch); the cool palette's paved LTS 2 gap is a pale grey-blue, #a7b4c1. Paved LTS 1's edge is #2f5d47. The sketch's #5f7d99 had to move: as the edge it leaves LTS 2 2.4:1 on the base map, under 3:1, and as the gap it is 15.4 CIEDE2000 from the route blue and would make LTS 2's gaps harsher than two-tone LTS 3's; the gap is 7.6 from it. The 292 rule now runs from LTS 1 up, paved and unpaved, in every palette, plain and strong. The unrated route class has a halo of its own (#202326): the softer LTS 1 edge left it 2.86:1.
+
+- 358, Owner 2026-10-04: "You have my approval" for the release deploy's Docker Hub lookup and pull of the api base image (python:3.11-slim-bookworm, via `docker compose build api`). The approval covers this deploy's api image build only, not other images or later deploys.
+
+  Status: the deploy's step, for the operator.

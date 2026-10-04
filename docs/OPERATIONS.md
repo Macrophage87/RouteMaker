@@ -748,15 +748,22 @@ nothing else is left out, and no road is known to have a bikeway beside it.
 **The colours** (`PALETTES` in `stressStyle.js`, the one place they are kept).
 The owner, 2026-09-29: "I like LTS 1 and 2. Maybe yellow and orange for LTS 3,
 orange and red for LTS 4, and red and black for Avoid." (OWNER-DECISIONS 74).
-LTS 1 and 2 are as they were. Two readings are built for the owner to choose
-between: `blended` (the default: LTS 3 amber, #bf730b, over a dark amber-brown
-casing, #45290a; LTS 4 a saturated red, #c80018, over white; Avoid a
-near-black, #14040a, over a coral-red casing, #ee3b2c, since item 274) and `twotone` (the first colour as the line, the
-second as its casing), which a page shows with `?palette=twotone` in its
-address. The blended palette keeps every tier 3:1 on the base map and the
-greyscale order; LTS 2 and 3 are only 1.17:1 apart in grey and one olive to a
-deuteranope, told apart by their dashes. The two-tone LTS 3 is not 3:1 on the
-base map. The tiers' dashes, widths and casings, the facility rails and the
+LTS 1 and 2 are as they were in colour (their edges changed with items 356 and
+357: LTS 1 #2f5d47, LTS 2 a slate blue #1a2638 with steel-blue gaps #7a8fa3).
+Two readings were built for the owner to choose between, and since item 351
+("2 tone is better", "Make two-tone the default") the default is `twotone` (the
+first colour as the line, the second as its casing: LTS 3 yellow #f2c21b on
+orange #f28c28, LTS 4 orange on red #c81e1e, Avoid red #d42020 on #111111),
+which needs no address parameter. `blended`, the default before (LTS 3 amber,
+#bf730b, over a dark amber-brown casing, #45290a; LTS 4 a saturated red,
+#c80018, over white; Avoid a near-black, #14040a, over a coral-red casing,
+#ee3b2c, since item 274), is still there as `?palette=warm`, and the
+Accessibility switch's palette is still `cvd` (`?palette=cool`). The two-tone
+LTS 3 and LTS 4 are not 3:1 on the base map and the greyscale order is lost; the
+owner's colours are kept and the breaks reported (docs/DEVELOPMENT.md, "The
+default palette (351)"). The blended palette keeps every tier 3:1 on the base map
+and the greyscale order; LTS 2 and 3 are only 1.17:1 apart in grey and one olive
+to a deuteranope, told apart by their dashes. The tiers' dashes, widths and casings, the facility rails and the
 high-stress painted-lane switch are in docs/DEVELOPMENT.md, "Stress salience:
 the tiers' shapes and the facility rails".
 
@@ -1456,6 +1463,24 @@ directory bind keeps the directory's inode, so a file git replaces inside it is
 seen at once. The routers still read their config only at start; see "After a
 rebuild: restart the routers". `tests/test_deploy_docs.py` fails if a second
 single-file bind appears without this procedure covering it.
+
+## Pausing the weekly rebuild
+
+OWNER-DECISIONS 355 ("Pause until our rebuild"): set `WEEKLY_REBUILD_PAUSED=1` (or
+`true`) in the deployment's `.env` and recreate the rebuild service:
+
+```sh
+docker compose up -d --no-deps --force-recreate rebuild
+```
+
+The Tuesday 08:00 UTC tick still fires (`WEEKLY_REBUILD_CRON` is unchanged), and
+the job logs `weekly rebuild paused (WEEKLY_REBUILD_PAUSED)` and ends `succeeded`
+without a run row, a prune or a build, so nothing alerts. A rebuild fired by hand
+(`run_rebuild_now`, below) runs whatever the switch says. To resume, remove the
+line (or set it empty) and recreate the service the same way. 355 asks for it to be
+set in t9's `.env` at the release deploy; if the release is not deployed before
+Tuesday 2026-10-06 08:00 UTC, the fallback is to stop the rebuild container before
+then, with the owner's OK.
 
 ## Firing a rebuild by hand
 
@@ -2672,8 +2697,12 @@ There is no migrate, and never a plain `up -d`.
 ```
 
 `verify-pm.sh` checks none of the release's new features. `verify-release.sh` does, with read-only
-probes only (anonymous POSTs to `/api/route` and GETs of the published front end; it writes nothing
-to the stack, the database or the data root):
+probes only (anonymous POSTs to `/api/route` and GETs of the published front end). It is read-only
+apart from the rate limiter's own counter rows (`rate_limit_window`), which every anonymous
+`/api/route` request upserts; it writes nothing else to the stack, the database or the data root.
+A 503 from the planner ("A long ride is already being planned", a rider's plan in flight) is
+reported as RETRY, not FAIL, and does not count as a failure: run the script again. A probe that
+expects route candidates fails when there are none (probes 1 to 3 print the count):
 - Union Station to Penn Station at Trailmaxxing 100, a long calm plan: searched in legs, answered in
   the plan's legs, `effort_m`, `no_fit` null with no target, candidates whole routes ranked from 2
   with no stop the rider never placed, and the wall time, which must be under 50 s (it is printed at
