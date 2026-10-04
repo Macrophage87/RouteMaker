@@ -1,0 +1,97 @@
+/**
+ * What the page says about the plan's points: the map markers' labels, the
+ * announcements a screen reader hears when a point is added, set, removed or
+ * the order reversed, and the hints under the points list. In a loop the
+ * rider chose (OWNER-DECISIONS 374) the first point is the start and finish,
+ * every later one a stop, and there is no end. Mass Ride has no loop, so its
+ * hints never mention the toggle.
+ */
+import { LOOP_LABEL } from "./loop.ts";
+import type { PresetId } from "./presets.ts";
+import { pointName } from "./summary.ts";
+
+/** A marker's label: its visible text, its spoken name, and its kind (the pin's style). */
+export interface PointLabel {
+  text: string;
+  name: string;
+  kind: "start" | "end" | "via";
+}
+
+/**
+ * A marker's label: A for the start, B for the end, a number for a stop. In a
+ * loop there is no B: A is the "Start and finish" and the rest are stops.
+ */
+export function pointLabel(index: number, count: number, loop: boolean): PointLabel {
+  const name = pointName(index, count, loop);
+  if (index === 0) return { text: "A", name, kind: "start" };
+  if (!loop && index === count - 1 && count > 1) return { text: "B", name, kind: "end" };
+  return { text: String(index), name, kind: "via" };
+}
+
+/** A click or a search put a point in: "Stop 2 added." */
+export function addedSaid(index: number, count: number, loop: boolean): string {
+  return `${pointName(index, count, loop)} added.`;
+}
+
+/** A point taken off the map: named as it was, from the list before the removal. */
+export function removedSaid(index: number, count: number, loop: boolean): string {
+  return `${pointName(index, count, loop)} removed.`;
+}
+
+/** A rail station's Start here or Add as stop. */
+export function stationSaid(index: number, count: number, loop: boolean): string {
+  return `${pointName(index, count, loop)} set at the station.`;
+}
+
+/**
+ * A stop dragged into leg `leg` of a plan that now has `count` points. In a
+ * loop the start is "the start" in this sentence ("between the start and Stop
+ * 2" reads as two places; "between Start and finish and Stop 2" does not), and
+ * the closing leg's far end is the start too.
+ */
+export function insertedSaid(leg: number, count: number, loop: boolean): string {
+  const at = (index: number) => (loop && (index === 0 || index >= count) ? "the start" : pointName(index, count, loop));
+  return `Stop ${leg + 1} added, between ${at(leg)} and ${at(leg + 2)}.`;
+}
+
+/** Reverse pressed: `keptStart` when a loop kept its start and rides the stops the other way around. */
+export function reversedSaid(keptStart: boolean): string {
+  return keptStart
+    ? "Reversed: the loop now goes the other way around, from the same start."
+    : "Reversed: the old end is now the start.";
+}
+
+/** The loop toggle turned on or off with `count` points placed: their names change, so say how. */
+export function loopToggledSaid(on: boolean, count: number): string {
+  if (on) return "Loop on: the start is also the finish; other points are stops.";
+  return count >= 2 ? "Loop off: the last point is now the end." : "Loop off: the next point you add is the end.";
+}
+
+/** Where to find the toggle, said only where the ride type has one. */
+const TOGGLE_PLACE = "under Adjust this ride";
+
+/** The hint before any point is placed. */
+export function emptyPlanHint(preset: PresetId, loop: boolean): string {
+  const first = loop
+    ? "Search for a place, or click the map to set a start, then add stops. The ride comes back to the start."
+    : "Search for a place, or click the map to set a start, then an end. Later clicks add a stop on the nearest leg.";
+  const toggle =
+    loop || preset === "mass-ride"
+      ? ""
+      : ` Once the start is placed, you can turn on ${LOOP_LABEL} ${TOGGLE_PLACE}; then each click after the start is a stop.`;
+  return (
+    first +
+    toggle +
+    " Drag any marker to move it, or drag the route line to pull it through somewhere else" +
+    " (on a phone, press and hold the line first). Click a stop for Remove. From the keyboard," +
+    ' move the map with the arrow keys and use "Add point at map center"; Ctrl+Z undoes the' +
+    " last change and Ctrl+Shift+Z redoes it."
+  );
+}
+
+/** The hint with the start alone. */
+export function loneStartHint(preset: PresetId, loop: boolean): string {
+  if (loop) return "Now click the map to add a stop. The ride comes back to the start.";
+  if (preset === "mass-ride") return "Now click the map where you want to finish.";
+  return `Now click the map where you want to finish, or turn on ${LOOP_LABEL} ${TOGGLE_PLACE} to finish back at the start.`;
+}

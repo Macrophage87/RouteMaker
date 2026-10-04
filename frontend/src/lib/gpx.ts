@@ -19,6 +19,7 @@
  * and the route's full attribution in metadata/desc.
  */
 import type { LonLat } from "./geo.ts";
+import { LOOP_START_NAME } from "./loop.ts";
 
 export const GPX_NS_11 = "http://www.topografix.com/GPX/1/1";
 export const GPX_NS_10 = "http://www.topografix.com/GPX/1/0";
@@ -398,7 +399,7 @@ export interface GpxExport {
   rideText?: string;
   /** The route description (plain text, a line to an entry), written into rte/desc after rideText. */
   routeText?: string;
-  /** The plan's own points: start, vias, end. */
+  /** The plan's own points: start, vias, end (in a loop, the start and finish, then stops). */
   planPoints: readonly LonLat[];
   /** A loop the rider chose (OWNER-DECISIONS 374): the first point is "Start and finish" and the rest are stops. */
   loop?: boolean;
@@ -421,7 +422,7 @@ function position([lon, lat]: LonLat): string {
 }
 
 export function planPointName(index: number, count: number, loop = false): string {
-  if (index === 0) return loop ? "Start and finish" : "Start";
+  if (index === 0) return loop ? LOOP_START_NAME : "Start";
   if (!loop && index === count - 1) return "End";
   return `Stop ${index}`;
 }

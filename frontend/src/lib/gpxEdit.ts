@@ -13,6 +13,7 @@
 import { fitDials, type Dials } from "./dials.ts";
 import type { LonLat } from "./geo.ts";
 import type { ImportedPlan } from "./gpxPlan.ts";
+import { LOOP_START_NAME } from "./loop.ts";
 import type { PresetId } from "./presets.ts";
 import { choose } from "./rideTypeDialog.ts";
 
@@ -36,7 +37,7 @@ export function rideAfterImport(
 
 /** "Start", "Start and finish", "Stop 3", "End": what RouteMaker's own export calls its points, which is no place name. ("Via 3" is what files from before the rename say.) */
 function isRoleName(name: string): boolean {
-  return /^(Start|Start and finish|End|(?:Stop|Via) \d+)$/.test(name);
+  return name === LOOP_START_NAME || /^(Start|End|(?:Stop|Via) \d+)$/.test(name);
 }
 
 /** The names the file gives its plan points, to show in the list as a search pick's name is. */

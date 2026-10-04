@@ -164,16 +164,16 @@ test("stops are Stop N in the points list, the announcements, the map and the GP
   assert.equal(pointName(3, 4), "End");
   assert.equal(planPointName(1, 3), "Stop 1");
   assert.equal(planPointName(2, 4), "Stop 2");
-  const files = ["../App.tsx", "../MapView.tsx", "./summary.ts", "./gpx.ts", "./gpxText.ts", "./pointsList.ts", "../FacilityBreakdown.tsx", "../railInteraction.ts"];
+  const files = ["../App.tsx", "../MapView.tsx", "./summary.ts", "./gpx.ts", "./gpxText.ts", "./pointsList.ts", "./pointText.ts", "../FacilityBreakdown.tsx", "../railInteraction.ts"];
   for (const file of files) {
     // What a rider can read: not the comments.
     const source = readFileSync(new URL(file, import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/.*$/gm, "$1");
     assert.doesNotMatch(source, /`Via |"Via |Via point|via point|Add as via/, file);
   }
   const map = readFileSync(new URL("../MapView.tsx", import.meta.url), "utf8");
-  assert.match(map, /name: pointName\(index, count, loop\)/);
+  assert.match(map, /import \{ pointLabel \} from "\.\/lib\/pointText\.ts";/);
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  assert.match(app, /announce\(`Stop \$\{leg \+ 1\} added,/);
+  assert.match(app, /announce\(insertedSaid\(leg, next\.length, loopVias\)\)/);
 });
 
 test("the GPX writer names a route's points Start, Stop N and End", () => {

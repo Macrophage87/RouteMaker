@@ -53,7 +53,7 @@ import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import type { When } from "./lib/dials.ts";
-import { pointName } from "./lib/summary.ts";
+import { pointLabel } from "./lib/pointText.ts";
 import {
   CARD_CLOSE_LABEL,
   cardName,
@@ -160,13 +160,6 @@ const PICK_UP_BUZZ_MS = 15;
 const MAX_BOUNDS_PAD = 0.4;
 /** How long an unanswered stress endpoint is left before it is asked again. */
 const STRESS_RECHECK_MS = 60_000;
-
-/** A marker's label. In a loop (OWNER-DECISIONS 374) the first is "Start and finish" and the rest are stops, never B or the end. */
-function pointLabel(index: number, count: number, loop: boolean): { text: string; name: string; kind: string } {
-  if (index === 0) return { text: "A", name: pointName(0, count, loop), kind: "start" };
-  if (!loop && index === count - 1 && count > 1) return { text: "B", name: "End", kind: "end" };
-  return { text: String(index), name: pointName(index, count, loop), kind: "via" };
-}
 
 type EditFeature =
   | { type: "Feature"; properties: object; geometry: { type: "LineString"; coordinates: LonLat[] } }
@@ -782,7 +775,7 @@ export function MapView(props: Props) {
       }
       return marker;
     });
-  }, [...markerDeps(props.points, props.markerReset), props.loopVias]);
+  }, markerDeps(props.points, props.markerReset, props.loopVias));
 
   // The route line.
   useEffect(() => {

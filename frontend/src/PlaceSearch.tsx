@@ -15,6 +15,7 @@ import {
   MIN_QUERY_CHARS,
   PlaceSearchRunner,
   comboboxKey,
+  placeEffectHint,
   placeType,
   searchSender,
   searchView,
@@ -22,20 +23,11 @@ import {
   type GeoResult,
   type Place,
   type PlaceChoice,
-  type PlaceEffect,
 } from "./lib/geocode.ts";
 import type { LonLat } from "./lib/geo.ts";
 
 // App.tsx's phone layout, where the panel is a bottom sheet.
 const PHONE = "(max-width: 720px)";
-
-const EFFECT_HINT: Record<PlaceEffect, string> = {
-  start: "The place you pick becomes the start.",
-  "replace-start": "The place you pick becomes the new start.",
-  end: "The place you pick becomes the destination.",
-  "replace-end": "The place you pick becomes the new destination.",
-  via: "The place you pick is added as a stop along the way.",
-};
 
 const CHOICE_LABEL: Record<PlaceChoice, string> = { start: "Start", end: "Destination", via: "Stop" };
 
@@ -223,7 +215,7 @@ export function PlaceSearch({
         </fieldset>
       )}
       <p id={`${id}-hint`} className="hint">
-        {EFFECT_HINT[effect]}
+        {placeEffectHint(effect, loop)}
         {full && " The route has as many points as it can take, so no stop can be added."}
       </p>
       <p className="visually-hidden" role="status" aria-live="polite">

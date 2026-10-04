@@ -442,7 +442,7 @@ export function stationRoles(count: number, loop = false): StationRole[] {
 /**
  * The plan with a station's point as its start, its end, or a via on the leg
  * it lengthens least. Start and end replace what was there; a lone start gets
- * the station as its end.
+ * the station as its end, or in a loop (which has no end) as its first stop.
  */
 export function placeAtStation(points: readonly LonLat[], point: LonLat, role: StationRole, loop = false): LonLat[] {
   if (!stationRoles(points.length, loop).includes(role)) return [...points];
@@ -451,7 +451,7 @@ export function placeAtStation(points: readonly LonLat[], point: LonLat, role: S
   return addPoint(points, point, loop);
 }
 
-/** A station's Start here / End here / Add as via as an edit of the plan, or why it is not one. */
+/** A station's Start here / End here / Add as stop as an edit of the plan, or why it is not one. */
 export type StationEdit = { next: LonLat[]; index: number } | { refused: "cap" | "role" };
 
 /**

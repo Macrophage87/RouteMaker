@@ -586,7 +586,10 @@ export function choiceInForce(chosen: PlaceChoice | null, count: number, full: b
   return chosen !== null && choicesFor(count, full, loop).includes(chosen) ? chosen : defaultChoice(count, loop);
 }
 
-/** The choices open to a plan of `count` points (a stop needs a start and an end, and room). */
+/**
+ * The choices open to a plan of `count` points: a stop needs a start and an
+ * end, and room; in a loop the start alone is enough, and there is no end.
+ */
 export function choicesFor(count: number, full: boolean, loop = false): PlaceChoice[] {
   if (count === 0) return ["start"];
   // A loop finishes at its start (OWNER-DECISIONS 374): a stop can follow the start alone, and there is no destination.
@@ -595,6 +598,24 @@ export function choicesFor(count: number, full: boolean, loop = false): PlaceCho
 }
 
 export type PlaceEffect = "start" | "replace-start" | "end" | "replace-end" | "via";
+
+const EFFECT_HINT: Record<PlaceEffect, string> = {
+  start: "The place you pick becomes the start.",
+  "replace-start": "The place you pick becomes the new start.",
+  end: "The place you pick becomes the destination.",
+  "replace-end": "The place you pick becomes the new destination.",
+  via: "The place you pick is added as a stop along the way.",
+};
+
+/**
+ * The search box's hint for what a pick does. In a loop (OWNER-DECISIONS 374)
+ * the start is also the finish, so a new start is the new start and finish.
+ */
+export function placeEffectHint(effect: PlaceEffect, loop = false): string {
+  if (loop && effect === "start") return "The place you pick becomes the start and finish.";
+  if (loop && effect === "replace-start") return "The place you pick becomes the new start and finish.";
+  return EFFECT_HINT[effect];
+}
 
 /** What choosing a search result as `choice` does to a plan of `count` points. */
 export function placeEffect(count: number, choice: PlaceChoice, loop = false): PlaceEffect {

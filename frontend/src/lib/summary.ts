@@ -2,7 +2,7 @@
 import type { RouteResponse } from "./api.ts";
 import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
-import { loopNote } from "./loop.ts";
+import { LOOP_START_NAME, loopNote } from "./loop.ts";
 import {
   formatClimb,
   formatDistance,
@@ -299,7 +299,7 @@ export function stillPlanningSaid(preset: string, dials: { stress: number } | un
 }
 
 /**
- * A point's name in the list: Start, Stop 1, Stop 2, ..., End. In a loop
+ * A point's name in the list: Start, Stop 1, Stop 2, ..., End. In a loop the rider chose
  * (OWNER-DECISIONS 374) the ride finishes at the start, so the first point is
  * "Start and finish" and every other point is a stop, never the end.
  */
@@ -309,5 +309,4 @@ export function pointName(index: number, count: number, loop = false): string {
   return `Stop ${index}`;
 }
 
-/** The first point of a loop, where the ride starts and finishes. */
-export const LOOP_START_NAME = "Start and finish";
+export { LOOP_START_NAME };

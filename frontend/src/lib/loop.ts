@@ -28,6 +28,9 @@ export interface LoopView {
 
 export const LOOP_LABEL = "Make it a loop";
 
+/** The first point of a loop the rider chose, where the ride starts and finishes (OWNER-DECISIONS 374). */
+export const LOOP_START_NAME = "Start and finish";
+
 /**
  * Whether points are named and placed as a loop's: the rider turned "Make it a
  * loop" on (OWNER-DECISIONS 374), so the first point is the start and finish and
@@ -40,7 +43,7 @@ export function loopStops(preset: PresetId, loop: boolean | undefined): boolean 
 
 /**
  * The toggle, or null where it does not apply (Mass Ride; no points yet). With a
- * start alone it can be chosen, and the next click is then a stop (374).
+ * start alone it can be chosen, and the next click is then a stop (OWNER-DECISIONS 374).
  */
 export function loopView(preset: PresetId, loop: boolean | undefined, points: readonly LonLat[]): LoopView | null {
   if (preset === "mass-ride" || points.length < 1) return null;
@@ -52,8 +55,10 @@ export function loopView(preset: PresetId, loop: boolean | undefined, points: re
     hint: implied
       ? "This ride ends where it starts, so it is planned as a loop: the way back avoids the roads the way out used, where there is another way."
       : loop === true
-        ? "Starts and finishes at your first point. Each point you add after it is a stop on the way round, and the way back avoids the roads the way out used where there is another way."
-        : "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.",
+        ? "Starts and finishes at your first point. Each point you add after it is a stop on the way around, and the way back avoids the roads the way out used where there is another way."
+        : points.length === 1
+          ? "Turn on to finish back at the start. Each point you add is then a stop."
+          : "Plans the way to your end point, then a different way back to the start. The way back avoids the roads the way out used where there is another way.",
   };
 }
 

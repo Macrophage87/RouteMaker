@@ -29,7 +29,7 @@ test("in a loop the closing leg is a slot: a click on the way back is appended, 
   // A to B and back: a click past B costs the same on either leg, and the closing leg wins the tie.
   assert.deepEqual(addPoint([A, B], D, true), [A, B, D]);
   assert.deepEqual(addPoint([A, B], D, false), [A, D, B]);
-  // A triangle out and round: a click on the closing leg (C back to A) is appended.
+  // A triangle out and around: a click on the closing leg (C back to A) is appended.
   const tri: LonLat[] = [A, B, [-76.98, 38.92]];
   const onWayBack: LonLat = [-76.9902, 38.9102];
   assert.deepEqual(addPoint(tri, onWayBack, true), [...tri, onWayBack]);
@@ -37,6 +37,14 @@ test("in a loop the closing leg is a slot: a click on the way back is appended, 
   // A click beside the way out stays on that leg.
   const beside: LonLat = [-76.99, 38.8995];
   assert.deepEqual(addPoint(tri, beside, true), [A, beside, B, tri[2]]);
+});
+
+test("in a loop of a start and one stop, the two legs tie exactly and the click is appended", () => {
+  // Off the line A-B, so the tie is not an artefact of collinear points: the
+  // closing leg (B back to A) costs exactly what A to B costs, and wins.
+  for (const p of [[-76.97, 38.91], [-76.99, 38.885], [-77.01, 38.93]] as LonLat[]) {
+    assert.deepEqual(addPoint([A, B], p, true), [A, B, p]);
+  }
 });
 
 test("in a loop a click on an inner leg still goes into that leg", () => {

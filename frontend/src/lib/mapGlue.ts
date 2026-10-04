@@ -163,12 +163,13 @@ export function setStressVisibility(map: OverlayMap, visible: boolean): void {
 }
 
 /**
- * The markers effect's dependencies: the points, and the counter App bumps to
+ * The markers effect's dependencies: the points, the counter App bumps to
  * put a dragged marker back without changing the points (a drag outside the
- * area). Without the counter a put-back marker stays where it was dropped.
+ * area), and the loop toggle, which renames them (OWNER-DECISIONS 374).
+ * Without the counter a put-back marker stays where it was dropped.
  */
-export function markerDeps<P>(points: readonly P[], markerReset: number): readonly unknown[] {
-  return [points, markerReset];
+export function markerDeps<P>(points: readonly P[], markerReset: number, loop?: boolean): readonly unknown[] {
+  return [points, markerReset, loop === true];
 }
 
 /** What is under the pointer, as MapView finds it. */

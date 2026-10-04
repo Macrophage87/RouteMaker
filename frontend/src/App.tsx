@@ -25,6 +25,15 @@ import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
 import { announceHow, candidateRoute } from "./lib/candidates.ts";
 import { loopNote, loopStops } from "./lib/loop.ts";
+import {
+  addedSaid,
+  emptyPlanHint,
+  insertedSaid,
+  loneStartHint,
+  loopToggledSaid,
+  removedSaid,
+  stationSaid,
+} from "./lib/pointText.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
 import { RouteDescription } from "./RouteDescription.tsx";
@@ -359,7 +368,7 @@ export function App() {
     setNotice(null);
     const next = addPoint(pointsRef.current, point, loopVias);
     commit(next);
-    announce(`${pointName(next.indexOf(point), next.length, loopVias)} added.`);
+    announce(addedSaid(next.indexOf(point), next.length, loopVias));
   }, [commit, announce, loopVias]);
 
   const move = useCallback((index: number, point: LonLat) => {
@@ -389,7 +398,7 @@ export function App() {
       }
       setNotice(null);
       commit(next);
-      announce(`Stop ${leg + 1} added, between ${pointName(leg, next.length, loopVias)} and ${pointName(leg + 2, next.length, loopVias)}.`);
+      announce(insertedSaid(leg, next.length, loopVias));
     },
     [commit, announce, loopVias],
   );
@@ -408,7 +417,7 @@ export function App() {
     }
     setNotice(null);
     commit(edit.next);
-    announce(`${pointName(edit.index, edit.next.length, loopVias)} set at the station.`);
+    announce(stationSaid(edit.index, edit.next.length, loopVias));
   }, [commit, announce, loopVias]);
 
   // A place picked from search: the start, the destination or a stop, as chosen
@@ -442,9 +451,9 @@ export function App() {
     (index: number) => {
       const current = pointsRef.current;
       if (index < 0 || index >= current.length) return;
-      const name = pointName(index, current.length, loopVias);
+      const said = removedSaid(index, current.length, loopVias);
       commit(current.filter((_, i) => i !== index));
-      announce(`${name} removed.`);
+      announce(said);
     },
     [commit, announce, loopVias],
   );
@@ -480,6 +489,13 @@ export function App() {
   };
   const retry = () =>
     scheduler.current?.request({ points, preset, dials: planDials, confirmLong: sendsConfirmation(points, confirmedKm) });
+  // The Adjust panel's sliders and toggles. Turning the loop on or off renames
+  // the points (OWNER-DECISIONS 374), which a screen reader would not hear.
+  const commitDials = (next: Dials) => {
+    const loopNext = loopStops(preset, next.loop);
+    if (loopNext !== loopVias && points.length > 0) announce(loopToggledSaid(loopNext, points.length));
+    setDials(next);
+  };
   // A new ride type moves the sliders to where it starts them (RideTypePicker).
   const choosePreset = (id: PresetId, next: Dials) => {
     setPreset(id);
@@ -590,14 +606,7 @@ export function App() {
         onPick={pickPlace}
       />
       {points.length === 0 ? (
-        <p className="hint">
-          Search for a place, or click the map to set a start, then an end. Later clicks add a
-          stop on the nearest leg. Once the start is placed, you can turn on Make it a loop
-          under Adjust this ride; then each click after the start is a stop. Drag any marker to move it, or drag the route line to
-          pull it through somewhere else (on a phone, press and hold the line first). Click a
-          stop for Remove. From the keyboard, move the map with the arrow keys and use
-          "Add point at map centre"; Ctrl+Z undoes the last change and Ctrl+Shift+Z redoes it.
-        </p>
+        <p className="hint">{emptyPlanHint(preset, loopVias)}</p>
       ) : (
         <PointsList
           rows={pointRows(points, namer, loopVias)}
@@ -607,13 +616,7 @@ export function App() {
           }}
         />
       )}
-      {points.length === 1 && (
-        <p className="hint">
-          {loopVias
-            ? "Now click the map to add a stop. The ride comes back to the start."
-            : "Now click the map where you want to finish, or turn on Make it a loop to come back here."}
-        </p>
-      )}
+      {points.length === 1 && <p className="hint">{loneStartHint(preset, loopVias)}</p>}
       {coverageShown && <p className="hint">Grey areas are outside what RouteMaker covers.</p>}
       <div className="actions">
         <button
@@ -626,7 +629,7 @@ export function App() {
           onMouseLeave={() => setCrosshair((c) => ({ ...c, button: false }))}
           disabled={points.length >= MAX_POINTS}
         >
-          Add point at map centre
+          Add point at map center
         </button>
         <button type="button" onClick={() => commit([...pointsRef.current].reverse())} disabled={points.length < 2}>
           Reverse
@@ -723,7 +726,7 @@ export function App() {
         <DialsPanel
           preset={preset}
           dials={dials}
-          onCommit={setDials}
+          onCommit={commitDials}
           weight={{
             saved: weight,
             remembered: weightRemembered,
@@ -885,7 +888,7 @@ export function App() {
             status={federalStatus}
             points={federalData ? federalPoints(points, federalData) : null}
             pointCount={points.length}
-            nameOf={(index) => pointName(index, points.length)}
+            nameOf={(index) => pointName(index, points.length) /* Mass Ride: no loop */}
           />
 
           <footer className="panel-footer">

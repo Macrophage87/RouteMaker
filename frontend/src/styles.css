@@ -720,7 +720,7 @@ button.secondary {
   margin-top: 0;
 }
 
-/* The point "Add point at map centre" would place, while it has focus. */
+/* The point "Add point at map center" would place, while it has focus. */
 .crosshair {
   position: absolute;
   left: 50%;
