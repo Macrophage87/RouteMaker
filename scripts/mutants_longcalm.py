@@ -102,15 +102,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "order: the Hills slider is not blended in",
         RF,
-        "    return (1 - w) * read.length_m + w * effort - ctx.hills_seek_weight * effort",
-        "    return read.length_m - ctx.hills_seek_weight * effort",
+        "    return (1 - w) * read.length_m + w * effort\n",
+        "    return read.length_m\n",
         LC,
     ),
     (
         "order: the Hills slider blends the length with itself",
         RF,
-        "    return (1 - w) * read.length_m + w * effort - ctx.hills_seek_weight * effort",
-        "    return (1 - w) * read.length_m + w * read.length_m - ctx.hills_seek_weight * effort",
+        "    return (1 - w) * read.length_m + w * effort\n",
+        "    return (1 - w) * read.length_m + w * read.length_m\n",
         LC,
     ),
     ("order: the seek half's hook does nothing", RF, "- ctx.hills_seek_weight * effort", "", LC),
@@ -330,7 +330,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "worth: the charge is on the actual miles whatever the Hills slider says",
         RF,
-        "        level3(longer, ctx) - level3(shorter, ctx),\n    )",
+        "        charged_m(longer, ctx) - charged_m(shorter, ctx),\n    )",
         "        None,\n    )",
         LC,
     ),
@@ -793,7 +793,22 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     ),
     # 337 and 338: the weight range is 25-450 kg, and a weight outside it the nearer limit.
     ("337 the range's floor back at 68", EFF, "MASS_MIN_KG = 25", "MASS_MIN_KG = 68", EF + AP),
-    ("337 the range's ceiling back at 140", EFF, "MASS_MAX_KG = 450", "MASS_MAX_KG = 140", EF + AP),
+    ("337 the range's ceiling back at 140", EFF, "MASS_MAX_KG = 700", "MASS_MAX_KG = 140", EF + AP),
+    ("352 the ceiling back at 450", EFF, "MASS_MAX_KG = 700", "MASS_MAX_KG = 450", EF + AP),
+    (
+        "S1 the seek credit buys miles again",
+        RF,
+        "        charged_m(longer, ctx) - charged_m(shorter, ctx),",
+        "        level3(longer, ctx) - level3(shorter, ctx),",
+        LC,
+    ),
+    (
+        "S1 the even-out step's charge takes the seek credit again",
+        RF,
+        "                blended = charged_m(chain[k][1], ctx) - charged_m(now, ctx)",
+        "                blended = level3(chain[k][1], ctx) - level3(now, ctx)",
+        LC,
+    ),
     (
         "338 the clamp does nothing",
         EFF,

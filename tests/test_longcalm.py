@@ -352,12 +352,43 @@ class TestTheHillsLevel:
     def test_the_seek_half_has_a_hook_for_more_effort_being_better(self) -> None:
         ctx = top_context()
         ctx.hills_seek_weight = 0.5
-        # The longer route with far more effort wins with the hook, and loses without it.
-        hard = reading(length=12_000.0, effort=30_000.0)
-        easy = reading(length=9_000.0, effort=9_000.0)
+        # Between routes as long as each other, the one with far more effort wins with the hook,
+        # and loses without it.
+        hard = reading(length=10_000.0, effort=30_000.0)
+        easy = reading(length=10_000.0, effort=10_000.0)
         assert refine.level3(hard, ctx) < refine.level3(easy, ctx)
         assert refine.better(hard, easy, ctx)
-        assert refine.better(easy, hard, top_context())
+        assert not refine.better(hard, easy, top_context()), "without the hook the two tie"
+        # Under a target the miles are free (268, 271): there the hook may take the longer one.
+        under = top_context(target_m=20_000.0)
+        under.hills_seek_weight = 0.5
+        longer_hard = reading(length=12_000.0, effort=30_000.0)
+        shorter_easy = reading(length=9_000.0, effort=9_000.0)
+        assert refine.better(longer_hard, shorter_easy, under)
+
+    def test_seeking_climbs_never_buys_miles_the_charge_has_no_seek_credit(self) -> None:
+        """The release re-check's S1 probe: 20 km flat with 1 km of LTS 3, against
+        40 km hilly (an effort of 60 km) with none. The charge for the 20 km added is the
+        same with Hills at the detent and at full seek (4 km of LTS 3 to save, at 5 to 1),
+        so the 1 km saved is not worth it either way (OWNER-DECISIONS 298(3))."""
+        short = reading(length=20_000.0, effort=20_000.0, lts3=1_000.0)
+        long_ = reading(length=40_000.0, effort=60_000.0)
+        for seek in (0.0, 1.0):
+            ctx = top_context()
+            ctx.hills_seek_weight = seek
+            charge = refine.distance_charge_m(
+                short.length_m,
+                long_.length_m,
+                ctx,
+                refine.charged_m(long_, ctx) - refine.charged_m(short, ctx),
+            )
+            assert charge == pytest.approx(4_000.0), seek
+            assert not refine.worth_it(short, long_, ctx), seek
+            assert not refine.better(long_, short, ctx), seek
+        # The tiebreak itself still prefers the climb when seeking.
+        seeking = top_context()
+        seeking.hills_seek_weight = 1.0
+        assert refine.level3(long_, seeking) < refine.level3(short, seeking)
 
     def read_trip(self, monkeypatch, effort_fn, ctx):
         monkeypatch.setattr(refine.effort, "effort_equivalent_m", effort_fn)

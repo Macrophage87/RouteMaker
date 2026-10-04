@@ -368,9 +368,21 @@ def level3(read: Analysis, ctx: Context) -> float:
     the stress levels above it and the target are unchanged (OWNER-DECISIONS 298(3),
     "Keep stress order + target (Recommended)"). The target distance is in actual
     metres, not these."""
+    effort = read.effort_m or read.length_m
+    return charged_m(read, ctx) - ctx.hills_seek_weight * effort
+
+
+def charged_m(read: Analysis, ctx: Context) -> float:
+    """The distance the 268 charge weighs (`distance_charge_m`'s `blended_m`): the
+    actual and effort-equivalent distance blended by the avoid half of the Hills
+    slider, as in `level3`, but without the seek half's credit for effort. Seeking
+    climbs changes only the tiebreak, never how many miles a stress saving buys
+    (OWNER-DECISIONS 298(3), "Seeking hills changes only the effort tiebreak"; the
+    release re-check's S1: with the credit in, a longer, hillier route was charged
+    nothing and any stress saving was worth it)."""
     w = ctx.hills_weight
     effort = read.effort_m or read.length_m
-    return (1 - w) * read.length_m + w * effort - ctx.hills_seek_weight * effort
+    return (1 - w) * read.length_m + w * effort
 
 
 def junction_cost_m(events: list | None, severity: str) -> float:
@@ -483,7 +495,7 @@ def worth_it(shorter: Analysis, longer: Analysis, ctx: Context, rest_m: float = 
         shorter.length_m + rest_m,
         longer.length_m + rest_m,
         ctx,
-        level3(longer, ctx) - level3(shorter, ctx),
+        charged_m(longer, ctx) - charged_m(shorter, ctx),
     )
     if charge <= 0.0:
         return True
@@ -1947,7 +1959,7 @@ def choose_options(
                 if gain <= 0:
                     continue
                 saved = stress_saved_m(now, chain[k][1], ctx)
-                blended = level3(chain[k][1], ctx) - level3(now, ctx)
+                blended = charged_m(chain[k][1], ctx) - charged_m(now, ctx)
                 charge = distance_charge_m(total, total + added, ctx, blended)
                 if charge > 0.0 and saved < charge:
                     continue
