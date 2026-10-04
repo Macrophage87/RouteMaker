@@ -1,24 +1,28 @@
 #!/usr/bin/env bash
 # Smoke test for the beta: health, a route, place search and reverse lookup, a stress tile,
-# and (public mode) the gate: robots.txt, basic auth, noindex, the base map's same-origin rule.
+# and (public mode) the gate: robots.txt, basic auth, noindex, the base map's same-origin rule
+# and byte ranges, and Django's static files.
 # Read-only: it only sends GET and one POST /api/route, which plans a short ride and saves nothing.
 #
 #   scripts/beta/smoke-test.sh --local [--port 8087] [--host routemaker.cieply.com]
 #       Straight to the api on 127.0.0.1, before nginx is involved. No credentials.
-#   BETA_USER=alice BETA_PASSWORD=... scripts/beta/smoke-test.sh --public https://routemaker.cieply.com
-#       Through nginx and TLS. The password is read from the environment and handed to curl on
-#       standard input, so it is never in a process listing or a shell history line you typed.
+#   scripts/beta/smoke-test.sh --public https://routemaker.cieply.com --passwords-file ~/routemaker-beta-passwords.txt
+#       Through nginx and TLS, as the first tester in the file make-htpasswd.sh wrote (or as
+#       BETA_USER, if set). The password is read from that file, never printed, and handed to
+#       curl on standard input, so it is in no process listing, history line or transcript.
+#       BETA_USER=alice BETA_PASSWORD=... in the environment works too, without the file.
 #
 # Exit status 0 only if every check passed.
 set -uo pipefail
 
-mode=""; port=""; host="routemaker.cieply.com"; base=""
+mode=""; port=""; host="routemaker.cieply.com"; base=""; passwords_file=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--local) mode=local; shift ;;
 		--public) mode=public; base=${2:-}; [ -n "$base" ] || { echo "smoke-test: --public needs a URL" >&2; exit 2; }; shift 2 ;;
 		--port) port=${2:-}; shift 2 ;;
 		--host) host=${2:-}; shift 2 ;;
+		--passwords-file) passwords_file=${2:-}; shift 2 ;;
 		-h | --help) sed -n '2,/^set -uo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "smoke-test: unknown argument $1" >&2; exit 2 ;;
 	esac
@@ -69,8 +73,18 @@ check_body() { # description grep-pattern curl-args...
 
 route='{"points":[[-77.0353,38.8895],[-77.0369,38.9072]],"preset":"default"}'
 
+if [ "$mode" = public ] && [ -n "$passwords_file" ]; then
+	[ -r "$passwords_file" ] || { echo "smoke-test: cannot read $passwords_file" >&2; exit 2; }
+	# "user password" lines; the first one, or BETA_USER's. Read here, never echoed.
+	if [ -z "${BETA_USER:-}" ]; then
+		BETA_USER=$(awk '!/^#/ && NF == 2 { print $1; exit }' "$passwords_file")
+	fi
+	BETA_PASSWORD=$(awk -v u="${BETA_USER:-}" '!/^#/ && NF == 2 && $1 == u { print $2; exit }' "$passwords_file")
+	export BETA_USER BETA_PASSWORD
+fi
+
 if [ "$mode" = public ]; then
-	[ -n "${BETA_USER:-}" ] && [ -n "${BETA_PASSWORD:-}" ] || { echo "smoke-test: set BETA_USER and BETA_PASSWORD for --public" >&2; exit 2; }
+	[ -n "${BETA_USER:-}" ] && [ -n "${BETA_PASSWORD:-}" ] || { echo "smoke-test: give --passwords-file, or set BETA_USER and BETA_PASSWORD, for --public" >&2; exit 2; }
 	AUTH=
 	check_status "robots.txt is public" 200 "$base/robots.txt"
 	check_body "robots.txt disallows everything" 'Disallow: /' "$base/robots.txt"
@@ -92,9 +106,12 @@ if [ "$mode" = public ]; then
 	grep -qi '^x-robots-tag: noindex' <<<"$headers" && ok "noindex on the front end" || bad "no X-Robots-Tag on the front end"
 	grep -qi '^content-security-policy: default-src' <<<"$headers" && ok "CSP on the front end" || bad "no CSP on the front end"
 	check_status "a preset link redirects" 302 "$base/mass-ride"
-	check_status "the base map for this site's own page" 200 -H "Referer: $base/" -H "Range: bytes=0-16383" "$base/basemap/region.pmtiles"
+	# A satisfiable Range request on a static file is answered 206 Partial Content, which is
+	# what the map's pmtiles reader asks for; 200 would mean nginx ignored the range.
+	check_status "the base map for this site's own page (a byte range)" 206 -H "Referer: $base/" -H "Range: bytes=0-16383" "$base/basemap/region.pmtiles"
 	check_status "the base map refused to a foreign page" 403 -H "Origin: https://example.org" "$base/basemap/region.pmtiles"
 	check_status "an unlisted base map path is a 404" 404 -H "Referer: $base/" "$base/basemap/nope.txt"
+	check_status "Django's static files are served (the admin's CSS, the /static/ alias)" 200 "$base/static/admin/css/base.css"
 fi
 
 check_body "a route comes back with a distance and a line" '"distance_m".*"geometry"|"geometry".*"distance_m"' \

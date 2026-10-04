@@ -1,8 +1,11 @@
 # nginx site for the RouteMaker private beta (OWNER-DECISIONS 360-362).
 #
-# This is a TEMPLATE. scripts/beta/render-nginx.sh fills the placeholders written between @ signs
-# and keeps one of the two stages below; docs/BETA-RUNBOOK.md says when to use
-# each. Installing it adds ONE file to the host's nginx and changes nothing else:
+# TEMPLATE: scripts/beta/render-nginx.sh fills the placeholders written between @ signs
+# TEMPLATE: and keeps one of the two stages below; docs/BETA-RUNBOOK.md says when to use each.
+# TEMPLATE: (Lines starting `# TEMPLATE:` are dropped from the rendered file.)
+# @RENDERED_FROM@
+#
+# Installing it adds ONE file to the host's nginx and changes nothing else:
 # no default_server, no edit to nginx.conf, no http-level setting that another
 # site would inherit. Every http-level name it declares (the upstream, the map)
 # is prefixed `rmbeta_` so it cannot collide with a site that is already there.
@@ -25,11 +28,15 @@
 # add_header does not inherit into a location that has its own add_header, so every
 # location that sets one repeats X-Robots-Tag and Strict-Transport-Security;
 # tests/test_beta_overlay.py fails if one is missed.
+#
+# IPv6: the `listen [::]:...` lines are kept only if the host's other sites listen on IPv6
+# too; render with --no-ipv6 otherwise (on a host with IPv6 disabled `nginx -t` fails on them).
 
 # BEGIN stage:acme
 # Stage 1, before a certificate exists: port 80, answering only the ACME challenge.
-# Install this, run `certbot certonly --nginx -d @SERVER_NAME@` (or --webroot with
-# -w @ACME_ROOT@), then re-render with --stage full and the certificate paths.
+# Install this, run `certbot certonly --webroot -w @ACME_ROOT@ -d @SERVER_NAME@`, then
+# re-render with --stage full and the certificate paths. (Not certbot's --nginx
+# authenticator: it edits and reloads the host's nginx config at issue and at every renewal.)
 server {
     listen 80;
     listen [::]:80;

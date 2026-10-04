@@ -12,13 +12,17 @@
 #
 # What it changes against compose.yaml, and nothing else:
 #   * `caddy` and `rebuild` are parked behind the `not-in-beta` profile, so a plain
-#     `up` can never start them. nginx is the edge; tiles, database and Photon
+#     `up` can never start them. scripts/beta/beta-compose.sh refuses to name them under
+#     any subcommand; as a backstop, in case one is ever started anyway (compose enables a
+#     service's profile when the service is named explicitly), both are capped tiny here,
+#     never restart, and caddy publishes no port. nginx is the edge; tiles, database and Photon
 #     index are built at home and shipped (scripts/beta/ship-data.sh).
 #   * The api alone publishes a port, bound to 127.0.0.1 only; nginx proxies to it.
 #     Postgres, Photon and the routers stay on the compose network.
 #   * Hard memory caps (deploy.resources.limits.memory, with memswap_limit equal to
-#     it so a container cannot borrow swap even if the host grows some) and CPU caps.
-#   * gunicorn at 3 workers, PostgreSQL's shared_buffers sized to its cap, Photon's
+#     it so a container cannot borrow swap even if the host grows some), CPU caps, and
+#     cpu_shares/oom_score_adj so the host's other sites win contention (below).
+#   * gunicorn at 6 workers, PostgreSQL's shared_buffers sized to its cap, Photon's
 #     heap sized to its cap, and WEEKLY_REBUILD_PAUSED=1 so nothing queues rebuild jobs
 #     that no worker will ever take.
 #
@@ -27,60 +31,103 @@
 #   service            cap      cpus  measured idle        why this cap
 #   postgis            1024M    1.5   0.21 GB              shared_buffers 256M + ~40 backends' work_mem
 #                                                          + 64M maintenance (pg_restore) + page cache
-#   api                1200M    2.0   0.55 GB at 7 workers 3 workers is about 0.25 GB; the rest is for
-#                                                          route/tile response peaks, 4x headroom
-#   photon             1300M    1.0   1.04 GB at -Xmx1g    heap 896M + ~400M for metaspace, threads
-#                                                          and direct buffers; the 0.74 GB index is
-#                                                          mmapped page cache, reclaimable
+#   api                1450M    2.0   0.55 GB at 7 workers 6 workers is about 0.48 GB; the rest is for
+#                                                          two route plans and tile draws at once
+#   photon             1300M    1.0   1.04 GB at -Xmx1g    heap 896M + direct buffers capped at 192M
+#                                                          + ~190M metaspace, code cache, threads, GC
+#                                                          = ~1280M; the 0.74 GB index is mmapped page
+#                                                          cache, reclaimable
 #   valhalla x4         768M    2.0   0.04-0.67 GB each    working set is the mmapped tiles.tar
 #                                                          (0.4-0.5 GB) plus 2 workers; mapped file
 #                                                          pages are reclaimed, not OOM-killed
-#   worker              320M    0.5   0.07 GB              nightly pg_dump and sweeps only
+#   worker              256M    0.5   0.07 GB              nightly pg_dump (streamed) and sweeps only
 #   migrate (one-shot)  256M    0.5   exits before api starts, not counted as resident
 #
-#   resident total: 1024 + 1200 + 1300 + 4*768 + 320 = 6916 MiB = 6.75 GiB, against about
-#   8.6 GiB available, so a spike in every container at once still leaves 1.8 GiB.
-#   `valhalla-offroad` (below) will add 768 MiB when it ships: 7.5 GiB, which leaves
-#   only 1.1 GiB, so the other caps need a second look at that point (the beta
-#   checker, scripts/check_beta_compose.py, is the gate and will say so).
+#   resident total: 1024 + 1450 + 1300 + 4*768 + 256 = 7102 MiB = 6.94 GiB, against about
+#   8.6 GiB available, so a spike in every container at once still leaves 1.66 GiB.
+#   The startup peak adds the largest one-shot (migrate, 256M): 7358 MiB = 7.19 GiB.
+#   One-shot management commands go through `exec api ...` (inside the api's own cap) or
+#   `run --rm --no-deps migrate ...` (256M), never `run --rm api ...`, which would start a
+#   second container with the api's 1450M cap beside the running one.
+#   `valhalla-offroad` (below) will add 768 MiB when it ships: 7.69 GiB, over the 7.0 GiB
+#   ceiling, so the other caps need a second look at that point (the beta checker,
+#   scripts/check_beta_compose.py, is the gate and will say so).
 #
-# One consequence of 3 gunicorn workers is worth knowing: settings.routing_concurrency
-# is workers - 2 - GEOCODE_CONCURRENCY, floored at one, so the beta plans ONE route at a
-# time across the whole site (the stress-tile draw gets one slot too). Two friends
-# planning at the same instant means the second waits for the first, up to ~50 s.
-# Raise BETA_WEB_CONCURRENCY and the api cap together if that is not enough.
+# Concurrency (OWNER-DECISIONS 367.2, "Allow 2 at once"): settings.routing_concurrency is
+# workers - 2 - GEOCODE_CONCURRENCY (2), floored at one, and tile_concurrency is
+# workers - 1 - routing - geocode, floored at one. At 6 workers that is 2 route plans,
+# 2 place searches and 1 stress-tile draw at once, 5 of the 6 workers, which leaves one
+# always free for /healthz and sign-in (the invariant production keeps). A third person
+# planning at the same instant waits for a slot, up to ~50 s. The checker refuses a
+# worker count that leaves no worker free.
+#
+# Sharing the host (review S7). The CPU caps add up to 13 vCPUs on a 4-vCPU host
+# (api 2, postgis 1.5, photon 1, routers 4x2, worker 0.5), so the caps alone do not stop
+# RouteMaker taking every core during a burst. Every RouteMaker container therefore also has
+#   cpu_shares: 512     half of Docker's default 1024. It only matters under contention:
+#                       idle, a container can still use up to its cap; when the host is busy,
+#                       the kernel weights each RouteMaker container below the other sites'
+#                       (on cgroup v2 Docker maps 512 to cpu.weight 20, against 100 for a
+#                       container or service that sets nothing), so the other sites win.
+#                       The 13-vCPU cap sum is unchanged; it is a ceiling, not a share.
+#   oom_score_adj: 500  if the HOST runs out of memory (no swap) because something else
+#                       grew, the kernel's OOM killer prefers a RouteMaker process over
+#                       another site's. Our own caps still kill inside our cgroups first.
+
+# Every RouteMaker container yields to the host's other sites (header, "Sharing the host").
+x-beta-yield: &beta-yield
+  cpu_shares: 512
+  oom_score_adj: 500
 
 services:
   # --- not in the beta ---------------------------------------------------------
+  # Parked, and capped tiny in case one is ever started anyway: the base file gives the
+  # rebuild 8G and 4 CPUs, which on this host would OOM other people's sites.
   caddy:
+    <<: *beta-yield
     profiles: ["not-in-beta"]
+    restart: "no"
+    ports: !reset []
+    memswap_limit: 64M
+    deploy:
+      resources:
+        limits: { memory: 64M, cpus: "0.1" }
   rebuild:
+    <<: *beta-yield
     profiles: ["not-in-beta"]
+    restart: "no"
+    memswap_limit: 256M
+    deploy:
+      resources:
+        limits: { memory: 256M, cpus: "0.25" }
 
   # --- the app ----------------------------------------------------------------
   api:
+    <<: *beta-yield
     environment:
       # Written here, not read from `.env`, so a stray WEB_CONCURRENCY=7 left in
       # the file cannot undo the memory budget.
-      WEB_CONCURRENCY: ${BETA_WEB_CONCURRENCY:-3}
+      WEB_CONCURRENCY: ${BETA_WEB_CONCURRENCY:-6}
       WEEKLY_REBUILD_PAUSED: "1"
     ports:
       - "127.0.0.1:${BETA_API_PORT:-8087}:8000"
-    memswap_limit: 1200M
+    memswap_limit: 1450M
     deploy:
       resources:
-        limits: { memory: 1200M, cpus: "2" }
+        limits: { memory: 1450M, cpus: "2" }
 
   worker:
+    <<: *beta-yield
     environment:
       WEEKLY_REBUILD_PAUSED: "1"
       STRESS_PREDRAW_WORKERS: "1"
-    memswap_limit: 320M
+    memswap_limit: 256M
     deploy:
       resources:
-        limits: { memory: 320M, cpus: "0.5" }
+        limits: { memory: 256M, cpus: "0.5" }
 
   migrate:
+    <<: *beta-yield
     environment:
       WEEKLY_REBUILD_PAUSED: "1"
     memswap_limit: 256M
@@ -89,6 +136,7 @@ services:
         limits: { memory: 256M, cpus: "0.5" }
 
   postgis:
+    <<: *beta-yield
     # The image's entrypoint passes a command that starts with `postgres` straight
     # through. 256 MB of shared_buffers holds the hot part of `live` (606 MB, mostly
     # the segment table) and all of `public` (105 MB); the rest is the OS cache's.
@@ -116,9 +164,14 @@ services:
         limits: { memory: 1024M, cpus: "1.5" }
 
   photon:
-    # The base command, verbatim, with only the JVM heap changed from -Xms1g -Xmx1g
-    # to -Xms512m -Xmx896m. tests/test_beta_overlay.py fails if the two ever differ
-    # anywhere else, so a change to the base command cannot silently diverge from this.
+    <<: *beta-yield
+    # The base command, verbatim, with only the JVM flags changed: the heap from
+    # -Xms1g -Xmx1g to -Xms512m -Xmx896m, direct buffers capped at 192m (HotSpot's
+    # default is the max heap, so heap plus direct buffers could reach 1.75 GB and the
+    # cgroup would kill the JVM with no Java error), and ExitOnOutOfMemoryError so a
+    # Java OOM exits (and restarts) rather than limping on. tests/test_beta_overlay.py
+    # fails if the two ever differ anywhere else, so a change to the base command
+    # cannot silently diverge from this.
     command:
       - sh
       - -c
@@ -127,7 +180,7 @@ services:
           echo "photon: no index at /photon/data/photon_data; import one (docs/DEPLOYMENT.md, Photon)" >&2
           exec sleep infinity
         fi
-        exec java -Xms512m -Xmx896m -jar /photon/photon.jar serve \
+        exec java -Xms512m -Xmx896m -XX:MaxDirectMemorySize=192m -XX:+ExitOnOutOfMemoryError -jar /photon/photon.jar serve \
           -listen-ip 0.0.0.0 -data-dir /photon/data \
           -max-results 10 -max-reverse-results 1 -query-timeout 3
     memswap_limit: 1300M
@@ -139,21 +192,25 @@ services:
   # Two valhalla workers each, as in compose.yaml: a route and a place-name lookup
   # (which goes to the standard router) must not queue behind each other.
   valhalla-standard:
+    <<: *beta-yield
     memswap_limit: 768M
     deploy:
       resources:
         limits: { memory: 768M, cpus: "2" }
   valhalla-no-trail:
+    <<: *beta-yield
     memswap_limit: 768M
     deploy:
       resources:
         limits: { memory: 768M, cpus: "2" }
   valhalla-ebike:
+    <<: *beta-yield
     memswap_limit: 768M
     deploy:
       resources:
         limits: { memory: 768M, cpus: "2" }
   valhalla-weekend:
+    <<: *beta-yield
     memswap_limit: 768M
     deploy:
       resources:
@@ -167,6 +224,7 @@ services:
   #   scripts/beta/beta-compose.sh --profile offroad up -d valhalla-offroad
   # after re-checking the memory budget (see the header).
   valhalla-offroad:
+    <<: *beta-yield
     profiles: ["offroad"]
     restart: ${RESTART_POLICY:-unless-stopped}
     image: ghcr.io/valhalla/valhalla:3.5.1

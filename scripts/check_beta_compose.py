@@ -13,17 +13,31 @@ mentions, and the rendered form is also where compose has already expanded the
 
     scripts/check_beta_compose.py --render              # render with dummy env, then check
     scripts/check_beta_compose.py --render --offroad    # the same with the offroad profile on
+    scripts/check_beta_compose.py --env-file .env       # the SERVER's .env, through beta-compose.sh
     scripts/check_beta_compose.py rendered.yaml         # a file made by `docker compose config`
+
+`--env-file` is the server-side gate: it renders through scripts/beta/beta-compose.sh with
+that file, so a BETA_WEB_CONCURRENCY=12 or an odd BETA_API_PORT in the real .env is checked
+too. The rendered config holds every secret in .env, so in that mode it is parsed in memory
+and never printed, and neither is any value of the file; only the memory table (names and
+numbers) and the problems are printed.
 
 The rules, each of which exists because breaking it hurts a host that is not ours:
 
 * exactly the beta's services - caddy and rebuild must not be in the rendered set;
 * every service has a memory cap AND a CPU cap, and memswap_limit equals the
   memory cap, so a container can neither grow past its cap nor borrow swap;
+* every service yields to the host's other sites: cpu_shares below Docker's default
+  1024 and oom_score_adj at least 500 (compose.beta.yaml, "Sharing the host");
 * the only published port is the api's, on 127.0.0.1;
-* the resident total (everything but the one-shot migrate) fits the budget;
-* gunicorn is at most 3 workers, the weekly rebuild is paused, Photon's heap and
-  PostgreSQL's shared_buffers fit inside their caps;
+* the resident total (everything but the one-shot migrate) fits the budget, and so
+  does the startup peak: the resident total plus the largest one-shot that can run
+  beside it (migrate, which `up -d api` runs, and `run --rm --no-deps migrate ...`,
+  which docs/BETA-RUNBOOK.md uses for one-shot management commands; the others go
+  through `exec api`, inside the api's own cap);
+* gunicorn is at most 6 workers and keeps one worker free beside the routing,
+  geocoding and tile pools; the weekly rebuild is paused; Photon's heap plus its
+  capped direct buffers, and PostgreSQL's shared_buffers, fit inside their caps;
 * the Valhalla worker count fits each router's cap, using the same function the
   production check uses with the beta's own per-worker figure (below).
 """
@@ -61,7 +75,11 @@ OPTIONAL_SERVICES = {"valhalla-offroad"}
 FORBIDDEN_SERVICES = {"caddy", "rebuild", "renderer", "bot"}
 
 # Exits before the api starts (api depends on it completing), so it is not
-# resident beside the others; it is still capped.
+# resident beside the others; it is still capped. It is also the service the runbook's
+# one-shot `run --rm --no-deps migrate ./manage.py ...` commands use, which DO run beside
+# the resident set, so the startup peak counts the largest of these on top of it. A
+# `run --rm api ...` would add a second container at the api's cap; the runbook never
+# does that (tests/test_beta_overlay.py checks), and uses `exec api` instead.
 ONE_SHOT = {"migrate"}
 
 # The host: 15 GiB total, about 8.6 GiB available at the owner's measurement
@@ -71,7 +89,25 @@ ONE_SHOT = {"migrate"}
 HOST_AVAILABLE_GB = 8.6
 MAX_RESIDENT_GB = 7.0
 
-MAX_GUNICORN_WORKERS = 3
+# OWNER-DECISIONS 367.2: two route plans at once. src/config/settings.py derives the
+# pools from WEB_CONCURRENCY; these mirror its arithmetic (tests/test_beta_overlay.py
+# reads GEOCODE_CONCURRENCY out of settings.py so the two cannot drift).
+MAX_GUNICORN_WORKERS = 6
+GEOCODE_CONCURRENCY = 2
+
+
+def routing_concurrency(workers: int) -> int:
+    return max(1, workers - 2 - GEOCODE_CONCURRENCY)
+
+
+def tile_concurrency(workers: int) -> int:
+    return max(1, workers - 1 - routing_concurrency(workers) - GEOCODE_CONCURRENCY)
+
+
+# Below Docker's default of 1024, so the other sites win CPU contention; and an OOM
+# score that makes a host-wide OOM prefer a RouteMaker process.
+DEFAULT_CPU_SHARES = 1024
+MIN_OOM_SCORE_ADJ = 500
 
 # The production check charges 700 MB per Valhalla worker, a documented policy
 # figure that was never measured. For the beta, the measurement exists: the
@@ -82,9 +118,12 @@ MAX_GUNICORN_WORKERS = 3
 # 300 MB fit a 768 MB cap with the archive's working set beside them.
 BETA_VALHALLA_PER_WORKER_MEMORY_MB = 300
 
-# Photon: JVM heap plus the native overhead (metaspace, threads, direct buffers)
-# must fit the cap; 256 MB is the floor measured at ~100 threads.
-PHOTON_NATIVE_OVERHEAD_MB = 256
+# Photon: JVM heap, plus direct buffers (which must be capped with
+# -XX:MaxDirectMemorySize: HotSpot's default is the max heap), plus the rest of the
+# native footprint (metaspace, code cache, thread stacks, GC structures) must fit the
+# cap. 192 MB for the rest is an estimate for ~100 threads that the first smoke run
+# should confirm (docs/BETA-RUNBOOK.md, step 8).
+PHOTON_OTHER_NATIVE_MB = 192
 
 # PostgreSQL: shared_buffers is a fixed carve-out of the cap; the backends'
 # work_mem, maintenance_work_mem and the OS cache all share the rest.
@@ -157,6 +196,25 @@ def check_services(services: dict) -> list[str]:
     return problems
 
 
+def check_yield(services: dict) -> list[str]:
+    """cpu_shares below the default and a raised oom_score_adj on every service."""
+    problems: list[str] = []
+    for name, service in services.items():
+        shares = service.get("cpu_shares")
+        if shares is None or not 2 <= int(shares) < DEFAULT_CPU_SHARES:
+            problems.append(
+                f"{name}: cpu_shares {shares!r} is not below Docker's default "
+                f"{DEFAULT_CPU_SHARES} (the host's other sites must win CPU contention)"
+            )
+        oom = service.get("oom_score_adj")
+        if oom is None or int(oom) < MIN_OOM_SCORE_ADJ:
+            problems.append(
+                f"{name}: oom_score_adj {oom!r} is under {MIN_OOM_SCORE_ADJ} (a host-wide OOM "
+                "must prefer a RouteMaker process over another site's)"
+            )
+    return problems
+
+
 def check_limits(services: dict) -> list[str]:
     problems: list[str] = []
     for name, service in services.items():
@@ -207,6 +265,17 @@ def resident_bytes(services: dict) -> int:
     )
 
 
+def peak_bytes(services: dict) -> int:
+    """The resident total plus the largest one-shot: `up -d api` runs migrate before the
+    api starts, but a `run --rm --no-deps migrate ./manage.py ...` runs beside everything."""
+    one_shots = [
+        parse_bytes(limits(s)["memory"])
+        for n, s in services.items()
+        if n in ONE_SHOT and "memory" in limits(s)
+    ]
+    return resident_bytes(services) + max(one_shots, default=0)
+
+
 def check_budget(services: dict) -> list[str]:
     problems: list[str] = []
     resident_gb = resident_bytes(services) / 1024**3
@@ -216,15 +285,11 @@ def check_budget(services: dict) -> list[str]:
             f"{MAX_RESIDENT_GB:.1f} GiB ceiling (the host has about {HOST_AVAILABLE_GB} GiB "
             "available); lower another cap before adding a service"
         )
-    with_migrate = (
-        sum(parse_bytes(limits(s)["memory"]) for s in services.values() if "memory" in limits(s))
-        / 1024**3
-    )
-    if with_migrate > HOST_AVAILABLE_GB - 1.0:
+    peak_gb = peak_bytes(services) / 1024**3
+    if peak_gb > HOST_AVAILABLE_GB - 1.0:
         problems.append(
-            f"startup peak (resident plus migrate) {with_migrate:.2f} GiB leaves under 1 GiB of "
-            "the host's "
-            f"{HOST_AVAILABLE_GB} GiB available"
+            f"startup peak (resident plus the largest one-shot) {peak_gb:.2f} GiB leaves under "
+            f"1 GiB of the host's {HOST_AVAILABLE_GB} GiB available"
         )
     return problems
 
@@ -240,6 +305,13 @@ def check_runtime_settings(services: dict) -> list[str]:
         if workers > MAX_GUNICORN_WORKERS:
             problems.append(
                 f"api: WEB_CONCURRENCY {workers} exceeds the beta's {MAX_GUNICORN_WORKERS}"
+            )
+        pools = routing_concurrency(workers) + GEOCODE_CONCURRENCY + tile_concurrency(workers)
+        if workers < pools + 1:
+            problems.append(
+                f"api: WEB_CONCURRENCY {workers} leaves no worker free: routing "
+                f"{routing_concurrency(workers)} + geocoding {GEOCODE_CONCURRENCY} + tiles "
+                f"{tile_concurrency(workers)} = {pools}, so /healthz can go unanswered under load"
             )
     for name in ("api", "worker", "migrate"):
         if name in services and _env(services[name]).get("WEEKLY_REBUILD_PAUSED") != "1":
@@ -259,11 +331,24 @@ def check_runtime_settings(services: dict) -> list[str]:
         else:
             heap_mb = int(match.group(1)) * (1024 if match.group(2).lower() == "g" else 1)
             cap_mb = mib(parse_bytes(limits(photon)["memory"]))
-            if heap_mb + PHOTON_NATIVE_OVERHEAD_MB > cap_mb:
+            direct = re.search(r"-XX:MaxDirectMemorySize=([0-9]+)([mMgG])", text)
+            if not direct:
                 problems.append(
-                    f"photon: -Xmx{heap_mb}m plus {PHOTON_NATIVE_OVERHEAD_MB} MB native overhead "
-                    f"exceeds its {cap_mb:.0f} MB cap"
+                    "photon: no -XX:MaxDirectMemorySize, so direct buffers may grow to the "
+                    "size of the heap on top of it"
                 )
+            else:
+                direct_mb = int(direct.group(1)) * (1024 if direct.group(2).lower() == "g" else 1)
+                if heap_mb + direct_mb + PHOTON_OTHER_NATIVE_MB > cap_mb:
+                    problems.append(
+                        f"photon: -Xmx{heap_mb}m plus {direct_mb} MB direct buffers plus "
+                        f"{PHOTON_OTHER_NATIVE_MB} MB other native memory exceeds its "
+                        f"{cap_mb:.0f} MB cap"
+                    )
+        if "-XX:+ExitOnOutOfMemoryError" not in text:
+            problems.append(
+                "photon: no -XX:+ExitOnOutOfMemoryError (a Java OOM should exit and restart)"
+            )
 
     postgis = services.get("postgis")
     if postgis is not None and "memory" in limits(postgis):
@@ -335,6 +420,7 @@ def check(compose: dict, data_root: str | None = None) -> list[str]:
     return [
         *check_services(services),
         *check_limits(services),
+        *check_yield(services),
         *check_ports(services),
         *check_budget(services),
         *check_runtime_settings(services),
@@ -359,6 +445,11 @@ def table(compose: dict) -> str:
     rows.append(
         f"{'resident total':<20}{mib(total):>12.0f}   = {total / 1024**3:.2f} GiB "
         f"of about {HOST_AVAILABLE_GB} GiB available"
+    )
+    peak = peak_bytes(services)
+    rows.append(
+        f"{'startup peak':<20}{mib(peak):>12.0f}   = {peak / 1024**3:.2f} GiB "
+        "(resident plus the largest one-shot)"
     )
     return "\n".join(rows)
 
@@ -408,17 +499,105 @@ def render(offroad: bool = False) -> dict:
     return yaml.safe_load(done.stdout)
 
 
+def env_file_keys(path: Path) -> dict[str, str]:
+    """KEY -> value for each assignment line, the last one winning, as compose reads it.
+    The values are only ever looked at here, never printed."""
+    values: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if key.startswith("export "):
+            key = key[len("export ") :].strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'" + '"':
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+# Set in .env, each of these would change what the wrapper renders behind its back:
+# COMPOSE_PROFILES could switch on the not-in-beta profile, COMPOSE_FILE could add a file.
+FORBIDDEN_ENV_KEYS = ("COMPOSE_PROFILES", "COMPOSE_FILE", "COMPOSE_PATH_SEPARATOR")
+
+
+def check_env_file(values: dict[str, str]) -> list[str]:
+    problems = [
+        f".env: {key} is set; remove it (it changes which services or files compose uses)"
+        for key in FORBIDDEN_ENV_KEYS
+        if key in values
+    ]
+    if values.get("COMPOSE_PROJECT_NAME", "") != "routemaker-beta":
+        problems.append(".env: COMPOSE_PROJECT_NAME must be routemaker-beta")
+    if "WEB_CONCURRENCY" in values:
+        problems.append(
+            ".env: WEB_CONCURRENCY has no effect on the beta (compose.beta.yaml sets it from "
+            "BETA_WEB_CONCURRENCY); remove it so nobody is misled"
+        )
+    return problems
+
+
+def render_env_file(env_file: Path, offroad: bool = False) -> dict:
+    """`beta-compose.sh config` with the server's own .env. Its output holds every secret
+    in the file, so it is parsed here and never printed; on failure only the wrapper's own
+    messages (which carry no values) are passed on."""
+    command = ["sh", str(REPO / "scripts" / "beta" / "beta-compose.sh")]
+    if offroad:
+        command += ["--profile", "offroad"]
+    command += ["config"]
+    env = {
+        k: v for k, v in os.environ.items() if k in ("PATH", "HOME", "DOCKER_HOST", "DOCKER_CONFIG")
+    }
+    env["BETA_ENV_FILE"] = str(env_file.resolve())
+    done = subprocess.run(command, cwd=REPO, env=env, capture_output=True, text=True, check=False)
+    if done.returncode != 0:
+        own = [line for line in done.stderr.splitlines() if line.startswith("beta-compose:")]
+        detail = ("\n" + "\n".join(own)) if own else ""
+        raise SystemExit(
+            f"rendering with {env_file} failed (exit {done.returncode}); compose's message is "
+            "not shown because it can quote .env values: run "
+            f"`scripts/beta/beta-compose.sh config --quiet` to read it yourself{detail}"
+        )
+    return yaml.safe_load(done.stdout)
+
+
 def main(argv: list[str]) -> int:
-    args = [a for a in argv if not a.startswith("--")]
-    if "--render" in argv:
-        compose = render(offroad="--offroad" in argv)
-    elif args:
-        compose = yaml.safe_load(Path(args[0]).read_text())
+    offroad = "--offroad" in argv
+    env_file: Path | None = None
+    positional: list[str] = []
+    rest = list(argv)
+    while rest:
+        arg = rest.pop(0)
+        if arg == "--env-file":
+            if not rest:
+                print("--env-file needs a path", file=sys.stderr)
+                return 2
+            env_file = Path(rest.pop(0))
+        elif arg.startswith("--env-file="):
+            env_file = Path(arg.split("=", 1)[1])
+        elif not arg.startswith("--"):
+            positional.append(arg)
+    problems: list[str] = []
+    data_root: str | None = None
+    if env_file is not None:
+        if not env_file.is_file():
+            print(f"beta compose: cannot read {env_file}", file=sys.stderr)
+            return 2
+        values = env_file_keys(env_file)
+        problems += check_env_file(values)
+        data_root = values.get("DATA_ROOT") or None
+        compose = render_env_file(env_file, offroad=offroad)
+    elif "--render" in argv:
+        compose = render(offroad=offroad)
+        data_root = DUMMY_ENV["DATA_ROOT"]
+    elif positional:
+        compose = yaml.safe_load(Path(positional[0]).read_text())
     else:
         print(__doc__, file=sys.stderr)
         return 2
-    data_root = DUMMY_ENV["DATA_ROOT"] if "--render" in argv else None
-    problems = check(compose, data_root)
+    problems += check(compose, data_root)
     print(table(compose))
     for problem in problems:
         print(f"beta compose: {problem}", file=sys.stderr)

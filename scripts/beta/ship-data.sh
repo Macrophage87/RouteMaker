@@ -19,7 +19,8 @@
 #   photon/             the Photon index (photon_data/)
 #   frontend/           the built front end, made with VITE_BETA=1 so it carries the beta banner
 #   db/routemaker.dump  pg_dump --format=custom of the `live` and `public` schemas, minus the
-#                       data of sessions, rate-limit rows, membership cache and job queues
+#                       data of sessions, rate-limit rows, membership cache, job queues and
+#                       every table holding an identity (accounts, audit log, guild roster)
 #   db/row-counts.tsv   what receive-data.sh checks the restore against
 #   SHA256SUMS          one line per file; MANIFEST.txt the bundle's facts
 #
@@ -32,8 +33,11 @@
 # holds symlinks to the big live files, not copies, so staging costs almost no disk.
 #
 # Resumable: rsync keeps partial files (--partial-dir), so rerunning the same command after a
-# dropped connection picks up where it stopped. SHA256SUMS is sent last, so a bundle that did
-# not finish has no manifest and receive-data.sh refuses it.
+# dropped connection picks up where it stopped. The remote's old SHA256SUMS and MANIFEST.txt are
+# removed before anything is sent and the new ones are sent last, so a bundle that did not
+# finish has no manifest and receive-data.sh refuses it. rsync does not delete on the remote:
+# files left there by an earlier bundle stay, and receive-data.sh installs only what the new
+# SHA256SUMS lists (and only the tile builds MANIFEST.txt names).
 #
 # Options:
 #   --live-dir DIR       the live stack's checkout: compose.yaml and .env [this repository]
@@ -60,10 +64,31 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 # backup exclusions (config.procrastinate.BACKUP_EXCLUDED_TABLES, less stress_tile_cache, which
 # is worth shipping: without it every first map view draws its tiles live), plus the job queue,
 # Django's own sessions, the admin log and run history, which belong to the home install.
+#
+# And no identities (OWNER-DECISIONS 367.3, "strip users"): the beta starts with no accounts and
+# the owner claims instance admin there afresh. Every table that holds a person, or a row that
+# points at one, is excluded as a whole, so the restore's foreign keys (added in post-data) have
+# nothing to point at that is missing:
+#   app_user                          the accounts (the owner's Discord id)
+#   audit_log                         actor_id -> app_user, plus the plain actor_user_id
+#   bootstrap_claim                   user_id -> app_user, plus a plaintext discord_user_id
+#   pending_instance_admin_removal    user_id and requested_by_id -> app_user
+#   ban_tombstone                     HMACs of Discord ids under the HOME KEY_ENCRYPTION_KEY:
+#                                     identity-derived, and useless under the beta's own key
+#   configured_guild, role_mapping    the home guild roster, role names and admin_contact_email.
+#                                     Beyond 367.3's wording: excluded so the beta holds no
+#                                     identity at all; the owner sets the guild up afresh there.
+#                                     (Coordinator's call; the owner can reverse it by deleting
+#                                     these two names, since role_mapping -> configured_guild is
+#                                     the only foreign key involved.)
+# `override` has no user column and is shipped whole. tests/test_beta_overlay.py asserts this
+# list; ship-data.sh refuses a dump that carries data for any name in it.
 EXCLUDED_TABLE_DATA=(
 	app_session django_session rate_limit_window cached_membership
 	procrastinate_events procrastinate_jobs procrastinate_periodic_defers procrastinate_workers
 	django_admin_log scheduled_run
+	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
+	configured_guild role_mapping
 )
 
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -315,8 +340,16 @@ if [ -t 2 ]; then common+=(--info=progress2,stats1); else common+=(--info=stats1
 [ -z "$bwlimit" ] || common+=("--bwlimit=$bwlimit")
 [ "$dry_run" = 0 ] || common+=(--dry-run)
 
-# shellcheck disable=SC2086
-$ssh_cmd "$remote_host" "mkdir -p '$remote_dir'"
+# The previous bundle's SHA256SUMS and MANIFEST.txt go first: after an interrupted update
+# they would sit beside half-new data, and "no manifest means unfinished" is the signal
+# receive-data.sh relies on. (Not on --dry-run, which changes nothing remote but the mkdir.)
+if [ "$dry_run" = 0 ]; then
+	# shellcheck disable=SC2086
+	$ssh_cmd "$remote_host" "mkdir -p '$remote_dir' && rm -f '$remote_dir/SHA256SUMS' '$remote_dir/MANIFEST.txt'"
+else
+	# shellcheck disable=SC2086
+	$ssh_cmd "$remote_host" "mkdir -p '$remote_dir'"
+fi
 
 retries=${BETA_RSYNC_RETRIES:-5}
 run_rsync() {
