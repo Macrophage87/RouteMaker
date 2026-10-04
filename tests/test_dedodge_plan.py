@@ -138,6 +138,7 @@ class TestThePlan:
             "found": 0,
             "removed": 0,
             "kept": 0,
+            "skipped": 0,
             "checked": 0,
             "saved_m": 0.0,
             "limited": None,
@@ -213,9 +214,41 @@ class TestThePlan:
         )
         assert body["calm_search"]["extra_distance_m"] == pytest.approx(direct - dodge, abs=3.0)
 
+    def test_the_searchs_figures_are_the_route_as_answered(self, world) -> None:
+        """Review r0 nit: `exposure_after_m` (and the LTS figures after) follow the
+        dodge's removal: the main road's 600 m of LTS 3, not the side streets' 1,200 m."""
+        unit, router = world(side="3", main="3")
+        body = routing.plan(
+            [list(unit.a), list(unit.e)],
+            "trailmaxxing",
+            dials=routing.Dials(stress=100, when="weekday_offpeak"),
+        )
+        search = body["calm_search"]
+        assert body["dodges"]["removed"] == 1
+        assert body["stress_m"]["3"] == pytest.approx(unit.reach, abs=2.0)
+        assert search["lts3_m_after"] == pytest.approx(unit.reach, abs=2.0)
+        # Trailmaxxing weighs LTS 3 at 1.
+        assert search["exposure_after_m"] == pytest.approx(unit.reach, abs=2.0)
+
+    def test_on_trailmaxxing_a_dodge_that_avoids_more_than_the_tie_step_stays(self, world) -> None:
+        """Review r0 item 1: 300 m of LTS 3 avoided is kept at the top of the slider,
+        and taken out below it (under the quarter mile)."""
+        unit, router = world(reach=300.0, side="1", main="3")
+        top = routing.plan(
+            [list(unit.a), list(unit.e)],
+            "trailmaxxing",
+            dials=routing.Dials(stress=100, when="weekday_offpeak"),
+        )
+        assert top["dodges"]["kept"] == 1 and top["dodges"]["items"][0]["reason"] == "stress"
+        assert top["stress_m"]["3"] == 0.0
+        below = plan(unit)
+        assert below["dodges"]["removed"] == 1
+
     def test_it_is_the_planners_own_module_wired_in(self) -> None:
-        """`plan` calls `core.dedodge.apply`, on the answer's route and on each
-        candidate's, and never on a loop."""
+        """`plan` calls `core.dedodge.apply` once, on the answer's route, never on a loop,
+        and never on a candidate (review r0 item 3: one bounded pass a plan); then
+        `dedodge.settle`, which picks the candidates again against the answer as it now
+        is (review r0 item 5)."""
         import ast
         import inspect
 
@@ -228,12 +261,32 @@ class TestThePlan:
             and node.func.attr == "apply"
             and getattr(node.func.value, "id", "") == "dedodge"
         ]
-        assert len(calls) == 2
+        assert len(calls) == 1
+        settles = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "settle"
+            and getattr(node.func.value, "id", "") == "dedodge"
+        ]
+        assert len(settles) == 1
+        # The candidates' loop reads each as the search found it.
+        loops = [
+            node
+            for node in ast.walk(tree)
+            if isinstance(node, ast.For) and "candidates" in ast.dump(node.iter)
+        ]
+        assert loops and not any(
+            isinstance(n, ast.Attribute) and getattr(n.value, "id", "") == "dedodge"
+            for loop in loops
+            for n in ast.walk(loop)
+        )
         guarded = []
         for node in ast.walk(tree):
             if isinstance(node, ast.If) and "loop" in ast.dump(node.test):
                 guarded += [
                     c for c in calls if any(c is d for d in ast.walk(ast.Module(node.body, [])))
                 ]
-        assert len(guarded) == 2, "each is under `if not loop`"
+        assert len(guarded) == 1, "it is under `if not loop`"
         assert dedodge.apply  # the name the plan calls

@@ -3265,8 +3265,9 @@ At the top of the slider the answer carries up to three more routes (`candidates
 body with its `rank`; the answer is rank 1 and unchanged). Nothing scores scenery. A candidate is picked
 (`refine.pick_candidates`) if it: is within the ceiling, and no further past the rider's target than
 the answer (`refine.over_answer`, 271: past the target only where it buys stress, which a near-tie
-does not); passes the hold; is a near-tie with the answer on stress (top figure no more than 45 m,
-level 2 no more than 300 m worse); and is meaningfully different from every route already chosen,
+does not); passes the hold; is a near-tie with the answer on stress (top figure no more than 150 m
+[490 ft], level 2 no more than 800 m [0.5 mi] worse; 45 m and 300 m until item 287(4), "Loosen a bit
+(Recommended)"); and is meaningfully different from every route already chosen,
 which is **under 70% shared road by matched way length (`ALT_OVERLAP`; 60% until item 269, "Loosen a
 little (Recommended)"), or at least 5 mi (8 km) of different road** (the second test is the
 "different corridor" the owner asked for, since 70% of a 58 mi route is never different). For a plan searched in one piece the pool is the
@@ -3276,7 +3277,8 @@ along them, none within 500 m of an end or a stop; at most 3 asks and 9 s; a rou
 ends the asking, since avoiding more only makes it busier). For a long plan it is the answer with one
 leg's route swapped for another the search read. They are read in full (junctions across the joints)
 inside the budget, with at least 6 s left for each (`ALTERNATE_MIN_S`); fewer are returned if time is
-short. On the measured trips almost every plan has one obvious corridor and returns one route (see the
+short. They are answered as the search found them: the dodge pass (below, "No dodging through side
+streets") is the answer's alone, and where it changed the answer they are picked again against it. On the measured trips almost every plan has one obvious corridor and returns one route (see the
 tables): the route that avoids the first is usually far busier, as it should be for a trail corridor.
 
 ### Make it a loop (item 266)
@@ -3425,7 +3427,8 @@ every ride type.
 ### The rule as built
 
 After the search has chosen the route, and before it is answered (`routing.plan`, on the answer's
-route and on each candidate; not on a loop, whose way back is kept as it was made, item 266):
+route only; not on a loop, whose way back is kept as it was made, item 266; not on the routes to choose
+from, below):
 
 1. **Detect** (`find_dodges`). The route's traced edges are grouped into roads (consecutive edges that
    share a street name; an unnamed edge is a road of its own). A dodge is a run of streets only
@@ -3436,40 +3439,89 @@ route and on each candidate; not on a loop, whose way back is kept as it was mad
    `PARALLEL_*`): a road that changes name at a junction is one road. The same road wins over a road on its
    line, which is what makes the Konterra Drive case one dodge (Konterra Drive, Virginia Manor Road,
    Konterra Drive) and not a turn onto a road that happens to run on beside it.
-2. **Compare.** The plan's own request (same graph, costing, ride time, elevation) for the route between
+2. **Skip what is no weave** (`skip_reason`, review r0 item 4). A dodge under 50 m [160 ft]
+   (`MIN_DODGE_M`), one of unnamed edges alone under 60 m [200 ft] (`MIN_UNNAMED_DODGE_M`), or one that
+   turns fewer than two times from the road's last edge before it to its first after it (`BASE_TURNS`: a
+   straight run through an unnamed edge, or a way inside one road) is listed as `skipped` and not
+   checked, so it spends neither the router nor the cap. On the measured trips these were stubs such as
+   Konterra Drive via an unnamed 27 m edge on Union Station to Penn, whose "main road" without them was a
+   detour 250 to 1,600 m longer.
+3. **Compare.** The plan's own request (same graph, costing, ride time, elevation) for the route between
    the dodge's two ends, each facing the way the route goes, with the middle of each of the dodge's edges
    excluded (at most 40; none within 6 m [20 ft] of a node, which would take out the cross street). Where
-   the router finds no path facing a heading it is asked again without (5 of 28 dodges on the twelve trips
-   at Default). The stretch is spliced into the leg (shape, length, time, cost and elevation) and the leg is
-   read whole with its junctions (`refine.analyse`), as the route as it was.
-3. **Judge** (`judge`). The stress the dodge avoids is what the main road carries more of at the top figure
+   the router finds no path facing a heading it is asked again without. The stretch is spliced into the
+   leg (shape, length, time, cost and elevation; where the router gives the stretch no elevation the leg
+   keeps its own, the stretch drawn in a straight line between the heights where the dodge left and came
+   back) and the leg is read whole with its junctions (`refine.analyse`), as the route as it was. A reading
+   the pass's clock ran out in is neither judged nor kept (`_cut_short`): `junctions.nodes_at` leaves out a
+   `/locate` batch the clock cut off, so such a reading can be missing junctions, and `refine.analyse`
+   would have handed it to the answer. (Found in this round: on Bowie to Annapolis at Default a removal
+   judged on such a reading answered 1 red and 12 orange junctions fewer, along the whole route.)
+4. **Judge** (`judge`). The stress the dodge avoids is what the main road carries more of at the top figure
    (LTS 4 and Avoid metres plus the cost of red junctions) plus the second (LTS 3 plus the cost of orange
-   junctions): `Analysis.top_m` and `second_m`, the two figures of items 258 to 260. The dodge is kept if
+   junctions): `Analysis.top_m` and `second_m`, the two figures of items 258 to 260.
+   - **Below the top of the slider** the dodge is kept if
 
-   avoided >= 0.25 mi [402 m] + 260 ft [80 m] x (the turns it adds - 2)
+     avoided >= 0.25 mi [402 m] + 260 ft [80 m] x (the turns it adds - 2)
 
-   (never less than 0.25 mi; `MIN_AVOIDED_M`, `TURN_CHARGE_M`, `BASE_TURNS`). Two turns are what going off a
-   road and back on cost anyway; each past them is a turn the rider would not make on the main road (item 254's
-   turn load; 80 m is about 18 s at 10 mph [16 km/h], in the 15 to 20 s that item proposes per turn). A turn
-   is a change of street and of heading by 40 degrees or more. Otherwise the main road replaces it.
-4. **Guards**, which override the rule: the dodge is kept where taking it out would add more than a metre
-   of LTS 4, Avoid or red-junction cost (so the order of items 258 to 262 and the hold of item 250 are never
-   broken: any LTS 4, Avoid or red junction a dodge avoids keeps it, however little), where the main road
-   is longer than the route was (the target and ceiling of 267 to 271 only get easier), where it is worse on the
+     (never less than 0.25 mi; `MIN_AVOIDED_M`, `TURN_CHARGE_M`, `BASE_TURNS`). Two turns are what going
+     off a road and back on cost anyway; each past them is a turn the rider would not make on the main road
+     (item 254's turn load; 80 m is about 18 s at 10 mph [16 km/h], in the 15 to 20 s that item proposes
+     per turn). A turn is a change of street and of heading by 40 degrees or more.
+   - **At the top of the slider** (Trailmaxxing, and Cargo with passengers: any plan whose stress dial is
+     at the top, `Context.maxcalm`) the dodge is kept if it avoids more than the second level's tie step,
+     `refine.MAXCALM_STEPS[1]` (50 m [160 ft]), and no turns are charged (`TOP_TIE_RULE`, `TOP_TIE_M`;
+     review r0 item 1). There distance ranks below LTS 3 (258 to 262) and the search itself takes 5 m of
+     extra distance for each metre of LTS 3 it saves (268), so the quarter-mile rule gave back up to 0.34 mi
+     of LTS 3 a dodge to save 130 to 650 m. **This splits item 272's "Applies to all presets" and is
+     pending the owner's confirmation**: `TOP_TIE_RULE = False` puts every plan back on the 0.25 mi rule.
+
+   Otherwise the main road replaces the dodge.
+5. **Guards**, which override the rule: the dodge is kept where taking it out would put the top figure more
+   than a metre above the leg as the pass found it or as it now is, whichever is lower (so the slack is the
+   leg's, not each dodge's, and the order of items 258 to 262 and the hold of item 250 are never broken:
+   any LTS 4, Avoid or red junction a dodge avoids keeps it, however little), where the main road is longer
+   than the route was (the target and ceiling of 267 to 271 only get easier), where it is worse on the
    Hills slider's blended distance (`refine.level3`), and where the junctions were read for one route and
-   not the other. The Mass Ride and Group Ride keep their graph (the no-trail variant, which has no contraflow:
-   the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
-5. **Bounds**, all hard: 8 re-routes a plan (`MAX_CHECKS`), 40 exclusions to a request, 5 s (`BUDGET_S`)
-   ending 6 s before the plan's deadline (`refine.REFINE_TRACE_RESERVE_S`), 8 s to a call, a pass that is
-   given less than 3 s does not start, and a router that fails leaves the route as it was. The pass never
-   raises. The last dodge of a leg is looked at first, and each pass reads the leg as it now is, so a dodge
-   is judged against the route after the ones before it were taken out.
+   not the other. The Mass Ride and Group Ride keep their graph (the no-trail variant, which has no
+   contraflow: the request is the plan's own, so contraflow is as off as it was) and their legs and stops.
 
-The answer's `dodges` (`DodgesOut`) lists each dodge found: the road, the streets it went through, where,
-its length, what was done (`removed`, `kept`, `unchecked`), why, the metres it avoided against what it
-had to, the turns the main road saves and its extra distance. `calm_search.extra_distance_m` is brought
-down by the metres taken off, and `limited: target_distance` is cleared where taking a dodge out made the
-route fit the target.
+   The "longer" guard stays strict (review r0's fuller report asked whether a main road a little longer
+   might replace a dodge where the stress is the same and it saves 3 or more turns, since distance is free
+   within the target, 287(2)). Not taken: every "longer" keep measured is 250 to 6,400 m longer, so the
+   replacement is never the main road a few metres on and the case does not arise; and turns are not in
+   the stress order until item 254 is built, so trading distance for turns would be a rule of the pass's
+   own, outside 258 to 262.
+6. **Bounds**, all hard and per plan, since the pass runs once a plan: 8 checks (`MAX_CHECKS`), 40
+   exclusions to a request, 5 s (`BUDGET_S`) ending 6 s before the plan's deadline
+   (`refine.REFINE_TRACE_RESERVE_S`), 8 s to a call, a pass that is given less than 3 s does not start, and a
+   router that fails leaves the route as it was. The pass never raises. The last dodge of a leg is looked at
+   first, and each pass reads the leg as it now is, so a dodge is judged against the route after the ones
+   after it were taken out.
+
+**After the pass** (`settle`, review r0 items 3 and 5). Where a dodge was taken out, `calm_search` gives the
+route as answered (`extra_distance_m` less the metres taken off; `exposure_after_m`, `lts3_m_after`,
+`lts4_m_after`, `top_m_after`, `lts4_after_m` read again), and the routes to choose from are picked again
+(`refine.pick_candidates`, with the hold's reference the search used, `Context.candidate_reference`)
+against the answer as it now is: none goes further past the target than the answer, each is still a
+near-tie with it on stress, and each is still meaningfully different from it and from the others (where
+removing a dodge made two routes converge, the near-duplicate is dropped). The candidates themselves are
+answered as the search found them (their `dodges` is null). Of the two fixes the review offered, one shared
+budget across the answer and its candidates or no pass on candidates, this is the second: it keeps the
+pass at one bounded run a plan (the review measured up to 32 checks and about 20 s of dodge work a plan when
+each candidate had its own), the candidates are never changed after they were picked (so nothing about
+them needs checking again but their place beside the changed answer), and they are near-ties offered for
+the rider to choose by the map, where a side-street weave is on view; at the top of the slider, the only
+place candidates are offered, the pass now takes out only dodges that avoid 50 m or less anyway. Reading
+the answer again is no extra router work: `refine.analyse` remembers it and the answer uses that reading.
+
+The answer's `dodges` (`DodgesOut`) lists every dodge found, once, in the route's order: the road, the
+streets it went through, where, its length, what was done (`removed`, `kept`, `skipped`, `unchecked`),
+why, the metres it avoided against what it had to, the turns the main road saves and its extra distance;
+`found` is the sum of removed, kept, skipped and unchecked (`skipped` is counted too), including dodges a
+removal uncovered on a later pass over the leg. `limited: target_distance` is cleared where taking a dodge
+out made the route fit the target. The front end's type is `Dodges` in `frontend/src/lib/api.ts`
+(optional; nothing displays it).
 
 ### Reproduction (item 273)
 
@@ -3483,42 +3535,89 @@ from -76.88905, 39.06785 to -76.89068, 39.08179:
 
 Both streets are LTS 3 (1.82 mi [2.93 km] of LTS 3 in all), so the dodge avoids nothing and adds 3 turns
 and 0.09 mi [147 m]. With the pass: 1.75 mi [2.82 km], LTS 3 1.74 mi [2.80 km], and the route is the Fast
-plan's. The recorded routers' answers (route, traces and the stretch between the dodge's ends) are
+plan's, on every one of the three, Trailmaxxing included (it avoids 0 m, within the tie step). The
+recorded routers' answers (route, traces and the stretch between the dodge's ends) are
 `tests/data/dedodge_konterra.json`. The saved Union Station to Penn plan's 0.14 mi on Konterra Drive is a
 turn from Virginia Manor Road onto Konterra Drive and on to Contee Road, not a dodge.
 
 ### Measured
 
 Same harness as the long-calm rounds (a scratch segment table filled from the live stress tiles; weekday
-off-peak), the branch's planner with the pass off and on. LTS 3 and LTS 4 in miles [km], junctions red plus
+off-peak, the live routers read-only), three runs back to back on the same routers: the pass off, the
+pass as first built (r0, ccd75a3) and as revised (r1). LTS 3 and LTS 4 in miles, junctions red plus
 orange.
 
-| Trips | Miles off, on | LTS 3 off, on | LTS 4 off, on | Junctions off, on | Dodges found, removed, kept |
+| Trips | Miles off, r0, r1 | LTS 3 off, r0, r1 | LTS 4 (all) | Junctions off, r0, r1 | r1 dodges: found, skipped, checked, removed, kept, unchecked |
 |---|---|---|---|---|---|
-| Twelve standard trips, Trailmaxxing | 167.7, 166.7 | 16.2, 17.1 | 4.21, 4.21 | 84, 80 | 26, 6, 19 |
-| Twelve standard trips, Default | 163.3, 162.6 | 16.8, 17.7 | 4.32, 4.32 | 91, 91 | 28, 4, 22 |
-| Union Station to Penn, default, 60 mi target, and the FIT ride at 60 mi | 174.7, 174.4 | 21.0, 21.7 | 0.78, 0.78 | 92, 86 | 27, 3, 21 |
+| Twelve standard trips, Trailmaxxing | 167.7, 166.9, 167.4 | 16.20, 16.99, 16.24 | 4.21 | 11+73, 11+71, 11+69 | 26, 8, 18, 2, 16, 0 |
+| Twelve standard trips, Default | 163.3, 162.6, 162.1 | 16.80, 17.67, 18.04 | 4.32 | 12+79, 12+79, 12+77 | 28, 9, 19, 6, 13, 0 |
+| Union Station to Penn, Trailmaxxing, no target | 58.70, 58.61, 58.61 | 6.94, 7.17, 7.17 | 0.26 | 1+30, 1+28, 1+28 | 11, 2, 8, 1, 7, 1 |
+| Union Station to Penn, Trailmaxxing, 60 mi target | 58.70, 58.61, 58.61 | 6.94, 7.17, 7.17 | 0.26 | 1+30, 1+28, 1+28 | 11, 2, 8, 1, 7, 1 |
+| The FIT ride, 60 mi target | 57.28, 57.19, 57.19 | 7.14, 7.37, 7.37 | 0.26 | 2+28, 2+26, 2+26 | 11, 2, 8, 1, 7, 1 |
+| Union Station to Penn, Default | 56.05, 56.05, 56.03 | 7.27, 7.27, 7.44 | 0.26 | 1+30, 1+30, 1+28 | 19, 4, 3, 1, 1, 13 (`limited: time`) |
 
-"Kept" includes the dodges the guards keep (the main road is longer: 11 of 19 for Trailmaxxing; adds LTS 4: 4)
-and 4 whose router has no path without the dodge's streets. One dodge in each of Bowie to Annapolis and the Union Station to Penn plans was not looked at
-(`MAX_CHECKS`: `limited: checks`). Per trip, Trailmaxxing: Laurel to College Park 15.05 mi to 14.75
-(3 dodges: the Konterra Drive one, 0.27 mi [442 m]; and two on Van Dusen Rd), Bowie to Annapolis 43.70 mi to 43.04
-(3 dodges: Governor Ritchie Hwy, Dicus Mill Rd, Lottsford Vista Rd); the other ten are unchanged. Union Station
-to Penn: 58.70 mi [94.5 km] to 58.61 [94.3] at the default and at a 60 mi target (one Van Dusen Road
-dodge, 0.32 mi [512 m], removed: 1 of 9 found, 8 looked at; 5 kept because the main road is longer, 1 for its stress, 1 with no path without its streets);
-the FIT ride at 60 mi: 57.28 mi to 57.19. LTS 4 and Avoid are unchanged on every trip and the LTS 4 hold holds.
-LTS 3 goes up by 0.2 to 0.9 mi on the trips where dodges came out: each of those dodges avoided 0.13 to 0.23 mi
-of it, under the quarter mile, as the rule says, and on Union Station to Penn two orange junctions went with the
-dodge (the figure the rule weighs is the metres of LTS 3 and the cost of orange junctions together). Time: the
-pass is a few seconds on a trip with dodges to look at (up to 8 s more on Laurel to College Park, under
-1 s on most); Union Station to Penn took 24 to 27 s with it and 31 s without in this
-harness, the difference being the router's cache.
+- **Trailmaxxing** (r1): 2 removed, both avoiding 0 m: Konterra Drive via Virginia Manor Road (Laurel to
+  College Park, 15.05 to 14.93 mi, LTS 3 2.78 to 2.69) and Lottsford Vista Road via Caribon Street
+  (Bowie to Annapolis, 43.70 to 43.53 mi, LTS 3 9.00 to 9.13). Kept at the top that r0 removed: Van Dusen
+  Road twice (they avoid 289 and 366 m), Governor Ritchie Highway (214 m) and Dicus Mill Road (541 m), and
+  Lottsford Vista Road via Parrish Lane (390 m). LTS 3 over the twelve: 16.20 off, 16.99 r0, 16.24 r1.
+- **Default** (r1, the 0.25 mi rule): 6 removed, avoiding 0 to 541 m (0 to 0.34 mi): Van Dusen Road twice
+  (289, 366 m), Lottsford Vista Road twice (390, 0 m), Governor Ritchie Highway (214 m) and Dicus Mill Road
+  (541 m: over the quarter mile, removed only because its 4 turns raised the bar to 562 m, the turn
+  charge deciding it). LTS 3 over the twelve rises 1.24 mi (16.80 to 18.04) for 1.2 mi less riding: worth
+  the owner's eye, since the default is meant to be stress-averse. More are removed than in r0 because the
+  skip frees checks for real dodges (Bowie to Annapolis: 6 of 6 checked, against 4 of 5 with 2 stubs).
+- **Record correction (review r0 item 2).** r0's note said the removed dodges each avoided "0.13 to 0.23
+  mi ... under the quarter mile, as the rule says". They avoided 0 to 0.34 mi (0 to 541 m): Konterra Drive
+  and Lottsford Vista Road 0 m, Dicus Mill Road 541 m, removed by the turn charge (4 turns: 562 m needed).
+- **Checks within the cap** (review r0 item 4): skipped stubs on the twelve trips are 8 at Trailmaxxing
+  and 9 at Default (Leland Street via Meadow Lane 18 m, Montrose Avenue 21 m, Elm Avenue 20 m, and straight
+  runs of 150 to 1,150 m: Maple Avenue via Clagett Drive and the like). The cap or the clock left 1 real
+  dodge unchecked on the twelve trips at r0, none at r1; Union Station to Penn checks 8 of 9 real dodges at
+  r1 (Tamar Drive is the one left; r0 spent 1 of its 8 checks on a stub). Union Station to Penn at Default,
+  a long plan with little of its time left after the search, checks 3 (the third cut short by the clock)
+  and leaves 13 of its 15 real dodges unchecked (`limited: time`). Some "longer" keeps are still named one-block jogs (Old Scaggsville
+  Road via Clarke Springs Ridge, 65 m) that turn twice and so are checked.
+- **Routes to choose from** (item 287(4), below): with the bands at 150 m and 800 m, 2 of the twelve
+  Trailmaxxing trips offer a second route (Bethesda to the Capitol, 13.21 mi against 14.03, LTS 3 0.47 mi
+  against 0.29, 6.12 mi of path, 0 red and 2 orange, 180 m of climb; Friendship Heights to Rosslyn, 8.82
+  mi against 7.70, LTS 3 0.43 against 0.42, 3.42 mi of path, 1 red and 3 orange, 106 m of climb); 1 did
+  at 45 m and 300 m (Bethesda to the Capitol).
+- LTS 4 and Avoid are unchanged on every trip and the LTS 4 hold holds.
+
+**Latency** (review r0 item 3; Trailmaxxing, the harness, three rounds with the pass off, r0 and r1 in
+turn on the same routers, the median): Laurel to College Park 3.63 s off, 4.57 s r0, 4.50 s r1 (+0.9 s);
+Bowie to Annapolis 5.96 s, 10.35 s and 9.72 s (+3.8 s: 6 checks of a 43 mi leg, inside the 5 s budget,
+then the answer's reading of the changed route). The review's 3.94 to 11.61 s on Laurel to College Park
+(cold routers, a candidate's pass of its own as well) is not reproduced warm; with no pass on the
+candidates the dodge work is the answer's 5 s at most.
+
+### Load
+
+One pass a plan, on the answer alone. Each check is 1 or 2 `/route` calls (the second without headings),
+one `trace_attributes` of the **whole spliced leg** (a plan of one leg is the whole route: 58.6 mi on Union
+Station to Penn, 43.5 mi on Bowie to Annapolis), and the junction reading of that leg: `/locate` in batches
+of 50 nodes (`junctions.LOCATE_BATCH`), twice (the nodes, then the approaches of those without a signal).
+Measured over the pass off: Union Station to Penn, 8 checks, 11 more `/route`, 8 more `trace_attributes`
+and 35 more `/locate`; Bowie to Annapolis at Trailmaxxing, 6 checks, 15, 8 and 67; a short trip with one
+check, 1 to 2, 1 and 2 to 4. The worst case a plan is 8 checks of 2 `/route`, 1 `trace_attributes` and
+2 x (the leg's junction nodes / 50) `/locate` each (on a 58 mi leg, about 10 a check), inside 5 s, plus
+the answer's own reading of the changed route afterwards, which the plan does anyway, within its
+deadline.
 
 ### Tests and mutants
 
-`tests/test_dedodge.py` (the rule, the turn weighting, the corridor match, the edges, the splice, the pass and
-its bounds, and the Konterra Drive regression on the recorded routers), `tests/test_dedodge_plan.py` (the plan's
-wiring through the real planner on a synthetic graph and the real segment table: every ride type, a loop, the
-target's fields, the answer's `dodges`), and `tests/test_route_api.py` (the contract key). `scripts/mutants_dedodge.py`
-has 131 mutants of the threshold, the turn weighting, the corridor match, what a dodge is made of, the guards, the
-splice, the bounds and the wiring, all killed.
+`tests/test_dedodge.py` (the rule at and below the top of the slider, the turn weighting, the corridor
+match, the skip, the counting, the edges, the splice and its elevation, the pass and its bounds with each
+bound pinned by value, a reading cut short, `settle`, and the Konterra Drive regression on the recorded
+routers), `tests/test_dedodge_plan.py` (the plan's wiring through the real planner on a synthetic graph
+and the real segment table: every ride type, Trailmaxxing's tie step, a loop, the target's fields, the
+search's figures after a removal, the answer's `dodges`, one pass a plan and none on a candidate),
+`tests/test_longcalm.py` (the near-tie bands at their boundaries, the reference kept for `settle`) and
+`tests/test_route_api.py` (the contract key). `scripts/mutants_dedodge.py` has 212 mutants: the
+first round's 131 (three of them, on the candidates' pass that is gone, turned round or replaced, and the
+stale-elevation one dropped with its branch), review r0's 32 on the r1 text (its "candidates not dedodged"
+turned round, since r1 does not pass them), and r1's own (the top of the slider's rule, the skip, the
+counting, the leg as found, the reading cut short, `settle`, the elevation kept, the near-tie bands). All
+212 are killed (one, the clock not read between checks, survived the first run and was killed by a test
+added for it). `scripts/mutants_longcalm.py`: 90 of 90 killed.

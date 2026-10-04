@@ -1396,10 +1396,31 @@ class TestPickingCandidates:
         worse3 = road("w3", [21, 22, 23, 24, 25, 26, 27, 28], "1" * 5 + "333")  # 3 km of LTS 3
         near3 = road(
             "n3", [31, 32, 33, 34, 35, 36, 37, 38], "1" * 7 + "3"
-        )  # 1 km: within 300 m? no
+        )  # 1 km: within 800 m? no
         got = refine.pick_candidates([main, worse4, worse3, near3], self.ctx, [0.0])
         assert names(got) == ["main"]
-        assert refine.ALT_TOP_BAND_M == 45.0 and refine.ALT_SECOND_BAND_M == 300.0
+        assert refine.ALT_TOP_BAND_M == 150.0 and refine.ALT_SECOND_BAND_M == 800.0
+
+    def test_the_near_tie_bands_are_500_ft_and_half_a_mile(self) -> None:
+        """OWNER-DECISIONS 287(4), "Loosen a bit (Recommended)": the top figure within
+        about 150 m (500 ft) of the answer's, the second within about 800 m (0.5 mi), from
+        45 m and 300 m, so that more genuine alternates show."""
+        main = road("main", [1, 2, 3, 4, 5, 6, 7, 8], "1" * 8)
+
+        def other(**fields):
+            trip, read = road("b", [11, 12, 13, 14, 15, 16, 17, 18], "1" * 8)
+            return trip, with_(read, **fields)
+
+        for fields, offered in (
+            ({"lts4_m": 150.0}, True),
+            ({"lts4_m": 151.0}, False),
+            ({"lts4_m": 100.0}, True),
+            ({"lts3_m": 800.0}, True),
+            ({"lts3_m": 801.0}, False),
+            ({"lts3_m": 500.0}, True),
+        ):
+            got = refine.pick_candidates([main, other(**fields)], self.ctx, [0.0])
+            assert (names(got) == ["main", "b"]) is offered, fields
 
     def test_a_route_whose_junctions_could_not_be_read_is_not_offered(self) -> None:
         unread = road("u", [11, 12, 13, 14, 15, 16, 17, 18])
@@ -1452,6 +1473,8 @@ class TestTheSearchOffersCandidates:
         # is way 1 in these readings), so it is not offered as different.
         assert ctx.candidates[0][0]["legs"][0]["shape"] == "c"
         assert len(ctx.candidates) == 1
+        # The hold they were picked by, for picking them again after the dodge pass.
+        assert ctx.candidate_reference == ctx.first_lts4
 
     def test_no_options_no_candidates(self, monkeypatch) -> None:
         ctx = alt_context()
@@ -1498,6 +1521,7 @@ class TestALongPlanOffersCandidates:
         for candidate_trip, read in ctx.candidates:
             assert read.length_m <= 45_000.0
             assert len(candidate_trip["legs"]) == 3
+        assert len(ctx.candidate_reference) == 1, "the whole plan's top figure"
 
     def test_a_plan_with_no_alternates_asked_has_none(self, monkeypatch) -> None:
         legs_world(monkeypatch, {1: [("L1c", 13.5, None)], 2: []})

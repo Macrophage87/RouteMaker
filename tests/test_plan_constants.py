@@ -128,7 +128,8 @@ def test_the_routes_to_choose_from() -> None:
     # PLAN.md, item 265: up to 4 routes; under 70% overlap (item 269) or 5 mi of different road.
     assert refine.ALT_MAX == 4 and refine.ALT_OVERLAP == 0.70
     assert refine.ALT_DIFFERENT_M == 8_000.0
-    assert (refine.ALT_TOP_BAND_M, refine.ALT_SECOND_BAND_M) == (45.0, 300.0)
+    # Item 287(4), "Loosen a bit (Recommended)": about 500 ft and 0.5 mi, from 45 m / 300 m.
+    assert (refine.ALT_TOP_BAND_M, refine.ALT_SECOND_BAND_M) == (150.0, 800.0)
 
 
 def test_a_long_calm_plan_has_the_long_rides_budget() -> None:

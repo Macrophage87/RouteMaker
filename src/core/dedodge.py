@@ -26,6 +26,11 @@ before it is answered (`core.routing.plan`):
    `Analysis.second_m`). The dodge is kept if it avoids at least `MIN_AVOIDED_M` (a
    quarter of a mile), plus `TURN_CHARGE_M` for each turn it adds past the two that
    going off the road and back cannot do without (the turn load of item 254).
+   At the top of the slider (Trailmaxxing, Cargo with passengers: any plan whose
+   stress dial is at the top, `Context.maxcalm`), where distance ranks below LTS 3
+   (258-262), it is kept if it avoids more than the second level's tie step
+   (`refine.MAXCALM_STEPS[1]`, 50 m), with no turn charge (`TOP_TIE_RULE`, review r0
+   item 1, pending the owner's confirmation).
    Otherwise the main road's stretch is spliced in. Whatever that says, the route is
    never changed where it would carry more LTS 4, Avoid or red junction cost (the
    order of 258-262 and the hold of 250 are never broken), be longer (the target and
@@ -58,6 +63,24 @@ MIN_AVOIDED_M = 0.25 * 1609.344
 # to what it must avoid (metres): the turn load of item 254, about 260 ft.
 TURN_CHARGE_M = 80.0
 BASE_TURNS = 2
+# At the top of the slider the stress order ranks distance below LTS 3 (258-262), and
+# the search itself takes 5 m of extra distance for each metre of LTS 3 it saves
+# (268), so a quarter of a mile of LTS 3 is not given back to save a few hundred
+# metres there. With TOP_TIE_RULE a top-of-slider plan (`Context.maxcalm`) keeps a
+# dodge that avoids more than TOP_TIE_M, the second level's tie step, and charges no
+# turns; every other plan keeps the 0.25 mi + turn-charge rule above. Pending the
+# owner's confirmation (FOLLOWUP-DEDODGE review r0, item 1: 272 says "Applies to all
+# presets"): False puts every plan back on the 0.25 mi rule.
+TOP_TIE_RULE = True
+TOP_TIE_M = refine.MAXCALM_STEPS[1]
+# A detected dodge that turns fewer than BASE_TURNS times over its own stretch (from
+# the road's last edge to its first again: a straight run through an unnamed edge or
+# a way inside one road) or is shorter than MIN_DODGE_M is no weave: it is not checked
+# (`skipped`), and spends neither the router nor the check cap.
+MIN_DODGE_M = 50.0
+# A detected dodge made only of unnamed edges is skipped up to this length (metres): a
+# service road or a split at a junction, not a side street (review r0, fuller report).
+MIN_UNNAMED_DODGE_M = 60.0
 # A turn is a change of heading of this many degrees where the street changes.
 TURN_DEGREES = 40.0
 # How far a dodge may go before it rejoins (metres): about a mile.
@@ -331,18 +354,34 @@ def avoided_m(dodge: refine.Analysis, direct: refine.Analysis) -> float:
     return max(0.0, direct.top_m - dodge.top_m) + max(0.0, direct.second_m - dodge.second_m)
 
 
-def needed_m(turns_saved: int) -> float:
-    """What a dodge must avoid to be kept, given the turns the main road saves."""
+def top_rule(ctx: refine.Context) -> bool:
+    """Whether the plan is judged by the top of the slider's tie step (`TOP_TIE_RULE`)."""
+    return TOP_TIE_RULE and ctx.maxcalm
+
+
+def needed_m(turns_saved: int, top: bool = False) -> float:
+    """What a dodge must avoid to be kept, given the turns the main road saves: at the
+    top of the slider (`top`), more than TOP_TIE_M whatever the turns."""
+    if top:
+        return TOP_TIE_M
     return MIN_AVOIDED_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)
 
 
-def judge(dodge: refine.Analysis, direct: refine.Analysis, ctx: refine.Context) -> Verdict:
+def judge(
+    dodge: refine.Analysis,
+    direct: refine.Analysis,
+    ctx: refine.Context,
+    original: refine.Analysis | None = None,
+) -> Verdict:
     """Keep the dodge (`dodge`: the route as it was) or take the main road
-    (`direct`: the route without it), each read whole."""
+    (`direct`: the route without it), each read whole. `original` is the leg as the
+    pass found it, before any dodge was taken out: the top figure may rise by the
+    slack over neither, so the slack does not add up dodge by dodge."""
     saved = turn_count(dodge.pieces) - turn_count(direct.pieces)
     extra = traced_m(dodge) - traced_m(direct)
     avoided = avoided_m(dodge, direct)
-    needed = needed_m(saved)
+    top = top_rule(ctx)
+    needed = needed_m(saved, top)
 
     def keep(reason: str) -> Verdict:
         return Verdict(False, reason, avoided, needed, saved, extra)
@@ -351,14 +390,16 @@ def judge(dodge: refine.Analysis, direct: refine.Analysis, ctx: refine.Context) 
     if (dodge.events is None) != (direct.events is None):
         return keep("events")
     # The order is never broken: no more LTS 4, Avoid or red junction cost.
-    if direct.top_m > dodge.top_m + TOP_SLACK_M:
+    bar = dodge.top_m if original is None else min(dodge.top_m, original.top_m)
+    if direct.top_m > bar + TOP_SLACK_M:
         return keep("top")
     # Never longer than the route was: the target and the ceiling only get easier.
     if extra < -LENGTH_SLACK_M:
         return keep("longer")
     if refine.level3(direct, ctx) > refine.level3(dodge, ctx) + LENGTH_SLACK_M:
         return keep("hills")
-    if avoided >= needed:
+    # Within the tie step at the top of the slider is a tie (`refine.calmer`).
+    if (avoided > needed) if top else (avoided >= needed):
         return keep("stress")
     return Verdict(True, "no_stress_gain", avoided, needed, saved, extra)
 
@@ -411,14 +452,30 @@ def splice_leg(
             summary[key] = before[key] * (1.0 - share) + after[key]
     new = {**leg, "shape": encode_polyline6(points), "summary": summary}
     heights, sub_heights = leg.get("elevation"), sub.get("elevation")
-    if heights and sub_heights:
+    if heights:
         start_m = sum(e.metres for e in edges if e.end <= out_edge.end)
         k_out = round(start_m / interval_m)
         k_in = round((start_m + dodge.metres) / interval_m)
+        if not sub_heights:
+            # The router gave the stretch no elevation: the leg's is kept, the stretch
+            # drawn in a straight line from the height where the dodge left to where it came back.
+            sub_heights = _between(heights, k_out, k_in, after.get("length"), interval_m)
         new["elevation"] = [*heights[:k_out], *sub_heights, *heights[k_in:]]
-    else:
-        new.pop("elevation", None)
     return new
+
+
+def _between(heights: list, k_out: int, k_in: int, km, interval_m: float) -> list:
+    """Heights for a stretch of `km` kilometres with none of its own, one every
+    `interval_m` ends included, in a straight line from the leg's height at sample
+    `k_out` to its height at `k_in` (each the nearest the leg has)."""
+    last = len(heights) - 1
+    first_h, last_h = heights[min(k_out, last)], heights[min(k_in, last)]
+    if first_h is None or last_h is None:
+        first_h = last_h = first_h if first_h is not None else last_h
+    n = max(1, round(float(km or 0.0) * 1000.0 / interval_m)) + 1
+    if first_h is None:
+        return [None] * n
+    return [first_h + (last_h - first_h) * i / (n - 1) for i in range(n)]
 
 
 # --- The pass ---------------------------------------------------------------
@@ -455,11 +512,25 @@ def excludes_of(dodge: Dodge, shape: list) -> list[tuple[float, float]]:
     return out[:MAX_EXCLUDES]
 
 
+def skip_reason(dodge: Dodge) -> str | None:
+    """Why a detected dodge is not worth a check (`MIN_DODGE_M`, `MIN_UNNAMED_DODGE_M`,
+    `BASE_TURNS`), or None: `short`, or `straight` where it turns fewer than BASE_TURNS
+    times from the road's last edge before it to the road's first after it."""
+    if dodge.metres < MIN_DODGE_M:
+        return "short"
+    if dodge.metres < MIN_UNNAMED_DODGE_M and not any(e.names for e in dodge.edges):
+        return "short"
+    if turn_count([dodge.before.last, *dodge.edges, dodge.after.first]) < BASE_TURNS:
+        return "straight"
+    return None
+
+
 def empty_info() -> dict:
     return {
         "found": 0,
         "removed": 0,
         "kept": 0,
+        "skipped": 0,
         "checked": 0,
         "saved_m": 0.0,
         "limited": None,
@@ -469,9 +540,11 @@ def empty_info() -> dict:
 
 def apply(trip: dict, ctx: refine.Context, budget_s: float = BUDGET_S) -> tuple[dict, dict]:
     """The trip with every dodge that does not buy MIN_AVOIDED_M of calm replaced by
-    the main road, and what was found: `{found, removed, kept, checked, saved_m,
-    limited, items}` (`saved_m`: the metres the replacements took off the route),
-    `limited` naming what stopped the pass short (`time`, `checks`) or None. The
+    the main road, and what was found: `{found, removed, kept, skipped, checked,
+    saved_m, limited, items}` (`saved_m`: the metres the replacements took off the
+    route), `limited` naming what stopped the pass short (`time`, `checks`) or None.
+    Every dodge found is one of `items`, and removed, kept, skipped (`skip_reason`) or
+    `unchecked` (the pass stopped first). The
     trip as it was where nothing is replaced. It does not raise for the router or
     the clock; an unexpected failure leaves the trip as it was."""
     info = empty_info()
@@ -489,7 +562,48 @@ def apply(trip: dict, ctx: refine.Context, budget_s: float = BUDGET_S) -> tuple[
         info["limited"] = info["limited"] or "time"
     except Exception:  # noqa: BLE001 - the route is answered as it was
         logger.warning("the dodge pass failed", exc_info=True)
+    # Found and not judged: the pass stopped first.
+    for item in info["items"]:
+        if item["action"] is None:
+            item["action"] = "unchecked"
     return trip, info
+
+
+def settle(trip: dict, ctx: refine.Context, refined: dict | None, info: dict) -> None:
+    """After the pass took a dodge out of the answer's route (`trip`): the search's
+    figures in `refined` (`calm_search`) are the route's as answered, and the routes to
+    choose from (`ctx.candidates`, which the pass leaves as the search picked them) are
+    picked again against it (`refine.pick_candidates`: no further past the target than
+    the answer, a near-tie with it on stress, meaningfully different from it and from
+    each other), with the hold's reference the search used. The answer's reading is the
+    one `routing.plan` reuses for the answer itself (`refine.analyse` remembers it), so
+    this costs no more router calls than the answer does. Where the answer cannot be read
+    the candidates cannot be weighed against it, and none is offered."""
+    if not info["removed"]:
+        return
+    if refined is not None and refined.get("extra_distance_m") is not None:
+        refined["extra_distance_m"] = round(refined["extra_distance_m"] - info["saved_m"], 1)
+    try:
+        read = refine.analyse(trip, ctx, ctx.deadline)
+    except (routing.DeadlineExceeded, routing.RouterUnavailable, routing.RouterRefused):
+        read = None
+    if refined is not None and read is not None:
+        for name, value in (
+            ("exposure_after_m", read.exposure_m),
+            ("lts4_m_after", read.lts4_m),
+            ("lts3_m_after", read.lts3_m),
+            ("lts4_after_m", read.lts4_m),
+            ("top_m_after", read.top_m),
+        ):
+            if name in refined:
+                refined[name] = round(value, 1)
+    if len(ctx.candidates) > 1:
+        if read is None or read.events is None:
+            ctx.candidates = [(trip, read)]
+        else:
+            ctx.candidates = refine.pick_candidates(
+                [(trip, read), *ctx.candidates[1:]], ctx, ctx.candidate_reference
+            )
 
 
 def _key(dodge: Dodge, shape: list) -> tuple:
@@ -499,9 +613,11 @@ def _key(dodge: Dodge, shape: list) -> tuple:
 
 def _leg(trip: dict, number: int, ctx: refine.Context, deadline, info: dict) -> dict:
     """One leg's dodges, the last first; a replacement changes what comes after it
-    and leaves what comes before. Each pass reads the leg as it now is."""
+    and leaves what comes before. Each pass reads the leg as it now is; a dodge is
+    counted (and listed) once, the first time it is found, in whichever pass that is."""
+    items: dict = {}
     seen: set = set()
-    current = None
+    original = current = None
     while True:
         leg = trip["legs"][number]
         trace = routing._trace(ctx.variant, ctx.costing, leg.get("shape", ""), deadline, ctx.traces)
@@ -509,41 +625,50 @@ def _leg(trip: dict, number: int, ctx: refine.Context, deadline, info: dict) -> 
             return trip
         shape = trace_junctions.trace_shape(trace, routing.decode_polyline6(leg.get("shape", "")))
         edges = edges_of(trace, shape)
-        todo = [d for d in find_dodges(edges, shape) if _key(d, shape) not in seen]
-        if not seen:
-            info["found"] += len(todo)
+        todo = []
+        for found in find_dodges(edges, shape):
+            here = _key(found, shape)
+            if here not in items:
+                items[here] = _item(found, shape)
+                info["items"].append(items[here])
+                info["found"] += 1
+                why = skip_reason(found)
+                if why is not None:
+                    items[here].update(action="skipped", reason=why)
+                    info["skipped"] += 1
+                    seen.add(here)
+            if here not in seen:
+                todo.append(found)
         if not todo:
             return trip
         dodge = todo[-1]
         seen.add(_key(dodge, shape))
-        item = _item(dodge, shape)
-        info["items"].append(item)
+        item = items[_key(dodge, shape)]
         if info["checked"] >= MAX_CHECKS:
             info["limited"] = "checks"
-            item["action"] = "unchecked"
             return trip
         if routing.clock() >= deadline.at:
             info["limited"] = "time"
-            item["action"] = "unchecked"
             return trip
         if current is None:
-            current = refine.analyse(refine._leg_trip(trip, number), ctx, deadline)
-            if current is None:
-                item["action"] = "unchecked"
+            as_found = refine._leg_trip(trip, number)
+            original = current = refine.analyse(as_found, ctx, deadline)
+            if current is None or _cut_short(as_found, ctx, deadline, info):
                 return trip
         info["checked"] += 1
         new_leg, why = _alternative(ctx, deadline, leg, shape, edges, dodge)
-        direct = (
-            refine.analyse({"legs": [new_leg], "summary": new_leg["summary"]}, ctx, deadline)
-            if new_leg is not None
-            else None
-        )
+        direct = None
+        if new_leg is not None:
+            stretch = {"legs": [new_leg], "summary": new_leg["summary"]}
+            direct = refine.analyse(stretch, ctx, deadline)
+            if direct is not None and _cut_short(stretch, ctx, deadline, info):
+                return trip
         if direct is None:
             item["action"] = "kept"
             item["reason"] = why or "untraceable"
             info["kept"] += 1
             continue
-        verdict = judge(current, direct, ctx)
+        verdict = judge(current, direct, ctx, original)
         item.update(
             reason=verdict.reason,
             avoided_m=round(verdict.avoided_m, 1),
@@ -560,6 +685,19 @@ def _leg(trip: dict, number: int, ctx: refine.Context, deadline, info: dict) -> 
         else:
             item["action"] = "kept"
             info["kept"] += 1
+
+
+def _cut_short(trip: dict, ctx: refine.Context, deadline, info: dict) -> bool:
+    """Whether the pass's time ran out while `trip` was being read. Its junctions may
+    then be read in part (`junctions.nodes_at` leaves out a `/locate` batch the clock
+    cut off, as a router that will not answer), so the reading is neither judged nor
+    remembered (`refine.analyse` keeps it for the answer, which would answer with
+    junctions missing): it is dropped, and the pass stops (`limited: time`)."""
+    if routing.clock() < deadline.at:
+        return False
+    ctx.analyses.pop(tuple(leg.get("shape", "") for leg in trip.get("legs") or []), None)
+    info["limited"] = "time"
+    return True
 
 
 def _alternative(ctx, deadline, leg, shape, edges, dodge) -> tuple[dict | None, str | None]:

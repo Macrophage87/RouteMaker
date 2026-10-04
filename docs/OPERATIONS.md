@@ -2578,11 +2578,25 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
 
 ## The dodge pass's load (FOLLOWUP-DEDODGE)
 
-After the search and before the answer a plan may make up to 8 more `/route` calls (and as many
-`trace_attributes` and `/locate` reads) to take pointless side-street dodges out of its route
-(`core.dedodge`). They are single-leg requests between two points a mile or less apart, 0.3 to 1 s
-each on the live routers, and are bounded by a 5 s budget that ends 6 s before the plan's own
-deadline, so a plan that has spent its time makes none (`dodges.limited` is `time`). On the twelve
-trips the pass made 0 to 8 calls a trip; on Union Station to Penn it made 8 (`limited: checks`, 8
-of 9 dodges looked at). No knob needs setting: `dedodge.BUDGET_S`, `MAX_CHECKS` and `MAX_EXCLUDES`
-are code constants.
+After the search and before the answer, a plan runs one pass that takes pointless side-street dodges
+out of its route (`core.dedodge`). It runs on the answer's route alone (never on a loop, never on the
+routes to choose from), so its bounds are per plan: at most 8 checks (`dedodge.MAX_CHECKS`), 5 s
+(`BUDGET_S`) ending 6 s before the plan's own deadline, 8 s to a call, and none at all where less than
+3 s is left (`dodges.limited` is `time`, or `checks` at the cap). Dodges under 50 m, unnamed ones under
+60 m and straight runs are skipped without a call.
+
+Each check is:
+- 1 or 2 `/route` calls between the dodge's two ends (the second without headings, where the router finds
+  no path facing the way the route goes);
+- one `trace_attributes` of the **whole spliced leg**, not of the stretch: a plan of one leg is the whole
+  route, 43 mi on Bowie to Annapolis and 58.6 mi on Union Station to Penn;
+- that leg's junctions read again: `/locate` in batches of 50 nodes (`junctions.LOCATE_BATCH`), twice
+  (the nodes, then the approaches of those without a signal), about 10 calls a check on a 58 mi leg.
+
+So the worst case a plan is 8 x (2 `/route` + 1 long `trace_attributes` + about 10 `/locate`) inside 5 s;
+then the answer reads its changed route once, as it reads any route, within the plan's deadline (outside
+the 5 s). Measured against the pass off (the harness, live routers read-only): Union Station to Penn, 8
+checks, 11 more `/route`, 8 more `trace_attributes`, 35 more `/locate`; Bowie to Annapolis at
+Trailmaxxing, 6 checks, 15, 8 and 67; a short trip with one check, 1 or 2, 1 and 2 to 4. No knob needs
+setting: `dedodge.BUDGET_S`, `MAX_CHECKS`, `MAX_EXCLUDES`, `MIN_DODGE_M`, `MIN_UNNAMED_DODGE_M` and
+`TOP_TIE_RULE` (the top of the slider's tie step, pending the owner) are code constants.

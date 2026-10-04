@@ -32,6 +32,8 @@ TD = ["tests/test_dedodge.py"]
 TP = ["tests/test_dedodge_plan.py"]
 DD = "src/core/dedodge.py"
 RT = "src/core/routing.py"
+RF = "src/core/refine.py"
+LC = ["tests/test_longcalm.py", "tests/test_plan_constants.py"]
 
 # The longest a test file may take against a mutant.
 TEST_TIMEOUT_S = 300
@@ -63,15 +65,21 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "threshold: exactly enough is not enough",
         DD,
-        "    if avoided >= needed:",
-        "    if avoided > needed:",
+        "    if (avoided > needed) if top else (avoided >= needed):",
+        "    if (avoided > needed) if top else (avoided > needed):",
         TD,
     ),
-    ("threshold: everything is kept", DD, "    if avoided >= needed:", "    if True:", TD),
+    (
+        "threshold: everything is kept",
+        DD,
+        "    if (avoided > needed) if top else (avoided >= needed):",
+        "    if True:",
+        TD,
+    ),
     (
         "threshold: nothing is kept for its stress",
         DD,
-        "    if avoided >= needed:",
+        "    if (avoided > needed) if top else (avoided >= needed):",
         "    if False:",
         TD,
     ),
@@ -177,15 +185,15 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "order: the top figure may rise",
         DD,
-        "    if direct.top_m > dodge.top_m + TOP_SLACK_M:" + NL + '        return keep("top")',
+        "    if direct.top_m > bar + TOP_SLACK_M:" + NL + '        return keep("top")',
         "    if False:" + NL + '        return keep("top")',
         TD,
     ),
     (
         "order: a rise of the slack is refused",
         DD,
-        "    if direct.top_m > dodge.top_m + TOP_SLACK_M:",
-        "    if direct.top_m >= dodge.top_m + TOP_SLACK_M:",
+        "    if direct.top_m > bar + TOP_SLACK_M:",
+        "    if direct.top_m >= bar + TOP_SLACK_M:",
         TD,
     ),
     (
@@ -199,8 +207,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "order: the top figure leaves out red junctions",
         DD,
-        "    if direct.top_m > dodge.top_m + TOP_SLACK_M:",
-        "    if direct.lts4_m > dodge.lts4_m + TOP_SLACK_M:",
+        "    if direct.top_m > bar + TOP_SLACK_M:",
+        "    if direct.lts4_m > bar + TOP_SLACK_M:",
         TD,
     ),
     (
@@ -631,11 +639,45 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "        k_in = round(start_m / interval_m)",
         TD,
     ),
+    # "splice: a stale elevation is kept" is gone with its branch (r1): a leg without
+    # elevation carries none, and one with it keeps it (see "r1 elevation").
     (
-        "splice: a stale elevation is kept",
+        "r1 cut short: never",
         DD,
-        "    else:" + NL + '        new.pop("elevation", None)',
-        "    else:" + NL + "        pass",
+        "    if routing.clock() < deadline.at:" + NL + "        return False",
+        "    if True:" + NL + "        return False",
+        TD,
+    ),
+    (
+        "r1 cut short: the reading is remembered",
+        DD,
+        '    ctx.analyses.pop(tuple(leg.get("shape", "") for leg in trip.get("legs") or []), None)',
+        "    pass",
+        TD,
+    ),
+    (
+        "r1 cut short: the stretch read late is judged",
+        DD,
+        "            if direct is not None and _cut_short(stretch, ctx, deadline, info):"
+        + NL
+        + "                return trip",
+        "            if direct is not None and _cut_short(stretch, ctx, deadline, info):"
+        + NL
+        + "                pass",
+        TD,
+    ),
+    (
+        "r1 cut short: the leg as found is not looked at",
+        DD,
+        "            if current is None or _cut_short(as_found, ctx, deadline, info):",
+        "            if current is None:",
+        TD,
+    ),
+    (
+        "r1 cut short: not limited",
+        DD,
+        '    info["limited"] = "time"' + NL + "    return True",
+        "    return True",
         TD,
     ),
     (
@@ -762,8 +804,11 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "pass: the dodges are counted again on every pass",
         DD,
-        "        if not seen:" + NL + '            info["found"] += len(todo)',
-        '        info["found"] += len(todo)',
+        "            here = _key(found, shape)" + NL,
+        "            here = _key(found, shape)"
+        + NL
+        + '            info["found"] += here in items'
+        + NL,
         TD,
     ),
     (
@@ -814,8 +859,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "pass: the dodge is looked for in the route given, not the leg as it now is",
         DD,
-        "        todo = [d for d in find_dodges(edges, shape) if _key(d, shape) not in seen]",
-        "        todo = [d for d in find_dodges(edges, shape) if _key(d, shape) not in seen][:1] if not seen else []",
+        "        for found in find_dodges(edges, shape):",
+        "        for found in find_dodges(edges, shape) if not items else []:",
         TD,
     ),
     # --- the plan --------------------------------------------------------------------------------
@@ -841,24 +886,27 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         TP,
     ),
     (
-        "plan: a candidate keeps its dodges",
+        "plan: a candidate is passed through too (review r0 item 3: the answer's alone)",
         RT,
-        "                found, found_dodges = dedodge.apply(found, refine_context)",
-        "                found_dodges = None",
+        "            refine.analyse(found, refine_context, deadline)" + NL,
+        "            found, _ = dedodge.apply(found, refine_context)"
+        + NL
+        + "            refine.analyse(found, refine_context, deadline)"
+        + NL,
         TP,
     ),
     (
-        "plan: a candidate's loop is straightened too",
+        "plan: the answer is not settled after the pass",
         RT,
-        "            found_dodges = None" + NL + "            if not loop:",
-        "            found_dodges = None" + NL + "            if True:",
+        "        dedodge.settle(trip, refine_context, refined, dodges)",
+        "        pass",
         TP,
     ),
     (
         "plan: the extra distance is not lowered",
-        RT,
-        'refined["extra_distance_m"] = round(refined["extra_distance_m"] - dodges["saved_m"], 1)',
-        'refined["extra_distance_m"] = round(refined["extra_distance_m"] + dodges["saved_m"], 1)',
+        DD,
+        'refined["extra_distance_m"] = round(refined["extra_distance_m"] - info["saved_m"], 1)',
+        'refined["extra_distance_m"] = round(refined["extra_distance_m"] + info["saved_m"], 1)',
         TP,
     ),
     (
@@ -878,6 +926,509 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '            info["saved_m"] = round(info["saved_m"] + verdict.extra_m, 1)',
         "            pass",
         TP,
+    ),
+    # --- r1: the top of the slider (review r0 item 1) -----------------------------------------
+    ("r1 top: the switch off", DD, "TOP_TIE_RULE = True", "TOP_TIE_RULE = False", TD + TP),
+    (
+        "r1 top: the first level's step",
+        DD,
+        "TOP_TIE_M = refine.MAXCALM_STEPS[1]",
+        "TOP_TIE_M = refine.MAXCALM_STEPS[0]",
+        TD,
+    ),
+    (
+        "r1 top: on every plan",
+        DD,
+        "    return TOP_TIE_RULE and ctx.maxcalm",
+        "    return TOP_TIE_RULE",
+        TD + TP,
+    ),
+    (
+        "r1 top: the turns charged",
+        DD,
+        "    if top:" + NL + "        return TOP_TIE_M",
+        "    if top:"
+        + NL
+        + "        return TOP_TIE_M + TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
+        TD,
+    ),
+    (
+        "r1 top: the step itself is kept",
+        DD,
+        "    if (avoided > needed) if top else (avoided >= needed):",
+        "    if (avoided >= needed) if top else (avoided >= needed):",
+        TD,
+    ),
+    (
+        "r1 top: the verdict ignores the rule",
+        DD,
+        "    needed = needed_m(saved, top)",
+        "    needed = needed_m(saved)",
+        TD,
+    ),
+    # --- r1: not worth a check (review r0 item 4) ---------------------------------------------
+    ("r1 skip: no length floor", DD, "MIN_DODGE_M = 50.0", "MIN_DODGE_M = 0.0", TD),
+    ("r1 skip: a 200 m floor", DD, "MIN_DODGE_M = 50.0", "MIN_DODGE_M = 200.0", TD),
+    (
+        "r1 skip: one turn is enough",
+        DD,
+        "    if turn_count([dodge.before.last, *dodge.edges, dodge.after.first]) < BASE_TURNS:",
+        "    if turn_count([dodge.before.last, *dodge.edges, dodge.after.first]) < 1:",
+        TD,
+    ),
+    (
+        "r1 skip: three turns are needed",
+        DD,
+        "    if turn_count([dodge.before.last, *dodge.edges, dodge.after.first]) < BASE_TURNS:",
+        "    if turn_count([dodge.before.last, *dodge.edges, dodge.after.first]) < 3:",
+        TD,
+    ),
+    (
+        "r1 skip: the turns off and back on are not counted",
+        DD,
+        "    if turn_count([dodge.before.last, *dodge.edges, dodge.after.first]) < BASE_TURNS:",
+        "    if turn_count([*dodge.edges]) < BASE_TURNS:",
+        TD,
+    ),
+    (
+        "r1 skip: never",
+        DD,
+        "                why = skip_reason(found)",
+        "                why = None",
+        TD,
+    ),
+    (
+        "r1 skip: not counted",
+        DD,
+        '                    info["skipped"] += 1',
+        "                    pass",
+        TD,
+    ),
+    (
+        "r1 skip: still checked",
+        DD,
+        "                    seen.add(here)" + NL,
+        "                    pass" + NL,
+        TD,
+    ),
+    (
+        "r1 skip: no unnamed floor",
+        DD,
+        "MIN_UNNAMED_DODGE_M = 60.0",
+        "MIN_UNNAMED_DODGE_M = 0.0",
+        TD,
+    ),
+    (
+        "r1 skip: a 120 m unnamed floor",
+        DD,
+        "MIN_UNNAMED_DODGE_M = 60.0",
+        "MIN_UNNAMED_DODGE_M = 120.0",
+        TD,
+    ),
+    (
+        "r1 skip: named streets under the unnamed floor too",
+        DD,
+        "    if dodge.metres < MIN_UNNAMED_DODGE_M and not any(e.names for e in dodge.edges):",
+        "    if dodge.metres < MIN_UNNAMED_DODGE_M:",
+        TD,
+    ),
+    (
+        "r1 skip: one unnamed edge is enough",
+        DD,
+        "    if dodge.metres < MIN_UNNAMED_DODGE_M and not any(e.names for e in dodge.edges):",
+        "    if dodge.metres < MIN_UNNAMED_DODGE_M and not all(e.names for e in dodge.edges):",
+        TD,
+    ),
+    # --- r1: a stretch without elevation keeps the leg's (review r0 nit) --------------------
+    (
+        "r1 elevation: dropped where the stretch has none",
+        DD,
+        "    if heights:" + NL + "        start_m",
+        "    if heights and sub_heights:" + NL + "        start_m",
+        TD,
+    ),
+    (
+        "r1 elevation: the stretch drawn flat",
+        DD,
+        "    return [first_h + (last_h - first_h) * i / (n - 1) for i in range(n)]",
+        "    return [first_h for i in range(n)]",
+        TD,
+    ),
+    (
+        "r1 elevation: one sample short",
+        DD,
+        "    n = max(1, round(float(km or 0.0) * 1000.0 / interval_m)) + 1",
+        "    n = max(1, round(float(km or 0.0) * 1000.0 / interval_m))",
+        TD,
+    ),
+    (
+        "r1 elevation: an unknown end is taken as zero",
+        DD,
+        "        first_h = last_h = first_h if first_h is not None else last_h",
+        "        first_h = last_h = 0.0",
+        TD,
+    ),
+    # --- r1: the counting (review r0 nit) -----------------------------------------------------
+    (
+        "r1 count: what was not judged is left without an action",
+        DD,
+        '        if item["action"] is None:' + NL + '            item["action"] = "unchecked"',
+        '        if item["action"] is None:' + NL + "            pass",
+        TD,
+    ),
+    (
+        "r1 count: found on the first pass only",
+        DD,
+        '                info["found"] += 1',
+        '                info["found"] += not seen',
+        TD,
+    ),
+    # --- r1: the top figure against the leg as found (review r0 nit) --------------------------
+    (
+        "r1 original: not passed",
+        DD,
+        "        verdict = judge(current, direct, ctx, original)",
+        "        verdict = judge(current, direct, ctx)",
+        TD,
+    ),
+    (
+        "r1 original: the higher of the two",
+        DD,
+        "    bar = dodge.top_m if original is None else min(dodge.top_m, original.top_m)",
+        "    bar = dodge.top_m if original is None else max(dodge.top_m, original.top_m)",
+        TD,
+    ),
+    (
+        "r1 original: the leg as found alone",
+        DD,
+        "    bar = dodge.top_m if original is None else min(dodge.top_m, original.top_m)",
+        "    bar = dodge.top_m if original is None else original.top_m",
+        TD,
+    ),
+    (
+        "r1 original: reset by each removal",
+        DD,
+        "            current = direct" + NL,
+        "            original = current = direct" + NL,
+        TD,
+    ),
+    # --- r1: after the pass (review r0 items 3 and 5, nit) --------------------------------------
+    (
+        "r1 settle: run with nothing taken out",
+        DD,
+        '    if not info["removed"]:' + NL + "        return" + NL + "    if refined",
+        "    if False:" + NL + "        return" + NL + "    if refined",
+        TD,
+    ),
+    (
+        "r1 settle: the search's figures are left as they were",
+        DD,
+        "                refined[name] = round(value, 1)",
+        "                pass",
+        TD + TP,
+    ),
+    (
+        "r1 settle: the exposure is left as it was",
+        DD,
+        '            ("exposure_after_m", read.exposure_m),' + NL,
+        "",
+        TD + TP,
+    ),
+    (
+        "r1 settle: the candidates are not picked again",
+        DD,
+        "            ctx.candidates = refine.pick_candidates(",
+        "            ctx.candidates = ctx.candidates or refine.pick_candidates(",
+        TD,
+    ),
+    (
+        "r1 settle: an unreadable answer keeps its candidates",
+        DD,
+        "            ctx.candidates = [(trip, read)]",
+        "            pass",
+        TD,
+    ),
+    (
+        "r1 settle: picked by the first route's hold",
+        DD,
+        "[(trip, read), *ctx.candidates[1:]], ctx, ctx.candidate_reference",
+        "[(trip, read), *ctx.candidates[1:]], ctx, ctx.first_lts4",
+        TD,
+    ),
+    (
+        "r1 settle: against the answer as it was",
+        DD,
+        "                [(trip, read), *ctx.candidates[1:]], ctx",
+        "                [*ctx.candidates], ctx",
+        TD,
+    ),
+    (
+        "r1 settle: read on a deadline of its own",
+        DD,
+        "        read = refine.analyse(trip, ctx, ctx.deadline)",
+        "        read = refine.analyse(trip, ctx, routing.Deadline(routing.clock() + 60.0, 35))",
+        TD,
+    ),
+    (
+        "r1 settle: the search's reference is not kept",
+        RF,
+        "        ctx.candidate_reference = list(ctx.first_lts4)" + NL,
+        "",
+        LC,
+    ),
+    (
+        "r1 settle: a long plan's reference is not kept",
+        RF,
+        "    ctx.candidate_reference = reference" + NL,
+        "",
+        LC,
+    ),
+    # --- 287(4): the near-tie bands -----------------------------------------------------------
+    (
+        "287(4): the top band back to 45 m",
+        RF,
+        "ALT_TOP_BAND_M = 150.0",
+        "ALT_TOP_BAND_M = 45.0",
+        LC,
+    ),
+    ("287(4): the top band 151 m", RF, "ALT_TOP_BAND_M = 150.0", "ALT_TOP_BAND_M = 151.0", LC),
+    ("287(4): the top band 149 m", RF, "ALT_TOP_BAND_M = 150.0", "ALT_TOP_BAND_M = 149.0", LC),
+    (
+        "287(4): the second band back to 300 m",
+        RF,
+        "ALT_SECOND_BAND_M = 800.0",
+        "ALT_SECOND_BAND_M = 300.0",
+        LC,
+    ),
+    (
+        "287(4): the second band 801 m",
+        RF,
+        "ALT_SECOND_BAND_M = 800.0",
+        "ALT_SECOND_BAND_M = 801.0",
+        LC,
+    ),
+    (
+        "287(4): the second band 799 m",
+        RF,
+        "ALT_SECOND_BAND_M = 800.0",
+        "ALT_SECOND_BAND_M = 799.0",
+        LC,
+    ),
+    (
+        "287(4): the second band not applied",
+        RF,
+        "            or read.second_m > answer[1].second_m + ALT_SECOND_BAND_M" + NL,
+        "",
+        LC,
+    ),
+    # --- review r0's 32 (FOLLOWUP-DEDODGE review, /home/steph/rmdata/dedodge-rev/mut.py), on
+    # the r1 text; "candidates not dedodged" is r1's design and is turned round ----------------
+    (
+        "r0 review: same-name rejoin ignored (line only)",
+        DD,
+        "                    if kind == NAME:"
+        + NL
+        + "                        hit = b"
+        + NL
+        + "                        break",
+        "                    if kind == NAME and False:"
+        + NL
+        + "                        hit = b"
+        + NL
+        + "                        break",
+        TD + TP,
+    ),
+    (
+        "r0 review: same-name rejoin: no heading check",
+        DD,
+        "        return NAME if turn <= SAME_ROAD_HEADING_DEG else None",
+        "        return NAME",
+        TD + TP,
+    ),
+    (
+        "r0 review: same-name: 150 deg allowed",
+        DD,
+        "SAME_ROAD_HEADING_DEG = 90.0",
+        "SAME_ROAD_HEADING_DEG = 150.0",
+        TD + TP,
+    ),
+    (
+        "r0 review: ahead check dropped",
+        DD,
+        "    if ahead <= 0:" + NL + "        return None",
+        "    if ahead <= -1e9:" + NL + "        return None",
+        TD + TP,
+    ),
+    (
+        "r0 review: line: offset 600 m",
+        DD,
+        "PARALLEL_OFFSET_M = 150.0",
+        "PARALLEL_OFFSET_M = 600.0",
+        TD + TP,
+    ),
+    (
+        "r0 review: line: heading 70",
+        DD,
+        "PARALLEL_HEADING_DEG = 35.0",
+        "PARALLEL_HEADING_DEG = 70.0",
+        TD + TP,
+    ),
+    (
+        "r0 review: line wins over name",
+        DD,
+        "        hit = hit if hit is not None else on_line",
+        "        hit = on_line if on_line is not None else hit",
+        TD + TP,
+    ),
+    (
+        "r0 review: turn charge on abs",
+        DD,
+        "TURN_CHARGE_M * max(0, turns_saved - BASE_TURNS)",
+        "TURN_CHARGE_M * abs(turns_saved - BASE_TURNS)",
+        TD + TP,
+    ),
+    ("r0 review: turn charge 60", DD, "TURN_CHARGE_M = 80.0", "TURN_CHARGE_M = 60.0", TD + TP),
+    ("r0 review: turn degrees 60", DD, "TURN_DEGREES = 40.0", "TURN_DEGREES = 60.0", TD + TP),
+    (
+        "r0 review: turns: same name not skipped",
+        DD,
+        "        if {normal(n) for n in here.names} & {normal(n) for n in there.names}:"
+        + NL
+        + "            continue",
+        "        if False:" + NL + "            continue",
+        TD + TP,
+    ),
+    (
+        "r0 review: deadline: no reserve",
+        DD,
+        "    stop_at = min(ctx.deadline.at - refine.REFINE_TRACE_RESERVE_S, routing.clock() + budget_s)",
+        "    stop_at = min(ctx.deadline.at, routing.clock() + budget_s)",
+        TD + TP,
+    ),
+    (
+        "r0 review: deadline: reserve 1s",
+        DD,
+        "    stop_at = min(ctx.deadline.at - refine.REFINE_TRACE_RESERVE_S, routing.clock() + budget_s)",
+        "    stop_at = min(ctx.deadline.at - 1.0, routing.clock() + budget_s)",
+        TD + TP,
+    ),
+    (
+        "r0 review: deadline: min start 0",
+        DD,
+        "    if stop_at - routing.clock() < MIN_START_S:",
+        "    if stop_at - routing.clock() < 0:",
+        TD + TP,
+    ),
+    (
+        "r0 review: deadline: per call uncapped by plan",
+        DD,
+        "min(ctx.deadline.per_call_s, CALL_TIMEOUT_S)",
+        "CALL_TIMEOUT_S",
+        TD + TP,
+    ),
+    ("r0 review: deadline: budget 10s", DD, "BUDGET_S = 5.0", "BUDGET_S = 10.0", TD + TP),
+    ("r0 review: checks 9", DD, "MAX_CHECKS = 8", "MAX_CHECKS = 9", TD + TP),
+    (
+        "r0 review: top slack 50 m",
+        DD,
+        "    if direct.top_m > bar + TOP_SLACK_M:",
+        "    if direct.top_m > bar + 50.0:",
+        TD + TP,
+    ),
+    (
+        "r0 review: length slack 50 m",
+        DD,
+        "    if extra < -LENGTH_SLACK_M:",
+        "    if extra < -50.0:",
+        TD + TP,
+    ),
+    (
+        "r0 review: hills slack 50 m",
+        DD,
+        "    if refine.level3(direct, ctx) > refine.level3(dodge, ctx) + LENGTH_SLACK_M:",
+        "    if refine.level3(direct, ctx) > refine.level3(dodge, ctx) + 50.0:",
+        TD + TP,
+    ),
+    (
+        "r0 review: headings retry dropped",
+        DD,
+        "    for headings in (True, False):",
+        "    for headings in (True,):",
+        TD + TP,
+    ),
+    ("r0 review: main min 0", DD, "MAIN_MIN_M = 30.0", "MAIN_MIN_M = 0.0", TD + TP),
+    (
+        "r0 review: dodge max 2 mi",
+        DD,
+        "DODGE_MAX_M = 1609.344",
+        "DODGE_MAX_M = 2 * 1609.344",
+        TD + TP,
+    ),
+    (
+        "r0 review: elevation tail off by one",
+        DD,
+        "*sub_heights, *heights[k_in:]]",
+        "*sub_heights, *heights[k_in + 1 :]]",
+        TD + TP,
+    ),
+    (
+        "r0 review: shape tail duplicates joint",
+        DD,
+        "*sub_shape, *shape[in_edge.begin + 1 :]]",
+        "*sub_shape, *shape[in_edge.begin :]]",
+        TD + TP,
+    ),
+    (
+        "r0 review: first dodge first",
+        DD,
+        "        dodge = todo[-1]",
+        "        dodge = todo[0]",
+        TD + TP,
+    ),
+    (
+        "r0 review: found counted every pass",
+        DD,
+        "            here = _key(found, shape)" + NL,
+        "            here = _key(found, shape)" + NL + '            info["found"] += 1' + NL,
+        TD + TP,
+    ),
+    (
+        "r0 review: time limit swallowed",
+        DD,
+        '        info["limited"] = info["limited"] or "time"',
+        "        pass",
+        TD + TP,
+    ),
+    (
+        "r0 review: candidates dedodged (turned round: r1 passes the answer alone)",
+        RT,
+        "            candidate = _answer(found, None, True)" + NL,
+        "            found, _ = dedodge.apply(found, refine_context)"
+        + NL
+        + "            candidate = _answer(found, None, True)"
+        + NL,
+        TD + TP,
+    ),
+    (
+        "r0 review: loop dedodged",
+        RT,
+        "    dodges = None" + NL + "    if not loop:" + NL + "        trip, dodges",
+        "    dodges = None" + NL + "    if True:" + NL + "        trip, dodges",
+        TD + TP,
+    ),
+    (
+        "r0 review: excludes: short edges excluded too",
+        DD,
+        "        if edge.metres < MIN_EXCLUDE_EDGE_M:" + NL + "            continue",
+        "        if False:" + NL + "            continue",
+        TD + TP,
+    ),
+    (
+        "r0 review: time apportion uses 0 share",
+        DD,
+        "            summary[key] = before[key] * (1.0 - share) + after[key]",
+        "            summary[key] = before[key] + after[key]",
+        TD + TP,
     ),
 ]
 

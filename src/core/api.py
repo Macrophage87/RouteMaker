@@ -773,7 +773,8 @@ class RouteBody(Schema):
     calm_search: CalmSearchOut | None
     detour: DetourOut | None
     # Side-street dodges found and what was done with them (OWNER-DECISIONS 272): null
-    # on a loop, which keeps its way back as made.
+    # on a loop, which keeps its way back as made, and on each of the routes to choose
+    # from, which are answered as the search found them.
     dodges: DodgesOut | None = None
     # The route in words, stretch by stretch (OWNER-DECISIONS 220). Additive:
     # absent or null where it could not be built.
@@ -805,20 +806,27 @@ class DodgeOut(Schema):
     lat: float
     length_m: float = Field(description="How far the dodge went, metres.")
     action: str | None = Field(
-        description="`removed` (the main road's stretch replaced it), `kept`, or `unchecked`."
+        description=(
+            "`removed` (the main road's stretch replaced it), `kept`, `skipped` (no weave:"
+            " not checked) or `unchecked` (the pass stopped first)."
+        )
     )
     reason: str | None = Field(
         description=(
             "Why: `no_stress_gain` (removed), `stress` (it avoids enough), `top` (it avoids"
             " LTS 4, Avoid or a red junction), `longer`, `hills`, `events`, `no_route`,"
-            " `no_splice`, `no_exclusion` or `untraceable` (kept)."
+            " `no_splice`, `no_exclusion` or `untraceable` (kept); `short` (under 50 m) or"
+            " `straight` (fewer than two turns) (skipped)."
         )
     )
     avoided_m: float | None = Field(
         description="The higher-stress metres the dodge avoids against the main road."
     )
     needed_m: float | None = Field(
-        description="What it had to avoid to be kept: 0.25 mi plus the turns it adds."
+        description=(
+            "What it had to avoid to be kept: 0.25 mi plus 80 m a turn past two; at the"
+            " top of the stress slider, more than 50 m whatever the turns."
+        )
     )
     turns_saved: int | None = Field(description="Turns the main road saves over the dodge.")
     extra_m: float | None = Field(
@@ -833,6 +841,9 @@ class DodgesOut(Schema):
     found: int
     removed: int
     kept: int
+    skipped: int = Field(
+        default=0, description="Found and not checked: under 50 m, or fewer than two turns."
+    )
     checked: int
     saved_m: float = Field(description="The metres the replacements took off the route.")
     limited: str | None

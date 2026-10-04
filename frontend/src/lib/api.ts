@@ -172,9 +172,38 @@ export interface LoopInfo {
   fallback?: string | null;
 }
 
+/** One side-street dodge the planner found (core.api.DodgeOut, OWNER-DECISIONS 272). */
+export interface Dodge {
+  street: string;
+  via: string[];
+  lon: number;
+  lat: number;
+  length_m: number;
+  action: "removed" | "kept" | "skipped" | "unchecked" | null;
+  reason: string | null;
+  avoided_m: number | null;
+  needed_m: number | null;
+  turns_saved: number | null;
+  extra_m: number | null;
+}
+
+/** What the planner's dodge pass did (core.api.DodgesOut); nothing displays it yet. */
+export interface Dodges {
+  found: number;
+  removed: number;
+  kept: number;
+  skipped?: number;
+  checked: number;
+  saved_m: number;
+  limited: string | null;
+  items: Dodge[];
+}
+
 export interface RouteResponse {
   /** Present on a loop (OWNER-DECISIONS 266). */
   loop?: LoopInfo | null;
+  /** Side-street dodges found and what was done; null on a loop and on each candidate, absent from an older API. */
+  dodges?: Dodges | null;
   /** The route's effort-equivalent distance in metres, where it was read (the top of the traffic slider). */
   effort_m?: number | null;
   /** 1 on an answer that has `candidates`. */

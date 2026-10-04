@@ -183,8 +183,9 @@ class World:
         )
 
 
-def ctx_for(**kw) -> refine.Context:
-    ctx = context(rate=10.0, maxcalm=True, **kw)
+def ctx_for(maxcalm: bool = False, **kw) -> refine.Context:
+    """A plan's context: below the top of the slider (the 0.25 mi rule) unless `maxcalm`."""
+    ctx = context(rate=100.0 if maxcalm else 10.0, maxcalm=maxcalm, **kw)
     ctx.request = {
         "locations": [{"lon": LON0, "lat": LAT0}, {"lon": LON0, "lat": LAT0 + 0.1}],
         "costing": "bicycle",
@@ -490,11 +491,13 @@ def read(length=1000.0, turns=0, lts3=0.0, lts4=0.0, red=(), orange=(), events=T
     )
 
 
-CTX = context(rate=10.0, maxcalm=True)
+# Below the top of the slider (the 0.25 mi rule), and at the top (the tie step).
+CTX = context(rate=10.0)
+TOP = context(rate=100.0, maxcalm=True)
 
 
-def verdict(dodge, direct, ctx=CTX):
-    return dedodge.judge(dodge, direct, ctx)
+def verdict(dodge, direct, ctx=CTX, original=None):
+    return dedodge.judge(dodge, direct, ctx, original)
 
 
 class TestTurns:
@@ -732,9 +735,26 @@ class TestSplicing:
             *self.elevation[end:],
         ]
 
-    def test_without_elevation_on_either_side_it_has_none(self) -> None:
+    def test_a_stretch_without_elevation_keeps_the_legs(self) -> None:
+        """Review r0: the leg's heights are kept, the router's stretch drawn in a straight
+        line between the heights where the dodge left and came back."""
         no_sub = {k: v for k, v in self.sub.items() if k != "elevation"}
-        assert "elevation" not in self.splice(no_sub)
+        new = self.splice(no_sub)
+        start = round(400.0 / 30.0)
+        end = round((400.0 + self.dodge.metres) / 30.0)
+        n = round(self.sub["summary"]["length"] * 1000.0 / 30.0) + 1
+        middle = new["elevation"][start : start + n]
+        assert new["elevation"][:start] == self.elevation[:start]
+        assert new["elevation"][start + n :] == self.elevation[end:]
+        assert middle[0] == self.elevation[start] and middle[-1] == self.elevation[end]
+        assert middle == pytest.approx(sorted(middle)) and len(middle) == n
+
+    def test_heights_unknown_at_the_ends_are_unknown(self) -> None:
+        assert dedodge._between([None, None, None], 0, 2, 0.06, 30.0) == [None] * 3
+        assert dedodge._between([5.0, None, None], 0, 2, 0.06, 30.0) == [5.0] * 3
+        assert dedodge._between([1.0, 2.0, 3.0], 0, 9, 0.0, 30.0) == [1.0, 3.0]
+
+    def test_without_the_legs_elevation_it_has_none(self) -> None:
         leg = {k: v for k, v in self.leg.items() if k != "elevation"}
         new = dedodge.splice_leg(leg, self.shape, self.edges, self.dodge, self.sub, 30.0)
         assert "elevation" not in new
@@ -841,9 +861,9 @@ class TestThePass:
         assert info["items"][0]["reason"] == "top" and info["kept"] == 1
 
     def test_it_applies_on_every_ride_not_just_the_top_of_the_slider(self, monkeypatch) -> None:
-        for kw in ({}, {"maxcalm": False}, {"group": True}):
+        for kw in ({}, {"rate": 10.0}, {"maxcalm": True, "rate": 100.0}, {"group": True}):
             unit, world, trip = one_dodge(monkeypatch)
-            ctx = context(rate=0.0, **kw)
+            ctx = context(**{"rate": 0.0, **kw})
             ctx.request = ctx_for().request
             new, info = dedodge.apply(trip, ctx)
             assert info["removed"] == 1, kw
@@ -1066,14 +1086,16 @@ class TestBounds:
         monkeypatch.setattr(routing, "clock", lambda: now[0])
         ctx = ctx_for()
         ctx.deadline = routing.Deadline(now[0] + 40.0, 35)
-        world.after_call = lambda: now.__setitem__(0, now[0] + 20.0)
+        # 4 s a call: the first is read in the 5 s budget, the second past it.
+        world.after_call = lambda: now.__setitem__(0, now[0] + 4.0)
         new, info = dedodge.apply(trip, ctx)
         assert info["limited"] == "time"
-        assert info["checked"] == 1 and [i["action"] for i in info["items"]] == [
-            "removed",
+        # The last first: the second was taken out, the first is left unchecked.
+        assert info["checked"] == 2 and [i["action"] for i in info["items"]] == [
             "unchecked",
+            "removed",
         ]
-        assert len(world.calls) == 1
+        assert len(world.calls) == 2
 
     def test_a_pass_that_ran_out_of_time_goes_no_further_down_the_trip(self, monkeypatch) -> None:
         graph = Graph()
@@ -1085,12 +1107,13 @@ class TestBounds:
         monkeypatch.setattr(routing, "clock", lambda: now[0])
         ctx = ctx_for()
         ctx.deadline = routing.Deadline(now[0] + 40.0, 35)
-        world.after_call = lambda: now.__setitem__(0, now[0] + 20.0)
+        # 4 s a call: the first is read in the 5 s budget, the second past it.
+        world.after_call = lambda: now.__setitem__(0, now[0] + 4.0)
         new, info = dedodge.apply(trip, ctx)
         # The first leg's dodge was taken out and the clock then ran out in the second's.
-        assert info["limited"] == "time" and len(world.calls) == 1
+        assert info["limited"] == "time" and len(world.calls) == 2
         assert [i["action"] for i in info["items"]] == ["removed", "unchecked"]
-        assert info["found"] == 2
+        assert info["found"] == 2 == len(info["items"])
 
     def test_a_limit_reached_in_one_leg_stops_the_pass_before_the_next(self, monkeypatch) -> None:
         graph = Graph()
@@ -1103,10 +1126,11 @@ class TestBounds:
         monkeypatch.setattr(routing, "clock", lambda: now[0])
         ctx = ctx_for()
         ctx.deadline = routing.Deadline(now[0] + 40.0, 35)
-        world.after_call = lambda: now.__setitem__(0, now[0] + 20.0)
+        # 4 s a call: the first is read in the 5 s budget, the second past it.
+        world.after_call = lambda: now.__setitem__(0, now[0] + 4.0)
         new, info = dedodge.apply(trip, ctx)
-        assert info["limited"] == "time" and len(world.calls) == 1
-        assert [i["action"] for i in info["items"]] == ["removed", "unchecked"]
+        assert info["limited"] == "time" and len(world.calls) == 2
+        assert [i["action"] for i in info["items"]] == ["unchecked", "removed"]
         assert info["found"] == 2, "the second leg was not looked at"
 
     def test_at_most_max_checks_are_made(self, monkeypatch) -> None:
@@ -1127,9 +1151,9 @@ class TestBounds:
         assert info["checked"] == 8 and len(world.calls) == 8
         assert info["limited"] == "checks"
         assert info["removed"] == 8
-        assert [i["action"] for i in info["items"]].count("unchecked") == 1
-        # The last ones first: the first dodges are the ones left.
-        assert [i["action"] for i in info["items"]][:8] == ["removed"] * 8
+        # Every dodge found is listed, in the route's order; the last ones first, so the
+        # first two are the ones left.
+        assert [i["action"] for i in info["items"]] == ["unchecked"] * 2 + ["removed"] * 8
 
     def test_each_pass_reads_the_leg_as_it_now_is(self, monkeypatch) -> None:
         """Two dodges on one leg: the second is replaced in the route the first left."""
@@ -1160,7 +1184,7 @@ class TestBounds:
         trip = trip_of(leg_of([*u1.dodge_route, *u2.dodge_route[1:]]))
         new, info = dedodge.apply(trip, ctx_for())
         assert [i["action"] for i in info["items"]] == ["removed", "removed"]
-        assert info["items"][1]["avoided_m"] == pytest.approx(300.0, abs=1.5)
+        assert info["items"][0]["avoided_m"] == pytest.approx(300.0, abs=1.5)
 
     def test_a_kept_dodge_does_not_stop_the_next(self, monkeypatch) -> None:
         graph = Graph()
@@ -1170,7 +1194,7 @@ class TestBounds:
         route = [*u1.dodge_route, *u2.dodge_route[1:]]
         trip = trip_of(leg_of(route))
         new, info = dedodge.apply(trip, ctx_for())
-        assert [i["action"] for i in info["items"]] == ["removed", "kept"]
+        assert [i["action"] for i in info["items"]] == ["kept", "removed"]
         assert routing.decode_polyline6(new["legs"][0]["shape"]) == pytest.approx(
             [*u1.dodge_route, *u2.direct[1:]]
         )
@@ -1334,3 +1358,537 @@ class TestKonterraDrive:
         assert info["items"][0]["avoided_m"] == pytest.approx(261.0, abs=2.0)
         assert info["items"][0]["needed_m"] == pytest.approx(dedodge.MIN_AVOIDED_M + 80.0, abs=0.1)
         assert info["items"][0]["action"] == "removed"
+
+
+# --- Review r0: the top of the slider, the checks worth making, the bounds ------------------
+
+
+class TestTheTopOfTheSlider:
+    """Review r0 item 1 (pending the owner's confirmation, `dedodge.TOP_TIE_RULE`): at the
+    top of the slider distance ranks below LTS 3 (258-262), so a dodge is taken out only
+    where what it avoids is within the second level's tie step, and no turns are charged."""
+
+    def test_the_rule_and_its_step(self) -> None:
+        assert dedodge.TOP_TIE_RULE is True
+        assert dedodge.TOP_TIE_M == refine.MAXCALM_STEPS[1] == 50.0
+        assert dedodge.top_rule(TOP) and not dedodge.top_rule(CTX)
+        assert dedodge.needed_m(0, True) == dedodge.needed_m(9, True) == 50.0
+
+    def test_within_the_step_is_a_tie_and_the_main_road_is_taken(self) -> None:
+        got = verdict(read(turns=2), read(lts3=50.0), TOP)
+        assert got.remove and got.reason == "no_stress_gain" and got.needed_m == 50.0
+        got = verdict(read(turns=2), read(lts3=50.5), TOP)
+        assert not got.remove and got.reason == "stress"
+
+    def test_no_turns_are_charged(self) -> None:
+        """Six turns would ask 0.25 mi + 320 m below the top; at the top, 50 m."""
+        got = verdict(read(turns=6), read(lts3=60.0), TOP)
+        assert not got.remove and got.needed_m == 50.0
+        assert verdict(read(turns=6), read(lts3=60.0), CTX).remove
+
+    def test_an_orange_junction_counts_at_the_second_level(self) -> None:
+        # 700 ft of junction cost (an orange junction is 600 ft or more) is 213 m.
+        got = verdict(read(turns=2), read(orange=[700.0]), TOP)
+        assert not got.remove and got.avoided_m == pytest.approx(700.0 * FT)
+
+    def test_the_guards_still_hold(self) -> None:
+        assert verdict(read(turns=2), read(lts4=2.0), TOP).reason == "top"
+        assert verdict(read(length=1000.0, turns=2), read(length=1005.0), TOP).reason == "longer"
+
+    def test_below_the_top_the_quarter_mile_rule_stands(self) -> None:
+        got = verdict(read(turns=2), read(lts3=300.0), CTX)
+        assert got.remove and got.needed_m == pytest.approx(dedodge.MIN_AVOIDED_M)
+
+    def test_the_switch_puts_every_plan_on_the_quarter_mile(self, monkeypatch) -> None:
+        monkeypatch.setattr(dedodge, "TOP_TIE_RULE", False)
+        got = verdict(read(turns=2), read(lts3=300.0), TOP)
+        assert got.remove and got.needed_m == pytest.approx(dedodge.MIN_AVOIDED_M)
+
+    def test_in_the_pass(self, monkeypatch) -> None:
+        # 300 m of LTS 3 avoided through LTS 1 side streets: kept at the top, not below.
+        unit, world, trip = one_dodge(monkeypatch, reach=300.0, side="1", main="3")
+        new, info = dedodge.apply(trip, ctx_for(maxcalm=True))
+        assert new is trip and info["items"][0]["reason"] == "stress"
+        assert info["items"][0]["needed_m"] == 50.0
+        unit, world, trip = one_dodge(monkeypatch, reach=300.0, side="1", main="3")
+        new, info = dedodge.apply(trip, ctx_for())
+        assert info["removed"] == 1
+        # No calmer: taken out at the top too.
+        unit, world, trip = one_dodge(monkeypatch, side="3", main="3")
+        new, info = dedodge.apply(trip, ctx_for(maxcalm=True))
+        assert info["removed"] == 1
+
+    def test_konterra_drive_is_taken_out_on_trailmaxxing(self, monkeypatch) -> None:
+        world = Konterra(monkeypatch)
+        new, info = dedodge.apply(world.trip(), ctx_for(maxcalm=True))
+        (item,) = info["items"]
+        assert item["action"] == "removed" and item["avoided_m"] == 0.0
+        assert new["summary"]["length"] * 1000 / MILE == pytest.approx(1.75, abs=0.01)
+
+    def test_calm_side_streets_by_konterra_are_kept_on_trailmaxxing(self, monkeypatch) -> None:
+        """Virginia Manor Road at LTS 1 avoids 261 m of Konterra's LTS 3: more than the
+        tie step, so the top of the slider keeps it (below the top it is removed, above)."""
+        world = Konterra(
+            monkeypatch, tiers={235061913: "1", 1473496057: "1", 240334415: "1", 6104012: "1"}
+        )
+        new, info = dedodge.apply(world.trip(), ctx_for(maxcalm=True))
+        assert info["items"][0]["action"] == "kept" and info["items"][0]["reason"] == "stress"
+
+
+def straight_world(monkeypatch, middle):
+    """Main St north 400 m, then `middle` ((names, heading, metres) edges), then Main St on
+    north 400 m: a graph and a World whose router knows no stretch (any call fails)."""
+    graph = Graph()
+    points = [at(0, 0), go(at(0, 0), 0, 400)]
+    graph.add(points[0], points[1], ["Main St"], 1, "3")
+    for i, (names, heading, metres) in enumerate(middle):
+        points.append(go(points[-1], heading, metres))
+        graph.add(points[-2], points[-1], names, 2 + i, "3")
+    points.append(go(points[-1], 0, 400))
+    graph.add(points[-2], points[-1], ["Main St"], 50, "3")
+    world = World(monkeypatch, graph)
+    return world, trip_of(leg_of(points))
+
+
+class TestNotWorthACheck:
+    """Review r0 item 4: a detected dodge with fewer than two turns over its own stretch (a
+    straight run through an unnamed edge, a way inside one road) or under 50 m is no weave;
+    it is not checked, so it spends neither the router nor the cap."""
+
+    def test_the_constants(self) -> None:
+        assert dedodge.MIN_DODGE_M == 50.0 and dedodge.BASE_TURNS == 2
+
+    def test_a_straight_run_is_skipped(self) -> None:
+        (found,) = dodges_of([MAIN, ([], 0, 200), MAIN])
+        assert dedodge.skip_reason(found) == "straight"
+        (found,) = dodges_of([MAIN, (["Side"], 30, 300), MAIN])
+        assert dedodge.skip_reason(found) == "straight", "a bend under the turn angle"
+
+    def test_one_turn_is_not_a_weave(self) -> None:
+        """Off at 60 degrees, back on at 20: one turn."""
+        (found,) = dodges_of([MAIN, (["Side"], 60, 200), (["Side"], 20, 200), MAIN])
+        assert dedodge.skip_reason(found) == "straight"
+
+    def test_two_turns_are(self) -> None:
+        (found,) = dodges_of([MAIN, (["Side"], 60, 300), (["Side"], 300, 300), MAIN])
+        assert dedodge.skip_reason(found) is None
+
+    def test_under_50_m_is_skipped(self) -> None:
+        (found,) = dodges_of([MAIN, (["Side"], 60, 24), (["Side"], 300, 24), MAIN])
+        assert found.metres < 50.0 and dedodge.skip_reason(found) == "short"
+        (found,) = dodges_of([MAIN, (["Side"], 60, 26), (["Side"], 300, 26), MAIN])
+        assert found.metres > 50.0 and dedodge.skip_reason(found) is None
+
+    def test_unnamed_edges_alone_are_skipped_up_to_60_m(self) -> None:
+        assert dedodge.MIN_UNNAMED_DODGE_M == 60.0
+        (found,) = dodges_of([MAIN, ([], 60, 29), ([], 300, 29), MAIN])
+        assert 50.0 < found.metres < 60.0 and dedodge.skip_reason(found) == "short"
+        (found,) = dodges_of([MAIN, ([], 60, 31), ([], 300, 31), MAIN])
+        assert found.metres > 60.0 and dedodge.skip_reason(found) is None
+        # Named, 58 m is checked.
+        (found,) = dodges_of([MAIN, (["Side"], 60, 29), (["Side"], 300, 29), MAIN])
+        assert dedodge.skip_reason(found) is None
+        (found,) = dodges_of([MAIN, ([], 60, 29), (["Side"], 300, 29), MAIN])
+        assert dedodge.skip_reason(found) is None, "one named edge is a street"
+
+    def test_a_skipped_dodge_is_listed_and_asks_the_router_nothing(self, monkeypatch) -> None:
+        world, trip = straight_world(monkeypatch, [([], 0, 30)])
+        new, info = dedodge.apply(trip, ctx_for())
+        assert new is trip and world.calls == []
+        assert (info["found"], info["skipped"], info["checked"], info["limited"]) == (1, 1, 0, None)
+        (item,) = info["items"]
+        assert (item["action"], item["reason"]) == ("skipped", "short")
+        world, trip = straight_world(monkeypatch, [([], 0, 200)])
+        new, info = dedodge.apply(trip, ctx_for())
+        assert world.calls == [] and info["items"][0]["reason"] == "straight"
+
+    def test_a_skipped_dodge_does_not_use_up_a_check(self, monkeypatch) -> None:
+        """MAX_CHECKS real dodges after a stub are all checked."""
+        graph = Graph()
+        stub_a, stub_b, stub_c = at(0, -600), at(0, -470), at(0, -440)
+        graph.add(stub_a, stub_b, ["Main St"], 1)
+        graph.add(stub_b, stub_c, [], 2)
+        graph.add(stub_c, at(0, 0), ["Main St"], 3)
+        a = at(0, 0)
+        units = []
+        for i in range(dedodge.MAX_CHECKS):
+            units.append(Unit(graph, a, reach=500.0, ways=10 * (i + 1)))
+            a = units[-1].e
+        world = World(monkeypatch, graph, units)
+        route = [stub_a, stub_b, stub_c, at(0, 0)]
+        for u in units:
+            route += u.dodge_route[1:]
+        new, info = dedodge.apply(trip_of(leg_of(route)), ctx_for(), budget_s=60.0)
+        assert info["found"] == dedodge.MAX_CHECKS + 1 and info["skipped"] == 1
+        assert info["checked"] == dedodge.MAX_CHECKS == len(world.calls)
+        assert info["removed"] == dedodge.MAX_CHECKS and info["limited"] is None
+
+
+class TestCounting:
+    """Review r0: every dodge found is listed once, and is removed, kept, skipped or
+    unchecked."""
+
+    def test_the_counts_add_up(self, monkeypatch) -> None:
+        graph = Graph()
+        a = at(0, 0)
+        units = []
+        for i in range(dedodge.MAX_CHECKS + 2):
+            side = "1" if i % 3 == 0 else "3"
+            units.append(Unit(graph, a, reach=500.0, side=side, main="3", ways=10 * (i + 1)))
+            a = units[-1].e
+        World(monkeypatch, graph, units)
+        route = [units[0].dodge_route[0]]
+        for u in units:
+            route += u.dodge_route[1:]
+        new, info = dedodge.apply(trip_of(leg_of(route)), ctx_for(), budget_s=60.0)
+        actions = [i["action"] for i in info["items"]]
+        assert info["found"] == len(info["items"]) == len(units)
+        assert actions.count("removed") == info["removed"]
+        assert actions.count("kept") == info["kept"] and info["kept"] >= 1
+        assert actions.count("unchecked") == 2
+        assert info["found"] == info["removed"] + info["kept"] + info["skipped"] + 2
+        assert None not in actions
+
+    def test_a_pass_that_failed_lists_what_it_did_not_judge(self, monkeypatch) -> None:
+        unit, world, trip = one_dodge(monkeypatch)
+
+        def broken(*a, **k):
+            raise ValueError("unexpected")
+
+        monkeypatch.setattr(dedodge, "_alternative", broken)
+        new, info = dedodge.apply(trip, ctx_for())
+        assert new is trip and [i["action"] for i in info["items"]] == ["unchecked"]
+
+
+class TestTheTopFigureAgainstTheLegAsFound:
+    """Review r0 nit: the 1 m of slack is the leg's, not each dodge's."""
+
+    def test_in_the_verdict(self) -> None:
+        original, now = read(lts4=0.0), read(turns=2, lts4=0.8)
+        assert verdict(now, read(lts4=1.6)).remove
+        got = verdict(now, read(lts4=1.6), original=original)
+        assert not got.remove and got.reason == "top"
+        assert verdict(now, read(lts4=0.9), original=original).remove
+        # Below the leg as found: the leg as it now is is the bar.
+        got = verdict(read(turns=2, lts4=0.0), read(lts4=1.5), original=read(lts4=5.0))
+        assert got.reason == "top"
+
+    def test_in_the_pass(self, monkeypatch) -> None:
+        """Two dodges whose main road has 0.8 m of LTS 4 each: one may go, not both."""
+        graph = Graph()
+        u1 = Unit(graph, at(0, 0), ways=10)
+        u2 = Unit(graph, u1.e, ways=20)
+        world = World(monkeypatch, graph, [u1, u2])
+        real = world.analyse
+        mains = {15, 25}
+
+        def analyse(trip, ctx, deadline, with_events=True):
+            got = real(trip, ctx, deadline, with_events)
+            extra = 0.8 * sum(1 for p in got.pieces if p.way_id in mains)
+            return dataclasses.replace(got, lts4_m=got.lts4_m + extra)
+
+        monkeypatch.setattr(refine, "analyse", analyse)
+        trip = trip_of(leg_of([*u1.dodge_route, *u2.dodge_route[1:]]))
+        new, info = dedodge.apply(trip, ctx_for())
+        assert [i["action"] for i in info["items"]] == ["kept", "removed"]
+        assert info["items"][0]["reason"] == "top"
+
+
+class TestPinnedBounds:
+    """Review r0's surviving mutants: each bound by its value, not by its name."""
+
+    def test_the_budget_is_five_seconds(self, monkeypatch) -> None:
+        assert dedodge.BUDGET_S == 5.0
+        graph = Graph()
+        a = at(0, 0)
+        units = []
+        for i in range(3):
+            units.append(Unit(graph, a, ways=10 * (i + 1)))
+            a = units[-1].e
+        world = World(monkeypatch, graph, units)
+        route = [units[0].dodge_route[0]]
+        for u in units:
+            route += u.dodge_route[1:]
+        now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: now[0])
+        ctx = ctx_for()
+        ctx.deadline = routing.Deadline(now[0] + 40.0, 35)
+        # Each check takes 2.6 s: two fit in 5 s, a third would not.
+        world.after_call = lambda: now.__setitem__(0, now[0] + 2.6)
+        new, info = dedodge.apply(trip_of(leg_of(route)), ctx)
+        assert info["checked"] == 2 and info["limited"] == "time"
+
+    def test_the_hills_slack_is_a_metre(self) -> None:
+        ctx = context(rate=10.0)
+        ctx.hills_weight = 1.0
+        dodge = read(length=1000.0, turns=2, effort=1000.0)
+        got = verdict(dodge, read(length=999.0, effort=1002.0), ctx)
+        assert not got.remove and got.reason == "hills"
+        assert verdict(dodge, read(length=999.0, effort=1000.9), ctx).remove
+
+    def test_the_same_road_comes_back_within_90_degrees(self) -> None:
+        assert dedodge.SAME_ROAD_HEADING_DEG == 90.0
+
+        def rejoin(heading):
+            return dodges_of(
+                [MAIN, (["Side"], 60, 300), (["Side"], 300, 300), (["Main St"], heading, 400)]
+            )
+
+        assert len(rejoin(85)) == 1
+        assert rejoin(100) == [] and rejoin(140) == []
+
+    def test_a_turn_is_40_degrees(self) -> None:
+        assert dedodge.TURN_DEGREES == 40.0
+
+        def turned(degrees):
+            a = routing.Piece(1, LON0, LAT0, 100.0, names=("A",), heading_in=0.0, heading_out=0.0)
+            b = routing.Piece(
+                2, LON0, LAT0, 100.0, names=("B",), heading_in=degrees, heading_out=degrees
+            )
+            return dedodge.turn_count([a, b])
+
+        assert turned(45.0) == 1 and turned(55.0) == 1 and turned(35.0) == 0
+
+    def test_a_dodge_is_a_mile_at_most(self) -> None:
+        assert dedodge.DODGE_MAX_M == pytest.approx(MILE)
+
+        def length(metres):
+            return [MAIN, (["Side"], 60, metres / 2), (["Side"], 300, metres / 2), MAIN]
+
+        assert len(dodges_of(length(0.95 * MILE))) == 1
+        assert dodges_of(length(1.2 * MILE)) == [] and dodges_of(length(1.8 * MILE)) == []
+
+
+# --- After the pass (review r0 items 3 and 5) ----------------------------------------------------
+
+
+def _top_ctx():
+    from test_longcalm import alt_context
+
+    return alt_context(ceiling_m=20_000.0)
+
+
+def _road(name, ways, tiers=None, km=None, **fields):
+    from test_longcalm import road
+
+    trip, got = road(name, ways, tiers, km)
+    return trip, dataclasses.replace(got, **fields) if fields else got
+
+
+def _names(chosen):
+    return [trip["legs"][0]["shape"] for trip, _read in chosen]
+
+
+def _removed(saved_m=600.0):
+    info = dedodge.empty_info()
+    info.update(removed=1, saved_m=saved_m)
+    return info
+
+
+class TestAfterThePass:
+    """`dedodge.settle`: the answer's search figures follow the route as answered, and the
+    routes to choose from (which the pass leaves alone) are picked again against it."""
+
+    def test_nothing_taken_out_nothing_changes(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        ctx.candidates = [_road("main", [1, 2, 3, 4, 5, 6, 7, 8]), _road("b", list(range(11, 19)))]
+        before = list(ctx.candidates)
+        refined = {"extra_distance_m": 100.0, "exposure_after_m": 5.0}
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: pytest.fail("read"))
+        dedodge.settle({"legs": []}, ctx, refined, dedodge.empty_info())
+        assert ctx.candidates == before
+        assert refined == {"extra_distance_m": 100.0, "exposure_after_m": 5.0}
+
+    def test_the_search_figures_are_the_answers(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        trip, now = _road("now", [1, 2, 3, 4], "1133", exposure_m=2000.0)
+        monkeypatch.setattr(refine, "analyse", lambda t, c, d, with_events=True: now)
+        refined = {
+            "extra_distance_m": 1000.0,
+            "exposure_after_m": 1500.0,
+            "lts3_m_after": 1500.0,
+            "lts4_m_after": 7.0,
+            "top_m_after": 7.0,
+        }
+        dedodge.settle(trip, ctx, refined, _removed(600.0))
+        assert refined == {
+            "extra_distance_m": 400.0,
+            "exposure_after_m": 2000.0,
+            "lts3_m_after": 2000.0,
+            "lts4_m_after": 0.0,
+            "top_m_after": 0.0,
+        }
+
+    def test_without_a_search_there_is_nothing_to_say(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        trip, now = _road("now", [1, 2, 3, 4])
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: now)
+        dedodge.settle(trip, ctx, None, _removed())
+
+    def test_a_candidate_still_offered_is_offered_after_the_new_answer(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        ctx.candidates = [_road("old", list(range(1, 9))), _road("b", list(range(11, 19)))]
+        new = _road("new", list(range(1, 9)), km=7.5)
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: new[1])
+        dedodge.settle(new[0], ctx, None, _removed())
+        assert _names(ctx.candidates) == ["new", "b"]
+        assert ctx.candidates[0][1] is new[1]
+
+    def test_no_candidate_goes_further_past_the_target_than_the_answer(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        ctx.target_m = 8_000.0
+        ctx.candidates = [
+            _road("old", list(range(1, 9)), km=8.5),
+            _road("b", list(range(11, 19)), km=8.5),
+        ]
+        new = _road("new", list(range(1, 9)), km=8.0)
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: new[1])
+        dedodge.settle(new[0], ctx, None, _removed())
+        assert _names(ctx.candidates) == ["new"]
+
+    def test_a_route_that_came_to_share_the_answers_road_is_dropped(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        ctx.candidates = [_road("old", list(range(1, 9))), _road("b", list(range(11, 19)))]
+        new = _road("new", [11, 12, 13, 14, 15, 16, 17, 9])
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: new[1])
+        dedodge.settle(new[0], ctx, None, _removed())
+        assert _names(ctx.candidates) == ["new"]
+
+    def test_a_candidate_no_longer_a_near_tie_is_dropped(self, monkeypatch) -> None:
+        """A main road calmer than the side streets brings the answer's second figure
+        down: a candidate within the band of the answer as it was may not be of it now."""
+        for now_lts3, want in ((450.0, ["new", "b"]), (100.0, ["new"])):
+            ctx = _top_ctx()
+            ctx.candidates = [
+                _road("old", list(range(1, 9)), lts3_m=500.0),
+                _road("b", list(range(11, 19)), lts3_m=1000.0),
+            ]
+            new = _road("new", list(range(1, 9)), km=7.5, lts3_m=now_lts3)
+            monkeypatch.setattr(refine, "analyse", lambda *a, _n=new, **k: _n[1])
+            dedodge.settle(new[0], ctx, None, _removed())
+            assert _names(ctx.candidates) == want, now_lts3
+
+    def test_the_hold_is_the_one_the_search_picked_them_by(self, monkeypatch) -> None:
+        from test_longcalm import AVERSE
+
+        for reference, want in (([1000.0], ["new", "b"]), ([0.0], ["new"])):
+            ctx = _top_ctx()
+            ctx.exposure = AVERSE
+            ctx.first_lts4 = [0.0, 0.0, 0.0]
+            ctx.candidate_reference = reference
+            ctx.candidates = [
+                _road("old", list(range(1, 9)), "11111114"),
+                _road("b", list(range(11, 19)), "41111111"),
+            ]
+            new = _road("new", list(range(1, 9)), "11111114", km=7.5)
+            monkeypatch.setattr(refine, "analyse", lambda *a, _n=new, **k: _n[1])
+            dedodge.settle(new[0], ctx, None, _removed())
+            assert _names(ctx.candidates) == want, reference
+
+    def test_an_answer_that_cannot_be_read_offers_no_candidates(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        ctx.candidates = [_road("old", list(range(1, 9))), _road("b", list(range(11, 19)))]
+        trip = {"legs": [{"shape": "new"}]}
+        monkeypatch.setattr(refine, "analyse", lambda *a, **k: None)
+        dedodge.settle(trip, ctx, None, _removed())
+        assert len(ctx.candidates) == 1 and ctx.candidates[0][0] is trip
+
+        def late(*a, **k):
+            raise routing.DeadlineExceeded("late")
+
+        ctx.candidates = [_road("old", list(range(1, 9))), _road("b", list(range(11, 19)))]
+        monkeypatch.setattr(refine, "analyse", late)
+        refined = {"extra_distance_m": 700.0, "exposure_after_m": 3.0}
+        dedodge.settle(trip, ctx, refined, _removed())
+        assert len(ctx.candidates) == 1
+        assert refined == {"extra_distance_m": 100.0, "exposure_after_m": 3.0}
+
+    def test_the_answer_is_read_by_the_plans_own_deadline(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        trip, now = _road("now", [1, 2, 3, 4])
+        seen = []
+        monkeypatch.setattr(refine, "analyse", lambda t, c, d, **k: seen.append(d) or now)
+        dedodge.settle(trip, ctx, {}, _removed())
+        assert seen == [ctx.deadline]
+
+
+class TestAReadingCutShort:
+    """A reading the pass's clock ran out in may have junctions missing (a `/locate` batch
+    the clock cut off is left out, `junctions.nodes_at`): it is neither judged nor kept for
+    the answer, and the pass stops. (Measured: on Bowie to Annapolis, Default, a removal
+    judged on such a reading answered 1 red and 12 orange junctions fewer.)"""
+
+    def remembering(self, monkeypatch, world, late_on=None):
+        """`refine.analyse` that remembers what it reads, as the real one does, and moves
+        the clock past the pass's end while reading the `late_on`th trip."""
+        real = world.analyse
+        count = [0]
+
+        def analyse(trip, ctx, deadline, with_events=True):
+            count[0] += 1
+            got = real(trip, ctx, deadline, with_events)
+            ctx.analyses[tuple(leg["shape"] for leg in trip["legs"])] = got
+            if count[0] == late_on:
+                self.now[0] = deadline.at + 0.1
+            return got
+
+        monkeypatch.setattr(refine, "analyse", analyse)
+
+    def setup_clock(self, monkeypatch):
+        self.now = [routing.clock()]
+        monkeypatch.setattr(routing, "clock", lambda: self.now[0])
+
+    def test_the_stretch_read_late_is_not_judged_or_kept(self, monkeypatch) -> None:
+        self.setup_clock(monkeypatch)
+        unit, world, trip = one_dodge(monkeypatch)
+        self.remembering(monkeypatch, world, late_on=2)
+        ctx = ctx_for()
+        ctx.deadline = routing.Deadline(self.now[0] + 40.0, 35)
+        new, info = dedodge.apply(trip, ctx)
+        assert new is trip and info["limited"] == "time" and info["removed"] == 0
+        assert [i["action"] for i in info["items"]] == ["unchecked"]
+        assert list(ctx.analyses) == [(trip["legs"][0]["shape"],)], "the stretch is forgotten"
+
+    def test_the_leg_read_late_is_not_judged_by(self, monkeypatch) -> None:
+        self.setup_clock(monkeypatch)
+        unit, world, trip = one_dodge(monkeypatch)
+        self.remembering(monkeypatch, world, late_on=1)
+        ctx = ctx_for()
+        ctx.deadline = routing.Deadline(self.now[0] + 40.0, 35)
+        new, info = dedodge.apply(trip, ctx)
+        assert new is trip and info["limited"] == "time" and world.calls == []
+        assert info["checked"] == 0 and ctx.analyses == {}
+
+    def test_in_time_it_is_judged_and_kept(self, monkeypatch) -> None:
+        self.setup_clock(monkeypatch)
+        unit, world, trip = one_dodge(monkeypatch)
+        self.remembering(monkeypatch, world)
+        ctx = ctx_for()
+        ctx.deadline = routing.Deadline(self.now[0] + 40.0, 35)
+        new, info = dedodge.apply(trip, ctx)
+        assert info["removed"] == 1 and info["limited"] is None
+        assert (new["legs"][0]["shape"],) in ctx.analyses
+
+    def test_no_check_is_begun_once_the_time_is_gone(self, monkeypatch) -> None:
+        """The clock runs out between two checks (here while the leg is read again after
+        the first removal): the second is not asked of the router at all."""
+        self.setup_clock(monkeypatch)
+        graph = Graph()
+        u1 = Unit(graph, at(0, 0), ways=10)
+        u2 = Unit(graph, u1.e, ways=20)
+        world = World(monkeypatch, graph, [u1, u2])
+        traces = [0]
+        real_trace = world.trace
+        ctx = ctx_for()
+        ctx.deadline = routing.Deadline(self.now[0] + 40.0, 35)
+
+        def trace(*a, **k):
+            traces[0] += 1
+            if traces[0] == 2:
+                self.now[0] += 10.0
+            return real_trace(*a, **k)
+
+        monkeypatch.setattr(routing, "_trace", trace)
+        new, info = dedodge.apply(trip_of(leg_of([*u1.dodge_route, *u2.dodge_route[1:]])), ctx)
+        assert len(world.calls) == 1 and info["limited"] == "time"
+        assert [i["action"] for i in info["items"]] == ["unchecked", "removed"]

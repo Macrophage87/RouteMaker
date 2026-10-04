@@ -271,6 +271,9 @@ class Context:
     # answer's own first, then up to ALT_MAX - 1 others (`pick_candidates`); set by
     # `refine` and `refine_long` where `options` is collected.
     candidates: list = field(default_factory=list)
+    # The hold's reference they were picked against (`pick_candidates`), for picking
+    # them again where the answer changes after the search (`dedodge.settle`).
+    candidate_reference: list = field(default_factory=list)
     # A loop (OWNER-DECISIONS 266): the plan's last leg returns to its start, and
     # `loop_overlap` is the most of the way back that may be the way out (set by
     # `make_loop`; None: not a loop). No search candidate may share more of it.
@@ -703,6 +706,7 @@ def refine(trip: dict, ctx: Context) -> tuple[dict, dict]:
         info["lts4_after_m"] = round(best.lts4_m, 1)
     if ctx.options is not None and ctx.alternates:
         pool = [(best_trip, best)] + [o for o in ctx.options if o[0] is not best_trip]
+        ctx.candidate_reference = list(ctx.first_lts4)
         ctx.candidates = more_routes(
             pick_candidates(pool, ctx, ctx.first_lts4), ctx, ctx.first_lts4
         )
@@ -1653,8 +1657,10 @@ def _pct(shared: float, back: float) -> float | None:
 # judges that from the map. A candidate must be within the ceiling (and, where the rider
 # set a target, no further past it than the answer, OWNER-DECISIONS 271), pass the hold,
 # and be no worse than the answer by more than these bands (a near-tie on stress, where
-# the variety matters): the top figure by ALT_TOP_BAND_M (about 150 ft) and the second
-# by ALT_SECOND_BAND_M (about 1,000 ft). It must also be meaningfully different from
+# the variety matters): the top figure by ALT_TOP_BAND_M (about 500 ft) and the second
+# by ALT_SECOND_BAND_M (about 0.5 mi); OWNER-DECISIONS 287(4), "Loosen a bit
+# (Recommended)", from 45 m and 300 m, so that more genuine alternates show, each with
+# its stats. It must also be meaningfully different from
 # every candidate already chosen: it shares less than ALT_OVERLAP of the shorter one's
 # road by matched way length (OWNER-DECISIONS 269, "Loosen a little (Recommended)": 70%,
 # from 60%), or differs from it by at least ALT_DIFFERENT_M of road (a different
@@ -1662,8 +1668,8 @@ def _pct(shared: float, back: float) -> float | None:
 ALT_MAX = 4
 ALT_OVERLAP = 0.70
 ALT_DIFFERENT_M = 8_000.0
-ALT_TOP_BAND_M = 45.0
-ALT_SECOND_BAND_M = 300.0
+ALT_TOP_BAND_M = 150.0
+ALT_SECOND_BAND_M = 800.0
 
 
 def _road_m(read: Analysis) -> float:
@@ -1906,6 +1912,7 @@ def _long_candidates(
             for j in range(len(reads))
         )
     ]
+    ctx.candidate_reference = reference
     return pick_candidates(pool, ctx, reference)
 
 
