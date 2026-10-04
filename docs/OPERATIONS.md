@@ -2690,6 +2690,24 @@ Steps 1 to 4 are:
 3. `docker compose up -d --no-deps --no-build --force-recreate api worker`, with no job todo or doing;
 4. the front end's build and publish (docs/DEPLOYMENT.md, "The public front end").
 
+**The weekly-rebuild pause (OWNER-DECISIONS 355) is not in the api image.** `weekly_rebuild`
+runs in the `rebuild` container, from the pipeline image (`routemaker-pipeline`), so steps 2 and 3
+do not ship it. It takes effect only once that image is rebuilt and the rebuild container is
+recreated with `WEEKLY_REBUILD_PAUSED=1` in `.env`, with no rebuild job todo or doing and after a
+rollback point of its own:
+
+```sh
+docker tag ghcr.io/macrophage87/routemaker-pipeline:dev ghcr.io/macrophage87/routemaker-pipeline:pre-rel-$L </dev/null
+docker compose build rebuild </dev/null
+docker compose up -d --no-deps --no-build --force-recreate rebuild </dev/null
+```
+
+Until that is done the pause is not in force, and the Tuesday 08:00 UTC tick runs a real rebuild.
+The fallback is `docker compose stop rebuild </dev/null`, run by hand, with the owner's OK, before
+the tick (and `docker compose start rebuild` to undo it). Stopping it pauses the hand-fired
+rebuilds too, and the operations page reports the rebuild stale eight days after its last
+success.
+
 There is no migrate, and never a plain `up -d`.
 
 **5. Verify.** Run both scripts and keep their logs. `verify-release.sh` takes an optional base URL
@@ -2739,6 +2757,20 @@ docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:
 docker tag ghcr.io/macrophage87/routemaker-api:pre-rel-$L ghcr.io/macrophage87/routemaker-api:dev </dev/null
 docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null
 ```
+
+If the pipeline image was rebuilt (the pause, above), roll it back too, but only with **no
+rebuild job todo or doing**: a job the new code queued (`run_rebuild_now` passes the new `manual`
+argument) fails on the old image with an unexpected keyword. Check, then roll back:
+
+```sh
+docker compose exec -T api python manage.py shell -c "from core.runs import jobs_in_flight; print(jobs_in_flight('weekly_rebuild'))"   # must print []
+docker tag ghcr.io/macrophage87/routemaker-pipeline:pre-rel-$L ghcr.io/macrophage87/routemaker-pipeline:dev </dev/null
+docker compose up -d --no-deps --no-build --force-recreate rebuild </dev/null
+```
+
+A job left todo or doing is unwedged or cancelled first (`unwedge_job`, above), not rolled back
+under. The old image has no pause: remove `WEEKLY_REBUILD_PAUSED` from `.env`, and stop the rebuild
+container by hand (with the owner's OK) if the pause must still hold.
 
 The old hashed assets are still there, because the publish's `cp -n` never deletes. Roll back on any
 of these:

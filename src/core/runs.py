@@ -302,13 +302,15 @@ def stale_task_details(now=None) -> list[dict]:
     started = deployment_epoch()
     stale = []
     for task, window in STALE_AFTER.items():
+        # Paused first (355), so the success/epoch branches below stay one if/else
+        # (the ops confirm review: the check sat between them and took their `else`).
+        if paused_run(task, window, now) is not None:
+            continue
         run = last_success(task)
         if run is not None:
             age = (now - run.started_at).total_seconds()
             if age < window:
                 continue
-        if paused_run(task, window, now) is not None:
-            continue
         else:
             age = None
             if started is None or (now - started).total_seconds() < window:

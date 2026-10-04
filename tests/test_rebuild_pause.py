@@ -127,3 +127,30 @@ def test_run_rebuild_now_defers_a_manual_job_and_the_schedule_is_unchanged() -> 
         run_rebuild_now
     )
     assert tasks.WEEKLY_REBUILD_CRON == "0 8 * * 2"
+
+
+@pytest.mark.django_db
+def test_a_stale_task_that_is_not_paused_shows_its_age(settings) -> None:
+    """The ops confirm review: the pause check had taken the success branch's `else`, so a
+    stale, unpaused task with a success read "( s ago)". It carries its age."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from test_operations import deployment_up_since
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, stale_task_details
+
+    deployment_up_since(timedelta(days=90))
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    ScheduledRun.objects.filter(task="weekly_rebuild").update(
+        started_at=now - timedelta(days=9), finished_at=now - timedelta(days=9)
+    )
+    settings.WEEKLY_REBUILD_PAUSED = False
+    [entry] = [e for e in stale_task_details(now) if e["task"] == "weekly_rebuild"]
+    assert entry["last_success_at"] is not None
+    assert entry["age_s"] == pytest.approx(9 * 24 * 3600, abs=60)
