@@ -428,6 +428,33 @@ def stress_weight_m(read: Analysis, ctx: Context) -> float:
     )
 
 
+def _top_weight_m(read: Analysis) -> float:
+    """The top figure's part of `stress_weight_m`: LTS 4, Avoid and red junctions."""
+    w = WORTH_WEIGHTS
+    return w.lts4 * (read.lts4_m - read.avoid_m) + w.avoid * read.avoid_m + w.lts4 * read.red_m
+
+
+def _second_weight_m(read: Analysis) -> float:
+    """The second figure's part of `stress_weight_m`: LTS 3 and orange junctions."""
+    return WORTH_WEIGHTS.lts3 * (read.lts3_m + read.orange_m)
+
+
+def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float:
+    """The stress (metres of LTS 3, `stress_weight_m`) `calmer_one` saves over `worse`
+    for the diminishing-returns rule, counted at the highest level of `Analysis.key`
+    that improves (combined spec review, SF2; OWNER-DECISIONS 287(1): "LTS 4 still
+    ranks first in the stress order; these weights only govern how many extra miles a
+    stress saving buys"). Where the top figure improves by more than its tie step, its
+    saving pays on its own and a loss at the second level does not subtract from it
+    (a gain there still adds), so LTS 4 never loses to extra LTS 3. Otherwise the two
+    levels are netted at the 1/2/3 weights, as within one level they always were."""
+    top = _top_weight_m(worse) - _top_weight_m(calmer_one)
+    second = _second_weight_m(worse) - _second_weight_m(calmer_one)
+    if worse.top_m - calmer_one.top_m > MAXCALM_STEPS[0]:
+        return top + max(second, 0.0)
+    return top + second
+
+
 def distance_charge_m(
     from_m: float, to_m: float, ctx: Context, blended_m: float | None = None
 ) -> float:
@@ -459,7 +486,7 @@ def worth_it(shorter: Analysis, longer: Analysis, ctx: Context, rest_m: float = 
     )
     if charge <= 0.0:
         return True
-    return stress_weight_m(shorter, ctx) - stress_weight_m(longer, ctx) >= charge
+    return stress_saved_m(shorter, longer, ctx) >= charge
 
 
 def calmer(read: Analysis, best: Analysis, ctx: Context) -> bool:
@@ -1897,7 +1924,7 @@ def choose_options(
                 gain = _benefit(now, chain[k][1], ctx)
                 if gain <= 0:
                     continue
-                saved = stress_weight_m(now, ctx) - stress_weight_m(chain[k][1], ctx)
+                saved = stress_saved_m(now, chain[k][1], ctx)
                 blended = level3(chain[k][1], ctx) - level3(now, ctx)
                 charge = distance_charge_m(total, total + added, ctx, blended)
                 if charge > 0.0 and saved < charge:

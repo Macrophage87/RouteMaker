@@ -1676,3 +1676,55 @@ class TestTheSeekLegsOwnDeadline:
         stop_at = routing.clock() + trailseek.SEEK_ROUND_MIN_S + 5.0
         refine._seek_leg(0, {"legs": []}, analysis("o"), 0.0, stop_at, ctx, seek)
         assert read == [1]
+
+
+class TestLTS4NeverLosesToExtraLTS3:
+    """Combined spec review, SF2 (OWNER-DECISIONS 287(1): "LTS 4 still ranks first in the
+    stress order; these weights only govern how many extra miles a stress saving buys").
+    The diminishing-returns rule charges the distance against the highest level that
+    improves: an LTS 4 saving pays for its miles on its own, and the LTS 3 a route adds
+    does not net it away. Within a level, the 1/2/3 weights still set the trade."""
+
+    ctx = top_context()
+    # The reviewer's probe: 10 km with 200 m of LTS 4; 12 km with none and 600 m of LTS 3.
+    lts4 = reading(lts4=200.0, length=10_000.0)
+    lts3 = reading(lts3=600.0, length=12_000.0)
+
+    def test_the_reviewers_probe(self) -> None:
+        assert refine.calmer(self.lts3, self.lts4, self.ctx)
+        assert refine.better(self.lts3, self.lts4, self.ctx)
+        assert not refine.better(self.lts4, self.lts3, self.ctx)
+
+    def test_the_saving_is_the_top_levels_alone(self) -> None:
+        # 2 x 200 m of LTS 4 saved; the 600 m of LTS 3 added does not subtract.
+        assert refine.stress_saved_m(self.lts4, self.lts3, self.ctx) == pytest.approx(400.0)
+        # A gain at the second level still adds.
+        both = reading(length=12_000.0)
+        assert refine.stress_saved_m(self.lts4, both, self.ctx) == pytest.approx(400.0)
+        more3 = reading(lts4=200.0, lts3=300.0, length=10_000.0)
+        assert refine.stress_saved_m(more3, both, self.ctx) == pytest.approx(700.0)
+
+    def test_within_a_level_the_weights_still_net(self) -> None:
+        """The top figure tied (within its step): LTS 3 nets at weight 1 as before."""
+        a = reading(lts4=5.0, lts3=1000.0, length=10_000.0)
+        b = reading(lts4=0.0, lts3=800.0, length=11_000.0)
+        assert refine.stress_saved_m(a, b, self.ctx) == pytest.approx(10.0 + 200.0)
+        # 1,000 m added at 1 in 5 asks 200 m: 210 m pays; 1,100 m added does not.
+        assert refine.better(b, a, self.ctx)
+        assert not refine.better(with_(b, length_m=11_100.0), a, self.ctx)
+
+    def test_the_miles_still_count(self) -> None:
+        """Past what the LTS 4 saving buys (400 m pays 2 km at 1 in 5), the shorter stays."""
+        far = with_(self.lts3, length_m=12_100.0, effort_m=12_100.0)
+        assert not refine.better(far, self.lts4, self.ctx)
+        assert refine.better(self.lts4, far, self.ctx)
+
+    def test_a_long_plan_shares_its_detour_out_by_the_same_rule(self) -> None:
+        """`choose_options`: the leg's LTS 4-free option is taken over its LTS 4 first."""
+        near = with_(self.lts3, length_m=11_900.0, effort_m=11_900.0)
+        chain = [({"legs": [{"shape": "first"}]}, self.lts4), ({"legs": [{"shape": "x"}]}, near)]
+        assert refine.choose_options([chain], [10_000.0], None, self.ctx) == [1]
+
+    def test_a_loops_way_back_by_the_same_rule(self) -> None:
+        best = ((False, 0.0), None, self.lts4)
+        assert refine._loop_before((False, 0.0), self.lts3, best, self.ctx)
