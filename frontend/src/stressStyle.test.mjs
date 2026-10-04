@@ -5,6 +5,7 @@ import {
   BASEMAP,
   stressLayers,
   stressCasingLayers,
+  gapLayers,
   stressOverlayLayers,
   unpavedLayers,
   legend,
@@ -30,8 +31,12 @@ import * as spec from "@maplibre/maplibre-gl-style-spec";
 // These tests assert the default palette's tiers, which is what the module
 // starts with here (no address, no storage); the palette-switching tests are in
 // lib/accessibilitySwitch.test.ts.
-const STRESS_TIERS = tiersFor(DEFAULT_PALETTE);
+// The warm palette, the default until OWNER-DECISIONS 351, which these rules were tuned on; the
+// default two-tone is held to them, and to the breaks the owner's colours make, in defaultPalette.test.ts.
+const STRESS_TIERS = tiersFor("blended");
 const FURTH_TIERS = STRESS_TIERS.filter((t) => t.tier <= 4);
+/** The tiers the layers are built in by default: the two-tone palette (351). */
+const DEFAULT_TIERS = tiersFor(DEFAULT_PALETTE);
 
 /** Whether `layer` draws a feature with `properties`, as MapLibre decides it. */
 function draws(layer, properties) {
@@ -178,9 +183,9 @@ test("each tier has a casing layer drawn wider, in its own casing colour, on the
   casings.forEach((casing, i) => {
     assert.deepEqual(casing.filter, tiers[i].filter);
     assert.equal(casing["source-layer"], tiers[i]["source-layer"]);
-    const f = { tier: STRESS_TIERS[i].tier };
-    assert.equal(paintValue(casing, "line-color", f, 14), STRESS_TIERS[i].casing);
-    assert.notEqual(paintValue(casing, "line-color", f, 14), STRESS_TIERS[i].color);
+    const f = { tier: DEFAULT_TIERS[i].tier };
+    assert.equal(paintValue(casing, "line-color", f, 14), DEFAULT_TIERS[i].casing);
+    assert.notEqual(paintValue(casing, "line-color", f, 14), DEFAULT_TIERS[i].color);
     for (const zoom of [14, 16]) {
       assert.ok(paintValue(casing, "line-width", f, zoom) > paintValue(tiers[i], "line-width", f, zoom));
     }
@@ -221,7 +226,11 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const casings = stressCasingLayers("s").map((l) => l.id);
   const rails = facilityLayers("s").map((l) => l.id);
   const marks = unpavedLayers("s").map((l) => l.id);
-  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings, ...marks].sort(), "each layer once");
+  const gaps = gapLayers("s").map((l) => l.id);
+  assert.deepEqual(gaps, ["stress-gap-2"], "LTS 2's own gap colour (OWNER-DECISIONS 356)");
+  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings, ...gaps, ...marks].sort(), "each layer once");
+  // The gap line lies over its casing and under its dashes.
+  assert.ok(ids.indexOf("stress-casing-2") < ids.indexOf("stress-gap-2") && ids.indexOf("stress-gap-2") < ids.indexOf("stress-2"));
   assert.ok(Math.min(...marks.map((m) => ids.indexOf(m))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the surface mark is drawn over every tier line");
   casings.forEach((casing, i) => assert.ok(ids.indexOf(casing) < ids.indexOf(tiers[i]), `${casing} is drawn over its tier`));
   const lastCasing = Math.max(...casings.map((c) => ids.indexOf(c)));
@@ -337,7 +346,7 @@ test("a road closed on weekends is a path on weekends and its own road otherwise
   assert.deepEqual(drawnBy("weekday_offpeak", sligo), ["stress-3", "stress-casing-3"]);
   assert.deepEqual(drawnBy("weekday_rush", sligo), ["stress-3", "stress-casing-3"]);
   const withLane = { tier: 2, facility: "lane", car_free: "weekend" };
-  assert.deepEqual(drawnBy("weekday_offpeak", withLane), ["facility-lane", "stress-2", "stress-casing-2"]);
+  assert.deepEqual(drawnBy("weekday_offpeak", withLane), ["facility-lane", "stress-2", "stress-casing-2", "stress-gap-2"]);
   assert.deepEqual(drawnBy("weekend", withLane), ASPATH);
 });
 
@@ -449,8 +458,10 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   // LTS 4, and red and black for Avoid." (74)
   const { blended, twotone } = PALETTES;
   for (const palette of [blended, twotone]) {
-    assert.deepEqual(palette[1], { color: "#9ed3ac", casing: "#17301f" });
-    assert.deepEqual(palette[2], { color: "#57a06c", casing: "#17301f" });
+    // LTS 1's edge is a softer dark green since OWNER-DECISIONS 357 (#17301f before).
+    assert.deepEqual(palette[1], { color: "#9ed3ac", casing: "#2f5d47" });
+    // LTS 2's edge is a slate blue and its gaps a steel blue since OWNER-DECISIONS 356 ("a blue instead of black").
+    assert.deepEqual(palette[2], { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" });
     assert.deepEqual(Object.keys(palette).sort(), ["1", "2", "3", "4", "5"]);
   }
   // Two-tone: the first colour the line, the second its casing.
@@ -459,13 +470,13 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   // LTS 4's (OWNER-DECISIONS 292; stressSalience.test.ts).
   assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#c81e1e"]);
   assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d42020", "#111111"]);
-  assert.equal(DEFAULT_PALETTE, "blended");
+  assert.equal(DEFAULT_PALETTE, "twotone");
   assert.equal(paletteFrom("?palette=twotone"), "twotone");
   assert.equal(paletteFrom("?x=1&palette=blended"), "blended");
   assert.equal(paletteFrom("?palette=__proto__"), DEFAULT_PALETTE);
   assert.equal(paletteFrom(""), DEFAULT_PALETTE);
-  assert.deepEqual(currentTiers(), STRESS_TIERS);
-  assert.deepEqual(furthTiers(), FURTH_TIERS);
+  assert.deepEqual(currentTiers(), tiersFor(DEFAULT_PALETTE));
+  assert.deepEqual(furthTiers(), tiersFor(DEFAULT_PALETTE).filter((t) => t.tier <= 4));
 });
 
 // Machado, Oliveira and Fernandes (2009), deuteranopia at full severity, on
@@ -510,8 +521,8 @@ test("an alley is not drawn below z16 and is faint from it; a tier-5 road keeps 
   // Not an alley in the source: a tier-5 road the transform marks service=alley
   // in Valhalla's extract reaches the tiles as a road.
   const avoid = drawnAtZoom({ tier: 5 }, 14)["stress-5"];
-  assert.deepEqual(avoid, { opacity: 1, width: STRESS_TIERS[4].width });
+  assert.deepEqual(avoid, { opacity: 1, width: DEFAULT_TIERS[4].width });
   const avoidLayer = stressLayers().find((l) => l.id === "stress-5");
   // Its colour when paved: the expression is the surface's (OWNER-DECISIONS 302).
-  assert.deepEqual(avoidLayer.paint["line-color"], ["case", ["==", ["get", "unpaved"], true], STRESS_TIERS[4].unpavedColor, STRESS_TIERS[4].color]);
+  assert.deepEqual(avoidLayer.paint["line-color"], ["case", ["==", ["get", "unpaved"], true], DEFAULT_TIERS[4].unpavedColor, DEFAULT_TIERS[4].color]);
 });

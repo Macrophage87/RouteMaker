@@ -14,7 +14,7 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes } from "./stressStyle.js";
+import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes, neutralPaletteSearch } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
@@ -204,6 +204,13 @@ export function App() {
       },
     });
   }
+
+  // An old link's palette value (`cvd`, `blended`) is renamed in the address bar to its
+  // neutral name, once, so copying the address does not pass it on (321; S4).
+  useEffect(() => {
+    const search = neutralPaletteSearch(window.location.search);
+    if (search !== null) window.history.replaceState(null, "", `${window.location.pathname}${search}${window.location.hash}`);
+  }, []);
 
   // Keep the link in step with the plan, without adding history entries.
   useEffect(() => {

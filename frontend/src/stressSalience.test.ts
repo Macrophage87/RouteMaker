@@ -6,7 +6,6 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
-  DEFAULT_PALETTE,
   FACILITIES,
   FACILITY_DRAW_ORDER,
   PALETTES,
@@ -22,6 +21,9 @@ import { ROUTE_SECTION_WIDTHS } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR } from "./lib/stressBar.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
+
+/** The warm palette (the default until OWNER-DECISIONS 351), which these rules were tuned on; the default two-tone is held in defaultPalette.test.ts. */
+const WARM = "blended";
 
 const LIGHT_BASE = "#f5f3ef";
 const DARK_PANELS = ["#1b1e24", "#262a32"]; // styles.css --bg and --bg-soft, dark theme
@@ -44,8 +46,8 @@ function worst(a: string, b: string): { delta: number; vision: string } {
 // 274: salience rises with stress
 // ---------------------------------------------------------------------------
 
-test("salience: in the default palette the line gets more saturated from LTS 3 to LTS 4, and more contrasting from LTS 3 up", (t) => {
-  const tiers = tiersFor(DEFAULT_PALETTE);
+test("salience: in the warm palette the line gets more saturated from LTS 3 to LTS 4, and more contrasting from LTS 3 up", (t) => {
+  const tiers = tiersFor(WARM);
   const [c3, c4, c5] = [tiers[2], tiers[3], tiers[4]].map((x: Tier) => x.color);
   t.diagnostic(`CIELAB chroma LTS 3 ${chroma(c3).toFixed(1)}, LTS 4 ${chroma(c4).toFixed(1)}, Avoid ${chroma(c5).toFixed(1)}`);
   assert.ok(chroma(c4) >= chroma(c3) + 10, `LTS 4 chroma ${chroma(c4).toFixed(1)} is not clearly above LTS 3's ${chroma(c3).toFixed(1)}`);
@@ -77,7 +79,7 @@ test("salience: ink - the share of the line drawn (dash duty cycle) times its wi
 });
 
 test("salience: LTS 4 is near-solid and heavy: at least 85% of the line drawn, the heaviest of the Furth tiers, and the calm tiers are lighter", () => {
-  const tiers = tiersFor(DEFAULT_PALETTE) as Tier[];
+  const tiers = tiersFor(WARM) as Tier[];
   assert.ok(coverage(tiers[3].dash ?? [1]) >= 0.85, `${coverage(tiers[3].dash ?? [1])}`);
   assert.ok(coverage(tiers[3].dash ?? [1]) > coverage(tiers[2].dash ?? [1]), "denser than LTS 3");
   assert.ok(coverage(tiers[3].dash ?? [1]) > coverage(tiers[1].dash ?? [1]), "denser than LTS 2");
@@ -85,7 +87,7 @@ test("salience: LTS 4 is near-solid and heavy: at least 85% of the line drawn, t
 });
 
 test("the tiers' dash patterns still differ pairwise, and their on-lengths in pixels differ by 15% or more, so they read in greyscale", () => {
-  const tiers = tiersFor(DEFAULT_PALETTE) as Tier[];
+  const tiers = tiersFor(WARM) as Tier[];
   const dashed = tiers.filter((x) => x.dash);
   for (let i = 0; i < dashed.length; i += 1) {
     for (let j = i + 1; j < dashed.length; j += 1) {
@@ -101,20 +103,23 @@ test("the tiers' dash patterns still differ pairwise, and their on-lengths in pi
 // 292: no calmer tier's gaps are harsher than a busier one's
 // ---------------------------------------------------------------------------
 
-/** Harshness measured here, from the dash and the colours, not from gapHarshness: gap share times casing-vs-line contrast. */
+/** Harshness measured here, from the dash and the colours, not from gapHarshness: gap share times the gap colour's contrast with the line (the casing's where the tier has no gap colour, OWNER-DECISIONS 356). */
 function harshness(t: Tier): number {
   if (!t.dash) return 0;
   const gaps = t.dash.filter((_: number, i: number) => i % 2 === 1).reduce((a: number, b: number) => a + b, 0);
-  return (gaps / t.dash.reduce((a: number, b: number) => a + b, 0)) * contrastRatio(t.casing, t.color);
+  return (gaps / t.dash.reduce((a: number, b: number) => a + b, 0)) * contrastRatio(t.gap ?? t.casing, t.color);
 }
 
-test("harshness - gap share times casing-vs-line contrast - does not fall from LTS 3 to LTS 4 to Avoid, in every palette, plain and strong (292)", (t) => {
+test("harshness - gap share times gap-vs-line contrast - never falls as stress rises, from LTS 1 to Avoid, in every palette, plain and strong (292, 356)", (t) => {
   for (const palette of Object.keys(PALETTES)) {
     for (const strong of [false, true]) {
       const tiers = tiersFor(palette, strong) as Tier[];
       const h = tiers.map(harshness);
-      t.diagnostic(`${palette}${strong ? " strong" : ""}: ` + tiers.map((x, i) => `${x.short} ${h[i].toFixed(2)}`).join(", ") + " (LTS 1-2 reported, not held)");
+      t.diagnostic(`${palette}${strong ? " strong" : ""}: ` + tiers.map((x, i) => `${x.short} ${h[i].toFixed(2)}`).join(", "));
       tiers.forEach((x, i) => assert.ok(Math.abs(gapHarshness(x) - h[i]) < 1e-12, `gapHarshness ${x.short}`));
+      // From LTS 1 up since 356 ("LTS2 can almost be harsher than LTS3"): no calmer tier's gaps are harsher.
+      assert.ok(h[0] <= h[1], `${palette}${strong ? " strong" : ""}: LTS 1 ${h[0].toFixed(3)} is harsher than LTS 2 ${h[1].toFixed(3)}`);
+      assert.ok(h[1] <= h[2], `${palette}${strong ? " strong" : ""}: LTS 2 ${h[1].toFixed(3)} is harsher than LTS 3 ${h[2].toFixed(3)}`);
       assert.ok(h[2] <= h[3], `${palette}${strong ? " strong" : ""}: LTS 3 ${h[2].toFixed(3)} is harsher than LTS 4 ${h[3].toFixed(3)}`);
       assert.ok(h[3] <= h[4], `${palette}${strong ? " strong" : ""}: LTS 4 ${h[3].toFixed(3)} is harsher than Avoid ${h[4].toFixed(3)}`);
     }
@@ -123,7 +128,7 @@ test("harshness - gap share times casing-vs-line contrast - does not fall from L
 
 test("LTS 3's gaps are calmer than before: a softer casing and a smaller gap, the halo still 3:1 and the casing still dark", () => {
   for (const strong of [false, true]) {
-    const lts3 = tiersFor(DEFAULT_PALETTE, strong)[2] as Tier;
+    const lts3 = tiersFor(WARM, strong)[2] as Tier;
     assert.ok(harshness(lts3) < 0.67, `${harshness(lts3).toFixed(2)}`);
     assert.ok(contrastRatio(lts3.color, lts3.casing) >= 3, `amber on its casing ${contrastRatio(lts3.color, lts3.casing).toFixed(2)}:1`);
     assert.ok(contrastRatio(lts3.casing, LIGHT_BASE) >= 3, "the casing holds the halo on the base map");
@@ -137,12 +142,12 @@ test("LTS 3's gaps are calmer than before: a softer casing and a smaller gap, th
     }
   }
   // The old LTS 3, for the record: [2, 1] over #2b1a05.
-  const old = { ...(tiersFor(DEFAULT_PALETTE)[2] as Tier), dash: [2, 1], casing: "#2b1a05" } as Tier;
+  const old = { ...(tiersFor(WARM)[2] as Tier), dash: [2, 1], casing: "#2b1a05", gap: "#2b1a05" } as Tier;
   assert.ok(harshness(old) > 1.4);
 });
 
 test("LTS 2 and LTS 3 still read apart without colour: dash length and rhythm differ by 30% or more, and the width", () => {
-  const [, lts2, lts3] = tiersFor(DEFAULT_PALETTE) as Tier[];
+  const [, lts2, lts3] = tiersFor(WARM) as Tier[];
   const on = (x: Tier) => x.dash![0] * x.width;
   const period = (x: Tier) => (x.dash![0] + x.dash![1]) * x.width;
   assert.ok(Math.abs(on(lts2) - on(lts3)) / Math.max(on(lts2), on(lts3)) >= 0.3, `${on(lts2)} vs ${on(lts3)} px`);
@@ -151,7 +156,7 @@ test("LTS 2 and LTS 3 still read apart without colour: dash length and rhythm di
 });
 
 test("LTS 3 against LTS 2 and LTS 4 under each vision, lines and casings (deuteranopia's luminance held, ΔE reported)", (t) => {
-  const [, lts2, lts3, lts4] = tiersFor(DEFAULT_PALETTE) as Tier[];
+  const [, lts2, lts3, lts4] = tiersFor(WARM) as Tier[];
   for (const [name, other] of [["LTS 2", lts2], ["LTS 4", lts4]] as const) {
     t.diagnostic(
       `LTS 3 vs ${name}: line ` + VISIONS.map((v) => `${v} ${deltaE2000(simulate(lts3.color, v), simulate(other.color, v)).toFixed(1)}`).join(", ") +
@@ -180,8 +185,8 @@ test("Avoid vs LTS 4: dash-dot, width and (default palette) casing differ in eve
   }
 });
 
-test("Avoid vs LTS 4: in the default palette the casing differs too, and the colours stand apart (greyscale and CIEDE2000)", (t) => {
-  const [lts4, avoid] = [tiersFor(DEFAULT_PALETTE)[3], tiersFor(DEFAULT_PALETTE)[4]];
+test("Avoid vs LTS 4: in the warm palette the casing differs too, and the colours stand apart (greyscale and CIEDE2000)", (t) => {
+  const [lts4, avoid] = [tiersFor(WARM)[3], tiersFor(WARM)[4]];
   assert.notEqual(lts4.casing, avoid.casing);
   assert.ok(contrastRatio(avoid.casing, lts4.casing) >= 3, "the casings differ in lightness, not just hue");
   const delta = worst(lts4.color, avoid.color);
@@ -233,12 +238,12 @@ test("the 3:1 line-to-casing floor: every busy line (LTS 3, LTS 4, Avoid) keeps 
   }
 });
 
-test("Avoid's line is 3:1 from its casing in every palette, and in the default one the pair is 3:1 from the base map and both dark panels", () => {
+test("Avoid's line is 3:1 from its casing in every palette, and in the warm one the pair is 3:1 from the base map and both dark panels", () => {
   for (const palette of Object.keys(PALETTES)) {
     const avoid = tiersFor(palette)[4];
     assert.ok(contrastRatio(avoid.color, avoid.casing) >= 3, `${palette}: line on casing ${contrastRatio(avoid.color, avoid.casing).toFixed(2)}:1`);
   }
-  const avoid = tiersFor(DEFAULT_PALETTE)[4];
+  const avoid = tiersFor(WARM)[4];
   for (const bg of [LIGHT_BASE, ...DARK_PANELS]) {
     const legible = Math.max(contrastRatio(avoid.color, bg), Math.min(contrastRatio(avoid.casing, bg), contrastRatio(avoid.color, avoid.casing)));
     assert.ok(legible >= 3, `${bg}: ${legible.toFixed(2)}:1`);

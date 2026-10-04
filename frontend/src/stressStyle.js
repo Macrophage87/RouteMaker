@@ -64,9 +64,17 @@ const TIER_SHAPES = [
  * THE STRESS COLOURS, in one place. The owner, 2026-09-29: "Also, let's change
  * the color scheme. I like LTS 1 and 2. Maybe yellow and orange for LTS 3,
  * orange and red for LTS 4, and red and black for Avoid." (OWNER-DECISIONS
- * 74). LTS 1 and 2 are kept as they were; two readings of "X and Y" are built
- * for the owner to choose between, `?palette=twotone` in the address showing
- * the second:
+ * 74). LTS 1 and 2 are kept as they were; two readings of "X and Y" were built
+ * for the owner to choose between. OWNER-DECISIONS 351 (2026-10-04, on the
+ * warm palette's LTS 3, which "looks unpaved" beside the brown unpaved ramp,
+ * 350): "2 tone is better", "Make two-tone the default". So the default is
+ * "twotone", in the owner's colours, and "blended" (a link's `?palette=warm`)
+ * stays as an option. Where the two-tone colours break a rule the warm palette
+ * keeps, the break is reported, not fixed: testSupport/defaultConflicts.ts
+ * lists them (LTS 3 and LTS 4 are not 3:1 on the base map, the greyscale order
+ * is lost, LTS 3 and 4 are close for a deuteranope, and LTS 4 is less
+ * saturated than LTS 3), and defaultPalette.test.ts holds the default to every
+ * other rule and to exactly those.
  *
  * - "blended": one colour per tier between the two named - LTS 3 amber (over
  *   a dark casing, since amber is not 3:1 on the base map's greens), LTS 4 a
@@ -82,9 +90,9 @@ const TIER_SHAPES = [
  *   still and dashed as nothing else is, so the pair differ in shape, width
  *   and casing as well as hue; stressContrast.test.ts holds the salience order
  *   and that separation.
- * - "twotone": the first colour as the line, the second as its casing - LTS 3
- *   yellow on orange, LTS 4 orange on red, Avoid red on black. Closer to the
- *   owner's words; LTS 3 is not 3:1 on the base map (its casing 2.2:1, the line
+ * - "twotone" (the default since 351): the first colour as the line, the
+ *   second as its casing - LTS 3 yellow on orange, LTS 4 orange on red, Avoid
+ *   red on black. Closer to the owner's words; LTS 3 is not 3:1 on the base map (its casing 2.2:1, the line
  *   on its casing 1.5:1) and the greyscale order is lost (stressContrast.test.ts
  *   holds the chosen palette to the rule, and reports the other).
  * - "cvd" (OWNER-DECISIONS 208): the colour-blind-friendly option a rider
@@ -105,22 +113,22 @@ const TIER_SHAPES = [
  */
 export const PALETTES = {
   blended: {
-    1: { color: "#9ed3ac", casing: "#17301f" },
-    2: { color: "#57a06c", casing: "#17301f" },
+    1: { color: "#9ed3ac", casing: "#2f5d47" },
+    2: { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" },
     3: { color: "#bf730b", casing: "#45290a" },
     4: { color: "#c80018", casing: "#ffffff" },
     5: { color: "#14040a", casing: "#ee3b2c" },
   },
   twotone: {
-    1: { color: "#9ed3ac", casing: "#17301f" },
-    2: { color: "#57a06c", casing: "#17301f" },
+    1: { color: "#9ed3ac", casing: "#2f5d47" },
+    2: { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" },
     3: { color: "#f2c21b", casing: "#f28c28" },
     4: { color: "#f28c28", casing: "#c81e1e" },
     5: { color: "#d42020", casing: "#111111" },
   },
   cvd: {
     1: { color: "#d2eafc", casing: "#0a1a2f" },
-    2: { color: "#5d99d2", casing: "#0a1a2f" },
+    2: { color: "#5d99d2", casing: "#0a1a2f", gap: "#a7b4c1" },
     3: { color: "#cd4b0a", casing: "#0a1a2f" },
     4: { color: "#6a0a06", casing: "#ffffff" },
     // Avoid's casing is a light yellow (Okabe-Ito #f0e442) of its own, as the
@@ -134,7 +142,7 @@ export const PALETTES = {
 };
 
 /** The palette the map uses unless the address or the accessibility switch asks for another. */
-export const DEFAULT_PALETTE = "blended";
+export const DEFAULT_PALETTE = "twotone";
 
 /**
  * The palettes' names in a link (`?palette=`), which say nothing of who uses them
@@ -154,6 +162,21 @@ function paletteOfLinkValue(value) {
   const named = Object.entries(PALETTE_LINK_NAMES).find(([, name]) => name === value)?.[0];
   if (named) return named;
   return Object.hasOwn(PALETTES, value) ? value : null;
+}
+
+/**
+ * The address's query with an older palette value (`blended`, `cvd`) renamed to its
+ * neutral name (`warm`, `cool`), or null where there is nothing to rename. The page
+ * writes it back into the address bar on load, so a rider who opens an old link and
+ * copies the address does not pass the old value on (321: "any existing link flags of
+ * this kind are renamed the same way"; the release re-check's S4).
+ */
+export function neutralPaletteSearch(search) {
+  const match = /(^|[?&])palette=([a-z]+)/.exec(search ?? "");
+  if (!match || !Object.hasOwn(PALETTE_LINK_NAMES, match[2])) return null;
+  const name = PALETTE_LINK_NAMES[match[2]];
+  if (name === match[2]) return null;
+  return search.slice(0, match.index) + `${match[1]}palette=${name}` + search.slice(match.index + match[0].length);
 }
 
 /** The palette an address's query string names (`?palette=twotone`), or the default. */
@@ -221,7 +244,7 @@ export function gapHarshness(tier) {
   if (!tier.dash) return 0;
   const gaps = tier.dash.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0);
   const all = tier.dash.reduce((a, b) => a + b, 0);
-  return (gaps / all) * contrastRatio(tier.casing, tier.color);
+  return (gaps / all) * contrastRatio(tier.gap ?? tier.casing, tier.color);
 }
 
 /** Below this a casing is dark (a near-black), dark enough to be a faint line's edge. */
@@ -239,18 +262,71 @@ export function tiersFor(palette, strong = false) {
   return TIER_SHAPES.map((shape) => {
     const colours = PALETTES[palette][shape.tier];
     const unpaved = UNPAVED_PALETTES[palette][shape.tier];
-    const busy = shape.tier >= BUSY_MIN_TIER;
+    // A busy tier's casing is kept by the switch (292), and so is LTS 2's blue edge (356: "a blue instead of black").
+    const keep = shape.tier >= BUSY_MIN_TIER || shape.tier === 2;
+    const casing = strong ? strongerCasing(colours.casing, keep) : colours.casing;
+    const unpavedCasing = strong ? strongerCasing(unpaved.casing, keep) : unpaved.casing;
     return {
       ...shape,
       ...colours,
-      // The unpaved brown for this tier and the casing under it (OWNER-DECISIONS 302).
+      casing,
+      // What the dash's gaps show: the tier's own gap colour (356), else its casing.
+      gap: colours.gap ?? casing,
+      // The unpaved brown for this tier, the casing under it (OWNER-DECISIONS 302) and its gaps' colour.
       unpavedColor: unpaved.color,
-      unpavedCasing: strong ? strongerCasing(unpaved.casing, busy) : unpaved.casing,
+      unpavedCasing,
+      unpavedGap: unpaved.gap ?? unpavedCasing,
       ...(strong
-        ? { width: shape.width + STRONG_WIDTH_EXTRA, casing: strongerCasing(colours.casing, busy), casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
+        ? { width: shape.width + STRONG_WIDTH_EXTRA, casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
         : { casingExtra: CASING_EXTRA_PX, strong: false }),
     };
   });
+}
+
+/**
+ * LTS 2's edge and gaps (OWNER-DECISIONS 356, 2026-10-04: "For Lts 2 maybe use a
+ * blue instead of black. Especially unpaved, LTS2 can almost be harsher than
+ * LTS3."). A dash's gaps used to show the tier's casing, and LTS 2's was a
+ * near-black (#17301f) under a mid green, so its gaps were harsher than the
+ * busier tiers' (0.90 against two-tone LTS 3's 0.24). LTS 2 now has a dark
+ * slate-blue edge (#1a2638, the halo that keeps it 3:1 on the base map) and a
+ * steel-blue gap (#7a8fa3, drawn as its own solid line between the casing and
+ * the dashes, `gap`; the colour-blind-friendly palette's is a pale grey-blue,
+ * #a7b4c1, beside its blue line), paved and unpaved. The 292 rule now runs from
+ * LTS 1 up: harshness never falls as stress rises, paved and unpaved, in every
+ * palette, plain and strong (stressSalience.test.ts, unpavedBrown.test.ts). The
+ * blues stay clear of the route's #1d4ed8: 23.8 CIEDE2000 and 24 L* darker for
+ * the edge, 22.6 and 19 L* lighter for the gap. A tier with no `gap` shows its
+ * casing in its gaps, as before. The trade: LTS 2's green and its steel-blue
+ * gaps are close in lightness (1.06:1), so in greyscale its dashes are faint and
+ * LTS 2 is told from LTS 1 by its width and edge more than by its dash.
+ */
+/** Whether a tier has a gap colour of its own in some palette (only LTS 2, 356): only such a tier gets a gap layer. */
+export function hasGapLayer(tier) {
+  return Object.values(PALETTES).some((p) => p[tier].gap) || Object.values(UNPAVED_PALETTES).some((p) => p[tier].gap);
+}
+
+export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  return tiers
+    .filter((tier) => tier.dash && hasGapLayer(tier.tier))
+    .map((tier) => {
+      const busy = tier.tier >= BUSY_MIN_TIER;
+      return {
+        id: `stress-gap-${tier.tier}`,
+        type: "line",
+        source: sourceId,
+        "source-layer": STRESS_TILE_LAYER,
+        filter: filters[`stress-gap-${tier.tier}`],
+        paint: {
+          // Solid, the line's width, under the dashes: what shows between them. Not drawn where the line is
+          // faint (the casing is then a ring, FAINT), so a faint road is as it was.
+          "line-color": byUnpaved(tier.unpavedGap, tier.gap),
+          "line-width": byZoom(tier.width, tier.width * FAINT.widthScale, busy),
+          "line-opacity": byZoom(1, 0, busy),
+        },
+      };
+    });
 }
 
 /**
@@ -271,37 +347,44 @@ export function tiersFor(palette, strong = false) {
  * so every line is 3:1 or more from its casing and every tier 3:1 from the base
  * map, and the gaps' harshness (292) still rises from LTS 3 to LTS 4 to Avoid.
  *
- * - blended: warm browns. Unpaved LTS 1 (#d9b98c, a light tan) is 19 CIEDE2000
- *   or more from the paved LTS 3 amber (#bf730b) under every vision and far
- *   from the LTS 3 casing (#45290a).
- * - twotone: greyer browns (taupe), because that palette's paved LTS 3 is a
- *   yellow (#f2c21b) a warm tan would sit on (6 CIEDE2000 under deuteranopia);
- *   the taupe is 9 and more from it, and 23 from the amber.
+ * - blended: a sepia, the low-chroma earth browns of a sepia print, from a
+ *   pale linen (#ebddd1) to a near-black umber. OWNER-DECISIONS 350 ("LTS3
+ *   looks unpaved"): the warm tans before (#d9b98c to #33200d) were 10.4 and
+ *   14.3 CIEDE2000 from the paved LTS 3 amber at LTS 2 and 3; the sepia is 20
+ *   or more from it at every step under normal vision.
+ * - twotone (the default): greyer browns (taupe), because that palette's paved
+ *   LTS 3 is a yellow (#f2c21b) a warm tan would sit on (6 CIEDE2000 under
+ *   deuteranopia). Its LTS 1 is a pale taupe (#e8dad0; 350): #d4bba6 was 9.1
+ *   from the yellow under tritanopia. Every step is 22 or more from the yellow
+ *   under normal vision and 15 or more under every vision.
  * - cvd: an ochre-olive ramp on the yellow side of the blue-yellow axis all
  *   three deficiencies keep: 30 or more CIEDE2000 from that palette's blue calm
  *   tiers under every vision, with the widest steps of the three (1.6:1 and up).
+ *   Its LTS 3 is a duller brown (#7a6046; 350): the ochre #7e6028 was 4.5
+ *   CIEDE2000 from the palette's paved LTS 3 orange under protanopia, and this
+ *   is 12.5.
  *
  * stressSalience.test.ts holds all of this; the figures are in its diagnostics.
  */
 export const UNPAVED_PALETTES = {
   blended: {
-    1: { color: "#d9b98c", casing: "#3b2410" },
-    2: { color: "#b58a55", casing: "#3b2410" },
-    3: { color: "#8c5e2e", casing: "#f6ead2" },
-    4: { color: "#5e3a17", casing: "#f6ead2" },
-    5: { color: "#33200d", casing: "#f6ead2" },
+    1: { color: "#ebddd1", casing: "#3b2410" },
+    2: { color: "#ac9888", casing: "#1a2638", gap: "#7a8fa3" },
+    3: { color: "#7b6250", casing: "#f6ead2" },
+    4: { color: "#543e2c", casing: "#f6ead2" },
+    5: { color: "#2e2118", casing: "#f6ead2" },
   },
   twotone: {
-    1: { color: "#d4bba6", casing: "#33231a" },
-    2: { color: "#ac8b73", casing: "#33231a" },
+    1: { color: "#e8dad0", casing: "#33231a" },
+    2: { color: "#ac8b73", casing: "#1a2638", gap: "#7a8fa3" },
     3: { color: "#7d604b", casing: "#f6ead2" },
     4: { color: "#53392a", casing: "#f6ead2" },
     5: { color: "#2b1c14", casing: "#f6ead2" },
   },
   cvd: {
     1: { color: "#e0c68a", casing: "#2a200c" },
-    2: { color: "#bc9a52", casing: "#2a200c" },
-    3: { color: "#7e6028", casing: "#f6ead2" },
+    2: { color: "#bc9a52", casing: "#2a200c", gap: "#7a8fa3" },
+    3: { color: "#7a6046", casing: "#f6ead2" },
     4: { color: "#544018", casing: "#f6ead2" },
     5: { color: "#2a200c", casing: "#f6ead2" },
   },
@@ -658,6 +741,7 @@ export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLan
     const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
     filters[`stress-${tier.tier}`] = filter;
     filters[`stress-casing-${tier.tier}`] = filter;
+    if (tier.dash && hasGapLayer(tier.tier)) filters[`stress-gap-${tier.tier}`] = filter;
     filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
   }
   for (const facility of FACILITIES) {
@@ -939,6 +1023,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
   return [
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),
+    ...gapLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
     ...unpavedLayers(sourceId, when, tiers),
   ];
@@ -946,7 +1031,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
 
 /** Legend entries, which carry the label the colour alone cannot. */
 export function legend(tiers = currentTiers()) {
-  return tiers.map(({ tier, short, label, color, dash, width, casing }) => ({
+  return tiers.map(({ tier, short, label, color, dash, width, casing, gap }) => ({
     tier,
     short,
     label,
@@ -954,5 +1039,6 @@ export function legend(tiers = currentTiers()) {
     dash,
     width,
     casing,
+    gap,
   }));
 }

@@ -28,6 +28,11 @@ import { paintAt } from "./testSupport/paintAt.ts";
 import { VISIONS, adjacentDeltas, closestPair, deltaE2000, simulate } from "./testSupport/colourVision.ts";
 import { ROUTE_BLUE, ROUTE_CASING_CVD, ROUTE_CASING_WIDTH, ROUTE_HALO_WIDTH, ROUTE_LINE_WIDTH, routeCasing, routeClasses } from "./lib/routeColours.ts";
 import { UNRATED, UNRATED_CVD_COLOUR, unrated } from "./lib/stressBar.ts";
+import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
+
+/** The default (two-tone, OWNER-DECISIONS 351) is held here to everything but the 3:1 breaks the owner's colours make, which defaultPalette.test.ts holds exactly. */
+const reportedFor = (palette: string): readonly string[] => (palette === DEFAULT_PALETTE ? DEFAULT_CONFLICTS.belowThreeToOne : []);
+const notReported = (palette: string, failures: string[]) => failures.filter((f) => !reportedFor(palette).some((short) => f.startsWith(`${short} `)));
 
 type Tier = ReturnType<typeof tiersFor>[number];
 
@@ -109,7 +114,7 @@ for (const palette of HELD) {
           if (ratio < FLOOR) failures.push(`${tier.short} on ${name} ${colour}: ${ratio.toFixed(2)}:1`);
         }
       }
-      assert.deepEqual(failures, []);
+      assert.deepEqual(notReported(palette, failures), []);
     });
 
     test(`${palette}${label}: every legend line is at least 3:1 from both themes' panel`, () => {
@@ -120,7 +125,7 @@ for (const palette of HELD) {
           if (ratio < FLOOR) failures.push(`${tier.short} on ${bg}: ${ratio.toFixed(2)}:1`);
         }
       }
-      assert.deepEqual(failures, []);
+      assert.deepEqual(notReported(palette, failures), []);
     });
   }
 }
@@ -265,7 +270,7 @@ for (const { name, on } of REACHABLE) {
         const ratio = contrastRatio(c.color, c.halo);
         if (ratio < FLOOR) failures.push(`${c.short} ${c.color} on ${c.halo}: ${ratio.toFixed(2)}:1`);
       }
-      assert.deepEqual(failures, []);
+      assert.deepEqual(notReported(name, failures), []);
     });
   });
 }

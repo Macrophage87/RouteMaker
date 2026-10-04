@@ -58,8 +58,8 @@ import {
 } from "./accessibilitySwitch.ts";
 
 const TIERS = [1, 2, 3, 4, 5] as const;
-const colours = (name: "blended" | "cvd") => TIERS.map((n) => PALETTES[name][n].color);
-const casings = (name: "blended" | "cvd") => TIERS.map((n) => PALETTES[name][n].casing);
+const colours = (name: "blended" | "twotone" | "cvd") => TIERS.map((n) => PALETTES[name][n].color);
+const casings = (name: "blended" | "twotone" | "cvd") => TIERS.map((n) => PALETTES[name][n].casing);
 
 /** A Storage stand-in. */
 function memoryStorage(initial: Record<string, string> = {}) {
@@ -177,14 +177,14 @@ test("the module starts plain where there is no address, no storage and no reque
   assert.equal(accessibilityOn(), false);
   assert.equal(currentPalette(), DEFAULT_PALETTE);
   assert.equal(accessibilitySource(), "default");
-  assert.equal(DEFAULT_PALETTE, "blended");
+  assert.equal(DEFAULT_PALETTE, "twotone", "two-tone is the default since OWNER-DECISIONS 351");
 });
 
 test("palette precedence: the address, then the switch, then the default", () => {
   assert.equal(resolvePalette("", false), DEFAULT_PALETTE);
   assert.equal(resolvePalette("", true), ACCESSIBILITY_PALETTE);
   assert.equal(resolvePalette("?palette=twotone", true), "twotone", "the address beats the switch");
-  assert.equal(resolvePalette("?palette=blended", true), "blended", "even when it names the default");
+  assert.equal(resolvePalette("?palette=blended", true), "blended", "or the warm palette, an option since 351");
   assert.equal(resolvePalette("?palette=cvd", false), "cvd");
   assert.equal(resolvePalette("?palette=nonsense", true), ACCESSIBILITY_PALETTE, "an unknown name is no address choice");
   assert.equal(resolvePalette("?palette=__proto__", false), DEFAULT_PALETTE);
@@ -240,7 +240,7 @@ test("storage that throws or is absent does not break a flip: it holds for the v
 test("load: nothing set means off and the default palette", async () => {
   const m = await loadedWith({ search: "", storage: memoryStorage(), matchMedia: fakeMatchMedia(false).matchMedia });
   assert.equal(m.accessibilityOn(), false);
-  assert.equal(m.currentPalette(), "blended");
+  assert.equal(m.currentPalette(), "twotone");
   assert.equal(m.accessibilitySource(), "default");
 });
 
@@ -258,7 +258,7 @@ test("load: a device that asks for more contrast starts on, with nothing stored,
 test("load: a stored choice always wins over the request for contrast, both ways", async () => {
   const off = await loadedWith({ storage: memoryStorage({ [ACCESSIBILITY_STORAGE_KEY]: "off" }), matchMedia: fakeMatchMedia(true).matchMedia });
   assert.equal(off.accessibilityOn(), false);
-  assert.equal(off.currentPalette(), "blended");
+  assert.equal(off.currentPalette(), "twotone");
   assert.equal(off.accessibilitySource(), "chosen");
   const on = await loadedWith({ storage: memoryStorage({ [ACCESSIBILITY_STORAGE_KEY]: "on" }), matchMedia: fakeMatchMedia(false).matchMedia });
   assert.equal(on.accessibilityOn(), true);
@@ -292,7 +292,7 @@ test("load: ?palette= decides the palette whatever the switch says, and the swit
 test("load: blocked storage, or a matchMedia that throws or is missing, falls back to off", async () => {
   const blocked = await loadedWith({ storageGetterThrows: true, matchMedia: fakeMatchMedia(false).matchMedia });
   assert.equal(blocked.accessibilityOn(), false);
-  assert.equal(blocked.currentPalette(), "blended");
+  assert.equal(blocked.currentPalette(), "twotone");
   const throwingStorage = await loadedWith({ storage: throwing });
   assert.equal(throwingStorage.accessibilityOn(), false);
   const noMedia = await loadedWith({ storage: memoryStorage() });
@@ -318,8 +318,8 @@ test("live: with nothing chosen the switch follows the request for contrast as i
   assert.deepEqual(heard, ["cvd"], "an unchanged answer tells nobody");
   media.fire(false);
   assert.equal(m.accessibilityOn(), false);
-  assert.equal(m.currentPalette(), "blended");
-  assert.deepEqual(heard, ["cvd", "blended"]);
+  assert.equal(m.currentPalette(), "twotone");
+  assert.deepEqual(heard, ["cvd", "twotone"]);
 });
 
 test("live: once the rider has chosen, the request for contrast no longer moves the switch", async () => {
@@ -391,9 +391,10 @@ test("the tiers: strong draws lines half a pixel wider, the calm tiers' casings 
       assert.equal(tier.strong, true);
       assert.equal(plain[i].strong, false);
       assert.deepEqual(tier.dash, plain[i].dash);
-      if (tier.tier >= BUSY_MIN_TIER) {
+      if (tier.tier >= BUSY_MIN_TIER || tier.tier === 2) {
         // A busy tier's casing is what its dash gaps show: the switch leaves it, so the gaps are no
-        // harsher (OWNER-DECISIONS 292), and Avoid's red is a colour of its own (274).
+        // harsher (OWNER-DECISIONS 292), and Avoid's red is a colour of its own (274). LTS 2's edge is a blue,
+        // kept (356: "a blue instead of black"); its gaps show its own gap colour.
         assert.equal(tier.casing, plain[i].casing, `${name} LTS ${tier.tier}`);
         return;
       }
@@ -428,10 +429,10 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
     assert.deepEqual(bar.filter((s) => s.key !== "unknown").map((s) => s.color), colours("cvd"));
   });
   // And back, with nothing left over.
-  assert.deepEqual(stressLayers().map((l: { id: string; paint: Record<string, unknown> }) => paintAt(l, "line-color", { unpaved: false })), colours("blended"));
-  assert.deepEqual(stressCasingLayers().map((l) => paintAt(l, "line-color")), casings("blended"));
-  assert.equal(spanClass({ tier: 3, facility: "none" }).color, PALETTES.blended[3].color);
-  assert.equal(stressSegments({ "5": 1 }).find((s) => s.key === "5")?.color, PALETTES.blended[5].color);
+  assert.deepEqual(stressLayers().map((l: { id: string; paint: Record<string, unknown> }) => paintAt(l, "line-color", { unpaved: false })), colours("twotone"));
+  assert.deepEqual(stressCasingLayers().map((l) => paintAt(l, "line-color")), casings("twotone"));
+  assert.equal(spanClass({ tier: 3, facility: "none" }).color, PALETTES.twotone[3].color);
+  assert.equal(stressSegments({ "5": 1 }).find((s) => s.key === "5")?.color, PALETTES.twotone[5].color);
 });
 
 test("a flip widens the lines, the casings and the facility rails, and nothing else about the shapes", () => {
@@ -534,17 +535,17 @@ test("subscribers hear a flip once, not when it changes nothing, and not after t
   }
 });
 
-test("the default palette is unchanged by the new one", () => {
+test("the warm palette is unchanged by the new ones, and the tiers in use are the default two-tone (OWNER-DECISIONS 351)", () => {
   assert.deepEqual(PALETTES.blended, {
-    1: { color: "#9ed3ac", casing: "#17301f" },
-    2: { color: "#57a06c", casing: "#17301f" },
+    1: { color: "#9ed3ac", casing: "#2f5d47" },
+    2: { color: "#57a06c", casing: "#1a2638", gap: "#7a8fa3" },
     3: { color: "#bf730b", casing: "#45290a" },
     4: { color: "#c80018", casing: "#ffffff" },
     5: { color: "#14040a", casing: "#ee3b2c" },
   });
   assert.deepEqual(
     currentTiers().map((t: { color: string; casing: string; casingExtra: number }) => [t.color, t.casing, t.casingExtra]),
-    TIERS.map((n) => [PALETTES.blended[n].color, PALETTES.blended[n].casing, CASING_EXTRA_PX]),
+    TIERS.map((n) => [PALETTES.twotone[n].color, PALETTES.twotone[n].casing, CASING_EXTRA_PX]),
   );
 });
 
@@ -622,7 +623,8 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
   assert.deepEqual(
     data?.features.map((f) => [f.properties.key, f.properties.color, f.properties.halo]),
     [
-      ["2", PALETTES.cvd[2].color, "#000000"],
+      // LTS 2 keeps its own edge with the switch on (OWNER-DECISIONS 356).
+      ["2", PALETTES.cvd[2].color, PALETTES.cvd[2].casing],
       // A busy tier's casing is its own with the switch on (OWNER-DECISIONS 292), and its halo with it.
       ["3", PALETTES.cvd[3].color, PALETTES.cvd[3].casing],
     ],

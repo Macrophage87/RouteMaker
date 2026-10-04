@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { LIGHT } from "@protomaps/basemaps";
 import {
+  DEFAULT_PALETTE,
   PALETTES,
   UNPAVED_DASH,
   UNPAVED_PALETTES,
@@ -21,13 +22,15 @@ import { VISIONS, deltaE2000, lab, simulate } from "./testSupport/colourVision.t
 import { paintAt } from "./testSupport/paintAt.ts";
 import { isUnpavedClass, routeClasses, routeSections, sectionFeatures, spanClass } from "./lib/routeColours.ts";
 import { ROUTE_UNPAVED_LAYER_ID, routeUnpavedLayer, setRouteSections } from "./lib/mapGlue.ts";
+import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
 type Layer = { id: string; paint: Record<string, unknown>; filter?: unknown };
 
 /** The palettes the map is drawn in (twotone is the owner's alternative reading, reported only in places). */
 const PALETTE_NAMES = Object.keys(PALETTES);
-const HELD = ["blended", "cvd"];
+/** The default (two-tone since OWNER-DECISIONS 351) and the colour-blind-friendly palette; warm is an option, reported in places. */
+const HELD = [DEFAULT_PALETTE, "cvd"];
 const STRENGTHS = [false, true];
 
 /** The base map's surfaces, as stressContrast.test.ts reads them. */
@@ -118,27 +121,87 @@ test("every unpaved tier is 3:1 or more from every surface of the base map and b
   assert.deepEqual(failures, []);
 });
 
-test("the gaps' harshness still rises from LTS 3 to LTS 4 to Avoid on unpaved roads, in every palette, plain and strong (292)", (t) => {
+test("the gaps' harshness never falls as stress rises on unpaved roads, from LTS 1 to Avoid, in every palette, plain and strong (292, 356)", (t) => {
   for (const palette of PALETTE_NAMES) {
     for (const strong of STRENGTHS) {
       const tiers = tiersFor(palette, strong) as Tier[];
-      const h = tiers.map((x) => harshness(x.dash, x.unpavedCasing, x.unpavedColor));
+      const h = tiers.map((x) => harshness(x.dash, x.unpavedGap, x.unpavedColor));
       t.diagnostic(`${palette}${strong ? " strong" : ""} unpaved: ` + tiers.map((x, i) => `${x.short} ${h[i].toFixed(2)}`).join(", "));
-      assert.ok(h[2] <= h[3] && h[3] <= h[4], `${palette}${strong ? " strong" : ""}: ${h.map((x) => x.toFixed(2)).join(" ")}`);
+      for (let i = 1; i < h.length; i += 1) assert.ok(h[i - 1] <= h[i], `${palette}${strong ? " strong" : ""}: ${h.map((x) => x.toFixed(2)).join(" ")}`);
     }
   }
 });
 
-test("unpaved LTS 1 stands apart from the paved LTS 3 amber and the LTS 3 casing, under every vision", (t) => {
+test("unpaved LTS 1 stands apart from its palette's paved LTS 3 line and LTS 3 casing, 15 CIEDE2000 or more under every vision", (t) => {
   for (const palette of PALETTE_NAMES) {
     const tiers = tiersFor(palette) as Tier[];
     const tan = tiers[0].unpavedColor;
-    const against = { "the default amber #bf730b": "#bf730b", "the default LTS 3 casing #45290a": "#45290a", [`${palette}'s LTS 3 ${tiers[2].color}`]: tiers[2].color, [`${palette}'s LTS 3 casing ${tiers[2].casing}`]: tiers[2].casing };
+    const against = { [`LTS 3 ${tiers[2].color}`]: tiers[2].color, [`LTS 3 casing ${tiers[2].casing}`]: tiers[2].casing };
     const deltas = Object.entries(against).map(([name, c]) => [name, worst(tan, c)] as const);
     t.diagnostic(`${palette} unpaved LTS 1 ${tan}: ` + deltas.map(([name, d]) => `${name} ${d.toFixed(1)}`).join(", "));
-    for (const [name, d] of deltas) {
-      // The palettes the map is held to: 15 or more; twotone (whose LTS 3 is a yellow) 9 or more, reported.
-      assert.ok(d >= (HELD.includes(palette) ? 15 : 9), `${palette}: ${name} is ${d.toFixed(1)}`);
+    // Every palette since OWNER-DECISIONS 350 (twotone's taupe was held to 9 beside its yellow before).
+    for (const [name, d] of deltas) assert.ok(d >= 15, `${palette}: ${name} is ${d.toFixed(1)}`);
+  }
+});
+
+// ---- OWNER-DECISIONS 350: "LTS3 looks unpaved" ----
+
+/**
+ * The oranges a busy road's line is drawn beside: the higher-stress junction marker's fill, and
+ * the Mass Ride orange (#f28e2b) the review of 350 named, which is not a token in this tree.
+ */
+const MARKER_ORANGES = { "higher-stress junction marker": SEVERITY_COLOURS.orange.fill, "Mass Ride orange": "#f28e2b" };
+
+test("paved LTS 3 is 20 CIEDE2000 or more from every unpaved step under normal vision, in every palette, plain and strong (350)", (t) => {
+  for (const palette of PALETTE_NAMES) {
+    for (const strong of STRENGTHS) {
+      const tiers = tiersFor(palette, strong) as Tier[];
+      const lts3 = tiers[2];
+      const normal = tiers.map((u) => deltaE2000(lts3.color, u.unpavedColor));
+      const every = tiers.map((u) => worst(lts3.color, u.unpavedColor));
+      t.diagnostic(`${palette}${strong ? " strong" : ""}: LTS 3 ${lts3.color} to unpaved ` + tiers.map((u, i) => `${u.short} ${u.unpavedColor} ${normal[i].toFixed(1)} (worst vision ${every[i].toFixed(1)})`).join(", "));
+      tiers.forEach((u, i) => {
+        assert.ok(normal[i] >= 20, `${palette}${strong ? " strong" : ""}: LTS 3 is ${normal[i].toFixed(1)} from unpaved ${u.short}`);
+        // And still apart under every deficiency, where the dotted mark carries the rest.
+        assert.ok(every[i] >= 10, `${palette}${strong ? " strong" : ""}: LTS 3 is ${every[i].toFixed(1)} from unpaved ${u.short} under some vision`);
+      });
+    }
+  }
+});
+
+test("paved LTS 3's casing differs from every unpaved casing, and in the default it is not a brown (350, 351)", (t) => {
+  for (const palette of PALETTE_NAMES) {
+    for (const strong of STRENGTHS) {
+      const tiers = tiersFor(palette, strong) as Tier[];
+      const casing = tiers[2].casing;
+      const unpavedCasings = [...new Set(tiers.map((u) => u.unpavedCasing))];
+      const deltas = unpavedCasings.map((c) => deltaE2000(casing, c));
+      t.diagnostic(`${palette}${strong ? " strong" : ""}: LTS 3 casing ${casing} to ` + unpavedCasings.map((c, i) => `${c} ${deltas[i].toFixed(1)}`).join(", ") + (HELD.includes(palette) ? "" : " (reported: warm's amber-brown casing is the 350 look)"));
+      if (!HELD.includes(palette)) continue;
+      // 20 in the default, 10 in cvd (its navy against the black the switch gives its calm unpaved casings, about 13).
+      deltas.forEach((d, i) => assert.ok(d >= (palette === DEFAULT_PALETTE ? 20 : 10), `${palette}${strong ? " strong" : ""}: LTS 3's casing ${casing} is ${d.toFixed(1)} from the unpaved casing ${unpavedCasings[i]}`));
+    }
+  }
+  // The default's LTS 3: a yellow on an orange edge, neither of them a brown (a brown is a warm hue, dark, and of low to mid chroma).
+  const brown = (hex: string) => {
+    const [L, a, b] = lab(hex);
+    const hue = (Math.atan2(b, a) * 180) / Math.PI;
+    return hue > 30 && hue < 100 && L < 55 && Math.hypot(a, b) < 50;
+  };
+  for (const strong of STRENGTHS) {
+    const lts3 = (tiersFor(DEFAULT_PALETTE, strong) as Tier[])[2];
+    assert.ok(!brown(lts3.color) && !brown(lts3.casing), `${lts3.color} on ${lts3.casing}`);
+  }
+  assert.ok(brown(PALETTES.blended[3].casing), "the premise: warm's LTS 3 casing #45290a is one");
+});
+
+test("paved LTS 3 against the orange markers it is drawn beside (350): 12 CIEDE2000 or more under normal vision, and lighter (reported under each vision)", (t) => {
+  for (const palette of HELD) {
+    const lts3 = (tiersFor(palette) as Tier[])[2];
+    for (const [name, orange] of Object.entries(MARKER_ORANGES)) {
+      const d = deltaE2000(lts3.color, orange);
+      t.diagnostic(`${palette} LTS 3 ${lts3.color} vs the ${name} ${orange}: ` + VISIONS.map((v) => `${v} ${deltaE2000(simulate(lts3.color, v), simulate(orange, v)).toFixed(1)}`).join(", ") + `; ${contrastRatio(lts3.color, orange).toFixed(2)}:1`);
+      assert.ok(d >= 12, `${palette}: LTS 3 is ${d.toFixed(1)} from the ${name}`);
     }
   }
 });
@@ -153,7 +216,7 @@ test("in the colour-blind-friendly palette the ochre ramp is 25 CIEDE2000 or mor
 // ---- the route's sections ----
 
 test("an unpaved section of the route is drawn in its tier's brown, with its unpaved casing as the halo and the tier's width", () => {
-  const tiers = tiersFor("blended") as Tier[];
+  const tiers = tiersFor(DEFAULT_PALETTE) as Tier[];
   for (const tier of tiers) {
     const cls = spanClass({ tier: tier.tier, facility: "none", unpaved: true });
     assert.equal(cls.key, `u${tier.tier}`);
@@ -196,12 +259,13 @@ test("the route's unpaved sections carry the dotted mark: a layer over them in t
   assert.equal(paints[`${ROUTE_UNPAVED_LAYER_ID}.line-opacity`], 0);
 });
 
-test("with the accessibility switch on, the calm unpaved casings are pushed to black as the paved ones are, and the busy ones kept (292)", () => {
+test("with the accessibility switch on, LTS 1's unpaved casing is pushed to black as the paved one is, and LTS 2's and the busy ones kept (292, 356)", () => {
   for (const palette of PALETTE_NAMES) {
     const plain = tiersFor(palette) as Tier[];
     const strong = tiersFor(palette, true) as Tier[];
     strong.forEach((tier, i) => {
-      if (tier.tier < 3) assert.equal(tier.unpavedCasing, "#000000", `${palette} ${tier.short}: the dark brown casing goes black`);
+      if (tier.tier === 1) assert.equal(tier.unpavedCasing, "#000000", `${palette} ${tier.short}: the dark brown casing goes black`);
+      else if (tier.tier === 2) assert.equal(tier.unpavedCasing, plain[i].unpavedCasing, `${palette} LTS 2: its edge is kept (OWNER-DECISIONS 356)`);
       else assert.equal(tier.unpavedCasing, plain[i].unpavedCasing, `${palette} ${tier.short}: a busy casing is kept, its gaps no harsher`);
       assert.equal(tier.unpavedColor, plain[i].unpavedColor, "the brown itself is the same");
     });

@@ -113,12 +113,13 @@ export function dashPx(dash: readonly number[] | null | undefined, width: number
 const line = (y: number, stroke: string, strokeWidth: number, strokeDasharray?: string) =>
   h("line", { x1: X1, y1: y, x2: X2, y2: y, stroke, strokeWidth, strokeDasharray });
 
-/** A tier's swatch: its casing, then its line with its dash, at the map's widths. */
+/** A tier's swatch: its casing, its gap colour where it is dashed (OWNER-DECISIONS 356), then its line with its dash, at the map's widths. */
 export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
   return h(
     "svg",
     { width: SVG_WIDTH, height: 12, "aria-hidden": "true" },
     line(6, tier.casing, widths.casing),
+    tier.dash ? line(6, tier.gap ?? tier.casing, widths.line) : null,
     line(6, tier.color, widths.line, dashPx(tier.dash, widths.line)),
   );
 }

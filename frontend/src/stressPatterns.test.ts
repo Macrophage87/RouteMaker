@@ -6,6 +6,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import * as spec from "@maplibre/maplibre-gl-style-spec";
 import {
+  DEFAULT_PALETTE,
   FACILITIES,
   PALETTES,
   currentTiers,
@@ -140,7 +141,7 @@ function draws(layer: Layer, properties: Record<string, unknown>): boolean {
 
 test("an unpaved road or trail gets a dotted centre mark at every tier, over the tier's line, and a paved one does not", () => {
   const marks = unpavedLayers("s") as Layer[];
-  const tiers = tiersFor("blended") as Tier[];
+  const tiers = tiersFor(DEFAULT_PALETTE) as Tier[];
   assert.equal(marks.length, tiers.length);
   marks.forEach((mark, i) => {
     const tier = tiers[i];

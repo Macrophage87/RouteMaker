@@ -60,6 +60,9 @@ export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
   unknown: 5,
 };
 
+/** The halo under the unrated grey: a near-black neutral, 6.0:1 from #9aa0a6 and 6.2:1 from the cvd grey. */
+export const UNRATED_HALO = "#202326";
+
 /** The halo's extra width over its section: a pixel on each side. */
 export const ROUTE_HALO_EXTRA = 2;
 
@@ -122,13 +125,14 @@ export function routeClasses(): readonly RouteClass[] {
       width: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey],
       haloWidth: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey] + ROUTE_HALO_EXTRA,
     })),
-    // The unrated grey is a mid colour: LTS 1's dark casing stands under it.
+    // The unrated grey is a mid colour: a dark neutral halo of its own stands under it. It was LTS 1's
+    // casing, until 357 softened that to a green the grey is not 3:1 on (2.86:1).
     {
       key: "unknown",
       short: none.short,
       label: none.label,
       color: none.color,
-      halo: tiers[0].casing,
+      halo: UNRATED_HALO,
       width: ROUTE_SECTION_WIDTHS.unknown,
       haloWidth: ROUTE_SECTION_WIDTHS.unknown + ROUTE_HALO_EXTRA,
     },

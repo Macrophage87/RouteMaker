@@ -142,7 +142,15 @@ test("each tier's swatch draws its casing, then its line with its dash, at the m
       const widths = legendWidths(tiers);
       const rows = swatches(legendHtml()).slice(0, tiers.length);
       tiers.forEach((tier, i) => {
-        const [casing, line] = rows[i].lines;
+        // Casing, then (for a tier with a gap colour of its own, LTS 2, OWNER-DECISIONS 356) the gap line, then the dashed line.
+        const [casing, ...rest] = rows[i].lines;
+        const line = rest.at(-1)!;
+        if (tier.dash && tier.gap !== tier.casing) {
+          assert.equal(rest.length, 2, `${tier.short}: a gap line`);
+          assert.equal(rest[0].stroke, tier.gap);
+          assert.equal(Number(rest[0]["stroke-width"]), widths.tiers[i].line);
+          assert.equal(rest[0]["stroke-dasharray"], undefined, "the gap line is solid");
+        }
         assert.equal(casing.stroke, tier.casing, `${tier.short} casing`);
         assert.equal(Number(casing["stroke-width"]), widths.tiers[i].casing);
         assert.equal(line.stroke, tier.color);
