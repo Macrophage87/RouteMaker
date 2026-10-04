@@ -58,6 +58,10 @@ jobs:
       # extras (gunicorn, shapely) and the pipeline image's Python 3.12 are
       # not checked.
       - run: pip install -e . -r docker/requirements.txt -r requirements-dev.txt
+      # The beta checker's bind rule depends on how this Compose renders create_host_path
+      # (scripts/check_beta_compose.py, bind_semantics); the version is on record here.
+      - name: Tool versions
+        run: docker compose version && docker version --format '{{.Server.Version}}' && (shellcheck --version || true)
       # The front end, from the lockfile: typecheck, test and build. Before
       # pytest because tests/test_frontend.py runs the same node tests and the
       # contrast test reads @protomaps/basemaps from node_modules.

@@ -25,11 +25,13 @@
 #   * Every bind mount of the services the beta runs restated in the long form with
 #     `create_host_path: false` (below, "Bind mounts never create their source").
 #   * gunicorn at 6 workers, PostgreSQL's shared_buffers sized to its cap, Photon's
-#     heap sized to its cap, and WEEKLY_REBUILD_PAUSED=1, so that a rebuild worker started
-#     here by mistake would only record a pause, never an eight-hour build on a shared host.
+#     heap sized to its cap, and WEEKLY_REBUILD_PAUSED=1 (on the parked rebuild too), so that a
+#     rebuild worker started here by mistake would only record a pause, never an eight-hour build
+#     on a shared host (a hand-fired run_rebuild_now ignores it; the runbook forbids that).
 #     It does not stop the weekly tick being queued: with no rebuild worker to take it, one
 #     weekly_rebuild job waits on the `rebuild` queue (its queueing lock keeps it to one) and
-#     check_operations lists weekly_rebuild as stale. Both are expected on the beta
+#     check_operations lists weekly_rebuild as stale (from about eight days after setup). Both
+#     are expected on the beta
 #     (docs/BETA-RUNBOOK.md, "No rebuild runs here").
 #
 # The budget, against what the local stack measured at idle (docker stats, 2026-10-04):
@@ -114,6 +116,10 @@ services:
     <<: *beta-yield
     profiles: ["not-in-beta"]
     restart: "no"
+    # The one service that takes rebuild jobs: started anyway, it would take the weekly_rebuild job
+    # already waiting on its queue. Paused, that job only records a pause (re-check spec SF1).
+    environment:
+      WEEKLY_REBUILD_PAUSED: "1"
     memswap_limit: 256M
     deploy:
       resources:

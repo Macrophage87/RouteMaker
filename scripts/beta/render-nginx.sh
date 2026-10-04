@@ -21,6 +21,9 @@
 #   --env-file FILE          [<repo>/.env]
 #   --no-ipv6                drop the `listen [::]:...` lines (for a host whose other
 #                            sites do not listen on IPv6; docs/BETA-RUNBOOK.md, step 1)
+#   --no-401-page            leave out the sign-in page (error_page 401 and its location), so
+#                            Cancel shows nginx's own 401 page: the runbook's recovery when nginx
+#                            cannot read deploy/beta/401.html (step 10)
 set -eu
 
 die() { echo "render-nginx: $*" >&2; exit 2; }
@@ -35,8 +38,10 @@ htpasswd="/etc/nginx/routemaker-beta.htpasswd"; acme_root="/var/www/routemaker-a
 cert_fullchain=""; cert_key=""; tls_include=""; env_file="$repo/.env"
 
 ipv6=1
+page401=1
 while [ $# -gt 0 ]; do
 	if [ "$1" = --no-ipv6 ]; then ipv6=0; shift; continue; fi
+	if [ "$1" = --no-401-page ]; then page401=0; shift; continue; fi
 	[ $# -ge 2 ] || die "$1 needs a value"
 	case "$1" in
 		--stage) stage=$2 ;;
@@ -80,7 +85,7 @@ safe acme-root "$acme_root"
 # The sign-in page (deploy/beta/401.html) is served from this checkout; nginx must be able to read it.
 pages_dir="$repo/deploy/beta"
 safe pages-dir "$pages_dir"
-[ -r "$pages_dir/401.html" ] || die "cannot read $pages_dir/401.html"
+[ "$page401" = 0 ] || [ -r "$pages_dir/401.html" ] || die "cannot read $pages_dir/401.html (or render with --no-401-page)"
 case "$api_port" in *[!0-9]*) die "--api-port must be a number" ;; esac
 case "$data_root" in /?*) ;; *) die "--data-root must be an absolute path" ;; esac
 case "$data_root" in / | /etc | /usr | /var | /home | /root | /data) die "--data-root '$data_root' is not a RouteMaker directory" ;; esac
@@ -121,6 +126,16 @@ rendered=$(keep_stage | grep -v '^# TEMPLATE: ' | sed \
 
 if [ "$ipv6" = 0 ]; then
 	rendered=$(printf '%s\n' "$rendered" | grep -vF 'listen [::]')
+fi
+
+if [ "$page401" = 0 ]; then
+	# the error_page line, and the location from its opening line to its closing brace
+	rendered=$(printf '%s\n' "$rendered" | awk '
+		/^[[:space:]]*error_page 401 / { next }
+		/^[[:space:]]*location = \/rmbeta-401\.html \{/ { skip = 1; next }
+		skip && /^[[:space:]]*\}[[:space:]]*$/ { skip = 0; next }
+		!skip { print }
+	')
 fi
 
 if [ -n "$tls_include" ]; then

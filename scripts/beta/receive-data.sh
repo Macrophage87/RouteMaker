@@ -153,7 +153,7 @@ fi
 # digits, two characters, then the path.
 listed() { awk -v p="$1" '{ f = substr($0, 67); if (index(f, p) == 1) print f }' "$bundle/SHA256SUMS" | sort; }
 
-rsync_in=(rsync -a --no-owner --no-group --chmod=D755,F644)
+rsync_in=(rsync -a --no-owner --no-group "--chmod=D755,F644")
 
 # Install exactly the files SHA256SUMS lists under PREFIX (such as photon/), nothing else from
 # the bundle directory. With delete=1, files under the same prefix in DATA_ROOT that the new

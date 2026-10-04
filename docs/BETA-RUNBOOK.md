@@ -59,6 +59,7 @@ export RM_DATA=/data/routemaker
 export RM_SRC=/data/routemaker-src
 export RM_INCOMING=/data/routemaker-incoming
 export RM_SSH_HOST=<the ssh host the owner ships from, as the owner names this server in ~/.ssh/config>
+export BETA_API_PORT=8087      # the api's loopback port; step 1 may choose another, then use it everywhere
 # The guard every creating step uses: true only if NONE of the paths exists yet, naming each that
 # does; an empty argument (an unset variable) also fails it. Every command that creates a RouteMaker path is written `rm_absent <paths> && <command>`
 # on one line, so an existing path stops that command (a `for` loop's status alone would not).
@@ -73,12 +74,15 @@ What to expect on this server (the owner's check, 2026-10-04); a check below tha
 - `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
 - Docker's root may be on the root disk rather than on `/data` (that is why binds never create
   their source: "Reboot and a late `/data`"), so its free space is checked on its own;
-- available memory is at least the 7900 MiB threshold below;
+- available memory is at least the 8400 MiB threshold below (the 7358 MiB startup peak plus the
+  checker's 1 GiB margin);
+- an x86_64 machine (the api image is built at home, on x86_64);
 - `routemaker.cieply.com` resolves to this server's own public address (checked live below; the
   address is not written down here).
 
 ```sh
-free -m                                  # "available" must be at least 7900 MiB; the caps total 7102 MiB resident, 7358 at the startup peak
+free -m                                  # "available" must be at least 8400 MiB: the 7358 MiB startup peak plus the checker's 1 GiB margin (the caps total 7102 MiB resident)
+uname -m; docker info -f '{{.Architecture}}'   # both x86_64: the api image is built at home on x86_64; anything else is a stop
 df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
 findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
 stat -c '%A %U:%G' /data                 # read-only: needs x for others (or for nginx's group): nginx must pass through /data. If not, STOP and ask the owner; never change /data's mode
@@ -87,12 +91,14 @@ df -h "$(docker info -f '{{.DockerRootDir}}')"   # at least 6 GB free for the im
 systemctl is-enabled docker containerd   # both "enabled", or nothing comes back after a reboot (read-only; change nothing)
 id -nG | tr ' ' '\n' | grep -x docker    # you must be in the docker group (or use sudo for every docker command)
 docker version --format '{{.Server.Version}}'; docker compose version   # Docker 29, compose 2.40 or newer
-ss -ltn | awk '{print $4}' | grep -E ':(8087)$' || echo "port 8087 is free"
+v=$(docker compose version --short); [ "$(printf '%s\n' 2.40.0 "${v#v}" | sort -V | head -n 1)" = 2.40.0 ] && echo "compose $v: at least 2.40.0" || echo "STOP: compose $v is older than 2.40.0"   # the minimum this runbook supports; step 8 proves the binds on this host
+ss -ltn | awk '{print $4}' | grep -E ":($BETA_API_PORT)\$" || echo "port $BETA_API_PORT is free"
 nginx -v; sudo nginx -T 2>/dev/null | grep -E '^\s*(include|user) ' | head   # which directory does nginx include? which user?
 command -v git rsync openssl curl python3 sha256sum
 sudo docker compose version                      # the compose plugin must also work under sudo (receive-data.sh files/db run with sudo)
 python3 -c 'import yaml' && echo "pyyaml ok"      # the pre-flight checker needs it; if missing, see below (no system package is installed)
-[ "$(getent ahostsv4 routemaker.cieply.com | awk 'NR == 1 {print $1}')" = "$(curl -s -m 10 https://checkip.amazonaws.com)" ] && echo "DNS points here" || echo "STOP: routemaker.cieply.com does not resolve to this server's public address"
+dns=$(getent ahostsv4 routemaker.cieply.com | awk 'NR == 1 {print $1}'); me=$(curl -s -m 10 https://api.ipify.org)
+[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ] && echo "DNS points here" || echo "STOP: routemaker.cieply.com does not resolve to this server's public address (or the check could not run)"
 sudo nginx -T 2>/dev/null | grep -c 'listen \[::\]'   # 0: the other sites do not listen on IPv6; render with --no-ipv6 in 9c
 rm_absent "$RM_SRC" "$RM_INCOMING" "$RM_DATA" "$HOME/routemaker-beta-state" "$HOME/routemaker-beta-passwords.txt" "$HOME/routemaker-beta-venv" /var/www/routemaker-acme /etc/nginx/routemaker-beta.htpasswd && echo "all absent"   # any EXISTS line is a stop
 ```
@@ -132,8 +138,11 @@ renewal.
 
 Decide and note down:
 
-- **The api port.** `8087` unless `ss` shows it taken; then pick a free one and use it as `--api-port`
-  in step 3 and `BETA_API_PORT` everywhere. Only `127.0.0.1` is ever bound.
+- **The api port.** `8087` unless `ss` shows it taken; then pick a free one, `export BETA_API_PORT=<it>`,
+  and the commands below use it (`--api-port` in steps 3 and 9c, the local curls). Only `127.0.0.1` is
+  ever bound.
+- **nginx's worker user.** The `user` line `nginx -T` printed (`www-data` on Ubuntu):
+  `export NGINX_USER=<that user>`. Step 8 checks with it that nginx can read what it serves.
 - **Where nginx reads site files from.** On Ubuntu this is normally `/etc/nginx/sites-enabled/*`
   (files live in `sites-available/`, linked) or `/etc/nginx/conf.d/*.conf`. Use whichever the
   `include` lines above show and whichever the other sites already use. `$NGINX_SITE` below is the
@@ -195,7 +204,7 @@ Undo: `rm -rf "$RM_SRC"`.
 
 ```sh
 cd "$RM_SRC"
-scripts/beta/make-env.sh --data-root "$RM_DATA" --api-port 8087       # TAG defaults to the first 12 characters of the sha
+scripts/beta/make-env.sh --data-root "$RM_DATA" --api-port "$BETA_API_PORT"       # TAG defaults to the first 12 characters of the sha
 ```
 
 It generates `DJANGO_SECRET_KEY`, `KEY_ENCRYPTION_KEY` and `PGPASSWORD` as random hex and prints
@@ -288,17 +297,32 @@ by others; leave them).
 
 ## 7. Receive the data (adds files under `$RM_DATA`)
 
-At home the owner runs, once step 2 has created `$RM_INCOMING` (this is for you to know, and to
-ask the owner for if the bundle is not there yet):
+**At home (owner).** This box is for the owner; you only need to know it, and to ask for the
+bundle if it is not at `$RM_INCOMING` yet. The owner runs it one line at a time, in a shell of their
+own, once you report step 2 done. `RM_SSH_HOST` is typed in that shell only and never written into a
+file in the checkout. The live stack must be up (ship-data reads its database).
 
 ```sh
-scripts/beta/ship-data.sh --live-dir <live checkout> --build-frontend  "$RM_SSH_HOST"  /data/routemaker-incoming
+export RM_SSH_HOST=<your ssh alias for the server, from ~/.ssh/config>
+export RM_SHA=<the release sha>  RM_HOME_SRC=<a clean checkout of it>  RM_LIVE_DIR=<the live stack's checkout>
+cd "$RM_HOME_SRC"
+[ "$(git rev-parse HEAD)" = "$RM_SHA" ] && [ -z "$(git status --porcelain)" ] && echo "clean at the release sha"
+git ls-remote origin | grep "$RM_SHA"                          # the server can clone it
+ssh "$RM_SSH_HOST" 'id -nG; uname -m'                          # in the docker group; x86_64
+T=$(git rev-parse --short=12 HEAD)                             # the TAG make-env.sh writes
+docker build -f docker/api.Dockerfile -t "ghcr.io/macrophage87/routemaker-api:$T" .
+docker save "ghcr.io/macrophage87/routemaker-api:$T" | gzip | ssh "$RM_SSH_HOST" 'gunzip | docker load'
+ssh "$RM_SSH_HOST" 'stat -c %U /data/routemaker-incoming; id -un'   # the same user twice
+scripts/beta/ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend  "$RM_SSH_HOST"  /data/routemaker-incoming
 ```
 
+With the image loaded this way, skip step 6's `build` line and run only its `pull` line.
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
 neither it nor `--dist` is given. To add a "Report a problem" link to the notice (OWNER-DECISIONS 382,
 for example a Discord invite once there is one), the owner adds `--report-url https://...`; without it
-the notice says only to tell the person who gave you access.
+the notice says only to tell the person who gave you access. The link is built into the front end, so
+repeat the same `--report-url` on every later ship that carries the front end (data updates and
+releases included), or the next `files` installs a notice without it.
 
 It sends about 4 GB (see "What the bundle holds" below) and is resumable: if the connection drops the
 owner reruns the same command. `SHA256SUMS` arrives last, so a half-sent bundle has none.
@@ -359,19 +383,42 @@ scripts/beta/beta-compose.sh exec -T api ./manage.py migrate --check && echo "mi
 scripts/beta/beta-compose.sh exec -T api ./manage.py collectstatic --noinput
 ```
 
-nginx's worker user (the `user` line step 1 printed, `www-data` on Ubuntu) must be able to read what
-the site file serves; read-only checks:
+nginx's worker user (`$NGINX_USER`, from step 1) must be able to read what the site file serves;
+read-only checks:
 
 ```sh
 for f in "$RM_DATA/frontend/index.html" "$RM_DATA/basemap/region.pmtiles" "$RM_SRC/deploy/beta/401.html"; do
-  sudo -u www-data test -r "$f" && echo "nginx can read $f" || echo "NOT READABLE by nginx: $f (stop and ask the owner)"
+  sudo -u "$NGINX_USER" test -r "$f" && echo "nginx can read $f" || echo "NOT READABLE by nginx: $f (stop and ask the owner)"
 done
 ```
+
+**Binds that refuse a missing source (the proof; this is the authority).** `compose.beta.yaml`
+asks for every RouteMaker bind with `create_host_path: false`, and the checker reads that from the
+files, but whether this host's Compose and engine honour it is proved here, read-only. Compose
+passes a bind that may be created as a legacy `Binds` entry, and one that must not be created as a
+`Mounts` entry, which the engine refuses when the source is missing:
+
+```sh
+for c in $(docker ps -q --filter label=com.docker.compose.project=routemaker-beta); do
+  docker inspect -f '{{.Name}}{{range .HostConfig.Binds}} LEGACY-BIND={{.}}{{end}}{{range .HostConfig.Mounts}}{{if eq .Type "bind"}} mount={{.Source}}{{if .BindOptions}}{{if .BindOptions.CreateMountpoint}}(CREATES){{end}}{{end}}{{end}}{{end}}' "$c"
+done   # every RouteMaker source must show as mount=...; any LEGACY-BIND= or (CREATES) is a STOP
+```
+
+Then the engine itself, once, on a path that does not exist (it creates nothing when it works):
+
+```sh
+rm_absent "$RM_STATE/no-such-dir" && docker create --mount "type=bind,source=$RM_STATE/no-such-dir,target=/x" --entrypoint true "$(docker inspect -f '{{.Config.Image}}' "$(scripts/beta/beta-compose.sh ps -q postgis)")"
+ls -d "$RM_STATE/no-such-dir" 2>/dev/null || echo "not created"   # expected: the create failed with "bind source path does not exist", and "not created"
+```
+
+If `docker create` printed a container id instead, the engine would create missing sources:
+`docker rm` that id, `rmdir "$RM_STATE/no-such-dir"` if it appeared, and stop and report it to the
+owner. The /data safeguard would then not hold on this host.
 
 Health and memory:
 
 ```sh
-curl -s -H 'Host: routemaker.cieply.com' http://127.0.0.1:8087/healthz          # ok
+curl -s -H 'Host: routemaker.cieply.com' "http://127.0.0.1:$BETA_API_PORT/healthz"   # ok
 scripts/beta/smoke-test.sh --local                                              # route, search, reverse, stress tile; all PASS
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep routemaker-beta
 free -m
@@ -384,7 +431,7 @@ Every container should sit well under its cap (api about 0.5 GiB at six workers,
 ```sh
 for i in 1 2; do curl -s -o /dev/null -w "plan $i: %{http_code} in %{time_total}s\n" -H 'Host: routemaker.cieply.com' \
   -H 'Content-Type: application/json' -d '{"points":[[-77.0353,38.8895],[-77.0369,38.9072]],"preset":"default"}' \
-  http://127.0.0.1:8087/api/route & done; wait
+  "http://127.0.0.1:$BETA_API_PORT/api/route" & done; wait
 docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep -E 'api|photon'
 ```
  Photon needs a minute after start before its first search answers. If any container
@@ -395,18 +442,23 @@ the numbers; do not raise a cap on your own.
 each cached tile is keyed on the oid of the live segment table, and the restore here created that
 table afresh, so home's rows could never match. Until this runs, every map view draws its tiles
 live through the api's one draw slot, and a street-level screen takes 20-30 s. It runs inside the
-worker's own cap (one draw at a time, `STRESS_PREDRAW_WORKERS=1`), not as a second api:
+worker's own cap (one draw at a time, `STRESS_PREDRAW_WORKERS=1`), not as a second api. It runs
+longer than a tool call may wait, so start it detached, with its output in a private log, and poll:
 
 ```sh
-scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles   # "stress tiles: N drawn, M already there ..., in S s"
+( umask 077; nohup scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles < /dev/null > "${RM_STATE:?set RM_STATE as in step 1}/predraw.log" 2>&1 & )
+tail -n 3 "$RM_STATE/predraw.log"   # repeat, a minute or so apart, until the last line is "stress tiles: N drawn, ..., in S s"
 docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' $(scripts/beta/beta-compose.sh ps -q worker)   # false 0
 ```
 
-Expected time: the whole z10-14 box is 11,068 tiles, which took 155 s at home with one draw at a
-time; here postgis has 1.5 CPUs on a shared host, so allow 5 to 15 minutes. It has a one-hour
-budget; if it stops short it says how many are left, and running it again draws only those. Do
-not invite testers (step 11) until it has finished. If the worker was OOM-killed, report it with
-the numbers; do not raise its cap.
+**Never start it again while the log has no `stress tiles:` line.** Stopping or timing out the
+command that started it does not stop the draw inside the worker, so a second one would draw beside
+it, inside the same cap and against the same postgis. Expected time: the whole z10-14 box is 11,068
+tiles, which took 155 s at home with one draw at a time; here postgis has 1.5 CPUs on a shared host,
+so allow 5 to 15 minutes. It has a one-hour budget; if the final line says it stopped short with
+some left, start it once more (it draws only those). Do not invite testers (step 11) until it has
+finished. If the worker was OOM-killed, report it with the numbers; do not raise its cap. This is
+"the step 8 pre-draw" that the update and rollback paths below repeat.
 
 Undo: `scripts/beta/beta-compose.sh down` (containers and network only; `$RM_DATA` is untouched).
 
@@ -481,7 +533,7 @@ Whichever option, if the host's other sites include certbot's `options-ssl-nginx
 
 ```sh
 cd "$RM_SRC"
-scripts/beta/render-nginx.sh --stage full --api-port 8087 \
+scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" \
     --cert-fullchain <path> --cert-key <path> [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full.conf"
 # exactly one of the next two lines acts, the one for the TLS_OPTION step 1 chose:
@@ -490,6 +542,7 @@ scripts/beta/render-nginx.sh --stage full --api-port 8087 \
 # option B: stage 1 was skipped, so this is a new file and must not exist yet
 [ "$TLS_OPTION" = B ] && rm_absent "$NGINX_SITE" "$NGINX_LINK" && sudo install -m 644 "$RM_STATE/routemaker-beta.full.conf" "$NGINX_SITE" && { [ "$NGINX_LINK" = "$NGINX_SITE" ] || sudo ln -s "$NGINX_SITE" "$NGINX_LINK"; }
 sudo nginx -t && sudo nginx -s reload                                   # -t must say "syntax is ok" and "test is successful"
+curl -s -o /dev/null -w '%{http_code}\n' https://routemaker.cieply.com/   # must print 401 at once; a 403 or 404 means nginx cannot serve the sign-in page (step 10, "If the 401 lines fail")
 ```
 
 `--no-ipv6` drops the `listen [::]:80` and `listen [::]:443` lines: give it when step 1 found no
@@ -533,6 +586,22 @@ this site's byte-range request with 206 and is refused to a foreign origin; an u
 is a 404; Django's static files are served; a route, a place search, a reverse lookup and a stress
 tile all answer.
 
+**If the 401 lines fail with 403 or 404** (here or in 9c's curl), nginx cannot serve the sign-in page
+(`$RM_SRC/deploy/beta/401.html`), and nobody gets the browser's sign-in box. Re-render without the
+page, install it over the file this runbook put there, reload, rerun this step, and report it to the
+owner (do not edit the installed file by hand):
+
+```sh
+scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" --no-401-page \
+    --cert-fullchain <path> --cert-key <path> [--tls-options-include <path>] [--no-ipv6] \
+    --out "$RM_STATE/routemaker-beta.full-no401.conf"
+grep -q 'Rendered by scripts/beta/render-nginx.sh (stage full)' "$NGINX_SITE" && sudo install -m 644 "$RM_STATE/routemaker-beta.full-no401.conf" "$NGINX_SITE"
+sudo nginx -t && sudo nginx -s reload
+```
+
+Use the same options as in 9c, plus `--no-401-page`. Cancel then shows nginx's own plain
+"401 Authorization Required" page; the sign-in box itself is unchanged.
+
 Then check by eye, once, in a browser the owner can use: the page loads behind the password prompt,
 the map draws, a two-point route appears, and the **Beta notice** is shown in the planner panel, under the
 RouteMaker heading (it appears only in the front end built with `VITE_BETA=1`, which
@@ -567,7 +636,8 @@ scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhall
 
 If that update also carried a db part (`db --update-data`), do **B** as well, with the
 `pre-update-<time>.dump` it wrote: the graphs and the `live` schema are one build, and the old graphs
-against the new `live` mix segment attributes from one build with edges from another.
+against the new `live` mix segment attributes from one build with edges from another. A Photon index
+that the update's `files` replaced has no `previous`: rollback A does not bring it back.
 
 **B. Go back to the previous database:** restore the safety dump the last data update wrote
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
@@ -583,6 +653,8 @@ scripts/beta/beta-compose.sh stop api worker
 ls -l "$RM_DATA"/backups/pre-*.dump
 sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups/pre-update-<time>.dump"
 scripts/beta/beta-compose.sh up -d api worker
+( umask 077; nohup scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles < /dev/null > "${RM_STATE:?set RM_STATE as in step 1}/predraw.log" 2>&1 & )
+tail -n 3 "$RM_STATE/predraw.log"   # the step 8 pre-draw: the restored database has a new live table, so the tile cache is cold
 ```
 
 **C. Go back to the previous release:** the previous api image is still on the host under its own tag. Retagging
@@ -596,11 +668,18 @@ cd "$RM_SRC"
 scripts/beta/beta-compose.sh stop api worker
 git checkout --detach <previous sha>
 sed -i 's/^TAG=.*/TAG=<previous 12-character sha>/' .env          # the one edit to .env a release change needs
+"${RM_PY:-python3}" scripts/check_beta_compose.py --env-file .env    # the gate, after every .env edit: "beta compose: ok"
 sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups/pre-release-<time>.dump"
 sudo cp -p "$RM_DATA/backups/index.html.pre-release-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"
 scripts/beta/beta-compose.sh up -d api worker                     # recreates them on the old image; migrate finds nothing to do
 scripts/beta/beta-compose.sh up -d photon valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # recreates only those whose image or command the release changed
+( umask 077; nohup scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles < /dev/null > "${RM_STATE:?set RM_STATE as in step 1}/predraw.log" 2>&1 & )
+tail -n 3 "$RM_STATE/predraw.log"   # the step 8 pre-draw: the restored database has a new live table
 ```
+
+If the release also shipped new graphs (its step 7 ran `files`), do **A** as well, before the
+`up -d api worker` line: the restored `live` is the old build's, and `current` would still point at the
+new graphs. A Photon index replaced in that step is not rolled back.
 
 Because the dump goes into a fresh database, tables the newer release added do not survive into
 the restored one (a restore over the current database could not drop them). Anything the beta's users saved after the update is lost by this (the `pre-rollback` snapshot `restore-dump`
@@ -649,7 +728,8 @@ The tooling is the same each time. Ask the owner which kind it is.
    scripts/beta/beta-compose.sh stop api worker
    sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env db --update-data
    scripts/beta/beta-compose.sh up -d api worker
-   scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles   # 5-15 min; see step 8
+   ( umask 077; nohup scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles < /dev/null > "${RM_STATE:?set RM_STATE as in step 1}/predraw.log" 2>&1 & )
+   tail -n 3 "$RM_STATE/predraw.log"   # 5-15 min; poll until the "stress tiles:" line (step 8)
    ```
 
    The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
@@ -686,7 +766,8 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    exactly the ones that did).
 9. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
 
-**Front end only:** ship with `--without tiles --without elevation --without basemap --without photon --without db`,
+**Front end only:** ship with `ship-data.sh --live-dir "$RM_LIVE_DIR" --build-frontend [--report-url <the same as before>]
+--without tiles --without elevation --without basemap --without photon --without db "$RM_SSH_HOST" /data/routemaker-incoming`,
 then `sudo ... files`. Nothing restarts; `index.html` is read per request.
 
 ## Operating notes
@@ -739,7 +820,10 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
   worker started by mistake would only record a pause. New routing data always comes from home as a bundle. Expected,
   and not a fault: the worker's schedule still queues the weekly tick, and with no rebuild worker to take it one
   `weekly_rebuild` job waits on the `rebuild` queue (its queueing lock keeps it to one), and `check_operations` and
-  the admin's operations page list `weekly_rebuild` as stale. Do not start a rebuild worker to clear either.
+  the admin's operations page list `weekly_rebuild` as stale, from about eight days after setup (its
+  staleness window runs from the deployment; nothing shows in the first week). Do not start a rebuild worker to
+  clear either. **Never run `run_rebuild_now` here** (for example `beta-compose.sh exec worker ./manage.py
+  run_rebuild_now`): a hand-fired rebuild ignores the pause by design, and the wrapper does not catch it.
 - **`scripts/boot/` is for the home machine only.** Never install its unit or run `start-stack.sh` here (step 1).
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB
   (standard 611 MB, no-trail 450 MB, ebike 611 MB, weekend 611 MB), the Photon index 742 MB, elevation 310 MB, the base map

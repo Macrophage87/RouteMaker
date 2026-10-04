@@ -138,15 +138,24 @@ test("App wires it to the build flags and nothing else, so the local site is unc
   );
 });
 
-test("App puts it in the planner, under the header and before the planner's body (accessibility S1)", () => {
+test("App renders it as the first child of the planner's body, right after the header (re-check S1)", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
   const banner = app.indexOf("<BetaBanner");
   const aside = app.indexOf('id="route-planner"');
   const header = app.indexOf("</header>", aside);
-  const body = app.indexOf('id="panel-body"', aside);
+  const body = app.indexOf('<div id="panel-body"', aside);
   assert.ok(aside > 0 && header > aside && body > header, "the planner's layout moved");
-  assert.ok(banner > header && banner < body, "the banner must sit between the planner's header and body");
+  const bodyOpen = app.indexOf(">", body) + 1;
+  assert.match(app.slice(bodyOpen, banner), /^\s*$/, "the banner must be the body's first child");
   assert.ok(app.indexOf("<a className=\"skip-link\"") < aside, "the skip link still comes first");
+});
+
+test("Dismiss sends focus to the planner, as the skip link does (re-check N4)", () => {
+  const source = readFileSync(new URL("./betaBanner.ts", import.meta.url), "utf8");
+  assert.match(source, /document\.getElementById\("route-planner"\)\?\.focus\(\)/);
+  const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+  assert.match(app, /id="route-planner"\s+tabIndex=\{-1\}/);
+  assert.match(app, /href="#route-planner"/);
 });
 
 test("the notice flows inside the panel: no overlay, no z-index, a rem font size and a 44px button", () => {
@@ -154,6 +163,7 @@ test("the notice flows inside the panel: no overlay, no z-index, a rem font size
   const rules = [...css.matchAll(/\.beta-banner[^{]*\{([^}]*)\}/g)].map((m) => m[1]).join("\n");
   assert.ok(rules, "no .beta-banner rules");
   assert.doesNotMatch(rules, /position:\s*(absolute|fixed)|z-index/);
+  assert.doesNotMatch(css.match(/\.beta-banner \{([^}]*)\}/)?.[1] ?? "", /flex:\s*none/);
   assert.doesNotMatch(rules, /font-size:\s*[0-9.]+px/);
   assert.match(css, /\.beta-banner \{[^}]*font-size: 0\.875rem/);
   const button = css.match(/\.beta-banner button \{([^}]*)\}/)?.[1] ?? "";

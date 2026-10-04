@@ -252,7 +252,7 @@ if want frontend; then
 	if [ "$build_frontend" = 1 ]; then
 		nm=${node_modules:-$repo/frontend/node_modules}
 		[ -d "$nm" ] || die "no node_modules at $nm (--node-modules); the build runs offline"
-		note "testing and building the front end with VITE_BETA=1 in the pinned node image (no network)"
+		note "testing and building the front end with VITE_BETA=1 in the pinned node image (no network); report link: ${report_url:-none}"
 		# node_modules is mounted writable because vite writes a temp config beside it; it is
 		# removed afterwards. The source is read-only and the output goes straight to the stage.
 		# npm test runs first, on exactly the tree being shipped (the banner's and the planner's
@@ -362,10 +362,10 @@ note "bundle: $files files, $(awk -v b="$bytes" 'BEGIN {printf "%.2f GiB", b / 1
 
 # --- transfer -----------------------------------------------------------------------------------------------------
 ssh_cmd="ssh ${BETA_SSH_OPTS:-} -o ServerAliveInterval=30 -o ServerAliveCountMax=10"
-common=(-aL --partial --partial-dir=.rsync-partial --no-owner --no-group --chmod=D755,F644
+common=(-aL --partial --partial-dir=.rsync-partial --no-owner --no-group "--chmod=D755,F644"
 	--human-readable --timeout=300 -e "$ssh_cmd")
 # A progress line only on a terminal: into a log it is one long unreadable line.
-if [ -t 2 ]; then common+=(--info=progress2,stats1); else common+=(--info=stats1); fi
+if [ -t 2 ]; then common+=("--info=progress2,stats1"); else common+=(--info=stats1); fi
 [ -z "$bwlimit" ] || common+=("--bwlimit=$bwlimit")
 [ "$dry_run" = 0 ] || common+=(--dry-run)
 

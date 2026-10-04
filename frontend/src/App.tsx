@@ -878,11 +878,11 @@ export function App() {
             {panelOpen ? "Hide" : "Plan"}
           </button>
         </header>
-        <BetaBanner
-          enabled={isBetaBuild(import.meta.env.VITE_BETA)}
-          reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
-        />
         <div id="panel-body" ref={panelBodyRef} className="panel-body" hidden={!panelOpen}>
+          <BetaBanner
+            enabled={isBetaBuild(import.meta.env.VITE_BETA)}
+            reportUrl={betaReportUrl(import.meta.env.VITE_BETA_REPORT_URL)}
+          />
           {order.map((id) => sections[id])}
 
           <GpxPanel

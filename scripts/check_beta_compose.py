@@ -317,7 +317,9 @@ def check_runtime_settings(services: dict) -> list[str]:
                 f"{routing_concurrency(workers)} + geocoding {GEOCODE_CONCURRENCY} + tiles "
                 f"{tile_concurrency(workers)} = {pools}, so /healthz can go unanswered under load"
             )
-    for name in ("api", "worker", "migrate"):
+    # rebuild is parked (not-in-beta), so it is checked only where it is rendered: with that
+    # profile, or by a caller that renders it.
+    for name in ("api", "worker", "migrate", "rebuild"):
         if name in services and _env(services[name]).get("WEEKLY_REBUILD_PAUSED") != "1":
             problems.append(
                 f"{name}: WEEKLY_REBUILD_PAUSED must be 1 (a rebuild started here by mistake "
@@ -398,16 +400,138 @@ def check_valhalla(services: dict) -> list[str]:
         production.VALHALLA_PER_WORKER_MEMORY_MB = original
 
 
-def _creates_host_path(volume) -> bool:
-    """Whether the engine would create a missing bind source. `docker compose config` renders
-    the short `src:dst` form as `bind: {}` (create_host_path defaults to true) and the long form
-    with `create_host_path: false` explicitly; an unrendered short string creates it too."""
+# How `docker compose config` writes bind.create_host_path depends on the Compose version, and the
+# two known schemes are mirror images, so a missing key means opposite things:
+#   "explicit"   (Compose v5.3.1 here): the short `src:dst` form renders `bind: {}` and a long
+#                form with `create_host_path: false` renders the false; a missing key means TRUE.
+#   "omit-false" (older Compose, as CI's renders: the key is a plain omitempty bool): the short
+#                form renders `create_host_path: true` and false is dropped; missing means FALSE.
+# bind_semantics() finds out which one the installed Compose uses, by rendering a probe file
+# with both forms, and refuses a Compose whose render cannot tell them apart. What the engine
+# then does is proved on the server itself (docs/BETA-RUNBOOK.md, step 8, "Binds that refuse a
+# missing source"), which is the authority: the render only says what Compose will ask for.
+BIND_SEMANTICS = ("explicit", "omit-false")
+_MISSING = object()
+
+
+def semantics_from_render(services: dict) -> str:
+    """From the probe's render: service `p`, the short bind on /s, the long false one on /l."""
+    volumes = {v.get("target"): v for v in services["p"].get("volumes") or []}
+
+    def value(target):
+        return (volumes[target].get("bind") or {}).get("create_host_path", _MISSING)
+
+    short, long_false = value("/s"), value("/l")
+    if long_false is False:
+        return "explicit"
+    if long_false is _MISSING and short is True:
+        return "omit-false"
+    raise RenderFailed(
+        "this Compose renders bind.create_host_path so that a bind which creates its source cannot "
+        f"be told from one that refuses (short form {short!r}, long false form {long_false!r}); "
+        "the beta's /data safeguard cannot be checked with it: report `docker compose version`"
+    )
+
+
+def bind_semantics(env: dict | None = None) -> str:
+    """Render a two-bind probe with the installed Compose (no daemon, no container)."""
+    probe = (
+        "services:\n"
+        "  p:\n"
+        "    image: probe\n"
+        "    volumes:\n"
+        "      - /rmbeta-probe/short:/s\n"
+        "      - type: bind\n"
+        "        source: /rmbeta-probe/long\n"
+        "        target: /l\n"
+        "        bind: { create_host_path: false }\n"
+    )
+    if env is None:
+        env = {
+            k: v
+            for k, v in os.environ.items()
+            if k in ("PATH", "HOME", "DOCKER_HOST", "DOCKER_CONFIG")
+        }
+    with tempfile.TemporaryDirectory() as tmp:
+        Path(tmp, "compose.yaml").write_text(probe)
+        done = subprocess.run(
+            ["docker", "compose", "-f", "compose.yaml", "--env-file", "/dev/null", "config"],
+            cwd=tmp,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    if done.returncode != 0:
+        raise RenderFailed(f"rendering the create_host_path probe failed:\n{done.stderr}")
+    return semantics_from_render(yaml.safe_load(done.stdout)["services"])
+
+
+def _creates_host_path(volume, semantics: str = "explicit") -> bool:
+    """Whether Compose will ask the engine to create a missing bind source, read from a rendered
+    volume under the given render scheme (above). An unrendered short string creates it."""
     if not isinstance(volume, dict):
         return True
-    return (volume.get("bind") or {}).get("create_host_path", True) is not False
+    value = (volume.get("bind") or {}).get("create_host_path", _MISSING)
+    if value is _MISSING:
+        return semantics == "explicit"
+    return value is not False
 
 
-def check_mounts(services: dict, data_root: str | None) -> list[str]:
+class _SourceLoader(yaml.SafeLoader):
+    """safe_load plus compose's `!reset` and `!override` tags, read as the value they carry."""
+
+
+def _compose_tag(loader, node):
+    if isinstance(node, yaml.SequenceNode):
+        return loader.construct_sequence(node, deep=True)
+    if isinstance(node, yaml.MappingNode):
+        return loader.construct_mapping(node, deep=True)
+    return loader.construct_scalar(node)
+
+
+for _tag in ("!reset", "!override"):
+    _SourceLoader.add_constructor(_tag, _compose_tag)
+
+# Parked behind not-in-beta: never started, so their base-file short binds stay as they are.
+PARKED = {"caddy", "rebuild"}
+
+
+def check_source_binds(repo: Path = REPO) -> list[str]:
+    """The rule read from the files themselves, whatever the installed Compose renders: every
+    bind the base file gives a service the beta runs is restated in compose.beta.yaml, at the same
+    target, in the long form with `bind: { create_host_path: false }`."""
+    base = yaml.safe_load((repo / "compose.yaml").read_text())["services"]
+    overlay = yaml.load((repo / "compose.beta.yaml").read_text(), Loader=_SourceLoader)["services"]  # noqa: S506
+    problems: list[str] = []
+    for name, service in overlay.items():
+        if name in PARKED:
+            continue
+        mine = {}
+        for volume in service.get("volumes") or []:
+            if not isinstance(volume, dict):
+                problems.append(f"compose.beta.yaml {name}: {volume!r} is in the short form")
+                continue
+            mine[volume.get("target")] = volume
+            if (
+                volume.get("type") == "bind"
+                and (volume.get("bind") or {}).get("create_host_path") is not False
+            ):
+                problems.append(
+                    f"compose.beta.yaml {name}: the bind on {volume.get('target')} lacks "
+                    "`bind: { create_host_path: false }`"
+                )
+        for volume in (base.get(name) or {}).get("volumes") or []:
+            target = volume.get("target") if isinstance(volume, dict) else str(volume).split(":")[1]
+            if target not in mine:
+                problems.append(
+                    f"compose.beta.yaml {name}: the base file's bind on {target} is not restated "
+                    "(it would keep the short form, which creates a missing source)"
+                )
+    return problems
+
+
+def check_mounts(services: dict, data_root: str | None, semantics: str = "explicit") -> list[str]:
     """Binds come from DATA_ROOT or the repository, never the Docker socket, and never create
     their source: /data is mounted `nofail` on the server and Docker can start first, and a
     created source is an empty directory on the root disk (compose.beta.yaml, "Bind mounts
@@ -433,11 +557,13 @@ def check_mounts(services: dict, data_root: str | None) -> list[str]:
             if (
                 kind == "bind"
                 and any(source.startswith(root) for root in roots)
-                and _creates_host_path(volume)
+                and _creates_host_path(volume, semantics)
             ):
                 problems.append(
-                    f"{name}: bind {source} would be created empty if missing; restate it in "
-                    "compose.beta.yaml in the long form with `bind: { create_host_path: false }`"
+                    f"{name}: bind {source} would be created empty if missing (as this Compose "
+                    f"renders it, scheme {semantics!r}); compose.beta.yaml must restate it in the "
+                    "long form with `bind: { create_host_path: false }`, and if it already does, "
+                    "this Compose does not honour the setting: report `docker compose version`"
                 )
     return problems
 
@@ -459,7 +585,9 @@ def check_restart_and_debug(services: dict) -> list[str]:
     return problems
 
 
-def check(compose: dict, data_root: str | None = None) -> list[str]:
+def check(
+    compose: dict, data_root: str | None = None, bind_semantics: str = "explicit"
+) -> list[str]:
     services = compose.get("services", {})
     return [
         *check_services(services),
@@ -470,7 +598,7 @@ def check(compose: dict, data_root: str | None = None) -> list[str]:
         *check_runtime_settings(services),
         *check_restart_and_debug(services),
         *check_valhalla(services),
-        *check_mounts(services, data_root),
+        *check_mounts(services, data_root, bind_semantics),
     ]
 
 
@@ -621,8 +749,23 @@ def render_env_file(env_file: Path, offroad: bool = False) -> dict:
     return yaml.safe_load(done.stdout)
 
 
+# The wrapper runs compose under env -i with only PATH, HOME, DOCKER_HOST and DOCKER_CONFIG, and so
+# does this checker's render; these would be dropped silently, so both refuse them instead.
+REFUSED_DOCKER_ENV = ("DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH")
+
+
 def main(argv: list[str]) -> int:
     offroad = "--offroad" in argv
+    if "--env-file" in argv or any(a.startswith("--env-file=") for a in argv) or "--render" in argv:
+        refused = [k for k in REFUSED_DOCKER_ENV if k in os.environ]
+        if refused:
+            print(
+                f"beta compose: {', '.join(refused)} is set in the environment; unset it (the beta "
+                "talks to the local engine, and the render passes only PATH, HOME, DOCKER_HOST and "
+                "DOCKER_CONFIG)",
+                file=sys.stderr,
+            )
+            return 2
     env_file: Path | None = None
     positional: list[str] = []
     rest = list(argv)
@@ -639,6 +782,15 @@ def main(argv: list[str]) -> int:
             positional.append(arg)
     problems: list[str] = []
     data_root: str | None = None
+    semantics = "explicit"
+    rendering = env_file is not None or "--render" in argv
+    if rendering:
+        try:
+            semantics = bind_semantics()
+        except RenderFailed as failed:
+            print(f"beta compose: {failed}", file=sys.stderr)
+            return 1
+        problems += check_source_binds()
     if env_file is not None:
         if not env_file.is_file():
             print(f"beta compose: cannot read {env_file}", file=sys.stderr)
@@ -670,7 +822,7 @@ def main(argv: list[str]) -> int:
     else:
         print(__doc__, file=sys.stderr)
         return 2
-    problems += check(compose, data_root)
+    problems += check(compose, data_root, semantics)
     print(table(compose))
     for problem in problems:
         print(f"beta compose: {problem}", file=sys.stderr)

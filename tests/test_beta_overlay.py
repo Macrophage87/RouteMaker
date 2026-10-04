@@ -71,10 +71,29 @@ def rendered() -> dict:
     return beta.render()
 
 
+def compose_version() -> str:
+    done = run("docker", "compose", "version")
+    return (done.stdout + done.stderr).strip()
+
+
+@pytest.fixture(scope="module")
+def semantics() -> str:
+    if shutil.which("docker") is None:
+        pytest.skip("docker is not installed")
+    return beta.bind_semantics()
+
+
 @needs_docker
-def test_the_overlay_renders_and_passes_the_beta_checker(rendered: dict) -> None:
-    problems = beta.check(rendered, beta.DUMMY_ENV["DATA_ROOT"])
-    assert not problems, problems
+def test_the_overlay_renders_and_passes_the_beta_checker(rendered: dict, semantics: str) -> None:
+    problems = beta.check(rendered, beta.DUMMY_ENV["DATA_ROOT"], semantics)
+    assert not problems, (compose_version(), semantics, problems)
+
+
+@needs_docker
+def test_this_compose_renders_create_host_path_in_a_known_scheme(semantics: str) -> None:
+    """Re-check CI failure: Compose v5.3.1 renders false explicitly, an older Compose drops it (and
+    renders the short form's true instead). Either is readable; anything else must stop."""
+    assert semantics in beta.BIND_SEMANTICS, compose_version()
 
 
 @needs_docker
@@ -178,6 +197,8 @@ def test_a_parked_service_started_anyway_gets_the_tiny_caps_and_no_port() -> Non
     assert not caddy.get("ports"), "caddy must not grab 80/443 from the host's nginx"
     for service in (rebuild, caddy):
         assert service["restart"] == "no" and service["oom_score_adj"] == 500
+    # re-check spec SF1: the one service that takes rebuild jobs is paused too
+    assert rebuild["environment"]["WEEKLY_REBUILD_PAUSED"] == "1"
 
 
 def test_photons_command_differs_from_the_base_only_in_the_jvm_flags() -> None:
@@ -466,20 +487,114 @@ def test_every_bind_the_beta_runs_refuses_to_create_a_missing_source(offroad: bo
     """/data is mounted nofail on the server, so Docker can start first: a bind must stop its
     container rather than get an empty directory on the root disk."""
     services = beta.render(offroad=offroad)["services"]
+    semantics = beta.bind_semantics()
     binds = {
         name: [v for v in service.get("volumes") or [] if v.get("type") == "bind"]
         for name, service in services.items()
     }
     for name, volumes in binds.items():
         for volume in volumes:
-            assert volume["bind"]["create_host_path"] is False, (name, volume)
+            assert not beta._creates_host_path(volume, semantics), (
+                compose_version(),
+                semantics,
+                name,
+                volume,
+            )
     counts = {name: len(volumes) for name, volumes in binds.items() if volumes}
     expected = {"api": 2, "worker": 2, "postgis": 1, "photon": 1}
     expected.update({f"valhalla-{g}": 4 for g in ("standard", "no-trail", "ebike", "weekend")})
     if offroad:
         expected["valhalla-offroad"] = 4
     assert counts == expected
-    assert not any("would be created empty" in p for p in beta.check({"services": services}))
+    assert not any(
+        "would be created empty" in p for p in beta.check({"services": services}, None, semantics)
+    )
+    assert beta.check_source_binds() == []
+
+
+@pytest.mark.parametrize(
+    ("short", "long_false", "expected"),
+    [
+        ({}, {"create_host_path": False}, "explicit"),  # Compose v5.3.1 here
+        ({"create_host_path": True}, {}, "omit-false"),  # an omitempty bool: CI's Compose
+        ({"create_host_path": True}, None, "omit-false"),  # ... with no bind key at all
+    ],
+)
+def test_the_render_scheme_is_read_from_the_probe(short, long_false, expected) -> None:
+    long_volume = {"type": "bind", "source": "/rmbeta-probe/long", "target": "/l"}
+    if long_false is not None:
+        long_volume["bind"] = long_false
+    probe = {
+        "p": {
+            "volumes": [
+                {"type": "bind", "source": "/rmbeta-probe/short", "target": "/s", "bind": short},
+                long_volume,
+            ]
+        }
+    }
+    assert beta.semantics_from_render(probe) == expected
+
+
+def test_a_render_that_cannot_tell_the_two_forms_apart_is_refused() -> None:
+    same = {"type": "bind", "bind": {}}
+    probe = {"p": {"volumes": [{**same, "target": "/s"}, {**same, "target": "/l"}]}}
+    with pytest.raises(beta.RenderFailed, match="cannot"):
+        beta.semantics_from_render(probe)
+
+
+def test_a_missing_key_means_opposite_things_under_the_two_schemes() -> None:
+    absent = {"type": "bind", "source": "/data/routemaker/postgres", "bind": {}}
+    assert beta._creates_host_path(absent, "explicit") is True
+    assert beta._creates_host_path(absent, "omit-false") is False
+    for scheme in beta.BIND_SEMANTICS:
+        assert (
+            beta._creates_host_path({**absent, "bind": {"create_host_path": False}}, scheme)
+            is False
+        )
+        assert (
+            beta._creates_host_path({**absent, "bind": {"create_host_path": True}}, scheme) is True
+        )
+        assert beta._creates_host_path("/data/routemaker/postgres:/x", scheme) is True
+
+
+def test_the_source_files_restate_every_bind_with_create_host_path_false(tmp_path: Path) -> None:
+    """Read from compose.beta.yaml itself, so it holds whatever the installed Compose renders."""
+    assert beta.check_source_binds() == []
+    (tmp_path / "compose.yaml").write_text((REPO / "compose.yaml").read_text())
+    overlay = (REPO / "compose.beta.yaml").read_text()
+    head, services = overlay.split("\nservices:\n", 1)  # past the header's own mentions
+    weakened = (
+        head
+        + "\nservices:\n"
+        + services.replace("bind: { create_host_path: false }", "bind: {}", 1)
+    )
+    assert weakened != overlay
+    (tmp_path / "compose.beta.yaml").write_text(weakened)
+    found = beta.check_source_binds(tmp_path)
+    assert len(found) == 1 and "lacks `bind: { create_host_path: false }`" in found[0], found
+    dropped = re.sub(
+        r"(?s)(  postgis:.*?)    volumes:\n(?:      .*\n)+?(    memswap_limit)",
+        r"\1\2",
+        overlay,
+        count=1,
+    )
+    assert dropped != overlay
+    (tmp_path / "compose.beta.yaml").write_text(dropped)
+    found = beta.check_source_binds(tmp_path)
+    assert any(
+        "postgis: the base file's bind on /var/lib/postgresql/data is not restated" in p
+        for p in found
+    ), found
+
+
+def test_the_runbook_proves_the_binds_on_the_host_and_checks_the_compose_version() -> None:
+    step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
+    assert "docker compose version --short" in step1 and "2.40.0" in step1
+    step8 = RUNBOOK[RUNBOOK.index("## 8. Start the stack") : RUNBOOK.index("## 9. nginx")]
+    assert "LEGACY-BIND=" in step8 and ".BindOptions.CreateMountpoint" in step8
+    assert '--mount "type=bind,source=$RM_STATE/no-such-dir,target=/x"' in step8
+    assert 'rm_absent "$RM_STATE/no-such-dir" && docker create' in step8
+    assert "bind source path does not exist" in step8
 
 
 def test_the_checker_refuses_a_bind_that_would_create_its_source() -> None:
@@ -1326,6 +1441,7 @@ def test_the_wrapper_refuses_a_restart_policy_or_debug_from_the_environment(
         "RESTART_POLICY=no",
         "RESTART_POLICY=always",
         "RESTART_POLICY=on-failure",
+        "RESTART_POLICY=unless-stopped-x",  # re-check mutation NIT 3: a near miss
         'RESTART_POLICY="no"',
         "export RESTART_POLICY=no",
         "RESTART_POLICY: no",
@@ -1404,6 +1520,18 @@ def test_the_wrapper_runs_compose_with_a_clean_environment(tmp_path: Path) -> No
         assert key not in got, key
     assert got["PATH"] == os.environ["PATH"] and got["DOCKER_HOST"] == "unix:///x.sock"
     assert "DOCKER_CONFIG" not in got  # passed only when set
+    # ... and passed through when it is set (re-check mutation NIT 1)
+    with_config = subprocess.run(
+        ["sh", "scripts/beta/beta-compose.sh", "ps"],
+        cwd=REPO,
+        env={**full, "DOCKER_CONFIG": "/x/cfg"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert with_config.returncode == 0, with_config.stderr
+    again = dict(line.split("=", 1) for line in seen.read_text().splitlines() if "=" in line)
+    assert again["DOCKER_CONFIG"] == "/x/cfg" and "DATA_ROOT" not in again
     # what the shell running the stub adds itself (PWD, SHLVL, _) is all that may be beside them
     assert set(got) <= {
         "PATH",
@@ -1687,8 +1815,12 @@ def test_every_creating_command_is_chained_behind_its_guard() -> None:
     lines = gated_lines()
     assert len(lines) >= 8, lines
     for line in lines:
+        # a new path behind rm_absent, or a replacement only of the file this runbook rendered
         guarded = unbranched(line).startswith("rm_absent ") or unbranched(line).startswith(
-            "grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)'"
+            (
+                "grep -q 'Rendered by scripts/beta/render-nginx.sh (stage acme)'",
+                "grep -q 'Rendered by scripts/beta/render-nginx.sh (stage full)'",
+            )
         )
         assert guarded and " && " in line, line
     for path in ('"$RM_SRC"', '"$RM_INCOMING"', '"$RM_DATA"', '"$RM_STATE"', '"$NGINX_LINK"'):
@@ -1805,12 +1937,12 @@ def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> No
     a variable and its address is checked live, never written down."""
     step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
     assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
-    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "7900 MiB"):
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "8400 MiB", "x86_64"):
         assert fact in step1, fact
-    assert (
-        "https://checkip.amazonaws.com" in step1
-        and "getent ahostsv4 routemaker.cieply.com" in step1
-    )
+    assert "https://api.ipify.org" in step1 and "getent ahostsv4 routemaker.cieply.com" in step1
+    assert '[ -n "$dns" ] && [ -n "$me" ] && [ "$dns" = "$me" ]' in step1  # re-check ops SF-A
+    assert "amazonaws" not in RUNBOOK and "7900" not in RUNBOOK
+    assert "uname -m; docker info -f '{{.Architecture}}'" in step1  # ops SF-G
     assert not re.search(
         r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", RUNBOOK.replace("127.0.0.1", "")
     )
@@ -1870,6 +2002,119 @@ def test_the_paused_rebuilds_traces_on_the_beta_are_documented_as_expected() -> 
     assert "one\n  `weekly_rebuild` job waits" in note and "as stale" in note
     found = problems_for(lambda s: s["api"]["environment"].pop("WEEKLY_REBUILD_PAUSED"))
     assert any("must only record a pause" in p for p in found), found
+
+
+NOHUP_PREDRAW = (
+    "( umask 077; nohup scripts/beta/beta-compose.sh exec -T worker"
+    " ./manage.py predraw_stress_tiles"
+    ' < /dev/null > "${RM_STATE:?set RM_STATE as in step 1}/predraw.log" 2>&1 & )'
+)
+
+
+def test_the_predraw_runs_detached_and_follows_every_restore() -> None:
+    """Re-check operations SF-C and SF-D."""
+    step8 = RUNBOOK[RUNBOOK.index("## 8. Start the stack") : RUNBOOK.index("## 9. nginx")]
+    assert NOHUP_PREDRAW in step8 and 'tail -n 3 "$RM_STATE/predraw.log"' in step8
+    assert "Never start it again while the log has no `stress tiles:` line" in step8
+    plain = "scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles"
+    for line in runbook_commands():
+        if plain in line:
+            assert line.startswith("( umask 077; nohup "), line
+    for name, end in (("**B. Go back", "**C. Go back"), ("**C. Go back", "**D. Take")):
+        section = RUNBOOK[RUNBOOK.index(name) : RUNBOOK.index(end)]
+        assert NOHUP_PREDRAW in section, name
+    rollback_c = RUNBOOK[RUNBOOK.index("**C. Go back") : RUNBOOK.index("**D. Take")]
+    assert "do **A** as well" in rollback_c  # SF-E
+    sed = rollback_c.index("sed -i 's/^TAG=")
+    assert rollback_c.index("check_beta_compose.py --env-file .env", sed) > sed  # N-c
+    rollback_a = RUNBOOK[RUNBOOK.index("**A. Go back") : RUNBOOK.index("**B. Go back")]
+    assert "Photon index" in rollback_a and "no `previous`" in rollback_a  # N-d
+
+
+def test_the_runbook_checks_the_401_at_once_and_says_how_to_recover() -> None:
+    """Re-check operations SF-F."""
+    nine_c = RUNBOOK[RUNBOOK.index("### 9c. The full site") : RUNBOOK.index("## 10. Smoke")]
+    assert "curl -s -o /dev/null -w '%{http_code}\\n' https://routemaker.cieply.com/" in nine_c
+    ten = RUNBOOK[RUNBOOK.index("## 10. Smoke") : RUNBOOK.index("## 11. Report")]
+    assert "**If the 401 lines fail with 403 or 404**" in ten and "--no-401-page" in ten
+
+
+def test_the_runbook_uses_variables_for_the_port_the_nginx_user_and_the_ssh_host() -> None:
+    """Re-check operations N-a, N-b, N-f, and the owner's home sequence (item 7)."""
+    commands = [c for c in runbook_commands() if not c.startswith("#")]
+    for command in commands:
+        assert "127.0.0.1:8087" not in command and "--api-port 8087" not in command, command
+        assert "www-data" not in command, command
+    assert 'sudo -u "$NGINX_USER" test -r' in RUNBOOK and "export NGINX_USER=<" in RUNBOOK
+    home = RUNBOOK[RUNBOOK.index("**At home (owner).**") : RUNBOOK.index("It sends about 4 GB")]
+    assert "export RM_SSH_HOST=<" in home and "never written into a" in home
+    assert '--build-frontend  "$RM_SSH_HOST"  /data/routemaker-incoming' in home
+    assert "/home/" not in home and "/Users/" not in home  # variables only, no one's paths
+    assert "repeat the same `--report-url` on every later ship" in home  # correctness N1
+    front_end_only = RUNBOOK[RUNBOOK.index("**Front end only:**") :]
+    assert "--build-frontend [--report-url" in front_end_only.split("\n\n")[0]
+
+
+def test_the_runbook_says_when_the_stale_entry_appears_and_forbids_a_hand_fired_rebuild() -> None:
+    """Re-check spec N1 and N2."""
+    note = RUNBOOK[RUNBOOK.index("**No rebuild runs here.**") :]
+    note = note[: note.index("\n- **")]
+    assert "eight days after setup" in note
+    assert "**Never run `run_rebuild_now` here**" in note
+
+
+def test_the_checker_pauses_the_parked_rebuild_too() -> None:
+    """Re-check spec SF1: rebuild is checked wherever it is rendered."""
+    found = beta.check_runtime_settings({"rebuild": {"environment": {}}})
+    assert any(p.startswith("rebuild: WEEKLY_REBUILD_PAUSED must be 1") for p in found), found
+    ok = beta.check_runtime_settings({"rebuild": {"environment": {"WEEKLY_REBUILD_PAUSED": "1"}}})
+    assert not any("rebuild" in p for p in ok), ok
+    assert OVERLAY["services"]["rebuild"]["environment"]["WEEKLY_REBUILD_PAUSED"] == "1"
+
+
+@needs_sh
+@pytest.mark.parametrize("var", ["DOCKER_CONTEXT", "DOCKER_TLS_VERIFY", "DOCKER_CERT_PATH"])
+def test_the_wrapper_and_the_checker_refuse_docker_settings_env_i_would_drop(
+    stub_docker, var: str
+) -> None:
+    """Re-check correctness N2: refused loudly, not dropped silently."""
+    env, calls = stub_docker
+    done = wrapper({**env, var: "x"}, "ps")
+    assert done.returncode == 2 and var in done.stderr and not calls.exists()
+    checked = run(sys.executable, "scripts/check_beta_compose.py", "--render", env={var: "x"})
+    assert checked.returncode == 2 and var in checked.stderr
+
+
+@needs_sh
+def test_the_renderer_can_leave_out_the_sign_in_page() -> None:
+    """Re-check operations SF-F: the recovery is a re-render, never a hand edit."""
+    args = ["--stage", "full", "--env-file", "/nonexistent", "--cert-fullchain", "/c/f.pem"]
+    args += ["--cert-key", "/c/k.pem"]
+    with_page = run("sh", "scripts/beta/render-nginx.sh", *args)
+    without = run("sh", "scripts/beta/render-nginx.sh", *args, "--no-401-page")
+    assert with_page.returncode == 0 and without.returncode == 0, without.stderr
+    assert "error_page 401 /rmbeta-401.html;" in with_page.stdout
+    assert not re.search(r"^\s*error_page 401", without.stdout, re.M)
+    assert "location = /rmbeta-401.html" not in without.stdout
+    assert without.stdout.count("{") == without.stdout.count("}")
+    assert "auth_basic_user_file" in without.stdout and "location = /robots.txt" in without.stdout
+
+
+def test_the_sign_in_page_says_to_use_a_real_browser() -> None:
+    page = (REPO / "deploy" / "beta" / "401.html").read_text()
+    assert "rather than inside another app" in page  # re-check a11y N3
+
+
+def test_the_handout_keeps_the_senders_notes_out_of_what_testers_get() -> None:
+    """Re-check accessibility N1 and N2."""
+    handout = (REPO / "docs" / "BETA-TESTER-HANDOUT.md").read_text()
+    cut = handout.index("cut here: send everything below")
+    sender, tester = handout[:cut], handout[cut:]
+    assert "shred -u" in sender and "shred -u" not in tester
+    assert "many browsers block or warn" in sender
+    assert "user name and password lines" in sender and "two lines" not in handout
+    assert "a landmark" in tester and "complementary" in tester
+    assert "Color-blind" not in handout and "color-blind" not in handout
 
 
 def test_the_runbook_documents_the_override_reset_and_installs_no_system_package() -> None:
@@ -1941,7 +2186,10 @@ def test_make_htpasswd_writes_readable_passwords_and_matching_hashes(tmp_path: P
         assert not set(password) & set("ilo01ABCDEFGHIJKLMNOPQRSTUVWXYZ")
         assert password not in done.stdout + done.stderr
     assert passwords[0] != passwords[1]
-    assert len("abcdefghjkmnpqrstuvwxyz23456789") == 31  # 20 of them: 20 * log2(31) = 99 bits
+    # the script's own alphabet, not a copy (re-check mutation SHOULD-FIX 1): 20 of 31 = 99 bits
+    script = (REPO / "scripts" / "beta" / "make-htpasswd.sh").read_text()
+    assert re.search(r"^ALPHABET=abcdefghjkmnpqrstuvwxyz23456789$", script, re.M)
+    assert "cut -c1-20" in script
     hashes = dict(line.split(":", 1) for line in ht.read_text().splitlines())
     for user, password in lines:
         salt = hashes[user].split("$")[2]
@@ -1967,6 +2215,101 @@ def test_make_htpasswd_writes_readable_passwords_and_matching_hashes(tmp_path: P
         )
         assert refused.returncode == 2 and "lowercase" in refused.stderr, name
         assert not (tmp_path / f"{name}.pw").exists()
+
+
+@needs_sh
+def test_make_htpasswd_uses_the_whole_alphabet_and_never_repeats_a_group(tmp_path: Path) -> None:
+    """Re-check mutation SHOULD-FIX 1: a cut alphabet or a repeated group must fail."""
+    group = subprocess.run(["id", "-gn"], capture_output=True, text=True, check=True).stdout.strip()
+    users = [f"tester{i:02d}" for i in range(20)]
+    pw = tmp_path / "pw.txt"
+    done = run(
+        "sh",
+        "scripts/beta/make-htpasswd.sh",
+        "--file",
+        str(tmp_path / "ht"),
+        "--passwords-file",
+        str(pw),
+        "--group",
+        group,
+        *users,
+    )
+    assert done.returncode == 0, done.stderr
+    passwords = [x.split()[1] for x in pw.read_text().splitlines() if not x.startswith("#")]
+    assert len(passwords) == 20 and len(set(passwords)) == 20
+    for password in passwords:
+        groups = password.split("-")
+        assert len(groups) == 4 and len(set(groups)) == 4, password
+    symbols = set("".join(passwords).replace("-", ""))
+    assert len(symbols) >= 25, sorted(symbols)  # 400 draws from 31 cover nearly all of them
+    assert symbols <= set("abcdefghjkmnpqrstuvwxyz23456789")
+
+
+@needs_sh
+def test_make_htpasswd_stops_when_openssl_gives_too_few_bytes(tmp_path: Path) -> None:
+    """Re-check mutation SHOULD-FIX 1: the length check is pinned with a short openssl."""
+    real = shutil.which("openssl")
+    assert real
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "openssl"
+    stub.write_text(
+        f'#!/bin/sh\nif [ "$1" = rand ]; then printf abc; exit 0; fi\nexec {real} "$@"\n'
+    )
+    stub.chmod(0o755)
+    group = subprocess.run(["id", "-gn"], capture_output=True, text=True, check=True).stdout.strip()
+    done = run(
+        "sh",
+        "scripts/beta/make-htpasswd.sh",
+        "--file",
+        str(tmp_path / "ht"),
+        "--passwords-file",
+        str(tmp_path / "pw"),
+        "--group",
+        group,
+        "alice",
+        env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert done.returncode != 0 and "could not draw a password" in done.stderr, done.stderr
+    assert "alice" not in (tmp_path / "ht").read_text()
+
+
+@needs_sh
+def test_ship_data_refuses_a_dump_that_carries_excluded_data(tmp_path: Path) -> None:
+    """Re-check mutation NIT 2: the excluded-data refusal, through a stub docker."""
+    live, data, bin_dir = tmp_path / "live", tmp_path / "data", tmp_path / "bin"
+    for d in (live, data, bin_dir):
+        d.mkdir()
+    (live / "compose.yaml").write_text("services: {}\n")
+    (live / ".env").write_text(f"DATA_ROOT={data}\n")
+    stub = bin_dir / "docker"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'case "$*" in\n'
+        '  *"ps --status running"*) echo postgis ;;\n'
+        "  *pg_dump*) printf dump ;;\n"
+        '  *"pg_restore --list"*) cat >/dev/null; printf "%s\\n"'
+        ' "1; 2 3 TABLE DATA live segment x" "4; 5 6 TABLE DATA public override x"'
+        ' "7; 8 9 TABLE DATA public app_user x" ;;\n'
+        "esac\n"
+    )
+    stub.chmod(0o755)
+    without = []
+    for part in ("tiles", "elevation", "basemap", "photon", "frontend"):
+        without += ["--without", part]
+    done = run(
+        "bash",
+        SHIP,
+        "--live-dir",
+        str(live),
+        "--stage",
+        str(tmp_path / "stage"),
+        "--no-transfer",
+        *without,
+        env={"PATH": f"{bin_dir}:{os.environ['PATH']}"},
+    )
+    assert done.returncode == 2, done.stderr
+    assert "the dump carries data for app_user, which must be excluded" in done.stderr
 
 
 def test_the_tester_handout_covers_what_the_sign_in_box_cannot_say() -> None:

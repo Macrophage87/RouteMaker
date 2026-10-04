@@ -44,8 +44,8 @@
 # through the variables compose files default with ${VAR:-...} and .env does not set, such as
 # RESTART_POLICY, BETA_API_PORT or BETA_WEB_CONCURRENCY. The refusals above stay, so a variable
 # somebody set on purpose is reported rather than silently ignored.) A docker context chosen
-# with `docker context use` still applies (it lives in DOCKER_CONFIG / HOME); DOCKER_CONTEXT in
-# the environment does not.
+# with `docker context use` still applies (it lives in DOCKER_CONFIG / HOME); DOCKER_CONTEXT,
+# DOCKER_TLS_VERIFY and DOCKER_CERT_PATH in the environment are refused (above), not dropped.
 #
 # BETA_ENV_FILE names the env file [<repo>/.env]; DOCKER is the docker binary [docker]
 # (tests point it at a stub).
@@ -57,6 +57,13 @@ here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../.." && pwd)
 cd "$repo"
 
+# Compose runs under env -i (the end of this file), which would drop these silently: the wrapper
+# would talk to the local engine while bare `docker` commands followed the context or TLS settings.
+for var in DOCKER_CONTEXT DOCKER_TLS_VERIFY DOCKER_CERT_PATH; do
+	if printenv "$var" >/dev/null 2>&1; then
+		die "$var is set in the environment; unset it (the beta uses the local Docker engine, and compose runs with only PATH, HOME, DOCKER_HOST and DOCKER_CONFIG)"
+	fi
+done
 for var in COMPOSE_PROFILES COMPOSE_FILE COMPOSE_PROJECT_NAME COMPOSE_PATH_SEPARATOR COMPOSE_ENV_FILES; do
 	if printenv "$var" >/dev/null 2>&1; then
 		die "$var is set in the environment; unset it (.env and this wrapper decide the project, files and profiles)"

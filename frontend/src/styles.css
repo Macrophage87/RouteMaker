@@ -1458,15 +1458,15 @@ dialog.weight-dialog h2 {
 }
 
 /* The private-beta notice (lib/betaBanner.ts): only in a build made with
-   VITE_BETA=1. In the planner panel's own flow, under its header, so it never
-   overlays the map or the sheet at any zoom (final review, accessibility S2) and
-   its text follows the rider's font size. */
+   VITE_BETA=1. The first thing in the planner's scrolling body, under its header:
+   it never overlays the map or the sheet (final review, accessibility S2), it
+   scrolls and collapses with the planner, so at high zoom it cannot squeeze the
+   body to nothing (re-check S1), and its text follows the rider's font size. */
 .beta-banner {
-  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 8px 14px 0;
+  margin: 8px 0 4px;
   padding: 6px 6px 6px 10px;
   background: var(--bg);
   color: var(--text);
