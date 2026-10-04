@@ -1,7 +1,7 @@
 """The areas a way lies inside that change how the stress map draws it, and how
 a bicycle may route through it.
 
-Three kinds, read from the same source extract as the ways with pyosmium's
+Four kinds, read from the same source extract as the ways with pyosmium's
 area assembly (multipolygon relations and closed ways alike):
 
 - `military` - `landuse=military` or `military=*`. The owner, 2026-09-29:
@@ -23,6 +23,12 @@ area assembly (multipolygon relations and closed ways alike):
   unnamed service roads, footways and paths inside a lot are left off the map;
   routing is unchanged, since a lot can be a fair connector.
 
+- `park` - `leisure=park` or `nature_reserve`, `boundary=national_park` or
+  `protected_area`, or an operator that is the National Park Service. An
+  untagged `highway=path` inside one is closed to bicycles, and kept outside
+  (OWNER-DECISIONS 291(1); `routemaker.trailaccess`). Nothing is hidden or
+  re-routed for it here: only `pipeline.trail_closures` reads this kind.
+
 A way is inside when at least INSIDE_FRACTION of its vertices fall in one of
 the kind's areas, outside that area's holes. So a road or a trail that only
 borders an area - the Mount Vernon Trail by Arlington National Cemetery and
@@ -43,8 +49,8 @@ Ring = list[tuple[float, float]]
 # (bbox, outer rings, inner rings)
 Area = tuple[tuple[float, float, float, float], list[Ring], list[Ring]]
 
-MILITARY, CEMETERY, PARKING = "military", "cemetery", "parking"
-KINDS = (MILITARY, CEMETERY, PARKING)
+MILITARY, CEMETERY, PARKING, PARK = "military", "cemetery", "parking", "park"
+KINDS = (MILITARY, CEMETERY, PARKING, PARK)
 
 # The share of a way's vertices that must fall inside for it to count as inside.
 INSIDE_FRACTION = 0.5
@@ -52,6 +58,8 @@ INSIDE_FRACTION = 0.5
 # `military` values that are no area a road may lie in.
 NOT_A_MILITARY_AREA = frozenset({"no"})
 PARKING_VALUES = frozenset({"surface", "multi-storey"})
+PARK_LEISURE = frozenset({"park", "nature_reserve"})
+PARK_BOUNDARY = frozenset({"national_park", "protected_area"})
 
 # The grid cell the areas are indexed by, in degrees (about 1.1 km).
 CELL = 0.01
@@ -67,6 +75,12 @@ def area_kind(tags) -> str | None:
         return CEMETERY
     if tags.get("amenity") == "parking" or tags.get("parking") in PARKING_VALUES:
         return PARKING
+    if (
+        tags.get("leisure") in PARK_LEISURE
+        or tags.get("boundary") in PARK_BOUNDARY
+        or (tags.get("operator") or "").startswith("National Park Service")
+    ):
+        return PARK
     return None
 
 
@@ -97,7 +111,7 @@ class _Areas(osmium.SimpleHandler):
 
 
 def restricted_areas(pbf: str | Path) -> dict[str, list[Area]]:
-    """Every military, cemetery and parking area in an extract, by kind."""
+    """Every military, cemetery, parking and park area in an extract, by kind."""
     handler = _Areas()
     handler.apply_file(str(pbf), locations=True)
     return handler.areas

@@ -1,0 +1,32 @@
+{
+  "_comment": "Bicycles and the National Zoological Park (OWNER-DECISIONS 278, 291(4)). src/routemaker/zoo.py reads this file and national-zoo.geojson beside it; fixtures/zoo/README.md has the sources.",
+  "decision": "291(4): close the Zoo polygon to riding except the Rock Creek Trail edge pieces, the public streets, and a destination-only spur from the Harvard Street NW entrance to the bike racks. Nothing routes through the Zoo. A route to the Zoo ends at the racks.",
+  "open_highways": [
+    "primary", "primary_link", "secondary", "secondary_link", "tertiary", "tertiary_link",
+    "residential", "living_street"
+  ],
+  "open_trail": {
+    "highway": "cycleway",
+    "bicycle": ["designated", "yes"]
+  },
+  "spur": {
+    "entrance": "Harvard Street NW at Adams Mill Road NW: the Zoo's Harvard Street entrance, the gate (OSM node 642824625) and ticket checkpoint (node 11565077439) at the end of Harvard Street",
+    "from_node": 49734611,
+    "racks": {
+      "node": 9827008403,
+      "tags": "amenity=bicycle_parking, bicycle_parking=stands, capacity=12, covered=no",
+      "lon": -77.04516,
+      "lat": 38.927629,
+      "note": "On the footway 183192886, 190 m by the spur from the entrance gate. The other bicycle parking inside the Zoo (node 10016451829, a rack of 11 at Olmsted Walk, 300 m in; node 497415790, a rack of 11 by the Connecticut Avenue entrance) is farther in and is not used."
+    },
+    "ways": [
+      {"id": 50524918, "what": "the entrance road from Harvard Street to the gate, unclassified, motor_vehicle=no"},
+      {"id": 469478150, "what": "a crossing footway at the gate"},
+      {"id": 1430189973, "what": "sidewalk, 3 m"},
+      {"id": 348381512, "what": "sidewalk by the entrance plaza to the ticket checkpoint"},
+      {"id": 1244165507, "what": "the footway bridge from the checkpoint into the Zoo, 107 m"},
+      {"id": 1249538178, "what": "the footway on to the racks, 62 m"},
+      {"id": 183192886, "what": "the footway the racks stand on, 40 m"}
+    ]
+  }
+}
