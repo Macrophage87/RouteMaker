@@ -12,6 +12,7 @@ import {
   stressFilters,
   stressLayers,
   stressOverlayLayers,
+  unpavedLayers,
 } from "../stressStyle.js";
 import type { When } from "./dials.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
@@ -75,7 +76,7 @@ export function setStressPalette(
   when: When = DEFAULT_WHEN,
   tiers: ReturnType<typeof currentTiers> = currentTiers(),
 ): void {
-  const layers = [...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers)];
+  const layers = [...stressCasingLayers(STRESS_SOURCE_ID, when, tiers), ...stressLayers(STRESS_SOURCE_ID, when, tiers), ...unpavedLayers(STRESS_SOURCE_ID, when, tiers)];
   for (const layer of layers as Array<{ id: string; paint: Record<string, unknown> }>) {
     if (!map.getLayer(layer.id)) continue;
     map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);

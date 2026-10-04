@@ -2343,3 +2343,47 @@ def test_the_refusals_name_miles_first_and_kilometres_in_brackets() -> None:
 
     assert MAX_SPAN_M == 200_000
     assert too_long().startswith("the route is longer than 124 mi (200 km) in straight lines")
+
+
+@db
+class TestSurfaceOfPieces:
+    """OWNER-DECISIONS 280 (review SF5): `classify` reads the segment's surface
+    beside its tier and facility, still a pair to every reader that unpacks it."""
+
+    def test_classify_carries_is_unpaved(self, segments) -> None:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"UPDATE {segments}.segment SET is_unpaved = (ordinal = 1) WHERE osm_way_id = 202"
+            )
+            cursor.execute(
+                f"UPDATE {segments}.segment SET is_unpaved = NULL WHERE osm_way_id = 101"
+            )
+        pieces = [
+            routing.Piece(101, -77.045, LAT, 100.0),
+            routing.Piece(202, -77.0375, LAT, 100.0),
+            routing.Piece(202, -77.025, LAT, 100.0),
+        ]
+        classes = routing.classify(pieces, "weekday_offpeak")
+        assert [c.unpaved for c in classes] == [None, False, True]
+        assert [c[0] for c in classes] == ["3", "1", "4"] and all(len(c) == 2 for c in classes)
+        tier, facility = classes[2]
+        assert tier == "4" and classes[2] == (tier, facility)
+
+    def test_a_piece_class_pickles_with_its_surface(self) -> None:
+        import pickle
+
+        again = pickle.loads(pickle.dumps(routing.PieceClass("2", "path", True)))
+        assert again == ("2", "path") and again.unpaved is True
+
+    def test_the_route_description_says_unpaved(self, client, segments, router) -> None:
+        router(standard_router())
+        plain = post(client, good_body()).json()["description"]
+        assert plain and all(e["surface"] is None for e in plain)
+        with connection.cursor() as cursor:
+            cursor.execute(f"UPDATE {segments}.segment SET is_unpaved = true")
+        described = post(client, good_body()).json()["description"]
+        # Every stretch on a segment; the trace's last piece matches none.
+        stretches = [e for e in described if e["kind"] == "stretch" and e["tier"] is not None]
+        assert stretches and all(
+            e["surface"] == "unpaved" and e["text"].endswith(", unpaved.") for e in stretches
+        ), [(e["surface"], e["text"]) for e in stretches]

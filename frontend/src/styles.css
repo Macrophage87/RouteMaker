@@ -406,6 +406,29 @@ a {
   background-image: repeating-linear-gradient(-45deg, transparent 0 3px, rgba(255, 255, 255, 0.28) 3px 4px);
 }
 
+/* Avoid (OWNER-DECISIONS 274): a cross-hatch in the tier's casing colour (set
+   as --seg-accent: red on the near-black, white on the colour-blind-friendly
+   blue-black), a pattern no other tier has, so the bar and the swatch tell it
+   from LTS 4 without colour. */
+.stress-seg-5 {
+  background-image:
+    repeating-linear-gradient(45deg, var(--seg-accent, #ee3b2c) 0 2px, transparent 2px 6px),
+    repeating-linear-gradient(-45deg, var(--seg-accent, #ee3b2c) 0 2px, transparent 2px 6px);
+}
+
+/* The facility bar and its swatches match the rails on the map
+   (OWNER-DECISIONS 276, 277): a path solid, a protected lane in blocks like
+   posts, painted lane the palest and sparsest (a dotted pattern on the light
+   fill). The pattern is shape, so it reads without colour. */
+.facility-seg-protected {
+  background-image: repeating-linear-gradient(90deg, transparent 0 4px, rgba(255, 255, 255, 0.55) 4px 8px);
+}
+
+.facility-seg-lane {
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.85) 0 1px, transparent 1.2px);
+  background-size: 6px 6px;
+}
+
 .stress-list,
 .legend {
   list-style: none;

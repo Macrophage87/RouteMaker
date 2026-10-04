@@ -29,15 +29,35 @@
  * against the base map's own fill colours.
  */
 
-// The tiers' shapes: what tells them apart without colour.
+// The tiers' shapes: what tells them apart without colour. Weight rises with
+// stress (OWNER-DECISIONS 274, 283: "If I didn't see the key, I'd think that
+// LTS4 was lower stress"): ink - the share of the line that is drawn (the dash
+// duty cycle) times its width - rises strictly from LTS 1 to Avoid. LTS 1 is a
+// thin solid line; LTS 2 and LTS 3 are dashed, LTS 3 with the shorter dash and
+// the wider line; LTS 4 is near-solid and heavy (long dashes, a pixel's gap per
+// five); Avoid is the widest and keeps a dash-dot nothing else has. Every dash
+// list has an even length (see below).
+//
+// A dash's gaps show the casing under it, so a gap is only as calm as its share
+// of the line times the casing's contrast with the line ("harshness",
+// gapHarshness below). OWNER-DECISIONS 292: LTS 3's [2, 1] over a near-black
+// casing ("that black in the LTS3 is a bit too harsh, especially with LTS4 being
+// white") was the harshest pattern on the map, 1.51 against LTS 4's 0.67. Its
+// dash keeps its length (8.5 px, the short dash that is LTS 3's own) and its gap
+// is cut to 0.4 of the width (1.7 px, a sixth of the line) over a softer brown
+// casing: 0.60, no harsher than LTS 4. stressSalience.test.ts holds harshness
+// non-decreasing from LTS 3 to LTS 4 to Avoid in every palette, plain and strong.
 const TIER_SHAPES = [
-  { tier: 1, label: "Comfortable for most people", short: "LTS 1", dash: [1], width: 3 },
-  { tier: 2, label: "Comfortable for most adults", short: "LTS 2", dash: [4, 1], width: 3 },
-  { tier: 3, label: "For confident riders", short: "LTS 3", dash: [2, 2], width: 3.5 },
-  { tier: 4, label: "Heavy or fast traffic", short: "LTS 4", dash: [1, 2], width: 4 },
+  // A solid line is `null`, never [1]: a one-entry dash array is an odd list,
+  // which SVG (the legend) repeats into [1, 1] - a dashed swatch for a line
+  // the map draws solid (OWNER-DECISIONS 279). Every dash here has an even length.
+  { tier: 1, label: "Comfortable for most people", short: "LTS 1", dash: null, width: 2.5 },
+  { tier: 2, label: "Comfortable for most adults", short: "LTS 2", dash: [4, 1], width: 3.25 },
+  { tier: 3, label: "For confident riders", short: "LTS 3", dash: [2, 0.4], width: 4.25 },
+  { tier: 4, label: "Heavy or fast traffic", short: "LTS 4", dash: [8, 1], width: 5 },
   // Not a Furth tier: legal for a bicycle and best avoided (the owner's fifth
   // category, 2026-09-27): the widest line and a dash-dot nothing else uses.
-  { tier: 5, label: "Legal, but best avoided", short: "Avoid", dash: [3, 1, 0.5, 1], width: 4.5 },
+  { tier: 5, label: "Legal, but best avoided", short: "Avoid", dash: [5, 1, 0.5, 1], width: 6.5 },
 ];
 
 /**
@@ -49,11 +69,19 @@ const TIER_SHAPES = [
  * the second:
  *
  * - "blended": one colour per tier between the two named - LTS 3 amber (over
- *   a dark casing, since amber is not 3:1 on the base map's greens), LTS 4
- *   red-orange and Avoid dark red (over white). Relative luminance still falls
- *   tier by tier (0.57, 0.28, 0.23, 0.09, 0.02), so greyscale print keeps the
- *   order; LTS 2 and 3 are only 1.17:1 apart in grey, where their dashes
+ *   a dark casing, since amber is not 3:1 on the base map's greens), LTS 4 a
+ *   saturated red (over white) and Avoid a near-black (over a bright red
+ *   casing). Relative luminance still falls tier by tier (0.57, 0.28, 0.23,
+ *   0.12, 0.003), so greyscale print keeps the order; LTS 2 and 3 are only 1.17:1 apart in grey, where their dashes
  *   (long, even) tell them apart - an amber dark enough for 1.4:1 is brown.
+ *   OWNER-DECISIONS 274 (2026-10-03: "LTS3 looks more distinctive than LTS4
+ *   and Avoid is hard to tell apart"): LTS 4 was a dark, dull red (#a32814,
+ *   CIELAB chroma 64, the same as LTS 3's amber) and Avoid a dark maroon
+ *   (#4a0810) beside it. LTS 4 is now a saturated red (#c80018, chroma about 80, 15
+ *   more than the amber) and Avoid a near-black on a coral-red casing, wider
+ *   still and dashed as nothing else is, so the pair differ in shape, width
+ *   and casing as well as hue; stressContrast.test.ts holds the salience order
+ *   and that separation.
  * - "twotone": the first colour as the line, the second as its casing - LTS 3
  *   yellow on orange, LTS 4 orange on red, Avoid red on black. Closer to the
  *   owner's words; LTS 3 is not 3:1 on the base map (its casing 2.2:1, the line
@@ -77,15 +105,15 @@ export const PALETTES = {
   blended: {
     1: { color: "#9ed3ac", casing: "#17301f" },
     2: { color: "#57a06c", casing: "#17301f" },
-    3: { color: "#bf730b", casing: "#2b1a05" },
-    4: { color: "#a32814", casing: "#ffffff" },
-    5: { color: "#4a0810", casing: "#ffffff" },
+    3: { color: "#bf730b", casing: "#45290a" },
+    4: { color: "#c80018", casing: "#ffffff" },
+    5: { color: "#14040a", casing: "#ee3b2c" },
   },
   twotone: {
     1: { color: "#9ed3ac", casing: "#17301f" },
     2: { color: "#57a06c", casing: "#17301f" },
     3: { color: "#f2c21b", casing: "#f28c28" },
-    4: { color: "#f28c28", casing: "#d42020" },
+    4: { color: "#f28c28", casing: "#c81e1e" },
     5: { color: "#d42020", casing: "#111111" },
   },
   cvd: {
@@ -140,16 +168,44 @@ export function resolvePalette(search, accessibility = false) {
   return queryPalette(search) ?? (accessibility ? ACCESSIBILITY_PALETTE : DEFAULT_PALETTE);
 }
 
-/** A casing pushed to its extreme: black under a dark one, white under a light one. */
-function strongerCasing(hex) {
+/**
+ * A casing pushed to its extreme: black under a dark one, white under a light
+ * one - for the calm tiers, whose casing is a halo against the park greens.
+ * A busy tier's casing (LTS 3 and up, `keep`) is left as it is: it is what
+ * shows in the tier's dash gaps, and black there is the harshness the owner
+ * asked to be rid of (OWNER-DECISIONS 292; black under LTS 3 would make its
+ * gaps harsher than LTS 4's white ones), while Avoid's is a colour of its own
+ * (the default palette's red, OWNER-DECISIONS 274), where black would put the
+ * near-black line on black and white would give up the cue. The switch still
+ * widens every line and casing.
+ */
+function strongerCasing(hex, keep = false) {
+  if (keep) return hex;
   return relativeLuminance(hex) < 0.5 ? "#000000" : "#ffffff";
 }
 
 /**
+ * How harsh a tier's dash gaps are: the share of the line that is gap, times
+ * the contrast between the casing that shows in the gaps and the line
+ * (OWNER-DECISIONS 292). 0 for a solid line.
+ */
+export function gapHarshness(tier) {
+  if (!tier.dash) return 0;
+  const gaps = tier.dash.filter((_, i) => i % 2 === 1).reduce((a, b) => a + b, 0);
+  const all = tier.dash.reduce((a, b) => a + b, 0);
+  return (gaps / all) * contrastRatio(tier.casing, tier.color);
+}
+
+/** Below this a casing is dark (a near-black), dark enough to be a faint line's edge. */
+const DARK_CASING_LUMINANCE = 0.05;
+
+/**
  * The tiers, with a palette's colours. With `strong` (the accessibility
- * switch) they are drawn stronger: lines half a pixel wider, casings black or
- * white and a pixel wider again. Each tier carries the casing's extra width
- * (`casingExtra`), which the layers and the legend read.
+ * switch) they are drawn stronger: lines half a pixel wider, the calm tiers'
+ * casings black or white, and every casing a pixel wider again. Each tier
+ * carries the casing's extra width (`casingExtra`) and whether it is drawn
+ * strong (`strong`, which also widens the painted-lane rail), which the layers
+ * and the legend read.
  */
 export function tiersFor(palette, strong = false) {
   return TIER_SHAPES.map((shape) => {
@@ -158,8 +214,8 @@ export function tiersFor(palette, strong = false) {
       ...shape,
       ...colours,
       ...(strong
-        ? { width: shape.width + STRONG_WIDTH_EXTRA, casing: strongerCasing(colours.casing), casingExtra: STRONG_CASING_EXTRA_PX }
-        : { casingExtra: CASING_EXTRA_PX }),
+        ? { width: shape.width + STRONG_WIDTH_EXTRA, casing: strongerCasing(colours.casing, shape.tier >= BUSY_MIN_TIER), casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
+        : { casingExtra: CASING_EXTRA_PX, strong: false }),
     };
   });
 }
@@ -452,9 +508,9 @@ export const BESIDE_ROAD_MIN_ZOOM = 15;
  */
 export const FAINT = { opacity: 0.4, widthScale: 0.6, edge: "#1c1917", edgeOpacity: 0.65, edgePx: 1 };
 
-/** The colour of a tier's faint edge: its casing when that is dark, else FAINT.edge. */
+/** The colour of a tier's faint edge: its casing when that is a near-black, else FAINT.edge (Avoid's red casing is not dark enough to be an edge). */
 export function faintEdgeColour(tier) {
-  return relativeLuminance(tier.casing) < 0.5 ? tier.casing : FAINT.edge;
+  return relativeLuminance(tier.casing) < DARK_CASING_LUMINANCE ? tier.casing : FAINT.edge;
 }
 
 /** An alley (the tiles' "alley"). */
@@ -506,15 +562,27 @@ function linePaint(color, width, busy) {
 }
 
 /** Each overlay layer's filter in the ride time `when`, by layer id. */
-export function stressFilters(when = DEFAULT_WHEN) {
+export function stressFilters(when = DEFAULT_WHEN, showHighLanes = highStressLanesOn()) {
   const filters = {};
   for (const tier of TIER_SHAPES) {
     const filter = ["all", drawnAt(when), ["==", tierAt(when), tier.tier]];
     filters[`stress-${tier.tier}`] = filter;
     filters[`stress-casing-${tier.tier}`] = filter;
+    filters[`stress-unpaved-${tier.tier}`] = [...filter, ["==", ["get", "unpaved"], true]];
   }
   for (const facility of FACILITIES) {
-    filters[`facility-${facility.facility}`] = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
+    const filter = ["all", drawnAt(when), ["==", facilityAt(when), facility.facility]];
+    // An unpaved trail is not given a path's rails (OWNER-DECISIONS 290: the
+    // Lake Accotink singletrack read as "protected bike paths"): it draws as its
+    // tier's line and the unpaved mark. A missing "unpaved" is an unknown
+    // surface, which keeps its rails.
+    if (facility.facility === "path") filter.push(["!=", ["get", "unpaved"], true]);
+    // A painted lane is not drawn on LTS 4 and Avoid unless the rider asked
+    // (a missing tier counts as 0, which draws it, as a rating-less road
+    // has no stress to be high). The tile's own tier: a road closed to cars
+    // is a path in this ride time, and is not in this layer at all.
+    if (facility.facility === "lane" && !showHighLanes) filter.push(["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]);
+    filters[`facility-${facility.facility}`] = filter;
   }
   return filters;
 }
@@ -527,7 +595,40 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
-    paint: { ...linePaint(tier.color, tier.width, tier.tier >= BUSY_MIN_TIER), "line-dasharray": tier.dash },
+    paint: { ...linePaint(tier.color, tier.width, tier.tier >= BUSY_MIN_TIER), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
+  }));
+}
+
+/**
+ * The surface mark (OWNER-DECISIONS 279, 280): a road or trail the tiles say
+ * is unpaved (their "unpaved", true or left out) is drawn with a dotted
+ * centre line over its tier's line, in the tier's casing colour (which is
+ * chosen to stand apart from the line), so a gravel trail does not read as a
+ * smooth path. Shape, not colour: a dot pattern no tier or facility has. Not
+ * drawn where the line is faint or hidden (z12-13 busy roads, alleys).
+ * `is_rough` is not in the tiles; only "unpaved" is.
+ */
+export const UNPAVED_DASH = [1, 1.2];
+
+/** The unpaved mark's width for a tier: a little under half the line, at least 1.5 px. */
+export function unpavedWidth(tier) {
+  return Math.max(1.5, tier.width * 0.4);
+}
+
+export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
+  const filters = stressFilters(when);
+  return tiers.map((tier) => ({
+    id: `stress-unpaved-${tier.tier}`,
+    type: "line",
+    source: sourceId,
+    "source-layer": STRESS_TILE_LAYER,
+    filter: filters[`stress-unpaved-${tier.tier}`],
+    paint: {
+      "line-color": tier.casing,
+      "line-width": unpavedWidth(tier),
+      "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
+      "line-dasharray": UNPAVED_DASH,
+    },
   }));
 }
 
@@ -573,22 +674,108 @@ export function casingWidth(tier) {
  * nothing). The tiles carry a "facility" of path, protected, lane or none once
  * the segment table has it (core/stress_tiles.py), and nothing before.
  *
- * Each is drawn as a pair of violet rails either side of the stress line - a
- * wider line under the tier's casing - so the tier's own colour and dash stay
- * readable on the same street and the route's blue is not reused. Width and
- * dash tell the three apart without colour: a path's rails are bold and solid,
- * a protected lane's bold and broken like a row of posts, a painted lane's
- * thin. "none" (sharrows included) draws nothing.
+ * Each is drawn as a pair of rails either side of the stress line - a wider
+ * line under the tier's casing - so the tier's own colour and dash stay
+ * readable on the same street and the route's blue is not reused. A path's
+ * rails are left off an unpaved trail (stressFilters; OWNER-DECISIONS 290),
+ * and are 2.5 px, not the protected lane's 4: a trail network drawn with two
+ * 4 px dark rails a line read as "double-outlined", heavier than the streets
+ * around it, and the solid line, not its weight, is what says "path". The owner,
+ * on three violets that were hard to tell apart (OWNER-DECISIONS 276), and
+ * that "paint isn't protection and lots of maps overemphasize it" (277): shape
+ * comes first and colour second. A path's rails are solid; a
+ * protected lane's are bold and broken into short blocks like a row of posts;
+ * a painted lane's are the thinnest line on the map, a sparse dotted rail in
+ * the palest colour that is still 3:1 from the base map, and drawn under the
+ * other two. The colours are spread in hue and lightness as well (dark
+ * indigo, magenta, light violet), clear of every stress colour and the
+ * route's blue (stressContrast.test.ts holds the separation). "none"
+ * (sharrows included) draws nothing. FACILITIES is in the legend's order
+ * (the real infrastructure first, painted last); FACILITY_DRAW_ORDER is the
+ * map's, bottom first.
  */
 export const FACILITIES = [
-  { facility: "path", short: "Path", label: "Off-road bike path", color: "#4c1d95", rail: 3, dash: null },
-  { facility: "protected", short: "Protected", label: "Protected bike lane", color: "#4c1d95", rail: 3, dash: [0.5, 0.35] },
-  { facility: "lane", short: "Painted", label: "Painted bike lane", color: "#8b5cf6", rail: 1.5, dash: null },
+  { facility: "path", short: "Path", label: "Off-road bike path", color: "#4c1d95", rail: 2.5, dash: null },
+  { facility: "protected", short: "Protected", label: "Protected bike lane", color: "#a21caf", rail: 4, dash: [0.3, 0.3] },
+    // `strongRail`: the painted rail with the accessibility switch on (a pixel
+  // of 0.9 px dots fades to far under its colour's 3.26:1 once antialiased;
+  // SF6 of the salience review). Still the thinnest rail; the default is the
+  // weakest of all.
+  { facility: "lane", short: "Painted", label: "Painted lane (no separation)", color: "#9370f0", rail: 1, strongRail: 1.5, dash: [0.14, 0.4] },
 ];
 
-/** A facility's rails: wide enough to show `rail` px beyond each side of the casing. */
-export function facilityWidth(facility, tierWidth, casingExtra = CASING_EXTRA_PX) {
-  return tierWidth + casingExtra + 2 * facility.rail;
+/** The rails' drawing order, bottom first: painted under protected under path. */
+export const FACILITY_DRAW_ORDER = ["lane", "protected", "path"];
+
+/**
+ * Painted lanes (the tiles' facility "lane") on roads of this stress tier or
+ * above - LTS 4 and Avoid - are not drawn, on the map or counted in the route
+ * panel, unless the rider turns "Show bike lanes on high-stress roads" on
+ * (OWNER-DECISIONS 275: a painted lane on Kenilworth Avenue "is hilarious").
+ * Protected lanes and paths are drawn at every tier, and the stress ratings
+ * and the data are untouched.
+ */
+export const HIGH_STRESS_LANE_MIN_TIER = 4;
+
+/** Where the switch is remembered, per browser: "on" or "off". */
+export const HIGH_STRESS_LANES_STORAGE_KEY = "routemaker.highStressLanes";
+
+/** What this browser remembers of the lane switch: true, false, or null (nothing, a value this page did not write, or storage throws). */
+export function storedHighStressLanes(storage = browserStorage()) {
+  try {
+    const value = storage?.getItem(HIGH_STRESS_LANES_STORAGE_KEY);
+    return value === "on" ? true : value === "off" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Remember the lane switch for this browser; false when storage refused. */
+export function rememberHighStressLanes(on, storage = browserStorage()) {
+  try {
+    if (!storage) return false;
+    storage.setItem(HIGH_STRESS_LANES_STORAGE_KEY, on ? "on" : "off");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Off unless the rider turned it on: the default hides painted lanes on LTS 4 and Avoid. */
+let highStressLanes = storedHighStressLanes() === true;
+/** @type {Set<(on: boolean) => void>} */
+const laneListeners = new Set();
+
+/** Whether painted lanes on LTS 4 and Avoid roads are shown. */
+export function highStressLanesOn() {
+  return highStressLanes;
+}
+
+/** Turn the lane switch on or off now and tell the subscribers; kept for this browser unless `remember` is false. */
+export function setHighStressLanes(on, { remember = true, storage } = {}) {
+  const next = on === true;
+  if (remember) rememberHighStressLanes(next, storage);
+  if (next === highStressLanes) return;
+  highStressLanes = next;
+  for (const listener of [...laneListeners]) listener(next);
+}
+
+/** Call `listener(on)` whenever the lane switch changes; returns the way to stop. */
+export function subscribeHighStressLanes(listener) {
+  laneListeners.add(listener);
+  return () => {
+    laneListeners.delete(listener);
+  };
+}
+
+/** How far a facility's rail shows beyond each side of the casing: its `strongRail` with the accessibility switch on, where it has one. */
+export function railWidth(facility, strong = false) {
+  return strong && facility.strongRail ? facility.strongRail : facility.rail;
+}
+
+/** A facility's rails: wide enough to show its rail (railWidth) beyond each side of the casing. */
+export function facilityWidth(facility, tierWidth, casingExtra = CASING_EXTRA_PX, strong = false) {
+  return tierWidth + casingExtra + 2 * railWidth(facility, strong);
 }
 
 /**
@@ -598,8 +785,8 @@ export function facilityWidth(facility, tierWidth, casingExtra = CASING_EXTRA_PX
  * entry for (one added later) is drawn at LTS 1's width.
  */
 export function facilityWidthAt(facility, when = DEFAULT_WHEN, tiers = currentTiers()) {
-  const byTier = tiers.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width, tier.casingExtra)]);
-  return ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra)];
+  const byTier = tiers.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width, tier.casingExtra, tier.strong)]);
+  return ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra, tiers[0].strong)];
 }
 
 /**
@@ -614,13 +801,14 @@ export function legendWidths(tiers = currentTiers()) {
   return {
     tiers: tiers.map((tier) => ({ tier: tier.tier, line: tier.width, casing: casingWidth(tier) })),
     facilityCasing: casingWidth(base),
-    rails: Object.fromEntries(FACILITIES.map((facility) => [facility.facility, facilityWidth(facility, base.width, base.casingExtra)])),
+    rails: Object.fromEntries(FACILITIES.map((facility) => [facility.facility, facilityWidth(facility, base.width, base.casingExtra, base.strong)])),
   };
 }
 
-export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN) {
-  const filters = stressFilters(when);
-  return FACILITIES.map((facility) => {
+export function facilityLayers(sourceId = "stress", when = DEFAULT_WHEN, showHighLanes = highStressLanesOn()) {
+  const filters = stressFilters(when, showHighLanes);
+  const ordered = FACILITY_DRAW_ORDER.map((name) => FACILITIES.find((f) => f.facility === name));
+  return ordered.map((facility) => {
     const paint = {
       "line-color": facility.color,
       "line-width": facilityWidthAt(facility, when),
@@ -649,6 +837,7 @@ export function stressOverlayLayers(sourceId = "stress", when = DEFAULT_WHEN, ti
     ...facilityLayers(sourceId, when),
     ...stressCasingLayers(sourceId, when, tiers),
     ...stressLayers(sourceId, when, tiers),
+    ...unpavedLayers(sourceId, when, tiers),
   ];
 }
 

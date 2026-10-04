@@ -6,6 +6,7 @@ import {
   stressLayers,
   stressCasingLayers,
   stressOverlayLayers,
+  unpavedLayers,
   legend,
   FACILITIES,
   facilityLayers,
@@ -166,7 +167,7 @@ test("attribution names OpenStreetMap and the basemap", () => {
 
 test("the legend carries what colour alone cannot", () => {
   for (const entry of legend()) {
-    assert.ok(entry.label && entry.dash);
+    assert.ok(entry.label && entry.dash !== undefined, "a solid line is dash: null, a dash is an array");
   }
 });
 
@@ -219,7 +220,9 @@ test("the overlay is added casings first: every casing under every tier", () => 
   const tiers = stressLayers("s").map((l) => l.id);
   const casings = stressCasingLayers("s").map((l) => l.id);
   const rails = facilityLayers("s").map((l) => l.id);
-  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings].sort(), "each layer once");
+  const marks = unpavedLayers("s").map((l) => l.id);
+  assert.deepEqual([...ids].sort(), [...rails, ...tiers, ...casings, ...marks].sort(), "each layer once");
+  assert.ok(Math.min(...marks.map((m) => ids.indexOf(m))) > Math.max(...tiers.map((t) => ids.indexOf(t))), "the surface mark is drawn over every tier line");
   casings.forEach((casing, i) => assert.ok(ids.indexOf(casing) < ids.indexOf(tiers[i]), `${casing} is drawn over its tier`));
   const lastCasing = Math.max(...casings.map((c) => ids.indexOf(c)));
   const firstTier = Math.min(...tiers.map((t) => ids.indexOf(t)));
@@ -242,13 +245,20 @@ test("each facility is told apart from the others without colour, and the strong
   const cues = FACILITIES.map((f) => JSON.stringify([f.rail, f.dash]));
   assert.equal(new Set(cues).size, FACILITIES.length);
   const [path, protectedLane, lane] = FACILITIES;
-  assert.ok(path.rail >= protectedLane.rail && protectedLane.rail > lane.rail);
+  // Bolder is more ink - the rail's width times the share of it drawn - not a wider rail: a path's
+  // solid 2.5 px outweighs a protected lane's 4 px blocks (half drawn), and paint is far the least
+  // (OWNER-DECISIONS 290: the path rail is no longer the heaviest line).
+  const duty = (f) => (f.dash ? f.dash[0] / (f.dash[0] + f.dash[1]) : 1);
+  const ink = (f) => f.rail * duty(f);
+  assert.ok(ink(path) >= ink(protectedLane) && ink(protectedLane) > 4 * ink(lane), `${ink(path)} ${ink(protectedLane)} ${ink(lane)}`);
+  assert.ok(protectedLane.rail > lane.rail && path.rail > lane.rail);
   assert.equal(path.dash, null, "an off-road path's rails are unbroken");
 });
 
 test("each facility layer reads the tile's facility property and shows beyond the casing", () => {
   const layers = facilityLayers("s");
-  layers.forEach((layer, i) => {
+  layers.forEach((layer) => {
+    const i = FACILITIES.findIndex((f) => `facility-${f.facility}` === layer.id);
     for (const f of FACILITIES) {
       assert.equal(draws(layer, { tier: 1, facility: f.facility }), f === FACILITIES[i], `${layer.id} and ${f.facility}`);
     }
@@ -286,8 +296,9 @@ test("the contrast maths is WCAG 2's, against its published anchors", () => {
 test("each facility layer draws its own dash, or none", () => {
   // The dash is the only thing that tells a path from a protected lane on the
   // map: both are bold violet (mutation review, round 1).
-  facilityLayers("s").forEach((layer, i) => {
-    assert.deepEqual(layer.paint["line-dasharray"], FACILITIES[i].dash ?? undefined);
+  facilityLayers("s").forEach((layer) => {
+    const facility = FACILITIES.find((f) => `facility-${f.facility}` === layer.id);
+    assert.deepEqual(layer.paint["line-dasharray"], facility.dash ?? undefined);
   });
 });
 
@@ -444,7 +455,9 @@ test("the colours are in one place: LTS 1 and 2 as they were, two readings of th
   }
   // Two-tone: the first colour the line, the second its casing.
   assert.deepEqual([twotone[3].color, twotone[3].casing], ["#f2c21b", "#f28c28"]);
-  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#d42020"]);
+  // LTS 4's red casing is a shade deeper than Avoid's red line, so LTS 3's gaps are no harsher than
+  // LTS 4's (OWNER-DECISIONS 292; stressSalience.test.ts).
+  assert.deepEqual([twotone[4].color, twotone[4].casing], ["#f28c28", "#c81e1e"]);
   assert.deepEqual([twotone[5].color, twotone[5].casing], ["#d42020", "#111111"]);
   assert.equal(DEFAULT_PALETTE, "blended");
   assert.equal(paletteFrom("?palette=twotone"), "twotone");

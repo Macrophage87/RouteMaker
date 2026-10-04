@@ -527,6 +527,32 @@ const federalFetched = (p) =>
   await p.close();
 }
 
+// ---- 12. "Show bike lanes on high-stress roads" (OWNER-DECISIONS 275): a switch a keyboard and a screen reader reach ----
+{
+  const p = await open();
+  const id = "#high-lanes-switch";
+  const before = await axNode(p, id);
+  check("lanes switch: a switch named for what it does, off by default", before?.role === "switch" && before?.name === "Show bike lanes on high-stress roads" && String(before?.checked) === "false", JSON.stringify(before));
+  check("lanes switch: described, in words, by which roads are affected", /LTS 4 and Avoid/.test(before?.description ?? "") && /Protected lanes and paths always show/.test(before?.description ?? ""), (before?.description ?? "").slice(0, 80));
+  const box = await p.eval(`(() => { const r = document.querySelector('${id}').getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height) }; })()`);
+  check("lanes switch: its target is at least 24 px tall (2.5.8)", box.h >= 24 && box.w >= 24, JSON.stringify(box));
+  check("lanes switch: its state is also in visible words, not colour", await p.eval(`document.querySelector('${id} .switch-state').textContent === 'Off'`));
+  // The keyboard: Tab to it from the Accessibility switch, Space turns it on, Space again turns it off.
+  await p.eval("document.querySelector('#a11y-switch').focus(); true");
+  await p.tab();
+  check("lanes switch: the next Tab stop after the Accessibility switch", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`), await focused(p));
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("lanes switch: Space turns it on, and it is remembered in this browser", (await axNode(p, id))?.checked !== undefined && (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "true" && (await p.eval("localStorage.getItem('routemaker.highStressLanes')")) === "on");
+  check("lanes switch: the focus stays on it after the press", await p.eval(`document.activeElement?.id === 'high-lanes-switch'`));
+  await p.key(" ", "Space", 32);
+  await sleep(150);
+  check("lanes switch: Space again turns it off", (await p.eval(`document.querySelector('${id}').getAttribute('aria-checked')`)) === "false" && (await p.eval("localStorage.getItem('routemaker.highStressLanes')")) === "off");
+  const ring = await p.eval(`(() => { const s = getComputedStyle(document.querySelector('${id}')); return { outline: s.outlineStyle + ' ' + s.outlineWidth, shadow: s.boxShadow }; })()`);
+  console.log(`  (the focused switch's outline: ${JSON.stringify(ring)})`);
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

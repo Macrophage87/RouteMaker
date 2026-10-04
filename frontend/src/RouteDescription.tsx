@@ -18,6 +18,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { RouteResponse } from "./lib/api.ts";
 import "./routeDescription.css";
+import { useHighStressLanes } from "./useStressStyle.ts";
 import {
   DESCRIPTION_HEADING,
   chevron,
@@ -69,7 +70,8 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
   const [chosen, setChosen] = useState<DescriptionView>(() => readView());
   const choice = hasOverview(route);
   const view = viewFor(route, chosen);
-  const entries = descriptionEntries(route, view);
+  const showHighLanes = useHighStressLanes(); // the entries and the text follow the "Show bike lanes on high-stress roads" switch
+  const entries = descriptionEntries(route, view, showHighLanes);
   // Said only after the rider presses Copy: a reply to their action, not a
   // announcement about the route.
   const [copied, setCopied] = useState<"" | "done" | "failed">("");

@@ -286,7 +286,9 @@ class TestSchema:
             "severity",
             "via",
             "group",
+            "surface",
             "text",
+            "text_lanes_hidden",
         }
         assert entry["properties"]["kind"]["enum"] == ["stretch", "junction", "via"]
         for field in (

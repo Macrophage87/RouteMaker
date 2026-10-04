@@ -7,12 +7,13 @@ import { SEEK_MAX_SPAN_M, formatClimb, formatDistance, formatRoughDistance } fro
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
-import { useStressStyle } from "./useStressStyle.ts";
-import { ROUTE_CASING_WIDTH, ROUTE_HALO_WIDTH, ROUTE_LINE_WIDTH, routeCasing, routeLegend } from "./lib/routeColours.ts";
+import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
+import { ROUTE_CASING_WIDTH, routeCasing, routeLegend } from "./lib/routeColours.ts";
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
   useStressStyle(); // the route colours below follow the accessibility switch
-  const rows = facilityRows(route.facility_m);
+  const showHighLanes = useHighStressLanes(); // painted lanes on LTS 4 and Avoid count as no facility unless the switch is on
+  const rows = facilityRows(route.facility_m, route.stress_spans, showHighLanes);
   const seek = route.hills_seek;
   const avoid = avoidMetres(route.stress_m);
   const warning = routeWarning(route.preset, route.dials);
@@ -26,10 +27,10 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
           <ul className="stress-list" aria-label="Route color legend">
             {colours.map((row) => (
               <li key={row.key}>
-                <svg width="36" height="12" aria-hidden="true">
-                  <line x1="3" y1="6" x2="33" y2="6" stroke={casing} strokeWidth={ROUTE_CASING_WIDTH} strokeLinecap="round" />
-                  <line x1="3" y1="6" x2="33" y2="6" stroke={row.halo} strokeWidth={ROUTE_HALO_WIDTH} strokeLinecap="round" />
-                  <line x1="3" y1="6" x2="33" y2="6" stroke={row.color} strokeWidth={ROUTE_LINE_WIDTH} strokeLinecap="round" />
+                <svg width="36" height="14" aria-hidden="true">
+                  <line x1="3" y1="7" x2="33" y2="7" stroke={casing} strokeWidth={ROUTE_CASING_WIDTH} strokeLinecap="round" />
+                  <line x1="3" y1="7" x2="33" y2="7" stroke={row.halo} strokeWidth={row.haloWidth} strokeLinecap="round" />
+                  <line x1="3" y1="7" x2="33" y2="7" stroke={row.color} strokeWidth={row.width} strokeLinecap="round" />
                 </svg>
                 <span className="stress-name">{row.short}</span>
                 <span className="stress-label">{row.label}</span>
@@ -68,7 +69,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
           <ul className="stress-list">
             {rows.map((r) => (
               <li key={r.key}>
-                <span className="swatch" style={{ backgroundColor: r.color }} aria-hidden="true" />
+                <span className={`swatch facility-seg-${r.key}`} style={{ backgroundColor: r.color }} aria-hidden="true" />
                 <span className="stress-name">{r.label}</span>
                 <span className="stress-label">{r.hint}</span>
                 <span className="stress-pct">{r.percent}%</span>

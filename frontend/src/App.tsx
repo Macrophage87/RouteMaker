@@ -14,7 +14,9 @@ import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
 import { announceRoute, calmSearchNote, detourView, paceText, pointName } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { FACILITIES, accessibilityOn, accessibilitySource, currentTiers, legendWidths, paletteSetByAddress, setAccessibility } from "./stressStyle.js";
+import { FACILITIES, accessibilityOn, accessibilitySource, currentTiers, legendWidths, paletteSetByAddress, setAccessibility, setHighStressLanes, unpavedWidth, UNPAVED_DASH } from "./stressStyle.js";
+import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
+import { useHighStressLanes } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
@@ -112,6 +114,7 @@ export function App() {
   const [stress, setStress] = useState<StressAvailability>("checking");
   const [stressVisible, setStressVisible] = useState(true);
   useStressStyle();
+  const showHighLanes = useHighStressLanes();
   const [rail, setRail] = useState<RailVisibility>({ metro: true, marc: true });
   // The Mass Ride map's federal-land shading (lib/federalLand.ts): the rider's
   // own switch, on by default, and whether its data has arrived.
@@ -792,6 +795,8 @@ export function App() {
             />
             {stress === "available" && (
               <>
+                {/* Only with the overlay there: with no stress map it has no lanes to show (salience review, minor). */}
+                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} />
                 <label className="toggle">
                   <input
                     type="checkbox"
@@ -916,7 +921,7 @@ function RouteSummary({
                 <span
                   key={s.key}
                   className={`stress-seg stress-seg-${s.key}`}
-                  style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color }}
+                  style={{ width: `${s.fraction * 100}%`, backgroundColor: s.color, ["--seg-accent" as string]: s.casing }}
                   title={`${s.short}: ${s.percent}%`}
                 />
               ))}
@@ -924,7 +929,7 @@ function RouteSummary({
           <ul className="stress-list">
             {segments.map((s) => (
               <li key={s.key}>
-                <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color }} aria-hidden="true" />
+                <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
                 <span className="stress-name">{s.short}</span>
                 <span className="stress-label">{s.label}</span>
                 <span className="stress-pct">{s.percent}%</span>
@@ -948,6 +953,7 @@ function StressLegend({
   shown: boolean;
 }) {
   useStressStyle();
+  const showHighLanes = useHighStressLanes();
   const tiers = currentTiers();
   const widths = legendWidths(tiers);
   return (
@@ -964,20 +970,43 @@ function StressLegend({
                 y2="6"
                 stroke={tier.color}
                 strokeWidth={widths.tiers[i].line}
-                strokeDasharray={tier.dash.map((d: number) => d * widths.tiers[i].line).join(" ")}
+                strokeDasharray={tier.dash ? tier.dash.map((d: number) => d * widths.tiers[i].line).join(" ") : undefined}
               />
             </svg>
             <span className="stress-name">{tier.short}</span>
             <span className="stress-label">{tier.label}</span>
           </li>
         ))}
+        <li>
+          <svg width="44" height="12" aria-hidden="true">
+            <line x1="2" y1="6" x2="42" y2="6" stroke={tiers[0].casing} strokeWidth={widths.tiers[0].casing} />
+            <line x1="2" y1="6" x2="42" y2="6" stroke={tiers[0].color} strokeWidth={widths.tiers[0].line} />
+            <line
+              x1="2"
+              y1="6"
+              x2="42"
+              y2="6"
+              stroke={tiers[0].casing}
+              strokeWidth={unpavedWidth(tiers[0])}
+              strokeDasharray={UNPAVED_DASH.map((d: number) => d * unpavedWidth(tiers[0])).join(" ")}
+            />
+          </svg>
+          <span className="stress-name">Unpaved</span>
+          <span className="stress-label">
+            A dotted center line on any of the lines above: gravel, dirt or other unpaved surface. An unpaved trail has no path edges.
+          </span>
+        </li>
       </ul>
       {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
           traffic-free paths and trails alone below STRESS_ZOOMS.busy (lib/stressLegend.ts). */}
       <StressZoomNotes zoom={zoom} shown={shown} />
       {facilities.size > 0 && (
         <>
-          <p className="hint">Bike facilities are violet edges on either side of the stress line:</p>
+          <p className="hint">
+            Bike facilities are edges on either side of the stress line: a solid dark rail for a paved path, blocks like posts for a
+            protected lane, and a thin dotted rail for paint. An unpaved trail has no path edges, only the dotted center line. Painted lanes on LTS 4 and Avoid roads are{" "}
+            {showHighLanes ? "shown because the switch above is on" : "hidden unless you turn on \"Show bike lanes on high-stress roads\""}.
+          </p>
           <ul className="legend" aria-label="Bike facility legend">
             {FACILITIES.filter((facility) => facilities.has(facility.facility)).map((facility) => {
               const rails = widths.rails[facility.facility];

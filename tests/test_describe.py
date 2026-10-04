@@ -955,3 +955,213 @@ class TestOverview:
                 return sum(e["text"].count("stress junction") for e in entries)
 
             assert flagged_words(short) == flagged_words(full)
+
+
+def surfaced(name, tier, metres, unpaved, facility="none", use="road"):
+    """`road`, with each piece's surface set."""
+    return [
+        replace(atom, unpaved=unpaved)
+        for atom in road(name, tier, metres, facility=facility, use=use)
+    ]
+
+
+class TestSurface:
+    """OWNER-DECISIONS 280 (review SF5): the map's dotted mark is not all a
+    screen-reader rider has; a stretch says it is unpaved."""
+
+    def test_an_unpaved_stretch_says_so_in_its_text_and_its_field(self):
+        entry = d.describe([surfaced("Gravel Trail", 1, 900, True, facility="path", use="path")])[0]
+        assert entry["text"].endswith(", traffic-free path, unpaved.")
+        assert entry["surface"] == "unpaved"
+
+    def test_a_road_says_its_tier_then_its_surface(self):
+        entry = d.describe([surfaced("Old Mill Road", 2, 900, True)])[0]
+        assert entry["text"].endswith("Old Mill Road, fairly low stress (LTS 2), unpaved.")
+
+    def test_a_paved_or_unknown_surface_says_nothing(self):
+        for unpaved in (False, None):
+            entry = d.describe([surfaced("A St", 1, 900, unpaved)])[0]
+            assert "unpaved" not in entry["text"] and entry["surface"] is None
+
+    def test_partly_unpaved_where_less_than_half_but_at_least_a_tenth_of_a_mile(self):
+        leg = flat(
+            surfaced("A Trail", 1, 1000, False, "path", "path"),
+            surfaced("A Trail", 1, 200, True, "path", "path"),
+        )
+        entry = d.describe([leg])[0]
+        assert entry["surface"] == "partly unpaved" and entry["text"].endswith(", partly unpaved.")
+        # Under a tenth of a mile unpaved in a longer stretch is not said.
+        leg = flat(
+            surfaced("A Trail", 1, 1000, False, "path", "path"),
+            surfaced("A Trail", 1, 120, True, "path", "path"),
+        )
+        assert d.describe([leg])[0]["surface"] is None
+        # Half or more is unpaved, the boundary included.
+        leg = flat(
+            surfaced("A Trail", 1, 600, False, "path", "path"),
+            surfaced("A Trail", 1, 600, True, "path", "path"),
+        )
+        assert d.describe([leg])[0]["surface"] == "unpaved"
+
+    def test_a_change_of_surface_alone_does_not_start_a_stretch(self):
+        leg = flat(
+            surfaced("A Trail", 1, 600, False, "path", "path"),
+            surfaced("A Trail", 1, 600, True, "path", "path"),
+        )
+        assert len(d.describe([leg])) == 1
+
+    def test_a_folded_stretch_brings_its_unpaved_metres(self):
+        # 60 m of unpaved side street folds into a 300 m unpaved trail: all of it is unpaved.
+        leg = flat(
+            surfaced("A Trail", 1, 300, True, "path", "path"),
+            surfaced("x", 1, 60, True),
+            surfaced("B St", 1, 900, False),
+        )
+        entries = d.describe([leg])
+        assert entries[0]["surface"] == "unpaved" and entries[1]["surface"] is None
+
+    def test_the_overview_merges_say_the_surface_of_the_whole(self):
+        leg = flat(
+            surfaced("A Trail", 1, 300, True, "path", "path"),
+            surfaced("B Trail", 1, 300, True, "path", "path"),
+            surfaced("C St", 1, 900, False),
+        )
+        full, short = both(leg)
+        assert [e["surface"] for e in full] == ["unpaved", "unpaved", None]
+        assert short[0]["surface"] == "unpaved" and short[0]["text"].endswith(", unpaved.")
+
+    def test_an_untraced_leg_has_no_surface(self):
+        assert d.describe([500.0])[0]["surface"] is None
+
+
+class TestHighStressLanes:
+    """OWNER-DECISIONS 275 (review SF3): a painted lane on LTS 4 or Avoid is worded
+    both ways, so the client's switch never edits the wording."""
+
+    def test_the_tiers_are_lts4_and_avoid(self):
+        assert d.HIGH_STRESS_LANE_TIERS == frozenset({"4", "5"})
+
+    @pytest.mark.parametrize("tier", [4, 5])
+    def test_a_lane_on_a_high_stress_tier_has_its_text_without_the_lane(self, tier):
+        entry = d.describe([road("Kenilworth Ave", tier, 900, facility="lane")])[0]
+        assert entry["text"].endswith(", painted bike lane.")
+        assert entry["text_lanes_hidden"] == entry["text"].replace(", painted bike lane", "")
+        assert "bike lane" not in entry["text_lanes_hidden"]
+
+    @pytest.mark.parametrize(
+        ("tier", "facility"), [(3, "lane"), (1, "lane"), (4, "protected"), (4, "none"), (4, "path")]
+    )
+    def test_any_other_stretch_has_none(self, tier, facility):
+        entry = d.describe([road("A St", tier, 900, facility=facility)])[0]
+        assert entry["text_lanes_hidden"] is None
+
+    def test_the_surface_stays_in_the_hidden_text(self):
+        entry = d.describe([surfaced("A Rd", 4, 900, True, facility="lane")])[0]
+        assert entry["text_lanes_hidden"].endswith("heavy traffic (LTS 4), unpaved.")
+
+    def test_an_overview_merge_of_lts3_and_lts4_lanes_keeps_its_lane(self):
+        # The facility bar counts the LTS 3 part as a lane, so the words stay.
+        leg = flat(
+            road("A Ave", 3, 200, facility="lane"),
+            road("A Ave", 4, 150, facility="lane"),
+            road("B St", 3, 900),
+        )
+        _full, short = both(leg)
+        merged = short[0]
+        assert (
+            merged["tier"] == 4
+            and merged["facility"] == "lane"
+            and merged["text_lanes_hidden"] is None
+        )
+
+    def test_an_overview_merge_all_on_high_stress_tiers_hides_its_lane(self):
+        leg = flat(
+            road("A Ave", 4, 200, facility="lane"),
+            road("A Ave", 5, 150, facility="lane"),
+            road("B St", 4, 900),
+        )
+        _full, short = both(leg)
+        merged = short[0]
+        assert merged["facility"] == "lane" and merged["tier"] == 5
+        assert merged["text_lanes_hidden"] == merged["text"].replace(", painted bike lane", "")
+
+    def test_junctions_and_stops_have_none(self):
+        entries = d.describe(
+            [road("A", 4, 900, facility="lane"), road("B", 4, 900, facility="lane")]
+        )
+        via = [e for e in entries if e["kind"] == "via"]
+        assert via and all(e["text_lanes_hidden"] is None and e["surface"] is None for e in via)
+
+
+class TestFrontEndAgrees:
+    """Review SF3: the planner takes ", painted bike lane" out of an older API's
+    text itself (frontend/src/lib/routeDescription.ts PAINTED_LANE_WORDS), on the
+    tiers from frontend/src/stressStyle.js HIGH_STRESS_LANE_MIN_TIER. Both are
+    held to the words and tiers this module uses."""
+
+    @staticmethod
+    def source(*parts: str) -> str:
+        from pathlib import Path
+
+        return Path(__file__).resolve().parents[1].joinpath("frontend", "src", *parts).read_text()
+
+    def test_the_stripped_phrase_is_what_tier_words_adds_for_a_painted_lane(self):
+        import re
+
+        match = re.search(
+            r'export const PAINTED_LANE_WORDS = "([^"]*)";',
+            self.source("lib", "routeDescription.ts"),
+        )
+        assert match, "routeDescription.ts declares PAINTED_LANE_WORDS"
+        words = match.group(1)
+        assert words == f", {d.FACILITY_WORDS['lane']}"
+        for tier in d.HIGH_STRESS_LANE_TIERS:
+            # What the API actually says on a lane stretch, and what is left once the phrase is out.
+            assert d.tier_words(tier, "lane") == d.tier_words(tier, "none") + words
+            entry = d.describe([road("Kenilworth Ave", int(tier), 900, facility="lane")])[0]
+            assert entry["text"].replace(words, "") == entry["text_lanes_hidden"]
+
+    def test_the_tiers_are_the_front_ends(self):
+        import re
+
+        match = re.search(
+            r"export const HIGH_STRESS_LANE_MIN_TIER = (\d+);", self.source("stressStyle.js")
+        )
+        assert match, "stressStyle.js declares HIGH_STRESS_LANE_MIN_TIER"
+        at_least = int(match.group(1))
+        assert d.HIGH_STRESS_LANE_TIERS == frozenset(str(t) for t in range(1, 6) if t >= at_least)
+
+
+class TestSurfaceSums:
+    """The unpaved metres travel with every join (mutation run, salience r1)."""
+
+    def test_between_a_third_and_a_half_is_partly(self):
+        leg = flat(
+            surfaced("A Trail", 1, 1000, False, "path", "path"),
+            surfaced("A Trail", 1, 600, True, "path", "path"),
+        )
+        assert d.describe([leg])[0]["surface"] == "partly unpaved"
+
+    def test_a_stretch_joined_across_a_folded_one_keeps_both_parts_unpaved_metres(self):
+        # A Trail, a 30 m bit of another way folded in, then A Trail again: one stretch,
+        # 250 m of its 480 m unpaved.
+        leg = flat(
+            surfaced("A Trail", 1, 200, False, "path", "path"),
+            surfaced("Spur", 1, 30, False, "path", "path"),
+            surfaced("A Trail", 1, 250, True, "path", "path"),
+        )
+        entries = d.describe([leg])
+        assert len(entries) == 1 and entries[0]["surface"] == "unpaved"
+
+    def test_a_folded_bit_brings_its_unpaved_metres_into_the_next_stretch(self):
+        # 80 m of unpaved side way folds into the longer C Trail after it (150 m, 70 m of
+        # it unpaved): 150 of 230 m unpaved, where C Trail alone would be under half.
+        leg = flat(
+            surfaced("B St", 1, 100, False),
+            surfaced("x", 1, 80, True),
+            surfaced("C Trail", 1, 80, False),
+            surfaced("C Trail", 1, 70, True),
+        )
+        entries = d.describe([leg])
+        assert [e["street"] for e in entries] == ["B St", "C Trail"]
+        assert entries[1]["surface"] == "unpaved"
