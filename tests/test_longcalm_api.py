@@ -910,3 +910,24 @@ class TestALongPlansCandidatesAreInThePlansLegs:
         assert candidate["leg_ends"] == [len(candidate["geometry"]["coordinates"]) - 1]
         assert not [e for e in candidate["description"] if e["kind"] == "via"]
         assert not [e for e in body["description"] if e["kind"] == "via"]
+
+
+class TestOverTheTargetByChoice:
+    """A route past the target where one within it was found (worth its miles, 271) is
+    not the no-fit answer: `fits` false, `no_fit` false (correctness review S2)."""
+
+    def test_no_fit_is_false(self, client, segments, router, monkeypatch) -> None:
+        fake = FakeRouter(
+            {
+                "route": [route_answer([(VERTICES, 2.2, [10.0, 20.0, 15.0, 30.0])])]
+                + [route_answer([(VERTICES, 1.9, [10.0, 20.0, 15.0, 30.0])])] * 5,
+                "trace_attributes": trace_answer(VERTICES, STANDARD_EDGES),
+            }
+        )
+        router(fake)
+        # The route past the target is the one kept, as where it is worth its miles.
+        monkeypatch.setattr(routing, "_past_target", lambda fit, past, ceiling, ctx: past[0])
+        body = post(client, top_body(target_distance_m=2_000)).json()
+        search = body["calm_search"]
+        assert search["fits"] is False and search["over_target_m"] > 0
+        assert search["no_fit"] is False and search["limited"] != "target_distance"
