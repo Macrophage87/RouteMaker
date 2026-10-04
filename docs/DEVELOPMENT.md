@@ -3719,6 +3719,19 @@ calm search at all. The span is `straight_span_m` over the loop's points, the wa
 a loop with a 9.5 mi out-leg is already past it, and its note ("over 19 mi in a straight line")
 counts both halves.
 
+**Stops in a loop (OWNER-DECISIONS 374).** With "Make it a loop" on, the page treats the ride as a
+cycle that starts and finishes at the first point, so no second point has to be stacked on the start.
+The toggle can be chosen with the start alone; the route is asked for once there is a second point.
+Every later click is a stop (`geo.addPoint(points, point, loop)`: the closing leg, last point back to
+the start, is one of the slots, wins a tie, and appending is how it is chosen). Points are named
+"Start and finish", "Stop 1", "Stop 2" and never "End" or "B" in the points list, map markers, search
+choices ("Start", "Stop"), rail station cards ("Start here", "Add as stop"), announcements and the GPX
+(`summary.pointName`, `gpx.planPointName`, `loop.loopStops`). The request is unchanged
+(`loop_points` already passes through every point after the start and returns to it), and so are
+links (`loop=1`). A loop implied by an end on the start, with the toggle off, keeps "Start" and "End".
+Mass Ride has no loop. Not yet loop-aware: dragging the route line (the closing leg has no
+`leg_ends` slot of its own).
+
 ### The tables
 
 **The motivating trips and the target distance** (before items 267-271) (Trailmaxxing 100; LTS 1 / 2 / 3 / 4 / Avoid miles; red and orange junctions; plan time; router calls). The new code through the harness; "live" is the deployed API (47c2f52), which skips the calm search past 19 mi.
