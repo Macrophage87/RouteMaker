@@ -94,7 +94,9 @@ test("the toggle can be chosen with the start alone, and its hint no longer says
   assert.ok(view.checked && !view.implied);
   assert.doesNotMatch(view.hint, /end point/);
   assert.match(view.hint, /stop/);
-  assert.match(loopView("default", undefined, [A])!.hint, /end point/);
+  // Off, with the start alone, there is no end point yet to speak of; with two points there is.
+  assert.doesNotMatch(loopView("default", undefined, [A])!.hint, /end point/);
+  assert.match(loopView("default", undefined, [A, B])!.hint, /end point/);
   assert.equal(loopView("default", true, []), null);
   assert.equal(loopView("mass-ride", true, [A]), null);
   const implied = loopView("default", undefined, [A, B, A])!;
