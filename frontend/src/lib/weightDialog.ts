@@ -18,6 +18,7 @@ import {
   editPart,
   editTotal,
   formatLbKg,
+  limitNote,
   poundsToKg,
   savedNotice,
   toStored,
@@ -71,7 +72,12 @@ export function weightDialogBody(
       set.refused(stored.refused);
       return;
     }
-    set.refused("");
+    // Outside the range: kept as the nearer limit, and the dialog stays to say so (338),
+    // its fields blank again so the number typed is not shown.
+    if (stored.limit) {
+      set.sheet(BLANK);
+      set.refused(limitNote(stored.limit));
+    } else set.refused("");
     props.onSave(stored, remember);
   };
   const field = (key: string, label: string, value: string, hint: string, onChange: (text: string) => void) => {
@@ -193,7 +199,8 @@ export function WeightSetting(props: {
       now: props.now,
       onSave: (weight, remember) => {
         props.onSave(weight, remember);
-        close();
+        // A limit in use is said in the dialog first (338); the rider closes it.
+        if (!weight.limit) close();
       },
       onClear: () => {
         props.onClear();

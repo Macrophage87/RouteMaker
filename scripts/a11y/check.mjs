@@ -645,6 +645,15 @@ const federalFetched = (p) =>
   await sleep(300);
   const closed = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, focus: document.activeElement === document.querySelector('.weight-setting > button') })");
   check("weight: Escape closes it and the focus goes back to Change", !closed.open && closed.focus, JSON.stringify(closed));
+  // A total outside the range: planned with the nearer limit, said neutrally, the number typed not shown (337, 338).
+  await p.eval("document.querySelector('.weight-setting > button').click(); true");
+  await sleep(300);
+  await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
+  await p.type("1500");
+  await p.eval("[...document.querySelectorAll('dialog.weight-dialog button')].find((b) => b.textContent === 'Save').click(); true");
+  await sleep(500);
+  const limited = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, note: document.querySelector('dialog.weight-dialog .dial-rule').textContent, live: document.querySelector('dialog.weight-dialog .dial-rule').getAttribute('aria-live'), values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value), text: document.body.innerText })");
+  check("weight: a total over the range is planned with the limit, said in the dialog, and the number typed is gone", limited.open && limited.note === "Routing is designed for totals between 55 and 992 lb (25 and 450 kg), so we'll plan with 992 lb (450 kg)." && limited.live === "assertive" && limited.values.every((v) => v === "") && !/1500/.test(limited.text), JSON.stringify({ ...limited, text: undefined }));
   await p.close();
 }
 
@@ -688,7 +697,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 140;
+const EXPECTED = 141;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

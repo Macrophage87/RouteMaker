@@ -142,8 +142,10 @@ export const TARGET_MAX_M = 1_000_000;
 export const DEFAULT_CEILING_RATIO = 1.6;
 export const TARGET_CEILING_RATIO = 1.25;
 /** The system weight's range and defaults (kg): `routemaker.effort`, which tests/test_presets.py holds this to. */
-export const SYSTEM_WEIGHT_MIN_KG = 68;
-export const SYSTEM_WEIGHT_MAX_KG = 140;
+// OWNER-DECISIONS 337: "The weight range must include everyone", about 55-990 lb, for
+// every ride type; 338: a total outside it is planned with the nearer limit, not refused.
+export const SYSTEM_WEIGHT_MIN_KG = 25;
+export const SYSTEM_WEIGHT_MAX_KG = 450;
 export const SYSTEM_WEIGHT_KG = 90;
 export const PASSENGERS_WEIGHT_KG = 120;
 
@@ -154,10 +156,9 @@ export const PASSENGERS_WEIGHT_KG = 120;
  * range is checked on.
  */
 export function fitWeight(kg: unknown): number | undefined {
-  if (typeof kg !== "number" || !Number.isFinite(kg)) return undefined;
-  const tenth = Math.round(kg * 10) / 10;
-  const whole = Math.round(tenth);
-  return whole >= SYSTEM_WEIGHT_MIN_KG && whole <= SYSTEM_WEIGHT_MAX_KG ? tenth : undefined;
+  if (typeof kg !== "number" || !Number.isFinite(kg) || kg <= 0) return undefined;
+  // Outside the range, the nearer limit (OWNER-DECISIONS 338).
+  return Math.min(SYSTEM_WEIGHT_MAX_KG, Math.max(SYSTEM_WEIGHT_MIN_KG, Math.round(kg * 10) / 10));
 }
 
 /** Whether the "Target distance" dial applies: the top of the traffic slider, on a ride type whose slider moves. */

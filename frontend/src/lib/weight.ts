@@ -20,7 +20,6 @@
  */
 import type { Carrying, Dials } from "./dials.ts";
 import { PASSENGERS_WEIGHT_KG, SYSTEM_WEIGHT_KG, SYSTEM_WEIGHT_MAX_KG, SYSTEM_WEIGHT_MIN_KG } from "./dials.ts";
-import { poundsRange } from "./format.ts";
 
 export const LB_PER_KG = 2.20462;
 
@@ -29,6 +28,8 @@ export interface StoredWeight {
   name: string;
   totalKg: number;
   parts?: { riderKg: number; bikeKg: number; cargoKg: number };
+  /** Set where the total entered was outside the range and the nearer limit is used instead (338). */
+  limit?: "min" | "max";
   /** Milliseconds since the epoch. */
   setAt: number;
 }
@@ -74,7 +75,8 @@ export const WEIGHT_ROUGH = "A rough estimate is fine. Within 20 lb (10 kg) or s
 
 /** What the dialog says when a weight is saved: the date, never the numbers (317(b)). */
 export function savedNotice(weight: StoredWeight, now: number = Date.now()): string {
-  return `A weight is saved (${setAgo(weight.setAt, now)}). Enter new values to replace it, or Clear to use the defaults.`;
+  const limit = weight.limit ? ` ${limitNote(weight.limit)}` : "";
+  return `A weight is saved (${setAgo(weight.setAt, now)}).${limit} Enter new values to replace it, or Clear to use the defaults.`;
 }
 
 // ---- the worksheet (316, 317) ------------------------------------------------
@@ -151,17 +153,35 @@ export function worksheetKg(sheet: Worksheet, split: Split): number | undefined 
   return Math.round((parts.riderKg + parts.bikeKg + parts.cargoKg) * 10) / 10;
 }
 
-/** The range the API takes, on what it is sent (whole kilograms). */
-export const WEIGHT_RULE = `Enter a total of ${poundsRange(lbOf(SYSTEM_WEIGHT_MIN_KG), lbOf(SYSTEM_WEIGHT_MAX_KG), SYSTEM_WEIGHT_MIN_KG, SYSTEM_WEIGHT_MAX_KG)}, or Cancel.`;
 export const WEIGHT_NOTHING = "Enter your weight in at least one field, or Cancel.";
+export const WEIGHT_NOT_A_NUMBER = "Enter numbers only, in pounds, or Cancel.";
 
-/** What Save keeps, or the words for why it cannot: the parts kept only when they made the total. */
+/** "55 lb (25 kg)" and "990 lb (450 kg)": the limits as the dialog says them. */
+const LIMIT_WORDS = { min: `${lbOf(SYSTEM_WEIGHT_MIN_KG)} lb (${SYSTEM_WEIGHT_MIN_KG} kg)`, max: `${lbOf(SYSTEM_WEIGHT_MAX_KG)} lb (${SYSTEM_WEIGHT_MAX_KG} kg)` };
+
+/**
+ * What the dialog says when a total is outside the range (OWNER-DECISIONS 338), neutrally,
+ * with the limit planned with and never the number typed.
+ */
+export function limitNote(limit: "min" | "max"): string {
+  return (
+    `Routing is designed for totals between ${lbOf(SYSTEM_WEIGHT_MIN_KG)} and ${lbOf(SYSTEM_WEIGHT_MAX_KG)} lb (${SYSTEM_WEIGHT_MIN_KG} and ${SYSTEM_WEIGHT_MAX_KG} kg), ` +
+    `so we'll plan with ${LIMIT_WORDS[limit]}.`
+  );
+}
+
+/**
+ * What Save keeps, or the words for why it cannot (nothing entered, or not a number).
+ * A total outside the range is kept as the nearer limit, with `limit` saying which, and
+ * without its parts, which no longer make it (OWNER-DECISIONS 337, 338); the parts are
+ * kept only when they made the total.
+ */
 export function toStored(sheet: Worksheet, split: Split, now: number = Date.now(), name: string = DEFAULT_NAME): StoredWeight | { refused: string } {
   const total = worksheetKg(sheet, split);
   if (total === undefined) return { refused: WEIGHT_NOTHING };
-  if (total === null) return { refused: WEIGHT_RULE };
-  const sent = Math.round(total);
-  if (sent < SYSTEM_WEIGHT_MIN_KG || sent > SYSTEM_WEIGHT_MAX_KG) return { refused: WEIGHT_RULE };
+  if (total === null) return { refused: WEIGHT_NOT_A_NUMBER };
+  if (total < SYSTEM_WEIGHT_MIN_KG) return { name, totalKg: SYSTEM_WEIGHT_MIN_KG, limit: "min", setAt: now };
+  if (total > SYSTEM_WEIGHT_MAX_KG) return { name, totalKg: SYSTEM_WEIGHT_MAX_KG, limit: "max", setAt: now };
   if (sheet.mode === "total") return { name, totalKg: total, setAt: now };
   return { name, totalKg: total, parts: partsKg(sheet, split)!, setAt: now };
 }
@@ -178,7 +198,7 @@ export function migrate(value: unknown, now: number = Date.now()): StoredWeight 
       return null;
     }
   }
-  const usable = (kg: unknown): kg is number => typeof kg === "number" && Number.isFinite(kg) && Math.round(kg) >= SYSTEM_WEIGHT_MIN_KG && Math.round(kg) <= SYSTEM_WEIGHT_MAX_KG;
+  const usable = (kg: unknown): kg is number => typeof kg === "number" && Number.isFinite(kg) && kg >= SYSTEM_WEIGHT_MIN_KG && kg <= SYSTEM_WEIGHT_MAX_KG;
   // The old single figure: kilograms, as the link's sysweight was.
   if (usable(raw)) return { name: DEFAULT_NAME, totalKg: Math.round(raw * 10) / 10, setAt: now };
   if (!raw || typeof raw !== "object") return null;
@@ -191,7 +211,8 @@ export function migrate(value: unknown, now: number = Date.now()): StoredWeight 
     p && [p.riderKg, p.bikeKg, p.cargoKg].every((x) => typeof x === "number" && Number.isFinite(x) && x >= 0)
       ? { riderKg: p.riderKg as number, bikeKg: p.bikeKg as number, cargoKg: p.cargoKg as number }
       : undefined;
-  return { name: typeof r.name === "string" && r.name.trim() ? r.name : DEFAULT_NAME, totalKg: Math.round(total * 10) / 10, ...(parts ? { parts } : {}), setAt };
+  const limit = r.limit === "min" || r.limit === "max" ? r.limit : undefined;
+  return { name: typeof r.name === "string" && r.name.trim() ? r.name : DEFAULT_NAME, totalKg: Math.round(total * 10) / 10, ...(parts ? { parts } : {}), ...(limit ? { limit } : {}), setAt };
 }
 
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;

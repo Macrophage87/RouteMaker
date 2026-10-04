@@ -53,15 +53,16 @@ test("a target distance is taken in the API's range, whole metres, and nothing e
   assert.equal(fitTarget("60"), undefined);
 });
 
-test("a system weight is taken between 68 and 140 kg, to a tenth", () => {
+test("a system weight is taken between 25 and 450 kg, to a tenth, and outside it as the nearer limit (OWNER-DECISIONS 337, 338)", () => {
   assert.equal(fitWeight(90), 90);
   assert.equal(fitWeight(90.72), 90.7, "kept to a tenth, so typed pounds come back as typed");
-  assert.equal(fitWeight(140.2), 140.2, "the range is on what is sent, whole kilograms");
-  assert.equal(fitWeight(140.6), undefined);
-  assert.equal(fitWeight(SYSTEM_WEIGHT_MIN_KG), 68);
-  assert.equal(fitWeight(SYSTEM_WEIGHT_MAX_KG), 140);
-  assert.equal(fitWeight(67), undefined);
-  assert.equal(fitWeight(141), undefined);
+  assert.equal(fitWeight(48), 48);
+  assert.equal(fitWeight(SYSTEM_WEIGHT_MIN_KG), 25);
+  assert.equal(fitWeight(SYSTEM_WEIGHT_MAX_KG), 450);
+  assert.equal(fitWeight(10), 25);
+  assert.equal(fitWeight(500), 450);
+  assert.equal(fitWeight(0), undefined);
+  assert.equal(fitWeight(-5), undefined);
   assert.equal(fitWeight(Number.POSITIVE_INFINITY), undefined);
 });
 
