@@ -743,8 +743,8 @@ class TestSplicing:
             10.0,
             11.0,
             12.0,
-            *self.elevation[end:],
-        ]
+            *self.elevation[end + 1 :],
+        ], "the rejoin's sample is the stretch's last, not repeated (re-check N1)"
 
     def test_a_stretch_without_elevation_keeps_the_legs(self) -> None:
         """Review r0: the leg's heights are kept, the router's stretch drawn in a straight
@@ -756,7 +756,9 @@ class TestSplicing:
         n = round(self.sub["summary"]["length"] * 1000.0 / 30.0) + 1
         middle = new["elevation"][start : start + n]
         assert new["elevation"][:start] == self.elevation[:start]
-        assert new["elevation"][start + n :] == self.elevation[end:]
+        assert new["elevation"][start + n :] == self.elevation[end + 1 :], (
+            "no repeated sample at the rejoin (N1)"
+        )
         assert middle[0] == self.elevation[start] and middle[-1] == self.elevation[end]
         assert middle == pytest.approx(sorted(middle)) and len(middle) == n
 

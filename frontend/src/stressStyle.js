@@ -149,8 +149,8 @@ export const DEFAULT_PALETTE = "twotone";
 /**
  * The palettes' names in a link (`?palette=`), which say nothing of who uses them
  * (OWNER-DECISIONS 321: "Make sure that the link text doesn't scream 'disability' in the
- * parameters."): "warm" the default, "twotone" the owner's second reading, "cool" the
- * blue-and-orange one the switch turns on. The names in the code stay as they were.
+ * parameters."): "twotone" the default (since 351), "warm" the option that was the
+ * default before, "cool" the blue-and-orange one the switch turns on. The names in the code stay as they were.
  * linkPalette.test.ts holds every name and value a link can carry to a denylist.
  */
 export const PALETTE_LINK_NAMES = { blended: "warm", twotone: "twotone", cvd: "cool" };
@@ -378,7 +378,9 @@ export const UNPAVED_PALETTES = {
   },
   twotone: {
     1: { color: "#e6dad4", casing: "#33231a" },
-    2: { color: "#ac8b73", casing: "#1a2638", gap: "#7a8fa3" },
+    // A shade lighter than #ac8b73 (the release re-check's SF-A): paved and unpaved LTS 2 were
+    // one colour to a deuteranope (2.1); now 10.5 apart under every vision.
+    2: { color: "#c2a698", casing: "#1a2638", gap: "#7a8fa3" },
     3: { color: "#7d604b", casing: "#f6ead2" },
     4: { color: "#53392a", casing: "#f6ead2" },
     5: { color: "#2b1c14", casing: "#f6ead2" },

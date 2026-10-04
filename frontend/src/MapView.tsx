@@ -589,11 +589,13 @@ export function MapView(props: Props) {
       // A one-pixel halo under each section, dark or white by class, so the
       // section is 3:1 from what touches it (lib/routeColours.ts, ROUTE_HALO_PATH).
       // The near-black ring outside the halo of a two-tone LTS 3 or LTS 4 section (OWNER-DECISIONS 371).
+      // Butt caps (the re-check's NT3): a round cap showed a pixel of near-black past a ringed
+      // section's end, under the next section's narrower halo.
       map.addLayer({
         id: "route-ring",
         type: "line",
         source: ROUTE_STRESS_SOURCE,
-        layout: { "line-join": "round", "line-cap": "round" },
+        layout: { "line-join": "round", "line-cap": "butt" },
         paint: { "line-color": ["get", "ring"], "line-width": ["coalesce", ["get", "ringWidth"], 0], "line-opacity": 0 },
       });
       map.addLayer({

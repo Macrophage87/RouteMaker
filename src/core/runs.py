@@ -140,6 +140,51 @@ def last_success(task: str):
     return ScheduledRun.objects.filter(task=task, succeeded=True).order_by("-started_at").first()
 
 
+# The detail of the row a paused weekly rebuild writes (OWNER-DECISIONS 355). Neither a
+# success nor a failure: the release re-check's S-A found that writing nothing let the
+# rebuild go stale and alert eight days into a pause the owner asked for.
+PAUSED_DETAIL = "paused (WEEKLY_REBUILD_PAUSED)"
+
+
+def record_paused(task: str) -> ScheduledRun:
+    """Write the row a paused tick leaves: finished at once, not a success, and its
+    detail `PAUSED_DETAIL`, which `paused_run` reads."""
+    now = timezone.now()
+    return ScheduledRun.objects.create(
+        task=task, started_at=now, finished_at=now, succeeded=False, detail=PAUSED_DETAIL
+    )
+
+
+def paused_run(task: str, window_s: float, now=None):
+    """The newest run row of `task` if it is a pause that is inside the task's window,
+    else None. A pause counts only while its ticks keep coming: a worker that stopped
+    ticking during a pause is stale again a window after the last paused tick."""
+    now = now or timezone.now()
+    row = ScheduledRun.objects.filter(task=task).order_by("-started_at").first()
+    if row is None or row.detail != PAUSED_DETAIL:
+        return None
+    return row if (now - row.started_at).total_seconds() < window_s else None
+
+
+def paused_task_details(now=None) -> list[dict]:
+    """The tasks that are paused rather than stale (only `weekly_rebuild` can be, 355),
+    for `check_operations` and the operations page to report as paused, not as an alert."""
+    now = now or timezone.now()
+    out = []
+    for task, window in STALE_AFTER.items():
+        row = paused_run(task, window, now)
+        if row is not None:
+            run = last_success(task)
+            out.append(
+                {
+                    "task": task,
+                    "paused_at": row.started_at,
+                    "last_success_at": None if run is None else run.started_at,
+                }
+            )
+    return out
+
+
 def first_run_at():
     """When this deployment first recorded a scheduled run, or None.
 
@@ -242,6 +287,11 @@ def stale_task_details(now=None) -> list[dict]:
     ten-minute heartbeat window exists to name. See `deployment_epoch` for what
     replaced it and why it does not drift.
 
+    A task whose newest row is a pause inside its window (`paused_run`; the weekly
+    rebuild while WEEKLY_REBUILD_PAUSED is set, OWNER-DECISIONS 355) is not stale: it is
+    reported as paused by `paused_task_details`, and is stale again a window after its
+    last paused tick, so a pause cannot hide a worker that stopped.
+
     What this does not do is excuse a task that is never registered at all. The
     windows keep running from the epoch, so a task missing from the worker's
     schedule is stale as soon as its own window has passed - eight days for the
@@ -257,6 +307,8 @@ def stale_task_details(now=None) -> list[dict]:
             age = (now - run.started_at).total_seconds()
             if age < window:
                 continue
+        if paused_run(task, window, now) is not None:
+            continue
         else:
             age = None
             if started is None or (now - started).total_seconds() < window:

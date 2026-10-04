@@ -624,7 +624,7 @@ const federalFetched = (p) =>
   // Type a total of 207 lb and save it, remembered.
   await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
   await p.type("207");
-  await sleep(200);
+  await sleep(1000); // the polite total waits 700 ms after the last key (N-A)
   const total = await p.eval("document.querySelector('dialog.weight-dialog .weight-total').textContent");
   check("weight: the total is said politely as it changes, pounds first", /^Total: 207 lb \(94 kg\)\.$/.test(total) && (await p.eval("document.querySelector('dialog.weight-dialog .weight-total').getAttribute('aria-live')")) === "polite", total);
   await p.eval("document.querySelector('dialog.weight-dialog input[type=checkbox]').click(); true");

@@ -589,7 +589,15 @@ class ScheduledRun(models.Model):
         indexes = [models.Index(fields=["task", "-started_at"])]
 
     def __str__(self) -> str:
-        state = "succeeded" if self.succeeded else ("running" if not self.finished_at else "failed")
+        state = (
+            "succeeded"
+            if self.succeeded
+            else (
+                "running"
+                if not self.finished_at
+                else ("paused" if self.detail.startswith("paused (") else "failed")
+            )
+        )
         return f"{self.task} {state} at {self.started_at:%Y-%m-%d %H:%M}"
 
 

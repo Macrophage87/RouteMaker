@@ -20,6 +20,23 @@ export const DEFAULT_CONFLICTS = {
    */
   lineOnEdgeBelowThreeToOne: ["LTS 3", "LTS 4"],
   /**
+   * The same figure read as the dash pattern (the re-check's N-E): LTS 3's gaps show its orange
+   * edge, 1.53:1 from the yellow, so its dash, the cue that is not colour, is faint for low
+   * vision in the default. An owner trade (292, 351, 371); the cool palette has no such gap.
+   */
+  lts3DashGapFaint: true,
+  /**
+   * LTS 3 against LTS 4 for a deuteranope: 1.44:1 in luminance (held, over 1.4) but 9.2 CIEDE2000
+   * (13.7 protan; 9.4 with the yellow before 371), the weakest pair of the default for colour-blind riders (the re-check's N-B).
+   */
+  lts3Lts4DeutanUnderTen: true,
+  /**
+   * Paved against unpaved of the same tier, under 10 CIEDE2000 under some vision (the re-check's
+   * SF-A), in every palette: the dotted centre mark tells them apart there. Two-tone's LTS 2 was
+   * 2.1 for a deuteranope and is 10.5 since its unpaved brown moved to #c2a698; what is left:
+   */
+  unpavedSameTierClose: { twotone: ["LTS 1"], blended: ["LTS 1", "LTS 2", "LTS 4", "Avoid"], cvd: ["LTS 4"] } as Record<string, string[]>,
+  /**
    * Greyscale print: luminance no longer falls with stress. LTS 3's yellow (0.60) is the
    * lightest tier, lighter than LTS 1 (0.57), and LTS 4's orange (0.38) is lighter than LTS 2
    * (0.28). Every neighbouring pair is still 1.4:1 or more apart. A ring does not change it.

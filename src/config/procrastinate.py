@@ -180,10 +180,12 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
     """Build into staging and a dated tile directory, validate, swap, reconcile.
 
     Paused (OWNER-DECISIONS 355): with `WEEKLY_REBUILD_PAUSED` set, the scheduled
-    run logs "weekly rebuild paused (WEEKLY_REBUILD_PAUSED)" and returns before it
-    reads or writes anything - no run row, no prune, no build - so the job ends
-    `succeeded` and nothing alerts. `manual` is set by `run_rebuild_now`: a rebuild
-    fired by hand runs whatever the switch says. The tick itself still fires; the
+    run logs "weekly rebuild paused (WEEKLY_REBUILD_PAUSED)", writes one run row marked
+    paused (`core.runs.record_paused`), and returns - no prune, no build. The job ends
+    `succeeded`, and the staleness check reports the rebuild as paused, not stale
+    (`core.runs.paused_task_details`; the release re-check's S-A). `manual` is set by
+    `run_rebuild_now`: a rebuild fired by hand runs whatever the switch says. The tick
+    itself still fires; the
     schedule (`WEEKLY_REBUILD_CRON`) is unchanged.
 
     Queued under a lock because two concurrent rebuilds would write the same
@@ -219,7 +221,10 @@ def weekly_rebuild(context=None, *, timestamp: int, manual: bool = False) -> Non
     from django.conf import settings
 
     if settings.WEEKLY_REBUILD_PAUSED and not manual:
+        from core.runs import record_paused
+
         logging.getLogger(__name__).warning("weekly rebuild paused (WEEKLY_REBUILD_PAUSED)")
+        record_paused("weekly_rebuild")
         return
 
     from core.runs import jobs_in_flight, record

@@ -1475,8 +1475,11 @@ docker compose up -d --no-deps --force-recreate rebuild
 ```
 
 The Tuesday 08:00 UTC tick still fires (`WEEKLY_REBUILD_CRON` is unchanged), and
-the job logs `weekly rebuild paused (WEEKLY_REBUILD_PAUSED)` and ends `succeeded`
-without a run row, a prune or a build, so nothing alerts. A rebuild fired by hand
+the job logs `weekly rebuild paused (WEEKLY_REBUILD_PAUSED)`, writes one run row marked
+paused, and ends `succeeded` without a prune or a build. `check_operations` and the
+operations page report the rebuild as paused, not stale, so nothing alerts; if the paused
+ticks themselves stop (the rebuild worker down), it is stale again eight days after the
+last one. A rebuild fired by hand
 (`run_rebuild_now`, below) runs whatever the switch says. To resume, remove the
 line (or set it empty) and recreate the service the same way. 355 asks for it to be
 set in t9's `.env` at the release deploy; if the release is not deployed before

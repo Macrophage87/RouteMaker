@@ -460,7 +460,13 @@ def stress_saved_m(worse: Analysis, calmer_one: Analysis, ctx: Context) -> float
     stress saving buys"). Where the top figure improves by more than its tie step, its
     saving pays on its own and a loss at the second level does not subtract from it
     (a gain there still adds), so LTS 4 never loses to extra LTS 3. Otherwise the two
-    levels are netted at the 1/2/3 weights, as within one level they always were."""
+    levels are netted at the 1/2/3 weights, as within one level they always were.
+
+    It errs the safe way (the release re-check's NT1, kept as it is): `Analysis.top_m`
+    counts Avoid metres as LTS 4's, but `_top_weight_m` weighs them 3 to 2, so a route
+    that trades LTS 4 for Avoid can rank calmer on `top_m` and still have a negative
+    saving here (1000 m of LTS 4 against 900 m all Avoid: -700). Such a route is never
+    worth any extra distance, which is right, since Avoid is worse."""
     top = _top_weight_m(worse) - _top_weight_m(calmer_one)
     second = _second_weight_m(worse) - _second_weight_m(calmer_one)
     if worse.top_m - calmer_one.top_m > MAXCALM_STEPS[0]:

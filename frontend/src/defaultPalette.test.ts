@@ -132,6 +132,15 @@ test("Avoid against LTS 4: held - the dash-dot, the width and the edge (3:1 apar
   assert.deepEqual(dark, [...DEFAULT_CONFLICTS.avoidOnDarkPanel]);
 });
 
+test("reported: LTS 3 against LTS 4 for a deuteranope is under 10 CIEDE2000, though 1.4:1 in luminance (the re-check's N-B)", (t) => {
+  const [, , lts3, lts4] = tiersFor(DEFAULT_PALETTE) as Tier[];
+  const d = deltaE2000(simulate(lts3.color, "deutan"), simulate(lts4.color, "deutan"));
+  t.diagnostic(`deutan ${d.toFixed(1)}, protan ${deltaE2000(simulate(lts3.color, "protan"), simulate(lts4.color, "protan")).toFixed(1)}`);
+  assert.equal(d < 10, DEFAULT_CONFLICTS.lts3Lts4DeutanUnderTen);
+  // N-E: the dash gaps show the edge, 1.53:1 from the line.
+  assert.equal(contrastRatio(lts3.color, lts3.casing) < 2, DEFAULT_CONFLICTS.lts3DashGapFaint);
+});
+
 test("paved LTS 3 against the orange markers (350): the junction marker and the Mass Ride orange, reported under each vision; the line's orange edge is the Mass Ride orange's near twin", (t) => {
   const lts3 = (tiersFor(DEFAULT_PALETTE) as Tier[])[2];
   for (const [name, orange] of Object.entries({ "junction marker": SEVERITY_COLOURS.orange.fill, "Mass Ride": "#f28e2b" })) {

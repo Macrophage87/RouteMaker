@@ -32,11 +32,54 @@ def went_on(monkeypatch):
     monkeypatch.setattr(core.runs, "record", first_step)
 
 
-def test_paused_the_scheduled_run_logs_and_does_nothing(settings, went_on, caplog) -> None:
+@pytest.mark.django_db
+def test_paused_the_scheduled_run_logs_writes_a_paused_row_and_builds_nothing(
+    settings, went_on, caplog
+) -> None:
+    from core.models import ScheduledRun
+    from core.runs import PAUSED_DETAIL
+
     settings.WEEKLY_REBUILD_PAUSED = True
     with caplog.at_level(logging.WARNING, logger="config.procrastinate"):
         assert tasks.weekly_rebuild(timestamp=0) is None
     assert "weekly rebuild paused (WEEKLY_REBUILD_PAUSED)" in caplog.text
+    rows = list(ScheduledRun.objects.filter(task="weekly_rebuild"))
+    assert [(r.succeeded, r.detail, r.finished_at is not None) for r in rows] == [
+        (False, PAUSED_DETAIL, True)
+    ]
+    assert "paused" in str(rows[0])
+
+
+@pytest.mark.django_db
+def test_a_paused_rebuild_is_reported_paused_not_stale(settings, monkeypatch) -> None:
+    """The release re-check's S-A probe: the last success nine days ago, then a paused
+    tick. Not stale (no alert), and listed as paused; stale again eight days after the
+    last paused tick."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+    from test_operations import deployment_up_since
+
+    from core.models import ScheduledRun
+    from core.runs import STALE_AFTER, paused_task_details, stale_tasks
+
+    deployment_up_since(timedelta(days=90))
+    now = timezone.now()
+    for task in STALE_AFTER:
+        ScheduledRun.objects.create(
+            task=task, started_at=now - timedelta(minutes=1), finished_at=now, succeeded=True
+        )
+    ScheduledRun.objects.filter(task="weekly_rebuild").update(
+        started_at=now - timedelta(days=9, hours=1), finished_at=now - timedelta(days=9)
+    )
+    assert "weekly_rebuild" in stale_tasks(), "the premise: nine days without a rebuild is stale"
+    settings.WEEKLY_REBUILD_PAUSED = True
+    tasks.weekly_rebuild(timestamp=0)  # the paused Tuesday tick
+    assert "weekly_rebuild" not in stale_tasks()
+    assert [p["task"] for p in paused_task_details()] == ["weekly_rebuild"]
+    # A pause whose ticks stopped: stale again past the window.
+    assert "weekly_rebuild" in stale_tasks(now + timedelta(days=9))
+    assert paused_task_details(now + timedelta(days=9)) == []
 
 
 def test_paused_a_hand_fired_rebuild_still_runs(settings, went_on) -> None:

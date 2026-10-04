@@ -22,6 +22,23 @@ list is an alert.</p>
 <p id="no-stale-tasks">Every scheduled task has succeeded inside its window.</p>
 {% endif %}
 
+{% if paused %}
+<h2>Paused tasks</h2>
+<p>Paused on purpose (WEEKLY_REBUILD_PAUSED). Not an alert.</p>
+<table>
+  <thead><tr><th>Task</th><th>Last paused tick</th><th>Last success</th></tr></thead>
+  <tbody>
+  {% for entry in paused %}
+    <tr class="paused-task">
+      <th scope="row">{{ entry.task }}</th>
+      <td>{{ entry.paused_at }}</td>
+      <td>{% if entry.last_success_at %}{{ entry.last_success_at }}{% else %}never{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
 <h2>Windows</h2>
 <table>
   <thead><tr><th>Task</th><th>Considered stale after</th></tr></thead>

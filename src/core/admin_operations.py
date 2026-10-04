@@ -35,6 +35,7 @@ from .runs import (
     STALE_AFTER,
     disk_headroom,
     failed_jobs,
+    paused_task_details,
     stale_task_details,
     unmeasured_disk_message,
     wedged_jobs,
@@ -83,6 +84,8 @@ class ScheduledRunAdmin(admin.ModelAdmin):
             **site.each_context(request),
             "title": "Operations",
             "stale": stale_task_details(),
+            # Paused rather than stale (OWNER-DECISIONS 355), shown and not an alert.
+            "paused": paused_task_details(),
             "windows": sorted(STALE_AFTER.items()),
             # A job still `doing` long past its own budget. It is on this page
             # for the same reason it is in `check_operations`: a worker killed

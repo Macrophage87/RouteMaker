@@ -34,6 +34,7 @@ from core.runs import (
     disk_headroom,
     failed_job_count,
     failed_jobs,
+    paused_task_details,
     stale_task_details,
     unmeasured_disk_message,
     wedged_jobs,
@@ -65,6 +66,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options) -> None:
         stale = stale_task_details()
+        paused = paused_task_details()
         wedged = wedged_jobs()
         jobs = failed_jobs(options["failed_job_limit"])
         failed_total = failed_job_count()
@@ -79,6 +81,13 @@ class Command(BaseCommand):
             self.stdout.write(
                 f"stale: {entry['task']} has no success inside {entry['window_s']}s "
                 f"(last success: {last})"
+            )
+        # Paused, not stale (OWNER-DECISIONS 355): said, and not an alert.
+        for entry in paused:
+            last = entry["last_success_at"] or "never"
+            self.stdout.write(
+                f"paused: {entry['task']} (WEEKLY_REBUILD_PAUSED; last paused tick "
+                f"{entry['paused_at']}, last success: {last})"
             )
         # The row that did not exist. A worker killed mid-job leaves its job
         # `doing` forever - the process that would have written `failed` is

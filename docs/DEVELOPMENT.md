@@ -615,7 +615,7 @@ alone. Shape comes first and colour second:
 
   | Palette | LTS 1 | LTS 2 | LTS 3 | LTS 4 | Avoid | Casings |
   | --- | --- | --- | --- | --- | --- | --- |
-  | twotone (default) | #e8dad0 | #ac8b73 | #7d604b | #53392a | #2b1c14 | LTS 1 #33231a, LTS 2 #1a2638 (gaps #7a8fa3), LTS 3 up #f6ead2 |
+  | twotone (default) | #e6dad4 | #c2a698 | #7d604b | #53392a | #2b1c14 | LTS 1 #33231a, LTS 2 #1a2638 (gaps #7a8fa3), LTS 3 up #f6ead2 |
   | blended | #ebddd1 | #ac9888 | #7b6250 | #543e2c | #2e2118 | LTS 1 #3b2410, LTS 2 #1a2638 (gaps #7a8fa3), LTS 3 up #f6ead2 |
   | cvd | #e0c68a | #bc9a52 | #7a6046 | #544018 | #2a200c | LTS 1 #2a200c, LTS 2 #2a200c (gaps #7a8fa3), LTS 3 up #f6ead2 |
 
@@ -668,6 +668,21 @@ what it does not, item by item below: 3:1 on the base map (mended), LTS 3-4 for 
 deuteranope (mended by the yellow, 1.44:1), Avoid on the dark panel (mended by the legend
 ring); greyscale order, 274's salience and Avoid against LTS 4 under deuteranopia are left,
 with the line on its own edge inside the ring (1.53:1, 2.34:1).
+
+The release re-check (accessibility) added three to the record, and one fix:
+
+- **Paved and unpaved of the same tier** (SF-A): two-tone LTS 2 was one colour to a
+  deuteranope (2.1 CIEDE2000, 1.01:1). Its unpaved brown moved from #ac8b73 to #c2a698
+  (9.1 from the approved value, inside 363's 10), so the pair is 10.5 apart under every
+  vision. `unpavedBrown.test.ts` now holds every same-tier pair, in every palette, to 10
+  under every vision, but for the pairs listed in `defaultConflicts.ts`
+  (`unpavedSameTierClose`), where the dotted mark carries it: two-tone LTS 1 (8.0
+  deutan); warm LTS 1 (7.3), LTS 2 (6.1), LTS 4 (9.3), Avoid (8.0); cool LTS 4 (4.4).
+- **LTS 3 against LTS 4 for a deuteranope** (N-B): 1.44:1 in luminance, over the floor,
+  but 9.2 CIEDE2000 (13.7 protan), the weakest colour-blind pair in the default.
+- **LTS 3's dash gaps** (N-E) show the orange edge, 1.53:1 from the yellow, so the dash,
+  LTS 3's cue that is not colour, is faint for low vision in the default. An owner trade
+  (292, 351, 371); the cool palette has no such gap.
 
 What two-tone breaks, as first reported for 351, with the smallest tweak proposed:
 

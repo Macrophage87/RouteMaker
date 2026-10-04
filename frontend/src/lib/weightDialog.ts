@@ -28,6 +28,12 @@ import {
   type Worksheet,
 } from "./weight.ts";
 
+/**
+ * How long the polite total waits after the last keystroke before it changes (the
+ * re-check's N-A): typing 180 said "34 lb", "51 lb", then "213 lb" over the key echo.
+ */
+export const TOTAL_SAID_DELAY_MS = 700;
+
 /** The polite total under the worksheet, from what is entered; the defaults with nothing entered. */
 export function totalSaid(sheet: Worksheet, split: Split): string {
   const kg = worksheetKg(sheet, split);
@@ -64,7 +70,7 @@ interface DialogProps {
 export function weightDialogBody(
   id: string,
   props: DialogProps,
-  state: { sheet: Worksheet; remember: boolean; refused: string },
+  state: { sheet: Worksheet; remember: boolean; refused: string; said?: string },
   set: { sheet: (s: Worksheet) => void; remember: (on: boolean) => void; refused: (text: string) => void },
 ): Array<ReactElement | null> {
   const { sheet, remember, refused } = state;
@@ -91,6 +97,8 @@ export function weightDialogBody(
   };
   const field = (key: string, label: string, value: string, hint: string, onChange: (text: string) => void) => {
     const kg = poundsToKg(value);
+    // A refused entry marks the field that is not a number, and points it at the rule (N-C).
+    const invalid = refused !== "" && kg === null;
     return h(
       "div",
       { key, className: "weight-field" },
@@ -101,7 +109,8 @@ export function weightDialogBody(
         inputMode: "decimal",
         autoComplete: "off",
         value,
-        "aria-describedby": `${id}-${key}-kg ${id}-${key}-hint`,
+        "aria-describedby": `${id}-${key}-kg ${id}-${key}-hint${invalid ? ` ${id}-rule` : ""}`,
+        "aria-invalid": invalid ? "true" : undefined,
         onChange: (event: { target: { value: string } }) => onChange(event.target.value),
       }),
       h("span", { className: "weight-kg", id: `${id}-${key}-kg` }, typeof kg === "number" ? `(${kg.toFixed(1)} kg)` : ""),
@@ -117,14 +126,14 @@ export function weightDialogBody(
       field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
     ),
     field("total", WEIGHT_LABELS.total, sheet.total, "Or type the total alone: it replaces the parts.", (text) => set.sheet(editTotal(text))),
-    h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, totalSaid(sheet, props.split)),
+    h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, state.said ?? totalSaid(sheet, props.split)),
     h(
       "label",
       { key: "r", className: "toggle" },
       h("input", { type: "checkbox", checked: remember, onChange: (event: { target: { checked: boolean } }) => set.remember(event.target.checked) }),
       "Remember on this device",
     ),
-    h("p", { key: "rule", className: refused ? "notice dial-rule" : "dial-rule", "aria-live": "assertive" }, refused),
+    h("p", { key: "rule", id: `${id}-rule`, className: refused ? "notice dial-rule" : "dial-rule", "aria-live": "assertive" }, refused),
     h(
       "div",
       { key: "b", className: "actions" },
@@ -146,6 +155,13 @@ export function WeightDialog(props: DialogProps): ReactElement {
   const [sheet, setSheet] = useState<Worksheet>(BLANK);
   const [remember, setRemember] = useState(props.remembered);
   const [refused, setRefused] = useState("");
+  // The polite total, a moment behind the typing (TOTAL_SAID_DELAY_MS).
+  const live = totalSaid(sheet, props.split);
+  const [said, setSaid] = useState(live);
+  useEffect(() => {
+    const timer = setTimeout(() => setSaid(live), TOTAL_SAID_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [live]);
   // Every open starts blank (317(b)), and the checkbox as this browser has it.
   useEffect(() => {
     const dialog = ref.current;
@@ -175,7 +191,7 @@ export function WeightDialog(props: DialogProps): ReactElement {
       onClose: () => props.onClose(),
       onCancel: () => props.onClose(),
     },
-    ...weightDialogBody(id, props, { sheet, remember, refused }, { sheet: setSheet, remember: setRemember, refused: setRefused }),
+    ...weightDialogBody(id, props, { sheet, remember, refused, said }, { sheet: setSheet, remember: setRemember, refused: setRefused }),
   );
 }
 

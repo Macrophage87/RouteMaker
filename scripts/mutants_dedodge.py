@@ -628,7 +628,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "splice: the elevation is the leg's alone",
         DD,
-        '        new["elevation"] = [*heights[:k_out], *sub_heights, *heights[k_in:]]',
+        '        new["elevation"] = [*heights[:k_out], *sub_heights, *heights[k_in + 1 :]]',
         '        new["elevation"] = heights',
         TD,
     ),
@@ -1373,10 +1373,10 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         TD + TP,
     ),
     (
-        "r0 review: elevation tail off by one",
+        "r0 review: elevation tail off by one (the rejoin's sample repeated again, re-check N1)",
         DD,
-        "*sub_heights, *heights[k_in:]]",
         "*sub_heights, *heights[k_in + 1 :]]",
+        "*sub_heights, *heights[k_in:]]",
         TD + TP,
     ),
     (

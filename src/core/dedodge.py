@@ -460,7 +460,9 @@ def splice_leg(
             # The router gave the stretch no elevation: the leg's is kept, the stretch
             # drawn in a straight line from the height where the dodge left to where it came back.
             sub_heights = _between(heights, k_out, k_in, after.get("length"), interval_m)
-        new["elevation"] = [*heights[:k_out], *sub_heights, *heights[k_in:]]
+        # The stretch's heights include both its ends, so the leg's own sample at the
+        # rejoin (k_in) is the stretch's last and is not repeated (the re-check's N1).
+        new["elevation"] = [*heights[:k_out], *sub_heights, *heights[k_in + 1 :]]
     return new
 
 

@@ -23,6 +23,7 @@ import { paintAt } from "./testSupport/paintAt.ts";
 import { isUnpavedClass, routeClasses, routeSections, sectionFeatures, spanClass } from "./lib/routeColours.ts";
 import { ROUTE_UNPAVED_LAYER_ID, routeUnpavedLayer, setRouteSections } from "./lib/mapGlue.ts";
 import { SEVERITY_COLOURS } from "./lib/intersectionMarkers.ts";
+import { DEFAULT_CONFLICTS } from "./testSupport/defaultConflicts.ts";
 
 type Tier = ReturnType<typeof tiersFor>[number];
 type Layer = { id: string; paint: Record<string, unknown>; filter?: unknown };
@@ -145,6 +146,17 @@ test("unpaved LTS 1 stands apart from its palette's paved LTS 3 line and LTS 3 c
 });
 
 // ---- OWNER-DECISIONS 350: "LTS3 looks unpaved" ----
+
+test("paved and unpaved of the same tier are 10 CIEDE2000 or more apart under every vision, in every palette, but for the pairs reported (the re-check's SF-A)", (t) => {
+  for (const palette of PALETTE_NAMES) {
+    const tiers = tiersFor(palette) as Tier[];
+    const close = tiers.filter((x) => worst(x.color, x.unpavedColor) < 10).map((x) => x.short);
+    t.diagnostic(`${palette}: ` + tiers.map((x) => `${x.short} ${x.color}/${x.unpavedColor} ${VISIONS.map((v) => deltaE2000(simulate(x.color, v), simulate(x.unpavedColor, v)).toFixed(1)).join("/")}`).join("; "));
+    assert.deepEqual(close, DEFAULT_CONFLICTS.unpavedSameTierClose[palette], palette);
+    // The cue that is not colour is there for every one of them.
+    assert.deepEqual(UNPAVED_DASH, [1, 1.2]);
+  }
+});
 
 /**
  * The oranges a busy road's line is drawn beside: the higher-stress junction marker's fill, and

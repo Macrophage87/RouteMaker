@@ -187,7 +187,7 @@ test("the dialog leads with the two lines that are its description, and labels e
   }
   assert.match(html, /<p class="weight-total" role="status" aria-live="polite">Total: /);
   assert.match(html, /Remember on this device/);
-  assert.match(html, /<p class="dial-rule" aria-live="assertive"><\/p>/);
+  assert.match(html, /<p id="w-rule" class="dial-rule" aria-live="assertive"><\/p>/);
   assert.doesNotMatch(html, />Clear</, "nothing saved: nothing to clear");
 });
 
@@ -353,4 +353,26 @@ test("no part has a limit of its own, only that it is a non-negative number; onl
   const words = [WEIGHT_NOTHING, WEIGHT_NOT_A_NUMBER, savedNotice(SAVED, NOW), dialogHtml(null)].join(" ");
   assert.doesNotMatch(words, /unusual|sensible|unrealistic|too (heavy|light|high|low)|heavy|light|invalid|extreme|normal/i);
   assert.doesNotMatch(dialogHtml(null), /\b(min|max)="/, "no bounds on any field");
+});
+
+test("a refused entry marks the field that is not a number and points it at the rule (the re-check's N-C)", () => {
+  const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
+  const sheet = editPart(BLANK, "rider", "abc", SPLIT);
+  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, remember: false, refused: WEIGHT_NOT_A_NUMBER }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
+  assert.match(html, /id="w-rider"[^>]*aria-describedby="w-rider-kg w-rider-hint w-rule"[^>]*aria-invalid="true"/);
+  assert.doesNotMatch(html.match(/<input id="w-bike"[^>]*>/)![0], /aria-invalid/, "a blank field is not marked");
+  assert.match(html, /<p id="w-rule" class="notice dial-rule" aria-live="assertive">/);
+  // Nothing refused: nothing marked.
+  const calm = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, remember: false, refused: "" }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
+  assert.doesNotMatch(calm, /aria-invalid/);
+});
+
+test("the polite total says what it was given while the typing settles, and the delay is about 700 ms (the re-check's N-A)", async () => {
+  const { TOTAL_SAID_DELAY_MS } = await import("./weightDialog.ts");
+  assert.ok(TOTAL_SAID_DELAY_MS >= 500 && TOTAL_SAID_DELAY_MS <= 1000);
+  const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: () => {}, onClear: () => {}, onClose: () => {}, now: () => NOW };
+  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet: editTotal("18"), remember: false, refused: "", said: "Total: 1 lb (0 kg)." }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
+  assert.match(html, /aria-live="polite">Total: 1 lb \(0 kg\)\.<\/p>/, "the region holds the settled figure, not each keystroke's");
+  const src = (await import("node:fs")).readFileSync(new URL("./weightDialog.ts", import.meta.url), "utf8");
+  assert.match(src, /setTimeout\(\(\) => setSaid\(live\), TOTAL_SAID_DELAY_MS\)/);
 });
