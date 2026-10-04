@@ -8,9 +8,9 @@ in for here by a sentinel that proves the run went on.
 
 from __future__ import annotations
 
-import importlib
 import inspect
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -103,21 +103,24 @@ def test_not_paused_the_scheduled_run_goes_on(settings, went_on, caplog) -> None
         ("TRUE", True),
         (" 1 ", True),
         ("", False),
+        (None, False),
         ("0", False),
         ("false", False),
         ("yes", False),
     ],
 )
-def test_the_switch_reads_1_or_true(monkeypatch, value, paused) -> None:
-    monkeypatch.setenv("WEEKLY_REBUILD_PAUSED", value)
-    import config.settings as settings_module
+def test_the_switch_reads_1_or_true(value, paused) -> None:
+    """The parser itself, not a reload of config.settings: a reload replaced DATABASES
+    with a dict pytest-django had not adjusted, and test_settings_security then failed
+    in CI's order."""
+    from config.flags import env_true
 
-    reloaded = importlib.reload(settings_module)
-    try:
-        assert reloaded.WEEKLY_REBUILD_PAUSED is paused
-    finally:
-        monkeypatch.delenv("WEEKLY_REBUILD_PAUSED")
-        importlib.reload(settings_module)
+    assert env_true(value) is paused
+
+
+def test_settings_reads_the_switch_through_the_parser() -> None:
+    src = (Path(__file__).resolve().parents[1] / "src/config/settings.py").read_text()
+    assert 'WEEKLY_REBUILD_PAUSED = env_true(os.environ.get("WEEKLY_REBUILD_PAUSED"))' in src
 
 
 def test_run_rebuild_now_defers_a_manual_job_and_the_schedule_is_unchanged() -> None:
