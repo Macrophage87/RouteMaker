@@ -247,6 +247,15 @@ test("the overlay is added casings first: every casing under every tier", () => 
   for (const layer of stressOverlayLayers("s")) assert.equal(layer.source, "s");
 });
 
+test("the ring (OWNER-DECISIONS 371) is drawn on paved and unknown-surface roads only, never on an unpaved one", () => {
+  for (const layer of ringLayers("s")) {
+    const tier = Number(layer.id.split("-").pop());
+    assert.equal(draws(layer, { tier }), true, `${layer.id} on an unknown surface`);
+    assert.equal(draws(layer, { tier, unpaved: false }), true, `${layer.id} paved`);
+    assert.equal(draws(layer, { tier, unpaved: true }), false, `${layer.id} unpaved: the brown ramp has its own casing`);
+  }
+});
+
 test("the bike facilities are the owner's three, and sharrows are not one of them", () => {
   assert.deepEqual(
     FACILITIES.map((f) => f.facility),

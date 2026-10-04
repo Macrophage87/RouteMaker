@@ -592,6 +592,13 @@ test("repaint wiring: the overlay's lines and casings, in colour and width, and 
   assert.ok(paint.every(([, name]) => name === "line-color" || name === "line-width" || name === "line-gap-width"));
 });
 
+test("repaint wiring: two-tone LTS 3's ring layer (OWNER-DECISIONS 371) is repainted with the rest, transparent in a palette with no ring", () => {
+  const { map, paint } = recordingMap(["stress-ring-3"], undefined);
+  withSwitch(true, () => setStressPalette(map as never));
+  assert.deepEqual(paint.map(([id, name, value]) => [id, name, value]).filter(([, name]) => name === "line-color"), [["stress-ring-3", "line-color", "rgba(0, 0, 0, 0)"]], "cool has no ring");
+  assert.ok(paint.some(([id, name]) => id === "stress-ring-3" && name === "line-width"));
+});
+
 test("repaint wiring: LTS 2's gap layer (OWNER-DECISIONS 356) is repainted with the rest, in its colour and width", () => {
   const { map, paint } = recordingMap(["stress-gap-2"], undefined);
   withSwitch(true, () => setStressPalette(map as never));
