@@ -18,6 +18,7 @@ import {
 import type { RouteResponse } from "./lib/api.ts";
 import {
   ROUTE_BLUE,
+  ROUTE_HALO_WIDTH,
   ROUTE_CASING_PLAIN,
   ROUTE_CASING_WIDTH,
   ROUTE_LINE_WIDTH,
@@ -547,6 +548,15 @@ export function MapView(props: Props) {
       // made against the route's geometry, not against any layer, so a
       // second line layer changes nothing about grabbing or dragging it.
       map.addSource(ROUTE_STRESS_SOURCE, { type: "geojson", data: sectionFeatures(null) });
+      // A one-pixel halo under each section, dark or white by class, so the
+      // section is 3:1 from what touches it (lib/routeColours.ts, ROUTE_HALO_PATH).
+      map.addLayer({
+        id: "route-halo",
+        type: "line",
+        source: ROUTE_STRESS_SOURCE,
+        layout: { "line-join": "round", "line-cap": "round" },
+        paint: { "line-color": ["get", "halo"], "line-width": ROUTE_HALO_WIDTH, "line-opacity": 0 },
+      });
       map.addLayer({
         id: "route-stress",
         type: "line",

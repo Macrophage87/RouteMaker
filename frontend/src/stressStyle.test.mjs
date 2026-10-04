@@ -45,7 +45,11 @@ function paintValue(layer, name, properties, zoom = 12) {
   if (typeof value === "number" || typeof value === "string") return value;
   const expression = spec.createExpression(value, `layers[${layer.id}].paint.${name}`, spec.latest.paint_line[name]);
   assert.equal(expression.result, "success", JSON.stringify(expression.value));
-  return expression.value.evaluate({ zoom }, { type: 2, properties, geometry: [] });
+  const result = expression.value.evaluate({ zoom }, { type: 2, properties, geometry: [] });
+  // A colour comes back as channels 0-1; the palettes are written as "#rrggbb".
+  return result && typeof result.r === "number" && result.a === 1
+    ? `#${[result.r, result.g, result.b].map((n) => Math.round(n * 255).toString(16).padStart(2, "0")).join("")}`
+    : result;
 }
 
 /** The tiers' own layers. */
@@ -173,12 +177,15 @@ test("each tier has a casing layer drawn wider, in its own casing colour, on the
   casings.forEach((casing, i) => {
     assert.deepEqual(casing.filter, tiers[i].filter);
     assert.equal(casing["source-layer"], tiers[i]["source-layer"]);
-    assert.equal(casing.paint["line-color"], STRESS_TIERS[i].casing);
-    assert.notEqual(casing.paint["line-color"], STRESS_TIERS[i].color);
-    for (const zoom of [12, 14, 16]) {
-      const f = { tier: STRESS_TIERS[i].tier };
+    const f = { tier: STRESS_TIERS[i].tier };
+    assert.equal(paintValue(casing, "line-color", f, 14), STRESS_TIERS[i].casing);
+    assert.notEqual(paintValue(casing, "line-color", f, 14), STRESS_TIERS[i].color);
+    for (const zoom of [14, 16]) {
       assert.ok(paintValue(casing, "line-width", f, zoom) > paintValue(tiers[i], "line-width", f, zoom));
     }
+    // Where the line is faint (z12-13 for the busy tiers) the casing is a ring around it, not a band under it:
+    // as wide outside as the band would be, and no gap anywhere else.
+    assert.equal(paintValue(casing, "line-gap-width", f, 14), 0);
     assert.equal(casing.paint["line-dasharray"], undefined, "a casing is solid");
   });
   assert.equal(new Set([...casings, ...tiers].map((l) => l.id)).size, casings.length * 2);

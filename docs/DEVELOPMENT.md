@@ -3621,3 +3621,57 @@ turned round, since r1 does not pass them), and r1's own (the top of the slider'
 counting, the leg as found, the reading cut short, `settle`, the elevation kept, the near-tie bands). All
 212 are killed (one, the clock not read between checks, survived the first run and was killed by a test
 added for it). `scripts/mutants_longcalm.py`: 90 of 90 killed.
+
+### Route halo, faint-road edge and swatch borders (item 215, colours)
+
+WCAG 1.4.11 asks 3:1 of a graphic against what it touches. Three places fell short;
+`stressContrast.test.ts` holds each one.
+
+**The route line.** The route is drawn as a casing (blue, `ROUTE_BLUE`; slate
+`ROUTE_CASING_CVD` in the colour-blind-friendly palette), the sections in the stress
+colours, and nothing else. No one casing colour can be 3:1 from every class: contrast
+depends only on luminance, the amber, greens and unrated grey need a casing darker
+than about 0.045, and the traffic-free violet, LTS 4 and Avoid one lighter than about
+0.5 (the test scans every luminance and finds the best a single casing reaches is
+under 3:1). So each section carries a one-pixel halo, `route-halo` (a layer on the
+sections' source, width `ROUTE_HALO_WIDTH` 7 between the casing's 9 and the line's 5,
+colour in the feature's `halo` property, opacity set with the sections in
+`setRouteSections`): the tier's own casing, which is dark under LTS 1 to 3 and white
+under LTS 4 and Avoid (black and white with the switch on), the first tier's dark
+casing under the unrated grey, and white under the violet. The blue stays outside as
+the route's identity and is itself 3:1 from every base-map surface. The panel's route
+legend draws the same halo.
+
+| Class | default palette (halo, ratio) | colour-blind-friendly, switch on (halo, ratio) |
+|---|---|---|
+| Traffic-free #4c1d95 | #ffffff, 10.95 | #ffffff, 10.95 |
+| LTS 1 | #17301f, 8.36 | #000000, 16.92 |
+| LTS 2 | #17301f, 4.50 | #000000, 6.95 |
+| LTS 3 | #2b1a05, 4.53 | #000000, 4.61 |
+| LTS 4 | #ffffff, 7.31 | #ffffff, 12.66 |
+| Avoid | #ffffff, 15.75 | #ffffff, 19.74 |
+| Not rated | #17301f, 5.38 | #000000, 7.65 |
+
+Against the blue alone the default palette was 1.09:1 (LTS 4) to 3.95:1 (LTS 1).
+
+**Faint busy roads (z12-13, a road beside a bikeway, an alley).** `FAINT` keeps the
+owner's 40% opacity and 60% width ("faint", OWNER-DECISIONS 76). That is 1.1:1 to
+2.6:1 on the earth, and no faint line can be 3:1 without being the heavy line the owner
+did not want. The second cue is a thin dark edge: the tier's casing layer, where the
+line is faint, becomes a one-pixel ring around the line (`line-gap-width` equal to the
+faint line's width) at `FAINT.edgeOpacity` 0.65 of the casing when that is dark, else
+`FAINT.edge`. A ring, not a band under the line, so the tier's colour inside is not
+muddied. 3.61:1 or more from every base-map surface in both palettes. `setStressPalette`
+sets the gap too, since the switch changes the line widths. The trade: a faint road now
+reads as a hairline outline rather than as a tint.
+
+**Swatch borders.** `--swatch-border` (#7a808c light, #8b93a1 dark) for `.swatch` and
+`.stress-bar`: 3.97:1 and 5.4:1 on `--bg`, 3.60:1 and 4.65:1 on `--bg-soft`. `--border`
+(1.49:1 and 1.68:1) is unchanged, since it is also the panels' and inputs' border; the
+switch still sets the swatch borders to the text colour, and forced colours to CanvasText.
+
+Mutant pass on these changes (20 single-line mutants of the halo colours, the halo
+opacity and wiring, the faint edge's colour, opacity, width, gap and alley rule, the
+swatch tokens and the bar's border, the legend and the map layer): 17 killed at once;
+the 3 survivors (the edge's width, the legend's halo stroke, the map layer's halo
+colour) each got a test (`stressContrast.test.ts`) and are now killed.

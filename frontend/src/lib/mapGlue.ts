@@ -80,6 +80,8 @@ export function setStressPalette(
     if (!map.getLayer(layer.id)) continue;
     map.setPaintProperty(layer.id, "line-color", layer.paint["line-color"]);
     map.setPaintProperty(layer.id, "line-width", layer.paint["line-width"]);
+    // A casing is a ring around a faint line (stressStyle.js, FAINT), so its gap follows the line's width.
+    if ("line-gap-width" in layer.paint) map.setPaintProperty(layer.id, "line-gap-width", layer.paint["line-gap-width"]);
   }
   for (const facility of FACILITIES) {
     const id = `facility-${facility.facility}`;
@@ -113,6 +115,7 @@ export function setRouteSections(
   const paint = routePaint(sections !== null, stale);
   map.setPaintProperty("route-line", "line-opacity", paint.lineOpacity);
   map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
+  map.setPaintProperty("route-halo", "line-opacity", paint.haloOpacity);
   map.setPaintProperty("route-casing", "line-color", paint.casingColor);
 }
 

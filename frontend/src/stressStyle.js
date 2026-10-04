@@ -435,7 +435,27 @@ const besideBikeway = ["==", ["get", "separate_bikeway"], true];
 export const BUSY_MIN_TIER = 3;
 export const SOLID_MIN_ZOOM = 14;
 export const BESIDE_ROAD_MIN_ZOOM = 15;
-export const FAINT = { opacity: 0.4, widthScale: 0.6 };
+/**
+ * `opacity` and `widthScale` keep the line faint, as the owner chose. A faint
+ * line alone is 1.1-2.6:1 against the earth (the amber, the red and the dark
+ * red of the busy tiers, blended 40% into it), under WCAG 1.4.11's 3:1 for a
+ * graphic a rider needs, so it also carries a second cue that does not depend
+ * on its colour: a thin dark edge (`edgePx` wide each side, `edgeOpacity` of
+ * `edge`, or of the tier's own casing when that is dark), drawn as a ring
+ * around the line (line-gap-width) rather than as a band under it, so the
+ * tier's colour inside it is not muddied. 60% of a near black is at least
+ * 3.7:1 on every surface of the base map (stressContrast.test.ts); the trade
+ * is that a faint road reads as a hairline outline, not as nothing, and is not
+ * the heavy line it becomes at SOLID_MIN_ZOOM. No tier's line alone reaches
+ * 3:1 at 40% (1.1:1 to 2.6:1 on the earth); only a darker or heavier line
+ * would, which is what the owner asked it not to be.
+ */
+export const FAINT = { opacity: 0.4, widthScale: 0.6, edge: "#1c1917", edgeOpacity: 0.65, edgePx: 1 };
+
+/** The colour of a tier's faint edge: its casing when that is dark, else FAINT.edge. */
+export function faintEdgeColour(tier) {
+  return relativeLuminance(tier.casing) < 0.5 ? tier.casing : FAINT.edge;
+}
 
 /** An alley (the tiles' "alley"). */
 const isAlley = ["==", ["get", "alley"], true];
@@ -455,12 +475,12 @@ export const ALLEY_MIN_ZOOM = 16;
  * ALLEY_MIN_ZOOM and faint from it; a busy road faint, or not drawn, where the
  * rules above say; any other line as it is.
  */
-function byZoom(full, faint, busy) {
+function byZoom(full, faint, busy, hidden = 0) {
   const at = (zoom) => {
-    const alley = zoom >= ALLEY_MIN_ZOOM ? faint : 0;
+    const alley = zoom >= ALLEY_MIN_ZOOM ? faint : hidden;
     const road = !busy
       ? full
-      : ["case", besideBikeway, zoom >= BESIDE_ROAD_MIN_ZOOM ? faint : 0, zoom >= SOLID_MIN_ZOOM ? full : faint];
+      : ["case", besideBikeway, zoom >= BESIDE_ROAD_MIN_ZOOM ? faint : hidden, zoom >= SOLID_MIN_ZOOM ? full : faint];
     return ["case", isAlley, alley, road];
   };
   return [
@@ -511,6 +531,21 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
   }));
 }
 
+/**
+ * A tier's casing paint: the band under the line at full strength; where the
+ * line is faint, a thin dark ring around it (FAINT) as the second cue.
+ */
+function casingPaint(tier) {
+  const busy = tier.tier >= BUSY_MIN_TIER;
+  const edge = faintEdgeColour(tier);
+  return {
+    "line-color": byZoom(tier.casing, edge, busy, tier.casing),
+    "line-width": byZoom(casingWidth(tier), FAINT.edgePx, busy),
+    "line-gap-width": byZoom(0, tier.width * FAINT.widthScale, busy),
+    "line-opacity": byZoom(1, FAINT.edgeOpacity, busy),
+  };
+}
+
 /** The casing under each tier's line, drawn first so the tier sits on it. */
 export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);
@@ -520,7 +555,7 @@ export function stressCasingLayers(sourceId = "stress", when = DEFAULT_WHEN, tie
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-casing-${tier.tier}`],
-    paint: linePaint(tier.casing, casingWidth(tier), tier.tier >= BUSY_MIN_TIER),
+    paint: casingPaint(tier),
   }));
 }
 
