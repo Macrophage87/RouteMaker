@@ -1,28 +1,49 @@
-// OWNER-DECISIONS 301: "Even if the license doesn't require crediting them, sources need
-// citing." Every source a rider sees the work of is cited on the map, exactly these lines,
-// and the comparison data used only inside the project is named nowhere a rider sees.
-// The API's own credits (routing.ATTRIBUTION, the geocode credit) are tests/test_credits.py's.
+// OWNER-DECISIONS 301 ("sources need citing") and 306 ("keep it brief and put the full
+// information in documentation. Sort of like how you'd cite in a paragraph."): every source
+// a rider sees the work of is cited on the map by a short name, from credits.json, whose
+// texts tests/test_credits.py holds to docs/SOURCES.md's full references; and the
+// comparison data used only inside the project is named nowhere a rider sees.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAP_ATTRIBUTION, MAP_CREDITS, SOURCE_CREDITS } from "./mapStyle.ts";
+import { readFileSync } from "node:fs";
+import { BASEMAP } from "../stressStyle.js";
+import { CREDITS, MAP_ATTRIBUTION, MAP_CREDITS, buildStyle } from "./mapStyle.ts";
 
-test("every source a rider sees is cited, exactly these, whatever its licence asks (OWNER-DECISIONS 301)", () => {
-  const strip = (html: string) => html.replace(/<[^>]+>/g, "");
-  assert.deepEqual(MAP_CREDITS.map(strip), [
-    "© OpenStreetMap contributors (ODbL), © Protomaps",
-    "Stress tiers use traffic volume, and routing the Central Business District boundary, from the District Department of Transportation (DDOT), adapted, CC BY 4.0",
-    "Traffic volume: Virginia Department of Transportation (VDOT)",
-    "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia (Open Data DC), CC BY 4.0",
-    "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the District: Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, CC BY 4.0",
-    "Street speeds, one-way streets, bike facilities and trails in Baltimore: City of Baltimore, Open Baltimore",
-    "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress, Montgomery County Planning Department",
-    "Metro stations and entrances: District of Columbia (Open Data DC), CC BY 4.0",
-    "Federal land on the Mass Ride map: National Parks, Reservations and Military Bases, District of Columbia (Open Data DC), adapted, CC BY 4.0",
-    "Elevation and climb: U.S. Geological Survey 3D Elevation Program (3DEP)",
-    "Place search: Photon (komoot), Apache 2.0",
-  ]);
-  assert.deepEqual(SOURCE_CREDITS, MAP_CREDITS.slice(-2));
-  assert.ok(SOURCE_CREDITS.every((credit) => MAP_ATTRIBUTION.includes(credit)));
+const DATA = JSON.parse(readFileSync(new URL("./credits.json", import.meta.url), "utf8")) as Array<{ text: string; html: string }>;
+const strip = (html: string) => html.replace(/<[^>]+>/g, "");
+
+test("the credits are short source names, exactly these, OpenStreetMap first (OWNER-DECISIONS 306)", () => {
+  assert.deepEqual(
+    DATA.map((c) => c.text),
+    [
+      "© OpenStreetMap contributors (ODbL)",
+      "Protomaps",
+      "DC Open Data (CC BY 4.0, adapted)",
+      "VDOT",
+      "Open Baltimore",
+      "Montgomery County Planning Department",
+      "USGS 3DEP",
+      "U.S. Census Bureau",
+      "Photon",
+    ],
+  );
+  for (const credit of DATA) {
+    assert.equal(strip(credit.html), credit.text, "the text is the html without its links");
+    assert.ok(credit.text.length <= 40, `brief: ${credit.text}`);
+  }
+  // Links only where they are the citation's own: OpenStreetMap's copyright page and the CC BY licence.
+  const links = DATA.flatMap((c) => [...c.html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]));
+  assert.deepEqual(links, ["https://www.openstreetmap.org/copyright", "https://creativecommons.org/licenses/by/4.0/"]);
+});
+
+test("the map's attribution is credits.json, in its order, then the software licences", () => {
+  assert.deepEqual(CREDITS, DATA);
+  assert.deepEqual(MAP_CREDITS, DATA.map((c) => c.html));
+  assert.equal(MAP_ATTRIBUTION, [...DATA.map((c) => c.html), '<a href="/licenses.txt">Software licences</a>'].join(" | "));
+  // The base map source's own credit is folded into the one entry (MapLibre drops a part of a longer one).
+  assert.ok(MAP_ATTRIBUTION.startsWith(BASEMAP.attribution), BASEMAP.attribution);
+  assert.equal((buildStyle("https://x.example", []).sources.protomaps as { attribution: string }).attribution, BASEMAP.attribution);
+  assert.doesNotMatch(MAP_ATTRIBUTION, /Stress tiers use|Street speeds|Roadway Block|komoot/, "no long descriptions: those are docs/SOURCES.md's");
 });
 
 test("Arlington's and Alexandria's comparison data, internal only, is named nowhere a rider sees", async () => {

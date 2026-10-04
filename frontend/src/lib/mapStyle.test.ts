@@ -1,37 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { MAP_ATTRIBUTION, MAP_CREDITS, RAIL_CREDITS, STRESS_ZOOMS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
+import { MAP_ATTRIBUTION, MAP_CREDITS, STRESS_ZOOMS, buildStyle, stressSource, STRESS_SOURCE_ID } from "./mapStyle.ts";
 import { STRESS_PROTOCOL, httpUrl } from "./stressProtocol.ts";
 
 const ORIGIN = "https://routes.example.org";
 
-test("every map carries both base map credits and the volume sources' credits", () => {
+test("every map carries the base map's credits and each data source's, briefly (OWNER-DECISIONS 301, 306; credits.test.ts has the list)", () => {
   const all = MAP_CREDITS.join(" ");
   assert.match(all, /OpenStreetMap contributors/);
   assert.match(all, /ODbL/);
   assert.match(all, /Protomaps/);
-  assert.match(all, /District Department of Transportation|DDOT/);
-  assert.match(all, /CC BY 4\.0/);
-  assert.match(all, /Virginia Department of Transportation|VDOT/);
-  assert.match(all, /Architect of the Capitol boundary, District of Columbia \(Open Data DC\)/);
-});
-
-test("the agency street layers are credited as their licences ask", () => {
-  const credits = MAP_CREDITS.join(" ");
-  // DC's Roadway Block, CC BY 4.0: names DDOT and DC GIS, says it is adapted, links the licence.
-  assert.match(credits, /Roadway Block, District Department of Transportation \(DDOT\) \/ DC GIS \(Open Data DC\), adapted, <a href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/">CC BY 4\.0<\/a>/);
-  // The Roadway Block's AADT fills where no count layer reached a street.
-  assert.match(credits, /traffic counts in the District: Roadway Block/);
-  // Baltimore's, open by city code: the owner's credit line (OWNER-DECISIONS 159).
-  assert.match(credits, /City of Baltimore, Open Baltimore/);
-});
-
-test("Montgomery County Planning is credited now its LTS 5 roads are loaded as Avoid", () => {
-  // OWNER-DECISIONS 181: the credit goes in the same change as the rows. The layer's
-  // licence asks for "attribution to the Montgomery County Planning Department".
-  const montgomery = MAP_CREDITS.filter((line) => /Montgomery County Planning/.test(line));
-  assert.equal(montgomery.length, 1);
-  assert.match(montgomery[0], /Bicycle Level of Traffic Stress, Montgomery County Planning Department/);
+  // The District's layers (DDOT volume, the AOC boundary, the Roadway Block, Metro, federal land): CC BY 4.0, adapted.
+  assert.match(all, /DC Open Data \(<a href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/">CC BY 4\.0<\/a>, adapted\)/);
+  assert.match(all, /VDOT/);
+  // Baltimore's, open by city code (OWNER-DECISIONS 159), and Montgomery County Planning by the name its licence asks for (181).
+  assert.match(all, /Open Baltimore/);
+  assert.equal(MAP_CREDITS.filter((line) => line === "Montgomery County Planning Department").length, 1);
 });
 
 test("the base map source states its own credit, not the archive's half of it", () => {
@@ -72,14 +56,8 @@ test("the base map layers are passed through untouched", () => {
 });
 
 test("the credits read as one line with OpenStreetMap first", () => {
-  // MapLibre orders separate attribution entries by length, which put VDOT
-  // first; one combined entry keeps the order written here.
-  const order = [
-    "OpenStreetMap",
-    "Protomaps",
-    "District Department of Transportation",
-    "Virginia Department of Transportation",
-  ];
+  // MapLibre orders separate attribution entries by length; one combined entry keeps the order written here.
+  const order = ["OpenStreetMap", "Protomaps", "DC Open Data", "VDOT"];
   const at = order.map((name) => MAP_ATTRIBUTION.indexOf(name));
   assert.ok(at.every((i) => i >= 0), JSON.stringify(at));
   assert.deepEqual([...at].sort((x, y) => x - y), at);
@@ -88,18 +66,6 @@ test("the credits read as one line with OpenStreetMap first", () => {
 
 test("the licence notices are linked from the credits", () => {
   assert.match(MAP_ATTRIBUTION, /href="\/licenses\.txt"/);
-});
-
-test("the rail stations' source is credited on every map, after the base map's", () => {
-  const all = MAP_CREDITS.join(" ");
-  assert.match(all, /Open Data DC/);
-  const at = MAP_ATTRIBUTION.indexOf("Open Data DC");
-  assert.ok(at > MAP_ATTRIBUTION.indexOf("OpenStreetMap"));
-  assert.match(MAP_ATTRIBUTION.slice(at), /CC BY 4\.0/);
-});
-
-test("the rail credit links the CC BY 4.0 licence itself", () => {
-  assert.match(RAIL_CREDITS.join(" "), /href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/"/);
 });
 
 test("the stress source starts and ends where the zoom levels say", () => {

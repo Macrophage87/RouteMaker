@@ -153,9 +153,9 @@ MUTANTS: list[tuple[str, str, str, str, str]] = [
     ("popup: agency dropped", FL, "agency: props.agency ?? null", "agency: null", "ts"),
     (
         "credit: left off the map",
-        MS,
-        "  ...RAIL_CREDITS,\n  ...FEDERAL_CREDITS,\n",
-        "  ...RAIL_CREDITS,\n",
+        "frontend/src/lib/credits.json",
+        '</a>, adapted)"\n  },',
+        '</a>)"\n  },',
         "ts",
     ),
     # --- the build step -------------------------------------------------

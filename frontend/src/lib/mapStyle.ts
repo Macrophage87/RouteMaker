@@ -8,6 +8,7 @@
  * without the package installed.
  */
 import { BASEMAP } from "../stressStyle.js";
+import CREDITS_DATA from "./credits.json" with { type: "json" };
 import { protocolUrl } from "./stressProtocol.ts";
 
 export const BASEMAP_SOURCE_ID = "protomaps";
@@ -17,81 +18,33 @@ export const SPRITE_FLAVOR = "light";
 export const OPENING_ZOOM = 11.2;
 
 /**
- * Credits every map view carries (the public-tier rules, owner decision
- * 2026-09-26; docs/OPERATIONS.md, "Licences, and the credits every map must
- * carry"). The base map's two are on its source; the traffic-volume sources
- * shape the stress colours and the route breakdown, so they are credited on
- * every view whether or not the overlay is showing.
+ * The credits every map view carries, brief, as an in-text citation is
+ * (OWNER-DECISIONS 306, amending 301: "keep it brief and put the full information
+ * in documentation"): short source names, from credits.json, which
+ * tests/test_credits.py holds to the full references in docs/SOURCES.md (dataset,
+ * publisher, licence, link, date). Every source a rider sees the work of is here,
+ * whatever its licence asks (301):
+ *
+ * - OpenStreetMap, the base map, routing and place names (ODbL), and Protomaps,
+ *   the base map's style and tiles;
+ * - DC Open Data, one entry for every District layer used (DDOT traffic volume
+ *   and the Central Business District, the Architect of the Capitol boundary, the
+ *   Roadway Block, Metro stations and entrances, and the federal-land layers):
+ *   CC BY 4.0 asks for the licence and that the data was changed, so both stay;
+ * - VDOT traffic volume; Open Baltimore's streets and bike facilities;
+ * - Montgomery County Planning Department's Bicycle LTS (its licence asks for
+ *   that name);
+ * - USGS 3DEP elevation, for the climb and the Hills slider; the U.S. Census
+ *   Bureau's TIGER urban areas, which the stress tiers read; and Photon, the
+ *   place search.
+ *
+ * Comparison data used only inside the project is not shown anywhere
+ * (credits.test.ts holds it absent).
  */
-export const VOLUME_CREDITS: readonly string[] = [
-  'Stress tiers use traffic volume, and routing the Central Business District boundary, from the ' +
-    'District Department of Transportation (DDOT), adapted, ' +
-    '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
-  "Traffic volume: Virginia Department of Transportation (VDOT)",
-  "Routing the Capitol grounds: Architect of the Capitol boundary, District of Columbia " +
-    '(Open Data DC), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
-  // DC's Roadway Block sets the District's posted speeds, lanes each way, one-way
-  // streets, bike lanes, parking and, where no count layer reached a street, its
-  // traffic count (fixtures/datasets); parsed and combined with OSM, so it is
-  // "adapted".
-  "Street speeds, lanes, one-way streets, bike lanes, parking and traffic counts in the District: " +
-    "Roadway Block, District Department of Transportation (DDOT) / DC GIS (Open Data DC), adapted, " +
-    '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
-  // Baltimore's street centerline (speeds where OSM has none, one-way streets) and
-  // its bike facilities and trails (the 2026-10-01 override file). Open licence by
-  // Baltimore City Code Art. 1 §9-1(h); the items carry no credit field, and this
-  // line is the owner's (OWNER-DECISIONS 159).
-  "Street speeds, one-way streets, bike facilities and trails in Baltimore: City of Baltimore, " +
-    "Open Baltimore",
-  // Montgomery County Planning's Bicycle Level of Traffic Stress: its LTS 5 roads are
-  // loaded as Avoid (OWNER-DECISIONS 149, 181). Its licence asks for "attribution to
-  // the Montgomery County Planning Department".
-  "Roads to avoid in Montgomery County: Bicycle Level of Traffic Stress, Montgomery County " +
-    "Planning Department",
-];
-
-/**
- * The rail stations' layers (src/rail-data/README.md). The MARC Penn Line's
- * stations are OpenStreetMap's and need nothing beyond the ODbL credit.
- */
-export const RAIL_CREDITS: readonly string[] = [
-  'Metro stations and entrances: District of Columbia (Open Data DC), ' +
-    '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
-];
-
-/**
- * The Mass Ride map's federal-land shading (fixtures/datasets/README.md,
- * "Federal land"): DC's National Parks (NPS Map A), Reservations and Military
- * Bases layers, merged and simplified, so "adapted"; the Capitol grounds in it
- * are the Architect of the Capitol boundary already credited above.
- */
-export const FEDERAL_CREDITS: readonly string[] = [
-  "Federal land on the Mass Ride map: National Parks, Reservations and Military Bases, District of Columbia " +
-    '(Open Data DC), adapted, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
-];
-
-/**
- * The other sources a rider sees the work of (OWNER-DECISIONS 301: "Even if the
- * license doesn't require crediting them, sources need citing."): the elevation
- * the climb and the Hills slider read, and the place search. Text only. The
- * route answer and the search answer carry their own credits as well (the API's
- * ATTRIBUTION and the geocode credit), shown under the route and the search.
- * The two Northern Virginia jurisdictions' stress data, a comparison used only
- * inside the project, is not shown anywhere (mapStyle.test.ts holds it absent).
- */
-export const SOURCE_CREDITS: readonly string[] = [
-  "Elevation and climb: U.S. Geological Survey 3D Elevation Program (3DEP)",
-  "Place search: Photon (komoot), Apache 2.0",
-];
+export const CREDITS: ReadonlyArray<{ text: string; html: string }> = CREDITS_DATA;
 
 /** In the order the map shows them: OpenStreetMap first. */
-export const MAP_CREDITS: readonly string[] = [
-  BASEMAP.attribution,
-  ...VOLUME_CREDITS,
-  ...RAIL_CREDITS,
-  ...FEDERAL_CREDITS,
-  ...SOURCE_CREDITS,
-];
+export const MAP_CREDITS: readonly string[] = CREDITS.map((credit) => credit.html);
 
 /**
  * The attribution control's one entry. MapLibre sorts separate entries by

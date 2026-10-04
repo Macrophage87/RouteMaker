@@ -1,0 +1,17 @@
+[
+  {
+    "text": "© OpenStreetMap contributors (ODbL)",
+    "html": "<a href=\"https://www.openstreetmap.org/copyright\">© OpenStreetMap contributors</a> (ODbL)"
+  },
+  { "text": "Protomaps", "html": "Protomaps" },
+  {
+    "text": "DC Open Data (CC BY 4.0, adapted)",
+    "html": "DC Open Data (<a href=\"https://creativecommons.org/licenses/by/4.0/\">CC BY 4.0</a>, adapted)"
+  },
+  { "text": "VDOT", "html": "VDOT" },
+  { "text": "Open Baltimore", "html": "Open Baltimore" },
+  { "text": "Montgomery County Planning Department", "html": "Montgomery County Planning Department" },
+  { "text": "USGS 3DEP", "html": "USGS 3DEP" },
+  { "text": "U.S. Census Bureau", "html": "U.S. Census Bureau" },
+  { "text": "Photon", "html": "Photon" }
+]

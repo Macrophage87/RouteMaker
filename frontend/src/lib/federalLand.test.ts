@@ -44,7 +44,7 @@ import {
   federalStatusText,
 } from "./federalLegend.ts";
 import { PRESETS } from "./presets.ts";
-import { FEDERAL_CREDITS, MAP_ATTRIBUTION, MAP_CREDITS } from "./mapStyle.ts";
+import { MAP_ATTRIBUTION, MAP_CREDITS } from "./mapStyle.ts";
 
 const KINDS_IN_DATA: FederalKind[] = ["capitol", "military", "nps", "reservation"];
 
@@ -397,12 +397,8 @@ test("the file is small enough to send to a phone, and names an agency on the Na
 
 // ---------- the credit ----------
 
-test("the credit for the DC layers rides on every map view, CC BY 4.0, linked", () => {
-  assert.equal(FEDERAL_CREDITS.length, 1);
-  const credit = FEDERAL_CREDITS[0];
-  assert.match(credit, /National Parks, Reservations and Military Bases/);
-  assert.match(credit, /District of Columbia \(Open Data DC\), adapted/);
-  assert.match(credit, /href="https:\/\/creativecommons\.org\/licenses\/by\/4\.0\/">CC BY 4\.0<\/a>/);
-  assert.ok(MAP_CREDITS.includes(credit));
-  assert.ok(MAP_ATTRIBUTION.includes(credit));
+test("the DC layers' credit rides on every map view, briefly: DC Open Data, CC BY 4.0 linked, adapted (OWNER-DECISIONS 306)", () => {
+  const credit = MAP_CREDITS.find((c) => /DC Open Data/.test(c));
+  assert.equal(credit, 'DC Open Data (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, adapted)');
+  assert.ok(MAP_ATTRIBUTION.includes(credit!));
 });

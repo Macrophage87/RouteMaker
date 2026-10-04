@@ -50,6 +50,7 @@ SW = "frontend/src/lib/highStressLanesSwitch.ts"
 LEG = "frontend/src/lib/stressLegend.ts"
 RC = "frontend/src/lib/routeColours.ts"
 MS = "frontend/src/lib/mapStyle.ts"
+CJ = "frontend/src/lib/credits.json"
 D = "src/routemaker/describe.py"
 G = "src/core/routing.py"
 R = "src/core/refine.py"
@@ -797,20 +798,36 @@ MUTANTS: list[tuple[str, str, str, str, str, list[str]]] = [
         "ts",
         TS,
     ),
-    # --- 301: the sources cited --------------------------------------------------------
+    # --- 301, 306: the sources cited, briefly (lib/credits.json) ----------------------
     (
-        "K1 the other sources not cited",
-        MS,
-        "  ...FEDERAL_CREDITS,\n  ...SOURCE_CREDITS,\n];",
-        "  ...FEDERAL_CREDITS,\n];",
+        "K1 elevation not cited",
+        CJ,
+        '  { "text": "USGS 3DEP", "html": "USGS 3DEP" },\n',
+        "",
         "ts",
         TS,
     ),
     (
-        "K2 elevation not cited",
+        "K2 the CC BY licence not linked",
+        CJ,
+        'DC Open Data (<a href=\\"https://creativecommons.org/licenses/by/4.0/\\">CC BY 4.0</a>, adapted)',
+        "DC Open Data (CC BY 4.0, adapted)",
+        "ts",
+        TS,
+    ),
+    (
+        "K3 a long description back",
+        CJ,
+        '{ "text": "VDOT", "html": "VDOT" }',
+        '{ "text": "VDOT", "html": "Traffic volume: Virginia Department of Transportation (VDOT)" }',
+        "ts",
+        TS,
+    ),
+    (
+        "K4 the map ignores credits.json's order",
         MS,
-        '  "Elevation and climb: U.S. Geological Survey 3D Elevation Program (3DEP)",\n',
-        "",
+        "export const MAP_CREDITS: readonly string[] = CREDITS.map((credit) => credit.html);",
+        "export const MAP_CREDITS: readonly string[] = CREDITS.map((credit) => credit.html).reverse();",
         "ts",
         TS,
     ),

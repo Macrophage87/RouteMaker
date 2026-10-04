@@ -500,9 +500,9 @@ export const BASEMAP = {
   protocol: "pmtiles",
   path: "/basemap/region.pmtiles",
   url: "pmtiles:///basemap/region.pmtiles",
-  attribution:
-    '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> (ODbL)' +
-    ', <a href="https://protomaps.com">© Protomaps</a>',
+  // Brief (OWNER-DECISIONS 306), and the first two of lib/credits.json as the
+  // attribution control joins them, so MapLibre folds this into its one entry.
+  attribution: '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a> (ODbL) | Protomaps',
 };
 
 // The stress tiles' layer and property, per the SHARED API CONTRACT for
