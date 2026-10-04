@@ -328,7 +328,8 @@ test("each facility layer draws its own dash, or none", () => {
 test("an unknown tier's rails still show beyond the casing", () => {
   for (const layer of facilityLayers("s")) {
     const width = layer.paint["line-width"];
-    assert.ok(width.at(-1) >= STRESS_TIERS[0].width + CASING_EXTRA_PX + 2);
+    // The full-width branch of the zoom step (from z12), then its match's fallback.
+    assert.ok(width.at(-1).at(-1) >= STRESS_TIERS[0].width + CASING_EXTRA_PX + 2);
   }
 });
 

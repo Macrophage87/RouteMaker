@@ -439,8 +439,8 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
 test("a flip widens the lines, the casings and the facility rails, and nothing else about the shapes", () => {
   const widthAt14 = (layer: { paint: Record<string, unknown> }) => {
     const expression = layer.paint["line-width"] as unknown[];
-    // ["step", ["zoom"], at(13), 14, at(14), ...]: the value from zoom 14 is the 5th entry; a tier-1 road is the plain branch.
-    const at14 = expression[4] as unknown[];
+    // ["step", ["zoom"], thin(10), 11, thin(11), 12, at(13), 14, at(14), ...]: the value from zoom 14 follows the stop 14; a tier-1 road is the plain branch.
+    const at14 = expression[expression.indexOf(14) + 1] as unknown[];
     const road = at14[3] as unknown;
     return typeof road === "number" ? road : (road as unknown[])[3];
   };
@@ -474,13 +474,15 @@ test("the legend's widths are the map's: each tier's line and casing, and the fa
 });
 
 test("a facility's rails for a tier the style has no entry for are LTS 1's, casing included, plain and strong", () => {
-  const fallback = (tiers: ReturnType<typeof tiersFor>) => (facilityWidthAt(FACILITIES[0], undefined, tiers) as unknown[]).at(-1);
+  // The full-width branch of the zoom step (from z12), then its match's fallback.
+  const full = (width: unknown) => ((width as unknown[]).at(-1) as unknown[]).at(-1);
+  const fallback = (tiers: ReturnType<typeof tiersFor>) => full(facilityWidthAt(FACILITIES[0], undefined, tiers));
   assert.equal(fallback(tiersFor("blended")), 9.5);
   assert.equal(fallback(tiersFor("cvd", true)), 11);
-  withSwitch(true, () => assert.equal((facilityWidthAt(FACILITIES[0]) as unknown[]).at(-1), 11));
+  withSwitch(true, () => assert.equal(full(facilityWidthAt(FACILITIES[0])), 11));
   // The painted rail's own strong width reaches the fallback too.
   const lane = FACILITIES.find((f: { facility: string }) => f.facility === "lane");
-  assert.equal((facilityWidthAt(lane, undefined, tiersFor("cvd", true)) as unknown[]).at(-1), 9);
+  assert.equal(full(facilityWidthAt(lane, undefined, tiersFor("cvd", true))), 9);
 });
 
 test("the route's casing and the unrated grey follow the palette: the colour-blind-friendly one has its own", () => {

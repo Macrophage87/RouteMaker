@@ -328,7 +328,7 @@ export function gapLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = curr
           // Solid, the line's width, under the dashes: what shows between them. Not drawn where the line is
           // faint (the casing is then a ring, FAINT), so a faint road is as it was.
           "line-color": byUnpaved(tier.unpavedGap, tier.gap),
-          "line-width": byZoom(tier.width, tier.width * FAINT.widthScale, busy),
+          "line-width": byZoom(tier.width, tier.width * FAINT.widthScale, busy, 0, (zoom) => zoomedOutLine(tier, zoom)),
           "line-opacity": byZoom(1, 0, busy),
         },
       };
@@ -672,6 +672,29 @@ const besideBikeway = ["==", ["get", "separate_bikeway"], true];
 export const BUSY_MIN_TIER = 3;
 export const SOLID_MIN_ZOOM = 14;
 export const BESIDE_ROAD_MIN_ZOOM = 15;
+
+/**
+ * THE ZOOMED-OUT WIDTHS (OWNER-DECISIONS 375, 2026-10-04: "Also zoomed out, can we
+ * stick to mostly the longer trails, it's getting messy." and, of the line
+ * casings, that they look very fat at those zooms). At z10 and z11 a path was
+ * drawn at its full width (2.5 px, a 2 px casing, and path rails 2.5 px each
+ * side: 9.5 px a line), which is what turned Columbia's pathways into solid
+ * blobs. Below FULL_WIDTH_MIN_ZOOM (12, `STRESS_ZOOMS.busy`, which a test holds
+ * equal) every width is scaled: the line, the casing's extra and the rails each
+ * by its own factor at z10 and at z11, so a long trail reads as a line and not
+ * a ribbon (a path is 4.4 px at z10, 6.4 px at z11). The colours are not
+ * touched: the two-tone palette and the brown unpaved ramp keep their line and
+ * casing colours, so every line is still 3:1 from its casing and the base map,
+ * and the casing and rails (the edge a low-vision rider sees) stay at least
+ * half a pixel and a pixel wide. The accessibility switch's extra width is
+ * scaled with them, so it stays stronger than the default at every zoom.
+ */
+export const FULL_WIDTH_MIN_ZOOM = 12;
+export const ZOOMED_OUT_SCALE = {
+  10: { line: 0.55, casing: 0.5, rail: 0.4 },
+  11: { line: 0.75, casing: 0.75, rail: 0.6 },
+};
+
 /**
  * `opacity` and `widthScale` keep the line faint, as the owner chose. A faint
  * line alone is 1.1-2.6:1 against the earth (the amber, the red and the dark
@@ -712,7 +735,7 @@ export const ALLEY_MIN_ZOOM = 16;
  * ALLEY_MIN_ZOOM and faint from it; a busy road faint, or not drawn, where the
  * rules above say; any other line as it is.
  */
-function byZoom(full, faint, busy, hidden = 0) {
+function byZoom(full, faint, busy, hidden = 0, zoomedOut = null) {
   const at = (zoom) => {
     const alley = zoom >= ALLEY_MIN_ZOOM ? faint : hidden;
     const road = !busy
@@ -720,9 +743,14 @@ function byZoom(full, faint, busy, hidden = 0) {
       : ["case", besideBikeway, zoom >= BESIDE_ROAD_MIN_ZOOM ? faint : hidden, zoom >= SOLID_MIN_ZOOM ? full : faint];
     return ["case", isAlley, alley, road];
   };
+  // The zoomed-out grades (ZOOMED_OUT_SCALE): `zoomedOut(zoom)` is the value at
+  // z10 or z11, ahead of the full-width steps. Only for a line that is not a
+  // busy road, which the tiles do not carry there.
+  const out = zoomedOut && !busy ? [zoomedOut(10), 11, zoomedOut(11), FULL_WIDTH_MIN_ZOOM] : [];
   return [
     "step",
     ["zoom"],
+    ...out,
     at(SOLID_MIN_ZOOM - 1),
     SOLID_MIN_ZOOM,
     at(SOLID_MIN_ZOOM),
@@ -733,11 +761,21 @@ function byZoom(full, faint, busy, hidden = 0) {
   ];
 }
 
+/** The line width a tier is drawn at, z10 or z11 (ZOOMED_OUT_SCALE). */
+export function zoomedOutLine(tier, zoom) {
+  return tier.width * ZOOMED_OUT_SCALE[zoom].line;
+}
+
+/** The casing width at z10 or z11: the thinned line and the casing's thinned extra. */
+export function zoomedOutCasing(tier, zoom) {
+  return zoomedOutLine(tier, zoom) + (tier.casingExtra ?? CASING_EXTRA_PX) * ZOOMED_OUT_SCALE[zoom].casing;
+}
+
 /** A line's paint, faint and late as byZoom says. */
-function linePaint(color, width, busy) {
+function linePaint(color, width, busy, zoomedOut = null) {
   return {
     "line-color": color,
-    "line-width": byZoom(width, width * FAINT.widthScale, busy),
+    "line-width": byZoom(width, width * FAINT.widthScale, busy, 0, zoomedOut),
     "line-opacity": byZoom(1, FAINT.opacity, busy),
   };
 }
@@ -778,7 +816,7 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
-    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
+    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER, (zoom) => zoomedOutLine(tier, zoom)), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
 }
 
@@ -798,6 +836,16 @@ export function unpavedWidth(tier) {
   return Math.max(1.5, tier.width * 0.4);
 }
 
+/** The unpaved mark's width at z10 or z11: three fifths of the thinned line, so it stays inside it (ZOOMED_OUT_SCALE). */
+export function zoomedOutUnpavedWidth(tier, zoom) {
+  return zoomedOutLine(tier, zoom) * 0.6;
+}
+
+/** The mark's width by zoom: thinned below FULL_WIDTH_MIN_ZOOM, `unpavedWidth` from it. */
+function unpavedWidthByZoom(tier) {
+  return ["step", ["zoom"], zoomedOutUnpavedWidth(tier, 10), 11, zoomedOutUnpavedWidth(tier, 11), FULL_WIDTH_MIN_ZOOM, unpavedWidth(tier)];
+}
+
 export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = currentTiers()) {
   const filters = stressFilters(when);
   return tiers.map((tier) => ({
@@ -809,7 +857,7 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
     paint: {
       // The dots in the unpaved casing, which stands apart from the brown line (OWNER-DECISIONS 302).
       "line-color": tier.unpavedCasing,
-      "line-width": unpavedWidth(tier),
+      "line-width": unpavedWidthByZoom(tier),
       "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
       "line-dasharray": UNPAVED_DASH,
     },
@@ -826,7 +874,7 @@ function casingPaint(tier) {
   const full = byUnpaved(tier.unpavedCasing, tier.casing);
   return {
     "line-color": byZoom(full, edge, busy, full),
-    "line-width": byZoom(casingWidth(tier), FAINT.edgePx, busy),
+    "line-width": byZoom(casingWidth(tier), FAINT.edgePx, busy, 0, (zoom) => zoomedOutCasing(tier, zoom)),
     "line-gap-width": byZoom(0, tier.width * FAINT.widthScale, busy),
     "line-opacity": byZoom(1, FAINT.edgeOpacity, busy),
   };
@@ -1021,7 +1069,17 @@ export function facilityWidth(facility, tierWidth, casingExtra = CASING_EXTRA_PX
  */
 export function facilityWidthAt(facility, when = DEFAULT_WHEN, tiers = currentTiers()) {
   const byTier = tiers.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width, tier.casingExtra, tier.strong)]);
-  return ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra, tiers[0].strong)];
+  const full = ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra, tiers[0].strong)];
+  const thinned = (zoom) => {
+    const byTierOut = tiers.flatMap((tier) => [tier.tier, zoomedOutFacilityWidth(facility, tier, zoom)]);
+    return ["match", tierAt(when), ...byTierOut, zoomedOutFacilityWidth(facility, tiers[0], zoom)];
+  };
+  return ["step", ["zoom"], thinned(10), 11, thinned(11), FULL_WIDTH_MIN_ZOOM, full];
+}
+
+/** A facility's rails at z10 or z11: the thinned casing, and the rail's own thinned width each side (ZOOMED_OUT_SCALE). */
+export function zoomedOutFacilityWidth(facility, tier, zoom) {
+  return zoomedOutCasing(tier, zoom) + 2 * railWidth(facility, tier.strong) * ZOOMED_OUT_SCALE[zoom].rail;
 }
 
 /**
