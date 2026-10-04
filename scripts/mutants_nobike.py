@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: E501
 """Mutation pass over the NO-BIKE-PATHS rules (OWNER-DECISIONS 278, 280, 281, 291).
 
 Each mutant changes one line of `routemaker.trailaccess`, `routemaker.zoo` or
