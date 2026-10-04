@@ -35,6 +35,11 @@ SKIP = ["src/lib/skipLink.test.ts"]
 FIXES = ["src/a11yFixes.test.ts"]
 STYLES = ["src/stylesAccessibility.test.ts", "src/a11yFixes.test.ts"]
 DIALS = ["src/lib/dialsPanel.test.ts"]
+TARGET = ["src/lib/targetDistance.test.ts"]
+LOOP = ["src/lib/loop.test.ts"]
+CANDS = ["src/lib/candidates.test.ts"]
+LANES = ["src/lib/highStressLanes.test.ts"]
+FEDERAL = ["src/lib/federalLand.test.ts"]
 
 JC = "src/lib/junctionCard.ts"
 IM = "src/lib/intersectionMarkers.ts"
@@ -46,6 +51,14 @@ MV = "src/MapView.tsx"
 DP = "src/DialsPanel.tsx"
 APP = "src/App.tsx"
 DPL = "src/lib/dialsPanel.ts"
+DI = "src/lib/dials.ts"
+CA = "src/lib/candidates.ts"
+CP = "src/lib/candidatePicker.ts"
+LO = "src/lib/loop.ts"
+SW = "src/lib/highStressLanesSwitch.ts"
+RD = "src/lib/routeDescription.ts"
+FG = "src/lib/federalLegend.ts"
+FD = "src/lib/federalLand.ts"
 
 MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     # --- the junction card's focus ------------------------------------------
@@ -154,19 +167,42 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         'label: "Higher stress", short: "Higher"',
         MARKERS,
     ),
+    # (The release review's stale_fe.py: long-calm appended the target and the loop note, and
+    # the a11y review's N4 the other routes to choose from.)
     (
         "announcement drops the reds",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route)]",
-        "[figures, detourSaid(route, points)]",
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
+        "[figures, detourSaid(route, points), targetSaid(route), loopNote(route), others]",
         SUMMARY,
     ),
     (
         "announcement drops the detour",
         SU,
-        "[figures, detourSaid(route, points), redJunctionsSaid(route)]",
-        "[figures, redJunctionsSaid(route)]",
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
+        "[figures, redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
         SUMMARY,
+    ),
+    (
+        "announcement drops the target",
+        SU,
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), loopNote(route), others]",
+        SUMMARY + TARGET,
+    ),
+    (
+        "announcement drops the loop note",
+        SU,
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), others]",
+        SUMMARY + LOOP,
+    ),
+    (
+        "announcement drops the other routes",
+        SU,
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]",
+        "[figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route)]",
+        SUMMARY + CANDS,
     ),
     (
         "reds counted as oranges",
@@ -230,10 +266,56 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "Planning said again",
         APP,
-        '      {status.kind === "loading" && <p className="loading">{announcement}</p>}\n      <div role="status" aria-live="polite" className="status-line">\n',
-        '      <div role="status" aria-live="polite" className="status-line">\n      {status.kind === "loading" && <p className="loading">{announcement}</p>}\n',
+        '      {status.kind === "loading" && <p className="loading">{announcement}</p>}\n      {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}\n      <div role="status" aria-live="polite" className="status-line">\n',
+        '      {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}\n      <div role="status" aria-live="polite" className="status-line">\n      {status.kind === "loading" && <p className="loading">{announcement}</p>}\n',
         FIXES,
     ),
+    # --- the release's a11y review (SF1-SF6, N1-N10) and spec NITs -----------
+    (
+        "still planning said at once",
+        APP,
+        '{status.kind === "loading" && slow && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}',
+        '{status.kind === "loading" && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}',
+        FIXES,
+    ),
+    ("still planning after no wait", SU, "export const STILL_PLANNING_AFTER_MS = 3000;", "export const STILL_PLANNING_AFTER_MS = 0;", SUMMARY),
+    ("still planning blames calm everywhere", SU, '  const calm = preset !== "mass-ride" && (dials?.stress ?? 0) > STRESS_TODAYS_TOP;', "  const calm = true;", SUMMARY),
+    ("a choice said as planned", SU, '  const head = how.chosen ? `Route ${how.chosen.rank} of ${how.chosen.of} chosen: ` : "Route planned: ";', '  const head = "Route planned: ";', SUMMARY + CANDS),
+    ("a choice said with the others", SU, "  const others = !how.chosen && how.others ? othersSaid(how.others) : null;", "  const others = how.others ? othersSaid(how.others) : null;", SUMMARY + CANDS),
+    ("rank with no separator", CA, '  return rank === 1 && calmest ? "Route 1, the calmest:" : `Route ${rank}:`;', '  return rank === 1 && calmest ? "Route 1, the calmest" : `Route ${rank}`;', CANDS),
+    ("Route 1 always the calmest", CA, '  return rank === 1 && calmest ? "Route 1, the calmest:" : `Route ${rank}:`;', '  return rank === 1 ? "Route 1, the calmest:" : `Route ${rank}:`;', CANDS),
+    ("zero junctions said", CA, "  if (stats.red > 0) parts.push(", "  parts.push(", CANDS),
+    ("zero busy road said", CA, "  if (stats.lts3M >= SAID_AS_ZERO_M) parts.push(", "  parts.push(", CANDS),
+    ("radios described by the hint", CP, '          "aria-describedby": row.line ? `${id}-line-${index}` : undefined,', '          "aria-describedby": hintId,', CANDS),
+    ("radios named by their whole label", CP, '          "aria-labelledby": `${id}-name-${index}`,\n', "", CANDS),
+    ("fieldset not described by the hint", CP, '{ className: "candidates", "aria-describedby": hintId }', '{ className: "candidates" }', CANDS),
+    ("hint mentions a target never set", CA, "  const first = target\n", "  const first = true\n", CANDS),
+    ("the target rule loses its kilometres", DPL, "    rule: `Enter ${milesRange(TARGET_MIN_MILES, TARGET_MAX_MILES, TARGET_MIN_M, TARGET_MAX_M)}, or leave it empty.`,", "    rule: `Enter ${TARGET_MIN_MILES} to ${TARGET_MAX_MILES}, or leave it empty.`,", TARGET),
+    ("the weight rule loses its kilograms", DPL, "    rule: `Enter ${poundsRange(lo, hi, SYSTEM_WEIGHT_MIN_KG, SYSTEM_WEIGHT_MAX_KG)}, or leave it empty.`,", "    rule: `Enter ${lo} to ${hi}, or leave it empty.`,", TARGET),
+    ("weight to whole kilograms again", DPL, "  const kg = Math.round((Number(trimmed) / LB_PER_KG) * 10) / 10;", "  const kg = Math.round(Number(trimmed) / LB_PER_KG);", TARGET),
+    ("the link's weight to whole kilograms", DI, "  const tenth = Math.round(kg * 10) / 10;", "  const tenth = Math.round(kg);", TARGET),
+    ("weight sent in tenths", DI, "  if (weight !== undefined) fields.system_weight_kg = Math.round(weight);", "  if (weight !== undefined) fields.system_weight_kg = weight;", TARGET),
+    ("target description with the detail again", DPL, "    hint,\n    how: TARGET_HOW,", "    hint: `${hint} ${TARGET_HOW}`,\n    how: TARGET_HOW,", TARGET),
+    ("calm note with the order again", DPL, '    return "Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is.";', '    return `Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is. ${CALM_HOW}`;', DIALS),
+    ("hills seek note at the top as below", DPL, "draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE", "SEEK_NOTE", DIALS),
+    ("no-fit keyed on limited", SU, "  if (search?.no_fit === true && target) {", '  if ((search?.no_fit === true || search?.limited === "target_distance") && target) {', TARGET),
+    ("no-fit never past the ceiling", SU, "    const pastCeiling = ceiling !== null && length !== null && length > ceiling;", "    const pastCeiling = false;", TARGET),
+    ("ceiling stop unsaid", SU, '  } else if (search?.limited === "ceiling") {', "  } else if (false) {", TARGET + SUMMARY),
+    ("old target_distance blamed on busier roads", SU, '        search?.limited === "target_distance"\n          ? `It is ${formatDistance(over)} over your target.`', '        false\n          ? `It is ${formatDistance(over)} over your target.`', TARGET),
+    ("nested brackets back", SU, "No route within your target distance of ${formatDistance(target)} was found.", "No route within your target distance (${formatDistance(target)}) was found.", TARGET),
+    ("seek note: calm_first unsaid", SU, '    case "calm_first":\n', '    case "calm_first_never":\n', SUMMARY),
+    ("the router's own route again", SU, "in a straight line, so this is the usual route for this ride type.`,", "in a straight line, so this is the router's own route.`,", SUMMARY),
+    ("loop overlap in nested brackets", LO, "% of the way back, ${formatDistance(loop.shared_m)}, is on roads", "% of the way back (${formatDistance(loop.shared_m)}) is on roads", LOOP),
+    ("lanes switch words for the map with no map", SW, "overlay ? HIGH_STRESS_LANES_HINT : HIGH_STRESS_LANES_NO_MAP_HINT", "HIGH_STRESS_LANES_HINT", LANES),
+    ("lanes switch says LTS 4 and Avoid", SW, '"Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden on the map and in the route.', '"Painted lanes on LTS 4 and Avoid roads are hidden on the map and in the route.', LANES),
+    ("lanes-hidden note always", RD, "  if (showHighStressLanes) return null;\n  const shown", "  const shown", LANES),
+    ("lanes-hidden note never", RD, "  return shown.some((entry) => withoutHighStressLane(entry) !== entry) ? LANES_HIDDEN_NOTE : null;", "  return null;", LANES),
+    ("federal status inserted with its text", FG, '    h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),', '    federalStatusText(on, status) && h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),', FEDERAL),
+    ("federal points list dropped", FG, "    h(FederalPointsList, { found: points, count: pointCount, nameOf }),\n", "", FEDERAL),
+    ("federal holes ignored", FD, " && !rings.slice(1).some((hole) => inRing(point, hole))", "", FEDERAL),
+    ("federal least specific area", FD, "FEDERAL_KINDS.indexOf(feature.properties.kind) < FEDERAL_KINDS.indexOf(best.properties.kind)", "FEDERAL_KINDS.indexOf(feature.properties.kind) > FEDERAL_KINDS.indexOf(best.properties.kind)", FEDERAL),
+    ("federal help promises again", FG, '  "manager; the list under the switch names the areas your points are on.";', '  "manager; callouts at each stop are coming, above.";', FEDERAL),
+    ("toggle target 21 px again", CSS, "  /* A 24 px target (WCAG 2.5.8) without leaning on the spacing exception (the a11y review's N7). */\n  min-height: 24px;\n", "", FIXES),
     # --- the skip link -------------------------------------------------------
     ("skip link follows the hash", SK, "  event.preventDefault();\n", "", SKIP),
     ("skip link does not focus", SK, "  planner.focus();\n", "", SKIP),
@@ -304,12 +386,19 @@ def main() -> int:
     parser.add_argument("node_modules")
     parser.add_argument("--only")
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--check", action="store_true", help="only check that each old text occurs once")
     args = parser.parse_args()
     mutants = [m for m in MUTANTS if args.only is None or m[0] == args.only]
     if args.list:
         for name, *_ in mutants:
             print(name)
         return 0
+    if args.check:
+        bad = [m[0] for m in mutants if (ROOT / "frontend" / m[1]).read_text().count(m[2]) != 1]
+        for name in bad:
+            print(f"STALE {name}")
+        print(f"{len(mutants) - len(bad)} of {len(mutants)} apply")
+        return len(bad)
     with tempfile.TemporaryDirectory() as tmp:
         work = Path(tmp) / "frontend"
         shutil.copytree(
