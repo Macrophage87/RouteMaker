@@ -92,16 +92,17 @@ def test_the_rule_says_when_the_street_median_crossed_a_volume_gate(tmp_path, mo
     # A way whose count stands, or moved without crossing a gate, says nothing.
     unchanged = next(i for i, m in context.aadt_by_way.items() if m.raw_aadt is None)
     assert "median" not in context.stress_by_way[unchanged].rule
-    from pipeline.aadt_smoothing import crosses_volume_gate
 
-    moved_within_a_band = [
-        s
-        for s in context.smoothing_report.replaced
-        if not crosses_volume_gate(s.raw, s.smoothed)
-    ]
-    assert moved_within_a_band, "the data has a count that moved without crossing a gate"
-    for s in moved_within_a_band:
-        assert "median" not in context.stress_by_way[s.way_id].rule
+
+def test_a_count_lowered_within_a_band_is_not_marked(tmp_path, monkeypatch) -> None:
+    context = make_context(tmp_path, monkeypatch)
+    # 6,000 among its neighbours' 4,253: lowered, but 1,500 to 8,000 either way.
+    old = context.aadt_by_way[345074765]
+    context.aadt_by_way[345074765] = Match(**{**old.__dict__, "aadt": 6000})
+    classify(context)
+    assert context.aadt_by_way[345074765].aadt == 4253
+    assert context.aadt_raw_by_way[345074765].aadt == 6000
+    assert "median" not in context.stress_by_way[345074765].rule
 
 
 def test_a_state_boundary_keeps_a_count_out_of_another_states_street(tmp_path, monkeypatch) -> None:

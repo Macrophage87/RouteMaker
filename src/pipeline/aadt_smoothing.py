@@ -9,6 +9,13 @@ case: 1st Street NW from Q Street to Quincy Place, 110 m, carries DDOT's
 10,665 between neighbours at 7,520, and classified LTS 3 where the blocks either
 side are LTS 2 ("It's a fairly low stress road", decision 285).
 
+Lower only (decision 303, the owner: "Keep it LTS 4, and only lower ratings. In most
+cases, the smoothing is probably bunching by the intersection. Given that our routing
+is a sum of intersection stress and route stress, we don't want to double count."): a
+count is replaced only where the median is lower than it, so smoothing removes a
+count that is probably an intersection's volume attributed to one block and never
+adds volume to a block that counted less.
+
 The fix is to the data, not to a threshold (decision 296: "keep the current
 rules as is"; the owner can veto it, which is `RebuildContext.smooth_volume`).
 The count a way's volume gate reads is the length-weighted median of the counts
@@ -21,8 +28,8 @@ neighbours; length-weighted, so a 14 m stub does not outvote a 400 m block.
 "The same street" is the name without its quadrant (`1st Street Northwest` and
 `1st Street Northeast` are one street's two sides of the Capitol), in the same
 jurisdiction, so a Virginia count never smooths a District street that shares a
-name. Only ways that have a count are replaced, and only ways that carry one are
-candidates; a way with no count stays without one.
+name. Only a way whose count is higher than the median is replaced, and only ways
+that carry a count are candidates; a way with no count stays without one.
 
 `Match.raw_aadt` keeps what the agency counted, and `Match.agency` and `year`
 stay those of the replaced count: the median can come from any neighbour, and
@@ -183,7 +190,9 @@ def smooth(
             continue
         median = weighted_median((item[3], item[2]) for item in near)
         match = aadt_by_way[way_id]
-        if median == match.aadt:
+        if median >= match.aadt:
+            # Lower only (OWNER-DECISIONS 303): a count above its street's median
+            # stands, so smoothing can never raise a tier.
             continue
         out[way_id] = replace(match, aadt=median, raw_aadt=match.aadt)
         replaced.append(Smoothed(way_id, key, match.aadt, median, len(near), total))

@@ -4,7 +4,7 @@ Read-only runs of `scripts/analysis/arterial_verify.py` over the 2026-10-03 extr
 (`source.osm.pbf`), roads only, with the rebuild's own conflation and classifier:
 
 - `smoothing.md`, `arterial-verify-summary.json`: the AADT smoothing's region-wide effect
-  (decision 296) and 1st Street NW way 483241819 (LTS 3 to LTS 2).
+  (decision 296), lower-only per decision 303 ("Keep it LTS 4, and only lower ratings. In most cases, the smoothing is probably bunching by the intersection. Given that our routing is a sum of intersection stress and route stress, we don't want to double count."), and 1st Street NW way 483241819 (LTS 3 to LTS 2).
 - `north-capitol.md`: every way of the named corridor against the owner's targets
   (0 mismatches).
 - `rematch-live.md`, `.csv`, `override-rematch-summary.json`: all 232 access and 1,551

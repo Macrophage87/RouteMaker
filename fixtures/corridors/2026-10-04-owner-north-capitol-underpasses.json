@@ -26,7 +26,7 @@
           "along_m": [580, 1030],
           "tier": 4,
           "reason": "The owner (286): \"The side streets would be LTS4, and on the pickup.\" The surface side lanes beside the first underpass, and the pickup where the underpass lanes come back up, are LTS 4 (295: the targets stand).",
-          "evidence": "The one-lane surface ways 8 to 14 m either side of the axis, 580 m to 1030 m north of 38.9000 N, by position and not by their lanes tag (way 468472149 is tagged lanes=2 and is the western outer side lane; decision 295 asked for LTS 4, not Avoid)."
+          "evidence": "The one-lane surface ways 8 to 14 m either side of the axis, 580 m to 1030 m north of 38.9000 N, by position and not by their lanes tag (way 468472149 is tagged lanes=2 and is the western outer side lane; decision 295 asked for LTS 4, not Avoid). Way 930215092, tagged lanes=2 and the eastern outer side lane, is LTS 4 too: the owner, decision 303, \"Keep it LTS 4\"."
         },
         {
           "id": "second-underpass-through",

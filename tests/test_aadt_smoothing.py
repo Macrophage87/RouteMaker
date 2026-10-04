@@ -83,7 +83,11 @@ def test_the_median_is_weighted_by_length() -> None:
     # And the other way: the long block's count wins over two short ones.
     ways = [block(1, 0, 20), block(2, 20, 300), block(3, 320, 20)]
     out, _ = smooth(ways, counts((1, 1000), (2, 9000), (3, 1000)))
-    assert out[1].aadt == 9000 and out[3].aadt == 9000 and out[2].aadt == 9000
+    assert out[1].aadt == 1000 and out[3].aadt == 1000, "lower counts are never raised"
+    assert out[2].aadt == 9000, "the median is 9,000 and the block is at it: not replaced"
+    ways = [block(1, 0, 20), block(2, 20, 300), block(3, 320, 20), block(4, 340, 20)]
+    out, _ = smooth(ways, counts((1, 4000), (2, 9000), (3, 4000), (4, 4000)))
+    assert out[2].aadt == 9000, "9,000 is the median of this window too"
 
 
 def test_it_needs_three_ways_and_250_m_in_the_window() -> None:
@@ -241,3 +245,19 @@ def test_a_lower_count_that_is_not_an_outlier_is_untouched_and_the_report_counts
     assert "counts replaced" in report.summary()
     # The 4,253 stretch at the north end stands on its own median.
     assert out[345074764].aadt == 4253
+
+
+def test_smoothing_only_lowers_a_count_never_raises_one() -> None:
+    """Decision 303: the bunching is an intersection's volume on one block, and the
+    routing already adds intersection stress, so a low block is not raised."""
+    ways, by_way = street(7520, 7520, 2000, 7520, 7520)
+    out, report = smooth(ways, by_way)
+    assert out[3].aadt == 2000 and out[3].raw_aadt is None
+    assert not report.replaced
+    # A mixed street: the high outlier comes down, the low one stays.
+    ways, by_way = street(7520, 10665, 7520, 2000, 7520, 7520)
+    out, report = smooth(ways, by_way)
+    assert out[2].aadt == 7520 and out[4].aadt == 2000
+    assert [r.way_id for r in report.replaced] == [2]
+    assert all(r.smoothed < r.raw for r in report.replaced)
+    assert all(out[w].aadt <= by_way[w].aadt for w in by_way)

@@ -17,11 +17,10 @@
     "raw": 10665,
     "smoothed": 7520
   },
-  "smoothing_replaced": 4342,
+  "smoothing_replaced": 2197,
   "smoothing_km_by_region": {
-    "Virginia": 21.169109560804166,
-    "DC": 3.6947030382171953,
-    "Maryland": 0.31220598510361425
+    "DC": 1.2893894800016361,
+    "Virginia": 7.512721366882973
   },
   "corridor": "named corridors: 40 ways matched, 35 re-tiered, 0 exempt (protected lane, separate bikeway or path)"
 }
