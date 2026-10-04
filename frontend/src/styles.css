@@ -435,6 +435,37 @@ a {
   display: block;
 }
 
+/* The Mass Ride map's federal-land legend and popup (lib/federalLegend.ts,
+   federalInteraction.ts). The popup shares the rail cards' look. */
+.federal-legend li {
+  grid-template-columns: 24px 1fr;
+  align-items: start;
+  padding: 3px 0;
+}
+
+.federal-swatch {
+  display: block;
+  margin-top: 2px;
+}
+
+.federal-popup {
+  max-width: 240px;
+}
+
+.federal-popup p {
+  margin: 4px 0 0;
+}
+
+.federal-popup .federal-name {
+  display: block;
+  padding-right: 16px;
+}
+
+.federal-popup .federal-note {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 /* A station's hover card and its tap choices, in the panel's theme. */
 .rail-popup .maplibregl-popup-content {
   background: var(--bg);

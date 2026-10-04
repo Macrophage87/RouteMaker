@@ -59,8 +59,24 @@ export const RAIL_CREDITS: readonly string[] = [
     '<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
 ];
 
+/**
+ * The Mass Ride map's federal-land shading (fixtures/datasets/README.md,
+ * "Federal land"): DC's National Parks (NPS Map A), Reservations and Military
+ * Bases layers, merged and simplified, so "adapted"; the Capitol grounds in it
+ * are the Architect of the Capitol boundary already credited above.
+ */
+export const FEDERAL_CREDITS: readonly string[] = [
+  "Federal land on the Mass Ride map: National Parks, Reservations and Military Bases, District of Columbia " +
+    '(Open Data DC), adapted, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
+];
+
 /** In the order the map shows them: OpenStreetMap first. */
-export const MAP_CREDITS: readonly string[] = [BASEMAP.attribution, ...VOLUME_CREDITS, ...RAIL_CREDITS];
+export const MAP_CREDITS: readonly string[] = [
+  BASEMAP.attribution,
+  ...VOLUME_CREDITS,
+  ...RAIL_CREDITS,
+  ...FEDERAL_CREDITS,
+];
 
 /**
  * The attribution control's one entry. MapLibre sorts separate entries by

@@ -481,6 +481,52 @@ const SCROLL_BOXES = `(() => { const focusable = 'a[href], button:not([disabled]
   await p.close();
 }
 
+// ---- 11. The Mass Ride map's federal-land section (items 236-239) ----
+const federalFetched = (p) =>
+  p.eval("performance.getEntriesByType('resource').some((r) => /federal-land[^/?]*\\.json$/.test(r.name))");
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0) });
+  await p.eval("document.getElementById('federal-heading')?.scrollIntoView({ block: 'center' }); true");
+  const section = await p.eval(`(() => { const s = document.querySelector('.federal-section'); if (!s) return null;
+    const items = [...s.querySelectorAll('.federal-legend li')];
+    return { heading: s.querySelector('h2')?.textContent, items: items.length,
+      cues: items.map((li) => /shaded with (dots|cross-hatch|rising diagonal stripes|falling diagonal stripes)/.test(li.textContent)),
+      swatchesHidden: items.every((li) => li.querySelector('svg')?.getAttribute('aria-hidden') === 'true'),
+      note: /Federal land - permit rules may differ \\(information, not legal advice\\)/.test(s.textContent),
+      checked: s.querySelector('input[type=checkbox]')?.checked }; })()`);
+  check("federal: a Mass Ride's panel has the section, four legend rows each naming its pattern, and the note",
+    section && section.heading === "Federal land" && section.items === 4 && section.cues.every(Boolean) && section.swatchesHidden && section.note && section.checked, JSON.stringify(section));
+  check("federal: the data is fetched for a Mass Ride", await federalFetched(p));
+  await sleep(1500);
+  await p.shot(`${SHOTS}/federal_map.png`, await p.eval("(() => { const r = document.querySelector('.map').getBoundingClientRect(); return { x: r.left, y: r.top, width: Math.round(r.width), height: Math.round(r.height) }; })()"));
+  const ax = await axNode(p, ".federal-section input[type=checkbox]");
+  check("federal: the switch is a checkbox named for what it does", ax?.role === "checkbox" && ax?.name === "Show federal land on the map", JSON.stringify(ax));
+  await p.eval("document.querySelector('.federal-section input[type=checkbox]').focus(); true");
+  await p.key(" ", "Space", 32);
+  await sleep(300);
+  const off = await p.eval("({ legend: !!document.querySelector('.federal-legend'), checked: document.querySelector('.federal-section input[type=checkbox]').checked, focus: document.activeElement?.type === 'checkbox' })");
+  check("federal: Space turns it off, the legend goes and the focus stays on the switch", !off.legend && !off.checked && off.focus, JSON.stringify(off));
+  await p.close();
+}
+{
+  const p = await open({ route: S_DEFAULT, hash: hashFor("default", 70) });
+  const none = await p.eval("!document.querySelector('.federal-section') && !document.getElementById('federal-heading')");
+  check("federal: no section, and nothing fetched, for any other ride type", none && !(await federalFetched(p)));
+  await p.close();
+}
+{
+  const p = await open({ route: S_MASS, hash: hashFor("mass-ride", 0), width: 320, height: 800, mobile: true });
+  await p.eval(`(() => { const s = document.createElement('style'); s.textContent = ${JSON.stringify(TEXT_SPACING)}; document.head.append(s);
+    document.getElementById('federal-heading').scrollIntoView({ block: 'start' }); return true; })()`);
+  await sleep(300);
+  const fit = await p.eval(`(() => { const s = document.querySelector('.federal-section'); const r = s.getBoundingClientRect();
+    const over = [...s.querySelectorAll('li, p, label')].filter((e) => e.scrollWidth > e.clientWidth + 1 || e.getBoundingClientRect().right > r.right + 1).length;
+    return { over, page: document.documentElement.scrollWidth > innerWidth }; })()`);
+  check("federal at 320 px with text spacing: the legend and the note wrap, nothing spills", fit.over === 0 && !fit.page, JSON.stringify(fit));
+  await p.shot(`${SHOTS}/federal_320.png`, await p.eval("(() => { const r = document.querySelector('.federal-section').getBoundingClientRect(); return { x: 0, y: Math.max(0, r.top - 4), width: innerWidth, height: Math.min(r.height + 8, innerHeight - Math.max(0, r.top)) }; })()"));
+  await p.close();
+}
+
 b.close();
 const failed = results.filter((r) => !r.ok);
 console.log(`\n${results.length - failed.length}/${results.length} passed`);

@@ -165,3 +165,86 @@ revises a layer, with the owner's go for the download, and update the tables
 above. The refetch needs a new `--out-dir` because the script refuses to
 overwrite. Then reinstall: `scripts/install_reference_data.py --roadway-block
 ... --baltimore-centerline ...`.
+
+## Federal land (2026-10-03)
+
+The Mass Ride map's federal-land shading (PLAN.md FOLLOWUP-FEDERAL-LAYER, owner
+items 236-239; docs/DEVELOPMENT.md, "The federal-land overlay"). The owner
+approved the downloads for this item. Each layer was fetched once by
+`scripts/fetch_agency_layer.py` into
+`/home/steph/rmdata/datasets/federal/<slug>/`, unedited (GeoJSON, WGS 84,
+`where=1=1`, `outFields=*`), each beside the `README.md` the downloader wrote.
+The raw files are not in this repository; the derivative the front end loads,
+`frontend/src/federal-data/federal-land.json`, is.
+
+| Layer | Source layer and item | Retrieved (UTC) | Features | Bytes | sha256 |
+| --- | --- | --- | --- | --- | --- |
+| National Parks (NPS Map A: Park Service and other government-owned land) | <https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Recreation_WebMercator/MapServer/10>, item `14eb1c6b576940c7b876ebafb227febe` (item `modified` 2025-02-10, re-read 2026-10-03; PLAN's 2025-02-07 is the layer's last-edit date from the service metadata, a different field) | 2026-10-03 19:15:30 | 456 (1 page) | 2,302,138 | `d2038ab8bb43ab947c8b377e01f47fb58e4b2cd16acd6d6dfe992a66b9184310` |
+| Reservations (U.S. Reservations) | <https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/37>, item `0ac4302b2e354fad986f07199e73a19e` (modified 2026-10-03) | 2026-10-03 19:15:31 | 939 (1 page) | 2,414,557 | `e4e34e2c425a052b40b04eef142448042cde6a57000b4ba5d81daea8168c364f` |
+| Military Bases | <https://maps2.dcgis.dc.gov/dcgis/rest/services/DCGIS_DATA/Property_and_Land_WebMercator/MapServer/11>, item `21ee426eddc14014b80535cd6b8316e7` (modified 2025-05-16) | 2026-10-03 19:15:32 | 9 (1 page) | 26,365 | `951c9119eebfd879474bc03f305b5fff8941420b5edc15458a4e7def032407c5` |
+| Architect of the Capitol (reused, not fetched again) | `fixtures/cbd/architect-of-the-capitol.geojson`, item `d9e8c786c9694e47979ef71a5c2f1a7a`, retrieved 2026-09-30 (above, `fixtures/cbd/README.md`) | | 1 | 15,366 | `03e440f70147d42515dafe8bcc52eac3f88fd59d8ed824706ccbb776d1298d5f` |
+
+**Licences, verbatim** (each item's `licenseInfo` as plain text, read when the
+layer was fetched; each item's `accessInformation` is its credit field):
+
+| Layer | Licence text | Credit field |
+| --- | --- | --- |
+| National Parks | "This work is licensed under a Creative Commons Attribution 4.0 International License." (linking <https://creativecommons.org/licenses/by/4.0/>) | "DC GIS" |
+| Reservations | "This work is licensed under a Creative Commons Attribution 4.0 International License." (linking <https://creativecommons.org:443/licenses/by/4.0/>) | "District of Columbia" |
+| Military Bases | "This work is licensed under a Creative Commons Attribution 4.0 International License." (linking <https://creativecommons.org/licenses/by/4.0/>) | "DC Office of the Chief Technology Officer" |
+
+The layers' own service descriptions say what they are: National Parks, "Digital
+version of the National Park Service Map A, indicating Park Service properties
+and other government-owned land"; Reservations, lands "acquired for use by the
+Federal Government after the original founding of the city", "almost all" under
+the National Park Service (the layer names no agency per lot, so the popup says
+"National Park Service (most U.S. Reservations)" and nothing more specific);
+Military Bases, DC OCTO's military facilities (the layer names no agency either,
+so none is shown).
+
+**Not downloaded: Federal Land (RPTA Ownership)**,
+`.../Property_and_Land_WebMercator/MapServer/50`. It is a derived layer with no
+Open Data DC item of its own (a search of DCGISopendata's items by title found
+none), so there is no licence text to record for it; the service carries only
+"District of Columbia" as copyright text, and describes itself as built "from
+various polygon feature classes of the District's Vector Property Mapping
+program", regenerated daily with attributes from the Integrated Tax System
+Public Extract. Its source "Common Ownership Lots" item (`1f6708b1f3774306bef2fa81e612a725`)
+reads CC BY 4.0, but that is a different item and is not read as this layer's
+licence. The layer also carries tax-assessment and owner fields for every lot
+(`OWNERNAME`, sale prices, tax balances), which an overlay does not need. Per the
+rule for an unclear licence, it was stopped and reported rather than worked
+around. The overlay does without it: the National Parks layer is most of the
+land (the owner's item 237), and the Reservations, Military Bases and Capitol
+polygons cover the rest of what the owner named; what it would have added is
+other federally owned lots, which are mostly GSA office buildings, the one
+class item 238 leaves out. `build_federal_land.py --federal` reads such a file
+(dropping lots whose owner names GSA) if the owner later clears a source for it;
+the `federal` kind is in the legend's code but not in its data.
+
+**How the derivative is made** (`scripts/build_federal_land.py`, run with the
+four files above; the output is reproducible byte for byte):
+
+* every polygon is made valid, simplified to 0.00003 degrees (about 10 ft, 3 m)
+  and snapped to a 0.00001-degree grid (about 3 ft, 1 m);
+* a patch belongs to one kind only: Capitol, then military, then National Park
+  Service, then Reservation, a lower kind clipped around a higher one, so the
+  map shades it once;
+* retired Reservation lots (`KILL_DT` set) and slivers under 60 m² (650 ft²) are
+  dropped;
+* names: the layer's `NAME`, else its `LABEL`; the generic ones ("Triangle",
+  "Center Parking", "Curb Parking", "Park") get their reservation number; a
+  Reservation is "U.S. Reservation N"; the Capitol is "U.S. Capitol grounds"
+  (agency: Architect of the Capitol).
+
+The result: 1,002 areas (1 Capitol, 9 military, 424 National Park Service, 568
+Reservation), 501,462 bytes (about 87 KB gzipped), sha256
+`773f230f94c5a5b5ce576b17c09b83a3a4e10d5b8627f1d2c0e972d2b10ce4af`.
+
+| Credit line (on every map view; `FEDERAL_CREDITS` in `frontend/src/lib/mapStyle.ts`) | Basis |
+| --- | --- |
+| "Federal land on the Mass Ride map: National Parks, Reservations and Military Bases, District of Columbia (Open Data DC), adapted, CC BY 4.0" | the three items' CC BY 4.0, adapted (merged, clipped and simplified); the Capitol polygon in the file is the Architect of the Capitol boundary already credited in `VOLUME_CREDITS` |
+
+To refresh: fetch each layer into a new directory with
+`scripts/fetch_agency_layer.py` (it refuses to overwrite) with the owner's go,
+rerun `build_federal_land.py`, and update the table above.

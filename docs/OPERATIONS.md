@@ -1290,6 +1290,20 @@ licences and the refresh by hand are in `frontend/src/rail-data/README.md`;
 the MARC Penn Line's stations, and the elevators taken from OSM where DC lists
 none, are OpenStreetMap's and need nothing beyond the ODbL credit.
 
+The Mass Ride map's federal-land shading carries one more credit on every map
+view, "Federal land on the Mass Ride map: National Parks, Reservations and
+Military Bases, District of Columbia (Open Data DC), adapted, CC BY 4.0"
+(`FEDERAL_CREDITS` in `frontend/src/lib/mapStyle.ts`). The three Open Data DC
+items (National Parks `14eb1c6b576940c7b876ebafb227febe`, Reservations
+`0ac4302b2e354fad986f07199e73a19e`, Military Bases
+`21ee426eddc14014b80535cd6b8316e7`) are CC BY 4.0, merged, clipped and
+simplified into `frontend/src/federal-data/federal-land.json` (so "adapted"); the
+Capitol grounds in it are the Architect of the Capitol boundary already credited
+above. Sources, licence text verbatim, retrieval times and digests are in
+`fixtures/datasets/README.md`, "Federal land". The file is a hashed asset under
+`/assets/`, served and compressed with the rest of the front end and fetched
+only when a Mass Ride is open; no edge, compose or deploy change.
+
 Three more credits ride with the agency layers (`docs/DEVELOPMENT.md`,
 "Agency street layers"; sources and licences in `fixtures/datasets/README.md`),
 in `routing.ATTRIBUTION` and `VOLUME_CREDITS`:

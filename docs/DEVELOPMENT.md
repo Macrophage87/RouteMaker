@@ -476,6 +476,60 @@ emulated media were `forced-colors: active`, `prefers-contrast: more` and both
 colour schemes, for the switch off and on. The map itself needs the stack and
 was not looked at.
 
+### The federal-land overlay (items 236-239, the map part)
+
+PLAN.md FOLLOWUP-FEDERAL-LAYER. The Mass Ride map shades the land under federal
+control, as information and not legal advice: ownership is not police
+jurisdiction. The routing and description half of item 239 (stops inside federal
+land, the parkway stretches) is a later step and is not here.
+
+* **Data.** `scripts/build_federal_land.py` merges the National Parks, Reservations
+  and Military Bases layers (fetched once each, records in
+  `fixtures/datasets/README.md`) and the Architect of the Capitol polygon
+  (`fixtures/cbd`) into `frontend/src/federal-data/federal-land.json`, GeoJSON with
+  `kind` (`nps`, `reservation`, `military`, `capitol`; `federal` is reserved for a
+  Federal Land layer that was not downloaded), `name` and, where the source names
+  one, `agency`. Run it with the shapely virtualenv; the output is reproducible byte
+  for byte. It is named `.json` so the edge serves and compresses it as JSON, and
+  Vite emits it as a hashed `/assets/` file (`?url`), which the existing Caddy
+  matcher, deploy copy and cache rules already cover.
+* **Layers** (`lib/federalLand.ts`). A tint (10%), an 8 by 8 pixel pattern per kind
+  at 45% (`fill-pattern`, the tiles drawn in code), and one outline layer per kind
+  with its own dash. They are added once, hidden or shown, directly under the first
+  stress-overlay layer when it is on the map, else under the base map's first label,
+  so they sit under the stress lines, the stations and the route whichever is added
+  first. No map labels: the cue is the pattern, the outline and the legend and
+  popup names.
+* **Colour plus a cue.** `FEDERAL_STYLE` gives each kind a colour, a pattern (dots,
+  cross-hatch, rising stripes, falling stripes, horizontal stripes), an outline
+  dash and the pattern's name in words; the legend (`lib/federalLegend.ts`) draws the
+  map's own pixels in an SVG swatch and says "shaded with ...". A test holds every
+  colour, pattern and dash distinct.
+* **Mass Ride only.** `federalShown(preset, switch)` is true only for `mass-ride`
+  with the panel's switch on (default on); `App` gives `MapView` that as
+  `federalVisible` and renders the `FederalLandSection` for a Mass Ride alone.
+  `MapView` fetches the file the first time it is shown, never otherwise, and
+  hides the layers (without removing them) when it goes off; a failed fetch leaves
+  the overlay off and the panel says so ("Federal land shading is unavailable for
+  now"), and asking again retries.
+* **The popup** (`federalInteraction.ts`). A click or tap on a shaded area opens a
+  card (name, kind, "Managed by: agency" where known, and "Federal land - permit
+  rules may differ (information, not legal advice)."). It is information beside the
+  planner's own click, not instead of it: the click still adds a point as it always
+  does, so the planner's tap keeps one meaning. It closes on the next click, its
+  button and Escape, and stays out of the way while another card is open.
+* **Credit.** `FEDERAL_CREDITS` in `lib/mapStyle.ts` (CC BY 4.0, adapted), on every
+  map view; docs/OPERATIONS.md, "Licences, and the credits every map must carry".
+
+Tests: `lib/federalLand.test.ts` (Mass Ride only, colour plus cue, loading,
+layer order and visibility on a stand-in map, popup text, the rendered legend and
+section, the checked-in file, the credit), `tests/test_build_federal_land.py` (the
+build's rules on synthetic layers, the script's output, the checked-in file's
+validity and a few known places), and the browser check section 9 of
+`scripts/a11y/check.mjs` (`scripts/a11y/run.sh`: the section, switch, legend at 320
+px with text spacing, and no section and no fetch for another ride type).
+`scripts/mutants_federal.py` runs 36 mutants against them.
+
 ## What migrations do and do not create
 
 `Segment` is `managed = False` on purpose, so `migrate` does not create it. The
