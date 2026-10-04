@@ -138,6 +138,10 @@ export function App() {
   }, []);
   const route = candidateRoute(answer, choice);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
+  // Whether that route was planned as a loop the rider chose, recorded with its
+  // points: during a replan the toggle may already say otherwise, and the GPX
+  // names the route shown, not the one asked for (OWNER-DECISIONS 374).
+  const [routedLoop, setRoutedLoop] = useState(false);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
   const [notice, setNotice] = useState<string | null>(null);
   const [stress, setStress] = useState<StressAvailability>("checking");
@@ -205,6 +209,7 @@ export function App() {
         if (result.ok) {
           setRoute(result.route);
           setRoutedPoints(plan.points);
+          setRoutedLoop(loopStops(plan.preset, plan.dials.loop));
           setStatus({ kind: "ok" });
         } else if (result.error.kind === "confirm-long") {
           setRoute(null);
@@ -852,7 +857,7 @@ export function App() {
           <GpxPanel
             route={shown}
             routedPoints={routedPoints}
-            loop={loopVias}
+            loop={routedLoop}
             points={points}
             planStatus={status.kind}
             imported={imported}

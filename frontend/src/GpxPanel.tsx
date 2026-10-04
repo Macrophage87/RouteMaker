@@ -14,7 +14,7 @@ interface Props {
   route: RouteResponse | null;
   /** The points that route was planned through. */
   routedPoints: LonLat[];
-  /** "Make it a loop" is on, as the page names the points (OWNER-DECISIONS 374). */
+  /** That route was planned as a loop the rider chose (OWNER-DECISIONS 374), as its points were named then. */
   loop?: boolean;
   /** The plan's points now. */
   points: LonLat[];

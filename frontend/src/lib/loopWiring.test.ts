@@ -96,7 +96,19 @@ test("App hands the toggle to the search, the map, the points list and the GPX",
   assert.match(app, /<PlaceSearch\s+pointCount=\{points\.length\}\s+loop=\{loopVias\}/);
   assert.match(app, /<MapView\s+points=\{points\}\s+loopVias=\{loopVias\}/);
   assert.match(app, /rows=\{pointRows\(points, namer, loopVias\)\}/);
-  assert.match(app, /<GpxPanel\s+route=\{shown\}\s+routedPoints=\{routedPoints\}\s+loop=\{loopVias\}/);
+});
+
+test("App: the GPX names the route shown as it was planned, not as the toggle is now", () => {
+  const app = source("../App.tsx");
+  // Recorded with the route's points when it arrives, from the plan that was sent.
+  assert.match(
+    app,
+    /setRoute\(result\.route\);\s+setRoutedPoints\(plan\.points\);\s+setRoutedLoop\(loopStops\(plan\.preset, plan\.dials\.loop\)\);/,
+  );
+  assert.equal(count(app, /setRoutedLoop\(/g), 1, "set nowhere else");
+  // Handed to the GPX with the routed points, never the live toggle or points.
+  assert.match(app, /<GpxPanel\s+route=\{shown\}\s+routedPoints=\{routedPoints\}\s+loop=\{routedLoop\}/);
+  assert.doesNotMatch(app, /<GpxPanel[^>]*loop=\{loopVias\}/);
 });
 
 test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on", () => {
@@ -114,4 +126,5 @@ test("PlaceSearch, MapView, the rail cards and the GPX panel pass the toggle on"
   const gpx = source("../GpxPanel.tsx");
   assert.match(gpx, /loop = false \} = props;/);
   assert.match(gpx, /writeGpx\(exportOf\(route, routedPoints, loop\)\)/);
+  assert.equal(count(gpx, /exportOf\(/g), 1, "one export, of the routed points");
 });

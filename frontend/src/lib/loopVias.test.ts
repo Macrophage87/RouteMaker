@@ -198,6 +198,20 @@ test("a loop survives a GPX export and re-import", () => {
   assert.notEqual(rideAfterImport(oneWay, looped).dials.loop, true);
 });
 
+test("the GPX of a route follows the plan it was routed for, whatever the toggle says now", () => {
+  // The route of a loop [A, B, C], shown while a replan with the toggle off is waited out:
+  // the file keeps the loop's names and loop=1, so it reopens as the line it draws.
+  const routed = { preset: "default" as const, dials: { ...startDials("default"), loop: true } };
+  const asLoop = writeGpx(exportOf(loopRoute, [A, B, C], loopStops(routed.preset, routed.dials.loop)));
+  assert.deepEqual(names(asLoop), ["Start and finish", "Stop 1", "Stop 2"]);
+  assert.equal(planFromGpx(parseGpx(asLoop)).dials?.loop, true);
+  // And the one-way route shown while the toggle was just turned on stays one-way.
+  const oneWay = { preset: "default" as const, dials: startDials("default") };
+  const asOneWay = writeGpx(exportOf(loopRoute, [A, B, C], loopStops(oneWay.preset, oneWay.dials.loop)));
+  assert.deepEqual(names(asOneWay), ["Start", "Stop 1", "End"]);
+  assert.notEqual(planFromGpx(parseGpx(asOneWay)).dials?.loop, true);
+});
+
 test("share links: loop with a start and a stop round-trips, and an old hash decodes as before", () => {
   const dials = { ...startDials("default"), loop: true };
   const back = decodePlan(encodePlan([A, B], "default", dials));
