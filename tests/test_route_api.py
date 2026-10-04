@@ -227,10 +227,10 @@ class TestAnswer:
         router(standard_router())
         body = post(client, good_body()).json()
         assert body["stress_spans"] == [
-            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none"},
-            {"from_m": 900, "to_m": 1300, "tier": 1, "facility": "none"},
-            {"from_m": 1300, "to_m": 1700, "tier": 4, "facility": "none"},
-            {"from_m": 1700, "to_m": 2200, "tier": None, "facility": None},
+            {"from_m": 0, "to_m": 900, "tier": 3, "facility": "none", "unpaved": None},
+            {"from_m": 900, "to_m": 1300, "tier": 1, "facility": "none", "unpaved": None},
+            {"from_m": 1300, "to_m": 1700, "tier": 4, "facility": "none", "unpaved": None},
+            {"from_m": 1700, "to_m": 2200, "tier": None, "facility": None, "unpaved": None},
         ]
         # The sections agree with the totals.
         by_tier = {}
@@ -415,7 +415,7 @@ class TestStressBreakdown:
         assert stress["unknown"] == pytest.approx(2200.0)
         assert sum(v for k, v in stress.items() if k != "unknown") == 0
         assert response.json()["stress_spans"] == [
-            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None}
+            {"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}
         ]
         # And the facility breakdown, which must sum to the same distance
         # (mutation review r1, RT15).
@@ -1203,7 +1203,7 @@ class TestTimeBudget:
         assert body["stress_m"]["unknown"] == pytest.approx(body["distance_m"], rel=0.01)
         assert body["stress_adjustments"] == []
         # And the route is one unknown section, as its totals are.
-        assert body["stress_spans"] == [{"from_m": 0, "to_m": 2200, "tier": None, "facility": None}]
+        assert body["stress_spans"] == [{"from_m": 0, "to_m": 2200, "tier": None, "facility": None, "unpaved": None}]
         assert any("past its" in r.message and "trace" in r.message for r in caplog.records)
 
     def test_a_route_answered_as_the_budget_ends_is_kept(

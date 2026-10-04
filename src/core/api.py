@@ -356,6 +356,13 @@ class StressSpanOut(Schema):
     facility: Literal["path", "protected", "lane", "none"] | None = Field(
         description="The facility class; null: unknown."
     )
+    unpaved: bool | None = Field(
+        default=None,
+        description=(
+            "Whether the section's segments are unpaved (OWNER-DECISIONS 302: the route"
+            " line draws it in the brown ramp); null: not known."
+        ),
+    )
 
 
 class DialsOut(Schema):

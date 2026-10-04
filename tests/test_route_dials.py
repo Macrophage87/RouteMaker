@@ -1513,8 +1513,8 @@ class TestStressSpans:
             [(100.0, "2", "none"), (150.0, "2", "none"), (50.0, "3", "lane")]
         )
         assert spans == [
-            {"from_m": 0, "to_m": 250, "tier": 2, "facility": "none"},
-            {"from_m": 250, "to_m": 300, "tier": 3, "facility": "lane"},
+            {"from_m": 0, "to_m": 250, "tier": 2, "facility": "none", "unpaved": None},
+            {"from_m": 250, "to_m": 300, "tier": 3, "facility": "lane", "unpaved": None},
         ]
 
     def test_the_same_tier_on_another_facility_is_another_section(self):
@@ -1526,8 +1526,8 @@ class TestStressSpans:
             [(100.0, "2", "none"), (9.9, "4", "none"), (100.0, "3", "none")]
         )
         assert spans == [
-            {"from_m": 0, "to_m": 110, "tier": 2, "facility": "none"},
-            {"from_m": 110, "to_m": 210, "tier": 3, "facility": "none"},
+            {"from_m": 0, "to_m": 110, "tier": 2, "facility": "none", "unpaved": None},
+            {"from_m": 110, "to_m": 210, "tier": 3, "facility": "none", "unpaved": None},
         ]
 
     def test_ten_metres_is_a_section(self):
@@ -1546,23 +1546,23 @@ class TestStressSpans:
         spans = routing.stress_spans(
             [(200.0, "1", "path"), (6.0, "3", "none"), (300.0, "1", "path")]
         )
-        assert spans == [{"from_m": 0, "to_m": 506, "tier": 1, "facility": "path"}]
+        assert spans == [{"from_m": 0, "to_m": 506, "tier": 1, "facility": "path", "unpaved": None}]
 
     def test_a_short_first_section_takes_the_next_ones_class(self):
         spans = routing.stress_spans([(4.0, "4", "none"), (3.0, "3", "none"), (100.0, "1", "path")])
-        assert spans == [{"from_m": 0, "to_m": 107, "tier": 1, "facility": "path"}]
+        assert spans == [{"from_m": 0, "to_m": 107, "tier": 1, "facility": "path", "unpaved": None}]
 
     def test_unknown_is_null_and_tier_5_is_5(self):
         spans = routing.stress_spans([(100.0, "unknown", "unknown"), (100.0, "5", "none")])
         assert spans == [
-            {"from_m": 0, "to_m": 100, "tier": None, "facility": None},
-            {"from_m": 100, "to_m": 200, "tier": 5, "facility": "none"},
+            {"from_m": 0, "to_m": 100, "tier": None, "facility": None, "unpaved": None},
+            {"from_m": 100, "to_m": 200, "tier": 5, "facility": "none", "unpaved": None},
         ]
 
     def test_empty_and_zero_length_stretches(self):
         assert routing.stress_spans([]) == []
         assert routing.stress_spans([(0.0, "1", "none"), (50.0, "2", "none")]) == [
-            {"from_m": 0, "to_m": 50, "tier": 2, "facility": "none"}
+            {"from_m": 0, "to_m": 50, "tier": 2, "facility": "none", "unpaved": None}
         ]
 
     def test_sections_meet_end_to_end_in_whole_metres(self):
@@ -1578,6 +1578,24 @@ class TestStressSpans:
         """10,000 pieces alternating every 5 m between two classes fold away."""
         stretches = [(5.0, "1" if i % 2 else "2", "none") for i in range(10_000)]
         assert len(routing.stress_spans(stretches)) == 1
+
+    def test_a_change_of_surface_is_another_section(self):
+        """OWNER-DECISIONS 302: the route line draws unpaved sections in the brown ramp."""
+        spans = routing.stress_spans(
+            [(100.0, "1", "path", False), (150.0, "1", "path", True), (50.0, "1", "path", True)]
+        )
+        assert spans == [
+            {"from_m": 0, "to_m": 100, "tier": 1, "facility": "path", "unpaved": False},
+            {"from_m": 100, "to_m": 300, "tier": 1, "facility": "path", "unpaved": True},
+        ]
+
+    def test_a_short_unpaved_piece_is_folded_into_the_one_before(self):
+        spans = routing.stress_spans(
+            [(100.0, "2", "none", False), (5.0, "2", "none", True), (100.0, "2", "none", False)]
+        )
+        assert spans == [
+            {"from_m": 0, "to_m": 205, "tier": 2, "facility": "none", "unpaved": False}
+        ]
 
 
 @db
@@ -1626,5 +1644,5 @@ class TestStressSpansThroughThePlan:
         points = [list(VERTICES[0]), list(VERTICES[-1]), list(VERTICES[0])]
         body = post(client, {"points": points, "preset": "default", "when": "weekday_rush"}).json()
         spans = body["stress_spans"]
-        assert spans[0] == {"from_m": 0, "to_m": 2200, "tier": 1, "facility": "path"}
-        assert spans[-1] == {"from_m": 2200, "to_m": 3200, "tier": None, "facility": None}
+        assert spans[0] == {"from_m": 0, "to_m": 2200, "tier": 1, "facility": "path", "unpaved": None}
+        assert spans[-1] == {"from_m": 2200, "to_m": 3200, "tier": None, "facility": None, "unpaved": None}

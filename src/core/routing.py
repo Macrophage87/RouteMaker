@@ -451,24 +451,28 @@ def totals(classified) -> tuple[dict[str, float], dict[str, float]]:
 MIN_SPAN_M = 10.0
 
 
-def stress_spans(stretches: list[tuple[float, str, str]]) -> list[dict]:
+def stress_spans(stretches: list[tuple]) -> list[dict]:
     """The route's coloured sections, in route order.
 
-    `stretches` is (metres, stress key, facility key) in the order ridden;
-    the answer is [{from_m, to_m, tier, facility}] in whole metres along the
-    route, adjacent equal sections merged and those under MIN_SPAN_M folded
-    into the one before (or, first on the route, the one after). `tier` is 1-5
-    or null (unknown); `facility` is the class or null.
+    `stretches` is (metres, stress key, facility key[, unpaved]) in the order
+    ridden; the answer is [{from_m, to_m, tier, facility, unpaved}] in whole metres
+    along the route, adjacent equal sections merged and those under MIN_SPAN_M
+    folded into the one before (or, first on the route, the one after). `tier` is
+    1-5 or null (unknown); `facility` is the class or null; `unpaved` True or False
+    where the segments say, else null (OWNER-DECISIONS 302: the route line draws an
+    unpaved section in the brown ramp, so a section ends where the surface changes).
     """
     # Pieces are cut at every shape vertex, so a long stretch of one class
     # arrives as many short pieces: they are joined before anything is judged
     # too short to show.
-    spans: list[list] = []  # [length, tier, facility]
-    for metres, tier, kind in stretches:
-        if spans and spans[-1][1:] == [tier, kind]:
+    spans: list[list] = []  # [length, tier, facility, unpaved]
+    for stretch in stretches:
+        metres, tier, kind = stretch[:3]
+        unpaved = stretch[3] if len(stretch) > 3 else None
+        if spans and spans[-1][1:] == [tier, kind, unpaved]:
             spans[-1][0] += metres
         else:
-            spans.append([metres, tier, kind])
+            spans.append([metres, tier, kind, unpaved])
     folded: list[list] = []
     for span in spans:
         if folded and (span[0] < MIN_SPAN_M or folded[-1][1:] == span[1:]):
@@ -480,7 +484,7 @@ def stress_spans(stretches: list[tuple[float, str, str]]) -> list[dict]:
             folded.append(list(span))
     out = []
     at = 0.0
-    for length, tier, kind in folded:
+    for length, tier, kind, unpaved in folded:
         start, at = at, at + length
         if out and out[-1]["to_m"] == round(at):
             out[-1]["to_m"] = round(at)
@@ -491,6 +495,7 @@ def stress_spans(stretches: list[tuple[float, str, str]]) -> list[dict]:
                 "to_m": round(at),
                 "tier": int(tier) if tier != "unknown" else None,
                 "facility": kind if kind != "unknown" else None,
+                "unpaved": unpaved,
             }
         )
     return out
@@ -1787,10 +1792,13 @@ def plan(
             for key, metres in traced_facility.items():
                 facility[key] += metres
             used_adjustments = adjustments_used(pieces)
-        stretches: list[tuple[float, str, str]] = []
+        stretches: list[tuple] = []
         for run in leg_runs:
             if isinstance(run, tuple):
-                stretches.extend((pieces[i].metres, *classes[i]) for i in range(run[0], run[1]))
+                stretches.extend(
+                    (pieces[i].metres, *classes[i], getattr(classes[i], "unpaved", None))
+                    for i in range(run[0], run[1])
+                )
             else:
                 stretches.append((run, "unknown", "unknown"))
         spans = stress_spans(stretches)
