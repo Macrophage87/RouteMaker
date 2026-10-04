@@ -17,11 +17,16 @@ metro/MARC. 12 and 13, show LTS 3+, 14+ show show the quiet streets."
 (OWNER-DECISIONS 73; "Zoomed out just show the trails." before it, 65, and
 "Show roadside trails (Recommended)", 66):
 
-- `TRAILS`, z10 to BUSY_ROADS_MIN_ZOOM - 1: the traffic-free paths and trails
-  and nothing else (`pipeline.schema.trails_predicate`: what
-  `routemaker.facility` calls a path, the protected ways that are trails of
+- `TRAILS` and `TRAILS_NEAR`, z10 and z11 (up to BUSY_ROADS_MIN_ZOOM - 1): the
+  traffic-free paths and trails and nothing else (`pipeline.schema.trails_predicate`:
+  what `routemaker.facility` calls a path, the protected ways that are trails of
   their own beside a road, and the roads closed to cars at set times, for
-  those times). The rail stations draw over them from the front end.
+  those times), and of those only the long ones: "Also zoomed out, can we stick
+  to mostly the longer trails, it's getting messy." (OWNER-DECISIONS 375,
+  2026-10-04). A way is long when it is in an OSM route relation or in a named
+  run of trail long enough (`pipeline.schema.long_trails_predicate`), with a
+  higher bar for an unpaved way and a higher bar again at z10 than at z11. The
+  rail stations draw over them from the front end.
 - `BUSY`, from BUSY_ROADS_MIN_ZOOM to QUIET_STREETS_MIN_ZOOM - 1: those, and
   the roads at LTS 3 and above - Avoid and the expressways included
   (`pipeline.schema.busy_predicate`). The map draws them faint there (the
@@ -85,7 +90,14 @@ from pipeline.schema import (
     MOTOR_ONLY_RULE,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_NETWORK_FACILITY,
+    TRAIL_ROUTE_COLUMN,
+    TRAIL_RUN_COLUMN,
+    Z10_PAVED_RUN_MI,
+    Z10_UNPAVED_RUN_MI,
+    Z11_PAVED_RUN_MI,
+    Z11_UNPAVED_RUN_MI,
     busy_predicate,
+    long_trails_predicate,
     trails_predicate,
     validate_schema_name,
 )
@@ -106,6 +118,11 @@ MAX_ZOOM = 16
 BUSY_ROADS_MIN_ZOOM = 12
 QUIET_STREETS_MIN_ZOOM = 14
 
+# The long trails come in two grades below BUSY_ROADS_MIN_ZOOM (OWNER-DECISIONS
+# 375): z10 keeps fewer than z11. This is a server-side detail the front end
+# does not need, so it is not in STRESS_ZOOMS.
+TRAILS_NEAR_MIN_ZOOM = 11
+
 # ST_TileEnvelope's own ceiling; a larger zoom is not a tile address.
 MAX_ADDRESSABLE_ZOOM = 30
 
@@ -116,8 +133,9 @@ CONTENT_TYPE = "application/vnd.mapbox-vector-tile"
 # as current against a different encoding. 3: the zoomed-out tiles became the
 # paths and trails alone (OWNER-DECISIONS 65, 66), for a live table whose oid the deploy
 # does not change. 4: the busy roads at z12-13 and the quiet streets from z14
-# (73), with the expressway and separate-bikeway properties.
-FORMAT_VERSION = 4
+# (73), with the expressway and separate-bikeway properties. 5: z10-11 keep
+# only the long trails (375).
+FORMAT_VERSION = 5
 
 # An hour: a rebuild is weekly and a stale hour after one is harmless, and a
 # revalidation after that is a 304 that draws nothing.
@@ -155,12 +173,38 @@ class Level:
     # The predicate drawn from `pipeline.schema`, by (has facility, has car_free),
     # in place of `where`: the trails', or the busy roads'.
     predicate: object = None
+    # (paved run, unpaved run) in miles for the long-trails rule
+    # (`pipeline.schema.long_trails_predicate`), or None to keep every way the
+    # predicate selects. Applied only to a table that has the route and run
+    # columns (LONG_TRAIL_COLUMNS); on one without, today's tiles are drawn.
+    long_trails: tuple[float, float] | None = None
 
 
-TRAILS = Level("trails", MIN_ZOOM, 4096, 32, None, merged=True, predicate=trails_predicate)
+# The thresholds are the named constants in `pipeline.schema`, from
+# OWNER-DECISIONS 375.
+TRAILS = Level(
+    "trails",
+    MIN_ZOOM,
+    4096,
+    32,
+    None,
+    merged=True,
+    predicate=trails_predicate,
+    long_trails=(Z10_PAVED_RUN_MI, Z10_UNPAVED_RUN_MI),
+)
+TRAILS_NEAR = Level(
+    "trails-near",
+    TRAILS_NEAR_MIN_ZOOM,
+    4096,
+    32,
+    None,
+    merged=True,
+    predicate=trails_predicate,
+    long_trails=(Z11_PAVED_RUN_MI, Z11_UNPAVED_RUN_MI),
+)
 BUSY = Level("busy", BUSY_ROADS_MIN_ZOOM, 4096, 32, None, merged=True, predicate=busy_predicate)
 FULL = Level("full", QUIET_STREETS_MIN_ZOOM, 4096, 64, None, merged=False)
-LEVELS = (FULL, BUSY, TRAILS)
+LEVELS = (FULL, BUSY, TRAILS_NEAR, TRAILS)
 
 
 def level_for(z: int) -> Level:
@@ -237,6 +281,14 @@ OPTIONAL_EXPRESSIONS = {
 # for it.
 FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 
+# The two columns the long-trails rule reads (OWNER-DECISIONS 375), which the
+# rebuild writes from the OSM route relations and way names
+# (`pipeline.trail_routes`). Not carried in a tile: they only choose which ways
+# the z10-11 tiles hold. A table promoted before them has neither, and its
+# zoomed-out tiles keep every path and trail, as they did; the rule applies
+# only where both are there. A data rebuild adds them; nothing else does.
+LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN)
+
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
 features AS (
@@ -297,6 +349,8 @@ def tile_sql(level: Level, optional: frozenset[str] = frozenset(), clip: bool = 
     has_car_free = CAR_FREE_COLUMN in optional
     if level.predicate is not None:
         where = level.predicate(has_facility, has_car_free)
+        if level.long_trails is not None and all(c in optional for c in LONG_TRAIL_COLUMNS):
+            where = f"({where}) AND {long_trails_predicate(*level.long_trails)}"
         if has_car_free:
             # A road closed to cars at set times is in a zoomed-out tile that
             # would not otherwise hold it only for those times: it carries them
@@ -388,7 +442,7 @@ def live_table() -> tuple[int | None, frozenset[str]]:
             "SELECT t.oid, ARRAY(SELECT attname::text FROM pg_attribute WHERE attrelid = t.oid "
             "AND attname = ANY(%s) AND NOT attisdropped) "
             "FROM (SELECT to_regclass(%s)::oid AS oid) AS t",
-            [list(OPTIONAL_PROPERTIES.values()), _table()],
+            [[*OPTIONAL_PROPERTIES.values(), *LONG_TRAIL_COLUMNS], _table()],
         )
         oid, columns = cursor.fetchone()
     return oid, frozenset(columns or ())
@@ -399,6 +453,8 @@ ETAG_LETTERS = {
     CAR_FREE_COLUMN: "c",
     MAP_CLASS_COLUMN: "m",
     SEPARATE_BIKEWAY_COLUMN: "s",
+    TRAIL_ROUTE_COLUMN: "t",
+    TRAIL_RUN_COLUMN: "l",
 }
 
 

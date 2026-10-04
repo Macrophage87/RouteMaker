@@ -187,6 +187,65 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
     return trails
 
 
+# THE LONG TRAILS (OWNER-DECISIONS 375, 2026-10-04): "Also zoomed out, can we
+# stick to mostly the longer trails, it's getting messy." At z10-11 Columbia's
+# pathways and Patapsco Valley State Park's singletrack tangles merged into
+# solid blobs, so the zoomed-out tiles keep a path or trail only when it is
+# part of something long. Two facts about a way say so, both written by the
+# rebuild (`pipeline.trail_routes`) and read from OSM:
+#
+# - `trail_route`: the way is a member of an OSM route relation. 0 none; 1 a
+#   bicycle route at any network (a local one included); 2 a bicycle route at a
+#   regional, national or international network, or a long-distance walking
+#   route (US:NST, national or regional).
+# - `trail_run_m`: the length in metres of the way's named run, the ways of that
+#   name (case-insensitive) that chain end to end across the region, within
+#   TRAIL_RUN_GAP_M of one another so a road crossing does not break a trail in
+#   two. A name is not a trail ("Red Trail" is every park's), so the run is not
+#   the name's whole length; and a connected network is not a run either, since
+#   Columbia's paths are one network. Null on a way with no name.
+#
+# A way is kept at a level when its route level is at least the bar for its
+# surface, or its run is at least that level's length: an unpaved way must clear
+# a higher bar, which is what drops the Patapsco tangles and keeps the Grist
+# Mill and Torrey C. Brown trails. An unknown surface is read as paved, as the
+# map reads it. Measured on the 2026-10-03 build (docs/OPERATIONS.md): of the
+# 5,461 miles of path drawn at z10-11 before, z11 keeps 1,238 and z10 keeps
+# 1,049, and the Columbia and Patapsco box 311 miles, down to 66 and 23.
+TRAIL_NAME_COLUMN = "trail_name"
+TRAIL_ROUTE_COLUMN = "trail_route"
+TRAIL_RUN_COLUMN = "trail_run_m"
+ROUTE_ANY_BICYCLE = 1
+ROUTE_LONG = 2
+# The route level a paved way and an unpaved way each need (OWNER-DECISIONS 375).
+PAVED_ROUTE_MIN = ROUTE_ANY_BICYCLE
+UNPAVED_ROUTE_MIN = ROUTE_LONG
+# Same-named ways within this many metres chain into one run.
+TRAIL_RUN_GAP_M = 400
+METRES_PER_MILE = 1609.344
+# A run the length of these, by surface, keeps a way without a route
+# (OWNER-DECISIONS 375). z11 and z10 differ: the further out, the longer.
+Z11_PAVED_RUN_MI = 3.0
+Z11_UNPAVED_RUN_MI = 5.0
+Z10_PAVED_RUN_MI = 5.0
+Z10_UNPAVED_RUN_MI = 8.0
+
+
+def long_trails_predicate(paved_run_mi: float, unpaved_run_mi: float) -> str:
+    """The long trails' condition, on a table with the route and run columns:
+    a way on a route of a high enough level for its surface, or in a named run
+    long enough for it. Written for the tile query alone; the overview index
+    is built on the plain trails' predicate, which this implies when ANDed."""
+    paved_m = round(paved_run_mi * METRES_PER_MILE)
+    unpaved_m = round(unpaved_run_mi * METRES_PER_MILE)
+    run = f"COALESCE({TRAIL_RUN_COLUMN}, 0)"
+    return (
+        f"(CASE WHEN is_unpaved IS TRUE "
+        f"THEN ({TRAIL_ROUTE_COLUMN} >= {UNPAVED_ROUTE_MIN} OR {run} >= {unpaved_m}) "
+        f"ELSE ({TRAIL_ROUTE_COLUMN} >= {PAVED_ROUTE_MIN} OR {run} >= {paved_m}) END)"
+    )
+
+
 # What they draw at busy-road zoom (`core.stress_tiles.BUSY`, from
 # `core.stress_tiles.BUSY_ROADS_MIN_ZOOM`): the paths and trails, and the roads
 # at LTS 3 and above - Avoid (tier 5) and the expressways included. The owner,
@@ -348,6 +407,14 @@ CREATE TABLE {schema}.segment (
     -- nothing said and the classifier assumed. Null on a way no layer reached,
     -- which reads as `stress_assumed` already does.
     attr_sources    jsonb,
+    -- The long trails (`trail_route`, `trail_run_m`; OWNER-DECISIONS 375): what
+    -- the zoomed-out tiles keep a path for. `trail_name` is the way's OSM name,
+    -- `trail_route` the level of the route relation it is in (0-2) and
+    -- `trail_run_m` the length of its named run, set after the rows are
+    -- written (`pipeline.trail_routes.derive_trail_runs`).
+    trail_name      text,
+    trail_route     smallint    NOT NULL DEFAULT 0 CHECK (trail_route BETWEEN 0 AND 2),
+    trail_run_m     integer,
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

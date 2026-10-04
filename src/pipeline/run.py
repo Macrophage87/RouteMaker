@@ -60,6 +60,7 @@ from . import (
     source,
     states,
     tiles,
+    trail_routes,
     variants,
     writers,
 )
@@ -512,6 +513,8 @@ class RebuildContext:
     # the access overrides, by the first stage that needs them.
     facility_by_way: dict[int, str] = field(default_factory=dict)
     car_free_by_way: dict[int, frozenset[str]] = field(default_factory=dict)
+    # The route level of each way in an OSM route relation (`pipeline.trail_routes`).
+    trail_routes: dict[int, int] = field(default_factory=dict)
     # Sidewalks bicycles may not ride: the CBD rule (routemaker.cbd).
     cbd_sidewalks: set[int] = field(default_factory=set)
     # Mountain-bike singletrack, which every ride type avoids (routemaker.singletrack).
@@ -918,6 +921,9 @@ def build_handlers(
         reset_segment_schema(context.staging_schema)
 
         context.ways = extract.read_ways(context.source_pbf)
+        # The OSM route relations the ways are in, for the zoomed-out long trails
+        # (OWNER-DECISIONS 375).
+        context.trail_routes = trail_routes.read_routes(context.source_pbf)
         # Indexed once. The first version scanned the whole way list inside a
         # loop over every border node inside a loop over every variant.
         context.ways_by_id = {way.osm_id: way for way in context.ways}
@@ -1671,10 +1677,13 @@ def build_handlers(
                         # The graph's direction, not item 109's relief reading: a
                         # divided road's carriageway is one-way here.
                         road_oneway=getattr(stress, "graph_oneway", None),
+                        trail_name=trail_routes.way_name(way.tags),
+                        trail_route=context.trail_routes.get(way.osm_id, 0),
                     )
                 )
         context.rows = rows
         writers.write_segments(context.staging_schema, rows)
+        trail_routes.derive_trail_runs(context.staging_schema)
 
     def validate() -> None:
         if set(context.build_logs) != set(variants.Variant):

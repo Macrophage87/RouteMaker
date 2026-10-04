@@ -72,6 +72,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             row.get("road_oneway"),
             *_adjustment_columns(row["stress"]),
             _attr_sources_json(row["stress"]),
+            row.get("trail_name"),
+            row.get("trail_route", 0),
         )
         for row in rows
     ]
@@ -82,7 +84,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -107,6 +109,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         road_oneway,
                         *adjustment,
                         attr_sources,
+                        trail_name,
+                        trail_route,
                     ),
                 )
                 for (
@@ -133,6 +137,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     road_oneway,
                     *adjustment,
                     attr_sources,
+                    trail_name,
+                    trail_route,
                 ) in batch
             )
             cursor.execute(
@@ -144,7 +150,8 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      road_speed_mph, road_lanes, road_oneway,
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
-                     stress_adjustment_note, stress_adjustment_display, attr_sources)
+                     stress_adjustment_note, stress_adjustment_display, attr_sources,
+                     trail_name, trail_route)
                     VALUES {args}"""
             )
             written += len(batch)
