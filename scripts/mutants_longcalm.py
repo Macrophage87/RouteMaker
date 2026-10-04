@@ -791,6 +791,30 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         '                "limited": "target_distance",' + NL + '                "no_fit": False,',
         AP,
     ),
+    # 337 and 338: the weight range is 25-450 kg, and a weight outside it the nearer limit.
+    ("337 the range's floor back at 68", EFF, "MASS_MIN_KG = 25", "MASS_MIN_KG = 68", EF + AP),
+    ("337 the range's ceiling back at 140", EFF, "MASS_MAX_KG = 450", "MASS_MAX_KG = 140", EF + AP),
+    (
+        "338 the clamp does nothing",
+        EFF,
+        "    return float(min(max(mass_kg, MASS_MIN_KG), MASS_MAX_KG))",
+        "    return float(mass_kg)",
+        EF + AP,
+    ),
+    (
+        "338 the plan's weight unclamped",
+        PR,
+        "        return effort.clamp_mass_kg(chosen)",
+        "        return float(chosen)",
+        EF,
+    ),
+    (
+        "338 the API echoes the weight sent",
+        API,
+        "        return int(effort.clamp_mass_kg(value))",
+        "        return value",
+        AP,
+    ),
 ]
 
 

@@ -207,14 +207,13 @@ class RouteIn(Schema):
     )
     system_weight_kg: StrictInt | None = Field(
         default=None,
-        ge=effort.MASS_MIN_KG,
-        le=effort.MASS_MAX_KG,
         description=(
             "The rider's total system weight in kilograms, rider plus bike plus load"
-            " (OWNER-DECISIONS 264): 68 (a light rider on a 6.8 kg bike) to 140 (a heavy rider on"
-            " a loaded touring bike). Optional, and used only at the top of the stress slider,"
-            " where the Hills slider's avoid half weighs effort-equivalent distance by it: a"
-            " heavier system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
+            " (OWNER-DECISIONS 264). The routing is designed for 25 to 450 (about 55 to 990 lb,"
+            " 337); a total outside that is accepted and planned at the nearer limit, which"
+            " the answer's dials echo (338). Optional, and used only at the top of the stress"
+            " slider, where the Hills slider weighs effort-equivalent distance by it: a heavier"
+            " system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
         ),
     )
     loop: StrictBool = Field(
@@ -267,6 +266,15 @@ class RouteIn(Schema):
         if self.assist and preset.assist_speed_kmh is None:
             raise ValueError("assist applies to the Cargo Bike ride type only")
         return self
+
+    @field_validator("system_weight_kg")
+    @classmethod
+    def _weight_at_the_nearer_limit(cls, value: int | None) -> int | None:
+        """OWNER-DECISIONS 338: a weight outside the range is planned at the nearer
+        limit, not refused."""
+        if value is None:
+            return None
+        return int(effort.clamp_mass_kg(value))
 
     @field_validator("points")
     @classmethod

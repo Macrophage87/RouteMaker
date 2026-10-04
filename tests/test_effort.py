@@ -20,7 +20,7 @@ def profile(grade: float, length_m: float = 3000.0, step: float = 30.0):
 class TestTheModel:
     def test_the_constants_are_the_owners_and_named(self) -> None:
         assert effort.MASS_KG == 90.0
-        assert (effort.MASS_MIN_KG, effort.MASS_MAX_KG) == (68, 140)
+        assert (effort.MASS_MIN_KG, effort.MASS_MAX_KG) == (25, 450)
         assert 0.003 <= effort.CRR <= 0.012 and 0.25 <= effort.CDA <= 0.6
         assert effort.SPEED_MS == pytest.approx(20 / 3.6)
 
@@ -123,3 +123,40 @@ class TestTheSystemWeight:
     def test_the_default_is_90_and_passengers_default_heavier_inside_the_range(self) -> None:
         assert effort.MASS_KG == 90.0
         assert effort.MASS_MAX_KG > effort.PASSENGERS_MASS_KG > effort.MASS_KG > effort.MASS_MIN_KG
+
+
+class TestTheWholeRange:
+    """OWNER-DECISIONS 337 and 338: the model is sensible from 25 to 450 kg (a 90 lb rider
+    on a 16 lb bike is about 48 kg), and a weight outside is planned at the nearer limit."""
+
+    @pytest.mark.parametrize("mass", [25.0, 48.0, 90.0, 450.0])
+    def test_the_flat_is_worth_its_length_and_the_forces_are_finite(self, mass) -> None:
+        assert effort.flat_force_n(mass) > 0
+        assert effort.effort_equivalent_m(profile(0.0), 3000.0, mass) == pytest.approx(3000.0)
+        assert effort.effort_factor(-0.08, mass) == 1.0
+
+    @pytest.mark.parametrize("mass", [25.0, 48.0, 90.0, 450.0])
+    def test_a_climb_costs_a_sensible_multiple_of_the_flat(self, mass) -> None:
+        """An 8% climb is worth 2 to 15 flat metres a metre across the range: the drag,
+        which does not scale with the mass, keeps a light system above 2 and a heavy one
+        below 15 (no division problem at either end)."""
+        factor = effort.effort_factor(0.08, mass)
+        assert 2.0 < factor < 15.0
+
+    def test_heavier_still_pays_more_for_a_climb(self) -> None:
+        factors = [effort.effort_factor(0.06, m) for m in (25.0, 48.0, 90.0, 450.0)]
+        assert factors == sorted(factors) and len(set(factors)) == 4
+
+    @pytest.mark.parametrize(
+        ("sent", "used"),
+        [(10, 25.0), (25, 25.0), (48, 48.0), (90, 90.0), (450, 450.0), (500, 450.0)],
+    )
+    def test_outside_the_range_the_nearer_limit(self, sent, used) -> None:
+        assert effort.clamp_mass_kg(sent) == used
+
+    def test_the_plans_weight_is_held_to_the_range(self) -> None:
+        from core import presets
+
+        assert presets.system_weight_for("trailmaxxing", None, 10) == 25.0
+        assert presets.system_weight_for("trailmaxxing", None, 500) == 450.0
+        assert presets.system_weight_for("trailmaxxing", None, 48) == 48.0

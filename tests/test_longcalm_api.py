@@ -119,19 +119,44 @@ class TestTheDialsOnTheRequest:
     ) -> None:
         assert post(client, top_body(target_distance_m=value)).status_code == 400
 
-    @pytest.mark.parametrize("value", [67, 141, 90.5, "90", True])
-    def test_a_system_weight_out_of_range_is_refused(self, client, value) -> None:
+    @pytest.mark.parametrize("value", [90.5, "90", True])
+    def test_a_system_weight_not_a_whole_number_is_refused(self, client, value) -> None:
         assert post(client, top_body(system_weight_kg=value)).status_code == 400
+
+    @pytest.mark.parametrize(
+        ("value", "used"), [(10, 25), (-5, 25), (24, 25), (451, 450), (500, 450), (9_999, 450)]
+    )
+    def test_a_system_weight_out_of_range_is_planned_at_the_nearer_limit(
+        self, client, segments, router, value, used, monkeypatch
+    ) -> None:
+        """OWNER-DECISIONS 338: accepted, not refused, and the effort model reads the
+        limit (the answer's dials echo it, never the number sent)."""
+        seen = []
+        real = refine.refine
+
+        def spy(trip, ctx):
+            seen.append(ctx.mass_kg)
+            return real(trip, ctx)
+
+        monkeypatch.setattr(refine, "refine", spy)
+        router(standard_router())
+        response = post(client, top_body(system_weight_kg=value))
+        assert response.status_code == 200
+        assert response.json()["dials"]["system_weight_kg"] == used
+        assert seen == [float(used)]
 
     @pytest.mark.parametrize("value", [1_000, 96_561, 1_000_000])
     def test_the_ends_of_the_range_are_taken(self, client, segments, router, value) -> None:
         router(standard_router())
         assert post(client, top_body(target_distance_m=value)).status_code == 200
 
-    @pytest.mark.parametrize("value", [68, 140])
-    def test_the_ends_of_the_weights_range_are_taken(self, client, segments, router, value) -> None:
+    @pytest.mark.parametrize("value", [25, 48, 90, 450])
+    def test_the_weights_range_is_taken_as_sent(self, client, segments, router, value) -> None:
+        """OWNER-DECISIONS 337: 25 to 450 kg on every ride type, the ends included."""
         router(standard_router())
-        assert post(client, top_body(system_weight_kg=value)).status_code == 200
+        response = post(client, top_body(system_weight_kg=value))
+        assert response.status_code == 200
+        assert response.json()["dials"]["system_weight_kg"] == value
 
 
 class TestNoRouteWithinTheTarget:

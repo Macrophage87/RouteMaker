@@ -33,13 +33,15 @@ import math
 from collections.abc import Sequence
 
 # The total system weight, in kilograms: rider, bike and what they carry (item 263:
-# "rider + bike ~90 kg"; item 264 makes it the rider's optional input, from about
-# 68 kg, a light rider on a UCI-minimum 6.8 kg bike, to about 140 kg, a heavy rider
-# on a loaded touring bike). Cargo with passengers defaults heavier: an adult, a
-# cargo bike of 30 kg or so and a child or two.
+# "rider + bike ~90 kg"; item 264 makes it the rider's optional input). The range the
+# routing is designed for is 25 to 450 kg, about 55 to 990 lb (OWNER-DECISIONS 337:
+# a 90 lb rider on a 16 lb bike is about 48 kg, and a very heavy rider on a
+# specialised bike is past the old 140), on every ride type; a total outside it is
+# planned at the nearer limit, never refused (338, `clamp_mass_kg`). Cargo with
+# passengers defaults heavier: an adult, a cargo bike of 30 kg or so and a child or two.
 MASS_KG = 90.0
-MASS_MIN_KG = 68
-MASS_MAX_KG = 140
+MASS_MIN_KG = 25
+MASS_MAX_KG = 450
 PASSENGERS_MASS_KG = 120.0
 GRAVITY = 9.80665
 # Rolling resistance of a hybrid or cross tyre on mixed pavement, from the range
@@ -54,6 +56,12 @@ AIR_DENSITY = 1.225
 SPEED_MS = 20.0 / 3.6
 # The profile's grade is read over this many metres at least.
 WINDOW_M = 300.0
+
+
+def clamp_mass_kg(mass_kg: float) -> float:
+    """The weight the model plans with: `mass_kg` held to MASS_MIN_KG..MASS_MAX_KG, the
+    nearer limit for a total outside them (OWNER-DECISIONS 338)."""
+    return float(min(max(mass_kg, MASS_MIN_KG), MASS_MAX_KG))
 
 
 def flat_force_n(mass_kg: float = MASS_KG) -> float:

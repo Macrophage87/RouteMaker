@@ -289,11 +289,12 @@ def system_weight_for(
     preset_name: str, carrying: str | None = None, chosen: int | None = None
 ) -> float:
     """The total system weight (kg) the effort model reads (OWNER-DECISIONS 264):
-    the rider's, else Cargo with passengers' own default, else the model's 90."""
+    the rider's, held to the model's range (338: the nearer limit, never refused),
+    else Cargo with passengers' own default, else the model's 90."""
     from routemaker import effort
 
     if chosen is not None:
-        return float(chosen)
+        return effort.clamp_mass_kg(chosen)
     if carrying_of(preset_name, carrying) == CARRYING_PEOPLE:
         return effort.PASSENGERS_MASS_KG
     return effort.MASS_KG
