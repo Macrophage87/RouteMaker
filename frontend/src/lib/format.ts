@@ -41,6 +41,20 @@ export function milesFigure(metres: number): string {
   return (metres / METRES_PER_MILE).toFixed(1);
 }
 
+/**
+ * What a rider may type, miles first, kilometres in brackets, as a rule says it:
+ * "0.7 to 621 miles (1 to 1,000 km)" (the a11y review's N3).
+ */
+export function milesRange(minMiles: number, maxMiles: number, minM: number, maxM: number): string {
+  const km = (m: number) => Math.round(m / 1000).toLocaleString("en-US");
+  return `${minMiles} to ${maxMiles} ${MILES_WORD} (${km(minM)} to ${km(maxM)} km)`;
+}
+
+/** "150 to 309 pounds (68 to 140 kg)". */
+export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: number): string {
+  return `${minLb} to ${maxLb} ${POUNDS_WORD} (${minKg} to ${maxKg} kg)`;
+}
+
 /** "4.7 mi (7.6 km)"; below a tenth of a mile "500 ft (150 m)". */
 export function formatDistance(metres: number): string {
   if (!usable(metres)) return DASH;

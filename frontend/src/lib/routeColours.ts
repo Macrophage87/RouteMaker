@@ -15,7 +15,13 @@ import type { StressSpan } from "./api.ts";
 import { haversineM, type LonLat } from "./geo.ts";
 import { unrated } from "./stressBar.ts";
 
-export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "unknown";
+export type RouteClassKey = "path" | "1" | "2" | "3" | "4" | "5" | "u1" | "u2" | "u3" | "u4" | "u5" | "unknown";
+
+/** Whether a class is one of the unpaved browns. */
+export const isUnpavedClass = (key: RouteClassKey): boolean => key.startsWith("u") && key !== "unknown";
+
+/** The dotted mark over an unpaved section: a little under half its width, at least 1.5 px (as the map's, stressStyle.js unpavedWidth). */
+export const routeMarkWidth = (width: number): number => Math.max(1.5, width * 0.4);
 
 export interface RouteClass {
   key: RouteClassKey;
@@ -45,6 +51,12 @@ export const ROUTE_SECTION_WIDTHS: Readonly<Record<RouteClassKey, number>> = {
   "3": 5,
   "4": 5.5,
   "5": 6,
+  // Unpaved: the tier's own width (OWNER-DECISIONS 302: the same ladder).
+  u1: 4,
+  u2: 4.5,
+  u3: 5,
+  u4: 5.5,
+  u5: 6,
   unknown: 5,
 };
 
@@ -98,6 +110,18 @@ export function routeClasses(): readonly RouteClass[] {
       width: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey],
       haloWidth: ROUTE_SECTION_WIDTHS[String(tier.tier) as RouteClassKey] + ROUTE_HALO_EXTRA,
     })),
+    // Unpaved, in the one brown ramp, light to dark (OWNER-DECISIONS 302): the
+    // tier's width, its unpaved casing as the halo, and the dotted mark over it
+    // (MapView's route-unpaved layer) as the cue that is not colour.
+    ...tiers.map((tier: { tier: number; short: string; label: string; unpavedColor: string; unpavedCasing: string }) => ({
+      key: `u${tier.tier}` as RouteClassKey,
+      short: `Unpaved ${tier.short}`,
+      label: `Unpaved: ${tier.label.charAt(0).toLowerCase()}${tier.label.slice(1)}`,
+      color: tier.unpavedColor,
+      halo: tier.unpavedCasing,
+      width: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey],
+      haloWidth: ROUTE_SECTION_WIDTHS[`u${tier.tier}` as RouteClassKey] + ROUTE_HALO_EXTRA,
+    })),
     // The unrated grey is a mid colour: LTS 1's dark casing stands under it.
     {
       key: "unknown",
@@ -122,8 +146,17 @@ function classByKey(key: RouteClassKey): RouteClass | undefined {
   return classes.byKey.get(key);
 }
 
-/** A section's class: traffic-free before its tier, and unknown without one. */
-export function spanClass(span: Pick<StressSpan, "tier" | "facility">): RouteClass {
+/**
+ * A section's class: unpaved (the API's `unpaved: true`) in its tier's brown, a
+ * traffic-free path at LTS 1's when it has no tier; else traffic-free before its
+ * tier, and unknown without one. An unknown surface (null, or an older API) is drawn as paved.
+ */
+export function spanClass(span: Pick<StressSpan, "tier" | "facility"> & Partial<Pick<StressSpan, "unpaved">>): RouteClass {
+  if (span.unpaved === true) {
+    const tier = span.tier ?? (span.facility === "path" ? 1 : null);
+    const brown = tier !== null ? classByKey(`u${tier}` as RouteClassKey) : undefined;
+    if (brown) return brown;
+  }
   if (span.facility === "path") return classByKey("path") as RouteClass;
   const tier = classByKey(String(span.tier) as RouteClassKey);
   return span.tier !== null && tier ? tier : (classByKey("unknown") as RouteClass);
@@ -212,7 +245,16 @@ export function sectionFeatures(sections: readonly RouteSection[] | null) {
     type: "FeatureCollection" as const,
     features: (sections ?? []).map((section) => ({
       type: "Feature" as const,
-      properties: { key: section.key, color: section.color, halo: section.halo, width: section.width, haloWidth: section.haloWidth },
+      properties: {
+        key: section.key,
+        color: section.color,
+        halo: section.halo,
+        width: section.width,
+        haloWidth: section.haloWidth,
+        // The dotted unpaved mark (MapView's route-unpaved layer draws only these).
+        unpaved: isUnpavedClass(section.key),
+        markWidth: routeMarkWidth(section.width),
+      },
       geometry: { type: "LineString" as const, coordinates: section.coordinates },
     })),
   };

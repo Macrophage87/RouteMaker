@@ -12,18 +12,18 @@ import { stressSegments } from "./lib/stressBar.ts";
 import { RouteScheduler, type SchedulerState } from "./lib/routeScheduler.ts";
 import { confirmedUpTo, sendsConfirmation, spanKm } from "./lib/longRide.ts";
 import { planToOpen, rememberPlan } from "./lib/signIn.ts";
-import { announceRoute, calmSearchNote, detourView, paceText, pointName } from "./lib/summary.ts";
+import { STILL_PLANNING_AFTER_MS, announceRoute, calmSearchNote, detourView, paceText, pointName, stillPlanningSaid } from "./lib/summary.ts";
 import { focusesPlanButton, isCancelKey, opensSheet, sheetOrder, type SheetSection } from "./lib/sheet.ts";
-import { FACILITIES, accessibilityOn, accessibilitySource, currentTiers, legendWidths, paletteSetByAddress, setAccessibility, setHighStressLanes, unpavedWidth, UNPAVED_DASH } from "./stressStyle.js";
+import { accessibilityOn, accessibilitySource, paletteSetByAddress, setAccessibility, setHighStressLanes } from "./stressStyle.js";
 import { HighStressLanesSwitch } from "./lib/highStressLanesSwitch.ts";
 import { useHighStressLanes } from "./useStressStyle.ts";
 import { useStressStyle } from "./useStressStyle.ts";
 import { ANNOUNCE_SETTLE_MS, SettledText } from "./lib/settle.ts";
 import { skipToPlanner, SKIP_LINK_TEXT } from "./lib/skipLink.ts";
 import { AccessibilitySwitch } from "./lib/accessibilitySwitch.ts";
-import { CandidatePicker } from "./CandidatePicker.tsx";
+import { CandidatePicker } from "./lib/candidatePicker.ts";
 import { DialsPanel } from "./DialsPanel.tsx";
-import { candidateRoute, choiceSaid } from "./lib/candidates.ts";
+import { announceHow, candidateRoute } from "./lib/candidates.ts";
 import { loopNote } from "./lib/loop.ts";
 import { FacilityBreakdown } from "./FacilityBreakdown.tsx";
 import { IntersectionList } from "./IntersectionList.tsx";
@@ -33,10 +33,10 @@ import type { Dials } from "./lib/dials.ts";
 import { stationEdit, type RailVisibility, type StationRole } from "./lib/railStations.ts";
 import { RailStationsSection } from "./RailStations.tsx";
 import { RAIL_STATIONS } from "./lib/railData.ts";
-import { federalShown } from "./lib/federalLand.ts";
+import { federalPoints, federalShown, type FederalData } from "./lib/federalLand.ts";
 import { FederalLandSection, type FederalStatus } from "./lib/federalLegend.ts";
 import { addCoverageMask, fetchCoverage, watchForFacilities, watchZoom } from "./lib/mapGlue.ts";
-import { ROADWAY_LANES, StressZoomNotes } from "./lib/stressLegend.ts";
+import { StressLegend } from "./lib/stressLegend.ts";
 import { PointsList } from "./lib/pointsList.ts";
 import { planEdits, travelSaid, type Snapshot as PlanSnapshot } from "./lib/planEdits.ts";
 import { mapWhen } from "./lib/rideTime.ts";
@@ -106,7 +106,16 @@ export function App() {
   // (OWNER-DECISIONS 265): 0 is the answer, the others its candidates.
   const [answer, setRoute] = useState<RouteResponse | null>(null);
   const [choice, setChoice] = useState(0);
-  useEffect(() => setChoice(0), [answer]);
+  // Whether the rider chose the route shown (it is then said as chosen, not as planned: the a11y review's N4).
+  const [chosen, setChosen] = useState(false);
+  useEffect(() => {
+    setChoice(0);
+    setChosen(false);
+  }, [answer]);
+  const choose = useCallback((index: number) => {
+    setChoice(index);
+    setChosen(true);
+  }, []);
   const route = candidateRoute(answer, choice);
   const [routedPoints, setRoutedPoints] = useState<LonLat[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "idle" });
@@ -120,6 +129,7 @@ export function App() {
   // own switch, on by default, and whether its data has arrived.
   const [federalOn, setFederalOn] = useState(true);
   const [federalStatus, setFederalStatus] = useState<FederalStatus>("loading");
+  const [federalData, setFederalData] = useState<FederalData | null>(null);
   // Whether the grey coverage mask is on the map, and whether the stress tiles
   // carry bike-facility data; each legend line is shown only when it is true.
   const [coverageShown, setCoverageShown] = useState(false);
@@ -536,12 +546,16 @@ export function App() {
       : status.kind === "waiting"
         ? `The planner is busy; trying again in ${formatSeconds(status.seconds)}.`
         : status.kind === "ok" && route
-          ? [choiceSaid(answer, choice), announceRoute(route, routedPoints)].filter(Boolean).join(" ")
+          ? announceRoute(route, routedPoints, announceHow(answer, choice, chosen))
           : "";
   // The route's sentence once it has stood a moment (lib/settle.ts): routes
   // that replace each other quickly are said once, the last. "Planning..." is
   // shown but not said, so a release is one announcement, not two.
   const routeSaid = useSettled(status.kind === "ok" ? announcement : "", ANNOUNCE_SETTLE_MS);
+  // A plan still going after a few seconds is said once, so a screen-reader rider
+  // can tell a slow plan (a calm route at the top of the slider takes up to half a
+  // minute) from a dead one (the a11y review's SF1).
+  const slow = useLongerThan(status.kind === "loading", STILL_PLANNING_AFTER_MS);
 
   const presetsSection = <RideTypePicker key="presets" preset={preset} dials={dials} onChoose={choosePreset} />;
   const pointsSection = (
@@ -618,7 +632,9 @@ export function App() {
         Route
       </h2>
       {status.kind === "loading" && <p className="loading">{announcement}</p>}
+      {status.kind === "loading" && <progress className="planning" aria-label="Planning the route" />}
       <div role="status" aria-live="polite" className="status-line">
+        {status.kind === "loading" && slow && <p className="loading">{stillPlanningSaid(preset, dials)}</p>}
         {status.kind === "waiting" && <p className="loading">{announcement}</p>}
         {status.kind === "ok" && routeSaid && <p className="visually-hidden">{routeSaid}</p>}
         {status.kind === "idle" && points.length < 2 && <p className="hint">No route yet.</p>}
@@ -662,7 +678,7 @@ export function App() {
           )}
         </div>
       )}
-      {shown && <CandidatePicker answer={answer} choice={choice} onChoose={setChoice} />}
+      {shown && <CandidatePicker answer={answer} choice={choice} onChoose={choose} />}
       {shown && (
         <RouteSummary
           route={shown}
@@ -725,6 +741,7 @@ export function App() {
         rail={rail}
         federalVisible={federalShown(preset, federalOn)}
         onFederalStatus={setFederalStatus}
+        onFederalData={setFederalData}
         onStationPoint={placeStation}
       />
       {(crosshair.button || crosshair.canvas) && <div className="crosshair" aria-hidden="true" />}
@@ -793,10 +810,11 @@ export function App() {
               paletteFromAddress={paletteSetByAddress()}
               onChange={(on) => setAccessibility(on)}
             />
+            {/* Shown with or without the stress map: it also changes the route's facility totals
+                and description (the a11y review's SF4). */}
+            <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} overlay={stress === "available"} />
             {stress === "available" && (
               <>
-                {/* Only with the overlay there: with no stress map it has no lanes to show (salience review, minor). */}
-                <HighStressLanesSwitch on={showHighLanes} onChange={(on) => setHighStressLanes(on)} />
                 <label className="toggle">
                   <input
                     type="checkbox"
@@ -819,7 +837,14 @@ export function App() {
           {RAIL_STATIONS.length > 0 && <RailStationsSection visibility={rail} onChange={setRail} />}
 
           {preset === "mass-ride" && (
-            <FederalLandSection on={federalOn} onChange={setFederalOn} status={federalStatus} />
+            <FederalLandSection
+              on={federalOn}
+              onChange={setFederalOn}
+              status={federalStatus}
+              points={federalData ? federalPoints(points, federalData) : null}
+              pointCount={points.length}
+              nameOf={(index) => pointName(index, points.length)}
+            />
           )}
 
           <footer className="panel-footer">
@@ -836,6 +861,20 @@ export function App() {
       </aside>
     </div>
   );
+}
+
+/** Whether `on` has been true for `afterMs` without a break: false again at once when it goes false. */
+function useLongerThan(on: boolean, afterMs: number): boolean {
+  const [long, setLong] = useState(false);
+  useEffect(() => {
+    if (!on) {
+      setLong(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setLong(true), afterMs);
+    return () => window.clearTimeout(timer);
+  }, [on, afterMs]);
+  return on && long;
 }
 
 /** `text` once it has stood for `waitMs`; "" at once (lib/settle.ts SettledText). */
@@ -912,8 +951,8 @@ function RouteSummary({
           : "To reshape the route, drag the line."}
       </p>
       {segments.length > 0 && (
-        <figure className="stress">
-          <figcaption>Traffic stress along the route</figcaption>
+        <figure className="stress" aria-labelledby="stress-figure-caption">
+          <figcaption id="stress-figure-caption">Traffic stress along the route</figcaption>
           <div className="stress-bar" aria-hidden="true">
             {segments
               .filter((s) => s.fraction > 0)
@@ -931,8 +970,10 @@ function RouteSummary({
               <li key={s.key}>
                 <span className={`swatch stress-seg-${s.key}`} style={{ backgroundColor: s.color, ["--seg-accent" as string]: s.casing }} aria-hidden="true" />
                 <span className="stress-name">{s.short}</span>
-                <span className="stress-label">{s.label}</span>
+                <span className="visually-hidden">, </span>
                 <span className="stress-pct">{s.percent}%</span>
+                <span className="visually-hidden">, </span>
+                <span className="stress-label">{s.label}</span>
               </li>
             ))}
           </ul>
@@ -940,99 +981,5 @@ function RouteSummary({
       )}
       <p className="route-credit">Route data: {route.attribution.join("; ")}.</p>
     </div>
-  );
-}
-
-function StressLegend({
-  facilities,
-  zoom,
-  shown,
-}: {
-  facilities: ReadonlySet<string>;
-  zoom: number | null;
-  shown: boolean;
-}) {
-  useStressStyle();
-  const showHighLanes = useHighStressLanes();
-  const tiers = currentTiers();
-  const widths = legendWidths(tiers);
-  return (
-    <>
-      <ul className="legend" aria-label="Traffic stress legend">
-        {tiers.map((tier, i) => (
-          <li key={tier.tier}>
-            <svg width="44" height="12" aria-hidden="true">
-              <line x1="2" y1="6" x2="42" y2="6" stroke={tier.casing} strokeWidth={widths.tiers[i].casing} />
-              <line
-                x1="2"
-                y1="6"
-                x2="42"
-                y2="6"
-                stroke={tier.color}
-                strokeWidth={widths.tiers[i].line}
-                strokeDasharray={tier.dash ? tier.dash.map((d: number) => d * widths.tiers[i].line).join(" ") : undefined}
-              />
-            </svg>
-            <span className="stress-name">{tier.short}</span>
-            <span className="stress-label">{tier.label}</span>
-          </li>
-        ))}
-        <li>
-          <svg width="44" height="12" aria-hidden="true">
-            <line x1="2" y1="6" x2="42" y2="6" stroke={tiers[0].casing} strokeWidth={widths.tiers[0].casing} />
-            <line x1="2" y1="6" x2="42" y2="6" stroke={tiers[0].color} strokeWidth={widths.tiers[0].line} />
-            <line
-              x1="2"
-              y1="6"
-              x2="42"
-              y2="6"
-              stroke={tiers[0].casing}
-              strokeWidth={unpavedWidth(tiers[0])}
-              strokeDasharray={UNPAVED_DASH.map((d: number) => d * unpavedWidth(tiers[0])).join(" ")}
-            />
-          </svg>
-          <span className="stress-name">Unpaved</span>
-          <span className="stress-label">
-            A dotted center line on any of the lines above: gravel, dirt or other unpaved surface. An unpaved trail has no path edges.
-          </span>
-        </li>
-      </ul>
-      {/* What the tiles leave out as the map zooms out (core/stress_tiles.py):
-          traffic-free paths and trails alone below STRESS_ZOOMS.busy (lib/stressLegend.ts). */}
-      <StressZoomNotes zoom={zoom} shown={shown} />
-      {facilities.size > 0 && (
-        <>
-          <p className="hint">
-            Bike facilities are edges on either side of the stress line: a solid dark rail for a paved path, blocks like posts for a
-            protected lane, and a thin dotted rail for paint. An unpaved trail has no path edges, only the dotted center line. Painted lanes on LTS 4 and Avoid roads are{" "}
-            {showHighLanes ? "shown because the switch above is on" : "hidden unless you turn on \"Show bike lanes on high-stress roads\""}.
-          </p>
-          <ul className="legend" aria-label="Bike facility legend">
-            {FACILITIES.filter((facility) => facilities.has(facility.facility)).map((facility) => {
-              const rails = widths.rails[facility.facility];
-              return (
-                <li key={facility.facility}>
-                  <svg width="44" height="14" aria-hidden="true">
-                    <line
-                      x1="2"
-                      y1="7"
-                      x2="42"
-                      y2="7"
-                      stroke={facility.color}
-                      strokeWidth={rails}
-                      strokeDasharray={facility.dash ? facility.dash.map((d: number) => d * rails).join(" ") : undefined}
-                    />
-                    <line x1="2" y1="7" x2="42" y2="7" stroke="#ffffff" strokeWidth={widths.facilityCasing} />
-                  </svg>
-                  <span className="stress-name">{facility.short}</span>
-                  <span className="stress-label">{facility.label}</span>
-                </li>
-              );
-            })}
-          </ul>
-          <p className="hint">Sharrows count as ordinary streets. {ROADWAY_LANES}</p>
-        </>
-      )}
-    </>
   );
 }

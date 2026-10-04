@@ -17,6 +17,8 @@ import {
   startDials,
 } from "./dials.ts";
 import {
+  DESCRIPTION_MAX_CHARS,
+  TARGET_HOW,
   TARGET_LABEL,
   WEIGHT_LABEL,
   formatWeight,
@@ -55,8 +57,11 @@ test("a target distance is taken in the API's range, whole metres, and nothing e
   assert.equal(fitTarget("60"), undefined);
 });
 
-test("a system weight is taken between 68 and 140 kg", () => {
+test("a system weight is taken between 68 and 140 kg, to a tenth", () => {
   assert.equal(fitWeight(90), 90);
+  assert.equal(fitWeight(90.72), 90.7, "kept to a tenth, so typed pounds come back as typed");
+  assert.equal(fitWeight(140.2), 140.2, "the range is on what is sent, whole kilograms");
+  assert.equal(fitWeight(140.6), undefined);
   assert.equal(fitWeight(SYSTEM_WEIGHT_MIN_KG), 68);
   assert.equal(fitWeight(SYSTEM_WEIGHT_MAX_KG), 140);
   assert.equal(fitWeight(67), undefined);
@@ -71,6 +76,9 @@ test("the request carries them when set and not otherwise", () => {
   const fields = dialFields({ ...start, targetDistanceM: SIXTY, systemWeightKg: 110 });
   assert.equal(fields.target_distance_m, SIXTY);
   assert.equal(fields.system_weight_kg, 110);
+  // The API takes whole kilograms (core.api StrictInt): a tenth is rounded off when sent.
+  assert.equal(dialFields({ ...start, systemWeightKg: 90.7 }).system_weight_kg, 91);
+  assert.equal(dialFields({ ...start, systemWeightKg: 90.4 }).system_weight_kg, 90);
   assert.equal("target_distance_m" in dialFields({ ...start, targetDistanceM: 5 }), false, "out of range is not sent");
 });
 
@@ -123,18 +131,26 @@ test("the panel shows the two inputs at the top of the slider and not below it",
 test("the target distance's words say what it does, with miles first and kilometres in brackets", () => {
   const empty = panelView("trailmaxxing", startDials("trailmaxxing")).target!;
   assert.equal(empty.value, "");
-  assert.match(empty.hint, /^Optional\. The route aims at or under this/);
-  assert.match(empty.hint, /up to 1\.6 times the router's own route, where the extra miles avoid enough busy road/);
-  assert.match(empty.hint, /fewest heavy-traffic roads and very high stress junctions first/);
+  assert.match(empty.hint, /^Optional: the calmest route at or under this\./);
+  assert.match(empty.hint, /Left empty, it may be up to 1\.6 times the usual route\./);
+  // The description is read on every focus (the a11y review's N1): short, the detail under "How this works".
+  assert.ok(empty.hint.length < DESCRIPTION_MAX_CHARS, `${empty.hint.length} characters`);
+  assert.equal(empty.how, TARGET_HOW);
+  assert.match(TARGET_HOW, /fewest heavy-traffic roads and very high stress junctions first/);
+  assert.match(TARGET_HOW, /goes past your target only where the extra miles avoid enough busy road/);
+  assert.match(TARGET_HOW, /never past 1\.25 times it/);
+  // OWNER-DECISIONS 287(3): a target below the calm route gives the calm route, flagged (the spec review's NIT1).
+  assert.match(TARGET_HOW, /If the calmest route is longer than your target, it is still the one chosen, and the route summary says how far over your target it is\./);
+  assert.doesNotMatch(TARGET_HOW, /makes it use busier roads/);
   const set = panelView("trailmaxxing", { ...startDials("trailmaxxing"), targetDistanceM: SIXTY }).target!;
   assert.equal(set.value, "60");
   assert.match(set.hint, /Set to 60\.0 mi \(96\.6 km\)/);
-  // OWNER-DECISIONS 271: soft, with a hard ceiling of 1.25 times it, and the overage said.
-  assert.match(set.hint, /goes past it only where the extra miles avoid enough busy road/);
-  assert.match(set.hint, /never past 75\.0 mi \(120\.7 km\), and says how far over it is/);
-  assert.match(set.hint, /shorter than the calmest route makes it use busier roads/);
+  // OWNER-DECISIONS 271: soft, with a hard ceiling of 1.25 times it.
+  assert.match(set.hint, /never past 75\.0 mi \(120\.7 km\)\./);
+  assert.ok(set.hint.length < DESCRIPTION_MAX_CHARS, `${set.hint.length} characters`);
   assert.doesNotMatch(set.hint, /no longer than/);
-  assert.match(set.rule, /^Enter 0\.7 to 621 miles, or leave it empty\.$/);
+  // Metric in brackets in the rule too (the a11y review's N3).
+  assert.match(set.rule, /^Enter 0\.7 to 621 miles \(1 to 1,000 km\), or leave it empty\.$/);
 });
 
 test("the label is the target distance, not a maximum", () => {
@@ -150,7 +166,7 @@ test("the weight's words give pounds first and say the default", () => {
   assert.equal(set.value, "309");
   assert.match(set.hint, /Set to 309 lb \(140 kg\)/);
   assert.equal(formatWeight(68), "150 lb (68 kg)");
-  assert.match(empty.rule, /^Enter 150 to 309 pounds, or leave it empty\.$/);
+  assert.match(empty.rule, /^Enter 150 to 309 pounds \(68 to 140 kg\), or leave it empty\.$/);
 });
 
 test("what is typed is read in miles and pounds, and a bad entry is refused", () => {
@@ -165,8 +181,10 @@ test("what is typed is read in miles and pounds, and a bad entry is refused", ()
   assert.equal(parseTarget("sixty"), null);
   assert.equal(parseTarget("1e2"), null);
   assert.equal(parseWeight(""), undefined);
-  assert.equal(parseWeight("198"), 90);
-  assert.equal(parseWeight("198 lb"), 90);
+  assert.equal(parseWeight("198"), 89.8);
+  assert.equal(parseWeight("198 lb"), 89.8);
+  assert.equal(parseWeight("309"), 140.2, "the top of the rule is taken: 140 kg is sent");
+  assert.equal(parseWeight("150"), 68);
   assert.equal(parseWeight("100"), null);
   assert.equal(parseWeight("400"), null);
   assert.equal(parseWeight("heavy"), null);
@@ -175,6 +193,18 @@ test("what is typed is read in miles and pounds, and a bad entry is refused", ()
   assert.equal(targetText(Math.round(12.34 * METRES_PER_MILE)), "12.3");
   assert.equal(weightText(undefined), "");
   assert.equal(weightText(90), "198");
+});
+
+test("pounds typed come back as typed: 200 lb is 200 lb after the round trip, every whole pound in the range (the spec review's NIT4)", () => {
+  assert.equal(weightText(parseWeight("200") ?? undefined), "200");
+  for (let lb = 150; lb <= 309; lb++) {
+    const kg = parseWeight(String(lb));
+    assert.ok(typeof kg === "number", `${lb} lb is taken`);
+    assert.equal(weightText(kg), String(lb), `${lb} lb`);
+    // And through the link, which carries the kilograms.
+    const hash = encodePlan(POINTS, "trailmaxxing", { ...startDials("trailmaxxing"), systemWeightKg: kg });
+    assert.equal(weightText(decodePlan(hash).dials.systemWeightKg), String(lb), `${lb} lb through the link`);
+  }
 });
 
 test("back to the ride type's settings clears both", () => {
@@ -197,16 +227,20 @@ function route(search: Partial<NonNullable<RouteResponse["calm_search"]>>, dista
 }
 
 test("a route where none fits the target says so, and how far over it is, in words", () => {
-  // OWNER-DECISIONS 267: the least stressful route found, flagged.
+  // OWNER-DECISIONS 267, 298(2): the least stressful route found, flagged, keyed on no_fit.
   const found = route({
     limited: "target_distance",
+    no_fit: true,
     fits: false,
     target_distance_m: 80_467,
     target_distance_set: true,
+    ceiling_m: 100_584,
     over_target_m: 12_325,
   });
   const note = calmSearchNote(found) ?? "";
-  assert.match(note, /^No route within your target distance \(50\.0 mi \(80\.5 km\)\) was found\./);
+  // No brackets in brackets (the spec review's NIT1).
+  assert.match(note, /^No route within your target distance of 50\.0 mi \(80\.5 km\) was found\./);
+  assert.doesNotMatch(note, /1\.25 times/, "within the ceiling: the ceiling is not mentioned");
   assert.match(note, /This is the least stressful one found\. It is 7\.7 mi \(12\.3 km\) over your target\./);
   assert.doesNotMatch(note, /shortest/);
   assert.match(announceRoute(found), /7\.7 mi \(12\.3 km\) over your target of 50\.0 mi \(80\.5 km\)\./);
@@ -237,7 +271,54 @@ test("how far over is read from the answer's search or from a candidate's own fi
 
 test("a route found by a busier first route says why", () => {
   const note = calmSearchNote(route({ fits: true, fitted_at: 40, target_distance_m: 80_467, target_distance_set: true }, 78_000)) ?? "";
-  assert.match(note, /Your target distance \(50\.0 mi \(80\.5 km\)\) is shorter than the calmest route, so this one uses some busier roads to fit\./);
+  assert.match(note, /Your target distance of 50\.0 mi \(80\.5 km\) is shorter than the calmest route, so this one uses some busier roads to fit\./);
+});
+
+test("no route within the target or the ceiling: said truthfully, with the 1.25 times (OWNER-DECISIONS 298(2))", () => {
+  const past = route(
+    { limited: "target_distance", no_fit: true, fits: false, target_distance_m: 80_467, ceiling_m: 100_584, over_target_m: 30_000 },
+    110_467,
+  );
+  assert.equal(
+    calmSearchNote(past),
+    "No route within your target distance of 50.0 mi (80.5 km), or within 1.25 times it, was found. This is the least stressful one found. It is 18.6 mi (30.0 km) over your target.",
+  );
+  // Without the route's own length, the target and the overage say it.
+  assert.match(calmSearchNote({ ...past, distance_m: undefined } as never) ?? "", /or within 1\.25 times it/);
+  // Exactly at the ceiling is within it.
+  assert.doesNotMatch(calmSearchNote({ ...past, distance_m: 100_584 }) ?? "", /1\.25 times/);
+});
+
+test("the no-fit sentence is said only when no_fit is true, whatever limited and fits say", () => {
+  for (const no_fit of [false, null, undefined]) {
+    const r = route({ limited: "target_distance", no_fit, fits: false, target_distance_m: 80_467, over_target_m: 4_828 });
+    const note = calmSearchNote(r) ?? "";
+    assert.doesNotMatch(note, /No route within/, String(no_fit));
+    assert.doesNotMatch(note, /least stressful one found/, String(no_fit));
+    // An older API's "target_distance" says how far, and claims no reason it may not have.
+    assert.equal(note, "It is 3.0 mi (4.8 km) over your target.", String(no_fit));
+  }
+  const fits = route({ limited: null, no_fit: false, fits: true, target_distance_m: 80_467, over_target_m: 0 });
+  assert.equal(calmSearchNote(fits), null);
+});
+
+test("a search stopped at the ceiling says a calmer, longer route may exist, with the ceiling miles first", () => {
+  const stopped = route({ limited: "ceiling", no_fit: false, fits: false, target_distance_m: 80_467, ceiling_m: 100_584, over_target_m: 4_828 });
+  assert.equal(
+    calmSearchNote(stopped),
+    "The calmer-route search stopped at the longest distance it allows, 62.5 mi (100.6 km), so a calmer, longer route may exist. It is 3.0 mi (4.8 km) over your target, to avoid busier roads.",
+  );
+  assert.equal(
+    calmSearchNote(route({ limited: "ceiling", ceiling_m: null })),
+    "The calmer-route search stopped at the longest distance it allows, so a calmer, longer route may exist.",
+  );
+  assert.doesNotMatch(calmSearchNote(stopped) ?? "", /No route within/);
+});
+
+test("hills seeking at the top no longer stops the calmer-route search, and says nothing of it (OWNER-DECISIONS 298(3))", () => {
+  assert.equal(calmSearchNote(route({ limited: "seeking" })), null);
+  const over = route({ limited: null, fits: false, target_distance_m: 80_467, over_target_m: 4_828 });
+  assert.equal(calmSearchNote(over), "It is 3.0 mi (4.8 km) over your target, to avoid busier roads.");
 });
 
 test("a long trip that could not be cut into legs says so; the span note is not said for Trailmaxxing's long trips", () => {

@@ -15,6 +15,9 @@ import {
   PATTERN_SIZE,
   addFederalLand,
   federalBefore,
+  federalPoints,
+  inFederalArea,
+  type FederalData,
   federalCard,
   federalImageId,
   federalLayerIds,
@@ -30,9 +33,15 @@ import {
 } from "./federalLand.ts";
 import {
   FEDERAL_HEADING,
+  FEDERAL_HELP,
+  FEDERAL_LOADING,
+  FEDERAL_OWNERSHIP,
+  FEDERAL_POINTS_NONE,
   FEDERAL_UNAVAILABLE,
   FederalLandSection,
   FederalLegend,
+  federalPointText,
+  federalStatusText,
 } from "./federalLegend.ts";
 import { PRESETS } from "./presets.ts";
 import { FEDERAL_CREDITS, MAP_ATTRIBUTION, MAP_CREDITS } from "./mapStyle.ts";
@@ -242,16 +251,113 @@ test("the section: a labelled switch, the legend, the note; the legend goes when
   assert.match(shown, /Show federal land on the map/);
   assert.match(shown, /checked=""/);
   assert.match(shown, /Federal land - permit rules may differ \(information, not legal advice\)\./);
-  assert.match(shown, /not the same as who polices a road/);
   assert.match(shown, /marks federal land by kind/);
-  assert.match(shown, /route description and the stop list/);
-  assert.match(shown, /ownership is not police jurisdiction/);
+  assert.match(shown, /Ownership is not police jurisdiction/);
+  // The help is two short paragraphs, the ownership caveat its own; nothing promised, no "above" (the a11y review's SF6).
+  assert.ok(shown.includes(`<p class="hint">${FEDERAL_HELP}</p><p class="hint">${FEDERAL_OWNERSHIP}</p>`));
+  for (const text of [FEDERAL_HELP, FEDERAL_OWNERSHIP]) {
+    assert.doesNotMatch(text, /coming|above/, text);
+    assert.ok(text.split(" ").length <= 40, `${text.split(" ").length} words`);
+  }
   assert.match(shown, /federal-legend/);
   assert.doesNotMatch(render(false, "ready"), /federal-legend/);
   const unavailable = render(true, "unavailable");
   assert.ok(unavailable.includes(FEDERAL_UNAVAILABLE));
   assert.doesNotMatch(unavailable, /federal-legend/);
   assert.match(render(true, "loading"), /role="status"[^>]*>Loading federal land/);
+});
+
+test("the status line is one persistent role=status element whose words change, empty when there is nothing to say (the a11y review's N8)", () => {
+  const status = (on: boolean, s: "loading" | "ready" | "unavailable") => {
+    const html = renderToStaticMarkup(createElement(FederalLandSection, { on, onChange: () => {}, status: s }));
+    const found = [...html.matchAll(/<p class="hint federal-status" role="status">([^<]*)<\/p>/g)];
+    assert.equal(found.length, 1, `${on} ${s}: one status line`);
+    assert.equal((html.match(/role="status"/g) ?? []).length, 1, "and no other");
+    return found[0][1];
+  };
+  assert.equal(status(true, "loading"), FEDERAL_LOADING);
+  assert.equal(status(true, "unavailable"), FEDERAL_UNAVAILABLE);
+  assert.equal(status(true, "ready"), "");
+  for (const s of ["loading", "ready", "unavailable"] as const) assert.equal(status(false, s), "", `off, ${s}`);
+  assert.equal(federalStatusText(true, "loading"), FEDERAL_LOADING);
+});
+
+// ---------- the plan's points on federal land, in words (the a11y review's SF6) ----------
+
+const square = (x: number, y: number, size: number) => [
+  [x, y],
+  [x + size, y],
+  [x + size, y + size],
+  [x, y + size],
+  [x, y],
+];
+const AREAS: FederalData = {
+  type: "FeatureCollection",
+  features: [
+    {
+      type: "Feature",
+      properties: { kind: "reservation", name: "Big Reservation", agency: "National Park Service (most U.S. Reservations)" },
+      // A hole where nothing is federal.
+      geometry: { type: "Polygon", coordinates: [square(0, 0, 10), square(6, 6, 2)] },
+    },
+    { type: "Feature", properties: { kind: "capitol", name: "Capitol Grounds", agency: "Architect of the Capitol" }, geometry: { type: "Polygon", coordinates: [square(1, 1, 2)] } },
+    { type: "Feature", properties: { kind: "military", name: "Fort Somewhere" }, geometry: { type: "MultiPolygon", coordinates: [[square(20, 20, 2)], [square(30, 30, 2)]] } },
+  ],
+};
+
+test("a point is in an area when it is in the outer ring and in none of its holes, Polygon or MultiPolygon", () => {
+  const [big, , fort] = AREAS.features;
+  assert.equal(inFederalArea([5, 5], big.geometry), true);
+  assert.equal(inFederalArea([7, 7], big.geometry), false, "in the hole");
+  assert.equal(inFederalArea([11, 5], big.geometry), false);
+  assert.equal(inFederalArea([-1, 5], big.geometry), false);
+  assert.equal(inFederalArea([31, 31], fort.geometry), true, "the second polygon of a multipolygon");
+  assert.equal(inFederalArea([25, 25], fort.geometry), false);
+});
+
+test("each point on federal land is listed with the most specific area it is in and who keeps it", () => {
+  const points: [number, number][] = [[2, 2], [5, 5], [7, 7], [21, 21], [50, 50]];
+  assert.deepEqual(federalPoints(points, AREAS), [
+    { index: 0, name: "Capitol Grounds", manager: "Architect of the Capitol" },
+    { index: 1, name: "Big Reservation", manager: "National Park Service (most U.S. Reservations)" },
+    { index: 3, name: "Fort Somewhere", manager: "Military installation" },
+  ]);
+  assert.deepEqual(federalPoints(points, null), []);
+});
+
+test("the list under the switch says it in words, by the points' names, and says so when none is on federal land", () => {
+  const nameOf = (i: number) => ["Start", "Stop 1", "Stop 2", "Stop 3", "End"][i];
+  const found = federalPoints([[2, 2], [5, 5], [50, 50]], AREAS);
+  const html = renderToStaticMarkup(createElement(FederalLandSection, { on: false, onChange: () => {}, status: "ready", points: found, pointCount: 3, nameOf }));
+  assert.match(html, /<p id="federal-points-heading">Your points on federal land:<\/p><ul aria-labelledby="federal-points-heading">/);
+  assert.match(html, /<li>Start – Capitol Grounds \(Architect of the Capitol\)<\/li><li>Stop 1 – Big Reservation \(National Park Service \(most U\.S\. Reservations\)\)<\/li><\/ul>/);
+  assert.equal(federalPointText({ index: 2, name: "The Mall", manager: "National Park Service" }, "Stop 2"), "Stop 2 – The Mall (National Park Service)");
+  const none = renderToStaticMarkup(createElement(FederalLandSection, { on: true, onChange: () => {}, status: "ready", points: [], pointCount: 2, nameOf }));
+  assert.ok(none.includes(FEDERAL_POINTS_NONE));
+  // Nothing until the data has come, or with no points.
+  for (const props of [{ points: null, pointCount: 2 }, { points: [], pointCount: 0 }]) {
+    assert.doesNotMatch(renderToStaticMarkup(createElement(FederalLandSection, { on: true, onChange: () => {}, status: "ready", nameOf, ...props })), /federal-points/);
+  }
+});
+
+test("the list follows the real data: a point at the Capitol is on the Architect of the Capitol's grounds", () => {
+  const data = parseFederalLand(JSON.parse(readFileSync(new URL("../federal-data/federal-land.json", import.meta.url), "utf8")));
+  const capitol = data!.features.find((f) => f.properties.kind === "capitol")!;
+  // A point inside its first ring: the middle of two vertices across from each other is not always inside, so search the ring's box.
+  const ring = (capitol.geometry.type === "Polygon" ? capitol.geometry.coordinates : (capitol.geometry.coordinates as unknown[])[0]) as number[][][];
+  const xs = ring[0].map((p) => p[0]);
+  const ys = ring[0].map((p) => p[1]);
+  let inside: [number, number] | null = null;
+  for (let i = 1; i < 20 && !inside; i++) {
+    for (let j = 1; j < 20 && !inside; j++) {
+      const p: [number, number] = [Math.min(...xs) + ((Math.max(...xs) - Math.min(...xs)) * i) / 20, Math.min(...ys) + ((Math.max(...ys) - Math.min(...ys)) * j) / 20];
+      if (inFederalArea(p, capitol.geometry)) inside = p;
+    }
+  }
+  assert.ok(inside, "a point inside the Capitol grounds");
+  const [found] = federalPoints([inside], data);
+  assert.equal(found.manager, "Architect of the Capitol");
+  assert.deepEqual(federalPoints([[-77.3, 39.6]], data), [], "a point far from federal land");
 });
 
 test("the copy never characterises a neighbourhood", () => {

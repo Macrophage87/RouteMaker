@@ -70,12 +70,27 @@ export const FEDERAL_CREDITS: readonly string[] = [
     '(Open Data DC), adapted, <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>',
 ];
 
+/**
+ * The other sources a rider sees the work of (OWNER-DECISIONS 301: "Even if the
+ * license doesn't require crediting them, sources need citing."): the elevation
+ * the climb and the Hills slider read, and the place search. Text only. The
+ * route answer and the search answer carry their own credits as well (the API's
+ * ATTRIBUTION and the geocode credit), shown under the route and the search.
+ * The two Northern Virginia jurisdictions' stress data, a comparison used only
+ * inside the project, is not shown anywhere (mapStyle.test.ts holds it absent).
+ */
+export const SOURCE_CREDITS: readonly string[] = [
+  "Elevation and climb: U.S. Geological Survey 3D Elevation Program (3DEP)",
+  "Place search: Photon (komoot), Apache 2.0",
+];
+
 /** In the order the map shows them: OpenStreetMap first. */
 export const MAP_CREDITS: readonly string[] = [
   BASEMAP.attribution,
   ...VOLUME_CREDITS,
   ...RAIL_CREDITS,
   ...FEDERAL_CREDITS,
+  ...SOURCE_CREDITS,
 ];
 
 /**

@@ -71,6 +71,24 @@ export function withoutHighStressLane(entry: DescriptionEntry): DescriptionEntry
   return { ...entry, facility: null, text: entry.text.split(PAINTED_LANE_WORDS).join("") };
 }
 
+/**
+ * The one sentence said at the top of the description when the lane switch hid a
+ * painted lane in it (the a11y review's N9): otherwise the hiding is silent.
+ */
+export const LANES_HIDDEN_NOTE =
+  "Painted lanes on heavy-traffic roads are not listed; turn on Show bike lanes on high-stress roads to include them.";
+
+/** LANES_HIDDEN_NOTE where some entry of the view was reworded by the switch, else null. */
+export function lanesHiddenNote(
+  route: Described,
+  view: DescriptionView = "overview",
+  showHighStressLanes: boolean = highStressLanesOn(),
+): string | null {
+  if (showHighStressLanes) return null;
+  const shown = descriptionEntries(route, view, true) ?? [];
+  return shown.some((entry) => withoutHighStressLane(entry) !== entry) ? LANES_HIDDEN_NOTE : null;
+}
+
 /** Whether the overview is shorter than the full list: only then is there a choice to offer. */
 export function hasOverview(route: Described): boolean {
   const full = descriptionEntries(route, "full");

@@ -3,18 +3,28 @@
  * climbs, what that search found. A component of its own so App.tsx only
  * places it (another lane is changing App.tsx).
  */
-import { SEEK_MAX_SPAN_M, formatClimb, formatDistance, formatRoughDistance } from "./lib/format.ts";
+import { useId } from "react";
+import { formatDistance } from "./lib/format.ts";
 import { avoidMetres, facilityRows } from "./lib/facilityBar.ts";
 import type { RouteResponse } from "./lib/api.ts";
 import { routeWarning } from "./lib/dialsPanel.ts";
 import { useHighStressLanes, useStressStyle } from "./useStressStyle.ts";
 import { ROUTE_CASING_WIDTH, routeCasing, routeLegend } from "./lib/routeColours.ts";
+import { seekNote } from "./lib/summary.ts";
+
+/**
+ * A row of a figure's list, read as label, figure, hint with a pause between
+ * (the a11y review's N5: "Traffic-free pathOff-road paths...19%"). The grid puts
+ * the hint back before the figure on screen (styles.css, .stress-list).
+ */
+const PAUSE = <span className="visually-hidden">, </span>;
 
 export function FacilityBreakdown({ route }: { route: RouteResponse }) {
+  const id = useId();
   useStressStyle(); // the route colours below follow the accessibility switch
   const showHighLanes = useHighStressLanes(); // painted lanes on LTS 4 and Avoid count as no facility unless the switch is on
   const rows = facilityRows(route.facility_m, route.stress_spans, showHighLanes);
-  const seek = route.hills_seek;
+  const seek = seekNote(route.hills_seek);
   const avoid = avoidMetres(route.stress_m);
   const warning = routeWarning(route.preset, route.dials);
   const colours = routeLegend(route.stress_spans);
@@ -22,8 +32,8 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
   return (
     <>
       {colours.length > 0 && (
-        <figure className="stress route-colours">
-          <figcaption>The route on the map, by traffic stress</figcaption>
+        <figure className="stress route-colours" aria-labelledby={`${id}-colours`}>
+          <figcaption id={`${id}-colours`}>The route on the map, by traffic stress</figcaption>
           <ul className="stress-list" aria-label="Route color legend">
             {colours.map((row) => (
               <li key={row.key}>
@@ -33,8 +43,10 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
                   <line x1="3" y1="7" x2="33" y2="7" stroke={row.color} strokeWidth={row.width} strokeLinecap="round" />
                 </svg>
                 <span className="stress-name">{row.short}</span>
-                <span className="stress-label">{row.label}</span>
+                {PAUSE}
                 <span className="stress-pct">{formatDistance(row.metres)}</span>
+                {PAUSE}
+                <span className="stress-label">{row.label}</span>
               </li>
             ))}
           </ul>
@@ -52,8 +64,8 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
         </p>
       )}
       {rows.length > 0 && (
-        <figure className="stress facility">
-          <figcaption>Bike facilities along the route</figcaption>
+        <figure className="stress facility" aria-labelledby={`${id}-facility`}>
+          <figcaption id={`${id}-facility`}>Bike facilities along the route</figcaption>
           <div className="stress-bar" aria-hidden="true">
             {rows
               .filter((r) => r.fraction > 0)
@@ -71,8 +83,10 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
               <li key={r.key}>
                 <span className={`swatch facility-seg-${r.key}`} style={{ backgroundColor: r.color }} aria-hidden="true" />
                 <span className="stress-name">{r.label}</span>
-                <span className="stress-label">{r.hint}</span>
+                {PAUSE}
                 <span className="stress-pct">{r.percent}%</span>
+                {PAUSE}
+                <span className="stress-label">{r.hint}</span>
               </li>
             ))}
           </ul>
@@ -80,15 +94,7 @@ export function FacilityBreakdown({ route }: { route: RouteResponse }) {
       )}
       {seek && (
         <p className="hint seek" role="note">
-          {seek.limited === "two_points"
-            ? "Looking for climbs works on routes with just a start and an end; this one has stops, so it is the fastest route."
-            : seek.limited === "long_ride"
-              ? `Looking for climbs is done only when the start and end are within ${formatRoughDistance(SEEK_MAX_SPAN_M)} of each other; this is the fastest route.`
-              : seek.limited === "timed_out"
-                ? "Looking for climbs took too long this time; this is the fastest route."
-              : seek.chosen === 0
-                ? `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`
-                : `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`}
+          {seek}
         </p>
       )}
     </>

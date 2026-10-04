@@ -203,6 +203,36 @@ test("Avoid vs LTS 4 under each deficiency, in all three palettes (reported)", (
   }
 });
 
+test("Avoid vs LTS 4 in the colour-blind-friendly palette the switch turns on, plain and strong: the casings differ (white, light yellow) as much as the default's do (the a11y review's SF5)", (t) => {
+  for (const strong of [false, true]) {
+    const [lts4, avoid] = [tiersFor("cvd", strong)[3], tiersFor("cvd", strong)[4]];
+    const line = Math.min(...(["protan", "deutan"] as const).map((v) => deltaE2000(simulate(lts4.color, v), simulate(avoid.color, v))));
+    const casings = VISIONS.map((v) => `${v} ${deltaE2000(simulate(lts4.casing, v), simulate(avoid.casing, v)).toFixed(1)}`).join(", ");
+    // Under normal vision and the two red-green deficiencies the switch is mostly for (tritanopia reported).
+    const casing = Math.min(...(["normal", "protan", "deutan"] as const).map((v) => deltaE2000(simulate(lts4.casing, v), simulate(avoid.casing, v))));
+    t.diagnostic(`cvd${strong ? " strong" : ""}: LTS 4 ${lts4.color} on ${lts4.casing}, Avoid ${avoid.color} on ${avoid.casing}; lines ${line.toFixed(1)} at worst under protanopia and deuteranopia, casings ${casings}`);
+    // The rule: the casing differs, or the lines are 20 apart under protanopia and deuteranopia. The lines are not (a protanope sees the dark red as near-black), so the casing must.
+    assert.ok(lts4.casing !== avoid.casing || line >= 20, `cvd${strong ? " strong" : ""}: the same casing and lines ${line.toFixed(1)} apart`);
+    assert.notEqual(avoid.casing.toLowerCase(), "#ffffff", "not white: LTS 4's is");
+    assert.notEqual(avoid.casing.toLowerCase(), tiersFor("cvd", strong)[2].color.toLowerCase(), "not LTS 3's orange");
+    assert.ok(casing >= 20, `the casings are ${casing.toFixed(1)} apart at worst`);
+    assert.ok(contrastRatio(avoid.color, avoid.casing) >= 3, `Avoid's line on its casing ${contrastRatio(avoid.color, avoid.casing).toFixed(2)}:1`);
+  }
+});
+
+test("the 3:1 line-to-casing floor: every busy line (LTS 3, LTS 4, Avoid) keeps 3:1 or more against its casing with the accessibility switch on, in the palettes the map is drawn in (twotone reported)", (t) => {
+  for (const palette of Object.keys(PALETTES)) {
+    for (const strong of [false, true]) {
+      const busy = (tiersFor(palette, strong) as Tier[]).filter((x) => x.tier >= 3);
+      t.diagnostic(`${palette}${strong ? " strong" : ""}: ` + busy.map((x) => `${x.short} ${contrastRatio(x.color, x.casing).toFixed(2)}:1`).join(", "));
+      if (palette === "twotone") continue; // the owner's reading to compare, which does not hold 3:1 (stressStyle.js)
+      for (const x of busy) {
+        assert.ok(contrastRatio(x.color, x.casing) >= 3, `${palette}${strong ? " strong" : ""} ${x.short}: ${contrastRatio(x.color, x.casing).toFixed(2)}:1`);
+      }
+    }
+  }
+});
+
 test("Avoid's line is 3:1 from its casing in every palette, and in the default one the pair is 3:1 from the base map and both dark panels", () => {
   for (const palette of Object.keys(PALETTES)) {
     const avoid = tiersFor(palette)[4];
@@ -228,12 +258,6 @@ test("the stress bar and the swatches carry Avoid's own pattern, in the tier's c
   }
   const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
   assert.ok((app.match(/--seg-accent/g) ?? []).length >= 2, "both the bar's segments and the list's swatches set the accent");
-});
-
-test("the legend draws each tier's casing, width and dash from the tier, so Avoid's cues cannot differ from the map's", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  assert.match(app, /stroke=\{tier\.casing\} strokeWidth=\{widths\.tiers\[i\]\.casing\}/);
-  assert.match(app, /strokeDasharray=\{tier\.dash \? tier\.dash\.map/);
 });
 
 // ---------------------------------------------------------------------------
@@ -321,10 +345,6 @@ test("the facility bar and its swatches match the rails: the same colours, and a
   assert.match(breakdown, /className=\{`swatch facility-seg-\$\{r\.key\}`\}/, "the swatch too");
 });
 
-test("the legend draws each rail from FACILITIES, with its dash, dark to light: path, protected, painted", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  assert.match(app, /FACILITIES\.filter\(\(facility\) => facilities\.has\(facility\.facility\)\)/);
-  assert.match(app, /strokeDasharray=\{facility\.dash \? facility\.dash\.map/);
-  assert.match(app, /stroke=\{facility\.color\}/);
+test("the rails' colours go dark to light: path, protected, painted", () => {
   assert.ok(relativeLuminance(PAINTED.color) > relativeLuminance(PROTECTED.color) && relativeLuminance(PROTECTED.color) > relativeLuminance(PATH.color));
 });

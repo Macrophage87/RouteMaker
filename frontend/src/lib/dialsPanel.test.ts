@@ -4,6 +4,9 @@ import { PRESETS } from "./presets.ts";
 import { HILLS_MAX, HILLS_MIN, STRESS_MAX, TRAFFIC_TOLERANT_WARNING, startDials } from "./dials.ts";
 import {
   AVOID_NOTE,
+  CALM_HOW,
+  DESCRIPTION_MAX_CHARS,
+  SEEK_CALM_NOTE,
   MASS_RIDE_HILLS_NOTE,
   MASS_RIDE_TRAFFIC_NOTE,
   SEEK_NOTE,
@@ -96,12 +99,21 @@ test("the top of the traffic slider says what it does, before it plans anything"
   assert.match(near, /Twice that for a heavy-traffic road \(LTS 4\)\. Three times that for a road best avoided\./);
   assert.match(near, /many times the straight-line distance/);
   // The very top has no rate (OWNER-DECISIONS 256, 257, 271): the least stressful route towards the target distance.
-  const top = panelView("default", dials, { ...dials, stress: 100 }).traffic.note ?? "";
-  assert.match(top, /^Calmest: finds the least stressful route towards your target distance/);
-  assert.match(top, /heavy-traffic roads \(LTS 4\) and very high stress junctions/);
-  assert.match(top, /busy roads \(LTS 3\) and higher stress junctions/);
-  assert.match(top, /Hills slider\. Then it takes the shorter way\./);
-  assert.match(top, /A quiet street counts the same as a trail\./);
+  const topView = panelView("default", dials, { ...dials, stress: 100 }).traffic;
+  const top = topView.note ?? "";
+  assert.match(top, /^Calmest: finds the least stressful route towards your target distance, within a set limit\./);
+  assert.doesNotMatch(top, /however far/, "the search has a ceiling (the spec review's NIT1)");
+  // The description is read at every step: short, and the order is under "How this works" (the a11y review's N1).
+  assert.ok(top.length < DESCRIPTION_MAX_CHARS, `${top.length} characters`);
+  const how = topView.how ?? "";
+  assert.equal(how, CALM_HOW);
+  assert.match(how, /heavy-traffic roads \(LTS 4\) and very high stress junctions/);
+  assert.match(how, /busy roads \(LTS 3\) and higher stress junctions/);
+  assert.match(how, /Hills slider\. Then it takes the shorter way\./);
+  assert.match(how, /A quiet street counts the same as a trail\./);
+  assert.match(how, /no further than 1\.25 times your target distance, or 1\.6 times the usual route/);
+  assert.equal(panelView("default", dials, { ...dials, stress: 99 }).traffic.how, undefined, "only the top has it");
+  assert.equal(panelView("mass-ride", startDials("mass-ride")).traffic.how, undefined);
   // Miles first, to a tenth below ten miles, and a rate that rises with the position.
   assert.match(calmNote(90) ?? "", /about 1\.8 mi \(2\.9 km\)/);
   assert.match(calmNote(85) ?? "", /about 0\.6 mi \(1\.0 km\)/);
@@ -114,7 +126,8 @@ test("no note says the planner favors trails (OWNER-DECISIONS 257 supersedes 202
   const dials = startDials("trailmaxxing");
   const note = panelView("trailmaxxing", dials).traffic.note ?? "";
   assert.match(note, /^Calmest: finds the least stressful route towards your target distance/);
-  assert.match(note, /A quiet street counts the same as a trail\./);
+  assert.match(panelView("trailmaxxing", dials).traffic.how ?? "", /A quiet street counts the same as a trail\./);
+  assert.doesNotMatch(CALM_HOW, /favou?rs? trails/);
   assert.equal(panelView("trailmaxxing", dials, { ...dials, stress: 80 }).traffic.note, undefined);
   for (const preset of PRESETS) {
     for (const stress of [85, 90, 95, 99, 100]) {
@@ -139,4 +152,15 @@ test("the calm note is short sentences, since a screen reader hears it as the sl
       }
     }
   }
+});
+
+test("at the top of the traffic slider, seeking climbs says it only breaks ties, and the target stays offered (OWNER-DECISIONS 298(3))", () => {
+  const dials = { ...startDials("trailmaxxing"), hills: 60 };
+  const view = panelView("trailmaxxing", dials);
+  assert.equal(view.hills.note, SEEK_CALM_NOTE);
+  assert.match(SEEK_CALM_NOTE, /only chooses between equally calm routes, preferring the one that climbs more/);
+  assert.notEqual(view.target, null, "the Target distance dial is still offered while seeking");
+  assert.notEqual(view.weight, null);
+  // Below the top, seeking is the search among alternatives it was.
+  assert.equal(panelView("default", { ...startDials("default"), hills: 60 }).hills.note, SEEK_NOTE);
 });

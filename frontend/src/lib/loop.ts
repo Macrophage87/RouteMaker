@@ -47,8 +47,8 @@ export function loopNote(route: Pick<RouteResponse, "loop">): string | null {
   if (loop.fallback === "out_and_back") {
     return "There is no other way back that fits, so this loop returns the way it went out.";
   }
-  if (loop.fallback) return "This loop could not look for another way back in time, so the way back is the router's own.";
+  if (loop.fallback) return "This loop could not look for another way back in time, so the way back is the usual route for this ride type.";
   if (loop.overlap_pct == null || loop.shared_m == null) return null;
   if (loop.shared_m <= 0) return "The way back shares no road with the way out.";
-  return `${Math.round(loop.overlap_pct)}% of the way back (${formatDistance(loop.shared_m)}) is on roads the way out used.`;
+  return `${Math.round(loop.overlap_pct)}% of the way back, ${formatDistance(loop.shared_m)}, is on roads the way out used.`;
 }

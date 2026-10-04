@@ -140,3 +140,9 @@ test("an extra distance reads miles first, with a sign, and nothing for what can
   assert.equal(formatPerMile(Number.NaN), "–");
   assert.equal(formatExtra(Number.NaN), "–");
 });
+
+test("a rule's range says miles or pounds first, metric in brackets (the a11y review's N3)", async () => {
+  const { milesRange, poundsRange } = await import("./format.ts");
+  assert.equal(milesRange(0.7, 621, 1_000, 1_000_000), "0.7 to 621 miles (1 to 1,000 km)");
+  assert.equal(poundsRange(150, 309, 68, 140), "150 to 309 pounds (68 to 140 kg)");
+});

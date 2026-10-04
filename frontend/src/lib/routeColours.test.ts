@@ -41,10 +41,10 @@ test("traffic-free comes before the tier, and a lane is its tier", () => {
   assert.equal(spanClass({ tier: null, facility: "path" }).key, "path");
 });
 
-test("the legend's classes are traffic-free, the five tiers, then not rated", () => {
+test("the legend's classes are traffic-free, the five tiers, the five unpaved browns, then not rated", () => {
   assert.deepEqual(
     routeClasses().map((c) => c.key),
-    ["path", "1", "2", "3", "4", "5", "unknown"],
+    ["path", "1", "2", "3", "4", "5", "u1", "u2", "u3", "u4", "u5", "unknown"],
   );
   for (const c of routeClasses()) assert.ok(c.short && c.label && /^#[0-9a-f]{6}$/i.test(c.color), c.key);
 });

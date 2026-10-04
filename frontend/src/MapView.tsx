@@ -38,6 +38,8 @@ import {
   setStressPalette,
   setStressVisibility,
   setStressWhen,
+  onLaneSwitch,
+  routeUnpavedLayer,
 } from "./lib/mapGlue.ts";
 import { dragPreview, legOfSegment, nearestOnPath } from "./lib/lineEdit.ts";
 import { LineGesture } from "./lib/lineGesture.ts";
@@ -47,7 +49,7 @@ import type { RailVisibility, StationRole } from "./lib/railStations.ts";
 import { attachRailInteraction, type StationFound } from "./railInteraction.ts";
 import { stressProbe } from "./lib/stressProtocol.ts";
 import federalLandUrl from "./federal-data/federal-land.json?url";
-import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalMap } from "./lib/federalLand.ts";
+import { addFederalLand, loadFederalLand, setFederalVisibility, type FederalData, type FederalMap } from "./lib/federalLand.ts";
 import type { FederalStatus } from "./lib/federalLegend.ts";
 import { attachFederalInteraction } from "./federalInteraction.ts";
 import type { When } from "./lib/dials.ts";
@@ -119,6 +121,8 @@ interface Props {
   /** Whether the federal-land shading is on (a Mass Ride's, lib/federalLand.ts federalShown). */
   federalVisible: boolean;
   onFederalStatus: (status: FederalStatus) => void;
+  /** The federal-land data once it has come: App lists the plan's points on it (lib/federalLand.ts federalPoints). */
+  onFederalData?: (data: FederalData) => void;
   /** A station's Start here / End here / Add as stop, with its bike entrance. */
   onStationPoint: (role: StationRole, point: LonLat) => void;
 }
@@ -352,6 +356,7 @@ export function MapView(props: Props) {
         }
         addFederalLand(map as unknown as FederalMap, data, callbacks.current.federalVisible, STRESS_SOURCE_ID);
         callbacks.current.onFederalStatus("ready");
+        callbacks.current.onFederalData?.(data);
       });
     };
     /** The station under a pointer at `point` on the canvas, if any. */
@@ -597,6 +602,9 @@ export function MapView(props: Props) {
         layout: { "line-join": "round", "line-cap": "round" },
         paint: { "line-color": ["get", "color"], "line-width": ["coalesce", ["get", "width"], ROUTE_LINE_WIDTH] },
       });
+      // The dotted mark over an unpaved section, in its halo colour (OWNER-DECISIONS 302):
+      // brown is not the only thing that says unpaved.
+      map.addLayer(routeUnpavedLayer(ROUTE_STRESS_SOURCE) as never);
       map.addLayer({
         id: "route-line",
         type: "line",
@@ -786,11 +794,7 @@ export function MapView(props: Props) {
   // the rails' filters are set again in place, from the same tiles.
   useEffect(
     () =>
-      subscribeHighStressLanes(() => {
-        const map = mapRef.current;
-        if (!map || !loaded.current) return;
-        setStressWhen(map, callbacks.current.when);
-      }),
+      subscribeHighStressLanes(() => onLaneSwitch(mapRef.current, loaded.current, callbacks.current.when)),
     [],
   );
 

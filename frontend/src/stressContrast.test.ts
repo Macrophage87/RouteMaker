@@ -259,7 +259,7 @@ for (const { name, on } of REACHABLE) {
   test(`${name}${on ? " (accessibility on)" : ""}: every route class is at least 3:1 from the halo under it`, () => {
     withSwitch(on, () => {
       const classes = routeClasses();
-      assert.equal(classes.length, 7, "the traffic-free path, five tiers and the unrated");
+      assert.equal(classes.length, 12, "the traffic-free path, five tiers, five unpaved browns (OWNER-DECISIONS 302) and the unrated");
       const failures: string[] = [];
       for (const c of classes) {
         const ratio = contrastRatio(c.color, c.halo);

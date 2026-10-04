@@ -22,6 +22,12 @@ export interface StressSpan {
   to_m: number;
   tier: number | null;
   facility: "path" | "protected" | "lane" | "none" | null;
+  /**
+   * Whether the section's segments are unpaved (OWNER-DECISIONS 302): true is drawn in
+   * the unpaved brown, false paved, null (or absent: an older API) an unknown surface,
+   * drawn as paved. Spans split where the surface changes.
+   */
+  unpaved?: boolean | null;
 }
 
 /**
@@ -141,8 +147,19 @@ export interface CalmSearch {
   rate: number;
   rounds: number;
   excluded: number;
-  /** Why it stopped short or did not run; null when it ran to its end. */
+  /**
+   * Why it stopped short or did not run; null when it ran to its end. Among them
+   * "target_distance" (no route within the rider's target: `no_fit`) and "ceiling"
+   * (the next routes it found were all past `ceiling_m`, so a calmer, longer route
+   * may exist).
+   */
   limited: string | null;
+  /**
+   * True only when no route within the rider's target distance was found: the
+   * answer is then the calmest route found (OWNER-DECISIONS 267, 298(2)), flagged
+   * with `over_target_m`, and may be past `ceiling_m` too. Null or absent otherwise.
+   */
+  no_fit?: boolean | null;
   original_m?: number | null;
   extra_distance_m?: number | null;
   exposure_before_m?: number | null;
@@ -265,13 +282,17 @@ export interface RouteResponse {
     system_weight_kg?: number | null;
     loop?: boolean;
   };
-  /** Present when the hills slider was past its detent. */
+  /**
+   * Present when the hills slider was past its detent. "calm_first": at the top
+   * of the traffic slider the stress order and the target still run, and seeking
+   * climbs only breaks ties between equally calm routes (OWNER-DECISIONS 298(3)).
+   */
   hills_seek?: {
     candidates: number;
     chosen: number;
     extra_climb_m: number;
     extra_distance_m: number;
-    limited: "two_points" | "long_ride" | "timed_out" | null;
+    limited: "two_points" | "long_ride" | "timed_out" | "calm_first" | null;
   } | null;
   /** Present when the hills slider was below its middle: sustained climbs and
    * brake-riding descents weighed among the router's alternatives. */

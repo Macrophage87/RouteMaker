@@ -6,7 +6,7 @@
  * The legend draws each kind with the map's own pattern and outline dash and
  * names the pattern in words, so no kind is told apart by colour alone.
  */
-import { createElement as h, Fragment, type ReactElement } from "react";
+import { createElement as h, type ReactElement } from "react";
 import {
   FEDERAL_KINDS,
   FEDERAL_NOTE,
@@ -14,16 +14,22 @@ import {
   PATTERN_SIZE,
   federalPatternPath,
   type FederalKind,
+  type FederalPoint,
 } from "./federalLand.ts";
 
 export type FederalStatus = "loading" | "ready" | "unavailable";
 
 export const FEDERAL_HEADING = "Federal land";
+/**
+ * The help, in two short paragraphs, the ownership caveat on its own (the a11y
+ * review's SF6). No promise of callouts to come, and no "above": the legend is
+ * hidden while the switch is off.
+ */
 export const FEDERAL_HELP =
-  "The shading on the map marks federal land by kind, as the legend above lists them. Callouts for federal land " +
-  "at each stop, and for parkways, are coming to the route description and the stop list. Pointer users can also " +
-  "tap or click a shaded area for its name and manager. Shading is where land is owned or kept by the federal " +
-  "government, which is not the same as who polices a road: ownership is not police jurisdiction, and in most " +
+  "The shading marks federal land by kind, as the legend lists them. Tap or click a shaded area for its name and " +
+  "manager; the list under the switch names the areas your points are on.";
+export const FEDERAL_OWNERSHIP =
+  "Shading is where land is owned or kept by the federal government. Ownership is not police jurisdiction: in most " +
   "cases the roads are still city roads. It matters most for stopping, and for the parkways.";
 export const FEDERAL_UNAVAILABLE = "Federal land shading is unavailable for now. The map and your route are not affected.";
 export const FEDERAL_LOADING = "Loading federal land…";
@@ -79,14 +85,59 @@ export function FederalLegend(): ReactElement {
   );
 }
 
+/** The heading of the list of the plan's points on federal land. */
+export const FEDERAL_POINTS_HEADING = "Your points on federal land:";
+export const FEDERAL_POINTS_NONE = "None of your points is on federal land.";
+
+/** "Stop 2 – The Mall (National Park Service)". */
+export function federalPointText(point: FederalPoint, name: string): string {
+  return `${name} – ${point.name} (${point.manager})`;
+}
+
+/**
+ * The plan's points on federal land, in words (lib/federalLand.ts federalPoints):
+ * read by a screen reader and a keyboard user without the map. Null until the
+ * data has come, or with no points.
+ */
+export function FederalPointsList({ found, count, nameOf }: { found: FederalPoint[] | null; count: number; nameOf: (index: number) => string }): ReactElement | null {
+  if (found === null || count === 0) return null;
+  if (found.length === 0) return h("p", { className: "hint federal-points" }, FEDERAL_POINTS_NONE);
+  return h(
+    "div",
+    { className: "federal-points" },
+    h("p", { id: "federal-points-heading" }, FEDERAL_POINTS_HEADING),
+    h(
+      "ul",
+      { "aria-labelledby": "federal-points-heading" },
+      ...found.map((point) => h("li", { key: point.index }, federalPointText(point, nameOf(point.index)))),
+    ),
+  );
+}
+
+/** What the one status line says: loading or unavailable while the switch is on, else nothing. */
+export function federalStatusText(on: boolean, status: FederalStatus): string {
+  if (!on) return "";
+  return status === "loading" ? FEDERAL_LOADING : status === "unavailable" ? FEDERAL_UNAVAILABLE : "";
+}
+
 interface Props {
   on: boolean;
   onChange: (on: boolean) => void;
   status: FederalStatus;
+  /** The plan's points on federal land, or null until the data has come. */
+  points?: FederalPoint[] | null;
+  /** How many points the plan has. */
+  pointCount?: number;
+  /** A point's name in the plan (Start, Stop 1, ..., End). */
+  nameOf?: (index: number) => string;
 }
 
-/** The section; the caller renders it for a Mass Ride only (federalShown's preset test). */
-export function FederalLandSection({ on, onChange, status }: Props): ReactElement {
+/**
+ * The section; the caller renders it for a Mass Ride only (federalShown's preset test).
+ * Its status line is one persistent role="status" element whose words change (the a11y
+ * review's N8): a live region inserted with its text is often not read.
+ */
+export function FederalLandSection({ on, onChange, status, points = null, pointCount = 0, nameOf = (i) => `Point ${i + 1}` }: Props): ReactElement {
   return h(
     "section",
     { "aria-labelledby": "federal-heading", className: "federal-section" },
@@ -97,15 +148,11 @@ export function FederalLandSection({ on, onChange, status }: Props): ReactElemen
       h("input", { type: "checkbox", checked: on, onChange: (event: { target: { checked: boolean } }) => onChange(event.target.checked) }),
       "Show federal land on the map",
     ),
-    on &&
-      h(
-        Fragment,
-        null,
-        status === "loading" && h("p", { className: "hint", role: "status" }, FEDERAL_LOADING),
-        status === "unavailable" && h("p", { className: "hint", role: "status" }, FEDERAL_UNAVAILABLE),
-        status !== "unavailable" && h(FederalLegend),
-      ),
+    h("p", { className: "hint federal-status", role: "status" }, federalStatusText(on, status)),
+    on && status !== "unavailable" && h(FederalLegend),
+    h(FederalPointsList, { found: points, count: pointCount, nameOf }),
     h("p", { className: "hint" }, FEDERAL_HELP),
+    h("p", { className: "hint" }, FEDERAL_OWNERSHIP),
     h("p", { className: "hint federal-note" }, `${FEDERAL_NOTE}.`),
   );
 }

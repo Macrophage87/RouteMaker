@@ -257,6 +257,58 @@ export function setFederalVisibility(map: FederalMap, visible: boolean): void {
   }
 }
 
+type Ring = ReadonlyArray<readonly [number, number]>;
+
+/** Whether `point` is inside `ring` (even-odd ray casting; a point on an edge may fall either way). */
+function inRing([x, y]: readonly [number, number], ring: Ring): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+
+/** Whether `point` ([lon, lat]) is inside a Polygon or MultiPolygon: in an outer ring and in none of its holes. */
+export function inFederalArea(point: readonly [number, number], geometry: FederalFeature["geometry"]): boolean {
+  const polygons = (geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates) as Ring[][];
+  if (!Array.isArray(polygons)) return false;
+  return polygons.some(
+    (rings) => Array.isArray(rings) && rings.length > 0 && inRing(point, rings[0]) && !rings.slice(1).some((hole) => inRing(point, hole)),
+  );
+}
+
+export interface FederalPoint {
+  /** The point's place in the plan (0 is the start). */
+  index: number;
+  name: string;
+  /** Who keeps it: the data's agency, else the kind's label. */
+  manager: string;
+}
+
+/**
+ * The plan's points that are on federal land, each with the most specific area it
+ * is in (FEDERAL_KINDS order): the list under the switch (the a11y review's SF6), so
+ * a screen-reader organiser hears whether a stop is on National Park Service land
+ * without a pointer. Information, as the shading is.
+ */
+export function federalPoints(points: ReadonlyArray<readonly [number, number]>, data: FederalData | null): FederalPoint[] {
+  if (!data) return [];
+  const out: FederalPoint[] = [];
+  points.forEach((point, index) => {
+    let best: FederalFeature | null = null;
+    for (const feature of data.features) {
+      if (!inFederalArea(point, feature.geometry)) continue;
+      if (!best || FEDERAL_KINDS.indexOf(feature.properties.kind) < FEDERAL_KINDS.indexOf(best.properties.kind)) best = feature;
+    }
+    if (best) {
+      out.push({ index, name: best.properties.name, manager: best.properties.agency ?? FEDERAL_STYLE[best.properties.kind].label });
+    }
+  });
+  return out;
+}
+
 export interface FederalCard {
   title: string;
   kind: string;

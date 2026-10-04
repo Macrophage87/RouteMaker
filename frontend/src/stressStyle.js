@@ -99,7 +99,9 @@ const TIER_SHAPES = [
  *   docs/DEVELOPMENT.md, "The accessibility switch and the colour-blind-friendly
  *   palette"). The blue-black is not a neutral black on purpose: a protanope
  *   sees LTS 4's dark red as near-black, and a neutral black Avoid beside it
- *   measures about 17 apart (#000000, 16.9 under protanopia).
+ *   measures about 17 apart (#000000, 16.9 under protanopia). LTS 4 and
+ *   Avoid are told apart by casing too: white under LTS 4, light yellow under
+ *   Avoid.
  */
 export const PALETTES = {
   blended: {
@@ -121,7 +123,13 @@ export const PALETTES = {
     2: { color: "#5d99d2", casing: "#0a1a2f" },
     3: { color: "#cd4b0a", casing: "#0a1a2f" },
     4: { color: "#6a0a06", casing: "#ffffff" },
-    5: { color: "#08081e", casing: "#ffffff" },
+    // Avoid's casing is a light yellow (Okabe-Ito #f0e442) of its own, as the
+    // default palette's Avoid has its red: on white like LTS 4's, the pair were
+    // 1.56:1 apart on the same casing (the a11y review's SF5), and this palette is
+    // the one the accessibility switch turns on. Not white, and not LTS 3's
+    // orange; 14.8:1 from the blue-black line (stressSalience.test.ts holds the
+    // pair apart in casing, and Avoid's line 3:1 from it).
+    5: { color: "#08081e", casing: "#f0e442" },
   },
 };
 
@@ -175,7 +183,8 @@ export function resolvePalette(search, accessibility = false) {
  * shows in the tier's dash gaps, and black there is the harshness the owner
  * asked to be rid of (OWNER-DECISIONS 292; black under LTS 3 would make its
  * gaps harsher than LTS 4's white ones), while Avoid's is a colour of its own
- * (the default palette's red, OWNER-DECISIONS 274), where black would put the
+ * (the default palette's red, OWNER-DECISIONS 274; the colour-blind-friendly
+ * palette's light yellow, the a11y review's SF5), where black would put the
  * near-black line on black and white would give up the cue. The switch still
  * widens every line and casing.
  */
@@ -210,15 +219,77 @@ const DARK_CASING_LUMINANCE = 0.05;
 export function tiersFor(palette, strong = false) {
   return TIER_SHAPES.map((shape) => {
     const colours = PALETTES[palette][shape.tier];
+    const unpaved = UNPAVED_PALETTES[palette][shape.tier];
+    const busy = shape.tier >= BUSY_MIN_TIER;
     return {
       ...shape,
       ...colours,
+      // The unpaved brown for this tier and the casing under it (OWNER-DECISIONS 302).
+      unpavedColor: unpaved.color,
+      unpavedCasing: strong ? strongerCasing(unpaved.casing, busy) : unpaved.casing,
       ...(strong
-        ? { width: shape.width + STRONG_WIDTH_EXTRA, casing: strongerCasing(colours.casing, shape.tier >= BUSY_MIN_TIER), casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
+        ? { width: shape.width + STRONG_WIDTH_EXTRA, casing: strongerCasing(colours.casing, busy), casingExtra: STRONG_CASING_EXTRA_PX, strong: true }
         : { casingExtra: CASING_EXTRA_PX, strong: false }),
     };
   });
 }
+
+/**
+ * UNPAVED ROADS AND TRAILS (OWNER-DECISIONS 302): "For unpaved, instead of the
+ * stress colors we have earlier, just go with brown for everything, with darker
+ * shades for more traffic stress and the same dashes." One brown ramp per
+ * palette, light to dark from LTS 1 to Avoid; each tier keeps its own dash and
+ * width (283), so the stress level still reads without colour, and the dotted
+ * centre mark (UNPAVED_DASH, in the tier's unpaved casing) stays as the cue
+ * that is not colour at all.
+ *
+ * The ramp is a lightness ladder: every step is 1.5:1 or more darker than the
+ * last (greyscale print keeps the order) and 10 or more CIEDE2000 from it under
+ * normal vision and each simulated deficiency - the most a five-step single-hue
+ * ladder between a line light enough for a dark casing and one dark enough to
+ * stand alone allows; the dashes and widths carry the rest. The light browns
+ * (LTS 1, 2) sit on a dark brown casing, the dark ones (LTS 3 up) on a cream one,
+ * so every line is 3:1 or more from its casing and every tier 3:1 from the base
+ * map, and the gaps' harshness (292) still rises from LTS 3 to LTS 4 to Avoid.
+ *
+ * - blended: warm browns. Unpaved LTS 1 (#d9b98c, a light tan) is 19 CIEDE2000
+ *   or more from the paved LTS 3 amber (#bf730b) under every vision and far
+ *   from the LTS 3 casing (#45290a).
+ * - twotone: greyer browns (taupe), because that palette's paved LTS 3 is a
+ *   yellow (#f2c21b) a warm tan would sit on (6 CIEDE2000 under deuteranopia);
+ *   the taupe is 9 and more from it, and 23 from the amber.
+ * - cvd: an ochre-olive ramp on the yellow side of the blue-yellow axis all
+ *   three deficiencies keep: 30 or more CIEDE2000 from that palette's blue calm
+ *   tiers under every vision, with the widest steps of the three (1.6:1 and up).
+ *
+ * stressSalience.test.ts holds all of this; the figures are in its diagnostics.
+ */
+export const UNPAVED_PALETTES = {
+  blended: {
+    1: { color: "#d9b98c", casing: "#3b2410" },
+    2: { color: "#b58a55", casing: "#3b2410" },
+    3: { color: "#8c5e2e", casing: "#f6ead2" },
+    4: { color: "#5e3a17", casing: "#f6ead2" },
+    5: { color: "#33200d", casing: "#f6ead2" },
+  },
+  twotone: {
+    1: { color: "#d4bba6", casing: "#33231a" },
+    2: { color: "#ac8b73", casing: "#33231a" },
+    3: { color: "#7d604b", casing: "#f6ead2" },
+    4: { color: "#53392a", casing: "#f6ead2" },
+    5: { color: "#2b1c14", casing: "#f6ead2" },
+  },
+  cvd: {
+    1: { color: "#e0c68a", casing: "#2a200c" },
+    2: { color: "#bc9a52", casing: "#2a200c" },
+    3: { color: "#7e6028", casing: "#f6ead2" },
+    4: { color: "#544018", casing: "#f6ead2" },
+    5: { color: "#2a200c", casing: "#f6ead2" },
+  },
+};
+
+/** A colour that is `unpaved` on a feature the tiles say is unpaved, else `paved`. */
+const byUnpaved = (unpaved, paved) => ["case", ["==", ["get", "unpaved"], true], unpaved, paved];
 
 /**
  * What this browser remembers of the accessibility switch: true (on), false
@@ -595,7 +666,7 @@ export function stressLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = c
     source: sourceId,
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-${tier.tier}`],
-    paint: { ...linePaint(tier.color, tier.width, tier.tier >= BUSY_MIN_TIER), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
+    paint: { ...linePaint(byUnpaved(tier.unpavedColor, tier.color), tier.width, tier.tier >= BUSY_MIN_TIER), ...(tier.dash ? { "line-dasharray": tier.dash } : {}) },
   }));
 }
 
@@ -624,7 +695,8 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
     "source-layer": STRESS_TILE_LAYER,
     filter: filters[`stress-unpaved-${tier.tier}`],
     paint: {
-      "line-color": tier.casing,
+      // The dots in the unpaved casing, which stands apart from the brown line (OWNER-DECISIONS 302).
+      "line-color": tier.unpavedCasing,
       "line-width": unpavedWidth(tier),
       "line-opacity": byZoom(1, 0, tier.tier >= BUSY_MIN_TIER),
       "line-dasharray": UNPAVED_DASH,
@@ -639,8 +711,9 @@ export function unpavedLayers(sourceId = "stress", when = DEFAULT_WHEN, tiers = 
 function casingPaint(tier) {
   const busy = tier.tier >= BUSY_MIN_TIER;
   const edge = faintEdgeColour(tier);
+  const full = byUnpaved(tier.unpavedCasing, tier.casing);
   return {
-    "line-color": byZoom(tier.casing, edge, busy, tier.casing),
+    "line-color": byZoom(full, edge, busy, full),
     "line-width": byZoom(casingWidth(tier), FAINT.edgePx, busy),
     "line-gap-width": byZoom(0, tier.width * FAINT.widthScale, busy),
     "line-opacity": byZoom(1, FAINT.edgeOpacity, busy),
@@ -711,7 +784,8 @@ export const FACILITY_DRAW_ORDER = ["lane", "protected", "path"];
  * Painted lanes (the tiles' facility "lane") on roads of this stress tier or
  * above - LTS 4 and Avoid - are not drawn, on the map or counted in the route
  * panel, unless the rider turns "Show bike lanes on high-stress roads" on
- * (OWNER-DECISIONS 275: a painted lane on Kenilworth Avenue "is hilarious").
+ * (OWNER-DECISIONS 275, the owner's words: "Kenilworth avenue is hillarious at
+ * having a bike lane on it.").
  * Protected lanes and paths are drawn at every tier, and the stress ratings
  * and the data are untouched.
  */
@@ -788,6 +862,16 @@ export function facilityWidthAt(facility, when = DEFAULT_WHEN, tiers = currentTi
   const byTier = tiers.flatMap((tier) => [tier.tier, facilityWidth(facility, tier.width, tier.casingExtra, tier.strong)]);
   return ["match", tierAt(when), ...byTier, facilityWidth(facility, tiers[0].width, tiers[0].casingExtra, tiers[0].strong)];
 }
+
+/**
+ * The length of a legend swatch's line, in pixels: long enough to show at least
+ * one whole dash cycle of every tier and rail, plain and strong (the a11y review's
+ * SF5: at 40 px the strong LTS 4 [8, 1] x 5.5 px = 49.5 px and Avoid's
+ * [5, 1, 0.5, 1] x 7 px = 52.5 px each drew as a plain solid line, so the
+ * dash-dot that tells Avoid apart never showed). stressSalience.test.ts holds
+ * every dash period times its line's width to it.
+ */
+export const LEGEND_SWATCH_PX = 64;
 
 /**
  * The panel legend's stroke widths, as the map draws the same lines: each

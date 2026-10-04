@@ -32,10 +32,9 @@ test("a link carries its version, and the sliders survive a round trip as they a
   assert.equal(decodePlan(encodePlan([], "default", { ...dials, stress: 70 })).dials.stress, 70);
 });
 
-test("the trail credit travels with the ride type, and a moved slider travels as the position (OWNER-DECISIONS 202)", () => {
-  // The credit is a preset dial: the link carries the preset and the slider, and
-  // the API works the credit out from them (core.presets.trail_credit_for). There
-  // is no credit in the link to disagree with the preset's.
+test("the link carries the ride type and the slider position, and nothing about trails (OWNER-DECISIONS 257 supersedes 202)", () => {
+  // There is no trail credit any more (a quiet street counts the same as a trail):
+  // the link carries the preset and the slider, and nothing that would read as one.
   const points: LonLat[] = [[-77.0434, 38.9096], [-77.0091, 38.8899]];
   const start = startDials("trailmaxxing");
   const hash = encodePlan(points, "trailmaxxing", start);
@@ -44,7 +43,7 @@ test("the trail credit travels with the ride type, and a moved slider travels as
   assert.equal(plan.preset, "trailmaxxing");
   assert.equal(plan.dials.stress, 100);
   // A slider moved down from the ride type's top is the same ride type at that position,
-  // and a link that carries another ride type's slider cannot give it the credit.
+  // and another ride type at the same position stays that ride type.
   const moved = decodePlan(encodePlan(points, "trailmaxxing", { ...start, stress: 90 }));
   assert.deepEqual([moved.preset, moved.dials.stress], ["trailmaxxing", 90]);
   const other = decodePlan(encodePlan(points, "default", { ...start, stress: 100 }));

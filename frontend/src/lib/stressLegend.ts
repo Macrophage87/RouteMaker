@@ -10,7 +10,19 @@
  */
 import { createElement as h, Fragment, type ReactElement } from "react";
 import { STRESS_ZOOMS } from "./mapStyle.ts";
-import { ALLEY_MIN_ZOOM, BESIDE_ROAD_MIN_ZOOM, SOLID_MIN_ZOOM } from "../stressStyle.js";
+import {
+  ALLEY_MIN_ZOOM,
+  BESIDE_ROAD_MIN_ZOOM,
+  FACILITIES,
+  LEGEND_SWATCH_PX,
+  SOLID_MIN_ZOOM,
+  UNPAVED_DASH,
+  currentTiers,
+  legendWidths,
+  unpavedWidth,
+} from "../stressStyle.js";
+import { useHighStressLanes, useStressStyle } from "../useStressStyle.ts";
+import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
 /**
  * The one phrase for what the map shows zoomed out, wherever the legend says
@@ -64,5 +76,147 @@ export function StressZoomNotes({ zoom, shown }: { zoom: number | null; shown: b
     notice && h("p", { className: "notice", role: "status" }, notice),
     h("p", { className: "hint" }, stressZoomHint(zoom)),
     h("p", { className: "hint" }, CAR_FREE_NOTE),
+  );
+}
+
+// ---- The legend itself (moved out of App.tsx so a test renders it) ----------
+
+/** The legend's first line: what "LTS" is, said once in plain words (the a11y review's N2). */
+export const LTS_MEANS = "LTS is Level of Traffic Stress, from 1 (calmest) to 4 (heavy traffic); Avoid is legal but best avoided.";
+
+/** The unpaved mark's line in the legend: what it is, and that an unpaved trail has no edge lines. */
+export const UNPAVED_LEGEND =
+  "Brown, darker = busier: gravel, dirt or other unpaved surface, with the dashes above and a dotted center line. An unpaved trail has no edge lines, which a paved path has.";
+
+/** The bike-facility legend's words, with the lane switch's state. */
+export function facilityLegendHint(showHighLanes: boolean): string {
+  return (
+    "Bike facilities are edges on either side of the stress line: a solid dark rail for a paved path, blocks like posts for a " +
+    "protected lane, and a thin dotted rail for paint. An unpaved trail has no edge lines, only the dotted center line. " +
+    "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are " +
+    (showHighLanes ? "shown, because the switch above is on." : `hidden unless you turn on "${HIGH_STRESS_LANES_LABEL}".`)
+  );
+}
+
+/** The swatch's drawing: its line runs from x 2 for LEGEND_SWATCH_PX. */
+const X1 = 2;
+const X2 = X1 + LEGEND_SWATCH_PX;
+const SVG_WIDTH = X2 + 2;
+
+type Tier = ReturnType<typeof currentTiers>[number];
+
+/** A dash in line widths as an SVG dash array in pixels, or undefined for a solid line. */
+export function dashPx(dash: readonly number[] | null | undefined, width: number): string | undefined {
+  return dash ? dash.map((d) => d * width).join(" ") : undefined;
+}
+
+const line = (y: number, stroke: string, strokeWidth: number, strokeDasharray?: string) =>
+  h("line", { x1: X1, y1: y, x2: X2, y2: y, stroke, strokeWidth, strokeDasharray });
+
+/** A tier's swatch: its casing, then its line with its dash, at the map's widths. */
+export function TierSwatch({ tier, widths }: { tier: Tier; widths: { line: number; casing: number } }): ReactElement {
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 12, "aria-hidden": "true" },
+    line(6, tier.casing, widths.casing),
+    line(6, tier.color, widths.line, dashPx(tier.dash, widths.line)),
+  );
+}
+
+/**
+ * The unpaved swatch (OWNER-DECISIONS 302): the brown ramp, light to dark, one
+ * stretch a tier from LTS 1 to Avoid, each on its unpaved casing at LTS 1's
+ * widths, with the dotted mark over it in that casing.
+ */
+export function UnpavedSwatch({ tiers, widths }: { tiers: readonly Tier[]; widths: { line: number; casing: number } }): ReactElement {
+  const step = LEGEND_SWATCH_PX / tiers.length;
+  const mark = unpavedWidth(tiers[0]);
+  const seg = (i: number, stroke: string, strokeWidth: number, strokeDasharray?: string) =>
+    h("line", { x1: X1 + i * step, y1: 6, x2: X1 + (i + 1) * step, y2: 6, stroke, strokeWidth, strokeDasharray });
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 12, "aria-hidden": "true", className: "unpaved-ramp" },
+    ...tiers.map((tier, i) =>
+      h(
+        "g",
+        { key: tier.tier },
+        seg(i, tier.unpavedCasing, widths.casing),
+        seg(i, tier.unpavedColor, widths.line),
+        seg(i, tier.unpavedCasing, mark, dashPx(UNPAVED_DASH, mark)),
+      ),
+    ),
+  );
+}
+
+type Facility = (typeof FACILITIES)[number];
+
+/** A facility's swatch: its rails, with the casing of LTS 1's line over them. */
+export function FacilitySwatch({ facility, rails, casing }: { facility: Facility; rails: number; casing: number }): ReactElement {
+  return h(
+    "svg",
+    { width: SVG_WIDTH, height: 14, "aria-hidden": "true" },
+    h("line", { x1: X1, y1: 7, x2: X2, y2: 7, stroke: facility.color, strokeWidth: rails, strokeDasharray: dashPx(facility.dash, rails) }),
+    h("line", { x1: X1, y1: 7, x2: X2, y2: 7, stroke: "#ffffff", strokeWidth: casing }),
+  );
+}
+
+const row = (key: string | number, swatch: ReactElement, short: string, label: string) =>
+  h(
+    "li",
+    { key },
+    swatch,
+    h("span", { className: "stress-name" }, short),
+    h("span", { className: "stress-label" }, label),
+  );
+
+/**
+ * The panel's stress legend: the tiers, the unpaved mark, what the zoom leaves out,
+ * and the bike facilities the map has drawn (`facilities`). Drawn from the tiers in
+ * use and legendWidths, so it cannot differ from the map.
+ */
+export function StressLegend({
+  facilities,
+  zoom,
+  shown,
+}: {
+  facilities: ReadonlySet<string>;
+  zoom: number | null;
+  shown: boolean;
+}): ReactElement {
+  useStressStyle();
+  const showHighLanes = useHighStressLanes();
+  const tiers = currentTiers();
+  const widths = legendWidths(tiers);
+  return h(
+    Fragment,
+    null,
+    h("p", { className: "hint lts-means" }, LTS_MEANS),
+    h(
+      "ul",
+      { className: "legend", "aria-label": "Traffic stress legend" },
+      ...tiers.map((tier, i) => row(tier.tier, h(TierSwatch, { tier, widths: widths.tiers[i] }), tier.short, tier.label)),
+      row("unpaved", h(UnpavedSwatch, { tiers, widths: widths.tiers[0] }), "Unpaved", UNPAVED_LEGEND),
+    ),
+    // What the tiles leave out as the map zooms out (core/stress_tiles.py).
+    h(StressZoomNotes, { zoom, shown }),
+    facilities.size > 0 &&
+      h(
+        Fragment,
+        null,
+        h("p", { className: "hint" }, facilityLegendHint(showHighLanes)),
+        h(
+          "ul",
+          { className: "legend", "aria-label": "Bike facility legend" },
+          ...FACILITIES.filter((facility) => facilities.has(facility.facility)).map((facility) =>
+            row(
+              facility.facility,
+              h(FacilitySwatch, { facility, rails: widths.rails[facility.facility], casing: widths.facilityCasing }),
+              facility.short,
+              facility.label,
+            ),
+          ),
+        ),
+        h("p", { className: "hint" }, `Sharrows count as ordinary streets. ${ROADWAY_LANES}`),
+      ),
   );
 }

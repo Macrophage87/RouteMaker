@@ -130,7 +130,7 @@ test("the premise: the selectors the forced-colors block names are in the app's 
   for (const name of ["legend", "swatch", "stress-bar", "stress-seg", "junction-marker", "junction-icon", "junction-count", "stress-list", "switch", "switch-state"]) {
     assert.ok(all.includes(name), `class ${name} is used`);
   }
-  assert.match(all, /<svg width="44"/, "the stress legend's swatches are inline SVG in .legend");
+  assert.match(all, /h\(\s*"svg",\s*\{ width: SVG_WIDTH/, "the stress legend's swatches are inline SVG in .legend (lib/stressLegend.ts)");
 });
 
 /** A custom property's value in a rule body. */

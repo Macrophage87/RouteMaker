@@ -1,6 +1,16 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { announceRoute, calmSearchNote, detourNotice, detourView, paceText } from "./summary.ts";
+import {
+  STILL_PLANNING_AFTER_MS,
+  announceRoute,
+  calmSearchNote,
+  detourNotice,
+  detourView,
+  othersSaid,
+  paceText,
+  seekNote,
+  stillPlanningSaid,
+} from "./summary.ts";
 import type { RouteResponse } from "./api.ts";
 import type { LonLat } from "./geo.ts";
 
@@ -124,9 +134,15 @@ test("a calmer-route search that stopped short says so in plain words", () => {
   assert.match(calmSearchNote(route("untraceable")) ?? "", /could not read this route/);
   assert.match(calmSearchNote(route("span")) ?? "", /over 19 mi \(30 km\) in a straight line/);
   assert.match(calmSearchNote(route("long_ride")) ?? "", /long rides/);
-  assert.match(calmSearchNote(route("seeking")) ?? "", /Hills slider/);
-  // Nothing to say: it ran to its end, or ended where the router had no more.
-  for (const limited of [null, "no_route", "excludes", "rounds", "points", "mass_ride"]) {
+  assert.match(calmSearchNote(route("ceiling")) ?? "", /stopped at the longest distance it allows, so a calmer, longer route may exist/);
+  // Plain words, not the router's internals (the a11y review's N2).
+  for (const limited of ["untraceable", "span", "long_ride", "split"]) {
+    assert.match(calmSearchNote(route(limited)) ?? "", /so this is the usual route for this ride type\.$/, limited);
+    assert.doesNotMatch(calmSearchNote(route(limited)) ?? "", /router/, limited);
+  }
+  // Nothing to say: it ran to its end, or ended where the router had no more; and seeking
+  // climbs at the top no longer stops it (OWNER-DECISIONS 298(3)).
+  for (const limited of [null, "no_route", "excludes", "rounds", "points", "mass_ride", "seeking"]) {
     assert.equal(calmSearchNote(route(limited)), null, String(limited));
   }
   // Not asked for: at the old top or below, or a Mass Ride; or an older API.
@@ -214,4 +230,46 @@ test("a plain route is still one sentence, and the warnings come in order: figur
   assert.ok(both.indexOf("very high stress") > both.indexOf("Warning:"));
   // Concise: nothing else of the notice (its advice) is said.
   assert.doesNotMatch(both, /Move the Traffic slider/);
+});
+
+// ---- the a11y review of the release: SF1, N4, and the seek note (OWNER-DECISIONS 298(3)) ----
+
+test("a slow plan is said once, after a few seconds, and why only where it is a calm route at the top", () => {
+  assert.equal(STILL_PLANNING_AFTER_MS, 3000);
+  assert.equal(stillPlanningSaid("trailmaxxing", { stress: 100 }), "Still planning. Calm routes at this setting can take up to half a minute.");
+  assert.equal(stillPlanningSaid("default", { stress: 81 }), "Still planning. Calm routes at this setting can take up to half a minute.");
+  assert.equal(stillPlanningSaid("default", { stress: 80 }), "Still planning.");
+  assert.equal(stillPlanningSaid("mass-ride", { stress: 100 }), "Still planning.");
+  assert.equal(stillPlanningSaid("default", undefined), "Still planning.");
+});
+
+test("a route chosen from several is said as chosen, not planned, and an arrival says how many others there are", () => {
+  const route = { distance_m: 5000, duration_s: 1200, climb_m: 31, preset: "default", intersections: [{ severity: "red" }] } as unknown as RouteResponse;
+  assert.match(announceRoute(route), /^Route planned: 3\.1 mi \(5\.0 km\), 20 min moving time, climb 102 ft \(31 m\)\. 1 very high stress junction\.$/);
+  assert.equal(
+    announceRoute(route, [], { chosen: { rank: 2, of: 3 } }),
+    "Route 2 of 3 chosen: 3.1 mi (5.0 km), 20 min moving time, climb 102 ft (31 m). 1 very high stress junction.",
+  );
+  assert.equal(
+    announceRoute(route, [], { others: 2 }),
+    "Route planned: 3.1 mi (5.0 km), 20 min moving time, climb 102 ft (31 m). 1 very high stress junction. 2 other routes to choose from, under Routes to choose from.",
+  );
+  assert.equal(announceRoute(route, [], { others: 0 }), announceRoute(route));
+  assert.doesNotMatch(announceRoute(route, [], { chosen: { rank: 1, of: 2 }, others: 1 }), /to choose from/, "a choice is not an arrival");
+  assert.equal(othersSaid(1), "1 other route to choose from, under Routes to choose from.");
+});
+
+test("the seek note says what the hills search did, and at the top of the traffic slider that it only breaks ties", () => {
+  const seek = (over: object) => ({ candidates: 4, chosen: 2, extra_climb_m: 60, extra_distance_m: 900, limited: null, ...over }) as never;
+  assert.equal(seekNote(null), null);
+  assert.equal(seekNote(undefined), null);
+  assert.equal(
+    seekNote(seek({ limited: "calm_first", candidates: 1, chosen: 0, extra_climb_m: 0, extra_distance_m: 0 })),
+    "At this Traffic setting, looking for climbs only chooses between equally calm routes, preferring the one that climbs more.",
+  );
+  assert.match(seekNote(seek({ limited: "two_points" })) ?? "", /just a start and an end; this one has stops/);
+  assert.match(seekNote(seek({ limited: "long_ride" })) ?? "", /within 31 mi \(50 km\) of each other/);
+  assert.match(seekNote(seek({ limited: "timed_out" })) ?? "", /took too long/);
+  assert.equal(seekNote(seek({ chosen: 0 })), "None of the 3 alternatives climbed more within the distance allowed; this is the fastest route.");
+  assert.equal(seekNote(seek({})), "Chose a route with 197 ft (60 m) more climbing for 0.6 mi (0.9 km) more distance, from 4 routes compared.");
 });

@@ -73,7 +73,7 @@ test("the summary says how much of the way back is the way out, in miles first",
   assert.equal(loopNote(route(null)), null);
   assert.match(
     loopNote(route({ overlap_pct: 18.4, shared_m: 1500, return_m: 8150 })) ?? "",
-    /^18% of the way back \(0\.9 mi \(1\.5 km\)\) is on roads the way out used\.$/,
+    /^18% of the way back, 0\.9 mi \(1\.5 km\), is on roads the way out used\.$/,
   );
   assert.equal(loopNote(route({ overlap_pct: 0, shared_m: 0, return_m: 8000 })), "The way back shares no road with the way out.");
   assert.equal(loopNote(route({ overlap_pct: null, shared_m: null, return_m: null })), null);

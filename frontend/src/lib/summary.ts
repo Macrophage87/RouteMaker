@@ -1,6 +1,6 @@
 /** Sentences the route panel says about a route. */
 import type { RouteResponse } from "./api.ts";
-import { STRESS_TODAYS_TOP } from "./dials.ts";
+import { STRESS_TODAYS_TOP, TARGET_CEILING_RATIO } from "./dials.ts";
 import { detour, pathLengthM, type LonLat } from "./geo.ts";
 import { loopNote } from "./loop.ts";
 import {
@@ -10,6 +10,7 @@ import {
   formatExtra,
   formatRoughDistance,
   formatSpeed,
+  SEEK_MAX_SPAN_M,
 } from "./format.ts";
 
 /**
@@ -95,20 +96,42 @@ export function calmSearchNote(
   const target = search?.target_distance_m;
   const over = overTarget(route);
   const notes: string[] = [];
-  if (search?.limited === "target_distance" && search.fits === false && target) {
-    // No route within the target was found: the least stressful one found is
-    // answered, flagged (OWNER-DECISIONS 267).
-    notes.push(`No route within your target distance (${formatDistance(target)}) was found. This is the least stressful one found.`);
+  if (search?.no_fit === true && target) {
+    // No route within the target was found: the calmest one found is answered,
+    // flagged (OWNER-DECISIONS 267, 298(2)), and it may be past the ceiling too.
+    const ceiling = search.ceiling_m ?? null;
+    const length = route.distance_m ?? (over !== null ? target + over : null);
+    const pastCeiling = ceiling !== null && length !== null && length > ceiling;
+    notes.push(
+      pastCeiling
+        ? `No route within your target distance of ${formatDistance(target)}, or within ${TARGET_CEILING_RATIO} times it, was found. This is the least stressful one found.`
+        : `No route within your target distance of ${formatDistance(target)} was found. This is the least stressful one found.`,
+    );
     if (over !== null) notes.push(`It is ${formatDistance(over)} over your target.`);
+  } else if (search?.limited === "ceiling") {
+    const ceiling = search.ceiling_m;
+    notes.push(
+      ceiling
+        ? `The calmer-route search stopped at the longest distance it allows, ${formatDistance(ceiling)}, so a calmer, longer route may exist.`
+        : "The calmer-route search stopped at the longest distance it allows, so a calmer, longer route may exist.",
+    );
+    if (over !== null) notes.push(`It is ${formatDistance(over)} over your target, to avoid busier roads.`);
   } else {
     const why = search?.limited ? CALM_SEARCH_LIMITS[search.limited] : undefined;
     if (why) notes.push(why);
-    // Past the target where the extra miles avoid enough busy road (OWNER-DECISIONS 271).
-    if (over !== null) notes.push(`It is ${formatDistance(over)} over your target, to avoid busier roads.`);
+    // Past the target where the extra miles avoid enough busy road (OWNER-DECISIONS 271);
+    // an older API's "target_distance" without `no_fit` says only how far.
+    if (over !== null) {
+      notes.push(
+        search?.limited === "target_distance"
+          ? `It is ${formatDistance(over)} over your target.`
+          : `It is ${formatDistance(over)} over your target, to avoid busier roads.`,
+      );
+    }
   }
   if (search?.fitted_at != null && search.fits !== false && target) {
     notes.push(
-      `Your target distance (${formatDistance(target)}) is shorter than the calmest route, so this one uses some busier roads to fit.`,
+      `Your target distance of ${formatDistance(target)} is shorter than the calmest route, so this one uses some busier roads to fit.`,
     );
   }
   return notes.length ? notes.join(" ") : null;
@@ -143,13 +166,16 @@ export function targetSaid(route: Pick<RouteResponse, "calm_search" | "distance_
 export const CALM_SEARCH_MAX_SPAN_M = 30_000;
 // (Trailmaxxing at the top of the slider is not held to it: it plans a longer trip leg by leg, OWNER-DECISIONS 256.)
 
+// "The usual route": the planner's first route for this ride type, before any
+// calmer-route search (the a11y review's N2: "the router's own route" was an
+// internal term). Hills seeking at the top no longer stops the search
+// (OWNER-DECISIONS 298(3)), so there is no "seeking" here.
 const CALM_SEARCH_LIMITS: Record<string, string> = {
   time: "The calmer-route search ran out of time, so there may be a calmer route than this one.",
-  untraceable: "The calmer-route search could not read this route, so it is the router's own.",
-  span: `The calmer-route search does not run on trips over ${formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)} in a straight line, so this is the router's own route.`,
-  long_ride: "The calmer-route search does not run on long rides, so this is the router's own route.",
-  seeking: "The calmer-route search does not run while the Hills slider looks for climbs.",
-  split: "The calmer-route search could not cut this long trip into legs, so this is the router's own route.",
+  untraceable: "The calmer-route search could not read this route, so this is the usual route for this ride type.",
+  span: `The calmer-route search does not run on trips over ${formatRoughDistance(CALM_SEARCH_MAX_SPAN_M)} in a straight line, so this is the usual route for this ride type.`,
+  long_ride: "The calmer-route search does not run on long rides, so this is the usual route for this ride type.",
+  split: "The calmer-route search could not cut this long trip into legs, so this is the usual route for this ride type.",
 };
 
 function straightLineNotice(route: Pick<RouteResponse, "distance_m" | "preset">, points: readonly LonLat[]): string | null {
@@ -204,17 +230,72 @@ export function redJunctionsSaid(route: Pick<RouteResponse, "intersections">): s
 }
 
 /**
- * What a screen reader hears when a route arrives: the figures, then the
- * detour's tier and the very high stress junctions when there are any, and
- * nothing more (the summary has the rest).
+ * Which route of several is said (lib/candidates.ts announceHow): `chosen` when the
+ * rider picked one of the routes to choose from, `others` on arrival with more than
+ * one (how many more there are).
  */
-export function announceRoute(route: RouteResponse, points: readonly LonLat[] = []): string {
+export interface AnnounceHow {
+  chosen?: { rank: number; of: number };
+  others?: number;
+}
+
+/**
+ * What a screen reader hears when a route arrives, or when the rider chooses one
+ * of the routes to choose from (nothing was planned then, so it is not "Route
+ * planned"; the a11y review's N4): the figures, then the detour's tier, the very
+ * high stress junctions, the target and the loop when there are any, and on
+ * arrival how many other routes there are to choose from (the summary has the rest).
+ */
+export function announceRoute(route: RouteResponse, points: readonly LonLat[] = [], how: AnnounceHow = {}): string {
+  const head = how.chosen ? `Route ${how.chosen.rank} of ${how.chosen.of} chosen: ` : "Route planned: ";
   const figures =
-    `Route planned: ${formatDistance(route.distance_m)}, ` +
+    `${head}${formatDistance(route.distance_m)}, ` +
     `${formatDuration(route.duration_s)} moving time, climb ${formatClimb(route.climb_m)}.`;
-  return [figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route)]
+  const others = !how.chosen && how.others ? othersSaid(how.others) : null;
+  return [figures, detourSaid(route, points), redJunctionsSaid(route), targetSaid(route), loopNote(route), others]
     .filter(Boolean)
     .join(" ");
+}
+
+/** "2 other routes to choose from, under Routes to choose from." */
+export function othersSaid(others: number): string {
+  return `${others} other ${others === 1 ? "route" : "routes"} to choose from, under Routes to choose from.`;
+}
+
+/**
+ * What the route summary says of the Hills slider's search for climbs, or null where
+ * it did not look. "calm_first": at the top of the traffic slider the stress order
+ * and the target still decide, and climbing only breaks ties (OWNER-DECISIONS 298(3)).
+ */
+export function seekNote(seek: RouteResponse["hills_seek"]): string | null {
+  if (!seek) return null;
+  switch (seek.limited) {
+    case "calm_first":
+      return "At this Traffic setting, looking for climbs only chooses between equally calm routes, preferring the one that climbs more.";
+    case "two_points":
+      return "Looking for climbs works on routes with just a start and an end; this one has stops, so it is the fastest route.";
+    case "long_ride":
+      return `Looking for climbs is done only when the start and end are within ${formatRoughDistance(SEEK_MAX_SPAN_M)} of each other; this is the fastest route.`;
+    case "timed_out":
+      return "Looking for climbs took too long this time; this is the fastest route.";
+  }
+  if (seek.chosen === 0) {
+    return `None of the ${seek.candidates - 1} alternatives climbed more within the distance allowed; this is the fastest route.`;
+  }
+  return `Chose a route with ${formatClimb(seek.extra_climb_m)} more climbing for ${formatDistance(seek.extra_distance_m)} more distance, from ${seek.candidates} routes compared.`;
+}
+
+/** How long a plan runs before "Still planning" is said, once (the a11y review's SF1). */
+export const STILL_PLANNING_AFTER_MS = 3000;
+
+/**
+ * What the status line says once a plan has run STILL_PLANNING_AFTER_MS: that it is
+ * still going, and at the calm end of the traffic slider (where a plan takes up to
+ * half a minute, LONG-CALM) why.
+ */
+export function stillPlanningSaid(preset: string, dials: { stress: number } | undefined): string {
+  const calm = preset !== "mass-ride" && (dials?.stress ?? 0) > STRESS_TODAYS_TOP;
+  return calm ? "Still planning. Calm routes at this setting can take up to half a minute." : "Still planning.";
 }
 
 /** A point's name in the list: Start, Stop 1, Stop 2, ..., End. */

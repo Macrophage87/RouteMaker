@@ -28,6 +28,7 @@ import {
   type DescriptionView,
   descriptionText,
   hasOverview,
+  lanesHiddenNote,
   readOpen,
   readView,
   toggleLabel,
@@ -72,6 +73,7 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
   const view = viewFor(route, chosen);
   const showHighLanes = useHighStressLanes(); // the entries and the text follow the "Show bike lanes on high-stress roads" switch
   const entries = descriptionEntries(route, view, showHighLanes);
+  const hiddenNote = lanesHiddenNote(route, view, showHighLanes);
   // Said only after the rider presses Copy: a reply to their action, not a
   // announcement about the route.
   const [copied, setCopied] = useState<"" | "done" | "failed">("");
@@ -137,6 +139,11 @@ export function RouteDescription({ route }: { route: RouteResponse }) {
       {/* No scroll box of its own: the panel scrolls, so the list is read and
           scrolled like the rest of it by keyboard in every browser (a11y re-check
           of 2b0cf00, 2.1.1), with no extra Tab stop. */}
+      {hiddenNote && (
+        <p className="hint lanes-hidden" hidden={!open}>
+          {hiddenNote}
+        </p>
+      )}
       <ol id={listId} className="description-list" hidden={!open}>
         {entries.map((entry, i) => {
           const crossings = crossingsOf(entry);

@@ -512,5 +512,6 @@ test("an alley is not drawn below z16 and is faint from it; a tier-5 road keeps 
   const avoid = drawnAtZoom({ tier: 5 }, 14)["stress-5"];
   assert.deepEqual(avoid, { opacity: 1, width: STRESS_TIERS[4].width });
   const avoidLayer = stressLayers().find((l) => l.id === "stress-5");
-  assert.equal(avoidLayer.paint["line-color"], STRESS_TIERS[4].color);
+  // Its colour when paved: the expression is the surface's (OWNER-DECISIONS 302).
+  assert.deepEqual(avoidLayer.paint["line-color"], ["case", ["==", ["get", "unpaved"], true], STRESS_TIERS[4].unpavedColor, STRESS_TIERS[4].color]);
 });

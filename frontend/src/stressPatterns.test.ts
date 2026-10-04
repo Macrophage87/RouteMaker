@@ -58,11 +58,6 @@ test("a solid tier's layer has no dasharray, and a dashed one has its own", () =
   });
 });
 
-test("the legend and the map draw a tier's dash the same way: the legend's SVG list is the tier's, scaled, and nothing for a solid line", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  assert.match(app, /strokeDasharray=\{tier\.dash \? tier\.dash\.map\(\(d: number\) => d \* widths\.tiers\[i\]\.line\)\.join\(" "\) : undefined\}/);
-});
-
 /** Run `body` with the accessibility switch on or off (a trial that leaves what is stored alone), then off again. */
 function withSwitch(on: boolean, body: () => void): void {
   setAccessibility(on, { remember: false });
@@ -155,7 +150,7 @@ test("an unpaved road or trail gets a dotted centre mark at every tier, over the
     assert.equal(draws(mark, { tier: tier.tier, unpaved: false }), false);
     assert.equal(draws(mark, { tier: tier.tier === 1 ? 2 : 1, unpaved: true }), false, `only its own tier`);
     assert.deepEqual(mark.paint["line-dasharray"], UNPAVED_DASH);
-    assert.equal(mark.paint["line-color"], tier.casing, "the colour chosen to stand apart from the line");
+    assert.equal(mark.paint["line-color"], tier.unpavedCasing, "the unpaved casing, chosen to stand apart from the brown line (OWNER-DECISIONS 302)");
     assert.equal(mark.paint["line-width"], unpavedWidth(tier));
     assert.ok(unpavedWidth(tier) < tier.width && unpavedWidth(tier) >= 1.5);
   });
@@ -196,13 +191,6 @@ test("a flip of the accessibility switch repaints the unpaved marks too, in colo
     ]);
   }
   assert.equal(calls.length, ids.length * 2);
-});
-
-test("the legend lists Unpaved, drawn with the same dots from the same constants as the map", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  assert.match(app, /<span className="stress-name">Unpaved<\/span>/);
-  assert.match(app, /UNPAVED_DASH\.map\(\(d: number\) => d \* unpavedWidth\(tiers\[0\]\)\)/);
-  assert.match(app, /strokeWidth=\{unpavedWidth\(tiers\[0\]\)\}/);
 });
 
 // ---- unpaved trails have no path rail (OWNER-DECISIONS 290) -----------------
@@ -271,10 +259,3 @@ test("the painted rail: 1 px by default, 1.5 px with the accessibility switch on
   });
 });
 
-test("the legend says an unpaved trail has no path edges", () => {
-  const app = readFileSync(new URL("./App.tsx", import.meta.url), "utf8");
-  // In the Unpaved entry and in the bike-facility hint, both.
-  assert.match(app, /unpaved surface\. An unpaved trail has no path edges\./);
-  assert.match(app, /An unpaved trail has no path edges, only the dotted center line\./);
-  assert.match(app, /a solid dark rail for a paved path/);
-});

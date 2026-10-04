@@ -79,7 +79,18 @@ function Slider(props: {
           {view.note}
         </p>
       )}
+      {view.how && <HowThisWorks text={view.how} />}
     </div>
+  );
+}
+
+/** The detail a description would be too long for (the a11y review's N1): read when opened, not on every focus. */
+function HowThisWorks({ text }: { text: string }) {
+  return (
+    <details className="how">
+      <summary>How this works</summary>
+      <p className="hint">{text}</p>
+    </details>
   );
 }
 
@@ -88,12 +99,19 @@ function Slider(props: {
  * when they leave the field or press Enter, never on each key, so a screen reader
  * hears one route. Empty is the default. An entry the planner will not take is said
  * in words under the field, and the field is marked invalid, not only coloured.
+ *
+ * The rule is said as well as shown (the a11y review's SF3): its paragraph is an
+ * assertive live region that is always in the page, empty while the entry is fine,
+ * so a screen reader speaks the rule when it is filled, whether the rider pressed
+ * Enter (the focus stays in the field) or moved on with Tab. The same bad entry
+ * twice is said twice (the trailing no-break space that alternates is not read).
  */
 function NumberDial(props: {
   label: string;
   value: string;
   rule: string;
   hint: string;
+  how?: string;
   parse: (text: string) => number | undefined | null;
   onCommit: (value: number | undefined) => void;
 }) {
@@ -101,18 +119,18 @@ function NumberDial(props: {
   const hintId = `${id}-hint`;
   const ruleId = `${id}-rule`;
   const [text, setText] = useState(props.value);
-  const [bad, setBad] = useState(false);
+  const [bad, setBad] = useState(0);
   useEffect(() => {
     setText(props.value);
-    setBad(false);
+    setBad(0);
   }, [props.value]);
   const commit = () => {
     const parsed = props.parse(text);
     if (parsed === null) {
-      setBad(true);
+      setBad((n) => n + 1);
       return;
     }
-    setBad(false);
+    setBad(0);
     if (props.parse(props.value) !== parsed) props.onCommit(parsed);
   };
   return (
@@ -127,7 +145,7 @@ function NumberDial(props: {
         value={text}
         placeholder="Default"
         aria-describedby={bad ? `${hintId} ${ruleId}` : hintId}
-        aria-invalid={bad || undefined}
+        aria-invalid={bad > 0 || undefined}
         onChange={(event) => setText(event.target.value)}
         onBlur={commit}
         onKeyDown={(event) => {
@@ -140,11 +158,10 @@ function NumberDial(props: {
       <p className="hint" id={hintId}>
         {props.hint}
       </p>
-      {bad && (
-        <p className="notice" id={ruleId}>
-          {props.rule}
-        </p>
-      )}
+      <p className={bad ? "notice dial-rule" : "dial-rule"} id={ruleId} aria-live="assertive">
+        {bad ? `${props.rule}${bad % 2 === 0 ? " " : ""}` : ""}
+      </p>
+      {props.how && <HowThisWorks text={props.how} />}
     </div>
   );
 }
@@ -210,12 +227,18 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [] 
       {loop && (
         <div className="dial">
           <label className="toggle">
+            {/* aria-disabled, not disabled, when the ride is a loop already: it stays in
+                the Tab order with its reason as its description (the a11y review's N6),
+                and a press changes nothing. */}
             <input
               type="checkbox"
               checked={loop.checked}
-              disabled={loop.implied}
+              aria-disabled={loop.implied || undefined}
               aria-describedby={loopHintId}
-              onChange={(event) => onCommit(withLoop(dials, event.target.checked))}
+              onChange={(event) => {
+                if (loop.implied) return;
+                onCommit(withLoop(dials, event.target.checked));
+              }}
             />
             {loop.label}
           </label>
@@ -250,6 +273,7 @@ export function DialsPanel({ preset, dials, onCommit, resolvedWhen, points = [] 
           value={view.target.value}
           rule={view.target.rule}
           hint={view.target.hint}
+          how={view.target.how}
           parse={parseTarget}
           onCommit={(targetDistanceM) => onCommit(withField(dials, "targetDistanceM", targetDistanceM))}
         />

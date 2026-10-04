@@ -411,7 +411,8 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
     assert.deepEqual(currentTiers().map((t: { color: string }) => t.color), colours("cvd"));
     assert.deepEqual(furthTiers().map((t: { tier: number }) => t.tier), [1, 2, 3, 4]);
     // The overlay's layers, built after the flip.
-    assert.deepEqual(stressLayers().map((l: { paint: Record<string, unknown> }) => l.paint["line-color"]), colours("cvd"));
+    // A paved road's colour (an unpaved one's is the brown ramp, unpavedBrown.test.ts).
+    assert.deepEqual(stressLayers().map((l: { id: string; paint: Record<string, unknown> }) => paintAt(l, "line-color", { unpaved: false })), colours("cvd"));
     assert.deepEqual(
       stressCasingLayers().map((l) => paintAt(l, "line-color")),
       tiersFor("cvd", true).map((t: { casing: string }) => t.casing),
@@ -427,7 +428,7 @@ test("a flip changes what every consumer of the tiers reads: overlay, route, leg
     assert.deepEqual(bar.filter((s) => s.key !== "unknown").map((s) => s.color), colours("cvd"));
   });
   // And back, with nothing left over.
-  assert.deepEqual(stressLayers().map((l: { paint: Record<string, unknown> }) => l.paint["line-color"]), colours("blended"));
+  assert.deepEqual(stressLayers().map((l: { id: string; paint: Record<string, unknown> }) => paintAt(l, "line-color", { unpaved: false })), colours("blended"));
   assert.deepEqual(stressCasingLayers().map((l) => paintAt(l, "line-color")), casings("blended"));
   assert.equal(spanClass({ tier: 3, facility: "none" }).color, PALETTES.blended[3].color);
   assert.equal(stressSegments({ "5": 1 }).find((s) => s.key === "5")?.color, PALETTES.blended[5].color);
@@ -478,18 +479,6 @@ test("a facility's rails for a tier the style has no entry for are LTS 1's, casi
   // The painted rail's own strong width reaches the fallback too.
   const lane = FACILITIES.find((f: { facility: string }) => f.facility === "lane");
   assert.equal((facilityWidthAt(lane, undefined, tiersFor("cvd", true)) as unknown[]).at(-1), 9);
-});
-
-test("the panel legend draws its widths from legendWidths, not its own sums", () => {
-  const app = readFileSync(fileURLToPath(new URL("../App.tsx", import.meta.url)), "utf8");
-  const start = app.indexOf("function StressLegend(");
-  const legendFn = app.slice(start, app.indexOf("\n}\n", start));
-  assert.match(legendFn, /const widths = legendWidths\(tiers\)/);
-  assert.match(legendFn, /strokeWidth=\{widths\.tiers\[i\]\.casing\}/);
-  assert.match(legendFn, /strokeWidth=\{widths\.tiers\[i\]\.line\}/);
-  assert.match(legendFn, /const rails = widths\.rails\[facility\.facility\]/);
-  assert.match(legendFn, /strokeWidth=\{widths\.facilityCasing\}/);
-  assert.doesNotMatch(legendFn, /casingExtra|CASING_EXTRA_PX|facilityWidth\(/, "no width sums of its own");
 });
 
 test("the route's casing and the unrated grey follow the palette: the colour-blind-friendly one has its own", () => {
@@ -640,16 +629,18 @@ test("repaint wiring: the route's sections are cut again in the palette in use, 
   );
   assert.deepEqual(
     paint.map(([id, name]) => `${id} ${name}`),
-    ["route-line line-opacity", "route-stress line-opacity", "route-halo line-opacity", "route-casing line-color"],
+    ["route-line line-opacity", "route-stress line-opacity", "route-halo line-opacity", "route-casing line-color", "route-unpaved line-opacity"],
   );
   assert.equal(paint[1][2], 1, "the sections are shown, fully");
   assert.equal(paint[2][2], 1, "and so are their halos");
   assert.equal(paint[3][2], ROUTE_CASING_CVD, "under the colour-blind-friendly palette's own casing, not the blue its LTS 2 matches");
   assert.equal(paint[0][2], 0, "and the one-colour line is hidden");
+  assert.equal(paint[4][2], 1, "the unpaved sections' dots with them");
   setRouteSections(map as never, ROUTE, true);
-  assert.equal(paint[5][2], 0.45, "a stale route is still dimmed after a flip");
-  assert.equal(paint[6][2], 0.45, "its halos too");
-  assert.equal(paint[7][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
+  assert.equal(paint[6][2], 0.45, "a stale route is still dimmed after a flip");
+  assert.equal(paint[7][2], 0.45, "its halos too");
+  assert.equal(paint[8][2], ROUTE_BLUE, "and back in the default palette, the blue casing");
+  assert.equal(paint[9][2], 0.45, "and the unpaved dots");
 });
 
 test("repaint wiring: no route puts no sections in, and does not throw", () => {

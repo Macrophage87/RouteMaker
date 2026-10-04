@@ -9,8 +9,8 @@
 import {
   AVOID_MAX_SPAN_M,
   METRES_PER_MILE,
-  MILES_WORD,
-  POUNDS_WORD,
+  milesRange,
+  poundsRange,
   SEEK_MAX_SPAN_M,
   formatDistance,
   formatPerMile,
@@ -48,7 +48,10 @@ export interface SliderView {
   words: string;
   ends: [string, string, string];
   disabled: boolean;
+  /** Its description, under it: kept short (DESCRIPTION_MAX_CHARS) where it can be. */
   note?: string;
+  /** The detail, under a "How this works" disclosure, not read on every step. */
+  how?: string;
 }
 
 export interface PanelView {
@@ -77,8 +80,10 @@ export interface TargetView {
   max: number;
   /** The rule for an entry the planner will not take, as words (not a colour). */
   rule: string;
-  /** Under the input: what it does, and what is set. */
+  /** Under the input, and its description: what it does, and what is set (short). */
   hint: string;
+  /** The detail, under a "How this works" disclosure: not read on every focus. */
+  how?: string;
 }
 
 export const TARGET_LABEL = "Target distance (miles)";
@@ -102,26 +107,34 @@ export function parseTarget(text: string): number | undefined | null {
 const TARGET_MIN_MILES = Math.ceil((TARGET_MIN_M / METRES_PER_MILE) * 10) / 10;
 const TARGET_MAX_MILES = Math.floor(TARGET_MAX_M / METRES_PER_MILE);
 
+/** A description is read on every focus, so it is kept under this many characters (the a11y review's N1). */
+export const DESCRIPTION_MAX_CHARS = 150;
+
 export function targetView(dials: Dials): TargetView {
   const set = dials.targetDistanceM;
-  const base =
-    "Optional. The route aims at or under this, as calm as it can be: " +
-    "the fewest heavy-traffic roads and very high stress junctions first, then busy roads and higher stress junctions, then distance.";
+  // One short sentence or two as the description; the ordering detail is under
+  // "How this works" (`how`), read only when opened.
   const hint =
     set === undefined
-      ? `${base} Left empty, it may be up to ${DEFAULT_CEILING_RATIO} times the router's own route, where the extra miles avoid enough busy road.`
-      : `${base} Set to ${formatDistance(set)}. It goes past it only where the extra miles avoid enough busy road, ` +
-        `never past ${formatDistance(set * TARGET_CEILING_RATIO)}, and says how far over it is. ` +
-        "A target shorter than the calmest route makes it use busier roads.";
+      ? `Optional: the calmest route at or under this. Left empty, it may be up to ${DEFAULT_CEILING_RATIO} times the usual route.`
+      : `Optional: the calmest route at or under this. Set to ${formatDistance(set)}; never past ${formatDistance(set * TARGET_CEILING_RATIO)}.`;
   return {
     label: TARGET_LABEL,
     value: targetText(set),
     min: TARGET_MIN_MILES,
     max: TARGET_MAX_MILES,
-    rule: `Enter ${TARGET_MIN_MILES} to ${TARGET_MAX_MILES} ${MILES_WORD}, or leave it empty.`,
+    rule: `Enter ${milesRange(TARGET_MIN_MILES, TARGET_MAX_MILES, TARGET_MIN_M, TARGET_MAX_M)}, or leave it empty.`,
     hint,
+    how: TARGET_HOW,
   };
 }
+
+/** The target's "How this works" (OWNER-DECISIONS 258-262, 267, 271, 287(2), 287(3)). */
+export const TARGET_HOW =
+  "The route is as calm as it can be: the fewest heavy-traffic roads and very high stress junctions first, then busy roads " +
+  "and higher stress junctions, then distance. It goes past your target only where the extra miles avoid enough busy road, " +
+  `and never past ${TARGET_CEILING_RATIO} times it. If the calmest route is longer than your target, it is still the one ` +
+  "chosen, and the route summary says how far over your target it is.";
 
 /** The "System weight" dial (OWNER-DECISIONS 264), in pounds first, kilograms in brackets. */
 export interface WeightView {
@@ -150,13 +163,20 @@ export function weightText(kg: number | undefined): string {
   return kg === undefined ? "" : String(lbOf(kg));
 }
 
-/** Kilograms for what was typed in pounds, undefined for empty (the default), null for an unusable entry. */
+/**
+ * Kilograms, to a tenth, for what was typed in pounds; undefined for empty (the
+ * default), null for an unusable entry. A tenth of a kilogram is under a quarter
+ * of a pound, so what was typed comes back as typed (200 lb is 90.7 kg, shown as
+ * 200 lb; whole kilograms showed it as 201: the spec review's NIT4). The API takes
+ * whole kilograms (dials.ts dialFields rounds); the range is the API's, on that.
+ */
 export function parseWeight(text: string): number | undefined | null {
   const trimmed = text.trim().replace(/\s*(lb|lbs|pounds)$/i, "");
   if (trimmed === "") return undefined;
   if (!/^\d+(\.\d+)?$/.test(trimmed)) return null;
-  const kg = Math.round(Number(trimmed) / LB_PER_KG);
-  return kg >= SYSTEM_WEIGHT_MIN_KG && kg <= SYSTEM_WEIGHT_MAX_KG ? kg : null;
+  const kg = Math.round((Number(trimmed) / LB_PER_KG) * 10) / 10;
+  const sent = Math.round(kg);
+  return sent >= SYSTEM_WEIGHT_MIN_KG && sent <= SYSTEM_WEIGHT_MAX_KG ? kg : null;
 }
 
 export function weightView(dials: Dials): WeightView {
@@ -171,7 +191,7 @@ export function weightView(dials: Dials): WeightView {
     value: weightText(set),
     min: lo,
     max: hi,
-    rule: `Enter ${lo} to ${hi} ${POUNDS_WORD}, or leave it empty.`,
+    rule: `Enter ${poundsRange(lo, hi, SYSTEM_WEIGHT_MIN_KG, SYSTEM_WEIGHT_MAX_KG)}, or leave it empty.`,
     hint:
       set === undefined
         ? `${base} Left empty, it is ${formatWeight(usual)}.`
@@ -189,15 +209,12 @@ export const MASS_RIDE_TRAFFIC_NOTE =
 export function calmNote(stress: number, _preset?: PresetId): string | undefined {
   const rate = calmRate(stress);
   if (rate <= 0) return undefined;
-  // The top (OWNER-DECISIONS 256, 257, 271): no rate; the least stressful route towards the target distance.
+  // The top (OWNER-DECISIONS 256, 257, 271): no rate; the least stressful route towards
+  // the target distance, within its ceiling (1.25 times the target, or 1.6 times the
+  // usual route with none). The order it weighs things in is CALM_HOW, under "How
+  // this works": this is the slider's description, read at every step (the a11y review's N1).
   if (stress >= STRESS_MAX) {
-    return (
-      "Calmest: finds the least stressful route towards your target distance, however far round it goes. " +
-      "First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. " +
-      "Then it avoids busy roads (LTS 3) and higher stress junctions. " +
-      "Then it follows the Hills slider. Then it takes the shorter way. " +
-      "A quiet street counts the same as a trail. The route summary says how much longer it is."
-    );
+    return "Calmest: finds the least stressful route towards your target distance, within a set limit. The route summary says how much longer it is.";
   }
   // Short sentences (a11y review of integrate-2: one 49-word sentence, which
   // changes at every step and is the slider's description).
@@ -208,11 +225,20 @@ export function calmNote(stress: number, _preset?: PresetId): string | undefined
   );
 }
 
+/** The top of the traffic slider's "How this works": the order it weighs things in. */
+export const CALM_HOW =
+  "First it avoids heavy-traffic roads (LTS 4) and very high stress junctions. Then it avoids busy roads (LTS 3) and " +
+  "higher stress junctions. Then it follows the Hills slider. Then it takes the shorter way. A quiet street counts the " +
+  `same as a trail. It goes no further than ${TARGET_CEILING_RATIO} times your target distance, or ${DEFAULT_CEILING_RATIO} ` +
+  "times the usual route when no target is set.";
 
 export const MASS_RIDE_HILLS_NOTE =
   "A mass ride does not look for climbs: at parade pace a climb drops riders below balance speed.";
 export const SEEK_NOTE =
   `Looks for climbs among a few alternative routes, up to half again as long; for a start and an end only, up to ${formatRoughDistance(SEEK_MAX_SPAN_M)} apart.`;
+/** At the top of the traffic slider seeking climbs only breaks ties (OWNER-DECISIONS 298(3)). */
+export const SEEK_CALM_NOTE =
+  "At this Traffic setting, looking for climbs only chooses between equally calm routes, preferring the one that climbs more.";
 export const AVOID_NOTE =
   `Steep grades cost more the steeper they are; long climbs, and on some ride types long steep descents, count most, short kicks little. Weighed among a few alternative routes for a start and an end up to ${formatRoughDistance(AVOID_MAX_SPAN_M)} apart.`;
 
@@ -235,7 +261,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
     dials.loop === true;
   let hillsNote: string | undefined;
   if (!seek) hillsNote = MASS_RIDE_HILLS_NOTE;
-  else if (draft.hills > 0) hillsNote = SEEK_NOTE;
+  else if (draft.hills > 0) hillsNote = draft.stress >= STRESS_MAX ? SEEK_CALM_NOTE : SEEK_NOTE;
   else if (draft.hills < 0) hillsNote = AVOID_NOTE;
   return {
     assistToggle: offersAssist(preset),
@@ -249,6 +275,7 @@ export function panelView(preset: PresetId, dials: Dials, draft: Dials = dials):
       ends: ["Traffic tolerant", "Balanced", "Calm at any cost"],
       disabled: locked,
       note: locked ? MASS_RIDE_TRAFFIC_NOTE : calmNote(draft.stress, preset),
+      ...(!locked && draft.stress >= STRESS_MAX ? { how: CALM_HOW } : {}),
     },
     warning: warnsTrafficTolerant(preset, draft.stress) ? TRAFFIC_TOLERANT_WARNING : null,
     hills: {

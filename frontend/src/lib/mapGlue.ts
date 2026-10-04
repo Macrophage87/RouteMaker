@@ -13,6 +13,7 @@ import {
   stressLayers,
   stressOverlayLayers,
   unpavedLayers,
+  UNPAVED_DASH,
 } from "../stressStyle.js";
 import type { When } from "./dials.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
@@ -65,6 +66,18 @@ export function setStressWhen(map: OverlayMap, when: When): void {
 }
 
 /**
+ * The "Show bike lanes on high-stress roads" switch was flipped (OWNER-DECISIONS
+ * 275): once the map has loaded, its filters are set again in place for the ride
+ * time it shows (setStressWhen reads the switch), from the same tiles. Before the
+ * load there is nothing to set: the overlay is added with the switch as it is
+ * then. MapView calls this from its subscription (the mutation review's F02).
+ */
+export function onLaneSwitch(map: OverlayMap | null, loaded: boolean, when: When): void {
+  if (!map || !loaded) return;
+  setStressWhen(map, when);
+}
+
+/**
  * Paint the overlay in the palette and strength in use: each tier's line and
  * casing, in colour and width, and the facility rails, which sit outside the
  * casing. All in place, so a rider's flip of the accessibility switch shows at
@@ -99,6 +112,24 @@ export interface RouteSectionsMap {
 /** The map source the route's stress sections are drawn from (MapView adds it). */
 export const ROUTE_STRESS_SOURCE_ID = "route-stress";
 
+export const ROUTE_UNPAVED_LAYER_ID = "route-unpaved";
+
+/**
+ * The dotted mark over the route's unpaved sections (OWNER-DECISIONS 302), as the
+ * overlay draws one over an unpaved road: the map's own dash, in the section's halo
+ * (its unpaved casing), which stands 3:1 or more from the brown under it.
+ */
+export function routeUnpavedLayer(sourceId: string = ROUTE_STRESS_SOURCE_ID) {
+  return {
+    id: ROUTE_UNPAVED_LAYER_ID,
+    type: "line" as const,
+    source: sourceId,
+    filter: ["==", ["get", "unpaved"], true],
+    layout: { "line-join": "round" as const },
+    paint: { "line-color": ["get", "halo"], "line-width": ["get", "markWidth"], "line-dasharray": [...UNPAVED_DASH] },
+  };
+}
+
 /**
  * Draw the route's sections in the palette in use: cut the route at its
  * stress spans, put them in the sections source, and set the route layers'
@@ -118,6 +149,7 @@ export function setRouteSections(
   map.setPaintProperty("route-stress", "line-opacity", paint.sectionOpacity);
   map.setPaintProperty("route-halo", "line-opacity", paint.haloOpacity);
   map.setPaintProperty("route-casing", "line-color", paint.casingColor);
+  map.setPaintProperty(ROUTE_UNPAVED_LAYER_ID, "line-opacity", paint.sectionOpacity);
 }
 
 /** Show or hide every overlay layer that is on the map. */

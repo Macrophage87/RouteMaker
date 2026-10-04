@@ -13,12 +13,14 @@ import {
   hoverChanged,
   mapClickAction,
   markerDeps,
+  onLaneSwitch,
   pointerTarget,
   popupsOpen,
   pressGrab,
   runClick,
   runHover,
   setStressVisibility,
+  setStressWhen,
   watchForFacilities,
   watchZoom,
   type Coverage,
@@ -26,7 +28,7 @@ import {
   type OverlayMap,
 } from "./mapGlue.ts";
 import { STRESS_SOURCE_ID, stressSource } from "./mapStyle.ts";
-import { stressOverlayLayers } from "../stressStyle.js";
+import { HIGH_STRESS_LANE_MIN_TIER, drawnAt, setHighStressLanes, stressFilters, stressOverlayLayers } from "../stressStyle.js";
 import { ROUTE_BOTTOM_LAYER, railLayers } from "./railLayer.ts";
 
 function fakeMap(styleLayers: Array<{ id: string; type: string }>) {
@@ -553,4 +555,75 @@ test("the ride time changes the overlay's filters and the rails' widths, and not
     Object.fromEntries(F.map((f: { facility: string }) => [`facility-${f.facility}.line-width`, facilityWidthAt(f, "weekend")])),
   );
   assert.notDeepEqual(stressFilters("weekend"), stressFilters("weekday_rush"));
+});
+
+// ---- the "Show bike lanes on high-stress roads" switch on the map (OWNER-DECISIONS 275; the mutation review's F01-F03) ----
+
+/** A stand-in map with every overlay layer, recording the filters set on it. */
+function filterMap() {
+  const ids = stressOverlayLayers(STRESS_SOURCE_ID).map((l: { id: string }) => l.id);
+  const filters: Record<string, unknown> = {};
+  let calls = 0;
+  const map = {
+    getLayer: (id: string) => (ids.includes(id) ? {} : undefined),
+    setFilter: (id: string, filter: unknown) => {
+      calls += 1;
+      filters[id] = filter;
+    },
+    setPaintProperty: () => {},
+  } as unknown as OverlayMap;
+  return { map, filters, calls: () => calls };
+}
+
+/** Whether a filter holds the painted-lane cut: a "<" on the tile's own tier at HIGH_STRESS_LANE_MIN_TIER. */
+const hasLaneCut = (filter: unknown) =>
+  JSON.stringify(filter).includes(JSON.stringify(["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]));
+
+const WHENS_ALL = ["weekend", "weekday_rush", "weekday_offpeak"] as const;
+
+test("a ride-time change keeps the lane switch: with it on, the painted rails are set with no tier cut; off, with the cut (F01)", () => {
+  for (const when of WHENS_ALL) {
+    try {
+      setHighStressLanes(true, { remember: false });
+      const on = filterMap();
+      setStressWhen(on.map, when);
+      assert.equal(hasLaneCut(on.filters["facility-lane"]), false, `${when}: the switch is on, every painted lane is drawn`);
+    } finally {
+      setHighStressLanes(false, { remember: false });
+    }
+    const off = filterMap();
+    setStressWhen(off.map, when);
+    assert.equal(hasLaneCut(off.filters["facility-lane"]), true, `${when}: off, the lanes on LTS 4 and Avoid are cut`);
+  }
+});
+
+test("the lane switch's handler sets the filters again only once the map has loaded, for the ride time it shows (F02)", () => {
+  const before = filterMap();
+  onLaneSwitch(before.map, false, "weekend");
+  assert.equal(before.calls(), 0, "not loaded: nothing to set");
+  onLaneSwitch(null, true, "weekend");
+  const loaded = filterMap();
+  try {
+    setHighStressLanes(true, { remember: false });
+    onLaneSwitch(loaded.map, true, "weekend");
+    assert.deepEqual(loaded.filters, stressFilters("weekend", true));
+    assert.equal(hasLaneCut(loaded.filters["facility-lane"]), false);
+  } finally {
+    setHighStressLanes(false, { remember: false });
+  }
+  onLaneSwitch(loaded.map, true, "weekday_rush");
+  assert.deepEqual(loaded.filters, stressFilters("weekday_rush", false));
+  assert.equal(hasLaneCut(loaded.filters["facility-lane"]), true);
+});
+
+test("the lane cut is a clause of its own: the painted rails keep the ride time's drawn-at clause, in every ride time (F03)", () => {
+  for (const when of WHENS_ALL) {
+    const off = stressFilters(when, false)["facility-lane"] as unknown[];
+    const on = stressFilters(when, true)["facility-lane"] as unknown[];
+    assert.equal(off[0], "all");
+    assert.deepEqual(off[1], drawnAt(when), `${when}: the ride time's part is kept`);
+    assert.deepEqual(on[1], drawnAt(when));
+    assert.deepEqual(off.slice(0, -1), on, `${when}: the cut is added after everything the switch-on filter has`);
+    assert.equal(hasLaneCut(off.at(-1)), true);
+  }
 });

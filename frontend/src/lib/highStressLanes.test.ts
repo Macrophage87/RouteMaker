@@ -19,13 +19,15 @@ import {
   setHighStressLanes,
   storedHighStressLanes,
   stressFilters,
+  stressOverlayLayers,
   subscribeHighStressLanes,
 } from "../stressStyle.js";
 import { facilityMetresShown, facilityRows, highStressLaneMetres } from "./facilityBar.ts";
-import { descriptionEntries, descriptionText, withoutHighStressLane } from "./routeDescription.ts";
+import { LANES_HIDDEN_NOTE, descriptionEntries, descriptionText, lanesHiddenNote, withoutHighStressLane } from "./routeDescription.ts";
 import {
   HIGH_STRESS_LANES_HINT,
   HIGH_STRESS_LANES_LABEL,
+  HIGH_STRESS_LANES_NO_MAP_HINT,
   HighStressLanesSwitch,
 } from "./highStressLanesSwitch.ts";
 import type { DescriptionEntry } from "./api.ts";
@@ -87,6 +89,19 @@ test("the switch is off by default, and the filters read the setting when it is 
     setHighStressLanes(false, { remember: false });
   }
   assert.equal(highStressLanesOn(), false);
+});
+
+test("the overlay as first added follows the switch: a browser that stored it on loads the map with every painted lane (F06)", () => {
+  const lane = () => (stressOverlayLayers("s") as Array<{ id: string; filter: unknown }>).find((l) => l.id === "facility-lane")!;
+  const cut = JSON.stringify(["<", ["to-number", ["get", "tier"], 0], HIGH_STRESS_LANE_MIN_TIER]);
+  assert.ok(JSON.stringify(lane().filter).includes(cut), "off: the lanes on LTS 4 and Avoid are cut");
+  try {
+    setHighStressLanes(true, { remember: false });
+    assert.ok(!JSON.stringify(lane().filter).includes(cut), "on: no cut");
+    assert.deepEqual(lane().filter, stressFilters(undefined, true)["facility-lane"]);
+  } finally {
+    setHighStressLanes(false, { remember: false });
+  }
 });
 
 // ---- persistence -----------------------------------------------------------
@@ -272,10 +287,21 @@ test("descriptionEntries and the text for the clipboard and file follow the swit
 });
 
 test("the description and the facility bar are wired to the switch in the components", () => {
+  // These are .tsx components, which no test renders: only the wiring is read here. The map's half is
+  // behavioural (mapGlue.test.ts onLaneSwitch, and the overlay's filters below).
   const read = (name: string) => readFileSync(new URL(`../${name}`, import.meta.url), "utf8");
   assert.match(read("RouteDescription.tsx"), /useHighStressLanes\(\)[\s\S]*descriptionEntries\(route, view, showHighLanes\)/);
   assert.match(read("FacilityBreakdown.tsx"), /useHighStressLanes\(\)[\s\S]*facilityRows\(route\.facility_m, route\.stress_spans, showHighLanes\)/);
-  assert.match(read("MapView.tsx"), /subscribeHighStressLanes\(\(\) => \{[\s\S]*setStressWhen\(map, callbacks\.current\.when\)/);
+  assert.match(read("MapView.tsx"), /subscribeHighStressLanes\(\(\) => onLaneSwitch\(mapRef\.current, loaded\.current, callbacks\.current\.when\)\)/);
+});
+
+test("the description says, once, that painted lanes were left out, only when the switch hid one in the view shown (the a11y review's N9)", () => {
+  assert.equal(lanesHiddenNote(route, "full", false), LANES_HIDDEN_NOTE);
+  assert.equal(lanesHiddenNote(route, "full", true), null, "the switch on: nothing hidden");
+  const calm = { ...(route as object), description: [entry({ tier: 2, text: "b, fairly low stress (LTS 2), painted bike lane." })], description_overview: null } as never;
+  assert.equal(lanesHiddenNote(calm, "full", false), null, "no lane on a high-stress road");
+  assert.equal(lanesHiddenNote({ preset: "default", distance_m: 1, description: null } as never, "full", false), null);
+  assert.match(LANES_HIDDEN_NOTE, /turn on Show bike lanes on high-stress roads to include them/);
 });
 
 // ---- the switch's markup, and the legend's words ---------------------------
@@ -287,10 +313,13 @@ test("the switch is a labelled role=switch button with its state in words and a 
   assert.equal(HIGH_STRESS_LANES_LABEL, "Show bike lanes on high-stress roads");
   assert.match(off, /<span class="switch-state" aria-hidden="true">Off<\/span>/);
   assert.match(off, /<p class="hint" id="high-lanes-hint">/);
-  assert.match(HIGH_STRESS_LANES_HINT, /LTS 4 and Avoid/);
+  // Plain words, the tier in brackets (the a11y review's N2).
+  assert.match(HIGH_STRESS_LANES_HINT, /^Painted lanes on heavy-traffic \(LTS 4\) and best-avoided roads are hidden on the map and in the route\./);
   assert.match(HIGH_STRESS_LANES_HINT, /Protected lanes and paths always show/);
+  assert.doesNotMatch(HIGH_STRESS_LANES_HINT, /LTS 4 and Avoid/);
   // Read on every focus: kept short.
   assert.ok(HIGH_STRESS_LANES_HINT.length < 150, `${HIGH_STRESS_LANES_HINT.length} characters`);
+  assert.ok(HIGH_STRESS_LANES_NO_MAP_HINT.length < 150, `${HIGH_STRESS_LANES_NO_MAP_HINT.length} characters`);
   const on = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: true, onChange: () => {} }));
   assert.match(on, /aria-checked="true"/);
   assert.match(on, />On<\/span>/);
@@ -306,16 +335,24 @@ test("pressing the switch asks for the opposite state", () => {
   assert.deepEqual(got, [true, false]);
 });
 
-test("the panel places the switch after the Accessibility switch, only with the overlay there, and the facility legend says which roads it hides", () => {
+test("with no stress map the switch is still there, and its description says what it changes then (the a11y review's SF4)", () => {
+  const html = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: false, onChange: () => {}, overlay: false }));
+  assert.match(html, /role="switch"/);
+  assert.ok(html.includes(`<p class="hint" id="high-lanes-hint">${HIGH_STRESS_LANES_NO_MAP_HINT.replace(/'/g, "&#x27;")}</p>`));
+  assert.equal(HIGH_STRESS_LANES_NO_MAP_HINT, "Painted lanes on heavy-traffic (LTS 4) and best-avoided roads are hidden in the route's facility totals and description.");
+  assert.doesNotMatch(HIGH_STRESS_LANES_NO_MAP_HINT, /map/, "the map has no lanes then");
+  const withMap = renderToStaticMarkup(createElement(HighStressLanesSwitch, { on: false, onChange: () => {} }));
+  assert.ok(withMap.includes(HIGH_STRESS_LANES_HINT), "with the map, the default");
+});
+
+test("the panel places the switch next after the Accessibility switch, outside the overlay's block, telling it whether the map is there", () => {
   const app = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
-  // Next after the Accessibility switch, and inside the block drawn only when the stress overlay is available.
+  // App.tsx is not rendered by a test: where it places the switch is read here.
   assert.match(
     app,
-    /<AccessibilitySwitch[\s\S]*?\/>\s*\{stress === "available" && \(\s*<>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} \/>/,
+    /<AccessibilitySwitch[\s\S]*?\/>\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)?<HighStressLanesSwitch on=\{showHighLanes\} onChange=\{\(on\) => setHighStressLanes\(on\)\} overlay=\{stress === "available"\} \/>\s*\{stress === "available" && \(/,
   );
   assert.equal((app.match(/<HighStressLanesSwitch /g) ?? []).length, 1, "drawn in one place only");
-  assert.match(app, /Painted lanes on LTS 4 and Avoid roads are/);
-  assert.match(app, /Show bike lanes on high-stress roads/);
   assert.ok(FACILITIES.length === 3);
 });
 

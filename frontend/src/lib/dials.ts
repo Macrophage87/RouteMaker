@@ -147,11 +147,17 @@ export const SYSTEM_WEIGHT_MAX_KG = 140;
 export const SYSTEM_WEIGHT_KG = 90;
 export const PASSENGERS_WEIGHT_KG = 120;
 
-/** A system weight the API will take, or undefined. */
+/**
+ * A system weight the API will take, to a tenth of a kilogram, or undefined. The
+ * tenth is kept so pounds typed come back as typed (lib/dialsPanel.ts parseWeight);
+ * the request sends it rounded to whole kilograms (dialFields), which the API's
+ * range is checked on.
+ */
 export function fitWeight(kg: unknown): number | undefined {
   if (typeof kg !== "number" || !Number.isFinite(kg)) return undefined;
-  const whole = Math.round(kg);
-  return whole >= SYSTEM_WEIGHT_MIN_KG && whole <= SYSTEM_WEIGHT_MAX_KG ? whole : undefined;
+  const tenth = Math.round(kg * 10) / 10;
+  const whole = Math.round(tenth);
+  return whole >= SYSTEM_WEIGHT_MIN_KG && whole <= SYSTEM_WEIGHT_MAX_KG ? tenth : undefined;
 }
 
 /** Whether the "Target distance" dial applies: the top of the traffic slider, on a ride type whose slider moves. */
@@ -222,7 +228,8 @@ export function dialFields(dials: Dials): Record<string, string | number | boole
   const target = fitTarget(dials.targetDistanceM);
   if (target !== undefined) fields.target_distance_m = target;
   const weight = fitWeight(dials.systemWeightKg);
-  if (weight !== undefined) fields.system_weight_kg = weight;
+  // The API takes whole kilograms (core.api, StrictInt).
+  if (weight !== undefined) fields.system_weight_kg = Math.round(weight);
   if (dials.loop) fields.loop = true;
   return fields;
 }
