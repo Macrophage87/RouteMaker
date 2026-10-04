@@ -311,12 +311,13 @@ postgis_healthy() {
 # boot took the COLD path.
 db_numbers() {
   local out rc
-  out=$(DC_T=$EXEC_TIMEOUT_S dc exec -T postgis psql -X -q -At -F ' '     -U "$PGUSER" -d "$PGDATABASE"     -c "select (select count(*) from django_migrations), (select count(*) from live.segment)") || {
+  out=$(DC_T=$EXEC_TIMEOUT_S dc exec -T postgis psql -X -q -At -F ' ' \
+    -U "$PGUSER" -d "$PGDATABASE" \
+    -c "select (select count(*) from django_migrations), (select count(*) from live.segment)") || {
     rc=$?
     local why="exit $rc"
     [ "$rc" = 124 ] && why="timed out after ${EXEC_TIMEOUT_S}s"
-    [ -n "$out" ] && why="$why: $(head -c 300 <<<"$out" | tr '
-' ' ')"
+    [ -n "$out" ] && why="$why: $(head -c 300 <<<"$out" | tr '\n' ' ' | sed 's/ *$//')"
     log "psql failed ($why; its stderr, if any, is logged above)" >&2
     return 1
   }
