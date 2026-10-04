@@ -34,7 +34,7 @@ import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
 
 test("zoomed out, with the overlay on, the notice says the road stress is a zoom away", () => {
   const out = stressZoomNotice(STRESS_ZOOMS.busy - 0.01, true);
-  assert.equal(out, "Zoom in to see traffic stress on roads. Zoomed out, only traffic-free paths and trails are shown.");
+  assert.equal(out, "Zoom in to see traffic stress on roads. Zoomed out, only the longer traffic-free paths and trails are shown.");
   assert.equal(stressZoomNotice(STRESS_ZOOMS.min, true), out);
 });
 
@@ -86,7 +86,7 @@ test("App's legend passes the zoom and whether the overlay is on", () => {
 });
 
 test("one phrase for what the map shows zoomed out, wherever the legend says it", () => {
-  assert.equal(ZOOMED_OUT, "Zoomed out, only traffic-free paths and trails are shown.");
+  assert.equal(ZOOMED_OUT, "Zoomed out, only the longer traffic-free paths and trails are shown.");
   assert.ok(stressZoomNotice(11, true)!.endsWith(ZOOMED_OUT));
   assert.ok(stressZoomHint(11).startsWith(ZOOMED_OUT));
   assert.equal(ROADWAY_LANES, "Protected lanes in the roadway show with their street.");

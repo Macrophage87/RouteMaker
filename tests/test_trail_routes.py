@@ -45,7 +45,11 @@ def test_a_route_relation_gives_its_ways_a_level(route, network, level) -> None:
 def test_the_levels_are_the_schemas() -> None:
     from pipeline import schema
 
-    assert (schema.ROUTE_ANY_BICYCLE, schema.ROUTE_LONG_WALK, schema.ROUTE_LONG_BICYCLE) == (1, 2, 3)
+    assert (schema.ROUTE_ANY_BICYCLE, schema.ROUTE_LONG_WALK, schema.ROUTE_LONG_BICYCLE) == (
+        1,
+        2,
+        3,
+    )
 
 
 def write_extract(path) -> None:
@@ -145,7 +149,9 @@ class TestRuns:
         piece(staging, 1, "Beta Trail", 0, 1000)
         piece(staging, 2, "Beta Trail", 1000, 5000)
         with connection.cursor() as cursor:
-            cursor.execute(f"UPDATE {staging}.segment SET map_class = 'hidden' WHERE osm_way_id = 2")
+            cursor.execute(
+                f"UPDATE {staging}.segment SET map_class = 'hidden' WHERE osm_way_id = 2"
+            )
         trail_routes.derive_trail_runs(staging)
         got = runs(staging)
         assert got[1] == pytest.approx(1000, abs=20) and got[2] is None

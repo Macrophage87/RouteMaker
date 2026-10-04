@@ -29,7 +29,7 @@ import { HIGH_STRESS_LANES_LABEL } from "./highStressLanesSwitch.ts";
  * it (review of round 1: it had three names for one thing). Roadside trails
  * are in it: the owner, 2026-09-29, "Show roadside trails (Recommended)".
  */
-export const ZOOMED_OUT = "Zoomed out, only traffic-free paths and trails are shown.";
+export const ZOOMED_OUT = "Zoomed out, only the longer traffic-free paths and trails are shown.";
 
 /** The bike-facility legend's note on the protected lanes the zoomed-out map leaves out. */
 export const ROADWAY_LANES = "Protected lanes in the roadway show with their street.";

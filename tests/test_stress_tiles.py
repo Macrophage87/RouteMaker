@@ -1308,7 +1308,9 @@ def insert_trail(schema, unpaved, route=0, run_mi=None, car_free=None) -> None:
 
 
 def lines_in(body: bytes) -> int:
-    return sum(len(f.lines) for f in decode(body).get("stress", type("L", (), {"features": []})).features)
+    return sum(
+        len(f.lines) for f in decode(body).get("stress", type("L", (), {"features": []})).features
+    )
 
 
 @db
