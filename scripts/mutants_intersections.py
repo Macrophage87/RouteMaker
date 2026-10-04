@@ -37,6 +37,15 @@ reviewer's R16 (a turn between ways of one name "continues") and the slip-lane
 words, and retargets the round-2 mutants whose lines it rewrote. Round 2's
 `shared: any road` is dropped as equivalent now: with no name in common,
 `_one_junction` finds no crossed road among the shared ones and never shares.
+
+Release review (2026-10-04): the reviewer's replacements for the eleven entries
+long-calm's rewrite of refine.py and routing.py made stale, and the long-calm
+span edge, now killed by tests/test_longcalm_api.py's boundary test. One known
+survivor is not this release's: `shared: the road ridden along counts`
+(intersections.py `_about`, the straight-on guard made `if True:`) survives on
+the base 8809da8 too, since neither intersections.py nor its tests change in
+the release (mutation review, section 1). It is left for the intersections
+work to kill, not masked here.
 """
 
 # ruff: noqa: E501
