@@ -2190,7 +2190,10 @@ def test_every_server_block_sources_the_vars_file_which_holds_no_secret() -> Non
 
 
 def test_the_certificate_paths_and_the_checkout_come_from_the_vars_file() -> None:
-    """Re-check 3 ops NIT-D and NIT-E."""
+    """Re-check 3 ops NIT-D and NIT-E; re-check 4 NIT-H: the renders refuse an unfilled <...>."""
+    guard = '{ ! grep -n \'<[^>]*>\' "$RM_STATE/vars.sh" || { echo "STOP: fill in'
+    renders = [c for c in runbook_commands() if "render-nginx.sh --stage full" in c]
+    assert len(renders) == 2 and all(c.startswith(guard) for c in renders), renders
     assert "--cert-fullchain <path>" not in RUNBOOK
     assert RUNBOOK.count('--cert-fullchain "$RM_CERT_FULLCHAIN" --cert-key "$RM_CERT_KEY"') == 2
     after = RUNBOOK[RUNBOOK.index("## 3. Make") :]
@@ -2336,16 +2339,35 @@ def test_main_passes_the_probed_scheme_to_the_render_check(
 
 
 PROOF_STUB_DOCKER = """#!/bin/sh
-# docker for the step-8 proof: inspect gives an image; create on no-such-dir fails as a refusing
-# engine does; create on probe-src gives an id; start fails, or (MODE=creates) succeeds and the
-# engine recreates the source.
+# docker for the step-8 proof. inspect gives an image; create on no-such-dir fails as a refusing
+# engine does; create on probe-src gives an id; start fails with the daemon's wording. Modes:
+#   noimage      inspect gives nothing
+#   createodd    create on no-such-dir fails with an unrelated error
+#   createfails  create on probe-src fails (after its mkdir)
+#   runc         start fails with runc's mount wording instead
+#   creates      start succeeds and the engine recreates the source
+#   recreates    start fails with the refusal, yet the source reappears
 refuse() { echo "Error response from daemon: bind source path does not exist: x" >&2; exit 1; }
 case "$1" in
   inspect) [ "${MODE:-}" = noimage ] || echo img:tag ;;
-  create) case "$*" in *no-such-dir*) refuse ;; *) echo cid123 ;; esac ;;
+  create) case "$*" in
+      *no-such-dir*)
+        [ "${MODE:-}" != createodd ] || { echo "Error: daemon busy" >&2; exit 1; }
+        refuse ;;
+      *) [ "${MODE:-}" != createfails ] || { echo "Error: no space" >&2; exit 1; }; echo cid123 ;;
+    esac ;;
   start)
-    [ "${MODE:-}" = creates ] || refuse
-    mkdir -p "$RM_STATE/probe-src"; echo cid123 ;;
+    case "${MODE:-}" in
+      creates) mkdir -p "$RM_STATE/probe-src"; echo cid123 ;;
+      recreates) mkdir -p "$RM_STATE/probe-src"; refuse ;;
+      runc)
+        # runc's start-time wording (OCI runtime create failed ... error mounting ...)
+        printf '%s' "Error response from daemon: OCI runtime create failed: runc create failed:" >&2
+        printf '%s\\n' " error mounting $RM_STATE/probe-src to rootfs at /x:" >&2
+        echo " mount src=$RM_STATE/probe-src, dst=/x: no such file or directory" >&2
+        exit 1 ;;
+      *) refuse ;;
+    esac ;;
   rm) echo "rm $2" >> "$RM_STATE/rm.log" ;;
 esac
 """
@@ -2358,8 +2380,19 @@ esac
         ("", "PROOF OK (create)", "PROOF OK (start)"),
         ("noimage", "STOP (create): the probe did not run", "STOP (start): the probe did not run"),
         ("creates", "PROOF OK (create)", "STOP (start): the start did not fail as expected"),
+        # re-check 4: runc's start-time wording passes (correctness SF-B)
+        ("runc", "PROOF OK (create)", "PROOF OK (start)"),
+        # re-check 4 mutation NIT 1: the cleanup branch, and the deciding "came back" test
+        ("createfails", "PROOF OK (create)", "STOP (start): the probe did not run"),
+        (
+            "recreates",
+            "PROOF OK (create)",
+            "STOP (start): the start failed, but the source came back",
+        ),
+        # re-check 4 ops NIT-G: an unrelated create error is not called "made a container"
+        ("createodd", "STOP (create): unexpected output, report it exactly", "PROOF OK (start)"),
     ],
-    ids=["refuses", "no image", "engine creates"],
+    ids=["refuses", "no image", "engine creates", "runc", "create fails", "recreates", "odd"],
 )
 def test_the_step_8_proof_block_runs_as_one_shell(
     tmp_path: Path, mode: str, create_line: str, start_line: str
@@ -2388,7 +2421,7 @@ def test_the_step_8_proof_block_runs_as_one_shell(
     lines = done.stdout.splitlines()
     assert any(x.startswith(create_line) for x in lines), done.stdout + done.stderr
     assert any(x.startswith(start_line) for x in lines), done.stdout + done.stderr
-    if mode == "noimage":
+    if mode in ("noimage", "createfails"):
         assert not (state / "probe-src").exists()  # cleaned up, so a retry is not blocked
     if mode == "":
         assert (state / "rm.log").read_text().strip() == "rm cid123"

@@ -453,16 +453,19 @@ remove the directory, start.
 cd "$RM_SRC"
 img=$(docker inspect -f '{{.Config.Image}}' "$(scripts/beta/beta-compose.sh ps -aq postgis)" 2>/dev/null); out=""; id=""
 [ -n "$img" ] && [ ! -e "${RM_STATE:?}/no-such-dir" ] && out=$(docker create --mount "type=bind,source=$RM_STATE/no-such-dir,target=/x" --entrypoint true "$img" 2>&1) || out=${out:-PROBE-NOT-RUN}
-case $out in (*"bind source path does not exist"*) echo "PROOF OK (create): the engine refuses a missing source" ;; (PROBE-NOT-RUN) echo "STOP (create): the probe did not run (no postgis image, or $RM_STATE/no-such-dir exists)" ;; (*) echo "STOP (create): the engine made a container, $out: docker rm it, rmdir $RM_STATE/no-such-dir if present, report" ;; esac
+case $out in (*"bind source path does not exist"*) echo "PROOF OK (create): the engine refuses a missing source" ;; (PROBE-NOT-RUN) echo "STOP (create): the probe did not run (no postgis image, or $RM_STATE/no-such-dir exists)" ;; (*) if printf '%s' "$out" | grep -Eqx '[0-9a-f]{64}'; then echo "STOP (create): the engine made a container, $out: docker rm it, rmdir $RM_STATE/no-such-dir if present, report"; else echo "STOP (create): unexpected output, report it exactly: $out"; fi ;; esac
 out=""; [ -n "$img" ] && rm_absent "$RM_STATE/probe-src" && mkdir "$RM_STATE/probe-src" && id=$(docker create --mount "type=bind,source=$RM_STATE/probe-src,target=/x" --entrypoint true "$img") && rmdir "$RM_STATE/probe-src" && out=$(docker start "$id" 2>&1) || out=${out:-PROBE-NOT-RUN}
-case $out in (*"bind source path does not exist"*) if [ -e "$RM_STATE/probe-src" ]; then echo "STOP (start): the start failed, but the source came back"; else echo "PROOF OK (start): a restart with a missing source fails, and nothing was recreated"; fi ;; (PROBE-NOT-RUN) rmdir "$RM_STATE/probe-src" 2>/dev/null; echo "STOP (start): the probe did not run before the engine was asked; cleaned up, safe to retry" ;; (*) echo "STOP (start): the start did not fail as expected: $out" ;; esac
+case $out in (*"bind source path does not exist"* | *mount*"no such file or directory"*) if [ -e "$RM_STATE/probe-src" ]; then echo "STOP (start): the start failed, but the source came back"; else echo "PROOF OK (start): a restart with a missing source fails, and nothing was recreated"; fi ;; (PROBE-NOT-RUN) rmdir "$RM_STATE/probe-src" 2>/dev/null; echo "STOP (start): the probe did not run before the engine was asked; cleaned up, safe to retry" ;; (*) echo "STOP (start): the start did not fail as expected: $out" ;; esac
 [ -z "$id" ] || docker rm "$id" >/dev/null
 ```
 
-Both legs must print PROOF OK. "The probe did not run" is a STOP to look into and retry (nothing
-was proved either way). Any other STOP means the engine creates missing sources and the /data
-safeguard does not hold on this host: remove what the probe made (`docker rm`, `rmdir`), and stop
-and report it to the owner.
+Both legs must print PROOF OK. At start the refusal may come from the daemon ("bind source path
+does not exist") or from runc mounting into the container ("error mounting ... no such file or
+directory"); either counts only if the directory did not come back, which is the deciding test.
+"The probe did not run" is a STOP to look into and retry (nothing was proved either way). Any other
+STOP: report the exact output to the owner, and remove what the probe made (`docker rm`, `rmdir`).
+If a container id was printed, or the source came back, the engine creates missing sources and
+the /data safeguard does not hold on this host.
 
 Health and memory:
 
@@ -602,12 +605,15 @@ Whichever option, if the host's other sites include certbot's `options-ssl-nginx
 
 First record the two certificate paths the chosen option gave, so 9c and the step 10 recovery use
 exactly the same ones (paths only: the files are never read, printed or copied):
-`echo 'export RM_CERT_FULLCHAIN=<fullchain path> RM_CERT_KEY=<private key path>' >> "$RM_STATE/vars.sh"`.
+`echo 'export RM_CERT_FULLCHAIN=<fullchain path> RM_CERT_KEY=<private key path>' >> "$RM_STATE/vars.sh"`,
+with the two paths filled in. After this and every other line appended to vars.sh, the file must
+still pass the placeholder check (`grep -n '<[^>]*>' "$RM_STATE/vars.sh"` prints nothing); the
+render lines below refuse to run while it does not.
 
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" \
+{ ! grep -n '<[^>]*>' "$RM_STATE/vars.sh" || { echo "STOP: fill in the <...> on those vars.sh lines first"; false; }; } && scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" \
     --cert-fullchain "$RM_CERT_FULLCHAIN" --cert-key "$RM_CERT_KEY" [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full.conf"
 # exactly one of the next two lines acts, the one for the TLS_OPTION step 1 chose:
@@ -670,7 +676,7 @@ owner (do not edit the installed file by hand):
 ```sh
 . "$HOME/routemaker-beta-state/vars.sh"
 cd "$RM_SRC"
-scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" --no-401-page \
+{ ! grep -n '<[^>]*>' "$RM_STATE/vars.sh" || { echo "STOP: fill in the <...> on those vars.sh lines first"; false; }; } && scripts/beta/render-nginx.sh --stage full --api-port "$BETA_API_PORT" --no-401-page \
     --cert-fullchain "$RM_CERT_FULLCHAIN" --cert-key "$RM_CERT_KEY" [--tls-options-include <path>] [--no-ipv6] \
     --out "$RM_STATE/routemaker-beta.full-no401.conf"
 grep -q 'Rendered by scripts/beta/render-nginx.sh (stage full)' "$NGINX_SITE" && sudo install -m 644 "$RM_STATE/routemaker-beta.full-no401.conf" "$NGINX_SITE"
