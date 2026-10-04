@@ -716,15 +716,27 @@ def describe(
     legs: list[list[Atom] | float],
     events: list | None = None,
     total_m: float | None = None,
+    walks: list[tuple[float, float]] | None = None,
 ) -> list[dict]:
     """The route's full description (see `describe_both`)."""
-    return describe_both(legs, events, total_m)[0]
+    return describe_both(legs, events, total_m, walks)[0]
+
+
+def walk_sentence(start_m: float, end_m: float) -> str:
+    """The note for a short stretch a bicycle is walked over (OWNER-DECISIONS
+    291(5): a `bicycle=dismount` connector kept, "walk your bike here")."""
+    length = end_m - start_m
+    return (
+        f"At {point_words(start_m)}: walk your bike here, for {_feet(length)} ft "
+        f"({round(length)} m)."
+    )
 
 
 def describe_both(
     legs: list[list[Atom] | float],
     events: list | None = None,
     total_m: float | None = None,
+    walks: list[tuple[float, float]] | None = None,
 ) -> tuple[list[dict], list[dict]]:
     """The route's full description and its overview, each in route order.
 
@@ -743,6 +755,8 @@ def describe_both(
     `surface` (on a stretch, `surface_of`: "unpaved", "partly unpaved" or None),
     `text`, and `text_lanes_hidden` (the text with painted lanes on LTS 4 and
     Avoid not called bike lanes, or None where that is `text`).
+    `walks` are the stretches to walk a bicycle over, (from, to) in metres in the
+    pieces' own measure (before scaling), each a "walk" entry in both lists.
     The overview has the same entries with the short stretches merged (see the
     module's rules); its stops and junction entries are the full ones.
     """
@@ -850,6 +864,14 @@ def describe_both(
                     },
                     severity=severity,
                 ),
+            )
+        )
+    for number, (walk_from, walk_to) in enumerate(sorted(walks or ())):
+        from_at, to_at = walk_from * scale, walk_to * scale
+        shared.append(
+            (
+                (from_at, 3, number),
+                _entry("walk", from_at, to_at, walk_sentence(from_at, to_at)),
             )
         )
     by_group = {g.number: g for g in crossing_groups(events)}

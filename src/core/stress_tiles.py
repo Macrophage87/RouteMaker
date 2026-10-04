@@ -90,6 +90,8 @@ from pipeline.schema import (
     FACILITY_COLUMN,
     MAP_CLASS_COLUMN,
     MOTOR_ONLY_RULE,
+    MTB_ONLY_COLUMN,
+    ROUGH_COLUMN,
     SEPARATE_BIKEWAY_COLUMN,
     TRAIL_BRIDGE_COLUMN,
     TRAIL_NETWORK_FACILITY,
@@ -260,6 +262,13 @@ OPTIONAL_PROPERTIES = {
     "car_free": CAR_FREE_COLUMN,
     "map_class": MAP_CLASS_COLUMN,
     "separate_bikeway": SEPARATE_BIKEWAY_COLUMN,
+    # NO-BIKE-PATHS (OWNER-DECISIONS 290, 291): `mtb` marks a trail only a
+    # mountain bike rides (kept open for Gravel and Mountain Goat, closed for
+    # the rest) and `rough` a surface that sheds riders; the map draws both
+    # faint, with no path rail, so a trail does not read as a protected path.
+    # Each is true or left out.
+    "mtb": MTB_ONLY_COLUMN,
+    "rough": ROUGH_COLUMN,
 }
 
 # How an optional property is drawn from its column, where it is not the
@@ -274,6 +283,8 @@ OPTIONAL_PROPERTIES = {
 OPTIONAL_EXPRESSIONS = {
     "car_free": f"NULLIF(array_to_string(s.{CAR_FREE_COLUMN}, ','), '')",
     "separate_bikeway": f"NULLIF(s.{SEPARATE_BIKEWAY_COLUMN}, false)",
+    "mtb": f"NULLIF(s.{MTB_ONLY_COLUMN}, false)",
+    "rough": f"NULLIF(s.{ROUGH_COLUMN}, false)",
 }
 
 # What an optional property is drawn from on a table without its column: the
@@ -459,6 +470,8 @@ ETAG_LETTERS = {
     TRAIL_BRIDGE_COLUMN: "b",
     TRAIL_ROUTE_COLUMN: "t",
     TRAIL_RUN_COLUMN: "l",
+    MTB_ONLY_COLUMN: "o",
+    ROUGH_COLUMN: "r",
 }
 
 

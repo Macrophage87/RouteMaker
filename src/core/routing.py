@@ -1084,8 +1084,80 @@ def _events(refine_context, legs: list, raws: list, deadline: Deadline) -> list 
         return None
 
 
+# Whether the live segment table has the walk_bike column yet (a table built
+# before NO-BIKE-PATHS has none; the route then carries no walk notes).
+_walk_column_seen = False
+
+
+def _has_walk_column(schema: str) -> bool:
+    global _walk_column_seen
+    if _walk_column_seen:
+        return True
+    with connection.cursor() as cursor:
+        cursor.execute(
+            "SELECT count(*) FROM information_schema.columns WHERE table_schema = %s "
+            "AND table_name = 'segment' AND column_name = 'walk_bike'",
+            [schema],
+        )
+        _walk_column_seen = cursor.fetchone()[0] == 1
+    return _walk_column_seen
+
+
+def walk_spans(leg_runs: list, pieces: list[Piece]) -> list[tuple[float, float]]:
+    """The stretches of the route over a short `bicycle=dismount` connector that
+    routing keeps (OWNER-DECISIONS 291(5)): (from, to) in metres along the traced
+    pieces, neighbouring pieces on such ways joined. A table without the column,
+    or a failed query, has none: the route is answered without the note."""
+    if not pieces:
+        return []
+    schema = validate_schema_name(settings.SEGMENT_SCHEMA_LIVE)
+    try:
+        if not _has_walk_column(schema):
+            return []
+        with connection.cursor() as cursor:
+            cursor.execute(
+                f"SELECT DISTINCT osm_way_id FROM {schema}.segment "
+                "WHERE osm_way_id = ANY(%s) AND walk_bike",
+                [sorted({p.way_id for p in pieces})],
+            )
+            walking = {row[0] for row in cursor.fetchall()}
+    except Exception:  # noqa: BLE001 - a route is answered without its walk notes
+        logger.warning("the walk-your-bike ways could not be read", exc_info=True)
+        return []
+    if not walking:
+        return []
+    spans: list[tuple[float, float]] = []
+    at = 0.0
+    open_from: float | None = None
+    for run in leg_runs:
+        if not isinstance(run, tuple):
+            at += float(run)
+            if open_from is not None:
+                spans.append((open_from, at - float(run)))
+                open_from = None
+            continue
+        for index in range(run[0], run[1]):
+            piece = pieces[index]
+            if piece.way_id in walking:
+                if open_from is None:
+                    open_from = at
+            elif open_from is not None:
+                spans.append((open_from, at))
+                open_from = None
+            at += piece.metres
+        if open_from is not None:
+            spans.append((open_from, at))
+            open_from = None
+    return spans
+
+
 def describe_route(
-    leg_runs: list, pieces: list[Piece], classes: list, events: list | None, summary: dict
+    leg_runs: list,
+    pieces: list[Piece],
+    classes: list,
+    events: list | None,
+    summary: dict,
+    walks: list[tuple[float, float]] | None = None,
 ) -> tuple[list[dict], list[dict]] | None:
     """The route as words, in full and as an overview (`routemaker.describe`,
     OWNER-DECISIONS 220 and 226): built
@@ -1114,7 +1186,7 @@ def describe_route(
             else:
                 legs.append(run)
         length = float(summary.get("length", 0.0)) * 1000.0
-        return describe.describe_both(legs, events, length or None)
+        return describe.describe_both(legs, events, length or None, walks)
     except Exception:  # noqa: BLE001 - a route is answered without its description
         logger.warning("the route description could not be built", exc_info=True)
         return None
@@ -1853,7 +1925,10 @@ def plan(
             events = _events(refine_context, legs, raw_junctions, deadline)
         if events is not None and refine_context.group:
             events = intersections.number_groups(events, stops_m)
-        described = describe_route(leg_runs, pieces, classes, events, trip.get("summary") or {})
+        walks = [] if over_budget else walk_spans(leg_runs, pieces)
+        described = describe_route(
+            leg_runs, pieces, classes, events, trip.get("summary") or {}, walks
+        )
         described_full, described_overview = described if described else (None, None)
         joined_at = clock()
         if joined_at - started > budget_s:

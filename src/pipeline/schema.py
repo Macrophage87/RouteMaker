@@ -345,6 +345,9 @@ SEEK_INDEX_PREDICATE = (
 # reason BWI has TLS 3 inside the terminal." (80).
 MAP_CLASS_COLUMN = "map_class"
 SEPARATE_BIKEWAY_COLUMN = "separate_bikeway"
+MTB_ONLY_COLUMN = "mtb_only"
+WALK_BIKE_COLUMN = "walk_bike"
+ROUGH_COLUMN = "is_rough"
 ROAD_TRAIT_COLUMNS = ("road_speed_mph", "road_lanes", "road_oneway")
 
 # On a table from before those columns, the public roads a bicycle may not
