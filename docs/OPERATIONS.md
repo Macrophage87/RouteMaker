@@ -2577,11 +2577,15 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   the target, how far past it it is, and the traffic position the first route was found at where the
   router's own route was past it. `limited: "target_distance"` with `fits: false` means no route
   within the target was found and the least stressful found is answered (item 267);
-  `limited: "ceiling"` means the search stopped at the 1.25x ceiling, and `no_fit: true` means not
-  even one route was within the ceiling, so the calmest found is answered, flagged with
-  `over_target_m` (item 298(2));
+  `no_fit: true` goes with it (no route within the target found; false where one was, null with no
+  target), and where not even one route was within the ceiling the least stressful of all those found
+  is answered, flagged the same way (item 298(2)); `limited: "ceiling"` is different: the exclusion
+  search stopped because its next round found only routes past `ceiling_m`, and the answer may well
+  fit;
   `seek.whole_trip: "not_worth"` means a spliced trip's extra miles did not buy enough stress (268). `loop.fallback: "out_and_back"`
-  means there was no other way back. `candidates` is null where there is one route.
+  means there was no other way back. `hills_seek.limited: "calm_first"` means the Hills slider seeks
+  at the top of the stress slider: the stress-order search, a long calm plan and the target ran, and
+  no climb search among the router's alternatives was asked (item 298(3)). `candidates` is null where there is one route.
 - **Knobs** (all in code, none needs a restart beyond a deploy): `legsplit.LEG_TARGET_SPAN_M` (12 km),
   `legsplit.CLEAR_M`, `refine.LONG_MIN_START_S` (12 s), `LONG_LEG_MIN_S` (6 s), `LONG_SEARCH_SHARE` (0.7),
   `MAXCALM_STEPS` (15, 50, 50 m), `refine.ALT_MAX`, `ALT_OVERLAP`, `ALT_DIFFERENT_M`, `ALT_TOP_BAND_M`,
@@ -2659,7 +2663,8 @@ Steps 1 to 4 are:
 
 There is no migrate, and never a plain `up -d`.
 
-**5. Verify.** Run both scripts and keep their logs:
+**5. Verify.** Run both scripts and keep their logs. `verify-release.sh` takes an optional base URL
+(default `http://localhost`), prints PASS or FAIL per check, and exits with the number of failures:
 
 ```sh
 /home/steph/rmdata/verify-pm.sh 2>&1 | tee ~/rmdata/rel-verify.log            # the standing checks
@@ -2667,15 +2672,28 @@ There is no migrate, and never a plain `up -d`.
 ```
 
 `verify-pm.sh` checks none of the release's new features. `verify-release.sh` does, with read-only
-probes only:
-- a long calm plan with a target: legs, the target echoed, `over_target_m`, `limited`, the routes to
-  choose from, and the wall time, which must be under 50 s;
-- the target and ceiling fields;
-- `candidates`;
-- a loop's `overlap_pct`;
-- `dodges` on a Default plan;
-- `text_lanes_hidden` and `surface` in the description;
-- the hashed federal-land asset, served compressed and `immutable`.
+probes only (anonymous POSTs to `/api/route` and GETs of the published front end; it writes nothing
+to the stack, the database or the data root):
+- Union Station to Penn Station at Trailmaxxing 100, a long calm plan: searched in legs, answered in
+  the plan's legs, `effort_m`, `no_fit` null with no target, candidates whole routes ranked from 2
+  with no stop the rider never placed, and the wall time, which must be under 50 s (it is printed at
+  the end against the 47 s deadline);
+- the same trip at a 60 mi target: the target echoed, `over_target_m` a number, `no_fit` a boolean
+  and true only with `limited: "target_distance"`, `fits` agreeing with the overage, no candidate
+  further past the target than the answer;
+- Silver Spring to Farragut at the top of the slider: candidates whole routes, at most 3; with the
+  Hills slider seeking, `hills_seek.limited: "calm_first"` and the calm search not skipped (298(3));
+- a loop: `overlap_pct`, two legs, whole-loop candidates, no dodge pass; a Mass Ride asked for a
+  loop stays point-to-point (298(4));
+- Bowie to Annapolis on Default: `dodges` reported with the 50 m tie step (298(1)),
+  `text_lanes_hidden` and `surface` in the description and the overview, and `unpaved` on every
+  `stress_spans` entry;
+- the hashed federal-land asset: 200, `immutable`, compressed, and named by the published front
+  end's script.
+
+The release's API changes are all additive for an older client: besides the fields above, every
+`stress_spans` entry carries `unpaved` (true, false or null) and a section ends where the surface
+changes (302), and `calm_search` carries `no_fit` and the `limited` code `"ceiling"`.
 
 **Rollback**, front end first. The new front end sends fields that the older API refuses with 400
 ("Long calm plans ..., Rollback", above); the old front end works against the new API.
