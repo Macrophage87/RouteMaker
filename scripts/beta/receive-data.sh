@@ -21,7 +21,8 @@
 #            when a safety dump is taken (DATA_ROOT/backups is owned by the container uid).
 #              First restore: into the empty database, before the api has ever started.
 #              --update-data: for a NEW DATA bundle once the beta is running. Restores only the
-#                `live` schema and the data of `override` and `stress_tile_cache`, in one
+#                `live` schema and the data of `override` (and empties the beta's own
+#                `stress_tile_cache`, which the new live table makes stale), in one
 #                transaction, after a safety dump. Accounts, sessions and everything else the
 #                beta has made of its own are not touched.
 #              --replace-db: replace the whole database with the bundle's. The bundle carries
@@ -397,16 +398,17 @@ if [ "$existing" = t ]; then
 fi
 
 if [ "$update_data" = 1 ]; then
-	# --- the new-data update: live, override and stress_tile_cache only, in one transaction ---
+	# --- the new-data update: live and override only, in one transaction ---
 	[ "$existing" = t ] || die "--update-data needs a database restored once already; run db without it first"
 	app_is_down
 	toc=$(mktemp)
 	bc exec -T postgis pg_restore --list <"$dump" >"$toc" || die "could not read the dump's table of contents"
 	use=$(mktemp)
 	# Every entry of the live schema (pre-data, data, post-data), the schema itself, and the data
-	# and sequence position of the two public tables that come from home. Nothing else: no
-	# account, session, guild or audit table is named, so none is dropped or written.
-	grep -E "^[0-9]+; [0-9]+ [0-9]+ ([A-Z][A-Z ]* $live_schema |SCHEMA - $live_schema |TABLE DATA public (override|stress_tile_cache) |SEQUENCE SET public (override|stress_tile_cache)_)" "$toc" >"$use" || true
+	# and sequence position of the one public table that comes from home, override. Nothing
+	# else: no account, session, guild or audit table is named, so none is dropped or written.
+	# (stress_tile_cache is not in the bundle: ship-data.sh says why.)
+	grep -E "^[0-9]+; [0-9]+ [0-9]+ ([A-Z][A-Z ]* $live_schema |SCHEMA - $live_schema |TABLE DATA public override |SEQUENCE SET public override_)" "$toc" >"$use" || true
 	rm -f "$toc"
 	grep -q "TABLE DATA $live_schema " "$use" || { rm -f "$use"; die "the dump has no $live_schema data to update from"; }
 	grep -q "TABLE DATA public override " "$use" || { rm -f "$use"; die "the dump has no override data"; }
@@ -414,10 +416,12 @@ if [ "$update_data" = 1 ]; then
 	rm -f "$use"
 	snapshot update >/dev/null
 	before_oid=$(psql_q "select coalesce(to_regclass('public.app_user')::oid::text, 'none')")
-	note "updating $live_schema, override and stress_tile_cache in one transaction ($accounts beta account(s) are left alone)"
+	note "updating $live_schema and override in one transaction, and emptying the stale stress tile cache ($accounts beta account(s) are left alone)"
 	# pg_restore writes SQL; psql runs it as ONE transaction that stops at the first error. If
 	# pg_restore itself fails part-way, a deliberately failing statement follows its output so the
-	# transaction rolls back instead of committing half an update.
+	# transaction rolls back instead of committing half an update. The beta's own
+	# stress_tile_cache is emptied in the same transaction: its rows are keyed on the oid of the
+	# live table this replaces, so none could be served again (the runbook predraws afterwards).
 	# shellcheck disable=SC2016
 	bc exec -T postgis sh -c '{ echo "TRUNCATE public.override, public.stress_tile_cache;"; pg_restore --no-owner --no-privileges --clean --if-exists -L /tmp/beta.use -f - || echo "SELECT pg_restore_failed_so_this_rolls_back();"; } | psql -U "$1" -d "$2" -q -1 -v ON_ERROR_STOP=1 >/dev/null' sh "$pguser" "$pgdatabase" <"$dump" ||
 		{ bc exec -T postgis rm -f /tmp/beta.use </dev/null; die "the update failed and was rolled back (above); the database is as it was"; }
@@ -454,7 +458,7 @@ fail=0
 while IFS=$'\t' read -r qualified expected; do
 	[ -n "$qualified" ] || continue
 	if [ "$update_data" = 1 ]; then
-		case "$qualified" in "$live_schema".* | public.override | public.stress_tile_cache) ;; *) continue ;; esac
+		case "$qualified" in "$live_schema".* | public.override) ;; *) continue ;; esac
 	fi
 	actual=$(psql_q "select count(*) from \"${qualified%%.*}\".\"${qualified#*.}\"")
 	if [ "$actual" = "$expected" ]; then

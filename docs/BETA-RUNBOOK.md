@@ -341,6 +341,23 @@ docker stats --no-stream --format 'table {{.Name}}\t{{.MemUsage}}' | grep -E 'ap
 is near its cap or `docker inspect -f '{{.State.OOMKilled}}' <name>` prints `true`, report it with
 the numbers; do not raise a cap on your own.
 
+**Draw the stress tiles, before any tester is invited.** The bundle carries no stress-tile cache:
+each cached tile is keyed on the oid of the live segment table, and the restore here created that
+table afresh, so home's rows could never match. Until this runs, every map view draws its tiles
+live through the api's one draw slot, and a street-level screen takes 20-30 s. It runs inside the
+worker's own cap (one draw at a time, `STRESS_PREDRAW_WORKERS=1`), not as a second api:
+
+```sh
+scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles   # "stress tiles: N drawn, M already there ..., in S s"
+docker inspect -f '{{.State.OOMKilled}} {{.RestartCount}}' $(scripts/beta/beta-compose.sh ps -q worker)   # false 0
+```
+
+Expected time: the whole z10-14 box is 11,068 tiles, which took 155 s at home with one draw at a
+time; here postgis has 1.5 CPUs on a shared host, so allow 5 to 15 minutes. It has a one-hour
+budget; if it stops short it says how many are left, and running it again draws only those. Do
+not invite testers (step 11) until it has finished. If the worker was OOM-killed, report it with
+the numbers; do not raise its cap.
+
 Undo: `scripts/beta/beta-compose.sh down` (containers and network only; `$RM_DATA` is untouched).
 
 ## 9. nginx: add one file, in two stages (adds `$NGINX_SITE`, the htpasswd file, optionally a certificate)
@@ -549,7 +566,8 @@ The tooling is the same each time. Ask the owner which kind it is.
    `files` adds the new build beside the old and swaps `current` (the old stays as `previous`, which is rollback A).
    If the bundle carries the Photon index, `files` stops photon, replaces the index and starts it again.
 3. If the bundle has a db part, use the **update path**, never `--replace-db`: it restores only the `live` schema
-   and the `override` and `stress_tile_cache` data, in one transaction, after a `pre-update` safety dump, and leaves
+   and the `override` data (and empties the beta's stress-tile cache, which the new `live` table makes stale), in
+   one transaction, after a `pre-update` safety dump, and leaves
    the beta's own accounts, sessions and audit log alone (`--replace-db` would delete them; it refuses while any
    exist). **It resets `override` to home's**: an override added or edited on the beta is lost (it is in the
    `pre-update` safety dump). Make override changes at home, or ask the owner before updating if any were made on
@@ -559,7 +577,11 @@ The tooling is the same each time. Ask the owner which kind it is.
    scripts/beta/beta-compose.sh stop api worker
    sudo scripts/beta/receive-data.sh --bundle "$RM_INCOMING" --env-file .env db --update-data
    scripts/beta/beta-compose.sh up -d api worker
+   scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles   # 5-15 min; see step 8
    ```
+
+   The pre-draw is not optional: until it finishes, every map view draws its tiles live (step 8,
+   "Draw the stress tiles"). Run it before telling the testers the update is in.
 4. `scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend`
    (a router keeps the old archive mapped until restarted).
 5. `scripts/beta/smoke-test.sh --local`, then `--public`.
@@ -585,7 +607,8 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
 7. If the data changed: the "New data only" steps 2 and 3 (`verify`, `files`, `db --update-data`) **without** their
    final `up -d api worker` line; the app is started once, in the next step.
 8. `scripts/beta/beta-compose.sh up -d api worker` (recreates them on the new image; `migrate` finds nothing to do),
-   then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), and the smoke tests. Routers and
+   then the migrations check and `collectstatic` from step 8 (`exec -T api ...`), the stress-tile pre-draw from
+   step 8 if step 7 ran `db --update-data` (or the release changed what the tiles draw), and the smoke tests. Routers and
    Photon restart only if their image or command changed in the release (`beta-compose.sh up -d <name>` recreates
    exactly the ones that did).
 9. The front end comes in the bundle (`frontend/`), so `files` installs it; the new `index.html` goes in last.
@@ -627,4 +650,5 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
   from home as a bundle.
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB
   (standard 611 MB, no-trail 450 MB, ebike 611 MB, weekend 611 MB), the Photon index 742 MB, elevation 310 MB, the base map
-  298 MB, the database dump 207 MB, the front end 3 MB: about 3.74 GiB in 1259 files, checksummed one by one.
+  298 MB, the database dump 207 MB (that figure still held the stress-tile cache, which is no longer shipped, so it is
+  smaller now), the front end 3 MB: about 3.74 GiB in 1259 files, checksummed one by one.

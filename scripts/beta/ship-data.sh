@@ -61,9 +61,14 @@ note() { echo "ship-data: $*" >&2; }
 NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff3c67c705c2805cfc69c2d2fad7"
 # Data the app does not need on a fresh server, or must not carry: sessions and the
 # rate-limit table (client address digests) and the membership cache are the app's own nightly
-# backup exclusions (config.procrastinate.BACKUP_EXCLUDED_TABLES, less stress_tile_cache, which
-# is worth shipping: without it every first map view draws its tiles live), plus the job queue,
-# Django's own sessions, the admin log and run history, which belong to the home install.
+# backup exclusions (config.procrastinate.BACKUP_EXCLUDED_TABLES), plus the job queue, Django's
+# own sessions, the admin log and run history, which belong to the home install.
+#
+# stress_tile_cache is excluded too (it is also a nightly-backup exclusion). Each row is keyed on
+# the pg_class oid of the live segment table (core.tile_cache, stress_tiles.etag_for), and the
+# beta's restore creates that table afresh with a new oid, so not one shipped row could ever be
+# served there. The beta fills its own cache: docs/BETA-RUNBOOK.md runs predraw_stress_tiles
+# after the first start and after every `db --update-data`.
 #
 # And no identities (OWNER-DECISIONS 367.3, "strip users"): the beta starts with no accounts and
 # the owner claims instance admin there afresh. Every table that holds a person, or a row that
@@ -86,7 +91,7 @@ NODE_IMAGE="docker.io/library/node@sha256:363e1587494626837fa7f9a23bdb453d13b0ff
 EXCLUDED_TABLE_DATA=(
 	app_session django_session rate_limit_window cached_membership
 	procrastinate_events procrastinate_jobs procrastinate_periodic_defers procrastinate_workers
-	django_admin_log scheduled_run
+	django_admin_log scheduled_run stress_tile_cache
 	app_user audit_log bootstrap_claim pending_instance_admin_removal ban_tombstone
 	configured_guild role_mapping
 )

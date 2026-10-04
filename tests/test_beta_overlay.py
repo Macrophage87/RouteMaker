@@ -1160,8 +1160,11 @@ def test_the_dump_strips_every_identity_table_owner_decision_367() -> None:
         "cached_membership",
     }
     assert identities <= excluded, identities - excluded
-    # what the beta needs from home stays: the overrides and the stress tile cache
-    assert not {"override", "stress_tile_cache"} & excluded
+    # what the beta needs from home stays: the overrides
+    assert "override" not in excluded
+    # the tile cache is keyed on the live table's oid, which the beta's restore changes, so a
+    # shipped row could never be served there (BETA-final-review correctness SF1)
+    assert "stress_tile_cache" in excluded
 
 
 def test_every_table_that_points_at_an_excluded_table_is_excluded_too() -> None:
@@ -1194,13 +1197,15 @@ def test_ship_data_clears_the_remote_manifest_before_sending() -> None:
     assert clear < text.index('note "sending the data, manifest last')
 
 
-def test_the_update_path_names_only_live_override_and_the_tile_cache() -> None:
+def test_the_update_path_names_only_live_and_override_and_empties_the_stale_tile_cache() -> None:
     text = (REPO / "scripts" / "beta" / "receive-data.sh").read_text()
-    line = next(
-        x for x in text.splitlines() if "TABLE DATA public (override|stress_tile_cache)" in x
-    )
+    line = next(x for x in text.splitlines() if "TABLE DATA public override |" in x)
     for table in shipped_exclusions():
         assert table not in line, table
+    assert "SEQUENCE SET public override_)" in line
+    assert 'echo "TRUNCATE public.override, public.stress_tile_cache;"' in text
+    counted = next(x for x in text.splitlines() if 'case "$qualified" in "$live_schema".*' in x)
+    assert "stress_tile_cache" not in counted
     assert "-q -1 -v ON_ERROR_STOP=1" in text  # one transaction
     assert "--delete-beta-accounts" in text
 
@@ -1402,6 +1407,21 @@ def test_restore_dump_restores_into_a_fresh_database_and_swaps_it_in() -> None:
     assert "--clean --if-exists" not in block and "restore_whole" not in block
     assert block.index("create database") < block.index("pg_restore -U") < block.index("rename to")
     assert "psql_on postgres -1 -c" in block  # both renames in one transaction
+
+
+PREDRAW = "scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles"
+
+
+def test_the_runbook_predraws_the_tiles_after_the_first_start_and_every_data_update() -> None:
+    """The beta fills its own tile cache (none is shipped): after step 8's start, before the
+    testers are invited, and after each `db --update-data`."""
+    step8 = RUNBOOK[RUNBOOK.index("## 8. Start the stack") : RUNBOOK.index("## 9. nginx")]
+    assert PREDRAW in step8 and "before" in step8 and "invite" in step8
+    updates = RUNBOOK[RUNBOOK.index("## Shipping an update later") :]
+    for update in re.finditer(r"db --update-data\n", updates):
+        assert PREDRAW in updates[update.end() : update.end() + 900], update.start()
+    assert updates.count(PREDRAW) >= 1
+    assert "155 s" in RUNBOOK  # its expected time, measured at home
 
 
 def test_the_runbook_documents_the_override_reset_and_installs_no_system_package() -> None:
