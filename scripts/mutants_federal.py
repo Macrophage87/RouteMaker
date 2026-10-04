@@ -102,8 +102,20 @@ MUTANTS: list[tuple[str, str, str, str, str]] = [
         "FEDERAL_KINDS",
         "ts",
     ),
-    ("legend: shown while off", LG, '    on && status !== "unavailable" && h(FederalLegend),', '    status !== "unavailable" && h(FederalLegend),', "ts"),
-    ("legend: shown while unavailable", LG, '    on && status !== "unavailable" && h(FederalLegend),', "    on && h(FederalLegend),", "ts"),
+    (
+        "legend: shown while off",
+        LG,
+        '    on && status !== "unavailable" && h(FederalLegend),',
+        '    status !== "unavailable" && h(FederalLegend),',
+        "ts",
+    ),
+    (
+        "legend: shown while unavailable",
+        LG,
+        '    on && status !== "unavailable" && h(FederalLegend),',
+        "    on && h(FederalLegend),",
+        "ts",
+    ),
     # --- the data and the map -------------------------------------------
     ("parse: unknown kinds kept", FL, "!isKind(props.kind) || ", "", "ts"),
     ("load: a failed fetch parsed anyway", FL, "if (!response.ok) return null;\n", "", "ts"),
