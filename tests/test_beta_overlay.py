@@ -592,9 +592,17 @@ def test_the_runbook_proves_the_binds_on_the_host_and_checks_the_compose_version
     assert "docker compose version --short" in step1 and "2.40.0" in step1
     step8 = RUNBOOK[RUNBOOK.index("## 8. Start the stack") : RUNBOOK.index("## 9. nginx")]
     assert "LEGACY-BIND=" in step8 and ".BindOptions.CreateMountpoint" in step8
-    assert '--mount "type=bind,source=$RM_STATE/no-such-dir,target=/x"' in step8
-    assert 'rm_absent "$RM_STATE/no-such-dir" && docker create' in step8
-    assert "bind source path does not exist" in step8
+    # re-check 2: both legs pass only on the engine's own error text (ops SF-1), and the start
+    # leg covers the late-/data case, a restart with the source gone (correctness SF1)
+    assert '--mount "type=bind,source=${RM_STATE:?}/no-such-dir,target=/x"' in step8
+    assert 'case $out in (*"bind source path does not exist"*) echo "PROOF OK (create)' in step8
+    assert 'rm_absent "${RM_STATE:?}/probe-src" && mkdir "$RM_STATE/probe-src"' in step8
+    assert 'rmdir "$RM_STATE/probe-src" && out=$(docker start "$id" 2>&1)' in step8
+    assert 'echo "PROOF OK (start)' in step8 and 'docker rm "$id"' in step8
+    assert "docker ps -aq --filter label=com.docker.compose.project=routemaker-beta" in step8
+    assert 'echo "not created"' not in step8  # the old affirmative line that could pass unrun
+    assert "Docker 23 or newer (API 1.42+" in step1  # re-check 2 ops NIT-1
+    assert "grep -Eq '^[0-9]+[.][0-9]+'" in step1 and "unreadable compose version" in step1  # NIT-2
 
 
 def test_the_checker_refuses_a_bind_that_would_create_its_source() -> None:
@@ -2005,9 +2013,13 @@ def test_the_paused_rebuilds_traces_on_the_beta_are_documented_as_expected() -> 
 
 
 NOHUP_PREDRAW = (
-    "( umask 077; nohup scripts/beta/beta-compose.sh exec -T worker"
-    " ./manage.py predraw_stress_tiles"
-    ' < /dev/null > "${RM_STATE:?set RM_STATE as in step 1}/predraw.log" 2>&1 & )'
+    "( umask 077; setsid nohup sh -c 'scripts/beta/beta-compose.sh exec -T worker ./manage.py"
+    ' predraw_stress_tiles ; echo "predraw exit $?"\' < /dev/null >'
+    ' "${RM_STATE:?set RM_STATE (section 0)}/predraw.log" 2>&1 & )'
+)
+PREDRAW_LIVENESS = (
+    'docker top "$(scripts/beta/beta-compose.sh ps -q worker)" -eo pid,etime,args'
+    " | grep '[p]redraw_stress_tiles' || echo \"no predraw running\""
 )
 
 
@@ -2015,11 +2027,20 @@ def test_the_predraw_runs_detached_and_follows_every_restore() -> None:
     """Re-check operations SF-C and SF-D."""
     step8 = RUNBOOK[RUNBOOK.index("## 8. Start the stack") : RUNBOOK.index("## 9. nginx")]
     assert NOHUP_PREDRAW in step8 and 'tail -n 3 "$RM_STATE/predraw.log"' in step8
-    assert "Never start it again while the log has no `stress tiles:` line" in step8
+    # re-check 2 (correctness SF2, ops SF-3): an end marker, its own session, a liveness check
+    assert "Never start it again\nagain while the log has no `predraw exit` line" not in step8
+    assert (
+        "**Never start it\nagain while the log has no `predraw exit` line and the `docker top`"
+        in step8
+    )
+    assert PREDRAW_LIVENESS in step8
+    assert step8.index('"predraw exit N"') < step8.index("{{.State.OOMKilled}} {{.RestartCount}}")
+    assert step8.count(NOHUP_PREDRAW) == 1
     plain = "scripts/beta/beta-compose.sh exec -T worker ./manage.py predraw_stress_tiles"
     for line in runbook_commands():
         if plain in line:
-            assert line.startswith("( umask 077; nohup "), line
+            assert line.startswith("( umask 077; setsid nohup sh -c "), line
+    assert RUNBOOK.count(NOHUP_PREDRAW) == 4  # step 8, rollbacks B and C, the data update
     for name, end in (("**B. Go back", "**C. Go back"), ("**C. Go back", "**D. Take")):
         section = RUNBOOK[RUNBOOK.index(name) : RUNBOOK.index(end)]
         assert NOHUP_PREDRAW in section, name
@@ -2034,7 +2055,10 @@ def test_the_predraw_runs_detached_and_follows_every_restore() -> None:
 def test_the_runbook_checks_the_401_at_once_and_says_how_to_recover() -> None:
     """Re-check operations SF-F."""
     nine_c = RUNBOOK[RUNBOOK.index("### 9c. The full site") : RUNBOOK.index("## 10. Smoke")]
-    assert "curl -s -o /dev/null -w '%{http_code}\\n' https://routemaker.cieply.com/" in nine_c
+    assert (
+        "curl -s -m 10 -o /dev/null -w '%{http_code}\\n' https://routemaker.cieply.com/" in nine_c
+    )
+    assert "000: no answer" in nine_c  # re-check 2 ops NIT-4
     ten = RUNBOOK[RUNBOOK.index("## 10. Smoke") : RUNBOOK.index("## 11. Report")]
     assert "**If the 401 lines fail with 403 or 404**" in ten and "--no-401-page" in ten
 
@@ -2115,6 +2139,88 @@ def test_the_handout_keeps_the_senders_notes_out_of_what_testers_get() -> None:
     assert "user name and password lines" in sender and "two lines" not in handout
     assert "a landmark" in tester and "complementary" in tester
     assert "Color-blind" not in handout and "color-blind" not in handout
+
+
+VARS_SOURCE = '. "$HOME/routemaker-beta-state/vars.sh"'
+
+
+def test_every_server_block_sources_the_vars_file_which_holds_no_secret() -> None:
+    """Re-check 2 ops SF-2: each tool call is a fresh shell, so every block re-reads the
+    non-secret variables and rm_absent from $RM_STATE/vars.sh, which section 0 writes."""
+    after = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") :]
+    blocks = re.findall(r"^( *)```sh\n(.*?)^\1```", after, re.M | re.S)
+    assert len(blocks) >= 30
+    for _indent, body in blocks:
+        first = body.splitlines()[0].strip()
+        if first.startswith(("# at home", "export RM_SSH_HOST=<your")):
+            assert VARS_SOURCE not in body  # the owner's own shell at home
+            continue
+        assert first == VARS_SOURCE, body[:120]
+    zero = RUNBOOK[RUNBOOK.index("## 0. Variables") : RUNBOOK.index("## 1. Prerequisites")]
+    assert "Every tool call is a fresh shell" in zero and "never a password, key or token" in zero
+    assert 'rm_absent "$RM_STATE" && mkdir -m 700 "$RM_STATE"' in zero
+    assert "( umask 077; set -C; cat > \"${RM_STATE:?}/vars.sh\" ) <<'VARS'" in zero
+    assert 'declare -f rm_absent >> "$RM_STATE/vars.sh"' in zero
+    heredoc = zero[zero.index("<<'VARS'") : zero.index("\nVARS\n")]
+    assert not re.search(r"(?i)(password|secret|token|_key\b|PGPASS|htpasswd)", heredoc), heredoc
+    for line in heredoc.splitlines()[1:]:
+        assert line.startswith("export RM_") or line.startswith("export BETA_API_PORT="), line
+    for appended in re.findall(r"echo '(export [A-Z_]+=[^']*)' >> \"\$RM_STATE/vars.sh\"", RUNBOOK):
+        assert not re.search(r"(?i)(password|secret|token|key)", appended), appended
+    assert "7. Start every command block with" in RUNBOOK
+    one = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
+    assert '"$HOME/routemaker-beta-state" "$HOME' not in one  # created in section 0 now
+
+
+def test_the_runbook_states_the_budget_in_both_units() -> None:
+    """Re-check 2 ops NIT-5: 7102 MiB is 6.94 GiB, and the two are written together."""
+    assert round(7102 / 1024, 2) == 6.94 and round(7358 / 1024, 2) == 7.19
+    assert "7102 MiB = 6.94 GiB" in RUNBOOK and "7358 MiB = 7.19 GiB" in RUNBOOK
+
+
+@needs_sh
+def test_the_smoke_test_can_skip_the_sign_in_pages_text() -> None:
+    """Re-check 2 ops SF-4: after the --no-401-page recovery every other line can PASS."""
+    text = (REPO / "scripts" / "beta" / "smoke-test.sh").read_text()
+    assert "--no-401-page) page401=0; shift ;;" in text
+    guarded = text[text.index('if [ "$page401" = 1 ]; then') :]
+    guarded = guarded[: guarded.index("\tfi\n")]
+    assert 'check_body "the 401 page says how to get in"' in guarded and "SKIP" in guarded
+    assert text.count("person who gave you access") == 1
+    ten = RUNBOOK[RUNBOOK.index("## 10. Smoke") : RUNBOOK.index("## 11. Report")]
+    assert "Rerun the smoke test with\n`--no-401-page`" in ten
+    unknown = run("bash", "scripts/beta/smoke-test.sh", "--bogus")
+    assert unknown.returncode == 2
+
+
+def test_the_ci_tool_versions_step_cannot_fail_the_required_check() -> None:
+    """Re-check 2 spec C2."""
+    ci = (REPO / ".github" / "workflows" / "ci.yml").read_text()
+    lines = ci[ci.index("- name: Tool versions") :].splitlines()
+    step = [lines[0]] + [x for x in lines[1:3] if x.startswith("        ")]
+    assert any(x.strip() == "continue-on-error: true" for x in step), step
+    assert step[-1].rstrip().endswith("|| true"), step
+
+
+def test_the_source_check_covers_every_beta_service_not_only_the_overlays(tmp_path: Path) -> None:
+    """Re-check 2 correctness NIT 1: a beta service the overlay forgot is still reported."""
+    (tmp_path / "compose.yaml").write_text((REPO / "compose.yaml").read_text())
+    overlay = (REPO / "compose.beta.yaml").read_text()
+    start = overlay.index("\n  photon:\n")
+    end = overlay.index("\n  # --- the four routers")
+    (tmp_path / "compose.beta.yaml").write_text(overlay[:start] + overlay[end:])
+    found = beta.check_source_binds(tmp_path)
+    assert any(
+        "photon: the base file's bind on /photon/data is not restated" in p for p in found
+    ), found
+    source = (REPO / "scripts" / "check_beta_compose.py").read_text()
+    assert "for name in sorted((EXPECTED_SERVICES | OPTIONAL_SERVICES) - PARKED):" in source
+
+
+def test_no_shared_host_is_named_after_a_cloud_provider() -> None:
+    """Re-check 2 scope NIT C."""
+    for rel in ("compose.beta.yaml", "scripts/check_beta_compose.py", "docs/BETA-RUNBOOK.md"):
+        assert "EC2" not in (REPO / rel).read_text(), rel
 
 
 def test_the_runbook_documents_the_override_reset_and_installs_no_system_package() -> None:

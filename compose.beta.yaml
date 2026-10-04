@@ -4,7 +4,7 @@
 #
 # scripts/beta/beta-compose.sh runs exactly that and refuses a bare `up`, so use it.
 #
-# What this overlay is for: the owner's shared EC2 host (15 GiB RAM, about 8.6 GiB
+# What this overlay is for: the owner's shared host (15 GiB RAM, about 8.6 GiB
 # free, NO swap, 4 vCPU, nginx already serving other sites on 80/443). RouteMaker
 # must never be the reason another site on that host dies, so every container gets
 # a hard memory cap: when something spikes, the kernel kills RouteMaker's own

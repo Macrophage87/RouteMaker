@@ -11,11 +11,14 @@
 #       BETA_USER, if set). The password is read from that file, never printed, and handed to
 #       curl on standard input, so it is in no process listing, history line or transcript.
 #       BETA_USER=alice BETA_PASSWORD=... in the environment works too, without the file.
+#   --no-401-page
+#       With --public, after the runbook's step 10 recovery (render-nginx.sh --no-401-page): skip
+#       the check of the sign-in page's text, which nginx's own 401 page does not carry.
 #
 # Exit status 0 only if every check passed.
 set -uo pipefail
 
-mode=""; port=""; host="routemaker.cieply.com"; base=""; passwords_file=""
+mode=""; port=""; host="routemaker.cieply.com"; base=""; passwords_file=""; page401=1
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--local) mode=local; shift ;;
@@ -23,6 +26,7 @@ while [ $# -gt 0 ]; do
 		--port) port=${2:-}; shift 2 ;;
 		--host) host=${2:-}; shift 2 ;;
 		--passwords-file) passwords_file=${2:-}; shift 2 ;;
+		--no-401-page) page401=0; shift ;;
 		-h | --help) sed -n '2,/^set -uo/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "smoke-test: unknown argument $1" >&2; exit 2 ;;
 	esac
@@ -93,7 +97,11 @@ if [ "$mode" = public ]; then
 	check_status "a wrong password is refused" 401 -u "nobody:wrong" "$base/"
 	unauthorized=$(curl_run -D - -o /dev/null "$base/" | tr -d '\r')
 	if grep -qi '^www-authenticate: basic' <<<"$unauthorized"; then ok "the 401 asks for a password (WWW-Authenticate: Basic)"; else bad "the 401 has no WWW-Authenticate: Basic, so browsers will not show their sign-in box"; fi
-	check_body "the 401 page says how to get in" 'person who gave you access' "$base/"
+	if [ "$page401" = 1 ]; then
+		check_body "the 401 page says how to get in" 'person who gave you access' "$base/"
+	else
+		printf 'SKIP  %s\n' "the 401 page's text (--no-401-page: the site was rendered without it)"
+	fi
 	headers=$(curl_run -I "$base/robots.txt" | tr -d '\r')
 	if grep -qi '^x-robots-tag: noindex, nofollow' <<<"$headers"; then ok "X-Robots-Tag: noindex, nofollow on robots.txt"; else bad "no X-Robots-Tag on robots.txt"; fi
 	check_status "plain http redirects to https" 301 "http://${base#https://}/"

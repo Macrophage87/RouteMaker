@@ -3,7 +3,7 @@
 
 The beta variant of scripts/check_compose_limits.py. That script is written
 against the 32 GB production host (caddy publishes, the rebuild is resident, the
-sum of limits must stay under 32 GB); the beta runs on a shared 15 GiB EC2 host
+sum of limits must stay under 32 GB); the beta runs on the owner's shared 15 GiB host
 with about 8.6 GiB free and no swap, with nginx instead of Caddy and no rebuild,
 so it needs its own rules. It checks the RENDERED config - what `docker compose
 -f compose.yaml -f compose.beta.yaml config` prints - because that is what the
@@ -406,6 +406,9 @@ def check_valhalla(services: dict) -> list[str]:
 #                form with `create_host_path: false` renders the false; a missing key means TRUE.
 #   "omit-false" (older Compose, as CI's renders: the key is a plain omitempty bool): the short
 #                form renders `create_host_path: true` and false is dropped; missing means FALSE.
+#                In this scheme the render check alone is NOT sufficient (a long bind with no
+#                `bind:` mapping also renders without the key, and Compose sends it as a legacy
+#                Bind, which creates): check_source_binds, which reads the files, is what holds.
 # bind_semantics() finds out which one the installed Compose uses, by rendering a probe file
 # with both forms, and refuses a Compose whose render cannot tell them apart. What the engine
 # then does is proved on the server itself (docs/BETA-RUNBOOK.md, step 8, "Binds that refuse a
@@ -504,9 +507,12 @@ def check_source_binds(repo: Path = REPO) -> list[str]:
     base = yaml.safe_load((repo / "compose.yaml").read_text())["services"]
     overlay = yaml.load((repo / "compose.beta.yaml").read_text(), Loader=_SourceLoader)["services"]  # noqa: S506
     problems: list[str] = []
-    for name, service in overlay.items():
-        if name in PARKED:
-            continue
+    # Every service the beta runs, not only those the overlay names: under the "omit-false" render
+    # scheme a long bind with no `bind:` mapping reads as "does not create", yet Compose sends it as
+    # a legacy Bind, which does; so the render check is not enough there, and a beta service with
+    # base binds that the overlay forgot must be caught here. The parked ones never start.
+    for name in sorted((EXPECTED_SERVICES | OPTIONAL_SERVICES) - PARKED):
+        service = overlay.get(name) or {}
         mine = {}
         for volume in service.get("volumes") or []:
             if not isinstance(volume, dict):
