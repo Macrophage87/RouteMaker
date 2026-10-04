@@ -511,13 +511,11 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   not read the segment table" at warning level). A run of `no_route` outcomes
   means the router refuses the through points (an entry on a way a bicycle
   cannot use); the plan is unaffected.
-- **The trail credit and the seek on plans with stops** (superseded in part: item 257 dropped the credit, 2026-10-03; OWNER-DECISIONS 202, 203;
-  docs/DEVELOPMENT.md, "The trail credit and the seek leg by leg"). Trailmaxxing has
-  a trail credit (0.5); no other ride type does, and the router is not told. Load
-  for a plan with a start and an end: every Trailmaxxing candidate's reading has one
-  more join over its traced pieces for the trail rule (before the facility column
-  exists; after it, none), and the seek may now ask on a quiet route where it asked
-  nothing before (above). A plan with stops runs the
+- **The seek on plans with stops** (OWNER-DECISIONS 203; docs/DEVELOPMENT.md, "The
+  trail credit and the seek leg by leg"). The trail credit of item 202 is gone: item
+  257 dropped it on 2026-10-03, so no ride type has one, a candidate's reading has
+  no extra join for a trail rule, and `calm_search` no longer carries
+  `trail_credit`, `trail_before_m` or `trail_after_m`. A plan with stops runs the
   seek once per leg of at least 1.2 mi: one table read per leg (each up to 30,000
   rows) and, per candidate, one route for the leg alone with its trace and `/locate`s,
   within the same 6 s as before, plus each leg's reading of its own route (at most
@@ -531,10 +529,8 @@ to six more routes a leg (`core.trailseek`; docs/DEVELOPMENT.md, "The trail seek
   (three stops: the exclusion search had used the time, and the seek added only its
   reads). Still no limit of its own: it is inside the plan's `ROUTING_CONCURRENCY`
   slot. `calm_search.seek.legs` and each `tried` row's `leg` say which legs it ran
-  over; `calm_search.trail_credit`, `trail_before_m` and `trail_after_m` say what the
-  credit was and the trail the route had. Before the facility column exists the
-  trail credit reads the table's trail rule through one more join over the traced
-  pieces of every candidate (Trailmaxxing plans only).
+  over. A leg's own candidates are never offered as routes to choose from: every
+  route offered is the whole trip (release review, correctness B1).
 - **Not applicable** to a long ride, to
   a Mass Ride, to a span over 18.6 mi (the search's own limit), or to one under
   1.2 mi.
@@ -753,13 +749,16 @@ nothing else is left out, and no road is known to have a bikeway beside it.
 The owner, 2026-09-29: "I like LTS 1 and 2. Maybe yellow and orange for LTS 3,
 orange and red for LTS 4, and red and black for Avoid." (OWNER-DECISIONS 74).
 LTS 1 and 2 are as they were. Two readings are built for the owner to choose
-between: `blended` (the default: LTS 3 amber over a dark casing, LTS 4
-red-orange, Avoid dark red) and `twotone` (the first colour as the line, the
+between: `blended` (the default: LTS 3 amber, #bf730b, over a dark amber-brown
+casing, #45290a; LTS 4 a saturated red, #c80018, over white; Avoid a
+near-black, #14040a, over a coral-red casing, #ee3b2c, since item 274) and `twotone` (the first colour as the line, the
 second as its casing), which a page shows with `?palette=twotone` in its
 address. The blended palette keeps every tier 3:1 on the base map and the
 greyscale order; LTS 2 and 3 are only 1.17:1 apart in grey and one olive to a
 deuteranope, told apart by their dashes. The two-tone LTS 3 is not 3:1 on the
-base map.
+base map. The tiers' dashes, widths and casings, the facility rails and the
+high-stress painted-lane switch are in docs/DEVELOPMENT.md, "Stress salience:
+the tiers' shapes and the facility rails".
 
 These choices are for the main ride types. The owner, 2026-09-29: "We might
 need to change things for mass rides, but let's focus on the main use cases."
@@ -2565,7 +2564,10 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   before.
 - **Loops (item 266)** ask for the way back up to 4 more times (every point, then every 2nd, 4th and 8th),
   each a /route, its reading and the whole loop's reading, inside 14 s (`refine.LOOP_BUDGET_S`); the
-  search then runs as for any plan up to 19 mi in all, and not at all past it.
+  search then runs as for any plan up to 19 mi (30 km) of straight line in all, and not at all past it.
+  A loop is never a long calm plan, and its straight line counts the way back too, so a Trailmaxxing
+  loop with a 9.5 mi out-leg answers `limited: "span"` with no calm search. That is as built, not a
+  fault. A Mass Ride has no loop (the owner's choice, 298(4)).
 - **Reading an answer.** `calm_search.long`: `legs`, `searched`, `skipped`, `stops` (legs per plan leg),
   `answered` (`legs` or `router`) and `per_leg` (each leg's length, LTS 4 and LTS 3 metres before and
   after, the cap it was searched under, the options it offered and why it stopped).
@@ -2575,6 +2577,9 @@ the credit's extra reads (a join over the traced pieces) no longer apply.
   the target, how far past it it is, and the traffic position the first route was found at where the
   router's own route was past it. `limited: "target_distance"` with `fits: false` means no route
   within the target was found and the least stressful found is answered (item 267);
+  `limited: "ceiling"` means the search stopped at the 1.25x ceiling, and `no_fit: true` means not
+  even one route was within the ceiling, so the calmest found is answered, flagged with
+  `over_target_m` (item 298(2));
   `seek.whole_trip: "not_worth"` means a spliced trip's extra miles did not buy enough stress (268). `loop.fallback: "out_and_back"`
   means there was no other way back. `candidates` is null where there is one route.
 - **Knobs** (all in code, none needs a restart beyond a deploy): `legsplit.LEG_TARGET_SPAN_M` (12 km),
@@ -2612,5 +2617,87 @@ then the answer reads its changed route once, as it reads any route, within the 
 the 5 s). Measured against the pass off (the harness, live routers read-only): Union Station to Penn, 8
 checks, 11 more `/route`, 8 more `trace_attributes`, 35 more `/locate`; Bowie to Annapolis at
 Trailmaxxing, 6 checks, 15, 8 and 67; a short trip with one check, 1 or 2, 1 and 2 to 4. No knob needs
-setting: `dedodge.BUDGET_S`, `MAX_CHECKS`, `MAX_EXCLUDES`, `MIN_DODGE_M`, `MIN_UNNAMED_DODGE_M` and
-`TOP_TIE_RULE` (the top of the slider's tie step, pending the owner) are code constants.
+setting: `dedodge.BUDGET_S`, `MAX_CHECKS`, `MAX_EXCLUDES`, `MIN_DODGE_M`, `MIN_UNNAMED_DODGE_M`,
+`TIE_RULE_ALL_PRESETS` and `TIE_STEP_M` are code constants. The last two are the rule the owner chose
+in OWNER-DECISIONS 298(1): on every ride type, Default included, a dodge that avoids no more than 50 m
+[160 ft] is taken out.
+
+A **dodge result that varies with host load** is expected. On a busy host the pass can be starved
+(`dodges.limited: "time"`, 0 checked), so the same request can come back with a dodge kept on one run
+and removed on another. That is not a fault and not a rollback trigger.
+
+## Deploying a planner and front-end release: rollback points and verification
+
+A release that changes the planner and the front end, with no migration and no graph, is deployed
+from t9 (`/home/steph/src/wt/t9`), one heredoc per call, with `</dev/null` on every docker command.
+The order is: pre-flight, **rollback points**, fast-forward, the api image, recreate api and worker,
+the front end last, then **verify**. Keep out of 07:00-07:30 UTC (the nightly backup) and away from
+the Tuesday 08:00Z rebuild. Every step is still confirmed with the owner (OWNER-DECISIONS 293).
+
+**0.1 Rollback points, before anything is built.** Nothing else names the live image or keeps the live
+`index.html`. A `docker compose build api` leaves the old image dangling under no name, and the oldest
+index backup may be two releases back. `L` is the short commit t9 is on:
+
+```sh
+cd /home/steph/src/wt/t9; D=/home/steph/routemaker-data; L=$(git rev-parse --short HEAD)
+docker tag ghcr.io/macrophage87/routemaker-api:dev ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null
+docker image inspect --format '{{.Id}}' ghcr.io/macrophage87/routemaker-api:pre-rel-$L </dev/null   # the live image's id
+cp $D/frontend/index.html ~/rmdata/frontend-index-$L.html
+grep -o 'assets/[^"]*' ~/rmdata/frontend-index-$L.html     # the live script and stylesheet
+git rev-parse HEAD > ~/rmdata/t9-head-pre-rel.txt
+```
+
+The api build looks up its base image (`python:3.11-slim-bookworm`) on Docker Hub when that tag is
+not in the local store, and that network use needs the owner's approval for the deploy, as
+OWNER-DECISIONS 253 gave the last one.
+
+Steps 1 to 4 are:
+1. `git merge --ff-only` to the release commit, once the owner has pushed it;
+2. `docker compose build api` (worker and migrate share the image);
+3. `docker compose up -d --no-deps --no-build --force-recreate api worker`, with no job todo or doing;
+4. the front end's build and publish (docs/DEPLOYMENT.md, "The public front end").
+
+There is no migrate, and never a plain `up -d`.
+
+**5. Verify.** Run both scripts and keep their logs:
+
+```sh
+/home/steph/rmdata/verify-pm.sh 2>&1 | tee ~/rmdata/rel-verify.log            # the standing checks
+/home/steph/rmdata/verify-release.sh 2>&1 | tee ~/rmdata/rel-verify-release.log
+```
+
+`verify-pm.sh` checks none of the release's new features. `verify-release.sh` does, with read-only
+probes only:
+- a long calm plan with a target: legs, the target echoed, `over_target_m`, `limited`, the routes to
+  choose from, and the wall time, which must be under 50 s;
+- the target and ceiling fields;
+- `candidates`;
+- a loop's `overlap_pct`;
+- `dodges` on a Default plan;
+- `text_lanes_hidden` and `surface` in the description;
+- the hashed federal-land asset, served compressed and `immutable`.
+
+**Rollback**, front end first. The new front end sends fields that the older API refuses with 400
+("Long calm plans ..., Rollback", above); the old front end works against the new API.
+
+```sh
+cd /home/steph/src/wt/t9; D=/home/steph/routemaker-data; L=<the short commit saved in step 0.1>
+docker run --rm --network none -u 10001:10001 -v ~/rmdata:/bk:ro -v $D/frontend:/out \
+  docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662 \
+  sh -c "cp /bk/frontend-index-$L.html /out/.index.html.new && mv /out/.index.html.new /out/index.html" </dev/null
+docker tag ghcr.io/macrophage87/routemaker-api:pre-rel-$L ghcr.io/macrophage87/routemaker-api:dev </dev/null
+docker compose up -d --no-deps --no-build --force-recreate api worker </dev/null
+```
+
+The old hashed assets are still there, because the publish's `cp -n` never deletes. Roll back on any
+of these:
+- `/healthz` is not 200;
+- a 5xx other than the documented busy or timed-out 503s, or a Traceback in a plan;
+- a Default regression on verify-pm's Silver Spring to Farragut: no route, or more LTS 4 than its
+  baseline;
+- a long calm plan answered past 55 s, or a gunicorn `WORKER TIMEOUT`;
+- api memory over about 1.5 GiB;
+- a blank front end.
+
+These are not triggers: `dodges.limited: "time"`, `calm_search.limited: "time"` on a long plan, the
+long-pool 503 while another long plan runs, and `candidates` null on most trips.
