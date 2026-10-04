@@ -1800,6 +1800,78 @@ def test_the_runbook_predraws_the_tiles_after_the_first_start_and_every_data_upd
     assert "155 s" in RUNBOOK  # its expected time, measured at home
 
 
+def test_the_runbook_records_the_servers_facts_and_checks_them_read_only() -> None:
+    """Final review, operations SF6 and N1. The repository is public, so the server is named by
+    a variable and its address is checked live, never written down."""
+    step1 = RUNBOOK[RUNBOOK.index("## 1. Prerequisites") : RUNBOOK.index("## 2. Get the code")]
+    assert "export RM_SSH_HOST=<" in RUNBOOK[: RUNBOOK.index("## 1. Prerequisites")]
+    for fact in ('ssh "$RM_SSH_HOST"', "`nofail`", "root disk", "7900 MiB"):
+        assert fact in step1, fact
+    assert (
+        "https://checkip.amazonaws.com" in step1
+        and "getent ahostsv4 routemaker.cieply.com" in step1
+    )
+    assert not re.search(
+        r"\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b", RUNBOOK.replace("127.0.0.1", "")
+    )
+    for check in (
+        "stat -c '%A %U:%G' /data",
+        "findmnt -no SOURCE,FSTYPE,OPTIONS /data",
+        "docker info -f '{{.DockerRootDir}}'",
+        "systemctl is-enabled docker containerd",
+    ):
+        assert check in step1, check
+    for command in runbook_commands():
+        assert not re.search(r"\b(chmod|chown|chgrp)\b[^|]*\s/data\s*$", command), command
+    assert "scripts/boot/" in step1 and "start-stack.sh" in step1
+
+
+def test_the_runbook_ships_after_step_two_and_builds_the_image_at_home_without_compose() -> None:
+    """Final review, operations SF1 and SF4."""
+    step2 = RUNBOOK[RUNBOOK.index("## 2. Get the code") : RUNBOOK.index("## 3. Make")]
+    assert "ships the bundle only after this step" in step2 and "same user" in step2
+    step6 = RUNBOOK[RUNBOOK.index("## 6. Build") : RUNBOOK.index("## 7. Receive")]
+    assert (
+        'docker build -f docker/api.Dockerfile -t "ghcr.io/macrophage87/routemaker-api:$T" .'
+        in step6
+    )
+    assert "T=$(git rev-parse --short=12 HEAD)" in step6
+    assert "| gzip | ssh \"$RM_SSH_HOST\" 'gunzip | docker load'" in step6
+    step7 = RUNBOOK[RUNBOOK.index("## 7. Receive") : RUNBOOK.index("## 8. Start")]
+    assert '--build-frontend  "$RM_SSH_HOST"  /data/routemaker-incoming' in step7
+    commands = [c for c in runbook_commands() if not c.startswith("#")]
+    assert not any("docker compose build" in c for c in commands)
+    assert "user@server" not in RUNBOOK
+
+
+def test_the_rollbacks_restore_the_front_end_and_pair_graphs_with_the_database() -> None:
+    """Final review, operations SF2, SF3 and N5."""
+    rollback_a = RUNBOOK[RUNBOOK.index("**A. Go back") : RUNBOOK.index("**B. Go back")]
+    assert "do **B** as well" in rollback_a and "pre-update-<time>.dump" in rollback_a
+    rollback_c = RUNBOOK[RUNBOOK.index("**C. Go back") : RUNBOOK.index("**D. Take")]
+    assert 'index.html.pre-release-<time>" "$RM_DATA/frontend/index.html.new"' in rollback_c
+    assert (
+        'sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"' in rollback_c
+    )
+    assert "up -d photon valhalla-standard" in rollback_c
+    release = RUNBOOK[RUNBOOK.index("**A new release sha**") : RUNBOOK.index("**Front end only:**")]
+    backup = release.index(
+        'sudo cp -p "$RM_DATA/frontend/index.html" "$RM_DATA/backups/index.html.pre-release-'
+    )
+    assert release.index("snapshot-db --label release") < backup < release.index("git fetch")
+
+
+def test_the_paused_rebuilds_traces_on_the_beta_are_documented_as_expected() -> None:
+    """Final review, spec S1: the tick is still queued and the entry reads stale."""
+    header = (REPO / "compose.beta.yaml").read_text().split("services:")[0]
+    assert "so nothing queues rebuild jobs" not in header
+    assert "one\n#     weekly_rebuild job waits" in header
+    note = RUNBOOK[RUNBOOK.index("**No rebuild runs here.**") :]
+    assert "one\n  `weekly_rebuild` job waits" in note and "as stale" in note
+    found = problems_for(lambda s: s["api"]["environment"].pop("WEEKLY_REBUILD_PAUSED"))
+    assert any("must only record a pause" in p for p in found), found
+
+
 def test_the_runbook_documents_the_override_reset_and_installs_no_system_package() -> None:
     assert "resets `override` to home's" in RUNBOOK
     assert "apt install" not in RUNBOOK

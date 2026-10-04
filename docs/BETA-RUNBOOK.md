@@ -19,7 +19,7 @@ the whole file before running anything. Every step says what it changes and how 
 
 Every RouteMaker path above is created only after a check that it **does not exist yet**; if one
 does, stop and ask the owner. Nothing here changes the owner, group or mode of a directory that
-already exists (`/data` included: it holds Docker's storage and other people's data).
+already exists (`/data` included: it holds other people's data).
 
 It does not touch the other sites, `nginx.conf`, the firewall, the system packages' configuration,
 or Docker's daemon settings. If a step seems to need any of those, **stop and ask the owner**.
@@ -58,6 +58,7 @@ export RM_REPO_URL=<the repository URL the owner gave you>
 export RM_DATA=/data/routemaker
 export RM_SRC=/data/routemaker-src
 export RM_INCOMING=/data/routemaker-incoming
+export RM_SSH_HOST=<the ssh host the owner ships from, as the owner names this server in ~/.ssh/config>
 # The guard every creating step uses: true only if NONE of the paths exists yet, naming each that
 # does; an empty argument (an unset variable) also fails it. Every command that creates a RouteMaker path is written `rm_absent <paths> && <command>`
 # on one line, so an existing path stops that command (a `for` loop's status alone would not).
@@ -66,9 +67,24 @@ rm_absent() { ok=1; [ "$#" -gt 0 ] || ok=0; for p in "$@"; do if [ -z "$p" ]; th
 
 ## 1. Prerequisites and checks (changes nothing)
 
+What to expect on this server (the owner's check, 2026-10-04); a check below that disagrees is a stop:
+
+- the owner reaches it as `ssh "$RM_SSH_HOST"` (section 0), and ships the bundle there;
+- `/data` is a separate filesystem mounted `nofail`, with far more than the 25 GB this needs;
+- Docker's root may be on the root disk rather than on `/data` (that is why binds never create
+  their source: "Reboot and a late `/data`"), so its free space is checked on its own;
+- available memory is at least the 7900 MiB threshold below;
+- `routemaker.cieply.com` resolves to this server's own public address (checked live below; the
+  address is not written down here).
+
 ```sh
 free -m                                  # "available" must be at least 7900 MiB; the caps total 7102 MiB resident, 7358 at the startup peak
-df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, images, backups)
+df -h /data /                            # /data: at least 25 GB free (bundle 4 GB, installed copy 4 GB, backups)
+findmnt -no SOURCE,FSTYPE,OPTIONS /data  # a filesystem of its own; nofail in the options is expected (see "Reboot and a late /data")
+stat -c '%A %U:%G' /data                 # read-only: needs x for others (or for nginx's group): nginx must pass through /data. If not, STOP and ask the owner; never change /data's mode
+docker info -f '{{.DockerRootDir}}'      # where images and logs go; often /var/lib/docker on the root disk
+df -h "$(docker info -f '{{.DockerRootDir}}')"   # at least 6 GB free for the images (about 3.7 GB) and the containers' logs (capped at 50 MB each)
+systemctl is-enabled docker containerd   # both "enabled", or nothing comes back after a reboot (read-only; change nothing)
 id -nG | tr ' ' '\n' | grep -x docker    # you must be in the docker group (or use sudo for every docker command)
 docker version --format '{{.Server.Version}}'; docker compose version   # Docker 29, compose 2.40 or newer
 ss -ltn | awk '{print $4}' | grep -E ':(8087)$' || echo "port 8087 is free"
@@ -76,7 +92,7 @@ nginx -v; sudo nginx -T 2>/dev/null | grep -E '^\s*(include|user) ' | head   # w
 command -v git rsync openssl curl python3 sha256sum
 sudo docker compose version                      # the compose plugin must also work under sudo (receive-data.sh files/db run with sudo)
 python3 -c 'import yaml' && echo "pyyaml ok"      # the pre-flight checker needs it; if missing, see below (no system package is installed)
-getent hosts routemaker.cieply.com               # must resolve to THIS server's public address
+[ "$(getent ahostsv4 routemaker.cieply.com | awk 'NR == 1 {print $1}')" = "$(curl -s -m 10 https://checkip.amazonaws.com)" ] && echo "DNS points here" || echo "STOP: routemaker.cieply.com does not resolve to this server's public address"
 sudo nginx -T 2>/dev/null | grep -c 'listen \[::\]'   # 0: the other sites do not listen on IPv6; render with --no-ipv6 in 9c
 rm_absent "$RM_SRC" "$RM_INCOMING" "$RM_DATA" "$HOME/routemaker-beta-state" "$HOME/routemaker-beta-passwords.txt" "$HOME/routemaker-beta-venv" /var/www/routemaker-acme /etc/nginx/routemaker-beta.htpasswd && echo "all absent"   # any EXISTS line is a stop
 ```
@@ -128,6 +144,11 @@ Decide and note down:
 - **Whether `routemaker.cieply.com` already points here.** If `getent` shows another address, stop;
   the owner has to change DNS first.
 
+Never run anything under `scripts/boot/`, and do not follow `docs/DEPLOYMENT.md`'s boot section,
+on this server: they are for the home machine (Docker Desktop on WSL). `start-stack.sh` runs the base
+compose file without the overlay and exports `RESTART_POLICY=no`, which here would start caddy and
+the rebuild uncapped and stop the stack coming back after a reboot. Docker restarts the beta itself.
+
 Record the "before" state so you can prove nothing else changed. `nginx -T` prints every site's
 configuration, so the copies go in a private directory (mode 700, files 600), not in `/tmp`:
 
@@ -154,7 +175,14 @@ rm_absent "$RM_SRC" "$RM_INCOMING" && sudo install -d -o "$(id -un)" -g "$(id -g
 git clone "$RM_REPO_URL" "$RM_SRC" && cd "$RM_SRC" && git checkout --detach "$RM_SHA"
 git rev-parse HEAD            # must print exactly $RM_SHA
 git status --short            # must print nothing
+stat -c '%U' "$RM_INCOMING"   # the user you are logged in as: the one `ssh "$RM_SSH_HOST"` logs in as
 ```
+
+**The order of setup and shipping.** The owner ships the bundle only after this step, because steps 1
+and 2 stop if `$RM_INCOMING` already exists. Tell the owner now that `$RM_INCOMING` is ready and which
+user owns it: `ship-data.sh` writes into it over `ssh "$RM_SSH_HOST"` (`mkdir -p` and `rsync`, as that ssh
+user, with no sudo), so the owner's ssh login and the owner of `$RM_INCOMING` must be the same user.
+If they differ, stop and ask the owner; do not change the directory's owner or mode to make it fit.
 
 If the repository is not reachable from the server, the owner can send a tarball from home
 (`git archive --format=tar.gz -o routemaker-<sha>.tar.gz <sha>`, then `rsync` it); unpack it into
@@ -220,7 +248,7 @@ rm_absent "$RM_DATA" && sudo sh scripts/prepare_data_root.sh --env-file ./.env
 ```
 
 `/data` itself already exists (step 1) and is not touched: no `install -d`, `chown` or `chmod` on
-it, because it holds Docker's storage and other people's data. The script creates `$RM_DATA` and its subdirectories owned by the right users (this is the repository's own
+it, because it holds other people's data. The script creates `$RM_DATA` and its subdirectories owned by the right users (this is the repository's own
 script; it chowns only directories under `DATA_ROOT`). Undo: `sudo rm -rf "$RM_DATA"` only if no
 data has been installed yet or the owner agreed.
 
@@ -239,15 +267,19 @@ another stack on the host may use. Check first which images other stacks run:
 `docker ps --format '{{.Image}}' | grep -E 'postgis|photon|valhalla'`. The photon and valhalla tags are fixed
 release versions (`2.4.0`, `3.5.1`); if another stack uses the same tag, the pull fetches the same release.
 
-The build needs network access (pip) and a few minutes. Images land in Docker's storage on `/data`.
+The build needs network access (pip) and a few minutes. Images land in Docker's storage,
+Docker's root from step 1, which may be the root disk and not `/data` (the four images are about 3.7 GB).
 **The build is not capped:** BuildKit runs inside the Docker daemon, outside every container
 limit, and pip's install can take a core and several hundred MB for a few minutes on a host other
 sites share. So either build only when the owner says the other sites are quiet, or (preferred)
 have the owner build at home from the same sha and send the image, which needs no build here:
 
 ```sh
-# at home, in a checkout of the same sha:
-docker compose build api && docker save ghcr.io/macrophage87/routemaker-api:<TAG> | gzip | ssh user@server 'gunzip | docker load'
+# at home, in a clean checkout of the release sha (NOT the live stack's: its .env has TAG=dev, and
+# `docker compose build` there would rebuild and retag the live image from that checkout):
+T=$(git rev-parse --short=12 HEAD)    # the 12-character TAG make-env.sh wrote
+docker build -f docker/api.Dockerfile -t "ghcr.io/macrophage87/routemaker-api:$T" .
+docker save "ghcr.io/macrophage87/routemaker-api:$T" | gzip | ssh "$RM_SSH_HOST" 'gunzip | docker load'
 ```
 
 Then skip the `build` line above and run only the `pull` line.
@@ -256,11 +288,11 @@ by others; leave them).
 
 ## 7. Receive the data (adds files under `$RM_DATA`)
 
-At home the owner runs (this is for you to know, and to ask the owner for if the bundle is not
-at `$RM_INCOMING` yet):
+At home the owner runs, once step 2 has created `$RM_INCOMING` (this is for you to know, and to
+ask the owner for if the bundle is not there yet):
 
 ```sh
-scripts/beta/ship-data.sh --live-dir <live checkout> --build-frontend  user@server  /data/routemaker-incoming
+scripts/beta/ship-data.sh --live-dir <live checkout> --build-frontend  "$RM_SSH_HOST"  /data/routemaker-incoming
 ```
 
 `--build-frontend` runs the front-end tests and builds it with the beta notice; `ship-data.sh` stops if
@@ -325,6 +357,15 @@ run inside the running api container, under its cap (rule 2), not as a second ap
 ```sh
 scripts/beta/beta-compose.sh exec -T api ./manage.py migrate --check && echo "migrations current"
 scripts/beta/beta-compose.sh exec -T api ./manage.py collectstatic --noinput
+```
+
+nginx's worker user (the `user` line step 1 printed, `www-data` on Ubuntu) must be able to read what
+the site file serves; read-only checks:
+
+```sh
+for f in "$RM_DATA/frontend/index.html" "$RM_DATA/basemap/region.pmtiles" "$RM_SRC/deploy/beta/401.html"; do
+  sudo -u www-data test -r "$f" && echo "nginx can read $f" || echo "NOT READABLE by nginx: $f (stop and ask the owner)"
+done
 ```
 
 Health and memory:
@@ -524,6 +565,10 @@ done
 scripts/beta/beta-compose.sh restart valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend
 ```
 
+If that update also carried a db part (`db --update-data`), do **B** as well, with the
+`pre-update-<time>.dump` it wrote: the graphs and the `live` schema are one build, and the old graphs
+against the new `live` mix segment attributes from one build with edges from another.
+
 **B. Go back to the previous database:** restore the safety dump the last data update wrote
 (`pre-update-<time>.dump` from `db --update-data`, or `pre-restore-<time>.dump` from `--replace-db`).
 `restore-dump` takes a `pre-rollback` snapshot of what is there first, restores the dump into a
@@ -543,7 +588,8 @@ scripts/beta/beta-compose.sh up -d api worker
 **C. Go back to the previous release:** the previous api image is still on the host under its own tag. Retagging
 alone is not enough when the new release migrated the database forward: the old code would run against a
 newer schema. So rollback C also puts back the `pre-release` snapshot taken just before the update
-("Shipping an update later", new release, step 5):
+("Shipping an update later", new release, step 2), and the old front end's `index.html` saved in the
+same step (the hashed assets it names are never deleted, so `index.html` alone brings back the old app):
 
 ```sh
 cd "$RM_SRC"
@@ -551,7 +597,9 @@ scripts/beta/beta-compose.sh stop api worker
 git checkout --detach <previous sha>
 sed -i 's/^TAG=.*/TAG=<previous 12-character sha>/' .env          # the one edit to .env a release change needs
 sudo scripts/beta/receive-data.sh --env-file .env restore-dump "$RM_DATA/backups/pre-release-<time>.dump"
+sudo cp -p "$RM_DATA/backups/index.html.pre-release-<time>" "$RM_DATA/frontend/index.html.new" && sudo mv -T "$RM_DATA/frontend/index.html.new" "$RM_DATA/frontend/index.html"
 scripts/beta/beta-compose.sh up -d api worker                     # recreates them on the old image; migrate finds nothing to do
+scripts/beta/beta-compose.sh up -d photon valhalla-standard valhalla-no-trail valhalla-ebike valhalla-weekend   # recreates only those whose image or command the release changed
 ```
 
 Because the dump goes into a fresh database, tables the newer release added do not survive into
@@ -620,6 +668,7 @@ anything can run `migrate` (rollback C restores that snapshot), and the app star
    cd "$RM_SRC"
    scripts/beta/beta-compose.sh stop api worker
    sudo scripts/beta/receive-data.sh --env-file .env snapshot-db --label release   # prints $RM_DATA/backups/pre-release-<time>.dump
+   sudo cp -p "$RM_DATA/frontend/index.html" "$RM_DATA/backups/index.html.pre-release-<the same time>"   # rollback C puts it back
    ```
 3. `git fetch && git checkout --detach <new sha>`. `scripts/beta/make-env.sh` will not overwrite `.env`; set the
    image tag by hand: `sed -i "s/^TAG=.*/TAG=$(git rev-parse --short=12 HEAD)/" .env`.
@@ -667,8 +716,8 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
 - **Reboot:** containers restart with Docker (`unless-stopped`). `RESTART_POLICY` stays unset in `.env`, because
   `no` is the home Docker Desktop machine's setting: `beta-compose.sh` refuses a value other than empty or
   `unless-stopped` in `.env` and in the shell, and the checker refuses it in `.env` and in the rendered config.
-- **Reboot and a late `/data`:** `/data` is mounted `nofail` and Docker's own storage is on the root disk
-  (`/var/lib/docker`), so Docker can start, and restart the containers, before `/data` is mounted. Every
+- **Reboot and a late `/data`:** `/data` is mounted `nofail` and Docker's own storage may be on the root disk
+  (step 1's `DockerRootDir`), so Docker can start, and restart the containers, before `/data` is mounted. Every
   RouteMaker bind mount has `create_host_path: false` (`compose.beta.yaml`, "Bind mounts never create their
   source"), so the engine refuses to start a container whose source is missing instead of handing it an empty
   directory on the root disk (where postgis would initialise an empty database). If `/data` was late, the
@@ -686,8 +735,12 @@ then `sudo ... files`. Nothing restarts; `index.html` is read per request.
   `DOCKER_CONFIG` from your environment (the gate renders with the same four), so every setting comes from `.env`.
   Exporting `DATA_ROOT`, `TAG` or a `BETA_...` value in your shell changes nothing; edit `.env` and rerun the gate.
 - **Logs:** `scripts/beta/beta-compose.sh logs --tail 100 api`. Access logs carry no query strings or addresses by design.
-- **No rebuild runs here.** `WEEKLY_REBUILD_PAUSED=1` and there is no rebuild container. New routing data always comes
-  from home as a bundle.
+- **No rebuild runs here.** There is no rebuild container, and `WEEKLY_REBUILD_PAUSED=1` is set so that a rebuild
+  worker started by mistake would only record a pause. New routing data always comes from home as a bundle. Expected,
+  and not a fault: the worker's schedule still queues the weekly tick, and with no rebuild worker to take it one
+  `weekly_rebuild` job waits on the `rebuild` queue (its queueing lock keeps it to one), and `check_operations` and
+  the admin's operations page list `weekly_rebuild` as stale. Do not start a rebuild worker to clear either.
+- **`scripts/boot/` is for the home machine only.** Never install its unit or run `start-stack.sh` here (step 1).
 - **What the bundle holds** (sizes measured 2026-10-04): the four routing graphs' `tiles.tar` and sqlite files 2.2 GB
   (standard 611 MB, no-trail 450 MB, ebike 611 MB, weekend 611 MB), the Photon index 742 MB, elevation 310 MB, the base map
   298 MB, the database dump 207 MB (that figure still held the stress-tile cache, which is no longer shipped, so it is

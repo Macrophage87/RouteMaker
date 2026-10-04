@@ -320,8 +320,8 @@ def check_runtime_settings(services: dict) -> list[str]:
     for name in ("api", "worker", "migrate"):
         if name in services and _env(services[name]).get("WEEKLY_REBUILD_PAUSED") != "1":
             problems.append(
-                f"{name}: WEEKLY_REBUILD_PAUSED must be 1 "
-                "(no rebuild worker exists to take the job)"
+                f"{name}: WEEKLY_REBUILD_PAUSED must be 1 (a rebuild started here by mistake "
+                "must only record a pause; nothing builds on the beta's shared host)"
             )
 
     photon = services.get("photon")
