@@ -71,7 +71,7 @@ test("the standing hint names the zooms from STRESS_ZOOMS and the zoom the map i
 test("rendered: the notice as a status, then the hint", () => {
   const html = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 11.2, shown: true }));
   assert.match(html, /^<p class="notice" role="status">Zoom in to see traffic stress on roads\./);
-  assert.match(html, /<p class="hint">Zoomed out, only traffic-free paths and trails are shown\./);
+  assert.match(html, /<p class="hint">Zoomed out, only the longer traffic-free paths and trails are shown./);
   // The hint rendered is the one for the map's own zoom (round-1 mutant F08).
   assert.match(html, /The map is at zoom 11\.<\/p><p class="hint">Roads closed to cars/);
   const street = renderToStaticMarkup(createElement(StressZoomNotes, { zoom: 14, shown: true }));
