@@ -752,7 +752,7 @@ def _twin_down(variant: str) -> bool:
     return _offroad_down() if variant == Variant.OFFROAD.value else _weekend_down()
 
 
-def _is_promoted(variant: str) -> bool:
+def _promoted_row(variant: str) -> bool:
     """Whether a build of this variant has been promoted: its settings row
     exists. A deployment before its first rebuild with the graph, or after a
     rollback that withdrew it, has none."""
@@ -762,7 +762,17 @@ def _is_promoted(variant: str) -> bool:
 
 
 def _weekend_is_promoted() -> bool:
-    return _is_promoted(Variant.WEEKEND.value)
+    return _promoted_row(Variant.WEEKEND.value)
+
+
+def _offroad_is_promoted() -> bool:
+    return _promoted_row(Variant.OFFROAD.value)
+
+
+def _is_promoted(variant: str) -> bool:
+    if variant == Variant.OFFROAD.value:
+        return _offroad_is_promoted()
+    return _weekend_is_promoted()
 
 
 def _mark_weekend(ok: bool) -> None:
@@ -1538,8 +1548,8 @@ def move_zoo_points(points: list[list[float]]) -> tuple[list[list[float]], list[
         moved.append(
             {
                 "index": index,
-                "from": [round(lon, 6), round(lat, 6)],
-                "to": [round(target[0], 6), round(target[1], 6)],
+                "asked": [round(lon, 6), round(lat, 6)],
+                "routed": [round(target[0], 6), round(target[1], 6)],
                 "reason": "zoo_racks",
                 "note": ZOO_NOTE,
             }

@@ -49,6 +49,8 @@ CONTRACT_KEYS = {
     # Additive, PUBLIC-DIALS (tests/test_route_dials.py).
     "facility_m",
     "stress_adjustments",
+    # Additive, NO-BIKE-PATHS: the trip points the planner moved (the Zoo's).
+    "moved_points",
     "dials",
     "hills_seek",
     "hills_avoid",

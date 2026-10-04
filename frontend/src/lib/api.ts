@@ -245,7 +245,9 @@ export interface RouteResponse {
   /** On a candidate: how far past the rider's target distance it is (OWNER-DECISIONS 271). */
   over_target_m?: number | null;
   preset: PresetId;
-  variant: "standard" | "no-trail" | "ebike" | "weekend";
+  variant: "standard" | "no-trail" | "ebike" | "weekend" | "offroad";
+  /** Trip points the planner moved: one inside the National Zoo goes to its bike racks. */
+  moved_points?: { index: number; asked: LonLat; routed: LonLat; reason: "zoo_racks"; note: string }[];
   geometry: { type: "LineString"; coordinates: LonLat[] };
   distance_m: number;
   duration_s: number;

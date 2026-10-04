@@ -743,13 +743,15 @@ class DescriptionEntryOut(Schema):
     220: blind cyclists, many riding as tandem stokers, need the route in words).
     Stretches, one street at one stress tier and facility, run end to end from 0;
     a `junction` is a flagged junction that is not a turn, at a point, and a
-    `via` is where a via point is reached (`Stop 1`, as the points list calls it).
+    `via` is where a via point is reached (`Stop 1`, as the points list calls it);
+    a `walk` is a short stretch to walk the bicycle over (a kept
+    `bicycle=dismount` connector; OWNER-DECISIONS 291(5)).
     Distances are along the route, scaled to `distance_m`. `text` is one plain
     sentence, US units first with the metric once, for reading aloud; the other
     fields are the same facts for a client that words them itself. Additive:
     older clients ignore it, and it is null where it could not be built."""
 
-    kind: Literal["stretch", "junction", "via"]
+    kind: Literal["stretch", "junction", "via", "walk"]
     from_m: int
     to_m: int
     from_mi: float
@@ -792,9 +794,20 @@ class DescriptionEntryOut(Schema):
     )
 
 
+class MovedPointOut(Schema):
+    """A trip point the planner moved (OWNER-DECISIONS 291(4)): one inside the
+    National Zoo goes to its bike racks, so a route to the Zoo ends there."""
+
+    index: int = Field(description="The point's place in `points`, from 0.")
+    asked: list[float] = Field(description="[lon, lat] as asked.")
+    routed: list[float] = Field(description="[lon, lat] as routed.")
+    reason: Literal["zoo_racks"]
+    note: str = Field(description="One plain sentence to show the rider.")
+
+
 class RouteBody(Schema):
     preset: PresetName
-    variant: Literal["standard", "no-trail", "ebike", "weekend"]
+    variant: Literal["standard", "no-trail", "ebike", "weekend", "offroad"]
     geometry: LineString
     distance_m: float
     duration_s: float
@@ -831,6 +844,7 @@ class RouteBody(Schema):
     # junctions, never across a stop. Both lists are sent so the client switches
     # without a second request and the merged sentences are worded in one place.
     description_overview: list[DescriptionEntryOut] | None = None
+    moved_points: list[MovedPointOut] = Field(default_factory=list)
     loop: LoopOut | None = Field(
         default=None, description="Present on a loop: how much of the way back is the way out."
     )
