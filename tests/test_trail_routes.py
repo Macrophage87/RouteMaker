@@ -253,3 +253,105 @@ class TestNameVariants:
         piece(staging, 2, "Grist Mill Trail", 1500, 1000)  # the name the pipeline fills in
         trail_routes.derive_trail_runs(staging)
         assert runs(staging)[1] == pytest.approx(2500, abs=40)
+
+
+def bridge(schema, way, name, start_m, length_m, unpaved=True, **kw):
+    """A bridge candidate (what the pipeline writes for a bridge=* way)."""
+    piece(schema, way, name, start_m, length_m, **kw)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"UPDATE {schema}.segment SET trail_bridge = 3, is_unpaved = %s WHERE osm_way_id = %s",
+            [unpaved, way],
+        )
+
+
+def bridge_state(schema, way) -> tuple:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"SELECT trail_bridge, trail_route, trail_run_m FROM {schema}.segment "
+            "WHERE osm_way_id = %s",
+            [way],
+        )
+        return cursor.fetchone()
+
+
+def set_trail(schema, way, route=0, unpaved=False) -> None:
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"UPDATE {schema}.segment SET trail_route = %s, is_unpaved = %s WHERE osm_way_id = %s",
+            [route, unpaved, way],
+        )
+
+
+@db
+class TestBridges:
+    """A short bridge inside a kept trail takes its trail's status."""
+
+    def test_a_bridge_between_paved_ways_is_judged_as_the_trail(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Grist Mill Trail", 0, 1500)
+        bridge(staging, 2, "Grist Mill Trail", 1500, 50)
+        piece(staging, 3, "Grist Mill Trail", 1550, 1500)
+        set_trail(staging, 1, 3)
+        set_trail(staging, 3, 3)
+        trail_routes.derive_trail_runs(staging)
+        flag, route, run = bridge_state(staging, 2)
+        assert (flag, route) == (1, 3)
+        assert run == pytest.approx(3050, abs=60)
+
+    def test_a_bridge_next_to_an_unpaved_way_is_judged_unpaved(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Dirt Trail", 0, 1500)
+        bridge(staging, 2, "Dirt Trail", 1500, 50)
+        piece(staging, 3, "Dirt Trail", 1550, 1500)
+        set_trail(staging, 1, 0, True)
+        trail_routes.derive_trail_runs(staging)
+        assert bridge_state(staging, 2)[0] == 2
+
+    def test_the_bridge_takes_the_lower_of_its_two_ends(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Same Trail", 0, 3000)
+        bridge(staging, 2, "Same Trail", 3000, 50)
+        piece(staging, 3, "Same Trail", 3050, 3000)
+        set_trail(staging, 1, 3)
+        trail_routes.derive_trail_runs(staging)
+        assert bridge_state(staging, 2)[1] == 0
+
+    def test_a_bridge_at_the_end_of_a_trail_extends_nothing(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Long Trail", 0, 3000)
+        bridge(staging, 2, "Long Trail", 3000, 50)
+        trail_routes.derive_trail_runs(staging)
+        assert bridge_state(staging, 2)[0] == 0
+
+    def test_a_bridge_on_its_own_is_not_kept(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        bridge(staging, 1, "Lone Bridge", 0, 50)
+        trail_routes.derive_trail_runs(staging)
+        assert bridge_state(staging, 1)[0] == 0
+
+    def test_a_long_bridge_is_not_a_short_one(self, segment_schemas) -> None:
+        _live, staging = segment_schemas
+        piece(staging, 1, "Trail", 0, 1500)
+        bridge(staging, 2, "Trail", 1500, 150)
+        piece(staging, 3, "Trail", 1650, 1500)
+        trail_routes.derive_trail_runs(staging)
+        assert bridge_state(staging, 2)[0] == 0
+
+    @pytest.mark.parametrize(
+        ("tags", "candidate"),
+        [
+            ({"bridge": "yes"}, True),
+            ({"bridge": "boardwalk"}, True),
+            ({"bridge": "viaduct"}, True),
+            ({"bridge": "no"}, False),
+            ({}, False),
+        ],
+    )
+    def test_a_bridge_way_is_read_from_its_tag(self, tags, candidate) -> None:
+        assert trail_routes.is_bridge_way(tags) is candidate
+
+    def test_the_cap_is_100_metres(self) -> None:
+        from pipeline.schema import TRAIL_BRIDGE_MAX_M
+
+        assert TRAIL_BRIDGE_MAX_M == 100

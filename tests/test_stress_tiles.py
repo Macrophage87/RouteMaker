@@ -1197,7 +1197,7 @@ class TestCarFree:
 
     def test_the_etag_names_the_column(self, client, roads) -> None:
         etag = client.get(url(*tile_of(*CENTRE, 14)))["ETag"]
-        assert "+cfmstl-v" in etag
+        assert "+cfmsbtl-v" in etag
 
     def test_one_tile_serves_every_ride_time(self, client, roads) -> None:
         """No ride time in the address or the ETag: the pre-draw draws each
@@ -1288,7 +1288,7 @@ class TestMapClass:
 MILE = 1609.344
 
 
-def insert_trail(schema, unpaved, route=0, run_mi=None, car_free=None) -> None:
+def insert_trail(schema, unpaved, route=0, run_mi=None, car_free=None, bridge=0) -> None:
     """One open path in the middle of the tile, on route level `route` and in a
     named run of `run_mi` miles (none when it has no name)."""
     lon, lat = CENTRE[0] - 0.001, CENTRE[1]
@@ -1296,13 +1296,13 @@ def insert_trail(schema, unpaved, route=0, run_mi=None, car_free=None) -> None:
         cursor.execute(
             f"INSERT INTO {schema}.segment (osm_way_id, ordinal, geometry, stress_tier, "
             "stress_rule, is_trail_class, is_unpaved, facility, trail_name, trail_route, "
-            "trail_run_m, car_free_when) VALUES "
+            "trail_run_m, car_free_when, trail_bridge) VALUES "
             "(7, 0, ST_MakeLine(ST_MakePoint(%s, %s), ST_MakePoint(%s, %s)), 1, %s, true, "
-            "%s, 'path', %s, %s, %s, %s)",
+            "%s, 'path', %s, %s, %s, %s, %s)",
             [
                 lon, lat, lon + 0.002, lat, trail_rule("path", OPEN), unpaved,
                 None if run_mi is None else "A Trail", route,
-                None if run_mi is None else round(run_mi * MILE), car_free or [],
+                None if run_mi is None else round(run_mi * MILE), car_free or [], bridge,
             ],
         )  # fmt: skip
 
@@ -1396,7 +1396,29 @@ class TestLongTrails:
         insert_trail(live, False, 0, 0.1)
         assert lines_in(client.get(url(*tile_of(*CENTRE, 11))).content) == 0
 
-    @pytest.mark.parametrize("drop", [["trail_route", "trail_run_m"], ["trail_run_m"]])
+    @pytest.mark.parametrize(
+        ("bridge", "run_mi", "at_z10", "at_z11"),
+        [
+            (0, 2.54, False, False),  # a wooden bridge on its own deck is a hole
+            (1, 2.54, False, True),  # in a paved trail it is judged as the trail is
+            (2, 2.54, False, False),  # between unpaved ways, by the unpaved bar
+            (2, 5.0, False, True),
+            (1, 5.0, True, True),
+            (1, 2.4, False, False),
+        ],
+    )
+    def test_a_short_bridge_is_judged_by_its_trails_surface_not_its_decks(
+        self, client, segment_schemas, bridge, run_mi, at_z10, at_z11
+    ) -> None:
+        live, _ = segment_schemas
+        insert_trail(live, True, 0, run_mi, bridge=bridge)  # a wooden deck: unpaved
+        kept = {z: lines_in(client.get(url(*tile_of(*CENTRE, z))).content) for z in (10, 11)}
+        assert kept == {10: int(at_z10), 11: int(at_z11)}
+
+    @pytest.mark.parametrize(
+        "drop",
+        [["trail_route", "trail_run_m", "trail_bridge"], ["trail_run_m"], ["trail_bridge"]],
+    )
     def test_a_table_without_the_columns_draws_every_trail_as_before(
         self, client, segment_schemas, drop
     ) -> None:
@@ -1411,12 +1433,12 @@ class TestLongTrails:
         for z in (10, 11):
             response = client.get(url(*tile_of(*CENTRE, z)))
             assert lines_in(response.content) == 1
-            assert "+cfms-v" in response["ETag"] or "+cfmst-v" in response["ETag"]
+            assert "+cfmsbtl-v" not in response["ETag"]
 
     def test_the_etag_names_the_columns(self, client, segment_schemas) -> None:
         live, _ = segment_schemas
         insert_trail(live, True, 3, None)
-        assert "+cfmstl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
+        assert "+cfmsbtl-v" in client.get(url(*tile_of(*CENTRE, 10)))["ETag"]
 
     def test_the_overview_index_still_serves_the_long_trails_query(self, live) -> None:
         optional = frozenset({"facility", "car_free_when", *stress_tiles.LONG_TRAIL_COLUMNS})
@@ -1444,4 +1466,4 @@ class TestLongTrails:
         assert "cardinality(car_free_when) > 0" in long_trails_predicate(
             LongTrails(5.0, 8.0, 3), True
         )
-        assert "is_unpaved IS TRUE" in sql
+        assert "trail_bridge = 1 THEN false WHEN trail_bridge = 2 THEN true" in sql

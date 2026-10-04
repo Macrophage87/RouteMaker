@@ -74,6 +74,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             _attr_sources_json(row["stress"]),
             row.get("trail_name"),
             row.get("trail_route", 0),
+            row.get("trail_bridge", 0),
         )
         for row in rows
     ]
@@ -84,7 +85,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
             args = ",".join(
                 cursor.mogrify(
                     "(%s,%s,ST_GeomFromText(%s,4326),%s,%s,%s::jsonb,%s,%s,%s,%s,%s,%s,%s,%s,%s,"
-                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s)",
+                    "%s::text[],%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::jsonb,%s,%s,%s)",
                     (
                         way_id,
                         ordinal,
@@ -111,6 +112,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                         attr_sources,
                         trail_name,
                         trail_route,
+                        trail_bridge,
                     ),
                 )
                 for (
@@ -139,6 +141,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                     attr_sources,
                     trail_name,
                     trail_route,
+                    trail_bridge,
                 ) in batch
             )
             cursor.execute(
@@ -151,7 +154,7 @@ def write_segments(schema: str, rows: Sequence[dict]) -> int:
                      stress_adjustment_id, stress_computed_tier,
                      stress_adjustment_direction, stress_adjustment_category,
                      stress_adjustment_note, stress_adjustment_display, attr_sources,
-                     trail_name, trail_route)
+                     trail_name, trail_route, trail_bridge)
                     VALUES {args}"""
             )
             written += len(batch)

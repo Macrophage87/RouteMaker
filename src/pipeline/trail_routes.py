@@ -24,7 +24,10 @@ from .schema import (
     ROUTE_ANY_BICYCLE,
     ROUTE_LONG_BICYCLE,
     ROUTE_LONG_WALK,
+    TRAIL_BRIDGE_COLUMN,
+    TRAIL_BRIDGE_MAX_M,
     TRAIL_NAME_COLUMN,
+    TRAIL_ROUTE_COLUMN,
     TRAIL_RUN_COLUMN,
     TRAIL_RUN_GAP_M,
     trails_predicate,
@@ -123,6 +126,12 @@ def read_routes(path) -> Routes:
     return Routes(handler.levels, handler.mountain_bike, handler.names)
 
 
+def is_bridge_way(tags: dict[str, str]) -> bool:
+    """Whether the way is a bridge candidate (bridge=yes, boardwalk, viaduct...:
+    anything but "no"); `derive_trail_runs` judges it by its length and its ends."""
+    return tags.get("bridge", "no") not in ("", "no")
+
+
 def way_name(tags: dict[str, str], route_name: str | None = None) -> str | None:
     """The way's OSM name, else the name of the route relation it is in (a way
     that is part of "Grist Mill Trail" and says nothing itself is still one of its
@@ -166,10 +175,65 @@ WHERE s.id = runs.id
 """
 
 
+# A bridge candidate (trail_bridge 3) no longer than the cap, with a drawn trail way
+# at each end (within about 2 m of its first and last point, one of the same name
+# first), takes the lower route and run of the two and their surface. Run after
+# the runs are known. A candidate that qualifies is 1 or 2; the rest go to 0.
+_BRIDGE_END = """
+JOIN LATERAL (
+    SELECT n.{route} AS route, COALESCE(n.{run}, 0) AS run, n.is_unpaved IS TRUE AS unpaved
+    FROM {schema}.segment AS n
+    WHERE n.id <> c.id AND n.{bridge} = 0 AND n.map_class = 'road' AND {trails}
+      AND ST_DWithin(n.geometry, {point}, 0.00002)
+    ORDER BY ({key_n} IS NOT DISTINCT FROM {key_c}) DESC, ST_Distance(n.geometry, {point})
+    LIMIT 1
+) AS {alias} ON true
+"""
+
+
+def judge_bridges(schema: str) -> None:
+    """Set `trail_bridge` on the staging schema's bridge candidates."""
+    from django.db import connection
+
+    validate_schema_name(schema)
+    parts = {
+        "schema": schema,
+        "bridge": TRAIL_BRIDGE_COLUMN,
+        "route": TRAIL_ROUTE_COLUMN,
+        "run": TRAIL_RUN_COLUMN,
+        "trails": trails_predicate(True, True),
+        "key_n": NAME_KEY.format(name="n." + TRAIL_NAME_COLUMN),
+        "key_c": NAME_KEY.format(name="c." + TRAIL_NAME_COLUMN),
+    }
+    first = _BRIDGE_END.format(point="ST_StartPoint(c.geometry)", alias="a", **parts)
+    last = _BRIDGE_END.format(point="ST_EndPoint(c.geometry)", alias="z", **parts)
+    with connection.cursor() as cursor:
+        cursor.execute(
+            f"""
+            UPDATE {schema}.segment AS b
+            SET {TRAIL_ROUTE_COLUMN} = LEAST(e.ra, e.rz),
+                {TRAIL_RUN_COLUMN} = LEAST(e.na, e.nz),
+                {TRAIL_BRIDGE_COLUMN} = CASE WHEN e.ua OR e.uz THEN 2 ELSE 1 END
+            FROM (SELECT c.id, a.route AS ra, z.route AS rz, a.run AS na, z.run AS nz,
+                         a.unpaved AS ua, z.unpaved AS uz
+                  FROM {schema}.segment AS c
+                  {first}
+                  {last}
+                  WHERE c.{TRAIL_BRIDGE_COLUMN} = 3 AND c.map_class = 'road'
+                    AND ST_Length(c.geometry::geography) <= {TRAIL_BRIDGE_MAX_M}) AS e
+            WHERE b.id = e.id
+            """
+        )
+        cursor.execute(
+            f"UPDATE {schema}.segment SET {TRAIL_BRIDGE_COLUMN} = 0 WHERE {TRAIL_BRIDGE_COLUMN} = 3"
+        )
+
+
 def derive_trail_runs(schema: str) -> int:
     """Set `trail_run_m` on every named trail way of the staging schema: the
     length of the run of same-named trail ways it chains into. Returns the
-    number of ways set. Run after `write_segments`, which writes the names."""
+    number of ways set; then the short bridges between trail ways are judged
+    (`judge_bridges`). Run after `write_segments`, which writes the names."""
     from django.db import connection
 
     validate_schema_name(schema)
@@ -184,4 +248,6 @@ def derive_trail_runs(schema: str) -> int:
                 trails=trails_predicate(True, True),
             )
         )
-        return cursor.rowcount
+        set_runs = cursor.rowcount
+    judge_bridges(schema)
+    return set_runs

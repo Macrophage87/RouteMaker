@@ -642,7 +642,7 @@ no live segment table yet is 404 with `no-store`, which the front end reads as
 
 | Zoom | What is drawn | Measured on a copy of the promoted build, 2026-09-28 |
 | --- | --- | --- |
-| 10-11 | only the long traffic-free paths and trails, roadside trails and car-free roads included (`pipeline.schema.trails_predicate`, then `long_trails_predicate`: below); one feature per class, simplified | miles of path drawn, region-wide (Columbia and Patapsco box): z10-11 before 5,461 (311), z11 now 1,051 (17), z10 now 907 (15); from the 2026-10-03 build, ZOOMED-TRAILS-dev.md |
+| 10-11 | only the long traffic-free paths and trails, roadside trails and car-free roads included (`pipeline.schema.trails_predicate`, then `long_trails_predicate`: below); one feature per class, simplified | miles of path drawn, region-wide (Columbia and Patapsco box): z10-11 before 5,461 (311), z11 now 1,052 (17), z10 now 907 (15); from the 2026-10-03 build, ZOOMED-TRAILS-dev.md |
 | 12-13 | those, and the roads at LTS 3 and above, Avoid and the roads bikes may not use included (`pipeline.schema.busy_predicate`); one feature per class, simplified | not yet measured |
 | 14-16 | every segment, the quiet streets (LTS 1-2) and footways too | z14: 8,190 tiles, 49 MB, at most 125 KB (2026-09-28) |
 
@@ -679,12 +679,18 @@ and its siblings). An unknown surface is paved. The z10 and z11 tiles are two
 levels (`core.stress_tiles.TRAILS` and `TRAILS_NEAR`); the lines are drawn
 thinner there too (`ZOOMED_OUT_SCALE` in `frontend/src/stressStyle.js`).
 
+A short bridge (bridge=* other than no, at most `TRAIL_BRIDGE_MAX_M`, 100 m) with a
+trail way at each end is judged as its trail is, whatever its deck's surface
+(`segment.trail_bridge`: 1 between paved ways, 2 where either is unpaved), so a
+wooden bridge does not punch a hole in a paved trail; it keeps no bridge on its
+own and extends no trail.
+
 These are **segment columns the rebuild writes** (`trail_name`, `trail_route`,
-`trail_run_m`; `pipeline.trail_routes` reads the route relations from the
+`trail_run_m`, `trail_bridge`; `pipeline.trail_routes` reads the route relations from the
 source extract and chains the runs in the staging schema). Until a rebuild
 has promoted them the tiles keep every path and trail at z10-11, as before:
-the rule applies only to a live table that has both `trail_route` and
-`trail_run_m`, which the ETag names (`t`, `l`), so deploying the api and
+the rule applies only to a live table that has `trail_route`, `trail_run_m` and
+`trail_bridge`, which the ETag names (`t`, `l`, `b`), so deploying the api and
 running the pre-draw before the rebuild is safe and changes nothing; the
 next rebuild's pre-draw draws the thinned tiles. Route relations and names
 are OSM's, cited with the rest of the map's data.

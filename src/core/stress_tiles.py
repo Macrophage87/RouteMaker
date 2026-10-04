@@ -91,6 +91,7 @@ from pipeline.schema import (
     MAP_CLASS_COLUMN,
     MOTOR_ONLY_RULE,
     SEPARATE_BIKEWAY_COLUMN,
+    TRAIL_BRIDGE_COLUMN,
     TRAIL_NETWORK_FACILITY,
     TRAIL_ROUTE_COLUMN,
     TRAIL_RUN_COLUMN,
@@ -282,13 +283,13 @@ OPTIONAL_EXPRESSIONS = {
 # for it.
 FALLBACKS = {"facility": TRAIL_NETWORK_FACILITY}
 
-# The two columns the long-trails rule reads (OWNER-DECISIONS 375, 377), which the
+# The three columns the long-trails rule reads (OWNER-DECISIONS 375, 377), which the
 # rebuild writes from the OSM route relations and way names
 # (`pipeline.trail_routes`). Not carried in a tile: they only choose which ways
 # the z10-11 tiles hold. A table promoted before them has neither, and its
 # zoomed-out tiles keep every path and trail, as they did; the rule applies
 # only where both are there. A data rebuild adds them; nothing else does.
-LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN)
+LONG_TRAIL_COLUMNS = (TRAIL_ROUTE_COLUMN, TRAIL_RUN_COLUMN, TRAIL_BRIDGE_COLUMN)
 
 _MERGED = """
 WITH bounds AS (SELECT ST_TileEnvelope(%(z)s, %(x)s, %(y)s) AS env),
@@ -455,6 +456,7 @@ ETAG_LETTERS = {
     CAR_FREE_COLUMN: "c",
     MAP_CLASS_COLUMN: "m",
     SEPARATE_BIKEWAY_COLUMN: "s",
+    TRAIL_BRIDGE_COLUMN: "b",
     TRAIL_ROUTE_COLUMN: "t",
     TRAIL_RUN_COLUMN: "l",
 }

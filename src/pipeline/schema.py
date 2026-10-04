@@ -227,6 +227,18 @@ def trails_predicate(has_facility: bool, has_car_free: bool = False) -> str:
 TRAIL_NAME_COLUMN = "trail_name"
 TRAIL_ROUTE_COLUMN = "trail_route"
 TRAIL_RUN_COLUMN = "trail_run_m"
+# A short bridge inside a kept trail is kept with it, whatever its surface
+# (OWNER-DECISIONS 375; the orchestrator's decision after the Grist Mill Trail's
+# two wooden bridges, `surface=wood`, left holes in a paved trail at z11). A way
+# tagged bridge=* (not "no") no longer than TRAIL_BRIDGE_MAX_M, with a trail way at
+# each end, takes the lower route level and run of the two and is judged on their
+# surface: `trail_bridge` 1 for a bridge between paved trail ways, 2 where either
+# is unpaved, 0 for every other way, and 3 only transiently, a candidate the rebuild
+# has not yet judged (`pipeline.trail_routes.derive_trail_runs`). It keeps no bridge
+# on its own (both ends must be trail ways) and extends no trail (it is kept only
+# if both of them are).
+TRAIL_BRIDGE_COLUMN = "trail_bridge"
+TRAIL_BRIDGE_MAX_M = 100
 ROUTE_ANY_BICYCLE = 1
 ROUTE_LONG_WALK = 2
 ROUTE_LONG_BICYCLE = 3
@@ -273,8 +285,13 @@ def long_trails_predicate(rule: LongTrails, car_free: bool = False) -> str:
     paved_m = round(rule.paved_run_mi * METRES_PER_MILE)
     unpaved_m = round(rule.unpaved_run_mi * METRES_PER_MILE)
     run = f"COALESCE({TRAIL_RUN_COLUMN}, 0)"
+    # A bridge is judged on its trail's surface, not its own deck's.
+    unpaved = (
+        f"(CASE WHEN {TRAIL_BRIDGE_COLUMN} = 1 THEN false WHEN {TRAIL_BRIDGE_COLUMN} = 2 "
+        "THEN true ELSE is_unpaved IS TRUE END)"
+    )
     long = (
-        f"(CASE WHEN is_unpaved IS TRUE "
+        f"(CASE WHEN {unpaved} "
         f"THEN ({TRAIL_ROUTE_COLUMN} >= {rule.unpaved_route_min} OR {run} >= {unpaved_m}) "
         f"ELSE ({TRAIL_ROUTE_COLUMN} >= {PAVED_ROUTE_MIN} OR {run} >= {paved_m}) END)"
     )
@@ -453,6 +470,9 @@ CREATE TABLE {schema}.segment (
     trail_name      text,
     trail_route     smallint    NOT NULL DEFAULT 0 CHECK (trail_route BETWEEN 0 AND 3),
     trail_run_m     integer,
+    -- A short bridge in a kept trail (`TRAIL_BRIDGE_MAX_M`): 1 between paved trail
+    -- ways, 2 where either is unpaved, 0 otherwise.
+    trail_bridge    smallint    NOT NULL DEFAULT 0 CHECK (trail_bridge BETWEEN 0 AND 3),
     CONSTRAINT segment_key UNIQUE (osm_way_id, ordinal)
 );
 

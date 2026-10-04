@@ -1694,6 +1694,9 @@ def build_handlers(
                         if mountain_bike
                         else trail_routes.way_name(way.tags, context.route_names.get(way.osm_id)),
                         trail_route=0 if mountain_bike else context.trail_routes.get(way.osm_id, 0),
+                        trail_bridge=3
+                        if trail_routes.is_bridge_way(way.tags) and not mountain_bike
+                        else 0,
                     )
                 )
         context.rows = rows
