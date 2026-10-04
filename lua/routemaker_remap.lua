@@ -381,9 +381,13 @@ function M.remap_way(tags, derived)
   -- trail's use from its highway class and ignores `service` there, so the
   -- tier-5 entry charge cannot reach it, and `highway` may not be rewritten.
   --
-  -- `bicycle=no` alone does not close a way that carries a mountain-bike
-  -- rating, and nearly every singletrack way does: see `M.strip_mtb_ratings`,
-  -- which runs last, below, once every bicycle key has been decided.
+  -- `bicycle=no` alone does not close every way. Upstream lets a directional
+  -- key decide its own direction over plain `bicycle`, so the directions are
+  -- closed too, last, below (`M.close_both_directions`). And a way that carries
+  -- a mountain-bike rating, as nearly every singletrack way does, is reopened
+  -- by Valhalla's C++ parser after the transform: lua/graph.lua strips the
+  -- ratings from whatever upstream's transform leaves closed
+  -- (`M.strip_ratings_if_closed`).
   if derived.no_bicycle then
     out.bicycle = "no"
   end
@@ -522,10 +526,35 @@ function M.remap_way(tags, derived)
     out.access = M.CEMETERY_ACCESS
   end
 
-  -- Last, so it sees every bicycle key the lines above settled.
-  M.strip_mtb_ratings(tags, out)
+  -- Last, so no line above can grant a direction back: the conditional-access
+  -- resolution writes `bicycle:forward` / `:backward` from OSM's own
+  -- `bicycle=no` + `bicycle:conditional=yes @ ...`.
+  if derived.no_bicycle then
+    M.close_both_directions(out)
+  end
 
   return out
+end
+
+-- `rm:no_bicycle` closes both directions, whatever else the way says.
+--
+-- `bicycle=no` is not upstream's last word on a direction. Its transform reads
+-- `bicycle:forward`, then `vehicle:forward`, over plain `bicycle`, and before
+-- that `oneway:bicycle=no`, `cycleway=opposite*` and the `cycleway:*` lane
+-- tables can each set a direction open. So a singletrack way OSM also tags
+-- `bicycle:forward=yes`, `oneway=yes` + `oneway:bicycle=no` or
+-- `cycleway=opposite_lane` kept that direction open under `bicycle=no` alone
+-- (SINGLETRACK-review-r0, finding 8). No singletrack or CBD sidewalk carries
+-- any of them today; the NO-BIKE-PATHS rules will reach ways that do.
+--
+-- Writing both directional keys is the whole remedy. Upstream applies them
+-- after every one of those grants (graph_upstream.lua's `:forward` and
+-- `:backward` overrides follow the oneway and cycleway handling), and nothing
+-- after them sets bicycle access true: the later lines only swap the two
+-- directions (`oneway=-1`, `oneway:bicycle=-1`) or close them.
+function M.close_both_directions(out)
+  out["bicycle:forward"] = "no"
+  out["bicycle:backward"] = "no"
 end
 
 -- Mountain-bike ratings reopen a closed way, in Valhalla's C++ and not its Lua.
@@ -533,12 +562,13 @@ end
 -- Valhalla 3.5.1's PBF parser reads `mtb:scale`, `mtb:scale:imba`,
 -- `mtb:scale:uphill` and `mtb:description` itself, after the Lua transform has
 -- run, and any of them, whatever its value, `0` included, sets bicycle access
--- on the way. It overrides `bicycle=no`, `bicycle=none`, `access=no` and
--- `vehicle=no`, on a path, footway, track or service road alike. Upstream's
--- graph.lua never reads these keys (only bare `mtb`, which does not reopen
--- anything), so neither this remap's suites nor `supported_keys.txt`, which is
--- extracted from that file, could see it. Only a real tile build shows it
--- (tests/test_tile_build_access.py).
+-- on the way, in each direction a one-way leaves to bicycles (a one-way's reverse
+-- stays closed). It overrides `bicycle=no`, `bicycle=none`,
+-- `access=no` and `vehicle=no`, on a path, footway, track or service road
+-- alike. Upstream's graph.lua never reads these keys (only bare `mtb`, which
+-- does not reopen anything), so neither this remap's suites nor
+-- `supported_keys.txt`, which is extracted from that file, could see it. Only a
+-- real tile build shows it (tests/test_tile_build_access.py).
 --
 -- That is why `rm:no_bicycle=singletrack` (OWNER-DECISIONS 90, 91, 111) never
 -- reached the live graphs. `routemaker.singletrack` picks a way *by* its
@@ -546,68 +576,49 @@ end
 -- way again from the same rating. 753 of the 920 singletrack ways (461 km) were
 -- routable in the 2026-10-03 build. The other 167 were closed only because
 -- they also carry `foot=no`, so upstream's transform drops them before the
--- parser gets to them.
+-- parser gets to them. 27 OSM-tagged `bicycle=no` / `access=no` rated ways had
+-- been reopened the same way.
 --
--- So wherever the remap's output leaves a way closed to bicycles both ways,
--- every `mtb:*` key is removed. It is OSM's own closure as much as ours: 27
--- OSM-tagged `bicycle=no` / `access=no` ways in the region had been reopened
--- the same way. A way open to bicycles keeps its ratings untouched, so the C&O
--- towpath keeps its `mtb:scale:imba=0`. The edge is closed to bicycles, so the
--- rating had nothing left to price, and no other mode reads it.
+-- So lua/graph.lua calls this on the table upstream's transform returns, which
+-- is the last thing the parser sees. Upstream has already settled access by
+-- then, so its own `bike_forward` and `bike_backward` say whether the way is
+-- closed, with no second reading of the access tags to drift from it. Where
+-- either direction is closed, every `mtb:*` key is removed, and the tile
+-- carries exactly the access upstream's transform decided.
+--
+-- One direction closed counts as closed. With the rating left on, the parser
+-- reopens a direction `bicycle:forward=no` or `bicycle:backward=no` closed,
+-- which is what stock Valhalla does. Without it, the tile holds
+-- upstream's reading: the closed direction stays closed and the open one stays
+-- open. "Closed" is anything but "true", as the parser reads it: a value
+-- upstream's tables do not know leaves `bike_forward` unset, which the parser
+-- takes as no access.
+--
+-- What the rating costs where it is removed: besides access, the parser also
+-- reads a rating as the edge's surface. An open dirt path rated `mtb:scale=2`
+-- gets the surface class `path`, and `dirt` without the rating. So the
+-- open direction of a one-way rated trail is classed by its `surface` tag
+-- alone. That is the one strip access did not need: the parser keeps a
+-- one-way's reverse closed whatever the rating (tests/test_tile_build_access.py),
+-- but upstream's output does not say which tag closed a direction, and reading
+-- that back out of the tags is the second reading of access this is built to
+-- avoid. A way open both ways is untouched, ratings and surface class: the C&O
+-- towpath keeps its `mtb:scale:imba=0`.
 M.MTB_RATING_PREFIX = "mtb:"
 
--- What upstream's `bicycle` table reads as false, and its `access` table.
-M.BICYCLE_CLOSED = { no = true, none = true }
-M.ACCESS_CLOSED = {
-  no = true,
-  agricultural = true,
-  discouraged = true,
-  forestry = true,
-  emergency = true,
-  psv = true,
-}
-
-local function merged(tags, out, key)
-  local value = out[key]
-  if value == M.REMOVE then return nil end
-  if value ~= nil then return value end
-  return tags[key]
-end
-
---- Whether the way, with the remap's changes applied, is closed to bicycles
--- in both directions under upstream's own reading.
---
--- In upstream's order of precedence: a directional bicycle key decides its own
--- direction, then plain `bicycle`; with neither, a cycleway key grants access,
--- and otherwise a way-level `vehicle=no` or a closing `access` value bars it.
--- A way with no statement at all is *not* closed here, even where its class is
--- closed by default (a footway): there a rating is the only evidence of riding,
--- and upstream reads it as that on purpose.
-function M.bicycle_closed(tags, out)
-  out = out or {}
-  local function closed(side)
-    local value = merged(tags, out, "bicycle:" .. side)
-    if value ~= nil then return M.BICYCLE_CLOSED[value] == true end
-    value = merged(tags, out, "bicycle")
-    if value ~= nil then return M.BICYCLE_CLOSED[value] == true end
-    for _, key in ipairs(M.CYCLEWAY_KEYS) do
-      if merged(tags, out, key) ~= nil then return false end
-    end
-    if merged(tags, out, "vehicle") == "no" then return true end
-    local access = merged(tags, out, "access")
-    return access ~= nil and M.ACCESS_CLOSED[access] == true
-  end
-  return closed("forward") and closed("backward")
-end
-
---- Remove every mountain-bike rating from a way the remap leaves closed.
-function M.strip_mtb_ratings(tags, out)
-  if not M.bicycle_closed(tags, out) then return end
-  for key in pairs(tags) do
+--- Remove every `mtb:*` key from upstream's output when either direction is
+-- closed to bicycles. Takes and changes the table upstream's `ways_proc`
+-- returned; returns whether it removed anything.
+function M.strip_ratings_if_closed(kv)
+  if kv.bike_forward == "true" and kv.bike_backward == "true" then return false end
+  local keys = {}
+  for key in pairs(kv) do
     if type(key) == "string" and key:sub(1, #M.MTB_RATING_PREFIX) == M.MTB_RATING_PREFIX then
-      out[key] = M.REMOVE
+      keys[#keys + 1] = key
     end
   end
+  for _, key in ipairs(keys) do kv[key] = nil end
+  return #keys > 0
 end
 
 -- Directional conditional access, for the parkway reversal.

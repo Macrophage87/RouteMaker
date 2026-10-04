@@ -8,6 +8,13 @@
 #
 #   scripts/check_tile_build_access.sh [image]
 #
+# ROUTEMAKER_REQUIRE_TILE_BUILD=1 is set inside the container: it is what makes
+# a missing Valhalla binary a failure rather than a skip, and the documented way
+# to force tests/test_tile_build_access.py anywhere it must not skip.
+#
+# Run it before deploying any change to lua/, valhalla/ or the image's Valhalla
+# (docs/OPERATIONS.md, "Bicycle closures in the tiles"). About 2 s.
+#
 # Exit 0: every closure held. 1: at least one case failed. 2: missing binaries.
 set -euo pipefail
 

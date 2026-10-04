@@ -919,45 +919,49 @@ check("singletrack is bicycle=no",
 check("an unmarked dirt path is not",
   M.remap_way({ highway = "path", surface = "dirt" }, { is_trail_class = true, stress_tier = 1 }).bicycle == nil)
 
--- Valhalla's C++ parser reopens a way from any mtb:* rating, whatever bicycle
--- says (M.strip_mtb_ratings; tests/test_tile_build_access.py builds the tiles).
+-- rm:no_bicycle closes each direction too, so no directional grant upstream
+-- reads ahead of plain `bicycle` can reopen one (M.close_both_directions).
 local cct = {
   highway = "path", bicycle = "yes", foot = "yes", surface = "dirt", ["mtb:scale"] = "2",
-  ["mtb:scale:imba"] = "2", ["mtb:scale:uphill"] = "1", ["mtb:description"] = "rocky", mtb = "yes",
+  ["bicycle:forward"] = "yes", oneway = "yes", ["oneway:bicycle"] = "no", cycleway = "opposite",
 }
 local closed_cct = M.remap_way(cct, { no_bicycle = "singletrack", is_trail_class = true, stress_tier = 1, facility = "path" })
-for _, key in ipairs({ "mtb:scale", "mtb:scale:imba", "mtb:scale:uphill", "mtb:description" }) do
-  check("closed singletrack loses " .. key, closed_cct[key] == M.REMOVE)
+check("closed singletrack closes the forward direction", closed_cct["bicycle:forward"] == "no",
+  tostring(closed_cct["bicycle:forward"]))
+check("and the backward direction", closed_cct["bicycle:backward"] == "no",
+  tostring(closed_cct["bicycle:backward"]))
+local closed_cbd = M.remap_way({ highway = "footway", footway = "sidewalk", ["bicycle:backward"] = "yes" },
+  { no_bicycle = "cbd_sidewalk", is_trail_class = true })
+check("so does a CBD sidewalk", closed_cbd["bicycle:forward"] == "no" and closed_cbd["bicycle:backward"] == "no")
+local open_cct = M.remap_way(cct, { is_trail_class = true, stress_tier = 1, facility = "path" })
+check("without the mark no direction is written",
+  open_cct["bicycle:forward"] == nil and open_cct["bicycle:backward"] == nil)
+check("the remap leaves the ratings to graph.lua, which reads upstream's verdict",
+  closed_cct["mtb:scale"] == nil)
+
+-- M.strip_ratings_if_closed, on tables shaped like upstream's output.
+local function stripped(kv) M.strip_ratings_if_closed(kv); return kv end
+local rated = function(fwd, bwd)
+  return { bike_forward = fwd, bike_backward = bwd, ["mtb:scale"] = "2", ["mtb:scale:imba"] = "1",
+    ["mtb:scale:uphill"] = "1", ["mtb:description"] = "rocky", mtb = "yes", surface = "dirt" }
 end
-check("but keeps bare mtb, which reopens nothing", closed_cct.mtb == nil)
-check("an open rated trail keeps its rating",
-  M.remap_way(cct, { is_trail_class = true, stress_tier = 1, facility = "path" })["mtb:scale"] == nil)
-check("the towpath keeps mtb:scale:imba=0",
-  M.remap_way({ highway = "path", bicycle = "designated", surface = "dirt", ["mtb:scale:imba"] = "0" },
-    { is_trail_class = true, stress_tier = 1, facility = "path" })["mtb:scale:imba"] == nil)
-check("OSM's own bicycle=no is held closed too",
-  M.remap_way({ highway = "path", bicycle = "no", foot = "yes", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
-check("and bicycle=none",
-  M.remap_way({ highway = "path", bicycle = "none", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
-check("and access=no with no bicycle tag",
-  M.remap_way({ highway = "path", access = "no", foot = "yes", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
-check("and vehicle=no",
-  M.remap_way({ highway = "path", vehicle = "no", foot = "yes", ["mtb:scale"] = "1" }, {})["mtb:scale"] == M.REMOVE)
-check("and both directions closed one key at a time",
-  M.remap_way({ highway = "path", ["bicycle:forward"] = "no", ["bicycle:backward"] = "no", ["mtb:scale"] = "1" },
-    {})["mtb:scale"] == M.REMOVE)
-check("but not one direction alone",
-  M.remap_way({ highway = "path", ["bicycle:forward"] = "no", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
-check("nor access=no with a bicycle grant",
-  M.remap_way({ highway = "path", access = "no", bicycle = "designated", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
-check("nor access=private, which upstream keeps open",
-  M.remap_way({ highway = "track", access = "private", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
-check("nor a footway that says nothing about bicycles",
-  M.remap_way({ highway = "footway", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
-check("nor dismount, which upstream opens",
-  M.remap_way({ highway = "path", bicycle = "dismount", ["mtb:scale"] = "1" }, {})["mtb:scale"] == nil)
-check("a closed way with no rating is left alone",
-  next(M.remap_way({ highway = "path", bicycle = "no", foot = "yes" }, {})) == nil)
+local both_closed = stripped(rated("false", "false"))
+for _, key in ipairs({ "mtb:scale", "mtb:scale:imba", "mtb:scale:uphill", "mtb:description" }) do
+  check("closed both ways loses " .. key, both_closed[key] == nil)
+end
+check("but keeps bare mtb, which reopens nothing", both_closed.mtb == "yes")
+check("and every other key", both_closed.surface == "dirt" and both_closed.bike_forward == "false")
+check("forward closed alone is closed", stripped(rated("false", "true"))["mtb:scale"] == nil)
+check("backward closed alone is closed (a one-way trail)", stripped(rated("true", "false"))["mtb:scale"] == nil)
+check("a direction upstream left unset is closed, as the parser reads it",
+  stripped(rated(nil, "true"))["mtb:scale"] == nil)
+local open_both = stripped(rated("true", "true"))
+check("open both ways keeps every rating", open_both["mtb:scale"] == "2" and open_both["mtb:scale:imba"] == "1"
+  and open_both["mtb:scale:uphill"] == "1" and open_both["mtb:description"] == "rocky")
+check("reports what it did",
+  M.strip_ratings_if_closed(rated("false", "false")) == true
+    and M.strip_ratings_if_closed({ bike_forward = "false", bike_backward = "false" }) == false
+    and M.strip_ratings_if_closed(rated("true", "true")) == false)
 
 -- OWNER-DECISIONS 104: a CBD sidewalk is barred to bicycles, and nothing else is.
 check("a CBD sidewalk is bicycle=no",

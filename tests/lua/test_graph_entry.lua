@@ -300,12 +300,87 @@ check("singletrack reaches the graph closed to bicycles",
 -- routable, so the rating keys must be gone too (tests/test_tile_build_access.py).
 check("and carries no mtb:* rating for the parser to reopen it from",
   single_out["mtb:scale"] == nil, tostring(single_out["mtb:scale"]))
-local _, osm_no_out = transform_way({
-  highway = "path", bicycle = "no", foot = "yes", ["mtb:scale:imba"] = "1",
-})
-check("OSM's own bicycle=no reaches the parser without its rating",
-  osm_no_out.bike_forward == "false" and osm_no_out["mtb:scale:imba"] == nil,
-  tostring(osm_no_out["mtb:scale:imba"]))
+-- The rating comes off wherever upstream's own transform closes a direction,
+-- read from its bike_forward / bike_backward, so every closure upstream knows
+-- holds, whichever tag made it. The review's cases (SINGLETRACK-review-r0,
+-- finding 3) are the ones a re-implementation of upstream's reading missed.
+local rating = { ["mtb:scale"] = "1", ["mtb:scale:imba"] = "1", ["mtb:scale:uphill"] = "1",
+  ["mtb:description"] = "roots" }
+local function rated(tags)
+  local out = {}
+  for k, v in pairs(tags) do out[k] = v end
+  for k, v in pairs(rating) do out[k] = v end
+  return out
+end
+local function no_rating(out)
+  for key in pairs(rating) do if out[key] ~= nil then return false end end
+  return true
+end
+local closed_cases = {
+  { "OSM bicycle=no", { highway = "path", bicycle = "no", foot = "yes" } },
+  { "bicycle=none", { highway = "path", bicycle = "none", foot = "yes" } },
+  { "access=no", { highway = "path", access = "no", foot = "yes" } },
+  { "vehicle=no", { highway = "path", vehicle = "no", foot = "yes" } },
+  { "vehicle:forward=no + vehicle:backward=no",
+    { highway = "path", ["vehicle:forward"] = "no", ["vehicle:backward"] = "no", foot = "yes" } },
+  { "access=no + cycleway=no", { highway = "service", access = "no", cycleway = "no", foot = "yes" } },
+  { "access=no + cycleway:both=no", { highway = "service", access = "no", ["cycleway:both"] = "no", foot = "yes" } },
+  { "access=no + an unknown bicycle value", { highway = "path", access = "no", bicycle = "unknown", foot = "yes" } },
+  { "an untagged footway", { highway = "footway" } },
+  { "bicycle:forward=no alone", { highway = "path", ["bicycle:forward"] = "no", foot = "yes" } },
+  { "oneway=yes + bicycle:forward=no", { highway = "path", oneway = "yes", ["bicycle:forward"] = "no", foot = "yes" } },
+  { "a one-way trail", { highway = "path", oneway = "yes", bicycle = "yes", foot = "yes" } },
+}
+for _, case in ipairs(closed_cases) do
+  local _, unrated_out = transform_way(case[2])
+  local _, rated_out = transform_way(rated(case[2]))
+  check(case[1] .. ": upstream closes a direction unrated",
+    unrated_out.bike_forward ~= "true" or unrated_out.bike_backward ~= "true",
+    tostring(unrated_out.bike_forward) .. "/" .. tostring(unrated_out.bike_backward))
+  check(case[1] .. ": and the rated way reaches the parser without its rating", no_rating(rated_out))
+  check(case[1] .. ": with the same access as unrated",
+    rated_out.bike_forward == unrated_out.bike_forward and rated_out.bike_backward == unrated_out.bike_backward)
+end
+local open_cases = {
+  { "bicycle=yes", { highway = "path", bicycle = "yes", foot = "yes" } },
+  { "access=no + bicycle=designated", { highway = "path", access = "no", bicycle = "designated", foot = "yes" } },
+  { "access=private", { highway = "track", access = "private" } },
+  { "bicycle=dismount", { highway = "path", bicycle = "dismount", foot = "yes" } },
+  { "bicycle=no + oneway=yes + oneway:bicycle=no, which upstream opens",
+    { highway = "path", bicycle = "no", oneway = "yes", ["oneway:bicycle"] = "no", foot = "yes" } },
+}
+for _, case in ipairs(open_cases) do
+  local _, rated_out = transform_way(rated(case[2]))
+  check(case[1] .. ": open both ways and keeps its rating",
+    rated_out.bike_forward == "true" and rated_out.bike_backward == "true" and rated_out["mtb:scale"] == "1",
+    tostring(rated_out.bike_forward) .. "/" .. tostring(rated_out.bike_backward) .. " " .. tostring(rated_out["mtb:scale"]))
+end
+
+-- rm:no_bicycle holds against every grant upstream reads ahead of `bicycle`
+-- (SINGLETRACK-review-r0, finding 8).
+local grants = {
+  { "bicycle:forward=yes", { ["bicycle:forward"] = "yes" } },
+  { "bicycle:backward=designated", { ["bicycle:backward"] = "designated" } },
+  { "vehicle:forward=yes", { ["vehicle:forward"] = "yes" } },
+  { "oneway=yes + oneway:bicycle=no", { oneway = "yes", ["oneway:bicycle"] = "no" } },
+  { "oneway=yes + cycleway=opposite", { oneway = "yes", cycleway = "opposite" } },
+  { "oneway=yes + cycleway=opposite_lane", { oneway = "yes", cycleway = "opposite_lane" } },
+  { "cycleway:both=lane", { ["cycleway:both"] = "lane" } },
+  { "oneway=-1 + bicycle:backward=yes", { oneway = "-1", ["bicycle:backward"] = "yes" } },
+  -- The remap itself resolves this onto bicycle:forward / :backward, so the
+  -- closure has to be written after it (M.remap_conditional_access).
+  { "OSM bicycle=no + bicycle:conditional=yes @ (Sa-Su)",
+    { bicycle = "no", ["bicycle:conditional"] = "yes @ (Sa-Su 00:00-24:00)" } },
+}
+for _, grant in ipairs(grants) do
+  local tags = { highway = "path", foot = "yes", ["mtb:scale"] = "2", ["rm:no_bicycle"] = "singletrack",
+    ["rm:trail_class"] = "yes" }
+  for k, v in pairs(grant[2]) do tags[k] = v end
+  local _, granted_out = transform_way(tags)
+  check("singletrack with " .. grant[1] .. " stays closed both ways",
+    granted_out.bike_forward == "false" and granted_out.bike_backward == "false" and granted_out["mtb:scale"] == nil,
+    tostring(granted_out.bike_forward) .. "/" .. tostring(granted_out.bike_backward))
+end
 local _, towpath_out = transform_way({
   highway = "path", bicycle = "designated", surface = "dirt", ["mtb:scale:imba"] = "0",
   ["rm:trail_class"] = "yes",

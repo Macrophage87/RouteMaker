@@ -627,6 +627,69 @@ def test_singletrack_is_closed_and_the_towpath_is_a_path_either_side_of_lock_21(
     assert drawn[TOWPATH_ABOVE_ID] == drawn[TOWPATH_BELOW_ID] == "road"
 
 
+DIALS_IDS = (
+    WEEKEND_CLOSED_ID,
+    SEPARATE_ROAD_ID,
+    BESIDE_TRAIL_ID,
+    CBD_SIDEWALK_ID,
+    CBD_CYCLE_TRACK_ID,
+    SINGLETRACK_ID,
+    TOWPATH_ABOVE_ID,
+    TOWPATH_BELOW_ID,
+    DIVIDED_NORTH_ID,
+    DIVIDED_SOUTH_ID,
+    ONE_WAY_ID,
+)
+
+
+def test_validate_reads_singletrack_back_from_every_graph_before_the_swap(
+    tmp_path, segment_schemas, states
+) -> None:
+    """The bicycle-closure gate (SINGLETRACK-review-r0, finding 2a), through the
+    rebuild: one pedestrian locate per staged graph, the singletrack among the
+    probes, and the probes left where the post-swap check reads them."""
+    from pipeline.run import CLOSURE_PROBES_REPORT, DISCREPANCY_REPORT_DIR, SINGLETRACK_REPORT
+
+    source = install_source_extract(tmp_path, build_dials_extract)
+    binaries = FakeBinaries()
+    context, report = run_pipeline(
+        source, tmp_path, binaries=binaries, urban=DIALS_IDS, skip=NOT_SWAPPED
+    )
+
+    assert Stage.VALIDATE in report.completed
+    reads = [c for c in binaries.commands("valhalla_service") if c[2] == "locate"]
+    assert sorted(c[1] for c in reads) == sorted(str(p) for p in context.build_configs.values())
+    for command in reads:
+        request = json.loads(command[3])
+        assert request["costing"] == "pedestrian"
+        assert len(request["locations"]) == 1, "the fixture has one singletrack way"
+    reports = context.work_dir / DISCREPANCY_REPORT_DIR
+    assert (reports / SINGLETRACK_REPORT).read_text() == f"{SINGLETRACK_ID}\n"
+    assert (
+        (reports / CLOSURE_PROBES_REPORT)
+        .read_text()
+        .splitlines()[1]
+        .startswith(f"{SINGLETRACK_ID},")
+    )
+
+
+def test_a_graph_that_reopens_singletrack_is_not_swapped_in(
+    tmp_path, segment_schemas, states
+) -> None:
+    """What the 2026-10-03 build did: every Lua check passed and Valhalla's
+    parser reopened the singletrack from its rating. The rebuild now stops at
+    VALIDATE, names the way, and the swap never runs."""
+    source = install_source_extract(tmp_path, build_dials_extract)
+    binaries = FakeBinaries(reopened=frozenset({SINGLETRACK_ID}))
+
+    with pytest.raises(RebuildFailed) as caught:
+        run_pipeline(source, tmp_path, binaries=binaries, urban=DIALS_IDS)
+
+    assert caught.value.stage is Stage.VALIDATE
+    assert f"way {SINGLETRACK_ID}" in str(caught.value.cause)
+    assert not any((tmp_path / "tiles").glob("*/current")), "nothing was promoted"
+
+
 def test_the_district_default_and_a_divided_road_reach_the_classifier(
     tmp_path, segment_schemas, states
 ) -> None:

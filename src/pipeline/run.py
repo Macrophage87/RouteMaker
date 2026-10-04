@@ -19,6 +19,7 @@ fails at the loading stage rather than quietly substituting nothing for them.
 from __future__ import annotations
 
 import functools
+import itertools
 import json
 import logging
 import re
@@ -166,6 +167,40 @@ WEEKEND_SENTINEL_EXPECTED = "separated"
 # the permit list of a ride that never entered the park. `assign_way` returns
 # every fraction and says the caller decides; this is the decision.
 MIN_JURISDICTION_FRACTION = 0.10
+
+# The bicycle-closure gate (VALIDATE; SINGLETRACK-review-r0, finding 2a).
+#
+# Valhalla's C++ parser reopened 753 singletrack ways and 27 rated OSM closures
+# after the transform had closed them, every Lua check passed, and the build was
+# promoted. So VALIDATE reads a sample of them back from every staged graph,
+# with a pedestrian `/locate` and each edge's `access.bicycle`, and a graph
+# that leaves any of them open to bicycles is not swapped in.
+#
+# Bounded on purpose: at most this many probes of each kind, read in one
+# one-shot `valhalla_service locate` per graph (four in all), each under its own
+# timeout as well as the rebuild's deadline. That is a few seconds per rebuild.
+CLOSURE_GATE_SINGLETRACKS = 40
+CLOSURE_GATE_OSM_CLOSURES = 20
+CLOSURE_GATE_READ_TIMEOUT_S = 120
+# Written under the rebuild's reports directory for the post-swap probe
+# (scripts/probe_bicycle_closures.py; docs/OPERATIONS.md, "Bicycle closures in
+# the tiles"): the gate's own probe points, and every singletrack way id.
+CLOSURE_PROBES_REPORT = "bicycle-closure-probes.csv"
+SINGLETRACK_REPORT = "singletrack-ways.txt"
+# Keys upstream's transform reads ahead of, or over, plain `bicycle=no`, so a
+# rated OSM closure carrying one may be open by upstream's own reading and is
+# not one the gate can hold the graph to. `service=driveway` with no `access`
+# opens every mode over the bicycle tag, and any `cycleway*` key may set a
+# direction or both.
+_OPENS_OVER_BICYCLE_NO = (
+    "bicycle:forward",
+    "bicycle:backward",
+    "vehicle:forward",
+    "vehicle:backward",
+    "oneway:bicycle",
+    "bicycle_road",
+    "cyclestreet",
+)
 
 
 def _smallint(value: float | None) -> int | None:
@@ -798,6 +833,122 @@ def assert_long_trails(summary, sentinel_ways: Sequence[int], floors: Sequence[i
         )
 
 
+def is_rated_osm_closure(tags: dict[str, str]) -> bool:
+    """A way OSM itself closes to bicycles that carries an `mtb:*` rating, read
+    narrowly enough that upstream's transform certainly keeps it closed.
+
+    The ratings are what the parser reopened such a way from. `bicycle=no` with
+    `foot` not `no` (a `foot=no` way nothing else may use is dropped outright,
+    so it has no edge to read), and none of the keys upstream lets open a
+    direction over `bicycle=no`.
+    """
+    if tags.get("bicycle") != "no" or tags.get("foot") == "no":
+        return False
+    if not any(key.startswith("mtb:") for key in tags):
+        return False
+    if any(key in tags for key in _OPENS_OVER_BICYCLE_NO):
+        return False
+    if tags.get("service") == "driveway":
+        return False
+    return not any(key.startswith("cycleway") for key in tags)
+
+
+def probe_point(coordinates: Sequence[tuple[float, float]]) -> tuple[float, float] | None:
+    """The midpoint of a way's longest segment: on the way's own line, and as
+    far from its end nodes, where other ways' edges meet it, as it can be."""
+    best: tuple[float, tuple[float, float]] | None = None
+    for (lon1, lat1), (lon2, lat2) in itertools.pairwise(coordinates):
+        length = (lon2 - lon1) ** 2 + (lat2 - lat1) ** 2
+        if length > 0 and (best is None or length > best[0]):
+            best = (length, ((lon1 + lon2) / 2, (lat1 + lat2) / 2))
+    return None if best is None else best[1]
+
+
+def _spread(ids, limit: int) -> list[int]:
+    """At most `limit` of `ids`, evenly spaced through them in id order, so the
+    sample is the same for the same extract and reaches across the region."""
+    ordered = sorted(ids)
+    if len(ordered) <= limit:
+        return ordered
+    step = len(ordered) / limit
+    return [ordered[int(index * step)] for index in range(limit)]
+
+
+def closure_probes(context: RebuildContext) -> list[tiles.ClosureProbe]:
+    """The gate's sample: singletrack (the rule's own ways) and rated OSM
+    closures, each bounded, each with a point on its own line."""
+    reference = context.require_reference()
+    by_id = context.ways_by_id or {way.osm_id: way for way in context.ways}
+
+    def walkable(osm_id: int) -> bool:
+        way = by_id.get(osm_id)
+        return way is not None and way.tags.get("foot") != "no"
+
+    singles = [osm_id for osm_id in context.singletracks if walkable(osm_id)]
+    osm = [
+        way.osm_id
+        for way in context.ways
+        if way.osm_id not in context.singletracks
+        and way.osm_id not in reference.bridge_bicycle_legal
+        and is_rated_osm_closure(way.tags)
+    ]
+    probes = []
+    chosen = _spread(singles, CLOSURE_GATE_SINGLETRACKS) + _spread(osm, CLOSURE_GATE_OSM_CLOSURES)
+    for osm_id in chosen:
+        point = probe_point(by_id[osm_id].coordinates)
+        if point is not None:
+            probes.append(tiles.ClosureProbe(osm_id, point[0], point[1]))
+    return probes
+
+
+def write_closure_reports(out_dir: Path, probes, singletracks) -> None:
+    """What the post-swap probe reads (scripts/probe_bicycle_closures.py)."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / CLOSURE_PROBES_REPORT).write_text(
+        "way_id,lon,lat\n" + "".join(f"{p.way_id},{p.lon:.7f},{p.lat:.7f}\n" for p in probes)
+    )
+    (out_dir / SINGLETRACK_REPORT).write_text("".join(f"{w}\n" for w in sorted(singletracks)))
+
+
+def assert_bicycle_closures_reached_the_tiles(readbacks: dict) -> None:
+    """No staged graph may leave a sampled closure open to bicycles.
+
+    And each graph that keeps trails must have found some of them: a read that
+    finds no edge for any probe passes vacuously, which is what a locate in the
+    wrong place or a changed response would look like. The no-trail graph drops
+    every trail-class way, singletrack included, so it is held to the first
+    rule only.
+    """
+    missing = [v.value for v in variants.Variant if v not in readbacks]
+    if missing:
+        raise ValidationFailed(
+            f"no bicycle-closure read-back for {', '.join(missing)}, so nothing says "
+            "those graphs keep singletrack closed"
+        )
+    for variant, readback in readbacks.items():
+        if readback.open_to_bicycles:
+            shown = ", ".join(str(w) for w in readback.open_to_bicycles[:REPORTED_VIOLATIONS])
+            raise ValidationFailed(
+                f"the {variant.value} graph is open to bicycles on "
+                f"{len(readback.open_to_bicycles)} of {readback.probed} ways it must keep "
+                f"closed (singletrack or OSM's own bicycle=no), e.g. way {shown}: "
+                "something reopened them after the transform, as Valhalla's parser did "
+                "from their mtb:* ratings (lua/graph.lua, remap.strip_ratings_if_closed)"
+            )
+        if variant is not variants.Variant.NO_TRAIL and readback.probed and not readback.found:
+            raise ValidationFailed(
+                f"the {variant.value} graph has no edge on any of the {readback.probed} "
+                "bicycle-closure probes, so the read tested nothing"
+            )
+    logger.info(
+        "bicycle closures held in every graph: %s",
+        ", ".join(
+            f"{variant.value} {readback.found}/{readback.probed} found"
+            for variant, readback in readbacks.items()
+        ),
+    )
+
+
 def car_free_tier_1(way, stress_by_way: dict) -> bool:
     """Make a road closed to motor traffic for good tier 1, as the weekend graph
     makes a weekend closure; True when it did.
@@ -877,6 +1028,7 @@ def build_handlers(
     load_overrides: Callable[[], list[overrides.Override]] | None = None,
     disk_usage: Callable | None = None,
     fetch_elevation: Callable[[elevation.TileName, Path], Path] | None = None,
+    sample_closures: Callable[[], dict] | None = None,
 ) -> dict[Stage, Callable[[], None]]:
     """The real handler set, one per stage, with the external dependencies
     injected so the wiring is testable without Valhalla.
@@ -890,6 +1042,11 @@ def build_handlers(
     lookup, the override loader, the disk measurement and the 3DEP fetch - and
     each default is the production implementation.
     """
+    # The closure gate's reads carry their own timeout on top of the deadline,
+    # so a wedged read fails VALIDATE in minutes rather than at hour eight.
+    closure_run = run or functools.partial(
+        _run_command, deadline=context.deadline, timeout=CLOSURE_GATE_READ_TIMEOUT_S
+    )
     run = run or functools.partial(_run_command, deadline=context.deadline)
     state_at = state_at or _state_at
     load_overrides = load_overrides or overrides.load_approved
@@ -898,6 +1055,7 @@ def build_handlers(
     sample_grade = sample_grade or (lambda: _least_grade_across_variants(context, run))
     sample_derived_tag = sample_derived_tag or (lambda: _standard_cycle_lane(context, run))
     sample_weekend_tag = sample_weekend_tag or (lambda: _weekend_cycle_lane(context, run))
+    sample_closures = sample_closures or (lambda: _closures_across_variants(context, closure_run))
 
     def fetch_extract() -> None:
         """Produce this week's extract, or reuse the one on disk, then read it.
@@ -1793,6 +1951,9 @@ def build_handlers(
             _setting("REBUILD_LONG_TRAIL_FLOORS"),
         )
 
+
+        assert_bicycle_closures_reached_the_tiles(sample_closures())
+
     def swap() -> None:
         context.swap_outcome = promotion.perform_swap(
             context.tiles_dir, context.build_id, context.upstreams
@@ -1918,10 +2079,32 @@ def _weekend_cycle_lane(context: RebuildContext, run) -> str | None:
     )
 
 
+def _closures_across_variants(context: RebuildContext, run) -> dict:
+    """Read the gate's probes back from every variant's staged graph, after
+    writing them where the post-swap probe will look for them."""
+    probes = closure_probes(context)
+    try:
+        write_closure_reports(
+            context.work_dir / DISCREPANCY_REPORT_DIR, probes, context.singletracks
+        )
+    except OSError:
+        logger.warning("bicycle-closure probe list not written", exc_info=True)
+    readbacks = {}
+    for variant in variants.Variant:
+        config_path = context.build_configs.get(variant)
+        if config_path is None:
+            continue
+        readbacks[variant] = _read_back(
+            functools.partial(tiles.read_closures, run, config_path, probes)
+        )
+    return readbacks
+
+
 def _run_command(
     command: Sequence[str],
     deadline: float | None = None,
     clock: Callable[[], float] = time.monotonic,
+    timeout: float | None = None,
 ) -> tiles.CommandOutput:
     """Run one of the pipeline's binaries, inside whatever time budget remains.
 
@@ -1944,11 +2127,11 @@ def _run_command(
     text is the argv and the exit status and whose captured output nothing was
     reading. See that class.
     """
-    timeout = None
     if deadline is not None:
-        timeout = deadline - clock()
-        if timeout <= 0:
+        remaining = deadline - clock()
+        if remaining <= 0:
             raise RebuildTimedOut(f"no time left to run {command[0]}")
+        timeout = remaining if timeout is None else min(timeout, remaining)
     try:
         result = subprocess.run(
             command, capture_output=True, text=True, check=True, timeout=timeout

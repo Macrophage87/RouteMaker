@@ -1595,6 +1595,13 @@ hand-run" — and until this command there was no way to fire one. The rebuild i
 a Procrastinate periodic task on its own queue, so the only route to it was
 `python -c` inside the right container with Django set up by hand.
 
+Before firing one for a deploy that changes `lua/`, `valhalla/` or the
+pipeline image, run `scripts/check_tile_build_access.sh` on that commit ("Bicycle
+closures in the tiles", step 1): about 2 s, and it is the only check that sees
+what Valhalla's C++ parser does with the transform's output before a rebuild
+spends hours on it. The rebuild's own VALIDATE gate (step 2) refuses the swap if
+a closure did not hold, and the probes (step 3) follow the router restart.
+
 It **queues** a job and returns; it does not run the rebuild. The `rebuild`
 service is what picks the job up, because that is the container with the
 Valhalla binaries, the data mounts and the eight-hour budget, and it takes it
@@ -2217,6 +2224,124 @@ still do on the closed one. "Still open after the closure" must be 0, and so
 must "shut to the traffic direction as well". It takes about four minutes and
 writes nothing.
 
+## Bicycle closures in the tiles: before, during and after a rebuild
+
+Singletrack (OWNER-DECISIONS 90, 91, 111) is closed to bicycles on every graph,
+and so is OSM's own `bicycle=no`. Until the rebuild after 2026-10-03 neither
+held on a way with a mountain-bike rating: Valhalla 3.5.1's C++ parser reads
+`mtb:scale`, `mtb:scale:imba`, `mtb:scale:uphill` and `mtb:description` after
+the Lua transform and reopens the way from any of them, so 753 singletrack ways
+(286.6 mi [461.3 km]) and 27 rated OSM closures stayed routable while every Lua
+check passed (reports/SINGLETRACK-DIAG-r0). `lua/graph.lua` now strips the
+ratings from whatever upstream's transform leaves closed in either direction.
+Three checks stand between a change to that and a rider on singletrack.
+
+**1. Before the go: the preflight.** On the commit being deployed, from the
+repository root on the host:
+
+```sh
+scripts/check_tile_build_access.sh
+```
+
+It builds a 27-way extract with the pipeline image's own
+`valhalla_build_tiles` and the checkout's `lua/`, serves it on loopback and
+checks each way's bicycle access, direction by direction, then reads the same
+tiles through the rebuild's closure gate. Local image only (`--pull never`), no
+network, 1 GB, a 10-minute cap, the repository read-only; about 2 s. Exit 0:
+every closure held. 1: a case failed, and the line says which. 2: the image has
+no Valhalla. Run it on any deploy that touches `lua/`, `valhalla/` or the
+pipeline image's Valhalla version.
+
+The same test runs under pytest as `tests/test_tile_build_access.py`. It
+**skips** where the Valhalla binaries are not on `PATH`, which is CI and every
+development checkout, so a green CI run says nothing about it. Set
+`ROUTEMAKER_REQUIRE_TILE_BUILD=1` to force it: a missing binary then fails the
+run instead of skipping. That is the documented way to run it inside the
+pipeline image, and the script sets it.
+
+**2. During the rebuild: the closure gate.** VALIDATE, after the tile build and
+before the swap, reads a sample back from every staged graph: up to 40
+singletrack ways and up to 20 rated OSM `bicycle=no` ways, spread evenly by way
+id. It asks each graph once, with a one-shot pedestrian `valhalla_service
+locate`, and reads `access.bicycle` on the probed way's own edges. Pedestrian,
+because a bicycle locate finds no edge on a closed way, which a missed snap
+also produces. Each read has its own 120 s timeout inside the rebuild's budget;
+the four take a few seconds in all. The rebuild fails at VALIDATE, and **does
+not swap**, if:
+
+- any graph is open to bicycles on any probed way: "the weekend graph is open
+  to bicycles on 3 of 60 ways it must keep closed ..., e.g. way 810382238".
+  Something reopened them after the transform. Do not swap by hand; run the
+  preflight on the deployed commit and read `lua/graph.lua` and
+  `remap.strip_ratings_if_closed` against the Valhalla version in the image.
+- a graph that keeps trails (all but no-trail) found **none** of the probed
+  ways: "has no edge on any of the 60 bicycle-closure probes, so the read
+  tested nothing". The probes are no longer on the graph's ways: an extract
+  that changed shape, or a locate that answers differently.
+
+The rated OSM closures are chosen narrowly: `bicycle=no`, `foot` not `no`, an
+`mtb:*` key, and none of the keys upstream lets open a direction over
+`bicycle=no` (`bicycle:forward`/`:backward`, `vehicle:forward`/`:backward`,
+`oneway:bicycle`, any `cycleway*` key, `bicycle_road`, `cyclestreet`,
+`service=driveway`), and never a bridge the crossings fixture rules on. The
+gate writes its probes to `<DATA_ROOT>/rebuild/reports/bicycle-closure-probes.csv`
+and every singletrack way id to `singletrack-ways.txt` beside it, for step 3.
+
+**3. After the swap and the router restart: the probes.** In `rebuild`, which
+has the script, the reports and the routers' addresses:
+
+```sh
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py locate
+```
+
+The gate's probes against the four **serving** routers, one pedestrian locate
+each. Expect `0 open` everywhere and some found on every router but no-trail
+(which drops trails, so `0 found` is right there). `FOUND NONE` on another
+router usually means it was not restarted onto the new build. Then two trips,
+planned through the api as the planner plans them and map-matched on the router
+that served them. `--host` is the first name in the deployment's
+`DJANGO_ALLOWED_HOSTS`:
+
+```sh
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
+  --preset default --from=-77.0063,38.8973 --to=-76.6158,39.3074 \
+  --avoid-ways /data/rebuild/reports/singletrack-ways.txt --host "$HOST"
+docker compose exec -T rebuild python3 scripts/probe_bicycle_closures.py trip \
+  --preset mountain-goat --from=-77.3168,38.8984 --to=-77.3318,38.8798 \
+  --avoid-way 810382238 --host "$HOST"
+```
+
+- Union Station to Penn Station on Default: **0 mi on singletrack**. Before the
+  fix it rode 2.7 mi [4.4 km] of it (Cascade Falls Trail, Lewis and Clark,
+  Garrett's Pass in the Patapsco valley). The route is about 56 mi; expect it
+  to move to roads and paved trails there.
+- Mountain Goat, end to end along the Cross County Trail's way 810382238
+  (`mtb:scale=2`, singletrack): **0 mi on that way**. Before the fix it rode
+  1.2 mi [1.9 km] of it.
+
+Each prints its distance and the distance on the ways to avoid, and exits 1 if
+that is more than nothing.
+
+What the strip changes besides access, so it is not mistaken for a fault:
+
+- **A way closed in one direction only is held to that.** `bicycle:forward=no`
+  or `bicycle:backward=no` keeps its open direction open and its closed one
+  closed, as upstream's transform reads it. With the rating left on, the
+  parser reopened the closed direction, which stock Valhalla still does. A
+  one-way rated trail loses its rating too (its reverse was closed either way).
+- **The rating is also a surface.** The parser classes an edge with a rating as
+  surface `path`: an open dirt path rated `mtb:scale=2` is `path`, unrated
+  `dirt`. Where the rating is stripped the edge is classed by its `surface`
+  tag. A way open both ways keeps its ratings and its class; the C&O towpath
+  above lock 21 (`mtb:scale:imba=0`, `dirt`) is unchanged.
+- **An untagged footway with a rating is closed**, as every other untagged
+  footway is: way 481109137 (concrete, `mtb:scale=0`) was the one such way in
+  the region, open only through its rating.
+- `rm:no_bicycle` (singletrack, CBD sidewalks) writes `bicycle:forward=no` and
+  `bicycle:backward=no` as well as `bicycle=no`, so no directional grant
+  (`bicycle:forward=yes`, `oneway:bicycle=no`, `cycleway=opposite*`) reopens a
+  direction. The NO-BIKE-PATHS rules get that for free by using the same mark.
+
 ## After a rebuild: restart the routers
 
 **`valhalla_service` does not reload tiles.** It opens `mjolnir.tile_extract`
@@ -2234,7 +2359,9 @@ Nothing in the rebuild does this, and there is no check that notices it has not
 been done: the symptom is a deployment whose routes disagree with its own
 segment table, which reads like a conflation bug rather than a missed restart.
 Run it after every successful rebuild and after a rollback, which moves the same
-symlink back.
+symlink back. Then run the post-swap bicycle-closure probes ("Bicycle closures
+in the tiles", step 3): their `locate` run is also the quickest check that each
+router is serving the new build.
 
 The restart is a few seconds of 502s per variant, taken one at a time. Starting
 the new containers against the new build before stopping the old ones — the

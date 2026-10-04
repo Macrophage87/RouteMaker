@@ -686,7 +686,13 @@ class FakeBinaries:
         admin: str = "built",
         timezone: str = "built",
         download: Callable[[Path], None] | None = None,
+        # Ways a `locate` read reports open to bicycles whatever their tags:
+        # what a graph the C++ parser reopened them in would answer.
+        reopened: frozenset[int] = frozenset(),
     ) -> None:
+        self.reopened = frozenset(reopened)
+        # The extract each build config was built from, for `locate`.
+        self.built_from: dict[str, Path] = {}
         self.grade = grade
         self.cycle_lane = cycle_lane
         self.weekend_cycle_lane = weekend_cycle_lane
@@ -758,6 +764,7 @@ class FakeBinaries:
                 destination.write_bytes(source.read_bytes())
             return CommandOutput("", "")
         if name == "valhalla_build_tiles":
+            self.built_from[command[2]] = Path(command[-1])
             config = json.loads(Path(command[2]).read_text())
             tile_dir = Path(config["mjolnir"]["tile_dir"])
             tile_dir.mkdir(parents=True, exist_ok=True)
@@ -768,6 +775,11 @@ class FakeBinaries:
             config = json.loads(Path(command[2]).read_text())
             Path(config["mjolnir"]["tile_extract"]).write_bytes(b"tar")
             return CommandOutput("", "")
+        if name == "valhalla_service" and command[2] == "locate":
+            return CommandOutput(
+                json.dumps(self.locate(command[1], json.loads(command[3]))),
+                "2026/09/17 [INFO] Tile extract successfully loaded with tile count: 12\n",
+            )
         if name == "valhalla_service":
             _config, action, request = command[1:4]
             assert action == "trace_attributes", action
@@ -799,6 +811,35 @@ class FakeBinaries:
             )
         raise AssertionError(f"the pipeline ran a binary the tests do not stand in for: {command}")
 
+    def locate(self, config: str, request: dict) -> list[dict]:
+        """A pedestrian `/locate` against the extract this config was built
+        from: each location answers with the edges of the way it lies on
+        (within a few metres), one per direction, and a bicycle may use them
+        unless the way carries `rm:no_bicycle` or `bicycle=no` - or this
+        instance was told the graph reopened it. A `foot=no` way has no edge,
+        as upstream's transform drops it."""
+        assert request["costing"] == "pedestrian" and request["verbose"] is True, request
+        ways = _extract_ways(self.built_from[config])
+        answers = []
+        for location in request["locations"]:
+            edges = []
+            for way_id, tags, coordinates in ways:
+                if tags.get("foot") == "no" or not _near(location, coordinates):
+                    continue
+                closed = "rm:no_bicycle" in tags or tags.get("bicycle") == "no"
+                bicycle = way_id in self.reopened or not closed
+                edges += [
+                    {
+                        "edge_info": {"way_id": way_id},
+                        "edge": {"forward": forward, "access": {"bicycle": bicycle}},
+                    }
+                    for forward in (True, False)
+                ]
+            answers.append(
+                {"edges": edges or None, "input_lon": location["lon"], "input_lat": location["lat"]}
+            )
+        return answers
+
     def make_database(self, path: Path, key: str, state: str) -> None:
         """Leave what this instance was told the database build leaves.
 
@@ -816,6 +857,44 @@ class FakeBinaries:
 
     def commands(self, name: str) -> list[list[str]]:
         return [c for c in self.calls if Path(c[0]).name == name]
+
+
+def _extract_ways(path: Path) -> list[tuple[int, dict[str, str], list[tuple[float, float]]]]:
+    """Every way in an extract, with its tags and node locations."""
+
+    class Ways(osmium.SimpleHandler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.ways: list = []
+
+        def way(self, way) -> None:
+            coordinates = [(n.lon, n.lat) for n in way.nodes if n.location.valid()]
+            self.ways.append((way.id, {tag.k: tag.v for tag in way.tags}, coordinates))
+
+    handler = Ways()
+    handler.apply_file(str(path), locations=True)
+    return handler.ways
+
+
+def _near(location: dict, coordinates: list[tuple[float, float]], metres: float = 5.0) -> bool:
+    """Whether a location lies within `metres` of a way's line."""
+    import itertools
+    import math
+
+    scale = math.cos(math.radians(location["lat"]))
+    px, py = location["lon"] * scale * 111_320, location["lat"] * 110_540
+    for (lon1, lat1), (lon2, lat2) in itertools.pairwise(coordinates):
+        ax, ay = lon1 * scale * 111_320, lat1 * 110_540
+        bx, by = lon2 * scale * 111_320, lat2 * 110_540
+        dx, dy = bx - ax, by - ay
+        share = (
+            0.0
+            if dx == dy == 0
+            else max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)))
+        )
+        if math.hypot(px - (ax + share * dx), py - (ay + share * dy)) <= metres:
+            return True
+    return False
 
 
 CONTRAFLOW_ONE_WAY_ID = 1200

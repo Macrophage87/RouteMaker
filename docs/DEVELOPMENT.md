@@ -3305,6 +3305,19 @@ file. Refresh it with `scripts/vendor_valhalla_lua.sh`; do not edit it.
 
 Setting `CI=1` turns the suite's missing-interpreter skips into failures.
 
+The Lua suites prove what the transform hands Valhalla, not what the tile says:
+Valhalla's C++ parser reads tags off that table afterwards, and its reading of
+`mtb:*` ratings reopened every rated singletrack way while both suites passed
+(docs/OPERATIONS.md, "Bicycle closures in the tiles"). `tests/test_tile_build_access.py`
+builds and serves real tiles to check that. It needs `valhalla_build_tiles`,
+`valhalla_service` and `osmium`, so it **skips** here and in CI, and `CI=1` does
+not change that. `ROUTEMAKER_REQUIRE_TILE_BUILD=1` does: a missing binary then
+fails the run. Run it in the pipeline image, where it cannot skip:
+
+```sh
+scripts/check_tile_build_access.sh
+```
+
 ## Running the suite twice at once
 
 **A private `PGDATABASE` is enough on its own.** Each Postgres database is its

@@ -122,7 +122,15 @@ end
 function ways_proc(kv, nokeys)
   apply(kv, remap.remap_way(kv, derived_from(kv)))
   strip_namespace(kv)
-  return up_ways(kv, nokeys)
+  local filter, out, polygon, extra = up_ways(kv, nokeys)
+  -- After upstream, not in the remap: Valhalla's C++ parser reopens a way to
+  -- bicycles from any `mtb:*` rating it finds in this table, so the ratings
+  -- come off whatever upstream's own transform has just left closed, judged
+  -- by its own `bike_forward` / `bike_backward` (remap.strip_ratings_if_closed).
+  if filter == 0 and type(out) == "table" then
+    remap.strip_ratings_if_closed(out)
+  end
+  return filter, out, polygon, extra
 end
 
 function nodes_proc(kv, nokeys)
