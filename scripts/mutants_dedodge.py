@@ -658,10 +658,14 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r1 cut short: the stretch read late is judged",
         DD,
-        "            if direct is not None and _cut_short(stretch, ctx, deadline, info):"
+        "                direct is not None and _cut_short(stretch, ctx, deadline, info)"
+        + NL
+        + "            ):"
         + NL
         + "                return trip",
-        "            if direct is not None and _cut_short(stretch, ctx, deadline, info):"
+        "                direct is not None and _cut_short(stretch, ctx, deadline, info)"
+        + NL
+        + "            ):"
         + NL
         + "                pass",
         TD,
@@ -912,12 +916,8 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "plan: a target that fits is still flagged as not fitting",
         RT,
-        '            and refined.get("fits")'
-        + NL
-        + "        ):"
-        + NL
-        + '            refined["limited"] = None',
-        '            and refined.get("fits")' + NL + "        ):" + NL + "            pass",
+        '            refined["no_fit"] = False' + NL + '            refined["limited"] = None',
+        '            refined["no_fit"] = False' + NL + "            pass",
         TP,
     ),
     (
@@ -1173,7 +1173,7 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
     (
         "r1 settle: read on a deadline of its own",
         DD,
-        "        read = refine.analyse(trip, ctx, ctx.deadline)",
+        "        read = refine.analyse(trip, ctx, refine.late_deadline(ctx))",
         "        read = refine.analyse(trip, ctx, routing.Deadline(routing.clock() + 60.0, 35))",
         TD,
     ),
@@ -1437,6 +1437,55 @@ MUTANTS: list[tuple[str, str, str, str, list[str]]] = [
         "            summary[key] = before[key] * (1.0 - share) + after[key]",
         "            summary[key] = before[key] + after[key]",
         TD + TP,
+    ),
+    # --- the release review (correctness S3, mutation X16) -------------------------------------
+    (
+        "S3 settle: the plan's whole deadline",
+        DD,
+        "        read = refine.analyse(trip, ctx, refine.late_deadline(ctx))",
+        "        read = refine.analyse(trip, ctx, ctx.deadline)",
+        TD,
+    ),
+    (
+        "S3 late deadline: no reserve",
+        RF,
+        "    return routing.Deadline(ctx.deadline.at - REFINE_TRACE_RESERVE_S, ctx.deadline.per_call_s)",
+        "    return routing.Deadline(ctx.deadline.at, ctx.deadline.per_call_s)",
+        TD + ["tests/test_longcalm_api.py"],
+    ),
+    (
+        "S3 a reading cut short is made of what was read",
+        "src/core/junctions.py",
+        "        except cut_short as error:" + NL + "            raise ReadingCutShort(",
+        "        except cut_short as error:"
+        + NL
+        + "            continue"
+        + NL
+        + "            raise ReadingCutShort(",
+        ["tests/test_junctions.py"],
+    ),
+    (
+        "S3 the planner does not ask for the cut",
+        RF,
+        "            cut_short=(routing.DeadlineExceeded,),",
+        "            cut_short=(),",
+        ["tests/test_junctions.py"],
+    ),
+    (
+        "S3 the cut is swallowed as no events",
+        RF,
+        "    except junctions.ReadingCutShort as error:"
+        + NL
+        + "        raise routing.DeadlineExceeded(str(error)) from error",
+        "    except junctions.ReadingCutShort:" + NL + "        return None",
+        ["tests/test_junctions.py"],
+    ),
+    (
+        "X16 the no-fit flag cleared without a fit",
+        RT,
+        '        elif refined.get("no_fit") and dodges and dodges["removed"] and refined["fits"]:',
+        '        elif refined.get("no_fit") and dodges and dodges["removed"]:',
+        TP,
     ),
 ]
 

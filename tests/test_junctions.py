@@ -1382,3 +1382,84 @@ class TestTheSegmentTablesDirectionWins:
         assert junctions._with_graph(Road(3), one_way).oneway is True
         two_way = [self.arm(7, True, True)]
         assert junctions._with_graph(Road(3), two_way).oneway is False
+
+
+class TestAReadingTheClockCutsShort:
+    """Combined correctness review, S3: a `/locate` batch the plan's clock cut off is not
+    a batch the router would not answer. `junctions._ask` reports it
+    (`ReadingCutShort`), and the planner's reading made of the junctions read so far is
+    discarded, never remembered for the answer."""
+
+    @staticmethod
+    def raws(n):
+        from types import SimpleNamespace
+
+        return [SimpleNamespace(lon=-77.0 + i * 1e-4, lat=38.9) for i in range(n)]
+
+    def test_a_batch_cut_off_by_the_clock_is_reported(self) -> None:
+        from core import junctions, routing
+
+        calls = []
+
+        def locate(payload):
+            calls.append(payload)
+            if len(calls) == 2:
+                raise routing.DeadlineExceeded("no time left for locate")
+            return [{} for _ in payload["locations"]]
+
+        raws = self.raws(junctions.LOCATE_BATCH + 3)
+        with pytest.raises(junctions.ReadingCutShort):
+            junctions._ask(raws, range(len(raws)), 10, locate, (routing.DeadlineExceeded,))
+
+    def test_a_batch_the_router_will_not_answer_is_left_out_as_before(self) -> None:
+        from core import junctions, routing
+
+        def locate(payload):
+            raise routing.RouterUnavailable("down")
+
+        raws = self.raws(3)
+        got = junctions._ask(raws, range(3), 10, locate, (routing.DeadlineExceeded,))
+        assert got == {}
+
+    def test_without_cut_short_errors_the_clock_is_swallowed(self) -> None:
+        from core import junctions, routing
+
+        def locate(payload):
+            raise routing.DeadlineExceeded("late")
+
+        assert junctions._ask(self.raws(3), range(3), 10, locate) == {}
+
+    def test_the_planners_reading_raises_and_is_not_remembered(self, monkeypatch) -> None:
+        from core import junctions, refine, routing
+
+        def cut(*a, **k):
+            raise junctions.ReadingCutShort("2 of 60 junctions read")
+
+        monkeypatch.setattr(junctions, "events_of", cut)
+        ctx = refine.Context(
+            variant="standard", request={}, costing={}, when="weekday_offpeak",
+            deadline=routing.Deadline(routing.clock() + 40, 35), traces={}, points=[],
+            roadway_only=False, with_facility=False, group=False, rate=10.0, weight=1.0,
+            climb_weight=0.0, quiet_cost=1.0,
+        )  # fmt: skip
+        with pytest.raises(routing.DeadlineExceeded):
+            refine.events_of_raws([], ctx, ctx.deadline)
+
+    def test_the_planner_asks_for_the_clock_to_cut_its_readings_short(self, monkeypatch) -> None:
+        from core import junctions, refine, routing
+
+        seen = {}
+
+        def spy(*args, **kwargs):
+            seen.update(kwargs)
+            return []
+
+        monkeypatch.setattr(junctions, "events_of", spy)
+        ctx = refine.Context(
+            variant="standard", request={}, costing={}, when="weekday_offpeak",
+            deadline=routing.Deadline(routing.clock() + 40, 35), traces={}, points=[],
+            roadway_only=False, with_facility=False, group=False, rate=10.0, weight=1.0,
+            climb_weight=0.0, quiet_cost=1.0,
+        )  # fmt: skip
+        assert refine.events_of_raws([], ctx, ctx.deadline) == []
+        assert seen["cut_short"] == (routing.DeadlineExceeded,)

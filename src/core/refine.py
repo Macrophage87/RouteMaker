@@ -515,6 +515,15 @@ def better(read: Analysis, best: Analysis, ctx: Context, rest_m: float = 0.0) ->
     return calmer(best, read, ctx) and not worth_it(read, best, ctx, rest_m)
 
 
+def late_deadline(ctx: Context) -> routing.Deadline:
+    """The deadline of a reading made late in the plan, after or outside the search
+    (`dedodge.settle`, `refine_long`'s final reading, `routing._past_target`): the
+    plan's, less REFINE_TRACE_RESERVE_S kept back for the answer's own traces and
+    junctions (combined correctness review, S3). A reading the clock cuts short there
+    raises DeadlineExceeded (`events_of_raws`) and is not remembered."""
+    return routing.Deadline(ctx.deadline.at - REFINE_TRACE_RESERVE_S, ctx.deadline.per_call_s)
+
+
 def too_long(length_m: float, ctx: Context) -> bool:
     """Whether a route of `length_m` is past the ceiling (`Context.ceiling_m`)."""
     return ctx.ceiling_m is not None and length_m > ctx.ceiling_m
@@ -531,11 +540,21 @@ def locator(variant: str, deadline: routing.Deadline):
 
 def events_of_raws(raws, ctx: Context, deadline: routing.Deadline) -> list | None:
     """The junction events of a route's raw junctions, or None where the roads
-    or the router could not be asked."""
+    or the router could not be asked. Where the clock cut the `/locate` batches off
+    part way (`junctions.ReadingCutShort`) the reading is not made of the junctions
+    read so far: DeadlineExceeded is raised, so it is neither used nor remembered
+    (combined correctness review, S3)."""
     try:
         return junctions.events_of(
-            raws, ctx.when, ctx.with_facility, locator(ctx.variant, deadline), ctx.group
+            raws,
+            ctx.when,
+            ctx.with_facility,
+            locator(ctx.variant, deadline),
+            ctx.group,
+            cut_short=(routing.DeadlineExceeded,),
         )
+    except junctions.ReadingCutShort as error:
+        raise routing.DeadlineExceeded(str(error)) from error
     except routing.DeadlineExceeded:
         raise
     except Exception:  # noqa: BLE001 - a route is answered without its intersections
@@ -2174,9 +2193,11 @@ def refine_long(trip: dict, ctx: Context) -> tuple[dict, dict]:
     if ctx.exposure.hold_lts4:
         info["lts4_after_m"] = round(lts4, 1)
     # One reading of the whole route, which the answer reuses: the legs' traces
-    # are remembered, the junctions read once across the joints.
+    # are remembered, the junctions read once across the joints. Inside the late
+    # deadline, and not kept where the clock cut it short (S3): the answer then
+    # reads the junctions itself, in its reserve.
     try:
-        analyse(joined, ctx, ctx.deadline)
+        analyse(joined, ctx, late_deadline(ctx))
     except (routing.DeadlineExceeded, routing.RouterUnavailable):
         pass
     return joined, info

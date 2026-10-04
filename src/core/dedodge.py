@@ -583,8 +583,10 @@ def settle(trip: dict, ctx: refine.Context, refined: dict | None, info: dict) ->
         return
     if refined is not None and refined.get("extra_distance_m") is not None:
         refined["extra_distance_m"] = round(refined["extra_distance_m"] - info["saved_m"], 1)
+    # Inside the late deadline, keeping the answer's reserve; a reading the clock
+    # cuts short is not made (combined correctness review, S3).
     try:
-        read = refine.analyse(trip, ctx, ctx.deadline)
+        read = refine.analyse(trip, ctx, refine.late_deadline(ctx))
     except (routing.DeadlineExceeded, routing.RouterUnavailable, routing.RouterRefused):
         read = None
     if refined is not None and read is not None:
@@ -652,7 +654,7 @@ def _leg(trip: dict, number: int, ctx: refine.Context, deadline, info: dict) -> 
             return trip
         if current is None:
             as_found = refine._leg_trip(trip, number)
-            original = current = refine.analyse(as_found, ctx, deadline)
+            original = current = _read(as_found, ctx, deadline, info)
             if current is None or _cut_short(as_found, ctx, deadline, info):
                 return trip
         info["checked"] += 1
@@ -660,8 +662,10 @@ def _leg(trip: dict, number: int, ctx: refine.Context, deadline, info: dict) -> 
         direct = None
         if new_leg is not None:
             stretch = {"legs": [new_leg], "summary": new_leg["summary"]}
-            direct = refine.analyse(stretch, ctx, deadline)
-            if direct is not None and _cut_short(stretch, ctx, deadline, info):
+            direct = _read(stretch, ctx, deadline, info)
+            if info["limited"] == "time" or (
+                direct is not None and _cut_short(stretch, ctx, deadline, info)
+            ):
                 return trip
         if direct is None:
             item["action"] = "kept"
@@ -685,6 +689,17 @@ def _leg(trip: dict, number: int, ctx: refine.Context, deadline, info: dict) -> 
         else:
             item["action"] = "kept"
             info["kept"] += 1
+
+
+def _read(trip: dict, ctx: refine.Context, deadline, info: dict) -> refine.Analysis | None:
+    """`refine.analyse` inside the pass's deadline, or None, `limited: time`, where the
+    clock cut the reading off (its junctions read in part, `junctions.ReadingCutShort`):
+    the splices made so far on the leg are kept, not lost to the exception."""
+    try:
+        return refine.analyse(trip, ctx, deadline)
+    except routing.DeadlineExceeded:
+        info["limited"] = "time"
+        return None
 
 
 def _cut_short(trip: dict, ctx: refine.Context, deadline, info: dict) -> bool:

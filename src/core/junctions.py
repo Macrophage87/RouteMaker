@@ -626,9 +626,17 @@ def crossed_links(node: Node, raw: RawJunction) -> list[Arm]:
 # --- Asking the router ----------------------------------------------------------
 
 
+class ReadingCutShort(Exception):
+    """A `/locate` batch failed with one of the caller's `cut_short` errors (the
+    plan's clock ran out): the junctions read are only some of the route's, and a
+    reading made of them would answer with junctions missing and no flag saying so
+    (combined correctness review, S3). The caller discards the reading."""
+
+
 def nodes_at(
     raws: Sequence[RawJunction],
     locate: Callable[[dict], list[dict]],
+    cut_short: tuple[type[BaseException], ...] = (),
 ) -> dict[int, Node]:
     """The node at each junction (by position in `raws`), asked of the router
     in batches. A junction whose answer lacks the route's own edge, or whose
@@ -641,15 +649,18 @@ def nodes_at(
     around it (`APPROACH_RADIUS_M`) for the signals and stop signs up its
     approaches (which only the wider answer shows to be this junction's or
     another's). Where the second answer is missing the node is read from what
-    is at it."""
-    answers = _ask(raws, range(len(raws)), LOCATE_RADIUS_M, locate)
+    is at it.
+
+    A batch that fails with one of `cut_short` (the clock) is not a batch the router
+    will not answer: the reading is cut short, and `ReadingCutShort` is raised."""
+    answers = _ask(raws, range(len(raws)), LOCATE_RADIUS_M, locate, cut_short)
     found: dict[int, Node] = {}
     for position, answer in answers.items():
         node = node_from_locate(answer, raws[position], approaches=False)
         if node is not None:
             found[position] = node
     unsure = [p for p in sorted(found) if control_of(found[p]) is not Control.SIGNAL]
-    for position, around in _ask(raws, unsure, APPROACH_RADIUS_M, locate).items():
+    for position, around in _ask(raws, unsure, APPROACH_RADIUS_M, locate, cut_short).items():
         node = node_from_locate(answers[position], raws[position], around)
         if node is not None:
             found[position] = node
@@ -663,9 +674,11 @@ def _ask(
     positions: Sequence[int],
     radius: int,
     locate: Callable[[dict], list[dict]],
+    cut_short: tuple[type[BaseException], ...] = (),
 ) -> dict[int, dict]:
     """`/locate`'s answer at each of `positions` in `raws`, in batches; a batch
-    the router will not answer has none."""
+    the router will not answer has none. A batch that fails with one of `cut_short`
+    raises `ReadingCutShort`: the answers are then only some of them."""
     positions = list(positions)
     found: dict[int, dict] = {}
     for start in range(0, len(positions), LOCATE_BATCH):
@@ -679,6 +692,10 @@ def _ask(
         }
         try:
             answers = locate(payload)
+        except cut_short as error:
+            raise ReadingCutShort(
+                f"{len(found)} of {len(positions)} junctions read before {error}"
+            ) from error
         except Exception as error:  # noqa: BLE001 - one batch failing is not the route failing
             logger.info("intersection nodes unavailable for a batch: %s", error)
             continue
@@ -841,13 +858,15 @@ def events_of(
     with_facility: bool,
     locate: Callable[[dict], list[dict]],
     group: bool = False,
+    cut_short: tuple[type[BaseException], ...] = (),
 ) -> list[Event]:
     """The route's junction events, in route order: the router says what meets
     at each junction and who has the right of way, the segment table how busy
     each road is, and `routemaker.intersections` what it costs. `group` is the
-    Mass Ride reading (colour by the crossed road's tier)."""
+    Mass Ride reading (colour by the crossed road's tier). `cut_short`: see
+    `nodes_at`."""
     raws = [raw for raw in raws if wanted(raw)]
-    nodes = nodes_at(raws, locate)
+    nodes = nodes_at(raws, locate, cut_short)
     asked: dict[tuple[int, int], tuple[int, int, float, float]] = {}
     for position, raw in enumerate(raws):
         ways = {raw.in_way, raw.out_way}

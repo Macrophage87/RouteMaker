@@ -1826,13 +1826,30 @@ class TestAfterThePass:
         assert len(ctx.candidates) == 1
         assert refined == {"extra_distance_m": 100.0, "exposure_after_m": 3.0}
 
-    def test_the_answer_is_read_by_the_plans_own_deadline(self, monkeypatch) -> None:
+    def test_the_answer_is_read_by_the_late_deadline(self, monkeypatch) -> None:
+        """Inside the plan's deadline less the answer's reserve (combined correctness
+        review, S3), not the plan's whole deadline."""
         ctx = _top_ctx()
         trip, now = _road("now", [1, 2, 3, 4])
         seen = []
         monkeypatch.setattr(refine, "analyse", lambda t, c, d, **k: seen.append(d) or now)
         dedodge.settle(trip, ctx, {}, _removed())
-        assert seen == [ctx.deadline]
+        assert seen == [refine.late_deadline(ctx)]
+        assert seen[0].at == ctx.deadline.at - refine.REFINE_TRACE_RESERVE_S
+
+    def test_a_reading_the_clock_cuts_short_offers_no_candidates(self, monkeypatch) -> None:
+        ctx = _top_ctx()
+        trip, now = _road("now", [1, 2, 3, 4])
+        other, other_read = _road("other", [5, 6, 7, 8])
+        ctx.candidates = [(trip, now), (other, other_read)]
+
+        def cut(*a, **k):
+            raise routing.DeadlineExceeded("cut")
+
+        monkeypatch.setattr(refine, "analyse", cut)
+        refined = {"lts3_m_after": 1.0}
+        dedodge.settle(trip, ctx, refined, _removed())
+        assert ctx.candidates == [(trip, None)] and refined["lts3_m_after"] == 1.0
 
 
 class TestAReadingCutShort:
