@@ -18,7 +18,6 @@ import {
   editPart,
   editTotal,
   formatLbKg,
-  limitNote,
   poundsToKg,
   savedNotice,
   toStored,
@@ -37,10 +36,14 @@ export function totalSaid(sheet: Worksheet, split: Split): string {
   return `Total: ${formatLbKg(kg)}.`;
 }
 
+// Labelled pounds first and kilograms in brackets (316); the kilograms a typed figure comes to are
+// part of the field's description, so a screen reader hears them too.
+export const WEIGHT_LABELS = { rider: "Rider, lb (kg)", bike: "Bike, lb (kg)", cargo: "Cargo, lb (kg)", total: "Total, lb (kg)" } as const;
+
 const PARTS = [
-  { key: "rider", label: "Rider (pounds)", kg: "riderKg" },
-  { key: "bike", label: "Bike (pounds)", kg: "bikeKg" },
-  { key: "cargo", label: "Cargo (pounds)", kg: "cargoKg" },
+  { key: "rider", label: WEIGHT_LABELS.rider, kg: "riderKg" },
+  { key: "bike", label: WEIGHT_LABELS.bike, kg: "bikeKg" },
+  { key: "cargo", label: WEIGHT_LABELS.cargo, kg: "cargoKg" },
 ] as const;
 
 interface DialogProps {
@@ -66,19 +69,25 @@ export function weightDialogBody(
 ): Array<ReactElement | null> {
   const { sheet, remember, refused } = state;
   const now = props.now ?? Date.now;
+  // Whatever closes the dialog leaves it blank, so no figure typed stays in the page (the
+  // review's S2; 313, 317(b)): a closed <dialog> is still in the DOM.
+  const blank = () => {
+    set.sheet(BLANK);
+    set.refused("");
+  };
   const save = () => {
     const stored = toStored(sheet, props.split, now());
     if ("refused" in stored) {
       set.refused(stored.refused);
       return;
     }
-    // Outside the range: kept as the nearer limit, and the dialog stays to say so (338),
-    // its fields blank again so the number typed is not shown.
-    if (stored.limit) {
-      set.sheet(BLANK);
-      set.refused(limitNote(stored.limit));
-    } else set.refused("");
+    // Outside the range it is the nearer limit, silently (352).
+    blank();
     props.onSave(stored, remember);
+  };
+  const cancel = () => {
+    blank();
+    props.onClose();
   };
   const field = (key: string, label: string, value: string, hint: string, onChange: (text: string) => void) => {
     const kg = poundsToKg(value);
@@ -92,10 +101,10 @@ export function weightDialogBody(
         inputMode: "decimal",
         autoComplete: "off",
         value,
-        "aria-describedby": `${id}-${key}-hint`,
+        "aria-describedby": `${id}-${key}-kg ${id}-${key}-hint`,
         onChange: (event: { target: { value: string } }) => onChange(event.target.value),
       }),
-      h("span", { className: "weight-kg", "aria-hidden": "true" }, typeof kg === "number" ? `(${kg.toFixed(1)} kg)` : ""),
+      h("span", { className: "weight-kg", id: `${id}-${key}-kg` }, typeof kg === "number" ? `(${kg.toFixed(1)} kg)` : ""),
       h("p", { className: "hint", id: `${id}-${key}-hint` }, hint),
     );
   };
@@ -107,7 +116,7 @@ export function weightDialogBody(
     ...PARTS.map((part) =>
       field(part.key, part.label, sheet[part.key], `Blank: ${formatLbKg(props.split[part.kg])}.`, (text) => set.sheet(editPart(sheet, part.key, text, props.split))),
     ),
-    field("total", "Total (pounds)", sheet.total, "Or type the total alone: it replaces the parts.", (text) => set.sheet(editTotal(text))),
+    field("total", WEIGHT_LABELS.total, sheet.total, "Or type the total alone: it replaces the parts.", (text) => set.sheet(editTotal(text))),
     h("p", { key: "sum", className: "weight-total", role: "status", "aria-live": "polite" }, totalSaid(sheet, props.split)),
     h(
       "label",
@@ -121,7 +130,7 @@ export function weightDialogBody(
       { key: "b", className: "actions" },
       h("button", { type: "button", onClick: save }, "Save"),
       props.saved ? h("button", { type: "button", className: "secondary", onClick: () => props.onClear() }, "Clear") : null,
-      h("button", { type: "button", className: "secondary", onClick: () => props.onClose() }, "Cancel"),
+      h("button", { type: "button", className: "secondary", onClick: cancel }, "Cancel"),
     ),
   ];
 }
@@ -147,7 +156,12 @@ export function WeightDialog(props: DialogProps): ReactElement {
       setRefused(start.refused);
       setRemember(start.remember);
       if (!dialog.open) dialog.showModal?.();
-    } else if (dialog.open) dialog.close();
+    } else {
+      // Closed (Save, Cancel, Clear, Escape): blank, so nothing typed stays in the page (S2).
+      setSheet(BLANK);
+      setRefused("");
+      if (dialog.open) dialog.close();
+    }
   }, [props.open]);
   return h(
     "dialog",
@@ -199,8 +213,7 @@ export function WeightSetting(props: {
       now: props.now,
       onSave: (weight, remember) => {
         props.onSave(weight, remember);
-        // A limit in use is said in the dialog first (338); the rider closes it.
-        if (!weight.limit) close();
+        close();
       },
       onClear: () => {
         props.onClear();

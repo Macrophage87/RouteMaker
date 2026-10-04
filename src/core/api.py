@@ -209,9 +209,10 @@ class RouteIn(Schema):
         default=None,
         description=(
             "The rider's total system weight in kilograms, rider plus bike plus load"
-            " (OWNER-DECISIONS 264). The routing is designed for 25 to 450 (about 55 to 990 lb,"
-            " 337); a total outside that is accepted and planned at the nearer limit, which"
-            " the answer's dials echo (338). Optional, and used only at the top of the stress"
+            " (OWNER-DECISIONS 264). The routing is designed for 25 to 700 (about 55 to 1,540 lb,"
+            " 337, 352); a total outside that is accepted and planned at the nearer limit,"
+            " silently, which the answer's dials echo (338, 352). Optional, and used only at"
+            " the top of the stress"
             " slider, where the Hills slider weighs effort-equivalent distance by it: a heavier"
             " system pays more for a climb. Absent: 90, or 120 for Cargo with passengers."
         ),
@@ -270,8 +271,8 @@ class RouteIn(Schema):
     @field_validator("system_weight_kg")
     @classmethod
     def _weight_at_the_nearer_limit(cls, value: int | None) -> int | None:
-        """OWNER-DECISIONS 338: a weight outside the range is planned at the nearer
-        limit, not refused."""
+        """OWNER-DECISIONS 338, 352: a weight outside the range is planned at the
+        nearer limit, silently, not refused."""
         if value is None:
             return None
         return int(effort.clamp_mass_kg(value))

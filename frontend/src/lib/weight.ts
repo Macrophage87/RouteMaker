@@ -12,6 +12,9 @@
  *   directly; blank parts take the ride type's defaults (defaultSplit). Saved values are
  *   never put back in the fields.
  * - 318: the two lines the dialog leads with (WEIGHT_PURPOSE, WEIGHT_ROUGH).
+ * - 337-340, 352: every total is taken. One outside 25 to 700 kg (about 55 to 1,540 lb)
+ *   is planned at the nearer limit, silently (352: "Just have a very heavy setting and
+ *   include silently"): no note about a limit is shown anywhere.
  *
  * Signed out it is kept in this browser only if the rider ticks "Remember on this
  * device" (localStorage, which may refuse); otherwise it lasts this visit. Signed in it
@@ -28,8 +31,6 @@ export interface StoredWeight {
   name: string;
   totalKg: number;
   parts?: { riderKg: number; bikeKg: number; cargoKg: number };
-  /** Set where the total entered was outside the range and the nearer limit is used instead (338). */
-  limit?: "min" | "max";
   /** Milliseconds since the epoch. */
   setAt: number;
 }
@@ -73,10 +74,9 @@ export const WEIGHT_PURPOSE =
   "Optional. Used only to work out your route, for how hard hills feel. It is never displayed, and never put in shared links or downloads.";
 export const WEIGHT_ROUGH = "A rough estimate is fine. Within 20 lb (10 kg) or so makes no real difference.";
 
-/** What the dialog says when a weight is saved: the date, never the numbers (317(b)). */
+/** What the dialog says when a weight is saved: the date, never the numbers (317(b)), and never a limit (352). */
 export function savedNotice(weight: StoredWeight, now: number = Date.now()): string {
-  const limit = weight.limit ? ` ${limitNote(weight.limit)}` : "";
-  return `A weight is saved (${setAgo(weight.setAt, now)}).${limit} Enter new values to replace it, or Clear to use the defaults.`;
+  return `A weight is saved (${setAgo(weight.setAt, now)}). Enter new values to replace it, or Clear to use the defaults.`;
 }
 
 // ---- the worksheet (316, 317) ------------------------------------------------
@@ -156,32 +156,18 @@ export function worksheetKg(sheet: Worksheet, split: Split): number | undefined 
 export const WEIGHT_NOTHING = "Enter your weight in at least one field, or Cancel.";
 export const WEIGHT_NOT_A_NUMBER = "Enter numbers only, in pounds, or Cancel.";
 
-/** "55 lb (25 kg)" and "990 lb (450 kg)": the limits as the dialog says them. */
-const LIMIT_WORDS = { min: `${lbOf(SYSTEM_WEIGHT_MIN_KG)} lb (${SYSTEM_WEIGHT_MIN_KG} kg)`, max: `${lbOf(SYSTEM_WEIGHT_MAX_KG)} lb (${SYSTEM_WEIGHT_MAX_KG} kg)` };
-
-/**
- * What the dialog says when a total is outside the range (OWNER-DECISIONS 338), neutrally,
- * with the limit planned with and never the number typed.
- */
-export function limitNote(limit: "min" | "max"): string {
-  return (
-    `Routing is designed for totals between ${lbOf(SYSTEM_WEIGHT_MIN_KG)} and ${lbOf(SYSTEM_WEIGHT_MAX_KG)} lb (${SYSTEM_WEIGHT_MIN_KG} and ${SYSTEM_WEIGHT_MAX_KG} kg), ` +
-    `so we'll plan with ${LIMIT_WORDS[limit]}.`
-  );
-}
-
 /**
  * What Save keeps, or the words for why it cannot (nothing entered, or not a number).
- * A total outside the range is kept as the nearer limit, with `limit` saying which, and
- * without its parts, which no longer make it (OWNER-DECISIONS 337, 338); the parts are
- * kept only when they made the total.
+ * A total outside the range is kept as the nearer limit, silently (OWNER-DECISIONS 337,
+ * 338, 352), and without its parts, which no longer make it; the parts are kept only
+ * when they made the total.
  */
 export function toStored(sheet: Worksheet, split: Split, now: number = Date.now(), name: string = DEFAULT_NAME): StoredWeight | { refused: string } {
   const total = worksheetKg(sheet, split);
   if (total === undefined) return { refused: WEIGHT_NOTHING };
   if (total === null) return { refused: WEIGHT_NOT_A_NUMBER };
-  if (total < SYSTEM_WEIGHT_MIN_KG) return { name, totalKg: SYSTEM_WEIGHT_MIN_KG, limit: "min", setAt: now };
-  if (total > SYSTEM_WEIGHT_MAX_KG) return { name, totalKg: SYSTEM_WEIGHT_MAX_KG, limit: "max", setAt: now };
+  if (total < SYSTEM_WEIGHT_MIN_KG) return { name, totalKg: SYSTEM_WEIGHT_MIN_KG, setAt: now };
+  if (total > SYSTEM_WEIGHT_MAX_KG) return { name, totalKg: SYSTEM_WEIGHT_MAX_KG, setAt: now };
   if (sheet.mode === "total") return { name, totalKg: total, setAt: now };
   return { name, totalKg: total, parts: partsKg(sheet, split)!, setAt: now };
 }
@@ -211,8 +197,8 @@ export function migrate(value: unknown, now: number = Date.now()): StoredWeight 
     p && [p.riderKg, p.bikeKg, p.cargoKg].every((x) => typeof x === "number" && Number.isFinite(x) && x >= 0)
       ? { riderKg: p.riderKg as number, bikeKg: p.bikeKg as number, cargoKg: p.cargoKg as number }
       : undefined;
-  const limit = r.limit === "min" || r.limit === "max" ? r.limit : undefined;
-  return { name: typeof r.name === "string" && r.name.trim() ? r.name : DEFAULT_NAME, totalKg: Math.round(total * 10) / 10, ...(parts ? { parts } : {}), ...(limit ? { limit } : {}), setAt };
+  // An earlier version's `limit` (338's note, gone since 352) is dropped.
+  return { name: typeof r.name === "string" && r.name.trim() ? r.name : DEFAULT_NAME, totalKg: Math.round(total * 10) / 10, ...(parts ? { parts } : {}), setAt };
 }
 
 type Storage = Pick<globalThis.Storage, "getItem" | "setItem" | "removeItem">;

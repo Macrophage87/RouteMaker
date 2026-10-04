@@ -124,12 +124,12 @@ class TestTheDialsOnTheRequest:
         assert post(client, top_body(system_weight_kg=value)).status_code == 400
 
     @pytest.mark.parametrize(
-        ("value", "used"), [(10, 25), (-5, 25), (24, 25), (451, 450), (500, 450), (9_999, 450)]
+        ("value", "used"), [(10, 25), (-5, 25), (24, 25), (701, 700), (800, 700), (9_999, 700)]
     )
     def test_a_system_weight_out_of_range_is_planned_at_the_nearer_limit(
         self, client, segments, router, value, used, monkeypatch
     ) -> None:
-        """OWNER-DECISIONS 338: accepted, not refused, and the effort model reads the
+        """OWNER-DECISIONS 338, 352: accepted, not refused, and the effort model reads the
         limit (the answer's dials echo it, never the number sent)."""
         seen = []
         real = refine.refine

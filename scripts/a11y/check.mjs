@@ -620,7 +620,7 @@ const federalFetched = (p) =>
       /^Optional\. Used only to work out your route, for how hard hills feel\. It is never displayed, and never put in shared links or downloads\. A rough estimate is fine\. Within 20 lb \(10 kg\) or so makes no real difference\.$/.test(dialog?.description ?? ""),
     JSON.stringify(dialog));
   const fields = await p.eval("[...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => ({ label: e.labels?.[0]?.textContent, value: e.value }))");
-  check("weight: Rider, Bike, Cargo and Total are labelled in pounds, and start blank", JSON.stringify(fields.map((f) => f.label)) === JSON.stringify(["Rider (pounds)", "Bike (pounds)", "Cargo (pounds)", "Total (pounds)"]) && fields.every((f) => f.value === ""), JSON.stringify(fields));
+  check("weight: Rider, Bike, Cargo and Total are labelled pounds first, kilograms in brackets, and start blank (316)", JSON.stringify(fields.map((f) => f.label)) === JSON.stringify(["Rider, lb (kg)", "Bike, lb (kg)", "Cargo, lb (kg)", "Total, lb (kg)"]) && fields.every((f) => f.value === ""), JSON.stringify(fields));
   // Type a total of 207 lb and save it, remembered.
   await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
   await p.type("207");
@@ -633,6 +633,9 @@ const federalFetched = (p) =>
   await sleep(1500);
   const after = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, focus: document.activeElement === document.querySelector('.weight-setting > button'), line: document.querySelector('.weight-line').textContent, hash: location.hash, stored: localStorage.getItem('routemaker.weight') !== null })");
   check("weight: Save closes it, the focus is back on Change, the line says set today, it plans once, and the link has no weight", !after.open && after.focus && after.line === "Rider and bike weight: set today" && p.routeRequests - before === 1 && !/weight|207|94/.test(after.hash) && after.stored, JSON.stringify({ ...after, plans: p.routeRequests - before }));
+  // The closed <dialog> is still in the DOM: nothing typed stays in it (the review's S2).
+  const closedDom = await p.eval("({ text: document.querySelector('dialog.weight-dialog').textContent, values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value) })");
+  check("weight: after Save the closed dialog holds no typed figure, in its fields or its text (S2)", closedDom.values.every((v) => v === "") && !/\b207\b|\b93\.9\b|\b94 kg/.test(closedDom.text), JSON.stringify(closedDom.values));
   // Reopen: blank, saying one is saved; the number is in neither the page nor the accessibility tree.
   await p.eval("document.querySelector('.weight-setting > button').click(); true");
   await sleep(300);
@@ -645,15 +648,15 @@ const federalFetched = (p) =>
   await sleep(300);
   const closed = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, focus: document.activeElement === document.querySelector('.weight-setting > button') })");
   check("weight: Escape closes it and the focus goes back to Change", !closed.open && closed.focus, JSON.stringify(closed));
-  // A total outside the range: planned with the nearer limit, said neutrally, the number typed not shown (337, 338).
+  // A total outside the range: planned with the nearer limit, silently (337, 338, 352), the number typed not kept.
   await p.eval("document.querySelector('.weight-setting > button').click(); true");
   await sleep(300);
   await p.eval("document.querySelectorAll('dialog.weight-dialog input[type=text]')[3].focus(); true");
   await p.type("1500");
   await p.eval("[...document.querySelectorAll('dialog.weight-dialog button')].find((b) => b.textContent === 'Save').click(); true");
   await sleep(500);
-  const limited = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, note: document.querySelector('dialog.weight-dialog .dial-rule').textContent, live: document.querySelector('dialog.weight-dialog .dial-rule').getAttribute('aria-live'), values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value), text: document.body.innerText })");
-  check("weight: a total over the range is planned with the limit, said in the dialog, and the number typed is gone", limited.open && limited.note === "Routing is designed for totals between 55 and 992 lb (25 and 450 kg), so we'll plan with 992 lb (450 kg)." && limited.live === "assertive" && limited.values.every((v) => v === "") && !/1500/.test(limited.text), JSON.stringify({ ...limited, text: undefined }));
+  const limited = await p.eval("({ open: document.querySelector('dialog.weight-dialog').open, note: document.querySelector('dialog.weight-dialog .dial-rule').textContent, values: [...document.querySelectorAll('dialog.weight-dialog input[type=text]')].map((e) => e.value), text: document.body.textContent })");
+  check("weight: a total over the range is saved silently, the dialog closes, and the number typed is nowhere in the page (352, S2)", !limited.open && limited.note === "" && limited.values.every((v) => v === "") && !/1500|plan with|designed for/.test(limited.text), JSON.stringify({ ...limited, text: undefined }));
   await p.close();
 }
 
@@ -697,7 +700,7 @@ b.close();
 const failed = results.filter((r) => !r.ok);
 // Every check counted, so a section that stops running (a merge that drops it, a block that
 // returns early) fails here rather than passing green (the mutation review of the release).
-const EXPECTED = 141;
+const EXPECTED = 142;
 const counted = results.length === EXPECTED;
 console.log(`\n${results.length - failed.length}/${results.length} passed${counted ? "" : ` - but ${EXPECTED} checks were expected: a section did not run`}`);
 process.exit(failed.length || !counted ? 1 : 0);

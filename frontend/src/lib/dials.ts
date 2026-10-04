@@ -142,10 +142,12 @@ export const TARGET_MAX_M = 1_000_000;
 export const DEFAULT_CEILING_RATIO = 1.6;
 export const TARGET_CEILING_RATIO = 1.25;
 /** The system weight's range and defaults (kg): `routemaker.effort`, which tests/test_presets.py holds this to. */
-// OWNER-DECISIONS 337: "The weight range must include everyone", about 55-990 lb, for
-// every ride type; 338: a total outside it is planned with the nearer limit, not refused.
+// OWNER-DECISIONS 337: "The weight range must include everyone", for every ride type;
+// 338: a total outside it is planned with the nearer limit, not refused; 352: silently,
+// and the top raised to about 700 kg (1,540 lb), "people who ride pedicabs with 2
+// passengers".
 export const SYSTEM_WEIGHT_MIN_KG = 25;
-export const SYSTEM_WEIGHT_MAX_KG = 450;
+export const SYSTEM_WEIGHT_MAX_KG = 700;
 export const SYSTEM_WEIGHT_KG = 90;
 export const PASSENGERS_WEIGHT_KG = 120;
 

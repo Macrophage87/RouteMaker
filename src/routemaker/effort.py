@@ -34,14 +34,19 @@ from collections.abc import Sequence
 
 # The total system weight, in kilograms: rider, bike and what they carry (item 263:
 # "rider + bike ~90 kg"; item 264 makes it the rider's optional input). The range the
-# routing is designed for is 25 to 450 kg, about 55 to 990 lb (OWNER-DECISIONS 337:
+# routing is designed for is 25 to 700 kg, about 55 to 1,540 lb (OWNER-DECISIONS 337:
 # a 90 lb rider on a 16 lb bike is about 48 kg, and a very heavy rider on a
-# specialised bike is past the old 140), on every ride type; a total outside it is
-# planned at the nearer limit, never refused (338, `clamp_mass_kg`). Cargo with
-# passengers defaults heavier: an adult, a cargo bike of 30 kg or so and a child or two.
+# specialised bike is past the old 140; 352: the top raised from 450 to cover "people
+# who ride pedicabs with 2 passengers"), on every ride type; a total outside it is
+# planned at the nearer limit, silently, never refused (338, 352, `clamp_mass_kg`).
+# The model stays well-behaved to the top: a climb's factor rises with the mass towards
+# 1 + grade / CRR (14.3 at 8%), since the drag that does not scale with the mass matters
+# less and less, so a heavier system always pays more for a climb but by less each
+# step (8%: 6.5 at 90 kg, 11.3 at 450, 12.2 at 700). Cargo with passengers defaults
+# heavier: an adult, a cargo bike of 30 kg or so and a child or two.
 MASS_KG = 90.0
 MASS_MIN_KG = 25
-MASS_MAX_KG = 450
+MASS_MAX_KG = 700
 PASSENGERS_MASS_KG = 120.0
 GRAVITY = 9.80665
 # Rolling resistance of a hybrid or cross tyre on mixed pavement, from the range
@@ -60,7 +65,7 @@ WINDOW_M = 300.0
 
 def clamp_mass_kg(mass_kg: float) -> float:
     """The weight the model plans with: `mass_kg` held to MASS_MIN_KG..MASS_MAX_KG, the
-    nearer limit for a total outside them (OWNER-DECISIONS 338)."""
+    nearer limit for a total outside them, silently (OWNER-DECISIONS 338, 352)."""
     return float(min(max(mass_kg, MASS_MIN_KG), MASS_MAX_KG))
 
 

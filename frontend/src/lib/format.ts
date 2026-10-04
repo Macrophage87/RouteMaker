@@ -50,7 +50,7 @@ export function milesRange(minMiles: number, maxMiles: number, minM: number, max
   return `${minMiles} to ${maxMiles} ${MILES_WORD} (${km(minM)} to ${km(maxM)} km)`;
 }
 
-/** "150 to 309 pounds (68 to 140 kg)". */
+/** "55 to 1,543 pounds (25 to 700 kg)": a weight range, pounds first. */
 export function poundsRange(minLb: number, maxLb: number, minKg: number, maxKg: number): string {
   return `${minLb} to ${maxLb} ${POUNDS_WORD} (${minKg} to ${maxKg} kg)`;
 }

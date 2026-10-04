@@ -11,7 +11,6 @@ import {
   WEIGHT_PURPOSE,
   WEIGHT_ROUGH,
   WEIGHT_NOT_A_NUMBER,
-  limitNote,
   WEIGHT_STORAGE_KEY,
   WeightStore,
   daysSince,
@@ -111,44 +110,52 @@ test("Save refuses only nothing entered and an entry that is not a number, in ne
 
 const kgTotal = (kg: number) => editTotal(String(Math.round(kg * 2.20462 * 10) / 10));
 
-test("everyone's total is taken: 25 to 450 kg (55 to 992 lb) as entered, outside it the nearer limit with a note (OWNER-DECISIONS 337, 338)", () => {
+test("everyone's total is taken: 25 to 700 kg (55 to 1,543 lb) as entered, outside it the nearer limit, silently (OWNER-DECISIONS 337, 338, 352)", () => {
   assert.equal(SYSTEM_WEIGHT_MIN_KG, 25);
-  assert.equal(SYSTEM_WEIGHT_MAX_KG, 450);
-  // 48 kg (a 90 lb rider on a 16 lb bike) and 90 kg pass through.
-  for (const kg of [48, 90]) assert.deepEqual(toStored(kgTotal(kg), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: kg, setAt: NOW }, `${kg} kg`);
-  // Both limits exactly: taken as they are, no note.
-  for (const kg of [25, 450]) {
-    const kept = toStored(kgTotal(kg), SPLIT, NOW) as StoredWeight;
-    assert.equal(kept.totalKg, kg);
-    assert.equal(kept.limit, undefined, `${kg} kg is in range`);
-  }
-  // Outside: the nearer limit, with which.
-  assert.deepEqual(toStored(kgTotal(10), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: 25, limit: "min", setAt: NOW });
-  assert.deepEqual(toStored(kgTotal(500), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: 450, limit: "max", setAt: NOW });
+  assert.equal(SYSTEM_WEIGHT_MAX_KG, 700);
+  // 48 kg (a 90 lb rider on a 16 lb bike), 90 kg and a pedicab's 600 kg pass through.
+  for (const kg of [48, 90, 450, 600]) assert.deepEqual(toStored(kgTotal(kg), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: kg, setAt: NOW }, `${kg} kg`);
+  for (const kg of [25, 700]) assert.equal((toStored(kgTotal(kg), SPLIT, NOW) as StoredWeight).totalKg, kg);
+  // Outside: the nearer limit, and nothing says so (352: "include silently").
+  assert.deepEqual(toStored(kgTotal(10), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: 25, setAt: NOW });
+  assert.deepEqual(toStored(kgTotal(900), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: 700, setAt: NOW });
   // From the parts too, which are then not kept (they no longer make the total).
-  assert.deepEqual(toStored(editPart(editPart(BLANK, "rider", "2000", SPLIT), "bike", "40", SPLIT), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: 450, limit: "max", setAt: NOW });
-  assert.equal(limitNote("min"), "Routing is designed for totals between 55 and 992 lb (25 and 450 kg), so we'll plan with 55 lb (25 kg).");
-  assert.equal(limitNote("max"), "Routing is designed for totals between 55 and 992 lb (25 and 450 kg), so we'll plan with 992 lb (450 kg).");
-  // What is sent is the limit, in whole kilograms; the stored total is the clamped one.
+  assert.deepEqual(toStored(editPart(editPart(BLANK, "rider", "2000", SPLIT), "bike", "40", SPLIT), SPLIT, NOW), { name: DEFAULT_NAME, totalKg: 700, setAt: NOW });
+  // What is sent is the limit, in whole kilograms.
   assert.equal(dialFields(withWeight(startDials("trailmaxxing"), toStored(kgTotal(10), SPLIT, NOW) as StoredWeight)).system_weight_kg, 25);
-  assert.equal(dialFields(withWeight(startDials("trailmaxxing"), toStored(kgTotal(500), SPLIT, NOW) as StoredWeight)).system_weight_kg, 450);
+  assert.equal(dialFields(withWeight(startDials("trailmaxxing"), toStored(kgTotal(900), SPLIT, NOW) as StoredWeight)).system_weight_kg, 700);
 });
 
-test("after a total outside the range, the dialog says the limit in use, its fields are blank and the number typed is nowhere", () => {
-  const calls: StoredWeight[] = [];
-  let sheet = editTotal("1500");
-  let said = "";
-  const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: (w: StoredWeight) => void calls.push(w), onClear: () => {}, onClose: () => {}, now: () => NOW };
-  const body = weightDialogBody("w", props, { sheet, remember: false, refused: "" }, { sheet: (s) => void (sheet = s), remember: () => {}, refused: (t) => void (said = t) });
-  const actions = (body.at(-1) as { props: { children: Array<{ props: { onClick: () => void; children: string } } | null> } }).props.children.filter(Boolean) as Array<{ props: { onClick: () => void; children: string } }>;
-  actions.find((b) => b.props.children === "Save")!.props.onClick();
-  assert.equal(calls[0].totalKg, 450);
-  assert.equal(said, limitNote("max"));
-  assert.deepEqual(sheet, BLANK, "the fields are blank again");
-  const html = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", { ...props, saved: calls[0] }, { sheet, remember: false, refused: said }, { sheet: () => {}, remember: () => {}, refused: () => {} })));
-  assert.ok(html.includes(limitNote("max").replace(/'/g, "&#x27;")), "the note is said");
-  assert.ok(!html.includes("1500") && !html.includes("680"), "the number typed is not");
-  assert.match(savedNotice(calls[0], NOW), /^A weight is saved \(set today\)\. Routing is designed for totals between 55 and 992 lb \(25 and 450 kg\), so we'll plan with 992 lb \(450 kg\)\. Enter new values/);
+/** The dialog's Save and Cancel buttons, from its markup's last element. */
+function buttons(body: ReturnType<typeof weightDialogBody>) {
+  const actions = (body.at(-1) as { props: { children: Array<{ props: { onClick: () => void; children: string } } | null> } }).props.children.filter(Boolean) as Array<{
+    props: { onClick: () => void; children: string };
+  }>;
+  return (name: string) => actions.find((b) => b.props.children === name)!.props.onClick;
+}
+
+test("after every Save and Cancel the fields are blank again, and no typed figure stays in the closed dialog (the review's S2, 313, 317(b))", () => {
+  for (const [typed, kgs] of [["200", ["200", "90.7", "91 kg"]], ["1700", ["1700", "771", "700 kg", "1543"]]] as const) {
+    for (const press of ["Save", "Cancel"]) {
+      const calls: StoredWeight[] = [];
+      let sheet = editPart(BLANK, "rider", typed, SPLIT);
+      let said = "x";
+      let closed = 0;
+      const props = { open: true, saved: null, remembered: false, split: SPLIT, onSave: (w: StoredWeight) => void calls.push(w), onClear: () => {}, onClose: () => void (closed += 1), now: () => NOW };
+      const set = { sheet: (s: typeof sheet) => void (sheet = s), remember: () => {}, refused: (t: string) => void (said = t) };
+      const before = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", props, { sheet, remember: false, refused: "" }, set)));
+      assert.ok(before.includes(typed), "the premise: while typing, the figure is in the dialog");
+      buttons(weightDialogBody("w", props, { sheet, remember: false, refused: "" }, set))(press)();
+      assert.deepEqual(sheet, BLANK, `${press}: the fields are blank again`);
+      assert.equal(said, "", `${press}: and nothing is said, no limit either (352)`);
+      if (press === "Save") assert.equal(calls.length, 1);
+      else assert.equal(closed, 1);
+      const saved = calls[0] ?? null;
+      const after = renderToStaticMarkup(createElement("dialog", null, ...weightDialogBody("w", { ...props, saved }, { sheet, remember: false, refused: said }, set)));
+      for (const n of kgs) assert.ok(!after.includes(n), `${press} ${typed} lb: ${n} is not in the dialog`);
+      assert.doesNotMatch(after, /plan with|designed for/, "no limit note anywhere");
+    }
+  }
 });
 
 test("the polite total says what the worksheet comes to, pounds first", () => {
@@ -169,11 +176,14 @@ test("the dialog leads with the two lines that are its description, and labels e
   const html = dialogHtml(null);
   assert.equal(WEIGHT_PURPOSE, "Optional. Used only to work out your route, for how hard hills feel. It is never displayed, and never put in shared links or downloads.");
   assert.equal(WEIGHT_ROUGH, "A rough estimate is fine. Within 20 lb (10 kg) or so makes no real difference.");
-  assert.ok(html.indexOf(WEIGHT_PURPOSE) < html.indexOf("Rider (pounds)"), "the lines come first");
+  assert.ok(html.indexOf(WEIGHT_PURPOSE) < html.indexOf("Rider, lb (kg)"), "the lines come first");
   assert.match(html, /<p id="w-purpose">Optional\./);
   assert.match(html, /<p id="w-rough">A rough estimate/);
-  for (const [id, label] of [["w-rider", "Rider (pounds)"], ["w-bike", "Bike (pounds)"], ["w-cargo", "Cargo (pounds)"], ["w-total", "Total (pounds)"]]) {
+  // Pounds first, kilograms in brackets (316), and the kilograms a figure comes to in the field's description.
+  for (const [id, label] of [["w-rider", "Rider, lb (kg)"], ["w-bike", "Bike, lb (kg)"], ["w-cargo", "Cargo, lb (kg)"], ["w-total", "Total, lb (kg)"]]) {
     assert.ok(html.includes(`<label for="${id}">${label}</label><input id="${id}"`), label);
+    assert.match(html, new RegExp(`id="${id}"[^>]*aria-describedby="${id}-kg ${id}-hint"`), `${label}: its kilograms are described`);
+    assert.match(html, new RegExp(`<span class="weight-kg" id="${id}-kg">`), `${label}: not hidden from a screen reader`);
   }
   assert.match(html, /<p class="weight-total" role="status" aria-live="polite">Total: /);
   assert.match(html, /Remember on this device/);
@@ -264,8 +274,9 @@ test("an earlier stored value is read in today's shape: a bare kilogram figure, 
   assert.deepEqual(migrate(JSON.stringify(SAVED), NOW), SAVED);
   assert.deepEqual(migrate({ name: "", totalKg: 80, parts: { riderKg: "x" }, setAt: 5 }, NOW), { name: DEFAULT_NAME, totalKg: 80, setAt: 5 });
   assert.equal(migrate("300", NOW)?.totalKg, 300, "in today's wider range");
-  assert.deepEqual(migrate({ totalKg: 450, limit: "max", setAt: 5 }, NOW), { name: DEFAULT_NAME, totalKg: 450, limit: "max", setAt: 5 });
-  for (const bad of ["{", "600", JSON.stringify({ totalKg: 20 }), null, 7]) assert.equal(migrate(bad, NOW), null, String(bad));
+  assert.deepEqual(migrate({ totalKg: 450, limit: "max", setAt: 5 }, NOW), { name: DEFAULT_NAME, totalKg: 450, setAt: 5 }, "an old limit flag is dropped (352)");
+  assert.equal(migrate("600", NOW)?.totalKg, 600, "a pedicab's total (352)");
+  for (const bad of ["{", "800", JSON.stringify({ totalKg: 20 }), null, 7]) assert.equal(migrate(bad, NOW), null, String(bad));
   const storage = memory({ [WEIGHT_STORAGE_KEY]: "88" });
   assert.equal(new WeightStore(storage).load(NOW)?.totalKg, 88);
 });
@@ -316,10 +327,10 @@ test("the Cargo field takes a large load: a trailer of 400 lb is fine, and only 
   assert.equal(kept.limit, undefined);
   assert.equal(kept.totalKg, 276.6);
   assert.deepEqual(kept.parts, { riderKg: 81.6, bikeKg: 13.6, cargoKg: 181.4 });
-  // Over the cap: the total is the limit, with the note.
-  const over = toStored(editPart(sheet, "cargo", "900", SPLIT), SPLIT, NOW) as StoredWeight;
-  assert.deepEqual(over, { name: DEFAULT_NAME, totalKg: 450, limit: "max", setAt: NOW });
-  assert.match(savedNotice(over, NOW), /so we'll plan with 992 lb \(450 kg\)\./);
+  // Over the cap: the total is the limit, silently (352).
+  const over = toStored(editPart(sheet, "cargo", "1500", SPLIT), SPLIT, NOW) as StoredWeight;
+  assert.deepEqual(over, { name: DEFAULT_NAME, totalKg: 700, setAt: NOW });
+  assert.doesNotMatch(savedNotice(over, NOW), /plan with|designed for|1,?54\d|700/);
 });
 
 test("no part has a limit of its own, only that it is a non-negative number; only the total is clamped (OWNER-DECISIONS 340)", () => {
@@ -331,7 +342,7 @@ test("no part has a limit of its own, only that it is a non-negative number; onl
   assert.equal(kept.limit, undefined);
   assert.deepEqual(kept.parts, { riderKg: 181.4, bikeKg: 54.4, cargoKg: 0 });
   // Any one part as large as it is: the total alone decides the clamp.
-  assert.equal((toStored(editPart(BLANK, "rider", "5000", SPLIT), SPLIT, NOW) as StoredWeight).limit, "max");
+  assert.equal((toStored(editPart(BLANK, "rider", "5000", SPLIT), SPLIT, NOW) as StoredWeight).totalKg, 700);
   assert.equal((toStored(editPart(BLANK, "bike", "1", SPLIT), SPLIT, NOW) as StoredWeight).limit, undefined, "a 1 lb bike with the default rider is fine");
   // Negative or not a number: not saved, in the same neutral words.
   for (const text of ["-5", "-0.5", "abc", "1e3", "12,5"]) {
@@ -339,7 +350,7 @@ test("no part has a limit of its own, only that it is a non-negative number; onl
     assert.deepEqual(toStored(editTotal(text), SPLIT, NOW), { refused: WEIGHT_NOT_A_NUMBER }, `total ${text}`);
   }
   // Nothing anywhere judges a weight.
-  const words = [WEIGHT_NOTHING, WEIGHT_NOT_A_NUMBER, limitNote("min"), limitNote("max"), savedNotice({ ...SAVED, limit: "max" }, NOW), dialogHtml(null)].join(" ");
+  const words = [WEIGHT_NOTHING, WEIGHT_NOT_A_NUMBER, savedNotice(SAVED, NOW), dialogHtml(null)].join(" ");
   assert.doesNotMatch(words, /unusual|sensible|unrealistic|too (heavy|light|high|low)|heavy|light|invalid|extreme|normal/i);
   assert.doesNotMatch(dialogHtml(null), /\b(min|max)="/, "no bounds on any field");
 });
