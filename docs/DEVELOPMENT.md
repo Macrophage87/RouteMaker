@@ -317,7 +317,11 @@ map) repaint on it. What is chosen is held in `localStorage` as
 
 Where it starts: the stored "on" or "off" first, then the browser's
 `prefers-contrast: more` (followed live while nothing is stored), then off. The
-palette: `?palette=` in the link, then the switch, then `blended`. The
+palette: `?palette=` in the link, then the switch, then `blended`. A link names
+the palettes neutrally (OWNER-DECISIONS 321): `warm` (blended), `twotone` and
+`cool` (cvd), and still reads the older `blended` and `cvd` silently;
+`frontend/src/lib/linkPrivacy.test.ts` scans every link the page writes, over every
+ride type and option, for words that reveal a disability or assistive need. The
 colours of the switch's state are one place, `tiersFor(palette, strong)`.
 
 The `cvd` palette, with casings (the casing is the dark or light line drawn

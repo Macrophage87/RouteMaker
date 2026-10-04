@@ -136,10 +136,29 @@ export const PALETTES = {
 /** The palette the map uses unless the address or the accessibility switch asks for another. */
 export const DEFAULT_PALETTE = "blended";
 
+/**
+ * The palettes' names in a link (`?palette=`), which say nothing of who uses them
+ * (OWNER-DECISIONS 321: "Make sure that the link text doesn't scream 'disability' in the
+ * parameters."): "warm" the default, "twotone" the owner's second reading, "cool" the
+ * blue-and-orange one the switch turns on. The names in the code stay as they were.
+ * linkPalette.test.ts holds every name and value a link can carry to a denylist.
+ */
+export const PALETTE_LINK_NAMES = { blended: "warm", twotone: "twotone", cvd: "cool" };
+
+/**
+ * A link's palette value as the palette it names: the names above, and the older
+ * values (`blended`, `cvd`) still read, silently, so a link already shared still works.
+ * Nothing writes the older values.
+ */
+function paletteOfLinkValue(value) {
+  const named = Object.entries(PALETTE_LINK_NAMES).find(([, name]) => name === value)?.[0];
+  if (named) return named;
+  return Object.hasOwn(PALETTES, value) ? value : null;
+}
+
 /** The palette an address's query string names (`?palette=twotone`), or the default. */
 export function paletteFrom(search) {
-  const match = /(?:^|[?&])palette=([a-z]+)/.exec(search ?? "");
-  return match && Object.hasOwn(PALETTES, match[1]) ? match[1] : DEFAULT_PALETTE;
+  return queryPalette(search) ?? DEFAULT_PALETTE;
 }
 
 /** The palette the accessibility switch turns on (OWNER-DECISIONS 208, 211). */
@@ -152,10 +171,10 @@ export const ACCESSIBILITY_STORAGE_KEY = "routemaker.accessibility";
 export const STRONG_WIDTH_EXTRA = 0.5;
 export const STRONG_CASING_EXTRA_PX = 3;
 
-/** The palette an address names (`?palette=cvd`), or null when it names none this page has. */
+/** The palette an address names (`?palette=cool`), or null when it names none this page has. */
 export function queryPalette(search) {
   const match = /(?:^|[?&])palette=([a-z]+)/.exec(search ?? "");
-  return match && Object.hasOwn(PALETTES, match[1]) ? match[1] : null;
+  return match ? paletteOfLinkValue(match[1]) : null;
 }
 
 /** The browser's localStorage, or null where reaching it throws (blocked site data, some embedded views). */
